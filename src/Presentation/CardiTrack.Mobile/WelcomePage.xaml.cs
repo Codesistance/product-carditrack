@@ -30,6 +30,7 @@ public partial class WelcomePage : ContentPage
 
         SlideTitle.Text = current.Title;
         SlideSubtitle.Text = current.Subtitle;
+        SlideSubtitle.Margin = new Thickness(40, current.SubtitleTopMargin, 40, 0);
 
         for (var i = 0; i < _indicators.Length; i++)
         {
@@ -50,7 +51,7 @@ public partial class WelcomePage : ContentPage
         return -1;
     }
 
-    private void OnCtaClicked(object? sender, EventArgs e)
+    private void OnCtaTapped(object? sender, EventArgs e)
     {
         WindowNavigation.SetRootPage(this, new NavigationPage(new CreateAccountPage()));
     }

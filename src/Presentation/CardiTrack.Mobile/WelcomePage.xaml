@@ -8,36 +8,37 @@
              NavigationPage.HasNavigationBar="False"
              BackgroundColor="{StaticResource White}">
 
-    <Grid RowDefinitions="Auto,Auto,Auto,*,Auto">
+    <Grid RowDefinitions="Auto,Auto,Auto,16,Auto">
 
-        <!-- ── Carousel (hero image only — swipes between slides) ── -->
-        <CarouselView x:Name="SlideCarousel"
-                      Grid.Row="0"
-                      HeightRequest="571"
-                      ItemsSource="{Binding Source={x:Reference RootPage}, Path=Slides}"
-                      Loop="False"
-                      IsScrollAnimated="True">
-            <CarouselView.ItemTemplate>
-                <DataTemplate x:DataType="local:WelcomeSlide">
-                    <Grid>
+        <!-- ── Carousel (Figma mask-group composites, 440×571) ── -->
+        <Border Grid.Row="0"
+                StrokeThickness="0"
+                HeightRequest="571"
+                HorizontalOptions="Fill">
+            <CarouselView x:Name="SlideCarousel"
+                          HeightRequest="571"
+                          ItemsSource="{Binding Source={x:Reference RootPage}, Path=Slides}"
+                          Loop="False"
+                          IsScrollAnimated="True"
+                          HorizontalOptions="Fill"
+                          VerticalOptions="Fill">
+                <CarouselView.ItemTemplate>
+                    <DataTemplate x:DataType="local:WelcomeSlide">
                         <Image Source="{Binding HeroImage}"
                                Aspect="AspectFill"
                                HorizontalOptions="Fill"
                                VerticalOptions="Fill" />
-                        <Image Source="{Binding WaveOverlay}"
-                               Aspect="Fill"
-                               HeightRequest="150"
-                               VerticalOptions="End"
-                               HorizontalOptions="Fill"
-                               InputTransparent="True"/>
-                    </Grid>
-                </DataTemplate>
-            </CarouselView.ItemTemplate>
-        </CarouselView>
+                    </DataTemplate>
+                </CarouselView.ItemTemplate>
+            </CarouselView>
+        </Border>
 
-        <!-- ── Header overlay (logo + sign-up, static on top of hero) ── -->
+        <!-- ── Header overlay (logo + sign-up, Figma y55/y68) ── -->
         <Grid Grid.Row="0"
-              Padding="20,16,20,0"
+              Padding="{OnPlatform Android='20,48,20,0',
+                                   iOS='20,55,20,0',
+                                   WinUI='20,24,20,0',
+                                   Default='20,24,20,0'}"
               ColumnDefinitions="Auto,*"
               VerticalOptions="Start"
               InputTransparent="False">
@@ -70,7 +71,7 @@
             </Label>
         </Grid>
 
-        <!-- ── Static title (updated by code-behind on slide change) ── -->
+        <!-- ── Title (Figma y591) ── -->
         <Label x:Name="SlideTitle"
                Grid.Row="1"
                Style="{StaticResource Heading1}"
@@ -78,21 +79,24 @@
                LineBreakMode="WordWrap"
                Margin="24,20,24,0" />
 
-        <!-- ── Static subtitle ── -->
+        <!-- ── Subtitle (per-slide top margin from Figma) ── -->
         <Label x:Name="SlideSubtitle"
                Grid.Row="2"
                Style="{StaticResource BodySubtitle}"
                Margin="40,16,40,0" />
 
-        <!-- ── Bottom area (static) ── -->
+        <!-- Row 3: fixed 16px spacer prevents bottom chrome overlapping subtitle -->
+
+        <!-- ── Bottom area (Figma y743+) ── -->
         <VerticalStackLayout Grid.Row="4"
                              Spacing="0"
                              Padding="20,0,20,28">
 
-            <!-- Custom pill indicators -->
+            <!-- Pill indicators (active 32×8, inactive 8×8) -->
             <HorizontalStackLayout x:Name="IndicatorPanel"
                                    HorizontalOptions="Center"
-                                   Spacing="8">
+                                   Spacing="8"
+                                   Margin="0,0,0,0">
                 <BoxView x:Name="Ind0" WidthRequest="32" HeightRequest="8"
                          CornerRadius="4" Color="{StaticResource ActiveIndicator}"/>
                 <BoxView x:Name="Ind1" WidthRequest="8" HeightRequest="8"
@@ -101,21 +105,48 @@
                          CornerRadius="4" Color="{StaticResource InactiveIndicator}"/>
             </HorizontalStackLayout>
 
-            <!-- CTA button (Button 5 — x=54 w=332 in 440px frame) -->
-            <Button x:Name="CtaButton"
-                    Text="Start Free 30-Day Trial"
-                    Style="{StaticResource PrimaryGradientButton}"
+            <!-- CTA (Button 5 — 332×52, inset highlight) -->
+            <Border x:Name="CtaBorder"
+                    Background="{StaticResource GradientButtonBrush}"
+                    StrokeThickness="0"
+                    HeightRequest="52"
                     HorizontalOptions="Fill"
-                    Margin="34,30,34,0"
-                    Clicked="OnCtaClicked" />
+                    Margin="34,30,34,0">
+                <Border.StrokeShape>
+                    <RoundRectangle CornerRadius="25"/>
+                </Border.StrokeShape>
+                <Border.Shadow>
+                    <Shadow Brush="#8FFFFFFF" Offset="2,2" Radius="5"/>
+                </Border.Shadow>
+                <Grid>
+                    <BoxView Color="#8FFFFFFF"
+                             WidthRequest="120"
+                             HeightRequest="18"
+                             CornerRadius="9"
+                             HorizontalOptions="Start"
+                             VerticalOptions="Start"
+                             Margin="12,6,0,0"
+                             InputTransparent="True"/>
+                    <Label Text="Start Free 30-Day Trial"
+                           FontFamily="Quicksand"
+                           FontAttributes="Bold"
+                           FontSize="18"
+                           TextColor="{StaticResource White}"
+                           HorizontalOptions="Center"
+                           VerticalOptions="Center"/>
+                </Grid>
+                <Border.GestureRecognizers>
+                    <TapGestureRecognizer Tapped="OnCtaTapped"/>
+                </Border.GestureRecognizers>
+            </Border>
 
-            <!-- Pricing disclaimer -->
+            <!-- Pricing disclaimer (Figma y849) -->
             <Label Text="Then $8/month - Cancel anytime"
                    Style="{StaticResource Body2}"
                    HorizontalTextAlignment="Center"
                    Margin="0,16,0,0" />
 
-            <!-- Terms & Privacy -->
+            <!-- Terms & Privacy (Figma y901) -->
             <HorizontalStackLayout HorizontalOptions="Center" Spacing="0"
                                    Margin="0,30,0,0">
                 <Label Text="By continuing, you agree to "
