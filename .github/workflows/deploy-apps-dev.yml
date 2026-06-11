@@ -370,7 +370,7 @@ jobs:
     name: Build Mobile (iOS)
     needs: changes
     if: needs.changes.outputs.mobile == 'true'
-    runs-on: macos-26
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-dotnet@v5

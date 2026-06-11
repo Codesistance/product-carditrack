@@ -261,7 +261,7 @@ jobs:
   deploy-mobile-ios:
     name: Deploy Mobile (iOS) → Prod
     needs: [env, validate-tag]
-    runs-on: macos-26
+    runs-on: macos-latest
 
     steps:
       - uses: actions/checkout@v6
