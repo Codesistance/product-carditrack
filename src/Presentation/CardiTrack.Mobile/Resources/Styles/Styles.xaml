@@ -139,21 +139,19 @@
     </Style>
 
     <Style x:Key="Body1SemiBold" TargetType="Label">
-        <Setter Property="FontFamily" Value="Quicksand"/>
-        <Setter Property="FontAttributes" Value="Bold"/>
+        <Setter Property="FontFamily" Value="QuicksandSemiBold"/>
         <Setter Property="FontSize" Value="16"/>
         <Setter Property="TextColor" Value="{StaticResource White}"/>
     </Style>
 
     <Style x:Key="Body1SemiBoldDark" TargetType="Label">
-        <Setter Property="FontFamily" Value="Quicksand"/>
-        <Setter Property="FontAttributes" Value="Bold"/>
+        <Setter Property="FontFamily" Value="QuicksandSemiBold"/>
         <Setter Property="FontSize" Value="16"/>
         <Setter Property="TextColor" Value="{StaticResource HeadingText}"/>
     </Style>
 
     <Style x:Key="Body2Medium" TargetType="Label">
-        <Setter Property="FontFamily" Value="Quicksand"/>
+        <Setter Property="FontFamily" Value="QuicksandMedium"/>
         <Setter Property="FontSize" Value="14"/>
         <Setter Property="TextColor" Value="{StaticResource HeadingText}"/>
     </Style>
@@ -237,7 +235,7 @@
          ════════════════════════════════════════════ -->
 
     <Style x:Key="AuthFieldLabel" TargetType="Label">
-        <Setter Property="FontFamily" Value="Quicksand"/>
+        <Setter Property="FontFamily" Value="QuicksandMedium"/>
         <Setter Property="FontSize" Value="14"/>
         <Setter Property="TextColor" Value="{StaticResource HeadingText}"/>
         <Setter Property="Margin" Value="0,0,0,2"/>
@@ -269,8 +267,7 @@
     </Style>
 
     <Style x:Key="PrimaryLink" TargetType="Label">
-        <Setter Property="FontFamily" Value="Quicksand"/>
-        <Setter Property="FontAttributes" Value="Bold"/>
+        <Setter Property="FontFamily" Value="QuicksandSemiBold"/>
         <Setter Property="FontSize" Value="14"/>
         <Setter Property="TextColor" Value="{StaticResource Primary}"/>
         <Setter Property="TextDecorations" Value="Underline"/>

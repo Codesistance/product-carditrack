@@ -1,20 +1,29 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 440 260" preserveAspectRatio="none">
+  <!--
+    Auth header band (M1-03): top slice of the splash gradient.
+    Radial-alpha falloff (no feGaussianBlur) so it stays soft in MAUI's
+    SVG rasterizer. Kept saturated under the white heading text for contrast.
+  -->
   <defs>
-    <filter id="blur" x="-80%" y="-80%" width="260%" height="260%">
-      <feGaussianBlur stdDeviation="80"/>
-    </filter>
-    <linearGradient id="ellipseGrad1" x1="0.5" y1="0" x2="0.5" y2="1">
-      <stop offset="0%" stop-color="#174E86"/>
-      <stop offset="45.8%" stop-color="#1884DC"/>
-      <stop offset="100%" stop-color="#36C09B"/>
-    </linearGradient>
-    <linearGradient id="ellipseGrad2" x1="0.5" y1="0" x2="0.5" y2="1">
-      <stop offset="0%" stop-color="#174E86"/>
-      <stop offset="45.8%" stop-color="#1884DC"/>
-      <stop offset="100%" stop-color="#36C09B"/>
-    </linearGradient>
+    <radialGradient id="hdrBlue" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#1A6CB0" stop-opacity="1"/>
+      <stop offset="0.55" stop-color="#1884DC" stop-opacity="0.85"/>
+      <stop offset="1" stop-color="#1884DC" stop-opacity="0.25"/>
+    </radialGradient>
+    <radialGradient id="hdrDark" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#174E86" stop-opacity="0.95"/>
+      <stop offset="0.6" stop-color="#174E86" stop-opacity="0.4"/>
+      <stop offset="1" stop-color="#174E86" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="hdrTeal" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#36C09B" stop-opacity="0.9"/>
+      <stop offset="0.6" stop-color="#36C09B" stop-opacity="0.35"/>
+      <stop offset="1" stop-color="#36C09B" stop-opacity="0"/>
+    </radialGradient>
   </defs>
-  <rect width="440" height="260" fill="#FFFFFF"/>
-  <ellipse cx="140" cy="-60" rx="217" ry="339" fill="url(#ellipseGrad1)" filter="url(#blur)" opacity="0.9"/>
-  <ellipse cx="350" cy="340" rx="217" ry="339" fill="url(#ellipseGrad2)" filter="url(#blur)" opacity="0.9"/>
+
+  <rect width="440" height="260" fill="#1884DC"/>
+  <ellipse cx="90" cy="40" rx="320" ry="260" fill="url(#hdrDark)"/>
+  <ellipse cx="180" cy="120" rx="360" ry="300" fill="url(#hdrBlue)"/>
+  <ellipse cx="420" cy="250" rx="260" ry="240" fill="url(#hdrTeal)"/>
 </svg>

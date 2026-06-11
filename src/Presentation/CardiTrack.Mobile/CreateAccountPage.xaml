@@ -12,7 +12,7 @@
             <!-- ════════════════════════════════════════
                  GRADIENT HEADER (≈202px)
                  ════════════════════════════════════════ -->
-            <Grid Grid.Row="0" HeightRequest="210" HorizontalOptions="Fill">
+            <Grid Grid.Row="0" HeightRequest="202" HorizontalOptions="Fill">
                 <Image Source="gradient_auth_header.svg"
                        Aspect="AspectFill"
                        HorizontalOptions="Fill"
@@ -187,7 +187,7 @@
                     <HorizontalStackLayout Spacing="4" Margin="0,10,0,0">
                         <CheckBox x:Name="TermsCheck"
                                   Color="{StaticResource Primary}"
-                                  WidthRequest="24" HeightRequest="24"
+                                  WidthRequest="20" HeightRequest="20"
                                   VerticalOptions="Center"/>
                         <Label VerticalTextAlignment="Center" VerticalOptions="Center">
                             <Label.FormattedText>

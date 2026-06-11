@@ -58,8 +58,7 @@
 
             <Label Grid.Column="1"
                    Text="Sign up"
-                   FontFamily="Quicksand"
-                   FontAttributes="Bold"
+                   FontFamily="QuicksandSemiBold"
                    FontSize="16"
                    TextColor="{StaticResource White}"
                    TextDecorations="Underline"
@@ -124,8 +123,7 @@
                        VerticalTextAlignment="Center" />
                 <Label Text="Terms &amp; Privacy"
                        TextColor="{StaticResource Primary}"
-                       FontFamily="Quicksand"
-                       FontAttributes="Bold"
+                       FontFamily="QuicksandSemiBold"
                        FontSize="14"
                        TextDecorations="Underline"
                        VerticalTextAlignment="Center">

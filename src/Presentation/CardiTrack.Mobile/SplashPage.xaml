@@ -14,8 +14,9 @@
                VerticalOptions="Fill" />
 
         <!-- ── Loading state (default) ── -->
+        <!-- Figma M1-01 A: logo centered (~50%), spinner near bottom (~88%) -->
         <Grid x:Name="LoadingPanel"
-              RowDefinitions="*,Auto,48"
+              RowDefinitions="*,Auto,80"
               Padding="24,0">
 
             <!-- Centered logo icon -->
@@ -42,13 +43,15 @@
         </Grid>
 
         <!-- ── Error state (hidden by default) ── -->
+        <!-- Figma M1-01 B: logo + wordmark upper-centre (~y454/512),
+             error message + button pinned to the bottom (~y823/851) -->
         <Grid x:Name="ErrorPanel"
               IsVisible="False"
-              RowDefinitions="*,Auto,Auto,Auto,*"
+              RowDefinitions="*,Auto,*,Auto,Auto"
               RowSpacing="0"
               Padding="28,0">
 
-            <!-- Logo + app name -->
+            <!-- Logo + app name (upper-centre) -->
             <VerticalStackLayout Grid.Row="1"
                                  Spacing="12"
                                  HorizontalOptions="Center">
@@ -74,22 +77,24 @@
                 </Label>
             </VerticalStackLayout>
 
-            <!-- Error message -->
-            <Label Grid.Row="2"
-                   Text="Hmm, something didn't work."
-                   Style="{StaticResource Body1SemiBold}"
-                   Opacity="0.9"
-                   HorizontalTextAlignment="Center"
-                   Margin="0,48,0,0" />
+            <!-- Error message + retry button (pinned to bottom) -->
+            <VerticalStackLayout Grid.Row="3"
+                                 Spacing="0">
+                <Label Text="Hmm, something didn't work."
+                       Style="{StaticResource Body1SemiBold}"
+                       Opacity="0.9"
+                       HorizontalTextAlignment="Center" />
 
-            <!-- Retry button -->
-            <Button Grid.Row="3"
-                    Text="Start Free 30-Day Trial"
-                    Style="{StaticResource SecondaryOutlineButton}"
-                    MaximumWidthRequest="332"
-                    HorizontalOptions="Center"
-                    Margin="0,16,0,0"
-                    Clicked="OnRetryClicked" />
+                <Button Text="Start Free 30-Day Trial"
+                        Style="{StaticResource SecondaryOutlineButton}"
+                        MaximumWidthRequest="332"
+                        HorizontalOptions="Center"
+                        Margin="0,16,0,0"
+                        Clicked="OnRetryClicked" />
+            </VerticalStackLayout>
+
+            <!-- Bottom padding -->
+            <BoxView Grid.Row="4" HeightRequest="28" Color="Transparent" />
         </Grid>
     </Grid>
 </ContentPage>

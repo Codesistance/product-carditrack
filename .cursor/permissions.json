@@ -1,0 +1,12 @@
+{
+  "terminalAllowlist": [
+    "git",
+    "dotnet",
+    "python",
+    "python3",
+    "py",
+    "pip",
+    "pip3",
+    "npm"
+  ]
+}

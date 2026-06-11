@@ -1,20 +1,33 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 440 956" preserveAspectRatio="none">
+  <!--
+    Figma M1-01 gradient: two blurred ellipses (#174E86 -> #1884DC -> #36C09B).
+    MAUI's SVG rasterizer drops feGaussianBlur, so the soft look is reproduced
+    with radial-alpha falloff (no filter) instead of a hard-edged blurred ellipse.
+  -->
   <defs>
-    <filter id="blur" x="-50%" y="-50%" width="200%" height="200%">
-      <feGaussianBlur stdDeviation="80"/>
-    </filter>
-    <linearGradient id="ellipseGrad1" x1="0.5" y1="0" x2="0.5" y2="1">
-      <stop offset="0%" stop-color="#174E86"/>
-      <stop offset="45.8%" stop-color="#1884DC"/>
-      <stop offset="100%" stop-color="#36C09B"/>
-    </linearGradient>
-    <linearGradient id="ellipseGrad2" x1="0.5" y1="0" x2="0.5" y2="1">
-      <stop offset="0%" stop-color="#174E86"/>
-      <stop offset="45.8%" stop-color="#1884DC"/>
-      <stop offset="100%" stop-color="#36C09B"/>
-    </linearGradient>
+    <radialGradient id="blobBlue" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#1A6CB0" stop-opacity="0.96"/>
+      <stop offset="0.5" stop-color="#1884DC" stop-opacity="0.6"/>
+      <stop offset="1" stop-color="#1884DC" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="blobDark" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#174E86" stop-opacity="0.85"/>
+      <stop offset="0.55" stop-color="#174E86" stop-opacity="0.35"/>
+      <stop offset="1" stop-color="#174E86" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="blobTeal" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#36C09B" stop-opacity="0.95"/>
+      <stop offset="0.5" stop-color="#2FA6C4" stop-opacity="0.55"/>
+      <stop offset="1" stop-color="#36C09B" stop-opacity="0"/>
+    </radialGradient>
   </defs>
+
   <rect width="440" height="956" fill="#FFFFFF"/>
-  <ellipse cx="140" cy="294" rx="217" ry="339" fill="url(#ellipseGrad1)" filter="url(#blur)" opacity="0.9"/>
-  <ellipse cx="309" cy="648" rx="217" ry="339" fill="url(#ellipseGrad2)" filter="url(#blur)" opacity="0.9"/>
+
+  <!-- Dark-blue accent near the top -->
+  <ellipse cx="150" cy="70" rx="320" ry="320" fill="url(#blobDark)"/>
+  <!-- Primary blue blob (upper-left bias) -->
+  <ellipse cx="140" cy="294" rx="330" ry="450" fill="url(#blobBlue)"/>
+  <!-- Teal blob (lower-right bias) -->
+  <ellipse cx="309" cy="648" rx="330" ry="450" fill="url(#blobTeal)"/>
 </svg>
