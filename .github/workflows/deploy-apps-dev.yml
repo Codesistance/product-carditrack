@@ -376,7 +376,7 @@ jobs:
       - uses: actions/setup-dotnet@v5
         with:
           dotnet-version: ${{ needs.changes.outputs.dotnet_version }}
-      - run: dotnet workload install maui-ios --version 10.0.300.1
+      - run: dotnet workload install maui-ios --version 10.0.300.2
       - run: |
           dotnet build src/Presentation/CardiTrack.Mobile/CardiTrack.Mobile.csproj \
             -f net10.0-ios \
