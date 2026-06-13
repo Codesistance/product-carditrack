@@ -8,6 +8,7 @@
              NavigationPage.HasNavigationBar="False"
              BackgroundColor="{StaticResource White}">
 
+    <ScrollView>
     <Grid RowDefinitions="Auto,Auto,Auto,16,Auto">
 
         <!-- ── Carousel (Figma mask-group composites, 440×571) ── -->
@@ -165,4 +166,5 @@
             </HorizontalStackLayout>
         </VerticalStackLayout>
     </Grid>
+    </ScrollView>
 </ContentPage>
