@@ -30,7 +30,29 @@
       "Bash(gh workflow:*)",
       "Bash(docker compose:*)",
       "WebFetch(domain:docs.appetize.io)",
-      "Bash(gh run:*)"
+      "Bash(gh run:*)",
+      "Bash(grep -n -iE 'tier|plan|\\\\$[0-9]|basic|complete care|guardian|trial|retention|severity|green|yellow|orange|red' /c/Code/GitHub/product-carditrack/docs/execution/ui/mobile/user_stories.md)",
+      "Bash(grep -n -iE 'tier|basic|\\\\$[0-9]|complete care|guardian|retention|blazor|maui|signalr' /c/Code/GitHub/product-carditrack/docs/execution/ui/web/user_stories.md)",
+      "Bash(git mv *)",
+      "Bash(sed -i -e 's|\\\\.\\\\./api/README\\\\.md|../api/readme.md|g' -e 's|\\\\.\\\\./mobile/README\\\\.md|../mobile/readme.md|g' -e 's|\\\\.\\\\./web/README\\\\.md|../web/readme.md|g' -e 's|\\\\.\\\\./\\\\.\\\\./INFRASTRUCTURE\\\\.md|../../infrastructure.md|g' -e 's|\\\\.\\\\./\\\\.\\\\./AUTH0_INTEGRATION\\\\.md|../../technical/auth0_integration.md|g' apps/web/readme.md apps/mobile/readme.md apps/api/readme.md)",
+      "Bash(sed -i 's|\\(\\\\./UI_SCREENS_BLAZOR_WEB\\\\.md\\)|\\(./ui_screens_blazor_web.md\\)|g' execution/ui/web/user_stories.md)",
+      "Bash(sed -i 's|\\(\\\\./UI_SCREENS_MAUI_MOBILE\\\\.md\\)|\\(./ui_screens_maui_mobile.md\\)|g' execution/ui/mobile/user_stories.md)",
+      "Bash(sed -i 's|\\(\\\\.\\\\./INFRASTRUCTURE\\\\.md\\)|\\(../../infrastructure.md\\)|g' apps/api/readme.md)",
+      "Bash(sed -i 's|\\(\\\\.\\\\./\\\\.\\\\./README\\\\.md\\)|\\(../../readme.md\\)|g' execution/ui/mobile/user_stories.md)",
+      "Bash(sed -i 's|\\(\\\\.\\\\./MOBILE/UI_SCREENS_MAUI_MOBILE\\\\.md\\)|\\(../mobile/ui_screens_maui_mobile.md\\)|g' execution/ui/web/user_stories.md)",
+      "Bash(sed -i 's|required for modern SwiftUI APIs and background push delivery|required for modern platform APIs and reliable background push delivery|' execution/ui/mobile/user_stories.md execution/ui/mobile/mvp1/user_stories.md)",
+      "Bash(sed -i 's/DATETIME DEFAULT GETUTCDATE\\(\\)/DATETIME2 DEFAULT GETUTCDATE\\(\\)/g; s/DATETIME NOT NULL/DATETIME2 NOT NULL/g; s/^\\\\\\(    [A-Za-z]*\\\\\\) DATETIME,/\\\\1 DATETIME2,/g; s/TokenExpiry DATETIME/TokenExpiry DATETIME2/; s/ConnectedDate DATETIME/ConnectedDate DATETIME2/; s/LastSyncDate DATETIME/LastSyncDate DATETIME2/; s/UpdatedDate DATETIME$/UpdatedDate DATETIME2/; s/AcknowledgedDate DATETIME,/AcknowledgedDate DATETIME2,/; s/ResolvedDate DATETIME,/ResolvedDate DATETIME2,/; s/Timestamp DATETIME DEFAULT/Timestamp DATETIME2 DEFAULT/; s/SleepStartTime DATETIME,/SleepStartTime DATETIME2,/; s/SleepEndTime DATETIME,/SleepEndTime DATETIME2,/' docs/infrastructure.md)",
+      "Bash(grep -n ' DATETIME[,$ ]' docs/infrastructure.md)",
+      "Bash(grep -n 'DATETIME22\\\\| DATETIME[,$]' docs/infrastructure.md)",
+      "Bash(sed -i -e 's|- Personalized ML anomaly detection \\(ML.NET\\) with <5% false positive rate vs. 20–30% industry standard|- Personalized AI anomaly detection — MedGemma 1.5 4B \\(Google'\\\\''s medical LLM\\) with SSA-LSTM per-user baselines — targeting <5% false positive rate vs. 20–30% industry standard|' google_credits_pitch.md)",
+      "Bash(sed -i -e 's|✅ \\\\*\\\\*ML.NET anomaly detection\\\\*\\\\*|✅ **MedGemma + per-user LSTM anomaly detection**|' -e 's|- ✅ Modern ML.NET anomaly detection|- ✅ Modern AI anomaly detection \\(MedGemma 1.5 4B + SSA-LSTM\\)|' -e 's|✅ ML.NET personalized|✅ MedGemma personalized|' -e 's|- ML.NET learns each CardiMember|- Per-user models learn each CardiMember|' -e 's|Defensible technology \\(ML.NET personalized baselines\\)|Defensible technology \\(MedGemma + personalized per-user baselines\\)|' market_analysis.md)",
+      "Bash(sed -i -e 's|├── PasswordHash: NULL \\(password managed by Auth0, not stored locally\\)|├── \\(no password field — credentials are Auth0-hosted\\)|' -e 's|        PasswordHash = null, // Managed by Auth0|        // No password field — credentials are Auth0-hosted|' -e 's|├── Id, Auth0UserId \\(UNIQUE\\), Email \\(UNIQUE\\), PasswordHash \\(NULL - managed by Auth0\\)|├── Id, Auth0UserId \\(UNIQUE\\), Email \\(UNIQUE\\) — no password column \\(Auth0-hosted\\)|' -e 's|- \\\\*\\\\*Algorithm\\\\*\\\\*: ML.NET anomaly detection \\(IidSpikeDetector, IidChangePointDetector\\)|- **Algorithm**: statistical thresholds at R1; SSA-LSTM + MedGemma from R2 \\(see [llm_design.md]\\(../llm_design.md\\)\\)|' technical/user_onboarding_process.md)",
+      "Bash(sed -i -e 's|- \\\\*\\\\*Family Account\\\\*\\\\*: `Member` \\(default, only role\\)|- **Family Account**: `Admin` \\(account creator\\); invited family default to `Viewer`|' -e 's|- \\\\*\\\\*Business Account\\\\*\\\\*: `Admin` \\(first user\\), `Staff`, or `Member`|- **Business Account**: `Admin` \\(first user\\), `Staff`, or `Viewer`|' -e 's|- \\\\*\\\\*Role-Based Access Control \\(RBAC\\)\\\\*\\\\*: Admin, Staff, Member roles|- **Role-Based Access Control \\(RBAC\\)**: Admin, Staff, Viewer roles|' technical/user_onboarding_process.md)",
+      "Bash(sed -i 's|- \\\\*\\\\*Role-based access\\\\*\\\\*: Admin, Staff, Member roles|- **Role-based access**: Admin, Staff, Viewer roles|' apps/web/readme.md)",
+      "Bash(python -)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git config *)"
     ]
   }
 }

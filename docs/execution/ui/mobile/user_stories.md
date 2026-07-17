@@ -385,7 +385,7 @@ Based on the solution manifest, market analysis, and README, here are comprehens
 ### .NET MAUI Mobile App
 
 **Platform Requirements**
-- **Minimum iOS:** 16.0 — covers ~90%+ of active iPhones; required for modern SwiftUI APIs and background push delivery
+- **Minimum iOS:** 16.0 — covers ~90%+ of active iPhones; required for modern platform APIs and reliable background push delivery
 - **Minimum Android:** 10 (API 29) — covers ~85–90% of active Android devices; required for scoped storage and modern permission model
 - **Target iOS:** 18 (latest stable)
 - **Target Android:** 15 / API 35 (latest stable)
@@ -571,11 +571,11 @@ Based on the solution manifest, market analysis, and README, here are comprehens
 
 ## 🔗 Related Documentation
 
-- [Solution Manifest](../SOLUTION_MANIFEST.md) - Technical architecture and business model
-- [Market Analysis](../MARKET_ANALYSIS.md) - Competitive landscape and positioning
-- [README](../../README.md) - Project overview and getting started
-- [Entity Summary](../technical/ENTITY_SUMMARY.md) - Database entities and relationships
-- [User Onboarding Process](../technical/USER_ONBOARDING_PROCESS.md) - Technical onboarding flow
+- [Solution Manifest](../../../solution_manifest.md) - Technical architecture and business model
+- [Market Analysis](../../../market_analysis.md) - Competitive landscape and positioning
+- [README](../../../readme.md) - Project overview and getting started
+- [Entity Summary](../../../technical/entity_summary.md) - Database entities and relationships
+- [User Onboarding Process](../../../technical/user_onboarding_process.md) - Technical onboarding flow
 
 ---
 

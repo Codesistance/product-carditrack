@@ -75,7 +75,7 @@ Initiate an OAuth device connection. Returns a redirect URL for the provider's a
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `provider` | string | Yes | One of: `fitbit`, `apple_health`, `garmin`, `samsung_health`, `withings` |
+| `provider` | string | Yes | A **server-OAuth** provider: `fitbit`, `garmin`, `samsung_health`, `withings`. (`apple_health` uses the on-device bridge — see below — and is not valid here.) |
 | `redirectUri` | string | Yes | Deep link URI for mobile callback |
 
 ### Response `200 OK`
@@ -92,11 +92,13 @@ Initiate an OAuth device connection. Returns a redirect URL for the provider's a
 
 ---
 
-## GET `/api/v1/oauth/callback/{provider}`
+## POST `/api/v1/oauth/callback/{provider}`
 
-OAuth callback handler. Exchanges the authorization code for an access token and stores the connection.
+OAuth callback completion. After the provider redirects the client back to `redirectUri` with `code` and `state` query parameters, the client POSTs them (with the locally stored PKCE verifier) to this endpoint, which exchanges the code for tokens and stores the connection.
 
-**Priority:** P0 | **Auth Required:** Yes (via state token)
+**Priority:** P0 | **Auth Required:** Yes
+
+> The `code_verifier` is sent in the **request body over an authenticated POST** — never as a URL query parameter, where it would be exposed to proxy/CDN logs and browser history.
 
 ### Path Parameters
 
@@ -104,13 +106,21 @@ OAuth callback handler. Exchanges the authorization code for an access token and
 |-----------|-------------|
 | `provider` | OAuth provider name (e.g. `fitbit`) |
 
-### Query Parameters
+### Request Body
 
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
+```json
+{
+  "code": "authorization_code_from_provider",
+  "state": "csrf_state_token_abc123",
+  "codeVerifier": "pkce_verifier_xyz"
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
 | `code` | string | Yes | Authorization code from provider |
-| `state` | string | Yes | CSRF state token |
-| `code_verifier` | string | Yes | PKCE verifier |
+| `state` | string | Yes | CSRF state token (must match the value issued at initiation) |
+| `codeVerifier` | string | Yes | PKCE verifier stored client-side at initiation |
 
 ### Response `201 Created`
 
@@ -215,6 +225,8 @@ Initiate a token refresh for a device with an expired or revoked OAuth token.
 
 Remove a device connection. Historical data synced via this device is retained.
 
+A CardiMember **may have zero connected devices** (e.g. between switching devices). In that state their `healthStatus` becomes `unknown`, health-summary endpoints return `NO_DEVICE_CONNECTED`, and family members are notified that monitoring is inactive. If the deleted device was primary, the oldest remaining active device (if any) becomes primary.
+
 **Priority:** P1 | **Auth Required:** Yes | **Required Role:** Admin, Staff
 
 ### Response `204 No Content`
@@ -223,20 +235,24 @@ Remove a device connection. Historical data synced via this device is retained.
 
 | Code | Status | Description |
 |------|--------|-------------|
-| `CANNOT_DELETE_ONLY_DEVICE` | 422 | At least one device must remain connected |
+| `DEVICE_NOT_FOUND` | 404 | Device ID not found for this CardiMember |
 
 ---
 
 **Supported Providers:**
 
-| Provider | `provider` Value | Scopes Requested |
-|----------|-----------------|-----------------|
-| Fitbit | `fitbit` | `activity`, `heartrate`, `sleep` |
-| Apple Health | `apple_health` | `HKQuantityTypeStepCount`, `HKQuantityTypeHeartRate`, `HKCategoryTypeAsleepCore` |
-| Garmin | `garmin` | `activities`, `heart_rate`, `sleep` |
-| Samsung Health | `samsung_health` | `steps`, `heart_rate`, `sleep` |
-| Withings | `withings` | `user.metrics` |
+| Provider | `provider` Value | Integration Mode | Scopes / Permissions |
+|----------|-----------------|------------------|----------------------|
+| Fitbit | `fitbit` | `server_oauth` | `activity`, `heartrate`, `sleep` |
+| Apple Health | `apple_health` | `on_device_bridge` | `HKQuantityTypeStepCount`, `HKQuantityTypeHeartRate`, `HKCategoryTypeAsleepCore` |
+| Garmin | `garmin` | `server_oauth` | `activities`, `heart_rate`, `sleep` |
+| Samsung Health | `samsung_health` | `server_oauth` | `steps`, `heart_rate`, `sleep` |
+| Withings | `withings` | `server_oauth` | `user.metrics` |
+
+> **Integration modes:**
+> - **`server_oauth`** — CardiTrack's backend holds OAuth tokens and receives data via the provider's cloud API/webhooks.
+> - **`on_device_bridge`** (Apple Health) — HealthKit has **no server-side OAuth**. Permissions are granted on the CardiMember's iPhone; the CardiTrack mobile app reads HealthKit locally and uploads normalized samples to `POST /api/v1/cardimembers/{id}/health-data/batch` (device-bridge ingestion). The connection record exists for status/primary tracking, but has no tokens and cannot use the OAuth endpoints above.
 
 ---
 
-**Related:** [README.md](README.md) | [health-data.md](health-data.md) | [User Stories 1.3, 6.2](../UI/MOBILE/USER_STORIES.md)
+**Related:** [readme.md](readme.md) | [health-data.md](health-data.md) | [User Stories 1.3, 6.2](../../ui/mobile/user_stories.md)

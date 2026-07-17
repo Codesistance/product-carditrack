@@ -79,7 +79,7 @@ The elderly health monitoring market is experiencing rapid growth driven by agin
 **Trend 3: AI/ML in Healthcare**
 - Pattern recognition and predictive analytics
 - Personalized health baselines
-- CardiTrack Alignment: ✅ **ML.NET anomaly detection**
+- CardiTrack Alignment: ✅ **MedGemma + per-user LSTM anomaly detection**
 
 **Trend 4: Subscription-Based Care**
 - Shift from hardware sales to recurring revenue
@@ -306,7 +306,7 @@ The elderly health monitoring market is experiencing rapid growth driven by agin
 
 **CardiTrack Improvements:**
 - ✅ Multi-platform (Web, iOS, Android)
-- ✅ Modern ML.NET anomaly detection
+- ✅ Modern AI anomaly detection (MedGemma 1.5 4B + SSA-LSTM)
 - ✅ Multi-device support (not just Fitbit)
 - ✅ Active development & support
 - ✅ Better pricing ($8 vs $15+)
@@ -426,7 +426,7 @@ The elderly health monitoring market is experiencing rapid growth driven by agin
 | **Preventive Monitoring** | ✅ AI pattern analysis | ❌ Reactive only | ⚠️ Basic insights | ❌ None | ✅ Basic patterns |
 | **Family Dashboard** | ✅ Web + Mobile | ⚠️ Limited | ❌ No | ⚠️ Manual check | ✅ iOS only |
 | **Automated Alerts** | ✅ SMS, Email, Push | ✅ Emergency only | ❌ None | ❌ None | ✅ Email |
-| **Pattern Learning** | ✅ ML.NET personalized | ❌ None | ⚠️ Generic | ❌ None | ⚠️ Basic statistical |
+| **Pattern Learning** | ✅ MedGemma personalized | ❌ None | ⚠️ Generic | ❌ None | ⚠️ Basic statistical |
 | **Multiple CardiMembers** | ✅ Up to unlimited | ❌ One device/user | ❌ N/A | ❌ N/A | ❌ One elder |
 | **Fall Detection** | 🔄 Coming Q3 2026 | ✅ Primary feature | ❌ No | ✅ Apple Watch | ❌ No |
 | **Sleep Analysis** | ✅ Pattern deviations | ❌ No | ✅ Yes | ✅ Yes | ✅ Basic |
@@ -525,7 +525,7 @@ The elderly health monitoring market is experiencing rapid growth driven by agin
 #### 5. **Personalized AI Baselines**
 
 **What It Means:**
-- ML.NET learns each CardiMember's normal patterns (30-90 days)
+- Per-user models learn each CardiMember's normal patterns (30-90 days)
 - Alerts based on individual deviation (not generic thresholds)
 - Accounts for day-of-week patterns, seasonal changes
 
@@ -847,7 +847,7 @@ CardiTrack enters a growing $3.8B+ market with a unique value proposition: **aff
 1. ✅ Proven market demand (Care|Mind validated concept)
 2. ✅ Large addressable market (27M+ wearable-owning elderly)
 3. ✅ Clear competitive advantages (price, prevention, multi-device)
-4. ✅ Defensible technology (ML.NET personalized baselines)
+4. ✅ Defensible technology (MedGemma + personalized per-user baselines)
 5. ✅ Multiple monetization paths (B2C, B2B, enterprise)
 
 **Next Steps:**

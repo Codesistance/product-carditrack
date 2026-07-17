@@ -1,6 +1,6 @@
 # CardiTrack Backend API Documentation
 
-This directory documents the REST API endpoints required to support the CardiTrack mobile and web applications, derived from the [Mobile User Stories](../UI/MOBILE/USER_STORIES.md).
+This directory documents the REST API endpoints required to support the CardiTrack mobile and web applications, derived from the [Mobile User Stories](../../ui/mobile/user_stories.md).
 
 ## Base URL
 
@@ -10,13 +10,13 @@ https://api.carditrack.com/api/v1
 
 ## Authentication
 
-All endpoints (except auth routes) require a JWT Bearer token issued by Auth0.
+All endpoints require a JWT Bearer token issued by **Auth0 Universal Login** (Authorization Code + PKCE). The API validates tokens; it does not issue them.
 
 ```
 Authorization: Bearer <access_token>
 ```
 
-Tokens expire after **7 days** on mobile. Re-authentication or biometric re-verification is required upon expiry.
+**Token policy** (see [auth.md](auth.md)): access tokens live 15–60 minutes; rotating refresh tokens have a 30-day absolute lifetime; web sessions idle out after ~15 minutes; on mobile the refresh token sits behind a biometric gate in secure storage.
 
 ## Versioning
 
@@ -72,11 +72,11 @@ All routes are prefixed with `/api/v1/`. Breaking changes will increment the ver
 
 ## Related Documentation
 
-- [Mobile User Stories](../UI/MOBILE/USER_STORIES.md)
-- [Web User Stories](../UI/WEB/USER_STORIES.md)
-- [Entity Summary](../../technical/ENTITY_SUMMARY.md)
-- [Auth0 Integration](../../technical/AUTH0_INTEGRATION.md)
-- [User Onboarding Process](../../technical/USER_ONBOARDING_PROCESS.md)
+- [Mobile User Stories](../../ui/mobile/user_stories.md)
+- [Web User Stories](../../ui/web/user_stories.md)
+- [Entity Summary](../../../technical/entity_summary.md)
+- [Auth0 Integration](../../../technical/auth0_integration.md)
+- [User Onboarding Process](../../../technical/user_onboarding_process.md)
 
 ---
 

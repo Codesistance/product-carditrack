@@ -54,9 +54,12 @@ List all alerts across all accessible CardiMembers.
 |------|---------------|-------------|
 | `activity_decline` | yellow | Gradual step/activity reduction |
 | `elevated_heart_rate` | orange | Resting HR above normal range |
-| `no_morning_activity` | red | No movement detected past typical wake time |
+| `no_morning_activity` | red | No movement detected past typical wake time (device is syncing) |
 | `irregular_sleep` | yellow | Sleep duration significantly off baseline |
-| `device_disconnected` | yellow | Wearable not syncing |
+| `device_disconnected` | yellow | Wearable not syncing (>2h silence during waking hours) |
+| `long_term_trend` | orange | Multi-week decline trend (e.g. steps −5%/week for 4 weeks) — *ships with the AI pipeline, see [release matrix](../../../release_matrix.md)* |
+
+> Severities use the product taxonomy (`yellow`/`orange`/`red`). `green` is a *health status*, not an alert severity — no alert is emitted for normal states. The AI pipeline's internal Critical/High/Medium/Low scale maps to these values — see [llm_design.md](../../../llm_design.md).
 
 ---
 
@@ -379,4 +382,4 @@ Returns updated preferences object (same schema as GET).
 
 ---
 
-**Related:** [README.md](README.md) | [notifications.md](notifications.md) | [family.md](family.md) | [User Stories 3.1, 3.2, 3.3, 11.1–11.3](../UI/MOBILE/USER_STORIES.md)
+**Related:** [readme.md](readme.md) | [notifications.md](notifications.md) | [family.md](family.md) | [User Stories 3.1, 3.2, 3.3, 11.1–11.3](../../ui/mobile/user_stories.md)

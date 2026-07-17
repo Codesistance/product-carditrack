@@ -2,7 +2,9 @@
 
 ## Overview
 
-`CardiTrack.Worker` is a standard .NET Worker Service (`Microsoft.NET.Sdk.Worker`) that runs scheduled background jobs for the CardiTrack platform. It handles device data synchronization using cron expressions and the [Cronos](https://github.com/HangfireIO/Cronos) library. It runs as an ordinary .NET executable — no Azure Functions runtime, no Azure Storage dependency.
+`CardiTrack.Worker` is a standard .NET Worker Service (`Microsoft.NET.Sdk.Worker`) that runs the platform's **non-AI scheduled background jobs** — OAuth token refresh, pattern-baseline recalculation, trial expiration reminders, and data-retention/cleanup — using cron expressions and the [Cronos](https://github.com/HangfireIO/Cronos) library. It runs as an ordinary .NET executable — no Azure Functions runtime, no Azure Storage dependency.
+
+> **Scope note:** device data ingestion is **webhook-driven** and handled by the Azure Functions AI pipeline (see [llm_design.md](../../llm_design.md)). The `WearableSyncWorker` polling job documented below is the interim MVP ingestion path and a backfill/fallback mechanism; it is superseded as the primary ingestion route once the webhook pipeline ships (see [release_matrix.md](../../release_matrix.md)).
 
 ## Technology Stack
 

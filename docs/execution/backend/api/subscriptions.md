@@ -2,6 +2,8 @@
 
 Handles plan retrieval, upgrades/downgrades, billing history, and payment method updates. The Guardian Plus business tier is out of scope for MVP and handled via a dedicated business account flow.
 
+> **Release note:** MVP 1 runs trial-only (every account starts a 30-day trial at signup; no billing UI). The subscription endpoints below ship with **MVP 2**, before the first trials require payment — priorities in this file are relative to that release. See the [release matrix](../../../release_matrix.md).
+
 **User Stories:** 6.1 (Subscription Management)
 
 ---
@@ -273,4 +275,4 @@ Update the payment method on file. Uses a Stripe SetupIntent token collected cli
 
 ---
 
-**Related:** [README.md](README.md) | [User Story 6.1](../UI/MOBILE/USER_STORIES.md)
+**Related:** [readme.md](readme.md) | [User Story 6.1](../../ui/mobile/user_stories.md)

@@ -18,14 +18,16 @@ The CardiTrack Mobile App is a cross-platform .NET MAUI (Multi-platform App UI) 
 
 ### Supported Platforms
 
-- **iOS**: 15.0+
-- **Android**: API 21+ (Android 5.0 Lollipop)
+- **iOS**: 16.0+ (target: iOS 18)
+- **Android**: API 29+ (Android 10; target: Android 15 / API 35)
 - **macOS Catalyst**: 15.0+
 - **Windows**: 10.0.17763.0+ (Optional)
 
+> Platform minimums match the [mobile screen specifications](../../execution/ui/mobile/ui_screens_maui_mobile.md) and [MVP 1 user stories](../../execution/ui/mobile/mvp1/user_stories.md).
+
 ### Recommended Devices
 
-- **iOS**: iPhone 8 and newer
+- **iOS**: iPhone 12 and newer
 - **Android**: Devices with 2GB+ RAM
 - **Tablets**: iPad, Android tablets with 7+ inch screens
 
@@ -1263,9 +1265,9 @@ emulator -avd Pixel_5_API_34
 
 ## Related Documentation
 
-- [Web Dashboard Documentation](../web/README.md)
-- [API Documentation](../api/README.md)
-- [Infrastructure Guide](../../INFRASTRUCTURE.md)
+- [Web Dashboard Documentation](../web/readme.md)
+- [API Documentation](../api/readme.md)
+- [Infrastructure Guide](../../infrastructure.md)
 - [.NET MAUI Official Docs](https://learn.microsoft.com/dotnet/maui/)
 
 ## Support

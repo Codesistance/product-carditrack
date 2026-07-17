@@ -333,4 +333,4 @@ Add a self-authored note as the CardiMember.
 
 ---
 
-**Related:** [README.md](README.md) | [devices.md](devices.md) | [User Stories 1.2, 7.1–7.3](../UI/MOBILE/USER_STORIES.md)
+**Related:** [readme.md](readme.md) | [devices.md](devices.md) | [User Stories 1.2, 7.1–7.3](../../ui/mobile/user_stories.md)

@@ -693,9 +693,9 @@ Business account features are post-MVP but user stories are defined here for pla
 
 ## 🔗 Related Documentation
 
-- [Web Screen Specifications](./UI_SCREENS_BLAZOR_WEB.md) — Screen-by-screen layout, states, and interactions
+- [Web Screen Specifications](./ui_screens_blazor_web.md) — Screen-by-screen layout, states, and interactions
 - [Mobile User Stories](../MOBILE/USER_STORIES.md) — Mobile-specific stories and shared design principles
-- [Mobile Screen Specifications](../MOBILE/UI_SCREENS_MAUI_MOBILE.md) — MAUI mobile screen specs
+- [Mobile Screen Specifications](../mobile/ui_screens_maui_mobile.md) — MAUI mobile screen specs
 - [Solution Manifest](../../../SOLUTION_MANIFEST.md) — Technical architecture and business model
 - [Market Analysis](../../../MARKET_ANALYSIS.md) — Competitive landscape and positioning
 

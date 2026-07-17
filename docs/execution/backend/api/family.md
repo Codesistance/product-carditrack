@@ -305,7 +305,7 @@ Add a shared care coordination note. Supports @mentions to notify specific famil
 
 ## GET `/api/v1/activity-log`
 
-HIPAA-compliant audit log of all access events — who viewed what data and when. Required for compliance.
+HIPAA-compliant audit log of all access events — who viewed what data and when. Required for compliance. Audit records are retained for **6 years** (most recent year queryable via this endpoint; older records available from the archive tier on request — see [infrastructure.md](../../../infrastructure.md)).
 
 **Priority:** P1 | **Auth Required:** Yes | **Required Role:** Admin
 
@@ -355,4 +355,4 @@ HIPAA-compliant audit log of all access events — who viewed what data and when
 
 ---
 
-**Related:** [README.md](README.md) | [alerts.md](alerts.md) | [notifications.md](notifications.md) | [User Stories 4.1, 4.2, 8.3](../UI/MOBILE/USER_STORIES.md)
+**Related:** [readme.md](readme.md) | [alerts.md](alerts.md) | [notifications.md](notifications.md) | [User Stories 4.1, 4.2, 8.3](../../ui/mobile/user_stories.md)

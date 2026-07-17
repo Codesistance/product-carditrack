@@ -1,9 +1,11 @@
 # CardiTrack - MVP 1 User Stories
 
+> **Extract — do not edit directly.** This file is extracted from the canonical [user_stories.md](../user_stories.md); make changes there and re-extract. Release sequencing is governed by the [release matrix](../../../../release_matrix.md).
+
 Stories mapped to MVP 1 screens (M1-01 through M1-17).
 
 **Platform Requirements**
-- **Minimum iOS:** 16.0 — covers ~90%+ of active iPhones; required for modern SwiftUI APIs and background push delivery
+- **Minimum iOS:** 16.0 — covers ~90%+ of active iPhones; required for modern platform APIs and reliable background push delivery
 - **Minimum Android:** 10 (API 29) — covers ~85–90% of active Android devices; required for scoped storage and modern permission model
 - **Target iOS:** 18 (latest stable)
 - **Target Android:** 15 / API 35 (latest stable)

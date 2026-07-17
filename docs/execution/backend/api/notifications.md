@@ -180,4 +180,4 @@ Rich push notifications sent by the backend include action buttons to allow care
 
 ---
 
-**Related:** [README.md](README.md) | [alerts.md](alerts.md) | [User Stories 3.2, 5.1](../UI/MOBILE/USER_STORIES.md)
+**Related:** [readme.md](readme.md) | [alerts.md](alerts.md) | [User Stories 3.2, 5.1](../../ui/mobile/user_stories.md)

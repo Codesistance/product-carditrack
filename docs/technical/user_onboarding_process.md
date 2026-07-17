@@ -38,13 +38,13 @@ Users authenticate before selecting account type:
 
 **Family Account:**
 - Individual or family monitoring elderly relatives
-- Single "Viewer" role by default (display name for the Member role in family accounts)
+- Single "Viewer" role by default (role chip hidden in the family UI)
 - Simplified caregiver relationship structure
 - Consumer-focused pricing
 
 **Business Account:**
 - Care homes, healthcare facilities
-- Multi-tier roles: Admin, Staff, Member
+- Multi-tier roles: Admin, Staff, Viewer
 - Enterprise-level user management
 - Volume pricing, Enterprise SSO available
 
@@ -129,8 +129,8 @@ After organization type selection, the system creates the user account record in
 - **Organization Name**: For business accounts (e.g., "Sunshine Care Home")
 
 **Role Assignment:**
-- **Family Account**: User receives `Member` role (default, only role)
-- **Business Account**: First user receives `Admin` role; subsequent users get `Staff` or `Member`
+- **Family Account**: First user receives `Admin` role; invited family members default to `Viewer`
+- **Business Account**: First user receives `Admin` role; subsequent users get `Staff` or `Viewer`
 
 #### **Auth0 Integration Architecture**
 
@@ -178,16 +178,16 @@ User Registration/Login Flow:
 
 ```csharp
 User Entity (Updated):
-├── Id: Internal database ID (INT PRIMARY KEY)
+├── Id: Internal database ID (UNIQUEIDENTIFIER PRIMARY KEY)
 ├── Auth0UserId: Auth0 subject ID (NVARCHAR(255) UNIQUE) - "auth0|123" or "google-oauth2|456"
 ├── Email: Email address (NVARCHAR(255) UNIQUE)
-├── PasswordHash: NULL (password managed by Auth0, not stored locally)
+├── (no password field — credentials are Auth0-hosted)
 ├── Name: Full name
 ├── Phone: Optional contact number
 ├── ProfilePictureUrl: From social provider (NVARCHAR(500))
 ├── AuthProvider: Enum (Auth0Database, Google, Microsoft, Apple, Facebook, SAML)
 ├── EmailVerified: Boolean (from Auth0)
-├── Role: Member, Admin, Staff
+├── Role: Admin, Staff, Viewer
 ├── OrganizationId: Link to organization
 ├── IsActive: Boolean
 ├── CreatedDate: DateTime (UTC)
@@ -319,7 +319,7 @@ public async Task<IActionResult> CompleteOnboarding(OnboardingRequest request)
     {
         Auth0UserId = auth0UserId,
         Email = email,
-        PasswordHash = null, // Managed by Auth0
+        // No password field — credentials are Auth0-hosted
         Name = name,
         Phone = request.Phone,
         ProfilePictureUrl = picture,
@@ -401,8 +401,8 @@ public async Task<IActionResult> UpdateSettings(OrganizationSettings settings)
 
 #### **Role Assignment**
 
-- **Family Account**: `Member` (default, only role)
-- **Business Account**: `Admin` (first user), `Staff`, or `Member`
+- **Family Account**: `Admin` (account creator); invited family default to `Viewer`
+- **Business Account**: `Admin` (first user), `Staff`, or `Viewer`
 
 **Auth0 Rules (Custom Role Assignment):**
 ```javascript
@@ -658,9 +658,9 @@ Supports 8+ device types:
    Authorization: Basic {base64(clientId:clientSecret)}
    Body: grant_type=authorization_code&code={code}&redirect_uri={RedirectUri}
    ↓
-7. Save encrypted tokens to database
+7. Save encrypted tokens to database (Azure SQL, DeviceConnections)
    ↓
-8. Trigger immediate first sync
+8. Register Fitbit webhook subscription (Subscriptions API) + trigger initial history backfill
    ↓
 9. Notify family: "Fitbit Connected!"
 ```
@@ -673,9 +673,8 @@ DeviceConnection Entity:
 ├── AccessToken: Encrypted (AES-256-GCM)
 ├── RefreshToken: Encrypted (AES-256-GCM)
 ├── TokenExpiry: DateTime (UTC)
-├── ConnectionStatus: Connected, Disconnected, TokenExpired, AuthError, SyncError
-├── LastSyncDate: DateTime (UTC)
-└── SyncFrequencyMinutes: Default 30 minutes
+├── ConnectionStatus: Pending, Connected, Disconnected, TokenExpired, AuthError, SyncError
+└── LastSyncDate: DateTime (UTC) — timestamp of last webhook event received
 ```
 
 **Permission Scoping:**
@@ -685,11 +684,11 @@ Fitbit API scopes requested:
 - `sleep`: Duration, efficiency, sleep stages
 - `profile`: User info, timezone
 
-**Background Sync:**
-- Hangfire recurring job every 30 minutes
-- Automatic token refresh 1 hour before expiry
+**Data Ingestion & Token Management:**
+- **Webhook push** — Fitbit Subscriptions API notifies CardiTrack on new data; events flow through Event Hubs into the AI pipeline (see [llm_design.md](../llm_design.md)). No polling sync job.
+- **Token refresh** — `CardiTrack.Worker` proactively refreshes OAuth tokens before expiry (cron-driven, Cronos)
 - Retry logic with exponential backoff
-- Family notification on sync failures
+- `device_disconnected` alert to family if no events for >2 hours during waking hours
 
 ---
 
@@ -758,7 +757,7 @@ PatternBaseline Entity:
 ```
 
 **AI/ML Pattern Analysis:**
-- **Algorithm**: ML.NET anomaly detection (IidSpikeDetector, IidChangePointDetector)
+- **Algorithm**: statistical thresholds at R1; SSA-LSTM + MedGemma from R2 (see [llm_design.md](../llm_design.md))
 - **Z-Score Calculation**: (TodayValue - Baseline) / StdDev
 - **Threshold**: |Z-Score| > 2.0 triggers alert
 - **Day-of-Week Awareness**: Monday vs Saturday different baselines
@@ -842,7 +841,7 @@ Day 31: "Baseline established!"
 - **Backups**: Automatic encrypted backups (Azure)
 
 **Access Controls:**
-- **Role-Based Access Control (RBAC)**: Admin, Staff, Member roles
+- **Role-Based Access Control (RBAC)**: Admin, Staff, Viewer roles
 - **Relationship-Scoped Access**: Caregivers only see assigned CardiMembers
 - **Multi-Factor Authentication (MFA)**: For admin accounts (recommended)
 - **Automatic Session Timeout**: 15 minutes idle timeout
@@ -904,7 +903,7 @@ Organizations
 ├── Id, Name, Type (Family/Business), IsActive, CreatedDate, UpdatedDate
 
 Users (Updated with Auth0 Integration)
-├── Id, Auth0UserId (UNIQUE), Email (UNIQUE), PasswordHash (NULL - managed by Auth0)
+├── Id, Auth0UserId (UNIQUE), Email (UNIQUE) — no password column (Auth0-hosted)
 ├── Name, Phone, ProfilePictureUrl, AuthProvider (Enum), EmailVerified
 ├── Role, OrganizationId, Auth0Metadata (JSON)
 └── IsActive, CreatedDate, UpdatedDate, LastLoginDate
@@ -949,37 +948,27 @@ AuditLog (HIPAA Compliance)
 └── DataAccessed (JSON)
 ```
 
-### **Background Jobs (Hangfire)**
+### **Background Jobs (CardiTrack.Worker — Cronos)**
+
+Non-AI background jobs run in `CardiTrack.Worker` as `CronBackgroundService` subclasses (see [apps/worker/](../apps/worker/readme.md)). Data ingestion itself is webhook-driven — there is no sync polling job.
 
 ```csharp
-// Run every 30 minutes
-RecurringJob.AddOrUpdate<FitbitSyncJob>(
-    "sync-fitbit-data",
-    job => job.SyncAllActiveDevices(),
-    "*/30 * * * *"
-);
+// Cron expressions are 6-field (Cronos IncludeSeconds), configured in appsettings
 
-// Run hourly
-RecurringJob.AddOrUpdate<TokenRefreshJob>(
-    "refresh-oauth-tokens",
-    job => job.RefreshExpiringTokens(),
-    "0 * * * *"
-);
+// Hourly — refresh OAuth tokens expiring within the next hour
+public class TokenRefreshWorker : CronBackgroundService      // "0 0 * * * *"
 
-// Run weekly (Sundays at 2am)
-RecurringJob.AddOrUpdate<BaselineRecalculationJob>(
-    "recalculate-baselines",
-    job => job.RecalculateAllBaselines(),
-    "0 2 * * 0"
-);
+// Weekly (Sundays 02:00 UTC) — recalculate pattern baselines
+public class BaselineRecalculationWorker : CronBackgroundService // "0 0 2 * * SUN"
 
-// Run daily (midnight)
-RecurringJob.AddOrUpdate<TrialExpirationJob>(
-    "check-trial-expirations",
-    job => job.SendExpirationReminders(),
-    "0 0 * * *"
-);
+// Daily (midnight UTC) — trial expiration reminders (14/7/3 days)
+public class TrialExpirationWorker : CronBackgroundService   // "0 0 0 * * *"
+
+// Daily — data retention/cleanup (report expiry, audit archive tiering)
+public class RetentionWorker : CronBackgroundService         // "0 30 0 * * *"
 ```
+
+> The AI pipeline's scheduled jobs (5-minute aggregation, daily predictive batch, digests) are Azure Functions timers — see [llm_design.md](../llm_design.md). They are not Worker jobs.
 
 ---
 
@@ -1028,9 +1017,8 @@ RecurringJob.AddOrUpdate<TrialExpirationJob>(
 - [ ] **Validate connection token** on Fitbit/device callback
 - [ ] **Exchange OAuth code for device access/refresh tokens**
 - [ ] **Encrypt and store device tokens** (AES-256-GCM)
-- [ ] **Trigger immediate first data sync** from device
+- [ ] **Register device webhook subscription** (Fitbit Subscriptions API) + trigger initial history backfill
 - [ ] **Notify family** of successful device connection
-- [ ] **Begin 30-minute recurring sync job** (Hangfire)
 - [ ] **Calculate baseline** after 30 days
 - [ ] **Activate AI anomaly detection**
 - [ ] **Log authentication events** in AuditLog
@@ -1052,7 +1040,7 @@ RecurringJob.AddOrUpdate<TrialExpirationJob>(
 
 **Time to Value:**
 - Account creation → First device connection: <24 hours
-- Device connection → First data sync: <30 minutes
+- Device connection → First webhook data received: <30 minutes
 - First sync → First alert: Varies (0-30 days)
 - Trial start → Baseline established: 30 days
 

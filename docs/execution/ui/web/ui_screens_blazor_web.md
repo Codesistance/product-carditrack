@@ -3,7 +3,7 @@
 ## Project Overview
 
 **Product:** CardiTrack - Remote health monitoring for elderly family members
-**Platform:** Blazor Server (.NET 8) — Chrome, Firefox, Safari, Edge (latest 2 versions)
+**Platform:** Blazor Server (.NET 10) — Chrome, Firefox, Safari, Edge (latest 2 versions)
 **Responsive Breakpoints:** Mobile (< 768px), Tablet (768–1024px), Desktop (> 1024px)
 **Target Users:** Family caregivers across the US & EU monitoring elderly relatives' wearable health data
 **Document Version:** 3.0

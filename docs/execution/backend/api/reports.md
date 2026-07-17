@@ -203,4 +203,4 @@ Binary/text file stream depending on format.
 
 ---
 
-**Related:** [README.md](README.md) | [health-data.md](health-data.md) | [User Stories 2.3, 9.2](../UI/MOBILE/USER_STORIES.md)
+**Related:** [readme.md](readme.md) | [health-data.md](health-data.md) | [User Stories 2.3, 9.2](../../ui/mobile/user_stories.md)

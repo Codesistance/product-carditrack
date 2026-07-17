@@ -67,7 +67,7 @@ Monitor multiple CardiMembers from a single interface:
 
 - **Family dashboard**: Overview of all CardiMembers
 - **Member profiles**: Detailed view for each member
-- **Role-based access**: Admin, Staff, Member roles
+- **Role-based access**: Admin, Staff, Viewer roles
 - **Member comparison**: Side-by-side health metrics
 - **Organization management**: Multi-tenant support
 
@@ -812,10 +812,10 @@ public class WebTests : IClassFixture<WebApplicationFactory<Program>>
 
 ## Related Documentation
 
-- [API Documentation](../api/README.md)
-- [Mobile App Documentation](../mobile/README.md)
-- [Infrastructure Guide](../../INFRASTRUCTURE.md)
-- [Authentication Setup](../../AUTH0_INTEGRATION.md)
+- [API Documentation](../api/readme.md)
+- [Mobile App Documentation](../mobile/readme.md)
+- [Infrastructure Guide](../../infrastructure.md)
+- [Authentication Setup](../../technical/auth0_integration.md)
 
 ## Support
 

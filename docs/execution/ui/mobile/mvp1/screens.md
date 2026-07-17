@@ -1,5 +1,7 @@
 # CardiTrack - MVP 1 Screen Specifications
 
+> **Extract — do not edit directly.** This file is extracted from the canonical [ui_screens_maui_mobile.md](../ui_screens_maui_mobile.md) (v3.0); make changes there and re-extract. Release sequencing is governed by the [release matrix](../../../../release_matrix.md).
+
 ## Project Overview
 
 **Product:** CardiTrack - Remote health monitoring for elderly family members

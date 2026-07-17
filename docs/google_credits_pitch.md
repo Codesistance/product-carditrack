@@ -22,7 +22,7 @@ CardiTrack monitors the wearable data elderly users generate every day and appli
 
 **Key capabilities:**
 - Multi-device support — works with 7+ consumer wearable brands, no proprietary hardware
-- Personalized ML anomaly detection (ML.NET) with <5% false positive rate vs. 20–30% industry standard
+- Personalized AI anomaly detection — MedGemma 1.5 4B (Google's medical LLM) with SSA-LSTM per-user baselines — targeting <5% false positive rate vs. 20–30% industry standard
 - Five alert types: activity decline, heart rate elevation, sleep disruption, no morning activity, long-term trend
 - Family collaboration — multiple caregivers monitoring one or more elderly members
 - HIPAA-compliant audit logs, encrypted health notes, and FHIR R4 / HL7 v2 data exports

@@ -32,7 +32,7 @@ MedGemma 1.5 4B was chosen over the 27B variant for cost and latency reasons —
 | **Azure Functions** | All pipeline logic — webhook, aggregation, SSA-LSTM, predictive batch, digest, push | Consumption plan (CPU only) |
 | **Azure Event Hubs** | Fitbit raw event stream buffer | Standard, 1 TU, 1 consumer group |
 | **Azure Cosmos DB** | Results, prediction cards, trend store | Serverless (pay-per-RU) |
-| **Azure Table Storage** | OAuth tokens, user profiles, sensitivity settings, family relationships | Standard LRS |
+| **Azure SQL** (existing) | OAuth tokens (encrypted), user profiles, sensitivity settings, family relationships — the transactional system of record (see [infrastructure.md](./infrastructure.md#storage-boundary)) | Per infrastructure.md |
 | **Azure Blob Storage** | Per-user LSTM model files (~50 KB each, ~500 MB at 10 K users) | Standard LRS, Hot tier |
 | **Azure Notification Hubs** | FCM / APNs push routing for alerts and digests | Basic (free ≤ 1 M pushes/mo) |
 | **Azure Key Vault** | `HF_TOKEN`, Fitbit client secret, Twilio API key | Standard |
@@ -52,7 +52,9 @@ Each function is a separate deployment within the same consumption plan. All are
 | `PredictionCardPush` | Timer | Daily 06:00 local | Reads today's prediction cards → calls MedGemma (`CARDITRACK_PREDICT_PROMPT`) → pushes via Notification Hubs (risk ≥ 40) |
 | `DigestGenerator` | Timer | Daily 08:00 local | Aggregates prior 24 h Cosmos events per user → calls MedGemma (`CARDITRACK_DIGEST_PROMPT` / `CARDITRACK_FAMILY_PROMPT`) → pushes via Notification Hubs |
 | `InactivityDetector` | Timer | Every 15 min | Checks last event timestamp per user during waking hours (07:00–22:00); pushes rule-based "device check" if > 2 h silence — no MedGemma call |
-| `ModelRetrainer` | Timer | Weekly (Sunday 02:00) | Pulls 90-day feature history from Cosmos per user → retrains LSTM → serialises and writes model file to Blob Storage |
+| `ModelRetrainer` | Timer (dispatcher) | Weekly (Sunday 02:00) | Triggers a containerized **Python training job** (ACA job, CPU) that pulls 90-day feature history from Cosmos per user → retrains LSTM → exports **ONNX** model file to Blob Storage |
+
+> **Runtime note:** all Azure Functions run on the **dotnet-isolated** runtime (.NET 10). LSTM/SSA *inference* inside Functions uses **ONNX Runtime**; model *training* (TensorFlow) runs only in the separate Python container job above. No mixed-runtime Function App.
 
 > **Timeout note:** `FitbitAggregator` and `PredictiveFeatureAggregator` are the longest-running functions. Azure Functions consumption plan enforces a 10-minute maximum execution timeout — both are designed to process users in parallel batches and complete well within this limit at 10 K users.
 
@@ -179,7 +181,7 @@ az functionapp create \
   --name $FUNC_APP --resource-group $RG \
   --storage-account $STORAGE \
   --consumption-plan-location $LOCATION \
-  --runtime dotnet-isolated --runtime-version 9 \
+  --runtime dotnet-isolated --runtime-version 10 \
   --functions-version 4
 
 # ACA environment + GPU profile
@@ -295,6 +297,8 @@ Before each 5-minute aggregated window is sent to MedGemma, raw Fitbit time-seri
 
 ### Implementation
 
+> **Reference implementation** (Python, for algorithm clarity). The production pre-processor runs in **.NET (dotnet-isolated Functions)**: SSA implemented natively, LSTM inference via **ONNX Runtime** on models exported by the Python training job.
+
 ```python
 # pip install pyts tensorflow pandas numpy
 
@@ -331,7 +335,7 @@ Terra provides a unified wearable API but costs $499+/month minimum — too expe
 
 ### Token storage
 
-OAuth tokens for 10,000 Fitbit accounts are stored in Azure Table Storage — cheap, simple, and sufficient for key-value token lookups.
+OAuth tokens for 10,000 Fitbit accounts are stored **encrypted in Azure SQL** (`DeviceConnections` table) — the transactional system of record. The pipeline reads them via the existing repository layer; `CardiTrack.Worker` owns proactive token refresh. See [infrastructure.md](./infrastructure.md#storage-boundary).
 
 ---
 
@@ -368,20 +372,28 @@ Family members are secondary consumers of CardiTrack data — they care about th
 
 ### Consent and access model
 
-The wearer controls all sharing. A family member account is created by invitation only. The wearer grants one of two permission levels:
+CardiTrack uses the **caregiver-centric** model defined in the API spec ([cardimembers.md](./execution/backend/api/cardimembers.md), [family.md](./execution/backend/api/family.md)):
 
-| Level | What family sees |
-|-------|-----------------|
-| **Alerts only** | Push notifications for high/critical severity events only |
-| **Full dashboard** | Alerts + daily digest + trend charts (no raw metric values by default) |
+- The account **Admin** (caregiver) creates the CardiMember profile and records the wearer's consent (per-metric: activity, heart rate, sleep) via the consent endpoint. Data types without recorded consent are never processed by the pipeline or shared.
+- Family members join by **Admin invitation** with a role: `admin`, `staff`, or `viewer`.
+- Per-member **family routing rules** control who is pushed what (e.g. a sibling receives `red` only) — stored in `AlertPreferences`.
 
-Raw numbers (exact bpm, SpO2 %) are hidden by default at both levels. The wearer can optionally expose them. This reduces anxiety-driven misinterpretation by non-clinical family members.
+Role → visibility mapping:
+
+| Role | What they see |
+|------|---------------|
+| `viewer` (or routing-restricted member) | Push notifications per routing rules; read-only dashboard |
+| `staff` / `admin` | Alerts + daily digest + trend charts + settings |
+
+Raw metric values (exact bpm, SpO2 %) are **hidden by default** in family-facing pushes and digests regardless of role; an Admin can expose them per member. This reduces anxiety-driven misinterpretation by non-clinical family members. A wearer with their own login retains binding controls: pause monitoring, add self-notes, and withdraw consent per metric.
 
 ---
 
 ### Trigger taxonomy: when to push
 
 Each MedGemma response is parsed for a severity tag. The tag drives the push decision.
+
+> **Severity mapping:** Critical/High/Medium/Low is the pipeline's **internal routing scale**. All user-facing surfaces (API, apps) use the product taxonomy: **Critical → `red`, High → `orange`, Medium → `yellow`, Low → `green` (health status; no alert emitted)**.
 
 | Severity | MedGemma output signal | Family push? | Wearer push? | Cadence |
 |----------|----------------------|:---:|:---:|---------|
@@ -453,13 +465,15 @@ A family member's greatest fear is silence — not knowing whether no news is go
 
 The notification reads: *"[Name]'s Fitbit hasn't synced in 2 hours. You may want to check in."* — this is rule-based, not MedGemma-generated, to keep latency and cost at zero for the common no-data case.
 
+> This detector emits the standard **`device_disconnected`** alert (severity `yellow`) defined in [alerts.md](./execution/backend/api/alerts.md), so it appears in the alerts list, respects quiet hours/routing preferences, and follows the normal acknowledgment lifecycle. It is distinct from the `no_morning_activity` (`red`) alert, which fires when the device *is* syncing but no movement is detected past the typical wake time.
+
 ---
 
 ### Privacy guardrails
 
 - Family members **never** receive the raw MedGemma inference output. A second, family-framed MedGemma call (or a template fill for low/normal windows) is always used.
-- All Cosmos DB documents are partitioned by `wearerUserId`. Family member reads are scoped by a relationship record stored in Azure Table Storage — the query layer enforces this; there is no client-side filtering.
-- Wearer can revoke family access at any time; the relationship record is deleted and all future pushes for that pair stop immediately.
+- All Cosmos DB documents are partitioned by `wearerUserId`. Family member reads are scoped by the `UserCardiMembers` relationship record in Azure SQL — the query layer enforces this; there is no client-side filtering.
+- Access is revocable at any time: an Admin removes the family member (or the wearer withdraws consent per metric); the relationship record is deleted and all future pushes for that pair stop immediately.
 - Family-facing digests **do not include skin temperature** — this is too intimate a signal for a non-clinical audience and can cause disproportionate alarm.
 
 ---
@@ -539,7 +553,7 @@ False positives are CardiTrack's primary churn risk (market target: <5% FP rate 
 
 **2. Consecutive signal requirement** — a risk score must exceed its threshold on 2 consecutive daily runs before a push notification is triggered. A single-day spike is logged but not surfaced.
 
-**3. User-adjustable sensitivity** — wearers (and caregivers at "Full dashboard" level) can set sensitivity to Low / Medium / High. This shifts the risk score threshold for their pushes (Low = 80+, Medium = 70+ [default], High = 50+). Sensitivity preference is stored in Azure Table Storage alongside the user profile.
+**3. User-adjustable sensitivity** — Admins/Staff can set per-member sensitivity to Low / Medium / High (see [alerts.md](./execution/backend/api/alerts.md) alert-preferences). This shifts the risk score threshold for pushes (Low = 80+, Medium = 70+ [default], High = 50+). Sensitivity is stored in the `AlertPreferences` table in Azure SQL.
 
 ---
 

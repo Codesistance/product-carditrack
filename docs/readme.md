@@ -6,7 +6,7 @@ Welcome to the CardiTrack documentation. This directory contains comprehensive d
 
 ### Core Documentation
 
-#### [SOLUTION_MANIFEST.md](./SOLUTION_MANIFEST.md)
+#### [solution_manifest.md](./solution_manifest.md)
 **The complete solution overview and product vision.**
 - Executive summary and business model
 - Technical architecture overview
@@ -17,7 +17,13 @@ Welcome to the CardiTrack documentation. This directory contains comprehensive d
 
 **Start here** if you're new to CardiTrack or need a comprehensive overview.
 
-#### [MARKET_ANALYSIS.md](./MARKET_ANALYSIS.md)
+#### [release_matrix.md](./release_matrix.md)
+**The canonical release plan.**
+- Single feature × platform × release × plan-gate matrix
+- Resolves sequencing across the manifest, UI specs, and API priorities
+- All other docs defer to this matrix for what ships when
+
+#### [market_analysis.md](./market_analysis.md)
 **Comprehensive competitive analysis and market positioning.**
 - Market size and growth projections
 - Target customer segments
@@ -28,16 +34,17 @@ Welcome to the CardiTrack documentation. This directory contains comprehensive d
 
 **Read this** to understand the competitive landscape and CardiTrack's market position.
 
-#### [LLM_DESIGN.md](./LLM_DESIGN.md)
-**MedGemma 1.5 4B inference design and Azure Container Apps deployment.**
+#### [llm_design.md](./llm_design.md)
+**The target AI pipeline: MedGemma 1.5 4B inference on Azure Container Apps.**
 - Model selection rationale (4B vs 27B, T4 vs A100)
 - vLLM serving configuration and flags
-- Fitbit data ingestion pipeline (Event Hubs + 5-min batching)
-- Prompt structure and prefix caching strategy
-- Cost estimates and important caveats
+- Fitbit webhook ingestion (Event Hubs + 5-min batching)
+- SSA-LSTM pre-processing, prompt structure, and prefix caching
+- Predictive monitoring, severity routing, cost estimates, and caveats
 
-#### [INFRASTRUCTURE.md](./INFRASTRUCTURE.md)
+#### [infrastructure.md](./infrastructure.md)
 **Complete infrastructure and database documentation.**
+- Storage boundary: Azure SQL (transactional) + Cosmos DB (AI pipeline)
 - Database schema and entity relationships
 - Entity Framework Core setup and migrations
 - Security and encryption (AES-256-GCM)
@@ -50,87 +57,58 @@ Welcome to the CardiTrack documentation. This directory contains comprehensive d
 
 ---
 
+### API Specification (canonical)
+
+Located in [`/execution/backend/api/`](./execution/backend/api/readme.md) — the **source of truth for all REST endpoints** (`/api/v1/*`), organized by domain (auth, cardimembers, devices, health-data, alerts, family, notifications, subscriptions, reports). The app-level READMEs below link here and do not duplicate endpoint documentation.
+
+### UI Specifications
+
+Located in `/execution/ui/`:
+- [Mobile screen specs](./execution/ui/mobile/ui_screens_maui_mobile.md) and [mobile user stories](./execution/ui/mobile/user_stories.md) (.NET MAUI) — MVP 1 extracts live in [`/execution/ui/mobile/mvp1/`](./execution/ui/mobile/mvp1/screens.md)
+- [Web screen specs](./execution/ui/web/ui_screens_blazor_web.md) and [web user stories](./execution/ui/web/user_stories.md) (Blazor Server)
+
+---
+
 ### Application Documentation
 
-Located in `/apps/` - Each application has its own comprehensive README.
+Located in `/apps/` — each application has its own README covering stack, structure, configuration, and local development.
 
-#### [apps/api/](./apps/api/)
-**ASP.NET Core Web API Documentation**
-- API endpoints and request/response formats
-- Authentication and authorization (Auth0/JWT)
-- Error handling and status codes
-- Rate limiting and HIPAA compliance
-- Configuration and local development
-- Health checks and deployment
+#### [apps/api/](./apps/api/readme.md)
+**ASP.NET Core Web API** — stack, project structure, middleware, configuration, running locally. Endpoint documentation lives in [`/execution/backend/api/`](./execution/backend/api/readme.md).
 
-#### [apps/web/](./apps/web/)
-**Blazor Server Web Dashboard Documentation**
-- Component structure and organization
-- SignalR real-time integration
-- Authentication flow and protected pages
-- Running locally and deployment
-- Performance optimization
-- Testing strategies
+#### [apps/web/](./apps/web/readme.md)
+**Blazor Server Web Dashboard** — component structure, SignalR real-time integration, authentication flow, running locally, deployment, testing.
 
-#### [apps/mobile/](./apps/mobile/)
-**.NET MAUI Mobile App Documentation**
-- Cross-platform architecture (iOS, Android)
-- MVVM pattern and ViewModels
-- Platform-specific implementations (HealthKit, Health Connect)
-- Push notifications and offline support
-- Building and publishing to app stores
-- Testing and troubleshooting
+#### [apps/mobile/](./apps/mobile/readme.md)
+**.NET MAUI Mobile App** — cross-platform architecture (iOS, Android), MVVM pattern, platform integrations (HealthKit, Health Connect), push notifications, offline support, store publishing.
 
-#### [apps/functions/](./apps/functions/)
-**Azure Functions Background Jobs Documentation**
-- Function implementations and triggers
-- CRON schedules and queue triggers
-- Configuration and monitoring
-- Deployment and CI/CD
-- Performance optimization and cost management
+#### [apps/worker/](./apps/worker/readme.md)
+**CardiTrack.Worker Background Service** — the .NET Worker Service hosting **non-AI background jobs** (OAuth token refresh, baseline recalculation, cleanup) using cron scheduling via Cronos. The AI ingestion/inference pipeline runs in Azure Functions — see [llm_design.md](./llm_design.md).
 
 ---
 
 ### Technical Reference
 
-Located in `/technical/` - Detailed technical guides and specifications.
+Located in `/technical/` — detailed technical guides and specifications.
 
-#### [AUTH0_INTEGRATION.md](./technical/AUTH0_INTEGRATION.md)
+#### [auth0_integration.md](./technical/auth0_integration.md)
 Complete guide to Auth0 authentication integration, OAuth flows, and security configuration.
 
-#### [ENTITY_SUMMARY.md](./technical/ENTITY_SUMMARY.md)
+#### [entity_summary.md](./technical/entity_summary.md)
 Detailed summary of all domain entities, their properties, and relationships.
 
-#### [ENUM_EXTENSIONS_GUIDE.md](./technical/ENUM_EXTENSIONS_GUIDE.md)
+#### [enum_extensions_guide.md](./technical/enum_extensions_guide.md)
 Guide to enum extensions and helper methods used throughout the solution.
 
-#### [USER_ONBOARDING_PROCESS.md](./technical/USER_ONBOARDING_PROCESS.md)
+#### [user_onboarding_process.md](./technical/user_onboarding_process.md)
 Step-by-step guide to the user onboarding process, device connection flows, and OAuth integration.
 
 ---
 
 ### Additional Documentation
 
-#### `/architecture/`
-System architecture diagrams, design patterns, and architectural decision records (ADRs).
-
-#### `/compliance/`
-HIPAA compliance documentation, security policies, privacy policies, and audit procedures.
-
-#### `/deployment/`
-Deployment guides for different environments (dev, staging, production), Azure setup, and CI/CD configuration.
-
-#### `/developer-guide/`
-Getting started guides, coding standards, contribution guidelines, and development best practices.
-
-#### `/devices/`
-Device-specific integration guides (Fitbit, Apple Watch, Garmin, Samsung, etc.) and device adapter pattern documentation.
-
-#### `/reference/`
-API specifications, database diagrams, configuration references, and other technical references.
-
 #### `/archive/`
-Deprecated or superseded documentation kept for historical reference.
+Deprecated or superseded documentation kept for historical reference. Nothing in `/archive/` is canonical.
 
 ---
 
@@ -138,45 +116,43 @@ Deprecated or superseded documentation kept for historical reference.
 
 ### For New Developers
 
-1. **Read**: [SOLUTION_MANIFEST.md](./SOLUTION_MANIFEST.md) - Understand the product
-2. **Read**: [INFRASTRUCTURE.md](./INFRASTRUCTURE.md) - Understand the architecture
-3. **Setup**: Follow developer-guide/getting-started.md
-4. **Explore**: Review application docs in /apps/ for your area of work
+1. **Read**: [solution_manifest.md](./solution_manifest.md) — understand the product
+2. **Read**: [infrastructure.md](./infrastructure.md) — understand the architecture
+3. **Read**: [release_matrix.md](./release_matrix.md) — understand what ships when
+4. **Explore**: Review application docs in `/apps/` for your area of work
 
 ### For Business Stakeholders
 
-1. **Read**: [SOLUTION_MANIFEST.md](./SOLUTION_MANIFEST.md) - Product vision and roadmap
-2. **Read**: [MARKET_ANALYSIS.md](./MARKET_ANALYSIS.md) - Market opportunity and competition
-3. **Review**: Pricing tiers and unit economics in SOLUTION_MANIFEST.md
+1. **Read**: [solution_manifest.md](./solution_manifest.md) — product vision and roadmap
+2. **Read**: [market_analysis.md](./market_analysis.md) — market opportunity and competition
+3. **Review**: Pricing tiers and unit economics in solution_manifest.md
 
 ### For DevOps/Infrastructure
 
-1. **Read**: [INFRASTRUCTURE.md](./INFRASTRUCTURE.md) - Complete infrastructure guide
-2. **Review**: /deployment/ for environment-specific configurations
-3. **Reference**: Terraform modules and Azure resource setup
+1. **Read**: [infrastructure.md](./infrastructure.md) — complete infrastructure guide
+2. **Read**: [llm_design.md](./llm_design.md) — AI pipeline deployment (Container Apps GPU, Event Hubs, Cosmos DB)
+3. **Reference**: Terraform modules and Azure resource setup in infrastructure.md
 
 ### For API Consumers
 
-1. **Read**: [apps/api/README.md](./apps/api/README.md) - API documentation
-2. **Reference**: API specifications in /reference/
-3. **Test**: Use Swagger UI at https://localhost:7001/swagger (local development)
+1. **Read**: [execution/backend/api/readme.md](./execution/backend/api/readme.md) — canonical API documentation
+2. **Test**: Use Swagger UI at https://localhost:7001/swagger (local development)
 
 ---
 
 ## 📖 Documentation Conventions
 
 ### File Naming
-- `UPPERCASE.md` - Core documentation files (manifest, analysis, infrastructure)
-- `lowercase.md` - Supporting documentation and guides
-- `README.md` - Index files for directories
+- All documentation files use `lowercase_snake_case.md`
+- `readme.md` — index files for directories
 
 ### Sections
 All major documentation files include:
-- **Table of Contents** - For easy navigation
-- **Overview** - High-level summary
-- **Detailed Content** - Organized by topic
-- **Code Examples** - Where applicable
-- **References** - Links to related docs
+- **Table of Contents** — for easy navigation
+- **Overview** — high-level summary
+- **Detailed Content** — organized by topic
+- **Code Examples** — where applicable
+- **References** — links to related docs
 
 ### Code Blocks
 Code examples specify language for syntax highlighting:
@@ -204,31 +180,49 @@ dotnet build
 - Changing pricing or business model
 - Updating deployment procedures
 
+**When docs conflict**, the precedence is:
+1. [release_matrix.md](./release_matrix.md) for release sequencing
+2. [execution/backend/api/](./execution/backend/api/readme.md) for API contracts
+3. [llm_design.md](./llm_design.md) for the AI pipeline architecture
+4. [infrastructure.md](./infrastructure.md) for infrastructure and the transactional data model
+5. [solution_manifest.md](./solution_manifest.md) for business/product facts
+
 ### Documentation Ownership
 
 | Documentation | Owner | Update Frequency |
 |--------------|-------|------------------|
-| SOLUTION_MANIFEST.md | Product Lead | Monthly or on major changes |
-| MARKET_ANALYSIS.md | Business/Marketing | Quarterly |
-| INFRASTRUCTURE.md | DevOps Lead | On infrastructure changes |
+| solution_manifest.md | Product Lead | Monthly or on major changes |
+| release_matrix.md | Product Lead | On release planning changes |
+| market_analysis.md | Business/Marketing | Quarterly |
+| infrastructure.md | DevOps Lead | On infrastructure changes |
+| llm_design.md | Tech Lead | On AI pipeline changes |
+| execution/backend/api/ | Backend Team | On API changes |
+| execution/ui/ | UI/UX + Frontend Teams | On design changes |
 | apps/api/ | Backend Team | On API changes |
 | apps/web/ | Frontend Team | On UI changes |
 | apps/mobile/ | Mobile Team | On mobile app changes |
-| apps/functions/ | Backend Team | On function changes |
+| apps/worker/ | Backend Team | On worker changes |
 | /technical/ | Tech Lead | As needed |
 
 ---
 
 ## 📝 Documentation Version History
 
+### Version 2.1 (July 17, 2026)
+- ✅ Reconciled the spec around the target architecture ([llm_design.md](./llm_design.md)): webhook ingestion + Event Hubs + Azure Functions + MedGemma, with Azure SQL as the transactional system of record and Cosmos DB for AI pipeline outputs
+- ✅ Standardized on Auth0 Universal Login (no local password endpoints)
+- ✅ Aligned pricing tiers to the subscription API spec
+- ✅ Declared `/execution/backend/api/` the canonical API spec
+- ✅ Created [release_matrix.md](./release_matrix.md) as the canonical release plan
+- ✅ Renamed `apps/functions/` to `apps/worker/` to match its content
+- ✅ Fixed cross-links, file-name casing, and version drift (.NET 10, iOS 16+, Android API 29+)
+
 ### Version 2.0 (January 8, 2026)
-- ✅ Reorganized documentation structure
-- ✅ Created comprehensive SOLUTION_MANIFEST.md
-- ✅ Created detailed MARKET_ANALYSIS.md
-- ✅ Created INFRASTRUCTURE.md consolidating infrastructure docs
-- ✅ Created app-specific documentation in /apps/
-- ✅ Moved technical guides to /technical/
-- ✅ Archived deprecated documentation
+- Reorganized documentation structure
+- Created solution manifest, market analysis, infrastructure guide
+- Created app-specific documentation in /apps/
+- Moved technical guides to /technical/
+- Archived deprecated documentation
 
 ### Version 1.0 (January 5, 2026)
 - Initial documentation structure
@@ -249,7 +243,7 @@ If you find errors, outdated information, or missing documentation:
 For questions about:
 - **Product/Business**: Contact product team
 - **Technical Architecture**: Contact tech lead
-- **API Usage**: See apps/api/README.md or contact backend team
+- **API Usage**: See [execution/backend/api/](./execution/backend/api/readme.md) or contact backend team
 - **Deployment**: Contact DevOps team
 
 ---
@@ -284,6 +278,6 @@ All documentation is proprietary and confidential.
 
 ---
 
-**Last Updated**: February 24, 2026
+**Last Updated**: July 17, 2026
 **Maintained By**: CardiTrack Development Team
-**Version**: 2.0
+**Version**: 2.1

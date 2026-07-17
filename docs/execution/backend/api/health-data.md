@@ -230,6 +230,52 @@ Get the current calculated baseline values and learning progress for a CardiMemb
 
 ---
 
+## POST `/api/v1/cardimembers/{id}/health-data/batch`
+
+Device-bridge ingestion for **on-device providers** (Apple Health). The CardiTrack mobile app reads HealthKit locally and uploads normalized daily samples. Not used by server-OAuth providers, whose data arrives via webhooks.
+
+**Priority:** P1 (ships with Apple Watch support — see [release matrix](../../../release_matrix.md)) | **Auth Required:** Yes
+
+### Request Body
+
+```json
+{
+  "deviceId": "dev_03J9...",
+  "samples": [
+    {
+      "date": "2026-03-09",
+      "steps": 4100,
+      "restingHeartRate": 66,
+      "sleepMinutes": 432,
+      "activeMinutes": 38
+    }
+  ]
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `deviceId` | string | Yes | The on-device-bridge connection this data belongs to |
+| `samples` | array | Yes | Normalized daily samples (max 90 per request); upserted by `(cardiMemberId, date, dataSource)` |
+
+### Response `202 Accepted`
+
+```json
+{
+  "accepted": 1,
+  "rejected": 0
+}
+```
+
+### Errors
+
+| Code | Status | Description |
+|------|--------|-------------|
+| `DEVICE_NOT_FOUND` | 404 | Device ID not found for this CardiMember |
+| `INVALID_DEVICE_MODE` | 422 | Device is a server-OAuth connection; batch upload not permitted |
+
+---
+
 ## GET `/api/v1/cardimembers/{id}/health/export`
 
 Export health data for a CardiMember. Supports human-readable formats (PDF, CSV) and interoperable medical formats (FHIR R4, HL7 v2). Used for doctor visit preparation and EHR integration.
@@ -289,4 +335,4 @@ All responses: binary file stream.
 
 ---
 
-**Related:** [README.md](README.md) | [alerts.md](alerts.md) | [reports.md](reports.md) | [User Stories 2.1, 2.2, 2.3, 5.2, 10.1](../UI/MOBILE/USER_STORIES.md)
+**Related:** [readme.md](readme.md) | [alerts.md](alerts.md) | [reports.md](reports.md) | [User Stories 2.1, 2.2, 2.3, 5.2, 10.1](../../ui/mobile/user_stories.md)

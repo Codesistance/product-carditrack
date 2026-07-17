@@ -31,50 +31,52 @@ To empower families with affordable, preventive health monitoring for their elde
 
 ### Pricing Tiers
 
-#### Tier 1: "Basic Care" - $8/month
+> Plan limits below are canonical and match the [Subscription API](./execution/backend/api/subscriptions.md). All consumer plans start with a **30-day free trial**.
+
+#### Tier 1: "Basic" - $8/month ($81.60/year)
 - Bring your own wearable device
 - Daily activity dashboard
 - Email alerts for major deviations
-- Single CardiMember monitoring
-- 7-day data history
+- Up to **2 CardiMembers**
+- Up to **5 family members**
+- Standard alert types
+- **90-day** data history
+- No data export
 
-#### Tier 2: "Complete Care" - $15/month
+#### Tier 2: "Complete Care" - $15/month ($153/year)
 - Support for any supported device
-- Real-time SMS/email alerts
+- Real-time SMS/email/push alerts
 - Weekly health reports
-- Pattern analysis AI
-- Up to 3 CardiMembers
-- 90-day data history
+- Advanced AI alert types (pattern analysis)
+- Up to **5 CardiMembers**
+- Up to **20 family members**
+- **365-day** data history
 - Multi-device support per member
+- PDF, CSV, and FHIR R4 data export
 
-#### Tier 3: "Guardian Plus" - $29.99/month
-- Everything in Tier 2
-- 24/7 monitoring dashboard
-- Unlimited family member access
-- Unlimited CardiMembers
-- Integration with telemedicine
-- Priority support
-- 2-year data history
-- API access for integration
+#### "Guardian Plus" - $29.99/month *(post-MVP — business tier)*
+- Not part of the consumer MVP; handled via a dedicated business account flow (assisted living facilities, care homes)
+- Everything in Complete Care, plus: 24/7 monitoring dashboard, unlimited family member access, unlimited CardiMembers, telemedicine integration, priority support, 2-year data history, API access
 
 ### Device Bundle Option (Add-on)
 - **Fitbit Charge 6 Bundle**: +$100 upfront (includes device)
-- **Annual Subscription**: 15% discount (Tier 2: $153/year, saves $27)
+- **Annual Subscription**: 15% discount on all consumer tiers (Complete Care: $153/year, saves $27)
 
 ### Unit Economics (Tier 2 Example)
 
 ```
 Monthly revenue per user: $15
 Monthly costs per user: ~$2 (hosting, SMS, support)
-Monthly profit per user: $13
-Annual profit per user: $156
+Monthly margin per user: $13
+
+Customer LTV (churn-derived, $13/month margin):
+  At 5% monthly churn (launch target):  avg lifetime ~20 months → LTV ≈ $260
+  At 3% monthly churn (growth target):  avg lifetime ~33 months → LTV ≈ $430
+  LTV target of >$300 therefore assumes churn below ~4%/month.
 
 With Device Bundle:
-Hardware cost (bulk): $100
-Recovery period: ~8 months
-Year 1 profit per user: $56
-Year 2+ profit per user: $156/year
-Customer LTV (3 years): $368
+  Hardware cost (bulk): ~$100, covered by the +$100 upfront bundle price
+  → hardware is margin-neutral at purchase; subscription margin unchanged
 ```
 
 ---
@@ -83,12 +85,19 @@ Customer LTV (3 years): $368
 
 ### Technology Stack
 
-**Backend:**
+**Backend (transactional core):**
 - .NET 10 (ASP.NET Core Web API)
 - Entity Framework Core
-- SQL Server / PostgreSQL
-- .NET Worker Service + Cronos (background jobs)
-- ML.NET (pattern analysis & anomaly detection)
+- Azure SQL (system of record — identity, organizations, subscriptions, health data, audit)
+- .NET Worker Service + Cronos (**non-AI background jobs only**: OAuth token refresh, baseline recalculation, cleanup)
+
+**AI pipeline (target architecture — see [llm_design.md](./llm_design.md)):**
+- Fitbit Subscriptions API (webhook push — no polling)
+- Azure Event Hubs (raw event buffer)
+- Azure Functions, dotnet-isolated (aggregation, SSA-LSTM pre-processing, severity routing, digests)
+- MedGemma 1.5 4B on Azure Container Apps GPU (vLLM, OpenAI-compatible endpoint)
+- Azure Cosmos DB (AI pipeline outputs: results, prediction cards, trends)
+- Azure Notification Hubs (FCM/APNs push routing)
 
 **Frontend:**
 - Blazor Server (web dashboard)
@@ -148,14 +157,22 @@ Customer LTV (3 years): $368
                             │
                             ↓
 ┌─────────────────────────────────────────────────────────────┐
-│              BACKGROUND JOBS (Worker Service)               │
-│  - Device Data Sync (every 30 mins, cron-driven)            │
-│  - Pattern Analysis (ML anomaly detection)                  │
-│  - Token Refresh (OAuth management)                         │
+│         NON-AI BACKGROUND JOBS (CardiTrack.Worker)          │
+│  - Token Refresh (OAuth management, every 4 hours)          │
 │  - Baseline Recalculation (weekly)                          │
-│  - Alert Processing (multi-channel)                         │
+│  - Data retention / cleanup jobs                            │
+└─────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────┐
+│        AI INGESTION & INFERENCE PIPELINE (see llm_design)   │
+│                                                             │
+│  Device webhooks → Event Hubs → Azure Functions (5-min      │
+│  aggregation + SSA-LSTM) → MedGemma 1.5 4B (ACA GPU/vLLM)   │
+│  → Cosmos DB (results) → Severity router → Alerts/Digests   │
 └─────────────────────────────────────────────────────────────┘
 ```
+
+> Ingestion is **webhook push** (Fitbit Subscriptions API) with 5-minute aggregation windows — there is no polling sync loop. The Worker Service hosts only non-AI jobs.
 
 ### Multi-Device Architecture
 
@@ -171,7 +188,7 @@ Device APIs (Fitbit, Apple, Garmin, Samsung, Withings, Oura, Whoop)
         (Steps, Heart Rate, Sleep, SpO2, etc.)
                     ↓
         Pattern Analysis Engine
-        (ML.NET anomaly detection)
+        (SSA-LSTM pre-processing + MedGemma 1.5 4B)
                     ↓
         Contextual Family Alerts
         (SMS, Email, Push Notifications)
@@ -212,12 +229,12 @@ Device APIs (Fitbit, Apple, Garmin, Samsung, Withings, Oura, Whoop)
 
 ### 2. AI-Powered Pattern Analysis
 
-**Technology:** ML.NET (Microsoft's machine learning framework)
+**Technology:** MedGemma 1.5 4B (medical LLM) with SSA-LSTM pre-processing — see [llm_design.md](./llm_design.md) for the full pipeline design. The MVP launches with statistical threshold alerts; the MedGemma pipeline replaces them per the [release matrix](./release_matrix.md).
 
 **Algorithms:**
-- **Anomaly Detection**: IidSpikeDetector for sudden changes
-- **Time Series Forecasting**: SSA (Singular Spectrum Analysis)
-- **Pattern Classification**: Activity level categorization
+- **Signal decomposition**: SSA (Singular Spectrum Analysis) — separates trend, oscillation, and noise per metric
+- **Time-series forecasting**: per-user LSTM (trend prediction and 24–72h risk scoring)
+- **Anomaly assessment**: MedGemma 1.5 4B interprets denoised trends and anomaly scores, assigns severity
 
 **Learning Process:**
 1. Collect baseline data per CardiMember — default 30 days (configurable up to 90)
@@ -283,9 +300,11 @@ Message: "Dad's activity trending down 20% this month. May need PT evaluation."
 Prevention: Catches gradual decline before it becomes severe
 ```
 
+**Alert severity taxonomy:** user-facing severities are **Green / Yellow / Orange / Red**. The AI pipeline's internal routing scale (Critical/High/Medium/Low) maps to them as Critical→Red, High→Orange, Medium→Yellow, Low→Green — see [llm_design.md](./llm_design.md).
+
 **Target Metrics:**
-- False positive rate: <5%
-- Alert response time: <30 seconds
+- False positive rate: **<10% at MVP** (statistical alerts), **<5% steady-state** (MedGemma pipeline)
+- Alert delivery latency (trigger → push received): <30 seconds
 - Detection accuracy: >95%
 
 ### 4. Family Dashboard
@@ -313,7 +332,7 @@ Prevention: Catches gradual decline before it becomes severe
 - ✅ Encryption in transit (TLS 1.2+)
 - ✅ Field-level encryption (OAuth tokens, medical notes)
 - ✅ Access controls (RBAC, MFA for admins)
-- ✅ Session timeout (15 minutes)
+- ✅ Token policy: short-lived access tokens (15–60 min) with rotating refresh tokens (30-day absolute lifetime); ~15-minute idle timeout on web; biometric re-authentication gate on mobile app open
 - ✅ Comprehensive audit logging
 
 **Administrative Safeguards:**
@@ -327,7 +346,7 @@ Prevention: Catches gradual decline before it becomes severe
 - All PHI access tracked
 - User ID, CardiMember ID, action, timestamp
 - IP address and user agent tracking
-- 90-day minimum retention
+- **6-year retention** (1 year in hot storage, then archive tier)
 - Exportable audit trail for compliance
 
 ---
@@ -343,8 +362,8 @@ Prevention: Catches gradual decline before it becomes severe
 
 **User**
 - Family members/caregivers
-- Roles: Admin, Staff, Member
-- Authentication via Auth0/JWT
+- Roles: Admin, Staff, Viewer
+- Authentication via Auth0 Universal Login (JWT validation in the API; no local passwords)
 
 **CardiMember**
 - Elderly individuals being monitored
@@ -372,14 +391,14 @@ Prevention: Catches gradual decline before it becomes severe
 
 **Alert**
 - Generated by pattern analysis
-- Severity levels: Green (Normal), Yellow (Caution), Orange (Urgent), Red (Critical)
+- Alert severity levels: Yellow (Caution), Orange (Urgent), Red (Critical); Green is a *health status*, not an alert severity — alerts exist only for non-green states
 - Acknowledgment tracking
-- Resolution workflow
+- Resolution workflow (`new → acknowledged → resolved`)
 
 **AuditLog**
 - HIPAA compliance tracking
 - All PHI access logged
-- 90-day retention minimum
+- 6-year retention (1 year hot, then archive)
 
 ---
 
@@ -450,8 +469,8 @@ Prevention: Catches gradual decline before it becomes severe
 ### Product Metrics
 
 **Health Metrics:**
-- False positive rate: Target <5%
-- Alert response time: <30 seconds
+- False positive rate: <10% at MVP, <5% steady-state target
+- Alert delivery latency: <30 seconds
 - Data sync success rate: >99%
 - Token refresh success rate: >99.5%
 
@@ -495,9 +514,15 @@ Prevention: Catches gradual decline before it becomes severe
 - Azure SQL (Standard S2): $75/month
 - Worker (Container App): ~$30-50/month
 - SignalR (Standard): $50/month
-- **Total**: ~$301-321/month
-- **Per user cost**: ~$0.030-0.032/month
-- **Margin**: ~$14.97/user/month
+- **AI pipeline** (from AI rollout — see [llm_design.md](./llm_design.md)):
+  - ACA T4 GPU, 1 replica always-on: ~$430/month
+  - Event Hubs (Standard): ~$11/month
+  - Cosmos DB (serverless): ~$25/month
+  - Notification Hubs: ~$6/month
+  - Azure Functions (consumption): near-zero at this scale
+- **Total**: ~$775-795/month (incl. AI pipeline)
+- **Per user cost at 10,000 users**: ~$0.08/month
+- **Margin**: ~$14.9/user/month (Tier 2)
 
 ### Database Storage
 
@@ -605,7 +630,7 @@ Prevention: Catches gradual decline before it becomes severe
 - 🔄 Beta testing with 20 families
 
 ### Q2 2026 (Months 4-6): Public Launch
-- 🔄 ML.NET pattern analysis
+- 🔄 AI pipeline rollout — Event Hubs ingestion, SSA-LSTM pre-processing, MedGemma inference (see [llm_design.md](./llm_design.md))
 - 🔄 .NET MAUI mobile app (iOS & Android)
 - 🔄 Advanced dashboard features
 - 🔄 Subscription management
@@ -622,7 +647,7 @@ Prevention: Catches gradual decline before it becomes severe
 ### Q4 2026 (Months 10-12): Enterprise & Scale
 - ⏳ Enterprise features (assisted living)
 - ⏳ Withings, Oura, Whoop support
-- ⏳ Advanced ML models (LSTM, deep learning)
+- ⏳ Refined per-user LSTM risk models (predictive monitoring at scale)
 - ⏳ Telemedicine integration
 - ⏳ Scale to 1,000+ users
 
