@@ -52,7 +52,29 @@
       "Bash(python -)",
       "Bash(git add *)",
       "Bash(git commit -m ' *)",
-      "Bash(git config *)"
+      "Bash(git config *)",
+      "Bash(git fetch *)",
+      "Bash(git rev-list *)",
+      "Bash(command -v gh)",
+      "Read(//c/Program Files/**)",
+      "Bash(where gh *)",
+      "Bash(where winget *)",
+      "Bash(where choco *)",
+      "Bash(where scoop *)",
+      "PowerShell(winget install --id GitHub.cli --silent --accept-package-agreements --accept-source-agreements)",
+      "Bash(\"/c/Program Files/GitHub CLI/gh.exe\" --version)",
+      "Bash('/c/Program Files/GitHub CLI/gh.exe' auth status)",
+      "Bash(env)",
+      "Bash(git ls-remote *)",
+      "Bash(\"/c/Program Files/GitHub CLI/gh.exe\" auth login --hostname github.com --git-protocol https --web)",
+      "Bash(command -v node npx)",
+      "Bash(node -e \"try{require\\('js-yaml'\\)}catch\\(e\\){console.log\\('no js-yaml'\\)}\")",
+      "Bash(terraform init *)",
+      "Bash(terraform validate *)",
+      "Bash(git check-ignore *)",
+      "Bash(terraform fmt *)",
+      "Bash(echo \"fmt exit: $?\")",
+      "Bash(\"/c/Users/msoft/AppData/Local/Temp/claude/c--Code-GitHub-product-carditrack/18ab81ea-6fc4-45e8-ad23-12c6d303de35/scratchpad/actionlint.exe\" -no-color -oneline)"
     ]
   }
 }
