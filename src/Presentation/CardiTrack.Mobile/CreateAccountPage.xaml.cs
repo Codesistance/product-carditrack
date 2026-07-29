@@ -1,5 +1,3 @@
-using App = Microsoft.Maui.Controls.Application;
-
 namespace CardiTrack.Mobile;
 
 public partial class CreateAccountPage : ContentPage

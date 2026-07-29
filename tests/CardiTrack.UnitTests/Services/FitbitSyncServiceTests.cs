@@ -79,6 +79,7 @@ public class DeviceSyncServiceTests
         await CreateSut().SyncCardiMemberAsync(_fitbitConnection);
 
         await _activityLogs.Received(1).UpsertAsync(Arg.Is<ActivityLog>(log =>
+            log != null &&
             log.Steps == 8000 &&
             log.ActiveMinutes == 45 &&
             log.RestingHeartRate == 65 &&
@@ -96,7 +97,7 @@ public class DeviceSyncServiceTests
         var expectedDate = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(-1));
         await CreateSut().SyncCardiMemberAsync(_fitbitConnection);
 
-        await _activityLogs.Received(1).UpsertAsync(Arg.Is<ActivityLog>(log => log.Date == expectedDate));
+        await _activityLogs.Received(1).UpsertAsync(Arg.Is<ActivityLog>(log => log != null && log.Date == expectedDate));
     }
 
     [Fact]

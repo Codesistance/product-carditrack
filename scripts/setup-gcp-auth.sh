@@ -6,7 +6,7 @@ set -euo pipefail
 # ── Variables ─────────────────────────────────────────────────────────────────
 PROJECT_ID=carditrack-490120
 PROJECT_NUMBER=$(gcloud projects describe $PROJECT_ID --format='value(projectNumber)')
-REPO=marigbede/CardiTrack
+REPO=Codesistance/product-carditrack
 SA_NAME=carditrack-deploy
 POOL_NAME=carditrack-pool
 PROVIDER_NAME=github
