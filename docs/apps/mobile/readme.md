@@ -1053,7 +1053,7 @@ dotnet build -f net10.0-ios -c Release -p:RuntimeIdentifier=ios-arm64 -t:Run
 dotnet publish -f net10.0-android -c Release
 
 # Deploy to connected device
-adb install bin/Release/net10.0-android/publish/com.carditrack.mobile-Signed.apk
+adb install bin/Release/net10.0-android/publish/com.codesistance.carditrack.mobile-Signed.apk
 ```
 
 ### Publishing to App Stores
@@ -1063,7 +1063,7 @@ adb install bin/Release/net10.0-android/publish/com.carditrack.mobile-Signed.apk
 1. **Configure signing**:
    ```xml
    <PropertyGroup Condition="'$(Configuration)' == 'Release'">
-     <CodesignKey>iPhone Distribution</CodesignKey>
+     <CodesignKey>Apple Distribution</CodesignKey>
      <CodesignProvision>CardiTrack Distribution</CodesignProvision>
    </PropertyGroup>
    ```
@@ -1100,56 +1100,37 @@ adb install bin/Release/net10.0-android/publish/com.carditrack.mobile-Signed.apk
 
 ### CI/CD Pipeline
 
-#### GitHub Actions for Mobile
+Mobile CI lives in `.github/workflows/deploy-apps-dev.yml` (jobs gated by the `mobile` path filter):
 
-```yaml
-name: Build Mobile Apps
+- **Pull requests** — validation builds only: Android (unsigned APK), iOS (simulator), Windows (MSIX). No signing secrets are exposed to PR runs.
+- **Push to `main`** — in addition to the validation builds:
+  - **Android**: a signed AAB + APK is produced (`build-mobile-android-signed`) and the AAB is uploaded to the **Play Console internal testing track** (`deploy-play-internal`).
+  - **iOS**: a signed device IPA is produced (`build-mobile-ios-device`) and uploaded to **TestFlight** (`deploy-testflight`) via the App Store Connect API.
+  - Signed artifacts are archived to GCS under the release tag (`upload-mobile-artifacts`).
 
-on:
-  push:
-    branches: [main]
-    paths:
-      - 'src/Presentation/CardiTrack.Mobile/**'
+Store versioning is stamped by CI: `ApplicationDisplayVersion` comes from the computed semver tag and `ApplicationVersion` (iOS build number / Android versionCode) from the monotonic commit count — the values in the csproj are placeholders.
 
-jobs:
-  build-android:
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v3
+Signing material and store credentials live in GCP Secret Manager (`carditrack-common-*` secrets, defined in `infrastructure/common/secret_manager.tf`):
 
-      - name: Setup .NET
-        uses: actions/setup-dotnet@v3
-        with:
-          dotnet-version: '10.0.x'
+| Secret | Content |
+|---|---|
+| `carditrack-common-apple-distribution-cert-p12` | Apple distribution certificate (.p12, base64) |
+| `carditrack-common-apple-cert-password` | Certificate password |
+| `carditrack-common-appstore-provisioning-profile` | App Store provisioning profile named "CardiTrack Distribution" (base64) |
+| `carditrack-common-appstore-connect-issuer-id` | App Store Connect API issuer ID |
+| `carditrack-common-appstore-connect-api-key-id` | App Store Connect API key ID |
+| `carditrack-common-appstore-connect-api-private-key` | App Store Connect API private key (.p8 contents) |
+| `carditrack-common-android-keystore` | Upload keystore (.jks, base64, key alias `carditrack`) |
+| `carditrack-common-android-keystore-password` | Keystore and key password |
+| `carditrack-common-play-service-account-key` | Google Play service account key (JSON) |
 
-      - name: Install MAUI workload
-        run: dotnet workload install maui
+Until a secret is populated (i.e. still holds the `REPLACE_ME` placeholder), the corresponding signed-build/upload jobs skip with a warning instead of failing, so the pipeline stays green during initial setup.
 
-      - name: Build Android
-        run: dotnet publish src/Presentation/CardiTrack.Mobile -f net10.0-android -c Release
+One-time setup before the first store upload:
 
-      - name: Upload APK
-        uses: actions/upload-artifact@v3
-        with:
-          name: android-apk
-          path: src/Presentation/CardiTrack.Mobile/bin/Release/net10.0-android/publish/*.apk
-
-  build-ios:
-    runs-on: macos-latest
-    steps:
-      - uses: actions/checkout@v3
-
-      - name: Setup .NET
-        uses: actions/setup-dotnet@v3
-        with:
-          dotnet-version: '10.0.x'
-
-      - name: Install MAUI workload
-        run: dotnet workload install maui
-
-      - name: Build iOS
-        run: dotnet build src/Presentation/CardiTrack.Mobile -f net10.0-ios -c Release
-```
+1. **Apple**: create the app record for `com.codesistance.carditrack.mobile` in App Store Connect, export the distribution certificate as .p12, create an App Store provisioning profile named **CardiTrack Distribution**, create an App Store Connect API key (App Manager role), and add an internal-tester group in TestFlight.
+2. **Google**: generate the upload keystore (`keytool -genkeypair -alias carditrack ...`), create the app in Play Console with Play App Signing, **upload the first AAB manually** (required before the Play API accepts uploads), link a service account with release permissions, and add internal testers.
+3. Run *Deploy Infrastructure → Common* to create the secrets, then populate each with `echo -n "value" | gcloud secrets versions add <secret-id> --data-file=-` (base64-encode binary payloads).
 
 ## Testing
 

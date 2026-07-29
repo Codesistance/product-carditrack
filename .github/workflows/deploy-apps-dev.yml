@@ -124,6 +124,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.version.outputs.version }}
+      build_number: ${{ steps.version.outputs.build_number }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -140,6 +141,10 @@ jobs:
           NEXT="v${MAJOR}.${MINOR}.$((PATCH+1))"
           echo "version=${NEXT}" >> $GITHUB_OUTPUT
           echo "Next version: ${NEXT}"
+          # Monotonic build number for store uploads (TestFlight CFBundleVersion / Play versionCode)
+          BUILD_NUMBER=$(git rev-list --count HEAD)
+          echo "build_number=${BUILD_NUMBER}" >> $GITHUB_OUTPUT
+          echo "Build number: ${BUILD_NUMBER}"
 
   # ── API ─────────────────────────────────────────────────────────────────────
   build-api:
@@ -386,17 +391,6 @@ jobs:
             -c Release \
             -r iossimulator-arm64 \
             -p:ArchiveOnBuild=false
-      - name: Zip .app bundle
-        run: |
-          APP=$(find ./src -path '*/bin/*' -not -path '*/obj/*' -type d -name '*.app' | head -1)
-          echo "Selected: $APP ($(du -sh "$APP" | cut -f1))"
-          cd "$(dirname "$APP")"
-          zip -r -y "$GITHUB_WORKSPACE/ios-app.zip" "$(basename "$APP")"
-      - uses: actions/upload-artifact@v7
-        with:
-          name: mobile-ios-build
-          path: ios-app.zip
-          retention-days: 7
 
   build-mobile-windows:
     name: Build Mobile (Windows)
@@ -450,106 +444,203 @@ jobs:
             exit 1
           fi
 
-  # ── Main only: Appetize previews ────────────────────────────────────────────
-  deploy-appetize-android:
-    name: Deploy → Appetize (Android)
+  # ── Main only: Store-grade signed builds ────────────────────────────────────
+  # Signed device builds for TestFlight / Play Console. Each job gates on its
+  # signing secrets being populated (not the REPLACE_ME placeholder) and skips
+  # with a warning until the operator completes the one-time store setup.
+  build-mobile-android-signed:
+    name: Build Mobile (Android, signed)
     needs:
       - changes
       - compute-version
-      - build-mobile-android
       - security-mobile
     if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && needs.changes.outputs.mobile == 'true'
     runs-on: ubuntu-latest
+    outputs:
+      available: ${{ steps.gate.outputs.available }}
     steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: ${{ needs.changes.outputs.dotnet_version }}
       - uses: google-github-actions/auth@v3
         with:
           workload_identity_provider: ${{ needs.changes.outputs.gcp_wif_provider }}
           service_account: ${{ needs.changes.outputs.gcp_service_account }}
       - uses: google-github-actions/setup-gcloud@v3
 
-      # Gate only on the API token — public key is optional (bootstrapped on first run)
-      - name: Fetch Appetize token
-        id: token
+      - name: Check signing secrets
+        id: gate
         env:
           PROJECT: ${{ needs.changes.outputs.gcp_project_id }}
         run: |
-          if ! gcloud secrets describe carditrack-common-appetize-api-token --project="$PROJECT" > /dev/null 2>&1; then
-            echo "::warning::carditrack-common-appetize-api-token not found — skipping Android upload. Set the token in Secret Manager after running Deploy Infrastructure → Common."
-            echo "### Appetize upload skipped (Android)" >> $GITHUB_STEP_SUMMARY
-            echo "\`carditrack-common-appetize-api-token\` not found. Add the token to Secret Manager to enable Appetize uploads." >> $GITHUB_STEP_SUMMARY
+          MISSING=""
+          for SECRET in carditrack-common-android-keystore carditrack-common-android-keystore-password; do
+            VALUE=$(gcloud secrets versions access latest --secret="$SECRET" --project="$PROJECT" 2>/dev/null || true)
+            if [ -z "$VALUE" ] || [ "$VALUE" = "REPLACE_ME" ]; then MISSING="$MISSING $SECRET"; fi
+          done
+          if [ -n "$MISSING" ]; then
+            echo "::warning::Skipping signed Android build — secrets not populated:$MISSING"
+            echo "### Signed Android build skipped" >> $GITHUB_STEP_SUMMARY
+            echo "Populate$MISSING in Secret Manager to enable Play Console uploads." >> $GITHUB_STEP_SUMMARY
             echo "available=false" >> $GITHUB_OUTPUT
-            exit 0
-          fi
-          TOKEN=$(gcloud secrets versions access latest --secret="carditrack-common-appetize-api-token" --project="$PROJECT")
-          echo "::add-mask::$TOKEN"
-          echo "token=$TOKEN" >> $GITHUB_OUTPUT
-          echo "available=true" >> $GITHUB_OUTPUT
-
-      - uses: actions/download-artifact@v8
-        if: steps.token.outputs.available == 'true'
-        with:
-          name: mobile-android
-          path: artifacts/android
-
-      - name: Find APK
-        id: apk
-        if: steps.token.outputs.available == 'true'
-        run: echo "path=$(find artifacts/android -name '*.apk' | head -1)" >> $GITHUB_OUTPUT
-
-      - name: Upload to Appetize
-        id: appetize
-        if: steps.token.outputs.available == 'true'
-        env:
-          TOKEN: ${{ steps.token.outputs.token }}
-          APK: ${{ steps.apk.outputs.path }}
-          NOTE: ${{ needs.compute-version.outputs.version }}
-        run: |
-          BASE="https://api.appetize.io/v1/apps"
-
-          # 1. List apps — verify token and find existing android app
-          LIST_RESP=$(curl -s -w "\n%{http_code}" -H "X-API-KEY: $TOKEN" -H "Accept: */*" "https://api.appetize.io/v1/apps/all")
-          LIST_CODE=$(echo "$LIST_RESP" | tail -1)
-          LIST_BODY=$(echo "$LIST_RESP" | head -n -1)
-          echo "List HTTP $LIST_CODE"
-          if [ "$LIST_CODE" != "200" ]; then
-            echo "::error::Appetize list failed (HTTP $LIST_CODE): $LIST_BODY"
-            exit 1
-          fi
-
-          # 2. Find existing android app; create if not found
-          FOUND_KEY=$(echo "$LIST_BODY" | jq -r '.data[] | select(.platform == "android") | .publicKey' | head -1)
-          if [ -n "$FOUND_KEY" ]; then
-            echo "App found — updating $FOUND_KEY"
-            URL="$BASE/$FOUND_KEY"
           else
-            echo "App not found — creating new"
-            URL="$BASE"
+            echo "available=true" >> $GITHUB_OUTPUT
           fi
 
-          # 3. Upload
-          RESP=$(curl -s -w "\n%{http_code}" \
-            -X POST \
-            -H "X-API-KEY: $TOKEN" \
-            -F "file=@$APK" \
-            -F "platform=android" \
-            -F "note=$NOTE" \
-            "$URL")
-          CODE=$(echo "$RESP" | tail -1)
-          BODY=$(echo "$RESP" | head -n -1)
-          echo "Upload HTTP $CODE: $BODY"
-          if [ "$CODE" -lt 200 ] || [ "$CODE" -ge 300 ]; then
-            echo "::error::Appetize upload failed (HTTP $CODE): $BODY"
-            exit 1
-          fi
+      - uses: google-github-actions/get-secretmanager-secrets@v2
+        if: steps.gate.outputs.available == 'true'
+        id: secrets
+        with:
+          secrets: |
+            keystore:${{ needs.changes.outputs.gcp_project_id }}/carditrack-common-android-keystore
+            keystore_password:${{ needs.changes.outputs.gcp_project_id }}/carditrack-common-android-keystore-password
 
-  deploy-appetize-ios:
-    name: Deploy → Appetize (iOS)
+      - name: Decode keystore
+        if: steps.gate.outputs.available == 'true'
+        env:
+          KEYSTORE_B64: ${{ steps.secrets.outputs.keystore }}
+        run: echo "$KEYSTORE_B64" | base64 --decode > "$RUNNER_TEMP/carditrack.keystore"
+
+      - name: Install MAUI workload
+        if: steps.gate.outputs.available == 'true'
+        run: dotnet workload install maui-android
+
+      - name: Publish signed AAB + APK
+        if: steps.gate.outputs.available == 'true'
+        env:
+          DISPLAY_VERSION: ${{ needs.compute-version.outputs.version }}
+          BUILD_NUMBER: ${{ needs.compute-version.outputs.build_number }}
+          KEYSTORE_PASSWORD: ${{ steps.secrets.outputs.keystore_password }}
+        run: |
+          dotnet publish src/Presentation/CardiTrack.Mobile/CardiTrack.Mobile.csproj \
+            -f net10.0-android \
+            -c Release \
+            -p:AndroidPackageFormats="aab;apk" \
+            -p:AndroidKeyStore=true \
+            -p:AndroidSigningKeyStore="$RUNNER_TEMP/carditrack.keystore" \
+            -p:AndroidSigningKeyAlias=carditrack \
+            -p:AndroidSigningStorePass="$KEYSTORE_PASSWORD" \
+            -p:AndroidSigningKeyPass="$KEYSTORE_PASSWORD" \
+            -p:ApplicationDisplayVersion="${DISPLAY_VERSION#v}" \
+            -p:ApplicationVersion="$BUILD_NUMBER"
+
+      - uses: actions/upload-artifact@v7
+        if: steps.gate.outputs.available == 'true'
+        with:
+          name: mobile-android-signed
+          path: '**/publish/*-Signed.*'
+          retention-days: 7
+
+  build-mobile-ios-device:
+    name: Build Mobile (iOS, device)
     needs:
       - changes
       - compute-version
-      - build-mobile-ios
       - security-mobile
     if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && needs.changes.outputs.mobile == 'true'
+    runs-on: macos-26
+    outputs:
+      available: ${{ steps.gate.outputs.available }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: ${{ needs.changes.outputs.dotnet_version }}
+      - uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ needs.changes.outputs.gcp_wif_provider }}
+          service_account: ${{ needs.changes.outputs.gcp_service_account }}
+      - uses: google-github-actions/setup-gcloud@v3
+
+      - name: Check signing secrets
+        id: gate
+        env:
+          PROJECT: ${{ needs.changes.outputs.gcp_project_id }}
+        run: |
+          MISSING=""
+          for SECRET in carditrack-common-apple-distribution-cert-p12 carditrack-common-apple-cert-password carditrack-common-appstore-provisioning-profile; do
+            VALUE=$(gcloud secrets versions access latest --secret="$SECRET" --project="$PROJECT" 2>/dev/null || true)
+            if [ -z "$VALUE" ] || [ "$VALUE" = "REPLACE_ME" ]; then MISSING="$MISSING $SECRET"; fi
+          done
+          if [ -n "$MISSING" ]; then
+            echo "::warning::Skipping signed iOS build — secrets not populated:$MISSING"
+            echo "### Signed iOS build skipped" >> $GITHUB_STEP_SUMMARY
+            echo "Populate$MISSING in Secret Manager to enable TestFlight uploads." >> $GITHUB_STEP_SUMMARY
+            echo "available=false" >> $GITHUB_OUTPUT
+          else
+            echo "available=true" >> $GITHUB_OUTPUT
+          fi
+
+      - uses: google-github-actions/get-secretmanager-secrets@v2
+        if: steps.gate.outputs.available == 'true'
+        id: secrets
+        with:
+          secrets: |
+            cert_p12:${{ needs.changes.outputs.gcp_project_id }}/carditrack-common-apple-distribution-cert-p12
+            cert_password:${{ needs.changes.outputs.gcp_project_id }}/carditrack-common-apple-cert-password
+            provisioning_profile:${{ needs.changes.outputs.gcp_project_id }}/carditrack-common-appstore-provisioning-profile
+
+      - name: Install certificate and provisioning profile
+        if: steps.gate.outputs.available == 'true'
+        env:
+          CERT_P12_B64: ${{ steps.secrets.outputs.cert_p12 }}
+          CERT_PASSWORD: ${{ steps.secrets.outputs.cert_password }}
+          PROFILE_B64: ${{ steps.secrets.outputs.provisioning_profile }}
+        run: |
+          echo "$CERT_P12_B64" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security create-keychain -p "" build.keychain
+          security unlock-keychain -p "" build.keychain
+          security import "$RUNNER_TEMP/cert.p12" -k build.keychain \
+            -P "$CERT_PASSWORD" \
+            -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k "" build.keychain
+          security list-keychains -d user -s build.keychain
+          mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
+          echo "$PROFILE_B64" | base64 --decode \
+            > ~/Library/MobileDevice/Provisioning\ Profiles/carditrack-appstore.mobileprovision
+
+      - name: Select Xcode
+        if: steps.gate.outputs.available == 'true'
+        run: |
+          sudo xcode-select -s /Applications/Xcode_26.4.1.app
+          echo "DEVELOPER_DIR=$(xcode-select -p)" >> $GITHUB_ENV
+
+      - name: Install MAUI workload
+        if: steps.gate.outputs.available == 'true'
+        run: dotnet workload install maui-ios --version 10.0.300.1
+
+      - name: Publish signed IPA
+        if: steps.gate.outputs.available == 'true'
+        env:
+          DISPLAY_VERSION: ${{ needs.compute-version.outputs.version }}
+          BUILD_NUMBER: ${{ needs.compute-version.outputs.build_number }}
+        run: |
+          dotnet publish src/Presentation/CardiTrack.Mobile/CardiTrack.Mobile.csproj \
+            -f net10.0-ios \
+            -c Release \
+            -p:RuntimeIdentifier=ios-arm64 \
+            -p:ArchiveOnBuild=true \
+            -p:CodesignKey="Apple Distribution" \
+            -p:CodesignProvision="CardiTrack Distribution" \
+            -p:ApplicationDisplayVersion="${DISPLAY_VERSION#v}" \
+            -p:ApplicationVersion="$BUILD_NUMBER"
+
+      - uses: actions/upload-artifact@v7
+        if: steps.gate.outputs.available == 'true'
+        with:
+          name: mobile-ios-ipa
+          path: '**/*.ipa'
+          retention-days: 7
+
+  # ── Main only: Store uploads (internal testing) ─────────────────────────────
+  deploy-testflight:
+    name: Deploy → TestFlight
+    needs:
+      - changes
+      - compute-version
+      - build-mobile-ios-device
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && needs.changes.outputs.mobile == 'true' && needs.build-mobile-ios-device.outputs.available == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: google-github-actions/auth@v3
@@ -558,74 +649,122 @@ jobs:
           service_account: ${{ needs.changes.outputs.gcp_service_account }}
       - uses: google-github-actions/setup-gcloud@v3
 
-      # Gate only on the API token — public key is optional (bootstrapped on first run)
-      - name: Fetch Appetize token
-        id: token
+      - name: Check App Store Connect API secrets
+        id: gate
         env:
           PROJECT: ${{ needs.changes.outputs.gcp_project_id }}
         run: |
-          if ! gcloud secrets describe carditrack-common-appetize-api-token --project="$PROJECT" > /dev/null 2>&1; then
-            echo "::warning::carditrack-common-appetize-api-token not found — skipping iOS upload. Set the token in Secret Manager after running Deploy Infrastructure → Common."
-            echo "### Appetize upload skipped (iOS)" >> $GITHUB_STEP_SUMMARY
-            echo "\`carditrack-common-appetize-api-token\` not found. Add the token to Secret Manager to enable Appetize uploads." >> $GITHUB_STEP_SUMMARY
+          MISSING=""
+          for SECRET in carditrack-common-appstore-connect-issuer-id carditrack-common-appstore-connect-api-key-id carditrack-common-appstore-connect-api-private-key; do
+            VALUE=$(gcloud secrets versions access latest --secret="$SECRET" --project="$PROJECT" 2>/dev/null || true)
+            if [ -z "$VALUE" ] || [ "$VALUE" = "REPLACE_ME" ]; then MISSING="$MISSING $SECRET"; fi
+          done
+          if [ -n "$MISSING" ]; then
+            echo "::warning::Skipping TestFlight upload — secrets not populated:$MISSING"
+            echo "### TestFlight upload skipped" >> $GITHUB_STEP_SUMMARY
+            echo "Populate$MISSING in Secret Manager to enable TestFlight uploads." >> $GITHUB_STEP_SUMMARY
             echo "available=false" >> $GITHUB_OUTPUT
-            exit 0
+          else
+            echo "available=true" >> $GITHUB_OUTPUT
           fi
-          TOKEN=$(gcloud secrets versions access latest --secret="carditrack-common-appetize-api-token" --project="$PROJECT")
-          echo "::add-mask::$TOKEN"
-          echo "token=$TOKEN" >> $GITHUB_OUTPUT
-          echo "available=true" >> $GITHUB_OUTPUT
+
+      - uses: google-github-actions/get-secretmanager-secrets@v2
+        if: steps.gate.outputs.available == 'true'
+        id: secrets
+        with:
+          secrets: |
+            issuer_id:${{ needs.changes.outputs.gcp_project_id }}/carditrack-common-appstore-connect-issuer-id
+            api_key_id:${{ needs.changes.outputs.gcp_project_id }}/carditrack-common-appstore-connect-api-key-id
+            api_private_key:${{ needs.changes.outputs.gcp_project_id }}/carditrack-common-appstore-connect-api-private-key
 
       - uses: actions/download-artifact@v8
-        if: steps.token.outputs.available == 'true'
+        if: steps.gate.outputs.available == 'true'
         with:
-          name: mobile-ios-build
+          name: mobile-ios-ipa
           path: artifacts/ios
 
-      - name: Upload to Appetize
-        id: appetize
-        if: steps.token.outputs.available == 'true'
-        env:
-          TOKEN: ${{ steps.token.outputs.token }}
-          NOTE: ${{ needs.compute-version.outputs.version }}
+      - name: Find IPA
+        id: ipa
+        if: steps.gate.outputs.available == 'true'
+        run: echo "path=$(find artifacts/ios -name '*.ipa' | head -1)" >> $GITHUB_OUTPUT
+
+      - name: Upload to TestFlight
+        if: steps.gate.outputs.available == 'true'
+        uses: apple-actions/upload-testflight-build@v5
+        with:
+          app-path: ${{ steps.ipa.outputs.path }}
+          issuer-id: ${{ steps.secrets.outputs.issuer_id }}
+          api-key-id: ${{ steps.secrets.outputs.api_key_id }}
+          api-private-key: ${{ steps.secrets.outputs.api_private_key }}
+
+      - name: Summary
+        if: steps.gate.outputs.available == 'true'
         run: |
-          BASE="https://api.appetize.io/v1/apps"
+          echo "### TestFlight — uploaded \`${{ needs.compute-version.outputs.version }}\` (build ${{ needs.compute-version.outputs.build_number }})" >> $GITHUB_STEP_SUMMARY
 
-          # 1. List apps — verify token and find existing ios app
-          LIST_RESP=$(curl -s -w "\n%{http_code}" -H "X-API-KEY: $TOKEN" -H "Accept: */*" "https://api.appetize.io/v1/apps/all")
-          LIST_CODE=$(echo "$LIST_RESP" | tail -1)
-          LIST_BODY=$(echo "$LIST_RESP" | head -n -1)
-          echo "List HTTP $LIST_CODE"
-          if [ "$LIST_CODE" != "200" ]; then
-            echo "::error::Appetize list failed (HTTP $LIST_CODE): $LIST_BODY"
-            exit 1
-          fi
+  deploy-play-internal:
+    name: Deploy → Play Console (internal)
+    needs:
+      - changes
+      - compute-version
+      - build-mobile-android-signed
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && needs.changes.outputs.mobile == 'true' && needs.build-mobile-android-signed.outputs.available == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ needs.changes.outputs.gcp_wif_provider }}
+          service_account: ${{ needs.changes.outputs.gcp_service_account }}
+      - uses: google-github-actions/setup-gcloud@v3
 
-          # 2. Find existing ios app; create if not found
-          FOUND_KEY=$(echo "$LIST_BODY" | jq -r '.data[] | select(.platform == "ios") | .publicKey' | head -1)
-          if [ -n "$FOUND_KEY" ]; then
-            echo "App found — updating $FOUND_KEY"
-            URL="$BASE/$FOUND_KEY"
+      - name: Check Play Console secrets
+        id: gate
+        env:
+          PROJECT: ${{ needs.changes.outputs.gcp_project_id }}
+        run: |
+          SECRET=carditrack-common-play-service-account-key
+          VALUE=$(gcloud secrets versions access latest --secret="$SECRET" --project="$PROJECT" 2>/dev/null || true)
+          if [ -z "$VALUE" ] || [ "$VALUE" = "REPLACE_ME" ]; then
+            echo "::warning::Skipping Play Console upload — $SECRET not populated"
+            echo "### Play Console upload skipped" >> $GITHUB_STEP_SUMMARY
+            echo "Populate \`$SECRET\` in Secret Manager to enable Play Console uploads." >> $GITHUB_STEP_SUMMARY
+            echo "available=false" >> $GITHUB_OUTPUT
           else
-            echo "App not found — creating new"
-            URL="$BASE"
+            echo "available=true" >> $GITHUB_OUTPUT
           fi
 
-          # 3. Upload
-          RESP=$(curl -s -w "\n%{http_code}" \
-            -X POST \
-            -H "X-API-KEY: $TOKEN" \
-            -F "file=@artifacts/ios/ios-app.zip" \
-            -F "platform=ios" \
-            -F "note=$NOTE" \
-            "$URL")
-          CODE=$(echo "$RESP" | tail -1)
-          BODY=$(echo "$RESP" | head -n -1)
-          echo "Upload HTTP $CODE: $BODY"
-          if [ "$CODE" -lt 200 ] || [ "$CODE" -ge 300 ]; then
-            echo "::error::Appetize upload failed (HTTP $CODE): $BODY"
-            exit 1
-          fi
+      - uses: google-github-actions/get-secretmanager-secrets@v2
+        if: steps.gate.outputs.available == 'true'
+        id: secrets
+        with:
+          secrets: |
+            play_key:${{ needs.changes.outputs.gcp_project_id }}/carditrack-common-play-service-account-key
+
+      - uses: actions/download-artifact@v8
+        if: steps.gate.outputs.available == 'true'
+        with:
+          name: mobile-android-signed
+          path: artifacts/android
+
+      - name: Find AAB
+        id: aab
+        if: steps.gate.outputs.available == 'true'
+        run: echo "path=$(find artifacts/android -name '*-Signed.aab' | head -1)" >> $GITHUB_OUTPUT
+
+      - name: Upload to Play Console (internal track)
+        if: steps.gate.outputs.available == 'true'
+        uses: r0adkll/upload-google-play@v1
+        with:
+          serviceAccountJsonPlainText: ${{ steps.secrets.outputs.play_key }}
+          packageName: com.codesistance.carditrack.mobile
+          releaseFiles: ${{ steps.aab.outputs.path }}
+          track: internal
+          status: completed
+
+      - name: Summary
+        if: steps.gate.outputs.available == 'true'
+        run: |
+          echo "### Play Console (internal) — uploaded \`${{ needs.compute-version.outputs.version }}\` (versionCode ${{ needs.compute-version.outputs.build_number }})" >> $GITHUB_STEP_SUMMARY
 
   # ── Main only: Push images ───────────────────────────────────────────────────
   push-api-image:
@@ -764,8 +903,8 @@ jobs:
     needs:
       - changes
       - compute-version
-      - build-mobile-android
-      - build-mobile-ios
+      - build-mobile-android-signed
+      - build-mobile-ios-device
       - build-mobile-windows
       - security-mobile
     if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && needs.changes.outputs.mobile == 'true'
@@ -777,12 +916,14 @@ jobs:
           service_account: ${{ needs.changes.outputs.gcp_service_account }}
       - uses: google-github-actions/setup-gcloud@v3
       - uses: actions/download-artifact@v8
+        if: needs.build-mobile-android-signed.outputs.available == 'true'
         with:
-          name: mobile-android
+          name: mobile-android-signed
           path: artifacts/android
       - uses: actions/download-artifact@v8
+        if: needs.build-mobile-ios-device.outputs.available == 'true'
         with:
-          name: mobile-ios-build
+          name: mobile-ios-ipa
           path: artifacts/ios
       - uses: actions/download-artifact@v8
         with:
@@ -793,8 +934,9 @@ jobs:
           TAG: ${{ needs.compute-version.outputs.version }}
           BUCKET: gs://${{ needs.changes.outputs.gcs_builds_bucket }}
         run: |
-          gcloud storage cp -r artifacts/android/** $BUCKET/$TAG/android/
-          gcloud storage cp -r artifacts/ios/**     $BUCKET/$TAG/ios/
+          # Android / iOS are absent until the store signing secrets are populated
+          if [ -d artifacts/android ]; then gcloud storage cp -r artifacts/android/** $BUCKET/$TAG/android/; fi
+          if [ -d artifacts/ios ];     then gcloud storage cp -r artifacts/ios/**     $BUCKET/$TAG/ios/; fi
           gcloud storage cp -r artifacts/windows/** $BUCKET/$TAG/windows/
 
   # ── Main only: DB Migrations + Deploy Dev ───────────────────────────────────
@@ -992,8 +1134,8 @@ jobs:
       - deploy-worker-dev
       - deploy-medgemma-dev
       - upload-mobile-artifacts
-      - deploy-appetize-android
-      - deploy-appetize-ios
+      - deploy-testflight
+      - deploy-play-internal
     permissions:
       contents: write
     if: |
