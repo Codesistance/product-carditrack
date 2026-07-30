@@ -152,6 +152,8 @@ $raw = [Text.Encoding]::ASCII.GetString([IO.File]::ReadAllBytes("<profile>.mobil
 5. Service account:
 
    ```bash
+   # the Play Developer API must be enabled on the project that owns the key
+   gcloud services enable androidpublisher.googleapis.com --project=carditrack-490120
    gcloud iam service-accounts create carditrack-play-publisher \
      --display-name="CardiTrack Play Publisher" --project=carditrack-490120
    gcloud iam service-accounts keys create carditrack-play-publisher.json \
