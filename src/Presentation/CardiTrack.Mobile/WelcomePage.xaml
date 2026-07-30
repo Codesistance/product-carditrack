@@ -18,7 +18,7 @@
                 HorizontalOptions="Fill">
             <CarouselView x:Name="SlideCarousel"
                           HeightRequest="571"
-                          ItemsSource="{Binding Source={x:Reference RootPage}, Path=Slides}"
+                          ItemsSource="{Binding Source={x:Reference RootPage}, Path=Slides, x:DataType=local:WelcomePage}"
                           Loop="False"
                           IsScrollAnimated="True"
                           HorizontalOptions="Fill"
