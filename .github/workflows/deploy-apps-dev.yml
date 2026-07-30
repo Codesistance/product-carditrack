@@ -525,11 +525,25 @@ jobs:
             -p:ApplicationDisplayVersion="${DISPLAY_VERSION#v}" \
             -p:ApplicationVersion="$BUILD_NUMBER"
 
+      # Play Console crash-report inputs: the R8 deobfuscation map produced by
+      # AndroidLinkTool=r8 (see CardiTrack.Mobile.csproj) and a zip of the
+      # pre-strip native libraries for symbolicated native stack traces.
+      - name: Stage Play crash-report files
+        if: steps.gate.outputs.available == 'true'
+        run: |
+          OUT_DIR=src/Presentation/CardiTrack.Mobile/bin/Release/net10.0-android
+          OBJ_DIR=src/Presentation/CardiTrack.Mobile/obj/Release/net10.0-android
+          mkdir -p play-extras
+          cp "$OUT_DIR/mapping.txt" play-extras/mapping.txt
+          (cd "$OBJ_DIR/app_shared_libraries" && zip -r "$GITHUB_WORKSPACE/play-extras/native-debug-symbols.zip" . -i '*.so')
+
       - uses: actions/upload-artifact@v7
         if: steps.gate.outputs.available == 'true'
         with:
           name: mobile-android-signed
-          path: '**/publish/*-Signed.*'
+          path: |
+            **/publish/*-Signed.*
+            play-extras/*
           retention-days: 7
 
   build-mobile-ios-device:
@@ -749,7 +763,10 @@ jobs:
       - name: Find AAB
         id: aab
         if: steps.gate.outputs.available == 'true'
-        run: echo "path=$(find artifacts/android -name '*-Signed.aab' | head -1)" >> $GITHUB_OUTPUT
+        run: |
+          echo "path=$(find artifacts/android -name '*-Signed.aab' | head -1)" >> $GITHUB_OUTPUT
+          echo "mapping=$(find artifacts/android -name 'mapping.txt' | head -1)" >> $GITHUB_OUTPUT
+          echo "symbols=$(find artifacts/android -name 'native-debug-symbols.zip' | head -1)" >> $GITHUB_OUTPUT
 
       - name: Upload to Play Console (internal track)
         if: steps.gate.outputs.available == 'true'
@@ -758,6 +775,8 @@ jobs:
           serviceAccountJsonPlainText: ${{ steps.secrets.outputs.play_key }}
           packageName: com.codesistance.carditrack.mobile
           releaseFiles: ${{ steps.aab.outputs.path }}
+          mappingFile: ${{ steps.aab.outputs.mapping }}
+          debugSymbols: ${{ steps.aab.outputs.symbols }}
           track: internal
           status: completed
 
