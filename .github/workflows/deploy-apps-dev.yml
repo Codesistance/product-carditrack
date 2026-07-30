@@ -513,10 +513,11 @@ jobs:
           BUILD_NUMBER: ${{ needs.compute-version.outputs.build_number }}
           KEYSTORE_PASSWORD: ${{ steps.secrets.outputs.keystore_password }}
         run: |
+          # AndroidPackageFormats defaults to aab;apk — don't pass it via -p:
+          # (MSBuild splits on the semicolon and misparses "apk" as a switch)
           dotnet publish src/Presentation/CardiTrack.Mobile/CardiTrack.Mobile.csproj \
             -f net10.0-android \
             -c Release \
-            -p:AndroidPackageFormats="aab;apk" \
             -p:AndroidKeyStore=true \
             -p:AndroidSigningKeyStore="$RUNNER_TEMP/carditrack.keystore" \
             -p:AndroidSigningKeyAlias=carditrack \
