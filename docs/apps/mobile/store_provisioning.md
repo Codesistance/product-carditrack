@@ -156,6 +156,13 @@ $raw = [Text.Encoding]::ASCII.GetString([IO.File]::ReadAllBytes("<profile>.mobil
    rm carditrack-play-publisher.json
    ```
 
+   Enable the Play API in the project (one-time — CI uploads fail with "androidpublisher ... has
+   not been used" otherwise):
+
+   ```bash
+   gcloud services enable androidpublisher.googleapis.com --project=carditrack-490120
+   ```
+
    No GCP IAM roles are needed — authority comes from the Play Console invite:
    **Users and permissions → Invite new user** → the service-account email → app access
    **CardiTrack** → grant **Release to testing tracks**. Permissions can take a few minutes to
