@@ -1126,11 +1126,12 @@ Signing material and store credentials live in GCP Secret Manager (`carditrack-c
 
 Until a secret is populated (i.e. still holds the `REPLACE_ME` placeholder), the corresponding signed-build/upload jobs skip with a warning instead of failing, so the pipeline stays green during initial setup.
 
-One-time setup before the first store upload:
+One-time setup before the first store upload — full step-by-step commands in
+**[store_provisioning.md](./store_provisioning.md)**. In summary:
 
-1. **Apple**: create the app record for `com.codesistance.carditrack.mobile` in App Store Connect, export the distribution certificate as .p12, create an App Store provisioning profile named **CardiTrack Distribution**, create an App Store Connect API key (App Manager role), and add an internal-tester group in TestFlight.
-2. **Google**: generate the upload keystore (`keytool -genkeypair -alias carditrack ...`), create the app in Play Console with Play App Signing, **upload the first AAB manually** (required before the Play API accepts uploads), link a service account with release permissions, and add internal testers.
-3. Run *Deploy Infrastructure → Common* to create the secrets, then populate each with `echo -n "value" | gcloud secrets versions add <secret-id> --data-file=-` (base64-encode binary payloads).
+1. **Apple**: distribution certificate (.p12), App Store provisioning profile named **CardiTrack Distribution**, app record for `com.codesistance.carditrack.mobile` in App Store Connect, App Store Connect API key (App Manager role), internal-tester group in TestFlight.
+2. **Google**: upload keystore (alias `carditrack`), app in Play Console with Play App Signing, **first AAB uploaded manually** (required before the Play API accepts uploads), publisher service account with *Release to testing tracks*, internal testers.
+3. Run *Deploy Infrastructure → Common* to create the secrets, then populate each (base64-encode binary payloads).
 
 ## Testing
 
