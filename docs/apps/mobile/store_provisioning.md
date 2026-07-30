@@ -75,10 +75,14 @@ Needs an Apple Developer Program membership. No Mac required.
 # 3. Convert to .p12 — the export password you choose here becomes the cert-password secret
 & "C:\Program Files\Git\usr\bin\openssl.exe" x509 -inform DER `
   -in "$env:USERPROFILE\Downloads\distribution.cer" -out "$env:USERPROFILE\distribution.pem"
-& "C:\Program Files\Git\usr\bin\openssl.exe" pkcs12 -export `
+& "C:\Program Files\Git\usr\bin\openssl.exe" pkcs12 -export -legacy `
   -inkey "$env:USERPROFILE\carditrack-apple.key" -in "$env:USERPROFILE\distribution.pem" `
   -out "$env:USERPROFILE\carditrack-dist.p12"
 ```
+
+`-legacy` is required: OpenSSL 3 otherwise emits modern PKCS#12 (PBES2/AES-256, SHA-256 MAC),
+which macOS `security import` on the CI runner rejects with
+`MAC verification failed during PKCS12 import (wrong password?)`.
 
 Base64 the `.p12` → `carditrack-common-apple-distribution-cert-p12`; export password →
 `carditrack-common-apple-cert-password`. The key/CSR/cert are generated as a set — if the CSR is
