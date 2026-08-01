@@ -1,0 +1,11 @@
+---
+description: All app pages must be full-bleed (edge-to-edge), no page-level rounded chrome
+alwaysApply: true
+---
+
+# Full-Bleed Pages
+
+- **All pages/screens are full-bleed** — content and backgrounds extend edge-to-edge (safe-area insets for system UI are fine; page frames are not inset or rounded).
+- **Do not** wrap the page in a rounded card/sheet (e.g. `CornerRadius="30,30,0,0"` white overlays, inset phone chrome, or clipped page containers).
+- Radius is allowed on **components only** (buttons, inputs, chips, logos, cards *inside* the layout) — never on the page shell itself.
+- When implementing or updating UI from Figma, match the design’s components but keep the screen full-bleed even if a mockup frame looks rounded.

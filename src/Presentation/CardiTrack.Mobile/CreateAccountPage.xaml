@@ -52,17 +52,11 @@
             </Grid>
 
             <!-- ════════════════════════════════════════
-                 WHITE CARD FORM
+                 FORM (full-bleed)
                  ════════════════════════════════════════ -->
-            <Border Grid.Row="1"
-                    BackgroundColor="{StaticResource White}"
-                    StrokeThickness="0"
-                    Margin="0,-30,0,0"
-                    Padding="20,20,20,36">
-                <Border.StrokeShape>
-                    <RoundRectangle CornerRadius="30,30,0,0"/>
-                </Border.StrokeShape>
-
+            <Grid Grid.Row="1"
+                  BackgroundColor="{StaticResource White}"
+                  Padding="20,20,20,36">
                 <VerticalStackLayout Spacing="6">
 
                     <!-- ── Error banner (hidden by default) ── -->
@@ -278,7 +272,7 @@
                     </HorizontalStackLayout>
 
                 </VerticalStackLayout>
-            </Border>
+            </Grid>
         </Grid>
     </ScrollView>
 </ContentPage>
