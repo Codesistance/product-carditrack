@@ -72,19 +72,22 @@
             </Label>
         </Grid>
 
-        <!-- ── Title (Figma y591) ── -->
+        <!-- ── Title (Figma y591; 306px cap forces the designed 2-line wrap on slide B) ── -->
         <Label x:Name="SlideTitle"
                Grid.Row="1"
                Style="{StaticResource Heading1}"
                HorizontalTextAlignment="Center"
+               HorizontalOptions="Center"
                LineBreakMode="WordWrap"
+               MaximumWidthRequest="306"
                Margin="24,20,24,0" />
 
-        <!-- ── Subtitle (per-slide top margin from Figma) ── -->
+        <!-- ── Subtitle (per-slide top margin and width from Figma) ── -->
         <Label x:Name="SlideSubtitle"
                Grid.Row="2"
                Style="{StaticResource BodySubtitle}"
-               Margin="40,16,40,0" />
+               HorizontalOptions="Center"
+               Margin="24,16,24,0" />
 
         <!-- Row 3: fixed 16px spacer prevents bottom chrome overlapping subtitle -->
 
@@ -106,28 +109,31 @@
                          CornerRadius="4" Color="{StaticResource InactiveIndicator}"/>
             </HorizontalStackLayout>
 
-            <!-- CTA (Button 5 — 332×52, inset highlight) -->
+            <!-- CTA (Button 1 — 332×52 centered; inner top-left glow approximates
+                 Figma's inset shadow 4,4,10 white 56%) -->
             <Border x:Name="CtaBorder"
                     Background="{StaticResource GradientButtonBrush}"
                     StrokeThickness="0"
+                    WidthRequest="332"
                     HeightRequest="52"
-                    HorizontalOptions="Fill"
-                    Margin="34,30,34,0">
+                    HorizontalOptions="Center"
+                    Margin="0,30,0,0">
                 <Border.StrokeShape>
                     <RoundRectangle CornerRadius="25"/>
                 </Border.StrokeShape>
-                <Border.Shadow>
-                    <Shadow Brush="#8FFFFFFF" Offset="2,2" Radius="5"/>
-                </Border.Shadow>
                 <Grid>
-                    <BoxView Color="#8FFFFFFF"
-                             WidthRequest="120"
-                             HeightRequest="18"
-                             CornerRadius="9"
-                             HorizontalOptions="Start"
-                             VerticalOptions="Start"
-                             Margin="12,6,0,0"
-                             InputTransparent="True"/>
+                    <Border StrokeThickness="0"
+                            InputTransparent="True">
+                        <Border.StrokeShape>
+                            <RoundRectangle CornerRadius="25"/>
+                        </Border.StrokeShape>
+                        <Border.Background>
+                            <LinearGradientBrush StartPoint="0,0" EndPoint="0.7,1">
+                                <GradientStop Color="#66FFFFFF" Offset="0.0"/>
+                                <GradientStop Color="#00FFFFFF" Offset="0.45"/>
+                            </LinearGradientBrush>
+                        </Border.Background>
+                    </Border>
                     <Label Text="Start Free 30-Day Trial"
                            FontFamily="Quicksand"
                            FontAttributes="Bold"
@@ -155,7 +161,7 @@
                        VerticalTextAlignment="Center" />
                 <Label Text="Terms &amp; Privacy"
                        TextColor="{StaticResource Primary}"
-                       FontFamily="QuicksandSemiBold"
+                       FontFamily="ManropeSemiBold"
                        FontSize="14"
                        TextDecorations="Underline"
                        VerticalTextAlignment="Center">

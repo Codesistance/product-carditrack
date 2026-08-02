@@ -28,7 +28,8 @@ public partial class WelcomePage : ContentPage
 
         SlideTitle.Text = current.Title;
         SlideSubtitle.Text = current.Subtitle;
-        SlideSubtitle.Margin = new Thickness(40, current.SubtitleTopMargin, 40, 0);
+        SlideSubtitle.Margin = new Thickness(24, current.SubtitleTopMargin, 24, 0);
+        SlideSubtitle.MaximumWidthRequest = current.SubtitleMaxWidth;
 
         for (var i = 0; i < _indicators.Length; i++)
         {

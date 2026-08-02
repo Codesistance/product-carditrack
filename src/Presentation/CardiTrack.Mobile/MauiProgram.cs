@@ -16,6 +16,7 @@ public static class MauiProgram
                 fonts.AddFont("Quicksand.ttf", "Quicksand");
                 fonts.AddFont("Quicksand-Medium.ttf", "QuicksandMedium");
                 fonts.AddFont("Quicksand-SemiBold.ttf", "QuicksandSemiBold");
+                fonts.AddFont("Manrope-SemiBold.ttf", "ManropeSemiBold");
             });
 
         // HTTP CLIENT FACTORY — named client targeting the CardiTrack API
