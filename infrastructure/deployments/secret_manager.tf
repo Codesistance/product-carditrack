@@ -39,12 +39,21 @@ locals {
   # Operators overwrite via: gcloud secrets versions add <id> --data-file=-
   # lifecycle.ignore_changes ensures subsequent applies never revert operator values.
   placeholder_secrets = {
-    "auth0-domain"        = "REPLACE_ME"
-    "auth0-audience"      = "REPLACE_ME"
-    "auth0-client-id"     = "REPLACE_ME"
-    "auth0-client-secret" = "REPLACE_ME"
-    "encryption-key"      = "REPLACE_ME"
+    "auth0-domain"           = "REPLACE_ME"
+    "auth0-audience"         = "REPLACE_ME"
+    "auth0-client-id"        = "REPLACE_ME"
+    "auth0-client-secret"    = "REPLACE_ME"
+    "auth0-mobile-client-id" = "REPLACE_ME" # Auth0 Native app client for the MAUI mobile app (public, no secret)
+    "encryption-key"         = "REPLACE_ME"
   }
+
+  # Secrets CI stamps into mobile builds (public identifiers, not credentials) —
+  # the deploy SA needs read access to fetch them during mobile build jobs.
+  mobile_build_secrets = [
+    "auth0-domain",
+    "auth0-audience",
+    "auth0-mobile-client-id",
+  ]
 }
 
 # ── DB password ──────────────────────────────────────────────────────────────
@@ -152,6 +161,14 @@ resource "google_secret_manager_secret_iam_member" "health_token_compute_accesso
 # Deploy SA needs read access so GitHub Actions can fetch the token during smoke tests
 resource "google_secret_manager_secret_iam_member" "health_token_deploy_accessor" {
   secret_id = google_secret_manager_secret.health_token.id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${var.deploy_service_account}"
+}
+
+# Deploy SA reads Auth0 mobile config to stamp it into mobile builds (-p: properties)
+resource "google_secret_manager_secret_iam_member" "mobile_build_deploy_accessor" {
+  for_each  = toset(local.mobile_build_secrets)
+  secret_id = google_secret_manager_secret.app_secrets[each.key].id
   role      = "roles/secretmanager.secretAccessor"
   member    = "serviceAccount:${var.deploy_service_account}"
 }

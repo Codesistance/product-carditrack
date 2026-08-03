@@ -361,10 +361,29 @@ jobs:
         with:
           dotnet-version: ${{ needs.changes.outputs.dotnet_version }}
       - run: dotnet workload install maui-android
+      # Auth0 config is stamped from Secret Manager (carditrack-dev-auth0-*).
+      # PR builds skip the fetch (no WIF auth off main) and compile unstamped.
+      - uses: google-github-actions/auth@v3
+        if: github.event_name != 'pull_request'
+        with:
+          workload_identity_provider: ${{ needs.changes.outputs.gcp_wif_provider }}
+          service_account: ${{ needs.changes.outputs.gcp_service_account }}
+      - uses: google-github-actions/get-secretmanager-secrets@v2
+        if: github.event_name != 'pull_request'
+        id: auth0
+        with:
+          secrets: |
+            domain:${{ needs.changes.outputs.gcp_project_id }}/carditrack-dev-auth0-domain
+            audience:${{ needs.changes.outputs.gcp_project_id }}/carditrack-dev-auth0-audience
+            mobile_client_id:${{ needs.changes.outputs.gcp_project_id }}/carditrack-dev-auth0-mobile-client-id
       - run: |
           dotnet publish src/Presentation/CardiTrack.Mobile/CardiTrack.Mobile.csproj \
             -f net10.0-android \
-            -c Release
+            -c Release \
+            -p:ApiBaseUrl=${{ needs.changes.outputs.api_url_dev }} \
+            -p:Auth0Domain=${{ steps.auth0.outputs.domain }} \
+            -p:Auth0ClientId=${{ steps.auth0.outputs.mobile_client_id }} \
+            -p:Auth0Audience=${{ steps.auth0.outputs.audience }}
       - uses: actions/upload-artifact@v7
         with:
           name: mobile-android
@@ -385,12 +404,31 @@ jobs:
           sudo xcode-select -s /Applications/Xcode_26.4.1.app
           echo "DEVELOPER_DIR=$(xcode-select -p)" >> $GITHUB_ENV
       - run: dotnet workload install maui-ios --version 10.0.300.1
+      # Auth0 config is stamped from Secret Manager (carditrack-dev-auth0-*).
+      # PR builds skip the fetch (no WIF auth off main) and compile unstamped.
+      - uses: google-github-actions/auth@v3
+        if: github.event_name != 'pull_request'
+        with:
+          workload_identity_provider: ${{ needs.changes.outputs.gcp_wif_provider }}
+          service_account: ${{ needs.changes.outputs.gcp_service_account }}
+      - uses: google-github-actions/get-secretmanager-secrets@v2
+        if: github.event_name != 'pull_request'
+        id: auth0
+        with:
+          secrets: |
+            domain:${{ needs.changes.outputs.gcp_project_id }}/carditrack-dev-auth0-domain
+            audience:${{ needs.changes.outputs.gcp_project_id }}/carditrack-dev-auth0-audience
+            mobile_client_id:${{ needs.changes.outputs.gcp_project_id }}/carditrack-dev-auth0-mobile-client-id
       - run: |
           dotnet build src/Presentation/CardiTrack.Mobile/CardiTrack.Mobile.csproj \
             -f net10.0-ios \
             -c Release \
             -r iossimulator-arm64 \
-            -p:ArchiveOnBuild=false
+            -p:ArchiveOnBuild=false \
+            -p:ApiBaseUrl=${{ needs.changes.outputs.api_url_dev }} \
+            -p:Auth0Domain=${{ steps.auth0.outputs.domain }} \
+            -p:Auth0ClientId=${{ steps.auth0.outputs.mobile_client_id }} \
+            -p:Auth0Audience=${{ steps.auth0.outputs.audience }}
 
   build-mobile-windows:
     name: Build Mobile (Windows)
@@ -406,6 +444,21 @@ jobs:
       - run: dotnet restore src/Presentation/CardiTrack.Mobile/CardiTrack.Mobile.csproj -p:TargetFrameworks=net10.0-windows10.0.19041.0 -r win-x64
       - run: dotnet restore src/Core/CardiTrack.Application/CardiTrack.Application.csproj
       - run: dotnet restore src/Core/CardiTrack.Domain/CardiTrack.Domain.csproj
+      # Auth0 config is stamped from Secret Manager (carditrack-dev-auth0-*).
+      # PR builds skip the fetch (no WIF auth off main) and compile unstamped.
+      - uses: google-github-actions/auth@v3
+        if: github.event_name != 'pull_request'
+        with:
+          workload_identity_provider: ${{ needs.changes.outputs.gcp_wif_provider }}
+          service_account: ${{ needs.changes.outputs.gcp_service_account }}
+      - uses: google-github-actions/get-secretmanager-secrets@v2
+        if: github.event_name != 'pull_request'
+        id: auth0
+        with:
+          secrets: |
+            domain:${{ needs.changes.outputs.gcp_project_id }}/carditrack-dev-auth0-domain
+            audience:${{ needs.changes.outputs.gcp_project_id }}/carditrack-dev-auth0-audience
+            mobile_client_id:${{ needs.changes.outputs.gcp_project_id }}/carditrack-dev-auth0-mobile-client-id
       - run: |
           dotnet publish src/Presentation/CardiTrack.Mobile/CardiTrack.Mobile.csproj `
             -f net10.0-windows10.0.19041.0 `
@@ -413,7 +466,11 @@ jobs:
             --no-restore `
             -r win-x64 `
             -p:TargetFrameworks=net10.0-windows10.0.19041.0 `
-            -p:PublishReadyToRun=false
+            -p:PublishReadyToRun=false `
+            -p:ApiBaseUrl=${{ needs.changes.outputs.api_url_dev }} `
+            -p:Auth0Domain=${{ steps.auth0.outputs.domain }} `
+            -p:Auth0ClientId=${{ steps.auth0.outputs.mobile_client_id }} `
+            -p:Auth0Audience=${{ steps.auth0.outputs.audience }}
       - uses: actions/upload-artifact@v7
         with:
           name: mobile-windows
@@ -495,6 +552,9 @@ jobs:
           secrets: |
             keystore:${{ needs.changes.outputs.gcp_project_id }}/carditrack-common-android-keystore
             keystore_password:${{ needs.changes.outputs.gcp_project_id }}/carditrack-common-android-keystore-password
+            auth0_domain:${{ needs.changes.outputs.gcp_project_id }}/carditrack-dev-auth0-domain
+            auth0_audience:${{ needs.changes.outputs.gcp_project_id }}/carditrack-dev-auth0-audience
+            auth0_mobile_client_id:${{ needs.changes.outputs.gcp_project_id }}/carditrack-dev-auth0-mobile-client-id
 
       - name: Decode keystore
         if: steps.gate.outputs.available == 'true'
@@ -524,7 +584,11 @@ jobs:
             -p:AndroidSigningStorePass="$KEYSTORE_PASSWORD" \
             -p:AndroidSigningKeyPass="$KEYSTORE_PASSWORD" \
             -p:ApplicationDisplayVersion="${DISPLAY_VERSION#v}" \
-            -p:ApplicationVersion="$BUILD_NUMBER"
+            -p:ApplicationVersion="$BUILD_NUMBER" \
+            -p:ApiBaseUrl=${{ needs.changes.outputs.api_url_dev }} \
+            -p:Auth0Domain=${{ steps.secrets.outputs.auth0_domain }} \
+            -p:Auth0ClientId=${{ steps.secrets.outputs.auth0_mobile_client_id }} \
+            -p:Auth0Audience=${{ steps.secrets.outputs.auth0_audience }}
 
       # Play Console crash-report inputs: the R8 deobfuscation map produced by
       # AndroidLinkTool=r8 (see CardiTrack.Mobile.csproj) and a zip of the
@@ -596,6 +660,9 @@ jobs:
             cert_p12:${{ needs.changes.outputs.gcp_project_id }}/carditrack-common-apple-distribution-cert-p12
             cert_password:${{ needs.changes.outputs.gcp_project_id }}/carditrack-common-apple-cert-password
             provisioning_profile:${{ needs.changes.outputs.gcp_project_id }}/carditrack-common-appstore-provisioning-profile
+            auth0_domain:${{ needs.changes.outputs.gcp_project_id }}/carditrack-dev-auth0-domain
+            auth0_audience:${{ needs.changes.outputs.gcp_project_id }}/carditrack-dev-auth0-audience
+            auth0_mobile_client_id:${{ needs.changes.outputs.gcp_project_id }}/carditrack-dev-auth0-mobile-client-id
 
       - name: Install certificate and provisioning profile
         if: steps.gate.outputs.available == 'true'
@@ -643,7 +710,11 @@ jobs:
             -p:CodesignKey="Apple Distribution" \
             -p:CodesignProvision="CardiTrack Distribution" \
             -p:ApplicationDisplayVersion="${DISPLAY_VERSION#v}" \
-            -p:ApplicationVersion="$BUILD_NUMBER"
+            -p:ApplicationVersion="$BUILD_NUMBER" \
+            -p:ApiBaseUrl=${{ needs.changes.outputs.api_url_dev }} \
+            -p:Auth0Domain=${{ steps.secrets.outputs.auth0_domain }} \
+            -p:Auth0ClientId=${{ steps.secrets.outputs.auth0_mobile_client_id }} \
+            -p:Auth0Audience=${{ steps.secrets.outputs.auth0_audience }}
 
       - uses: actions/upload-artifact@v7
         if: steps.gate.outputs.available == 'true'

@@ -1,0 +1,175 @@
+# Auth0 Setup Runbook (Operator)
+
+Step-by-step tenant configuration matching the **implemented** mobile auth (embedded
+password-realm grant + native screens) and the API's JWT validation. Run once per
+environment (dev, prod). Supersedes the application-setup section of
+[auth0_integration.md](./auth0_integration.md) where they disagree.
+
+Secrets are populated at the end with `scripts/set-auth0-secrets.sh <env>`.
+
+---
+
+## 1. Tenant
+
+| | dev | prod |
+|---|---|---|
+| Tenant name | `carditrack-dev` | `carditrack-prod` |
+| Region | EU | EU (align with GCP europe-west2 data residency) |
+| Environment tag | Development | Production |
+| HIPAA BAA | not required | contact Auth0 sales, sign BAA, enable compliance mode **before go-live** |
+
+## 2. Register the API (resource server)
+
+Auth0 Dashboard → **Applications → APIs → Create API**:
+
+- **Name**: `CardiTrack API`
+- **Identifier** (= the `audience` value; a logical URI, never called — set once, it
+  cannot be renamed later):
+  - dev tenant: `https://api.dev.carditrack.com`
+  - prod tenant: `https://api.carditrack.com`
+
+  Cross-tenant isolation is enforced by issuer + signature validation regardless of
+  this string, but per-env identifiers add a second guard (a mispointed
+  `Auth0__Domain` alone can't make one env accept the other's tokens) and make a
+  decoded token's `aud` self-identify its environment. The value is never hardcoded:
+  it flows from the `carditrack-{env}-auth0-audience` secret into both the API and
+  the mobile build stamp.
+- **Signing Algorithm**: RS256
+- Settings after creation:
+  - **Allow Offline Access**: ON — without this no refresh token is ever issued and mobile sessions die when the access token expires.
+  - **Token Expiration**: 3600s (access token; 900–3600 acceptable per auth.md).
+  - Token Expiration (browser flows): 3600s.
+
+## 3. Mobile application (Native)
+
+**Applications → Create Application → Native**, name `CardiTrack Mobile`.
+
+- **Advanced Settings → Grant Types** — check exactly:
+  - `Authorization Code` (social login via PKCE, Phase 9)
+  - `Refresh Token`
+  - `Password` (the embedded email/password login — this is the one that's off by default)
+  - **Uncheck `Implicit`** — it's pre-checked on new apps but deprecated (tokens in
+    the URL fragment) and unused by any CardiTrack flow; on a public client every
+    enabled grant is an open door.
+- Native apps are public clients — there is no client secret; the **Client ID** is the value for the `carditrack-{env}-auth0-mobile-client-id` secret.
+- **Refresh Token Rotation** (Settings → Refresh Token Rotation):
+  - Rotation: ON, Reuse Interval: 0
+  - Absolute Lifetime: 2592000 (30 days, per auth.md)
+  - Inactivity Lifetime: 1296000 (15 days)
+- **Allowed Callback URLs** (needed for Phase 9 social login; harmless to set now):
+  - `carditrack://oauth/callback`
+- **Allowed Logout URLs**: `carditrack://oauth/callback`
+- **Connections tab**: enable `Username-Password-Authentication` (and later `google-oauth2` / `apple`).
+
+## 4. Web/API application (Regular Web Application)
+
+The API's `Auth0__ClientId`/`Auth0__ClientSecret` bindings and the future Blazor web
+login use a confidential client. **Applications → Create Application → Regular Web
+Application**, name `CardiTrack Web`:
+
+- Callback/logout URLs per [auth0_integration.md](./auth0_integration.md) (web URLs).
+- Its **Client ID / Client Secret** are the values for
+  `carditrack-{env}-auth0-client-id` / `carditrack-{env}-auth0-client-secret`.
+
+## 5. Tenant-level settings
+
+- **Settings → General → API Authorization Settings → Default Directory** =
+  `Username-Password-Authentication`. Required for the password grant (the app also
+  sends `realm=`, but set it anyway).
+- **Authentication → Database → Username-Password-Authentication**:
+  - Ensure the connection exists and **Disable Sign Ups is OFF** (the app registers
+    via `/dbconnections/signup`).
+  - **Password Policy**: `Good` or stronger. The policy text is surfaced verbatim in
+    the app's weak-password error banner.
+
+## 6. Attack protection (Security → Attack Protection)
+
+| Feature | dev | prod | Why |
+|---|---|---|---|
+| Brute-force protection | ON | ON | returns `too_many_attempts`, which the app maps to a friendly message |
+| Breached password detection | OFF | ON (block) | works with the password grant |
+| **Bot detection** | **OFF** | OFF (see note) | a captcha challenge cannot be rendered in the embedded flow — it hard-breaks password-grant logins |
+
+Note: if prod bot-protection is required later, the escape hatch is switching
+email/password to Universal Login (browser-based), which supports captcha.
+
+## 7. Email (prod-critical)
+
+Auth0's built-in email sender is for development only (heavily rate-limited, may be
+junk-filtered). Before prod:
+
+- **Branding → Email Provider**: configure a real provider (SendGrid/Mailgun/SMTP)
+  using the cloudoperations@codesistance.com account.
+- **Branding → Email Templates**: customize *Change Password* (this is the email the
+  app's Forgot Password flow triggers) and *Verification Email*.
+
+## 8. Test user
+
+**User Management → Users → Create User** (connection `Username-Password-Authentication`),
+e.g. `carditrack-test@codesistance.com`, for the verification curls and app QA.
+
+## 9. Populate Secret Manager and roll out
+
+```bash
+bash scripts/set-auth0-secrets.sh dev     # prompts for domain/audience/client ids/secret
+```
+
+Then force a Cloud Run rollout (or let the next deploy do it) — secret-backed env
+vars are resolved at instance start:
+
+```bash
+gcloud run services update carditrack-dev-api --region=europe-west2 \
+  --project=carditrack-490120 --update-labels=auth0-config-rollout=$(date +%s)
+```
+
+## 10. Verify (before blaming app code)
+
+Password grant issues both tokens:
+
+```bash
+curl -s -X POST https://<tenant-domain>/oauth/token \
+  -d 'grant_type=http://auth0.com/oauth/grant-type/password-realm' \
+  -d 'realm=Username-Password-Authentication' \
+  -d 'client_id=<mobile-client-id>' \
+  -d 'audience=<api-identifier-for-this-tenant>' \
+  -d 'scope=openid profile email offline_access' \
+  -d 'username=<test-user>' -d 'password=<password>'
+# MUST contain access_token AND refresh_token.
+# No refresh_token → API "Allow Offline Access" is off or the Refresh Token grant
+#   is unchecked on the Native app.
+# "authorization_server ... not configured with default directory" → step 5.
+# "Grant type ... not allowed" → Password grant unchecked (step 3).
+```
+
+API accepts the token:
+
+```bash
+AT=<access_token from above>
+curl -s -H "Authorization: Bearer $AT" https://api.dev.carditrack.com/api/Onboarding/status
+# Expect a 200 ApiResponse envelope with hasUserAccount:false for a fresh user.
+# 401 → API's Auth0__Domain/Audience secrets don't match the tenant/identifier,
+#   or the service hasn't rolled a new revision since secrets were set.
+```
+
+Signup + password reset endpoints:
+
+```bash
+curl -s -X POST https://<tenant-domain>/dbconnections/signup \
+  -H 'Content-Type: application/json' \
+  -d '{"client_id":"<mobile-client-id>","email":"new@example.com","password":"S0me-Strong-Pass!","connection":"Username-Password-Authentication","name":"Test User"}'
+
+curl -s -X POST https://<tenant-domain>/dbconnections/change_password \
+  -H 'Content-Type: application/json' \
+  -d '{"client_id":"<mobile-client-id>","email":"new@example.com","connection":"Username-Password-Authentication"}'
+# Always 200 with a plain-text body; the reset email should arrive.
+```
+
+## 11. Later (not blocking first sign-in)
+
+- **Social login (Phase 9)**: enable `google-oauth2` + `apple` connections (Google
+  Cloud OAuth credentials / Apple Services ID per auth0_integration.md), attach them
+  to the Native app; the app already renders the buttons.
+- **Post-login Action** adding namespaced claims (`https://carditrack.com/role`,
+  `.../organization_id`, `email`) to the access token — the API currently derives
+  the user from the `sub` claim + database lookup, so this is optional until the
+  role policies (`RequireAdmin` etc.) are exercised.
