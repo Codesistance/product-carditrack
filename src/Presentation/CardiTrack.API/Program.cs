@@ -2,6 +2,7 @@ using AspNetCoreRateLimit;
 using CardiTrack.API.Extensions;
 using CardiTrack.API.Middleware;
 using CardiTrack.Infrastructure.Persistence;
+using CardiTrack.Observability;
 using CardiTrack.Shared;
 using Microsoft.EntityFrameworkCore;
 using Serilog;
@@ -12,6 +13,7 @@ AppContext.SetSwitch("Npgsql.EnableLegacyTimestampBehavior", false);
 // Configure Serilog
 var builder = WebApplication.CreateBuilder(args);
 builder.AddSerilogLogging();
+builder.AddApmTracing("CardiTrack.API");
 
 try
 {

@@ -3,6 +3,8 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using CardiTrack.Application.DTOs.Requests;
 using CardiTrack.Application.DTOs.Responses;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace CardiTrack.Mobile.Core.Api;
 
@@ -15,10 +17,12 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
     private readonly HttpClient _http;
+    private readonly ILogger<CardiTrackApiClient> _logger;
 
-    public CardiTrackApiClient(HttpClient http)
+    public CardiTrackApiClient(HttpClient http, ILogger<CardiTrackApiClient>? logger = null)
     {
         _http = http;
+        _logger = logger ?? NullLogger<CardiTrackApiClient>.Instance;
     }
 
     public Task<OnboardingStatusResponse> GetOnboardingStatusAsync(CancellationToken ct = default) =>
@@ -57,9 +61,9 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
         }
         catch (Exception ex) when (IsTransport(ex))
         {
-            throw NetworkError(ex);
+            throw NetworkError("GET", path, ex, ct);
         }
-        return await ReadEnvelopeAsync<T>(response, ct);
+        return await ReadEnvelopeAsync<T>("GET", path, response, ct);
     }
 
     private async Task<TResponse> PostAsync<TRequest, TResponse>(string path, TRequest body, CancellationToken ct)
@@ -71,43 +75,62 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
         }
         catch (Exception ex) when (IsTransport(ex))
         {
-            throw NetworkError(ex);
+            throw NetworkError("POST", path, ex, ct);
         }
-        return await ReadEnvelopeAsync<TResponse>(response, ct);
+        return await ReadEnvelopeAsync<TResponse>("POST", path, response, ct);
     }
 
-    private static async Task<T> ReadEnvelopeAsync<T>(HttpResponseMessage response, CancellationToken ct)
+    private async Task<T> ReadEnvelopeAsync<T>(string method, string path, HttpResponseMessage response, CancellationToken ct)
     {
         if (!response.IsSuccessStatusCode)
-            throw await MapErrorAsync(response, ct);
+            throw await MapErrorAsync(method, path, response, ct);
 
         var envelope = await response.Content.ReadFromJsonAsync<ApiResponse<T>>(Json, ct);
         if (envelope is null || envelope.Data is null)
+        {
+            _logger.LogError("API {Method} {Path} returned {StatusCode} with an empty envelope",
+                method, path, (int)response.StatusCode);
             throw new ApiException(response.StatusCode, "The server returned an empty response.");
+        }
         return envelope.Data;
     }
 
-    private static async Task<ApiException> MapErrorAsync(HttpResponseMessage response, CancellationToken ct)
+    private async Task<ApiException> MapErrorAsync(string method, string path, HttpResponseMessage response, CancellationToken ct)
     {
         string message = $"Request failed ({(int)response.StatusCode}).";
+        string? traceId = null;
         List<string>? errors = null;
         try
         {
             var error = await response.Content.ReadFromJsonAsync<ErrorResponse>(Json, ct);
             if (!string.IsNullOrWhiteSpace(error?.Message))
                 message = error.Message;
+            traceId = error?.TraceId;
             if (error?.Errors is { Count: > 0 })
                 errors = error.Errors.Select(e => $"{e.Field}: {e.Message}".TrimStart(' ', ':')).ToList();
         }
         catch (Exception ex) when (ex is JsonException or NotSupportedException)
         {
         }
+
+        // TraceId ties this entry to the server-side Serilog entry for the same request.
+        var level = (int)response.StatusCode >= 500 ? LogLevel.Error : LogLevel.Warning;
+        _logger.Log(level, "API {Method} {Path} failed with {StatusCode}: {ServerMessage} (TraceId: {TraceId})",
+            method, path, (int)response.StatusCode, message, traceId);
+
         return new ApiException(response.StatusCode, message, errors);
     }
 
     private static bool IsTransport(Exception ex) =>
         ex is HttpRequestException or TaskCanceledException or OperationCanceledException;
 
-    private static ApiException NetworkError(Exception ex) =>
-        new(HttpStatusCode.ServiceUnavailable, "No connection. Check your internet and try again.", inner: ex);
+    private ApiException NetworkError(string method, string path, Exception ex, CancellationToken ct)
+    {
+        if (ex is OperationCanceledException && ct.IsCancellationRequested)
+            _logger.LogDebug("API {Method} {Path} was canceled by the caller", method, path);
+        else
+            _logger.LogError(ex, "API {Method} {Path} failed with a transport error", method, path);
+
+        return new(HttpStatusCode.ServiceUnavailable, "No connection. Check your internet and try again.", inner: ex);
+    }
 }

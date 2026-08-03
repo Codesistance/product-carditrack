@@ -29,15 +29,12 @@ public class ExceptionHandlingMiddleware
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Unhandled exception occurred: {Message}", ex.Message);
             await HandleExceptionAsync(context, ex);
         }
     }
 
     private async Task HandleExceptionAsync(HttpContext context, Exception exception)
     {
-        context.Response.ContentType = "application/json";
-
         var (statusCode, message) = exception switch
         {
             UnauthorizedAccessException => (HttpStatusCode.Unauthorized, "Unauthorized access"),
@@ -47,6 +44,20 @@ public class ExceptionHandlingMiddleware
             _ => (HttpStatusCode.InternalServerError, "An internal server error occurred")
         };
 
+        // Expected client faults (mapped 4xx) are warnings; everything else is an error.
+        var level = (int)statusCode >= 500 ? LogLevel.Error : LogLevel.Warning;
+        _logger.Log(level, exception,
+            "{ExceptionType} handling {Method} {Path} => {StatusCode}",
+            exception.GetType().Name,
+            context.Request.Method,
+            context.Request.Path.Value,
+            (int)statusCode);
+
+        // Too late to replace the body once the response has started streaming.
+        if (context.Response.HasStarted)
+            return;
+
+        context.Response.ContentType = "application/json";
         context.Response.StatusCode = (int)statusCode;
 
         var response = new ErrorResponse

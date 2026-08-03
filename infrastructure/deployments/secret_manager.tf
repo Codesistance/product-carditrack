@@ -45,6 +45,8 @@ locals {
     "auth0-client-secret"    = "REPLACE_ME"
     "auth0-mobile-client-id" = "REPLACE_ME" # Auth0 Native app client for the MAUI mobile app (public, no secret)
     "encryption-key"         = "REPLACE_ME"
+    "apm-ingest-url"         = "REPLACE_ME" # APM backend ingest URL (Better Stack: per-source ingesting host)
+    "apm-ingest-token"       = "REPLACE_ME" # APM backend ingest token (Better Stack: source token)
   }
 
   # Secrets CI stamps into mobile builds (public identifiers, not credentials) —

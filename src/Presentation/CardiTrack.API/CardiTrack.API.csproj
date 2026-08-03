@@ -40,8 +40,8 @@
     <PackageReference Include="AutoMapper" Version="16.2.0" />
 
     <!-- API Versioning -->
-    <PackageReference Include="Asp.Versioning.Mvc" Version="10.0.0" />
-    <PackageReference Include="Asp.Versioning.Mvc.ApiExplorer" Version="10.0.0" />
+    <PackageReference Include="Asp.Versioning.Mvc" Version="10.0.1" />
+    <PackageReference Include="Asp.Versioning.Mvc.ApiExplorer" Version="10.0.1" />
 
     <!-- Caching -->
     <PackageReference Include="Microsoft.Extensions.Caching.StackExchangeRedis" Version="10.0.10" />
@@ -64,6 +64,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\Core\CardiTrack.Application\CardiTrack.Application.csproj" />
     <ProjectReference Include="..\..\Infrastructure\CardiTrack.Infrastructure\CardiTrack.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\Infrastructure\CardiTrack.Observability\CardiTrack.Observability.csproj" />
     <ProjectReference Include="..\..\Infrastructure\CardiTrack.Shared\CardiTrack.Shared.csproj" />
   </ItemGroup>
 

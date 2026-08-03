@@ -1,5 +1,7 @@
 using System.Globalization;
 using CardiTrack.Mobile.Core.Auth;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace CardiTrack.Mobile.Services;
 
@@ -14,6 +16,13 @@ public sealed class SecureTokenStore : ITokenStore
     private const string RefreshTokenKey = "auth.refresh_token";
     private const string IdTokenKey = "auth.id_token";
     private const string ExpiresAtKey = "auth.expires_at";
+
+    private readonly ILogger<SecureTokenStore> _logger;
+
+    public SecureTokenStore(ILogger<SecureTokenStore>? logger = null)
+    {
+        _logger = logger ?? NullLogger<SecureTokenStore>.Instance;
+    }
 
     public async Task<AuthTokens?> GetAsync()
     {
@@ -32,8 +41,9 @@ public sealed class SecureTokenStore : ITokenStore
 
             return new AuthTokens(accessToken, refreshToken, idToken, expiresAt);
         }
-        catch (Exception)
+        catch (Exception ex)
         {
+            _logger.LogWarning(ex, "SecureStorage read failed; using Preferences fallback");
             return FallbackGet();
         }
     }
@@ -48,8 +58,9 @@ public sealed class SecureTokenStore : ITokenStore
             await SecureStorage.Default.SetAsync(ExpiresAtKey,
                 tokens.ExpiresAt.ToUnixTimeSeconds().ToString(CultureInfo.InvariantCulture));
         }
-        catch (Exception)
+        catch (Exception ex)
         {
+            _logger.LogWarning(ex, "SecureStorage write failed; using Preferences fallback");
             FallbackSave(tokens);
         }
     }
@@ -63,8 +74,9 @@ public sealed class SecureTokenStore : ITokenStore
             SecureStorage.Default.Remove(IdTokenKey);
             SecureStorage.Default.Remove(ExpiresAtKey);
         }
-        catch (Exception)
+        catch (Exception ex)
         {
+            _logger.LogWarning(ex, "SecureStorage clear failed; clearing Preferences fallback only");
         }
         FallbackClear();
         return Task.CompletedTask;

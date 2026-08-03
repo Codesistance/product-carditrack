@@ -1,37 +1,82 @@
+using CardiTrack.Observability;
 using CardiTrack.Shared;
 using CardiTrack.Web.Components;
+using Serilog;
+using Serilog.Events;
 
 var builder = WebApplication.CreateBuilder(args);
-var configuration = builder.Configuration;
 
-// 1. RAZOR COMPONENTS
-builder.Services.AddRazorComponents()
-    .AddInteractiveServerComponents();
+// 1. LOGGING — same Serilog shape as CardiTrack.API (console + rolling file + Seq),
+// plus APM shipping when the Apm section is configured
+Log.Logger = new LoggerConfiguration()
+    .ReadFrom.Configuration(builder.Configuration)
+    .Enrich.FromLogContext()
+    .Enrich.WithMachineName()
+    .Enrich.WithEnvironmentName()
+    .Enrich.WithProperty("Application", "CardiTrack.Web")
+    .WriteTo.Console(
+        outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] {Message:lj} {Properties:j}{NewLine}{Exception}")
+    .WriteTo.File(
+        path: "logs/carditrack-web-.log",
+        rollingInterval: RollingInterval.Day,
+        retainedFileCountLimit: 30,
+        outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} [{Level:u3}] {Message:lj} {Properties:j}{NewLine}{Exception}")
+    .WriteTo.Seq(
+        serverUrl: new ConfigurationLoader(builder.Configuration).Get(ConfigurationKeys.Serilog.SeqUrl) ?? "http://localhost:5341",
+        restrictedToMinimumLevel: LogEventLevel.Information)
+    .MinimumLevel.Override("Microsoft", LogEventLevel.Warning)
+    .MinimumLevel.Override("Microsoft.AspNetCore", LogEventLevel.Warning)
+    .MinimumLevel.Override("System", LogEventLevel.Warning)
+    .AddApmShipping(builder.Configuration.GetApmOptions())
+    .CreateLogger();
 
-// 2. HTTP CLIENT FACTORY — named client targeting the CardiTrack API
-builder.Services.AddSingleton<ConfigurationLoader>();
-builder.Services.AddHttpClient("CardiTrackApiClient", (sp, client) =>
+builder.Host.UseSerilog();
+
+try
 {
-    var loader = sp.GetRequiredService<ConfigurationLoader>();
-    client.BaseAddress = new Uri(loader.GetRequired(ConfigurationKeys.Api.BaseUrl));
-    client.DefaultRequestHeaders.Add("Accept", "application/json");
-});
+    Log.Information("Starting CardiTrack Web");
 
-var app = builder.Build();
+    // 2. APM TRACING
+    builder.AddApmTracing("CardiTrack.Web");
 
-// MIDDLEWARE PIPELINE
-if (!app.Environment.IsDevelopment())
-{
-    app.UseExceptionHandler("/Error", createScopeForErrors: true);
-    app.UseHsts();
+    // 3. RAZOR COMPONENTS
+    builder.Services.AddRazorComponents()
+        .AddInteractiveServerComponents();
+
+    // 4. HTTP CLIENT FACTORY — named client targeting the CardiTrack API
+    builder.Services.AddSingleton<ConfigurationLoader>();
+    builder.Services.AddHttpClient("CardiTrackApiClient", (sp, client) =>
+    {
+        var loader = sp.GetRequiredService<ConfigurationLoader>();
+        client.BaseAddress = new Uri(loader.GetRequired(ConfigurationKeys.Api.BaseUrl));
+        client.DefaultRequestHeaders.Add("Accept", "application/json");
+    });
+
+    var app = builder.Build();
+
+    // MIDDLEWARE PIPELINE
+    if (!app.Environment.IsDevelopment())
+    {
+        app.UseExceptionHandler("/Error", createScopeForErrors: true);
+        app.UseHsts();
+    }
+    app.UseStatusCodePagesWithReExecute("/not-found", createScopeForStatusCodePages: true);
+    app.UseHttpsRedirection();
+    app.UseSerilogRequestLogging();
+
+    app.UseAntiforgery();
+
+    app.MapStaticAssets();
+    app.MapRazorComponents<App>()
+        .AddInteractiveServerRenderMode();
+
+    app.Run();
 }
-app.UseStatusCodePagesWithReExecute("/not-found", createScopeForStatusCodePages: true);
-app.UseHttpsRedirection();
-
-app.UseAntiforgery();
-
-app.MapStaticAssets();
-app.MapRazorComponents<App>()
-    .AddInteractiveServerRenderMode();
-
-app.Run();
+catch (Exception ex)
+{
+    Log.Fatal(ex, "Application failed to start");
+}
+finally
+{
+    Log.CloseAndFlush();
+}

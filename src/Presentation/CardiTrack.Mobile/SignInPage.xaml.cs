@@ -80,6 +80,14 @@ public partial class SignInPage : ContentPage
         }
     }
 
+    private void OnCredentialsChanged(object? sender, TextChangedEventArgs e)
+    {
+        var complete = !string.IsNullOrWhiteSpace(EmailEntry.Text) && EmailEntry.Text.Contains('@')
+                       && !string.IsNullOrWhiteSpace(PasswordEntry.Text);
+        SignInBtn.Background = (Brush)App.Current!.Resources[
+            complete ? "GradientButtonBrush" : "GradientButtonLightBrush"];
+    }
+
     private void ShowError(string message)
     {
         SignInError.Text = message;

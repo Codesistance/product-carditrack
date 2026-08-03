@@ -74,6 +74,8 @@ module "deployments" {
     "Health__Token"                        = "${var.project_name}-${local.environment}-health-token"
     "AI__Providers__0__BaseUrl"            = "${var.project_name}-${local.environment}-medgemma-service-url"
     "AI__Providers__1__ApiKey"             = "${var.project_name}-${local.environment}-gemini-api-key"
+    "Apm__Data__IngestUrl"                 = "${var.project_name}-${local.environment}-apm-ingest-url"
+    "Apm__Data__IngestToken"               = "${var.project_name}-${local.environment}-apm-ingest-token"
   }
 
   # Cloud Run - Worker
@@ -97,7 +99,10 @@ module "deployments" {
   web_service_name    = local.web_service_name
   web_container_image = var.web_container_image
   web_env_vars        = { "ASPNETCORE_ENVIRONMENT" = title(var.environment) }
-  web_secret_env_vars = {}
+  web_secret_env_vars = {
+    "Apm__Data__IngestUrl"   = "${var.project_name}-${local.environment}-apm-ingest-url"
+    "Apm__Data__IngestToken" = "${var.project_name}-${local.environment}-apm-ingest-token"
+  }
 
   # Networking
   vpc_name    = "${var.project_name}-${local.environment}-vpc"

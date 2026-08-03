@@ -22,7 +22,25 @@ public partial class CreateAccountPage : ContentPage
     {
         var strength = EvaluatePasswordStrength(e.NewTextValue ?? string.Empty);
         UpdateStrengthIndicator(strength);
+        UpdateCreateButtonState();
     }
+
+    private void OnFormFieldChanged(object? sender, TextChangedEventArgs e)
+        => UpdateCreateButtonState();
+
+    private void OnTermsCheckedChanged(object? sender, CheckedChangedEventArgs e)
+        => UpdateCreateButtonState();
+
+    private bool IsFormComplete()
+        => !string.IsNullOrWhiteSpace(NameEntry.Text)
+           && !string.IsNullOrWhiteSpace(EmailEntry.Text) && EmailEntry.Text.Contains('@')
+           && !string.IsNullOrEmpty(PasswordEntry.Text) && PasswordEntry.Text.Length >= 8
+           && ConfirmEntry.Text == PasswordEntry.Text
+           && TermsCheck.IsChecked;
+
+    private void UpdateCreateButtonState()
+        => CreateBtn.Background = (Brush)App.Current!.Resources[
+            IsFormComplete() ? "GradientButtonBrush" : "GradientButtonLightBrush"];
 
     private static int EvaluatePasswordStrength(string password)
     {

@@ -2,12 +2,16 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using CardiTrack.Mobile.Core.Configuration;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace CardiTrack.Mobile.Core.Auth;
 
 /// <summary>
 /// Auth0 Authentication API client for a public native application (no client secret).
 /// Login uses the password-realm grant; signup and password reset use /dbconnections.
+/// Log entries carry the operation, HTTP status, and Auth0 error code — never
+/// credentials, tokens, or emails.
 /// </summary>
 public sealed class Auth0AuthClient : IAuth0AuthClient
 {
@@ -18,11 +22,13 @@ public sealed class Auth0AuthClient : IAuth0AuthClient
 
     private readonly HttpClient _http;
     private readonly Auth0Options _options;
+    private readonly ILogger<Auth0AuthClient> _logger;
 
-    public Auth0AuthClient(HttpClient http, Auth0Options options)
+    public Auth0AuthClient(HttpClient http, Auth0Options options, ILogger<Auth0AuthClient>? logger = null)
     {
         _http = http;
         _options = options;
+        _logger = logger ?? NullLogger<Auth0AuthClient>.Instance;
     }
 
     public async Task<AuthTokens> LoginAsync(string email, string password, CancellationToken ct = default)
@@ -38,7 +44,7 @@ public sealed class Auth0AuthClient : IAuth0AuthClient
             ["username"] = email,
             ["password"] = password,
         };
-        return await SendTokenRequestAsync(form, ct);
+        return await SendTokenRequestAsync("login", form, ct);
     }
 
     public async Task SignUpAsync(string name, string email, string password, CancellationToken ct = default)
@@ -58,14 +64,17 @@ public sealed class Auth0AuthClient : IAuth0AuthClient
         }
         catch (Exception ex) when (IsTransport(ex))
         {
-            throw NetworkError(ex);
+            throw NetworkError("signup", ex);
         }
 
         if (response.IsSuccessStatusCode)
             return;
 
         var body = await response.Content.ReadAsStringAsync(ct);
-        throw MapSignupError(body);
+        var signupError = MapSignupError(body);
+        _logger.LogWarning("Auth0 signup failed with {StatusCode}: {AuthErrorCode} ({Auth0Error})",
+            (int)response.StatusCode, signupError.Code, signupError.Auth0Error);
+        throw signupError;
     }
 
     public async Task RequestPasswordResetAsync(string email, CancellationToken ct = default)
@@ -83,7 +92,7 @@ public sealed class Auth0AuthClient : IAuth0AuthClient
         }
         catch (Exception ex) when (IsTransport(ex))
         {
-            throw NetworkError(ex);
+            throw NetworkError("password-reset", ex);
         }
 
         // Auth0 returns 200 with a plain-text body whether or not the account exists
@@ -91,7 +100,10 @@ public sealed class Auth0AuthClient : IAuth0AuthClient
         if (!response.IsSuccessStatusCode)
         {
             var body = await response.Content.ReadAsStringAsync(ct);
-            throw MapTokenError(response, body);
+            var error = MapTokenError(response, body);
+            _logger.LogWarning("Auth0 password reset failed with {StatusCode}: {AuthErrorCode} ({Auth0Error})",
+                (int)response.StatusCode, error.Code, error.Auth0Error);
+            throw error;
         }
     }
 
@@ -104,7 +116,7 @@ public sealed class Auth0AuthClient : IAuth0AuthClient
             ["client_id"] = _options.ClientId,
             ["refresh_token"] = refreshToken,
         };
-        return await SendTokenRequestAsync(form, ct);
+        return await SendTokenRequestAsync("token-refresh", form, ct);
     }
 
     public async Task RevokeAsync(string refreshToken, CancellationToken ct = default)
@@ -121,10 +133,11 @@ public sealed class Auth0AuthClient : IAuth0AuthClient
         catch (Exception ex) when (IsTransport(ex))
         {
             // Best-effort: revocation failure must not block sign-out.
+            _logger.LogWarning(ex, "Auth0 token revocation failed with a transport error; continuing sign-out");
         }
     }
 
-    private async Task<AuthTokens> SendTokenRequestAsync(Dictionary<string, string> form, CancellationToken ct)
+    private async Task<AuthTokens> SendTokenRequestAsync(string operation, Dictionary<string, string> form, CancellationToken ct)
     {
         HttpResponseMessage response;
         try
@@ -133,17 +146,27 @@ public sealed class Auth0AuthClient : IAuth0AuthClient
         }
         catch (Exception ex) when (IsTransport(ex))
         {
-            throw NetworkError(ex);
+            throw NetworkError(operation, ex);
         }
 
         var body = await response.Content.ReadAsStringAsync(ct);
         if (!response.IsSuccessStatusCode)
-            throw MapTokenError(response, body);
+        {
+            var error = MapTokenError(response, body);
+            _logger.LogWarning("Auth0 {Operation} failed with {StatusCode}: {AuthErrorCode} ({Auth0Error})",
+                operation, (int)response.StatusCode, error.Code, error.Auth0Error);
+            throw error;
+        }
 
-        var payload = JsonSerializer.Deserialize<TokenResponse>(body, Json)
-            ?? throw new AuthException(AuthErrorCode.Unknown, "Empty token response from Auth0.");
-        if (string.IsNullOrEmpty(payload.AccessToken))
-            throw new AuthException(AuthErrorCode.Unknown, "Auth0 response did not include an access token.");
+        var payload = JsonSerializer.Deserialize<TokenResponse>(body, Json);
+        if (payload is null || string.IsNullOrEmpty(payload.AccessToken))
+        {
+            _logger.LogError("Auth0 {Operation} returned {StatusCode} but the token payload was empty or incomplete",
+                operation, (int)response.StatusCode);
+            throw new AuthException(AuthErrorCode.Unknown, payload is null
+                ? "Empty token response from Auth0."
+                : "Auth0 response did not include an access token.");
+        }
 
         return new AuthTokens(
             payload.AccessToken,
@@ -210,8 +233,11 @@ public sealed class Auth0AuthClient : IAuth0AuthClient
     private static bool IsTransport(Exception ex) =>
         ex is HttpRequestException or TaskCanceledException or OperationCanceledException;
 
-    private static AuthException NetworkError(Exception ex) =>
-        new(AuthErrorCode.Network, "No connection. Check your internet and try again.", inner: ex);
+    private AuthException NetworkError(string operation, Exception ex)
+    {
+        _logger.LogError(ex, "Auth0 {Operation} failed with a transport error", operation);
+        return new(AuthErrorCode.Network, "No connection. Check your internet and try again.", inner: ex);
+    }
 
     private sealed class TokenResponse
     {

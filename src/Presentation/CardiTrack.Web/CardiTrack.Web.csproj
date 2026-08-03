@@ -2,7 +2,14 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\Core\CardiTrack.Application\CardiTrack.Application.csproj" />
+    <ProjectReference Include="..\..\Infrastructure\CardiTrack.Observability\CardiTrack.Observability.csproj" />
     <ProjectReference Include="..\..\Infrastructure\CardiTrack.Shared\CardiTrack.Shared.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Serilog.AspNetCore" Version="10.0.0" />
+    <PackageReference Include="Serilog.Enrichers.Environment" Version="3.0.1" />
+    <PackageReference Include="Serilog.Sinks.Seq" Version="9.1.0" />
   </ItemGroup>
 
   <PropertyGroup>

@@ -1,3 +1,4 @@
+using CardiTrack.Observability;
 using CardiTrack.Shared;
 using Serilog;
 using Serilog.Events;
@@ -27,6 +28,7 @@ public static class SerilogExtensions
             .MinimumLevel.Override("Microsoft", LogEventLevel.Warning)
             .MinimumLevel.Override("Microsoft.AspNetCore", LogEventLevel.Warning)
             .MinimumLevel.Override("System", LogEventLevel.Warning)
+            .AddApmShipping(builder.Configuration.GetApmOptions())
             .CreateLogger();
 
         builder.Host.UseSerilog();

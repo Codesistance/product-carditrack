@@ -28,6 +28,9 @@ public static class ConfigurationKeys
         public const string SeqUrl = "Serilog:SeqUrl";
     }
 
+    // APM shipping (logs + traces) is options-bound, not key-loaded: see
+    // ApmOptions.SectionName ("Apm") in CardiTrack.Observability.
+
     public static class Encryption
     {
         public const string Key = "Encryption:Key";

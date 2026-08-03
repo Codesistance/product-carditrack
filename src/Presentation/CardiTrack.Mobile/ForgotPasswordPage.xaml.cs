@@ -17,6 +17,13 @@ public partial class ForgotPasswordPage : ContentPage
             EmailEntry.Text = email.Trim();
     }
 
+    private void OnEmailChanged(object? sender, TextChangedEventArgs e)
+    {
+        var complete = !string.IsNullOrWhiteSpace(EmailEntry.Text) && EmailEntry.Text.Contains('@');
+        SendBtn.Background = (Brush)App.Current!.Resources[
+            complete ? "GradientButtonBrush" : "GradientButtonLightBrush"];
+    }
+
     private async void OnSendClicked(object? sender, EventArgs e) =>
         await SendResetLinkAsync(fromResend: false);
 

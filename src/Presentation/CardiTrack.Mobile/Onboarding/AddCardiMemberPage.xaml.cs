@@ -1,5 +1,4 @@
 using CardiTrack.Application.DTOs.Requests;
-using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Domain.Enums;
 using CardiTrack.Mobile.Core.Api;
 using CardiTrack.Mobile.Services;

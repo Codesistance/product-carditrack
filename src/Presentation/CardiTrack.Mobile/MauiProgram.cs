@@ -3,7 +3,6 @@ using CardiTrack.Mobile.Core.Auth;
 using CardiTrack.Mobile.Core.Configuration;
 using CardiTrack.Mobile.Core.Http;
 using CardiTrack.Mobile.Services;
-using Microsoft.Extensions.Logging;
 
 namespace CardiTrack.Mobile;
 
@@ -14,6 +13,7 @@ public static class MauiProgram
         AppConfig.Validate();
 
         var builder = MauiApp.CreateBuilder();
+        AppLogging.Configure(builder.Logging);
         builder
             .UseMauiApp<App>()
             .ConfigureFonts(fonts =>
@@ -59,10 +59,8 @@ public static class MauiProgram
         builder.Services.AddTransient<FamilyPage>();
         builder.Services.AddTransient<SettingsPage>();
 
-#if DEBUG
-        builder.Logging.AddDebug();
-#endif
-
-        return builder.Build();
+        var app = builder.Build();
+        AppLogging.HookUnhandledExceptions(app.Services);
+        return app;
     }
 }

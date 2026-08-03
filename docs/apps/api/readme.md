@@ -14,7 +14,41 @@ The CardiTrack API is a RESTful ASP.NET Core 10 Web API that serves as the backe
 - **Auth0**: Authentication — the API validates Auth0-issued JWTs; it does not issue tokens or store credentials (see [auth.md](../../execution/backend/api/auth.md))
 - **Swagger/OpenAPI**: API documentation
 - **SignalR**: Real-time notifications to the web dashboard
-- **Serilog**: Structured logging
+- **Serilog**: Structured logging (console + rolling file + Seq; APM shipping when configured)
+- **OpenTelemetry**: Tracing exported to the configured APM backend over OTLP
+
+### APM shipping (`CardiTrack.Observability`)
+
+The APM backend is switchable via the `Apm` config section, consumed by both the API and Web
+through `CardiTrack.Observability` (`AddApmShipping` for Serilog, `AddApmTracing` for OTel):
+
+```json
+"Apm": {
+  "Engine": "BetterStack",            // provider name; see ApmProviderRegistry
+  "Data": {                           // connection details for the selected engine
+    "IngestUrl": "",
+    "IngestToken": "",
+    "Extra": {}                       // optional provider-specific keys (region, dataset, ...)
+  },
+  "MinimumLogLevel": "Warning",
+  "TracesSampleRatio": 0.2
+}
+```
+
+Shipping is **disabled until `Data.IngestUrl` and `Data.IngestToken` are set** (for Better Stack:
+the per-source ingesting host and source token from Better Stack → Sources). In deployed
+environments these arrive as Secret Manager-backed env vars (`Apm__Data__IngestUrl` /
+`Apm__Data__IngestToken` from the `carditrack-<env>-apm-ingest-*` secrets); `REPLACE_ME`
+placeholders count as unset. Provisioning: [APM setup runbook](../../technical/apm_setup_runbook.md)
++ `scripts/set-apm-secrets.sh`. An unknown `Engine` fails startup loudly. To support a new
+backend, implement `IApmProvider` and register it in `ApmProviderRegistry` — nothing changes
+in the apps.
+
+Free-tier prudence (enforced engine-independently in `ApmExtensions`):
+
+- Only `MinimumLogLevel` and above (default `Warning`) is shipped; full detail stays in console/file/Seq.
+- Traces are head-sampled via `TracesSampleRatio` (default `0.2`); `/health` requests are never traced.
+- Metrics are deliberately not exported.
 
 ## Project Structure
 

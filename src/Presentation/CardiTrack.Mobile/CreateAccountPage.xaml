@@ -96,6 +96,7 @@
                                Style="{StaticResource AuthEntry}"
                                Placeholder="Your Name"
                                ReturnType="Next"
+                               TextChanged="OnFormFieldChanged"
                                Focused="OnEntryFocused"
                                Unfocused="OnEntryUnfocused"/>
                     </Border>
@@ -109,6 +110,7 @@
                                Placeholder="Your email"
                                Keyboard="Email"
                                ReturnType="Next"
+                               TextChanged="OnFormFieldChanged"
                                Focused="OnEntryFocused"
                                Unfocused="OnEntryUnfocused"/>
                     </Border>
@@ -164,6 +166,7 @@
                                    Placeholder="Re-enter password"
                                    IsPassword="True"
                                    ReturnType="Done"
+                                   TextChanged="OnFormFieldChanged"
                                    Focused="OnEntryFocused"
                                    Unfocused="OnEntryUnfocused"/>
                             <ImageButton x:Name="ConfirmToggle"
@@ -183,7 +186,8 @@
                         <CheckBox x:Name="TermsCheck"
                                   Color="{StaticResource Primary}"
                                   WidthRequest="20" HeightRequest="20"
-                                  VerticalOptions="Center"/>
+                                  VerticalOptions="Center"
+                                  CheckedChanged="OnTermsCheckedChanged"/>
                         <Label VerticalTextAlignment="Center" VerticalOptions="Center">
                             <Label.FormattedText>
                                 <FormattedString>

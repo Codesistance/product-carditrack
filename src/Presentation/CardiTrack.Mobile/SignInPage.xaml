@@ -44,6 +44,7 @@
                                Placeholder="Your email"
                                Keyboard="Email"
                                ReturnType="Next"
+                               TextChanged="OnCredentialsChanged"
                                Focused="OnEntryFocused"
                                Unfocused="OnEntryUnfocused"/>
                     </Border>
@@ -58,6 +59,7 @@
                                    Placeholder="Enter your password"
                                    IsPassword="True"
                                    ReturnType="Done"
+                                   TextChanged="OnCredentialsChanged"
                                    Focused="OnEntryFocused"
                                    Unfocused="OnEntryUnfocused"/>
                             <ImageButton x:Name="PasswordToggle"
