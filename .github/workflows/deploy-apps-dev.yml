@@ -444,6 +444,7 @@ jobs:
       - run: dotnet restore src/Presentation/CardiTrack.Mobile/CardiTrack.Mobile.csproj -p:TargetFrameworks=net10.0-windows10.0.19041.0 -r win-x64
       - run: dotnet restore src/Core/CardiTrack.Application/CardiTrack.Application.csproj
       - run: dotnet restore src/Core/CardiTrack.Domain/CardiTrack.Domain.csproj
+      - run: dotnet restore src/Presentation/CardiTrack.Mobile.Core/CardiTrack.Mobile.Core.csproj
       # Auth0 config is stamped from Secret Manager (carditrack-dev-auth0-*).
       # PR builds skip the fetch (no WIF auth off main) and compile unstamped.
       - uses: google-github-actions/auth@v3
