@@ -10,6 +10,7 @@ using CardiTrack.Domain.Extensions;
 using CardiTrack.Infrastructure.ExternalClients;
 using CardiTrack.Infrastructure.Security;
 using CardiTrack.Infrastructure.Settings;
+using CardiTrack.Shared.Json;
 using Microsoft.Extensions.Caching.Distributed;
 using Microsoft.Extensions.Options;
 
@@ -109,7 +110,9 @@ public class DeviceConnectionService : IDeviceConnectionService
 
         var cacheKey = StateKeyPrefix + request.State;
         var cached = await _cache.GetStringAsync(cacheKey, ct);
-        var payload = cached is null ? null : JsonSerializer.Deserialize<OAuthStatePayload>(cached);
+        OAuthStatePayload? payload = null;
+        if (cached is not null)
+            JsonUtility.TryDeserialize(cached, out payload, out _);
         if (payload is null || payload.UserId != requestingUserId || payload.Provider != deviceType)
         {
             throw new DeviceConnectionException(

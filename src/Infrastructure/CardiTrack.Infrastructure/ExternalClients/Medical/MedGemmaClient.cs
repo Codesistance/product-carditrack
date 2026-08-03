@@ -3,6 +3,7 @@ using System.Text.Json.Serialization;
 using CardiTrack.Application.DTOs.Common;
 using CardiTrack.Application.Interfaces.Clients;
 using CardiTrack.Infrastructure.Settings;
+using CardiTrack.Shared.Json;
 
 namespace CardiTrack.Infrastructure.ExternalClients.Medical;
 
@@ -23,8 +24,8 @@ public class MedGemmaClient : IExternalAiClient
         var request = new OllamaGenerateRequest { Model = _settings.Model, Prompt = prompt };
         var response = await client.PostAsJsonAsync("/api/generate", request, ct);
         response.EnsureSuccessStatusCode();
-        var result = await response.Content.ReadFromJsonAsync<OllamaGenerateResponse>(ct);
-        return result?.Response ?? string.Empty;
+        var result = JsonUtility.Deserialize<OllamaGenerateResponse>(await response.Content.ReadAsStringAsync(ct));
+        return result.Response ?? string.Empty;
     }
 
     public async Task<string> ChatAsync(IReadOnlyList<ChatMessage> history, string userMessage, CancellationToken ct = default)
@@ -37,8 +38,8 @@ public class MedGemmaClient : IExternalAiClient
         var request = new OllamaChatRequest { Model = _settings.Model, Messages = messages };
         var response = await client.PostAsJsonAsync("/api/chat", request, ct);
         response.EnsureSuccessStatusCode();
-        var result = await response.Content.ReadFromJsonAsync<OllamaChatResponse>(ct);
-        return result?.Message?.Content ?? string.Empty;
+        var result = JsonUtility.Deserialize<OllamaChatResponse>(await response.Content.ReadAsStringAsync(ct));
+        return result.Message?.Content ?? string.Empty;
     }
 
     private record OllamaGenerateRequest

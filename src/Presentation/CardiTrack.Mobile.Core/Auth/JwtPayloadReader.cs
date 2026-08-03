@@ -1,4 +1,6 @@
-using System.Text.Json;
+using System.Text;
+using CardiTrack.Shared.Json;
+using Newtonsoft.Json.Linq;
 
 namespace CardiTrack.Mobile.Core.Auth;
 
@@ -18,19 +20,25 @@ public static class JwtPayloadReader
         if (parts.Length < 2)
             return result;
 
+        string json;
         try
         {
             var payload = parts[1].Replace('-', '+').Replace('_', '/');
             payload = payload.PadRight(payload.Length + (4 - payload.Length % 4) % 4, '=');
-            using var doc = JsonDocument.Parse(Convert.FromBase64String(payload));
-            foreach (var property in doc.RootElement.EnumerateObject())
-            {
-                if (property.Value.ValueKind == JsonValueKind.String)
-                    result[property.Name] = property.Value.GetString() ?? string.Empty;
-            }
+            json = Encoding.UTF8.GetString(Convert.FromBase64String(payload));
         }
-        catch (Exception ex) when (ex is FormatException or JsonException)
+        catch (FormatException)
         {
+            return result;
+        }
+
+        if (JsonUtility.TryParse(json, out var root, out _) && root is JObject claims)
+        {
+            foreach (var property in claims.Properties())
+            {
+                if (property.Value is JValue { Type: JTokenType.String } value)
+                    result[property.Name] = (string?)value ?? string.Empty;
+            }
         }
 
         return result;

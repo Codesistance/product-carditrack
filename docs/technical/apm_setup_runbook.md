@@ -1,10 +1,14 @@
 # APM Setup Runbook (Operator)
 
 Connects the deployed API and Web to the APM backend (Better Stack today). The apps are
-already wired: `Apm:Engine` is committed in appsettings, and the ingest URL/token arrive as
-Secret Manager-backed env vars (`Apm__Data__IngestUrl`, `Apm__Data__IngestToken`). Until the
-secrets hold real values the apps run normally and ship nothing — `REPLACE_ME` placeholders
-count as "not configured".
+already wired; the whole deployed contract is two env vars per service:
+
+- `Apm__Engine` — plaintext, set by Terraform (`"BetterStack"`)
+- `Apm__Data` — Secret Manager-backed (secret `carditrack-<env>-apm-data`) holding one JSON
+  object: `{"IngestUrl":"<ingesting host>","IngestToken":"<source token>"}`
+
+Until the secret holds real JSON the apps run normally and ship nothing — the `REPLACE_ME`
+placeholder counts as "not configured". Malformed JSON in the secret fails startup loudly.
 
 Free-tier guardrails are enforced in code (`CardiTrack.Observability`): only Warning+ logs
 ship, traces are head-sampled at 20%, `/health` is never traced, and metrics are not exported.
@@ -22,13 +26,15 @@ ship, traces are head-sampled at 20%, `/health` is never traced, and metrics are
 
 ## 2. Provision the secrets
 
-Terraform has already created the placeholder secrets (`carditrack-<env>-apm-ingest-url`,
-`carditrack-<env>-apm-ingest-token`) with compute-SA read access; if this environment predates
-them, run `terraform apply` first.
+Terraform has already created the placeholder secret (`carditrack-<env>-apm-data`) with
+compute-SA read access; if this environment predates it, run `terraform apply` first.
 
 ```bash
-bash scripts/set-apm-secrets.sh dev   # prompts for the two values
+bash scripts/set-apm-secrets.sh dev   # prompts for URL + token, composes the JSON
 ```
+
+(Equivalent by hand:
+`printf '{"IngestUrl":"s123456...betterstackdata.com","IngestToken":"..."}' | gcloud secrets versions add carditrack-dev-apm-data --project=carditrack-490120 --data-file=-`)
 
 ## 3. Roll out
 
@@ -50,16 +56,18 @@ for i in $(seq 20); do curl -s -o /dev/null https://api.dev.carditrack.com/api/d
 # Logs: a quiet healthy app ships NOTHING (only Warning+) — absence of logs is not a fault.
 # Check the env vars actually reached the revision:
 gcloud run services describe carditrack-dev-api --region=europe-west2 --project=carditrack-490120 \
-  --format=json | grep -A3 Apm__   # both vars should reference the apm-* secrets
-# Startup crash-looping after rollout => bad Apm:Engine value (unknown engines fail fast);
-# check Cloud Run logs for "Unknown APM engine".
+  --format=json | grep -A3 Apm__   # Apm__Engine plaintext + Apm__Data referencing the apm-data secret
+# Startup crash-looping after rollout => bad Apm__Engine value ("Unknown APM engine" in
+# Cloud Run logs) or malformed JSON in the apm-data secret ("not valid JSON").
 ```
 
 ## 5. Later / non-blocking
 
-- Per-app sources (separate tokens for API and Web) — paste different values into per-app
-  secrets if quota attribution ever matters; today both apps share the one source.
+- Per-app sources (separate tokens for API and Web) — split into per-app `apm-data` secrets
+  if quota attribution ever matters; today both apps share the one source.
 - Raise `Apm:TracesSampleRatio` / lower `Apm:MinimumLogLevel` via plaintext env vars
   (`Apm__TracesSampleRatio`, `Apm__MinimumLogLevel`) if the plan is upgraded.
 - Switching backends: implement `IApmProvider`, register it in `ApmProviderRegistry`,
-  set `Apm__Engine`, and put the new backend's values in these same two secrets.
+  flip `Apm__Engine` in Terraform, and put the new backend's JSON in the same `apm-data`
+  secret — extra fields beyond IngestUrl/IngestToken are surfaced to the provider via
+  `Data.Extra`.

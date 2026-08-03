@@ -1,6 +1,6 @@
 using System.Net.Http.Headers;
-using System.Text.Json;
 using CardiTrack.Infrastructure.Settings;
+using CardiTrack.Shared.Json;
 
 namespace CardiTrack.Infrastructure.ExternalClients;
 
@@ -58,19 +58,22 @@ public class OAuthCodeExchangeService : IOAuthCodeExchangeService
                 $"Token exchange returned {(int)response.StatusCode} from {providerConfig.Provider}: {content}");
         }
 
-        using var doc = JsonDocument.Parse(content);
-        var root = doc.RootElement;
+        if (!JsonUtility.TryParse(content, out var root, out var jsonErrors))
+            // A body that failed to parse is not a usable token response, but it can still
+            // contain a live token fragment — report length + error locations, not content.
+            throw new OAuthExchangeException(
+                $"{providerConfig.Provider} token response was not valid JSON " +
+                $"({content.Length} chars): {string.Join("; ", jsonErrors)}");
 
-        var accessToken = root.TryGetProperty("access_token", out var at) ? at.GetString() : null;
+        var accessToken = root!.Value<string>("access_token");
         if (string.IsNullOrEmpty(accessToken))
             throw new OAuthExchangeException($"{providerConfig.Provider} token response missing access_token.");
 
-        var refreshToken = root.TryGetProperty("refresh_token", out var rt) ? rt.GetString() : null;
-        var expiresIn = root.TryGetProperty("expires_in", out var exp)
-            ? exp.GetInt32()
-            : providerConfig.TokenLifetimeHours * 3600;
-        var scope = root.TryGetProperty("scope", out var sc) ? sc.GetString() : null;
-        var providerUserId = root.TryGetProperty("user_id", out var uid) ? uid.GetString() : null;
+        var refreshToken = root.Value<string>("refresh_token");
+        var expiresIn = root.Value<int?>("expires_in")
+            ?? providerConfig.TokenLifetimeHours * 3600;
+        var scope = root.Value<string>("scope");
+        var providerUserId = root.Value<string>("user_id");
 
         return new OAuthTokenResult(accessToken, refreshToken, expiresIn, scope, providerUserId);
     }

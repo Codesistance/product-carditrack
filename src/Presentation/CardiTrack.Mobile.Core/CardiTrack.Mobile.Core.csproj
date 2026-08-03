@@ -14,6 +14,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\Core\CardiTrack.Application\CardiTrack.Application.csproj" />
+    <ProjectReference Include="..\..\Infrastructure\CardiTrack.Shared\CardiTrack.Shared.csproj" />
   </ItemGroup>
 
 </Project>

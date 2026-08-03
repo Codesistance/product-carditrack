@@ -50,6 +50,90 @@ public class ApmConfigurationTests
     }
 
     [Fact]
+    public void GetApmOptions_DataAsJsonString_ParsesTheDeploymentForm()
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Apm:Engine"] = "BetterStack",
+                ["Apm:Data"] = """{"ingestUrl":"s123.betterstackdata.com","INGESTTOKEN":"token-123","Region":"eu"}""",
+            })
+            .Build();
+
+        var options = configuration.GetApmOptions();
+
+        Assert.True(options.IsConfigured);
+        Assert.Equal("s123.betterstackdata.com", options.Data.IngestUrl);
+        Assert.Equal("token-123", options.Data.IngestToken);
+        Assert.Equal("eu", options.Data.Extra["region"]);
+    }
+
+    [Fact]
+    public void GetApmOptions_JsonStringWinsOverBoundSection()
+    {
+        // Deployed reality: appsettings carries the empty nested section, the Apm__Data
+        // env var overlays a string value at the same path without removing children.
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Apm:Engine"] = "BetterStack",
+                ["Apm:Data:IngestUrl"] = "from-section",
+                ["Apm:Data:IngestToken"] = "from-section",
+            })
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Apm:Data"] = """{"IngestUrl":"from-secret","IngestToken":"secret-token"}""",
+            })
+            .Build();
+
+        var options = configuration.GetApmOptions();
+
+        Assert.Equal("from-secret", options.Data.IngestUrl);
+        Assert.Equal("secret-token", options.Data.IngestToken);
+    }
+
+    [Fact]
+    public void GetApmOptions_DataAsPlaceholderString_CountsAsUnset()
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Apm:Engine"] = "BetterStack",
+                ["Apm:Data"] = "REPLACE_ME",
+            })
+            .Build();
+
+        var options = configuration.GetApmOptions();
+
+        Assert.False(options.IsConfigured);
+        Assert.Null(options.Data.IngestUrl);
+    }
+
+    [Theory]
+    [InlineData("not json at all")]
+    [InlineData("[1,2,3]")]
+    public void GetApmOptions_MalformedDataJson_FailsLoudly(string badJson)
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> { ["Apm:Data"] = badJson })
+            .Build();
+
+        var ex = Assert.Throws<InvalidOperationException>(() => configuration.GetApmOptions());
+
+        Assert.Contains("Apm", ex.Message);
+    }
+
+    [Fact]
+    public void ApmData_FromJson_NestedExtraObjectMerges()
+    {
+        var data = ApmData.FromJson(
+            """{"IngestUrl":"h","IngestToken":"t","Extra":{"Dataset":"carditrack-dev"},"Timeout":30}""");
+
+        Assert.Equal("carditrack-dev", data.Extra["dataset"]);
+        Assert.Equal("30", data.Extra["timeout"]);
+    }
+
+    [Fact]
     public void GetApmOptions_MissingSection_YieldsUnconfiguredDefaults()
     {
         var configuration = new ConfigurationBuilder().Build();

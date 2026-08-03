@@ -3,6 +3,7 @@ using System.Text.Json.Serialization;
 using CardiTrack.Application.DTOs.Common;
 using CardiTrack.Application.Interfaces.Clients;
 using CardiTrack.Infrastructure.Settings;
+using CardiTrack.Shared.Json;
 
 namespace CardiTrack.Infrastructure.ExternalClients.General;
 
@@ -43,8 +44,8 @@ public class GeminiClient : IExternalAiClient
         var request = new GeminiRequest { Contents = contents };
         var response = await client.PostAsJsonAsync(endpoint, request, ct);
         response.EnsureSuccessStatusCode();
-        var result = await response.Content.ReadFromJsonAsync<GeminiResponse>(ct);
-        return result?.Candidates?.FirstOrDefault()?.Content?.Parts?.FirstOrDefault()?.Text ?? string.Empty;
+        var result = JsonUtility.Deserialize<GeminiResponse>(await response.Content.ReadAsStringAsync(ct));
+        return result.Candidates?.FirstOrDefault()?.Content?.Parts?.FirstOrDefault()?.Text ?? string.Empty;
     }
 
     private record GeminiRequest

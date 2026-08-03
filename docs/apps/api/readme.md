@@ -35,14 +35,20 @@ through `CardiTrack.Observability` (`AddApmShipping` for Serilog, `AddApmTracing
 }
 ```
 
-Shipping is **disabled until `Data.IngestUrl` and `Data.IngestToken` are set** (for Better Stack:
-the per-source ingesting host and source token from Better Stack → Sources). In deployed
-environments these arrive as Secret Manager-backed env vars (`Apm__Data__IngestUrl` /
-`Apm__Data__IngestToken` from the `carditrack-<env>-apm-ingest-*` secrets); `REPLACE_ME`
-placeholders count as unset. Provisioning: [APM setup runbook](../../technical/apm_setup_runbook.md)
-+ `scripts/set-apm-secrets.sh`. An unknown `Engine` fails startup loudly. To support a new
-backend, implement `IApmProvider` and register it in `ApmProviderRegistry` — nothing changes
-in the apps.
+`Data` is accepted in two forms: the nested section above (appsettings), or — the deployment
+contract — a **single JSON value**. Deployed, the whole config is exactly two env vars:
+
+- `Apm__Engine` — plaintext Terraform env var (`"BetterStack"`)
+- `Apm__Data` — Secret Manager-backed (secret `carditrack-<env>-apm-data`), holding one JSON
+  object, e.g. `{"IngestUrl":"s123456.eu-nbg-2.betterstackdata.com","IngestToken":"..."}` —
+  unknown keys land in `Extra` for provider-specific details
+
+The single-value form wins when both are present. Shipping is **disabled until the engine, URL,
+and token are all real values** — `REPLACE_ME` placeholders count as unset. Provisioning:
+[APM setup runbook](../../technical/apm_setup_runbook.md) + `scripts/set-apm-secrets.sh` (which
+composes the JSON). An unknown `Engine` or malformed `Apm__Data` JSON fails startup loudly. To
+support a new backend, implement `IApmProvider` and register it in `ApmProviderRegistry` —
+nothing changes in the apps.
 
 Free-tier prudence (enforced engine-independently in `ApmExtensions`):
 

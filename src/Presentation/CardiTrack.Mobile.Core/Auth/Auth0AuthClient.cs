@@ -1,9 +1,11 @@
 using System.Net.Http.Json;
 using System.Text.Json;
-using System.Text.Json.Serialization;
 using CardiTrack.Mobile.Core.Configuration;
+using CardiTrack.Shared.Json;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 
 namespace CardiTrack.Mobile.Core.Auth;
 
@@ -158,11 +160,14 @@ public sealed class Auth0AuthClient : IAuth0AuthClient
             throw error;
         }
 
-        var payload = JsonSerializer.Deserialize<TokenResponse>(body, Json);
-        if (payload is null || string.IsNullOrEmpty(payload.AccessToken))
+        if (!JsonUtility.TryDeserialize<TokenResponse>(body, out var payload, out var jsonErrors)
+            || string.IsNullOrEmpty(payload!.AccessToken))
         {
-            _logger.LogError("Auth0 {Operation} returned {StatusCode} but the token payload was empty or incomplete",
-                operation, (int)response.StatusCode);
+            // Token responses can carry live credentials even when partially malformed —
+            // report length + error locations for remediation, never the body itself.
+            _logger.LogError("Auth0 {Operation} returned {StatusCode} but the token payload ({PayloadLength} chars) was empty or incomplete: {JsonErrors}",
+                operation, (int)response.StatusCode, body.Length,
+                jsonErrors.Count == 0 ? "no access_token" : string.Join("; ", jsonErrors));
             throw new AuthException(AuthErrorCode.Unknown, payload is null
                 ? "Empty token response from Auth0."
                 : "Auth0 response did not include an access token.");
@@ -185,13 +190,11 @@ public sealed class Auth0AuthClient : IAuth0AuthClient
     private static AuthException MapTokenError(HttpResponseMessage response, string body)
     {
         string? error = null, description = null;
-        try
+        if (JsonUtility.TryParse(body, out var root, out _) && root is JObject payload)
         {
-            using var doc = JsonDocument.Parse(body);
-            if (doc.RootElement.TryGetProperty("error", out var e)) error = e.GetString();
-            if (doc.RootElement.TryGetProperty("error_description", out var d)) description = d.GetString();
+            error = StringField(payload, "error");
+            description = StringField(payload, "error_description");
         }
-        catch (JsonException) { }
 
         return error switch
         {
@@ -207,16 +210,13 @@ public sealed class Auth0AuthClient : IAuth0AuthClient
     private static AuthException MapSignupError(string body)
     {
         string? code = null, name = null, description = null, policy = null;
-        try
+        if (JsonUtility.TryParse(body, out var root, out _) && root is JObject payload)
         {
-            using var doc = JsonDocument.Parse(body);
-            if (doc.RootElement.TryGetProperty("code", out var c)) code = c.GetString();
-            if (doc.RootElement.TryGetProperty("name", out var n)) name = n.GetString();
-            if (doc.RootElement.TryGetProperty("description", out var d) && d.ValueKind == JsonValueKind.String)
-                description = d.GetString();
-            if (doc.RootElement.TryGetProperty("policy", out var p)) policy = p.GetString();
+            code = StringField(payload, "code");
+            name = StringField(payload, "name");
+            description = StringField(payload, "description");
+            policy = StringField(payload, "policy");
         }
-        catch (JsonException) { }
 
         var key = code ?? name;
         return key switch
@@ -239,11 +239,15 @@ public sealed class Auth0AuthClient : IAuth0AuthClient
         return new(AuthErrorCode.Network, "No connection. Check your internet and try again.", inner: ex);
     }
 
+    /// <summary>Auth0 "description" can be an object (password policy) — only accept plain strings.</summary>
+    private static string? StringField(JObject payload, string name) =>
+        payload[name] is JValue { Type: JTokenType.String } value ? (string?)value : null;
+
     private sealed class TokenResponse
     {
-        [JsonPropertyName("access_token")] public string? AccessToken { get; set; }
-        [JsonPropertyName("refresh_token")] public string? RefreshToken { get; set; }
-        [JsonPropertyName("id_token")] public string? IdToken { get; set; }
-        [JsonPropertyName("expires_in")] public int ExpiresIn { get; set; }
+        [JsonProperty("access_token")] public string? AccessToken { get; set; }
+        [JsonProperty("refresh_token")] public string? RefreshToken { get; set; }
+        [JsonProperty("id_token")] public string? IdToken { get; set; }
+        [JsonProperty("expires_in")] public int ExpiresIn { get; set; }
     }
 }

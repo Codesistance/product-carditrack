@@ -5,6 +5,7 @@ using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Domain.Enums;
+using CardiTrack.Shared.Json;
 using Microsoft.Extensions.Caching.Distributed;
 using Microsoft.Extensions.Logging;
 
@@ -187,5 +188,5 @@ public class ReportGenerationService : IReportGenerationService
     private static string ReportKey(string reportId) => $"report:status:{reportId}";
     private static string ContentKey(string reportId) => $"report:content:{reportId}";
     private static string Serialize<T>(T obj) => JsonSerializer.Serialize(obj);
-    private static T Deserialize<T>(string json) => JsonSerializer.Deserialize<T>(json)!;
+    private static T Deserialize<T>(string json) => JsonUtility.Deserialize<T>(json);
 }

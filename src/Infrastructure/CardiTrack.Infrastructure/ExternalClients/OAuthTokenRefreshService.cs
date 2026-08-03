@@ -1,10 +1,10 @@
 using System.Net.Http.Headers;
-using System.Text.Json;
 using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Domain.Entities;
 using CardiTrack.Domain.Enums;
 using CardiTrack.Infrastructure.Security;
 using CardiTrack.Infrastructure.Settings;
+using CardiTrack.Shared.Json;
 
 namespace CardiTrack.Infrastructure.ExternalClients;
 
@@ -74,18 +74,19 @@ public class OAuthTokenRefreshService : IOAuthTokenRefreshService
                 $"Token refresh returned {(int)response.StatusCode} for DeviceConnection {connection.Id}: {errorBody}");
         }
 
-        using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
-        var root = doc.RootElement;
+        var tokenBody = await response.Content.ReadAsStringAsync();
+        if (!JsonUtility.TryParse(tokenBody, out var root, out var jsonErrors))
+            // A body that failed to parse is not a usable token response, but it can still
+            // contain a live token fragment — report length + error locations, not content.
+            throw new InvalidOperationException(
+                $"Token refresh response for DeviceConnection {connection.Id} was not valid JSON " +
+                $"({tokenBody.Length} chars): {string.Join("; ", jsonErrors)}");
 
-        var newAccessToken = root.GetProperty("access_token").GetString()
+        var newAccessToken = root!.Value<string>("access_token")
             ?? throw new InvalidOperationException("Token response missing access_token.");
-        var newRefreshToken = root.TryGetProperty("refresh_token", out var rt)
-            ? rt.GetString() ?? plainRefreshToken
-            : plainRefreshToken;
-
-        var expiresIn = root.TryGetProperty("expires_in", out var exp)
-            ? exp.GetInt32()
-            : providerConfig.TokenLifetimeHours * 3600;
+        var newRefreshToken = root.Value<string>("refresh_token") ?? plainRefreshToken;
+        var expiresIn = root.Value<int?>("expires_in")
+            ?? providerConfig.TokenLifetimeHours * 3600;
         var newExpiry = DateTime.UtcNow.AddSeconds(expiresIn);
 
         await _deviceConnections.UpdateTokenAsync(

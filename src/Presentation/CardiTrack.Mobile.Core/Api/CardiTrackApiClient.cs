@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using CardiTrack.Application.DTOs.Requests;
 using CardiTrack.Application.DTOs.Responses;
+using CardiTrack.Shared.Json;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -85,11 +86,14 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
         if (!response.IsSuccessStatusCode)
             throw await MapErrorAsync(method, path, response, ct);
 
-        var envelope = await response.Content.ReadFromJsonAsync<ApiResponse<T>>(Json, ct);
-        if (envelope is null || envelope.Data is null)
+        var body = await response.Content.ReadAsStringAsync(ct);
+        if (!JsonUtility.TryDeserialize<ApiResponse<T>>(body, out var envelope, out var jsonErrors)
+            || envelope!.Data is null)
         {
-            _logger.LogError("API {Method} {Path} returned {StatusCode} with an empty envelope",
-                method, path, (int)response.StatusCode);
+            _logger.LogError("API {Method} {Path} returned {StatusCode} with an empty or unreadable envelope: {JsonErrors}. Payload: {Payload}",
+                method, path, (int)response.StatusCode,
+                jsonErrors.Count == 0 ? "no data in envelope" : string.Join("; ", jsonErrors),
+                JsonUtility.PreviewOf(body));
             throw new ApiException(response.StatusCode, "The server returned an empty response.");
         }
         return envelope.Data;
@@ -100,17 +104,19 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
         string message = $"Request failed ({(int)response.StatusCode}).";
         string? traceId = null;
         List<string>? errors = null;
-        try
+        var body = await response.Content.ReadAsStringAsync(ct);
+        if (JsonUtility.TryDeserialize<ErrorResponse>(body, out var error, out var bodyJsonErrors))
         {
-            var error = await response.Content.ReadFromJsonAsync<ErrorResponse>(Json, ct);
-            if (!string.IsNullOrWhiteSpace(error?.Message))
+            if (!string.IsNullOrWhiteSpace(error!.Message))
                 message = error.Message;
-            traceId = error?.TraceId;
-            if (error?.Errors is { Count: > 0 })
+            traceId = error.TraceId;
+            if (error.Errors is { Count: > 0 })
                 errors = error.Errors.Select(e => $"{e.Field}: {e.Message}".TrimStart(' ', ':')).ToList();
         }
-        catch (Exception ex) when (ex is JsonException or NotSupportedException)
+        else
         {
+            _logger.LogDebug("API {Method} {Path} error body was not a parseable ErrorResponse: {JsonErrors}. Payload: {Payload}",
+                method, path, string.Join("; ", bodyJsonErrors), JsonUtility.PreviewOf(body));
         }
 
         // TraceId ties this entry to the server-side Serilog entry for the same request.

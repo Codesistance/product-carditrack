@@ -16,8 +16,38 @@ namespace CardiTrack.Observability;
 /// </summary>
 public static class ApmExtensions
 {
-    public static ApmOptions GetApmOptions(this IConfiguration configuration) =>
-        configuration.GetSection(ApmOptions.SectionName).Get<ApmOptions>() ?? new ApmOptions();
+    /// <summary>
+    /// Loads the Apm section. Data comes in one of two forms: a nested section
+    /// (appsettings), or — the deployment contract — a single JSON value from the
+    /// Apm__Data env var backed by one secret. The single-value form wins when both
+    /// are present (env vars overlay appsettings without removing its children).
+    /// </summary>
+    public static ApmOptions GetApmOptions(this IConfiguration configuration)
+    {
+        var section = configuration.GetSection(ApmOptions.SectionName);
+
+        // Bound by hand: the default binder throws on a string value where a complex
+        // type is expected, which is exactly what Apm__Data-as-JSON looks like to it.
+        var options = new ApmOptions
+        {
+            Engine = section[nameof(ApmOptions.Engine)],
+        };
+        if (section[nameof(ApmOptions.MinimumLogLevel)] is { } shipLevel)
+            options.MinimumLogLevel = shipLevel;
+        if (double.TryParse(section[nameof(ApmOptions.TracesSampleRatio)],
+                System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.InvariantCulture, out var ratio))
+            options.TracesSampleRatio = ratio;
+
+        var dataSection = section.GetSection(nameof(ApmOptions.Data));
+        if (ApmOptions.HasRealValue(dataSection.Value))
+            options.Data = ApmData.FromJson(dataSection.Value!.Trim());
+        else if (dataSection.Value is null)
+            options.Data = dataSection.Get<ApmData>() ?? new ApmData();
+        // else: empty/placeholder single value — Data stays unset, shipping stays off
+
+        return options;
+    }
 
     /// <summary>
     /// Serilog side. Call while building the logger — this runs pre-DI (bootstrap
