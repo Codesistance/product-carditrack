@@ -21,6 +21,14 @@ public class DeviceConnectionRepository : Repository<DeviceConnection>, IDeviceC
             .ToListAsync();
     }
 
+    public async Task<IEnumerable<DeviceConnection>> GetByCardiMemberIdAsync(Guid cardiMemberId)
+    {
+        return await _dbSet
+            .Where(dc => dc.CardiMemberId == cardiMemberId && dc.IsActive)
+            .OrderBy(dc => dc.ConnectedDate)
+            .ToListAsync();
+    }
+
     public async Task<IEnumerable<DeviceConnection>> GetDueForSyncAsync(int thresholdMinutes)
     {
         var cutoff = DateTime.UtcNow.AddMinutes(-thresholdMinutes);

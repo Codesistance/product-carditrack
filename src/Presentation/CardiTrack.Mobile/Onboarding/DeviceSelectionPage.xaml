@@ -1,0 +1,197 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:controls="clr-namespace:CardiTrack.Mobile.Controls"
+             x:Class="CardiTrack.Mobile.Onboarding.DeviceSelectionPage"
+             Shell.NavBarIsVisible="False"
+             NavigationPage.HasNavigationBar="False"
+             BackgroundColor="{StaticResource White}">
+
+    <ContentPage.Resources>
+        <!-- M1-05 device card frames -->
+        <Style x:Key="DeviceCard" TargetType="Border">
+            <Setter Property="BackgroundColor" Value="{StaticResource White}"/>
+            <Setter Property="Stroke" Value="{StaticResource Divider}"/>
+            <Setter Property="StrokeThickness" Value="1"/>
+            <Setter Property="Padding" Value="12"/>
+            <Setter Property="StrokeShape">
+                <RoundRectangle CornerRadius="16"/>
+            </Setter>
+        </Style>
+        <Style x:Key="DeviceImageFrame" TargetType="Border">
+            <Setter Property="BackgroundColor" Value="{StaticResource InputBackground}"/>
+            <Setter Property="StrokeThickness" Value="0"/>
+            <Setter Property="HeightRequest" Value="96"/>
+            <Setter Property="StrokeShape">
+                <RoundRectangle CornerRadius="12"/>
+            </Setter>
+        </Style>
+        <Style x:Key="DeviceName" TargetType="Label">
+            <Setter Property="FontFamily" Value="QuicksandSemiBold"/>
+            <Setter Property="FontSize" Value="16"/>
+            <Setter Property="TextColor" Value="{StaticResource HeadingText}"/>
+            <Setter Property="Margin" Value="0,10,0,0"/>
+        </Style>
+        <Style x:Key="DeviceModels" TargetType="Label">
+            <Setter Property="FontFamily" Value="Quicksand"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="TextColor" Value="{StaticResource BodyText}"/>
+        </Style>
+        <Style x:Key="ComingSoonBadge" TargetType="Border">
+            <Setter Property="BackgroundColor" Value="#E3F1FE"/>
+            <Setter Property="StrokeThickness" Value="0"/>
+            <Setter Property="Padding" Value="10,4"/>
+            <Setter Property="HorizontalOptions" Value="Start"/>
+            <Setter Property="Margin" Value="0,8,0,0"/>
+            <Setter Property="StrokeShape">
+                <RoundRectangle CornerRadius="10"/>
+            </Setter>
+        </Style>
+        <Style x:Key="BadgeText" TargetType="Label">
+            <Setter Property="FontFamily" Value="QuicksandMedium"/>
+            <Setter Property="FontSize" Value="11"/>
+        </Style>
+    </ContentPage.Resources>
+
+    <ScrollView>
+        <Grid RowDefinitions="Auto,*">
+
+            <controls:WizardHeader Grid.Row="0"
+                                   Title="Connect Device"
+                                   Step="Step 3 of 4"
+                                   Progress="0.65"/>
+
+            <Grid Grid.Row="1"
+                  BackgroundColor="{StaticResource White}"
+                  Padding="20,24,20,36">
+                <VerticalStackLayout Spacing="0">
+
+                    <Label x:Name="TitleLabel"
+                           Text="What do they wear?"
+                           Style="{StaticResource Heading3}"
+                           HorizontalTextAlignment="Center"/>
+                    <Label Text="We'll connect with their device to keep you in the loop"
+                           Style="{StaticResource Body2}"
+                           HorizontalTextAlignment="Center"
+                           Margin="0,6,0,0"/>
+
+                    <!-- Device grid: Fitbit is the only selectable card in MVP 1 -->
+                    <Grid ColumnDefinitions="*,*"
+                          RowDefinitions="Auto,Auto,Auto"
+                          ColumnSpacing="12" RowSpacing="12"
+                          Margin="0,20,0,0">
+
+                        <!-- Fitbit (supported, preselected) -->
+                        <Border x:Name="FitbitCard"
+                                Grid.Row="0" Grid.Column="0"
+                                Style="{StaticResource DeviceCard}"
+                                Stroke="{StaticResource Primary}"
+                                StrokeThickness="2">
+                            <Border.GestureRecognizers>
+                                <TapGestureRecognizer Tapped="OnFitbitTapped"/>
+                            </Border.GestureRecognizers>
+                            <VerticalStackLayout>
+                                <Grid>
+                                    <Border Style="{StaticResource DeviceImageFrame}"/>
+                                    <Border x:Name="FitbitCheck"
+                                            WidthRequest="24" HeightRequest="24"
+                                            BackgroundColor="{StaticResource Primary}"
+                                            StrokeThickness="0"
+                                            HorizontalOptions="End" VerticalOptions="Start"
+                                            Margin="0,6,6,0">
+                                        <Border.StrokeShape>
+                                            <RoundRectangle CornerRadius="12"/>
+                                        </Border.StrokeShape>
+                                        <Label Text="&#x2713;" TextColor="{StaticResource White}"
+                                               FontSize="13" FontAttributes="Bold"
+                                               HorizontalOptions="Center" VerticalOptions="Center"/>
+                                    </Border>
+                                </Grid>
+                                <Label Text="Fitbit" Style="{StaticResource DeviceName}"/>
+                                <Label Text="Charge, Versa, Sense series" Style="{StaticResource DeviceModels}"/>
+                                <Border Style="{StaticResource ComingSoonBadge}" BackgroundColor="#DFF5E9">
+                                    <Label Text="&#x2713; Supported" Style="{StaticResource BadgeText}" TextColor="#1E9E5A"/>
+                                </Border>
+                            </VerticalStackLayout>
+                        </Border>
+
+                        <!-- Coming Soon cards -->
+                        <Border Grid.Row="0" Grid.Column="1" Style="{StaticResource DeviceCard}" Opacity="0.55">
+                            <VerticalStackLayout>
+                                <Border Style="{StaticResource DeviceImageFrame}"/>
+                                <Label Text="Garmin" Style="{StaticResource DeviceName}"/>
+                                <Label Text="Venu, Forerunner, etc." Style="{StaticResource DeviceModels}"/>
+                                <Border Style="{StaticResource ComingSoonBadge}">
+                                    <Label Text="Coming Soon" Style="{StaticResource BadgeText}" TextColor="{StaticResource Primary}"/>
+                                </Border>
+                            </VerticalStackLayout>
+                        </Border>
+
+                        <Border Grid.Row="1" Grid.Column="0" Style="{StaticResource DeviceCard}" Opacity="0.55">
+                            <VerticalStackLayout>
+                                <Border Style="{StaticResource DeviceImageFrame}"/>
+                                <Label Text="Apple Watch" Style="{StaticResource DeviceName}"/>
+                                <Label Text="Series 4+" Style="{StaticResource DeviceModels}"/>
+                                <Border Style="{StaticResource ComingSoonBadge}">
+                                    <Label Text="Coming Soon" Style="{StaticResource BadgeText}" TextColor="{StaticResource Primary}"/>
+                                </Border>
+                            </VerticalStackLayout>
+                        </Border>
+
+                        <Border Grid.Row="1" Grid.Column="1" Style="{StaticResource DeviceCard}" Opacity="0.55">
+                            <VerticalStackLayout>
+                                <Border Style="{StaticResource DeviceImageFrame}"/>
+                                <Label Text="Samsung Galaxy" Style="{StaticResource DeviceName}"/>
+                                <Label Text="All models" Style="{StaticResource DeviceModels}"/>
+                                <Border Style="{StaticResource ComingSoonBadge}">
+                                    <Label Text="Coming Soon" Style="{StaticResource BadgeText}" TextColor="{StaticResource Primary}"/>
+                                </Border>
+                            </VerticalStackLayout>
+                        </Border>
+
+                        <Border Grid.Row="2" Grid.Column="0" Style="{StaticResource DeviceCard}" Opacity="0.55">
+                            <VerticalStackLayout>
+                                <Border Style="{StaticResource DeviceImageFrame}"/>
+                                <Label Text="Withings" Style="{StaticResource DeviceName}"/>
+                                <Label Text="ScanWatch, Move" Style="{StaticResource DeviceModels}"/>
+                                <Border Style="{StaticResource ComingSoonBadge}">
+                                    <Label Text="Coming Soon" Style="{StaticResource BadgeText}" TextColor="{StaticResource Primary}"/>
+                                </Border>
+                            </VerticalStackLayout>
+                        </Border>
+
+                        <Border Grid.Row="2" Grid.Column="1" Style="{StaticResource DeviceCard}" Opacity="0.55">
+                            <VerticalStackLayout>
+                                <Border Style="{StaticResource DeviceImageFrame}"/>
+                                <Label Text="Other / Manual Entry" Style="{StaticResource DeviceName}"/>
+                                <Label Text="All models" Style="{StaticResource DeviceModels}"/>
+                                <Border Style="{StaticResource ComingSoonBadge}">
+                                    <Label Text="Coming Soon" Style="{StaticResource BadgeText}" TextColor="{StaticResource Primary}"/>
+                                </Border>
+                            </VerticalStackLayout>
+                        </Border>
+                    </Grid>
+
+                    <Button x:Name="ContinueBtn"
+                            Text="Continue with Fitbit"
+                            Style="{StaticResource AuthGradientButton}"
+                            HorizontalOptions="Fill"
+                            Margin="0,24,0,0"
+                            Clicked="OnContinueClicked"/>
+
+                    <Label Text="Don't see their device? We can help"
+                           Style="{StaticResource PrimaryLink}"
+                           TextDecorations="None"
+                           FontSize="16"
+                           HorizontalOptions="Center"
+                           Margin="0,18,0,0">
+                        <Label.GestureRecognizers>
+                            <TapGestureRecognizer Tapped="OnHelpTapped"/>
+                        </Label.GestureRecognizers>
+                    </Label>
+
+                </VerticalStackLayout>
+            </Grid>
+        </Grid>
+    </ScrollView>
+</ContentPage>

@@ -1,0 +1,185 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:controls="clr-namespace:CardiTrack.Mobile.Controls"
+             x:Class="CardiTrack.Mobile.Onboarding.FitbitConnectionPage"
+             Shell.NavBarIsVisible="False"
+             NavigationPage.HasNavigationBar="False"
+             BackgroundColor="{StaticResource White}">
+
+    <ContentPage.Resources>
+        <!-- M1-06 permission rows -->
+        <Style x:Key="PermissionCard" TargetType="Border">
+            <Setter Property="BackgroundColor" Value="{StaticResource White}"/>
+            <Setter Property="Stroke" Value="{StaticResource Divider}"/>
+            <Setter Property="StrokeThickness" Value="1"/>
+            <Setter Property="Padding" Value="16,14"/>
+            <Setter Property="StrokeShape">
+                <RoundRectangle CornerRadius="14"/>
+            </Setter>
+        </Style>
+        <Style x:Key="LogoTile" TargetType="Border">
+            <Setter Property="BackgroundColor" Value="{StaticResource InputBackground}"/>
+            <Setter Property="StrokeThickness" Value="0"/>
+            <Setter Property="WidthRequest" Value="76"/>
+            <Setter Property="HeightRequest" Value="64"/>
+            <Setter Property="StrokeShape">
+                <RoundRectangle CornerRadius="14"/>
+            </Setter>
+        </Style>
+    </ContentPage.Resources>
+
+    <Grid>
+        <ScrollView>
+            <Grid RowDefinitions="Auto,*">
+
+                <controls:WizardHeader Grid.Row="0"
+                                       Title="Fitbit Connection"
+                                       BackRequested="OnCancelTapped"/>
+
+                <Grid Grid.Row="1"
+                      BackgroundColor="{StaticResource White}"
+                      Padding="20,24,20,36">
+                    <VerticalStackLayout Spacing="0">
+
+                        <Label Text="Connect Your Fitbit"
+                               Style="{StaticResource Heading2}"
+                               HorizontalTextAlignment="Center"/>
+
+                        <!-- Device ⇄ CardiTrack visual -->
+                        <HorizontalStackLayout HorizontalOptions="Center" Spacing="16" Margin="0,20,0,0">
+                            <Border Style="{StaticResource LogoTile}">
+                                <Label Text="fitbit"
+                                       FontFamily="QuicksandSemiBold"
+                                       FontSize="14"
+                                       TextColor="{StaticResource HeadingText}"
+                                       HorizontalOptions="Center" VerticalOptions="Center"/>
+                            </Border>
+                            <Label Text="&#x21C4;"
+                                   FontSize="22"
+                                   TextColor="{StaticResource Primary}"
+                                   VerticalOptions="Center"/>
+                            <Border Style="{StaticResource LogoTile}">
+                                <Image Source="carditrack_logo.png"
+                                       WidthRequest="40" HeightRequest="40"
+                                       HorizontalOptions="Center" VerticalOptions="Center"/>
+                            </Border>
+                        </HorizontalStackLayout>
+
+                        <Label x:Name="NeedsLabel"
+                               Text="To look after them, CardiTrack needs:"
+                               Style="{StaticResource Heading3}"
+                               Margin="0,24,0,0"/>
+
+                        <!-- Permission rows -->
+                        <VerticalStackLayout Spacing="12" Margin="0,14,0,0">
+                            <Border Style="{StaticResource PermissionCard}">
+                                <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="14">
+                                    <Image Source="icon_metric_heart.svg" WidthRequest="28" HeightRequest="28" VerticalOptions="Center"/>
+                                    <VerticalStackLayout Grid.Column="1" Spacing="2">
+                                        <Label Text="Heart Rate Data" Style="{StaticResource Body1SemiBoldDark}"/>
+                                        <Label Text="So we can spot if something's off" Style="{StaticResource Body2}"/>
+                                    </VerticalStackLayout>
+                                    <Label Grid.Column="2" Text="&#x24D8;" FontSize="18"
+                                           TextColor="{StaticResource BodyText}" VerticalOptions="Center">
+                                        <Label.GestureRecognizers>
+                                            <TapGestureRecognizer Tapped="OnHeartInfoTapped"/>
+                                        </Label.GestureRecognizers>
+                                    </Label>
+                                </Grid>
+                            </Border>
+
+                            <Border Style="{StaticResource PermissionCard}">
+                                <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="14">
+                                    <Image Source="icon_metric_steps.svg" WidthRequest="28" HeightRequest="28" VerticalOptions="Center"/>
+                                    <VerticalStackLayout Grid.Column="1" Spacing="2">
+                                        <Label Text="Activity &amp; Steps" Style="{StaticResource Body1SemiBoldDark}"/>
+                                        <Label Text="To make sure they're staying active" Style="{StaticResource Body2}"/>
+                                    </VerticalStackLayout>
+                                    <Label Grid.Column="2" Text="&#x24D8;" FontSize="18"
+                                           TextColor="{StaticResource BodyText}" VerticalOptions="Center">
+                                        <Label.GestureRecognizers>
+                                            <TapGestureRecognizer Tapped="OnActivityInfoTapped"/>
+                                        </Label.GestureRecognizers>
+                                    </Label>
+                                </Grid>
+                            </Border>
+
+                            <Border Style="{StaticResource PermissionCard}">
+                                <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="14">
+                                    <Image Source="icon_metric_sleep.svg" WidthRequest="28" HeightRequest="28" VerticalOptions="Center"/>
+                                    <VerticalStackLayout Grid.Column="1" Spacing="2">
+                                        <Label Text="Sleep Data" Style="{StaticResource Body1SemiBoldDark}"/>
+                                        <Label Text="To know they're resting well" Style="{StaticResource Body2}"/>
+                                    </VerticalStackLayout>
+                                    <Label Grid.Column="2" Text="&#x24D8;" FontSize="18"
+                                           TextColor="{StaticResource BodyText}" VerticalOptions="Center">
+                                        <Label.GestureRecognizers>
+                                            <TapGestureRecognizer Tapped="OnSleepInfoTapped"/>
+                                        </Label.GestureRecognizers>
+                                    </Label>
+                                </Grid>
+                            </Border>
+                        </VerticalStackLayout>
+
+                        <!-- Privacy notice -->
+                        <Border BackgroundColor="#E3F1FE"
+                                StrokeThickness="0"
+                                Padding="14"
+                                Margin="0,16,0,0">
+                            <Border.StrokeShape>
+                                <RoundRectangle CornerRadius="12"/>
+                            </Border.StrokeShape>
+                            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="10">
+                                <Label Text="&#x1F512;" FontSize="14" VerticalOptions="Start"/>
+                                <Label Grid.Column="1"
+                                       Text="Your family's health data stays private always. We never sell or share it with third parties."
+                                       Style="{StaticResource Body2}"
+                                       TextColor="{StaticResource HeadingText}"/>
+                            </Grid>
+                        </Border>
+
+                        <!-- Error state (M1-06 B) -->
+                        <Label x:Name="ConnectError"
+                               Style="{StaticResource AuthErrorLabel}"
+                               FontSize="14"
+                               IsVisible="False"
+                               HorizontalTextAlignment="Center"
+                               Margin="0,16,0,0"/>
+
+                        <Button x:Name="AuthorizeBtn"
+                                Text="Authorize Fitbit"
+                                Style="{StaticResource AuthGradientButton}"
+                                HorizontalOptions="Fill"
+                                Margin="0,28,0,0"
+                                Clicked="OnAuthorizeClicked"/>
+
+                        <Label Text="Cancel"
+                               Style="{StaticResource PrimaryLink}"
+                               TextDecorations="None"
+                               FontSize="16"
+                               HorizontalOptions="Center"
+                               Margin="0,18,0,0">
+                            <Label.GestureRecognizers>
+                                <TapGestureRecognizer Tapped="OnCancelTapped"/>
+                            </Label.GestureRecognizers>
+                        </Label>
+
+                    </VerticalStackLayout>
+                </Grid>
+            </Grid>
+        </ScrollView>
+
+        <!-- Authorizing overlay (M1-06 C) -->
+        <Grid x:Name="AuthorizingOverlay"
+              BackgroundColor="#B3FFFFFF"
+              IsVisible="False">
+            <VerticalStackLayout HorizontalOptions="Center" VerticalOptions="Center" Spacing="14">
+                <ActivityIndicator IsRunning="True" WidthRequest="44" HeightRequest="44"/>
+                <Label x:Name="AuthorizingLabel"
+                       Text="Connecting to their Fitbit..."
+                       Style="{StaticResource Body1SemiBoldDark}"/>
+            </VerticalStackLayout>
+        </Grid>
+    </Grid>
+</ContentPage>

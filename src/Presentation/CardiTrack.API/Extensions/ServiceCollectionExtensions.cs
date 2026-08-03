@@ -20,6 +20,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IValidator<CreateOrganizationRequest>, CreateOrganizationValidator>();
         services.AddScoped<IValidator<CreateCardiMemberRequest>, CreateCardiMemberValidator>();
         services.AddScoped<IValidator<NotificationPreferencesRequest>, NotificationPreferencesValidator>();
+        services.AddScoped<IValidator<ConnectDeviceRequest>, ConnectDeviceValidator>();
+        services.AddScoped<IValidator<OAuthCallbackRequest>, OAuthCallbackValidator>();
         return services;
     }
 
@@ -72,6 +74,9 @@ public static class ServiceCollectionExtensions
 
         // External clients
         services.AddScoped<IOAuthTokenRefreshService, OAuthTokenRefreshService>();
+        services.AddScoped<IOAuthCodeExchangeService, OAuthCodeExchangeService>();
+        services.AddScoped<CardiTrack.Application.Interfaces.Services.IDeviceConnectionService,
+            CardiTrack.Infrastructure.Services.DeviceConnectionService>();
 
         // HTTP Client for Auth0 service
         services.AddHttpClient("Auth0Client", client =>

@@ -4,9 +4,10 @@ using CardiTrack.Mobile.Onboarding;
 namespace CardiTrack.Mobile.Services;
 
 /// <summary>
-/// Decides the app root after a session exists: server-side user record present → AppShell
-/// (dashboard); otherwise → account setup to provision the organization and user.
-/// Call only when tokens exist; ApiException propagates to the caller's error UI.
+/// Decides the app root after a session exists: no server-side user record → account setup;
+/// user but no CardiMember yet → the M1-04 add-member wizard (skippable); otherwise →
+/// AppShell (dashboard). Call only when tokens exist; ApiException propagates to the
+/// caller's error UI.
 /// </summary>
 public sealed class PostLoginRouter
 {
@@ -20,9 +21,11 @@ public sealed class PostLoginRouter
     public async Task RouteAsync(Page current, CancellationToken ct = default)
     {
         var status = await _api.GetOnboardingStatusAsync(ct);
-        Page root = status.HasUserAccount
-            ? new AppShell()
-            : new NavigationPage(new AccountSetupPage());
+        Page root = !status.HasUserAccount
+            ? new NavigationPage(new AccountSetupPage())
+            : !status.HasCardiMember
+                ? new NavigationPage(new AddCardiMemberPage())
+                : new AppShell();
         await MainThread.InvokeOnMainThreadAsync(() =>
             WindowNavigation.SetRootPage(current, root));
     }

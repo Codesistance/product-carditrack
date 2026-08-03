@@ -35,6 +35,20 @@ public abstract class BaseApiController : ControllerBase
     }
 
     /// <summary>
+    /// Returns a 201 API response with data
+    /// </summary>
+    protected ActionResult<ApiResponse<T>> Created<T>(T data, string message = "Created")
+    {
+        return StatusCode(StatusCodes.Status201Created, new ApiResponse<T>
+        {
+            Success = true,
+            Message = message,
+            Data = data,
+            Timestamp = DateTime.UtcNow
+        });
+    }
+
+    /// <summary>
     /// Returns a successful API response without data
     /// </summary>
     protected ActionResult<ApiResponse<object>> Success(string message = "Success")

@@ -1,0 +1,191 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:controls="clr-namespace:CardiTrack.Mobile.Controls"
+             x:Class="CardiTrack.Mobile.Onboarding.AddCardiMemberPage"
+             Shell.NavBarIsVisible="False"
+             NavigationPage.HasNavigationBar="False"
+             BackgroundColor="{StaticResource White}">
+
+    <ScrollView>
+        <Grid RowDefinitions="Auto,*">
+
+            <controls:WizardHeader Grid.Row="0"
+                                   Title="Add First CardiMember"
+                                   Step="Step 2 of 4"
+                                   Progress="0.45"
+                                   BackRequested="OnBackRequested"/>
+
+            <!-- Full-bleed form body (M1-04) -->
+            <Grid Grid.Row="1"
+                  BackgroundColor="{StaticResource White}"
+                  Padding="20,24,20,36">
+                <VerticalStackLayout Spacing="0">
+
+                    <Label Text="Who would you like to look after?"
+                           Style="{StaticResource Heading3}"
+                           HorizontalTextAlignment="Center"/>
+                    <Label Text="Tell us about your loved one — we'll take it from there"
+                           Style="{StaticResource Body2}"
+                           HorizontalTextAlignment="Center"
+                           Margin="0,6,0,0"/>
+
+                    <!-- Photo picker -->
+                    <Border x:Name="PhotoCircle"
+                            WidthRequest="96" HeightRequest="96"
+                            Margin="0,24,0,0"
+                            HorizontalOptions="Center"
+                            BackgroundColor="{StaticResource InputBackground}"
+                            Stroke="{StaticResource Primary}"
+                            StrokeThickness="2"
+                            SemanticProperties.Description="CardiMember photo">
+                        <Border.StrokeShape>
+                            <RoundRectangle CornerRadius="48"/>
+                        </Border.StrokeShape>
+                        <Border.GestureRecognizers>
+                            <TapGestureRecognizer Tapped="OnAddPhotoTapped"/>
+                        </Border.GestureRecognizers>
+                        <Grid>
+                            <Label x:Name="PhotoPlaceholder"
+                                   Text="&#x1F4F7;"
+                                   FontSize="30"
+                                   HorizontalOptions="Center"
+                                   VerticalOptions="Center"/>
+                            <Image x:Name="PhotoImage"
+                                   Aspect="AspectFill"
+                                   IsVisible="False"/>
+                        </Grid>
+                    </Border>
+                    <Button Text="Add Photo"
+                            Style="{StaticResource PrimaryGradientButton}"
+                            FontSize="13"
+                            HeightRequest="34"
+                            CornerRadius="8"
+                            Padding="16,0"
+                            HorizontalOptions="Center"
+                            Margin="0,10,0,0"
+                            Clicked="OnAddPhotoTapped"/>
+
+                    <!-- Full Name -->
+                    <VerticalStackLayout Spacing="6" Margin="0,28,0,0">
+                        <Label Text="Full Name*" Style="{StaticResource AuthFieldLabel}"/>
+                        <Border x:Name="NameBorder" Style="{StaticResource AuthEntryBorder}">
+                            <Entry x:Name="NameEntry"
+                                   Style="{StaticResource AuthEntry}"
+                                   Placeholder="Enter Name"
+                                   ReturnType="Next"
+                                   TextChanged="OnFormChanged"/>
+                        </Border>
+                        <Label x:Name="NameError" Style="{StaticResource AuthErrorLabel}" IsVisible="False"/>
+                    </VerticalStackLayout>
+
+                    <!-- Date of Birth -->
+                    <VerticalStackLayout Spacing="6" Margin="0,16,0,0">
+                        <Label Text="Date of Birth*" Style="{StaticResource AuthFieldLabel}"/>
+                        <Border Style="{StaticResource AuthEntryBorder}">
+                            <Grid ColumnDefinitions="*,Auto">
+                                <DatePicker x:Name="DobPicker"
+                                            FontFamily="Quicksand"
+                                            FontSize="14"
+                                            Format="MM/dd/yyyy"
+                                            TextColor="{StaticResource HeadingText}"
+                                            BackgroundColor="Transparent"
+                                            DateSelected="OnFormChanged"/>
+                                <Label Grid.Column="1"
+                                       Text="&#x1F4C5;"
+                                       FontSize="18"
+                                       VerticalOptions="Center"/>
+                            </Grid>
+                        </Border>
+                    </VerticalStackLayout>
+
+                    <!-- Relationship -->
+                    <VerticalStackLayout Spacing="6" Margin="0,16,0,0">
+                        <Label Text="Relationship*" Style="{StaticResource AuthFieldLabel}"/>
+                        <Border Style="{StaticResource AuthEntryBorder}">
+                            <Picker x:Name="RelationshipPicker"
+                                    Title="Select relationship"
+                                    FontFamily="Quicksand"
+                                    FontSize="14"
+                                    BackgroundColor="Transparent"
+                                    SelectedIndexChanged="OnFormChanged"/>
+                        </Border>
+                    </VerticalStackLayout>
+
+                    <BoxView Style="{StaticResource DividerLine}" Margin="0,24,0,0"/>
+
+                    <!-- Optional details toggle -->
+                    <Grid ColumnDefinitions="*,Auto" Margin="0,16,0,0">
+                        <Label Text="Add More Details (Optional)"
+                               Style="{StaticResource Body1SemiBoldDark}"
+                               VerticalOptions="Center"/>
+                        <Switch x:Name="DetailsSwitch"
+                                Grid.Column="1"
+                                OnColor="{StaticResource Primary}"
+                                Toggled="OnDetailsToggled"/>
+                    </Grid>
+
+                    <VerticalStackLayout x:Name="DetailsSection" IsVisible="False" Spacing="16" Margin="0,12,0,0">
+                        <VerticalStackLayout Spacing="6">
+                            <Label Text="Medical Notes &#x1F512;" Style="{StaticResource AuthFieldLabel}"/>
+                            <Border Style="{StaticResource AuthEntryBorder}" HeightRequest="110" Padding="16,8">
+                                <Editor x:Name="MedicalNotesEditor"
+                                        FontFamily="Quicksand"
+                                        FontSize="14"
+                                        Placeholder="Allergies, conditions, medication..."
+                                        MaxLength="500"
+                                        TextChanged="OnMedicalNotesChanged"/>
+                            </Border>
+                            <Label x:Name="MedicalNotesCounter"
+                                   Text="0 / 500"
+                                   Style="{StaticResource Body2}"
+                                   FontSize="12"
+                                   HorizontalOptions="End"/>
+                        </VerticalStackLayout>
+
+                        <VerticalStackLayout Spacing="6">
+                            <Label Text="Emergency Contact Name" Style="{StaticResource AuthFieldLabel}"/>
+                            <Border Style="{StaticResource AuthEntryBorder}">
+                                <Entry x:Name="EmergencyNameEntry" Style="{StaticResource AuthEntry}" Placeholder="Contact name"/>
+                            </Border>
+                        </VerticalStackLayout>
+
+                        <VerticalStackLayout Spacing="6">
+                            <Label Text="Emergency Contact Phone" Style="{StaticResource AuthFieldLabel}"/>
+                            <Border Style="{StaticResource AuthEntryBorder}">
+                                <Entry x:Name="EmergencyPhoneEntry" Style="{StaticResource AuthEntry}" Placeholder="+1 555 000 0000" Keyboard="Telephone"/>
+                            </Border>
+                        </VerticalStackLayout>
+                    </VerticalStackLayout>
+
+                    <!-- Inline error -->
+                    <Label x:Name="FormError"
+                           Style="{StaticResource AuthErrorLabel}"
+                           IsVisible="False"
+                           Margin="0,12,0,0"/>
+
+                    <!-- CTA -->
+                    <Button x:Name="ContinueBtn"
+                            Text="Continue"
+                            Style="{StaticResource AuthGradientButton}"
+                            HorizontalOptions="Fill"
+                            Margin="0,24,0,0"
+                            IsEnabled="False"
+                            Clicked="OnContinueClicked"/>
+
+                    <Label Text="Skip for now"
+                           Style="{StaticResource PrimaryLink}"
+                           TextDecorations="None"
+                           FontSize="16"
+                           HorizontalOptions="Center"
+                           Margin="0,18,0,0">
+                        <Label.GestureRecognizers>
+                            <TapGestureRecognizer Tapped="OnSkipTapped"/>
+                        </Label.GestureRecognizers>
+                    </Label>
+
+                </VerticalStackLayout>
+            </Grid>
+        </Grid>
+    </ScrollView>
+</ContentPage>
