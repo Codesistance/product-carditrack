@@ -9,7 +9,7 @@
              BackgroundColor="{StaticResource White}">
 
     <ScrollView>
-    <Grid RowDefinitions="Auto,Auto,Auto,16,Auto">
+    <Grid RowDefinitions="Auto,Auto,Auto,43,Auto">
 
         <!-- ── Carousel (Figma mask-group composites, 440×571) ── -->
         <Border Grid.Row="0"
@@ -72,14 +72,14 @@
             </Label>
         </Grid>
 
-        <!-- ── Title (Figma y591; 306px cap forces the designed 2-line wrap on slide B) ── -->
+        <!-- ── Title (Figma y591; single line on every slide, 330px text block) ── -->
         <Label x:Name="SlideTitle"
                Grid.Row="1"
                Style="{StaticResource Heading1}"
                HorizontalTextAlignment="Center"
                HorizontalOptions="Center"
                LineBreakMode="WordWrap"
-               MaximumWidthRequest="306"
+               MaximumWidthRequest="330"
                Margin="24,20,24,0" />
 
         <!-- ── Subtitle (per-slide top margin and width from Figma) ── -->
@@ -89,9 +89,9 @@
                HorizontalOptions="Center"
                Margin="24,16,24,0" />
 
-        <!-- Row 3: fixed 16px spacer prevents bottom chrome overlapping subtitle -->
+        <!-- Row 3: fixed 43px spacer (Figma subtitle bottom y681 → indicators y724) -->
 
-        <!-- ── Bottom area (Figma y743+) ── -->
+        <!-- ── Bottom area (Figma y724+) ── -->
         <VerticalStackLayout Grid.Row="4"
                              Spacing="0"
                              Padding="20,0,20,28">
@@ -109,15 +109,15 @@
                          CornerRadius="4" Color="{StaticResource InactiveIndicator}"/>
             </HorizontalStackLayout>
 
-            <!-- CTA (Button 1 — 332×52 centered; inner top-left glow approximates
-                 Figma's inset shadow 4,4,10 white 56%) -->
+            <!-- CTA (Button 1 — 332×52 centered at Figma y781; inner top-left glow
+                 approximates Figma's inset shadow 4,4,10 white 56%) -->
             <Border x:Name="CtaBorder"
                     Background="{StaticResource GradientButtonBrush}"
                     StrokeThickness="0"
                     WidthRequest="332"
                     HeightRequest="52"
                     HorizontalOptions="Center"
-                    Margin="0,30,0,0">
+                    Margin="0,49,0,0">
                 <Border.StrokeShape>
                     <RoundRectangle CornerRadius="25"/>
                 </Border.StrokeShape>

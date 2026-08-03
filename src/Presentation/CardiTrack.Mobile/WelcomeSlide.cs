@@ -25,9 +25,9 @@ public sealed class WelcomeSlide
         new WelcomeSlide
         {
             HeroImage = ImageSource.FromFile("welcome_hero_b.png"),
-            Title = "Their Watch, Your Peace of Mind",
+            Title = "Their Watch, Your Peace",
             Subtitle = "Connects with Fitbit, Apple Watch, Garmin & more",
-            SubtitleTopMargin = 16,
+            SubtitleTopMargin = 9,
             SubtitleMaxWidth = 331,
         },
         new WelcomeSlide
@@ -35,7 +35,7 @@ public sealed class WelcomeSlide
             HeroImage = ImageSource.FromFile("welcome_hero_c.png"),
             Title = "Care Together",
             Subtitle = "Share the watch with your siblings — you're not in this alone",
-            SubtitleTopMargin = 16,
+            SubtitleTopMargin = 9,
             SubtitleMaxWidth = 346,
         },
     ];
