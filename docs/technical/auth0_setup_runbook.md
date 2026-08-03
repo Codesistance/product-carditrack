@@ -89,10 +89,16 @@ ASP.NET Core. Then in **Settings**:
   **uncheck `Implicit`** (pre-checked, deprecated) and leave `Password` and
   `Client Credentials` off. If Management API access is ever needed, create a
   separate Machine-to-Machine application rather than widening this one.
-- **Token Endpoint Authentication Method**: `Client Secret Post` (default) — this is
-  a confidential client, unlike the Native mobile app.
-- **Connections tab**: enable `Username-Password-Authentication` (and the social
-  connections once they exist), same as the mobile app.
+- **Credentials tab** (newer dashboards; older tenants show this as a "Token
+  Endpoint Authentication Method" dropdown at the bottom of Settings): under
+  Application Authentication, verify **Client Secret (Post)** — the default is
+  correct. This is how the confidential client proves itself at `/oauth/token`;
+  the Native mobile app's Credentials tab shows **None** by design.
+- **Connections tab** (rightmost tab on the application page): under *Database*,
+  ensure `Username-Password-Authentication` is toggled ON — it usually already is
+  (connections default to enabled-for-all-applications). Same check applies to the
+  mobile app; the connection's own **Applications** tab shows the same links from
+  the other side.
 
 ## 5. Tenant-level settings
 
