@@ -63,13 +63,36 @@ Auth0 Dashboard → **Applications → APIs → Create API**:
 
 ## 4. Web/API application (Regular Web Application)
 
-The API's `Auth0__ClientId`/`Auth0__ClientSecret` bindings and the future Blazor web
-login use a confidential client. **Applications → Create Application → Regular Web
-Application**, name `CardiTrack Web`:
+A confidential client whose credentials fill the API's `Auth0__ClientId` /
+`Auth0__ClientSecret` env bindings today, and will serve the Blazor web login when
+that's built (CardiTrack.Web has no auth wiring yet — this is created ahead of need
+so the secrets aren't placeholders).
 
-- Callback/logout URLs per [auth0_integration.md](./auth0_integration.md) (web URLs).
-- Its **Client ID / Client Secret** are the values for
-  `carditrack-{env}-auth0-client-id` / `carditrack-{env}-auth0-client-secret`.
+**Applications → Create Application → Regular Web Applications**, name
+`CardiTrack Web`. In the wizard, technology choice is cosmetic — skip or pick
+ASP.NET Core. Then in **Settings**:
+
+- **Domain / Client ID / Client Secret** (top of page): the id and secret are the
+  values for `carditrack-{env}-auth0-client-id` / `carditrack-{env}-auth0-client-secret`
+  (reveal the secret with the eye icon; treat it as a credential — Secret Manager
+  only, never in the repo).
+- **Allowed Callback URLs** (ASP.NET Core Auth0 SDK's default callback path is
+  `/callback`):
+  - dev tenant: `https://app.dev.carditrack.com/callback, https://localhost:7177/callback`
+  - prod tenant: `https://app.carditrack.com/callback`
+  (Local Blazor runs at `https://localhost:7177` per its launchSettings — the
+  `localhost:7002` seen in older config is stale.)
+- **Allowed Logout URLs**:
+  - dev tenant: `https://app.dev.carditrack.com, https://localhost:7177`
+  - prod tenant: `https://app.carditrack.com`
+- **Advanced Settings → Grant Types**: `Authorization Code` + `Refresh Token` only —
+  **uncheck `Implicit`** (pre-checked, deprecated) and leave `Password` and
+  `Client Credentials` off. If Management API access is ever needed, create a
+  separate Machine-to-Machine application rather than widening this one.
+- **Token Endpoint Authentication Method**: `Client Secret Post` (default) — this is
+  a confidential client, unlike the Native mobile app.
+- **Connections tab**: enable `Username-Password-Authentication` (and the social
+  connections once they exist), same as the mobile app.
 
 ## 5. Tenant-level settings
 
