@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using CardiTrack.API.Infrastructure.UserContext;
+using CardiTrack.Application.Interfaces.Repositories;
 using Serilog.Context;
 
 namespace CardiTrack.API.Middleware;
@@ -17,7 +18,8 @@ public class UserContextMiddleware
 
     public async Task InvokeAsync(
         HttpContext httpContext,
-        IUserContext userContext)
+        IUserContext userContext,
+        IUserRepository userRepository)
     {
         if (httpContext.User.Identity?.IsAuthenticated == true)
         {
@@ -34,6 +36,14 @@ public class UserContextMiddleware
                     if (userContext is UserContext concreteContext)
                     {
                         concreteContext.SetAuthenticatedUser(auth0UserId, email, locale);
+
+                        // Enrich with the database identity; absent during onboarding
+                        // (before POST /api/Onboarding/user), so UserId stays Guid.Empty.
+                        var user = await userRepository.GetByAuth0UserIdAsync(auth0UserId);
+                        if (user is not null)
+                        {
+                            concreteContext.SetFullUserContext(user.Id, user.OrganizationId, user.Role);
+                        }
                     }
 
                     // Add user context to logs
