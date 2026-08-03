@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentView xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="CardiTrack.Mobile.Controls.AlertMiniCard">
+
+    <Border Style="{StaticResource DashboardCard}"
+            Padding="12"
+            WidthRequest="220">
+        <Border.GestureRecognizers>
+            <TapGestureRecognizer Tapped="OnTapped"/>
+        </Border.GestureRecognizers>
+
+        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="10">
+            <BoxView x:Name="SeverityBar"
+                     Grid.Column="0"
+                     WidthRequest="4"
+                     CornerRadius="2"
+                     VerticalOptions="Fill"
+                     Color="{StaticResource StatusYellow}"/>
+
+            <VerticalStackLayout Grid.Column="1" Spacing="3">
+                <Label x:Name="TitleLabel"
+                       FontFamily="QuicksandSemiBold"
+                       FontSize="14"
+                       TextColor="{StaticResource HeadingText}"
+                       LineBreakMode="TailTruncation"/>
+                <Label x:Name="TimeLabel"
+                       FontFamily="Quicksand"
+                       FontSize="12"
+                       TextColor="{StaticResource MutedText}"/>
+                <Label x:Name="StatusChip"
+                       FontFamily="QuicksandMedium"
+                       FontSize="11"
+                       TextColor="{StaticResource BodyText}"/>
+            </VerticalStackLayout>
+        </Grid>
+    </Border>
+</ContentView>

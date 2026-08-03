@@ -1,76 +1,105 @@
+using CardiTrack.Mobile.Core.Auth;
+using CardiTrack.Mobile.Services;
+
 namespace CardiTrack.Mobile;
 
 public partial class ForgotPasswordPage : ContentPage
 {
-    private readonly Entry[] _codeEntries;
+    private static readonly TimeSpan ResendCooldown = TimeSpan.FromSeconds(30);
 
-    public ForgotPasswordPage()
+    private readonly IAuthService _authService;
+
+    public ForgotPasswordPage(string? email = null)
     {
         InitializeComponent();
-        _codeEntries = [Code0, Code1, Code2, Code3, Code4, Code5];
+        _authService = ServiceHelper.GetRequiredService<IAuthService>();
+        if (!string.IsNullOrWhiteSpace(email))
+            EmailEntry.Text = email.Trim();
     }
 
-    protected override void OnAppearing()
-    {
-        base.OnAppearing();
-        Code0.Focus();
-    }
+    private async void OnSendClicked(object? sender, EventArgs e) =>
+        await SendResetLinkAsync(fromResend: false);
 
-    private void OnCodeDigitChanged(object? sender, TextChangedEventArgs e)
+    private async void OnResendTapped(object? sender, EventArgs e)
     {
-        if (sender is not Entry current || string.IsNullOrEmpty(e.NewTextValue))
+        if (!ResendLink.IsEnabled)
             return;
-
-        var idx = Array.IndexOf(_codeEntries, current);
-        if (idx < 0 || idx >= _codeEntries.Length - 1)
-            return;
-
-        _codeEntries[idx + 1].Focus();
+        await SendResetLinkAsync(fromResend: true);
     }
 
-    private async void OnVerifyClicked(object? sender, EventArgs e)
+    private async Task SendResetLinkAsync(bool fromResend)
     {
-        var code = string.Concat(_codeEntries.Select(c => c.Text ?? ""));
-        if (code.Length < 6)
+        var email = EmailEntry.Text?.Trim();
+        if (string.IsNullOrWhiteSpace(email) || !email.Contains('@'))
         {
-            await DisplayAlertAsync("Incomplete", "Please enter all 6 digits.", "OK");
+            EmailBorder.Stroke = new SolidColorBrush((Color)App.Current!.Resources["ErrorRed"]);
+            ResetError.Text = "Enter a valid email address";
+            ResetError.IsVisible = true;
             return;
         }
+        ResetError.IsVisible = false;
 
-        VerifyBtn.Text = "Verifying...";
-        VerifyBtn.IsEnabled = false;
+        SendBtn.Text = "Sending...";
+        SendBtn.IsEnabled = false;
 
         try
         {
-            await Task.Delay(1200);
-            await DisplayAlertAsync("Success", "Code verified (placeholder).", "OK");
-            await Navigation.PopToRootAsync();
+            await _authService.RequestPasswordResetAsync(email);
+
+            ConfirmationDetail.Text = $"We sent a password reset link to {email}";
+            RequestPanel.IsVisible = false;
+            ConfirmationPanel.IsVisible = true;
+            _ = StartResendCooldownAsync();
         }
-        catch
+        catch (AuthException ex)
         {
-            await DisplayAlertAsync("Error", "Verification failed. Please try again.", "OK");
+            var message = ex.Code switch
+            {
+                AuthErrorCode.Network => "No connection. Check your internet and try again.",
+                AuthErrorCode.NotConfigured => "Password reset isn't configured for this build.",
+                _ => "We couldn't send the reset link. Please try again.",
+            };
+            if (fromResend)
+                await DisplayAlertAsync("Error", message, "OK");
+            else
+            {
+                ResetError.Text = message;
+                ResetError.IsVisible = true;
+            }
         }
         finally
         {
-            VerifyBtn.Text = "Verify Code";
-            VerifyBtn.IsEnabled = true;
+            SendBtn.Text = "Send reset link";
+            SendBtn.IsEnabled = true;
         }
+    }
+
+    private async Task StartResendCooldownAsync()
+    {
+        ResendLink.IsEnabled = false;
+        ResendLink.TextColor = (Color)App.Current!.Resources["MutedText"];
+        await Task.Delay(ResendCooldown);
+        ResendLink.IsEnabled = true;
+        ResendLink.TextColor = (Color)App.Current!.Resources["Primary"];
+    }
+
+    private async void OnBackToSignInTapped(object? sender, EventArgs e)
+    {
+        if (Navigation.NavigationStack.Count > 1)
+            await Navigation.PopAsync();
+        else
+            WindowNavigation.SetRootPage(this, new NavigationPage(new SignInPage()));
     }
 
     private void OnEntryFocused(object? sender, FocusEventArgs e)
     {
         if (sender is Entry entry && entry.Parent is Border border)
-            border.Stroke = new SolidColorBrush((Color)Microsoft.Maui.Controls.Application.Current!.Resources["InputFocusBorder"]);
+            border.Stroke = new SolidColorBrush((Color)App.Current!.Resources["InputFocusBorder"]);
     }
 
     private void OnEntryUnfocused(object? sender, FocusEventArgs e)
     {
         if (sender is Entry entry && entry.Parent is Border border)
-            border.Stroke = new SolidColorBrush((Color)Microsoft.Maui.Controls.Application.Current!.Resources["InputBorder"]);
-    }
-
-    private async void OnResendTapped(object? sender, EventArgs e)
-    {
-        await DisplayAlertAsync("Code Sent", "A new code has been sent to your email.", "OK");
+            border.Stroke = new SolidColorBrush((Color)App.Current!.Resources["InputBorder"]);
     }
 }

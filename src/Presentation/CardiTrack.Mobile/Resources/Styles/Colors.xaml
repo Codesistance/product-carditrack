@@ -37,6 +37,16 @@
     <Color x:Key="StrengthMedium">#1884DC</Color>
     <Color x:Key="StrengthStrong">#36C09B</Color>
 
+    <!-- ── Dashboard status tokens (M1-09) ── -->
+    <Color x:Key="StatusGreen">#36C09B</Color>
+    <Color x:Key="StatusYellow">#F0A92E</Color>
+    <Color x:Key="StatusOrange">#ED7B2F</Color>
+    <Color x:Key="StatusRed">#E53E3E</Color>
+    <Color x:Key="StatusUnknown">#939DAA</Color>
+    <Color x:Key="SkeletonGray">#E7EBF0</Color>
+    <Color x:Key="SleepPurple">#7C6FDC</Color>
+    <Color x:Key="StaleBannerBackground">#FFF7E8</Color>
+
     <!-- ── Solid colour brushes ── -->
     <SolidColorBrush x:Key="PrimaryBrush" Color="{StaticResource Primary}"/>
     <SolidColorBrush x:Key="WhiteBrush" Color="{StaticResource White}"/>
@@ -73,6 +83,28 @@
     <LinearGradientBrush x:Key="HeroBottomFade" StartPoint="0,1" EndPoint="0,0">
         <GradientStop Color="#E6FFFFFF" Offset="0.0" />
         <GradientStop Color="#00FFFFFF" Offset="0.72" />
+    </LinearGradientBrush>
+
+    <!-- ── Status hero card gradients (M1-09) ── -->
+    <LinearGradientBrush x:Key="HeroGreenBrush" StartPoint="0,0" EndPoint="1,1">
+        <GradientStop Color="#2AA184" Offset="0.0" />
+        <GradientStop Color="#36C09B" Offset="1.0" />
+    </LinearGradientBrush>
+    <LinearGradientBrush x:Key="HeroYellowBrush" StartPoint="0,0" EndPoint="1,1">
+        <GradientStop Color="#D89422" Offset="0.0" />
+        <GradientStop Color="#F0A92E" Offset="1.0" />
+    </LinearGradientBrush>
+    <LinearGradientBrush x:Key="HeroOrangeBrush" StartPoint="0,0" EndPoint="1,1">
+        <GradientStop Color="#D2691F" Offset="0.0" />
+        <GradientStop Color="#ED7B2F" Offset="1.0" />
+    </LinearGradientBrush>
+    <LinearGradientBrush x:Key="HeroRedBrush" StartPoint="0,0" EndPoint="1,1">
+        <GradientStop Color="#C42F2F" Offset="0.0" />
+        <GradientStop Color="#E53E3E" Offset="1.0" />
+    </LinearGradientBrush>
+    <LinearGradientBrush x:Key="HeroUnknownBrush" StartPoint="0,0" EndPoint="1,1">
+        <GradientStop Color="#174E86" Offset="0.0" />
+        <GradientStop Color="#1884DC" Offset="1.0" />
     </LinearGradientBrush>
 
 </ResourceDictionary>

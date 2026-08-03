@@ -34,6 +34,7 @@
     <ProjectReference Include="..\..\src\Core\CardiTrack.Domain\CardiTrack.Domain.csproj" />
     <ProjectReference Include="..\..\src\Core\CardiTrack.Application\CardiTrack.Application.csproj" />
     <ProjectReference Include="..\..\src\Infrastructure\CardiTrack.Infrastructure\CardiTrack.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\Presentation\CardiTrack.Mobile.Core\CardiTrack.Mobile.Core.csproj" />
   </ItemGroup>
 
 </Project>

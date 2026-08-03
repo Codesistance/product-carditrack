@@ -74,7 +74,8 @@
                                    Text="Email already registered"
                                    TextColor="{StaticResource ErrorRed}"
                                    FontFamily="Quicksand" FontAttributes="Bold" FontSize="16"/>
-                            <Label Text="Please use a different email or sign in to your account."
+                            <Label x:Name="ErrorBannerDetail"
+                                   Text="Please use a different email or sign in to your account."
                                    Style="{StaticResource Body2}"
                                    TextColor="{StaticResource HeadingText}"/>
                             <Label Text="Sign in"

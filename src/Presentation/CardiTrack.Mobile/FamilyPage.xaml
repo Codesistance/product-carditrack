@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="CardiTrack.Mobile.FamilyPage"
+             Shell.NavBarIsVisible="False"
+             BackgroundColor="{StaticResource White}">
+    <VerticalStackLayout Padding="20,24" Spacing="8">
+        <Label Text="Family" Style="{StaticResource Heading2}"/>
+        <Label Text="Family sharing (MVP 2) is coming soon."
+               Style="{StaticResource Body2}"
+               TextColor="{StaticResource BodyText}"/>
+    </VerticalStackLayout>
+</ContentPage>

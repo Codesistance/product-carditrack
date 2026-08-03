@@ -1,10 +1,19 @@
+using CardiTrack.Mobile.Core.Api;
+using CardiTrack.Mobile.Core.Auth;
+using CardiTrack.Mobile.Services;
+
 namespace CardiTrack.Mobile;
 
 public partial class SignInPage : ContentPage
 {
+    private readonly IAuthService _authService;
+    private readonly PostLoginRouter _router;
+
     public SignInPage()
     {
         InitializeComponent();
+        _authService = ServiceHelper.GetRequiredService<IAuthService>();
+        _router = ServiceHelper.GetRequiredService<PostLoginRouter>();
     }
 
     private async void OnSignInClicked(object? sender, EventArgs e)
@@ -36,6 +45,7 @@ public partial class SignInPage : ContentPage
         if (!valid)
             return;
 
+        SignInError.IsVisible = false;
         SignInBtn.Text = "Signing in...";
         SignInBtn.IsEnabled = false;
         EmailEntry.IsEnabled = false;
@@ -43,14 +53,23 @@ public partial class SignInPage : ContentPage
 
         try
         {
-            await Task.Delay(1200);
-
-            await MainThread.InvokeOnMainThreadAsync(() =>
-                WindowNavigation.SetRootPage(this, new AppShell()));
+            await _authService.SignInAsync(EmailEntry.Text.Trim(), PasswordEntry.Text);
+            await _router.RouteAsync(this);
         }
-        catch
+        catch (AuthException ex)
         {
-            await DisplayAlertAsync("Error", "Sign in failed. Please try again.", "OK");
+            ShowError(ex.Code switch
+            {
+                AuthErrorCode.InvalidCredentials => "Wrong email or password.",
+                AuthErrorCode.TooManyAttempts => "Too many attempts. Try again later or reset your password.",
+                AuthErrorCode.Network => "No connection. Check your internet and try again.",
+                AuthErrorCode.NotConfigured => "Sign-in isn't configured for this build.",
+                _ => "Sign in failed. Please try again.",
+            });
+        }
+        catch (ApiException)
+        {
+            ShowError("Signed in, but we couldn't load your account. Check your connection and try again.");
         }
         finally
         {
@@ -59,6 +78,12 @@ public partial class SignInPage : ContentPage
             EmailEntry.IsEnabled = true;
             PasswordEntry.IsEnabled = true;
         }
+    }
+
+    private void ShowError(string message)
+    {
+        SignInError.Text = message;
+        SignInError.IsVisible = true;
     }
 
     private void OnEntryFocused(object? sender, FocusEventArgs e)
@@ -85,7 +110,7 @@ public partial class SignInPage : ContentPage
 
     private async void OnForgotPasswordTapped(object? sender, EventArgs e)
     {
-        await Navigation.PushAsync(new ForgotPasswordPage());
+        await Navigation.PushAsync(new ForgotPasswordPage(EmailEntry.Text));
     }
 
     private async void OnSignUpTapped(object? sender, EventArgs e)

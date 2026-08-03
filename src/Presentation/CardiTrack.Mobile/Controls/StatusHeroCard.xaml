@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentView xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="CardiTrack.Mobile.Controls.StatusHeroCard">
+
+    <Border x:Name="HeroBorder"
+            StrokeThickness="0"
+            Padding="18">
+        <Border.StrokeShape>
+            <RoundRectangle CornerRadius="20"/>
+        </Border.StrokeShape>
+        <Border.Background>
+            <StaticResource Key="HeroUnknownBrush"/>
+        </Border.Background>
+
+        <VerticalStackLayout Spacing="12">
+
+            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="14">
+                <!-- Initials avatar (photo support arrives with the PhotoUrl field) -->
+                <Border Grid.Column="0"
+                        WidthRequest="64" HeightRequest="64"
+                        StrokeThickness="0"
+                        BackgroundColor="#33FFFFFF">
+                    <Border.StrokeShape>
+                        <RoundRectangle CornerRadius="32"/>
+                    </Border.StrokeShape>
+                    <Label x:Name="InitialsLabel"
+                           Text=""
+                           FontFamily="QuicksandSemiBold"
+                           FontSize="24"
+                           TextColor="{StaticResource White}"
+                           HorizontalOptions="Center"
+                           VerticalOptions="Center"/>
+                </Border>
+
+                <VerticalStackLayout Grid.Column="1" Spacing="2" VerticalOptions="Center">
+                    <Label x:Name="NameLabel"
+                           FontFamily="QuicksandSemiBold"
+                           FontSize="20"
+                           TextColor="{StaticResource White}"/>
+                    <HorizontalStackLayout Spacing="8">
+                        <Image x:Name="StatusIcon"
+                               Source="icon_status_check.svg"
+                               WidthRequest="22" HeightRequest="22"
+                               VerticalOptions="Center"/>
+                        <Label x:Name="StatusLabel"
+                               FontFamily="Quicksand"
+                               FontSize="15"
+                               TextColor="{StaticResource White}"
+                               VerticalTextAlignment="Center"/>
+                    </HorizontalStackLayout>
+                </VerticalStackLayout>
+            </Grid>
+
+            <Grid ColumnDefinitions="*,Auto">
+                <Label x:Name="LastSyncedLabel"
+                       Grid.Column="0"
+                       FontFamily="Quicksand"
+                       FontSize="13"
+                       TextColor="#DDFFFFFF"
+                       VerticalTextAlignment="Center"/>
+                <ImageButton Grid.Column="1"
+                             Source="icon_refresh_white.svg"
+                             WidthRequest="22" HeightRequest="22"
+                             BackgroundColor="Transparent"
+                             Clicked="OnSyncClicked"/>
+            </Grid>
+
+        </VerticalStackLayout>
+    </Border>
+</ContentView>

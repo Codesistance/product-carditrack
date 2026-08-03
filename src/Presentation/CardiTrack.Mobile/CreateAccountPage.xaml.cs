@@ -1,13 +1,21 @@
+using CardiTrack.Mobile.Core.Api;
+using CardiTrack.Mobile.Core.Auth;
+using CardiTrack.Mobile.Services;
+
 namespace CardiTrack.Mobile;
 
 public partial class CreateAccountPage : ContentPage
 {
     private readonly BoxView[] _strengthBars;
+    private readonly IAuthService _authService;
+    private readonly PostLoginRouter _router;
 
     public CreateAccountPage()
     {
         InitializeComponent();
         _strengthBars = [Str0, Str1, Str2, Str3];
+        _authService = ServiceHelper.GetRequiredService<IAuthService>();
+        _router = ServiceHelper.GetRequiredService<PostLoginRouter>();
     }
 
     private void OnPasswordTextChanged(object? sender, TextChangedEventArgs e)
@@ -117,20 +125,50 @@ public partial class CreateAccountPage : ContentPage
         }
 
         SetLoadingState(true);
+        ErrorBanner.IsVisible = false;
+        EmailError.IsVisible = false;
 
         try
         {
-            await Task.Delay(1500);
-            await DisplayAlertAsync("Success", "Account created (placeholder).", "OK");
+            await _authService.SignUpAsync(NameEntry.Text.Trim(), EmailEntry.Text.Trim(), PasswordEntry.Text);
+            await _router.RouteAsync(this);
         }
-        catch
+        catch (AuthException ex) when (ex.Code == AuthErrorCode.UserAlreadyExists)
         {
-            ErrorBanner.IsVisible = true;
+            EmailBorder.Stroke = new SolidColorBrush((Color)App.Current!.Resources["ErrorRed"]);
+            EmailError.Text = "An account with this email already exists. Sign in instead.";
+            EmailError.IsVisible = true;
+        }
+        catch (AuthException ex) when (ex.Code == AuthErrorCode.WeakPassword)
+        {
+            ShowErrorBanner("Password too weak",
+                ex.Auth0Description ?? "Choose a longer password with a mix of letters, numbers, and symbols.");
+        }
+        catch (AuthException ex)
+        {
+            ShowErrorBanner(
+                ex.Code == AuthErrorCode.Network ? "No connection" : "Something went wrong",
+                ex.Code == AuthErrorCode.Network
+                    ? "Check your internet connection and try again."
+                    : "We couldn't create your account. Please try again.");
+        }
+        catch (ApiException)
+        {
+            // Auth0 account exists and the user is signed in; only the status call failed.
+            ShowErrorBanner("Account created, but we couldn't load your profile",
+                "Check your connection and try again — you can also sign in later.");
         }
         finally
         {
             SetLoadingState(false);
         }
+    }
+
+    private void ShowErrorBanner(string title, string detail)
+    {
+        ErrorBannerTitle.Text = title;
+        ErrorBannerDetail.Text = detail;
+        ErrorBanner.IsVisible = true;
     }
 
     private void SetLoadingState(bool loading)

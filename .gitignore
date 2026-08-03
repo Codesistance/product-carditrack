@@ -151,3 +151,6 @@ Temporary Items
 **/*.ipa
 **/*.apk
 **/*.aab
+
+# Developer-local mobile config overrides
+src/Presentation/CardiTrack.Mobile/Local.props

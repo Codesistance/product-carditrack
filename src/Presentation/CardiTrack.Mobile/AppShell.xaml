@@ -4,11 +4,32 @@
     xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
     xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
     xmlns:local="clr-namespace:CardiTrack.Mobile"
-    Title="CardiTrack.Mobile">
+    Title="CardiTrack"
+    Shell.TabBarBackgroundColor="{StaticResource White}"
+    Shell.TabBarTitleColor="{StaticResource Primary}"
+    Shell.TabBarUnselectedColor="{StaticResource MutedText}">
 
-    <ShellContent
-        Title="Home"
-        ContentTemplate="{DataTemplate local:MainPage}"
-        Route="MainPage" />
+    <TabBar>
+        <ShellContent
+            Title="Dashboard"
+            Icon="icon_tab_home.svg"
+            ContentTemplate="{DataTemplate local:DashboardPage}"
+            Route="dashboard" />
+        <ShellContent
+            Title="Alerts"
+            Icon="icon_tab_alerts.svg"
+            ContentTemplate="{DataTemplate local:AlertsPage}"
+            Route="alerts" />
+        <ShellContent
+            Title="Family"
+            Icon="icon_tab_family.svg"
+            ContentTemplate="{DataTemplate local:FamilyPage}"
+            Route="family" />
+        <ShellContent
+            Title="Settings"
+            Icon="icon_tab_settings.svg"
+            ContentTemplate="{DataTemplate local:SettingsPage}"
+            Route="settings" />
+    </TabBar>
 
 </Shell>

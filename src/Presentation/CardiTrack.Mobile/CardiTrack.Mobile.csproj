@@ -1,5 +1,26 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
+	<!-- Developer-local config overrides (git-ignored). Must import before the defaults
+	     below so values set there win. See Local.props.sample. -->
+	<Import Project="Local.props" Condition="Exists('Local.props')" />
+
+	<!-- Backend/auth configuration. CI stamps these via -p:ApiBaseUrl=... etc.; they are
+	     compiled into the app as assembly metadata read by AppConfig. -->
+	<PropertyGroup>
+		<ApiBaseUrl Condition="'$(ApiBaseUrl)' == '' And '$(Configuration)' == 'Debug'">https://api.dev.carditrack.com</ApiBaseUrl>
+		<ApiBaseUrl Condition="'$(ApiBaseUrl)' == ''">https://api.carditrack.com</ApiBaseUrl>
+		<Auth0Domain Condition="'$(Auth0Domain)' == ''"></Auth0Domain>
+		<Auth0ClientId Condition="'$(Auth0ClientId)' == ''"></Auth0ClientId>
+		<Auth0Audience Condition="'$(Auth0Audience)' == ''"></Auth0Audience>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<AssemblyMetadata Include="ApiBaseUrl" Value="$(ApiBaseUrl)" />
+		<AssemblyMetadata Include="Auth0Domain" Value="$(Auth0Domain)" />
+		<AssemblyMetadata Include="Auth0ClientId" Value="$(Auth0ClientId)" />
+		<AssemblyMetadata Include="Auth0Audience" Value="$(Auth0Audience)" />
+	</ItemGroup>
+
 	<PropertyGroup>
 		<TargetFrameworks Condition="$([MSBuild]::IsOSPlatform('linux'))">net10.0-android</TargetFrameworks>
 		<TargetFrameworks Condition="$([MSBuild]::IsOSPlatform('osx'))">net10.0-ios</TargetFrameworks>
@@ -78,6 +99,7 @@
 
 	<ItemGroup>
 	  <ProjectReference Include="..\..\Core\CardiTrack.Application\CardiTrack.Application.csproj" />
+	  <ProjectReference Include="..\CardiTrack.Mobile.Core\CardiTrack.Mobile.Core.csproj" />
 	</ItemGroup>
 
 </Project>

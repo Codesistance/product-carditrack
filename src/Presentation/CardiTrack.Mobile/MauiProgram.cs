@@ -1,3 +1,8 @@
+using CardiTrack.Mobile.Core.Api;
+using CardiTrack.Mobile.Core.Auth;
+using CardiTrack.Mobile.Core.Configuration;
+using CardiTrack.Mobile.Core.Http;
+using CardiTrack.Mobile.Services;
 using Microsoft.Extensions.Logging;
 
 namespace CardiTrack.Mobile;
@@ -6,6 +11,8 @@ public static class MauiProgram
 {
     public static MauiApp CreateMauiApp()
     {
+        AppConfig.Validate();
+
         var builder = MauiApp.CreateBuilder();
         builder
             .UseMauiApp<App>()
@@ -19,12 +26,38 @@ public static class MauiProgram
                 fonts.AddFont("Manrope-SemiBold.ttf", "ManropeSemiBold");
             });
 
-        // HTTP CLIENT FACTORY — named client targeting the CardiTrack API
-        builder.Services.AddHttpClient("CardiTrackApiClient", client =>
+        var auth0 = new Auth0Options(AppConfig.Auth0Domain, AppConfig.Auth0ClientId, AppConfig.Auth0Audience);
+        builder.Services.AddSingleton(auth0);
+        builder.Services.AddSingleton(new ApiOptions(AppConfig.ApiBaseUrl));
+
+        builder.Services.AddSingleton<ITokenStore, SecureTokenStore>();
+        builder.Services.AddSingleton<ITokenRefresher, TokenRefresher>();
+        builder.Services.AddTransient<AuthHttpMessageHandler>();
+
+        // Auth0 client deliberately has NO auth handler — login/refresh calls must not
+        // recurse through the bearer pipeline.
+        builder.Services.AddHttpClient<IAuth0AuthClient, Auth0AuthClient>(client =>
         {
-            client.BaseAddress = new Uri(ApiConstants.BaseUrl);
-            client.DefaultRequestHeaders.Add("Accept", "application/json");
+            if (auth0.IsConfigured)
+                client.BaseAddress = new Uri($"https://{auth0.Domain}");
+            client.Timeout = TimeSpan.FromSeconds(30);
         });
+
+        builder.Services.AddHttpClient<ICardiTrackApiClient, CardiTrackApiClient>(client =>
+        {
+            client.BaseAddress = new Uri(AppConfig.ApiBaseUrl);
+            client.DefaultRequestHeaders.Add("Accept", "application/json");
+            client.Timeout = TimeSpan.FromSeconds(30);
+        }).AddHttpMessageHandler<AuthHttpMessageHandler>();
+
+        builder.Services.AddSingleton<IAuthService, AuthService>();
+        builder.Services.AddSingleton<PostLoginRouter>();
+
+        // Shell tab pages resolve through DI (constructor injection).
+        builder.Services.AddTransient<DashboardPage>();
+        builder.Services.AddTransient<AlertsPage>();
+        builder.Services.AddTransient<FamilyPage>();
+        builder.Services.AddTransient<SettingsPage>();
 
 #if DEBUG
         builder.Logging.AddDebug();

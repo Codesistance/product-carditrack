@@ -1,0 +1,16 @@
+<!-- Copy to Local.props (git-ignored) to override build-time config for local development.
+     Values here win over the defaults in CardiTrack.Mobile.csproj. -->
+<Project>
+	<PropertyGroup>
+		<!-- Local API (dotnet run in CardiTrack.API listens on http://localhost:5230):
+		       Android emulator: http://10.0.2.2:5230  (cleartext allowed via network_security_config.xml)
+		       Windows/iOS sim:  http://localhost:5230
+		     Default (unset): https://api.dev.carditrack.com -->
+		<!-- <ApiBaseUrl>http://10.0.2.2:5230</ApiBaseUrl> -->
+
+		<!-- Auth0 dev tenant (public identifiers, not secrets) -->
+		<!-- <Auth0Domain>your-tenant.eu.auth0.com</Auth0Domain> -->
+		<!-- <Auth0ClientId>yourNativeAppClientId</Auth0ClientId> -->
+		<!-- <Auth0Audience>https://api.carditrack.com</Auth0Audience> -->
+	</PropertyGroup>
+</Project>

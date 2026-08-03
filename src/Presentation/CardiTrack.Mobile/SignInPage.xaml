@@ -96,6 +96,12 @@
                         </Label>
                     </Grid>
 
+                    <!-- Inline sign-in error -->
+                    <Label x:Name="SignInError"
+                           Style="{StaticResource AuthErrorLabel}"
+                           IsVisible="False"
+                           Margin="0,8,0,0"/>
+
                     <!-- Sign in button -->
                     <Button x:Name="SignInBtn"
                             Text="Sign in"

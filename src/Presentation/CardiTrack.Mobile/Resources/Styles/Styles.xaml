@@ -279,4 +279,26 @@
         <Setter Property="VerticalOptions" Value="Center"/>
     </Style>
 
+    <Style x:Key="DashboardCard" TargetType="Border">
+        <Setter Property="BackgroundColor" Value="{StaticResource White}"/>
+        <Setter Property="Stroke" Value="{StaticResource Divider}"/>
+        <Setter Property="StrokeThickness" Value="1"/>
+        <Setter Property="Padding" Value="14"/>
+        <Setter Property="StrokeShape">
+            <RoundRectangle CornerRadius="16"/>
+        </Setter>
+    </Style>
+
+    <Style x:Key="MetricValue" TargetType="Label">
+        <Setter Property="FontFamily" Value="QuicksandSemiBold"/>
+        <Setter Property="FontSize" Value="20"/>
+        <Setter Property="TextColor" Value="{StaticResource HeadingText}"/>
+    </Style>
+
+    <Style x:Key="DashboardSectionTitle" TargetType="Label">
+        <Setter Property="FontFamily" Value="QuicksandSemiBold"/>
+        <Setter Property="FontSize" Value="18"/>
+        <Setter Property="TextColor" Value="{StaticResource HeadingText}"/>
+    </Style>
+
 </ResourceDictionary>
