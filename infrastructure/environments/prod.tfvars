@@ -35,7 +35,8 @@ storage_location = "EU"
 storage_class    = "STANDARD"
 
 # APM (logs + traces shipping) — engine name from ApmProviderRegistry; empty disables
-apm_engine = "Datadog"
+apm_engine        = "Datadog"
+apm_mobile_engine = "Datadog"
 
 # Pub/Sub — enabled in prod for real-time messaging
 enable_pubsub = true

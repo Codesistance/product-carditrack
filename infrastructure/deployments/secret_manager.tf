@@ -46,10 +46,10 @@ locals {
     "auth0-mobile-client-id" = "REPLACE_ME" # Auth0 Native app client for the MAUI mobile app (public, no secret)
     "encryption-key"         = "REPLACE_ME"
     "apm-data"               = "REPLACE_ME" # APM connection JSON, e.g. {"IngestUrl":"...","IngestToken":"..."} — see scripts/set-apm-secrets.sh
-    # Datadog RUM for the mobile app — both are embed-safe client identifiers
-    # (write-only client token + application id), stamped into builds by CI.
-    "datadog-mobile-client-token" = "REPLACE_ME"
-    "datadog-rum-application-id"  = "REPLACE_ME"
+    # Mobile monitoring connection JSON for the engine named by apm-mobile-engine —
+    # embed-safe client identifiers only (Datadog: {"ClientToken":"...","ApplicationId":"...","Site":"Eu1"}),
+    # stamped into builds by CI.
+    "apm-mobile-data" = "REPLACE_ME"
   }
 
   # Secrets CI stamps into mobile builds (public identifiers, not credentials) —
@@ -58,8 +58,7 @@ locals {
     "auth0-domain",
     "auth0-audience",
     "auth0-mobile-client-id",
-    "datadog-mobile-client-token",
-    "datadog-rum-application-id",
+    "apm-mobile-data",
   ]
 }
 
@@ -121,6 +120,36 @@ resource "google_secret_manager_secret_version" "app_secrets" {
   lifecycle {
     ignore_changes = [secret_data]
   }
+}
+
+# ── Mobile APM engine (Terraform-owned — the mobile monitoring switch) ────────
+# Mirrors the server's Apm__Engine env var: flip apm_mobile_engine in tfvars and
+# apply; CI stamps the value into mobile builds. Not in placeholder_secrets on
+# purpose — its version must track Terraform, not an operator.
+
+variable "apm_mobile_engine" {
+  description = "Mobile monitoring engine stamped into app builds (must match an engine in the app's MobileApm registry, e.g. Datadog); empty disables monitoring"
+  type        = string
+}
+
+resource "google_secret_manager_secret" "apm_mobile_engine" {
+  secret_id = "${var.secret_id_prefix}-apm-mobile-engine"
+  replication {
+    auto {}
+  }
+  labels     = var.secret_labels
+  depends_on = [google_project_service.secretmanager]
+}
+
+resource "google_secret_manager_secret_version" "apm_mobile_engine" {
+  secret      = google_secret_manager_secret.apm_mobile_engine.id
+  secret_data = var.apm_mobile_engine
+}
+
+resource "google_secret_manager_secret_iam_member" "apm_mobile_engine_deploy_accessor" {
+  secret_id = google_secret_manager_secret.apm_mobile_engine.id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${var.deploy_service_account}"
 }
 
 # ── Health check token (Terraform-owned, auto-rotated) ────────────────────────

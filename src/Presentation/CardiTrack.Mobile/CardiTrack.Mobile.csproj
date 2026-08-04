@@ -12,11 +12,11 @@
 		<Auth0Domain Condition="'$(Auth0Domain)' == ''"></Auth0Domain>
 		<Auth0ClientId Condition="'$(Auth0ClientId)' == ''"></Auth0ClientId>
 		<Auth0Audience Condition="'$(Auth0Audience)' == ''"></Auth0Audience>
-		<!-- Datadog RUM (client token is embed-safe: write-only, not an API key).
-		     Empty token disables monitoring entirely. -->
-		<DatadogClientToken Condition="'$(DatadogClientToken)' == ''"></DatadogClientToken>
-		<DatadogRumApplicationId Condition="'$(DatadogRumApplicationId)' == ''"></DatadogRumApplicationId>
-		<DatadogSite Condition="'$(DatadogSite)' == ''">Eu1</DatadogSite>
+		<!-- Mobile monitoring, mirroring the server's Apm contract: ApmEngine names an
+		     entry in the app's MobileApm registry; ApmData is that engine's client-side
+		     connection JSON (base64 or raw), embed-safe identifiers only. Empty = off. -->
+		<ApmEngine Condition="'$(ApmEngine)' == ''"></ApmEngine>
+		<ApmData Condition="'$(ApmData)' == ''"></ApmData>
 	</PropertyGroup>
 
 	<ItemGroup>
@@ -24,9 +24,8 @@
 		<AssemblyMetadata Include="Auth0Domain" Value="$(Auth0Domain)" />
 		<AssemblyMetadata Include="Auth0ClientId" Value="$(Auth0ClientId)" />
 		<AssemblyMetadata Include="Auth0Audience" Value="$(Auth0Audience)" />
-		<AssemblyMetadata Include="DatadogClientToken" Value="$(DatadogClientToken)" />
-		<AssemblyMetadata Include="DatadogRumApplicationId" Value="$(DatadogRumApplicationId)" />
-		<AssemblyMetadata Include="DatadogSite" Value="$(DatadogSite)" />
+		<AssemblyMetadata Include="ApmEngine" Value="$(ApmEngine)" />
+		<AssemblyMetadata Include="ApmData" Value="$(ApmData)" />
 	</ItemGroup>
 
 	<PropertyGroup>

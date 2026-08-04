@@ -30,7 +30,8 @@ storage_location = "EU"
 storage_class    = "STANDARD"
 
 # APM (logs + traces shipping) — engine name from ApmProviderRegistry; empty disables
-apm_engine = "Datadog"
+apm_engine        = "Datadog"
+apm_mobile_engine = "Datadog"
 
 # Pub/Sub
 enable_pubsub = false # Disabled in dev

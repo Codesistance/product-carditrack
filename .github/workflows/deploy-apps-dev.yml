@@ -376,9 +376,13 @@ jobs:
             domain:${{ needs.changes.outputs.gcp_project_id }}/carditrack-dev-auth0-domain
             audience:${{ needs.changes.outputs.gcp_project_id }}/carditrack-dev-auth0-audience
             mobile_client_id:${{ needs.changes.outputs.gcp_project_id }}/carditrack-dev-auth0-mobile-client-id
-            dd_client_token:${{ needs.changes.outputs.gcp_project_id }}/carditrack-dev-datadog-mobile-client-token
-            dd_rum_app_id:${{ needs.changes.outputs.gcp_project_id }}/carditrack-dev-datadog-rum-application-id
-      - run: |
+            apm_mobile_engine:${{ needs.changes.outputs.gcp_project_id }}/carditrack-dev-apm-mobile-engine
+            apm_mobile_data:${{ needs.changes.outputs.gcp_project_id }}/carditrack-dev-apm-mobile-data
+      - env:
+          APM_DATA: ${{ steps.auth0.outputs.apm_mobile_data }}
+        run: |
+          # Placeholder data => stamp empty => monitoring off; base64 survives the shell/MSBuild boundary
+          if [ "$APM_DATA" = "REPLACE_ME" ]; then APM_DATA=""; fi
           dotnet publish src/Presentation/CardiTrack.Mobile/CardiTrack.Mobile.csproj \
             -f net10.0-android \
             -c Release \
@@ -386,8 +390,8 @@ jobs:
             -p:Auth0Domain=${{ steps.auth0.outputs.domain }} \
             -p:Auth0ClientId=${{ steps.auth0.outputs.mobile_client_id }} \
             -p:Auth0Audience=${{ steps.auth0.outputs.audience }} \
-            -p:DatadogClientToken=${{ steps.auth0.outputs.dd_client_token != 'REPLACE_ME' && steps.auth0.outputs.dd_client_token || '' }} \
-            -p:DatadogRumApplicationId=${{ steps.auth0.outputs.dd_rum_app_id != 'REPLACE_ME' && steps.auth0.outputs.dd_rum_app_id || '' }}
+            -p:ApmEngine=${{ steps.auth0.outputs.apm_mobile_engine }} \
+            -p:ApmData=$(printf '%s' "$APM_DATA" | base64 | tr -d '\n')
       - uses: actions/upload-artifact@v7
         with:
           name: mobile-android
@@ -423,9 +427,12 @@ jobs:
             domain:${{ needs.changes.outputs.gcp_project_id }}/carditrack-dev-auth0-domain
             audience:${{ needs.changes.outputs.gcp_project_id }}/carditrack-dev-auth0-audience
             mobile_client_id:${{ needs.changes.outputs.gcp_project_id }}/carditrack-dev-auth0-mobile-client-id
-            dd_client_token:${{ needs.changes.outputs.gcp_project_id }}/carditrack-dev-datadog-mobile-client-token
-            dd_rum_app_id:${{ needs.changes.outputs.gcp_project_id }}/carditrack-dev-datadog-rum-application-id
-      - run: |
+            apm_mobile_engine:${{ needs.changes.outputs.gcp_project_id }}/carditrack-dev-apm-mobile-engine
+            apm_mobile_data:${{ needs.changes.outputs.gcp_project_id }}/carditrack-dev-apm-mobile-data
+      - env:
+          APM_DATA: ${{ steps.auth0.outputs.apm_mobile_data }}
+        run: |
+          if [ "$APM_DATA" = "REPLACE_ME" ]; then APM_DATA=""; fi
           dotnet build src/Presentation/CardiTrack.Mobile/CardiTrack.Mobile.csproj \
             -f net10.0-ios \
             -c Release \
@@ -435,8 +442,8 @@ jobs:
             -p:Auth0Domain=${{ steps.auth0.outputs.domain }} \
             -p:Auth0ClientId=${{ steps.auth0.outputs.mobile_client_id }} \
             -p:Auth0Audience=${{ steps.auth0.outputs.audience }} \
-            -p:DatadogClientToken=${{ steps.auth0.outputs.dd_client_token != 'REPLACE_ME' && steps.auth0.outputs.dd_client_token || '' }} \
-            -p:DatadogRumApplicationId=${{ steps.auth0.outputs.dd_rum_app_id != 'REPLACE_ME' && steps.auth0.outputs.dd_rum_app_id || '' }}
+            -p:ApmEngine=${{ steps.auth0.outputs.apm_mobile_engine }} \
+            -p:ApmData=$(printf '%s' "$APM_DATA" | base64 | tr -d '\n')
 
   build-mobile-windows:
     name: Build Mobile (Windows)
@@ -564,8 +571,8 @@ jobs:
             auth0_domain:${{ needs.changes.outputs.gcp_project_id }}/carditrack-dev-auth0-domain
             auth0_audience:${{ needs.changes.outputs.gcp_project_id }}/carditrack-dev-auth0-audience
             auth0_mobile_client_id:${{ needs.changes.outputs.gcp_project_id }}/carditrack-dev-auth0-mobile-client-id
-            dd_client_token:${{ needs.changes.outputs.gcp_project_id }}/carditrack-dev-datadog-mobile-client-token
-            dd_rum_app_id:${{ needs.changes.outputs.gcp_project_id }}/carditrack-dev-datadog-rum-application-id
+            apm_mobile_engine:${{ needs.changes.outputs.gcp_project_id }}/carditrack-dev-apm-mobile-engine
+            apm_mobile_data:${{ needs.changes.outputs.gcp_project_id }}/carditrack-dev-apm-mobile-data
 
       - name: Decode keystore
         if: steps.gate.outputs.available == 'true'
@@ -583,7 +590,9 @@ jobs:
           DISPLAY_VERSION: ${{ needs.compute-version.outputs.version }}
           BUILD_NUMBER: ${{ needs.compute-version.outputs.build_number }}
           KEYSTORE_PASSWORD: ${{ steps.secrets.outputs.keystore_password }}
+          APM_DATA: ${{ steps.secrets.outputs.apm_mobile_data }}
         run: |
+          if [ "$APM_DATA" = "REPLACE_ME" ]; then APM_DATA=""; fi
           # AndroidPackageFormats defaults to aab;apk — don't pass it via -p:
           # (MSBuild splits on the semicolon and misparses "apk" as a switch)
           dotnet publish src/Presentation/CardiTrack.Mobile/CardiTrack.Mobile.csproj \
@@ -600,8 +609,8 @@ jobs:
             -p:Auth0Domain=${{ steps.secrets.outputs.auth0_domain }} \
             -p:Auth0ClientId=${{ steps.secrets.outputs.auth0_mobile_client_id }} \
             -p:Auth0Audience=${{ steps.secrets.outputs.auth0_audience }} \
-            -p:DatadogClientToken=${{ steps.secrets.outputs.dd_client_token != 'REPLACE_ME' && steps.secrets.outputs.dd_client_token || '' }} \
-            -p:DatadogRumApplicationId=${{ steps.secrets.outputs.dd_rum_app_id != 'REPLACE_ME' && steps.secrets.outputs.dd_rum_app_id || '' }}
+            -p:ApmEngine=${{ steps.secrets.outputs.apm_mobile_engine }} \
+            -p:ApmData=$(printf '%s' "$APM_DATA" | base64 | tr -d '\n')
 
       # Play Console crash-report inputs: the R8 deobfuscation map produced by
       # AndroidLinkTool=r8 (see CardiTrack.Mobile.csproj) and a zip of the
@@ -676,8 +685,8 @@ jobs:
             auth0_domain:${{ needs.changes.outputs.gcp_project_id }}/carditrack-dev-auth0-domain
             auth0_audience:${{ needs.changes.outputs.gcp_project_id }}/carditrack-dev-auth0-audience
             auth0_mobile_client_id:${{ needs.changes.outputs.gcp_project_id }}/carditrack-dev-auth0-mobile-client-id
-            dd_client_token:${{ needs.changes.outputs.gcp_project_id }}/carditrack-dev-datadog-mobile-client-token
-            dd_rum_app_id:${{ needs.changes.outputs.gcp_project_id }}/carditrack-dev-datadog-rum-application-id
+            apm_mobile_engine:${{ needs.changes.outputs.gcp_project_id }}/carditrack-dev-apm-mobile-engine
+            apm_mobile_data:${{ needs.changes.outputs.gcp_project_id }}/carditrack-dev-apm-mobile-data
 
       - name: Install certificate and provisioning profile
         if: steps.gate.outputs.available == 'true'
@@ -716,7 +725,9 @@ jobs:
         env:
           DISPLAY_VERSION: ${{ needs.compute-version.outputs.version }}
           BUILD_NUMBER: ${{ needs.compute-version.outputs.build_number }}
+          APM_DATA: ${{ steps.secrets.outputs.apm_mobile_data }}
         run: |
+          if [ "$APM_DATA" = "REPLACE_ME" ]; then APM_DATA=""; fi
           dotnet publish src/Presentation/CardiTrack.Mobile/CardiTrack.Mobile.csproj \
             -f net10.0-ios \
             -c Release \
@@ -730,8 +741,8 @@ jobs:
             -p:Auth0Domain=${{ steps.secrets.outputs.auth0_domain }} \
             -p:Auth0ClientId=${{ steps.secrets.outputs.auth0_mobile_client_id }} \
             -p:Auth0Audience=${{ steps.secrets.outputs.auth0_audience }} \
-            -p:DatadogClientToken=${{ steps.secrets.outputs.dd_client_token != 'REPLACE_ME' && steps.secrets.outputs.dd_client_token || '' }} \
-            -p:DatadogRumApplicationId=${{ steps.secrets.outputs.dd_rum_app_id != 'REPLACE_ME' && steps.secrets.outputs.dd_rum_app_id || '' }}
+            -p:ApmEngine=${{ steps.secrets.outputs.apm_mobile_engine }} \
+            -p:ApmData=$(printf '%s' "$APM_DATA" | base64 | tr -d '\n')
 
       - uses: actions/upload-artifact@v7
         if: steps.gate.outputs.available == 'true'

@@ -140,6 +140,7 @@ module "deployments" {
   secret_id_prefix       = "${var.project_name}-${local.environment}"
   secret_labels          = local.common_labels
   deploy_service_account = "carditrack-deploy@${var.project_id}.iam.gserviceaccount.com"
+  apm_mobile_engine      = var.apm_mobile_engine
 
   # Cloud Pub/Sub (real-time messaging)
   pubsub_topic_name = local.pubsub_topic_name

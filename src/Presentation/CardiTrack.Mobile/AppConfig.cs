@@ -14,14 +14,28 @@ public static class AppConfig
     public static string Auth0ClientId { get; } = Read("Auth0ClientId");
     public static string Auth0Audience { get; } = Read("Auth0Audience");
 
-    /// <summary>Datadog RUM client token — embed-safe (write-only), stamped by CI.</summary>
-    public static string DatadogClientToken { get; } = Read("DatadogClientToken");
-    public static string DatadogRumApplicationId { get; } = Read("DatadogRumApplicationId");
-    public static string DatadogSite { get; } = Read("DatadogSite");
+    /// <summary>Mobile monitoring engine (MobileApm registry name), stamped by CI. Empty = off.</summary>
+    public static string ApmEngine { get; } = Read("ApmEngine");
 
-    /// <summary>Monitoring is opt-in per build: local/dev builds without stamped values ship nothing.</summary>
-    public static bool IsDatadogConfigured =>
-        !string.IsNullOrWhiteSpace(DatadogClientToken) && !string.IsNullOrWhiteSpace(DatadogRumApplicationId);
+    /// <summary>
+    /// The engine's client-side connection JSON — embed-safe identifiers only, stamped by
+    /// CI as base64 (survives the shell/MSBuild boundary); Local.props may use raw JSON.
+    /// </summary>
+    public static string ApmData { get; } = DecodeApmData(Read("ApmData"));
+
+    private static string DecodeApmData(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value) || value.TrimStart().StartsWith('{'))
+            return value;
+        try
+        {
+            return System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(value));
+        }
+        catch (FormatException)
+        {
+            return value;
+        }
+    }
 
     /// <summary>Environment tag for telemetry, matching the backend the build points at.</summary>
     public static string EnvironmentName =>

@@ -139,6 +139,12 @@ variable "apm_engine" {
   default     = "BetterStack"
 }
 
+variable "apm_mobile_engine" {
+  description = "Mobile monitoring engine stamped into app builds (must match an engine in the app's MobileApm registry, e.g. Datadog); empty string disables monitoring"
+  type        = string
+  default     = "Datadog"
+}
+
 # Pub/Sub Configuration (real-time messaging)
 variable "enable_pubsub" {
   description = "Enable Cloud Pub/Sub for real-time messaging (production only)"

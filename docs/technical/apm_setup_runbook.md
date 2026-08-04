@@ -89,33 +89,41 @@ gcloud run services describe carditrack-dev-api --region=europe-west2 --project=
 # Cloud Run logs) or malformed JSON in the apm-data secret ("not valid JSON").
 ```
 
-## 5. Mobile app monitoring (Datadog RUM)
+## 5. Mobile app monitoring
 
-The MAUI app ships crashes, sessions, and API request timings to Datadog RUM (Android/iOS
-only; Session Replay deliberately disabled — health data must not be screen-recorded).
-Both values below are **embed-safe client identifiers** (write-only), stamped into builds
-by CI from Secret Manager — they are not runtime secrets and never reach Cloud Run.
+The MAUI app ships crashes, sessions, and API request timings via the same generic
+Engine + Data contract as the server, stamped into builds by CI:
+
+- `carditrack-<env>-apm-mobile-engine` — **Terraform-owned**: the `apm_mobile_engine`
+  tfvar (`"Datadog"` today). Switching mobile engines = flip the tfvar + `terraform apply`.
+- `carditrack-<env>-apm-mobile-data` — operator-filled JSON with the engine's client-side
+  details. **Embed-safe identifiers only** (they end up inside the app binary); never put
+  runtime secrets here.
+
+For Datadog (RUM; Android/iOS only, Session Replay deliberately disabled — health data
+must not be screen-recorded):
 
 1. In the same Datadog org: **Digital Experience → Real User Monitoring → Add Application**,
    name `carditrack-mobile`, platform **Android** (the MAUI SDK reports both platforms into
-   one application). Note the **Application ID** and the generated **Client Token**.
-2. Populate the secrets:
+   one application). Note the **Application ID** and the generated **Client Token** (both
+   write-only identifiers, safe to embed).
+2. Populate the data secret:
 
 ```bash
-printf '%s' '<client token>'   | gcloud secrets versions add carditrack-dev-datadog-mobile-client-token --project=carditrack-490120 --data-file=-
-printf '%s' '<application id>' | gcloud secrets versions add carditrack-dev-datadog-rum-application-id  --project=carditrack-490120 --data-file=-
+printf '%s' '{"ClientToken":"<pub...>","ApplicationId":"<uuid>","Site":"Eu1"}' \
+  | gcloud secrets versions add carditrack-dev-apm-mobile-data --project=carditrack-490120 --data-file=-
 ```
 
-3. The next mobile CI build stamps them in (`-p:DatadogClientToken=...`); placeholder
-   values are stamped as empty, which disables monitoring entirely — so unprovisioned
-   environments and local builds ship nothing.
+3. The next mobile CI build stamps engine + data in (`-p:ApmEngine=... -p:ApmData=<base64>`);
+   placeholder data stamps as empty, which disables monitoring entirely — unprovisioned
+   environments and local builds ship nothing. A bad engine name or malformed JSON logs
+   and skips at app startup (monitoring must never brick the app).
 4. Verify: install the internal-track build, open the app, then Datadog →
    **RUM → Sessions** (and force a crash in a test build for Error Tracking).
 
-Notes: the SDK raised the Android minimum from API 21 to 23; the Datadog site is baked
-as `Eu1` (override with `-p:DatadogSite=` if the org lives elsewhere); consent is
-currently `Granted` at first launch — add a settings toggle before any store review
-that requires opt-in analytics consent.
+Notes: the Datadog SDK raised the Android minimum from API 21 to 23; `Site` defaults to
+`Eu1` when omitted; consent is currently `Granted` at first launch — add a settings
+toggle before any store review that requires opt-in analytics consent.
 
 ## 6. Later / non-blocking
 
