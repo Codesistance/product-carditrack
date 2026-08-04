@@ -46,6 +46,10 @@ locals {
     "auth0-mobile-client-id" = "REPLACE_ME" # Auth0 Native app client for the MAUI mobile app (public, no secret)
     "encryption-key"         = "REPLACE_ME"
     "apm-data"               = "REPLACE_ME" # APM connection JSON, e.g. {"IngestUrl":"...","IngestToken":"..."} — see scripts/set-apm-secrets.sh
+    # Datadog RUM for the mobile app — both are embed-safe client identifiers
+    # (write-only client token + application id), stamped into builds by CI.
+    "datadog-mobile-client-token" = "REPLACE_ME"
+    "datadog-rum-application-id"  = "REPLACE_ME"
   }
 
   # Secrets CI stamps into mobile builds (public identifiers, not credentials) —
@@ -54,6 +58,8 @@ locals {
     "auth0-domain",
     "auth0-audience",
     "auth0-mobile-client-id",
+    "datadog-mobile-client-token",
+    "datadog-rum-application-id",
   ]
 }
 

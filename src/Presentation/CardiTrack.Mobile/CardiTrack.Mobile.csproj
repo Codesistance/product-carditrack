@@ -12,6 +12,11 @@
 		<Auth0Domain Condition="'$(Auth0Domain)' == ''"></Auth0Domain>
 		<Auth0ClientId Condition="'$(Auth0ClientId)' == ''"></Auth0ClientId>
 		<Auth0Audience Condition="'$(Auth0Audience)' == ''"></Auth0Audience>
+		<!-- Datadog RUM (client token is embed-safe: write-only, not an API key).
+		     Empty token disables monitoring entirely. -->
+		<DatadogClientToken Condition="'$(DatadogClientToken)' == ''"></DatadogClientToken>
+		<DatadogRumApplicationId Condition="'$(DatadogRumApplicationId)' == ''"></DatadogRumApplicationId>
+		<DatadogSite Condition="'$(DatadogSite)' == ''">Eu1</DatadogSite>
 	</PropertyGroup>
 
 	<ItemGroup>
@@ -19,6 +24,9 @@
 		<AssemblyMetadata Include="Auth0Domain" Value="$(Auth0Domain)" />
 		<AssemblyMetadata Include="Auth0ClientId" Value="$(Auth0ClientId)" />
 		<AssemblyMetadata Include="Auth0Audience" Value="$(Auth0Audience)" />
+		<AssemblyMetadata Include="DatadogClientToken" Value="$(DatadogClientToken)" />
+		<AssemblyMetadata Include="DatadogRumApplicationId" Value="$(DatadogRumApplicationId)" />
+		<AssemblyMetadata Include="DatadogSite" Value="$(DatadogSite)" />
 	</ItemGroup>
 
 	<PropertyGroup>
@@ -58,7 +66,8 @@
 
 		<SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'ios'">17.0</SupportedOSPlatformVersion>
 		<SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'maccatalyst'">17.0</SupportedOSPlatformVersion>
-		<SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android'">21.0</SupportedOSPlatformVersion>
+		<!-- Android 23+ required by the Datadog RUM SDK (was 21) -->
+		<SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android'">23.0</SupportedOSPlatformVersion>
 		<SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'windows'">10.0.17763.0</SupportedOSPlatformVersion>
 		<TargetPlatformMinVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'windows'">10.0.17763.0</TargetPlatformMinVersion>
 	</PropertyGroup>
@@ -97,6 +106,9 @@
 		<PackageReference Include="Serilog.Extensions.Logging" Version="10.0.0" />
 		<PackageReference Include="Serilog.Sinks.Debug" Version="3.0.0" />
 		<PackageReference Include="Serilog.Sinks.File" Version="7.0.0" />
+		<!-- RUM/crash monitoring wraps the native Android/iOS SDKs — no Windows support -->
+		<PackageReference Include="Datadog.Maui" Version="0.2.0"
+			Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android' Or $([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'ios'" />
 	</ItemGroup>
 
 	<ItemGroup>

@@ -376,6 +376,8 @@ jobs:
             domain:${{ needs.changes.outputs.gcp_project_id }}/carditrack-dev-auth0-domain
             audience:${{ needs.changes.outputs.gcp_project_id }}/carditrack-dev-auth0-audience
             mobile_client_id:${{ needs.changes.outputs.gcp_project_id }}/carditrack-dev-auth0-mobile-client-id
+            dd_client_token:${{ needs.changes.outputs.gcp_project_id }}/carditrack-dev-datadog-mobile-client-token
+            dd_rum_app_id:${{ needs.changes.outputs.gcp_project_id }}/carditrack-dev-datadog-rum-application-id
       - run: |
           dotnet publish src/Presentation/CardiTrack.Mobile/CardiTrack.Mobile.csproj \
             -f net10.0-android \
@@ -383,7 +385,9 @@ jobs:
             -p:ApiBaseUrl=${{ needs.changes.outputs.api_url_dev }} \
             -p:Auth0Domain=${{ steps.auth0.outputs.domain }} \
             -p:Auth0ClientId=${{ steps.auth0.outputs.mobile_client_id }} \
-            -p:Auth0Audience=${{ steps.auth0.outputs.audience }}
+            -p:Auth0Audience=${{ steps.auth0.outputs.audience }} \
+            -p:DatadogClientToken=${{ steps.auth0.outputs.dd_client_token != 'REPLACE_ME' && steps.auth0.outputs.dd_client_token || '' }} \
+            -p:DatadogRumApplicationId=${{ steps.auth0.outputs.dd_rum_app_id != 'REPLACE_ME' && steps.auth0.outputs.dd_rum_app_id || '' }}
       - uses: actions/upload-artifact@v7
         with:
           name: mobile-android
@@ -419,6 +423,8 @@ jobs:
             domain:${{ needs.changes.outputs.gcp_project_id }}/carditrack-dev-auth0-domain
             audience:${{ needs.changes.outputs.gcp_project_id }}/carditrack-dev-auth0-audience
             mobile_client_id:${{ needs.changes.outputs.gcp_project_id }}/carditrack-dev-auth0-mobile-client-id
+            dd_client_token:${{ needs.changes.outputs.gcp_project_id }}/carditrack-dev-datadog-mobile-client-token
+            dd_rum_app_id:${{ needs.changes.outputs.gcp_project_id }}/carditrack-dev-datadog-rum-application-id
       - run: |
           dotnet build src/Presentation/CardiTrack.Mobile/CardiTrack.Mobile.csproj \
             -f net10.0-ios \
@@ -428,7 +434,9 @@ jobs:
             -p:ApiBaseUrl=${{ needs.changes.outputs.api_url_dev }} \
             -p:Auth0Domain=${{ steps.auth0.outputs.domain }} \
             -p:Auth0ClientId=${{ steps.auth0.outputs.mobile_client_id }} \
-            -p:Auth0Audience=${{ steps.auth0.outputs.audience }}
+            -p:Auth0Audience=${{ steps.auth0.outputs.audience }} \
+            -p:DatadogClientToken=${{ steps.auth0.outputs.dd_client_token != 'REPLACE_ME' && steps.auth0.outputs.dd_client_token || '' }} \
+            -p:DatadogRumApplicationId=${{ steps.auth0.outputs.dd_rum_app_id != 'REPLACE_ME' && steps.auth0.outputs.dd_rum_app_id || '' }}
 
   build-mobile-windows:
     name: Build Mobile (Windows)
@@ -556,6 +564,8 @@ jobs:
             auth0_domain:${{ needs.changes.outputs.gcp_project_id }}/carditrack-dev-auth0-domain
             auth0_audience:${{ needs.changes.outputs.gcp_project_id }}/carditrack-dev-auth0-audience
             auth0_mobile_client_id:${{ needs.changes.outputs.gcp_project_id }}/carditrack-dev-auth0-mobile-client-id
+            dd_client_token:${{ needs.changes.outputs.gcp_project_id }}/carditrack-dev-datadog-mobile-client-token
+            dd_rum_app_id:${{ needs.changes.outputs.gcp_project_id }}/carditrack-dev-datadog-rum-application-id
 
       - name: Decode keystore
         if: steps.gate.outputs.available == 'true'
@@ -589,7 +599,9 @@ jobs:
             -p:ApiBaseUrl=${{ needs.changes.outputs.api_url_dev }} \
             -p:Auth0Domain=${{ steps.secrets.outputs.auth0_domain }} \
             -p:Auth0ClientId=${{ steps.secrets.outputs.auth0_mobile_client_id }} \
-            -p:Auth0Audience=${{ steps.secrets.outputs.auth0_audience }}
+            -p:Auth0Audience=${{ steps.secrets.outputs.auth0_audience }} \
+            -p:DatadogClientToken=${{ steps.secrets.outputs.dd_client_token != 'REPLACE_ME' && steps.secrets.outputs.dd_client_token || '' }} \
+            -p:DatadogRumApplicationId=${{ steps.secrets.outputs.dd_rum_app_id != 'REPLACE_ME' && steps.secrets.outputs.dd_rum_app_id || '' }}
 
       # Play Console crash-report inputs: the R8 deobfuscation map produced by
       # AndroidLinkTool=r8 (see CardiTrack.Mobile.csproj) and a zip of the
@@ -664,6 +676,8 @@ jobs:
             auth0_domain:${{ needs.changes.outputs.gcp_project_id }}/carditrack-dev-auth0-domain
             auth0_audience:${{ needs.changes.outputs.gcp_project_id }}/carditrack-dev-auth0-audience
             auth0_mobile_client_id:${{ needs.changes.outputs.gcp_project_id }}/carditrack-dev-auth0-mobile-client-id
+            dd_client_token:${{ needs.changes.outputs.gcp_project_id }}/carditrack-dev-datadog-mobile-client-token
+            dd_rum_app_id:${{ needs.changes.outputs.gcp_project_id }}/carditrack-dev-datadog-rum-application-id
 
       - name: Install certificate and provisioning profile
         if: steps.gate.outputs.available == 'true'
@@ -715,7 +729,9 @@ jobs:
             -p:ApiBaseUrl=${{ needs.changes.outputs.api_url_dev }} \
             -p:Auth0Domain=${{ steps.secrets.outputs.auth0_domain }} \
             -p:Auth0ClientId=${{ steps.secrets.outputs.auth0_mobile_client_id }} \
-            -p:Auth0Audience=${{ steps.secrets.outputs.auth0_audience }}
+            -p:Auth0Audience=${{ steps.secrets.outputs.auth0_audience }} \
+            -p:DatadogClientToken=${{ steps.secrets.outputs.dd_client_token != 'REPLACE_ME' && steps.secrets.outputs.dd_client_token || '' }} \
+            -p:DatadogRumApplicationId=${{ steps.secrets.outputs.dd_rum_app_id != 'REPLACE_ME' && steps.secrets.outputs.dd_rum_app_id || '' }}
 
       - uses: actions/upload-artifact@v7
         if: steps.gate.outputs.available == 'true'

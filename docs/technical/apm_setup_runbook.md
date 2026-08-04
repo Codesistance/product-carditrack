@@ -89,7 +89,35 @@ gcloud run services describe carditrack-dev-api --region=europe-west2 --project=
 # Cloud Run logs) or malformed JSON in the apm-data secret ("not valid JSON").
 ```
 
-## 5. Later / non-blocking
+## 5. Mobile app monitoring (Datadog RUM)
+
+The MAUI app ships crashes, sessions, and API request timings to Datadog RUM (Android/iOS
+only; Session Replay deliberately disabled — health data must not be screen-recorded).
+Both values below are **embed-safe client identifiers** (write-only), stamped into builds
+by CI from Secret Manager — they are not runtime secrets and never reach Cloud Run.
+
+1. In the same Datadog org: **Digital Experience → Real User Monitoring → Add Application**,
+   name `carditrack-mobile`, platform **Android** (the MAUI SDK reports both platforms into
+   one application). Note the **Application ID** and the generated **Client Token**.
+2. Populate the secrets:
+
+```bash
+printf '%s' '<client token>'   | gcloud secrets versions add carditrack-dev-datadog-mobile-client-token --project=carditrack-490120 --data-file=-
+printf '%s' '<application id>' | gcloud secrets versions add carditrack-dev-datadog-rum-application-id  --project=carditrack-490120 --data-file=-
+```
+
+3. The next mobile CI build stamps them in (`-p:DatadogClientToken=...`); placeholder
+   values are stamped as empty, which disables monitoring entirely — so unprovisioned
+   environments and local builds ship nothing.
+4. Verify: install the internal-track build, open the app, then Datadog →
+   **RUM → Sessions** (and force a crash in a test build for Error Tracking).
+
+Notes: the SDK raised the Android minimum from API 21 to 23; the Datadog site is baked
+as `Eu1` (override with `-p:DatadogSite=` if the org lives elsewhere); consent is
+currently `Granted` at first launch — add a settings toggle before any store review
+that requires opt-in analytics consent.
+
+## 6. Later / non-blocking
 
 - Per-app keys/sources (separate tokens for API and Web) — split into per-app `apm-data`
   secrets if quota attribution ever matters; today all services share the one secret.

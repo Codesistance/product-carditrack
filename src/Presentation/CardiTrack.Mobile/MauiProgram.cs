@@ -3,6 +3,11 @@ using CardiTrack.Mobile.Core.Auth;
 using CardiTrack.Mobile.Core.Configuration;
 using CardiTrack.Mobile.Core.Http;
 using CardiTrack.Mobile.Services;
+#if ANDROID || IOS
+using Datadog.Maui;
+using Datadog.Maui.Configuration;
+using Datadog.Maui.Hosting;
+#endif
 
 namespace CardiTrack.Mobile;
 
@@ -25,6 +30,43 @@ public static class MauiProgram
                 fonts.AddFont("Quicksand-SemiBold.ttf", "QuicksandSemiBold");
                 fonts.AddFont("Manrope-SemiBold.ttf", "ManropeSemiBold");
             });
+
+#if ANDROID || IOS
+        // Datadog RUM: crash reporting + API request monitoring. The client token is
+        // embed-safe (write-only) and stamped by CI — unstamped builds ship nothing.
+        // Session Replay is deliberately NOT enabled: health data must not be recorded.
+        if (AppConfig.IsDatadogConfigured)
+        {
+            builder
+                .UseDatadog(new DdSdkConfiguration
+                {
+                    ClientToken = AppConfig.DatadogClientToken,
+                    Environment = AppConfig.EnvironmentName,
+                    TrackingConsent = TrackingConsent.Granted,
+                    Service = "carditrack-mobile",
+                    Site = Enum.TryParse<DatadogSite>(AppConfig.DatadogSite, ignoreCase: true, out var site)
+                        ? site
+                        : DatadogSite.Eu1,
+                    NativeCrashReportEnabled = true,
+                    // Marks our API as first-party so RUM resources correlate with the
+                    // API's OTel traces (RUM-to-APM), via W3C traceparent headers.
+                    FirstPartyHosts =
+                    [
+                        new FirstPartyHost
+                        {
+                            Match = new Uri(AppConfig.ApiBaseUrl).Host,
+                            HeaderTypes = [TracingHeaderType.Datadog, TracingHeaderType.TraceContext],
+                        },
+                    ],
+                })
+                .UseDatadogLogs()
+                .UseDatadogRum(new DdRumConfiguration
+                {
+                    ApplicationId = AppConfig.DatadogRumApplicationId,
+                    SessionSampleRate = 100.0,
+                });
+        }
+#endif
 
         var auth0 = new Auth0Options(AppConfig.Auth0Domain, AppConfig.Auth0ClientId, AppConfig.Auth0Audience);
         builder.Services.AddSingleton(auth0);
