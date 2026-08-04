@@ -14,7 +14,7 @@ The CardiTrack API is a RESTful ASP.NET Core 10 Web API that serves as the backe
 - **Auth0**: Authentication — the API validates Auth0-issued JWTs; it does not issue tokens or store credentials (see [auth.md](../../execution/backend/api/auth.md))
 - **Swagger/OpenAPI**: API documentation
 - **SignalR**: Real-time notifications to the web dashboard
-- **Serilog**: Structured logging (console + rolling file + Seq; APM shipping when configured)
+- **Serilog**: Structured logging (console; APM shipping when the engine is configured)
 - **OpenTelemetry**: Tracing exported to the configured APM backend over OTLP
 
 ### APM shipping (`CardiTrack.Observability`)
@@ -24,7 +24,7 @@ Worker through `CardiTrack.Observability` (`AddApmShipping` for Serilog, `AddApm
 
 ```json
 "Apm": {
-  "Engine": "BetterStack",            // provider name; see ApmProviderRegistry
+  "Engine": "Datadog",                // provider name; see ApmProviderRegistry
   "Data": {                           // connection details for the selected engine
     "IngestUrl": "",
     "IngestToken": "",
@@ -39,7 +39,7 @@ Worker through `CardiTrack.Observability` (`AddApmShipping` for Serilog, `AddApm
 contract — a **single JSON value**. Deployed, the whole config is exactly two env vars:
 
 - `Apm__Engine` — plaintext Terraform env var from the `apm_engine` tfvar (**`"Datadog"`**
-  in dev and prod; appsettings' `BetterStack` is only the local-dev default)
+  in dev and prod; appsettings leaves it empty, so local runs log to console only)
 - `Apm__Data` — Secret Manager-backed (secret `carditrack-<env>-apm-data`), holding one JSON
   object; unknown keys land in `Extra` for provider-specific details. Per engine:
   - Datadog: `{"IngestUrl":"datadoghq.eu","IngestToken":"<api key>","TraceEndpoint":"https://<org otlp intake>"}`
@@ -55,7 +55,7 @@ nothing changes in the apps.
 
 Free-tier prudence (enforced engine-independently in `ApmExtensions`):
 
-- Only `MinimumLogLevel` and above (default `Warning`) is shipped; full detail stays in console/file/Seq.
+- Only `MinimumLogLevel` and above (default `Warning`) is shipped; full detail stays in the console.
 - Traces are head-sampled via `TracesSampleRatio` (default `0.2`); `/health` requests are never traced.
 - Metrics are deliberately not exported.
 

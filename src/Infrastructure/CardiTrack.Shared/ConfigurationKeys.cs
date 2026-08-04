@@ -23,11 +23,6 @@ public static class ConfigurationKeys
         public const string AllowedOrigins = "Cors:AllowedOrigins";
     }
 
-    public static class Serilog
-    {
-        public const string SeqUrl = "Serilog:SeqUrl";
-    }
-
     public static class Apm
     {
         /// <summary>

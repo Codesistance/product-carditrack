@@ -11,7 +11,6 @@ using CardiTrack.Worker;
 using CardiTrack.Worker.Workers;
 using Microsoft.EntityFrameworkCore;
 using Serilog;
-using Serilog.Events;
 
 // Enforce UTC for all DateTime values read from PostgreSQL timestamptz columns
 AppContext.SetSwitch("Npgsql.EnableLegacyTimestampBehavior", false);
@@ -20,8 +19,8 @@ var builder = WebApplication.CreateBuilder(args);
 var configuration = builder.Configuration;
 var configLoader = new ConfigurationLoader(configuration);
 
-// LOGGING — same Serilog shape as CardiTrack.API (console + rolling file + Seq),
-// plus APM shipping when the Apm section is configured
+// LOGGING — same Serilog shape as CardiTrack.API: console always, plus APM
+// shipping when the Apm engine is configured
 Log.Logger = new LoggerConfiguration()
     .ReadFrom.Configuration(configuration)
     .Enrich.FromLogContext()
@@ -30,12 +29,6 @@ Log.Logger = new LoggerConfiguration()
     .Enrich.WithProperty("Application", "CardiTrack.Worker")
     .WriteTo.Console(
         outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] {Message:lj} {Properties:j}{NewLine}{Exception}")
-    .WriteTo.File(
-        path: "logs/carditrack-worker-.log",
-        rollingInterval: RollingInterval.Day,
-        retainedFileCountLimit: 30,
-        outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} [{Level:u3}] {Message:lj} {Properties:j}{NewLine}{Exception}")
-    .AddSeqShipping(configuration)
     .AddApmShipping(configuration.GetApmOptions())
     .CreateLogger();
 

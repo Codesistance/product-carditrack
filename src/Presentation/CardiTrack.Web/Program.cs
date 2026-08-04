@@ -3,12 +3,11 @@ using CardiTrack.Shared;
 using CardiTrack.Web.Components;
 using Microsoft.AspNetCore.DataProtection;
 using Serilog;
-using Serilog.Events;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// 1. LOGGING — same Serilog shape as CardiTrack.API (console + rolling file + Seq),
-// plus APM shipping when the Apm section is configured
+// 1. LOGGING — same Serilog shape as CardiTrack.API: console always, plus APM
+// shipping when the Apm engine is configured
 Log.Logger = new LoggerConfiguration()
     .ReadFrom.Configuration(builder.Configuration)
     .Enrich.FromLogContext()
@@ -17,12 +16,6 @@ Log.Logger = new LoggerConfiguration()
     .Enrich.WithProperty("Application", "CardiTrack.Web")
     .WriteTo.Console(
         outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] {Message:lj} {Properties:j}{NewLine}{Exception}")
-    .WriteTo.File(
-        path: "logs/carditrack-web-.log",
-        rollingInterval: RollingInterval.Day,
-        retainedFileCountLimit: 30,
-        outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} [{Level:u3}] {Message:lj} {Properties:j}{NewLine}{Exception}")
-    .AddSeqShipping(builder.Configuration)
     .AddApmShipping(builder.Configuration.GetApmOptions())
     .CreateLogger();
 
