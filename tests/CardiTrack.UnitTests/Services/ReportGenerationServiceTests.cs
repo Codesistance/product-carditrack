@@ -1,218 +1,157 @@
+using System.Collections.Concurrent;
+using System.Text;
 using CardiTrack.Application.DTOs.Requests;
 using CardiTrack.Application.DTOs.Responses;
+using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Interfaces.Services;
+using CardiTrack.Domain.Entities;
 using CardiTrack.Domain.Enums;
+using CardiTrack.Infrastructure.Services;
+using Microsoft.Extensions.Caching.Distributed;
+using Microsoft.Extensions.Logging;
 using NSubstitute;
-using NSubstitute.ExceptionExtensions;
 
 namespace CardiTrack.UnitTests.Services;
 
 public class ReportGenerationServiceTests
 {
-    private readonly IReportGenerationService _sut = Substitute.For<IReportGenerationService>();
-    private readonly Guid _userId = Guid.NewGuid();
-    private readonly Guid _cardiMemberId = Guid.NewGuid();
+    private readonly IGenerativeAiService _generativeAi = Substitute.For<IGenerativeAiService>();
+    private readonly IUnitOfWork _unitOfWork = Substitute.For<IUnitOfWork>();
+    private readonly ICardiMemberRepository _members = Substitute.For<ICardiMemberRepository>();
+    private readonly IActivityLogRepository _activityLogs = Substitute.For<IActivityLogRepository>();
+    private readonly IAlertRepository _alerts = Substitute.For<IAlertRepository>();
+    private readonly InMemoryDistributedCache _cache = new();
 
-    private GenerateReportRequest BuildRequest(ReportFormat format) => new()
+    private readonly Guid _userId = Guid.NewGuid();
+    private readonly Guid _memberId = Guid.NewGuid();
+
+    public ReportGenerationServiceTests()
     {
-        CardiMemberIds = [_cardiMemberId],
+        _unitOfWork.CardiMembers.Returns(_members);
+        _unitOfWork.ActivityLogs.Returns(_activityLogs);
+        _unitOfWork.Alerts.Returns(_alerts);
+
+        // Defaults: known member, no logs, no alerts, AI returns a fixed report.
+        _members.GetByIdAsync(_memberId).Returns(new CardiMember { Id = _memberId, Name = "Margaret Doe" });
+        _activityLogs.GetByCardiMemberAndDateRangeAsync(_memberId, Arg.Any<DateOnly>(), Arg.Any<DateOnly>())
+            .Returns([]);
+        _alerts.GetByCardiMemberAsync(_memberId, false).Returns([]);
+        _generativeAi.GenerateAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns("Generated report body.");
+    }
+
+    private ReportGenerationService CreateSut() =>
+        new(_generativeAi, _unitOfWork, _cache, Substitute.For<ILogger<ReportGenerationService>>());
+
+    private GenerateReportRequest BuildRequest(
+        ReportFormat format = ReportFormat.Pdf,
+        bool includeMetrics = true,
+        bool includeAlerts = true) => new()
+    {
+        CardiMemberIds = [_memberId],
         DateRangeFrom = new DateOnly(2026, 2, 7),
         DateRangeTo = new DateOnly(2026, 3, 9),
-        Format = format
+        Format = format,
+        IncludeMetrics = includeMetrics,
+        IncludeAlerts = includeAlerts
     };
 
-    // ── GenerateAsync — queued response ────────────────────────────────────────
-
-    [Fact]
-    public async Task GenerateAsync_ReturnsPendingStatus_OnSuccess()
+    /// <summary>Generation runs on an unobserved background task; poll until it lands.</summary>
+    private async Task<ReportStatusResponse> WaitForTerminalStatusAsync(ReportGenerationService sut, string reportId)
     {
-        var request = BuildRequest(ReportFormat.Pdf);
-        _sut.GenerateAsync(_userId, request)
-            .Returns(new ReportQueuedResponse
-            {
-                ReportId = "rpt_abc123",
-                Status = ReportStatus.Pending,
-                EstimatedReadyInSeconds = 10,
-                StatusUrl = "/api/v1/reports/rpt_abc123"
-            });
-
-        var result = await _sut.GenerateAsync(_userId, request);
-
-        Assert.Equal(ReportStatus.Pending, result.Status);
-        Assert.NotEmpty(result.ReportId);
-    }
-
-    [Theory]
-    [InlineData(ReportFormat.Pdf)]
-    [InlineData(ReportFormat.Csv)]
-    [InlineData(ReportFormat.FhirR4)]
-    public async Task GenerateAsync_AcceptsMvp1Formats(ReportFormat format)
-    {
-        var request = BuildRequest(format);
-        _sut.GenerateAsync(_userId, request)
-            .Returns(new ReportQueuedResponse
-            {
-                ReportId = "rpt_001",
-                Status = ReportStatus.Pending,
-                EstimatedReadyInSeconds = 10,
-                StatusUrl = "/api/v1/reports/rpt_001"
-            });
-
-        var result = await _sut.GenerateAsync(_userId, request);
-
-        Assert.Equal(ReportStatus.Pending, result.Status);
-    }
-
-    [Fact]
-    public async Task GenerateAsync_AcceptsHl7V2Format_ForMvp2()
-    {
-        var request = BuildRequest(ReportFormat.Hl7V2);
-        _sut.GenerateAsync(_userId, request)
-            .Returns(new ReportQueuedResponse
-            {
-                ReportId = "rpt_hl7_001",
-                Status = ReportStatus.Pending,
-                EstimatedReadyInSeconds = 15,
-                StatusUrl = "/api/v1/reports/rpt_hl7_001"
-            });
-
-        var result = await _sut.GenerateAsync(_userId, request);
-
-        Assert.Equal(ReportStatus.Pending, result.Status);
-    }
-
-    [Fact]
-    public async Task GenerateAsync_ThrowsArgumentException_WhenCardiMemberListIsEmpty()
-    {
-        var request = new GenerateReportRequest
+        for (var i = 0; i < 200; i++)
         {
-            CardiMemberIds = [],
-            DateRangeFrom = new DateOnly(2026, 2, 7),
-            DateRangeTo = new DateOnly(2026, 3, 9),
-            Format = ReportFormat.Pdf
-        };
-        _sut.GenerateAsync(_userId, request)
-            .ThrowsAsync(new ArgumentException("At least one CardiMember ID is required."));
+            var status = await sut.GetStatusAsync(_userId, reportId);
+            if (status is not null && status.Status != ReportStatus.Pending)
+                return status;
+            await Task.Delay(25);
+        }
+        throw new TimeoutException($"Report {reportId} never left Pending.");
+    }
 
-        await Assert.ThrowsAsync<ArgumentException>(() => _sut.GenerateAsync(_userId, request));
+    /// <summary>Holds the AI call open so the report stays Pending until released.</summary>
+    private TaskCompletionSource<string> HoldGeneration()
+    {
+        var gate = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+        _generativeAi.GenerateAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(_ => gate.Task);
+        return gate;
+    }
+
+    // ── GenerateAsync — queueing ────────────────────────────────────────────────
+
+    [Fact]
+    public async Task GenerateAsync_ReturnsQueuedResponse_AndCachesPendingStatus()
+    {
+        var gate = HoldGeneration();
+
+        var queued = await CreateSut().GenerateAsync(_userId, BuildRequest());
+
+        Assert.NotEmpty(queued.ReportId);
+        Assert.Equal(ReportStatus.Pending, queued.Status);
+        Assert.Equal($"/api/v1/reports/{queued.ReportId}", queued.StatusUrl);
+        Assert.Equal(30, queued.EstimatedReadyInSeconds);
+
+        var status = await CreateSut().GetStatusAsync(_userId, queued.ReportId);
+        Assert.NotNull(status);
+        Assert.Equal(ReportStatus.Pending, status!.Status);
+        Assert.Equal([_memberId.ToString()], status.Metadata!.CardiMembers);
+        Assert.Equal(new DateOnly(2026, 2, 7), status.Metadata.DateRangeFrom);
+        Assert.Equal(new DateOnly(2026, 3, 9), status.Metadata.DateRangeTo);
+
+        gate.SetResult("done");
     }
 
     [Fact]
-    public async Task GenerateAsync_ThrowsArgumentOutOfRangeException_WhenDateRangeExceeds365Days()
+    public async Task GenerateAsync_IssuesDistinctReportIds()
     {
-        var request = new GenerateReportRequest
-        {
-            CardiMemberIds = [_cardiMemberId],
-            DateRangeFrom = new DateOnly(2025, 1, 1),
-            DateRangeTo = new DateOnly(2026, 3, 9),
-            Format = ReportFormat.Csv
-        };
-        _sut.GenerateAsync(_userId, request)
-            .ThrowsAsync(new ArgumentOutOfRangeException("dateRange", "Date range must not exceed 365 days."));
+        var sut = CreateSut();
 
-        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => _sut.GenerateAsync(_userId, request));
+        var first = await sut.GenerateAsync(_userId, BuildRequest());
+        var second = await sut.GenerateAsync(_userId, BuildRequest());
+
+        Assert.NotEqual(first.ReportId, second.ReportId);
+    }
+
+    // ── Background generation ───────────────────────────────────────────────────
+
+    [Fact]
+    public async Task BackgroundGeneration_MarksReportReady_WithDownloadDetails()
+    {
+        var sut = CreateSut();
+        var queued = await sut.GenerateAsync(_userId, BuildRequest());
+
+        var status = await WaitForTerminalStatusAsync(sut, queued.ReportId);
+
+        Assert.Equal(ReportStatus.Ready, status.Status);
+        Assert.Equal("text/plain", status.ContentType);
+        Assert.Equal(Encoding.UTF8.GetByteCount("Generated report body."), status.FileSizeBytes);
+        Assert.Equal($"/api/v1/reports/{queued.ReportId}/download", status.DownloadUrl);
+        Assert.NotNull(status.CompletedAt);
+        Assert.NotNull(status.DownloadExpiresAt);
+    }
+
+    [Fact]
+    public async Task BackgroundGeneration_MarksReportFailed_WhenAiThrows_WithoutLeakingDetails()
+    {
+        _generativeAi.GenerateAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns<string>(_ => throw new InvalidOperationException("provider quota exceeded"));
+        var sut = CreateSut();
+
+        var queued = await sut.GenerateAsync(_userId, BuildRequest());
+        var status = await WaitForTerminalStatusAsync(sut, queued.ReportId);
+
+        Assert.Equal(ReportStatus.Failed, status.Status);
+        Assert.NotNull(status.Error);
+        Assert.DoesNotContain("quota", status.Error);
     }
 
     // ── GetStatusAsync ──────────────────────────────────────────────────────────
 
     [Fact]
-    public async Task GetStatusAsync_ReturnsPendingWithProgress_WhileGenerating()
+    public async Task GetStatusAsync_ReturnsNull_WhenReportUnknown()
     {
-        _sut.GetStatusAsync(_userId, "rpt_abc123")
-            .Returns(new ReportStatusResponse
-            {
-                ReportId = "rpt_abc123",
-                Status = ReportStatus.Pending,
-                ProgressPercent = 40,
-                CreatedAt = DateTimeOffset.UtcNow.AddSeconds(-5)
-            });
-
-        var result = await _sut.GetStatusAsync(_userId, "rpt_abc123");
-
-        Assert.Equal(ReportStatus.Pending, result!.Status);
-        Assert.Equal(40, result.ProgressPercent);
-    }
-
-    [Fact]
-    public async Task GetStatusAsync_ReturnsReadyWithFhirContentType_ForFhirR4Report()
-    {
-        _sut.GetStatusAsync(_userId, "rpt_fhir_001")
-            .Returns(new ReportStatusResponse
-            {
-                ReportId = "rpt_fhir_001",
-                Status = ReportStatus.Ready,
-                Format = ReportFormat.FhirR4,
-                ContentType = "application/fhir+json",
-                FileSizeBytes = 312400,
-                DownloadUrl = "/api/v1/reports/rpt_fhir_001/download",
-                DownloadExpiresAt = DateTimeOffset.UtcNow.AddHours(24),
-                CreatedAt = DateTimeOffset.UtcNow.AddSeconds(-8),
-                CompletedAt = DateTimeOffset.UtcNow,
-                Metadata = new ReportMetadata
-                {
-                    CardiMembers = ["Margaret Doe"],
-                    DateRangeFrom = new DateOnly(2026, 2, 7),
-                    DateRangeTo = new DateOnly(2026, 3, 9),
-                    FhirProfile = "us-core",
-                    FhirResources = ["Patient", "Observation", "Device"]
-                }
-            });
-
-        var result = await _sut.GetStatusAsync(_userId, "rpt_fhir_001");
-
-        Assert.Equal(ReportStatus.Ready, result!.Status);
-        Assert.Equal("application/fhir+json", result.ContentType);
-        Assert.Equal("us-core", result.Metadata!.FhirProfile);
-        Assert.Contains("Observation", result.Metadata.FhirResources!);
-    }
-
-    [Fact]
-    public async Task GetStatusAsync_ReturnsReadyWithHl7ContentType_ForHl7V2Report()
-    {
-        _sut.GetStatusAsync(_userId, "rpt_hl7_001")
-            .Returns(new ReportStatusResponse
-            {
-                ReportId = "rpt_hl7_001",
-                Status = ReportStatus.Ready,
-                Format = ReportFormat.Hl7V2,
-                ContentType = "application/hl7-v2+er7",
-                FileSizeBytes = 8200,
-                DownloadUrl = "/api/v1/reports/rpt_hl7_001/download",
-                DownloadExpiresAt = DateTimeOffset.UtcNow.AddHours(24),
-                CreatedAt = DateTimeOffset.UtcNow.AddSeconds(-12),
-                CompletedAt = DateTimeOffset.UtcNow
-            });
-
-        var result = await _sut.GetStatusAsync(_userId, "rpt_hl7_001");
-
-        Assert.Equal(ReportStatus.Ready, result!.Status);
-        Assert.Equal("application/hl7-v2+er7", result.ContentType);
-    }
-
-    [Fact]
-    public async Task GetStatusAsync_ReturnsFailedWithError_WhenGenerationFails()
-    {
-        _sut.GetStatusAsync(_userId, "rpt_fail")
-            .Returns(new ReportStatusResponse
-            {
-                ReportId = "rpt_fail",
-                Status = ReportStatus.Failed,
-                Error = "Insufficient data in the selected date range to generate a meaningful report.",
-                CreatedAt = DateTimeOffset.UtcNow.AddSeconds(-3)
-            });
-
-        var result = await _sut.GetStatusAsync(_userId, "rpt_fail");
-
-        Assert.Equal(ReportStatus.Failed, result!.Status);
-        Assert.NotNull(result.Error);
-    }
-
-    [Fact]
-    public async Task GetStatusAsync_ReturnsNull_WhenReportNotFound()
-    {
-        _sut.GetStatusAsync(_userId, "rpt_unknown").Returns((ReportStatusResponse?)null);
-
-        var result = await _sut.GetStatusAsync(_userId, "rpt_unknown");
+        var result = await CreateSut().GetStatusAsync(_userId, "rpt_unknown");
 
         Assert.Null(result);
     }
@@ -220,92 +159,191 @@ public class ReportGenerationServiceTests
     // ── DownloadAsync ───────────────────────────────────────────────────────────
 
     [Fact]
-    public async Task DownloadAsync_ReturnsPdfBytes_WithCorrectContentType()
+    public async Task DownloadAsync_ReturnsUtf8Content_WhenReady()
     {
-        var pdfBytes = new byte[] { 0x25, 0x50, 0x44, 0x46 }; // %PDF magic bytes
-        _sut.DownloadAsync(_userId, "rpt_pdf_001")
-            .Returns((pdfBytes, "application/pdf", "carditrack-margaret-doe-2026-03-09.pdf"));
+        var sut = CreateSut();
+        var queued = await sut.GenerateAsync(_userId, BuildRequest());
+        await WaitForTerminalStatusAsync(sut, queued.ReportId);
 
-        var (content, contentType, fileName) = await _sut.DownloadAsync(_userId, "rpt_pdf_001");
+        var (content, contentType, fileName) = await sut.DownloadAsync(_userId, queued.ReportId);
 
-        Assert.Equal("application/pdf", contentType);
-        Assert.EndsWith(".pdf", fileName);
-        Assert.NotEmpty(content);
+        Assert.Equal("Generated report body.", Encoding.UTF8.GetString(content));
+        Assert.Equal("text/plain; charset=utf-8", contentType);
+        Assert.Equal($"report-{queued.ReportId}.txt", fileName);
     }
 
     [Fact]
-    public async Task DownloadAsync_ReturnsFhirJson_WithCorrectContentType()
+    public async Task DownloadAsync_Throws_WhenReportUnknown()
     {
-        var fhirBytes = System.Text.Encoding.UTF8.GetBytes("""{"resourceType":"Bundle","type":"collection"}""");
-        _sut.DownloadAsync(_userId, "rpt_fhir_001")
-            .Returns((fhirBytes, "application/fhir+json", "carditrack-margaret-doe-2026-03-09-fhir.json"));
-
-        var (content, contentType, fileName) = await _sut.DownloadAsync(_userId, "rpt_fhir_001");
-
-        Assert.Equal("application/fhir+json", contentType);
-        Assert.EndsWith("-fhir.json", fileName);
+        await Assert.ThrowsAsync<KeyNotFoundException>(() =>
+            CreateSut().DownloadAsync(_userId, "rpt_unknown"));
     }
 
     [Fact]
-    public async Task DownloadAsync_ReturnsHl7Bytes_WithCorrectContentType()
+    public async Task DownloadAsync_Throws_WhileReportStillPending()
     {
-        var hl7Bytes = System.Text.Encoding.UTF8.GetBytes("MSH|^~\\&|CardiTrack|||20260309||ORU^R01|");
-        _sut.DownloadAsync(_userId, "rpt_hl7_001")
-            .Returns((hl7Bytes, "application/hl7-v2+er7", "carditrack-margaret-doe-2026-03-09-hl7.hl7"));
+        var gate = HoldGeneration();
+        var sut = CreateSut();
+        var queued = await sut.GenerateAsync(_userId, BuildRequest());
 
-        var (content, contentType, fileName) = await _sut.DownloadAsync(_userId, "rpt_hl7_001");
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            sut.DownloadAsync(_userId, queued.ReportId));
 
-        Assert.Equal("application/hl7-v2+er7", contentType);
-        Assert.EndsWith(".hl7", fileName);
+        gate.SetResult("done");
     }
 
     [Fact]
-    public async Task DownloadAsync_ThrowsInvalidOperationException_WhenReportNotYetReady()
+    public async Task DownloadAsync_Throws_WhenReportFailed()
     {
-        _sut.DownloadAsync(_userId, "rpt_pending")
-            .ThrowsAsync(new InvalidOperationException("Report generation not yet complete."));
+        _generativeAi.GenerateAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns<string>(_ => throw new InvalidOperationException("boom"));
+        var sut = CreateSut();
+        var queued = await sut.GenerateAsync(_userId, BuildRequest());
+        await WaitForTerminalStatusAsync(sut, queued.ReportId);
 
-        await Assert.ThrowsAsync<InvalidOperationException>(() => _sut.DownloadAsync(_userId, "rpt_pending"));
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            sut.DownloadAsync(_userId, queued.ReportId));
+    }
+
+    // ── Prompt building ─────────────────────────────────────────────────────────
+
+    private async Task<string> CapturePromptAsync(GenerateReportRequest request)
+    {
+        string? prompt = null;
+        _generativeAi.GenerateAsync(Arg.Do<string>(p => prompt = p), Arg.Any<CancellationToken>())
+            .Returns("Generated report body.");
+        var sut = CreateSut();
+
+        var queued = await sut.GenerateAsync(_userId, request);
+        await WaitForTerminalStatusAsync(sut, queued.ReportId);
+
+        Assert.NotNull(prompt);
+        return prompt!;
     }
 
     [Fact]
-    public async Task DownloadAsync_ThrowsInvalidOperationException_WhenDownloadLinkExpired()
+    public async Task Prompt_IncludesMemberName_FormatAndPeriod()
     {
-        _sut.DownloadAsync(_userId, "rpt_expired")
-            .ThrowsAsync(new InvalidOperationException("Download link has expired — regenerate the report."));
+        var prompt = await CapturePromptAsync(BuildRequest(ReportFormat.Csv));
 
-        await Assert.ThrowsAsync<InvalidOperationException>(() => _sut.DownloadAsync(_userId, "rpt_expired"));
-    }
-
-    // ── FHIR R4 request defaults ────────────────────────────────────────────────
-
-    [Fact]
-    public void GenerateReportRequest_FhirProfile_DefaultsToUsCore()
-    {
-        var request = BuildRequest(ReportFormat.FhirR4);
-
-        Assert.Equal("us-core", request.FhirProfile);
+        Assert.Contains("## Patient: Margaret Doe", prompt);
+        Assert.Contains("Report format: Csv", prompt);
+        Assert.Contains($"Period: {new DateOnly(2026, 2, 7)} to {new DateOnly(2026, 3, 9)}", prompt);
     }
 
     [Fact]
-    public void GenerateReportRequest_FhirResources_DefaultsToPatientObservationDevice()
+    public async Task Prompt_IncludesMetricLines_ForLogsInRange()
     {
-        var request = BuildRequest(ReportFormat.FhirR4);
+        _activityLogs.GetByCardiMemberAndDateRangeAsync(_memberId, Arg.Any<DateOnly>(), Arg.Any<DateOnly>())
+            .Returns(
+            [
+                new ActivityLog
+                {
+                    CardiMemberId = _memberId,
+                    Date = new DateOnly(2026, 2, 10),
+                    Steps = 4321,
+                    RestingHeartRate = 68,
+                    SleepMinutes = 410,
+                },
+            ]);
 
-        Assert.Contains("Patient", request.FhirResources);
-        Assert.Contains("Observation", request.FhirResources);
-        Assert.Contains("Device", request.FhirResources);
+        var prompt = await CapturePromptAsync(BuildRequest());
+
+        Assert.Contains("### Activity Metrics", prompt);
+        Assert.Contains("steps=4321, HR=68, sleep=410min", prompt);
     }
 
     [Fact]
-    public void GenerateReportRequest_Sections_DefaultToStandardPdfCsvDefaults()
+    public async Task Prompt_IncludesOnlyAlertsInsideDateRange()
     {
-        var request = BuildRequest(ReportFormat.Pdf);
+        _alerts.GetByCardiMemberAsync(_memberId, false).Returns(
+        [
+            new Alert
+            {
+                CardiMemberId = _memberId,
+                Title = "In-range alert",
+                Severity = AlertSeverity.Red,
+                TriggeredDate = new DateTime(2026, 2, 15, 8, 0, 0, DateTimeKind.Utc),
+            },
+            new Alert
+            {
+                CardiMemberId = _memberId,
+                Title = "Out-of-range alert",
+                Severity = AlertSeverity.Yellow,
+                TriggeredDate = new DateTime(2026, 1, 1, 8, 0, 0, DateTimeKind.Utc),
+            },
+        ]);
 
-        Assert.True(request.IncludeMetrics);
-        Assert.True(request.IncludeTrends);
-        Assert.True(request.IncludeAlerts);
-        Assert.False(request.IncludeNotes);
-        Assert.False(request.IncludeDevices);
+        var prompt = await CapturePromptAsync(BuildRequest());
+
+        Assert.Contains("### Alerts", prompt);
+        Assert.Contains("In-range alert", prompt);
+        Assert.DoesNotContain("Out-of-range alert", prompt);
+    }
+
+    [Fact]
+    public async Task Prompt_OmitsSections_WhenTogglesDisabled()
+    {
+        _activityLogs.GetByCardiMemberAndDateRangeAsync(_memberId, Arg.Any<DateOnly>(), Arg.Any<DateOnly>())
+            .Returns([new ActivityLog { CardiMemberId = _memberId, Date = new DateOnly(2026, 2, 10), Steps = 100 }]);
+        _alerts.GetByCardiMemberAsync(_memberId, false).Returns(
+        [
+            new Alert
+            {
+                CardiMemberId = _memberId,
+                Title = "Some alert",
+                TriggeredDate = new DateTime(2026, 2, 15, 8, 0, 0, DateTimeKind.Utc),
+            },
+        ]);
+
+        var prompt = await CapturePromptAsync(BuildRequest(includeMetrics: false, includeAlerts: false));
+
+        Assert.DoesNotContain("### Activity Metrics", prompt);
+        Assert.DoesNotContain("### Alerts", prompt);
+    }
+
+    [Fact]
+    public async Task Prompt_SkipsUnknownMembers()
+    {
+        var unknownId = Guid.NewGuid();
+        _members.GetByIdAsync(unknownId).Returns((CardiMember?)null);
+        var request = new GenerateReportRequest
+        {
+            CardiMemberIds = [unknownId],
+            DateRangeFrom = new DateOnly(2026, 2, 7),
+            DateRangeTo = new DateOnly(2026, 3, 9),
+            Format = ReportFormat.Pdf
+        };
+
+        var prompt = await CapturePromptAsync(request);
+
+        Assert.DoesNotContain("## Patient:", prompt);
+    }
+
+    /// <summary>Dictionary-backed IDistributedCache — enough for status/content round-trips.</summary>
+    private sealed class InMemoryDistributedCache : IDistributedCache
+    {
+        private readonly ConcurrentDictionary<string, byte[]> _store = new();
+
+        public byte[]? Get(string key) => _store.TryGetValue(key, out var value) ? value : null;
+        public Task<byte[]?> GetAsync(string key, CancellationToken token = default) => Task.FromResult(Get(key));
+
+        public void Set(string key, byte[] value, DistributedCacheEntryOptions options) => _store[key] = value;
+        public Task SetAsync(string key, byte[] value, DistributedCacheEntryOptions options,
+            CancellationToken token = default)
+        {
+            Set(key, value, options);
+            return Task.CompletedTask;
+        }
+
+        public void Refresh(string key) { }
+        public Task RefreshAsync(string key, CancellationToken token = default) => Task.CompletedTask;
+
+        public void Remove(string key) => _store.TryRemove(key, out _);
+        public Task RemoveAsync(string key, CancellationToken token = default)
+        {
+            Remove(key);
+            return Task.CompletedTask;
+        }
     }
 }
