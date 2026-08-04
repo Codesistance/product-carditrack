@@ -56,9 +56,7 @@ public class OnboardingController : BaseApiController
 
         var response = await _organizationService.CreateOrganizationAsync(request);
 
-        return CreatedAtAction(
-            nameof(CreateOrganization),
-            Success(response, "Organization created successfully"));
+        return Created(response, "Organization created successfully");
     }
 
     /// <summary>
@@ -79,9 +77,7 @@ public class OnboardingController : BaseApiController
 
         var response = await _userService.CreateUserAsync(request);
 
-        return CreatedAtAction(
-            nameof(CreateUser),
-            Success(response, "User account created successfully"));
+        return Created(response, "User account created successfully");
     }
 
     /// <summary>
@@ -112,9 +108,7 @@ public class OnboardingController : BaseApiController
             UserContext.UserId,
             request);
 
-        return CreatedAtAction(
-            nameof(CreateCardiMember),
-            Success(response, "CardiMember created successfully"));
+        return Created(response, "CardiMember created successfully");
     }
 
     /// <summary>
