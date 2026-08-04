@@ -13,8 +13,14 @@ public class OrganizationRepository : Repository<Organization>, IOrganizationRep
 
     public async Task<Organization?> GetWithSubscriptionAsync(Guid id)
     {
-        return await _dbSet
-            .Include(o => o.Subscription)
-            .FirstOrDefaultAsync(o => o.Id == id);
+        // Subscription is an ignored navigation (no mapped relationships on Organization),
+        // so it cannot be Include()d — stitch it in with a second query instead.
+        var organization = await _dbSet.FirstOrDefaultAsync(o => o.Id == id);
+        if (organization == null) return null;
+
+        organization.Subscription = await _context.Set<Subscription>()
+            .FirstOrDefaultAsync(s => s.OrganizationId == id);
+
+        return organization;
     }
 }
