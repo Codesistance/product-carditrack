@@ -14,7 +14,7 @@ Secrets are populated at the end with `scripts/set-auth0-secrets.sh <env>`.
 | | dev | prod |
 |---|---|---|
 | Tenant name | `carditrack-dev` | `carditrack-prod` |
-| Region | EU | EU (align with GCP europe-west2 data residency) |
+| Region | UK (aligns with GCP europe-west2/London) | UK or EU (align with GCP europe-west2 data residency) |
 | Environment tag | Development | Production |
 | HIPAA BAA | not required | contact Auth0 sales, sign BAA, enable compliance mode **before go-live** |
 
@@ -22,23 +22,34 @@ Secrets are populated at the end with `scripts/set-auth0-secrets.sh <env>`.
 
 Auth0 Dashboard → **Applications → APIs → Create API**:
 
-- **Name**: `CardiTrack API`
+- **Name**: `CardiTrack API` (dev tenant was provisioned as `Carditrack API` — cosmetic)
 - **Identifier** (= the `audience` value; a logical URI, never called — set once, it
-  cannot be renamed later):
-  - dev tenant: `https://api.dev.carditrack.com`
-  - prod tenant: `https://api.carditrack.com`
+  cannot be renamed later): `https://api.carditrack.com` on **both** tenants.
 
-  Cross-tenant isolation is enforced by issuer + signature validation regardless of
-  this string, but per-env identifiers add a second guard (a mispointed
-  `Auth0__Domain` alone can't make one env accept the other's tokens) and make a
-  decoded token's `aud` self-identify its environment. The value is never hardcoded:
-  it flows from the `carditrack-{env}-auth0-audience` secret into both the API and
-  the mobile build stamp.
+  **Decision (2026-08-04):** a single identifier is used across tenants. Cross-tenant
+  isolation is enforced by issuer + signature validation, so a dev token can never
+  validate against the prod API regardless of this string. Accepted trade-offs: a
+  decoded token's `aud` no longer identifies its environment (use `iss` instead when
+  debugging), and a mispointed `Auth0__Domain` is no longer additionally caught by the
+  audience check. The value is never hardcoded: it flows from the
+  `carditrack-{env}-auth0-audience` secret into both the API and the mobile build
+  stamp, and must match the identifier **character-for-character** — a mismatch fails
+  every login with a generic `access_denied` ("Service not found").
 - **Signing Algorithm**: RS256
 - Settings after creation:
   - **Allow Offline Access**: ON — without this no refresh token is ever issued and mobile sessions die when the access token expires.
   - **Token Expiration**: 3600s (access token; 900–3600 acceptable per auth.md).
   - Token Expiration (browser flows): 3600s.
+- **Application Access** (newer dashboards; the tenant's default access policy is
+  *per-app authorization*, so applications must be explicitly authorized to request
+  user tokens for this API — skipping this fails **every** login with a generic
+  `access_denied`, which the app can only surface as "Sign in failed"):
+  - **CardiTrack Mobile** → **User-delegated Access = Authorized** (0/0 permissions
+    is correct; this API defines no scopes). **Required for sign-in.**
+  - **CardiTrack Web** → User-delegated Access = Authorized (not used until the
+    Blazor login ships; harmless to grant now).
+  - The dashboard may auto-create a `Carditrack API (Test Application)` M2M client —
+    nothing in CardiTrack uses it; ignore or delete it.
 
 ## 3. Mobile application (Native)
 
@@ -166,12 +177,21 @@ The API's `POST /api/v1/auth/resend-verification` endpoint (used by the app's Ve
 Email screen) calls the Auth0 Management API with the Web/API application's client
 credentials:
 
-1. **Applications → APIs → Auth0 Management API → Machine to Machine Applications**.
-2. Toggle the **Web/API application** (section 4) to *Authorized*.
-3. Expand it and grant exactly two scopes: `read:users`, `update:users`. Update.
+1. **Applications → APIs → Auth0 Management API → Application Access** (older
+   dashboards call this tab *Machine to Machine Applications*).
+2. Toggle the **Web/API application** (section 4) to *Authorized* — on newer
+   dashboards this is the **Client Access** column, not User-delegated.
+3. Expand the row (Edit) and grant exactly two scopes: `read:users`, `update:users`.
+   Update.
 
-Without this, resends fail server-side (logged as "management token request failed") but
-the endpoint still answers 200 — users just don't get a second email.
+Prerequisite: the Web application must have the **Client Credentials** grant type
+enabled (section 4) — without it the token request 403s even though Application
+Access shows the grant as green.
+
+Without this, resends fail server-side (logged as "Auth0 management token request
+failed") but the endpoint still answers 200 — users just don't get a second email.
+Failed token requests are not cached, so fixes take effect on the next resend tap
+with no redeploy.
 
 Because logins are gated on the email arriving, **section 7 (real email provider) is
 blocking for prod** — with the dev sender, verification mails may be junk-filtered and
@@ -187,6 +207,19 @@ e.g. `carditrack-test@codesistance.com`, for the verification curls and app QA.
 ```bash
 bash scripts/set-auth0-secrets.sh dev     # prompts for domain/audience/client ids/secret
 ```
+
+Where each value comes from (client secret is Secret Manager only — never in the repo):
+
+| Secret | Value | Source in the Auth0 dashboard |
+|---|---|---|
+| `carditrack-{env}-auth0-domain` | tenant domain, bare host — no scheme, no trailing slash (the API prepends `https://` itself) | any application → Settings → Domain |
+| `carditrack-{env}-auth0-audience` | the API identifier verbatim, scheme included — validated character-for-character | Applications → APIs → `Carditrack API` → Identifier |
+| `carditrack-{env}-auth0-client-id` | **CardiTrack Web**'s client id | Applications → CardiTrack Web → Settings |
+| `carditrack-{env}-auth0-client-secret` | **CardiTrack Web**'s client secret | Applications → CardiTrack Web → Settings (eye icon) |
+| `carditrack-{env}-auth0-mobile-client-id` | **CardiTrack Mobile**'s client id | Applications → CardiTrack Mobile → Settings |
+
+Beware trailing whitespace/newlines when pasting — the script's `printf '%s'` path is
+safe; the Console UI's *New Version* box is not.
 
 Then force a Cloud Run rollout (or let the next deploy do it) — secret-backed env
 vars are resolved at instance start:
@@ -205,7 +238,7 @@ curl -s -X POST https://<tenant-domain>/oauth/token \
   -d 'grant_type=http://auth0.com/oauth/grant-type/password-realm' \
   -d 'realm=Username-Password-Authentication' \
   -d 'client_id=<mobile-client-id>' \
-  -d 'audience=<api-identifier-for-this-tenant>' \
+  -d 'audience=<api-identifier>' \
   -d 'scope=openid profile email offline_access' \
   -d 'username=<test-user>' -d 'password=<password>'
 # MUST contain access_token AND refresh_token.
@@ -215,7 +248,26 @@ curl -s -X POST https://<tenant-domain>/oauth/token \
 #   is unchecked on the Native app.
 # "authorization_server ... not configured with default directory" → step 5.
 # "Grant type ... not allowed" → Password grant unchecked (step 3).
+# access_denied "not authorized" / "Service not found" → the app is missing
+#   User-delegated Access on the API (step 2), or the audience doesn't match the
+#   identifier exactly.
 ```
+
+Management API client credentials (proves sections 4 + 9; powers resend-verification):
+
+```bash
+curl -s -X POST https://<tenant-domain>/oauth/token \
+  -H 'Content-Type: application/json' \
+  -d '{"grant_type":"client_credentials","client_id":"<web-client-id>","client_secret":"<web-client-secret>","audience":"https://<tenant-domain>/api/v2/"}'
+# Success MUST include "scope":"read:users update:users" — a token without those
+#   scopes means the Application Access permissions weren't saved (step 9).
+# 401 → wrong client secret. 403 "grant_type not allowed" → Client Credentials
+#   unchecked on the Web app (step 4).
+```
+
+Remember: mobile builds stamp domain/audience/client-id at **build time** — after
+changing any of these secrets, the installed dev app must be rebuilt or it keeps
+failing with the old values.
 
 API accepts the token:
 

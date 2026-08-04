@@ -17,9 +17,13 @@
                    HorizontalOptions="Fill"
                    VerticalOptions="Fill" />
 
-            <VerticalStackLayout Padding="20,48,20,0" VerticalOptions="Start">
+            <VerticalStackLayout Padding="20,48,20,0"
+                                 Spacing="4"
+                                 VerticalOptions="Start">
                 <Label Text="Verify your email"
                        Style="{StaticResource Heading1White}" />
+                <Label Text="Open the link we sent, then come back"
+                       Style="{StaticResource Body1SemiBold}" />
             </VerticalStackLayout>
         </Grid>
 
@@ -30,34 +34,59 @@
               BackgroundColor="{StaticResource White}"
               Padding="20,0,20,36">
             <ScrollView>
-            <Grid Padding="0,40,0,0">
+            <Grid Padding="0,32,0,0">
 
                 <VerticalStackLayout Spacing="0" VerticalOptions="Start">
 
-                    <Label Text="Check your inbox"
-                           Style="{StaticResource Heading2}"
-                           HorizontalTextAlignment="Center"
-                           Margin="0,0,0,8"/>
-
-                    <Label x:Name="DetailLabel"
-                           Text="We sent a verification link to your email. Open it, then come back and continue."
+                    <Label Text="We sent a verification link to"
                            Style="{StaticResource Body2}"
                            TextColor="{StaticResource HeadingText}"
                            HorizontalTextAlignment="Center"
-                           Margin="0,0,0,24"/>
+                           Margin="0,0,0,6"/>
+
+                    <Label x:Name="EmailLabel"
+                           FontFamily="QuicksandSemiBold"
+                           FontSize="16"
+                           TextColor="{StaticResource Primary}"
+                           HorizontalTextAlignment="Center"
+                           LineBreakMode="MiddleTruncation"
+                           Margin="0,0,0,12"/>
+
+                    <Label Text="Can't find it? Check spam or junk."
+                           Style="{StaticResource Body2}"
+                           TextColor="{StaticResource BodyText}"
+                           HorizontalTextAlignment="Center"
+                           Margin="0,0,0,20"/>
 
                     <Label x:Name="VerifyError"
                            Style="{StaticResource AuthErrorLabel}"
                            IsVisible="False"
                            HorizontalTextAlignment="Center"
-                           Margin="0,0,0,8"/>
+                           Margin="0,0,0,12"/>
+
+                    <ActivityIndicator x:Name="CheckingIndicator"
+                                       IsRunning="False"
+                                       IsVisible="False"
+                                       Color="{StaticResource Primary}"
+                                       HeightRequest="28"
+                                       WidthRequest="28"
+                                       HorizontalOptions="Center"
+                                       Margin="0,0,0,12"/>
 
                     <Button x:Name="ContinueBtn"
                             Text="I've verified — continue"
                             Style="{StaticResource AuthGradientButton}"
                             HorizontalOptions="Fill"
-                            Margin="0,12,0,0"
+                            SemanticProperties.Hint="Checks whether your email is verified, then continues"
                             Clicked="OnContinueClicked"/>
+
+                    <Button x:Name="OpenMailBtn"
+                            Text="Open mail app"
+                            Style="{StaticResource SecondaryOutlineButton}"
+                            HorizontalOptions="Fill"
+                            Margin="0,12,0,0"
+                            SemanticProperties.Hint="Opens your email app to find the verification link"
+                            Clicked="OnOpenMailClicked"/>
 
                     <Label Text="Didn't receive the email?"
                            Style="{StaticResource Body2}"
@@ -65,27 +94,39 @@
                            HorizontalTextAlignment="Center"
                            Margin="0,28,0,4"/>
 
-                    <Label x:Name="ResendLink"
-                           Text="Resend verification email"
-                           FontFamily="QuicksandSemiBold"
-                           FontSize="16"
-                           TextColor="{StaticResource Primary}"
-                           HorizontalTextAlignment="Center">
-                        <Label.GestureRecognizers>
-                            <TapGestureRecognizer Tapped="OnResendTapped"/>
-                        </Label.GestureRecognizers>
-                    </Label>
-
-                    <Label Text="Back to sign in"
-                           FontFamily="QuicksandSemiBold"
-                           FontSize="16"
-                           TextColor="{StaticResource Primary}"
+                    <Label x:Name="ResendStatus"
+                           Style="{StaticResource Body2}"
+                           TextColor="{StaticResource BodyText}"
                            HorizontalTextAlignment="Center"
-                           Margin="0,28,0,0">
-                        <Label.GestureRecognizers>
-                            <TapGestureRecognizer Tapped="OnBackToSignInTapped"/>
-                        </Label.GestureRecognizers>
-                    </Label>
+                           IsVisible="False"
+                           Margin="0,0,0,4"/>
+
+                    <Button x:Name="ResendBtn"
+                            Text="Resend verification email"
+                            BackgroundColor="Transparent"
+                            TextColor="{StaticResource Primary}"
+                            FontFamily="QuicksandSemiBold"
+                            FontSize="16"
+                            HeightRequest="44"
+                            Padding="12,8"
+                            BorderWidth="0"
+                            HorizontalOptions="Center"
+                            SemanticProperties.Hint="Sends another verification email"
+                            Clicked="OnResendClicked"/>
+
+                    <Button x:Name="BackBtn"
+                            Text="Wrong email? Go back"
+                            BackgroundColor="Transparent"
+                            TextColor="{StaticResource Primary}"
+                            FontFamily="QuicksandSemiBold"
+                            FontSize="16"
+                            HeightRequest="44"
+                            Padding="12,8"
+                            BorderWidth="0"
+                            HorizontalOptions="Center"
+                            Margin="0,12,0,0"
+                            SemanticProperties.Hint="Returns to sign in so you can use a different email"
+                            Clicked="OnBackToSignInClicked"/>
 
                 </VerticalStackLayout>
 

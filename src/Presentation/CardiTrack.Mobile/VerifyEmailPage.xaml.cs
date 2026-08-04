@@ -12,11 +12,18 @@ namespace CardiTrack.Mobile;
 /// </summary>
 public partial class VerifyEmailPage : ContentPage
 {
+    private static readonly TimeSpan ResendCooldown = TimeSpan.FromSeconds(45);
+
     private readonly IAuthService _authService;
     private readonly ICardiTrackApiClient _api;
     private readonly PostLoginRouter _router;
     private readonly string _email;
     private readonly string _password;
+
+    private bool _hasAppeared;
+    private bool _isChecking;
+    private bool _resendOnCooldown;
+    private CancellationTokenSource? _cooldownCts;
 
     public VerifyEmailPage(string email, string password)
     {
@@ -27,14 +34,84 @@ public partial class VerifyEmailPage : ContentPage
         _email = email;
         _password = password;
 
-        DetailLabel.Text = $"We sent a verification link to {email}. Open it, then come back and continue.";
+        EmailLabel.Text = email;
     }
 
-    private async void OnContinueClicked(object? sender, EventArgs e)
+    protected override async void OnAppearing()
     {
+        base.OnAppearing();
+
+        // First appearance: user just landed — wait for an explicit action.
+        if (!_hasAppeared)
+        {
+            _hasAppeared = true;
+            return;
+        }
+
+        // Returning from mail / background: silently re-check verification.
+        await TryContinueAsync(silent: true);
+    }
+
+    protected override void OnDisappearing()
+    {
+        _cooldownCts?.Cancel();
+        base.OnDisappearing();
+    }
+
+    private async void OnContinueClicked(object? sender, EventArgs e) =>
+        await TryContinueAsync(silent: false);
+
+    private async void OnOpenMailClicked(object? sender, EventArgs e)
+    {
+        try
+        {
+            await Launcher.Default.OpenAsync(new Uri($"mailto:{_email}"));
+        }
+        catch
+        {
+            ShowError("Couldn't open your mail app. Open it manually and check for our email.");
+        }
+    }
+
+    private async void OnResendClicked(object? sender, EventArgs e)
+    {
+        if (_resendOnCooldown || !ResendBtn.IsEnabled)
+            return;
+
         VerifyError.IsVisible = false;
-        ContinueBtn.Text = "Checking...";
-        ContinueBtn.IsEnabled = false;
+        ResendStatus.IsVisible = false;
+        ResendBtn.IsEnabled = false;
+        ResendBtn.Text = "Sending...";
+
+        try
+        {
+            await _api.ResendVerificationAsync(_email);
+            ResendStatus.Text = "Sent — check your inbox";
+            ResendStatus.IsVisible = true;
+            await StartResendCooldownAsync();
+        }
+        catch (ApiException)
+        {
+            ResendBtn.Text = "Resend verification email";
+            ResendBtn.IsEnabled = true;
+            ShowError("Couldn't resend right now. Check your connection and try again.");
+        }
+    }
+
+    private async void OnBackToSignInClicked(object? sender, EventArgs e)
+    {
+        WindowNavigation.SetRootPage(this, new NavigationPage(new SignInPage()));
+        await Task.CompletedTask;
+    }
+
+    private async Task TryContinueAsync(bool silent)
+    {
+        if (_isChecking)
+            return;
+
+        _isChecking = true;
+        VerifyError.IsVisible = false;
+        SetCheckingUi(true);
 
         try
         {
@@ -43,51 +120,75 @@ public partial class VerifyEmailPage : ContentPage
         }
         catch (AuthException ex)
         {
-            ShowError(ex.Code switch
+            if (silent && ex.Code == AuthErrorCode.EmailNotVerified)
+                return;
+
+            if (!silent || ex.Code == AuthErrorCode.Network)
             {
-                AuthErrorCode.EmailNotVerified =>
-                    "Not verified yet — open the link in your inbox (check spam too), then try again.",
-                AuthErrorCode.Network => "No connection. Check your internet and try again.",
-                _ => "Something went wrong. You can also go back and sign in.",
-            });
+                ShowError(ex.Code switch
+                {
+                    AuthErrorCode.EmailNotVerified =>
+                        "Not verified yet — open the link in your inbox (check spam too), then try again.",
+                    AuthErrorCode.Network => "No connection. Check your internet and try again.",
+                    _ => "Something went wrong. You can also go back and sign in.",
+                });
+            }
         }
         catch (ApiException)
         {
-            ShowError("Verified, but we couldn't load your account. Check your connection and try again.");
+            if (!silent)
+                ShowError("Verified, but we couldn't load your account. Check your connection and try again.");
         }
         finally
         {
-            ContinueBtn.Text = "I've verified — continue";
-            ContinueBtn.IsEnabled = true;
+            SetCheckingUi(false);
+            _isChecking = false;
         }
     }
 
-    private async void OnResendTapped(object? sender, EventArgs e)
+    private void SetCheckingUi(bool checking)
     {
-        VerifyError.IsVisible = false;
-        ResendLink.IsEnabled = false;
-        ResendLink.Text = "Sending...";
+        ContinueBtn.IsEnabled = !checking;
+        OpenMailBtn.IsEnabled = !checking;
+        ContinueBtn.Text = checking ? "Checking..." : "I've verified — continue";
+        CheckingIndicator.IsVisible = checking;
+        CheckingIndicator.IsRunning = checking;
+
+        if (!_resendOnCooldown)
+            ResendBtn.IsEnabled = !checking;
+        BackBtn.IsEnabled = !checking;
+    }
+
+    private async Task StartResendCooldownAsync()
+    {
+        _cooldownCts?.Cancel();
+        _cooldownCts = new CancellationTokenSource();
+        var token = _cooldownCts.Token;
+
+        _resendOnCooldown = true;
+        ResendBtn.IsEnabled = false;
+        ResendBtn.TextColor = (Color)App.Current!.Resources["MutedText"];
 
         try
         {
-            await _api.ResendVerificationAsync(_email);
-            ResendLink.Text = "Sent — check your inbox";
+            var remaining = (int)ResendCooldown.TotalSeconds;
+            while (remaining > 0)
+            {
+                ResendBtn.Text = $"Resend in {remaining}s";
+                await Task.Delay(TimeSpan.FromSeconds(1), token);
+                remaining--;
+            }
         }
-        catch (ApiException)
+        catch (OperationCanceledException)
         {
-            ResendLink.Text = "Resend verification email";
-            ShowError("Couldn't resend right now. Check your connection and try again.");
+            return;
         }
-        finally
-        {
-            ResendLink.IsEnabled = true;
-        }
-    }
 
-    private async void OnBackToSignInTapped(object? sender, EventArgs e)
-    {
-        WindowNavigation.SetRootPage(this, new NavigationPage(new SignInPage()));
-        await Task.CompletedTask;
+        _resendOnCooldown = false;
+        ResendBtn.Text = "Resend verification email";
+        ResendBtn.TextColor = (Color)App.Current!.Resources["Primary"];
+        ResendBtn.IsEnabled = !_isChecking;
+        ResendStatus.IsVisible = false;
     }
 
     private void ShowError(string message)
