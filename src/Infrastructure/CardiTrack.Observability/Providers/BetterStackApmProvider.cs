@@ -1,12 +1,13 @@
 using OpenTelemetry.Exporter;
+using OpenTelemetry.Metrics;
 using OpenTelemetry.Trace;
 using Serilog;
 
 namespace CardiTrack.Observability.Providers;
 
 /// <summary>
-/// Better Stack: logs via the official Serilog sink, traces via OTLP/HTTP to the
-/// per-source ingesting host (https://[host]/v1/traces, bearer source token).
+/// Better Stack: logs via the official Serilog sink, traces and metrics via OTLP/HTTP
+/// to the per-source ingesting host (https://[host]/v1/[signal], bearer source token).
 /// </summary>
 public sealed class BetterStackApmProvider : IApmProvider
 {
@@ -29,6 +30,17 @@ public sealed class BetterStackApmProvider : IApmProvider
             exporter.Protocol = OtlpExportProtocol.HttpProtobuf;
             exporter.Headers = $"Authorization=Bearer {options.Data.IngestToken}";
         });
+
+    public void AddMetricExporter(MeterProviderBuilder metrics, ApmOptions options) =>
+        metrics.AddOtlpExporter(exporter =>
+        {
+            exporter.Endpoint = new Uri($"{NormalizeIngestUrl(options.Data.IngestUrl!)}/v1/metrics");
+            exporter.Protocol = OtlpExportProtocol.HttpProtobuf;
+            exporter.Headers = $"Authorization=Bearer {options.Data.IngestToken}";
+        });
+
+    public ApmShippingStatus Describe(ApmOptions options) =>
+        new(options.MetricsEnabled ? ["logs", "traces", "metrics"] : ["logs", "traces"], []);
 
     /// <summary>Better Stack shows the ingesting host without a scheme; accept both forms.</summary>
     public static string NormalizeIngestUrl(string ingestUrl)

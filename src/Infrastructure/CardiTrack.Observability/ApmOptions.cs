@@ -28,6 +28,14 @@ public sealed class ApmOptions
     /// <summary>Head-sampling ratio for OTel traces, 0.0–1.0. Default 0.2 — free-tier prudence.</summary>
     public double TracesSampleRatio { get; set; } = 0.2;
 
+    /// <summary>
+    /// Opt-in switch for OTel metrics export (runtime, ASP.NET Core, HttpClient, Npgsql).
+    /// Default off — meters stream around the clock and metrics bill as custom metrics on
+    /// most backends. Deployed as the plaintext Apm__MetricsEnabled env var, owned by the
+    /// apm_metrics_enabled tfvar.
+    /// </summary>
+    public bool MetricsEnabled { get; set; }
+
     // Terraform provisions Secret Manager-backed env vars as REPLACE_ME placeholders
     // until an operator sets real values (see infrastructure/deployments/secret_manager.tf);
     // a placeholder must behave like "not configured", not ship to a garbage endpoint.

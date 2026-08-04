@@ -33,6 +33,9 @@ storage_class    = "STANDARD"
 apm_engine        = "Datadog"
 apm_mobile_engine = "Datadog"
 
+# OTel metrics (runtime, ASP.NET Core, HttpClient, Npgsql) — bill as custom metrics
+apm_metrics_enabled = true
+
 # Pub/Sub
 enable_pubsub = false # Disabled in dev
 

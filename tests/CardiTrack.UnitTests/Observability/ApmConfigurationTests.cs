@@ -217,6 +217,149 @@ public class ApmConfigurationTests
     }
 
     [Theory]
+    [InlineData(null, false)]
+    [InlineData("false", false)]
+    [InlineData("true", true)]
+    [InlineData("not-a-bool", false)]
+    public void GetApmOptions_MetricsEnabled_BindsAndDefaultsOff(string? value, bool expected)
+    {
+        var settings = new Dictionary<string, string?> { ["Apm:Engine"] = "Datadog" };
+        if (value is not null)
+            settings["Apm:MetricsEnabled"] = value;
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(settings).Build();
+
+        Assert.Equal(expected, configuration.GetApmOptions().MetricsEnabled);
+    }
+
+    [Theory]
+    [InlineData("datadoghq.eu", "https://otlp.datadoghq.eu/v1/metrics")]
+    [InlineData("uk1.datadoghq.com", "https://otlp.uk1.datadoghq.com/v1/metrics")]
+    [InlineData("us5.datadoghq.com/", "https://otlp.us5.datadoghq.com/v1/metrics")]
+    public void Datadog_MetricsIntakeUrl_DerivesFromSite(string site, string expected)
+    {
+        var options = new ApmOptions { Data = new ApmData { IngestUrl = site } };
+
+        Assert.Equal(expected, DatadogApmProvider.MetricsIntakeUrl(options));
+    }
+
+    [Fact]
+    public void Datadog_MetricsIntakeUrl_ExplicitEndpointWins()
+    {
+        var options = new ApmOptions
+        {
+            Data = new ApmData
+            {
+                IngestUrl = "datadoghq.eu",
+                Extra = { [DatadogApmProvider.MetricsEndpointKey] = "https://otlp.custom.example/v1/metrics" },
+            },
+        };
+
+        Assert.Equal("https://otlp.custom.example/v1/metrics", DatadogApmProvider.MetricsIntakeUrl(options));
+    }
+
+    [Theory]
+    [InlineData("https://http-intake.logs.datadoghq.eu")]
+    [InlineData("http-intake.logs.datadoghq.eu")]
+    [InlineData(null)]
+    public void Datadog_MetricsIntakeUrl_UnderivableSite_YieldsNull(string? ingestUrl)
+    {
+        var options = new ApmOptions { Data = new ApmData { IngestUrl = ingestUrl } };
+
+        Assert.Null(DatadogApmProvider.MetricsIntakeUrl(options));
+    }
+
+    [Fact]
+    public void Datadog_Describe_WithoutTraceEndpoint_WarnsLogsOnly()
+    {
+        var options = new ApmOptions
+        {
+            Engine = "Datadog",
+            Data = new ApmData { IngestUrl = "datadoghq.eu", IngestToken = "key" },
+        };
+
+        var status = new DatadogApmProvider().Describe(options);
+
+        Assert.Equal("logs", status.Summary);
+        Assert.Contains(status.Warnings, w => w.Contains(DatadogApmProvider.TraceEndpointKey));
+    }
+
+    [Fact]
+    public void Datadog_Describe_FullyConfigured_ShipsAllSignals()
+    {
+        var options = new ApmOptions
+        {
+            Engine = "Datadog",
+            MetricsEnabled = true,
+            Data = new ApmData
+            {
+                IngestUrl = "uk1.datadoghq.com",
+                IngestToken = "key",
+                Extra = { [DatadogApmProvider.TraceEndpointKey] = "https://otlp.uk1.datadoghq.com/v1/traces" },
+            },
+        };
+
+        var status = new DatadogApmProvider().Describe(options);
+
+        Assert.Equal("logs+traces+metrics", status.Summary);
+        Assert.Empty(status.Warnings);
+    }
+
+    [Fact]
+    public void Datadog_Describe_MetricsSwitchedOffIsNotAWarning()
+    {
+        var options = new ApmOptions
+        {
+            Engine = "Datadog",
+            MetricsEnabled = false,
+            Data = new ApmData
+            {
+                IngestUrl = "datadoghq.eu",
+                IngestToken = "key",
+                Extra = { [DatadogApmProvider.TraceEndpointKey] = "https://otlp.datadoghq.eu/v1/traces" },
+            },
+        };
+
+        var status = new DatadogApmProvider().Describe(options);
+
+        Assert.Equal("logs+traces", status.Summary);
+        Assert.Empty(status.Warnings);
+    }
+
+    [Fact]
+    public void Datadog_Describe_MetricsEnabledButUnderivable_Warns()
+    {
+        var options = new ApmOptions
+        {
+            Engine = "Datadog",
+            MetricsEnabled = true,
+            Data = new ApmData { IngestUrl = "https://http-intake.logs.datadoghq.eu", IngestToken = "key" },
+        };
+
+        var status = new DatadogApmProvider().Describe(options);
+
+        Assert.DoesNotContain("metrics", status.Signals);
+        Assert.Contains(status.Warnings, w => w.Contains(DatadogApmProvider.MetricsEndpointKey));
+    }
+
+    [Theory]
+    [InlineData(false, "logs+traces")]
+    [InlineData(true, "logs+traces+metrics")]
+    public void BetterStack_Describe_FollowsMetricsSwitch(bool metricsEnabled, string expected)
+    {
+        var options = new ApmOptions
+        {
+            Engine = "BetterStack",
+            MetricsEnabled = metricsEnabled,
+            Data = new ApmData { IngestUrl = "s123.betterstackdata.com", IngestToken = "token" },
+        };
+
+        var status = new BetterStackApmProvider().Describe(options);
+
+        Assert.Equal(expected, status.Summary);
+        Assert.Empty(status.Warnings);
+    }
+
+    [Theory]
     [InlineData("datadoghq.eu", "https://http-intake.logs.datadoghq.eu")]
     [InlineData("us5.datadoghq.com", "https://http-intake.logs.us5.datadoghq.com")]
     [InlineData("http-intake.logs.datadoghq.com", "https://http-intake.logs.datadoghq.com")]

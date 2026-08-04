@@ -145,6 +145,12 @@ variable "apm_mobile_engine" {
   default     = "Datadog"
 }
 
+variable "apm_metrics_enabled" {
+  description = "Export OTel metrics (runtime, ASP.NET Core, HttpClient, Npgsql) from API/Web/Worker to the APM backend. Off by default: metrics bill as custom metrics and stream around the clock"
+  type        = bool
+  default     = false
+}
+
 # Pub/Sub Configuration (real-time messaging)
 variable "enable_pubsub" {
   description = "Enable Cloud Pub/Sub for real-time messaging (production only)"

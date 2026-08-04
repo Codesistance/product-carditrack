@@ -1,4 +1,5 @@
 using OpenTelemetry.Exporter;
+using OpenTelemetry.Metrics;
 using OpenTelemetry.Trace;
 using Serilog;
 using Serilog.Sinks.Datadog.Logs;
@@ -7,16 +8,19 @@ namespace CardiTrack.Observability.Providers;
 
 /// <summary>
 /// Datadog (agentless): logs via the official Serilog sink to the site's HTTP intake,
-/// traces via OTLP/HTTP to the org's intake endpoint with a dd-api-key header.
-/// Data translation: IngestUrl = Datadog site (e.g. datadoghq.eu, us5.datadoghq.com),
-/// IngestToken = API key, Extra["TraceEndpoint"] = the org-specific OTLP traces intake
-/// URL — Datadog does not publish a derivable per-site URL and gates the endpoint on
-/// org entitlement, so without it this provider ships logs only.
+/// traces and metrics via OTLP/HTTP to the org's intake with a dd-api-key header.
+/// Data translation: IngestUrl = Datadog site (e.g. datadoghq.eu, uk1.datadoghq.com),
+/// IngestToken = API key, Extra["TraceEndpoint"] = the OTLP traces intake URL
+/// (per-site pattern https://otlp.[site]/v1/traces, but org-entitlement-gated — a 403
+/// means the org needs intake access via support). Without it this provider ships logs
+/// only. The metrics intake URL is derived from the site (https://otlp.[site]/v1/metrics);
+/// Extra["MetricsEndpoint"] overrides it.
 /// </summary>
 public sealed class DatadogApmProvider : IApmProvider
 {
     public const string EngineName = "Datadog";
     public const string TraceEndpointKey = "TraceEndpoint";
+    public const string MetricsEndpointKey = "MetricsEndpoint";
 
     public string Name => EngineName;
 
@@ -43,6 +47,49 @@ public sealed class DatadogApmProvider : IApmProvider
         });
     }
 
+    public void AddMetricExporter(MeterProviderBuilder metrics, ApmOptions options)
+    {
+        var metricsEndpoint = MetricsIntakeUrl(options);
+        if (metricsEndpoint is null)
+            return;
+
+        metrics.AddOtlpExporter((exporter, reader) =>
+        {
+            exporter.Endpoint = new Uri(metricsEndpoint);
+            exporter.Protocol = OtlpExportProtocol.HttpProtobuf;
+            exporter.Headers = $"dd-api-key={options.Data.IngestToken}";
+            // Datadog's OTLP metrics intake requires delta temporality; cumulative
+            // sums are rejected or mis-graphed.
+            reader.TemporalityPreference = MetricReaderTemporalityPreference.Delta;
+        });
+    }
+
+    public ApmShippingStatus Describe(ApmOptions options)
+    {
+        var signals = new List<string> { "logs" };
+        var warnings = new List<string>();
+
+        if (string.IsNullOrWhiteSpace(options.Data.Extra.GetValueOrDefault(TraceEndpointKey)))
+            warnings.Add(
+                $"traces will not ship: {TraceEndpointKey} is not set in Apm:Data — add the org's OTLP "
+                + "traces intake URL (https://otlp.<site>/v1/traces; 403 responses mean the org needs "
+                + "intake access via Datadog support)");
+        else
+            signals.Add("traces");
+
+        if (options.MetricsEnabled)
+        {
+            if (MetricsIntakeUrl(options) is null)
+                warnings.Add(
+                    $"metrics are enabled but the intake URL cannot be derived from IngestUrl "
+                    + $"'{options.Data.IngestUrl}' — use a bare site name or set {MetricsEndpointKey} in Apm:Data");
+            else
+                signals.Add("metrics");
+        }
+
+        return new ApmShippingStatus(signals, warnings);
+    }
+
     /// <summary>Derives the log intake URL from a bare site name; full URLs pass through.</summary>
     public static string LogIntakeUrl(string site)
     {
@@ -53,5 +100,24 @@ public sealed class DatadogApmProvider : IApmProvider
         return trimmed.StartsWith("http-intake.", StringComparison.OrdinalIgnoreCase)
             ? $"https://{trimmed}"
             : $"https://http-intake.logs.{trimmed}";
+    }
+
+    /// <summary>
+    /// Metrics intake URL: an explicit Extra["MetricsEndpoint"] wins; otherwise derived
+    /// from a bare site name per the documented per-site pattern. Null (nothing ships)
+    /// when IngestUrl is a full URL/intake host the site can't be recovered from.
+    /// </summary>
+    public static string? MetricsIntakeUrl(ApmOptions options)
+    {
+        var explicitUrl = options.Data.Extra.GetValueOrDefault(MetricsEndpointKey);
+        if (!string.IsNullOrWhiteSpace(explicitUrl))
+            return explicitUrl.Trim();
+
+        var site = options.Data.IngestUrl?.Trim().TrimEnd('/');
+        if (string.IsNullOrWhiteSpace(site)
+            || site.Contains("://", StringComparison.Ordinal)
+            || site.StartsWith("http-intake.", StringComparison.OrdinalIgnoreCase))
+            return null;
+        return $"https://otlp.{site}/v1/metrics";
     }
 }

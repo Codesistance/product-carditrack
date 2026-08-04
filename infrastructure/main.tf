@@ -64,6 +64,7 @@ module "deployments" {
     "AI__Providers__1__BaseUrl"           = "https://generativelanguage.googleapis.com"
     "AI__Providers__1__Model"             = "gemini-2.0-flash"
     "Apm__Engine"                         = var.apm_engine
+    "Apm__MetricsEnabled"                 = tostring(var.apm_metrics_enabled)
   }
   api_secret_env_vars = {
     "ConnectionStrings__DefaultConnection" = "${var.project_name}-${local.environment}-db-connection-string"
@@ -85,6 +86,7 @@ module "deployments" {
     "ASPNETCORE_ENVIRONMENT" = title(var.environment)
     "GCP_PROJECT_ID"         = var.project_id
     "Apm__Engine"            = var.apm_engine
+    "Apm__MetricsEnabled"    = tostring(var.apm_metrics_enabled)
   }
   worker_secret_env_vars = {
     "ConnectionStrings__DefaultConnection" = "${var.project_name}-${local.environment}-db-connection-string"
@@ -103,6 +105,7 @@ module "deployments" {
   web_env_vars = {
     "ASPNETCORE_ENVIRONMENT" = title(var.environment)
     "Apm__Engine"            = var.apm_engine
+    "Apm__MetricsEnabled"    = tostring(var.apm_metrics_enabled)
   }
   web_secret_env_vars = {
     "Apm__Data" = "${var.project_name}-${local.environment}-apm-data"

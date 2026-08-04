@@ -12,8 +12,10 @@ Until the secret holds real JSON the apps run normally and ship nothing — the 
 placeholder counts as "not configured". Malformed JSON in the secret fails startup loudly.
 
 Quota guardrails are enforced in code (`CardiTrack.Observability`), engine-independently:
-only Warning+ logs ship, traces are head-sampled at 20%, `/health(z)` is never traced, and
-metrics are not exported.
+only Warning+ logs ship, traces are head-sampled at 20% (DB commands included via Npgsql
+spans), `/health(z)` is never traced, and metrics (runtime, ASP.NET Core, HttpClient,
+Npgsql) ship only when the `apm_metrics_enabled` tfvar is true (→ `Apm__MetricsEnabled`
+env var) — they bill as custom metrics, so the switch is off by default.
 
 ## 1. Datadog console steps
 
@@ -24,16 +26,20 @@ metrics are not exported.
    This becomes `IngestUrl`.
 2. **Organization Settings → API Keys → New Key**, name `carditrack-<env>`. The key value
    becomes `IngestToken`. (API key, not Application key.)
-3. Traces need the **agentless OTLP intake endpoint**, which is org-specific and gated:
-   check https://docs.datadoghq.com/opentelemetry/setup/otlp_ingest/traces/ for your org's
-   endpoint; if sends return "organization is not allowed", request access via
-   **Help → Support** (or the CSM). The full URL becomes the `TraceEndpoint` field.
-   Skipping it is fine — the apps ship logs only until it's set.
+3. Traces need the **agentless OTLP intake endpoint**. It follows the per-site pattern
+   `https://otlp.<site>/v1/traces` (e.g. UK1 → `https://otlp.uk1.datadoghq.com/v1/traces`,
+   EU → `https://otlp.datadoghq.eu/v1/traces`), but access is org-entitlement-gated: if
+   sends return 403 "organization is not allowed", request access via **Help → Support**
+   (or the CSM). The full URL becomes the `TraceEndpoint` field. Skipping it is fine —
+   the apps ship logs only until it's set (and log a startup Warning saying so).
+4. Metrics need no extra field: when `apm_metrics_enabled = true`, the intake URL is
+   derived from the site (`https://otlp.<site>/v1/metrics`); an optional `MetricsEndpoint`
+   field overrides it. The same org entitlement applies.
 
 Datadog `Apm__Data` shape:
 
 ```json
-{"IngestUrl":"datadoghq.eu","IngestToken":"<api key>","TraceEndpoint":"https://<org otlp intake>/v1/traces"}
+{"IngestUrl":"datadoghq.eu","IngestToken":"<api key>","TraceEndpoint":"https://otlp.datadoghq.eu/v1/traces"}
 ```
 
 <details>
@@ -82,6 +88,10 @@ for i in $(seq 20); do curl -s -o /dev/null https://api.dev.carditrack.com/api/d
 
 # Logs: check Datadog -> Logs -> Live Tail. A quiet healthy app ships NOTHING
 # (only Warning+) — absence of logs is not a fault.
+# Startup self-report: each service logs its effective APM state at boot — look in
+# Cloud Run logs for "APM configured: engine Datadog shipping logs+traces+metrics ..."
+# (Information) or "APM shipping disabled: ..." / "APM (Datadog): traces will not
+# ship: ..." (Warning) naming exactly what is missing.
 # Check the env vars actually reached the revision:
 gcloud run services describe carditrack-dev-api --region=europe-west2 --project=carditrack-490120 \
   --format=json | grep -A3 Apm__   # Apm__Engine plaintext + Apm__Data referencing the apm-data secret
@@ -130,7 +140,8 @@ toggle before any store review that requires opt-in analytics consent.
 - Per-app keys/sources (separate tokens for API and Web) — split into per-app `apm-data`
   secrets if quota attribution ever matters; today all services share the one secret.
 - Raise `Apm:TracesSampleRatio` / lower `Apm:MinimumLogLevel` via plaintext env vars
-  (`Apm__TracesSampleRatio`, `Apm__MinimumLogLevel`) if the plan is upgraded.
+  (`Apm__TracesSampleRatio`, `Apm__MinimumLogLevel`) if the plan is upgraded; flip
+  `apm_metrics_enabled` per environment in tfvars to turn metrics on or off.
 - Switching backends: implement `IApmProvider`, register it in `ApmProviderRegistry`,
   flip `apm_engine` in the environment's tfvars (`infrastructure/environments/<env>.tfvars`),
   and put the new backend's JSON in the same `apm-data` secret — extra fields beyond
