@@ -12,6 +12,7 @@ public static class ApmProviderRegistry
         new(StringComparer.OrdinalIgnoreCase)
         {
             [BetterStackApmProvider.EngineName] = new BetterStackApmProvider(),
+            [DatadogApmProvider.EngineName] = new DatadogApmProvider(),
         };
 
     public static IReadOnlyCollection<string> KnownEngines => Providers.Keys;

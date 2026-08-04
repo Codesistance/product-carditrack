@@ -1,40 +1,64 @@
 # APM Setup Runbook (Operator)
 
-Connects the deployed API, Web, and Worker to the APM backend (Better Stack today). The apps
-are already wired; the whole deployed contract is two env vars per service:
+Connects the deployed API, Web, and Worker to the APM backend (**Datadog** — selected per
+environment by the `apm_engine` tfvar). The apps are already wired; the whole deployed
+contract is two env vars per service:
 
-- `Apm__Engine` — plaintext, set by Terraform (`"BetterStack"`)
+- `Apm__Engine` — plaintext, set by Terraform (`"Datadog"`; `"BetterStack"` also supported)
 - `Apm__Data` — Secret Manager-backed (secret `carditrack-<env>-apm-data`) holding one JSON
-  object: `{"IngestUrl":"<ingesting host>","IngestToken":"<source token>"}`
+  object with the selected engine's connection details (per-engine shapes below)
 
 Until the secret holds real JSON the apps run normally and ship nothing — the `REPLACE_ME`
 placeholder counts as "not configured". Malformed JSON in the secret fails startup loudly.
 
-Free-tier guardrails are enforced in code (`CardiTrack.Observability`): only Warning+ logs
-ship, traces are head-sampled at 20%, `/health` is never traced, and metrics are not exported.
+Quota guardrails are enforced in code (`CardiTrack.Observability`), engine-independently:
+only Warning+ logs ship, traces are head-sampled at 20%, `/health(z)` is never traced, and
+metrics are not exported.
 
-## 1. Create the Better Stack source
+## 1. Datadog console steps
 
-1. Sign in at https://telemetry.betterstack.com with the cloud-ops account
-   (cloudoperations@codesistance.com — not a personal account).
-2. Sources → **Connect source**, platform **OpenTelemetry**, name it `carditrack-<env>`
-   (one shared source per environment; the `Application` log property and OTel
-   `service.name` distinguish API from Web within it).
-3. From the source's settings, note:
-   - **Source token**
-   - **Ingesting host** (e.g. `s123456.eu-nbg-2.betterstackdata.com`)
+1. Sign in (or create the org) with the cloud-ops account
+   (cloudoperations@codesistance.com — not a personal account). The **site** is fixed at
+   org creation (EU data residency → `datadoghq.eu`); note the site from the browser URL
+   (e.g. `app.datadoghq.eu` → site `datadoghq.eu`, `us5.datadoghq.com` → `us5.datadoghq.com`).
+   This becomes `IngestUrl`.
+2. **Organization Settings → API Keys → New Key**, name `carditrack-<env>`. The key value
+   becomes `IngestToken`. (API key, not Application key.)
+3. Traces need the **agentless OTLP intake endpoint**, which is org-specific and gated:
+   check https://docs.datadoghq.com/opentelemetry/setup/otlp_ingest/traces/ for your org's
+   endpoint; if sends return "organization is not allowed", request access via
+   **Help → Support** (or the CSM). The full URL becomes the `TraceEndpoint` field.
+   Skipping it is fine — the apps ship logs only until it's set.
+
+Datadog `Apm__Data` shape:
+
+```json
+{"IngestUrl":"datadoghq.eu","IngestToken":"<api key>","TraceEndpoint":"https://<org otlp intake>/v1/traces"}
+```
+
+<details>
+<summary>Alternative engine: Better Stack source steps</summary>
+
+1. Sign in at https://telemetry.betterstack.com with the cloud-ops account.
+2. Sources → **Connect source**, platform **OpenTelemetry**, name it `carditrack-<env>`.
+3. Note the **source token** (→ `IngestToken`) and **ingesting host**
+   (e.g. `s123456.eu-nbg-2.betterstackdata.com` → `IngestUrl`). No extra fields.
+4. Set `apm_engine = "BetterStack"` in the environment's tfvars and `terraform apply`.
+
+</details>
 
 ## 2. Provision the secrets
 
 Terraform has already created the placeholder secret (`carditrack-<env>-apm-data`) with
-compute-SA read access; if this environment predates it, run `terraform apply` first.
+compute-SA read access; if this environment predates it, run `terraform apply` first
+(also required to pick up an `apm_engine` change).
 
 ```bash
-bash scripts/set-apm-secrets.sh dev   # prompts for URL + token, composes the JSON
+bash scripts/set-apm-secrets.sh dev   # prompts for URL + token (+ optional trace endpoint)
 ```
 
 (Equivalent by hand:
-`printf '{"IngestUrl":"s123456...betterstackdata.com","IngestToken":"..."}' | gcloud secrets versions add carditrack-dev-apm-data --project=carditrack-490120 --data-file=-`)
+`printf '{"IngestUrl":"datadoghq.eu","IngestToken":"...","TraceEndpoint":"https://..."}' | gcloud secrets versions add carditrack-dev-apm-data --project=carditrack-490120 --data-file=-`)
 
 ## 3. Roll out
 
@@ -52,10 +76,12 @@ gcloud run services update carditrack-dev-worker --region=europe-west2 --project
 ## 4. Verify (before blaming app code)
 
 ```bash
-# Traces: sampled at ~20%, so send a burst; expect a handful in Better Stack -> Traces
+# Traces: sampled at ~20%, so send a burst; expect a handful in Datadog -> APM -> Traces
+# (requires TraceEndpoint in the secret; logs-only setups skip this check)
 for i in $(seq 20); do curl -s -o /dev/null https://api.dev.carditrack.com/api/does-not-exist; done
 
-# Logs: a quiet healthy app ships NOTHING (only Warning+) — absence of logs is not a fault.
+# Logs: check Datadog -> Logs -> Live Tail. A quiet healthy app ships NOTHING
+# (only Warning+) — absence of logs is not a fault.
 # Check the env vars actually reached the revision:
 gcloud run services describe carditrack-dev-api --region=europe-west2 --project=carditrack-490120 \
   --format=json | grep -A3 Apm__   # Apm__Engine plaintext + Apm__Data referencing the apm-data secret
@@ -65,8 +91,8 @@ gcloud run services describe carditrack-dev-api --region=europe-west2 --project=
 
 ## 5. Later / non-blocking
 
-- Per-app sources (separate tokens for API and Web) — split into per-app `apm-data` secrets
-  if quota attribution ever matters; today both apps share the one source.
+- Per-app keys/sources (separate tokens for API and Web) — split into per-app `apm-data`
+  secrets if quota attribution ever matters; today all services share the one secret.
 - Raise `Apm:TracesSampleRatio` / lower `Apm:MinimumLogLevel` via plaintext env vars
   (`Apm__TracesSampleRatio`, `Apm__MinimumLogLevel`) if the plan is upgraded.
 - Switching backends: implement `IApmProvider`, register it in `ApmProviderRegistry`,

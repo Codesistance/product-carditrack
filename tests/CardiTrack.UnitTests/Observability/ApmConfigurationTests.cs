@@ -195,22 +195,35 @@ public class ApmConfigurationTests
     }
 
     [Theory]
-    [InlineData("BetterStack")]
-    [InlineData("betterstack")]
-    public void Registry_ResolvesEngineCaseInsensitively(string engine)
+    [InlineData("BetterStack", typeof(BetterStackApmProvider))]
+    [InlineData("betterstack", typeof(BetterStackApmProvider))]
+    [InlineData("Datadog", typeof(DatadogApmProvider))]
+    [InlineData("DATADOG", typeof(DatadogApmProvider))]
+    public void Registry_ResolvesEngineCaseInsensitively(string engine, Type expected)
     {
         var provider = ApmProviderRegistry.Resolve(engine);
 
-        Assert.IsType<BetterStackApmProvider>(provider);
+        Assert.IsType(expected, provider);
     }
 
     [Fact]
     public void Registry_UnknownEngine_ThrowsListingKnownEngines()
     {
-        var ex = Assert.Throws<InvalidOperationException>(() => ApmProviderRegistry.Resolve("Datadog"));
+        var ex = Assert.Throws<InvalidOperationException>(() => ApmProviderRegistry.Resolve("NewRelic"));
 
-        Assert.Contains("Datadog", ex.Message);
+        Assert.Contains("NewRelic", ex.Message);
         Assert.Contains(BetterStackApmProvider.EngineName, ex.Message);
+        Assert.Contains(DatadogApmProvider.EngineName, ex.Message);
+    }
+
+    [Theory]
+    [InlineData("datadoghq.eu", "https://http-intake.logs.datadoghq.eu")]
+    [InlineData("us5.datadoghq.com", "https://http-intake.logs.us5.datadoghq.com")]
+    [InlineData("http-intake.logs.datadoghq.com", "https://http-intake.logs.datadoghq.com")]
+    [InlineData("https://http-intake.logs.datadoghq.eu/", "https://http-intake.logs.datadoghq.eu")]
+    public void Datadog_LogIntakeUrl_DerivesFromSite(string site, string expected)
+    {
+        Assert.Equal(expected, DatadogApmProvider.LogIntakeUrl(site));
     }
 
     [Theory]

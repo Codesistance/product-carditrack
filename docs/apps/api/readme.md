@@ -38,10 +38,13 @@ Worker through `CardiTrack.Observability` (`AddApmShipping` for Serilog, `AddApm
 `Data` is accepted in two forms: the nested section above (appsettings), or — the deployment
 contract — a **single JSON value**. Deployed, the whole config is exactly two env vars:
 
-- `Apm__Engine` — plaintext Terraform env var (`"BetterStack"`)
+- `Apm__Engine` — plaintext Terraform env var from the `apm_engine` tfvar (**`"Datadog"`**
+  in dev and prod; appsettings' `BetterStack` is only the local-dev default)
 - `Apm__Data` — Secret Manager-backed (secret `carditrack-<env>-apm-data`), holding one JSON
-  object, e.g. `{"IngestUrl":"s123456.eu-nbg-2.betterstackdata.com","IngestToken":"..."}` —
-  unknown keys land in `Extra` for provider-specific details
+  object; unknown keys land in `Extra` for provider-specific details. Per engine:
+  - Datadog: `{"IngestUrl":"datadoghq.eu","IngestToken":"<api key>","TraceEndpoint":"https://<org otlp intake>"}`
+    (`TraceEndpoint` optional — logs-only without it)
+  - Better Stack: `{"IngestUrl":"s123456.eu-nbg-2.betterstackdata.com","IngestToken":"<source token>"}`
 
 The single-value form wins when both are present. Shipping is **disabled until the engine, URL,
 and token are all real values** — `REPLACE_ME` placeholders count as unset. Provisioning:
