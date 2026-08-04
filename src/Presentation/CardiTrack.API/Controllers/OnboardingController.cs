@@ -70,8 +70,10 @@ public class OnboardingController : BaseApiController
     public async Task<ActionResult<ApiResponse<UserResponse>>> CreateUser(
         [FromBody] CreateUserRequest request)
     {
-        // Get Auth0UserId from authenticated user context
+        // Get Auth0UserId and verification state from the authenticated user context —
+        // both come from the token, never from the client body.
         request.Auth0UserId = UserContext.Auth0UserId;
+        request.EmailVerified = UserContext.EmailVerified;
 
         Logger.LogInformation("Creating user account for Auth0 user: {Auth0UserId}", request.Auth0UserId);
 
@@ -133,7 +135,7 @@ public class OnboardingController : BaseApiController
             }, "Onboarding status retrieved");
         }
 
-        var status = await _userService.GetOnboardingStatusAsync(UserContext.UserId);
+        var status = await _userService.GetOnboardingStatusAsync(UserContext.UserId, UserContext.EmailVerified);
         return Success(status, "Onboarding status retrieved");
     }
 

@@ -132,12 +132,33 @@ junk-filtered). Before prod:
 - **Branding → Email Templates**: customize *Change Password* (this is the email the
   app's Forgot Password flow triggers) and *Verification Email*.
 
-## 8. Test user
+## 8. Post-login Action (email_verified into the access token)
+
+The API records real email-verification state (soft capture — no login gate), but Auth0
+only puts `email_verified` in the **ID** token by default. Add a post-login Action so the
+**access** token carries it too; until this exists the API stores users as unverified and
+`UserContextMiddleware` reads the claim as "unknown".
+
+**Actions → Library → Create Action** ("Add CardiTrack claims", Login / Post Login), then
+drag it into **Actions → Triggers → post-login**:
+
+```js
+exports.onExecutePostLogin = async (event, api) => {
+  const ns = 'https://carditrack.com';
+  api.accessToken.setCustomClaim(`${ns}/email_verified`, event.user.email_verified);
+};
+```
+
+The API reads `https://carditrack.com/email_verified` (see `UserContextMiddleware`) at
+user creation and refreshes it on every `GET /api/Onboarding/status`. Role/organization
+claims can be added to this same Action later (section 12).
+
+## 9. Test user
 
 **User Management → Users → Create User** (connection `Username-Password-Authentication`),
 e.g. `carditrack-test@codesistance.com`, for the verification curls and app QA.
 
-## 9. Populate Secret Manager and roll out
+## 10. Populate Secret Manager and roll out
 
 ```bash
 bash scripts/set-auth0-secrets.sh dev     # prompts for domain/audience/client ids/secret
@@ -151,7 +172,7 @@ gcloud run services update carditrack-dev-api --region=europe-west2 \
   --project=carditrack-490120 --update-labels=auth0-config-rollout=$(date +%s)
 ```
 
-## 10. Verify (before blaming app code)
+## 11. Verify (before blaming app code)
 
 Password grant issues both tokens:
 
@@ -164,6 +185,8 @@ curl -s -X POST https://<tenant-domain>/oauth/token \
   -d 'scope=openid profile email offline_access' \
   -d 'username=<test-user>' -d 'password=<password>'
 # MUST contain access_token AND refresh_token.
+# Decode the access token (jwt.io or `jq -R 'split(".")[1] | @base64d | fromjson'`) and
+#   check the https://carditrack.com/email_verified claim is present → step 8 if missing.
 # No refresh_token → API "Allow Offline Access" is off or the Refresh Token grant
 #   is unchecked on the Native app.
 # "authorization_server ... not configured with default directory" → step 5.
@@ -193,12 +216,12 @@ curl -s -X POST https://<tenant-domain>/dbconnections/change_password \
 # Always 200 with a plain-text body; the reset email should arrive.
 ```
 
-## 11. Later (not blocking first sign-in)
+## 12. Later (not blocking first sign-in)
 
 - **Social login (Phase 9)**: enable `google-oauth2` + `apple` connections (Google
   Cloud OAuth credentials / Apple Services ID per auth0_integration.md), attach them
   to the Native app; the app already renders the buttons.
-- **Post-login Action** adding namespaced claims (`https://carditrack.com/role`,
-  `.../organization_id`, `email`) to the access token — the API currently derives
-  the user from the `sub` claim + database lookup, so this is optional until the
-  role policies (`RequireAdmin` etc.) are exercised.
+- **More claims in the section 8 Action** (`https://carditrack.com/role`,
+  `.../organization_id`, `email`) — the API currently derives the user from the
+  `sub` claim + database lookup, so these are optional until the role policies
+  (`RequireAdmin` etc.) are exercised.

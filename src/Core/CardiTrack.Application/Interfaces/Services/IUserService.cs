@@ -10,5 +10,5 @@ public interface IUserService
     Task<User?> GetByAuth0UserIdAsync(string auth0UserId);
     Task<UserResponse?> GetByIdAsync(Guid userId);
     Task UpdateLastLoginAsync(Guid userId);
-    Task<OnboardingStatusResponse> GetOnboardingStatusAsync(Guid userId);
+    Task<OnboardingStatusResponse> GetOnboardingStatusAsync(Guid userId, bool? emailVerifiedClaim = null);
 }

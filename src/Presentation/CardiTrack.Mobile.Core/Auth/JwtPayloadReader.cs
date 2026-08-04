@@ -36,8 +36,11 @@ public static class JwtPayloadReader
         {
             foreach (var property in claims.Properties())
             {
-                if (property.Value is JValue { Type: JTokenType.String } value)
-                    result[property.Name] = (string?)value ?? string.Empty;
+                // Booleans surface as "true"/"false" — email_verified is a JSON bool.
+                if (property.Value is JValue { Type: JTokenType.String } text)
+                    result[property.Name] = (string?)text ?? string.Empty;
+                else if (property.Value is JValue { Type: JTokenType.Boolean } flag)
+                    result[property.Name] = (bool)flag ? "true" : "false";
             }
         }
 

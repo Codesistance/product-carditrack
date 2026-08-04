@@ -7,6 +7,12 @@ public class CreateUserRequest
 {
     public string Auth0UserId { get; set; } = string.Empty; // Set by middleware
 
+    /// <summary>
+    /// Set by the API from the access token's email_verified claim; any client-sent
+    /// value is overwritten. Null when the claim is absent from the token.
+    /// </summary>
+    public bool? EmailVerified { get; set; }
+
     [Required(ErrorMessage = "Email is required")]
     [EmailAddress(ErrorMessage = "Invalid email format")]
     public string Email { get; set; } = string.Empty;

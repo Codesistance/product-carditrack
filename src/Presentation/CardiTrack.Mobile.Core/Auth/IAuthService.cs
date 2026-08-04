@@ -18,4 +18,7 @@ public interface IAuthService
     string? CurrentUserName { get; }
 
     string? CurrentUserEmail { get; }
+
+    /// <summary>Auth0's email_verified from the id token; null when no session/claim.</summary>
+    bool? IsEmailVerified { get; }
 }

@@ -6,7 +6,7 @@
              Shell.NavBarIsVisible="False"
              BackgroundColor="{StaticResource White}">
 
-    <Grid RowDefinitions="Auto,*">
+    <Grid RowDefinitions="Auto,Auto,*">
 
         <!-- ════════════════════════════════════════
              FIXED HEADER
@@ -53,10 +53,42 @@
         </Grid>
 
         <!-- ════════════════════════════════════════
+             VERIFY-EMAIL NUDGE (dismissible)
+             ════════════════════════════════════════ -->
+        <Border x:Name="VerifyEmailBanner"
+                Grid.Row="1"
+                IsVisible="False"
+                BackgroundColor="{StaticResource StaleBannerBackground}"
+                StrokeThickness="0"
+                Margin="20,0,20,8"
+                Padding="14,10">
+            <Border.StrokeShape>
+                <RoundRectangle CornerRadius="12"/>
+            </Border.StrokeShape>
+            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
+                <Label x:Name="VerifyEmailLabel"
+                       Grid.Column="0"
+                       Style="{StaticResource Body2}"
+                       TextColor="{StaticResource HeadingText}"
+                       VerticalOptions="Center"/>
+                <Button Grid.Column="1"
+                        Text="✕"
+                        FontSize="14"
+                        TextColor="{StaticResource BodyText}"
+                        BackgroundColor="Transparent"
+                        Padding="6,0"
+                        MinimumWidthRequest="32"
+                        MinimumHeightRequest="32"
+                        VerticalOptions="Center"
+                        Clicked="OnDismissVerifyEmailClicked"/>
+            </Grid>
+        </Border>
+
+        <!-- ════════════════════════════════════════
              CONTENT
              ════════════════════════════════════════ -->
         <RefreshView x:Name="Refresher"
-                     Grid.Row="1"
+                     Grid.Row="2"
                      RefreshColor="{StaticResource Primary}"
                      Refreshing="OnPullToRefresh">
             <ScrollView>

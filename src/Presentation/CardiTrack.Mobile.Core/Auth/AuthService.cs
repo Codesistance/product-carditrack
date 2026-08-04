@@ -22,6 +22,13 @@ public sealed class AuthService : IAuthService
     public string? CurrentUserEmail =>
         _claims.TryGetValue("email", out var email) && !string.IsNullOrWhiteSpace(email) ? email : null;
 
+    /// <summary>From the ID token; null before sign-in. Refreshes with the session, so it can
+    /// lag until the next launch after the user clicks Auth0's verification link.</summary>
+    public bool? IsEmailVerified =>
+        _claims.TryGetValue("email_verified", out var verified) && bool.TryParse(verified, out var value)
+            ? value
+            : null;
+
     public async Task SignInAsync(string email, string password, CancellationToken ct = default)
     {
         var tokens = await _auth0.LoginAsync(email, password, ct);

@@ -9,6 +9,7 @@ namespace CardiTrack.Mobile;
 public partial class DashboardPage : ContentPage
 {
     private const string PrimaryMemberIdKey = "PrimaryCardiMemberId";
+    private const string VerifyEmailDismissedKey = "VerifyEmailNudgeDismissed";
     private static readonly TimeSpan StaleThreshold = TimeSpan.FromHours(2);
     private static readonly TimeSpan AutoRefreshInterval = TimeSpan.FromMinutes(5);
 
@@ -33,8 +34,28 @@ public partial class DashboardPage : ContentPage
     {
         base.OnAppearing();
         UpdateGreeting();
+        UpdateVerifyEmailBanner();
         if (_lastData is null || DateTime.UtcNow - _lastLoadedUtc > AutoRefreshInterval)
             _ = LoadAsync(force: false);
+    }
+
+    // Soft email-verification capture: nudge only, never a gate. Claim comes from the
+    // ID token, so it clears on the first launch after the user taps Auth0's link.
+    private void UpdateVerifyEmailBanner()
+    {
+        var show = _authService.IsEmailVerified == false
+            && !Preferences.Default.Get(VerifyEmailDismissedKey, false);
+        if (show)
+            VerifyEmailLabel.Text = string.IsNullOrWhiteSpace(_authService.CurrentUserEmail)
+                ? "Verify your email — check your inbox for the confirmation link."
+                : $"Verify your email — we sent a link to {_authService.CurrentUserEmail}.";
+        VerifyEmailBanner.IsVisible = show;
+    }
+
+    private void OnDismissVerifyEmailClicked(object? sender, EventArgs e)
+    {
+        Preferences.Default.Set(VerifyEmailDismissedKey, true);
+        VerifyEmailBanner.IsVisible = false;
     }
 
     private void UpdateGreeting()

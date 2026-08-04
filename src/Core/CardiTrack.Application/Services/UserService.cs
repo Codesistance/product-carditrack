@@ -26,7 +26,9 @@ public class UserService : IUserService
             Role = request.Role,
             OrganizationId = request.OrganizationId,
             IsActive = true,
-            EmailVerified = true // Assuming Auth0 handles verification
+            // Real claim from the access token (via the tenant's post-login Action).
+            // Absent claim => unverified until a later login proves otherwise.
+            EmailVerified = request.EmailVerified ?? false
         };
 
         await _unitOfWork.Users.AddAsync(user);
@@ -74,7 +76,7 @@ public class UserService : IUserService
         await _unitOfWork.SaveChangesAsync();
     }
 
-    public async Task<OnboardingStatusResponse> GetOnboardingStatusAsync(Guid userId)
+    public async Task<OnboardingStatusResponse> GetOnboardingStatusAsync(Guid userId, bool? emailVerifiedClaim = null)
     {
         var user = await _unitOfWork.Users.GetByIdAsync(userId);
         if (user == null)
@@ -86,6 +88,14 @@ public class UserService : IUserService
                 CurrentStep = 1,
                 NextStepMessage = "Create your organization"
             };
+        }
+
+        // The app calls this endpoint on every launch, making it the natural point to
+        // sync verification state once the user has clicked Auth0's email link.
+        if (emailVerifiedClaim.HasValue && user.EmailVerified != emailVerifiedClaim.Value)
+        {
+            user.EmailVerified = emailVerifiedClaim.Value;
+            await _unitOfWork.SaveChangesAsync();
         }
 
         var organization = await _unitOfWork.Organizations.GetByIdAsync(user.OrganizationId);

@@ -11,12 +11,14 @@ public class UserContext : IUserContext
     public UserRole Role { get; private set; }
     public bool IsAuthenticated { get; private set; }
     public string Locale { get; private set; } = "en-US";
+    public bool? EmailVerified { get; private set; }
 
-    public void SetAuthenticatedUser(string auth0UserId, string email, string locale)
+    public void SetAuthenticatedUser(string auth0UserId, string email, string locale, bool? emailVerified = null)
     {
         Auth0UserId = auth0UserId;
         Email = email;
         Locale = locale;
+        EmailVerified = emailVerified;
         IsAuthenticated = true;
     }
 

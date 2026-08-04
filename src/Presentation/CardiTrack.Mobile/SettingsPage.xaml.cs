@@ -30,6 +30,7 @@ public partial class SettingsPage : ContentPage
         {
             await _authService.SignOutAsync();
             Preferences.Default.Remove("PrimaryCardiMemberId");
+            Preferences.Default.Remove("VerifyEmailNudgeDismissed");
             WindowNavigation.SetRootPage(this, new NavigationPage(new SignInPage()));
         }
         finally
