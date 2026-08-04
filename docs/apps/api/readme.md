@@ -19,8 +19,8 @@ The CardiTrack API is a RESTful ASP.NET Core 10 Web API that serves as the backe
 
 ### APM shipping (`CardiTrack.Observability`)
 
-The APM backend is switchable via the `Apm` config section, consumed by both the API and Web
-through `CardiTrack.Observability` (`AddApmShipping` for Serilog, `AddApmTracing` for OTel):
+The APM backend is switchable via the `Apm` config section, consumed by the API, Web, and
+Worker through `CardiTrack.Observability` (`AddApmShipping` for Serilog, `AddApmTracing` for OTel):
 
 ```json
 "Apm": {

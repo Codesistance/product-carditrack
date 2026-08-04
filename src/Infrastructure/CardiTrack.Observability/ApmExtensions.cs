@@ -1,3 +1,4 @@
+using CardiTrack.Shared;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -17,6 +18,19 @@ namespace CardiTrack.Observability;
 public static class ApmExtensions
 {
     /// <summary>
+    /// Engine selection: reads the Apm:Engine key through the universal reader
+    /// (<see cref="ConfigurationLoader"/> — env var Apm__Engine wins over appsettings)
+    /// and resolves the provider it names, so when the value is "BetterStack" the
+    /// BetterStack provider is what gets injected. Returns null when the key is unset
+    /// or a placeholder; an unknown name fails loudly in the registry.
+    /// </summary>
+    public static IApmProvider? LoadEngine(this IConfiguration configuration)
+    {
+        var engine = new ConfigurationLoader(configuration).Get(ConfigurationKeys.Apm.Engine);
+        return ApmOptions.HasRealValue(engine) ? ApmProviderRegistry.Resolve(engine!) : null;
+    }
+
+    /// <summary>
     /// Loads the Apm section. Data comes in one of two forms: a nested section
     /// (appsettings), or — the deployment contract — a single JSON value from the
     /// Apm__Data env var backed by one secret. The single-value form wins when both
@@ -30,7 +44,7 @@ public static class ApmExtensions
         // type is expected, which is exactly what Apm__Data-as-JSON looks like to it.
         var options = new ApmOptions
         {
-            Engine = section[nameof(ApmOptions.Engine)],
+            Engine = new ConfigurationLoader(configuration).Get(ConfigurationKeys.Apm.Engine),
         };
         if (section[nameof(ApmOptions.MinimumLogLevel)] is { } shipLevel)
             options.MinimumLogLevel = shipLevel;
@@ -67,11 +81,14 @@ public static class ApmExtensions
         var options = builder.Configuration.GetApmOptions();
         builder.Services.AddSingleton(options);
 
-        if (!options.IsConfigured)
-            return builder;
+        // Load the engine and inject the provider it names whenever one is selected,
+        // so the DI shape is stable; the exporter below still requires full config.
+        var provider = builder.Configuration.LoadEngine();
+        if (provider is not null)
+            builder.Services.AddSingleton(provider);
 
-        var provider = ApmProviderRegistry.Resolve(options.Engine!);
-        builder.Services.AddSingleton(provider);
+        if (provider is null || !options.IsConfigured)
+            return builder;
 
         builder.Services.AddOpenTelemetry()
             .ConfigureResource(resource => resource.AddService(
@@ -84,7 +101,10 @@ public static class ApmExtensions
                     .AddAspNetCoreInstrumentation(instrumentation =>
                     {
                         instrumentation.RecordException = true;
-                        instrumentation.Filter = context => !context.Request.Path.StartsWithSegments("/health");
+                        // /health (API, Web) and /healthz (Worker) — probe traffic is never traced
+                        instrumentation.Filter = context =>
+                            !context.Request.Path.StartsWithSegments("/health")
+                            && !context.Request.Path.StartsWithSegments("/healthz");
                     })
                     .AddHttpClientInstrumentation();
                 provider.AddTraceExporter(tracing, options);

@@ -29,6 +29,9 @@ cloud_sql_public_ip_enabled   = false # DB is private-only; Cloud Run connects v
 storage_location = "EU"
 storage_class    = "STANDARD"
 
+# APM (logs + traces shipping) — engine name from ApmProviderRegistry; empty disables
+apm_engine = "BetterStack"
+
 # Pub/Sub
 enable_pubsub = false # Disabled in dev
 

@@ -5,16 +5,49 @@ using CardiTrack.Infrastructure.Persistence;
 using CardiTrack.Infrastructure.Repositories;
 using CardiTrack.Infrastructure.Security;
 using CardiTrack.Infrastructure.Settings;
+using CardiTrack.Observability;
 using CardiTrack.Shared;
 using CardiTrack.Worker;
 using CardiTrack.Worker.Workers;
 using Microsoft.EntityFrameworkCore;
+using Serilog;
+using Serilog.Events;
 
 // Enforce UTC for all DateTime values read from PostgreSQL timestamptz columns
 AppContext.SetSwitch("Npgsql.EnableLegacyTimestampBehavior", false);
 
 var builder = WebApplication.CreateBuilder(args);
 var configuration = builder.Configuration;
+var configLoader = new ConfigurationLoader(configuration);
+
+// LOGGING — same Serilog shape as CardiTrack.API (console + rolling file + Seq),
+// plus APM shipping when the Apm section is configured
+Log.Logger = new LoggerConfiguration()
+    .ReadFrom.Configuration(configuration)
+    .Enrich.FromLogContext()
+    .Enrich.WithMachineName()
+    .Enrich.WithEnvironmentName()
+    .Enrich.WithProperty("Application", "CardiTrack.Worker")
+    .WriteTo.Console(
+        outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] {Message:lj} {Properties:j}{NewLine}{Exception}")
+    .WriteTo.File(
+        path: "logs/carditrack-worker-.log",
+        rollingInterval: RollingInterval.Day,
+        retainedFileCountLimit: 30,
+        outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} [{Level:u3}] {Message:lj} {Properties:j}{NewLine}{Exception}")
+    .WriteTo.Seq(
+        serverUrl: configLoader.Get(ConfigurationKeys.Serilog.SeqUrl) ?? "http://localhost:5341",
+        restrictedToMinimumLevel: LogEventLevel.Information)
+    .MinimumLevel.Override("Microsoft", LogEventLevel.Warning)
+    .MinimumLevel.Override("Microsoft.AspNetCore", LogEventLevel.Warning)
+    .MinimumLevel.Override("System", LogEventLevel.Warning)
+    .AddApmShipping(configuration.GetApmOptions())
+    .CreateLogger();
+
+builder.Host.UseSerilog();
+
+// APM TRACING — no-op until Apm__Engine + Apm__Data are configured
+builder.AddApmTracing("CardiTrack.Worker");
 
 // Device provider config array
 builder.Services.Configure<List<DeviceProviderSettings>>(
@@ -22,7 +55,7 @@ builder.Services.Configure<List<DeviceProviderSettings>>(
 
 // Database
 builder.Services.AddDbContext<CardiTrackDbContext>(options =>
-    options.UseNpgsql(configuration.GetConnectionString("DefaultConnection")));
+    options.UseNpgsql(configLoader.Get(ConfigurationKeys.ConnectionStrings.DefaultConnection)));
 
 // Encryption — key must be a base64-encoded 256-bit value in config/Key Vault
 builder.Services.AddSingleton<ConfigurationLoader>();
@@ -56,7 +89,7 @@ builder.Services.AddFitbitProvider();
 builder.Services.AddWorker<WearableSyncWorker>(configuration, nameof(WearableSyncWorker));
 
 // Bind to PORT env var (Cloud Run sets this to 8080)
-var port = Environment.GetEnvironmentVariable("PORT") ?? "8080";
+var port = configLoader.Get(ConfigurationKeys.CloudRun.Port) ?? "8080";
 builder.WebHost.UseUrls($"http://0.0.0.0:{port}");
 
 var app = builder.Build();

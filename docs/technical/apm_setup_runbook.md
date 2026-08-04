@@ -1,7 +1,7 @@
 # APM Setup Runbook (Operator)
 
-Connects the deployed API and Web to the APM backend (Better Stack today). The apps are
-already wired; the whole deployed contract is two env vars per service:
+Connects the deployed API, Web, and Worker to the APM backend (Better Stack today). The apps
+are already wired; the whole deployed contract is two env vars per service:
 
 - `Apm__Engine` — plaintext, set by Terraform (`"BetterStack"`)
 - `Apm__Data` — Secret Manager-backed (secret `carditrack-<env>-apm-data`) holding one JSON
@@ -45,6 +45,8 @@ gcloud run services update carditrack-dev-api --region=europe-west2 --project=ca
   --update-labels=apm-config-rollout=$(date +%s)
 gcloud run services update carditrack-dev-web --region=europe-west2 --project=carditrack-490120 \
   --update-labels=apm-config-rollout=$(date +%s)
+gcloud run services update carditrack-dev-worker --region=europe-west2 --project=carditrack-490120 \
+  --update-labels=apm-config-rollout=$(date +%s)
 ```
 
 ## 4. Verify (before blaming app code)
@@ -68,6 +70,6 @@ gcloud run services describe carditrack-dev-api --region=europe-west2 --project=
 - Raise `Apm:TracesSampleRatio` / lower `Apm:MinimumLogLevel` via plaintext env vars
   (`Apm__TracesSampleRatio`, `Apm__MinimumLogLevel`) if the plan is upgraded.
 - Switching backends: implement `IApmProvider`, register it in `ApmProviderRegistry`,
-  flip `Apm__Engine` in Terraform, and put the new backend's JSON in the same `apm-data`
-  secret — extra fields beyond IngestUrl/IngestToken are surfaced to the provider via
-  `Data.Extra`.
+  flip `apm_engine` in the environment's tfvars (`infrastructure/environments/<env>.tfvars`),
+  and put the new backend's JSON in the same `apm-data` secret — extra fields beyond
+  IngestUrl/IngestToken are surfaced to the provider via `Data.Extra`.

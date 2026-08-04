@@ -12,6 +12,7 @@ AppContext.SetSwitch("Npgsql.EnableLegacyTimestampBehavior", false);
 
 // Configure Serilog
 var builder = WebApplication.CreateBuilder(args);
+var configLoader = new ConfigurationLoader(builder.Configuration);
 builder.AddSerilogLogging();
 builder.AddApmTracing("CardiTrack.API");
 
@@ -22,7 +23,7 @@ try
     // 1. DATABASE
     builder.Services.AddDbContext<CardiTrackDbContext>(options =>
         options.UseNpgsql(
-            builder.Configuration.GetConnectionString("DefaultConnection"),
+            configLoader.Get(ConfigurationKeys.ConnectionStrings.DefaultConnection),
             b => b.MigrationsAssembly("CardiTrack.Infrastructure")));
 
     // 2. AUTHENTICATION & AUTHORIZATION - Auth0 JWT
@@ -63,8 +64,8 @@ try
         options.AddPolicy("AllowSpecificOrigins", policy =>
         {
             policy.WithOrigins(
-                    builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>()
-                    ?? Array.Empty<string>())
+                    builder.Configuration.GetSection(ConfigurationKeys.Cors.AllowedOrigins).Get<string[]>()
+                    ?? [])
                 .AllowAnyHeader()
                 .AllowAnyMethod()
                 .AllowCredentials();
@@ -74,7 +75,7 @@ try
     // 11. HEALTH CHECKS
     builder.Services.AddHealthChecks();
     // .AddDbContextCheck<CardiTrackDbContext>("database")
-    // .AddRedis(builder.Configuration.GetConnectionString("Redis") ?? "localhost:6379", "redis");
+    // .AddRedis(configLoader.Get(ConfigurationKeys.ConnectionStrings.Redis) ?? "localhost:6379", "redis");
 
     // 12. AUTOMAPPER
     builder.Services.AddAutoMapper(cfg => { }, AppDomain.CurrentDomain.GetAssemblies());

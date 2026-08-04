@@ -63,7 +63,7 @@ module "deployments" {
     "AI__Providers__1__Name"              = "Gemini"
     "AI__Providers__1__BaseUrl"           = "https://generativelanguage.googleapis.com"
     "AI__Providers__1__Model"             = "gemini-2.0-flash"
-    "Apm__Engine"                         = "BetterStack"
+    "Apm__Engine"                         = var.apm_engine
   }
   api_secret_env_vars = {
     "ConnectionStrings__DefaultConnection" = "${var.project_name}-${local.environment}-db-connection-string"
@@ -84,6 +84,7 @@ module "deployments" {
   worker_env_vars = {
     "ASPNETCORE_ENVIRONMENT" = title(var.environment)
     "GCP_PROJECT_ID"         = var.project_id
+    "Apm__Engine"            = var.apm_engine
   }
   worker_secret_env_vars = {
     "ConnectionStrings__DefaultConnection" = "${var.project_name}-${local.environment}-db-connection-string"
@@ -93,6 +94,7 @@ module "deployments" {
     "Auth0__ClientSecret"                  = "${var.project_name}-${local.environment}-auth0-client-secret"
     "Encryption__Key"                      = "${var.project_name}-${local.environment}-encryption-key"
     "Health__Token"                        = "${var.project_name}-${local.environment}-health-token"
+    "Apm__Data"                            = "${var.project_name}-${local.environment}-apm-data"
   }
 
   # Cloud Run - Web
@@ -100,7 +102,7 @@ module "deployments" {
   web_container_image = var.web_container_image
   web_env_vars = {
     "ASPNETCORE_ENVIRONMENT" = title(var.environment)
-    "Apm__Engine"            = "BetterStack"
+    "Apm__Engine"            = var.apm_engine
   }
   web_secret_env_vars = {
     "Apm__Data" = "${var.project_name}-${local.environment}-apm-data"

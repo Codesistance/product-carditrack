@@ -28,8 +28,16 @@ public static class ConfigurationKeys
         public const string SeqUrl = "Serilog:SeqUrl";
     }
 
-    // APM shipping (logs + traces) is options-bound, not key-loaded: see
-    // ApmOptions.SectionName ("Apm") in CardiTrack.Observability.
+    public static class Apm
+    {
+        /// <summary>
+        /// Selector for APM provider injection — the value names an engine in
+        /// ApmProviderRegistry (e.g. "BetterStack"); empty disables shipping.
+        /// Read via ApmExtensions.LoadEngine. Apm:Data stays options-bound (it may
+        /// arrive as one JSON env var): see ApmExtensions.GetApmOptions.
+        /// </summary>
+        public const string Engine = "Apm:Engine";
+    }
 
     public static class Encryption
     {
@@ -40,6 +48,18 @@ public static class ConfigurationKeys
     public static class Health
     {
         public const string Token = "Health:Token";
+    }
+
+    public static class CloudRun
+    {
+        /// <summary>Bare env var injected by Cloud Run (no section) — the port to listen on.</summary>
+        public const string Port = "PORT";
+    }
+
+    /// <summary>Section — options-bound via IConfiguration.GetSection(), not ConfigurationLoader.Get().</summary>
+    public static class IpRateLimiting
+    {
+        public const string SectionName = "IpRateLimiting";
     }
 
     public static class Workers

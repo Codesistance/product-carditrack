@@ -2,7 +2,7 @@
 # Populate the APM Secret Manager secret for one environment.
 # Terraform creates carditrack-<env>-apm-data as a REPLACE_ME placeholder; the app treats
 # placeholders as "not configured" and ships nothing, so until a real value is set the
-# API and Web run fine but no logs/traces reach the APM backend.
+# API, Web, and Worker run fine but no logs/traces reach the APM backend.
 #
 # The deployment contract is two env vars:
 #   Apm__Engine  — plaintext, set by Terraform ("BetterStack" today)
@@ -57,13 +57,15 @@ else
 fi
 
 echo
-echo "Cloud Run resolves secret-backed env vars at instance start, so the API and Web"
-echo "need a new revision to pick up changes. Either re-run the deploy workflow, or"
-echo "force a rollout now with:"
+echo "Cloud Run resolves secret-backed env vars at instance start, so the API, Web, and"
+echo "Worker need a new revision to pick up changes. Either re-run the deploy workflow,"
+echo "or force a rollout now with:"
 echo
 echo "  gcloud run services update $PREFIX-api --region=$REGION --project=$PROJECT_ID \\"
 echo "    --update-labels=apm-config-rollout=\$(date +%s)"
 echo "  gcloud run services update $PREFIX-web --region=$REGION --project=$PROJECT_ID \\"
+echo "    --update-labels=apm-config-rollout=\$(date +%s)"
+echo "  gcloud run services update $PREFIX-worker --region=$REGION --project=$PROJECT_ID \\"
 echo "    --update-labels=apm-config-rollout=\$(date +%s)"
 echo
 echo "Verify via traces (only Warning+ logs ship, so a healthy quiet app sends no log"

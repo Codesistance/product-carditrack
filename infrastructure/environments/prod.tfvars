@@ -34,6 +34,9 @@ cloud_sql_public_ip_enabled   = false # Private only; Cloud Run connects via Aut
 storage_location = "EU"
 storage_class    = "STANDARD"
 
+# APM (logs + traces shipping) — engine name from ApmProviderRegistry; empty disables
+apm_engine = "BetterStack"
+
 # Pub/Sub — enabled in prod for real-time messaging
 enable_pubsub = true
 

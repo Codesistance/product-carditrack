@@ -132,6 +132,13 @@ variable "storage_class" {
   default     = "STANDARD"
 }
 
+# APM Configuration (logs + traces shipping)
+variable "apm_engine" {
+  description = "APM backend for API/Web/Worker (must match an engine in ApmProviderRegistry, e.g. BetterStack); empty string disables shipping"
+  type        = string
+  default     = "BetterStack"
+}
+
 # Pub/Sub Configuration (real-time messaging)
 variable "enable_pubsub" {
   description = "Enable Cloud Pub/Sub for real-time messaging (production only)"

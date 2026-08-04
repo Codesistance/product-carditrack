@@ -96,7 +96,7 @@ public static class ServiceCollectionExtensions
         this IServiceCollection services,
         IConfiguration configuration)
     {
-        var redisConnection = configuration.GetConnectionString("Redis");
+        var redisConnection = new ConfigurationLoader(configuration).Get(ConfigurationKeys.ConnectionStrings.Redis);
         if (!string.IsNullOrEmpty(redisConnection))
         {
             services.AddStackExchangeRedisCache(options =>
@@ -120,7 +120,7 @@ public static class ServiceCollectionExtensions
         IConfiguration configuration)
     {
         services.AddMemoryCache();
-        services.Configure<IpRateLimitOptions>(configuration.GetSection("IpRateLimiting"));
+        services.Configure<IpRateLimitOptions>(configuration.GetSection(ConfigurationKeys.IpRateLimiting.SectionName));
         services.AddInMemoryRateLimiting();
         services.AddSingleton<IRateLimitConfiguration, RateLimitConfiguration>();
 
