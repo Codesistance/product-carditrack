@@ -56,7 +56,7 @@ public class OnboardingController : BaseApiController
 
         var response = await _organizationService.CreateOrganizationAsync(request);
 
-        return Created(response, "Organization created successfully");
+        return Created(response, "Your organization is ready!");
     }
 
     /// <summary>
@@ -77,7 +77,7 @@ public class OnboardingController : BaseApiController
 
         var response = await _userService.CreateUserAsync(request);
 
-        return Created(response, "User account created successfully");
+        return Created(response, "Welcome aboard — your account is ready!");
     }
 
     /// <summary>
@@ -95,7 +95,7 @@ public class OnboardingController : BaseApiController
 
         if (!UserContext.IsAuthenticated || UserContext.OrganizationId == Guid.Empty)
         {
-            return Error("User must have an organization to create a CardiMember", 403);
+            return Error("Let's set up your organization first — then you can add a CardiMember.", 403);
         }
 
         Logger.LogInformation(
@@ -108,7 +108,7 @@ public class OnboardingController : BaseApiController
             UserContext.UserId,
             request);
 
-        return Created(response, "CardiMember created successfully");
+        return Created(response, $"{response.Name} has been added to your care circle!");
     }
 
     /// <summary>
@@ -125,12 +125,12 @@ public class OnboardingController : BaseApiController
                 HasOrganization = false,
                 HasUserAccount = false,
                 CurrentStep = 1,
-                NextStepMessage = "Please complete authentication"
-            }, "Onboarding status retrieved");
+                NextStepMessage = "Let's get you signed in first"
+            }, "Here's where you are in your setup");
         }
 
         var status = await _userService.GetOnboardingStatusAsync(UserContext.UserId, UserContext.EmailVerified);
-        return Success(status, "Onboarding status retrieved");
+        return Success(status, "Here's where you are in your setup");
     }
 
     /// <summary>
@@ -142,10 +142,16 @@ public class OnboardingController : BaseApiController
     {
         if (!UserContext.IsAuthenticated || UserContext.OrganizationId == Guid.Empty)
         {
-            return Error("User must have an organization", 403);
+            return Error("Let's set up your organization first.", 403);
         }
 
         var cardiMembers = await _cardiMemberService.GetByOrganizationIdAsync(UserContext.OrganizationId);
-        return Success(cardiMembers, $"Retrieved {cardiMembers.Count} CardiMembers");
+        var message = cardiMembers.Count switch
+        {
+            0 => "No CardiMembers yet — add your first one to get started!",
+            1 => "Here's your CardiMember",
+            _ => $"Here are your {cardiMembers.Count} CardiMembers"
+        };
+        return Success(cardiMembers, message);
     }
 }

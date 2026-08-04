@@ -31,7 +31,7 @@ public class DashboardController : BaseApiController
     {
         if (!UserContext.IsAuthenticated || UserContext.UserId == Guid.Empty)
         {
-            return Error("User account not found", StatusCodes.Status403Forbidden);
+            return Error("We couldn't find your account — please sign in again.", StatusCodes.Status403Forbidden);
         }
 
         try

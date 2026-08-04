@@ -37,13 +37,13 @@ public class ExceptionHandlingMiddleware
     {
         var (statusCode, message) = exception switch
         {
-            UnauthorizedAccessException => (HttpStatusCode.Unauthorized, "Unauthorized access"),
+            UnauthorizedAccessException => (HttpStatusCode.Unauthorized, "You'll need to sign in to do that."),
             ArgumentException => (HttpStatusCode.BadRequest, exception.Message),
             // InvalidOperationException is how EF Core and the BCL report infrastructure
             // faults — treat it as a 500 and never echo its message to clients.
             // Controllers that use it for domain rules catch it themselves.
-            KeyNotFoundException => (HttpStatusCode.NotFound, "Resource not found"),
-            _ => (HttpStatusCode.InternalServerError, "An internal server error occurred")
+            KeyNotFoundException => (HttpStatusCode.NotFound, "We couldn't find what you were looking for."),
+            _ => (HttpStatusCode.InternalServerError, "Something went wrong on our end. Please try again in a moment.")
         };
 
         // Expected client faults (mapped 4xx) are warnings; everything else is an error.

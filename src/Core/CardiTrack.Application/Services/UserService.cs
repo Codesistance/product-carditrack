@@ -86,7 +86,7 @@ public class UserService : IUserService
                 HasOrganization = false,
                 HasUserAccount = false,
                 CurrentStep = 1,
-                NextStepMessage = "Create your organization"
+                NextStepMessage = "Let's create your organization"
             };
         }
 
@@ -113,24 +113,24 @@ public class UserService : IUserService
 
         if (!status.HasCardiMember)
         {
-            status.NextStepMessage = "Add a CardiMember to monitor";
+            status.NextStepMessage = "Let's add your first CardiMember";
             status.CurrentStep = 5;
         }
         else if (!status.HasDeviceConnected)
         {
-            status.NextStepMessage = "Connect a health monitoring device";
+            status.NextStepMessage = "Now let's connect a health device";
             status.CurrentStep = 6;
         }
         else if (!status.HasNotificationPreferences)
         {
-            status.NextStepMessage = "Configure notification preferences";
+            status.NextStepMessage = "Choose how you'd like to be notified";
             status.CurrentStep = 7;
         }
         else
         {
             status.IsOnboardingComplete = true;
             status.CurrentStep = 7;
-            status.NextStepMessage = "Onboarding complete!";
+            status.NextStepMessage = "You're all set — welcome to CardiTrack!";
         }
 
         return status;

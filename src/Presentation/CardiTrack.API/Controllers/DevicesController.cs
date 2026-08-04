@@ -40,7 +40,7 @@ public class DevicesController : BaseApiController
     {
         if (!UserContext.IsAuthenticated || UserContext.UserId == Guid.Empty)
         {
-            return Error("User account not found", StatusCodes.Status403Forbidden);
+            return Error("We couldn't find your account — please sign in again.", StatusCodes.Status403Forbidden);
         }
 
         try
@@ -65,7 +65,7 @@ public class DevicesController : BaseApiController
     {
         if (!UserContext.IsAuthenticated || UserContext.UserId == Guid.Empty)
         {
-            return Error("User account not found", StatusCodes.Status403Forbidden);
+            return Error("We couldn't find your account — please sign in again.", StatusCodes.Status403Forbidden);
         }
 
         var validation = await _connectValidator.ValidateAsync(request, ct);
@@ -101,7 +101,7 @@ public class DevicesController : BaseApiController
     {
         if (!UserContext.IsAuthenticated || UserContext.UserId == Guid.Empty)
         {
-            return Error("User account not found", StatusCodes.Status403Forbidden);
+            return Error("We couldn't find your account — please sign in again.", StatusCodes.Status403Forbidden);
         }
 
         var validation = await _callbackValidator.ValidateAsync(request, ct);
@@ -114,7 +114,7 @@ public class DevicesController : BaseApiController
         {
             var result = await _deviceConnections.CompleteConnectionAsync(
                 UserContext.UserId, provider, request, ct);
-            return Created(result, "Device connected");
+            return Created(result, "Your device is connected and ready to go!");
         }
         catch (KeyNotFoundException ex)
         {

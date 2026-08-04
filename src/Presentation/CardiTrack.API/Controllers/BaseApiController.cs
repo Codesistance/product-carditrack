@@ -23,7 +23,7 @@ public abstract class BaseApiController : ControllerBase
     /// <summary>
     /// Returns a successful API response with data
     /// </summary>
-    protected ActionResult<ApiResponse<T>> Success<T>(T data, string message = "Success")
+    protected ActionResult<ApiResponse<T>> Success<T>(T data, string message = "Here you go!")
     {
         return Ok(new ApiResponse<T>
         {
@@ -37,7 +37,7 @@ public abstract class BaseApiController : ControllerBase
     /// <summary>
     /// Returns a 201 API response with data
     /// </summary>
-    protected ActionResult<ApiResponse<T>> Created<T>(T data, string message = "Created")
+    protected ActionResult<ApiResponse<T>> Created<T>(T data, string message = "All set!")
     {
         return StatusCode(StatusCodes.Status201Created, new ApiResponse<T>
         {
@@ -51,7 +51,7 @@ public abstract class BaseApiController : ControllerBase
     /// <summary>
     /// Returns a successful API response without data
     /// </summary>
-    protected ActionResult<ApiResponse<object>> Success(string message = "Success")
+    protected ActionResult<ApiResponse<object>> Success(string message = "All done!")
     {
         return Ok(new ApiResponse<object>
         {
@@ -69,7 +69,7 @@ public abstract class BaseApiController : ControllerBase
         return BadRequest(new ErrorResponse
         {
             Success = false,
-            Message = "Validation failed",
+            Message = "Some details need a second look — please check them and try again.",
             Errors = result.Errors.Select(e => new ValidationError
             {
                 Field = e.PropertyName,

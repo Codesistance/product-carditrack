@@ -30,10 +30,10 @@ public class ReportsController : BaseApiController
         [FromBody] GenerateReportRequest request)
     {
         if (!UserContext.IsAuthenticated)
-            return Error("Unauthorized", StatusCodes.Status401Unauthorized);
+            return Error("You'll need to sign in to do that.", StatusCodes.Status401Unauthorized);
 
         var result = await _reportService.GenerateAsync(UserContext.UserId, request);
-        return Accepted(Success(result, "Report queued successfully").Value);
+        return Accepted(Success(result, "We're preparing your report — it'll be ready shortly!").Value);
     }
 
     /// <summary>Get current status of a queued or completed report.</summary>
@@ -44,7 +44,7 @@ public class ReportsController : BaseApiController
     {
         var status = await _reportService.GetStatusAsync(UserContext.UserId, reportId);
         if (status is null)
-            return Error("Report not found or has expired.", StatusCodes.Status404NotFound);
+            return Error("We couldn't find that report — it may have expired. Try generating a new one.", StatusCodes.Status404NotFound);
 
         return Success(status);
     }

@@ -33,6 +33,6 @@ public class AuthController : BaseApiController
         [FromBody] ResendVerificationRequest request, CancellationToken ct)
     {
         await _auth0Management.TrySendVerificationEmailAsync(request.Email, ct);
-        return Success(true, "If the account exists, a verification email has been sent");
+        return Success(true, "If that email is registered with us, a verification link is on its way!");
     }
 }
