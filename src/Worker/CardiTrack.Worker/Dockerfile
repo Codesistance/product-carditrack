@@ -52,7 +52,10 @@ EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=3s --start-period=20s --retries=3 \
   CMD ["dotnet", "CardiTrack.Worker.dll", "--health-check"]
 
-# Set environment variables
+# Set environment variables — clear the base image's ASPNETCORE_HTTP_PORTS so the
+# app's UseUrls (bound to Cloud Run's PORT) is the sole binding source and Kestrel
+# doesn't warn about overriding it
+ENV ASPNETCORE_HTTP_PORTS=
 ENV ASPNETCORE_ENVIRONMENT=Production
 ENV DOTNET_EnableDiagnostics=0
 

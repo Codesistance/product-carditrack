@@ -51,8 +51,8 @@ EXPOSE 8081
 HEALTHCHECK --interval=30s --timeout=3s --start-period=15s --retries=3 \
   CMD ["dotnet", "CardiTrack.Web.dll", "--health-check"]
 
-# Set environment variables
-ENV ASPNETCORE_URLS=http://+:8080
+# Set environment variables — port binding comes from the base image's
+# ASPNETCORE_HTTP_PORTS=8080 (setting URLS too makes Kestrel warn about the override)
 ENV ASPNETCORE_ENVIRONMENT=Production
 ENV DOTNET_EnableDiagnostics=0
 
