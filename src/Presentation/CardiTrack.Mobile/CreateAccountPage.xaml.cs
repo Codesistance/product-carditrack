@@ -1,4 +1,3 @@
-using CardiTrack.Mobile.Core.Api;
 using CardiTrack.Mobile.Core.Auth;
 using CardiTrack.Mobile.Services;
 
@@ -8,14 +7,12 @@ public partial class CreateAccountPage : ContentPage
 {
     private readonly BoxView[] _strengthBars;
     private readonly IAuthService _authService;
-    private readonly PostLoginRouter _router;
 
     public CreateAccountPage()
     {
         InitializeComponent();
         _strengthBars = [Str0, Str1, Str2, Str3];
         _authService = ServiceHelper.GetRequiredService<IAuthService>();
-        _router = ServiceHelper.GetRequiredService<PostLoginRouter>();
     }
 
     private void OnPasswordTextChanged(object? sender, TextChangedEventArgs e)
@@ -149,7 +146,9 @@ public partial class CreateAccountPage : ContentPage
         try
         {
             await _authService.SignUpAsync(NameEntry.Text.Trim(), EmailEntry.Text.Trim(), PasswordEntry.Text);
-            await _router.RouteAsync(this);
+            // Sign-in is gated on email verification (tenant hard gate) — hand the
+            // credentials to the verify page, which signs in once the link is clicked.
+            await Navigation.PushAsync(new VerifyEmailPage(EmailEntry.Text.Trim(), PasswordEntry.Text));
         }
         catch (AuthException ex) when (ex.Code == AuthErrorCode.UserAlreadyExists)
         {
@@ -169,12 +168,6 @@ public partial class CreateAccountPage : ContentPage
                 ex.Code == AuthErrorCode.Network
                     ? "Check your internet connection and try again."
                     : "We couldn't create your account. Please try again.");
-        }
-        catch (ApiException)
-        {
-            // Auth0 account exists and the user is signed in; only the status call failed.
-            ShowErrorBanner("Account created, but we couldn't load your profile",
-                "Check your connection and try again — you can also sign in later.");
         }
         finally
         {

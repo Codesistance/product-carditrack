@@ -4,7 +4,7 @@ public interface IAuthService
 {
     Task SignInAsync(string email, string password, CancellationToken ct = default);
 
-    /// <summary>Creates the Auth0 account, then signs in with the same credentials.</summary>
+    /// <summary>Creates the Auth0 account only — sign-in is gated on email verification.</summary>
     Task SignUpAsync(string name, string email, string password, CancellationToken ct = default);
 
     Task RequestPasswordResetAsync(string email, CancellationToken ct = default);

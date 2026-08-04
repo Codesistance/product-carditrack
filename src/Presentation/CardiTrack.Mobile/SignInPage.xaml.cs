@@ -56,6 +56,12 @@ public partial class SignInPage : ContentPage
             await _authService.SignInAsync(EmailEntry.Text.Trim(), PasswordEntry.Text);
             await _router.RouteAsync(this);
         }
+        catch (AuthException ex) when (ex.Code == AuthErrorCode.EmailNotVerified)
+        {
+            // Hand off to the verify page with these credentials so the user can
+            // resend the link and continue without retyping anything.
+            await Navigation.PushAsync(new VerifyEmailPage(EmailEntry.Text.Trim(), PasswordEntry.Text));
+        }
         catch (AuthException ex)
         {
             ShowError(ex.Code switch

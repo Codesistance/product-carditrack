@@ -1,6 +1,7 @@
 using CardiTrack.Observability;
 using CardiTrack.Shared;
 using CardiTrack.Web.Components;
+using Microsoft.AspNetCore.DataProtection;
 using Serilog;
 using Serilog.Events;
 
@@ -51,6 +52,18 @@ try
         client.BaseAddress = new Uri(loader.GetRequired(ConfigurationKeys.Api.BaseUrl));
         client.DefaultRequestHeaders.Add("Accept", "application/json");
     });
+
+    // 5. DATA PROTECTION — antiforgery tokens must survive container recycling
+    // and validate across Cloud Run instances, so the key ring persists to a
+    // GCS-backed volume. Unset locally, keeping the default container-local store.
+    var dataProtectionKeysPath = new ConfigurationLoader(builder.Configuration)
+        .Get(ConfigurationKeys.DataProtection.KeysPath);
+    if (!string.IsNullOrWhiteSpace(dataProtectionKeysPath))
+    {
+        builder.Services.AddDataProtection()
+            .SetApplicationName("CardiTrack.Web")
+            .PersistKeysToFileSystem(new DirectoryInfo(dataProtectionKeysPath));
+    }
 
     var app = builder.Build();
 

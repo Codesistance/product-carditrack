@@ -85,10 +85,11 @@ ASP.NET Core. Then in **Settings**:
 - **Allowed Logout URLs**:
   - dev tenant: `https://app.dev.carditrack.com, https://localhost:7177`
   - prod tenant: `https://app.carditrack.com`
-- **Advanced Settings → Grant Types**: `Authorization Code` + `Refresh Token` only —
-  **uncheck `Implicit`** (pre-checked, deprecated) and leave `Password` and
-  `Client Credentials` off. If Management API access is ever needed, create a
-  separate Machine-to-Machine application rather than widening this one.
+- **Advanced Settings → Grant Types**: `Authorization Code` + `Refresh Token` +
+  `Client Credentials` — **uncheck `Implicit`** (pre-checked, deprecated) and leave
+  `Password` off. Client Credentials exists solely for the narrow Management API
+  grant in section 9 (read:users + update:users, powering resend-verification);
+  grant no broader scopes to this application.
 - **Credentials tab** (newer dashboards; older tenants show this as a "Token
   Endpoint Authentication Method" dropdown at the bottom of Settings): under
   Application Authentication, verify **Client Secret (Post)** — the default is
@@ -132,33 +133,56 @@ junk-filtered). Before prod:
 - **Branding → Email Templates**: customize *Change Password* (this is the email the
   app's Forgot Password flow triggers) and *Verification Email*.
 
-## 8. Post-login Action (email_verified into the access token)
+## 8. Post-login Action (verification gate + claims)
 
-The API records real email-verification state (soft capture — no login gate), but Auth0
-only puts `email_verified` in the **ID** token by default. Add a post-login Action so the
-**access** token carries it too; until this exists the API stores users as unverified and
-`UserContextMiddleware` reads the claim as "unknown".
+The tenant enforces a **hard email-verification gate**: unverified logins are denied, and
+the app routes users to its Verify Email screen. The deny reason MUST be the exact string
+`email_not_verified` — the app maps it to that screen; prose reasons degrade to a generic
+error. The same Action copies `email_verified` into the access token so the API records
+real verification state.
 
-**Actions → Library → Create Action** ("Add CardiTrack claims", Login / Post Login), then
-drag it into **Actions → Triggers → post-login**:
+**Actions → Library → Create Action** ("CardiTrack post-login", Login / Post Login), then
+drag it into **Actions → Triggers → post-login** (it must be the ONLY Action denying
+logins — remove any earlier verification Action):
 
 ```js
 exports.onExecutePostLogin = async (event, api) => {
   const ns = 'https://carditrack.com';
   api.accessToken.setCustomClaim(`${ns}/email_verified`, event.user.email_verified);
+
+  if (!event.user.email_verified) {
+    api.access.deny('email_not_verified'); // exact string — the app matches it
+  }
 };
 ```
 
 The API reads `https://carditrack.com/email_verified` (see `UserContextMiddleware`) at
 user creation and refreshes it on every `GET /api/Onboarding/status`. Role/organization
-claims can be added to this same Action later (section 12).
+claims can be added to this same Action later (section 13).
 
-## 9. Test user
+## 9. Authorize the Management API (resend verification email)
+
+The API's `POST /api/v1/auth/resend-verification` endpoint (used by the app's Verify
+Email screen) calls the Auth0 Management API with the Web/API application's client
+credentials:
+
+1. **Applications → APIs → Auth0 Management API → Machine to Machine Applications**.
+2. Toggle the **Web/API application** (section 4) to *Authorized*.
+3. Expand it and grant exactly two scopes: `read:users`, `update:users`. Update.
+
+Without this, resends fail server-side (logged as "management token request failed") but
+the endpoint still answers 200 — users just don't get a second email.
+
+Because logins are gated on the email arriving, **section 7 (real email provider) is
+blocking for prod** — with the dev sender, verification mails may be junk-filtered and
+users locked out.
+
+## 10. Test user
 
 **User Management → Users → Create User** (connection `Username-Password-Authentication`),
 e.g. `carditrack-test@codesistance.com`, for the verification curls and app QA.
 
-## 10. Populate Secret Manager and roll out
+## 11. Populate Secret Manager and roll out
 
 ```bash
 bash scripts/set-auth0-secrets.sh dev     # prompts for domain/audience/client ids/secret
@@ -172,7 +196,7 @@ gcloud run services update carditrack-dev-api --region=europe-west2 \
   --project=carditrack-490120 --update-labels=auth0-config-rollout=$(date +%s)
 ```
 
-## 11. Verify (before blaming app code)
+## 12. Verify (before blaming app code)
 
 Password grant issues both tokens:
 
@@ -216,7 +240,7 @@ curl -s -X POST https://<tenant-domain>/dbconnections/change_password \
 # Always 200 with a plain-text body; the reset email should arrive.
 ```
 
-## 12. Later (not blocking first sign-in)
+## 13. Later (not blocking first sign-in)
 
 - **Social login (Phase 9)**: enable `google-oauth2` + `apple` connections (Google
   Cloud OAuth credentials / Apple Services ID per auth0_integration.md), attach them

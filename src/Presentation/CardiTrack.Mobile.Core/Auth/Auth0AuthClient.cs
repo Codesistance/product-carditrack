@@ -202,6 +202,14 @@ public sealed class Auth0AuthClient : IAuth0AuthClient
                 "Wrong email or password.", error, description),
             "too_many_attempts" => new AuthException(AuthErrorCode.TooManyAttempts,
                 "Too many attempts. Try again later or reset your password.", error, description),
+            // The tenant's post-login Action denies unverified logins with reason
+            // "email_not_verified" (canonical, per the Auth0 runbook); the Contains
+            // fallback tolerates prose reasons like "Please verify your email".
+            "access_denied" when description is not null
+                && (description.Equals("email_not_verified", StringComparison.OrdinalIgnoreCase)
+                    || description.Contains("verify", StringComparison.OrdinalIgnoreCase))
+                => new AuthException(AuthErrorCode.EmailNotVerified,
+                    "Verify your email to continue — check your inbox for the link.", error, description),
             _ => new AuthException(AuthErrorCode.Unknown,
                 $"Sign-in failed ({(int)response.StatusCode}). Please try again.", error, description),
         };

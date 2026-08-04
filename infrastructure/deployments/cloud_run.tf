@@ -250,6 +250,10 @@ resource "google_cloud_run_v2_service" "web" {
       egress = "PRIVATE_RANGES_ONLY"
     }
 
+    # GCS volumes require the gen2 execution environment; set it explicitly so
+    # deploys don't depend on Cloud Run's auto-selection.
+    execution_environment = "EXECUTION_ENVIRONMENT_GEN2"
+
     volumes {
       name = "cloudsql"
       cloud_sql_instance {
@@ -257,8 +261,20 @@ resource "google_cloud_run_v2_service" "web" {
       }
     }
 
+    volumes {
+      name = "dpkeys"
+      gcs {
+        bucket = google_storage_bucket.dataprotection_keys.name
+      }
+    }
+
     containers {
       image = var.web_container_image
+
+      env {
+        name  = "DataProtection__KeysPath"
+        value = "/var/dpkeys"
+      }
 
       dynamic "env" {
         for_each = var.web_env_vars
@@ -288,6 +304,11 @@ resource "google_cloud_run_v2_service" "web" {
         mount_path = "/cloudsql"
       }
 
+      volume_mounts {
+        name       = "dpkeys"
+        mount_path = "/var/dpkeys"
+      }
+
       resources {
         limits = {
           cpu    = var.cloud_run_cpu
@@ -310,6 +331,7 @@ resource "google_cloud_run_v2_service" "web" {
     google_project_service.run,
     google_secret_manager_secret_version.app_secrets,
     google_secret_manager_secret_version.db_connection_string,
+    google_storage_bucket_iam_member.web_dataprotection_keys,
   ]
 }
 

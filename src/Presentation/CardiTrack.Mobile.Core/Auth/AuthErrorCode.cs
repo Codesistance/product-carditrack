@@ -6,6 +6,8 @@ public enum AuthErrorCode
     TooManyAttempts,
     UserAlreadyExists,
     WeakPassword,
+    /// <summary>Login denied by the tenant's post-login Action until the email is verified.</summary>
+    EmailNotVerified,
     NotConfigured,
     Network,
     SessionExpired,

@@ -36,12 +36,11 @@ public sealed class AuthService : IAuthService
         _claims = JwtPayloadReader.ReadClaims(tokens.IdToken);
     }
 
-    public async Task SignUpAsync(string name, string email, string password, CancellationToken ct = default)
-    {
-        await _auth0.SignUpAsync(name, email, password, ct);
-        // The Auth0 account now exists even if this login fails — the user can sign in manually.
-        await SignInAsync(email, password, ct);
-    }
+    public Task SignUpAsync(string name, string email, string password, CancellationToken ct = default) =>
+        // No auto-login: the tenant denies unverified logins (hard gate), and a
+        // seconds-old account is never verified. The app routes to VerifyEmailPage,
+        // which signs in once the user has clicked the link.
+        _auth0.SignUpAsync(name, email, password, ct);
 
     public Task RequestPasswordResetAsync(string email, CancellationToken ct = default) =>
         _auth0.RequestPasswordResetAsync(email, ct);

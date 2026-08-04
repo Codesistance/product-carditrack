@@ -52,6 +52,30 @@ public class Auth0AuthClientTests
         Assert.Equal(AuthErrorCode.InvalidCredentials, ex.Code);
     }
 
+    [Theory]
+    [InlineData("email_not_verified")]                          // canonical (runbook Action)
+    [InlineData("Please verify your email before logging in.")] // prose fallback
+    public async Task Login_MapsVerificationDeny_ToEmailNotVerified(string description)
+    {
+        var (client, http) = CreateSut();
+        http.Enqueue(HttpStatusCode.Forbidden,
+            $$"""{"error":"access_denied","error_description":"{{description}}"}""");
+
+        var ex = await Assert.ThrowsAsync<AuthException>(() => client.LoginAsync("a@b.com", "pw"));
+        Assert.Equal(AuthErrorCode.EmailNotVerified, ex.Code);
+    }
+
+    [Fact]
+    public async Task Login_OtherAccessDenied_StaysUnknown()
+    {
+        var (client, http) = CreateSut();
+        http.Enqueue(HttpStatusCode.Forbidden,
+            """{"error":"access_denied","error_description":"blocked by policy"}""");
+
+        var ex = await Assert.ThrowsAsync<AuthException>(() => client.LoginAsync("a@b.com", "pw"));
+        Assert.Equal(AuthErrorCode.Unknown, ex.Code);
+    }
+
     [Fact]
     public async Task Login_MapsTooManyAttempts()
     {

@@ -53,6 +53,10 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
     public Task<DeviceResponse> CompleteDeviceConnectionAsync(string provider, OAuthCallbackRequest request, CancellationToken ct = default) =>
         PostAsync<OAuthCallbackRequest, DeviceResponse>($"api/v1/oauth/callback/{provider}", request, ct);
 
+    public Task ResendVerificationAsync(string email, CancellationToken ct = default) =>
+        PostAsync<ResendVerificationRequest, bool>(
+            "api/v1/auth/resend-verification", new ResendVerificationRequest { Email = email }, ct);
+
     private async Task<T> GetAsync<T>(string path, CancellationToken ct)
     {
         HttpResponseMessage response;

@@ -39,6 +39,12 @@ public static class ConfigurationKeys
         public const string Engine = "Apm:Engine";
     }
 
+    public static class DataProtection
+    {
+        /// <summary>Directory persisting the ASP.NET Data Protection key ring — a GCS-backed volume on Cloud Run; unset locally, falling back to the default container-local store.</summary>
+        public const string KeysPath = "DataProtection:KeysPath";
+    }
+
     public static class Encryption
     {
         public const string Key = "Encryption:Key";

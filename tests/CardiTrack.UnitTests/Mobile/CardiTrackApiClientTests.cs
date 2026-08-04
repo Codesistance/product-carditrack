@@ -16,6 +16,20 @@ public class CardiTrackApiClientTests
     }
 
     [Fact]
+    public async Task ResendVerification_PostsToAuthRoute()
+    {
+        var (client, http) = CreateSut();
+        http.Enqueue(HttpStatusCode.OK,
+            """{"success":true,"message":"ok","data":true,"timestamp":"2026-08-04T00:00:00Z"}""");
+
+        await client.ResendVerificationAsync("a@b.com");
+
+        var request = http.Requests.Single();
+        Assert.Equal("/api/v1/auth/resend-verification", request.Uri!.AbsolutePath);
+        Assert.Contains("a@b.com", request.Body);
+    }
+
+    [Fact]
     public async Task GetOnboardingStatus_UsesUnversionedRoute_AndUnwrapsEnvelope()
     {
         var (client, http) = CreateSut();

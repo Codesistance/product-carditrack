@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="CardiTrack.Mobile.VerifyEmailPage"
+             Shell.NavBarIsVisible="False"
+             NavigationPage.HasNavigationBar="False"
+             BackgroundColor="{StaticResource White}">
+
+    <Grid RowDefinitions="Auto,*">
+
+        <!-- ════════════════════════════════════════
+             GRADIENT HEADER
+             ════════════════════════════════════════ -->
+        <Grid Grid.Row="0" HeightRequest="167" HorizontalOptions="Fill">
+            <Image Source="gradient_auth_header.svg"
+                   Aspect="AspectFill"
+                   HorizontalOptions="Fill"
+                   VerticalOptions="Fill" />
+
+            <VerticalStackLayout Padding="20,48,20,0" VerticalOptions="Start">
+                <Label Text="Verify your email"
+                       Style="{StaticResource Heading1White}" />
+            </VerticalStackLayout>
+        </Grid>
+
+        <!-- ════════════════════════════════════════
+             VERIFY FLOW (full-bleed)
+             ════════════════════════════════════════ -->
+        <Grid Grid.Row="1"
+              BackgroundColor="{StaticResource White}"
+              Padding="20,0,20,36">
+            <ScrollView>
+            <Grid Padding="0,40,0,0">
+
+                <VerticalStackLayout Spacing="0" VerticalOptions="Start">
+
+                    <Label Text="Check your inbox"
+                           Style="{StaticResource Heading2}"
+                           HorizontalTextAlignment="Center"
+                           Margin="0,0,0,8"/>
+
+                    <Label x:Name="DetailLabel"
+                           Text="We sent a verification link to your email. Open it, then come back and continue."
+                           Style="{StaticResource Body2}"
+                           TextColor="{StaticResource HeadingText}"
+                           HorizontalTextAlignment="Center"
+                           Margin="0,0,0,24"/>
+
+                    <Label x:Name="VerifyError"
+                           Style="{StaticResource AuthErrorLabel}"
+                           IsVisible="False"
+                           HorizontalTextAlignment="Center"
+                           Margin="0,0,0,8"/>
+
+                    <Button x:Name="ContinueBtn"
+                            Text="I've verified — continue"
+                            Style="{StaticResource AuthGradientButton}"
+                            HorizontalOptions="Fill"
+                            Margin="0,12,0,0"
+                            Clicked="OnContinueClicked"/>
+
+                    <Label Text="Didn't receive the email?"
+                           Style="{StaticResource Body2}"
+                           TextColor="{StaticResource HeadingText}"
+                           HorizontalTextAlignment="Center"
+                           Margin="0,28,0,4"/>
+
+                    <Label x:Name="ResendLink"
+                           Text="Resend verification email"
+                           FontFamily="QuicksandSemiBold"
+                           FontSize="16"
+                           TextColor="{StaticResource Primary}"
+                           HorizontalTextAlignment="Center">
+                        <Label.GestureRecognizers>
+                            <TapGestureRecognizer Tapped="OnResendTapped"/>
+                        </Label.GestureRecognizers>
+                    </Label>
+
+                    <Label Text="Back to sign in"
+                           FontFamily="QuicksandSemiBold"
+                           FontSize="16"
+                           TextColor="{StaticResource Primary}"
+                           HorizontalTextAlignment="Center"
+                           Margin="0,28,0,0">
+                        <Label.GestureRecognizers>
+                            <TapGestureRecognizer Tapped="OnBackToSignInTapped"/>
+                        </Label.GestureRecognizers>
+                    </Label>
+
+                </VerticalStackLayout>
+
+            </Grid>
+            </ScrollView>
+        </Grid>
+    </Grid>
+</ContentPage>
