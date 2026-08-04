@@ -76,9 +76,15 @@ Needs an Apple Developer Program membership. No Mac required.
 & "C:\Program Files\Git\usr\bin\openssl.exe" x509 -inform DER `
   -in "$env:USERPROFILE\Downloads\distribution.cer" -out "$env:USERPROFILE\distribution.pem"
 & "C:\Program Files\Git\usr\bin\openssl.exe" pkcs12 -export `
+  -certpbe PBE-SHA1-3DES -keypbe PBE-SHA1-3DES -macalg sha1 `
   -inkey "$env:USERPROFILE\carditrack-apple.key" -in "$env:USERPROFILE\distribution.pem" `
   -out "$env:USERPROFILE\carditrack-dist.p12"
 ```
+
+The SHA1/3DES flags are required: OpenSSL 3 otherwise emits modern PKCS#12 (PBES2/AES-256,
+SHA-256 MAC), which macOS `security import` on the CI runner rejects with
+`MAC verification failed during PKCS12 import (wrong password?)`. (`-legacy` achieves the same
+but Git for Windows' openssl.exe fails to locate its legacy provider DLL outside an MSYS shell.)
 
 Base64 the `.p12` → `carditrack-common-apple-distribution-cert-p12`; export password →
 `carditrack-common-apple-cert-password`. The key/CSR/cert are generated as a set — if the CSR is
@@ -146,6 +152,8 @@ $raw = [Text.Encoding]::ASCII.GetString([IO.File]::ReadAllBytes("<profile>.mobil
 5. Service account:
 
    ```bash
+   # the Play Developer API must be enabled on the project that owns the key
+   gcloud services enable androidpublisher.googleapis.com --project=carditrack-490120
    gcloud iam service-accounts create carditrack-play-publisher \
      --display-name="CardiTrack Play Publisher" --project=carditrack-490120
    gcloud iam service-accounts keys create carditrack-play-publisher.json \
