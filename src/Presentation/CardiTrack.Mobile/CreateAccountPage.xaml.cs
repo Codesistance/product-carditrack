@@ -13,6 +13,7 @@ public partial class CreateAccountPage : ContentPage
         InitializeComponent();
         _strengthBars = [Str0, Str1, Str2, Str3];
         _authService = ServiceHelper.GetRequiredService<IAuthService>();
+        UpdateCreateButtonState();
     }
 
     private void OnPasswordTextChanged(object? sender, TextChangedEventArgs e)

@@ -15,9 +15,13 @@ public partial class ForgotPasswordPage : ContentPage
         _authService = ServiceHelper.GetRequiredService<IAuthService>();
         if (!string.IsNullOrWhiteSpace(email))
             EmailEntry.Text = email.Trim();
+        UpdateSendButtonState();
     }
 
     private void OnEmailChanged(object? sender, TextChangedEventArgs e)
+        => UpdateSendButtonState();
+
+    private void UpdateSendButtonState()
     {
         var complete = !string.IsNullOrWhiteSpace(EmailEntry.Text) && EmailEntry.Text.Contains('@');
         SendBtn.Background = (Brush)App.Current!.Resources[

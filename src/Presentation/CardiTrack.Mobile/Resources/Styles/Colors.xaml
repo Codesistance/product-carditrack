@@ -31,6 +31,7 @@
     <Color x:Key="InputBackground">#F2F2F4</Color>
     <Color x:Key="InputBorder">#DCDFE4</Color>
     <Color x:Key="InputFocusBorder">#1884DC</Color>
+    <Color x:Key="SelectedOptionBackground">#F0F6FF</Color>
     <Color x:Key="Divider">#E2E8F0</Color>
     <Color x:Key="ErrorRed">#E53E3E</Color>
     <Color x:Key="StrengthWeak">#E53E3E</Color>

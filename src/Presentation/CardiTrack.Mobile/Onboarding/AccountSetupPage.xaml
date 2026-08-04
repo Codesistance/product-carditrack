@@ -38,36 +38,72 @@
 
                     <!-- Family option -->
                     <Border x:Name="FamilyCard"
-                            Style="{StaticResource AuthEntryBorder}"
+                            BackgroundColor="{StaticResource White}"
+                            Stroke="{StaticResource InputBorder}"
+                            StrokeThickness="1.5"
                             Padding="16">
+                        <Border.StrokeShape>
+                            <RoundRectangle CornerRadius="12"/>
+                        </Border.StrokeShape>
                         <Border.GestureRecognizers>
                             <TapGestureRecognizer Tapped="OnFamilyTapped"/>
                         </Border.GestureRecognizers>
-                        <VerticalStackLayout Spacing="4">
-                            <Label Text="My Family"
-                                   FontFamily="Quicksand" FontAttributes="Bold" FontSize="18"
-                                   TextColor="{StaticResource HeadingText}"/>
-                            <Label Text="I'm watching over my parents or loved ones"
-                                   Style="{StaticResource Body2}"
-                                   TextColor="{StaticResource BodyText}"/>
-                        </VerticalStackLayout>
+                        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
+                            <Grid WidthRequest="22" HeightRequest="22" VerticalOptions="Center">
+                                <Ellipse x:Name="FamilyRing"
+                                         Stroke="{StaticResource InputBorder}"
+                                         StrokeThickness="2"
+                                         Fill="Transparent"/>
+                                <Ellipse x:Name="FamilyDot"
+                                         WidthRequest="12" HeightRequest="12"
+                                         HorizontalOptions="Center" VerticalOptions="Center"
+                                         Fill="{StaticResource Primary}"
+                                         Opacity="0" Scale="0.5"/>
+                            </Grid>
+                            <VerticalStackLayout Grid.Column="1" Spacing="4">
+                                <Label Text="My Family"
+                                       FontFamily="Quicksand" FontAttributes="Bold" FontSize="18"
+                                       TextColor="{StaticResource HeadingText}"/>
+                                <Label Text="I'm watching over my parents or loved ones"
+                                       Style="{StaticResource Body2}"
+                                       TextColor="{StaticResource BodyText}"/>
+                            </VerticalStackLayout>
+                        </Grid>
                     </Border>
 
                     <!-- Business option -->
                     <Border x:Name="BusinessCard"
-                            Style="{StaticResource AuthEntryBorder}"
+                            BackgroundColor="{StaticResource White}"
+                            Stroke="{StaticResource InputBorder}"
+                            StrokeThickness="1.5"
                             Padding="16">
+                        <Border.StrokeShape>
+                            <RoundRectangle CornerRadius="12"/>
+                        </Border.StrokeShape>
                         <Border.GestureRecognizers>
                             <TapGestureRecognizer Tapped="OnBusinessTapped"/>
                         </Border.GestureRecognizers>
-                        <VerticalStackLayout Spacing="4">
-                            <Label Text="My Organization"
-                                   FontFamily="Quicksand" FontAttributes="Bold" FontSize="18"
-                                   TextColor="{StaticResource HeadingText}"/>
-                            <Label Text="I provide care professionally (care home, agency)"
-                                   Style="{StaticResource Body2}"
-                                   TextColor="{StaticResource BodyText}"/>
-                        </VerticalStackLayout>
+                        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
+                            <Grid WidthRequest="22" HeightRequest="22" VerticalOptions="Center">
+                                <Ellipse x:Name="BusinessRing"
+                                         Stroke="{StaticResource InputBorder}"
+                                         StrokeThickness="2"
+                                         Fill="Transparent"/>
+                                <Ellipse x:Name="BusinessDot"
+                                         WidthRequest="12" HeightRequest="12"
+                                         HorizontalOptions="Center" VerticalOptions="Center"
+                                         Fill="{StaticResource Primary}"
+                                         Opacity="0" Scale="0.5"/>
+                            </Grid>
+                            <VerticalStackLayout Grid.Column="1" Spacing="4">
+                                <Label Text="My Organization"
+                                       FontFamily="Quicksand" FontAttributes="Bold" FontSize="18"
+                                       TextColor="{StaticResource HeadingText}"/>
+                                <Label Text="I provide care professionally (care home, agency)"
+                                       Style="{StaticResource Body2}"
+                                       TextColor="{StaticResource BodyText}"/>
+                            </VerticalStackLayout>
+                        </Grid>
                     </Border>
 
                     <!-- Organization name (business only) -->

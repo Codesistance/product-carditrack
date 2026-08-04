@@ -186,8 +186,12 @@
         <Setter Property="BorderWidth" Value="0"/>
     </Style>
 
+    <!-- Full gradient by default; the light gradient signals "not actionable".
+         Disabled buttons dim via the trigger; pages that keep the button enabled
+         while a form is incomplete (so taps can surface validation errors) swap
+         the Background locally instead, which overrides the trigger. -->
     <Style x:Key="AuthGradientButton" TargetType="Button">
-        <Setter Property="Background" Value="{StaticResource GradientButtonLightBrush}"/>
+        <Setter Property="Background" Value="{StaticResource GradientButtonBrush}"/>
         <Setter Property="TextColor" Value="{StaticResource White}"/>
         <Setter Property="FontFamily" Value="Quicksand"/>
         <Setter Property="FontAttributes" Value="Bold"/>
@@ -196,6 +200,11 @@
         <Setter Property="HeightRequest" Value="53"/>
         <Setter Property="Padding" Value="24,0"/>
         <Setter Property="BorderWidth" Value="0"/>
+        <Style.Triggers>
+            <Trigger TargetType="Button" Property="IsEnabled" Value="False">
+                <Setter Property="Background" Value="{StaticResource GradientButtonLightBrush}"/>
+            </Trigger>
+        </Style.Triggers>
     </Style>
 
     <Style x:Key="SecondaryOutlineButton" TargetType="Button">

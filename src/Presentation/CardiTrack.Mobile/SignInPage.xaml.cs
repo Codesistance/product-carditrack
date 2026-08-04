@@ -14,6 +14,7 @@ public partial class SignInPage : ContentPage
         InitializeComponent();
         _authService = ServiceHelper.GetRequiredService<IAuthService>();
         _router = ServiceHelper.GetRequiredService<PostLoginRouter>();
+        UpdateSignInButtonState();
     }
 
     private async void OnSignInClicked(object? sender, EventArgs e)
@@ -87,6 +88,9 @@ public partial class SignInPage : ContentPage
     }
 
     private void OnCredentialsChanged(object? sender, TextChangedEventArgs e)
+        => UpdateSignInButtonState();
+
+    private void UpdateSignInButtonState()
     {
         var complete = !string.IsNullOrWhiteSpace(EmailEntry.Text) && EmailEntry.Text.Contains('@')
                        && !string.IsNullOrWhiteSpace(PasswordEntry.Text);
