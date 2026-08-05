@@ -295,8 +295,10 @@ curl -s -X POST https://<tenant-domain>/dbconnections/change_password \
 ## 13. Later (not blocking first sign-in)
 
 - **Social login (Phase 9)**: enable `google-oauth2` + `apple` connections (Google
-  Cloud OAuth credentials / Apple Services ID per auth0_integration.md), attach them
-  to the Native app; the app already renders the buttons.
+  Cloud OAuth credentials / Apple Services ID), attach them to the Native app; the
+  app already renders the buttons. Scoped step-by-step in
+  [oauth_clients.md](./oauth_clients.md) — note the sign-in Google client is a
+  **different registration** from the Google Health API device client.
 - **More claims in the section 8 Action** (`https://carditrack.com/role`,
   `.../organization_id`, `email`) — the API currently derives the user from the
   `sub` claim + database lookup, so these are optional until the role policies
