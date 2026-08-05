@@ -1,6 +1,8 @@
+using System.Globalization;
 using CardiTrack.Application.DTOs.Requests;
 using CardiTrack.Domain.Enums;
 using CardiTrack.Mobile.Core.Api;
+using CardiTrack.Mobile.Core.Localization;
 using CardiTrack.Mobile.Services;
 
 namespace CardiTrack.Mobile.Onboarding;
@@ -29,6 +31,7 @@ public partial class AddCardiMemberPage : ContentPage
         RelationshipPicker.ItemsSource = Relationships.Select(r => r.Label).ToList();
         DobPicker.MaximumDate = DateTime.Today;
         DobPicker.MinimumDate = DateTime.Today.AddYears(-120);
+        EmergencyPhoneEntry.Placeholder = PhonePlaceholder.ForRegion(RegionInfo.CurrentRegion.TwoLetterISORegionName);
     }
 
     private async void OnBackRequested(object? sender, EventArgs e)

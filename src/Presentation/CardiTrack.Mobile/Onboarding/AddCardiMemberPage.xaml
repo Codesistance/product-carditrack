@@ -153,7 +153,7 @@
                         <VerticalStackLayout Spacing="6">
                             <Label Text="Emergency Contact Phone" Style="{StaticResource AuthFieldLabel}"/>
                             <Border Style="{StaticResource AuthEntryBorder}">
-                                <Entry x:Name="EmergencyPhoneEntry" Style="{StaticResource AuthEntry}" Placeholder="+1 555 000 0000" Keyboard="Telephone"/>
+                                <Entry x:Name="EmergencyPhoneEntry" Style="{StaticResource AuthEntry}" Keyboard="Telephone"/>
                             </Border>
                         </VerticalStackLayout>
                     </VerticalStackLayout>
