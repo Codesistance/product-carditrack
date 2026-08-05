@@ -94,6 +94,9 @@ Located in `/technical/` — detailed technical guides and specifications.
 #### [auth0_integration.md](./technical/auth0_integration.md)
 Complete guide to Auth0 authentication integration, OAuth flows, and security configuration.
 
+#### [oauth_clients.md](./technical/oauth_clients.md)
+Inventory of every OAuth client (identity vs device-data), social log-on scope, and provisioning steps for the Auth0 and Google Health API clients.
+
 #### [entity_summary.md](./technical/entity_summary.md)
 Detailed summary of all domain entities, their properties, and relationships.
 
