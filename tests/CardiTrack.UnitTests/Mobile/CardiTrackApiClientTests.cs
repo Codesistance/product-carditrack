@@ -47,6 +47,32 @@ public class CardiTrackApiClientTests
     }
 
     [Fact]
+    public async Task Setup_PostsCombinedPayload_AndUnwrapsBothResponses()
+    {
+        var (client, http) = CreateSut();
+        http.Enqueue(HttpStatusCode.OK, """
+            {"success":true,"message":"ok","data":{
+             "organization":{"id":"6f9619ff-8b86-d011-b42d-00c04fc964ff","name":"Ada's Family","type":1,"isActive":true},
+             "user":{"id":"7f9619ff-8b86-d011-b42d-00c04fc964ff","email":"ada@lovelace.dev","name":"Ada",
+              "organizationId":"6f9619ff-8b86-d011-b42d-00c04fc964ff","isActive":true}},
+             "timestamp":"2026-08-01T00:00:00Z"}
+            """);
+
+        var setup = await client.SetupAsync(new OnboardingSetupRequest
+        {
+            Organization = new CreateOrganizationRequest { Name = "Ada's Family", Type = OrganizationType.Family },
+            User = new OnboardingSetupUserRequest { Email = "ada@lovelace.dev", Name = "Ada" },
+        });
+
+        var request = http.Requests.Single();
+        Assert.Equal("/api/Onboarding/setup", request.Uri!.AbsolutePath);
+        Assert.Contains("\"organization\":", request.Body);
+        Assert.Contains("\"user\":", request.Body);
+        Assert.Equal("Ada's Family", setup.Organization.Name);
+        Assert.Equal(setup.Organization.Id, setup.User.OrganizationId);
+    }
+
+    [Fact]
     public async Task CreateOrganization_PostsCamelCaseJson()
     {
         var (client, http) = CreateSut();

@@ -75,6 +75,7 @@ builder.Services.AddFitbitProvider();
 
 // Background workers
 builder.Services.AddWorker<WearableSyncWorker>(configuration, nameof(WearableSyncWorker));
+builder.Services.AddWorker<OrphanedOrganizationCleanupWorker>(configuration, nameof(OrphanedOrganizationCleanupWorker));
 
 // Bind to PORT env var (Cloud Run sets this to 8080)
 var port = configLoader.Get(ConfigurationKeys.CloudRun.Port) ?? "8080";

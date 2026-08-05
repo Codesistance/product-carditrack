@@ -29,6 +29,9 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
     public Task<OnboardingStatusResponse> GetOnboardingStatusAsync(CancellationToken ct = default) =>
         GetAsync<OnboardingStatusResponse>("api/Onboarding/status", ct);
 
+    public Task<OnboardingSetupResponse> SetupAsync(OnboardingSetupRequest request, CancellationToken ct = default) =>
+        PostAsync<OnboardingSetupRequest, OnboardingSetupResponse>("api/Onboarding/setup", request, ct);
+
     public Task<OrganizationResponse> CreateOrganizationAsync(CreateOrganizationRequest request, CancellationToken ct = default) =>
         PostAsync<CreateOrganizationRequest, OrganizationResponse>("api/Onboarding/organization", request, ct);
 

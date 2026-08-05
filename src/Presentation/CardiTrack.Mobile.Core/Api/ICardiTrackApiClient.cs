@@ -6,6 +6,14 @@ namespace CardiTrack.Mobile.Core.Api;
 public interface ICardiTrackApiClient
 {
     Task<OnboardingStatusResponse> GetOnboardingStatusAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// Creates organization, trial subscription, and user in one atomic server call.
+    /// Preferred over CreateOrganizationAsync + CreateUserAsync, which can orphan an
+    /// organization if the app dies between the two requests.
+    /// </summary>
+    Task<OnboardingSetupResponse> SetupAsync(OnboardingSetupRequest request, CancellationToken ct = default);
+
     Task<OrganizationResponse> CreateOrganizationAsync(CreateOrganizationRequest request, CancellationToken ct = default);
     Task<UserResponse> CreateUserAsync(CreateUserRequest request, CancellationToken ct = default);
     Task<CardiMemberResponse> CreateCardiMemberAsync(CreateCardiMemberRequest request, CancellationToken ct = default);

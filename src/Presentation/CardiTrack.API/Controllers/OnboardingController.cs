@@ -19,6 +19,7 @@ public class OnboardingController : BaseApiController
     private readonly IOrganizationService _organizationService;
     private readonly IUserService _userService;
     private readonly ICardiMemberService _cardiMemberService;
+    private readonly IOnboardingService _onboardingService;
     private readonly IValidator<CreateOrganizationRequest> _organizationValidator;
     private readonly IValidator<CreateCardiMemberRequest> _cardiMemberValidator;
 
@@ -28,6 +29,7 @@ public class OnboardingController : BaseApiController
         IOrganizationService organizationService,
         IUserService userService,
         ICardiMemberService cardiMemberService,
+        IOnboardingService onboardingService,
         IValidator<CreateOrganizationRequest> organizationValidator,
         IValidator<CreateCardiMemberRequest> cardiMemberValidator)
         : base(userContext, logger)
@@ -35,8 +37,36 @@ public class OnboardingController : BaseApiController
         _organizationService = organizationService;
         _userService = userService;
         _cardiMemberService = cardiMemberService;
+        _onboardingService = onboardingService;
         _organizationValidator = organizationValidator;
         _cardiMemberValidator = cardiMemberValidator;
+    }
+
+    /// <summary>
+    /// Steps 2–4 in one call: create organization, trial subscription, and user
+    /// atomically. Preferred over the separate organization/user endpoints — a
+    /// client failure between those two calls leaves an orphaned organization,
+    /// which this endpoint makes impossible.
+    /// </summary>
+    [HttpPost("setup")]
+    [ProducesResponseType(typeof(ApiResponse<OnboardingSetupResponse>), StatusCodes.Status201Created)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status400BadRequest)]
+    public async Task<ActionResult<ApiResponse<OnboardingSetupResponse>>> Setup(
+        [FromBody] OnboardingSetupRequest request)
+    {
+        var validation = await _organizationValidator.ValidateAsync(request.Organization);
+        if (!validation.IsValid)
+            return ValidationFailed(validation);
+
+        Logger.LogInformation(
+            "Onboarding setup for Auth0 user {Auth0UserId}: organization {Name}, Type: {Type}",
+            UserContext.Auth0UserId, request.Organization.Name, request.Organization.Type);
+
+        // Auth0UserId and verification state come from the token, never from the client body.
+        var response = await _onboardingService.SetupAsync(
+            request, UserContext.Auth0UserId, UserContext.EmailVerified);
+
+        return Created(response, "Welcome aboard — your organization and account are ready!");
     }
 
     /// <summary>
