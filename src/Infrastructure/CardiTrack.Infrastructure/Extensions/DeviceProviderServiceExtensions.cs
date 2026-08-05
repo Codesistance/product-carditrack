@@ -18,6 +18,21 @@ public static class DeviceProviderServiceExtensions
     /// </summary>
     public static IServiceCollection AddFitbitProvider(this IServiceCollection services)
     {
+        // Deployment injects secrets positionally (DeviceProviders__0__ClientId etc. in
+        // infrastructure/main.tf), so element 0 must be the Fitbit provider. Fail fast on a
+        // reordered appsettings list instead of silently binding Google credentials to the
+        // wrong provider.
+        services.PostConfigure<List<DeviceProviderSettings>>(providers =>
+        {
+            if (providers.Count > 0 && !string.Equals(
+                    providers[0].Provider, nameof(DeviceType.Fitbit), StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidOperationException(
+                    $"DeviceProviders[0] must be the Fitbit provider (found '{providers[0].Provider}') — " +
+                    "deployment env vars bind its secrets by index (DeviceProviders__0__*).");
+            }
+        });
+
         services.AddHttpClient("FitbitClient")
             .ConfigureHttpClient((sp, client) =>
             {

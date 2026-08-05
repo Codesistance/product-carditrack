@@ -24,15 +24,19 @@ public class FitbitApiClient : IFitbitApiClient, IDeviceApiClient
 
     public async Task<FitbitActivitiesResult> GetActivitiesAsync(string accessToken, DateOnly date)
     {
-        var steps = ReadInt(await DailyRollupValueAsync(accessToken, "steps", date), "count") ?? 0;
-        var distanceMeters = ReadDecimal(await DailyRollupValueAsync(accessToken, "distance", date),
-            "meters_sum", "meters", "count") ?? 0; // (assumed)
-        var activeMinutes = ReadInt(await DailyRollupValueAsync(accessToken, "active-minutes", date),
-            "minutes_sum", "minutes", "count") ?? 0; // (assumed)
-        var calories = ReadInt(await DailyRollupValueAsync(accessToken, "total-calories", date),
-            "kilocalories_sum", "kilocalories", "count") ?? 0; // (assumed)
-        var floors = ReadInt(await DailyRollupValueAsync(accessToken, "floors", date),
-            "count", "floors_sum") ?? 0; // (assumed)
+        // The five rollups are independent — issue them concurrently.
+        var stepsTask = DailyRollupValueAsync(accessToken, "steps", date);
+        var distanceTask = DailyRollupValueAsync(accessToken, "distance", date);
+        var activeMinutesTask = DailyRollupValueAsync(accessToken, "active-minutes", date);
+        var caloriesTask = DailyRollupValueAsync(accessToken, "total-calories", date);
+        var floorsTask = DailyRollupValueAsync(accessToken, "floors", date);
+        await Task.WhenAll(stepsTask, distanceTask, activeMinutesTask, caloriesTask, floorsTask);
+
+        var steps = ReadInt(stepsTask.Result, "count") ?? 0;
+        var distanceMeters = ReadDecimal(distanceTask.Result, "meters_sum", "meters", "count") ?? 0; // (assumed)
+        var activeMinutes = ReadInt(activeMinutesTask.Result, "minutes_sum", "minutes", "count") ?? 0; // (assumed)
+        var calories = ReadInt(caloriesTask.Result, "kilocalories_sum", "kilocalories", "count") ?? 0; // (assumed)
+        var floors = ReadInt(floorsTask.Result, "count", "floors_sum") ?? 0; // (assumed)
 
         // The Health API has no sedentary-minutes data type; ActivityLog treats 0 as "not provided".
         return new FitbitActivitiesResult(
@@ -108,9 +112,14 @@ public class FitbitApiClient : IFitbitApiClient, IDeviceApiClient
 
     public async Task<DeviceHealthSnapshot> GetHealthSnapshotAsync(string accessToken, DateOnly date)
     {
-        var activities = await GetActivitiesAsync(accessToken, date);
-        var heartRate = await GetHeartRateAsync(accessToken, date);
-        var sleep = await GetSleepAsync(accessToken, date);
+        var activitiesTask = GetActivitiesAsync(accessToken, date);
+        var heartRateTask = GetHeartRateAsync(accessToken, date);
+        var sleepTask = GetSleepAsync(accessToken, date);
+        await Task.WhenAll(activitiesTask, heartRateTask, sleepTask);
+
+        var activities = activitiesTask.Result;
+        var heartRate = heartRateTask.Result;
+        var sleep = sleepTask.Result;
 
         return new DeviceHealthSnapshot(
             activities.Steps,

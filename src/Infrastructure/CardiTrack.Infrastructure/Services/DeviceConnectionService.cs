@@ -26,6 +26,10 @@ public class DeviceConnectionService : IDeviceConnectionService
     private static readonly TimeSpan StateLifetime = TimeSpan.FromMinutes(15);
     private const string StateKeyPrefix = "deviceoauth:";
 
+    // The anonymous bounce endpoint may only forward into the mobile app's own scheme —
+    // an https/other target would make it an open redirect leaking code+state.
+    private const string AppRedirectScheme = "carditrack";
+
     // Route/body provider names per the REST contract. apple_health is on-device-bridge only
     // and deliberately absent — it must not enter the server OAuth flow.
     private static readonly Dictionary<string, DeviceType> ProviderNames = new(StringComparer.OrdinalIgnoreCase)
@@ -128,6 +132,12 @@ public class DeviceConnectionService : IDeviceConnectionService
         JsonUtility.TryDeserialize<OAuthStatePayload>(cached, out var payload, out _);
         if (payload is null || payload.Provider != deviceType)
             return null;
+
+        if (!Uri.TryCreate(payload.RedirectUri, UriKind.Absolute, out var uri)
+            || !string.Equals(uri.Scheme, AppRedirectScheme, StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
 
         return payload.RedirectUri;
     }

@@ -4,11 +4,13 @@ using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Domain.Entities;
 using CardiTrack.Domain.Enums;
 using CardiTrack.Infrastructure.ExternalClients;
+using CardiTrack.Infrastructure.Extensions;
 using CardiTrack.Infrastructure.Security;
 using CardiTrack.Infrastructure.Services;
 using CardiTrack.Infrastructure.Settings;
 using Microsoft.Extensions.Caching.Distributed;
 using Microsoft.Extensions.Caching.Memory;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using NSubstitute;
 
@@ -282,6 +284,21 @@ public class DeviceConnectionServiceTests
     }
 
     [Fact]
+    public async Task GetAppRedirectUri_RejectsNonAppSchemeRedirect()
+    {
+        // An https redirect cached at initiation must not turn the anonymous bounce
+        // endpoint into an open redirect leaking code+state.
+        var sut = CreateSut();
+        var initiation = await sut.InitiateConnectionAsync(_userId, _memberId, new ConnectDeviceRequest
+        {
+            Provider = "fitbit",
+            RedirectUri = "https://attacker.example.com/collect",
+        });
+
+        Assert.Null(await sut.GetAppRedirectUriAsync("fitbit", initiation.State));
+    }
+
+    [Fact]
     public async Task GetAppRedirectUri_ReturnsNull_ForUnknownStateOrProviderMismatch()
     {
         var sut = CreateSut();
@@ -290,6 +307,21 @@ public class DeviceConnectionServiceTests
         Assert.Null(await sut.GetAppRedirectUriAsync("fitbit", "not-a-real-state"));
         Assert.Null(await sut.GetAppRedirectUriAsync("garmin", initiation.State));
         Assert.Null(await sut.GetAppRedirectUriAsync("not_a_provider", initiation.State));
+    }
+
+    [Fact]
+    public void AddFitbitProvider_FailsFast_WhenFitbitIsNotFirstProvider()
+    {
+        var services = new ServiceCollection();
+        services.AddFitbitProvider();
+        services.Configure<List<DeviceProviderSettings>>(list =>
+            list.Add(new DeviceProviderSettings { Provider = "Garmin" }));
+
+        using var sp = services.BuildServiceProvider();
+
+        var ex = Assert.Throws<InvalidOperationException>(() =>
+            _ = sp.GetRequiredService<IOptions<List<DeviceProviderSettings>>>().Value);
+        Assert.Contains("DeviceProviders[0]", ex.Message);
     }
 
     [Fact]
