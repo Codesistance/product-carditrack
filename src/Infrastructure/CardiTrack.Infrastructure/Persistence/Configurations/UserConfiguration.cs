@@ -37,6 +37,8 @@ public class UserConfiguration : IEntityTypeConfiguration<User>
 
         builder.Property(u => u.LastLoginDate);
 
+        builder.Property(u => u.HealthDataDisclosureDismissedDate);
+
         builder.Property(u => u.IsActive)
             .IsRequired()
             .HasDefaultValue(true);

@@ -8,6 +8,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="bunit" Version="2.9.0" />
     <PackageReference Include="coverlet.collector" Version="10.0.1">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
@@ -36,6 +37,7 @@
     <ProjectReference Include="..\..\src\Infrastructure\CardiTrack.Infrastructure\CardiTrack.Infrastructure.csproj" />
     <ProjectReference Include="..\..\src\Infrastructure\CardiTrack.Observability\CardiTrack.Observability.csproj" />
     <ProjectReference Include="..\..\src\Presentation\CardiTrack.Mobile.Core\CardiTrack.Mobile.Core.csproj" />
+    <ProjectReference Include="..\..\src\Presentation\CardiTrack.Web\CardiTrack.Web.csproj" />
   </ItemGroup>
 
 </Project>

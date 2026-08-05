@@ -17,6 +17,10 @@ public class User : BaseEntity, ISoftDeletable
     public DateTime? LastLoginDate { get; set; }
     public bool IsActive { get; set; } = true;
 
+    // UTC timestamp of when the user dismissed the Google-required health-data
+    // disclosure banner; null means it must still be shown
+    public DateTime? HealthDataDisclosureDismissedDate { get; set; }
+
     // Locale preferences
     public string Locale { get; set; } = "en-US";
     public string TimeZoneId { get; set; } = "UTC";
