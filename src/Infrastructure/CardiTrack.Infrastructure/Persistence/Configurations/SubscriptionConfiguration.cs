@@ -72,9 +72,10 @@ public class SubscriptionConfiguration : IEntityTypeConfiguration<Subscription>
         builder.HasIndex(s => s.Status);
         builder.HasIndex(s => new { s.Status, s.EndDate });
 
-        // FK-only relationship (no navigations — Organization's are deliberately
-        // ignored). Cascade delete guarantees a subscription can never outlive its
-        // organization, so orphan cleanup is a single organization delete.
+        // FK-only relationship (no navigations — Organization's navigation properties
+        // are deliberately ignored). Cascade delete guarantees a subscription can
+        // never outlive its organization, so orphan cleanup is a single organization
+        // delete.
         builder.HasOne<Organization>()
             .WithOne()
             .HasForeignKey<Subscription>(s => s.OrganizationId)

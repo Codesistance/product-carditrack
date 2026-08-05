@@ -62,7 +62,14 @@ public class OnboardingController : BaseApiController
             "Onboarding setup for Auth0 user {Auth0UserId}: organization {Name}, Type: {Type}",
             UserContext.Auth0UserId, request.Organization.Name, request.Organization.Type);
 
-        // Auth0UserId and verification state come from the token, never from the client body.
+        // Identity comes from the request context, not the client body: email from the
+        // token's email claim (body is only a fallback when the claim is absent) and
+        // locale from Accept-Language. Auth0UserId and verification state are
+        // token-only, passed explicitly below.
+        if (!string.IsNullOrEmpty(UserContext.Email))
+            request.User.Email = UserContext.Email;
+        request.User.Locale = UserContext.Locale;
+
         var response = await _onboardingService.SetupAsync(
             request, UserContext.Auth0UserId, UserContext.EmailVerified);
 

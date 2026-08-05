@@ -66,7 +66,28 @@ public class OnboardingService : IOnboardingService
         // Single SaveChanges = single database transaction: the organization, its
         // trial subscription, and the user commit together or not at all, so no
         // failure mode can leave an orphaned organization behind.
-        await _unitOfWork.SaveChangesAsync();
+        try
+        {
+            await _unitOfWork.SaveChangesAsync();
+        }
+        catch
+        {
+            // Concurrent retries race past the existence check above; the unique index
+            // on Auth0UserId makes the loser's insert fail. If the account now exists,
+            // the other request won — return it. Anything else is a real failure.
+            var concurrentUser = await _unitOfWork.Users.GetByAuth0UserIdAsync(auth0UserId);
+            if (concurrentUser is null)
+                throw;
+
+            var concurrentOrg = await _unitOfWork.Organizations.GetWithSubscriptionAsync(concurrentUser.OrganizationId);
+            return new OnboardingSetupResponse
+            {
+                Organization = concurrentOrg is not null
+                    ? MapOrganization(concurrentOrg)
+                    : new OrganizationResponse { Id = concurrentUser.OrganizationId },
+                User = MapUser(concurrentUser)
+            };
+        }
 
         var orgWithSubscription = await _unitOfWork.Organizations.GetWithSubscriptionAsync(organization.Id);
         return new OnboardingSetupResponse

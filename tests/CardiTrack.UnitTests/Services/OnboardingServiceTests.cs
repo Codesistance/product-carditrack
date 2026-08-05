@@ -108,6 +108,34 @@ public class OnboardingServiceTests
     }
 
     [Fact]
+    public async Task Setup_ReturnsWinnersAccount_WhenConcurrentRetryCommitsFirst()
+    {
+        // First lookup misses (both requests pass the existence check), then the
+        // unique index rejects this request's insert; the re-query finds the winner.
+        var winnerOrg = new Organization { Name = "Doe Family", Type = OrganizationType.Family };
+        var winner = new User { Auth0UserId = "auth0|jane", Email = "jane@doe.com", OrganizationId = winnerOrg.Id };
+        _users.GetByAuth0UserIdAsync("auth0|jane").Returns(
+            _ => (User?)null,
+            _ => winner);
+        _organizations.GetWithSubscriptionAsync(winnerOrg.Id).Returns(winnerOrg);
+        _unitOfWork.SaveChangesAsync().Returns<Task<int>>(_ => throw new InvalidOperationException("unique violation"));
+
+        var response = await CreateSut().SetupAsync(BuildRequest(), "auth0|jane", emailVerified: true);
+
+        Assert.Equal(winner.Id, response.User.Id);
+        Assert.Equal(winnerOrg.Id, response.Organization.Id);
+    }
+
+    [Fact]
+    public async Task Setup_Rethrows_WhenSaveFails_AndNoConcurrentAccountExists()
+    {
+        _unitOfWork.SaveChangesAsync().Returns<Task<int>>(_ => throw new InvalidOperationException("db down"));
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            CreateSut().SetupAsync(BuildRequest(), "auth0|jane", emailVerified: null));
+    }
+
+    [Fact]
     public async Task Setup_DefaultsEmailVerifiedToFalse_WhenClaimAbsent()
     {
         User? savedUser = null;

@@ -62,6 +62,13 @@ public class UserConfiguration : IEntityTypeConfiguration<User>
         builder.HasIndex(u => u.OrganizationId);
         builder.HasIndex(u => u.IsActive);
 
+        // Onboarding's idempotent-retry check looks users up by Auth0UserId; unique at
+        // the DB level so concurrent retries can't create duplicate accounts. Filtered
+        // because rows not yet linked to Auth0 hold an empty string.
+        builder.HasIndex(u => u.Auth0UserId)
+            .IsUnique()
+            .HasFilter("\"Auth0UserId\" <> ''");
+
         // Ignore navigation properties
         builder.Ignore(u => u.UserCardiMembers);
     }
