@@ -96,19 +96,22 @@ public partial class AccountSetupPage : ContentPage
 
         try
         {
-            var organization = await _api.CreateOrganizationAsync(new CreateOrganizationRequest
+            // One atomic call — organization and user are created in the same server
+            // transaction, so a failure here never leaves a half-finished account.
+            await _api.SetupAsync(new OnboardingSetupRequest
             {
-                Name = orgName,
-                Type = type,
-            });
-
-            await _api.CreateUserAsync(new CreateUserRequest
-            {
-                Email = _authService.CurrentUserEmail ?? string.Empty,
-                Name = _authService.CurrentUserName ?? orgName,
-                OrganizationId = organization.Id,
-                Role = type == OrganizationType.Business ? UserRole.Admin : UserRole.Member,
-                TimeZoneId = TimeZoneInfo.Local.Id,
+                Organization = new CreateOrganizationRequest
+                {
+                    Name = orgName,
+                    Type = type,
+                },
+                User = new OnboardingSetupUserRequest
+                {
+                    Email = _authService.CurrentUserEmail ?? string.Empty,
+                    Name = _authService.CurrentUserName ?? orgName,
+                    Role = type == OrganizationType.Business ? UserRole.Admin : UserRole.Member,
+                    TimeZoneId = TimeZoneInfo.Local.Id,
+                },
             });
 
             await _router.RouteAsync(this);

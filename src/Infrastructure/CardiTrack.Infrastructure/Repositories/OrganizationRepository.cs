@@ -23,4 +23,16 @@ public class OrganizationRepository : Repository<Organization>, IOrganizationRep
 
         return organization;
     }
+
+    public async Task<int> DeleteOrphanedAsync(TimeSpan minAge)
+    {
+        // Age guard keeps any onboarding still in flight (org committed, user not
+        // yet — only possible via the legacy two-call endpoints) out of scope.
+        var cutoff = DateTime.UtcNow - minAge;
+        return await _dbSet
+            .Where(o => o.CreatedDate < cutoff
+                && !_context.Users.Any(u => u.OrganizationId == o.Id)
+                && !_context.CardiMembers.Any(c => c.OrganizationId == o.Id))
+            .ExecuteDeleteAsync();
+    }
 }
