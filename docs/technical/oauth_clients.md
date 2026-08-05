@@ -116,7 +116,11 @@ Fully scripted in the [Auth0 setup runbook](./auth0_setup_runbook.md); summary:
 
 ## Provisioning steps — device-data client (Google Health API)
 
-Code side is complete (PR #10); these are the operator steps:
+> **Depends on [PR #10](https://github.com/Codesistance/product-carditrack/pull/10) being merged and deployed** — it adds the
+> `GET /api/v1/oauth/redirect/{provider}` bounce endpoint and the
+> `DeviceProviders` Google configuration these steps register against. Until
+> that deploy, the redirect URIs below point at an endpoint that doesn't exist.
+> Steps 1–2 (API enablement, consent screen, test users) can be done any time.
 
 1. Google Cloud console (cloud-ops account), project per environment (or the
    existing `carditrack-{env}` project): **enable the Google Health API**.
@@ -140,9 +144,12 @@ Code side is complete (PR #10); these are the operator steps:
    ```
    then roll new API + Worker revisions so the env bindings pick up the values.
 5. **Sandbox verification**: with a test user connected, exercise a sync and
-   confirm the response field names marked "(assumed)" in `FitbitApiClient`
-   (distance/active-minutes/calories/floors rollup values, resting-heart-rate
-   union, sleep session shape) against real payloads; fix any mismatches.
+   compare `FitbitApiClient`'s parsing against real payloads. The v4 reference
+   only documents some rollup value schemas, so several field names were
+   inferred from the documented naming convention (PR #10): the
+   distance/active-minutes/total-calories/floors rollup values, the
+   resting-heart-rate union member, and the sleep session shape. Confirm each
+   and fix any mismatches.
 6. **Before public launch**: restricted-scope verification + CASA assessment —
    prerequisites checklist in
    [user_onboarding_process.md](./user_onboarding_process.md) (Step 6).
