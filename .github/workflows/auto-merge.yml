@@ -1,0 +1,129 @@
+name: Auto-merge
+
+# Merges a pull request automatically once it carries the `automerge` label and
+# every check on its head commit has finished successfully.
+#
+# Triggers:
+#   - pull_request/labeled: covers the "checks already finished, label added last" case.
+#   - workflow_run/completed: covers the "label added first, checks finish later" case.
+#     GitHub does not deliver check_suite events for suites created by Actions
+#     (recursion guard), so each PR-triggered workflow must be listed by name here.
+#     Add any new PR-triggered workflow to this list or auto-merge will not fire
+#     when it is the last check to finish.
+#
+# Note: merges performed with GITHUB_TOKEN do not trigger the push-to-main deploy
+# workflows. Provision an AUTOMERGE_TOKEN secret (fine-grained PAT or GitHub App
+# token with contents:write + pull-requests:write) to restore that behaviour; the
+# workflow falls back to GITHUB_TOKEN when the secret is absent.
+
+on:
+  pull_request:
+    types: [labeled]
+  workflow_run:
+    workflows:
+      - 'CI / Deploy Apps → Dev'
+      - 'Deploy Infrastructure → Dev'
+      - 'Deploy Infrastructure → Common'
+    types: [completed]
+
+permissions:
+  contents: write
+  pull-requests: write
+  checks: read
+  statuses: read
+
+concurrency:
+  group: auto-merge-${{ github.event.pull_request.number || github.event.workflow_run.head_sha }}
+  cancel-in-progress: false
+
+jobs:
+  auto-merge:
+    name: auto-merge
+    # Label names here must match AUTOMERGE_LABEL below (env is not available in job-level if).
+    if: github.event_name != 'pull_request' || github.event.label.name == 'automerge'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@v7
+        env:
+          AUTOMERGE_LABEL: automerge
+          # Check runs belonging to this job are excluded from the "all checks
+          # passed" evaluation; must match the job name above.
+          OWN_JOB_NAME: auto-merge
+        with:
+          github-token: ${{ secrets.AUTOMERGE_TOKEN || secrets.GITHUB_TOKEN }}
+          script: |
+            const label = process.env.AUTOMERGE_LABEL;
+            const ownJob = process.env.OWN_JOB_NAME;
+
+            let prNumbers;
+            if (context.eventName === 'pull_request') {
+              prNumbers = [context.payload.pull_request.number];
+            } else {
+              // Empty for fork PRs; those are not auto-merged.
+              prNumbers = (context.payload.workflow_run.pull_requests || []).map(pr => pr.number);
+            }
+            if (prNumbers.length === 0) {
+              core.info('Event has no associated same-repo pull requests; nothing to do.');
+              return;
+            }
+
+            for (const prNumber of prNumbers) {
+              const { data: pr } = await github.rest.pulls.get({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: prNumber,
+              });
+
+              if (pr.state !== 'open' || pr.draft) {
+                core.info(`#${prNumber} is ${pr.draft ? 'a draft' : pr.state}; skipping.`);
+                continue;
+              }
+              if (!pr.labels.some(l => l.name === label)) {
+                core.info(`#${prNumber} does not carry the '${label}' label; skipping.`);
+                continue;
+              }
+
+              const checkRuns = await github.paginate(github.rest.checks.listForRef, {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                ref: pr.head.sha,
+                per_page: 100,
+              });
+              const otherRuns = checkRuns.filter(run => run.name !== ownJob);
+
+              const pending = otherRuns.filter(run => run.status !== 'completed');
+              if (pending.length > 0) {
+                core.info(`#${prNumber}: still waiting on ${pending.map(r => r.name).join(', ')}.`);
+                continue;
+              }
+              const failed = otherRuns.filter(run => !['success', 'neutral', 'skipped'].includes(run.conclusion));
+              if (failed.length > 0) {
+                core.info(`#${prNumber}: not merging — failed checks: ${failed.map(r => `${r.name} (${r.conclusion})`).join(', ')}.`);
+                continue;
+              }
+
+              // Legacy commit statuses (non-Actions integrations). With zero
+              // statuses the combined state reads 'pending', hence the count guard.
+              const { data: combined } = await github.rest.repos.getCombinedStatusForRef({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                ref: pr.head.sha,
+              });
+              if (combined.total_count > 0 && combined.state !== 'success') {
+                core.info(`#${prNumber}: combined commit status is '${combined.state}'; skipping.`);
+                continue;
+              }
+
+              try {
+                await github.rest.pulls.merge({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  pull_number: prNumber,
+                  merge_method: 'merge',
+                });
+                core.notice(`Merged #${prNumber}.`);
+              } catch (error) {
+                // Typically a merge conflict, or another run merged it first.
+                core.warning(`Could not merge #${prNumber}: ${error.message}`);
+              }
+            }
