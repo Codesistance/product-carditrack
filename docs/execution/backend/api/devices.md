@@ -90,6 +90,8 @@ Initiate an OAuth device connection. Returns a redirect URL for the provider's a
 
 > The client stores `codeVerifier` and `state` locally, then redirects the user to `authorizationUrl`. After authorization, the provider redirects to `redirectUri` with a `code` and `state` parameter, which is sent to the OAuth callback endpoint.
 
+> **Implementation status:** examples show the target Google Health API flow. `authorizationUrl` is built from `DeviceProviders[].AuthorizationUrl`, which in the checked-in config still points at legacy Fitbit endpoints until the client rework lands — the value returned by a dev deployment will differ until then.
+
 ---
 
 ## POST `/api/v1/oauth/callback/{provider}`

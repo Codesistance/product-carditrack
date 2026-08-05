@@ -648,9 +648,10 @@ Supports 8+ device types:
      response_type=code
      client_id={ClientId}
      redirect_uri={RedirectUri}
-     scope=googlehealth.health_metrics_and_measurements.readonly
-           googlehealth.activity_and_fitness.readonly
-           googlehealth.sleep.readonly
+     scope=https://www.googleapis.com/auth/googlehealth.health_metrics_and_measurements.readonly
+           https://www.googleapis.com/auth/googlehealth.activity_and_fitness.readonly
+           https://www.googleapis.com/auth/googlehealth.sleep.readonly
+     (full scope URIs, space-delimited and URL-encoded in the real request)
      state={CardiMemberId}:{Token}
    ↓
 4. User approves permissions on Google

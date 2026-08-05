@@ -61,6 +61,8 @@ Free-tier prudence (enforced engine-independently in `ApmExtensions`):
 
 ## Project Structure
 
+> **Target structure** — the tree below is the planned layout, not a mirror of the current code. Today's `Controllers/` holds `Auth`, `Onboarding`, `Dashboard`, `Devices`, `Reports`, `Chat`, and `Insights` controllers; the `Webhooks/` folder (Google Health API, Garmin, Stripe) arrives with the AI-pipeline rollout ([llm_design.md](../../llm_design.md)).
+
 ```
 CardiTrack.API/
 ├── Controllers/
@@ -141,15 +143,23 @@ X-RateLimit-Reset: 1704844800
     "Domain": "carditrack.auth0.com",
     "Audience": "https://api.carditrack.com"
   },
-  "Fitbit": {
-    "ClientId": "<Google Cloud OAuth client id>",
-    "ClientSecret": "<Google Cloud OAuth client secret>",
-    "CallbackUrl": "https://api.carditrack.com/api/v1/oauth/callback/fitbit"
-  },
-  "EventHubs": {
-    "ConnectionString": "...",
-    "HubName": "wearable-raw"
-  },
+  "DeviceProviders": [
+    {
+      "Provider": "Fitbit",
+      "ClientId": "<Google Cloud OAuth client id>",
+      "ClientSecret": "<Google Cloud OAuth client secret>",
+      "AuthorizationUrl": "https://accounts.google.com/o/oauth2/v2/auth",
+      "TokenUrl": "https://oauth2.googleapis.com/token",
+      "ApiBaseUrl": "https://health.googleapis.com",
+      "Scopes": [
+        "https://www.googleapis.com/auth/googlehealth.activity_and_fitness.readonly",
+        "https://www.googleapis.com/auth/googlehealth.health_metrics_and_measurements.readonly",
+        "https://www.googleapis.com/auth/googlehealth.sleep.readonly"
+      ],
+      "RedirectUri": "carditrack://oauth/callback",
+      "TokenLifetimeHours": 1
+    }
+  ],
   "Twilio": {
     "AccountSid": "...",
     "AuthToken": "...",
@@ -162,6 +172,8 @@ X-RateLimit-Reset: 1704844800
 ```
 
 Secrets are supplied via environment variables or Azure Key Vault in all deployed environments — never committed.
+
+> The `DeviceProviders` values above show the **target Google Health API configuration** (Google OAuth endpoints, `googlehealth.*` scope URIs, ~1-hour access tokens). The checked-in `appsettings.json` still carries legacy Fitbit endpoints until the client rework lands — see the provider note in the [worker readme](../worker/readme.md). Event Hubs ingestion config arrives with the AI-pipeline rollout ([llm_design.md](../../llm_design.md)).
 
 ## Running Locally
 
@@ -194,16 +206,13 @@ https://localhost:7001/swagger
 
 #### GET /health
 
-```json
-{
-  "status": "Healthy",
-  "checks": {
-    "database": "Healthy",
-    "redis": "Healthy",
-    "google_health_api": "Healthy"
-  }
-}
+Requires the `X-Health-Token` header (value from the `Health:Token` secret); requests without it get `401`. The endpoint uses the default ASP.NET Core health-check writer, so it returns a plain-text status:
+
 ```
+Healthy
+```
+
+> Named sub-checks (database, redis, Google Health API reachability) are planned but not yet registered — `Program.cs` currently calls `AddHealthChecks()` with no checks added.
 
 ## Testing
 
