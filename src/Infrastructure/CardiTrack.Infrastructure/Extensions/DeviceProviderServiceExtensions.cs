@@ -18,11 +18,17 @@ public static class DeviceProviderServiceExtensions
     /// </summary>
     public static IServiceCollection AddFitbitProvider(this IServiceCollection services)
     {
-        services.AddHttpClient("FitbitClient", client =>
-        {
-            client.BaseAddress = new Uri("https://api.fitbit.com");
-            client.DefaultRequestHeaders.Add("Accept", "application/json");
-        });
+        services.AddHttpClient("FitbitClient")
+            .ConfigureHttpClient((sp, client) =>
+            {
+                var config = sp.GetRequiredService<IOptions<List<DeviceProviderSettings>>>().Value
+                    .FirstOrDefault(p => string.Equals(
+                        p.Provider, nameof(DeviceType.Fitbit), StringComparison.OrdinalIgnoreCase));
+                client.BaseAddress = new Uri(string.IsNullOrEmpty(config?.ApiBaseUrl)
+                    ? "https://health.googleapis.com"
+                    : config.ApiBaseUrl);
+                client.DefaultRequestHeaders.Add("Accept", "application/json");
+            });
 
         services.AddKeyedScoped<IDeviceApiClient, FitbitApiClient>(DeviceType.Fitbit);
 

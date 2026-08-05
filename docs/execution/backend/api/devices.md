@@ -88,9 +88,27 @@ Initiate an OAuth device connection. Returns a redirect URL for the provider's a
 }
 ```
 
-> The client stores `codeVerifier` and `state` locally, then redirects the user to `authorizationUrl`. After authorization, the provider redirects to `redirectUri` with a `code` and `state` parameter, which is sent to the OAuth callback endpoint.
+> The client stores `codeVerifier` and `state` locally, then redirects the user to `authorizationUrl`. After authorization the browser lands back on the app deep link (`redirectUri`) with `code` and `state` parameters, which the app sends to the OAuth callback endpoint.
 
-> **Implementation status:** examples show the target Google Health API flow. `authorizationUrl` is built from `DeviceProviders[].AuthorizationUrl`, which in the checked-in config still points at legacy Fitbit endpoints until the client rework lands — the value returned by a dev deployment will differ until then.
+> **Provider redirect vs app deep link:** Google's web OAuth clients only accept **https** redirect URIs, so for providers with a configured `DeviceProviders[].RedirectUri` (Fitbit) the `redirect_uri` sent to the provider is the API's bounce endpoint below — not the deep link from the request body. The deep link is cached with the state and used by the bounce. Providers without a configured redirect keep the legacy direct-deep-link behavior.
+
+---
+
+## GET `/api/v1/oauth/redirect/{provider}`
+
+Anonymous provider-facing redirect target (the "bounce"). Google redirects the wearer's browser here after consent; the endpoint looks up the pending `state` (without consuming it) and issues a `302` to the app deep link cached at initiation, preserving `code` and `state`:
+
+```
+302 Location: carditrack://oauth/callback?code=...&state=...
+```
+
+**Priority:** P0 | **Auth Required:** No (the state token scopes it; completing the flow still requires the authenticated callback below)
+
+### Errors
+
+| Code | Status | Description |
+|------|--------|-------------|
+| — | 400 | Missing `code`/`state`, or unknown/expired `state` for this provider |
 
 ---
 

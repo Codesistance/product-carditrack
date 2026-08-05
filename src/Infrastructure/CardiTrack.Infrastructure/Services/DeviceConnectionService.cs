@@ -86,14 +86,25 @@ public class DeviceConnectionService : IDeviceConnectionService
             new DistributedCacheEntryOptions { AbsoluteExpirationRelativeToNow = StateLifetime },
             ct);
 
+        // Providers that only accept https redirects (Google) get the configured bounce URI;
+        // the bounce endpoint later 302s back to the app deep link cached in the state payload.
+        var providerRedirectUri = string.IsNullOrEmpty(config.RedirectUri)
+            ? request.RedirectUri
+            : config.RedirectUri;
+
         var authorizationUrl =
             $"{config.AuthorizationUrl}?response_type=code" +
             $"&client_id={Uri.EscapeDataString(config.ClientId)}" +
-            $"&redirect_uri={Uri.EscapeDataString(request.RedirectUri)}" +
+            $"&redirect_uri={Uri.EscapeDataString(providerRedirectUri)}" +
             $"&scope={Uri.EscapeDataString(string.Join(' ', config.Scopes))}" +
             $"&state={state}" +
             $"&code_challenge={codeChallenge}" +
             "&code_challenge_method=S256";
+
+        foreach (var (key, value) in config.AdditionalAuthorizationParams)
+        {
+            authorizationUrl += $"&{Uri.EscapeDataString(key)}={Uri.EscapeDataString(value)}";
+        }
 
         return new OAuthInitiationResponse
         {
@@ -101,6 +112,24 @@ public class DeviceConnectionService : IDeviceConnectionService
             State = state,
             CodeVerifier = codeVerifier
         };
+    }
+
+    public async Task<string?> GetAppRedirectUriAsync(string provider, string state, CancellationToken ct = default)
+    {
+        if (!ProviderNames.TryGetValue(provider, out var deviceType))
+            return null;
+
+        // Peek only — the state stays cached and single-use consumption happens in
+        // CompleteConnectionAsync when the app posts the code back.
+        var cached = await _cache.GetStringAsync(StateKeyPrefix + state, ct);
+        if (cached is null)
+            return null;
+
+        JsonUtility.TryDeserialize<OAuthStatePayload>(cached, out var payload, out _);
+        if (payload is null || payload.Provider != deviceType)
+            return null;
+
+        return payload.RedirectUri;
     }
 
     public async Task<DeviceResponse> CompleteConnectionAsync(
@@ -124,11 +153,16 @@ public class DeviceConnectionService : IDeviceConnectionService
 
         await EnsureMemberAccessAsync(requestingUserId, payload.CardiMemberId);
 
+        // Must match the redirect_uri sent in the authorize request.
+        var exchangeRedirectUri = string.IsNullOrEmpty(config.RedirectUri)
+            ? payload.RedirectUri
+            : config.RedirectUri;
+
         OAuthTokenResult tokens;
         try
         {
             tokens = await _codeExchange.ExchangeCodeAsync(
-                config, request.Code, payload.RedirectUri, request.CodeVerifier, ct);
+                config, request.Code, exchangeRedirectUri, request.CodeVerifier, ct);
         }
         catch (OAuthExchangeException ex)
         {

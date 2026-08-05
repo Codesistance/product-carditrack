@@ -156,7 +156,11 @@ X-RateLimit-Reset: 1704844800
         "https://www.googleapis.com/auth/googlehealth.health_metrics_and_measurements.readonly",
         "https://www.googleapis.com/auth/googlehealth.sleep.readonly"
       ],
-      "RedirectUri": "carditrack://oauth/callback",
+      "RedirectUri": "https://api.carditrack.com/api/v1/oauth/redirect/fitbit",
+      "AdditionalAuthorizationParams": {
+        "access_type": "offline",
+        "prompt": "consent"
+      },
       "TokenLifetimeHours": 1
     }
   ],
@@ -173,7 +177,7 @@ X-RateLimit-Reset: 1704844800
 
 Secrets are supplied via environment variables or Azure Key Vault in all deployed environments — never committed.
 
-> The `DeviceProviders` values above show the **target Google Health API configuration** (Google OAuth endpoints, `googlehealth.*` scope URIs, ~1-hour access tokens). The checked-in `appsettings.json` still carries legacy Fitbit endpoints until the client rework lands — see the provider note in the [worker readme](../worker/readme.md). Event Hubs ingestion config arrives with the AI-pipeline rollout ([llm_design.md](../../llm_design.md)).
+> The Fitbit provider runs on the **Google Health API** (Google OAuth endpoints, `googlehealth.*` scope URIs, ~1-hour access tokens). `RedirectUri` is the provider-facing **https bounce endpoint** — Google web OAuth clients cannot redirect to a custom scheme, so `GET /api/v1/oauth/redirect/fitbit` 302s back into the app deep link. `AdditionalAuthorizationParams` carries Google's `access_type=offline` (required for a refresh token) and `prompt=consent`. Client id/secret come from Secret Manager (`fitbit-client-id` / `fitbit-client-secret`). Event Hubs ingestion config arrives with the AI-pipeline rollout ([llm_design.md](../../llm_design.md)).
 
 ## Running Locally
 

@@ -90,6 +90,36 @@ public class DevicesController : BaseApiController
         }
     }
 
+    /// <summary>
+    /// Provider-facing https redirect target (Google web clients cannot redirect to a custom
+    /// scheme). Bounces the browser back into the mobile app's deep link with code + state; the
+    /// app then completes the flow via the authenticated callback endpoint below.
+    /// </summary>
+    [AllowAnonymous]
+    [HttpGet("oauth/redirect/{provider}")]
+    [ProducesResponseType(StatusCodes.Status302Found)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> RedirectToApp(
+        string provider, [FromQuery] string? code, [FromQuery] string? state, CancellationToken ct)
+    {
+        if (string.IsNullOrEmpty(code) || string.IsNullOrEmpty(state))
+        {
+            return Error("That connection link looks incomplete — please start the device connection again.",
+                StatusCodes.Status400BadRequest);
+        }
+
+        var appRedirectUri = await _deviceConnections.GetAppRedirectUriAsync(provider, state, ct);
+        if (appRedirectUri is null)
+        {
+            return Error("That connection link has expired — please start the device connection again.",
+                StatusCodes.Status400BadRequest);
+        }
+
+        var separator = appRedirectUri.Contains('?') ? '&' : '?';
+        return Redirect(
+            $"{appRedirectUri}{separator}code={Uri.EscapeDataString(code)}&state={Uri.EscapeDataString(state)}");
+    }
+
     /// <summary>Completes the OAuth flow: exchanges the code + PKCE verifier and stores the connection (M1-07).</summary>
     [HttpPost("oauth/callback/{provider}")]
     [ProducesResponseType(typeof(ApiResponse<DeviceResponse>), StatusCodes.Status201Created)]

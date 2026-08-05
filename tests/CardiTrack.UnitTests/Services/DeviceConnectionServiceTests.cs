@@ -38,23 +38,25 @@ public class DeviceConnectionServiceTests
         _encryption.Encrypt(Arg.Any<string>()).Returns(c => $"enc({c.Arg<string>()})");
     }
 
-    private DeviceConnectionService CreateSut() => new(
-        _unitOfWork,
-        _encryption,
-        _cache,
-        _codeExchange,
-        Options.Create(new List<DeviceProviderSettings>
+    private DeviceConnectionService CreateSut(Action<DeviceProviderSettings>? configure = null)
+    {
+        var fitbit = new DeviceProviderSettings
         {
-            new()
-            {
-                Provider = "Fitbit",
-                ClientId = "fitbit_client",
-                ClientSecret = "secret",
-                AuthorizationUrl = "https://www.fitbit.com/oauth2/authorize",
-                TokenUrl = "https://api.fitbit.com/oauth2/token",
-                Scopes = ["activity", "heartrate", "sleep"],
-            }
-        }));
+            Provider = "Fitbit",
+            ClientId = "fitbit_client",
+            ClientSecret = "secret",
+            AuthorizationUrl = "https://www.fitbit.com/oauth2/authorize",
+            TokenUrl = "https://api.fitbit.com/oauth2/token",
+            Scopes = ["activity", "heartrate", "sleep"],
+        };
+        configure?.Invoke(fitbit);
+        return new DeviceConnectionService(
+            _unitOfWork,
+            _encryption,
+            _cache,
+            _codeExchange,
+            Options.Create(new List<DeviceProviderSettings> { fitbit }));
+    }
 
     private static ConnectDeviceRequest FitbitRequest() => new()
     {
@@ -211,6 +213,83 @@ public class DeviceConnectionServiceTests
         Assert.Equal(ConnectionStatus.Connected, existing.ConnectionStatus);
         Assert.Equal("enc(access2)", existing.AccessToken);
         Assert.Equal("active", device.Status);
+    }
+
+    [Fact]
+    public async Task InitiateConnection_UsesConfiguredProviderRedirect_AndExtraAuthorizeParams()
+    {
+        var sut = CreateSut(s =>
+        {
+            s.RedirectUri = "https://api.example.com/api/v1/oauth/redirect/fitbit";
+            s.AdditionalAuthorizationParams = new Dictionary<string, string>
+            {
+                ["access_type"] = "offline",
+                ["prompt"] = "consent",
+            };
+        });
+
+        var result = await sut.InitiateConnectionAsync(_userId, _memberId, FitbitRequest());
+
+        Assert.Contains(
+            $"redirect_uri={Uri.EscapeDataString("https://api.example.com/api/v1/oauth/redirect/fitbit")}",
+            result.AuthorizationUrl);
+        Assert.DoesNotContain("redirect_uri=carditrack", result.AuthorizationUrl);
+        Assert.Contains("&access_type=offline", result.AuthorizationUrl);
+        Assert.Contains("&prompt=consent", result.AuthorizationUrl);
+    }
+
+    [Fact]
+    public async Task CompleteConnection_ExchangesWithConfiguredProviderRedirect()
+    {
+        const string bounce = "https://api.example.com/api/v1/oauth/redirect/fitbit";
+        _codeExchange.ExchangeCodeAsync(Arg.Any<DeviceProviderSettings>(), "code", bounce, Arg.Any<string>())
+            .Returns(new OAuthTokenResult("access", "refresh", 3600, null, null));
+
+        var sut = CreateSut(s => s.RedirectUri = bounce);
+        var initiation = await sut.InitiateConnectionAsync(_userId, _memberId, FitbitRequest());
+
+        await sut.CompleteConnectionAsync(_userId, "fitbit", new OAuthCallbackRequest
+        {
+            Code = "code",
+            State = initiation.State,
+            CodeVerifier = initiation.CodeVerifier,
+        });
+
+        await _codeExchange.Received(1).ExchangeCodeAsync(
+            Arg.Any<DeviceProviderSettings>(), "code", bounce, Arg.Any<string>());
+    }
+
+    [Fact]
+    public async Task GetAppRedirectUri_ReturnsDeepLink_WithoutConsumingState()
+    {
+        _codeExchange.ExchangeCodeAsync(Arg.Any<DeviceProviderSettings>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>())
+            .Returns(new OAuthTokenResult("access", "refresh", 3600, null, null));
+
+        var sut = CreateSut();
+        var initiation = await sut.InitiateConnectionAsync(_userId, _memberId, FitbitRequest());
+
+        var deepLink = await sut.GetAppRedirectUriAsync("fitbit", initiation.State);
+
+        Assert.Equal("carditrack://oauth/callback", deepLink);
+
+        // The peek must not consume the state — the app still completes the flow afterwards.
+        await sut.CompleteConnectionAsync(_userId, "fitbit", new OAuthCallbackRequest
+        {
+            Code = "code",
+            State = initiation.State,
+            CodeVerifier = initiation.CodeVerifier,
+        });
+    }
+
+    [Fact]
+    public async Task GetAppRedirectUri_ReturnsNull_ForUnknownStateOrProviderMismatch()
+    {
+        var sut = CreateSut();
+        var initiation = await sut.InitiateConnectionAsync(_userId, _memberId, FitbitRequest());
+
+        Assert.Null(await sut.GetAppRedirectUriAsync("fitbit", "not-a-real-state"));
+        Assert.Null(await sut.GetAppRedirectUriAsync("garmin", initiation.State));
+        Assert.Null(await sut.GetAppRedirectUriAsync("not_a_provider", initiation.State));
     }
 
     [Fact]

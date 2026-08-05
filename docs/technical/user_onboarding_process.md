@@ -647,16 +647,20 @@ Supports 8+ device types:
    https://accounts.google.com/o/oauth2/v2/auth?
      response_type=code
      client_id={ClientId}
-     redirect_uri={RedirectUri}
+     redirect_uri=https://api.carditrack.com/api/v1/oauth/redirect/fitbit
      scope=https://www.googleapis.com/auth/googlehealth.health_metrics_and_measurements.readonly
            https://www.googleapis.com/auth/googlehealth.activity_and_fitness.readonly
            https://www.googleapis.com/auth/googlehealth.sleep.readonly
      (full scope URIs, space-delimited and URL-encoded in the real request)
      state={CardiMemberId}:{Token}
+     access_type=offline
+     prompt=consent
    ↓
 4. User approves permissions on Google
    ↓
-5. Google redirects to callback with authorization code
+5. Google redirects to the API bounce endpoint (web OAuth clients require an
+   https redirect), which 302s back into the app deep link with code + state:
+   GET /api/v1/oauth/redirect/fitbit → 302 carditrack://oauth/callback?code=...
    ↓
 6. System exchanges code for access/refresh tokens
    POST https://oauth2.googleapis.com/token
