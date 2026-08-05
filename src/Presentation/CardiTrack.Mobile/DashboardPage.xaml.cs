@@ -2,6 +2,7 @@ using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Mobile.Controls;
 using CardiTrack.Mobile.Core.Api;
 using CardiTrack.Mobile.Core.Auth;
+using CardiTrack.Mobile.Onboarding;
 using CardiTrack.Mobile.Services;
 
 namespace CardiTrack.Mobile;
@@ -245,7 +246,7 @@ public partial class DashboardPage : ContentPage
         await DisplayAlertAsync("Coming soon", "Alert details (M1-11) are on the way.", "OK");
 
     private async void OnAddMemberClicked(object? sender, EventArgs e) =>
-        await DisplayAlertAsync("Coming soon", "Add CardiMember (M1-04) is on the way.", "OK");
+        await Navigation.PushAsync(new AddCardiMemberPage());
 
     private async void OnConnectDeviceClicked(object? sender, EventArgs e) =>
         await DisplayAlertAsync("Coming soon", "Device connection (M1-05) is on the way.", "OK");
