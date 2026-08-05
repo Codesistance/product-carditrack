@@ -49,7 +49,11 @@
 
     private async Task DismissAsync()
     {
-        _visible = false;
-        await UserService.DismissHealthDataDisclosureAsync(_auth0UserId!);
+        // Hide only once the dismissal has actually persisted — if it hasn't
+        // (e.g. unknown user), the disclosure must keep showing
+        if (await UserService.DismissHealthDataDisclosureAsync(_auth0UserId!))
+        {
+            _visible = false;
+        }
     }
 }

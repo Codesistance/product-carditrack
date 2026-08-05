@@ -75,4 +75,18 @@ public class HealthDataDisclosureBannerTests : BunitContext
         Assert.Empty(cut.Markup.Trim());
         _userService.Received(1).DismissHealthDataDisclosureAsync(Auth0UserId);
     }
+
+    [Fact]
+    public void DismissClick_KeepsBannerVisible_WhenDismissalIsNotPersisted()
+    {
+        AuthorizeUser();
+        _userService.HasDismissedHealthDataDisclosureAsync(Auth0UserId).Returns(false);
+        _userService.DismissHealthDataDisclosureAsync(Auth0UserId).Returns(false);
+
+        var cut = Render<HealthDataDisclosureBanner>();
+        cut.Find("button[aria-label=Dismiss]").Click();
+
+        Assert.Contains(DisclosureText, cut.Find(".health-disclosure-banner").TextContent);
+        _userService.Received(1).DismissHealthDataDisclosureAsync(Auth0UserId);
+    }
 }
