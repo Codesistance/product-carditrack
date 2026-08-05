@@ -82,6 +82,10 @@ jobs:
                 core.info(`#${prNumber} does not carry the '${label}' label; skipping.`);
                 continue;
               }
+              if (pr.head.repo.full_name !== `${context.repo.owner}/${context.repo.repo}`) {
+                core.info(`#${prNumber} is from a fork; skipping.`);
+                continue;
+              }
 
               const checkRuns = await github.paginate(github.rest.checks.listForRef, {
                 owner: context.repo.owner,
@@ -120,6 +124,8 @@ jobs:
                   repo: context.repo.repo,
                   pull_number: prNumber,
                   merge_method: 'merge',
+                  // Refuse to merge if the branch moved since the checks were evaluated.
+                  sha: pr.head.sha,
                 });
                 core.notice(`Merged #${prNumber}.`);
               } catch (error) {
