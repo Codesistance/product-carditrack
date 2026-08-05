@@ -51,21 +51,29 @@ module "deployments" {
   # Cloud Run - API
   api_service_name    = local.api_service_name
   api_container_image = var.api_container_image
-  api_env_vars = {
-    "ASPNETCORE_ENVIRONMENT"              = title(var.environment)
-    "ASPNETCORE_FORWARDEDHEADERS_ENABLED" = "true"
-    "GCP_PROJECT_ID"                      = var.project_id
-    "AI__GeneralProvider"                 = "Gemini"
-    "AI__MedicalProvider"                 = "MedGemma"
-    "AI__Providers__0__Name"              = "MedGemma"
-    "AI__Providers__0__Model"             = "medgemma:4b"
-    "AI__Providers__0__TimeoutSeconds"    = "120"
-    "AI__Providers__1__Name"              = "Gemini"
-    "AI__Providers__1__BaseUrl"           = "https://generativelanguage.googleapis.com"
-    "AI__Providers__1__Model"             = "gemini-2.0-flash"
-    "Apm__Engine"                         = var.apm_engine
-    "Apm__MetricsEnabled"                 = tostring(var.apm_metrics_enabled)
-  }
+  api_env_vars = merge(
+    {
+      "ASPNETCORE_ENVIRONMENT"              = title(var.environment)
+      "ASPNETCORE_FORWARDEDHEADERS_ENABLED" = "true"
+      "GCP_PROJECT_ID"                      = var.project_id
+      "AI__GeneralProvider"                 = "Gemini"
+      "AI__MedicalProvider"                 = "MedGemma"
+      "AI__Providers__0__Name"              = "MedGemma"
+      "AI__Providers__0__Model"             = "medgemma:4b"
+      "AI__Providers__0__TimeoutSeconds"    = "120"
+      "AI__Providers__1__Name"              = "Gemini"
+      "AI__Providers__1__BaseUrl"           = "https://generativelanguage.googleapis.com"
+      "AI__Providers__1__Model"             = "gemini-2.0-flash"
+      "Apm__Engine"                         = var.apm_engine
+      "Apm__MetricsEnabled"                 = tostring(var.apm_metrics_enabled)
+    },
+    # Google's web OAuth clients require an https redirect; the API bounces it to the app deep
+    # link. Element 0 of DeviceProviders in appsettings.json is the Fitbit (Google Health API)
+    # provider. Without a custom domain the appsettings localhost default stays in effect.
+    var.api_custom_domain != "" ? {
+      "DeviceProviders__0__RedirectUri" = "https://${var.api_custom_domain}/api/v1/oauth/redirect/fitbit"
+    } : {}
+  )
   api_secret_env_vars = {
     "ConnectionStrings__DefaultConnection" = "${var.project_name}-${local.environment}-db-connection-string"
     "Auth0__Domain"                        = "${var.project_name}-${local.environment}-auth0-domain"
@@ -74,6 +82,8 @@ module "deployments" {
     "Auth0__ClientSecret"                  = "${var.project_name}-${local.environment}-auth0-client-secret"
     "Encryption__Key"                      = "${var.project_name}-${local.environment}-encryption-key"
     "Health__Token"                        = "${var.project_name}-${local.environment}-health-token"
+    "DeviceProviders__0__ClientId"         = "${var.project_name}-${local.environment}-fitbit-client-id"
+    "DeviceProviders__0__ClientSecret"     = "${var.project_name}-${local.environment}-fitbit-client-secret"
     "AI__Providers__0__BaseUrl"            = "${var.project_name}-${local.environment}-medgemma-service-url"
     "AI__Providers__1__ApiKey"             = "${var.project_name}-${local.environment}-gemini-api-key"
     "Apm__Data"                            = "${var.project_name}-${local.environment}-apm-data"
@@ -96,6 +106,8 @@ module "deployments" {
     "Auth0__ClientSecret"                  = "${var.project_name}-${local.environment}-auth0-client-secret"
     "Encryption__Key"                      = "${var.project_name}-${local.environment}-encryption-key"
     "Health__Token"                        = "${var.project_name}-${local.environment}-health-token"
+    "DeviceProviders__0__ClientId"         = "${var.project_name}-${local.environment}-fitbit-client-id"
+    "DeviceProviders__0__ClientSecret"     = "${var.project_name}-${local.environment}-fitbit-client-secret"
     "Apm__Data"                            = "${var.project_name}-${local.environment}-apm-data"
   }
 

@@ -142,6 +142,7 @@ Unknown device types produce a `LogWarning` and are skipped — no crash.
       "ClientId": "",
       "ClientSecret": "",
       "TokenUrl": "https://oauth2.googleapis.com/token",
+      "ApiBaseUrl": "https://health.googleapis.com",
       "TokenLifetimeHours": 1
     }
   ],
@@ -179,7 +180,7 @@ DeviceProviders__0__ClientId         = <Google Cloud OAuth client id>
 DeviceProviders__0__ClientSecret     = <Google Cloud OAuth client secret>
 ```
 
-> **Provider note:** the `Fitbit` provider authenticates against **Google OAuth** and pulls data from the **Google Health API** (`health.googleapis.com`) — the legacy Fitbit Web API is decommissioned September 2026. Google access tokens are short-lived (~1 hour), hence `TokenLifetimeHours: 1`. The `FitbitApiClient` rework to the new endpoints is tracked separately; this config reflects the target state.
+> **Provider note:** the `Fitbit` provider authenticates against **Google OAuth** and pulls data from the **Google Health API** (`health.googleapis.com`) — the legacy Fitbit Web API is decommissioned September 2026. Google access tokens are short-lived (~1 hour), hence `TokenLifetimeHours: 1`. `FitbitApiClient` reads daily metrics via per-data-type `dataPoints:dailyRollUp` calls and sleep sessions via `dataPoints` list; some response field names are pending live-sandbox verification (marked "(assumed)" in the client).
 
 ## Running Locally
 

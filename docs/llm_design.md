@@ -279,18 +279,20 @@ Before each 5-minute aggregated window is sent to MedGemma, raw wearable time-se
 
 The Google Health API consolidates the legacy per-endpoint surface into **data types** queried via `list` (intraday/granular) and `rollUp`/`dailyRollUp` (summaries) at `https://health.googleapis.com`.
 
+Methods follow the v4 REST shape: `GET /v4/users/me/dataTypes/{type}/dataPoints` (list) and `POST .../dataPoints:dailyRollUp` (daily summary; heart-rate/active-minutes/total-calories rollups max 14-day range, others 90 days).
+
 | Metric | Data type / method | Sampling Rate | SSA Input |
 |--------|--------------------|----|-----------|
 | Heart Rate (intraday) | `heart-rate` — `list` | 1-min intervals | Primary time-series for SSA decomposition |
-| Resting Heart Rate | `heart-rate` — `dailyRollUp` | Daily scalar | Baseline anchor for HR trend |
+| Resting Heart Rate | `resting-heart-rate` — `dailyRollUp` | Daily scalar | Baseline anchor for HR trend |
 | HRV (RMSSD) | `daily-heart-rate-variability` — `dailyRollUp` (granular: `heart-rate-variability` — `list`) | Daily scalar | Secondary series |
 | SpO2 (intraday) | `oxygen-saturation` — `list` | ~5-min intervals | Upsample to 1-min via forward-fill before SSA |
 | Steps (intraday) | `steps` — `list` | 1-min intervals | Used as activity context feature alongside HR |
-| Active Zone Minutes | active-minutes data type — `list` | 1-min intervals | Exogenous input to LSTM |
+| Active Zone Minutes | `active-zone-minutes` — `list` | 1-min intervals | Exogenous input to LSTM |
 | Skin Temperature | skin-temperature data type — `dailyRollUp` | Daily scalar (nightly) | Early-warning feature; include when available |
-| Sleep Stages | `sleep` — `dailyRollUp` | Daily summary | Context feature for next-day recovery model |
+| Sleep Stages | `sleep` — `list` (session-shaped) | Daily summary | Context feature for next-day recovery model |
 
-> Exact data-type identifiers and response JSON paths must be confirmed against the [Google Health API reference](https://developers.google.com/health/data-types) during client implementation — the shapes above are the design-level mapping, not verified schemas.
+> Rollup responses carry a union value per data type (e.g. `steps.count`, `heartRate.beatsPerMinute_min/max/avg` — both verified against the v4 reference). Remaining field names in `FitbitApiClient` marked "(assumed)" follow the documented `{field}_{aggregation}` convention and need live-sandbox confirmation once console access exists.
 
 ### SSA Parameters
 

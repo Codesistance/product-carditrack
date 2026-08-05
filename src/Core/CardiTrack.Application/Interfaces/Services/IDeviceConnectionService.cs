@@ -14,6 +14,14 @@ public interface IDeviceConnectionService
     Task<OAuthInitiationResponse> InitiateConnectionAsync(
         Guid requestingUserId, Guid cardiMemberId, ConnectDeviceRequest request, CancellationToken ct = default);
 
+    /// <summary>
+    /// Resolves the app deep link cached at initiation for a pending state token, without
+    /// consuming it. Used by the anonymous oauth/redirect bounce endpoint that forwards the
+    /// provider's https redirect back into the mobile app. Returns null for unknown providers
+    /// or unknown/expired state.
+    /// </summary>
+    Task<string?> GetAppRedirectUriAsync(string provider, string state, CancellationToken ct = default);
+
     Task<DeviceResponse> CompleteConnectionAsync(
         Guid requestingUserId, string provider, OAuthCallbackRequest request, CancellationToken ct = default);
 }

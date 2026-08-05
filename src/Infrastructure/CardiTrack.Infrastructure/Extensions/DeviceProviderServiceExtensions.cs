@@ -18,11 +18,32 @@ public static class DeviceProviderServiceExtensions
     /// </summary>
     public static IServiceCollection AddFitbitProvider(this IServiceCollection services)
     {
-        services.AddHttpClient("FitbitClient", client =>
+        // Deployment injects secrets positionally (DeviceProviders__0__ClientId etc. in
+        // infrastructure/main.tf), so element 0 must be the Fitbit provider. Fail fast on a
+        // reordered appsettings list instead of silently binding Google credentials to the
+        // wrong provider.
+        services.PostConfigure<List<DeviceProviderSettings>>(providers =>
         {
-            client.BaseAddress = new Uri("https://api.fitbit.com");
-            client.DefaultRequestHeaders.Add("Accept", "application/json");
+            if (providers.Count > 0 && !string.Equals(
+                    providers[0].Provider, nameof(DeviceType.Fitbit), StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidOperationException(
+                    $"DeviceProviders[0] must be the Fitbit provider (found '{providers[0].Provider}') — " +
+                    "deployment env vars bind its secrets by index (DeviceProviders__0__*).");
+            }
         });
+
+        services.AddHttpClient("FitbitClient")
+            .ConfigureHttpClient((sp, client) =>
+            {
+                var config = sp.GetRequiredService<IOptions<List<DeviceProviderSettings>>>().Value
+                    .FirstOrDefault(p => string.Equals(
+                        p.Provider, nameof(DeviceType.Fitbit), StringComparison.OrdinalIgnoreCase));
+                client.BaseAddress = new Uri(string.IsNullOrEmpty(config?.ApiBaseUrl)
+                    ? "https://health.googleapis.com"
+                    : config.ApiBaseUrl);
+                client.DefaultRequestHeaders.Add("Accept", "application/json");
+            });
 
         services.AddKeyedScoped<IDeviceApiClient, FitbitApiClient>(DeviceType.Fitbit);
 

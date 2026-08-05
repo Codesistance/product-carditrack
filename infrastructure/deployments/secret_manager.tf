@@ -45,7 +45,11 @@ locals {
     "auth0-client-secret"    = "REPLACE_ME"
     "auth0-mobile-client-id" = "REPLACE_ME" # Auth0 Native app client for the MAUI mobile app (public, no secret)
     "encryption-key"         = "REPLACE_ME"
-    "apm-data"               = "REPLACE_ME" # APM connection JSON, e.g. {"IngestUrl":"...","IngestToken":"..."} — see scripts/set-apm-secrets.sh
+    # Google Cloud OAuth web client for the Fitbit provider (Google Health API) —
+    # created in the Google console under the cloud-ops account.
+    "fitbit-client-id"     = "REPLACE_ME"
+    "fitbit-client-secret" = "REPLACE_ME"
+    "apm-data"             = "REPLACE_ME" # APM connection JSON, e.g. {"IngestUrl":"...","IngestToken":"..."} — see scripts/set-apm-secrets.sh
     # Mobile monitoring connection JSON for the engine named by apm-mobile-engine —
     # embed-safe client identifiers only (Datadog: {"ClientToken":"...","ApplicationId":"...","Site":"Eu1"}),
     # stamped into builds by CI.
