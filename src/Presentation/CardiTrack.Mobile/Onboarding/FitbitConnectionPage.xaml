@@ -4,6 +4,7 @@
              xmlns:controls="clr-namespace:CardiTrack.Mobile.Controls"
              x:Class="CardiTrack.Mobile.Onboarding.FitbitConnectionPage"
              Shell.NavBarIsVisible="False"
+             Shell.TabBarIsVisible="False"
              NavigationPage.HasNavigationBar="False"
              BackgroundColor="{StaticResource White}">
 

@@ -114,8 +114,14 @@ public partial class AddCardiMemberPage : ContentPage
         }
     }
 
-    private void OnSkipTapped(object? sender, EventArgs e) =>
-        WindowNavigation.SetRootPage(this, new AppShell());
+    // Pushed from the dashboard's empty state → pop back; onboarding root → hand over to the shell.
+    private async void OnSkipTapped(object? sender, EventArgs e)
+    {
+        if (Navigation.NavigationStack.Count > 1)
+            await Navigation.PopAsync();
+        else
+            WindowNavigation.SetRootPage(this, new AppShell());
+    }
 
     private static string? NullIfEmpty(string? value) =>
         string.IsNullOrWhiteSpace(value) ? null : value.Trim();
