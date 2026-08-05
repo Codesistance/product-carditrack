@@ -92,7 +92,7 @@ With Device Bundle:
 - .NET Worker Service + Cronos (**non-AI background jobs only**: OAuth token refresh, baseline recalculation, cleanup)
 
 **AI pipeline (target architecture — see [llm_design.md](./llm_design.md)):**
-- Fitbit Subscriptions API (webhook push — no polling)
+- Google Health API webhook subscriptions (push — no polling; covers Fitbit + Pixel Watch + connected third-party sources)
 - Azure Event Hubs (raw event buffer)
 - Azure Functions, dotnet-isolated (aggregation, SSA-LSTM pre-processing, severity routing, digests)
 - MedGemma 1.5 4B on Azure Container Apps GPU (vLLM, OpenAI-compatible endpoint)
@@ -112,7 +112,7 @@ With Device Bundle:
 - GitHub Actions (CI/CD)
 
 **External Integrations:**
-- Fitbit Web API
+- Google Health API (Fitbit, Pixel Watch, connected third-party sources — replaces the Fitbit Web API, which is decommissioned September 2026)
 - Apple HealthKit
 - Garmin Connect API
 - Samsung Health SDK
@@ -172,7 +172,7 @@ With Device Bundle:
 └─────────────────────────────────────────────────────────────┘
 ```
 
-> Ingestion is **webhook push** (Fitbit Subscriptions API) with 5-minute aggregation windows — there is no polling sync loop. The Worker Service hosts only non-AI jobs.
+> Ingestion is **webhook push** (Google Health API webhook subscriptions) with 5-minute aggregation windows — there is no polling sync loop. The Worker Service hosts only non-AI jobs.
 
 ### Multi-Device Architecture
 
@@ -407,19 +407,19 @@ Prevention: Catches gradual decline before it becomes severe
 ### Phase 1: MVP Launch (Months 1-3)
 
 **Month 1: Build MVP**
-- Core .NET backend with Fitbit integration
+- Core .NET backend with Google Health API integration (Fitbit devices)
 - Basic Blazor dashboard
 - Simple alert rules (statistical, no ML yet)
 - Database schema and migrations
 
 **Month 2: Beta Testing**
 - Recruit 10-20 families (friends, family, local community)
-- Use Fitbit "Personal" app type for testing
+- Test with enrolled test users (Google Health API scopes are Restricted pre-verification)
 - Collect feedback on alert accuracy
 - Iterate on UX based on feedback
 
 **Month 3: Apply for Device Approvals**
-- Submit Fitbit intraday access request
+- Submit Google's restricted-scope privacy & security review (Google Health API production access)
 - Apply for Apple HealthKit integration
 - Refine baseline algorithms
 - Prepare for launch
@@ -622,7 +622,7 @@ Prevention: Catches gradual decline before it becomes severe
 
 ### Q1 2026 (Months 1-3): MVP Development
 - ✅ Core backend (.NET 10, EF Core, Azure SQL)
-- ✅ Fitbit integration (OAuth, data sync)
+- ✅ Fitbit device integration (OAuth, data sync — migrating to Google Health API before the Sept 2026 legacy shutdown)
 - ✅ Blazor dashboard (basic features)
 - ✅ Statistical anomaly detection
 - ✅ SMS/Email alerts

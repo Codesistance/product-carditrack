@@ -141,8 +141,8 @@ Unknown device types produce a `LogWarning` and are skipped — no crash.
       "Provider": "Fitbit",
       "ClientId": "",
       "ClientSecret": "",
-      "TokenUrl": "https://api.fitbit.com/oauth2/token",
-      "TokenLifetimeHours": 8
+      "TokenUrl": "https://oauth2.googleapis.com/token",
+      "TokenLifetimeHours": 1
     }
   ],
   "Worker": {
@@ -175,9 +175,11 @@ Store sensitive values in environment variables or Azure Key Vault — never in 
 ```
 ConnectionStrings__DefaultConnection = <sql connection string>
 Encryption__Key                      = <base64 256-bit key>
-DeviceProviders__0__ClientId         = <Fitbit client id>
-DeviceProviders__0__ClientSecret     = <Fitbit client secret>
+DeviceProviders__0__ClientId         = <Google Cloud OAuth client id>
+DeviceProviders__0__ClientSecret     = <Google Cloud OAuth client secret>
 ```
+
+> **Provider note:** the `Fitbit` provider authenticates against **Google OAuth** and pulls data from the **Google Health API** (`health.googleapis.com`) — the legacy Fitbit Web API is decommissioned September 2026. Google access tokens are short-lived (~1 hour), hence `TokenLifetimeHours: 1`. The `FitbitApiClient` rework to the new endpoints is tracked separately; this config reflects the target state.
 
 ## Running Locally
 

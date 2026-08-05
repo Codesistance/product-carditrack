@@ -73,7 +73,7 @@ CardiTrack.API/
 │   ├── SubscriptionsController.cs
 │   ├── ReportsController.cs
 │   └── Webhooks/
-│       ├── FitbitWebhookController.cs      # validates signature, forwards to Event Hubs
+│       ├── HealthWebhookController.cs      # Google Health API webhooks — verifies auth, forwards to Event Hubs
 │       ├── GarminWebhookController.cs
 │       └── StripeWebhookController.cs
 ├── DTOs/
@@ -142,13 +142,13 @@ X-RateLimit-Reset: 1704844800
     "Audience": "https://api.carditrack.com"
   },
   "Fitbit": {
-    "ClientId": "...",
-    "ClientSecret": "...",
+    "ClientId": "<Google Cloud OAuth client id>",
+    "ClientSecret": "<Google Cloud OAuth client secret>",
     "CallbackUrl": "https://api.carditrack.com/api/v1/oauth/callback/fitbit"
   },
   "EventHubs": {
     "ConnectionString": "...",
-    "HubName": "fitbit-raw"
+    "HubName": "wearable-raw"
   },
   "Twilio": {
     "AccountSid": "...",
@@ -200,7 +200,7 @@ https://localhost:7001/swagger
   "checks": {
     "database": "Healthy",
     "redis": "Healthy",
-    "fitbit_api": "Healthy"
+    "google_health_api": "Healthy"
   }
 }
 ```

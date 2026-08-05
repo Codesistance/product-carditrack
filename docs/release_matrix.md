@@ -23,7 +23,7 @@ Legend: wave number = ships in that wave; — = not planned for that surface.
 | CardiMember CRUD + profile | R1 | R1 | R1 | Member limit by tier |
 | Emergency contacts, medical notes (encrypted) | R1 | R1 | R1 | — |
 | Consent recording (per-metric) | R1 | R1 | R1 | — |
-| Fitbit connection (server OAuth, webhooks) | R1 | R1 | R1 | — |
+| Fitbit connection (Google Health API — server OAuth, webhooks) | R1 | R1 | R1 | — |
 | Device management (status, primary, reconnect, remove) | R1 | R1 | R1 | — |
 | Dashboard + daily health summary | R1 | R1 | R1 | — |
 | Statistical alerts (all 5 launch types) + acknowledgment/notes | R1 | R1 | R1 | — |

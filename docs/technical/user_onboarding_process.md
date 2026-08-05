@@ -636,31 +636,36 @@ Supports 8+ device types:
 
 **OAuth Authorization Flow:**
 
+> Fitbit/Pixel Watch connections go through the **Google Health API** (the legacy Fitbit Web API is decommissioned September 2026). Authorization uses Google OAuth 2.0 — the wearer signs in with the Google account their Fitbit is linked to.
+
 ```
 1. User clicks "Connect Fitbit"
    ↓
 2. System generates secure state token
    ↓
-3. Redirect to Fitbit OAuth page
-   https://www.fitbit.com/oauth2/authorize?
+3. Redirect to Google OAuth consent page
+   https://accounts.google.com/o/oauth2/v2/auth?
      response_type=code
      client_id={ClientId}
      redirect_uri={RedirectUri}
-     scope=activity heartrate sleep profile
+     scope=googlehealth.health_metrics_and_measurements.readonly
+           googlehealth.activity_and_fitness.readonly
+           googlehealth.sleep.readonly
      state={CardiMemberId}:{Token}
    ↓
-4. User approves permissions on Fitbit
+4. User approves permissions on Google
    ↓
-5. Fitbit redirects to callback with authorization code
+5. Google redirects to callback with authorization code
    ↓
 6. System exchanges code for access/refresh tokens
-   POST https://api.fitbit.com/oauth2/token
-   Authorization: Basic {base64(clientId:clientSecret)}
+   POST https://oauth2.googleapis.com/token
    Body: grant_type=authorization_code&code={code}&redirect_uri={RedirectUri}
+         &client_id={ClientId}&client_secret={ClientSecret}
    ↓
 7. Save encrypted tokens to database (Azure SQL, DeviceConnections)
    ↓
-8. Register Fitbit webhook subscription (Subscriptions API) + trigger initial history backfill
+8. Webhook subscription created (Google Health API, subscriptionCreatePolicy
+   AUTOMATIC) + trigger initial history backfill
    ↓
 9. Notify family: "Fitbit Connected!"
 ```
@@ -678,14 +683,16 @@ DeviceConnection Entity:
 ```
 
 **Permission Scoping:**
-Fitbit API scopes requested:
-- `activity`: Steps, distance, floors, active minutes
-- `heartrate`: Resting HR, HR zones, intraday HR (if approved)
-- `sleep`: Duration, efficiency, sleep stages
-- `profile`: User info, timezone
+Google Health API scope bundles requested (full form `https://www.googleapis.com/auth/googlehealth.<bundle>`):
+- `activity_and_fitness.readonly`: Steps, distance, active minutes
+- `health_metrics_and_measurements.readonly`: Heart rate (incl. intraday), HRV, SpO2
+- `sleep.readonly`: Duration, efficiency, sleep stages
+- `ecg.readonly` / `irn.readonly` (later phase): ECG readings, irregular rhythm notifications
+
+> All Google Health API scopes are **Restricted** — production access requires Google's privacy & security review; pre-verification, only enrolled test users can connect.
 
 **Data Ingestion & Token Management:**
-- **Webhook push** — Fitbit Subscriptions API notifies CardiTrack on new data; events flow through Event Hubs into the AI pipeline (see [llm_design.md](../llm_design.md)). No polling sync job.
+- **Webhook push** — Google Health API webhook subscriptions notify CardiTrack on new data (notify-then-fetch); events flow through Event Hubs into the AI pipeline (see [llm_design.md](../llm_design.md)). No polling sync job.
 - **Token refresh** — `CardiTrack.Worker` proactively refreshes OAuth tokens before expiry (cron-driven, Cronos)
 - Retry logic with exponential backoff
 - `device_disconnected` alert to family if no events for >2 hours during waking hours
@@ -869,7 +876,7 @@ AuditLog Entity (90-day minimum retention):
 - ✅ **Azure (Microsoft)**: App Service, SQL, Functions
 - ✅ **Twilio**: SMS alerts
 - ✅ **SendGrid**: Email alerts
-- ❌ **Fitbit**: Does NOT provide BAA (user consent model)
+- ❌ **Google Health API** (Fitbit/Pixel Watch data): Does NOT provide BAA (user consent model)
 
 ### **Data Protection**
 
@@ -993,7 +1000,7 @@ public class RetentionWorker : CronBackgroundService         // "0 30 0 * * *"
 - [ ] Click secure connection link
 - [ ] Review privacy notice (what family will see)
 - [ ] Click "Connect Fitbit" button
-- [ ] Log into Fitbit account (OAuth)
+- [ ] Log into Google account linked to the device (Google OAuth)
 - [ ] Approve data access permissions
 - [ ] Confirm connection success
 
@@ -1017,7 +1024,7 @@ public class RetentionWorker : CronBackgroundService         // "0 30 0 * * *"
 - [ ] **Validate connection token** on Fitbit/device callback
 - [ ] **Exchange OAuth code for device access/refresh tokens**
 - [ ] **Encrypt and store device tokens** (AES-256-GCM)
-- [ ] **Register device webhook subscription** (Fitbit Subscriptions API) + trigger initial history backfill
+- [ ] **Register device webhook subscription** (Google Health API) + trigger initial history backfill
 - [ ] **Notify family** of successful device connection
 - [ ] **Calculate baseline** after 30 days
 - [ ] **Activate AI anomaly detection**
