@@ -1,0 +1,348 @@
+# CardiTrack — Data Protection Impact Assessment (DPIA)
+
+## 1. Document control
+
+| Field | Value |
+|---|---|
+| Status | **DRAFT — pending review and sign-off** |
+| Version | 0.1 |
+| Date | 2026-08-05 |
+| Accountable owner | Moses Arigbede (founder/lead) |
+| Data Protection Officer | **Not appointed — open item OI-1.** Large-scale processing of special-category health data likely makes a DPO mandatory (EU/UK GDPR Art. 37(1)(c)). |
+| Legal regimes assessed | EU GDPR, UK GDPR, US state health-privacy laws (CCPA/CPRA; Washington My Health My Data Act) |
+| Review triggers | See §13 |
+
+> **Important caveats.** This document was drafted from the repository's code, infrastructure-as-code, and design documents. Every factual claim about the system cites a repository file. Items that are legal or business decisions — lawful basis, retention values, risk acceptance, controller identity — are marked `[DECISION REQUIRED]` and are **not** decided by this document. This is a working draft prepared without legal counsel; it is not legal advice and must be reviewed by a qualified privacy professional before being relied upon.
+
+### 1.1 Scope and method
+
+The repository contains two layers that materially disagree:
+
+- **Part A — current state**: what is implemented in `src/` and deployed by `infrastructure/*.tf` (GCP `europe-west2`, Cloud Run, Cloud SQL PostgreSQL, 30-minute polling ingestion, Gemini and self-hosted MedGemma inference).
+- **Part B — planned state**: what the design documents describe but which is not built (`docs/llm_design.md` AI pipeline, notifications/SMS/push, Stripe billing, consent records, retention workers). GDPR requires a DPIA **before** high-risk processing begins, so Part B is assessed prospectively; the processing in Part B must not launch until its risks are mitigated.
+
+Contradictions between the two layers are catalogued in Appendix A. Where a documented control does not exist in code, this DPIA treats it as **absent**, not as present.
+
+### 1.2 Current processing status
+
+Real health data from up to 100 enrolled test users is (or is about to be) processed under Google's unverified-app cap ([docs/technical/oauth_clients.md](../technical/oauth_clients.md)). The system is **not** in general production. Consequences:
+
+- Gaps in Part A are **active exposures for test users**, not hypothetical: remediation items marked **P0** in §10 should be completed (or test-user processing paused/scoped) as a priority.
+- Items marked **launch blocker** must be complete before exceeding the test population or passing Google restricted-scope verification / CASA assessment.
+
+---
+
+## 2. Threshold assessment — is a DPIA required?
+
+Assessed against the EDPB (WP248) nine criteria; two or more generally makes a DPIA mandatory. CardiTrack meets **seven**:
+
+| # | Criterion | Met? | Evidence |
+|---|---|---|---|
+| 1 | Evaluation or scoring | **Yes** | Pattern baselines and deviation scoring (`src/Core/CardiTrack.Domain/Entities/PatternBaseline.cs`; `src/Core/CardiTrack.Application/Services/DashboardService.cs`). Planned: per-user LSTM risk scores 0–100, illness/fall-risk prediction (`docs/llm_design.md`). |
+| 2 | Automated decision-making with significant effect | **Yes (planned)** | LLM severity classification decides whether family are alerted in real time, incl. SMS fallback — a decision that dispatches a human to check on the wearer (`docs/llm_design.md` severity routing). See risk R-B1. |
+| 3 | Systematic monitoring | **Yes** | Continuous wearable monitoring, 30-minute sync (`src/Worker/CardiTrack.Worker/Workers/WearableSyncWorker.cs`); planned 5-minute windows and inactivity detection (`docs/llm_design.md`). |
+| 4 | Sensitive / special-category data | **Yes** | Health data throughout (Art. 9): heart rate, SpO2, sleep architecture, medical notes (§4.2). |
+| 5 | Large scale | **Prospectively** | Target market framing in `docs/solution_manifest.md`; currently ≤100 test users. |
+| 6 | Matching or combining datasets | **Yes** | Wearable data combined with caregiver-entered medical notes, alerts, and behavioural baselines. |
+| 7 | Vulnerable data subjects | **Yes** | The monitored population is explicitly elderly (`docs/infrastructure.md`, `docs/execution/backend/api/cardimembers.md`); fall-risk prediction targets "70+ users" (`docs/llm_design.md`); the data subject may have no account and no direct control (§4.1). |
+| 8 | Innovative use of new technology | **Yes** | LLM inference on health data (MedGemma, Gemini), LSTM prediction. |
+| 9 | Processing preventing exercise of a right or use of a service | No | Not identified. |
+
+**Conclusion: a DPIA is mandatory under EU and UK GDPR.** Washington MHMD and several US state laws additionally require consumer-health-data privacy policies and, in some states (e.g. Colorado, Connecticut), data-protection assessments for profiling/sensitive data — this document is structured to serve those too.
+
+### 2.1 Regulatory-boundary flag: early-warning positioning
+
+CardiTrack is positioned as an **early-warning system based on trends and patterns**, not a diagnostic tool; the design states "never predicted — specific diagnoses… Do not diagnose — flag for review" (`docs/llm_design.md`). However, software intended to **predict or prognose** disease can qualify as a medical device under EU MDR (Rule 11) and UK MDR even without diagnosing, and FDA has analogous software-as-medical-device criteria. **`[DECISION REQUIRED — OI-2]`**: a formal device-classification assessment must be completed before launch marketing settles on claims. This DPIA does not assume either outcome.
+
+---
+
+## 3. Data subjects
+
+| Subject | Description | Account? | Notes |
+|---|---|---|---|
+| **CardiMember** (the wearer) | The monitored person — an adult ≥18 (enforced: `src/Presentation/CardiTrack.API/Validators/CreateCardiMemberValidator.cs`), in practice elderly. The subject of all special-category data. | **Optional — may have none** (`docs/execution/ui/mobile/user_stories.md` Story 7.2) | In the default flow, a caregiver creates the record and records consent on the wearer's behalf (`docs/llm_design.md`). See risk R-A7. |
+| **User** (caregiver / family / facility staff) | Account holder; sees the wearer's health data per relationship link. | Yes (Auth0) | Roles in code: Member/Admin/Staff (`src/Core/CardiTrack.Domain/Enums/UserRole.cs`); docs use Admin/Staff/Viewer — see Appendix A. |
+| **Emergency contacts** | Name + phone stored on the CardiMember record without any interaction with the service (`src/Core/CardiTrack.Domain/Entities/CardiMember.cs`). | No | No notice mechanism exists — risk R-A12. |
+| **Invitees** | Email + role + free-text message for family invitations (documented design: `docs/execution/backend/api/family.md`). | Not yet | Data held even if never accepted. |
+| **Facility residents** (Business org type) | Care-home scenario; consent "from resident or POA" appears in user stories only — no POA/legal-representative model exists in code or schema. | Varies | Risk R-A7. |
+
+**Children:** CardiMember creation is blocked under 18 (validator above). No age check exists for caregiver Users; no COPPA handling exists or is claimed.
+
+---
+
+## 4. Part A — processing as implemented today
+
+### 4.1 Personal data inventory (implemented entities)
+
+Special-category (Art. 9 health) data marked **H**; health-revealing-in-context marked *(h)*.
+
+| Entity | Fields (summary) | Class |
+|---|---|---|
+| `ActivityLog` | Steps, distance, active/sedentary minutes, floors, calories; resting/avg/max/min heart rate; sleep minutes, start/end, efficiency, deep/light/REM/awake; SpO2 avg/min/max; VO2Max; stress score; breathing rate; body temperature (`src/Core/CardiTrack.Domain/Entities/ActivityLog.cs`) | **H** |
+| `PatternBaseline` | Avg/σ steps and heart rate, sleep averages, **typical bedtime and wake time**, steps-by-day-of-week (`PatternBaseline.cs`) | **H** (behavioural profile) |
+| `Alert` | Type, severity, title, free-text message, metric values JSON, acknowledger (`Alert.cs`) | **H** |
+| `CardiMember` | Name, email, phone, **date of birth (required)**, gender, emergency contact name/phone, **`MedicalNotes`** free text (doc example: "Type 2 diabetes, takes metformin") (`CardiMember.cs`) | **H** (MedicalNotes); *(h)* identity fields — the record's existence signals health monitoring |
+| `User` | Auth0 ID, email, name, phone, role, locale, timezone, last login, disclosure-dismissal date, **unused `PasswordHash` column** (`User.cs`; see Appendix A-3) | Ordinary |
+| `UserCardiMember` | Relationship type, caregiver flag, `CanViewHealthData`/`ReceiveAlerts` (both **default true**), notification prefs JSON (`UserCardiMember.cs`) | *(h)* |
+| `DeviceConnection` | OAuth access/refresh tokens (**AES-256-GCM encrypted** — `src/Infrastructure/CardiTrack.Infrastructure/Security/AesEncryptionService.cs`), expiry, granted scopes, provider user id, device name (`DeviceConnection.cs`) | *(h)* — scopes reveal collected health categories |
+| `AuditLog` | User/member IDs, action, **IP address, user agent**, request path, data-accessed JSON (`AuditLog.cs`) — **schema only; never written** (risk R-A2) | Ordinary |
+| `Subscription` | Tier, status, dates, price, `PaymentMethod` JSON (card last4/brand/expiry — schema present, nothing writes it) (`Subscription.cs`) | Ordinary |
+
+Minimisation observations (feed §7): the schema holds fields nothing populates (SpO2/VO2Max/stress/breathing/temperature columns beyond current ingestion; `PaymentMethod`; `PasswordHash`) — unused sensitive-data capacity should be justified or removed.
+
+### 4.2 Processing operations (implemented)
+
+| # | Operation | Data | Where |
+|---|---|---|---|
+| A1 | **Wearable ingestion** — 30-min polling of Google Health API (restricted scopes: activity, health metrics, sleep) for the previous day's rollup; upsert into `ActivityLog` | Daily activity, heart rate, sleep per member | `WearableSyncWorker.cs`; `src/Infrastructure/CardiTrack.Infrastructure/Services/DeviceSyncService.cs`; `.../ExternalClients/FitbitApiClient.cs` |
+| A2 | **Device OAuth connect** — PKCE flow; encrypted token storage; deep-link return | OAuth tokens, scopes | `DeviceConnectionService.cs`, `OAuthCodeExchangeService.cs` |
+| A3 | **Dashboard** — health status derivation with 30%/50% deviation thresholds; relationship-checked | ActivityLog, baselines | `DashboardService.cs` |
+| A4 | **AI chat** — member GUID + last 3 days of steps/HR/sleep + free-text user message sent to **Google Gemini** (`generativelanguage.googleapis.com`, `gemini-2.0-flash`) | **H** → external Google API | `src/Presentation/CardiTrack.API/Controllers/ChatController.cs`; `GeminiClient.cs`; `infrastructure/main.tf` |
+| A5 | **AI insights** — alert details, 30-day baselines, 3–7 days of metrics sent to **self-hosted MedGemma** (Ollama on Cloud Run, internal ingress) | **H** → stays in-project | `HealthInsightService.cs`; `MedGemmaClient.cs`; `infrastructure/deployments/cloud_run.tf` |
+| A6 | **Report generation** — member **name** + all daily metrics + alerts in range sent to **Gemini**; plain-text result cached in Redis 1 hour | **H** → external Google API | `ReportGenerationService.cs` |
+| A7 | **Auth** — Auth0 identity (email, name, verification); Management API calls scoped `read:users`/`update:users` | Identity | `docs/technical/auth0_setup_runbook.md` |
+| A8 | **Orphaned-org cleanup** — hard-deletes empty organizations older than 24h | Org records | `OrphanedOrganizationCleanupWorker.cs` |
+| A9 | **Telemetry** — Serilog → Cloud Logging; Warning+ logs and 20%-sampled traces → Datadog EU; mobile RUM at 100% session sampling with consent hardcoded Granted | Includes **email + Auth0 ID on every request log line** (risk R-A5) | `UserContextMiddleware.cs`; `ApmExtensions.cs`; `MobileApm.cs` |
+
+### 4.3 Recipients and processors (current)
+
+`[DECISION REQUIRED — OI-3]`: controller identity (legal entity) and an Art. 28 DPA/sub-processor register must be established; none exists in the repo.
+
+| Processor | Role | Personal data | Region | Contract status |
+|---|---|---|---|---|
+| Google Cloud (Cloud Run, Cloud SQL, GCS, Secret Manager, Cloud Logging) | Hosting | Everything | `europe-west2`; GCS `EU`; **audit bucket hardcoded `US`** (`infrastructure/deployments/cloud_monitoring.tf`); Secret Manager replication unpinned | GCP Cloud DPA applies; **not documented in repo** |
+| Google — Gemini API | LLM inference (chat, reports) | Member ID/**name**, daily health metrics, user free text | **Global endpoint, no region pinning** | **None documented.** Consumer API vs Vertex AI EU endpoint undecided — risk R-A4 |
+| Google — Health API | Source of wearable data | Wearer health data | Google-side | **No BAA offered** (user-consent model, `docs/technical/user_onboarding_process.md`); Limited Use policy applies |
+| Auth0 (Okta) | Identity | Email, name, credentials, login IP | Dev: UK tenant; prod: **undecided UK/EU** (`docs/technical/auth0_setup_runbook.md`) — OI-4 | DPA not documented |
+| Datadog | APM/logs/RUM | Warning+ logs (incl. email — R-A5), traces, mobile sessions | EU site (`datadoghq.eu`) | DPA not documented |
+| Apple / Google Play | Store distribution, TestFlight testers | Tester accounts | Vendor-side | Store agreements |
+
+**US transfer surface today:** the prod audit-log bucket (`US`), unpinned Secret Manager replication, the global Gemini endpoint, and US parent companies of Auth0/Datadog (EU-hosted). `[DECISION REQUIRED — OI-5]`: transfer mechanism (SCCs/UK IDTA + transfer impact assessment) per processor.
+
+### 4.4 Security measures — present vs absent (current state)
+
+**Present** (all cited in `infrastructure/` and `src/`):
+- TLS 1.2+ (GCLB `MODERN` profile), HTTPS redirect, HSTS on Web; Cloud SQL private-IP only, encrypted connections via Auth Proxy; Cloud Run internal-only ingress for Worker and MedGemma; Cloud Armor WAF + rate limiting; API-wide authenticated-by-default fallback policy; AES-256-GCM field encryption of OAuth tokens; secrets in Secret Manager; Auth0 with rotating refresh tokens, email-verification gate, brute-force protection; report of DB command spans limited by 20% trace sampling; Datadog Session Replay deliberately disabled ("health data must not be screen-recorded").
+- **Documented accepted risk (not a new finding):** the ASP.NET Data Protection key ring persists to GCS without application-level key wrapping. This protects **antiforgery tokens only**; KMS wrapping was evaluated and rejected. Recorded here as an accepted risk with GCS default encryption, `public_access_prevention = enforced`, and versioning as compensating controls (`infrastructure/deployments/cloud_storage.tf`, `src/Presentation/CardiTrack.Web/Program.cs`).
+
+**Absent / defective** — these become the risk register in §8:
+1. `CardiMember.MedicalNotes` stored **plaintext** despite docs claiming AES-256-GCM (`src/Core/CardiTrack.Application/Services/CardiMemberService.cs` — `// TODO: Encrypt this`).
+2. `AuditLog` never written — no middleware, repository, or interceptor; the documented "all PHI access is audit-logged" control does not exist.
+3. **No consent recording or gating**: `ConsentRecord` entity/endpoint unimplemented; sync fetches activity, heart rate and sleep unconditionally (`DeviceSyncService.cs`).
+4. **No retention or purge jobs** of any kind; soft-delete flags exist but no code path sets them.
+5. **No erasure/export/account-deletion endpoint**; the privacy page says "contact us".
+6. **Missing authorization**: `InsightsController` and `ChatController` do no relationship check (any authenticated user can query any member); `ReportGenerationService` status/download never checks ownership, and generation never validates access to the requested members.
+7. **PII in telemetry**: email + Auth0 ID pushed into every request log line, shipped to Cloud Logging and Datadog; no redaction pipeline.
+8. Mobile Datadog RUM consent hardcoded `Granted`; flagged in `docs/technical/apm_setup_runbook.md` as needing an opt-in toggle before store review.
+9. All Cloud Run services share the **default compute service account** with access to every secret; apps connect to Postgres as the **admin user**.
+10. Mobile token store falls back to plaintext `Preferences` when SecureStorage fails (`SecureTokenStore.cs`) — compiled into all builds.
+11. Role-based policies (`RequireAdmin` etc.) depend on Auth0 claims that are not yet emitted — role enforcement is effectively inert.
+12. Cloud SQL keeps 7 backups vs a documented 90-day expectation; no CMEK anywhere (Google-managed keys only — `[DECISION REQUIRED — OI-6]` whether default encryption is accepted).
+
+---
+
+## 5. Part B — planned processing (design docs; not built)
+
+Assessed prospectively; **must not launch before the §10 Part B preconditions are met.**
+
+| # | Planned operation | Source | Key DPIA considerations |
+|---|---|---|---|
+| B1 | Near-real-time pipeline: webhook ingestion → 5-min aggregation → SSA-LSTM → MedGemma → severity routing (red/orange/yellow/green) with escalation overrides | `docs/llm_design.md` | LLM output triggers real-world intervention (family dispatched, SMS fallback). This is automated decision-making with significant effects — Art. 22 analysis, human-review pathway, and documented accuracy/false-negative testing required. The design itself concedes "MedGemma is not clinical-grade out of the box". |
+| B2 | Predictive monitoring: per-user LSTM risk scores (illness onset, fatigue, **fall risk for 70+**, cardiac trend), morning push, family digest | `docs/llm_design.md` | Profiling of vulnerable subjects; per-user model files are themselves personal data; confidence gates (<60% suppressed) and sensitivity controls are mitigations to verify. |
+| B3 | Notifications: push (FCM/APNs), email, **SMS fallback**; payloads carry first name + health state in clear text on lock screens ("Margaret hasn't moved today") | `docs/execution/backend/api/notifications.md`, `alerts.md` | Lock-screen health disclosure to bystanders; quiet-hours overrides; per-recipient severity routing must be enforced server-side. |
+| B4 | Family features: invitations, shared notes with view receipts, alert notes + **photo attachments**, audit-log visibility | `docs/execution/backend/api/family.md`, `alerts.md` | Free-text and photos are health-revealing; view receipts are workplace-style monitoring of family members. |
+| B5 | Consent records: per-metric booleans, `ConsentedByName`, `ConsentMethod` incl. `verbal_confirmed` | `docs/infrastructure.md`, `cardimembers.md` | Caregiver-recorded consent for a non-user data subject is the central lawful-basis problem — see §7 and R-A7. `verbal_confirmed` has no evidence trail. |
+| B6 | Billing via Stripe; invoices; card metadata | `docs/execution/backend/api/subscriptions.md` | Standard processor addition; DPA + PCI scope at that time. |
+| B7 | Exports: PDF/CSV/**FHIR R4/HL7 v2** incl. Conditions derived from medical notes | `docs/execution/backend/api/health-data.md`, `reports.md` | Clinical-grade export raises the medical-positioning question (OI-2) and demands hardened access control (contrast current R-A3). |
+
+---
+
+## 6. Necessity and proportionality
+
+### 6.1 Purposes and lawful basis `[DECISION REQUIRED — OI-7]`
+
+No lawful-basis analysis exists anywhere in the repo (the compliance framing throughout is HIPAA, not GDPR). Proposed starting point for counsel review — **placeholders, not decisions**:
+
+| Processing | Art. 6 basis (proposed) | Art. 9 condition (proposed) |
+|---|---|---|
+| Health monitoring, alerts, insights for the wearer | Consent (6(1)(a)) | **Explicit consent (9(2)(a))** — must be the wearer's own, granular per metric, unbundled from ToS |
+| Caregiver account management | Contract (6(1)(b)) | n/a |
+| Billing (future) | Contract | n/a |
+| Security logging / audit | Legitimate interests (6(1)(f)) — LIA needed | 9(2)(f) if disputes; minimise health content in logs |
+| Analytics/RUM | Consent (ePrivacy) — **currently hardcoded granted; non-compliant as-is** | n/a |
+
+The hard problem: **the data subject may not be the consenting party.** The default flow has the caregiver recording the wearer's consent, possibly `verbal_confirmed`, with no wearer account, no notice to the wearer, and no withdrawal channel. Options counsel must weigh (OI-7): require a wearer-side consent ceremony (e.g. on-device confirmation during wearable OAuth — note the wearer *is* the one completing Google's OAuth consent screen, which helps); a documented POA/legal-representative model for the facility scenario; or a different Art. 9 condition. Until resolved, this is the DPIA's largest open legal risk.
+
+### 6.2 Minimisation and proportionality findings
+
+- Ingestion is limited to three restricted read-only scopes and daily rollups — proportionate for trend detection. Planned intraday/5-min collection (Part B) needs its own justification.
+- Fields collected but unused (unpopulated vitals columns, `PasswordHash`, `PaymentMethod`) should be removed or justified.
+- Precise date of birth is required; consider whether year alone would serve the age-gate and baseline purposes.
+- Gemini receives the member's **name** in report prompts (A6) — a pseudonymous identifier would serve identically. Same for the GUID in chat prompts.
+- Push payload design (B3) puts health state on lock screens by default — offer a discreet-notification option.
+- `CanViewHealthData` defaults to **true** for every new relationship — default-on sharing of Art. 9 data should be an explicit choice.
+
+### 6.3 Retention `[DECISION REQUIRED — OI-8]`
+
+No retention is enforced in code today (no purge jobs exist). Documented statements conflict. The table below records every conflict with a **proposed** value for sign-off; no value here is adopted policy yet.
+
+| Data | Documented statements | Proposed for sign-off |
+|---|---|---|
+| Audit logs | **6 years** (`docs/infrastructure.md`) vs **90 days minimum** (`AuditLog.cs` doc-comment, `docs/technical/user_onboarding_process.md`) | 6 years, aligning with the stated HIPAA posture; correct the 90-day references |
+| Health data (`ActivityLog`) | None (plan tiers cap *visible history* at 90/365 days — a feature limit, not deletion) | Active members: retain while relationship active; post-deletion: 90 days then purge (matches `cardimembers.md`) |
+| Deleted CardiMember | 90 days (`cardimembers.md`) | 90 days, then hard purge incl. baselines, alerts, device connections (cascade currently undefined — see R-A6 note) |
+| Baselines, alerts | None | Same lifecycle as ActivityLog |
+| Report artifacts | 24h link (docs) vs 1h cache TTL (code) | 24 h; make code match docs |
+| Soft-deleted records | "90 days before purging" (docs; no purge exists) | 90 days, implemented by the future RetentionWorker |
+| OAuth tokens | None beyond provider expiry | Delete on device disconnect and member deletion |
+| Cloud Logging / Datadog / GCLB logs | None | 30 days operational logs; define Datadog retention explicitly |
+| DB backups | 7 backups (Terraform) vs 90 days (docs) | Decide and align — OI-8 |
+| Planned Cosmos AI stores | 90d / 90d / 2y / 1y TTLs (`docs/llm_design.md`) | Adopt as designed when built |
+
+The docs' "no hard deletions to preserve audit trail" policy is **irreconcilable with Art. 17 erasure** as an absolute rule and must be narrowed to the audit log itself.
+
+### 6.4 Data subject rights — current capability
+
+| Right | Status |
+|---|---|
+| Information (Arts. 13/14) | **Gap.** `/privacy` is a 36-line placeholder; no notice at all to the wearer when a caregiver enrols them (Art. 14), nor to emergency contacts |
+| Access / portability | No self-service; no export endpoint (FHIR export is Part B) |
+| Rectification | Caregiver can edit member details; wearer without account cannot |
+| Erasure | **No mechanism.** No account-deletion or member-deletion endpoint exists |
+| Objection / restriction | Documented "pause monitoring" is unimplemented |
+| Withdraw consent | No consent exists to withdraw (R-A7); device disconnect is the only lever |
+
+US state laws (CPRA, MHMD) require equivalents of access/deletion plus, under MHMD, specific consumer-health consent and a dedicated policy — all currently absent for US users. `[DECISION REQUIRED — OI-9]`: whether US users are in scope at launch.
+
+---
+
+## 7. Consultation
+
+- **Data subjects' views** (Art. 35(9)): not yet sought. Proposed: include privacy questions in test-user feedback, and consult an elderly-user/carer representative before GA. — Open.
+- **DPO advice**: no DPO (OI-1).
+- **Supervisory authority**: prior consultation (Art. 36) required only if high residual risk remains after mitigation — assessed in §11.
+
+---
+
+## 8. Risk register
+
+Likelihood × severity assessed from the **data subject's** perspective. Scale: Low / Medium / High. "Current" = exposure for today's test users.
+
+### Part A — current state
+
+| ID | Risk | L | S | Rating | Mitigation → §10 |
+|---|---|---|---|---|---|
+| R-A1 | **Plaintext medical notes**: DB access, backup exposure, or SQL export reveals free-text clinical details (diagnoses, medication) | M | H | **High** | M1 |
+| R-A2 | **No audit trail**: unauthorised or excessive PHI access by caregivers/staff is undetectable; accountability obligation unmet | H | M | **High** | M2 |
+| R-A3 | **Broken authorization** on Insights, Chat, and Reports: any authenticated user can read any member's health data / reports across organizations | M | H | **High** | M3 (P0) |
+| R-A4 | **Health data to global Gemini endpoint**: name + metrics leave the EU boundary to a consumer API with no DPA, no region pinning, no documented retention/training terms | H | H | **High** | M4 |
+| R-A5 | **Email + Auth0 ID on every log line** to Cloud Logging and Datadog; prod audit bucket in the **US**; query strings (OAuth `state`/`code`) logged | H | M | **High** | M5 |
+| R-A6 | **No retention/erasure**: health data accumulates indefinitely; deletion requests cannot be honoured; undefined cascade would orphan health rows if members were deleted | H | M | **High** | M6 |
+| R-A7 | **No valid consent architecture**: no consent is recorded anywhere; the data subject may be unaware of processing; Art. 9 condition unsatisfied | H | H | **High** | M7 + OI-7 |
+| R-A8 | Analytics consent hardcoded granted (mobile RUM, 100% sessions) | H | L | **Medium** | M8 |
+| R-A9 | Shared service identity + admin DB user: one compromised service exposes all secrets and full DB | L | H | **Medium** | M9 |
+| R-A10 | Plaintext token fallback in mobile builds | L | M | **Medium** | M10 |
+| R-A11 | Inert role policies (missing Auth0 claims) if an admin-gated endpoint ships | M | M | **Medium** | M11 |
+| R-A12 | Third-party data without notice (emergency contacts, invitees) | H | L | **Medium** | M12 |
+| R-A13 | DP key ring unencrypted on GCS — **accepted risk** (antiforgery only; KMS rejected) | L | L | **Accepted** | Compensating controls in §4.4; re-review only if the key ring's use expands beyond antiforgery |
+
+### Part B — planned state (pre-conditions to build/launch)
+
+| ID | Risk | Rating | Mitigation |
+|---|---|---|---|
+| R-B1 | LLM severity routing as automated decision with significant effect; false negatives mean a missed cardiac event, false positives erode trust and cause unnecessary interventions | **High** | Art. 22 analysis; human-review queue for Critical; documented model validation incl. per-cohort false-negative rates; "not clinical-grade" caveat resolved before alerting goes live (ties to OI-2) |
+| R-B2 | Profiling of elderly users (fall risk, cognitive-decline signals) | **High** | Transparency in plain language; opt-out per prediction category; confidence gating as designed |
+| R-B3 | Lock-screen health disclosure in push payloads | Medium | Discreet-mode notifications; content minimisation |
+| R-B4 | SMS fallback sends health content over unencrypted SMS via a new processor | Medium | Content minimisation ("check the app"); processor DPA |
+| R-B5 | Photos/free-text notes introduce unstructured PHI with no classification | Medium | Retention + access rules before build |
+| R-B6 | `verbal_confirmed` consent with no evidence trail | High | Require signature or wearer-side digital confirmation (OI-7) |
+
+---
+
+## 9. Prior-notification note for current test users
+
+Because real test users' data is already flowing (§1.2) while R-A1–R-A7 are open, the **interim containment** options are: (a) complete the P0 fixes below promptly; and/or (b) restrict test enrolment to informed internal participants who have acknowledged the current state in writing. `[DECISION REQUIRED — OI-10]`.
+
+---
+
+## 10. Mitigation / action plan
+
+**P0 — protect current test users (before further enrolment):**
+
+| # | Action | Addresses |
+|---|---|---|
+| M3 | Add relationship checks (mirror `DashboardService`) to `InsightsController`, `ChatController`; ownership checks on report status/download and member validation on generation | R-A3 |
+| M1 | Encrypt `MedicalNotes` via the existing `IEncryptionService` (converter in EF config) + migration for existing rows | R-A1 |
+| M5 | Stop logging email (keep internal user ID only); redact query strings on the OAuth redirect route; relocate or justify the US audit bucket; pin Secret Manager replication | R-A5 |
+| M4 | Move Gemini calls to Vertex AI EU endpoint (or route via self-hosted MedGemma); strip names/GUIDs from prompts; document the DPA | R-A4 |
+
+**P1 — launch blockers (before Google verification / exceeding test cap):**
+
+| # | Action | Addresses |
+|---|---|---|
+| M7 | Implement `ConsentRecord` + wearer-side consent ceremony per OI-7; gate sync per metric on recorded consent | R-A7 |
+| M2 | Audit-logging middleware writing `AuditLog` on PHI access; retention per OI-8 | R-A2 |
+| M6 | RetentionWorker in `CardiTrack.Worker` (per `CLAUDE.md` architecture rule): purge on adopted schedule; account/member deletion endpoints with defined cascade | R-A6 |
+| M8 | Mobile analytics consent toggle (default off); pending-consent Datadog init | R-A8 |
+| M12 | Notice text for emergency contacts/invitees in the privacy policy + invitation emails | R-A12 |
+| — | Real privacy policy (incl. Google Limited Use section) derived from this DPIA; mobile disclosure banner (Google requires both surfaces — only Web has it) | §6.4 |
+
+**P2 — hardening:**
+
+| # | Action | Addresses |
+|---|---|---|
+| M9 | Per-service GCP service accounts; least-privilege DB role | R-A9 |
+| M10 | Remove the `Preferences` fallback from release builds | R-A10 |
+| M11 | Emit role/org claims from Auth0 Action before any role-gated endpoint ships | R-A11 |
+| — | Decide CMEK vs default encryption (OI-6); align backup retention (OI-8) | §4.4 |
+
+**Part B preconditions:** B1/B2 need Art. 22 analysis + model validation (R-B1/R-B2) and a DPIA update (§13) before build completes; B3–B7 mitigations as tabled in §8.
+
+---
+
+## 11. Residual risk and Art. 36
+
+With P0+P1 complete and OI-7 (consent architecture) resolved, residual risk for Part A is assessed as **Medium — no prior consultation with a supervisory authority required**. If the consent architecture cannot produce a valid Art. 9 basis for wearers without accounts, or if Part B's severity routing launches without a human-review pathway, residual risk would remain **High** and Art. 36 consultation (ICO / lead EU SA) would be required before proceeding. `[DECISION REQUIRED]` on lead supervisory authority once the controller entity and establishment are fixed (OI-3).
+
+---
+
+## 12. Open items / decisions required
+
+| ID | Decision | Owner |
+|---|---|---|
+| OI-1 | Appoint DPO (likely mandatory) | Moses Arigbede |
+| OI-2 | Medical-device classification assessment (EU MDR Rule 11 / UK MDR / FDA SaMD) for early-warning claims | Owner + regulatory counsel |
+| OI-3 | Controller legal entity; DPA/sub-processor register | Owner |
+| OI-4 | Auth0 prod tenant region (UK vs EU) | Owner |
+| OI-5 | Transfer mechanisms + TIAs for US-linked processors | Owner + counsel |
+| OI-6 | CMEK vs GCP default encryption | Owner |
+| OI-7 | Consent architecture for wearers (esp. non-users); POA model for facilities | Owner + counsel |
+| OI-8 | Adopt retention schedule (§6.3 proposals) | Owner |
+| OI-9 | US launch scope (CPRA/MHMD obligations) | Owner |
+| OI-10 | Interim containment for current test users (§9) | Owner |
+
+## 13. Review triggers
+
+Re-assess this DPIA when any of the following occurs: Part B components begin implementation (pipeline, notifications, billing, consent records); a new processor or model provider is added; the Gemini/MedGemma prompt contents change; the medical-device classification (OI-2) concludes; Google restricted-scope verification / CASA begins; a new jurisdiction launches; any personal-data breach; or 12 months elapse — whichever is first.
+
+---
+
+## Appendix A — documentation vs implementation contradiction register
+
+The DPIA relies on the implemented layer. These doc claims are **not true of the running system** and should be corrected at source:
+
+| # | Documented claim | Reality | Doc source |
+|---|---|---|---|
+| A-1 | Azure stack (Azure SQL + TDE, Cosmos, Key Vault, Event Hubs, Notification Hubs); "HIPAA BAA with Microsoft" | GCP: Cloud Run, Cloud SQL **PostgreSQL**, Secret Manager, GCS (`infrastructure/*.tf`) | `docs/infrastructure.md`, `infrastructure/README.md` (stale), `docs/apps/api/readme.md` |
+| A-2 | `MedicalNotes` AES-256-GCM encrypted | Plaintext; `// TODO: Encrypt this` | `docs/infrastructure.md`, `docs/release_matrix.md`, `CardiMember.cs` class comment |
+| A-3 | "No local passwords / API never stores passwords" | `User.PasswordHash` is a required column (unused) | `docs/technical/entity_summary.md`, `docs/execution/backend/api/auth.md` |
+| A-4 | "All PHI access is audit-logged", 6-year retention | `AuditLog` never written | `docs/apps/api/readme.md` |
+| A-5 | Consent recorded per metric; "data types without recorded consent are never processed" | No consent entity/endpoint; sync unconditional | `docs/llm_design.md`, `docs/infrastructure.md` |
+| A-6 | Worker hosts token-refresh, baseline, trial, retention jobs | Worker has exactly two jobs (sync, orphaned-org cleanup); refresh is inline in sync | `docs/apps/worker/readme.md`, `docs/technical/user_onboarding_process.md` |
+| A-7 | Webhook-driven ingestion | 30-minute polling of daily rollups | `docs/llm_design.md`, `docs/apps/worker/readme.md` (notes polling is interim) |
+| A-8 | Report links 24h, PDF/CSV/FHIR/HL7, plan-gated | Gemini plain text, 1h Redis TTL, no gate, no ownership check | `docs/execution/backend/api/reports.md` |
+| A-9 | Roles Admin/Staff/Viewer | Code enum: Member/Admin/Staff | `docs/execution/backend/api/family.md` vs `UserRole.cs` |
+| A-10 | "No PHI in logs (entity IDs only)"; "auth tokens never logged" | Email in every log line; OAuth `state`/`code` in request logs | `docs/archive/infrastructure_setup.md`, `docs/technical/user_onboarding_process.md` |
+| A-11 | 90-day (HIPAA) backup retention | 7 automated backups in Terraform | `infrastructure/README.md` vs `cloud_sql.tf` |
+| A-12 | Audit-log retention 6 years | Also stated as "90 days minimum" elsewhere | `docs/infrastructure.md` vs `AuditLog.cs`, `user_onboarding_process.md` |
+| A-13 | Auth0 prod tenant US "for HIPAA" | Runbook (authoritative) says UK/EU, undecided | `docs/technical/auth0_integration.md` vs `auth0_setup_runbook.md` |
