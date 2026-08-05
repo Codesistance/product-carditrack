@@ -82,13 +82,15 @@ Initiate an OAuth device connection. Returns a redirect URL for the provider's a
 
 ```json
 {
-  "authorizationUrl": "https://www.fitbit.com/oauth2/authorize?client_id=...",
+  "authorizationUrl": "https://accounts.google.com/o/oauth2/v2/auth?client_id=...",
   "state": "csrf_state_token_abc123",
   "codeVerifier": "pkce_verifier_xyz"
 }
 ```
 
 > The client stores `codeVerifier` and `state` locally, then redirects the user to `authorizationUrl`. After authorization, the provider redirects to `redirectUri` with a `code` and `state` parameter, which is sent to the OAuth callback endpoint.
+
+> **Implementation status:** examples show the target Google Health API flow. `authorizationUrl` is built from `DeviceProviders[].AuthorizationUrl`, which in the checked-in config still points at legacy Fitbit endpoints until the client rework lands — the value returned by a dev deployment will differ until then.
 
 ---
 
@@ -211,7 +213,7 @@ Initiate a token refresh for a device with an expired or revoked OAuth token.
 
 ```json
 {
-  "authorizationUrl": "https://www.fitbit.com/oauth2/authorize?client_id=...",
+  "authorizationUrl": "https://accounts.google.com/o/oauth2/v2/auth?client_id=...",
   "state": "csrf_state_token_def456",
   "codeVerifier": "pkce_verifier_new"
 }
@@ -243,11 +245,13 @@ A CardiMember **may have zero connected devices** (e.g. between switching device
 
 | Provider | `provider` Value | Integration Mode | Scopes / Permissions |
 |----------|-----------------|------------------|----------------------|
-| Fitbit | `fitbit` | `server_oauth` | `activity`, `heartrate`, `sleep` |
+| Fitbit / Pixel Watch | `fitbit` | `server_oauth` | Google Health API scope bundles: `activity_and_fitness.readonly`, `health_metrics_and_measurements.readonly`, `sleep.readonly` |
 | Apple Health | `apple_health` | `on_device_bridge` | `HKQuantityTypeStepCount`, `HKQuantityTypeHeartRate`, `HKCategoryTypeAsleepCore` |
 | Garmin | `garmin` | `server_oauth` | `activities`, `heart_rate`, `sleep` |
 | Samsung Health | `samsung_health` | `server_oauth` | `steps`, `heart_rate`, `sleep` |
 | Withings | `withings` | `server_oauth` | `user.metrics` |
+
+> The `fitbit` provider authorizes via **Google OAuth 2.0** and syncs through the **Google Health API** (`health.googleapis.com`), which covers Fitbit devices, Pixel Watch, and connected third-party sources — the legacy Fitbit Web API is decommissioned September 2026.
 
 > **Integration modes:**
 > - **`server_oauth`** — CardiTrack's backend holds OAuth tokens and receives data via the provider's cloud API/webhooks.

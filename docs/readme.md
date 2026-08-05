@@ -38,7 +38,7 @@ Welcome to the CardiTrack documentation. This directory contains comprehensive d
 **The target AI pipeline: MedGemma 1.5 4B inference on Azure Container Apps.**
 - Model selection rationale (4B vs 27B, T4 vs A100)
 - vLLM serving configuration and flags
-- Fitbit webhook ingestion (Event Hubs + 5-min batching)
+- Google Health API webhook ingestion (Event Hubs + 5-min batching)
 - SSA-LSTM pre-processing, prompt structure, and prefix caching
 - Predictive monitoring, severity routing, cost estimates, and caveats
 
@@ -265,7 +265,7 @@ For questions about:
 - [Terraform Azure Provider](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs)
 
 ### Device Integration Documentation
-- [Fitbit Web API](https://dev.fitbit.com/build/reference/web-api/)
+- [Google Health API](https://developers.google.com/health) (Fitbit, Pixel Watch, third-party sources — replaces the legacy Fitbit Web API, decommissioned Sept 2026)
 - [Apple HealthKit](https://developer.apple.com/documentation/healthkit)
 - [Garmin Connect API](https://developer.garmin.com/gc-developer-program/)
 - [Samsung Health SDK](https://developer.samsung.com/health)

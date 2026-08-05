@@ -2,7 +2,7 @@
 
 ## Overview
 
-CardiTrack uses MedGemma 1.5 4B as its inference model for cardiovascular analysis of wearable data from up to 10,000 Fitbit devices. The AI pipeline runs two parallel paths: a real-time anomaly detection path (5-minute windows, SSA-LSTM pre-processing → MedGemma) and a daily predictive path (per-user LSTM risk model → MedGemma interpretation → family-facing health outlook). All pipeline logic runs on Azure Functions (CPU); only MedGemma inference runs on GPU via Azure Container Apps.
+CardiTrack uses MedGemma 1.5 4B as its inference model for cardiovascular analysis of wearable data from up to 10,000 wearable devices (Fitbit, Pixel Watch, and other sources connected through the Google Health API). The AI pipeline runs two parallel paths: a real-time anomaly detection path (5-minute windows, SSA-LSTM pre-processing → MedGemma) and a daily predictive path (per-user LSTM risk model → MedGemma interpretation → family-facing health outlook). All pipeline logic runs on Azure Functions (CPU); only MedGemma inference runs on GPU via Azure Container Apps.
 
 ---
 
@@ -16,7 +16,7 @@ CardiTrack uses MedGemma 1.5 4B as its inference model for cardiovascular analys
 | Type | Multimodal instruction-tuned |
 | Source | HuggingFace |
 
-MedGemma 1.5 4B was chosen over the 27B variant for cost and latency reasons — at 4B parameters it fits on a single T4 GPU (~8GB in float16) with sufficient KV cache headroom for concurrent batched requests. It delivers improved accuracy on medical text reasoning and EHR understanding, both directly applicable to structured Fitbit time-series data.
+MedGemma 1.5 4B was chosen over the 27B variant for cost and latency reasons — at 4B parameters it fits on a single T4 GPU (~8GB in float16) with sufficient KV cache headroom for concurrent batched requests. It delivers improved accuracy on medical text reasoning and EHR understanding, both directly applicable to structured wearable time-series data.
 
 > **⚠️ HuggingFace access required:** This model requires acceptance of the [Health AI Developer Foundations terms of use](https://huggingface.co/google/medgemma-1.5-4b-it) on HuggingFace before the weights can be pulled. Ensure `HF_TOKEN` is from an account that has accepted these terms.
 
@@ -30,12 +30,12 @@ MedGemma 1.5 4B was chosen over the 27B variant for cost and latency reasons —
 |---------|------|-----------|
 | **Azure Container Apps** (GPU) | MedGemma 1.5 4B inference via vLLM | `Consumption-GPU-NC8as-T4` (T4 16 GB) |
 | **Azure Functions** | All pipeline logic — webhook, aggregation, SSA-LSTM, predictive batch, digest, push | Consumption plan (CPU only) |
-| **Azure Event Hubs** | Fitbit raw event stream buffer | Standard, 1 TU, 1 consumer group |
+| **Azure Event Hubs** | Wearable raw event stream buffer | Standard, 1 TU, 1 consumer group |
 | **Azure Cosmos DB** | Results, prediction cards, trend store | Serverless (pay-per-RU) |
 | **Azure SQL** (existing) | OAuth tokens (encrypted), user profiles, sensitivity settings, family relationships — the transactional system of record (see [infrastructure.md](./infrastructure.md#storage-boundary)) | Per infrastructure.md |
 | **Azure Blob Storage** | Per-user LSTM model files (~50 KB each, ~500 MB at 10 K users) | Standard LRS, Hot tier |
 | **Azure Notification Hubs** | FCM / APNs push routing for alerts and digests | Basic (free ≤ 1 M pushes/mo) |
-| **Azure Key Vault** | `HF_TOKEN`, Fitbit client secret, Twilio API key | Standard |
+| **Azure Key Vault** | `HF_TOKEN`, Google Health API client secret, Twilio API key | Standard |
 
 ---
 
@@ -45,8 +45,8 @@ Each function is a separate deployment within the same consumption plan. All are
 
 | Function | Trigger | Cadence | Purpose |
 |----------|---------|---------|---------|
-| `FitbitWebhookReceiver` | HTTP | On event (~333/s peak) | Validates Fitbit signature header; forwards raw payload to Event Hubs |
-| `FitbitAggregator` | Timer | Every 5 min | Reads Event Hubs → aggregates per-user window → runs SSA-LSTM pre-processor → calls MedGemma → writes result to Cosmos DB → routes severity |
+| `HealthWebhookReceiver` | HTTP | On event (~333/s peak) | Answers the Google Health API webhook verification handshake; acknowledges notifications with `204` and forwards the payload (user, data type, changed interval) to Event Hubs |
+| `WearableAggregator` | Timer | Every 5 min | Reads Event Hubs notifications → fetches changed data from the Google Health API per user/interval → aggregates per-user window → runs SSA-LSTM pre-processor → calls MedGemma → writes result to Cosmos DB → routes severity |
 | `SeverityRouter` | Cosmos DB trigger | On new result document | Reads severity tag; dispatches immediate push via Notification Hubs for Critical/High; queues Medium events for digest |
 | `PredictiveFeatureAggregator` | Timer | Daily 03:00 local | Reads 30–90 day Cosmos DB history per user → computes daily feature vectors → runs per-user LSTM → applies confidence gate → writes prediction card to Cosmos DB |
 | `PredictionCardPush` | Timer | Daily 06:00 local | Reads today's prediction cards → calls MedGemma (`CARDITRACK_PREDICT_PROMPT`) → pushes via Notification Hubs (risk ≥ 40) |
@@ -56,7 +56,7 @@ Each function is a separate deployment within the same consumption plan. All are
 
 > **Runtime note:** all Azure Functions run on the **dotnet-isolated** runtime (.NET 10). LSTM/SSA *inference* inside Functions uses **ONNX Runtime**; model *training* (TensorFlow) runs only in the separate Python container job above. No mixed-runtime Function App.
 
-> **Timeout note:** `FitbitAggregator` and `PredictiveFeatureAggregator` are the longest-running functions. Azure Functions consumption plan enforces a 10-minute maximum execution timeout — both are designed to process users in parallel batches and complete well within this limit at 10 K users.
+> **Timeout note:** `WearableAggregator` and `PredictiveFeatureAggregator` are the longest-running functions. Azure Functions consumption plan enforces a 10-minute maximum execution timeout — both are designed to process users in parallel batches and complete well within this limit at 10 K users.
 
 ---
 
@@ -142,7 +142,7 @@ az eventhubs namespace create \
   --sku Standard --capacity 1
 
 az eventhubs eventhub create \
-  --name fitbit-raw \
+  --name wearable-raw \
   --namespace-name $EVENTHUB_NS --resource-group $RG \
   --partition-count 8 --message-retention 1
 
@@ -220,7 +220,7 @@ CardiTrack operates two parallel AI paths with distinct cadences and purposes:
 ┌─────────────────────────────────────────────────────────────┐
 │                    REAL-TIME PATH (5-min)                   │
 │                                                             │
-│  Fitbit event → Event Hubs → Aggregator → SSA-LSTM          │
+│  Wearable event → Event Hubs → Aggregator → SSA-LSTM        │
 │  → MedGemma (anomaly) → Severity router → Alert / Digest   │
 └─────────────────────────────────────────────────────────────┘
 
@@ -240,16 +240,18 @@ The predictive path answers: *"Is something likely to go wrong in the next 24–
 
 ## Data Ingestion Pipeline (Real-Time)
 
+> **API note:** the legacy Fitbit Web API is decommissioned in September 2026. All device data access uses the **Google Health API** (`health.googleapis.com`) — a single integration covering Fitbit devices, Pixel Watch, and connected third-party sources, with per-reading source attribution. Webhook subscriptions (including heart rate) replace the old Fitbit Subscriptions API; notifications carry the user, data type, and changed interval, and the pipeline fetches the data itself (notify-then-fetch).
+
 ```
-Fitbit devices (up to 10,000)
+Wearable devices (up to 10,000 — Fitbit, Pixel Watch, third-party)
   ↓
-Fitbit Subscriptions API (webhook push — no polling)
+Google Health API webhooks (push notifications — no polling)
   ↓
-Azure Function (HTTP trigger) — validates signature, forwards event
+Azure Function (HTTP trigger) — verifies webhook auth, forwards notification
   ↓
-Azure Event Hubs (fitbit-raw)
+Azure Event Hubs (wearable-raw)
   ↓
-Azure Function (timer, every 5 min) — aggregates per user
+Azure Function (timer, every 5 min) — fetches changed data, aggregates per user
   ↓
 SSA-LSTM pre-processor — denoises signal, extracts trend features
   ↓
@@ -262,7 +264,7 @@ Azure Cosmos DB (results store)
 
 ## SSA-LSTM Pre-Processing Layer
 
-Before each 5-minute aggregated window is sent to MedGemma, raw Fitbit time-series data passes through a Singular Spectrum Analysis + LSTM pipeline. SSA decomposes each metric into **Trend**, **Oscillation**, and **Noise** components, then the LSTM forecasts the next-window trend value. MedGemma receives the denoised trend values rather than raw averages, improving anomaly sensitivity.
+Before each 5-minute aggregated window is sent to MedGemma, raw wearable time-series data passes through a Singular Spectrum Analysis + LSTM pipeline. SSA decomposes each metric into **Trend**, **Oscillation**, and **Noise** components, then the LSTM forecasts the next-window trend value. MedGemma receives the denoised trend values rather than raw averages, improving anomaly sensitivity.
 
 ### Role in the pipeline
 
@@ -273,18 +275,22 @@ Before each 5-minute aggregated window is sent to MedGemma, raw Fitbit time-seri
 | Deviation check | Predicted vs. actual trend | Δ anomaly score per metric |
 | MedGemma prompt | Cleaned trend values + anomaly scores | Cardiovascular assessment |
 
-### Fitbit JSON Field → SSA-LSTM Input Mapping
+### Google Health API Data Type → SSA-LSTM Input Mapping
 
-| Metric | Fitbit API Endpoint | JSON Path | Sampling Rate | SSA Input |
-|--------|--------------------|-----------|----|-----------|
-| Heart Rate (intraday) | `GET /activities/heart/date/{date}/1d/1min.json` | `activities-heart-intraday.dataset[].value` | 1-min intervals | Primary time-series for SSA decomposition |
-| Resting Heart Rate | `GET /activities/heart/date/{date}/1d.json` | `activities-heart[0].value.restingHeartRate` | Daily scalar | Baseline anchor for HR trend |
-| HRV (RMSSD) | `GET /hrv/date/{date}.json` | `hrv[0].value.dailyRmssd` | Daily scalar | Secondary series; supplement with `deepRmssd` |
-| SpO2 (intraday) | `GET /spo2/date/{date}/all.json` | `minutes[].value` | ~5-min intervals | Upsample to 1-min via forward-fill before SSA |
-| Steps (intraday) | `GET /activities/steps/date/{date}/1d/1min.json` | `activities-steps-intraday.dataset[].value` | 1-min intervals | Used as activity context feature alongside HR |
-| Active Zone Minutes | `GET /activities/active-zone-minutes/date/{date}/1d/1min.json` | `activities-active-zone-minutes-intraday.dataset[].value` | 1-min intervals | Exogenous input to LSTM |
-| Skin Temperature | `GET /temp/skin/date/{date}.json` | `tempSkin[0].value.nightlyRelative` | Daily scalar (nightly) | Early-warning feature; include when available |
-| Sleep Stages | `GET /sleep/date/{date}.json` | `sleep[0].levels.summary.{deep,rem,light,wake}.minutes` | Daily summary | Context feature for next-day recovery model |
+The Google Health API consolidates the legacy per-endpoint surface into **data types** queried via `list` (intraday/granular) and `rollUp`/`dailyRollUp` (summaries) at `https://health.googleapis.com`.
+
+| Metric | Data type / method | Sampling Rate | SSA Input |
+|--------|--------------------|----|-----------|
+| Heart Rate (intraday) | `heart-rate` — `list` | 1-min intervals | Primary time-series for SSA decomposition |
+| Resting Heart Rate | `heart-rate` — `dailyRollUp` | Daily scalar | Baseline anchor for HR trend |
+| HRV (RMSSD) | `daily-heart-rate-variability` — `dailyRollUp` (granular: `heart-rate-variability` — `list`) | Daily scalar | Secondary series |
+| SpO2 (intraday) | `oxygen-saturation` — `list` | ~5-min intervals | Upsample to 1-min via forward-fill before SSA |
+| Steps (intraday) | `steps` — `list` | 1-min intervals | Used as activity context feature alongside HR |
+| Active Zone Minutes | active-minutes data type — `list` | 1-min intervals | Exogenous input to LSTM |
+| Skin Temperature | skin-temperature data type — `dailyRollUp` | Daily scalar (nightly) | Early-warning feature; include when available |
+| Sleep Stages | `sleep` — `dailyRollUp` | Daily summary | Context feature for next-day recovery model |
+
+> Exact data-type identifiers and response JSON paths must be confirmed against the [Google Health API reference](https://developers.google.com/health/data-types) during client implementation — the shapes above are the design-level mapping, not verified schemas.
 
 ### SSA Parameters
 
@@ -327,7 +333,7 @@ def preprocess(hr_series: list[float], window_size: int = 30) -> dict:
 
 ### Why not Terra?
 
-Terra provides a unified wearable API but costs $499+/month minimum — too expensive at 10,000 users. CardiTrack integrates directly with the Fitbit Subscriptions API.
+Terra provides a unified wearable API but costs $499+/month minimum — too expensive at 10,000 users. CardiTrack integrates directly with the Google Health API, whose webhook subscriptions are free and already aggregate Fitbit, Pixel Watch, and connected third-party sources.
 
 ### Why Event Hubs + 5-min batching?
 
@@ -335,7 +341,7 @@ Terra provides a unified wearable API but costs $499+/month minimum — too expe
 
 ### Token storage
 
-OAuth tokens for 10,000 Fitbit accounts are stored **encrypted in Azure SQL** (`DeviceConnections` table) — the transactional system of record. The pipeline reads them via the existing repository layer; `CardiTrack.Worker` owns proactive token refresh. See [infrastructure.md](./infrastructure.md#storage-boundary).
+Google-issued OAuth tokens for 10,000 device connections are stored **encrypted in Azure SQL** (`DeviceConnections` table) — the transactional system of record. The pipeline reads them via the existing repository layer; `CardiTrack.Worker` owns proactive token refresh. See [infrastructure.md](./infrastructure.md#storage-boundary).
 
 ---
 
@@ -460,10 +466,10 @@ Suggest one actionable next step if a pattern warrants it (e.g., "consider an ea
 
 A family member's greatest fear is silence — not knowing whether no news is good news or a missed alert. The system pushes a **"device check"** notification if:
 
-- No Fitbit events received for a wearer for > 2 hours during expected active hours (07:00–22:00 local time)
+- No wearable events received for a wearer for > 2 hours during expected active hours (07:00–22:00 local time)
 - SpO2 or HR data absent from 3+ consecutive 5-minute windows
 
-The notification reads: *"[Name]'s Fitbit hasn't synced in 2 hours. You may want to check in."* — this is rule-based, not MedGemma-generated, to keep latency and cost at zero for the common no-data case.
+The notification reads: *"[Name]'s device hasn't synced in 2 hours. You may want to check in."* — this is rule-based, not MedGemma-generated, to keep latency and cost at zero for the common no-data case.
 
 > This detector emits the standard **`device_disconnected`** alert (severity `yellow`) defined in [alerts.md](./execution/backend/api/alerts.md), so it appears in the alerts list, respects quiet hours/routing preferences, and follows the normal acknowledgment lifecycle. It is distinct from the `no_morning_activity` (`red`) alert, which fires when the device *is* syncing but no movement is detected past the typical wake time.
 
@@ -605,7 +611,7 @@ Never mention specific risk score numbers. Never diagnose. Never alarm.
 | Azure Blob Storage (model store) | ~£0.50/mo | ~500 MB for 10,000 per-user LSTM models |
 | Azure Cosmos DB | ~£20/mo | Results + prediction cards |
 | Azure Notification Hubs | ~£5/mo | Push routing for family alerts |
-| Fitbit API | Free | |
+| Google Health API | Free | Restricted scopes — production access requires Google's privacy & security review |
 | Terra API | Not used — $499+/mo | |
 
 ---
@@ -615,4 +621,5 @@ Never mention specific risk score numbers. Never diagnose. Never alarm.
 - MedGemma is **not clinical-grade** out of the box. Outputs must be validated before use in any production health context.
 - MedGemma 1.5 is **not optimised for multi-turn conversation**. Treat each inference request as stateless.
 - All patient data processed through MedGemma must comply with applicable health data regulations (HIPAA, GDPR, etc.).
+- All Google Health API scopes are classified **Restricted** — production (verified) access requires passing Google's privacy & security review; before verification, only enrolled test users can connect devices.
 - The system prompt is identical across all users, making it an ideal candidate for vLLM prefix caching — ensure it is never personalised per user to preserve this benefit.

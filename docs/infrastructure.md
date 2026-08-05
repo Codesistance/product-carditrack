@@ -580,7 +580,7 @@ carditrack-dev-rg
 ├── carditrack-dev-signalr (SignalR Service)
 │
 │   AI pipeline (from AI rollout — see llm_design.md)
-├── carditrack-dev-eh (Event Hubs — fitbit-raw ingestion buffer)
+├── carditrack-dev-eh (Event Hubs — wearable-raw ingestion buffer)
 ├── carditrack-dev-cosmos (Cosmos DB serverless — AI results)
 ├── carditrack-dev-func (Azure Functions — pipeline logic, dotnet-isolated)
 ├── carditrack-dev-aca (Container Apps env + GPU workload profile — MedGemma/vLLM)
