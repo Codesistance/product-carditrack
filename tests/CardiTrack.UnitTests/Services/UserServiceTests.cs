@@ -75,6 +75,74 @@ public class UserServiceTests
         await _unitOfWork.DidNotReceive().SaveChangesAsync();
     }
 
+    [Fact]
+    public async Task HasDismissedHealthDataDisclosure_ReturnsFalse_WhenNeverDismissed()
+    {
+        var user = ExistingUser(emailVerified: true);
+        _users.GetByAuth0UserIdAsync("auth0|abc").Returns(user);
+
+        Assert.False(await CreateSut().HasDismissedHealthDataDisclosureAsync("auth0|abc"));
+    }
+
+    [Fact]
+    public async Task HasDismissedHealthDataDisclosure_ReturnsTrue_WhenAlreadyDismissed()
+    {
+        var user = ExistingUser(emailVerified: true);
+        user.HealthDataDisclosureDismissedDate = DateTime.UtcNow.AddDays(-1);
+        _users.GetByAuth0UserIdAsync("auth0|abc").Returns(user);
+
+        Assert.True(await CreateSut().HasDismissedHealthDataDisclosureAsync("auth0|abc"));
+    }
+
+    [Fact]
+    public async Task HasDismissedHealthDataDisclosure_ReturnsFalse_WhenUserUnknown()
+    {
+        _users.GetByAuth0UserIdAsync("auth0|missing").Returns((User?)null);
+
+        Assert.False(await CreateSut().HasDismissedHealthDataDisclosureAsync("auth0|missing"));
+    }
+
+    [Fact]
+    public async Task DismissHealthDataDisclosure_SetsUtcTimestampAndSaves()
+    {
+        var user = ExistingUser(emailVerified: true);
+        _users.GetByAuth0UserIdAsync("auth0|abc").Returns(user);
+        var before = DateTime.UtcNow;
+
+        var result = await CreateSut().DismissHealthDataDisclosureAsync("auth0|abc");
+
+        Assert.True(result);
+        Assert.NotNull(user.HealthDataDisclosureDismissedDate);
+        Assert.InRange(user.HealthDataDisclosureDismissedDate!.Value, before, DateTime.UtcNow);
+        await _unitOfWork.Received(1).SaveChangesAsync();
+    }
+
+    [Fact]
+    public async Task DismissHealthDataDisclosure_KeepsFirstTimestampAndDoesNotResave()
+    {
+        var firstDismissal = DateTime.UtcNow.AddDays(-3);
+        var user = ExistingUser(emailVerified: true);
+        user.HealthDataDisclosureDismissedDate = firstDismissal;
+        _users.GetByAuth0UserIdAsync("auth0|abc").Returns(user);
+
+        var result = await CreateSut().DismissHealthDataDisclosureAsync("auth0|abc");
+
+        Assert.True(result);
+        Assert.Equal(firstDismissal, user.HealthDataDisclosureDismissedDate);
+        await _unitOfWork.DidNotReceive().SaveChangesAsync();
+    }
+
+    [Fact]
+    public async Task DismissHealthDataDisclosure_ReturnsFalseAndDoesNotSave_WhenUserUnknown()
+    {
+        _users.GetByAuth0UserIdAsync("auth0|missing").Returns((User?)null);
+
+        var result = await CreateSut().DismissHealthDataDisclosureAsync("auth0|missing");
+
+        Assert.False(result);
+        await _unitOfWork.DidNotReceive().SaveChangesAsync();
+    }
+
     private User ExistingUser(bool emailVerified) => new()
     {
         Id = _userId,

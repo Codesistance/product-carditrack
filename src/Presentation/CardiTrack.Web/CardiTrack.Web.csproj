@@ -2,6 +2,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\Core\CardiTrack.Application\CardiTrack.Application.csproj" />
+    <ProjectReference Include="..\..\Infrastructure\CardiTrack.Infrastructure\CardiTrack.Infrastructure.csproj" />
     <ProjectReference Include="..\..\Infrastructure\CardiTrack.Observability\CardiTrack.Observability.csproj" />
     <ProjectReference Include="..\..\Infrastructure\CardiTrack.Shared\CardiTrack.Shared.csproj" />
   </ItemGroup>

@@ -11,4 +11,6 @@ public interface IUserService
     Task<UserResponse?> GetByIdAsync(Guid userId);
     Task UpdateLastLoginAsync(Guid userId);
     Task<OnboardingStatusResponse> GetOnboardingStatusAsync(Guid userId, bool? emailVerifiedClaim = null);
+    Task<bool> HasDismissedHealthDataDisclosureAsync(string auth0UserId);
+    Task<bool> DismissHealthDataDisclosureAsync(string auth0UserId);
 }

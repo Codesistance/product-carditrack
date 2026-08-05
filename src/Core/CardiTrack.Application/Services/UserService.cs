@@ -76,6 +76,25 @@ public class UserService : IUserService
         await _unitOfWork.SaveChangesAsync();
     }
 
+    public async Task<bool> HasDismissedHealthDataDisclosureAsync(string auth0UserId)
+    {
+        var user = await _unitOfWork.Users.GetByAuth0UserIdAsync(auth0UserId);
+        return user?.HealthDataDisclosureDismissedDate != null;
+    }
+
+    public async Task<bool> DismissHealthDataDisclosureAsync(string auth0UserId)
+    {
+        var user = await _unitOfWork.Users.GetByAuth0UserIdAsync(auth0UserId);
+        if (user == null) return false;
+
+        // Keep the first acknowledgment timestamp — it is the compliance-relevant one
+        if (user.HealthDataDisclosureDismissedDate != null) return true;
+
+        user.HealthDataDisclosureDismissedDate = DateTime.UtcNow;
+        await _unitOfWork.SaveChangesAsync();
+        return true;
+    }
+
     public async Task<OnboardingStatusResponse> GetOnboardingStatusAsync(Guid userId, bool? emailVerifiedClaim = null)
     {
         var user = await _unitOfWork.Users.GetByIdAsync(userId);

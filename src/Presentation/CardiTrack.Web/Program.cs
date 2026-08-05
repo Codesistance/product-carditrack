@@ -1,8 +1,17 @@
+using CardiTrack.Application.Interfaces.Repositories;
+using CardiTrack.Application.Interfaces.Services;
+using CardiTrack.Application.Services;
+using CardiTrack.Infrastructure.Persistence;
+using CardiTrack.Infrastructure.Repositories;
 using CardiTrack.Observability;
 using CardiTrack.Shared;
 using CardiTrack.Web.Components;
 using Microsoft.AspNetCore.DataProtection;
+using Microsoft.EntityFrameworkCore;
 using Serilog;
+
+// Enforce UTC for all DateTime values read from PostgreSQL timestamptz columns
+AppContext.SetSwitch("Npgsql.EnableLegacyTimestampBehavior", false);
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -31,6 +40,30 @@ try
     // 3. RAZOR COMPONENTS
     builder.Services.AddRazorComponents()
         .AddInteractiveServerComponents();
+
+    // 3a. AUTH STATE — cascade the (currently unauthenticated) principal so
+    // components like the health-data disclosure banner can read it; they light
+    // up automatically once Auth0 web login is wired
+    builder.Services.AddCascadingAuthenticationState();
+
+    // 3b. DATABASE + USER PREFERENCES — the disclosure-dismissed flag is stored
+    // per user, so it follows the user across devices and sessions. Repository
+    // block mirrors CardiTrack.Worker (UnitOfWork requires every repository).
+    builder.Services.AddDbContext<CardiTrackDbContext>(options =>
+        options.UseNpgsql(new ConfigurationLoader(builder.Configuration)
+            .Get(ConfigurationKeys.ConnectionStrings.DefaultConnection)));
+    builder.Services.AddScoped<IOrganizationRepository, OrganizationRepository>();
+    builder.Services.AddScoped<IUserRepository, UserRepository>();
+    builder.Services.AddScoped<ICardiMemberRepository, CardiMemberRepository>();
+    builder.Services.AddScoped<ISubscriptionRepository, SubscriptionRepository>();
+    builder.Services.AddScoped<IUserCardiMemberRepository, UserCardiMemberRepository>();
+    builder.Services.AddScoped<IDeviceConnectionRepository, DeviceConnectionRepository>();
+    builder.Services.AddScoped<IActivityLogRepository, ActivityLogRepository>();
+    builder.Services.AddScoped<IDeviceRepository, DeviceRepository>();
+    builder.Services.AddScoped<IAlertRepository, AlertRepository>();
+    builder.Services.AddScoped<IPatternBaselineRepository, PatternBaselineRepository>();
+    builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
+    builder.Services.AddScoped<IUserService, UserService>();
 
     // 4. HTTP CLIENT FACTORY — named client targeting the CardiTrack API
     builder.Services.AddSingleton<ConfigurationLoader>();

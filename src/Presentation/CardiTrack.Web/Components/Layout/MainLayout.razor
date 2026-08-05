@@ -10,6 +10,10 @@
             <a href="https://learn.microsoft.com/aspnet/core/" target="_blank">About</a>
         </div>
 
+        @* Google Health API disclosure: interactive island in the static layout;
+           auth + dismissal checks live inside the component *@
+        <HealthDataDisclosureBanner @rendermode="new InteractiveServerRenderMode(prerender: false)" />
+
         <article class="content px-4">
             @Body
         </article>

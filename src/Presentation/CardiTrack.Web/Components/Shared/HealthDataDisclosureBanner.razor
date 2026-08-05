@@ -1,0 +1,55 @@
+@using System.Security.Claims
+@using CardiTrack.Application.Interfaces.Services
+@using Microsoft.AspNetCore.Components.Authorization
+@inject IUserService UserService
+
+@if (_visible)
+{
+    <div class="health-disclosure-banner" role="region" aria-label="Health data disclosure">
+        <svg class="disclosure-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true" focusable="false">
+            <path d="M8 16A8 8 0 1 0 8 0a8 8 0 0 0 0 16zm.93-9.412-1 4.705c-.07.34.029.533.304.533.194 0 .487-.07.686-.246l-.088.416c-.287.346-.92.598-1.465.598-.703 0-1.002-.422-.808-1.319l.738-3.468c.064-.293.006-.399-.287-.47l-.451-.081.082-.381 2.29-.287zM8 5.5a1 1 0 1 1 0-2 1 1 0 0 1 0 2z"/>
+        </svg>
+        <span class="disclosure-text">
+            CardiTrack collects health and fitness data to enable anomaly alerts, daily health digests, and trend monitoring.
+            <a href="/privacy">Learn more</a>
+        </span>
+        <button type="button" class="disclosure-dismiss" aria-label="Dismiss" @onclick="DismissAsync">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true" focusable="false">
+                <path d="M2.146 2.854a.5.5 0 1 1 .708-.708L8 7.293l5.146-5.147a.5.5 0 0 1 .708.708L8.707 8l5.147 5.146a.5.5 0 0 1-.708.708L8 8.707l-5.146 5.147a.5.5 0 0 1-.708-.708L7.293 8 2.146 2.854z"/>
+            </svg>
+        </button>
+    </div>
+}
+
+@code {
+    private bool _visible;
+    private string? _auth0UserId;
+
+    // Supplied by AddCascadingAuthenticationState; nullable so the banner stays
+    // inert instead of throwing if cascading auth state is ever absent
+    [CascadingParameter]
+    private Task<AuthenticationState>? AuthStateTask { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (AuthStateTask is null) return;
+
+        var authState = await AuthStateTask;
+        var principal = authState.User;
+        if (principal.Identity?.IsAuthenticated != true) return;
+
+        // NameIdentifier matches the API's Auth0 claim mapping; "sub" covers
+        // OIDC setups with default claim-type mapping disabled
+        _auth0UserId = principal.FindFirst(ClaimTypes.NameIdentifier)?.Value
+            ?? principal.FindFirst("sub")?.Value;
+        if (string.IsNullOrWhiteSpace(_auth0UserId)) return;
+
+        _visible = !await UserService.HasDismissedHealthDataDisclosureAsync(_auth0UserId);
+    }
+
+    private async Task DismissAsync()
+    {
+        _visible = false;
+        await UserService.DismissHealthDataDisclosureAsync(_auth0UserId!);
+    }
+}
