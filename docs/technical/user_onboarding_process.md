@@ -691,6 +691,22 @@ Google Health API scope bundles requested (full form `https://www.googleapis.com
 
 > All Google Health API scopes are **Restricted** — production access requires Google's privacy & security review; pre-verification, only enrolled test users can connect.
 
+**Google Verification Prerequisites (public-launch gate):**
+
+Unverified apps are capped at 100 connected users — enough for dev and beta, but public launch requires passing both gates below (combined runway ~4–8 weeks; see [app verification](https://developers.google.com/health/app-verification)).
+
+*Gate 1 — OAuth restricted-scope review (Google Trust & Safety):*
+- [ ] Domain ownership verified in Google Search Console (`carditrack.com`, cloud-ops Google account)
+- [ ] Public homepage on the verified domain — reachable without login, same app name/branding as the OAuth consent screen, describes the health-data functionality, prominently links the privacy policy
+- [ ] Privacy policy on the same domain with a **dedicated Google Health API section** (not blended into generic disclosures): data collected (heart rate incl. intraday, HRV, SpO2, activity, sleep), purposes (anomaly alerts, daily digests, trend monitoring), sharing (authorized family members only — no ads, no resale), retention/deletion, and the Limited Use affirmation: *"CardiTrack's use and transfer of information received from Google APIs adheres to the [Google API Services User Data Policy](https://developers.google.com/terms/api-services-user-data-policy), including the Limited Use requirements."*
+- [ ] Terms of service page linked from the consent screen
+- [ ] In-app disclosure shown during normal usage in **both** the mobile app and the web dashboard (show-once, dismissible), in Google's prescribed format: *"CardiTrack collects health and fitness data to enable anomaly alerts, daily health digests, and trend monitoring."*
+- [ ] Per-scope written justification tied to user-facing features
+- [ ] Screen recording of the full OAuth consent flow and where health data surfaces in the app
+
+*Gate 2 — CASA security assessment:*
+- [ ] Annual assessment by an authorized third-party lab (self-scan not accepted; ~$500–$4,500, 2–6 weeks) → Letter of Assessment submitted to Google, renewed every 12 months
+
 **Data Ingestion & Token Management:**
 - **Webhook push** — Google Health API webhook subscriptions notify CardiTrack on new data (notify-then-fetch); events flow through Event Hubs into the AI pipeline (see [llm_design.md](../llm_design.md)). No polling sync job.
 - **Token refresh** — `CardiTrack.Worker` proactively refreshes OAuth tokens before expiry (cron-driven, Cronos)
