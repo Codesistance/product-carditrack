@@ -80,6 +80,17 @@ resource "google_compute_security_policy" "waf" {
     description = "Block requests to sensitive file extensions"
   }
 
+  # Block CMS/WordPress scanner paths (probes for software we do not run;
+  # *.php probes such as xmlrpc.php are already denied by the extension rule above)
+  rule {
+    action   = "deny(403)"
+    priority = 70
+    match {
+      expr { expression = "request.path.matches('(?i)/(?:wp-json|wp-admin|wp-content|wp-includes)(?:/.*)?')" }
+    }
+    description = "Block CMS/WordPress scanner paths (wp-json, wp-admin, wp-content, wp-includes)"
+  }
+
   # Rate limiting — 100 req/min per IP
   rule {
     action   = "throttle"
