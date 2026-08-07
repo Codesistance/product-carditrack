@@ -154,11 +154,24 @@ MedGemma-generated **narrative** analysis of a CardiMember's baseline trends —
     "Resting heart rate trending slightly upward",
     "Sleep duration consistent with baseline"
   ],
+  "isLearning": false,
   "generatedAt": "2026-08-07T10:00:00Z"
 }
 ```
 
-> Note: this endpoint performs no member-link check of its own beyond authentication — access control hardening is tracked.
+**`isLearning`** is `true` until the member has a 30-day `PatternBaseline` — the same test the dashboard's `baseline.isLearning` makes. While it is true, the summary describes **what has been observed so far**, not how the member compares to normal, because no normal has been established yet:
+
+```json
+{
+  "summary": "So far the readings show a settled daily rhythm: activity concentrated in the late morning, and sleep starting at a consistent hour...",
+  "keyFindings": ["Nine days of data captured so far"],
+  "isLearning": true
+}
+```
+
+Clients must not label that output as a trend assessment. The prompt behind it is forbidden from calling anything elevated, low, or a deviation.
+
+The prompt carries a member context block — age, sex, and caregiver-entered medical notes — because a resting heart rate is not interpretable without them. The member's **name and id are never sent** to the model.
 
 ---
 
