@@ -2,7 +2,7 @@
 
 ## Overview
 
-This document covers the complete infrastructure setup for CardiTrack, including the data architecture, encryption, deployment, and cloud resources. The platform runs entirely on **Google Cloud Platform** (project `carditrack-490120`, region `europe-west2`) and is provisioned with Terraform from [`infrastructure/`](../infrastructure/README.md).
+This document covers the complete infrastructure setup for CardiTrack, including the data architecture, encryption, deployment, and cloud resources. The platform runs entirely on **Google Cloud Platform** — all Terraform-managed resources in project `carditrack-490120`, region `europe-west2`, provisioned from [`infrastructure/`](../infrastructure/README.md). Three further projects hold **only** OAuth consent screens and clients (no resources, no service accounts) because Google scopes consent-screen verification per project — see [oauth_clients.md](./technical/oauth_clients.md#google-cloud-project-layout).
 
 ## Table of Contents
 
@@ -137,7 +137,7 @@ For the wider data-protection picture (Auth0, DPIA, ASP.NET Data Protection), se
 
 ## Cloud Infrastructure (GCP)
 
-All resources live in GCP project **`carditrack-490120`**, region **`europe-west2`**, and are managed by Terraform.
+All Terraform-managed resources live in GCP project **`carditrack-490120`**, region **`europe-west2`**. The only CardiTrack assets outside it are the OAuth consent screens and clients in `carditrack-signin`, `carditrack-devices-dev` and `carditrack-devices-prod` ([oauth_clients.md](./technical/oauth_clients.md#google-cloud-project-layout)); the Secret Manager entries holding those clients' credentials stay here.
 
 ### Resource inventory (per environment)
 
