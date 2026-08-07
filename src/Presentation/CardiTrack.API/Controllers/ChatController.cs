@@ -1,3 +1,4 @@
+using CardiTrack.API.Infrastructure.Auditing;
 using CardiTrack.API.Infrastructure.UserContext;
 using CardiTrack.Application.DTOs.Common;
 using CardiTrack.Application.DTOs.Requests;
@@ -10,6 +11,7 @@ using Microsoft.AspNetCore.Mvc;
 namespace CardiTrack.API.Controllers;
 
 [Authorize]
+[AuditHealthDataAccess("ChatAboutMember")]
 [Route("api/v1/chat")]
 public class ChatController : BaseApiController
 {

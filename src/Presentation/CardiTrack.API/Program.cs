@@ -109,6 +109,10 @@ try
     app.UseAuthentication();
     app.UseMiddleware<UserContextMiddleware>();
     app.UseAuthorization();
+    // After UseAuthorization so the endpoint (and its audit attribute) is resolved and
+    // UserContextMiddleware has established who is asking; before MapControllers so it wraps
+    // the whole of the action's execution.
+    app.UseMiddleware<AuditLoggingMiddleware>();
     app.MapControllers();
     app.MapHealthChecks("/health")
         .AllowAnonymous()

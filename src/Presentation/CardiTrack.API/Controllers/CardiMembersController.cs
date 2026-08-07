@@ -1,3 +1,4 @@
+using CardiTrack.API.Infrastructure.Auditing;
 using CardiTrack.API.Infrastructure.UserContext;
 using CardiTrack.Application.DTOs.Requests;
 using CardiTrack.Application.DTOs.Responses;
@@ -18,6 +19,7 @@ namespace CardiTrack.API.Controllers;
 /// member exists, which is itself a disclosure. See <see cref="ICardiMemberAccessService"/>.
 /// </remarks>
 [Authorize]
+[AuditHealthDataAccess("AccessCardiMember")]
 [Route("api/v1")]
 public class CardiMembersController : BaseApiController
 {
