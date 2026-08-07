@@ -5,6 +5,7 @@ using CardiTrack.Domain.Entities;
 using CardiTrack.Domain.Enums;
 using CardiTrack.Infrastructure.ExternalClients;
 using CardiTrack.Infrastructure.Extensions;
+using CardiTrack.Application.Interfaces.Security;
 using CardiTrack.Infrastructure.Security;
 using CardiTrack.Infrastructure.Services;
 using CardiTrack.Infrastructure.Settings;
@@ -24,6 +25,7 @@ public class DeviceConnectionServiceTests
     private readonly IUnitOfWork _unitOfWork = Substitute.For<IUnitOfWork>();
     private readonly IEncryptionService _encryption = Substitute.For<IEncryptionService>();
     private readonly IOAuthCodeExchangeService _codeExchange = Substitute.For<IOAuthCodeExchangeService>();
+    private readonly IOAuthTokenRefreshService _tokenRefresh = Substitute.For<IOAuthTokenRefreshService>();
     private readonly IDistributedCache _cache =
         new MemoryDistributedCache(Options.Create(new MemoryDistributedCacheOptions()));
 
@@ -57,6 +59,7 @@ public class DeviceConnectionServiceTests
             _encryption,
             _cache,
             _codeExchange,
+            _tokenRefresh,
             Options.Create(new List<DeviceProviderSettings> { fitbit }));
     }
 
@@ -482,5 +485,143 @@ public class DeviceConnectionServiceTests
         var result = await CreateSut().GetDevicesAsync(_userId, _memberId);
 
         Assert.Equal(["active", "token_expired", "disconnected"], result.Devices.Select(d => d.Status));
+    }
+
+    // ── M1-15 device management ─────────────────────────────────────────────────
+
+    private DeviceConnection SeedConnection(
+        bool isPrimary = false,
+        ConnectionStatus status = ConnectionStatus.Connected,
+        DeviceType deviceType = DeviceType.Fitbit) => new()
+    {
+        CardiMemberId = _memberId,
+        DeviceType = deviceType,
+        DeviceName = "Dad's Fitbit",
+        ConnectionStatus = status,
+        IsPrimary = isPrimary,
+        IsActive = true,
+        AccessToken = "enc(access)",
+        RefreshToken = "enc(refresh)",
+        TokenExpiry = DateTime.UtcNow.AddHours(1),
+        LastSyncDate = DateTime.UtcNow.AddMinutes(-10),
+        SyncFrequencyMinutes = 30,
+        Scopes = """["activity","heartrate","sleep"]""",
+    };
+
+    [Fact]
+    public async Task GetDevices_ProjectsScopesNextSyncAndTodaysUpdates()
+    {
+        var connection = SeedConnection();
+        _unitOfWork.DeviceConnections.GetByCardiMemberIdAsync(_memberId).Returns([connection]);
+        _unitOfWork.ActivityLogs
+            .GetByCardiMemberAndDateRangeAsync(_memberId, Arg.Any<DateOnly>(), Arg.Any<DateOnly>())
+            .Returns(
+            [
+                new ActivityLog { CardiMemberId = _memberId, DeviceConnectionId = connection.Id },
+                new ActivityLog { CardiMemberId = _memberId, DeviceConnectionId = connection.Id },
+                new ActivityLog { CardiMemberId = _memberId, DeviceConnectionId = Guid.NewGuid() },
+            ]);
+
+        var device = (await CreateSut().GetDevicesAsync(_userId, _memberId)).Devices.Single();
+
+        Assert.Equal(["activity", "heartrate", "sleep"], device.Scopes);
+        Assert.Equal(connection.LastSyncDate!.Value.AddMinutes(30), device.NextSyncAt);
+        Assert.Equal(2, device.TodayUpdateCount);
+    }
+
+    [Fact]
+    public async Task GetDevices_ToleratesMalformedScopes()
+    {
+        var connection = SeedConnection();
+        connection.Scopes = "not json";
+        _unitOfWork.DeviceConnections.GetByCardiMemberIdAsync(_memberId).Returns([connection]);
+
+        var device = (await CreateSut().GetDevicesAsync(_userId, _memberId)).Devices.Single();
+
+        Assert.Empty(device.Scopes);
+    }
+
+    [Fact]
+    public async Task Disconnect_SoftDeletesAndDiscardsTokens()
+    {
+        var connection = SeedConnection(isPrimary: true);
+        _unitOfWork.DeviceConnections.GetByCardiMemberIdAsync(_memberId).Returns([connection]);
+
+        await CreateSut().DisconnectAsync(_userId, _memberId, connection.Id);
+
+        Assert.False(connection.IsActive);
+        Assert.False(connection.IsPrimary);
+        Assert.Equal(ConnectionStatus.Disconnected, connection.ConnectionStatus);
+        Assert.Null(connection.AccessToken);
+        Assert.Null(connection.RefreshToken);
+        Assert.Null(connection.TokenExpiry);
+    }
+
+    [Fact]
+    public async Task Disconnect_PromotesAnotherDevice_WhenThePrimaryIsRemoved()
+    {
+        var primary = SeedConnection(isPrimary: true);
+        var other = SeedConnection(deviceType: DeviceType.Withings);
+        _unitOfWork.DeviceConnections.GetByCardiMemberIdAsync(_memberId).Returns([primary, other]);
+
+        await CreateSut().DisconnectAsync(_userId, _memberId, primary.Id);
+
+        // Otherwise the member is left with devices but no primary.
+        Assert.True(other.IsPrimary);
+    }
+
+    [Fact]
+    public async Task Disconnect_Throws_ForUnknownDevice()
+    {
+        _unitOfWork.DeviceConnections.GetByCardiMemberIdAsync(_memberId).Returns([SeedConnection()]);
+
+        await Assert.ThrowsAsync<KeyNotFoundException>(
+            () => CreateSut().DisconnectAsync(_userId, _memberId, Guid.NewGuid()));
+    }
+
+    [Fact]
+    public async Task SetPrimary_DemotesThePreviousPrimary()
+    {
+        var previous = SeedConnection(isPrimary: true);
+        var target = SeedConnection(deviceType: DeviceType.Withings);
+        _unitOfWork.DeviceConnections.GetByCardiMemberIdAsync(_memberId).Returns([previous, target]);
+
+        var result = await CreateSut().SetPrimaryAsync(_userId, _memberId, target.Id);
+
+        Assert.True(target.IsPrimary);
+        Assert.False(previous.IsPrimary);
+        Assert.True(result.IsPrimary);
+    }
+
+    [Fact]
+    public async Task RefreshConnection_RenewsTokenAndReportsConnected()
+    {
+        var connection = SeedConnection(status: ConnectionStatus.TokenExpired);
+        _unitOfWork.DeviceConnections.GetByCardiMemberIdAsync(_memberId).Returns([connection]);
+        _tokenRefresh
+            .RefreshIfExpiredAsync(connection, Arg.Any<DeviceProviderSettings>())
+            .Returns("fresh_access_token");
+
+        var result = await CreateSut().RefreshConnectionAsync(_userId, _memberId, connection.Id);
+
+        Assert.Equal(ConnectionStatus.Connected, connection.ConnectionStatus);
+        Assert.Equal("active", result.Status);
+    }
+
+    [Fact]
+    public async Task RefreshConnection_MarksTokenExpired_WhenTheProviderCannotBeReached()
+    {
+        var connection = SeedConnection();
+        _unitOfWork.DeviceConnections.GetByCardiMemberIdAsync(_memberId).Returns([connection]);
+        _tokenRefresh
+            .RefreshIfExpiredAsync(connection, Arg.Any<DeviceProviderSettings>())
+            .Returns<string>(_ => throw new HttpRequestException("provider down"));
+
+        var ex = await Assert.ThrowsAsync<DeviceConnectionException>(
+            () => CreateSut().RefreshConnectionAsync(_userId, _memberId, connection.Id));
+
+        // The user is told to reconnect, and the stored state agrees with what they were told.
+        Assert.Equal(DeviceConnectionException.OAuthExchangeFailed, ex.Code);
+        Assert.Equal(ConnectionStatus.TokenExpired, connection.ConnectionStatus);
     }
 }

@@ -13,7 +13,13 @@ public class DashboardResponse
     public int Age { get; set; }
     public string? Phone { get; set; }
     public string? PhotoUrl { get; set; }
+    /// <summary>green/yellow/orange/red/unknown, or "paused" while monitoring is paused.</summary>
     public string HealthStatus { get; set; } = "unknown";
+
+    public bool MonitoringPaused { get; set; }
+    public DateTime? MonitoringPausedUntil { get; set; }
+    public string? MonitoringPauseReason { get; set; }
+
     public DateTime? LastSyncedAt { get; set; }
     public int UnreadAlertCount { get; set; }
     public DashboardDeviceState Device { get; set; } = new();

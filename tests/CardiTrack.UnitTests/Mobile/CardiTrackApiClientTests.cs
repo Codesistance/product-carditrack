@@ -163,4 +163,174 @@ public class CardiTrackApiClientTests
 
         Assert.Contains("No connection", ex.Message);
     }
+
+    // ── M1-13 / M1-14 / M1-15 ───────────────────────────────────────────────────
+
+    private static readonly Guid MemberId = Guid.Parse("6f9619ff-8b86-d011-b42d-00c04fc964ff");
+    private static readonly Guid DeviceId = Guid.Parse("7f9619ff-8b86-d011-b42d-00c04fc964ff");
+
+    [Fact]
+    public async Task GetCardiMember_UsesVersionedRoute_AndUnwrapsDetail()
+    {
+        var (client, http) = CreateSut();
+        http.Enqueue(HttpStatusCode.OK, """
+            {"success":true,"message":"ok","data":{
+             "id":"6f9619ff-8b86-d011-b42d-00c04fc964ff","name":"Margaret Doe","dateOfBirth":"1945-06-15",
+             "age":80,"relationship":2,"isPrimaryCaregiver":true,"emergencyContactName":"Jane Doe",
+             "emergencyContactPhone":"+15551234567","medicalNotes":"Pacemaker fitted 2019",
+             "alertSensitivity":2,"monitoringPaused":false,"monitoringSince":"2026-01-15T09:00:00Z",
+             "connectedDeviceCount":2,
+             "baseline":{"isLearning":true,"daysCaptured":15,"daysRequired":30,"percentComplete":50}},
+             "timestamp":"2026-08-07T00:00:00Z"}
+            """);
+
+        var detail = await client.GetCardiMemberAsync(MemberId);
+
+        var request = http.Requests.Single();
+        Assert.Equal(HttpMethod.Get, request.Method);
+        Assert.Equal($"/api/v1/cardimembers/{MemberId}", request.Uri!.AbsolutePath);
+        Assert.Equal("Margaret Doe", detail.Name);
+        Assert.Equal("Pacemaker fitted 2019", detail.MedicalNotes);
+        Assert.Equal(2, detail.ConnectedDeviceCount);
+        Assert.Equal(15, detail.Baseline.DaysCaptured);
+    }
+
+    [Fact]
+    public async Task UpdateCardiMember_PutsFormPayload()
+    {
+        var (client, http) = CreateSut();
+        http.Enqueue(HttpStatusCode.OK, """
+            {"success":true,"message":"ok","data":{
+             "id":"6f9619ff-8b86-d011-b42d-00c04fc964ff","name":"Margaret A. Doe","age":80,
+             "baseline":{"isLearning":false,"daysCaptured":30,"daysRequired":30,"percentComplete":100}},
+             "timestamp":"2026-08-07T00:00:00Z"}
+            """);
+
+        await client.UpdateCardiMemberAsync(MemberId, new UpdateCardiMemberRequest
+        {
+            Name = "Margaret A. Doe",
+            DateOfBirth = new DateOnly(1945, 6, 15),
+            RelationshipType = RelationshipType.Parent,
+            MedicalNotes = "Now also on lisinopril",
+        });
+
+        var request = http.Requests.Single();
+        Assert.Equal(HttpMethod.Put, request.Method);
+        Assert.Equal($"/api/v1/cardimembers/{MemberId}", request.Uri!.AbsolutePath);
+        Assert.Contains("Margaret A. Doe", request.Body);
+        Assert.Contains("lisinopril", request.Body);
+    }
+
+    [Fact]
+    public async Task RemoveCardiMember_DeletesAndAcceptsEmpty204()
+    {
+        var (client, http) = CreateSut();
+        // 204 carries no envelope — the client must not try to read one.
+        http.Enqueue(HttpStatusCode.NoContent, "");
+
+        await client.RemoveCardiMemberAsync(MemberId);
+
+        var request = http.Requests.Single();
+        Assert.Equal(HttpMethod.Delete, request.Method);
+        Assert.Equal($"/api/v1/cardimembers/{MemberId}", request.Uri!.AbsolutePath);
+    }
+
+    [Fact]
+    public async Task RemoveCardiMember_ThrowsApiException_OnFailure()
+    {
+        var (client, http) = CreateSut();
+        http.Enqueue(HttpStatusCode.NotFound,
+            """{"success":false,"message":"CardiMember not found","timestamp":"2026-08-07T00:00:00Z"}""");
+
+        var ex = await Assert.ThrowsAsync<ApiException>(() => client.RemoveCardiMemberAsync(MemberId));
+
+        Assert.Equal("CardiMember not found", ex.Message);
+    }
+
+    [Fact]
+    public async Task PauseMonitoring_PostsDurationAndReason()
+    {
+        var (client, http) = CreateSut();
+        http.Enqueue(HttpStatusCode.OK, """
+            {"success":true,"message":"ok","data":{"monitoringPaused":true,
+             "monitoringPausedUntil":"2026-08-08T21:00:00Z","monitoringPauseReason":"Travelling"},
+             "timestamp":"2026-08-07T00:00:00Z"}
+            """);
+
+        var state = await client.PauseMonitoringAsync(
+            MemberId, new PauseMonitoringRequest { DurationHours = 24, Reason = "Travelling" });
+
+        var request = http.Requests.Single();
+        Assert.Equal(HttpMethod.Post, request.Method);
+        Assert.Equal($"/api/v1/cardimembers/{MemberId}/pause", request.Uri!.AbsolutePath);
+        Assert.Contains("24", request.Body);
+        Assert.True(state.MonitoringPaused);
+    }
+
+    [Fact]
+    public async Task ResumeMonitoring_DeletesPauseAndUnwrapsEnvelope()
+    {
+        var (client, http) = CreateSut();
+        http.Enqueue(HttpStatusCode.OK, """
+            {"success":true,"message":"ok","data":{"monitoringPaused":false},
+             "timestamp":"2026-08-07T00:00:00Z"}
+            """);
+
+        var state = await client.ResumeMonitoringAsync(MemberId);
+
+        var request = http.Requests.Single();
+        Assert.Equal(HttpMethod.Delete, request.Method);
+        Assert.Equal($"/api/v1/cardimembers/{MemberId}/pause", request.Uri!.AbsolutePath);
+        Assert.False(state.MonitoringPaused);
+    }
+
+    [Fact]
+    public async Task DisconnectDevice_DeletesDeviceRoute()
+    {
+        var (client, http) = CreateSut();
+        http.Enqueue(HttpStatusCode.NoContent, "");
+
+        await client.DisconnectDeviceAsync(MemberId, DeviceId);
+
+        var request = http.Requests.Single();
+        Assert.Equal(HttpMethod.Delete, request.Method);
+        Assert.Equal($"/api/v1/cardimembers/{MemberId}/devices/{DeviceId}", request.Uri!.AbsolutePath);
+    }
+
+    [Fact]
+    public async Task SetPrimaryDevice_PostsWithoutBody()
+    {
+        var (client, http) = CreateSut();
+        http.Enqueue(HttpStatusCode.OK, """
+            {"success":true,"message":"ok","data":{"deviceId":"7f9619ff-8b86-d011-b42d-00c04fc964ff",
+             "provider":"fitbit","displayName":"Dad's Fitbit","status":"active","isPrimary":true,
+             "scopes":["activity"],"todayUpdateCount":4},"timestamp":"2026-08-07T00:00:00Z"}
+            """);
+
+        var device = await client.SetPrimaryDeviceAsync(MemberId, DeviceId);
+
+        var request = http.Requests.Single();
+        Assert.Equal(HttpMethod.Post, request.Method);
+        Assert.Equal($"/api/v1/cardimembers/{MemberId}/devices/{DeviceId}/primary", request.Uri!.AbsolutePath);
+        Assert.True(string.IsNullOrEmpty(request.Body));
+        Assert.True(device.IsPrimary);
+        Assert.Equal(4, device.TodayUpdateCount);
+    }
+
+    [Fact]
+    public async Task RefreshDeviceConnection_PostsToRefreshRoute()
+    {
+        var (client, http) = CreateSut();
+        http.Enqueue(HttpStatusCode.OK, """
+            {"success":true,"message":"ok","data":{"deviceId":"7f9619ff-8b86-d011-b42d-00c04fc964ff",
+             "provider":"fitbit","displayName":"Dad's Fitbit","status":"active","scopes":[]},
+             "timestamp":"2026-08-07T00:00:00Z"}
+            """);
+
+        await client.RefreshDeviceConnectionAsync(MemberId, DeviceId);
+
+        var request = http.Requests.Single();
+        Assert.Equal(HttpMethod.Post, request.Method);
+        Assert.Equal($"/api/v1/cardimembers/{MemberId}/devices/{DeviceId}/refresh", request.Uri!.AbsolutePath);
+    }
 }

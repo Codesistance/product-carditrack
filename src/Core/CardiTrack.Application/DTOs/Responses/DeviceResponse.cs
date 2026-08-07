@@ -14,6 +14,18 @@ public class DeviceResponse
     public DateTime? LastSyncedAt { get; set; }
     public DateTime? ConnectedAt { get; set; }
     public DateTime? TokenExpiresAt { get; set; }
+
+    /// <summary>Granted data scopes, e.g. ["activity", "heartrate", "sleep"] (M1-15).</summary>
+    public List<string> Scopes { get; set; } = new();
+
+    /// <summary>
+    /// When the sync worker will next pick this connection up. Derived from the last sync and
+    /// the connection's own interval, so it is an estimate, not a scheduled job time.
+    /// </summary>
+    public DateTime? NextSyncAt { get; set; }
+
+    /// <summary>How many of today's activity records came from this device (M1-15).</summary>
+    public int TodayUpdateCount { get; set; }
 }
 
 public class DeviceListResponse

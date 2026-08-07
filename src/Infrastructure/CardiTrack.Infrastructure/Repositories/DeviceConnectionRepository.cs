@@ -41,13 +41,24 @@ public class DeviceConnectionRepository : Repository<DeviceConnection>, IDeviceC
             .ToListAsync();
     }
 
+    /// <summary>
+    /// Connections the sync worker should pull next. Members who are removed or whose
+    /// monitoring is paused are excluded here rather than in the worker, so every caller of
+    /// this query inherits the same rule — pausing monitoring has to actually stop the data
+    /// collection, not merely change what the app displays.
+    /// </summary>
     public async Task<IEnumerable<DeviceConnection>> GetDueForSyncAsync(int thresholdMinutes)
     {
-        var cutoff = DateTime.UtcNow.AddMinutes(-thresholdMinutes);
+        var now = DateTime.UtcNow;
+        var cutoff = now.AddMinutes(-thresholdMinutes);
         return await _dbSet
             .Where(dc => dc.IsActive
                          && dc.ConnectionStatus == ConnectionStatus.Connected
                          && (dc.LastSyncDate == null || dc.LastSyncDate < cutoff))
+            .Join(_context.CardiMembers, dc => dc.CardiMemberId, cm => cm.Id, (dc, cm) => new { dc, cm })
+            .Where(x => x.cm.IsActive
+                        && (x.cm.MonitoringPausedUntil == null || x.cm.MonitoringPausedUntil <= now))
+            .Select(x => x.dc)
             .ToListAsync();
     }
 

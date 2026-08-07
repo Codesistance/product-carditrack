@@ -41,6 +41,19 @@ public class CardiMemberAccessService : ICardiMemberAccessService
             throw new KeyNotFoundException(DeniedMessage);
     }
 
+    public async Task RequireManageAccessAsync(
+        Guid requestingUserId, Guid cardiMemberId, CancellationToken ct = default)
+    {
+        if (requestingUserId == Guid.Empty)
+            throw new KeyNotFoundException(DeniedMessage);
+
+        var links = await _unitOfWork.UserCardiMembers.GetByUserIdAsync(requestingUserId);
+        var manages = links.Any(l =>
+            l.CardiMemberId == cardiMemberId && l.IsActive && l.CanViewHealthData && l.IsPrimaryCaregiver);
+        if (!manages)
+            throw new KeyNotFoundException(DeniedMessage);
+    }
+
     /// <summary>
     /// One repository round-trip regardless of how many members are being checked — the link
     /// set is small (a caregiver watches a handful of members) and callers such as report

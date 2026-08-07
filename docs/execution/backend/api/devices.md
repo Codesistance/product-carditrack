@@ -2,7 +2,7 @@
 
 Handles wearable device connections via OAuth, device status management, primary device designation, and token refresh.
 
-**Implementation status:** the core OAuth connection flow (list, connect, bounce redirect, callback) is **implemented**. The per-device management endpoints (get single device, set primary, reconnect, delete) are **planned — not yet implemented** and marked as such below.
+**Implementation status:** the core OAuth connection flow (list, connect, bounce redirect, callback) is **implemented**, as are the M1-15 management endpoints — **delete**, **set primary**, and a **refresh** endpoint. Get-single-device remains **planned — not yet implemented**; note the implemented routes differ from the planned shapes below (`POST .../primary` not `PUT`, `POST .../refresh` not `POST .../reconnect`).
 
 Key implementation facts (verified against `DeviceConnectionService`):
 
@@ -45,11 +45,16 @@ Wrapped in the standard `ApiResponse<T>` envelope; `deviceId` is a raw GUID (no 
       "isPrimary": true,
       "lastSyncedAt": "2026-08-07T08:30:00Z",
       "connectedAt": "2026-06-15T09:00:00Z",
-      "tokenExpiresAt": "2026-08-07T09:30:00Z"
+      "tokenExpiresAt": "2026-08-07T09:30:00Z",
+      "scopes": ["activity", "heartrate", "sleep"],
+      "nextSyncAt": "2026-08-07T09:00:00Z",
+      "todayUpdateCount": 4
     }
   ]
 }
 ```
+
+`scopes`, `nextSyncAt` and `todayUpdateCount` back the M1-15 device cards. All three are derived, not stored: scopes are parsed from the connection's scope JSON (a malformed value yields `[]` rather than an error), `nextSyncAt` is `lastSyncedAt + syncFrequencyMinutes` and is therefore an estimate rather than a scheduled job time, and `todayUpdateCount` counts today's activity records attributed to that connection. There is **no battery level** — no provider battery data is stored or fetched.
 
 **Device Status Values** (mapped from the internal `ConnectionStatus` enum):
 
@@ -225,23 +230,23 @@ Get details and current status for a single connected device.
 
 ---
 
-## PUT `/api/v1/cardimembers/{id}/devices/{deviceId}/primary`
+## POST `/api/v1/cardimembers/{id}/devices/{deviceId}/primary`
 
-> **Planned — not yet implemented.** Today `isPrimary` is set automatically: the member's first connection becomes primary and cannot be changed via the API.
+> **Implemented** (M1-15). Note the verb: `POST`, not the `PUT` originally planned. Previously `isPrimary` was set automatically — the member's first connection became primary and could never be changed.
 
-Set this device as the primary data source. Clears primary flag from any previously primary device.
+Sets this device as the primary data source, clearing the flag from any previously primary device. Returns the updated device object (same shape as the list endpoint). **404** if the device does not belong to this CardiMember.
 
-**Priority:** P1 | **Auth Required:** Yes
+---
 
-### Response `200 OK`
+## POST `/api/v1/cardimembers/{id}/devices/{deviceId}/refresh`
 
-```json
-{
-  "deviceId": "dev_01J9...",
-  "isPrimary": true,
-  "updatedAt": "2026-03-09T10:00:00Z"
-}
-```
+> **Implemented** (M1-15) in place of the planned `/reconnect` endpoint below.
+
+Renews the connection's OAuth token if it has expired and returns the updated device object. Takes **no request body**.
+
+Deliberately **does not pull health data** — syncing is the Worker's job per the background-job rule in `CLAUDE.md`, and this is a user-initiated request. When the provider cannot be reached, the connection is recorded as `token_expired` before the error is returned (**502**), so the stored state agrees with what the user was told.
+
+A device whose OAuth grant has been revoked outright still needs the full reconnect flow below.
 
 ---
 
@@ -277,9 +282,11 @@ Initiate a token refresh for a device with an expired or revoked OAuth token.
 
 ## DELETE `/api/v1/cardimembers/{id}/devices/{deviceId}`
 
-> **Planned — not yet implemented.** There is no way to remove a connection via the API today, and no role checks exist on device endpoints (member-link authorization only).
+> **Implemented** (M1-15). Authorization is member-link only — there are still no role checks on device endpoints.
 
-Remove a device connection. Historical data synced via this device is retained. A CardiMember **may have zero connected devices** (e.g. before their first connection); the dashboard reports `device.hasActiveConnection: false` in that state.
+Removes a device connection. Soft delete: the connection is deactivated, its status set to `disconnected`, and its **stored OAuth tokens discarded** — revoking the grant at the provider remains the user's own step. If the removed device was the primary, another active connection is promoted, so a member with devices always has a primary.
+
+Historical data synced via this device is retained. A CardiMember **may have zero connected devices** (e.g. before their first connection); the dashboard reports `device.hasActiveConnection: false` in that state.
 
 **Priority:** P1 | **Auth Required:** Yes
 

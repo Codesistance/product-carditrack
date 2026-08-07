@@ -8,6 +8,7 @@ using CardiTrack.Domain.Entities;
 using CardiTrack.Domain.Enums;
 using CardiTrack.Domain.Extensions;
 using CardiTrack.Infrastructure.ExternalClients;
+using CardiTrack.Application.Interfaces.Security;
 using CardiTrack.Infrastructure.Security;
 using CardiTrack.Infrastructure.Settings;
 using CardiTrack.Shared.Json;
@@ -45,6 +46,7 @@ public class DeviceConnectionService : IDeviceConnectionService
     private readonly IEncryptionService _encryption;
     private readonly IDistributedCache _cache;
     private readonly IOAuthCodeExchangeService _codeExchange;
+    private readonly IOAuthTokenRefreshService _tokenRefresh;
     private readonly List<DeviceProviderSettings> _providerConfigs;
 
     public DeviceConnectionService(
@@ -52,12 +54,14 @@ public class DeviceConnectionService : IDeviceConnectionService
         IEncryptionService encryption,
         IDistributedCache cache,
         IOAuthCodeExchangeService codeExchange,
+        IOAuthTokenRefreshService tokenRefresh,
         IOptions<List<DeviceProviderSettings>> providerConfigs)
     {
         _unitOfWork = unitOfWork;
         _encryption = encryption;
         _cache = cache;
         _codeExchange = codeExchange;
+        _tokenRefresh = tokenRefresh;
         _providerConfigs = providerConfigs.Value;
     }
 
@@ -67,9 +71,22 @@ public class DeviceConnectionService : IDeviceConnectionService
         await EnsureMemberAccessAsync(requestingUserId, cardiMemberId);
 
         var connections = await _unitOfWork.DeviceConnections.GetByCardiMemberIdAsync(cardiMemberId);
+
+        // One query for the whole list rather than one per device — M1-15 renders every
+        // connection the member has.
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        var todaysLogs = await _unitOfWork.ActivityLogs.GetByCardiMemberAndDateRangeAsync(
+            cardiMemberId, today, today);
+        var updatesByConnection = todaysLogs
+            .GroupBy(l => l.DeviceConnectionId)
+            .ToDictionary(g => g.Key, g => g.Count());
+
         return new DeviceListResponse
         {
-            Devices = connections.Select(ToDeviceResponse).ToList()
+            Devices = connections
+                .Select(c => ToDeviceResponse(
+                    c, updatesByConnection.TryGetValue(c.Id, out var count) ? count : 0))
+                .ToList()
         };
     }
 
@@ -254,6 +271,117 @@ public class DeviceConnectionService : IDeviceConnectionService
         return ToDeviceResponse(connection);
     }
 
+    public async Task DisconnectAsync(
+        Guid requestingUserId, Guid cardiMemberId, Guid deviceId, CancellationToken ct = default)
+    {
+        await EnsureMemberAccessAsync(requestingUserId, cardiMemberId);
+        var connections = (await _unitOfWork.DeviceConnections.GetByCardiMemberIdAsync(cardiMemberId)).ToList();
+        var connection = RequireConnection(connections, deviceId);
+
+        var now = DateTime.UtcNow;
+        connection.IsActive = false;
+        connection.IsPrimary = false;
+        connection.ConnectionStatus = ConnectionStatus.Disconnected;
+        // Tokens are useless once disconnected and must not linger in the database.
+        connection.AccessToken = null;
+        connection.RefreshToken = null;
+        connection.TokenExpiry = null;
+        connection.UpdatedDate = now;
+        _unitOfWork.DeviceConnections.Update(connection);
+
+        // Without this the member would be left with devices but no primary, and the sync
+        // worker's primary-first ordering would silently pick an arbitrary one.
+        var replacement = connections.FirstOrDefault(c => c.Id != deviceId && c.IsActive);
+        if (replacement is not null && !connections.Any(c => c.Id != deviceId && c.IsActive && c.IsPrimary))
+        {
+            replacement.IsPrimary = true;
+            replacement.UpdatedDate = now;
+            _unitOfWork.DeviceConnections.Update(replacement);
+        }
+
+        await _unitOfWork.SaveChangesAsync();
+    }
+
+    public async Task<DeviceResponse> SetPrimaryAsync(
+        Guid requestingUserId, Guid cardiMemberId, Guid deviceId, CancellationToken ct = default)
+    {
+        await EnsureMemberAccessAsync(requestingUserId, cardiMemberId);
+        var connections = (await _unitOfWork.DeviceConnections.GetByCardiMemberIdAsync(cardiMemberId)).ToList();
+        var connection = RequireConnection(connections, deviceId);
+
+        var now = DateTime.UtcNow;
+        foreach (var other in connections.Where(c => c.IsPrimary && c.Id != deviceId))
+        {
+            other.IsPrimary = false;
+            other.UpdatedDate = now;
+            _unitOfWork.DeviceConnections.Update(other);
+        }
+
+        connection.IsPrimary = true;
+        connection.UpdatedDate = now;
+        _unitOfWork.DeviceConnections.Update(connection);
+        await _unitOfWork.SaveChangesAsync();
+
+        return ToDeviceResponse(connection, await CountTodaysUpdatesAsync(cardiMemberId, deviceId));
+    }
+
+    public async Task<DeviceResponse> RefreshConnectionAsync(
+        Guid requestingUserId, Guid cardiMemberId, Guid deviceId, CancellationToken ct = default)
+    {
+        await EnsureMemberAccessAsync(requestingUserId, cardiMemberId);
+        var connections = (await _unitOfWork.DeviceConnections.GetByCardiMemberIdAsync(cardiMemberId)).ToList();
+        var connection = RequireConnection(connections, deviceId);
+
+        var providerName = ProviderNames.FirstOrDefault(kv => kv.Value == connection.DeviceType).Key;
+        if (providerName is null)
+        {
+            throw new DeviceConnectionException(
+                DeviceConnectionException.UnsupportedProvider,
+                $"{connection.DeviceType.GetDisplayName()} connections can't be refreshed from here.");
+        }
+        var (_, config) = ResolveProvider(providerName);
+
+        try
+        {
+            await _tokenRefresh.RefreshIfExpiredAsync(connection, config);
+            connection.ConnectionStatus = ConnectionStatus.Connected;
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or HttpRequestException or OAuthExchangeException)
+        {
+            // The connection is genuinely broken — record that rather than reporting success,
+            // so M1-15 shows the user they need to reconnect.
+            connection.ConnectionStatus = ConnectionStatus.TokenExpired;
+            connection.UpdatedDate = DateTime.UtcNow;
+            _unitOfWork.DeviceConnections.Update(connection);
+            await _unitOfWork.SaveChangesAsync();
+
+            throw new DeviceConnectionException(
+                DeviceConnectionException.OAuthExchangeFailed,
+                $"We couldn't reach {connection.DeviceType.GetDisplayName()} — try reconnecting the device.", ex);
+        }
+
+        connection.UpdatedDate = DateTime.UtcNow;
+        _unitOfWork.DeviceConnections.Update(connection);
+        await _unitOfWork.SaveChangesAsync();
+
+        return ToDeviceResponse(connection, await CountTodaysUpdatesAsync(cardiMemberId, deviceId));
+    }
+
+    private static DeviceConnection RequireConnection(List<DeviceConnection> connections, Guid deviceId)
+    {
+        var connection = connections.FirstOrDefault(c => c.Id == deviceId);
+        if (connection is null)
+            throw new KeyNotFoundException("Device not found");
+        return connection;
+    }
+
+    private async Task<int> CountTodaysUpdatesAsync(Guid cardiMemberId, Guid deviceId)
+    {
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        var logs = await _unitOfWork.ActivityLogs.GetByCardiMemberAndDateRangeAsync(cardiMemberId, today, today);
+        return logs.Count(l => l.DeviceConnectionId == deviceId);
+    }
+
     private async Task EnsureMemberAccessAsync(Guid requestingUserId, Guid cardiMemberId)
     {
         var links = await _unitOfWork.UserCardiMembers.GetByUserIdAsync(requestingUserId);
@@ -314,13 +442,14 @@ public class DeviceConnectionService : IDeviceConnectionService
         return catalogDevice?.DisplayName ?? deviceType.GetDisplayName();
     }
 
-    private static DeviceResponse ToDeviceResponse(DeviceConnection connection) => new()
+    private static DeviceResponse ToDeviceResponse(DeviceConnection connection, int todayUpdateCount = 0) => new()
     {
         DeviceId = connection.Id,
         Provider = ProviderNames.FirstOrDefault(kv => kv.Value == connection.DeviceType).Key
                    ?? connection.DeviceType.ToString().ToLowerInvariant(),
         DisplayName = connection.DeviceName,
-        Status = connection.ConnectionStatus switch
+        // A soft-deleted connection reads as disconnected whatever its last status was.
+        Status = !connection.IsActive ? "disconnected" : connection.ConnectionStatus switch
         {
             ConnectionStatus.Connected => "active",
             ConnectionStatus.SyncError => "active",
@@ -331,7 +460,18 @@ public class DeviceConnectionService : IDeviceConnectionService
         LastSyncedAt = connection.LastSyncDate,
         ConnectedAt = connection.ConnectedDate,
         TokenExpiresAt = connection.TokenExpiry,
+        Scopes = ParseScopes(connection.Scopes),
+        NextSyncAt = connection is { IsActive: true, LastSyncDate: { } last }
+            ? last.AddMinutes(connection.SyncFrequencyMinutes)
+            : null,
+        TodayUpdateCount = todayUpdateCount,
     };
+
+    /// <summary>Scopes are stored as a JSON array; a malformed value must not break the screen.</summary>
+    private static List<string> ParseScopes(string? scopes) =>
+        JsonUtility.TryDeserialize<List<string>>(scopes ?? "[]", out var parsed, out _) && parsed is not null
+            ? parsed
+            : [];
 
     private record OAuthStatePayload(Guid UserId, Guid CardiMemberId, DeviceType Provider, string RedirectUri);
 }

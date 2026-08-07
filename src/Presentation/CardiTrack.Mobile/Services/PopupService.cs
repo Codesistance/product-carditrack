@@ -16,6 +16,22 @@ public sealed class PopupService : IPopupService
     public Task<bool> ConfirmWarningAsync(string message, string? title = null, string? confirmText = null, string? cancelText = null) =>
         ShowAsync(PopupSeverity.Warning, title ?? "Are you sure?", message, confirmText ?? "Yes, continue", cancelText ?? "Cancel");
 
+    /// <summary>
+    /// Uses the platform action sheet rather than <see cref="AppPopupPage"/>: the app-styled
+    /// popup is a two-button dialog, and a list of choices needs a list.
+    /// </summary>
+    public Task<string?> ChooseAsync(string title, string cancelText, params string[] options) =>
+        MainThread.InvokeOnMainThreadAsync(async () =>
+        {
+            var page = Microsoft.Maui.Controls.Application.Current?.Windows.FirstOrDefault()?.Page;
+            if (page is null)
+                return null;
+
+            var choice = await page.DisplayActionSheetAsync(title, cancelText, destruction: null, options);
+            // DisplayActionSheet returns the cancel label — or null on an Android back press.
+            return choice == cancelText ? null : choice;
+        });
+
     private static Task<bool> ShowAsync(PopupSeverity severity, string title, string message, string confirmText, string? cancelText) =>
         MainThread.InvokeOnMainThreadAsync(async () =>
         {

@@ -14,10 +14,16 @@ public class DashboardService : IDashboardService
     private const decimal YellowDeviationPercent = 30m;
     private const decimal OrangeDeviationPercent = 50m;
 
-    private const int BaselinePeriodDays = 30;
+    private const int BaselinePeriodDays = BaselineProgress.PeriodDays;
     private const int SeriesDays = 7;
     private const int RecentAlertCount = 5;
     private const decimal DefaultStepsGoal = 10000m;
+
+    /// <summary>
+    /// Hero status for a member whose monitoring is paused. Outside the green/yellow/orange/red
+    /// severity scale on purpose — it says "we are not watching", not "we looked and it's fine".
+    /// </summary>
+    private const string PausedStatus = "paused";
 
     private readonly IUnitOfWork _unitOfWork;
     private readonly ICardiMemberAccessService _access;
@@ -48,11 +54,13 @@ public class DashboardService : IDashboardService
         var baseline = await _unitOfWork.PatternBaselines.GetLatestByCardiMemberAsync(cardiMemberId, BaselinePeriodDays);
         var activeAlerts = (await _unitOfWork.Alerts.GetByCardiMemberAsync(cardiMemberId, activeOnly: true)).ToList();
 
-        var daysCaptured = Math.Min(logs.Select(l => l.Date).Distinct().Count(), BaselinePeriodDays);
         var isLearning = baseline is null;
 
         var metrics = logs.Count == 0 ? null : BuildMetrics(logs, baseline, today);
         var unresolvedAlerts = activeAlerts.Where(a => !a.IsResolved).ToList();
+
+        var now = DateTime.UtcNow;
+        var isPaused = member.IsMonitoringPaused(now);
 
         return new DashboardResponse
         {
@@ -61,7 +69,12 @@ public class DashboardService : IDashboardService
             Age = CalculateAge(member.DateOfBirth),
             Phone = member.Phone,
             PhotoUrl = null,
-            HealthStatus = ComputeHealthStatus(unresolvedAlerts, isLearning, metrics),
+            // A paused member is not being watched, so no reassuring colour may be shown for
+            // them — stale metrics would otherwise keep reading "doing well" indefinitely.
+            HealthStatus = isPaused ? PausedStatus : ComputeHealthStatus(unresolvedAlerts, isLearning, metrics),
+            MonitoringPaused = isPaused,
+            MonitoringPausedUntil = isPaused ? member.MonitoringPausedUntil : null,
+            MonitoringPauseReason = isPaused ? member.MonitoringPauseReason : null,
             LastSyncedAt = member.LastSyncDate ?? connections.Max(c => c.LastSyncDate),
             UnreadAlertCount = unresolvedAlerts.Count(a => a.AcknowledgedDate is null),
             Device = new DashboardDeviceState
@@ -72,13 +85,7 @@ public class DashboardService : IDashboardService
                 ConnectionStatus = primaryConnection?.ConnectionStatus.ToString(),
                 LastSyncDate = primaryConnection?.LastSyncDate,
             },
-            Baseline = new DashboardBaselineState
-            {
-                IsLearning = isLearning,
-                DaysCaptured = daysCaptured,
-                DaysRequired = BaselinePeriodDays,
-                PercentComplete = Math.Min(100, daysCaptured * 100 / BaselinePeriodDays),
-            },
+            Baseline = BaselineProgress.From(logs, baseline),
             Metrics = metrics,
             RecentAlerts = activeAlerts
                 .Take(RecentAlertCount)

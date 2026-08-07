@@ -1,6 +1,6 @@
 # CardiMembers API
 
-> **Status: Planned — not yet implemented.** None of the endpoints below exist yet. See "Implemented today" for current coverage.
+> **Status: Partially implemented.** Get-by-id, update, delete and monitoring pause/resume now exist on `/api/v1/cardimembers`. Consent, self-authored notes, photos and plan-limit enforcement remain design intent. See "Implemented today" for current coverage.
 
 Manages the elderly individuals being monitored (CardiMembers), their consent settings, monitoring pause state, and self-authored notes.
 
@@ -40,13 +40,66 @@ Returns **200** with a plain list of the organization's CardiMembers — **no so
 
 - `id` is a **raw GUID** — no `cm_` prefix.
 - `gender` and `relationship` are **integer enums** (`Gender`: Male=1, Female=2, Other=3, PreferNotToSay=4; `RelationshipType`: Self=1, Parent=2, Spouse=3, Grandparent=4, Sibling=5, Child=6, Other=99).
-- There is **no** `photoUrl`, `healthStatus`, `lastSyncedAt`, `monitoringPaused`, `activeAlertCount`, `medicalNotes`, `emergencyContacts`, `consentSettings`, or `baselineLearningProgress` — those fields below are design intent only.
+- The **list** response deliberately carries no `medicalNotes` or emergency contact. Those are PHI and are served only by the single-member GET below, so a "which members do I have?" call never broadcasts them.
+
+### GET `/api/v1/cardimembers/{id}`
+
+Full detail for one CardiMember — the payload behind mobile M1-13. Requires **view** access (an active `UserCardiMember` link with `CanViewHealthData`). Returns **200**, or **404** when the member does not exist *or* the caller may not see them — the two are deliberately indistinguishable.
+
+```json
+{
+  "id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+  "name": "Margaret Doe",
+  "dateOfBirth": "1945-06-15",
+  "age": 80,
+  "gender": 2,
+  "email": "margaret@example.com",
+  "phone": "+15551234567",
+  "relationship": 2,
+  "isPrimaryCaregiver": true,
+  "emergencyContactName": "Jane Doe",
+  "emergencyContactPhone": "+15551234568",
+  "medicalNotes": "Type 2 diabetes, takes metformin",
+  "photoUrl": null,
+  "alertSensitivity": 2,
+  "monitoringPaused": false,
+  "monitoringPausedUntil": null,
+  "monitoringPauseReason": null,
+  "monitoringSince": "2026-01-15T09:00:00Z",
+  "lastSyncedAt": "2026-03-09T08:30:00Z",
+  "connectedDeviceCount": 2,
+  "baseline": { "isLearning": true, "daysCaptured": 15, "daysRequired": 30, "percentComplete": 50 }
+}
+```
+
+- `relationship` is the **requesting caregiver's own** link, not the first link stored against the member.
+- `medicalNotes` is stored AES-256-GCM encrypted and decrypted on read. Rows written before encryption was introduced are returned as-is rather than failing the request.
+- `photoUrl` is always `null` — no photo storage exists. Clients render an initials avatar.
+- `alertSensitivity` is an integer enum (Low=1, Medium=2, High=3). **Stored but not consumed** — alert generation is not built.
+
+### PUT `/api/v1/cardimembers/{id}`
+
+Saves the M1-14 edit form. Requires **manage** access (as above, plus `IsPrimaryCaregiver`). A **full replacement**, not a patch: omitting a field clears it. Returns the updated detail object, **400** with field errors, or **404**.
+
+Body: `name`, `dateOfBirth`, `relationshipType`, `email`, `phone`, `emergencyContactName`, `emergencyContactPhone`, `medicalNotes`, `alertSensitivity`. `relationshipType` updates the caller's own link only, so it cannot rewrite what other caregivers call this person.
+
+### DELETE `/api/v1/cardimembers/{id}`
+
+Removes a CardiMember. Requires **manage** access. Returns **204**. Soft delete: the member, their caregiver links and their device connections are deactivated and stored OAuth tokens discarded. Health history is retained.
+
+### POST `/api/v1/cardimembers/{id}/pause` · DELETE `/api/v1/cardimembers/{id}/pause`
+
+Pauses and resumes monitoring. Requires **manage** access. Body on POST: `durationHours` (1–168, required) and optional `reason` (≤200 chars). Both return `{ monitoringPaused, monitoringPausedUntil, monitoringPauseReason }`.
+
+The pause is **time-bounded on purpose** — an open-ended pause would let someone stop being monitored indefinitely with nobody deciding to — and it expires on its own, with no job required to lift it. It is enforced, not cosmetic: `GetDueForSyncAsync` excludes paused members so the sync worker skips them, and the dashboard reports `healthStatus: "paused"` rather than a health colour.
+
+- `familyNotified` from the planned contract below is **not implemented** — there is no family notification path yet.
 
 ### Not yet built
 
 - **Plan-limit enforcement**: subscription `MaxCardiMembers` exists on the entity but **nothing enforces it** — the `CARDIMEMBER_LIMIT_REACHED` error below does not occur.
-- **Consent, monitoring pause, self-authored notes, photos**: no entities or endpoints exist for any of these.
-- Get-by-id, update, and delete endpoints do not exist.
+- **Consent, self-authored notes, photos**: no entities or endpoints exist for any of these.
+- **`cm_`-prefixed ids, `sort`/`filter` query parameters, `total` counts, string enums**: the shapes below use them; the implementation does not.
 
 Everything below is the **planned** contract, kept as design intent.
 

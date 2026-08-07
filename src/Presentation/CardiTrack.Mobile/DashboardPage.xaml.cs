@@ -10,7 +10,8 @@ namespace CardiTrack.Mobile;
 
 public partial class DashboardPage : ContentPage
 {
-    private const string PrimaryMemberIdKey = "PrimaryCardiMemberId";
+    /// <summary>Also cleared by M1-13 when the remembered member is removed.</summary>
+    internal const string PrimaryMemberIdKey = "PrimaryCardiMemberId";
     private const string VerifyEmailDismissedKey = "VerifyEmailNudgeDismissed";
     private static readonly TimeSpan StaleThreshold = TimeSpan.FromHours(2);
     private static readonly TimeSpan AutoRefreshInterval = TimeSpan.FromMinutes(5);
@@ -33,6 +34,7 @@ public partial class DashboardPage : ContentPage
         _authService = authService;
         _popups = popups;
         HeroCard.SyncRequested += (_, _) => _ = LoadAsync(force: true);
+        HeroCard.MemberTapped += (_, _) => OpenMemberDetails();
     }
 
     protected override void OnAppearing()
@@ -152,9 +154,21 @@ public partial class DashboardPage : ContentPage
         var firstName = data.Name.Split(' ')[0];
         CallLabel.Text = $"Call {firstName}";
 
-        // Stale banner (M1-09c)
-        var isStale = data.LastSyncedAt is { } synced &&
-            DateTime.UtcNow - DateTime.SpecifyKind(synced, DateTimeKind.Utc) > StaleThreshold;
+        // Paused banner (M1-13)
+        PausedBanner.IsVisible = data.MonitoringPaused;
+        if (data.MonitoringPaused)
+        {
+            var until = data.MonitoringPausedUntil is { } pausedUntil
+                ? DateTime.SpecifyKind(pausedUntil, DateTimeKind.Utc).ToLocalTime().ToString("MMM d, h:mm tt")
+                : "further notice";
+            PausedBannerLabel.Text = $"Monitoring is paused until {until} — we're not collecting data or raising alerts.";
+        }
+
+        // Stale banner (M1-09c). Suppressed while paused: data is meant to be stale then,
+        // and "pull down to check in" would be advice we can't honour.
+        var isStale = !data.MonitoringPaused
+            && data.LastSyncedAt is { } synced
+            && DateTime.UtcNow - DateTime.SpecifyKind(synced, DateTimeKind.Utc) > StaleThreshold;
         StaleBanner.IsVisible = isStale;
         if (isStale)
             StaleBannerLabel.Text =
@@ -239,8 +253,19 @@ public partial class DashboardPage : ContentPage
         }
     }
 
-    private async void OnViewDetailsTapped(object? sender, EventArgs e) =>
-        await _popups.ShowInfoAsync("CardiMember details (M1-13) are on the way.", "Coming soon");
+    private void OnViewDetailsTapped(object? sender, EventArgs e) => OpenMemberDetails();
+
+    /// <summary>
+    /// Both the hero card and the "View Details" action land on M1-13. The member id comes
+    /// from the loaded dashboard rather than the cached preference, so it always matches
+    /// whoever is actually on screen.
+    /// </summary>
+    private void OpenMemberDetails()
+    {
+        if (_lastData is not { } data)
+            return;
+        _ = Shell.Current.GoToAsync($"{CardiMemberDetailPage.Route}?memberId={data.CardiMemberId}");
+    }
 
     private async void OnBellClicked(object? sender, EventArgs e) =>
         await Shell.Current.GoToAsync("//alerts");

@@ -250,4 +250,43 @@ public class DashboardServiceTests
         Assert.Equal("Connected", result.Device.ConnectionStatus);
         Assert.Equal(lastSync, result.LastSyncedAt);
     }
+
+    // ── Monitoring pause (M1-13) ────────────────────────────────────────────────
+
+    private void SetupPausedMember(DateTime? pausedUntil, string? reason = null) =>
+        _members.GetByIdAsync(_memberId).Returns(new CardiMember
+        {
+            Id = _memberId,
+            Name = "Margaret Doe",
+            DateOfBirth = DateOnly.FromDateTime(DateTime.UtcNow.AddYears(-78)),
+            MonitoringPausedUntil = pausedUntil,
+            MonitoringPauseReason = reason,
+            IsActive = true,
+        });
+
+    [Fact]
+    public async Task Dashboard_ReportsPausedStatus_RatherThanAHealthColour()
+    {
+        SetupPausedMember(DateTime.UtcNow.AddHours(12), "Travelling");
+
+        var result = await CreateSut().GetDashboardAsync(_userId, _memberId);
+
+        // A paused member is not being watched — showing green would say we looked and
+        // everything was fine.
+        Assert.Equal("paused", result.HealthStatus);
+        Assert.True(result.MonitoringPaused);
+        Assert.Equal("Travelling", result.MonitoringPauseReason);
+    }
+
+    [Fact]
+    public async Task Dashboard_IgnoresElapsedPause()
+    {
+        SetupPausedMember(DateTime.UtcNow.AddMinutes(-1), "Travelling");
+
+        var result = await CreateSut().GetDashboardAsync(_userId, _memberId);
+
+        Assert.False(result.MonitoringPaused);
+        Assert.NotEqual("paused", result.HealthStatus);
+        Assert.Null(result.MonitoringPauseReason);
+    }
 }

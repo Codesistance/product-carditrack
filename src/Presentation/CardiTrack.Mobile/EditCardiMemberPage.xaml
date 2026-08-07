@@ -1,0 +1,211 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:controls="clr-namespace:CardiTrack.Mobile.Controls"
+             x:Class="CardiTrack.Mobile.EditCardiMemberPage"
+             Shell.NavBarIsVisible="False"
+             BackgroundColor="{StaticResource White}">
+
+    <Grid RowDefinitions="Auto,*">
+
+        <Border Grid.Row="0"
+                StrokeThickness="0"
+                Padding="20,16,20,22">
+            <Border.StrokeShape>
+                <RoundRectangle CornerRadius="0,0,28,28"/>
+            </Border.StrokeShape>
+            <Border.Background>
+                <StaticResource Key="GradientButtonBrush"/>
+            </Border.Background>
+
+            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="14">
+                <Border Grid.Column="0"
+                        WidthRequest="38" HeightRequest="38"
+                        StrokeThickness="0"
+                        BackgroundColor="#33FFFFFF"
+                        VerticalOptions="Center">
+                    <Border.StrokeShape>
+                        <RoundRectangle CornerRadius="19"/>
+                    </Border.StrokeShape>
+                    <ImageButton Source="icon_back_white.svg"
+                                 WidthRequest="20" HeightRequest="20"
+                                 BackgroundColor="Transparent"
+                                 Clicked="OnCancelClicked"/>
+                </Border>
+
+                <Label Grid.Column="1"
+                       Text="Edit Profile"
+                       Style="{StaticResource Heading2}"
+                       TextColor="{StaticResource White}"
+                       VerticalTextAlignment="Center"/>
+
+                <Button x:Name="SaveButton"
+                        Grid.Column="2"
+                        Text="Save"
+                        FontFamily="QuicksandSemiBold"
+                        FontSize="15"
+                        TextColor="{StaticResource Primary}"
+                        BackgroundColor="{StaticResource White}"
+                        CornerRadius="18"
+                        HeightRequest="36"
+                        Padding="18,0"
+                        VerticalOptions="Center"
+                        Clicked="OnSaveClicked"/>
+            </Grid>
+        </Border>
+
+        <ScrollView Grid.Row="1">
+            <Grid Padding="20,18,20,28">
+
+                <VerticalStackLayout x:Name="SkeletonPanel" Spacing="14" IsVisible="False">
+                    <controls:SkeletonView HeightRequest="80"/>
+                    <controls:SkeletonView HeightRequest="80"/>
+                    <controls:SkeletonView HeightRequest="140"/>
+                </VerticalStackLayout>
+
+                <VerticalStackLayout x:Name="ErrorPanel"
+                                     Spacing="10"
+                                     IsVisible="False"
+                                     Padding="0,60,0,0">
+                    <Label Text="We couldn't load this profile"
+                           Style="{StaticResource Heading3}"
+                           HorizontalTextAlignment="Center"/>
+                    <Label x:Name="ErrorDetailLabel"
+                           Style="{StaticResource Body2}"
+                           HorizontalTextAlignment="Center"/>
+                    <Button Text="Try again"
+                            Style="{StaticResource SecondaryOutlineButton}"
+                            HorizontalOptions="Center"
+                            Clicked="OnRetryClicked"/>
+                </VerticalStackLayout>
+
+                <VerticalStackLayout x:Name="FormPanel" Spacing="14" IsVisible="False">
+
+                    <!-- Avatar. "Change Photo" is deliberately absent: there is no photo
+                         upload path yet, so the button would do nothing. -->
+                    <Border WidthRequest="88" HeightRequest="88"
+                            StrokeThickness="0"
+                            HorizontalOptions="Center">
+                        <Border.StrokeShape>
+                            <RoundRectangle CornerRadius="44"/>
+                        </Border.StrokeShape>
+                        <Border.Background>
+                            <StaticResource Key="GradientButtonBrush"/>
+                        </Border.Background>
+                        <Label x:Name="InitialsLabel"
+                               FontFamily="QuicksandSemiBold"
+                               FontSize="32"
+                               TextColor="{StaticResource White}"
+                               HorizontalOptions="Center"
+                               VerticalOptions="Center"/>
+                    </Border>
+
+                    <VerticalStackLayout Spacing="4">
+                        <Label Text="Full Name*" Style="{StaticResource AuthFieldLabel}"/>
+                        <Border Style="{StaticResource AuthEntryBorder}">
+                            <Entry x:Name="NameEntry"
+                                   Style="{StaticResource AuthEntry}"
+                                   Placeholder="Full name"
+                                   TextChanged="OnNameChanged"/>
+                        </Border>
+                        <Label x:Name="NameError"
+                               Style="{StaticResource AuthErrorLabel}"
+                               IsVisible="False"/>
+                    </VerticalStackLayout>
+
+                    <VerticalStackLayout Spacing="4">
+                        <Label Text="Date of Birth*" Style="{StaticResource AuthFieldLabel}"/>
+                        <Border Style="{StaticResource AuthEntryBorder}">
+                            <DatePicker x:Name="DobPicker"
+                                        Format="d MMM yyyy"
+                                        FontFamily="Quicksand"
+                                        FontSize="14"
+                                        TextColor="{StaticResource HeadingText}"
+                                        BackgroundColor="Transparent"
+                                        />
+                        </Border>
+                        <Label x:Name="DobError"
+                               Style="{StaticResource AuthErrorLabel}"
+                               IsVisible="False"/>
+                    </VerticalStackLayout>
+
+                    <VerticalStackLayout Spacing="4">
+                        <Label Text="Relationship*" Style="{StaticResource AuthFieldLabel}"/>
+                        <Border Style="{StaticResource AuthEntryBorder}">
+                            <Picker x:Name="RelationshipPicker"
+                                    FontFamily="Quicksand"
+                                    FontSize="14"
+                                    TextColor="{StaticResource HeadingText}"
+                                    BackgroundColor="Transparent"
+                                    />
+                        </Border>
+                    </VerticalStackLayout>
+
+                    <BoxView Style="{StaticResource DividerLine}" Margin="0,6"/>
+
+                    <Label Text="Medical &amp; Emergency" Style="{StaticResource DashboardSectionTitle}"/>
+
+                    <VerticalStackLayout Spacing="4">
+                        <Label Text="Medical Notes" Style="{StaticResource AuthFieldLabel}"/>
+                        <Border Style="{StaticResource AuthEntryBorder}" HeightRequest="120" Padding="16,8">
+                            <Editor x:Name="MedicalNotesEditor"
+                                    Placeholder="Allergies, chronic conditions, etc."
+                                    FontFamily="Quicksand"
+                                    FontSize="14"
+                                    PlaceholderColor="{StaticResource BodyText}"
+                                    TextColor="{StaticResource HeadingText}"
+                                    BackgroundColor="Transparent"
+                                    AutoSize="Disabled"
+                                    MaxLength="2000"
+                                    />
+                        </Border>
+                        <Label x:Name="MedicalNotesError"
+                               Style="{StaticResource AuthErrorLabel}"
+                               IsVisible="False"/>
+                    </VerticalStackLayout>
+
+                    <VerticalStackLayout Spacing="4">
+                        <Label Text="Emergency Contact Name" Style="{StaticResource AuthFieldLabel}"/>
+                        <Border Style="{StaticResource AuthEntryBorder}">
+                            <Entry x:Name="EmergencyNameEntry"
+                                   Style="{StaticResource AuthEntry}"
+                                   Placeholder="Who should we call?"
+                                   />
+                        </Border>
+                    </VerticalStackLayout>
+
+                    <VerticalStackLayout Spacing="4">
+                        <Label Text="Emergency Contact Number" Style="{StaticResource AuthFieldLabel}"/>
+                        <Border Style="{StaticResource AuthEntryBorder}">
+                            <Entry x:Name="EmergencyPhoneEntry"
+                                   Style="{StaticResource AuthEntry}"
+                                   Keyboard="Telephone"
+                                   />
+                        </Border>
+                        <Label x:Name="EmergencyPhoneError"
+                               Style="{StaticResource AuthErrorLabel}"
+                               IsVisible="False"/>
+                    </VerticalStackLayout>
+
+                    <Label Text="Monitoring Preferences" Style="{StaticResource DashboardSectionTitle}"/>
+
+                    <VerticalStackLayout Spacing="4">
+                        <Label Text="Alert Sensitivity" Style="{StaticResource AuthFieldLabel}"/>
+                        <Border Style="{StaticResource AuthEntryBorder}">
+                            <Picker x:Name="SensitivityPicker"
+                                    FontFamily="Quicksand"
+                                    FontSize="14"
+                                    TextColor="{StaticResource HeadingText}"
+                                    BackgroundColor="Transparent"
+                                    />
+                        </Border>
+                        <Label Text="Saved with this CardiMember. Alerting itself isn't live yet, so this won't change what you're notified about today."
+                               Style="{StaticResource Body2}"
+                               FontSize="12"/>
+                    </VerticalStackLayout>
+
+                </VerticalStackLayout>
+            </Grid>
+        </ScrollView>
+    </Grid>
+</ContentPage>

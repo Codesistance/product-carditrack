@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text;
+using CardiTrack.Application.Interfaces.Security;
 using CardiTrack.Shared;
 
 namespace CardiTrack.Infrastructure.Security;
