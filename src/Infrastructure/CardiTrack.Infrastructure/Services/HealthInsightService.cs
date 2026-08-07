@@ -8,17 +8,24 @@ public class HealthInsightService : IHealthInsightService
 {
     private readonly IMedicalAiService _medicalAi;
     private readonly IUnitOfWork _unitOfWork;
+    private readonly ICardiMemberAccessService _access;
 
-    public HealthInsightService(IMedicalAiService medicalAi, IUnitOfWork unitOfWork)
+    public HealthInsightService(
+        IMedicalAiService medicalAi, IUnitOfWork unitOfWork, ICardiMemberAccessService access)
     {
         _medicalAi = medicalAi;
         _unitOfWork = unitOfWork;
+        _access = access;
     }
 
-    public async Task<AlertInsightResponse> AnalyzeAlertAsync(Guid alertId, CancellationToken ct = default)
+    public async Task<AlertInsightResponse> AnalyzeAlertAsync(
+        Guid requestingUserId, Guid alertId, CancellationToken ct = default)
     {
-        var alert = await _unitOfWork.Alerts.GetByIdWithCardiMemberAsync(alertId)
-            ?? throw new KeyNotFoundException($"Alert {alertId} not found.");
+        // An alert is reachable only through its CardiMember. Both "no such alert" and
+        // "not your alert" report the same not-found so the alert id cannot be probed.
+        var alert = await _unitOfWork.Alerts.GetByIdWithCardiMemberAsync(alertId);
+        if (alert is null || !await _access.HasViewAccessAsync(requestingUserId, alert.CardiMemberId, ct))
+            throw new KeyNotFoundException($"Alert {alertId} not found.");
 
         var to = DateOnly.FromDateTime(DateTime.UtcNow);
         var from = to.AddDays(-7);
@@ -40,8 +47,11 @@ public class HealthInsightService : IHealthInsightService
         };
     }
 
-    public async Task<BaselineInsightResponse> AnalyzeBaselineAsync(Guid cardiMemberId, CancellationToken ct = default)
+    public async Task<BaselineInsightResponse> AnalyzeBaselineAsync(
+        Guid requestingUserId, Guid cardiMemberId, CancellationToken ct = default)
     {
+        await _access.RequireViewAccessAsync(requestingUserId, cardiMemberId, ct);
+
         var baselines = await Task.WhenAll(
             _unitOfWork.PatternBaselines.GetLatestByCardiMemberAsync(cardiMemberId, 30),
             _unitOfWork.PatternBaselines.GetLatestByCardiMemberAsync(cardiMemberId, 60),

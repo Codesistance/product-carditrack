@@ -24,13 +24,19 @@ public class InsightsController : BaseApiController
     /// <summary>Analyse a specific alert using MedGemma.</summary>
     [HttpGet("alerts/{alertId:guid}")]
     [ProducesResponseType(typeof(ApiResponse<AlertInsightResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status403Forbidden)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
     public async Task<ActionResult<ApiResponse<AlertInsightResponse>>> AnalyzeAlert(
         Guid alertId, CancellationToken ct)
     {
+        if (!UserContext.IsAuthenticated || UserContext.UserId == Guid.Empty)
+        {
+            return Error("We couldn't find your account — please sign in again.", StatusCodes.Status403Forbidden);
+        }
+
         try
         {
-            var result = await _insightService.AnalyzeAlertAsync(alertId, ct);
+            var result = await _insightService.AnalyzeAlertAsync(UserContext.UserId, alertId, ct);
             return Success(result);
         }
         catch (KeyNotFoundException ex)
@@ -42,10 +48,24 @@ public class InsightsController : BaseApiController
     /// <summary>Analyse health baseline trends for a CardiMember using MedGemma.</summary>
     [HttpGet("members/{cardiMemberId:guid}/baseline")]
     [ProducesResponseType(typeof(ApiResponse<BaselineInsightResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
     public async Task<ActionResult<ApiResponse<BaselineInsightResponse>>> AnalyzeBaseline(
         Guid cardiMemberId, CancellationToken ct)
     {
-        var result = await _insightService.AnalyzeBaselineAsync(cardiMemberId, ct);
-        return Success(result);
+        if (!UserContext.IsAuthenticated || UserContext.UserId == Guid.Empty)
+        {
+            return Error("We couldn't find your account — please sign in again.", StatusCodes.Status403Forbidden);
+        }
+
+        try
+        {
+            var result = await _insightService.AnalyzeBaselineAsync(UserContext.UserId, cardiMemberId, ct);
+            return Success(result);
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return Error(ex.Message, StatusCodes.Status404NotFound);
+        }
     }
 }

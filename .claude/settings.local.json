@@ -79,7 +79,9 @@
       "Bash(\"/c/Users/msoft/AppData/Local/Temp/claude/c--Code-GitHub-product-carditrack/18ab81ea-6fc4-45e8-ad23-12c6d303de35/scratchpad/actionlint.exe\" -no-color -oneline)",
       "Bash(dotnet build *)",
       "Bash(cat >> *)",
-      "Bash(git commit *)"
+      "Bash(git commit *)",
+      "mcp__Claude_Code_Remote__subscribe_pr_activity",
+      "mcp__Claude_Code_Remote__send_later"
     ],
     "additionalDirectories": [
       "C:\\Users\\msoft\\.claude\\projects\\c--Code-GitHub-product-carditrack\\memory"
