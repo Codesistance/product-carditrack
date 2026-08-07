@@ -128,8 +128,10 @@ CardiTrack uses AES-256-GCM (Galois/Counter Mode) for field-level encryption of 
 
 ### Key Management
 
-- **Development**: `Encryption:Key` in `appsettings.Development.json` / user secrets
-- **Deployed**: the key lives in **Secret Manager** as `carditrack-<env>-encryption-key` and is injected into the API and Worker as the `Encryption__Key` environment variable. Terraform seeds the secret with a `REPLACE_ME` placeholder; an operator sets the real value (see [Secrets Management](#secrets-management)). The key is never stored in tfvars or source control.
+- **Development**: `Encryption__Key` is set on the `api` and `worker` services in `docker-compose.yml` — a committed throwaway value, local use only. Running outside compose, set `Encryption:Key` in user secrets or `Encryption__Key` in the environment; generate one with `openssl rand -base64 32`. `appsettings.json` ships the key empty on purpose.
+- **Deployed**: the key lives in **Secret Manager** as `carditrack-<env>-encryption-key` and is injected into the API and Worker as the `Encryption__Key` environment variable. **Terraform generates it** (`random_bytes`, 32 bytes, base64) so a new environment is never left with an unusable placeholder. The key is never stored in tfvars or source control.
+- **Rotation is not currently supported.** The ciphertext envelope carries no key id, so replacing the key makes every token encrypted under the old one permanently undecryptable — hence `ignore_changes = [secret_data]` on the secret version, which also means an environment that already holds a value keeps it. See §7.1 of [data_protection_architecture.md](./technical/data_protection_architecture.md) for the planned versioned envelope.
+- **Startup validation**: the API and Worker construct the encryption service during startup and refuse to boot if the key is missing, not valid base64, or not 32 bytes — a misconfigured deployment fails the revision instead of returning 500s from device endpoints. The dev deploy workflow checks the secret before rolling a revision so the failure names the secret.
 
 For the wider data-protection picture (Auth0, DPIA, ASP.NET Data Protection), see [data_protection_architecture.md](./technical/data_protection_architecture.md) and the [DPIA](./compliance/dpia.md).
 
@@ -221,7 +223,7 @@ Subsequent `terraform apply` runs never revert operator-set values. The applicat
 | `db-connection-string` | Terraform (composed; Auth Proxy socket) | `ConnectionStrings__DefaultConnection` |
 | `auth0-domain`, `auth0-audience`, `auth0-client-id`, `auth0-client-secret` | Operator (`scripts/set-auth0-secrets.sh`) | `Auth0__*` |
 | `auth0-mobile-client-id` | Operator (same script) | Stamped into mobile builds by CI |
-| `encryption-key` | Operator | `Encryption__Key` |
+| `encryption-key` | Terraform (`random_bytes`, 32 bytes base64) | `Encryption__Key` — never rotate; see [Key Management](#key-management) |
 | `health-token` | Terraform (`random_password`, 40 chars) | `Health__Token` — `/health` requires the `X-Health-Token` header; CI reads it for smoke tests |
 | `devices-fitbit-client-id`, `devices-fitbit-client-secret` | Operator | `DeviceProviders__0__ClientId/ClientSecret` (Google Health API OAuth client). Further providers follow `devices-{provider}-client-{id,secret}` |
 | `gemini-api-key` | Operator | `AI__Providers__1__ApiKey` |

@@ -45,14 +45,15 @@ public static class ServiceCollectionExtensions
         services.Configure<List<DeviceProviderSettings>>(
             configuration.GetSection(DeviceProviderSettings.SectionName));
 
-        // Encryption — key must be a base64-encoded 256-bit value stored in config/Key Vault
+        var configLoader = new ConfigurationLoader(configuration);
+
+        // Encryption — key must be a base64-encoded 256-bit value stored in config/Secret Manager.
+        // Built here rather than in a factory so a missing or malformed key fails the host at
+        // startup instead of surfacing as a 500 on the first request that touches a device endpoint.
+        // The service holds only the key (AesGcm instances are per-call), so it is safe as a singleton.
         services.AddSingleton<ConfigurationLoader>();
-        services.AddScoped<IEncryptionService>(sp =>
-        {
-            var loader = sp.GetRequiredService<ConfigurationLoader>();
-            var key = loader.GetRequired(ConfigurationKeys.Encryption.Key);
-            return new AesEncryptionService(key);
-        });
+        services.AddSingleton<IEncryptionService>(
+            new AesEncryptionService(configLoader.GetRequired(ConfigurationKeys.Encryption.Key)));
 
         // Repositories
         services.AddScoped<IOrganizationRepository, CardiTrack.Infrastructure.Repositories.OrganizationRepository>();
@@ -70,7 +71,6 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IUnitOfWork, CardiTrack.Infrastructure.Repositories.UnitOfWork>();
 
         // AI services
-        var configLoader = new ConfigurationLoader(configuration);
         services.AddAiServices(configuration, configLoader);
 
         // External clients

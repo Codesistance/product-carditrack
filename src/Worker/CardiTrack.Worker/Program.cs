@@ -45,14 +45,12 @@ builder.Services.Configure<List<DeviceProviderSettings>>(
 builder.Services.AddDbContext<CardiTrackDbContext>(options =>
     options.UseNpgsql(configLoader.Get(ConfigurationKeys.ConnectionStrings.DefaultConnection)));
 
-// Encryption — key must be a base64-encoded 256-bit value in config/Key Vault
+// Encryption — key must be a base64-encoded 256-bit value in config/Secret Manager.
+// Built eagerly so a missing or malformed key stops the Worker at startup rather than
+// failing every token-refresh run. Safe as a singleton: it holds only the key.
 builder.Services.AddSingleton<ConfigurationLoader>();
-builder.Services.AddScoped<IEncryptionService>(sp =>
-{
-    var loader = sp.GetRequiredService<ConfigurationLoader>();
-    var key = loader.GetRequired(ConfigurationKeys.Encryption.Key);
-    return new AesEncryptionService(key);
-});
+builder.Services.AddSingleton<IEncryptionService>(
+    new AesEncryptionService(configLoader.GetRequired(ConfigurationKeys.Encryption.Key)));
 
 // Repositories
 builder.Services.AddScoped<IOrganizationRepository, OrganizationRepository>();

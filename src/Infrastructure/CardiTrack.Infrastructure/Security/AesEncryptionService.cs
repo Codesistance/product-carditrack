@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text;
+using CardiTrack.Shared;
 
 namespace CardiTrack.Infrastructure.Security;
 
@@ -12,16 +13,40 @@ public class AesEncryptionService : IEncryptionService
     private readonly byte[] _key;
     private const int NonceSize = 12; // 96 bits for GCM
     private const int TagSize = 16;   // 128 bits authentication tag
+    private const int KeySize = 32;   // 256 bits
+
+    /// <summary>
+    /// Seeded values that document the shape of the setting but are not keys — Terraform's
+    /// Secret Manager placeholder and the historical appsettings.json stub. Treated as "unset"
+    /// so an unprovisioned environment fails with a message that says what to do.
+    /// </summary>
+    private static readonly HashSet<string> Placeholders = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "REPLACE_ME",
+        "GENERATE_32_BYTE_ENCRYPTION_KEY_HERE_REPLACE_WITH_SECURE_KEY",
+    };
 
     public AesEncryptionService(string base64Key)
     {
-        if (string.IsNullOrWhiteSpace(base64Key))
-            throw new ArgumentException("Encryption key cannot be null or empty", nameof(base64Key));
+        var key = base64Key?.Trim();
 
-        _key = Convert.FromBase64String(base64Key);
+        if (string.IsNullOrEmpty(key) || Placeholders.Contains(key))
+            throw new ArgumentException(
+                $"'{ConfigurationKeys.Encryption.Key}' is not set. Provide a base64-encoded 256-bit key " +
+                $"via environment variable '{ConfigurationLoader.ToEnvVarKey(ConfigurationKeys.Encryption.Key)}' " +
+                $"or configuration; generate one with {nameof(AesEncryptionService)}.{nameof(GenerateKey)}().",
+                nameof(base64Key));
 
-        if (_key.Length != 32) // 256 bits
-            throw new ArgumentException("Key must be 256 bits (32 bytes)", nameof(base64Key));
+        // Validate without throwing FormatException — the raw exception says nothing about which
+        // setting is wrong, and its message is unhelpful for a misconfigured deployment.
+        var buffer = new byte[KeySize];
+        if (!Convert.TryFromBase64String(key, buffer, out var written) || written != KeySize)
+            throw new ArgumentException(
+                $"'{ConfigurationKeys.Encryption.Key}' must be a base64-encoded 256-bit ({KeySize}-byte) key. " +
+                "The configured value is not valid base64 or does not decode to that length.",
+                nameof(base64Key));
+
+        _key = buffer;
     }
 
     public string Encrypt(string plainText)
@@ -100,7 +125,7 @@ public class AesEncryptionService : IEncryptionService
     /// </summary>
     public static string GenerateKey()
     {
-        var key = new byte[32]; // 256 bits
+        var key = new byte[KeySize];
         RandomNumberGenerator.Fill(key);
         return Convert.ToBase64String(key);
     }

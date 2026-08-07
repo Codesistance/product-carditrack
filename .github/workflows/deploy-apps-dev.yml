@@ -1108,6 +1108,23 @@ jobs:
           workload_identity_provider: ${{ needs.changes.outputs.gcp_wif_provider }}
           service_account: ${{ needs.changes.outputs.gcp_service_account }}
       - uses: google-github-actions/setup-gcloud@v3
+      # The app refuses to start without a valid key, so an unseeded secret would fail
+      # the revision with an opaque container-startup error. Fail here with a usable one.
+      - name: Verify encryption key is seeded
+        env:
+          SECRET_ID: carditrack-dev-encryption-key
+          PROJECT: ${{ needs.changes.outputs.gcp_project_id }}
+        run: |
+          VALUE=$(gcloud secrets versions access latest --secret="$SECRET_ID" --project="$PROJECT" 2>/dev/null || true)
+          if [ -z "$VALUE" ] || [ "$VALUE" = "REPLACE_ME" ]; then
+            echo "::error::$SECRET_ID is not seeded. Set it to a base64-encoded 256-bit key: openssl rand -base64 32 | gcloud secrets versions add $SECRET_ID --project=$PROJECT --data-file=-"
+            exit 1
+          fi
+          LEN=$(printf '%s' "$VALUE" | base64 -d 2>/dev/null | wc -c | tr -d '[:space:]' || true)
+          if [ "$LEN" != "32" ]; then
+            echo "::error::$SECRET_ID must be a base64-encoded 256-bit key (32 bytes decoded); it decodes to $LEN bytes."
+            exit 1
+          fi
       - name: Deploy
         run: |
           gcloud run deploy carditrack-dev-api \
@@ -1159,6 +1176,22 @@ jobs:
           workload_identity_provider: ${{ needs.changes.outputs.gcp_wif_provider }}
           service_account: ${{ needs.changes.outputs.gcp_service_account }}
       - uses: google-github-actions/setup-gcloud@v3
+      # Same gate as the API — the Worker decrypts the same OAuth tokens on refresh.
+      - name: Verify encryption key is seeded
+        env:
+          SECRET_ID: carditrack-dev-encryption-key
+          PROJECT: ${{ needs.changes.outputs.gcp_project_id }}
+        run: |
+          VALUE=$(gcloud secrets versions access latest --secret="$SECRET_ID" --project="$PROJECT" 2>/dev/null || true)
+          if [ -z "$VALUE" ] || [ "$VALUE" = "REPLACE_ME" ]; then
+            echo "::error::$SECRET_ID is not seeded. Set it to a base64-encoded 256-bit key: openssl rand -base64 32 | gcloud secrets versions add $SECRET_ID --project=$PROJECT --data-file=-"
+            exit 1
+          fi
+          LEN=$(printf '%s' "$VALUE" | base64 -d 2>/dev/null | wc -c | tr -d '[:space:]' || true)
+          if [ "$LEN" != "32" ]; then
+            echo "::error::$SECRET_ID must be a base64-encoded 256-bit key (32 bytes decoded); it decodes to $LEN bytes."
+            exit 1
+          fi
       - run: |
           gcloud run deploy carditrack-dev-worker \
             --image ${{ needs.push-worker-image.outputs.image }} \

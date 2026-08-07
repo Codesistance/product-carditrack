@@ -217,6 +217,8 @@ Cron schedules bind per worker class name under the `Workers` section, consumed 
 }
 ```
 
+`Encryption:Key` ships empty and must be supplied at runtime — a base64-encoded 256-bit key, matching the API's (both encrypt and decrypt the same stored OAuth tokens). `docker compose` sets it for you; running standalone, use `openssl rand -base64 32` into `Encryption__Key` or user secrets. The Worker validates the key while building the host and exits if it is missing or malformed, rather than failing every token-refresh run.
+
 ### Cron Format
 
 The worker uses 6-field cron with seconds (Cronos `IncludeSeconds`):

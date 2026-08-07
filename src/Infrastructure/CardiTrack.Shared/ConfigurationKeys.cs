@@ -42,8 +42,8 @@ public static class ConfigurationKeys
 
     public static class Encryption
     {
+        /// <summary>Base64-encoded 256-bit AES key. No IV key exists — AES-GCM derives a fresh nonce per operation.</summary>
         public const string Key = "Encryption:Key";
-        public const string IV = "Encryption:IV";
     }
 
     public static class Health

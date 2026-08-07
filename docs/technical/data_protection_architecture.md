@@ -41,7 +41,7 @@ What the code actually does today (verified against source, not docs). Items mar
 | 10 | Telemetry ships request paths containing `{cardiMemberId}` GUIDs, exception payloads, and Npgsql spans to Datadog/Better Stack with no scrubbing or retention config; **mobile RUM hardcodes `TrackingConsent.Granted` at 100% sampling** | `src/Infrastructure/CardiTrack.Observability/ApmExtensions.cs:87-151`, `src/Presentation/CardiTrack.Mobile/Services/MobileApm.cs:71,92` |
 | 11 | Backups/versioning defeat naive deletion claims: Cloud SQL `retained_backups = 7`, GCS bucket versioning on | `infrastructure/deployments/cloud_sql.tf:87-93`, `deployments/cloud_storage.tf:44-46` |
 | 12 | `CronBackgroundService` has no distributed lock and no error boundary — unsafe for destructive jobs at `cloud_run_max_instances = 3` | `src/Worker/CardiTrack.Worker/CronBackgroundService.cs:16-33`, `infrastructure/main.tf:46` |
-| 13 | Dead/misleading columns: `User.PasswordHash` is required-non-null but never read or written (auth is Auth0-hosted); `Encryption:IV` config key unused by GCM | `Configurations/UserConfiguration.cs:22-24`, `Shared/ConfigurationKeys.cs:46` |
+| 13 | Dead/misleading columns: `User.PasswordHash` is required-non-null but never read or written (auth is Auth0-hosted). *(The unused `Encryption:IV` config key has since been removed.)* | `Configurations/UserConfiguration.cs:22-24` |
 
 > The Web Data Protection key ring on GCS (antiforgery only) is a previously **accepted risk** and out of scope here.
 
@@ -595,7 +595,7 @@ Engineering builds the mechanisms above regardless; these determine configuratio
 
 | Phase | Contents | Depends on |
 |-------|----------|------------|
-| **P0 — defect fixes** (no schema change) | Encrypt `MedicalNotes` (§7.1); strip name from Gemini prompts + key-to-header (§7.4); report ownership check (§1.8); telemetry GUID scrubbing + RUM consent gate (§7.4); drop dead `PasswordHash` column & `Encryption:IV` config; API `UseHsts()` | — |
+| **P0 — defect fixes** (no schema change) | Encrypt `MedicalNotes` (§7.1); strip name from Gemini prompts + key-to-header (§7.4); report ownership check (§1.8); telemetry GUID scrubbing + RUM consent gate (§7.4); drop dead `PasswordHash` column (`Encryption:IV` config — done); API `UseHsts()` | — |
 | **P1 — audit + consent** | `PhiAuditSaveChangesInterceptor` + `PhiReadAuditFilter` writing `AuditLogs`; `compliance.consent_records` + endpoint + sync-gate enforcement; resolve the 90-day/6-year audit retention conflict (Terraform + entity comment → 6 y) | — |
 | **P2 — retention** | `RetentionOptions` + `DataRetentionWorker` with advisory lock; advisory-lock + error-boundary hardening of `CronBackgroundService`; audit archive to bucket-lock GCS; retention_runs evidence table | P1 (audit) |
 | **P3 — erasure + DSAR** | `SubjectDataMap` + architecture test; `erasure_requests`/`erasure_ledger`; `ErasureWorker`; DELETE + export endpoints; Auth0 delete + Google token revoke; post-restore replay hook | P1, D4 |
