@@ -145,10 +145,44 @@ public class ReportGenerationService : IReportGenerationService
 
     /// <summary>Reads the cache envelope — status plus owner. Callers outside this type go through
     /// <see cref="GetStatusAsync"/>, which applies the ownership check.</summary>
+    /// <remarks>
+    /// Deliberately lenient, unlike the strict <see cref="JsonUtility.Deserialize{T}"/> used for
+    /// payloads we control. An entry written in an older shape, truncated, or otherwise unreadable
+    /// is a cache miss — not a 500 on someone polling their report. Strictness here would also put
+    /// a preview of the cached payload, CardiMember ids included, into the exception message and
+    /// from there into the logs.
+    /// </remarks>
     private async Task<CachedReport?> ReadAsync(string reportId)
     {
         var json = await _cache.GetStringAsync(ReportKey(reportId));
-        return json is null ? null : Deserialize<CachedReport>(json);
+        if (json is null)
+            return null;
+
+        if (!JsonUtility.TryDeserialize<CachedReport>(json, out var cached, out var errors)
+            || cached?.Status is null)
+        {
+            // Locations only — the error text can quote the offending value, and this cache holds
+            // health-report metadata.
+            _logger.LogWarning(
+                "Discarding unreadable report cache entry {ReportId}; {ErrorCount} error(s) at {ErrorLocations}",
+                reportId,
+                errors.Count,
+                string.Join(", ", errors.Select(e =>
+                    $"{(e.Path.Length == 0 ? "$" : e.Path)}@{e.LineNumber}:{e.LinePosition}")));
+
+            await EvictAsync(reportId);
+            return null;
+        }
+
+        return cached;
+    }
+
+    /// <summary>Drops a report's status and body together — the body is unreachable once the
+    /// status entry it is gated behind is gone.</summary>
+    private async Task EvictAsync(string reportId)
+    {
+        await _cache.RemoveAsync(ReportKey(reportId));
+        await _cache.RemoveAsync(ContentKey(reportId));
     }
 
     private Task WriteStatusAsync(string reportId, Guid ownerUserId, ReportStatusResponse status) =>
@@ -223,5 +257,4 @@ public class ReportGenerationService : IReportGenerationService
     private static string ReportKey(string reportId) => $"report:status:{reportId}";
     private static string ContentKey(string reportId) => $"report:content:{reportId}";
     private static string Serialize<T>(T obj) => JsonSerializer.Serialize(obj);
-    private static T Deserialize<T>(string json) => JsonUtility.Deserialize<T>(json);
 }

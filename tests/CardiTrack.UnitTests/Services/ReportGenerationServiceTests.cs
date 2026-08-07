@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Text;
+using System.Text.Json;
 using CardiTrack.Application.DTOs.Requests;
 using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Application.Interfaces.Repositories;
@@ -231,6 +232,74 @@ public class ReportGenerationServiceTests
         await WaitForTerminalStatusAsync(sut, queued.ReportId);
 
         Assert.Null(await sut.GetStatusAsync(Guid.Empty, queued.ReportId));
+    }
+
+    // ── Unreadable cache entries ────────────────────────────────────────────────
+    //
+    // Reports live in a shared Redis whose contents outlive any one deploy, so a stored entry can
+    // predate the current format. Reading one must be a miss, not an exception surfacing as a 500.
+
+    /// <summary>Keys mirror ReportGenerationService's private format so entries can be seeded raw.</summary>
+    private static string StatusKey(string reportId) => $"report:status:{reportId}";
+    private static string ContentKey(string reportId) => $"report:content:{reportId}";
+
+    private void SeedRawCacheEntry(string key, string json) =>
+        _cache.Set(key, Encoding.UTF8.GetBytes(json), new DistributedCacheEntryOptions());
+
+    /// <summary>Exactly what the service wrote before reports carried an owner: a bare status object.</summary>
+    private static string PreOwnershipEntry() => JsonSerializer.Serialize(new ReportStatusResponse
+    {
+        ReportId = "legacy",
+        Status = ReportStatus.Ready,
+        CreatedAt = DateTimeOffset.UtcNow,
+        Metadata = new ReportMetadata { CardiMembers = [Guid.NewGuid().ToString()] }
+    });
+
+    [Fact]
+    public async Task GetStatusAsync_ReturnsNull_ForAnEntryInThePreOwnershipFormat()
+    {
+        SeedRawCacheEntry(StatusKey("legacy"), PreOwnershipEntry());
+
+        // Status serialises as a number where the envelope now expects an object, so a strict
+        // read throws here rather than failing closed.
+        Assert.Null(await CreateSut().GetStatusAsync(_userId, "legacy"));
+    }
+
+    [Theory]
+    [InlineData("not json at all")]
+    [InlineData("{\"OwnerUserId\":\"")]
+    [InlineData("{\"OwnerUserId\":\"not-a-guid\",\"Status\":{}}")]
+    [InlineData("null")]
+    public async Task GetStatusAsync_ReturnsNull_ForAnUnreadableEntry(string payload)
+    {
+        SeedRawCacheEntry(StatusKey("damaged"), payload);
+
+        Assert.Null(await CreateSut().GetStatusAsync(_userId, "damaged"));
+    }
+
+    [Fact]
+    public async Task DownloadAsync_ReportsNotFound_ForAnUnreadableEntry()
+    {
+        SeedRawCacheEntry(StatusKey("legacy"), PreOwnershipEntry());
+        SeedRawCacheEntry(ContentKey("legacy"), "Report body.");
+
+        // A not-found, not a deserialization failure bubbling out as a 500.
+        await Assert.ThrowsAsync<KeyNotFoundException>(() =>
+            CreateSut().DownloadAsync(_userId, "legacy"));
+    }
+
+    [Fact]
+    public async Task GetStatusAsync_EvictsAnUnreadableEntry_AlongWithItsBody()
+    {
+        SeedRawCacheEntry(StatusKey("legacy"), PreOwnershipEntry());
+        SeedRawCacheEntry(ContentKey("legacy"), "Report body.");
+
+        await CreateSut().GetStatusAsync(_userId, "legacy");
+
+        // The body is only reachable through the status entry, so leaving it behind would strand
+        // report content in the cache until its TTL expired.
+        Assert.Null(_cache.Get(StatusKey("legacy")));
+        Assert.Null(_cache.Get(ContentKey("legacy")));
     }
 
     // ── GetStatusAsync ──────────────────────────────────────────────────────────
