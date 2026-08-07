@@ -125,20 +125,31 @@ public class HealthInsightServiceAccessTests
         // Task.WhenAll, so this endpoint threw on every call. A substitute cannot reproduce the
         // EF failure, so the invariant itself is asserted: never two calls open at once.
         var inFlight = 0;
-        var overlapped = false;
+        var overlapped = 0;
 
-        _baselines.GetLatestByCardiMemberAsync(_memberId, Arg.Any<int>()).Returns(_ =>
+        // The task must genuinely stay in flight. Returning a value from a synchronous lambda
+        // lets NSubstitute hand back an already-completed task, so each call finishes before the
+        // next begins and even Task.WhenAll would look sequential — the assertion would hold
+        // against the very code it is meant to reject.
+        async Task<PatternBaseline?> TrackedLookupAsync()
         {
             if (Interlocked.Increment(ref inFlight) > 1)
-                overlapped = true;
-            Thread.Sleep(5);
+                Interlocked.Exchange(ref overlapped, 1);
+
+            await Task.Delay(25);
+
             Interlocked.Decrement(ref inFlight);
-            return (PatternBaseline?)null;
-        });
+            return null;
+        }
+
+        _baselines.GetLatestByCardiMemberAsync(_memberId, Arg.Any<int>())
+            .Returns(_ => TrackedLookupAsync());
 
         await CreateSut().AnalyzeBaselineAsync(_userId, _memberId);
 
-        Assert.False(overlapped, "baseline lookups overlapped on a shared DbContext");
+        Assert.True(
+            Volatile.Read(ref overlapped) == 0,
+            "baseline lookups overlapped — concurrent operations on a shared DbContext");
         await _baselines.Received(3).GetLatestByCardiMemberAsync(_memberId, Arg.Any<int>());
     }
 

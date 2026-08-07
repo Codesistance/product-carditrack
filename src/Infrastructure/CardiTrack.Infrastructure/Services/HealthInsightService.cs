@@ -127,7 +127,7 @@ public partial class HealthInsightService : IHealthInsightService
     {
         await _access.RequireViewAccessAsync(requestingUserId, cardiMemberId, ct);
 
-        // Sequential, not Task.WhenAll. All three repositories share the request's DbContext,
+        // Sequential, not Task.WhenAll. These lookups all run against the request's DbContext,
         // and EF Core refuses a second operation on a context while one is still running —
         // starting them together threw before the first result came back, so this endpoint
         // failed on every call. Three indexed point-lookups cost little in series.
