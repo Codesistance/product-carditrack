@@ -1,6 +1,6 @@
 # Cloud Pub/Sub
 # Provides real-time event streaming between services
-# For .NET SignalR backplane, pair with Memorystore (Redis) instead
+# For a .NET SignalR backplane, pair with Memorystore (see redis.tf)
 
 # Variables
 variable "pubsub_topic_name" {

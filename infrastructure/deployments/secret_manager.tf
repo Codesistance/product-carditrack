@@ -106,6 +106,65 @@ resource "google_secret_manager_secret_version" "db_connection_string" {
   secret_data = local.db_connection_string
 }
 
+# ── Redis connection string + CA (Terraform-owned values) ────────────────────
+# Both track the instance, so neither carries ignore_changes: if Memorystore is
+# recreated the host, AUTH string and CA all change together, and a stale secret
+# would leave the API unable to connect.
+
+resource "google_secret_manager_secret" "redis_connection_string" {
+  count     = var.enable_redis ? 1 : 0
+  secret_id = "${var.secret_id_prefix}-redis-connection-string"
+  replication {
+    auto {}
+  }
+  labels     = var.secret_labels
+  depends_on = [google_project_service.secretmanager]
+}
+
+resource "google_secret_manager_secret_version" "redis_connection_string" {
+  count  = var.enable_redis ? 1 : 0
+  secret = google_secret_manager_secret.redis_connection_string[0].id
+  secret_data = join(",", [
+    "${google_redis_instance.main[0].host}:${google_redis_instance.main[0].port}",
+    "password=${google_redis_instance.main[0].auth_string}",
+    "ssl=True",
+    "abortConnect=false",
+  ])
+}
+
+# All of the instance's CAs, concatenated. Memorystore issues a second CA five
+# years in for rotation; a bundle keeps the client working across the overlap
+# rather than pinning whichever cert happens to be first.
+resource "google_secret_manager_secret" "redis_ca" {
+  count     = var.enable_redis ? 1 : 0
+  secret_id = "${var.secret_id_prefix}-redis-ca"
+  replication {
+    auto {}
+  }
+  labels     = var.secret_labels
+  depends_on = [google_project_service.secretmanager]
+}
+
+resource "google_secret_manager_secret_version" "redis_ca" {
+  count       = var.enable_redis ? 1 : 0
+  secret      = google_secret_manager_secret.redis_ca[0].id
+  secret_data = join("\n", google_redis_instance.main[0].server_ca_certs[*].cert)
+}
+
+resource "google_secret_manager_secret_iam_member" "redis_connection_string_accessor" {
+  count     = var.enable_redis ? 1 : 0
+  secret_id = google_secret_manager_secret.redis_connection_string[0].id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${data.google_project.current.number}-compute@developer.gserviceaccount.com"
+}
+
+resource "google_secret_manager_secret_iam_member" "redis_ca_accessor" {
+  count     = var.enable_redis ? 1 : 0
+  secret_id = google_secret_manager_secret.redis_ca[0].id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${data.google_project.current.number}-compute@developer.gserviceaccount.com"
+}
+
 # ── Auth0 + device OAuth + APM (placeholder values, operator-overwritten) ─────
 
 resource "google_secret_manager_secret" "app_secrets" {

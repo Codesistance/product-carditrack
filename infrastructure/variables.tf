@@ -158,6 +158,31 @@ variable "enable_pubsub" {
   default     = false
 }
 
+# Memorystore for Redis (distributed cache: OAuth PKCE state, report cache)
+variable "enable_redis" {
+  description = "Provision a Memorystore for Redis instance and bind it to the API. With this off the API has no distributed cache, so device linking fails whenever the OAuth callback lands on a different Cloud Run instance"
+  type        = bool
+  default     = false
+}
+
+variable "redis_tier" {
+  description = "Memorystore service tier (BASIC for a standalone instance, STANDARD_HA for primary/replica)"
+  type        = string
+  default     = "BASIC"
+}
+
+variable "redis_memory_size_gb" {
+  description = "Memorystore capacity in GB"
+  type        = number
+  default     = 1
+}
+
+variable "redis_version" {
+  description = "Memorystore Redis engine version"
+  type        = string
+  default     = "REDIS_7_2"
+}
+
 # HIPAA Compliance Configuration
 variable "enable_hipaa_compliance" {
   description = "Enable HIPAA compliance features (audit logging, enhanced retention)"

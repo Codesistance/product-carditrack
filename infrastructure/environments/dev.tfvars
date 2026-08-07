@@ -36,6 +36,11 @@ apm_mobile_engine = "Datadog"
 # OTel metrics (runtime, ASP.NET Core, HttpClient, Npgsql) — bill as custom metrics
 apm_metrics_enabled = true
 
+# Memorystore for Redis — standalone instance is enough for dev
+enable_redis         = true
+redis_tier           = "BASIC"
+redis_memory_size_gb = 1
+
 # Pub/Sub
 enable_pubsub = false # Disabled in dev
 

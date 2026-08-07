@@ -236,8 +236,21 @@ fails startup loudly.
 
 `AddCachingServices()` registers a distributed cache: **Redis** when
 `ConnectionStrings:Redis` is set (StackExchange, instance prefix `CardiTrack_`), otherwise an
-**in-memory fallback** (`AddDistributedMemoryCache`). No Redis instance is provisioned in any
-deployed environment, so deployed API instances always run on the in-memory fallback today.
+**in-memory fallback** (`AddDistributedMemoryCache`). The cache is not optional in practice —
+it holds the OAuth PKCE state during device linking, and the authorize and callback legs of
+that flow can land on different Cloud Run instances.
+
+Dev runs a **Memorystore for Redis** instance (`enable_redis` in Terraform, see
+[infrastructure.md](../../infrastructure.md#caching)) with AUTH and in-transit encryption on;
+Terraform writes the connection string and the instance's CA bundle to Secret Manager, and
+Cloud Run injects them as `ConnectionStrings__Redis` and `Redis__CaCertificate`. Because the
+instance is reached on a private IP that its certificate does not carry, the default hostname
+check cannot pass; `RedisCertificateValidation` pins the per-instance CA instead.
+
+**Prod has no instance yet** (`enable_redis = false`). Note that `appsettings.json` still
+defaults `ConnectionStrings:Redis` to `localhost:6379`, so an environment without the env var
+does not reach the in-memory fallback — it registers Redis against its own loopback and every
+cache write times out.
 
 ### Identity & user context
 

@@ -18,6 +18,16 @@ public static class ConfigurationKeys
         public const string LogoutUrl = "Auth0:LogoutUrl";
     }
 
+    public static class Redis
+    {
+        /// <summary>
+        /// PEM bundle of the Memorystore instance's certificate authorities, injected from
+        /// Secret Manager. Set only where the cache runs with in-transit encryption; empty
+        /// locally, where docker-compose speaks plain Redis.
+        /// </summary>
+        public const string CaCertificate = "Redis:CaCertificate";
+    }
+
     public static class Cors
     {
         public const string AllowedOrigins = "Cors:AllowedOrigins";

@@ -70,6 +70,16 @@ output "db_password_secret_name" {
   value       = google_secret_manager_secret.db_password.name
 }
 
+output "redis_host" {
+  description = "Private IP of the Memorystore instance (if enabled)"
+  value       = length(google_redis_instance.main) > 0 ? google_redis_instance.main[0].host : null
+}
+
+output "redis_port" {
+  description = "Memorystore port — 6378 while in-transit encryption is on (if enabled)"
+  value       = length(google_redis_instance.main) > 0 ? google_redis_instance.main[0].port : null
+}
+
 output "pubsub_topic_name" {
   description = "Cloud Pub/Sub topic name (if enabled)"
   value       = length(google_pubsub_topic.realtime) > 0 ? google_pubsub_topic.realtime[0].name : null

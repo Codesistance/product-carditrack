@@ -49,6 +49,12 @@ resource "google_project_service" "pubsub" {
   disable_on_destroy = false
 }
 
+resource "google_project_service" "redis" {
+  count              = var.enable_redis ? 1 : 0
+  service            = "redis.googleapis.com"
+  disable_on_destroy = false
+}
+
 resource "google_project_service" "compute" {
   service            = "compute.googleapis.com"
   disable_on_destroy = false

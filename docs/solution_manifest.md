@@ -541,7 +541,7 @@ The Cloud Run pay-per-use model keeps pre-launch costs near zero and scales line
 - Archive logs >2 years to cold storage (GCS)
 
 **Caching:**
-- In-memory cache for reference data (no Redis provisioned; can be added if session/dashboard caching demands it)
+- In-memory cache for reference data; Memorystore for Redis backs the distributed cache (dev only today — see `enable_redis`)
 - CDN for static assets
 
 ---
