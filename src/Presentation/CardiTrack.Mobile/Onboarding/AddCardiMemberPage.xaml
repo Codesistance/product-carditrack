@@ -92,7 +92,7 @@
                                             Format="MM/dd/yyyy"
                                             TextColor="{StaticResource HeadingText}"
                                             BackgroundColor="Transparent"
-                                            DateSelected="OnFormChanged"/>
+                                            DateSelected="OnDobSelected"/>
                                 <Label Grid.Column="1"
                                        Text="&#x1F4C5;"
                                        FontSize="18"

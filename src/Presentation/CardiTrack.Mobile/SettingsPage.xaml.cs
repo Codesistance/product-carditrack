@@ -38,6 +38,8 @@ public partial class SettingsPage : ContentPage
             Preferences.Default.Remove("PrimaryCardiMemberId");
             Preferences.Default.Remove("VerifyEmailNudgeDismissed");
             Preferences.Default.Remove(WizardLauncher.ResumeDismissedKey);
+            // Holds a name, DOB and medical notes — must not survive into the next session.
+            await CardiMemberDraft.ClearAsync();
             WindowNavigation.SetRootPage(this, new NavigationPage(new SignInPage()));
         }
         finally
