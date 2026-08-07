@@ -1,15 +1,18 @@
 using CardiTrack.Mobile.Core.Auth;
+using CardiTrack.Mobile.Services;
 
 namespace CardiTrack.Mobile;
 
 public partial class SettingsPage : ContentPage
 {
     private readonly IAuthService _authService;
+    private readonly IPopupService _popups;
 
-    public SettingsPage(IAuthService authService)
+    public SettingsPage(IAuthService authService, IPopupService popups)
     {
         InitializeComponent();
         _authService = authService;
+        _popups = popups;
     }
 
     protected override void OnAppearing()
@@ -21,7 +24,9 @@ public partial class SettingsPage : ContentPage
 
     private async void OnSignOutClicked(object? sender, EventArgs e)
     {
-        var confirmed = await DisplayAlertAsync("Sign out", "Sign out of CardiTrack?", "Sign out", "Cancel");
+        var confirmed = await _popups.ConfirmWarningAsync(
+            "You'll need to sign back in to keep an eye on your loved ones.",
+            "Ready to sign out?", confirmText: "Sign out");
         if (!confirmed)
             return;
 

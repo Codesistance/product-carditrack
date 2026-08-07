@@ -16,6 +16,7 @@ public partial class DashboardPage : ContentPage
 
     private readonly ICardiTrackApiClient _api;
     private readonly IAuthService _authService;
+    private readonly IPopupService _popups;
 
     private enum DashboardState { Loading, Loaded, NoMember, Error }
 
@@ -23,11 +24,12 @@ public partial class DashboardPage : ContentPage
     private DateTime _lastLoadedUtc = DateTime.MinValue;
     private DashboardResponse? _lastData;
 
-    public DashboardPage(ICardiTrackApiClient api, IAuthService authService)
+    public DashboardPage(ICardiTrackApiClient api, IAuthService authService, IPopupService popups)
     {
         InitializeComponent();
         _api = api;
         _authService = authService;
+        _popups = popups;
         HeroCard.SyncRequested += (_, _) => _ = LoadAsync(force: true);
     }
 
@@ -204,8 +206,8 @@ public partial class DashboardPage : ContentPage
     {
         if (string.IsNullOrWhiteSpace(_lastData?.Phone))
         {
-            await DisplayAlertAsync("No phone number",
-                "Add a phone number to this CardiMember to call them from here.", "OK");
+            await _popups.ShowInfoAsync(
+                "Add a phone number to this CardiMember to call them from here.", "No number yet");
             return;
         }
         try
@@ -214,7 +216,7 @@ public partial class DashboardPage : ContentPage
         }
         catch (Exception)
         {
-            await DisplayAlertAsync("Unavailable", "Phone calls aren't supported on this device.", "OK");
+            await _popups.ShowWarningAsync("Phone calls aren't supported on this device.");
         }
     }
 
@@ -222,8 +224,8 @@ public partial class DashboardPage : ContentPage
     {
         if (string.IsNullOrWhiteSpace(_lastData?.Phone))
         {
-            await DisplayAlertAsync("No phone number",
-                "Add a phone number to this CardiMember to message them from here.", "OK");
+            await _popups.ShowInfoAsync(
+                "Add a phone number to this CardiMember to message them from here.", "No number yet");
             return;
         }
         try
@@ -232,25 +234,25 @@ public partial class DashboardPage : ContentPage
         }
         catch (Exception)
         {
-            await DisplayAlertAsync("Unavailable", "Messaging isn't supported on this device.", "OK");
+            await _popups.ShowWarningAsync("Messaging isn't supported on this device.");
         }
     }
 
     private async void OnViewDetailsTapped(object? sender, EventArgs e) =>
-        await DisplayAlertAsync("Coming soon", "CardiMember details (M1-13) are on the way.", "OK");
+        await _popups.ShowInfoAsync("CardiMember details (M1-13) are on the way.", "Coming soon");
 
     private async void OnBellClicked(object? sender, EventArgs e) =>
         await Shell.Current.GoToAsync("//alerts");
 
     private async void OnAlertTapped(object? sender, Guid alertId) =>
-        await DisplayAlertAsync("Coming soon", "Alert details (M1-11) are on the way.", "OK");
+        await _popups.ShowInfoAsync("Alert details (M1-11) are on the way.", "Coming soon");
 
     private async void OnAddMemberClicked(object? sender, EventArgs e) =>
         await Navigation.PushAsync(new AddCardiMemberPage());
 
     private async void OnConnectDeviceClicked(object? sender, EventArgs e) =>
-        await DisplayAlertAsync("Coming soon", "Device connection (M1-05) is on the way.", "OK");
+        await _popups.ShowInfoAsync("Device connection (M1-05) is on the way.", "Coming soon");
 
     private async void OnViewTrendsClicked(object? sender, EventArgs e) =>
-        await DisplayAlertAsync("Coming soon", "Trends & history (M2-03) are on the way.", "OK");
+        await _popups.ShowInfoAsync("Trends & history (M2-03) are on the way.", "Coming soon");
 }

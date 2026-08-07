@@ -54,6 +54,7 @@ public static class MauiProgram
         }).AddHttpMessageHandler<AuthHttpMessageHandler>();
 
         builder.Services.AddSingleton<IAuthService, AuthService>();
+        builder.Services.AddSingleton<IPopupService, PopupService>();
         builder.Services.AddSingleton<PostLoginRouter>();
 
         // Shell tab pages resolve through DI (constructor injection).

@@ -1,4 +1,5 @@
 using CardiTrack.Application.DTOs.Responses;
+using CardiTrack.Mobile.Services;
 
 namespace CardiTrack.Mobile.Onboarding;
 
@@ -35,9 +36,8 @@ public partial class DeviceSelectionPage : ContentPage
 
     private async void OnHelpTapped(object? sender, EventArgs e)
     {
-        await DisplayAlertAsync(
-            "We can help",
+        await ServiceHelper.GetRequiredService<IPopupService>().ShowInfoAsync(
             "More devices are on the way — Garmin lands next. Reach us at support@carditrack.com and we'll help you get set up.",
-            "OK");
+            "We can help");
     }
 }
