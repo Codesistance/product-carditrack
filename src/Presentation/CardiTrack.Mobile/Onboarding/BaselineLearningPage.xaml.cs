@@ -42,9 +42,8 @@ public partial class BaselineLearningPage : ContentPage
 
     private async void OnInviteFamilyTapped(object? sender, EventArgs e)
     {
-        await DisplayAlertAsync(
-            "Coming soon",
+        await ServiceHelper.GetRequiredService<IPopupService>().ShowInfoAsync(
             "Family invitations arrive with the next release. You can invite your family from the Family tab once it's live.",
-            "OK");
+            "Coming soon");
     }
 }

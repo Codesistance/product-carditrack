@@ -7,12 +7,14 @@ public partial class CreateAccountPage : ContentPage
 {
     private readonly BoxView[] _strengthBars;
     private readonly IAuthService _authService;
+    private readonly IPopupService _popups;
 
     public CreateAccountPage()
     {
         InitializeComponent();
         _strengthBars = [Str0, Str1, Str2, Str3];
         _authService = ServiceHelper.GetRequiredService<IAuthService>();
+        _popups = ServiceHelper.GetRequiredService<IPopupService>();
         UpdateCreateButtonState();
     }
 
@@ -136,7 +138,8 @@ public partial class CreateAccountPage : ContentPage
 
         if (!TermsCheck.IsChecked)
         {
-            await DisplayAlertAsync("Terms Required", "Please agree to the Terms of Service and Privacy Policy.", "OK");
+            await _popups.ShowWarningAsync(
+                "Please agree to the Terms of Service and Privacy Policy to continue.", "One more thing");
             return;
         }
 

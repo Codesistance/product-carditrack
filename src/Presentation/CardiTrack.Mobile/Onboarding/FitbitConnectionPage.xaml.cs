@@ -16,12 +16,14 @@ public partial class FitbitConnectionPage : ContentPage
     private const string Provider = "fitbit";
 
     private readonly ICardiTrackApiClient _api;
+    private readonly IPopupService _popups;
     private readonly CardiMemberResponse _member;
 
     public FitbitConnectionPage(CardiMemberResponse member)
     {
         InitializeComponent();
         _api = ServiceHelper.GetRequiredService<ICardiTrackApiClient>();
+        _popups = ServiceHelper.GetRequiredService<IPopupService>();
         _member = member;
         NeedsLabel.Text = $"To look after {member.Name}, CardiTrack needs:";
         AuthorizingLabel.Text = $"Connecting to {member.Name}'s Fitbit...";
@@ -74,17 +76,15 @@ public partial class FitbitConnectionPage : ContentPage
         }
         catch (PlatformNotSupportedException)
         {
-            await DisplayAlertAsync(
-                "Not supported here",
+            await _popups.ShowWarningAsync(
                 "Device connection uses the system browser and is available on iOS and Android.",
-                "OK");
+                "Not supported here");
         }
         catch (NotImplementedException)
         {
-            await DisplayAlertAsync(
-                "Not supported here",
+            await _popups.ShowWarningAsync(
                 "Device connection uses the system browser and is available on iOS and Android.",
-                "OK");
+                "Not supported here");
         }
         finally
         {
@@ -106,7 +106,7 @@ public partial class FitbitConnectionPage : ContentPage
             await Navigation.PopAsync();
     }
 
-    private Task OnInfoAsync(string title, string message) => DisplayAlertAsync(title, message, "Got it");
+    private Task OnInfoAsync(string title, string message) => _popups.ShowInfoAsync(message, title);
 
     private async void OnHeartInfoTapped(object? sender, EventArgs e) =>
         await OnInfoAsync("Heart Rate Data", "So we can spot if something's off");

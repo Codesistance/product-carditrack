@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="CardiTrack.Mobile.Controls.AppPopupPage"
+             BackgroundColor="Transparent">
+
+    <Grid x:Name="Scrim" BackgroundColor="#80343434" Opacity="0">
+        <Grid.GestureRecognizers>
+            <TapGestureRecognizer Tapped="OnScrimTapped"/>
+        </Grid.GestureRecognizers>
+
+        <Border x:Name="Card"
+                BackgroundColor="{StaticResource White}"
+                Stroke="{StaticResource Divider}"
+                StrokeThickness="1"
+                Padding="24"
+                Margin="32,0"
+                Scale="0.92"
+                MaximumWidthRequest="360"
+                VerticalOptions="Center">
+            <Border.StrokeShape>
+                <RoundRectangle CornerRadius="20"/>
+            </Border.StrokeShape>
+            <Border.GestureRecognizers>
+                <!-- Swallows taps so they don't fall through to the scrim. -->
+                <TapGestureRecognizer/>
+            </Border.GestureRecognizers>
+
+            <VerticalStackLayout>
+                <Border x:Name="IconBadge"
+                        StrokeThickness="0"
+                        WidthRequest="56"
+                        HeightRequest="56"
+                        HorizontalOptions="Center">
+                    <Border.StrokeShape>
+                        <RoundRectangle CornerRadius="28"/>
+                    </Border.StrokeShape>
+                    <Label x:Name="IconLabel"
+                           FontFamily="Quicksand"
+                           FontAttributes="Bold"
+                           FontSize="26"
+                           HorizontalOptions="Center"
+                           VerticalOptions="Center"/>
+                </Border>
+
+                <Label x:Name="TitleLabel"
+                       Style="{StaticResource Heading3}"
+                       HorizontalTextAlignment="Center"
+                       Margin="0,16,0,0"/>
+
+                <Label x:Name="MessageLabel"
+                       Style="{StaticResource Body2}"
+                       HorizontalTextAlignment="Center"
+                       LineBreakMode="WordWrap"
+                       Margin="0,8,0,0"/>
+
+                <Grid ColumnSpacing="12" Margin="0,24,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition x:Name="CancelColumn" Width="0"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <Button x:Name="CancelBtn"
+                            Grid.Column="0"
+                            Style="{StaticResource SecondaryOutlineButton}"
+                            FontSize="16"
+                            Padding="12,0"
+                            IsVisible="False"
+                            Clicked="OnCancelClicked"/>
+                    <Button x:Name="ConfirmBtn"
+                            Grid.Column="1"
+                            Style="{StaticResource PrimaryGradientButton}"
+                            FontSize="16"
+                            Padding="12,0"
+                            Clicked="OnConfirmClicked"/>
+                </Grid>
+            </VerticalStackLayout>
+        </Border>
+    </Grid>
+</ContentPage>

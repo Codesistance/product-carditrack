@@ -8,11 +8,13 @@ public partial class ForgotPasswordPage : ContentPage
     private static readonly TimeSpan ResendCooldown = TimeSpan.FromSeconds(30);
 
     private readonly IAuthService _authService;
+    private readonly IPopupService _popups;
 
     public ForgotPasswordPage(string? email = null)
     {
         InitializeComponent();
         _authService = ServiceHelper.GetRequiredService<IAuthService>();
+        _popups = ServiceHelper.GetRequiredService<IPopupService>();
         if (!string.IsNullOrWhiteSpace(email))
             EmailEntry.Text = email.Trim();
         UpdateSendButtonState();
@@ -71,7 +73,7 @@ public partial class ForgotPasswordPage : ContentPage
                 _ => "We couldn't send the reset link. Please try again.",
             };
             if (fromResend)
-                await DisplayAlertAsync("Error", message, "OK");
+                await _popups.ShowErrorAsync(message);
             else
             {
                 ResetError.Text = message;

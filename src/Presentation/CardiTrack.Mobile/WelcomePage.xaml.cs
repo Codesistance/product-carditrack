@@ -1,3 +1,5 @@
+using CardiTrack.Mobile.Services;
+
 namespace CardiTrack.Mobile;
 
 public partial class WelcomePage : ContentPage
@@ -62,6 +64,7 @@ public partial class WelcomePage : ContentPage
 
     private async void OnTermsTapped(object? sender, EventArgs e)
     {
-        await DisplayAlertAsync("Terms & Privacy", "Terms and privacy will open here.", "OK");
+        await ServiceHelper.GetRequiredService<IPopupService>()
+            .ShowInfoAsync("Terms and privacy will open here.", "Terms & Privacy");
     }
 }

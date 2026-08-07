@@ -21,12 +21,14 @@ public partial class AddCardiMemberPage : ContentPage
     ];
 
     private readonly ICardiTrackApiClient _api;
+    private readonly IPopupService _popups;
     private FileResult? _photo;
 
     public AddCardiMemberPage()
     {
         InitializeComponent();
         _api = ServiceHelper.GetRequiredService<ICardiTrackApiClient>();
+        _popups = ServiceHelper.GetRequiredService<IPopupService>();
 
         RelationshipPicker.ItemsSource = Relationships.Select(r => r.Label).ToList();
         DobPicker.MaximumDate = DateTime.Today;
@@ -57,11 +59,12 @@ public partial class AddCardiMemberPage : ContentPage
         }
         catch (FeatureNotSupportedException)
         {
-            await DisplayAlertAsync("Not available", "Photo picking isn't supported on this device.", "OK");
+            await _popups.ShowWarningAsync("Photo picking isn't supported on this device.");
         }
         catch (PermissionException)
         {
-            await DisplayAlertAsync("Permission needed", "Allow photo access in Settings to add a photo.", "OK");
+            await _popups.ShowWarningAsync(
+                "Allow photo access in Settings to add a photo.", "Permission needed");
         }
     }
 
