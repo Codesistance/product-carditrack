@@ -143,8 +143,12 @@ public class DeviceConnectionService : IDeviceConnectionService
         if (payload is null || payload.Provider != deviceType)
             return null;
 
+        // The caller appends the callback parameters to whatever comes back, so a fragment is
+        // rejected alongside the scheme: '#' would swallow everything after it and the app
+        // would receive no state, code or error at all.
         if (!Uri.TryCreate(payload.RedirectUri, UriKind.Absolute, out var uri)
-            || !string.Equals(uri.Scheme, AppRedirectScheme, StringComparison.OrdinalIgnoreCase))
+            || !string.Equals(uri.Scheme, AppRedirectScheme, StringComparison.OrdinalIgnoreCase)
+            || !string.IsNullOrEmpty(uri.Fragment))
         {
             return null;
         }

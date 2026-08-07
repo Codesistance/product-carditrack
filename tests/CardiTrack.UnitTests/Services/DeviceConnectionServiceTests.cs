@@ -429,6 +429,21 @@ public class DeviceConnectionServiceTests
     }
 
     [Fact]
+    public async Task GetAppRedirectUri_RejectsRedirectCarryingAFragment()
+    {
+        // The bounce appends the callback parameters to whatever comes back, so a '#' would
+        // swallow them and the app would receive no state, code or error at all.
+        var sut = CreateSut();
+        var initiation = await sut.InitiateConnectionAsync(_userId, _memberId, new ConnectDeviceRequest
+        {
+            Provider = "fitbit",
+            RedirectUri = "carditrack://oauth/callback#done",
+        });
+
+        Assert.Null(await sut.GetAppRedirectUriAsync("fitbit", initiation.State));
+    }
+
+    [Fact]
     public async Task GetAppRedirectUri_ReturnsNull_ForUnknownStateOrProviderMismatch()
     {
         var sut = CreateSut();

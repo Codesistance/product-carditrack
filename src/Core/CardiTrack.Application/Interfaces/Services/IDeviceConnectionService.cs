@@ -19,6 +19,9 @@ public interface IDeviceConnectionService
     /// consuming it. Used by the anonymous oauth/redirect bounce endpoint that forwards the
     /// provider's https redirect back into the mobile app. Returns null for unknown providers
     /// or unknown/expired state.
+    ///
+    /// What comes back is safe for the caller to append callback parameters to: it is always
+    /// an absolute app-scheme URI with no fragment. Anything else resolves to null.
     /// </summary>
     Task<string?> GetAppRedirectUriAsync(string provider, string state, CancellationToken ct = default);
 
