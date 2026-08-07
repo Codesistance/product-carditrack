@@ -45,6 +45,13 @@ resource "google_storage_bucket" "audit" {
   # "US", which put audit records — including database and deployment activity for an EU
   # service — outside the region the rest of the estate is pinned to, and outside the transfer
   # position the DPIA describes.
+  #
+  # location is IMMUTABLE. On an environment where this bucket already exists in "US",
+  # changing it does not move the bucket — Terraform plans a destroy-and-recreate, and
+  # prevent_destroy below turns that into a plan-time error rather than the loss of an audit
+  # trail. Moving an existing bucket is a deliberate migration: stand up the new EU bucket
+  # under a new name, repoint the sink, copy what retention requires, then retire the old one.
+  # Only dev is deployed with this flag off, so a first apply elsewhere lands in EU cleanly.
   location      = var.storage_location
   storage_class = "COLDLINE"
   force_destroy = false
@@ -57,6 +64,13 @@ resource "google_storage_bucket" "audit" {
 
   labels     = var.monitoring_labels
   depends_on = [google_project_service.storage]
+
+  # An audit trail should not be destroyable as a side effect of an unrelated plan. With
+  # force_destroy = false and a retention policy, an attempted destroy would fail partway
+  # regardless; failing at plan time is the honest version of that.
+  lifecycle {
+    prevent_destroy = true
+  }
 }
 
 # Log sink routing audit logs to GCS
