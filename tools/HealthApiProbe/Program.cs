@@ -29,6 +29,14 @@ string[] rollupDataTypes =
 ];
 
 var showValues = args.Contains("--raw");
+
+// A mistyped --date silently probing the wrong day would look like "no data"
+// and send the operator hunting a field-name bug that isn't there.
+if (args.Contains("--date") && ParseDate(args) is null)
+{
+    Console.Error.WriteLine("--date needs a parseable date, e.g. --date 2026-08-06.");
+    return 1;
+}
 var date = ParseDate(args) ?? DateOnly.FromDateTime(DateTime.UtcNow.AddDays(-1));
 
 // Token via env var or prompt — never an argv, which leaks into shell history
@@ -36,12 +44,25 @@ var date = ParseDate(args) ?? DateOnly.FromDateTime(DateTime.UtcNow.AddDays(-1))
 var token = Environment.GetEnvironmentVariable("HEALTH_ACCESS_TOKEN");
 if (string.IsNullOrWhiteSpace(token))
 {
-    Console.Error.Write("Google OAuth access token (input not echoed to output): ");
-    token = Console.ReadLine();
+    token = ReadTokenFromConsole();
 }
 if (string.IsNullOrWhiteSpace(token))
 {
     Console.Error.WriteLine("No token supplied. Set HEALTH_ACCESS_TOKEN or paste one when prompted.");
+    return 1;
+}
+
+// Pasted and piped tokens arrive with surrounding whitespace, a trailing
+// newline, or a BOM (PowerShell's pipe adds one). Anything outside printable
+// ASCII reaches the Authorization header and throws deep inside HttpClient,
+// so it is caught here where the message can name the real problem.
+const char ByteOrderMark = '\uFEFF';
+const char ZeroWidthSpace = '\u200B';
+token = token.Trim().Trim(ByteOrderMark, ZeroWidthSpace).Trim();
+if (token.Length == 0 || token.Any(c => c is < (char)0x21 or > (char)0x7E))
+{
+    Console.Error.WriteLine(
+        "Token is empty or contains whitespace/non-ASCII characters — check for a stray BOM or line break from copy-paste.");
     return 1;
 }
 
@@ -75,7 +96,7 @@ foreach (var dataType in rollupDataTypes)
     {
         Content = new StringContent(body, Encoding.UTF8, "application/json"),
     };
-    await ReportAsync(request, token!, showValues);
+    await ReportAsync(http, request, token!, showValues);
 }
 
 Console.WriteLine();
@@ -85,7 +106,7 @@ var filter = Uri.EscapeDataString(
 using (var sleepRequest = new HttpRequestMessage(
     HttpMethod.Get, $"/v4/users/me/dataTypes/sleep/dataPoints?filter={filter}"))
 {
-    await ReportAsync(sleepRequest, token!, showValues);
+    await ReportAsync(http, sleepRequest, token!, showValues);
 }
 
 // ── What the real client makes of the same account ───────────────────────────
@@ -131,17 +152,58 @@ static DateOnly? ParseDate(string[] args)
     return DateOnly.TryParse(args[index + 1], out var parsed) ? parsed : null;
 }
 
+// Masks the token as it is typed: it is a live credential for someone's health
+// data, and an echoed one lingers in terminal scrollback and screen recordings.
+// Console.ReadKey cannot read redirected input, so piping falls back to
+// ReadLine — and says so rather than implying the input was hidden.
+static string? ReadTokenFromConsole()
+{
+    if (Console.IsInputRedirected)
+    {
+        Console.Error.Write("Google OAuth access token (stdin is redirected — input will NOT be masked): ");
+        return Console.ReadLine();
+    }
+
+    Console.Error.Write("Google OAuth access token (input hidden): ");
+    var token = new StringBuilder();
+    while (true)
+    {
+        var key = Console.ReadKey(intercept: true);
+        switch (key.Key)
+        {
+            case ConsoleKey.Enter:
+                Console.Error.WriteLine();
+                return token.ToString();
+
+            case ConsoleKey.Backspace:
+                if (token.Length > 0)
+                    token.Length--;
+                break;
+
+            case ConsoleKey.Escape:
+                Console.Error.WriteLine();
+                return null;
+
+            default:
+                // Control characters (arrow keys, F-keys) surface as '\0' — ignore
+                // them so they cannot corrupt the token.
+                if (!char.IsControl(key.KeyChar))
+                    token.Append(key.KeyChar);
+                break;
+        }
+    }
+}
+
 static string ToCamelCase(string dataType)
 {
     var parts = dataType.Split('-');
     return parts[0] + string.Concat(parts.Skip(1).Select(p => char.ToUpperInvariant(p[0]) + p[1..]));
 }
 
-static async Task ReportAsync(HttpRequestMessage request, string token, bool showValues)
+static async Task ReportAsync(HttpClient http, HttpRequestMessage request, string token, bool showValues)
 {
     request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
 
-    using var http = new HttpClient { BaseAddress = new Uri(BaseUrl) };
     using var response = await http.SendAsync(request);
     var payload = await response.Content.ReadAsStringAsync();
 

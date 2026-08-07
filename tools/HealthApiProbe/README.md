@@ -38,8 +38,14 @@ export HEALTH_ACCESS_TOKEN='ya29....'
 dotnet run --project tools/HealthApiProbe -- --date 2026-08-06
 ```
 
-Omit `HEALTH_ACCESS_TOKEN` and the probe prompts for the token on stdin.
-`--date` defaults to yesterday (UTC); today is usually still partial.
+Omit `HEALTH_ACCESS_TOKEN` and the probe prompts for the token, masking it as
+you type so it does not linger in terminal scrollback. Piped input
+(`echo $TOKEN | dotnet run …`) cannot be masked — the prompt says so rather
+than implying otherwise.
+
+`--date` defaults to yesterday (UTC); today is usually still partial. An
+unparseable `--date` is rejected rather than silently falling back to
+yesterday, since probing the wrong day looks identical to a field-name bug.
 
 ## Output
 
