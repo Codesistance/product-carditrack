@@ -152,6 +152,17 @@ public class BaselineCalculatorTests
         Assert.Equal(142, baseline.MaxHeartRateObserved);
     }
 
+    [Fact]
+    public void Calculate_LeavesTheObservedMaximumNull_WhenNoReadingCarriesOne()
+    {
+        // Max() over int? returns null for an empty sequence rather than throwing, unlike the
+        // non-nullable overload. Pinned because the difference is easy to misread.
+        var baseline = BaselineCalculator.Calculate(MemberId, Window(RequiredDays), Period, Today);
+
+        Assert.NotNull(baseline);
+        Assert.Null(baseline.MaxHeartRateObserved);
+    }
+
     // ── Clock times ─────────────────────────────────────────────────────────────
 
     [Fact]
