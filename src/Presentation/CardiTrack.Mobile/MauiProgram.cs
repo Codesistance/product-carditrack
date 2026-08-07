@@ -2,6 +2,7 @@ using CardiTrack.Mobile.Core.Api;
 using CardiTrack.Mobile.Core.Auth;
 using CardiTrack.Mobile.Core.Configuration;
 using CardiTrack.Mobile.Core.Http;
+using CardiTrack.Mobile.Core.Onboarding;
 using CardiTrack.Mobile.Services;
 
 namespace CardiTrack.Mobile;
@@ -34,6 +35,9 @@ public static class MauiProgram
         builder.Services.AddSingleton(new ApiOptions(AppConfig.ApiBaseUrl));
 
         builder.Services.AddSingleton<ITokenStore, SecureTokenStore>();
+        builder.Services.AddSingleton<ISecureKeyValueStore, SecureStorageKeyValueStore>();
+        builder.Services.AddSingleton<IDraftPhotoStore, AppDataDraftPhotoStore>();
+        builder.Services.AddSingleton<CardiMemberDraftStore>();
         builder.Services.AddSingleton<ITokenRefresher, TokenRefresher>();
         builder.Services.AddTransient<AuthHttpMessageHandler>();
 

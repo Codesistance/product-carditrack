@@ -3,6 +3,7 @@ using CardiTrack.Application.DTOs.Requests;
 using CardiTrack.Domain.Enums;
 using CardiTrack.Mobile.Core.Api;
 using CardiTrack.Mobile.Core.Localization;
+using CardiTrack.Mobile.Core.Onboarding;
 using CardiTrack.Mobile.Services;
 
 namespace CardiTrack.Mobile.Onboarding;
@@ -22,6 +23,7 @@ public partial class AddCardiMemberPage : ContentPage
 
     private readonly ICardiTrackApiClient _api;
     private readonly IPopupService _popups;
+    private readonly CardiMemberDraftStore _drafts;
     private readonly WizardContext _ctx;
     private string? _photoPath;
     private bool _dobTouched;
@@ -34,6 +36,7 @@ public partial class AddCardiMemberPage : ContentPage
         InitializeComponent();
         _api = ServiceHelper.GetRequiredService<ICardiTrackApiClient>();
         _popups = ServiceHelper.GetRequiredService<IPopupService>();
+        _drafts = ServiceHelper.GetRequiredService<CardiMemberDraftStore>();
         _ctx = ctx;
 
         if (ctx.Origin == WizardOrigin.Modal)
@@ -84,7 +87,7 @@ public partial class AddCardiMemberPage : ContentPage
     {
         if (_submitted)
             return;
-        _ = CurrentDraft().SaveAsync();
+        _ = _drafts.SaveAsync(CurrentDraft());
     }
 
     private CardiMemberDraft CurrentDraft() => new()
@@ -103,7 +106,7 @@ public partial class AddCardiMemberPage : ContentPage
 
     private async Task RestoreDraftAsync()
     {
-        var draft = await CardiMemberDraft.LoadAsync();
+        var draft = await _drafts.LoadAsync();
         // Never overwrite something the user has already started typing while we loaded.
         if (draft is null || CurrentDraft().HasContent)
             return;
@@ -151,7 +154,8 @@ public partial class AddCardiMemberPage : ContentPage
             if (photo is null)
                 return;
 
-            _photoPath = await CardiMemberDraft.CapturePhotoAsync(photo, _photoPath) ?? photo.FullPath;
+            await using var picked = await photo.OpenReadAsync();
+            _photoPath = await _drafts.CapturePhotoAsync(picked, _photoPath) ?? photo.FullPath;
             PhotoImage.Source = ImageSource.FromFile(_photoPath);
             PhotoImage.IsVisible = true;
             PhotoPlaceholder.IsVisible = false;
@@ -211,7 +215,7 @@ public partial class AddCardiMemberPage : ContentPage
             });
 
             _submitted = true;
-            await CardiMemberDraft.ClearAsync();
+            await _drafts.ClearAsync();
 
             _ctx.Member = member;
             _ctx.MemberCreated = true;
