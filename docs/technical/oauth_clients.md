@@ -226,7 +226,12 @@ ids in them), and the bounce endpoint only ever redirects into the
    inferred from the documented naming convention (PR #10): the
    distance/active-minutes/total-calories/floors rollup values, the
    resting-heart-rate union member, and the sleep session shape. Confirm each
-   and fix any mismatches.
+   and fix any mismatches. Use the
+   [Health API probe](../../tools/HealthApiProbe/README.md)
+   (`dotnet run --project tools/HealthApiProbe`) — it prints each response's
+   field names beside what the client extracts, so a wrong guess shows up as a
+   flagged zero. A wrong name never throws, it just yields `0`, so this pass is
+   not optional.
 6. **Before public launch**, in `carditrack-devices-prod` only — **not yet
    submitted as of 2026-08-07**: restricted-scope
    verification + CASA assessment — prerequisites checklist in
