@@ -1,5 +1,9 @@
-# Cloud Monitoring & Audit Logging
-# Enables Cloud Monitoring and creates audit log sink for HIPAA compliance
+# Cloud Monitoring & Platform Audit Logging
+#
+# Routes Cloud Logging's platform audit trail (Cloud SQL and Cloud Run activity) to a retained
+# bucket. This is infrastructure-level auditing — who touched the database or deployed a
+# revision. It is NOT the application's record of who read a wearer's health data; that is an
+# application concern and is not implemented here.
 
 # Variables
 variable "log_sink_name" {
@@ -12,8 +16,8 @@ variable "audit_bucket_name" {
   type        = string
 }
 
-variable "enable_hipaa_compliance" {
-  description = "Enable HIPAA compliance features (audit log sink)"
+variable "enable_platform_audit_logging" {
+  description = "Enable the platform audit log sink and its retained bucket"
   type        = bool
   default     = false
 }
@@ -32,11 +36,23 @@ variable "monitoring_labels" {
 
 # Resources
 
-# Dedicated audit log bucket (HIPAA compliance)
+# Dedicated audit log bucket
 resource "google_storage_bucket" "audit" {
-  count         = var.enable_hipaa_compliance ? 1 : 0
-  name          = var.audit_bucket_name
-  location      = "US"
+  count = var.enable_platform_audit_logging ? 1 : 0
+  name  = var.audit_bucket_name
+
+  # Follows the deployment's storage location like every other bucket. This was hardcoded to
+  # "US", which put audit records — including database and deployment activity for an EU
+  # service — outside the region the rest of the estate is pinned to, and outside the transfer
+  # position the DPIA describes.
+  #
+  # location is IMMUTABLE. On an environment where this bucket already exists in "US",
+  # changing it does not move the bucket — Terraform plans a destroy-and-recreate, and
+  # prevent_destroy below turns that into a plan-time error rather than the loss of an audit
+  # trail. Moving an existing bucket is a deliberate migration: stand up the new EU bucket
+  # under a new name, repoint the sink, copy what retention requires, then retire the old one.
+  # Only dev is deployed with this flag off, so a first apply elsewhere lands in EU cleanly.
+  location      = var.storage_location
   storage_class = "COLDLINE"
   force_destroy = false
 
@@ -48,11 +64,18 @@ resource "google_storage_bucket" "audit" {
 
   labels     = var.monitoring_labels
   depends_on = [google_project_service.storage]
+
+  # An audit trail should not be destroyable as a side effect of an unrelated plan. With
+  # force_destroy = false and a retention policy, an attempted destroy would fail partway
+  # regardless; failing at plan time is the honest version of that.
+  lifecycle {
+    prevent_destroy = true
+  }
 }
 
 # Log sink routing audit logs to GCS
 resource "google_logging_project_sink" "audit" {
-  count       = var.enable_hipaa_compliance ? 1 : 0
+  count       = var.enable_platform_audit_logging ? 1 : 0
   name        = var.log_sink_name
   destination = "storage.googleapis.com/${google_storage_bucket.audit[0].name}"
   filter      = "resource.type=\"cloudsql_database\" OR resource.type=\"cloud_run_revision\""
@@ -62,7 +85,7 @@ resource "google_logging_project_sink" "audit" {
 
 # Grant the log sink writer permission to write to the audit bucket
 resource "google_storage_bucket_iam_member" "audit_writer" {
-  count  = var.enable_hipaa_compliance ? 1 : 0
+  count  = var.enable_platform_audit_logging ? 1 : 0
   bucket = google_storage_bucket.audit[0].name
   role   = "roles/storage.objectCreator"
   member = google_logging_project_sink.audit[0].writer_identity

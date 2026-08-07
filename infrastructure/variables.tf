@@ -183,15 +183,27 @@ variable "redis_version" {
   default     = "REDIS_7_2"
 }
 
-# HIPAA Compliance Configuration
-variable "enable_hipaa_compliance" {
-  description = "Enable HIPAA compliance features (audit logging, enhanced retention)"
+# Platform Audit Logging
+#
+# Renamed from enable_hipaa_compliance. The old name overstated what this does: it turns on
+# Cloud SQL audit flags and routes Cloud Logging's platform audit trail to a retained bucket.
+# That is infrastructure activity — who connected to the database, who deployed a revision.
+# It does not record which caregiver read which wearer's health data; nothing does yet, and
+# that record is an application concern. The old name also implied a HIPAA posture the
+# service does not currently hold — see docs/solution_manifest.md.
+variable "enable_platform_audit_logging" {
+  description = "Enable Cloud SQL audit flags and the platform audit log sink"
   type        = bool
   default     = false
 }
 
+# 90 days covers operational forensics, which is what a platform audit trail is for.
+# HIPAA's §164.316(b)(2) six-year retention applies to compliance documentation and to
+# application-level PHI access records — neither of which this sink carries — and only once
+# HIPAA attaches at all. Raising this is a cost decision (COLDLINE, immutable retention
+# policy), not a default to drift into.
 variable "audit_retention_days" {
-  description = "Audit log retention in days (90 for HIPAA)"
+  description = "Platform audit log retention in days"
   type        = number
   default     = 90
 }

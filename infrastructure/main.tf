@@ -148,7 +148,7 @@ module "deployments" {
   cloud_sql_ha_enabled          = var.cloud_sql_ha_enabled
   cloud_sql_deletion_protection = var.cloud_sql_deletion_protection
   cloud_sql_public_ip_enabled   = var.cloud_sql_public_ip_enabled
-  cloud_sql_enable_audit        = var.enable_hipaa_compliance
+  cloud_sql_enable_audit        = var.enable_platform_audit_logging
   cloud_sql_labels              = local.common_labels
   migrator_container_image      = var.migrator_container_image
 
@@ -180,12 +180,13 @@ module "deployments" {
   enable_pubsub     = var.enable_pubsub
   pubsub_labels     = local.common_labels
 
-  # Cloud Monitoring & Audit Logging
-  log_sink_name           = local.log_sink_name
-  audit_bucket_name       = local.audit_bucket_name
-  enable_hipaa_compliance = var.enable_hipaa_compliance
-  audit_retention_days    = var.audit_retention_days
-  monitoring_labels       = local.common_labels
+  # Cloud Monitoring & platform audit logging. The audit bucket reads the storage_location
+  # passed above, so every bucket in the deployment lands in the same place.
+  log_sink_name                 = local.log_sink_name
+  audit_bucket_name             = local.audit_bucket_name
+  enable_platform_audit_logging = var.enable_platform_audit_logging
+  audit_retention_days          = var.audit_retention_days
+  monitoring_labels             = local.common_labels
 
   # MedGemma (Ollama)
   medgemma_service_name  = "${var.project_name}-${local.environment}-medgemma"

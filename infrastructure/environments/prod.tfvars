@@ -54,9 +54,9 @@ redis_memory_size_gb = 1
 # Pub/Sub — enabled in prod for real-time messaging
 enable_pubsub = true
 
-# HIPAA Compliance — full audit logging, 90-day retention
-enable_hipaa_compliance = true
-audit_retention_days    = 90
+# Platform audit logging (Cloud SQL audit flags + log sink), 90-day retention
+enable_platform_audit_logging = true
+audit_retention_days          = 90
 
 # Labels
 additional_labels = {

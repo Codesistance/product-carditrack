@@ -47,9 +47,12 @@ public class UserContextMiddleware
                         }
                     }
 
-                    // Add user context to logs
+                    // Correlation only. Auth0UserId is pseudonymous and stays; the email address
+                    // does not — pushed here it rode on every log line in the request, into Cloud
+                    // Logging and the APM provider, making a health service's user list readable
+                    // from telemetry. Resolve an Auth0UserId against the database when a support
+                    // question actually needs the person.
                     LogContext.PushProperty("Auth0UserId", auth0UserId);
-                    LogContext.PushProperty("Email", email);
 
                     _logger.LogDebug("User context set for Auth0 user: {Auth0UserId}", auth0UserId);
                 }

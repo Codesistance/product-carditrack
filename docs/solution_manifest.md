@@ -326,29 +326,77 @@ Prevention: Catches gradual decline before it becomes severe
 - Offline support with local SQLite cache *(planned — R4)*
 - Platform-specific integrations (HealthKit on iOS) *(planned — R4)*
 
-### 5. HIPAA Compliance
+### 5. Regulatory posture and safeguards
 
-**Technical Safeguards:**
-- ✅ Encryption at rest (Cloud SQL encryption at rest)
-- ✅ Encryption in transit (TLS 1.2+)
-- ✅ Field-level encryption (OAuth tokens, medical notes)
-- ✅ Access controls (RBAC, MFA for admins)
-- ✅ Token policy: short-lived access tokens (15–60 min) with rotating refresh tokens (30-day absolute lifetime); ~15-minute idle timeout on web; biometric re-authentication gate on mobile app open
-- ✅ Comprehensive audit logging
+> **Built to HIPAA technical safeguards. Not a covered entity or business associate today.**
+> CardiTrack is a consumer wellness service governed by UK/EU GDPR and the FTC Health Breach
+> Notification Rule. BAAs and attestation will be executed before any enterprise or clinical
+> offering.
 
-**Administrative Safeguards:**
-- Privacy policies
-- Security policies
-- Breach notification procedures
-- Workforce training program
-- Business Associate Agreements (BAAs) with all vendors
+This section previously marked the whole of §164.312 and §164.308 as shipped. Most of it was
+not, and unsubstantiated security claims are themselves the enforcement risk — they are the
+FTC Act §5 theory used against GoodRx, Premom and BetterHelp. What follows is the verified
+state. `docs/market_analysis.md` carries the same position in the competitor table.
 
-**Audit Logging:**
-- All PHI access tracked
-- User ID, CardiMember ID, action, timestamp
-- IP address and user agent tracking
-- **6-year retention** (1 year in hot storage, then archive tier)
-- Exportable audit trail for compliance
+**What actually governs us today**
+
+| Regime | Applies | Why |
+|---|---|---|
+| UK/EU GDPR | ✅ Yes — primary | Health data is Art. 9 special category; UK/EU wearers from R1 |
+| FTC Health Breach Notification Rule (16 CFR 318) | ✅ Yes | Covers direct-to-consumer health apps outside HIPAA |
+| FTC Act §5 | ✅ Yes | Unfair/deceptive practices — this includes overstated security claims |
+| State laws (e.g. WA My Health My Data) | ✅ Yes, on US launch | Private right of action |
+| HIPAA | ⬜ Not yet | No covered entity in the chain: D2C sales, data arrives via the wearer's own Google consent, no function performed for a provider or plan |
+
+HIPAA attaches at the first of: telemedicine integration (R4), any provider-facing data flow
+(the FHIR R4/HL7 v2 export roadmap sits on this line), or enterprise/assisted-living sales —
+facilities require a BAA in procurement regardless of whether the law compels one.
+
+Dropping HIPAA as a *present-tense claim* is not the same as dropping it as a design target.
+GDPR already requires audit logging (Art. 5(2), 32), encryption (32), least privilege (32) and
+breach notification (33/34). The real delta is BAAs, six-year retention, policy and training
+artifacts, and a §164.308-format risk analysis. Retrofitting is strictly worse: audit logging
+added after real PHI exists leaves an unauditable gap that can never be closed.
+
+**Technical safeguards (§164.312)**
+
+| Control | State | Detail |
+|---|---|---|
+| Encryption at rest | ✅ | Cloud SQL, GCS — Google-managed keys |
+| Encryption in transit | ✅ | TLS 1.2+ |
+| Field-level encryption — OAuth tokens | ✅ | AES-256-GCM, key-id envelope for rotation |
+| Field-level encryption — medical notes | ✅ | AES-256-GCM; plaintext until W1-1 despite this document claiming otherwise |
+| Token policy | ✅ | Short-lived access tokens (15–60 min), rotating refresh tokens (30-day absolute), ~15-min web idle timeout, biometric re-auth on mobile open |
+| Access controls — RBAC | 🔄 | `UserRole` exists and CardiMember access is gated per-caregiver; role enforcement is not yet applied across every endpoint |
+| Access controls — MFA for admins | ⬜ | Auth0 tenant configuration, not yet enabled |
+| Audit logging of PHI access | ⬜ | Table, EF configuration, indexes and migration exist; **nothing writes to them** (W1-2) |
+| Least privilege | ⬜ | All Cloud Run services share the default compute service account; applications connect to Postgres as admin (W1-6) |
+
+**Administrative safeguards (§164.308) — not started**
+
+Privacy policy, security policy, breach notification procedure, workforce training and a formal
+risk analysis are all outstanding. None of these are code, and none should be claimed until the
+document exists and someone owns it.
+
+**Business Associate Agreements**
+
+| Vendor | State |
+|---|---|
+| Google Cloud (Cloud SQL, GCS, Secret Manager, KMS, Cloud Run) | ⬜ Offered and free — not executed (tracked in issue #40) |
+| Auth0 (Okta) | ⬜ Available on suitable plan tier — deferred to production go-live |
+| Google Health API | n/a — no BAA offered; user-consent model under Google's Limited Use policy |
+| Gemini consumer API | n/a — outside the Cloud BAA. Identifiable data no longer sent (W0-2); moving to Vertex AI or in-VPC MedGemma is decision D6 |
+
+**Audit logging — target design, not current state**
+
+When W1-2 lands: user ID, CardiMember ID, action, timestamp, IP address and user agent, written
+request-scoped so reads are captured and not just writes. Retention is 90 days for the platform
+audit trail today (`enable_platform_audit_logging`); the six-year figure applies to HIPAA
+§164.316(b)(2) documentation and PHI-access records, and becomes required only when HIPAA
+attaches.
+
+> Not legal advice. The covered-entity determination is a one-hour question for healthcare
+> counsel and should be confirmed rather than inferred from this document.
 
 ---
 
@@ -397,9 +445,9 @@ Prevention: Catches gradual decline before it becomes severe
 - Resolution workflow (`new → acknowledged → resolved`)
 
 **AuditLog**
-- HIPAA compliance tracking
-- All PHI access logged
-- 6-year retention (1 year hot, then archive)
+- Schema for access tracking — table, EF configuration, indexes and migration exist
+- ⬜ **Nothing writes to it yet** (W1-2). Target: all health-data access, request-scoped
+- Retention target is set by the regime that applies — see §5
 
 ---
 
@@ -573,18 +621,23 @@ The Cloud Run pay-per-use model keeps pre-launch costs near zero and scales line
 - **Strategy**: Position for acquisition by Google/Fitbit/Apple
 
 **Risk 3: Regulatory Changes**
-- **Mitigation**: HIPAA compliance from day 1
-- **Legal**: Regular healthcare attorney consultations
+- **Mitigation**: Build to HIPAA technical safeguards from day 1 without claiming the status — see §5
+- **Legal**: Regular healthcare attorney consultations; the covered-entity determination is the first question
 
-### HIPAA/Legal Risks
+### Regulatory / Legal Risks
 
 **Risk 1: Data Breach**
 - **Mitigation**: Multi-layer encryption, regular audits
-- **Insurance**: Cyber liability with HIPAA coverage ($1-2M)
+- **Notification duty today**: FTC Health Breach Notification Rule and UK/EU GDPR Art. 33/34 — not HIPAA
+- **Insurance**: Cyber liability ($1–2M)
 
 **Risk 2: Unauthorized Access**
-- **Mitigation**: RBAC, audit logging, MFA
-- **Monitoring**: Real-time suspicious access alerts
+- **Mitigation**: Per-caregiver access checks on every health-data surface (shipped); RBAC, audit logging and MFA are ⬜ outstanding — see §5
+- **Monitoring**: Real-time suspicious access alerts *(planned — depends on W1-2)*
+
+**Risk 3: Overstated compliance claims**
+- **Why it is listed**: this is the live exposure, not the gaps themselves. FTC Act §5 actions against GoodRx, Premom and BetterHelp turned on claims, not breaches
+- **Mitigation**: §5 states verified status only; any ✅ must be traceable to code or an executed document
 
 ---
 

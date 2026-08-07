@@ -3,6 +3,7 @@ using CardiTrack.Application.DTOs.Requests;
 using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Application.Exceptions;
 using CardiTrack.Application.Interfaces.Repositories;
+using CardiTrack.Application.Interfaces.Security;
 using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Domain.Entities;
 using CardiTrack.Domain.Enums;

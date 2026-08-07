@@ -44,9 +44,9 @@ redis_memory_size_gb = 1
 # Pub/Sub
 enable_pubsub = false # Disabled in dev
 
-# HIPAA Compliance
-enable_hipaa_compliance = false
-audit_retention_days    = 30
+# Platform audit logging (Cloud SQL audit flags + log sink)
+enable_platform_audit_logging = false
+audit_retention_days          = 30
 
 # Labels
 additional_labels = {

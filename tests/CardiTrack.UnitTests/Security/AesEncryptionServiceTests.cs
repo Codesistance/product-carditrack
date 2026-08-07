@@ -167,6 +167,71 @@ public class AesEncryptionServiceTests
         var cipherText = _sut.Encrypt("secret");
         var otherService = new AesEncryptionService(AesEncryptionService.GenerateKey());
 
-        Assert.ThrowsAny<CryptographicException>(() => otherService.Decrypt(cipherText));
+        // Was a bare CryptographicException. The envelope now names both key ids, so a
+        // misconfigured deployment is distinguishable from corrupted data.
+        var ex = Assert.Throws<InvalidOperationException>(() => otherService.Decrypt(cipherText));
+        Assert.Contains(_sut.KeyId, ex.Message);
+        Assert.Contains(otherService.KeyId, ex.Message);
+    }
+
+    // ── Key-id envelope ─────────────────────────────────────────────────────────
+    //
+    // The envelope is what makes key rotation and crypto-shredding possible later: without a
+    // recorded key id nothing can tell which key a stored row was written under.
+
+    [Fact]
+    public void Encrypt_StampsTheEnvelopeWithVersionAndKeyId()
+    {
+        var cipherText = _sut.Encrypt("secret");
+
+        var parts = cipherText.Split(':');
+        Assert.Equal(3, parts.Length);
+        Assert.Equal("v1", parts[0]);
+        Assert.Equal(_sut.KeyId, parts[1]);
+        Assert.NotEmpty(Convert.FromBase64String(parts[2]));
+    }
+
+    [Fact]
+    public void KeyId_IsStableForAKey_AndDiffersBetweenKeys()
+    {
+        var key = AesEncryptionService.GenerateKey();
+
+        Assert.Equal(new AesEncryptionService(key).KeyId, new AesEncryptionService(key).KeyId);
+        Assert.NotEqual(_sut.KeyId, new AesEncryptionService(key).KeyId);
+    }
+
+    [Fact]
+    public void KeyId_IsFixedLengthLowercaseHex()
+    {
+        var keyId = new AesEncryptionService(AesEncryptionService.GenerateKey()).KeyId;
+
+        // Structural, not probabilistic. Hex is what keeps the id free of ':' — the envelope
+        // is split on that character, so an id containing one would break parsing. Fixed
+        // length is what lets a future reader tell envelope versions apart.
+        Assert.Equal(16, keyId.Length);
+        Assert.Matches("^[0-9a-f]{16}$", keyId);
+    }
+
+    [Fact]
+    public void Decrypt_ReadsCipherTextWrittenBeforeEnvelopesExisted()
+    {
+        // Exactly the old on-disk format: bare base64 of nonce|tag|ciphertext, no prefix.
+        // OAuth refresh tokens already sit in the database in this shape, so losing the ability
+        // to read them would break device sync for every connected wearer.
+        var legacy = Convert.ToBase64String(_sut.EncryptBytes(Encoding.UTF8.GetBytes("legacy secret")));
+
+        Assert.Equal("legacy secret", _sut.Decrypt(legacy));
+    }
+
+    [Theory]
+    [InlineData("v2")]
+    [InlineData("vX")]
+    public void Decrypt_TreatsAnUnknownEnvelopeVersionAsLegacyRatherThanGuessing(string version)
+    {
+        var payload = Convert.ToBase64String(_sut.EncryptBytes(Encoding.UTF8.GetBytes("x")));
+
+        // An unrecognised prefix is not silently parsed as if it were ours; the whole string is
+        // treated as the payload, which then fails to decode rather than decrypting wrongly.
+        Assert.ThrowsAny<Exception>(() => _sut.Decrypt($"{version}:{_sut.KeyId}:{payload}"));
     }
 }
