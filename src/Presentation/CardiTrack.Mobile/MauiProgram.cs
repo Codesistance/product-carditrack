@@ -36,7 +36,7 @@ public static class MauiProgram
 
         builder.Services.AddSingleton<ITokenStore, SecureTokenStore>();
         builder.Services.AddSingleton<ISecureKeyValueStore, SecureStorageKeyValueStore>();
-        builder.Services.AddSingleton<IDraftPhotoStore, AppDataDraftPhotoStore>();
+        builder.Services.AddSingleton<IDraftPhotoStore>(_ => new FileDraftPhotoStore(FileSystem.AppDataDirectory));
         builder.Services.AddSingleton<CardiMemberDraftStore>();
         builder.Services.AddSingleton<ITokenRefresher, TokenRefresher>();
         builder.Services.AddTransient<AuthHttpMessageHandler>();

@@ -1,4 +1,5 @@
 using CardiTrack.Mobile.Core.Api;
+using CardiTrack.Mobile.Core.Onboarding;
 using CardiTrack.Mobile.Onboarding;
 
 namespace CardiTrack.Mobile.Services;
@@ -24,25 +25,25 @@ public sealed class PostLoginRouter
     public async Task RouteAsync(Page current, CancellationToken ct = default)
     {
         var status = await _api.GetOnboardingStatusAsync(ct);
-        Page root = !status.HasUserAccount
-            ? new NavigationPage(new AccountSetupPage())
-            : !status.HasCardiMember
-                ? new NavigationPage(new AddCardiMemberPage(WizardContext.ForOnboardingRoot()))
-                : new AppShell();
+        var route = PostLoginRouteResolver.Resolve(
+            status, Preferences.Default.Get(WizardLauncher.ResumeDismissedKey, false));
 
-        var resumeDeviceLeg = root is AppShell
-            && !status.HasDeviceConnected
-            && !Preferences.Default.Get(WizardLauncher.ResumeDismissedKey, false);
+        Page root = route.Destination switch
+        {
+            PostLoginDestination.AccountSetup => new NavigationPage(new AccountSetupPage()),
+            PostLoginDestination.AddCardiMember =>
+                new NavigationPage(new AddCardiMemberPage(WizardContext.ForOnboardingRoot())),
+            _ => new AppShell(),
+        };
 
         await MainThread.InvokeOnMainThreadAsync(() =>
         {
             WindowNavigation.SetRootPage(current, root);
-            if (!resumeDeviceLeg)
+            if (!route.ResumeDeviceSetup || root is not AppShell shell)
                 return;
 
             // Push the wizard only once the shell is on screen — pushing a modal in the
             // same breath as the root swap races handler creation on Android.
-            var shell = (AppShell)root;
             void OnLoaded(object? sender, EventArgs e)
             {
                 shell.Loaded -= OnLoaded;
@@ -56,8 +57,7 @@ public sealed class PostLoginRouter
     {
         try
         {
-            var members = await _api.GetCardiMembersAsync();
-            var member = members.FirstOrDefault(m => m.IsActive) ?? members.FirstOrDefault();
+            var member = PrimaryCardiMember.From(await _api.GetCardiMembersAsync());
             if (member is null)
                 return;
 

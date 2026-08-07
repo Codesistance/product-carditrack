@@ -2,6 +2,7 @@ using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Mobile.Controls;
 using CardiTrack.Mobile.Core.Api;
 using CardiTrack.Mobile.Core.Auth;
+using CardiTrack.Mobile.Core.Onboarding;
 using CardiTrack.Mobile.Onboarding;
 using CardiTrack.Mobile.Services;
 
@@ -130,8 +131,7 @@ public partial class DashboardPage : ContentPage
         if (!force && Guid.TryParse(cached, out var cachedId))
             return cachedId;
 
-        var members = await _api.GetCardiMembersAsync();
-        var primary = members.FirstOrDefault(m => m.IsActive) ?? members.FirstOrDefault();
+        var primary = PrimaryCardiMember.From(await _api.GetCardiMembersAsync());
         if (primary is null)
         {
             Preferences.Default.Remove(PrimaryMemberIdKey);
@@ -273,9 +273,11 @@ public partial class DashboardPage : ContentPage
         _wizardActive = true;
         try
         {
-            var memberId = await ResolveMemberIdAsync(force: false);
-            var members = await _api.GetCardiMembersAsync();
-            var member = members.FirstOrDefault(m => m.Id == memberId) ?? members.FirstOrDefault();
+            // One round trip: the members list answers both "which member" and "is there one".
+            var cached = Preferences.Default.Get(PrimaryMemberIdKey, string.Empty);
+            var member = PrimaryCardiMember.From(
+                await _api.GetCardiMembersAsync(),
+                Guid.TryParse(cached, out var cachedId) ? cachedId : null);
             if (member is null)
                 return;
 
