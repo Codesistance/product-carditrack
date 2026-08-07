@@ -91,6 +91,27 @@ CardiTrack/
 - [Google Cloud account](https://cloud.google.com/) (for deployment only)
 - [Terraform](https://www.terraform.io/) >= 1.14.7 (for infrastructure)
 
+### Dev Container (recommended)
+
+`.devcontainer/` defines a container with all of the above already installed —
+.NET 10 SDK, EF Core tooling, Terraform, the PostgreSQL client, the gcloud CLI —
+plus PostgreSQL 17 and Redis 7 as compose services. Open the repository in VS Code
+and choose **Reopen in Container**, or run `devcontainer up --workspace-folder .`;
+package restore, dev certificates, and the initial migration run automatically.
+
+See the [dev container README](.devcontainer/README.md) for the toolchain matrix
+and the opt-in mobile layer. Claude Code cloud sessions provision the same
+toolchain automatically via a `SessionStart` hook.
+
+Everything except `CardiTrack.Mobile` is covered by the `CardiTrack.Server.slnf`
+solution filter — the MAUI project needs the `maui-android` workload and the
+Android SDK, so use the filter for server work:
+
+```bash
+dotnet build CardiTrack.Server.slnf
+dotnet test  CardiTrack.Server.slnf
+```
+
 ### Local Development
 
 1. **Clone the repository**

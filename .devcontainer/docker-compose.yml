@@ -1,0 +1,71 @@
+# Dev container stack: the workspace container plus the backing services the app
+# needs locally (PostgreSQL, Redis). Image versions mirror the repository's
+# docker-compose.yml so local runs and dev container runs behave the same.
+#
+# The AI providers are deliberately absent: MedGemma via Ollama is a multi-GB
+# pull that only some work needs. Start it from the repository compose file when
+# required: `docker compose --profile full up ollama medgemma-init`.
+name: carditrack-dev
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        INSTALL_GCLOUD: "1"
+        # Set to 1 to build CardiTrack.Mobile in here too (adds several GB and
+        # needs dl.google.com reachable for the Android SDK).
+        INSTALL_MAUI: "0"
+    volumes:
+      - ../..:/workspaces:cached
+      # Docker-outside-of-docker: Testcontainers (used by the integration tests
+      # and parts of the unit test suite) drives the host daemon through this.
+      - /var/run/docker.sock:/var/run/docker.sock
+      # Named volume so NuGet restore survives container rebuilds.
+      - nuget-packages:/home/vscode/.nuget/packages
+    environment:
+      ConnectionStrings__DefaultConnection: "Host=db;Port=5432;Database=carditrack;Username=postgres;Password=postgres"
+      ConnectionStrings__Redis: "redis:6379"
+      # Local-development key ONLY — the same throwaway value committed in the
+      # repository's docker-compose.yml, so the dev container, compose stack, and
+      # host runs all decrypt the same locally stored OAuth tokens. Deployed
+      # environments read the real key from Secret Manager.
+      Encryption__Key: "W2iqrS4VgOXDgwZQWCGj716pKcu2nLs1tk5j66oNzBY="
+      ASPNETCORE_ENVIRONMENT: Development
+    # Keep the container alive; the dev container tooling attaches to it.
+    command: sleep infinity
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: carditrack
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d carditrack"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+volumes:
+  postgres-data:
+  redis-data:
+  nuget-packages:

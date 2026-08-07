@@ -14,7 +14,10 @@ out/
 .vs/
 .vscode/
 .venv/
-.claude/
+# Contents, not the directory itself — git cannot re-include a file below an
+# excluded directory, and settings.json is checked in (SessionStart bootstrap).
+.claude/*
+!.claude/settings.json
 *.userprefs
 *.pidb
 *.DotSettings.user

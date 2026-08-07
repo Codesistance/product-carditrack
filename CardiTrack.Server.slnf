@@ -1,0 +1,19 @@
+{
+  "solution": {
+    "path": "CardiTrack.sln",
+    "projects": [
+      "src\\Core\\CardiTrack.Application\\CardiTrack.Application.csproj",
+      "src\\Core\\CardiTrack.Domain\\CardiTrack.Domain.csproj",
+      "src\\Infrastructure\\CardiTrack.Infrastructure\\CardiTrack.Infrastructure.csproj",
+      "src\\Infrastructure\\CardiTrack.Observability\\CardiTrack.Observability.csproj",
+      "src\\Infrastructure\\CardiTrack.Shared\\CardiTrack.Shared.csproj",
+      "src\\Presentation\\CardiTrack.API\\CardiTrack.API.csproj",
+      "src\\Presentation\\CardiTrack.Mobile.Core\\CardiTrack.Mobile.Core.csproj",
+      "src\\Presentation\\CardiTrack.Web\\CardiTrack.Web.csproj",
+      "src\\Worker\\CardiTrack.Worker\\CardiTrack.Worker.csproj",
+      "tests\\CardiTrack.E2ETests\\CardiTrack.E2ETests.csproj",
+      "tests\\CardiTrack.IntegrationTests\\CardiTrack.IntegrationTests.csproj",
+      "tests\\CardiTrack.UnitTests\\CardiTrack.UnitTests.csproj"
+    ]
+  }
+}
