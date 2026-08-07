@@ -51,7 +51,7 @@ public static class ServiceCollectionExtensions
         // Built here rather than in a factory so a missing or malformed key fails the host at
         // startup instead of surfacing as a 500 on the first request that touches a device endpoint.
         // The service holds only the key (AesGcm instances are per-call), so it is safe as a singleton.
-        services.AddSingleton<ConfigurationLoader>();
+        services.AddSingleton(configLoader);
         services.AddSingleton<IEncryptionService>(
             new AesEncryptionService(configLoader.GetRequired(ConfigurationKeys.Encryption.Key)));
 

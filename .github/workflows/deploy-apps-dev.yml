@@ -1116,11 +1116,15 @@ jobs:
           PROJECT: ${{ needs.changes.outputs.gcp_project_id }}
         run: |
           VALUE=$(gcloud secrets versions access latest --secret="$SECRET_ID" --project="$PROJECT" 2>/dev/null || true)
-          if [ -z "$VALUE" ] || [ "$VALUE" = "REPLACE_ME" ]; then
+          # Strip whitespace and compare case-insensitively, matching the app's own
+          # placeholder handling. Any placeholder would fail the length check below
+          # regardless — normalising just gets the actionable message instead.
+          TRIMMED=$(printf '%s' "$VALUE" | tr -d '[:space:]')
+          if [ -z "$TRIMMED" ] || [ "$(printf '%s' "$TRIMMED" | tr '[:lower:]' '[:upper:]')" = "REPLACE_ME" ]; then
             echo "::error::$SECRET_ID is not seeded. Set it to a base64-encoded 256-bit key: openssl rand -base64 32 | gcloud secrets versions add $SECRET_ID --project=$PROJECT --data-file=-"
             exit 1
           fi
-          LEN=$(printf '%s' "$VALUE" | base64 -d 2>/dev/null | wc -c | tr -d '[:space:]' || true)
+          LEN=$(printf '%s' "$TRIMMED" | base64 -d 2>/dev/null | wc -c | tr -d '[:space:]' || true)
           if [ "$LEN" != "32" ]; then
             echo "::error::$SECRET_ID must be a base64-encoded 256-bit key (32 bytes decoded); it decodes to $LEN bytes."
             exit 1
@@ -1183,11 +1187,15 @@ jobs:
           PROJECT: ${{ needs.changes.outputs.gcp_project_id }}
         run: |
           VALUE=$(gcloud secrets versions access latest --secret="$SECRET_ID" --project="$PROJECT" 2>/dev/null || true)
-          if [ -z "$VALUE" ] || [ "$VALUE" = "REPLACE_ME" ]; then
+          # Strip whitespace and compare case-insensitively, matching the app's own
+          # placeholder handling. Any placeholder would fail the length check below
+          # regardless — normalising just gets the actionable message instead.
+          TRIMMED=$(printf '%s' "$VALUE" | tr -d '[:space:]')
+          if [ -z "$TRIMMED" ] || [ "$(printf '%s' "$TRIMMED" | tr '[:lower:]' '[:upper:]')" = "REPLACE_ME" ]; then
             echo "::error::$SECRET_ID is not seeded. Set it to a base64-encoded 256-bit key: openssl rand -base64 32 | gcloud secrets versions add $SECRET_ID --project=$PROJECT --data-file=-"
             exit 1
           fi
-          LEN=$(printf '%s' "$VALUE" | base64 -d 2>/dev/null | wc -c | tr -d '[:space:]' || true)
+          LEN=$(printf '%s' "$TRIMMED" | base64 -d 2>/dev/null | wc -c | tr -d '[:space:]' || true)
           if [ "$LEN" != "32" ]; then
             echo "::error::$SECRET_ID must be a base64-encoded 256-bit key (32 bytes decoded); it decodes to $LEN bytes."
             exit 1
