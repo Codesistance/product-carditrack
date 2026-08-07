@@ -24,7 +24,11 @@ public class AesEncryptionService : IEncryptionService
     // is not available. ':' is outside the base64 alphabet, so it cannot occur in the payload.
     private const string EnvelopeVersion = "v1";
     private const char Separator = ':';
-    private const int KeyIdLength = 8;
+    // 64 bits of SHA-256, as 16 lowercase hex characters. Enough that collisions between the
+    // handful of keys this service will ever hold are not worth reasoning about, and eight
+    // extra characters per row is nothing. Widening it after ciphertext exists would need a
+    // version bump and a reader that accepts both lengths, so it is set generously now.
+    private const int KeyIdLength = 16;
 
     /// <summary>
     /// Seeded values that document the shape of the setting but are not keys — Terraform's

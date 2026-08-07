@@ -201,13 +201,15 @@ public class AesEncryptionServiceTests
     }
 
     [Fact]
-    public void KeyId_DoesNotRevealTheKey()
+    public void KeyId_IsFixedLengthLowercaseHex()
     {
-        var key = AesEncryptionService.GenerateKey();
+        var keyId = new AesEncryptionService(AesEncryptionService.GenerateKey()).KeyId;
 
-        var service = new AesEncryptionService(key);
-
-        Assert.DoesNotContain(service.KeyId, key, StringComparison.OrdinalIgnoreCase);
+        // Structural, not probabilistic. Hex is what keeps the id free of ':' — the envelope
+        // is split on that character, so an id containing one would break parsing. Fixed
+        // length is what lets a future reader tell envelope versions apart.
+        Assert.Equal(16, keyId.Length);
+        Assert.Matches("^[0-9a-f]{16}$", keyId);
     }
 
     [Fact]
