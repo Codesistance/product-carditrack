@@ -160,9 +160,13 @@ jobs:
       - run: dotnet restore src/Presentation/CardiTrack.API/CardiTrack.API.csproj
       - run: dotnet build src/Presentation/CardiTrack.API/CardiTrack.API.csproj -c Release --no-restore
 
+  # Tests and the migration check compile what they need themselves, so they gate
+  # on `changes` rather than `build-api` — chaining only delayed them behind a
+  # duplicate build. push-api-image still requires all of them to succeed.
   test-unit:
     name: Unit Tests
-    needs: [changes, build-api]
+    needs: changes
+    if: needs.changes.outputs.api == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -186,7 +190,8 @@ jobs:
 
   test-integration:
     name: Integration Tests
-    needs: [changes, build-api]
+    needs: changes
+    if: needs.changes.outputs.api == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -209,7 +214,8 @@ jobs:
 
   check-migrations:
     name: EF Migration Check
-    needs: [changes, build-api]
+    needs: changes
+    if: needs.changes.outputs.api == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -304,7 +310,8 @@ jobs:
 
   test-unit-worker:
     name: Unit Tests (Worker)
-    needs: [changes, build-worker]
+    needs: changes
+    if: needs.changes.outputs.worker == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -378,7 +385,19 @@ jobs:
             mobile_client_id:${{ needs.changes.outputs.gcp_project_id }}/carditrack-dev-auth0-mobile-client-id
             apm_mobile_engine:${{ needs.changes.outputs.gcp_project_id }}/carditrack-dev-apm-mobile-engine
             apm_mobile_data:${{ needs.changes.outputs.gcp_project_id }}/carditrack-dev-apm-mobile-data
-      - env:
+      # A PR only needs to know the code and XAML compile. Release adds the ILLink
+      # trimmer, AOT and R8 after compilation has already succeeded — measured at
+      # ~3.4 min of the 4.3 min step — to produce an APK nothing downloads. Debug
+      # skips all of it; main still builds Release below.
+      - name: Compile (PR)
+        if: github.event_name == 'pull_request'
+        run: |
+          dotnet build src/Presentation/CardiTrack.Mobile/CardiTrack.Mobile.csproj \
+            -f net10.0-android \
+            -c Debug
+      - name: Publish (Release)
+        if: github.event_name != 'pull_request'
+        env:
           APM_DATA: ${{ steps.auth0.outputs.apm_mobile_data }}
         run: |
           # Placeholder data => stamp empty => monitoring off; base64 survives the shell/MSBuild boundary
@@ -393,6 +412,7 @@ jobs:
             -p:ApmEngine=${{ steps.auth0.outputs.apm_mobile_engine }} \
             -p:ApmData=$(printf '%s' "$APM_DATA" | base64 | tr -d '\n')
       - uses: actions/upload-artifact@v7
+        if: github.event_name != 'pull_request'
         with:
           name: mobile-android
           path: '**/*.apk'
@@ -429,7 +449,21 @@ jobs:
             mobile_client_id:${{ needs.changes.outputs.gcp_project_id }}/carditrack-dev-auth0-mobile-client-id
             apm_mobile_engine:${{ needs.changes.outputs.gcp_project_id }}/carditrack-dev-apm-mobile-engine
             apm_mobile_data:${{ needs.changes.outputs.gcp_project_id }}/carditrack-dev-apm-mobile-data
-      - env:
+      # Same trade as Android, and the reason PR CI took ~10 min: of a 10.5 min
+      # Release step, the managed compile finished in 70 s and the remaining
+      # ~9 min was the ILLink trimmer and AOT. Debug skips both. Release device
+      # builds (build-mobile-ios-device) still run on main before any upload.
+      - name: Compile (PR)
+        if: github.event_name == 'pull_request'
+        run: |
+          dotnet build src/Presentation/CardiTrack.Mobile/CardiTrack.Mobile.csproj \
+            -f net10.0-ios \
+            -c Debug \
+            -r iossimulator-arm64 \
+            -p:ArchiveOnBuild=false
+      - name: Build (Release)
+        if: github.event_name != 'pull_request'
+        env:
           APM_DATA: ${{ steps.auth0.outputs.apm_mobile_data }}
         run: |
           if [ "$APM_DATA" = "REPLACE_ME" ]; then APM_DATA=""; fi
@@ -455,7 +489,25 @@ jobs:
       - uses: actions/setup-dotnet@v5
         with:
           dotnet-version: ${{ needs.changes.outputs.dotnet_version }}
-      - run: dotnet workload install maui-windows
+      # Installing maui-windows from scratch is the bulk of this job (~3.3 min of
+      # ~5 min). Cache the packs and skip the manifest round-trip when they are
+      # already on disk. Key on the *resolved* SDK version, not the floating
+      # 10.0.x pin — workload packs are tied to the SDK band, so a runner image
+      # SDK bump has to miss the cache rather than restore mismatched packs.
+      - name: Resolve SDK version
+        id: sdk
+        run: echo "version=$(dotnet --version)" >> $env:GITHUB_OUTPUT
+      - name: Cache MAUI workload packs
+        id: workload-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ env.DOTNET_ROOT }}\packs
+            ${{ env.DOTNET_ROOT }}\sdk-manifests
+            ${{ env.DOTNET_ROOT }}\metadata
+            ${{ env.DOTNET_ROOT }}\library-packs
+          key: maui-windows-${{ runner.os }}-${{ steps.sdk.outputs.version }}
+      - run: dotnet workload install maui-windows ${{ steps.workload-cache.outputs.cache-hit == 'true' && '--skip-manifest-update' || '' }}
       - run: dotnet restore src/Presentation/CardiTrack.Mobile/CardiTrack.Mobile.csproj -p:TargetFrameworks=net10.0-windows10.0.19041.0 -r win-x64
       - run: dotnet restore src/Core/CardiTrack.Application/CardiTrack.Application.csproj
       - run: dotnet restore src/Core/CardiTrack.Domain/CardiTrack.Domain.csproj
@@ -487,7 +539,9 @@ jobs:
             -p:Auth0Domain=${{ steps.auth0.outputs.domain }} `
             -p:Auth0ClientId=${{ steps.auth0.outputs.mobile_client_id }} `
             -p:Auth0Audience=${{ steps.auth0.outputs.audience }}
+      # Only main consumes these (upload-mobile-artifacts → GCS).
       - uses: actions/upload-artifact@v7
+        if: github.event_name != 'pull_request'
         with:
           name: mobile-windows
           path: '**/*.msix'
