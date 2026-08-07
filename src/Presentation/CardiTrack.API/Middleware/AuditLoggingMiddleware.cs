@@ -19,6 +19,16 @@ public class AuditLoggingMiddleware
     /// <summary>Route values that name the member whose data is being reached.</summary>
     private static readonly string[] CardiMemberRouteKeys = ["cardiMemberId", "memberId", "id"];
 
+    // Mirror AuditLogConfiguration. Every one of these is bounded in the database, and an
+    // overflow fails the whole write — losing the record entirely rather than shortening it.
+    // The default Action is method + path, so a route carrying several GUIDs passes 100 easily.
+    private const int MaxActionLength = 100;
+    private const int MaxEntityTypeLength = 100;
+    private const int MaxIpAddressLength = 50;
+    private const int MaxUserAgentLength = 500;
+    private const int MaxRequestPathLength = 500;
+    private const int MaxHttpMethodLength = 10;
+
     private readonly RequestDelegate _next;
     private readonly ILogger<AuditLoggingMiddleware> _logger;
 
@@ -50,15 +60,18 @@ public class AuditLoggingMiddleware
             {
                 UserId = userContext.UserId,
                 CardiMemberId = ResolveCardiMemberId(httpContext),
-                Action = descriptor.Action ?? $"{httpContext.Request.Method} {httpContext.Request.Path}",
-                EntityType = descriptor.EntityType,
+                Action = Truncate(
+                    descriptor.Action ?? $"{httpContext.Request.Method} {httpContext.Request.Path}",
+                    MaxActionLength),
+                EntityType = Truncate(descriptor.EntityType, MaxEntityTypeLength),
                 Timestamp = DateTime.UtcNow,
-                IpAddress = httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
-                UserAgent = Truncate(httpContext.Request.Headers.UserAgent.ToString(), 500),
+                IpAddress = Truncate(
+                    httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown", MaxIpAddressLength),
+                UserAgent = Truncate(httpContext.Request.Headers.UserAgent.ToString(), MaxUserAgentLength),
                 // Path only. The query string carries OAuth codes on some routes, and this
                 // table is read by more people than the logs are.
-                RequestPath = Truncate(httpContext.Request.Path.Value ?? string.Empty, 500),
-                HttpMethod = httpContext.Request.Method,
+                RequestPath = Truncate(httpContext.Request.Path.Value ?? string.Empty, MaxRequestPathLength),
+                HttpMethod = Truncate(httpContext.Request.Method, MaxHttpMethodLength),
                 ResponseStatus = httpContext.Response.StatusCode,
             }, httpContext.RequestAborted);
         }

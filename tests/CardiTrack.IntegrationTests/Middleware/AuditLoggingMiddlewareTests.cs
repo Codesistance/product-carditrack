@@ -174,6 +174,47 @@ public class AuditLoggingMiddlewareTests
         Assert.Equal(500, entry!.UserAgent.Length);
     }
 
+    [Fact]
+    public async Task TruncatesEveryBoundedColumn_NotJustTheObviousOnes()
+    {
+        // The default Action is method + path, and Action is bounded at 100 while the path is
+        // allowed 500 — so a route carrying a few GUIDs overflows Action long before the path.
+        // An overflow fails the whole write, losing the record rather than shortening it.
+        var context = BuildContext(attribute: new AuditHealthDataAccessAttribute());
+        context.Request.Path = "/api/v1/" + string.Join('/', Enumerable.Repeat(Guid.NewGuid().ToString(), 6));
+        context.Request.Method = new string('M', 40);
+        context.Request.Headers.UserAgent = new string('u', 900);
+
+        var entry = await InvokeAndCaptureAsync(context);
+
+        Assert.NotNull(entry);
+        Assert.True(entry!.Action.Length <= 100, $"Action was {entry.Action.Length}");
+        Assert.True(entry.EntityType.Length <= 100);
+        Assert.True(entry.HttpMethod.Length <= 10, $"HttpMethod was {entry.HttpMethod.Length}");
+        Assert.True(entry.IpAddress.Length <= 50);
+        Assert.True(entry.UserAgent.Length <= 500);
+        Assert.True(entry.RequestPath.Length <= 500);
+    }
+
+    [Fact]
+    public async Task RecordsTheEntry_WhenTheActionThrows()
+    {
+        // In the pipeline this middleware sits outside ExceptionHandlingMiddleware, which turns
+        // a throw into a 401/404/500 and returns normally. Registered inside that handler it
+        // would be skipped entirely on any throw — losing the very outcomes worth auditing.
+        // Here the exception propagates, standing in for a handler that is absent.
+        var context = BuildContext(new AuditHealthDataAccessAttribute("ViewDashboard"));
+        var userContext = new FakeUserContext { UserId = _userId, IsAuthenticated = true };
+        var sut = CreateSut(_ => throw new KeyNotFoundException("CardiMember not found"));
+
+        await Assert.ThrowsAsync<KeyNotFoundException>(
+            () => sut.InvokeAsync(context, userContext, _auditLogs));
+
+        // Nothing is written when the exception escapes this middleware, which is precisely why
+        // the registration order in Program.cs matters — see the comment there.
+        await _auditLogs.DidNotReceive().AppendAsync(Arg.Any<AuditLog>(), Arg.Any<CancellationToken>());
+    }
+
     // ── What is deliberately not recorded ───────────────────────────────────────
 
     [Fact]

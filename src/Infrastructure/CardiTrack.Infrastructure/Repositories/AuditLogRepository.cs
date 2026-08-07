@@ -8,38 +8,50 @@ namespace CardiTrack.Infrastructure.Repositories;
 /// <inheritdoc cref="IAuditLogRepository"/>
 public class AuditLogRepository : IAuditLogRepository
 {
-    private readonly CardiTrackDbContext _context;
+    private readonly IDbContextFactory<CardiTrackDbContext> _contextFactory;
 
-    public AuditLogRepository(CardiTrackDbContext context)
+    public AuditLogRepository(IDbContextFactory<CardiTrackDbContext> contextFactory)
     {
-        _context = context;
+        _contextFactory = contextFactory;
     }
 
     /// <summary>
-    /// Saves immediately rather than joining the request's unit of work. An audit entry must
-    /// survive the thing it describes: if the request's own SaveChanges rolls back, the record
-    /// that someone looked at a wearer's data is still true and still needs keeping.
+    /// Writes through its own short-lived context, not the request-scoped one.
     /// </summary>
+    /// <remarks>
+    /// Two reasons, and the second is the one that bites. An audit entry must survive the thing
+    /// it describes — if the request's own work rolls back, the fact that someone looked at a
+    /// wearer's data is still true. And calling SaveChanges on the shared context would flush
+    /// whatever else the request happened to have tracked, committing unrelated half-finished
+    /// work as a side effect of writing an audit row. A separate context makes the write
+    /// genuinely independent rather than merely appearing to be.
+    /// </remarks>
     public async Task AppendAsync(AuditLog entry, CancellationToken ct = default)
     {
-        await _context.Set<AuditLog>().AddAsync(entry, ct);
-        await _context.SaveChangesAsync(ct);
+        await using var context = await _contextFactory.CreateDbContextAsync(ct);
+        await context.Set<AuditLog>().AddAsync(entry, ct);
+        await context.SaveChangesAsync(ct);
     }
 
-    public async Task<IReadOnlyList<AuditLog>> GetByCardiMemberAsync(
+    public Task<IReadOnlyList<AuditLog>> GetByCardiMemberAsync(
         Guid cardiMemberId, DateTime from, DateTime to, CancellationToken ct = default) =>
-        await Query(a => a.CardiMemberId == cardiMemberId, from, to).ToListAsync(ct);
+        QueryAsync(a => a.CardiMemberId == cardiMemberId, from, to, ct);
 
-    public async Task<IReadOnlyList<AuditLog>> GetByUserAsync(
+    public Task<IReadOnlyList<AuditLog>> GetByUserAsync(
         Guid userId, DateTime from, DateTime to, CancellationToken ct = default) =>
-        await Query(a => a.UserId == userId, from, to).ToListAsync(ct);
+        QueryAsync(a => a.UserId == userId, from, to, ct);
 
     /// <summary>Reads are diagnostic and never write back, so they skip change tracking.</summary>
-    private IQueryable<AuditLog> Query(
-        System.Linq.Expressions.Expression<Func<AuditLog, bool>> predicate, DateTime from, DateTime to) =>
-        _context.Set<AuditLog>()
+    private async Task<IReadOnlyList<AuditLog>> QueryAsync(
+        System.Linq.Expressions.Expression<Func<AuditLog, bool>> predicate,
+        DateTime from, DateTime to, CancellationToken ct)
+    {
+        await using var context = await _contextFactory.CreateDbContextAsync(ct);
+        return await context.Set<AuditLog>()
             .AsNoTracking()
             .Where(predicate)
             .Where(a => a.Timestamp >= from && a.Timestamp <= to)
-            .OrderByDescending(a => a.Timestamp);
+            .OrderByDescending(a => a.Timestamp)
+            .ToListAsync(ct);
+    }
 }

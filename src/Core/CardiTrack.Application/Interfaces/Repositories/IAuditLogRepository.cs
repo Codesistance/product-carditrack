@@ -13,7 +13,16 @@ namespace CardiTrack.Application.Interfaces.Repositories;
 /// </remarks>
 public interface IAuditLogRepository
 {
-    /// <summary>Writes one entry. Never throws into the request — see the implementation.</summary>
+    /// <summary>
+    /// Writes one entry, independently of any surrounding unit of work.
+    /// </summary>
+    /// <remarks>
+    /// Throws if the write fails — an unreachable database is not something this can paper over,
+    /// and a caller that needs the entry to exist must be able to tell that it does not. Callers
+    /// on the request path are responsible for deciding what to do about that;
+    /// <c>AuditLoggingMiddleware</c> logs and continues, because by the time it runs the response
+    /// has already been sent.
+    /// </remarks>
     Task AppendAsync(AuditLog entry, CancellationToken ct = default);
 
     /// <summary>Entries for one CardiMember, newest first. For subject-access requests.</summary>

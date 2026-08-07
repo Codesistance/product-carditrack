@@ -21,10 +21,20 @@ try
     Log.Information("Starting CardiTrack API");
 
     // 1. DATABASE
+    var dbConnectionString = configLoader.Get(ConfigurationKeys.ConnectionStrings.DefaultConnection);
     builder.Services.AddDbContext<CardiTrackDbContext>(options =>
         options.UseNpgsql(
-            configLoader.Get(ConfigurationKeys.ConnectionStrings.DefaultConnection),
+            dbConnectionString,
             b => b.MigrationsAssembly("CardiTrack.Infrastructure")));
+
+    // Audit writes must not share the request's context — a SaveChanges there would flush
+    // whatever else the request had tracked, and the entry would die with a rolled-back
+    // transaction. The factory hands the audit repository its own short-lived context.
+    builder.Services.AddDbContextFactory<CardiTrackDbContext>(options =>
+        options.UseNpgsql(
+            dbConnectionString,
+            b => b.MigrationsAssembly("CardiTrack.Infrastructure")),
+        lifetime: ServiceLifetime.Scoped);
 
     // 2. AUTHENTICATION & AUTHORIZATION - Auth0 JWT
     builder.Services.AddAuth0Authentication(builder.Configuration);
@@ -92,6 +102,12 @@ try
     // diagnostics that would otherwise log the full URL — this makes the guarantee explicit
     // rather than a coincidence of two defaults. Do not set to true.
     app.UseSerilogRequestLogging(options => options.IncludeQueryInRequestPath = false);
+    // Outside ExceptionHandlingMiddleware, deliberately. Everything this middleware does
+    // happens on the way back out, so it still sees a populated user context and a resolved
+    // endpoint — but it now also sees the status the exception handler produced. Registered
+    // inside the handler it would be skipped entirely whenever an action threw, losing exactly
+    // the 401/404/500 outcomes an audit trail exists to record.
+    app.UseMiddleware<AuditLoggingMiddleware>();
     app.UseMiddleware<ExceptionHandlingMiddleware>();
     app.UseIpRateLimiting();
 
@@ -109,10 +125,6 @@ try
     app.UseAuthentication();
     app.UseMiddleware<UserContextMiddleware>();
     app.UseAuthorization();
-    // After UseAuthorization so the endpoint (and its audit attribute) is resolved and
-    // UserContextMiddleware has established who is asking; before MapControllers so it wraps
-    // the whole of the action's execution.
-    app.UseMiddleware<AuditLoggingMiddleware>();
     app.MapControllers();
     app.MapHealthChecks("/health")
         .AllowAnonymous()
