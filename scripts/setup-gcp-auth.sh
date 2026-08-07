@@ -46,6 +46,7 @@ for ROLE in \
   roles/storage.admin \
   roles/secretmanager.admin \
   roles/cloudsql.admin \
+  roles/redis.admin \
   roles/iam.serviceAccountUser \
   roles/iam.serviceAccountTokenCreator \
   roles/compute.loadBalancerAdmin \
