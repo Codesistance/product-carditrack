@@ -55,9 +55,10 @@ variable "migrator_container_image" {
 }
 
 # Unlike the four above this one is load-bearing after create: it gates whether the
-# service exists at all. The image value itself is still CI/CD-owned once it does.
+# service exists at all, so emptying it destroys the service. Only the image value
+# is CI/CD-owned once the service exists.
 variable "medgemma_image" {
-  description = "Container image for MedGemma (empty string disables the service); seeds the initial create only"
+  description = "MedGemma container image — empty disables the service, non-empty enables it; the image value itself seeds the initial create only (CI/CD owns it thereafter)"
   type        = string
   default     = ""
 }
