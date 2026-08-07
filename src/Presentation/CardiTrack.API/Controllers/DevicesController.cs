@@ -1,3 +1,6 @@
+using System.Net.Mime;
+using System.Text;
+using CardiTrack.API.Infrastructure.OAuth;
 using CardiTrack.API.Infrastructure.UserContext;
 using CardiTrack.Application.DTOs.Requests;
 using CardiTrack.Application.DTOs.Responses;
@@ -92,32 +95,66 @@ public class DevicesController : BaseApiController
 
     /// <summary>
     /// Provider-facing https redirect target (Google web clients cannot redirect to a custom
-    /// scheme). Bounces the browser back into the mobile app's deep link with code + state; the
-    /// app then completes the flow via the authenticated callback endpoint below.
+    /// scheme). Hands the browser back into the mobile app's deep link; the app then completes
+    /// the flow via the authenticated callback endpoint below.
+    ///
+    /// Every outcome the provider can produce — including a denied consent — has to reach the
+    /// app, because the deep link is the only thing that dismisses the in-app browser. Ending
+    /// the response here instead would leave the user on the consent page with the app still
+    /// waiting behind it.
     /// </summary>
     [AllowAnonymous]
     [HttpGet("oauth/redirect/{provider}")]
-    [ProducesResponseType(StatusCodes.Status302Found)]
-    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status400BadRequest)]
+    [Produces(MediaTypeNames.Text.Html)]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> RedirectToApp(
-        string provider, [FromQuery] string? code, [FromQuery] string? state, CancellationToken ct)
+        string provider,
+        [FromQuery] string? code,
+        [FromQuery] string? state,
+        [FromQuery] string? error,
+        [FromQuery(Name = "error_description")] string? errorDescription,
+        CancellationToken ct)
     {
-        if (string.IsNullOrEmpty(code) || string.IsNullOrEmpty(state))
+        // The state token is what ties this callback to an app deep link, so it is resolved
+        // before anything else — without it there is nowhere to send the browser.
+        if (string.IsNullOrEmpty(state))
         {
-            return Error("That connection link looks incomplete — please start the device connection again.",
-                StatusCodes.Status400BadRequest);
+            return OAuthHandoffPage.Failed(Response,
+                "That connection link looks incomplete.");
         }
 
         var appRedirectUri = await _deviceConnections.GetAppRedirectUriAsync(provider, state, ct);
         if (appRedirectUri is null)
         {
-            return Error("That connection link has expired — please start the device connection again.",
-                StatusCodes.Status400BadRequest);
+            return OAuthHandoffPage.Failed(Response,
+                "That connection link has expired or has already been used.");
         }
 
-        var separator = appRedirectUri.Contains('?') ? '&' : '?';
-        return Redirect(
-            $"{appRedirectUri}{separator}code={Uri.EscapeDataString(code)}&state={Uri.EscapeDataString(state)}");
+        var query = new StringBuilder();
+        query.Append(appRedirectUri.Contains('?') ? '&' : '?');
+        query.Append("state=").Append(Uri.EscapeDataString(state));
+
+        if (!string.IsNullOrEmpty(code))
+        {
+            query.Append("&code=").Append(Uri.EscapeDataString(code));
+        }
+        else
+        {
+            // A callback with neither code nor a named error is malformed rather than denied;
+            // the app needs some error to react to either way.
+            query.Append("&error=").Append(Uri.EscapeDataString(
+                string.IsNullOrEmpty(error) ? "invalid_request" : error));
+            if (!string.IsNullOrEmpty(errorDescription))
+            {
+                query.Append("&error_description=").Append(Uri.EscapeDataString(errorDescription));
+            }
+
+            Logger.LogInformation(
+                "Device OAuth callback for {Provider} returned error {Error}", provider, error ?? "invalid_request");
+        }
+
+        return OAuthHandoffPage.Handoff(Response, appRedirectUri + query);
     }
 
     /// <summary>Completes the OAuth flow: exchanges the code + PKCE verifier and stores the connection (M1-07).</summary>

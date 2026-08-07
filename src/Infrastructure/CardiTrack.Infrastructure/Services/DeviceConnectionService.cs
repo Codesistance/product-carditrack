@@ -27,8 +27,9 @@ public class DeviceConnectionService : IDeviceConnectionService
     private const string StateKeyPrefix = "deviceoauth:";
 
     // The anonymous bounce endpoint may only forward into the mobile app's own scheme —
-    // an https/other target would make it an open redirect leaking code+state.
-    private const string AppRedirectScheme = "carditrack";
+    // an https/other target would make it an open redirect leaking code+state. Shared with
+    // the request validator so the fail-fast and point-of-use gates can't drift apart.
+    private const string AppRedirectScheme = ConnectDeviceRequest.AppRedirectScheme;
 
     // Route/body provider names per the REST contract. apple_health is on-device-bridge only
     // and deliberately absent — it must not enter the server OAuth flow.
@@ -110,6 +111,16 @@ public class DeviceConnectionService : IDeviceConnectionService
             authorizationUrl += $"&{Uri.EscapeDataString(key)}={Uri.EscapeDataString(value)}";
         }
 
+        // Re-consent params are for the first grant only. Once a refresh token is banked,
+        // re-showing the consent screen buys nothing and reads as the connection having failed.
+        if (!await HasRefreshTokenAsync(cardiMemberId, deviceType))
+        {
+            foreach (var (key, value) in config.FirstConsentAuthorizationParams)
+            {
+                authorizationUrl += $"&{Uri.EscapeDataString(key)}={Uri.EscapeDataString(value)}";
+            }
+        }
+
         return new OAuthInitiationResponse
         {
             AuthorizationUrl = authorizationUrl,
@@ -133,8 +144,12 @@ public class DeviceConnectionService : IDeviceConnectionService
         if (payload is null || payload.Provider != deviceType)
             return null;
 
+        // The caller appends the callback parameters to whatever comes back, so a fragment is
+        // rejected alongside the scheme: '#' would swallow everything after it and the app
+        // would receive no state, code or error at all.
         if (!Uri.TryCreate(payload.RedirectUri, UriKind.Absolute, out var uri)
-            || !string.Equals(uri.Scheme, AppRedirectScheme, StringComparison.OrdinalIgnoreCase))
+            || !string.Equals(uri.Scheme, AppRedirectScheme, StringComparison.OrdinalIgnoreCase)
+            || !string.IsNullOrEmpty(uri.Fragment))
         {
             return null;
         }
@@ -201,9 +216,27 @@ public class DeviceConnectionService : IDeviceConnectionService
             };
         }
 
+        // Reconnecting onto a different provider account invalidates everything we held for
+        // the old one — carrying its refresh token over would leave background syncs pulling
+        // a stranger's health data under this member.
+        var switchedAccount = tokens.ProviderUserId is not null
+            && ReadProviderUserId(connection.Metadata) is { } previous
+            && !string.Equals(previous, tokens.ProviderUserId, StringComparison.Ordinal);
+
         connection.ConnectionStatus = ConnectionStatus.Connected;
         connection.AccessToken = _encryption.Encrypt(tokens.AccessToken);
-        connection.RefreshToken = tokens.RefreshToken is null ? null : _encryption.Encrypt(tokens.RefreshToken);
+        // Providers that only issue a refresh token on the first grant (Google) send none on a
+        // reconnect — overwriting with null would strand the connection at the next expiry.
+        if (tokens.RefreshToken is not null)
+        {
+            connection.RefreshToken = _encryption.Encrypt(tokens.RefreshToken);
+        }
+        else if (switchedAccount)
+        {
+            // Dropping it also makes the next initiation re-prompt for consent, which is how
+            // a refresh token for the new account gets issued.
+            connection.RefreshToken = null;
+        }
         connection.TokenExpiry = DateTime.UtcNow.AddSeconds(tokens.ExpiresInSeconds);
         connection.Scopes = scopes;
         connection.IsActive = true;
@@ -252,6 +285,27 @@ public class DeviceConnectionService : IDeviceConnectionService
         }
 
         return (deviceType, config);
+    }
+
+    /// <summary>The provider-side account id stashed on a connection, if one was ever recorded.</summary>
+    private static string? ReadProviderUserId(string? metadata) =>
+        JsonUtility.TryParse(metadata, out var token, out _)
+            ? (string?)token?["providerUserId"]
+            : null;
+
+    /// <summary>
+    /// Whether this member already has a live connection to the provider carrying a refresh
+    /// token. A disconnected row doesn't count — its token may well have been revoked at the
+    /// provider, and re-consent is how we get a fresh one.
+    /// </summary>
+    private async Task<bool> HasRefreshTokenAsync(Guid cardiMemberId, DeviceType deviceType)
+    {
+        var connections = await _unitOfWork.DeviceConnections.GetByCardiMemberIdAsync(cardiMemberId);
+        return connections.Any(c =>
+            c.DeviceType == deviceType
+            && c.IsActive
+            && c.ConnectionStatus != ConnectionStatus.Disconnected
+            && !string.IsNullOrEmpty(c.RefreshToken));
     }
 
     private async Task<string> ResolveDisplayNameAsync(DeviceType deviceType)
