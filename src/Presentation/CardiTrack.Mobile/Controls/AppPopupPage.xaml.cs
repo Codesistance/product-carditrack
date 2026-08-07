@@ -56,6 +56,16 @@ public partial class AppPopupPage : ContentPage
         _ = Card.ScaleToAsync(1, 140, Easing.CubicOut);
     }
 
+    protected override void OnDisappearing()
+    {
+        base.OnDisappearing();
+        // Also fires on app backgrounding and when another modal covers this one —
+        // in both cases the page is still on the modal stack. Only resolve when the
+        // page left the stack without CloseAsync (external dismissal, e.g. a root swap).
+        if (!_closing && !Navigation.ModalStack.Contains(this))
+            _result.TrySetResult(false);
+    }
+
     protected override bool OnBackButtonPressed()
     {
         _ = CloseAsync(false);
@@ -79,10 +89,16 @@ public partial class AppPopupPage : ContentPage
             return;
         _closing = true;
 
-        await Task.WhenAll(
-            Scrim.FadeToAsync(0, 100),
-            Card.ScaleToAsync(0.92, 100, Easing.CubicIn));
-        await Navigation.PopModalAsync(animated: false);
-        _result.TrySetResult(confirmed);
+        try
+        {
+            await Task.WhenAll(
+                Scrim.FadeToAsync(0, 100),
+                Card.ScaleToAsync(0.92, 100, Easing.CubicIn));
+            await Navigation.PopModalAsync(animated: false);
+        }
+        finally
+        {
+            _result.TrySetResult(confirmed);
+        }
     }
 }
