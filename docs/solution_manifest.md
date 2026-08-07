@@ -87,38 +87,36 @@ With Device Bundle:
 
 **Backend (transactional core):**
 - .NET 10 (ASP.NET Core Web API)
-- Entity Framework Core
-- Azure SQL (system of record — identity, organizations, subscriptions, health data, audit)
-- .NET Worker Service + Cronos (**non-AI background jobs only**: OAuth token refresh, baseline recalculation, cleanup)
+- Entity Framework Core (Npgsql)
+- Cloud SQL PostgreSQL 16 (system of record — identity, organizations, subscriptions, health data, audit)
+- .NET Worker Service + Cronos (**non-AI background jobs only**: `WearableSyncWorker` every 30 minutes with in-path OAuth token refresh, `OrphanedOrganizationCleanupWorker` daily at 03:00; baseline recalculation, trial reminders, and retention jobs are planned)
 
-**AI pipeline (target architecture — see [llm_design.md](./llm_design.md)):**
-- Google Health API webhook subscriptions (push — no polling; covers Fitbit + Pixel Watch + connected third-party sources)
-- Azure Event Hubs (raw event buffer)
-- Azure Functions, dotnet-isolated (aggregation, SSA-LSTM pre-processing, severity routing, digests)
-- MedGemma 1.5 4B on Azure Container Apps GPU (vLLM, OpenAI-compatible endpoint)
-- Azure Cosmos DB (AI pipeline outputs: results, prediction cards, trends)
-- Azure Notification Hubs (FCM/APNs push routing)
+**AI:**
+- MedGemma (`medgemma:4b`) served via **Ollama on Cloud Run** — the Medical provider for health-data interpretation
+- Gemini 2.0 Flash — the General provider for conversational responses
+- Surfaced through the API's chat, insights, and reports endpoints
+- Target ingestion/inference pipeline on GCP (Pub/Sub + Cloud Run) — see [llm_design.md](./llm_design.md); not yet built
 
 **Frontend:**
-- Blazor Server (web dashboard)
+- Blazor (web dashboard)
 - .NET MAUI (cross-platform mobile app)
 - Bootstrap 5 (UI framework)
-- SignalR (real-time updates)
 
 **Infrastructure:**
-- Azure Cloud Platform
-- Terraform (Infrastructure as Code)
+- Google Cloud Platform (Cloud Run, Cloud SQL, Secret Manager, GCS, Pub/Sub prod-only, optional domain-gated Load Balancer/Cloud Armor)
+- Terraform (Infrastructure as Code — common/dev/prod stacks, GCS backend)
 - Docker (containerization)
 - GitHub Actions (CI/CD)
 
+**Observability:**
+- Serilog + OpenTelemetry via a switchable APM engine (`Apm:Engine` — Datadog deployed; console-only Serilog when unset locally)
+
 **External Integrations:**
 - Google Health API (Fitbit, Pixel Watch, connected third-party sources — replaces the Fitbit Web API, which is decommissioned September 2026)
-- Apple HealthKit
-- Garmin Connect API
-- Samsung Health SDK
-- Withings API
-- Twilio (SMS)
-- SendGrid (Email)
+- Apple HealthKit *(planned)*
+- Garmin Connect API *(planned)*
+- Samsung Health SDK *(planned)*
+- Withings API *(planned)*
 - Auth0 (authentication)
 
 ### System Architecture
@@ -148,7 +146,7 @@ With Device Bundle:
                             ↓
 ┌─────────────────────────────────────────────────────────────┐
 │                   DATABASE LAYER                            │
-│             (SQL Server / PostgreSQL)                       │
+│              (Cloud SQL PostgreSQL 16)                      │
 │  - Organizations / Users / CardiMembers                     │
 │  - Device Connections (Multi-device support)                │
 │  - Activity Logs / Baselines / Alerts                       │
@@ -158,21 +156,24 @@ With Device Bundle:
                             ↓
 ┌─────────────────────────────────────────────────────────────┐
 │         NON-AI BACKGROUND JOBS (CardiTrack.Worker)          │
-│  - Token Refresh (OAuth management, every 4 hours)          │
-│  - Baseline Recalculation (weekly)                          │
-│  - Data retention / cleanup jobs                            │
+│  - WearableSyncWorker (every 30 min — device data sync,     │
+│    OAuth token refresh inside the sync path)                │
+│  - OrphanedOrganizationCleanupWorker (daily 03:00)          │
+│  - Planned: baseline recalculation, trial reminders,        │
+│    data retention/cleanup                                   │
 └─────────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────────┐
-│        AI INGESTION & INFERENCE PIPELINE (see llm_design)   │
+│   AI INGESTION & INFERENCE PIPELINE — TARGET, NOT YET BUILT │
+│                    (see llm_design.md)                      │
 │                                                             │
-│  Device webhooks → Event Hubs → Azure Functions (5-min      │
-│  aggregation + SSA-LSTM) → MedGemma 1.5 4B (ACA GPU/vLLM)   │
-│  → Cosmos DB (results) → Severity router → Alerts/Digests   │
+│  Device webhooks → Pub/Sub → Cloud Run pipeline             │
+│  (aggregation + pre-processing) → MedGemma (Ollama on       │
+│  Cloud Run) → results store → Severity router → Alerts      │
 └─────────────────────────────────────────────────────────────┘
 ```
 
-> Ingestion is **webhook push** (Google Health API webhook subscriptions) with 5-minute aggregation windows — there is no polling sync loop. The Worker Service hosts only non-AI jobs.
+> Current ingestion is the Worker's **30-minute polling sync** (`WearableSyncWorker`) against the Google Health API. The webhook-push pipeline above is the target architecture and ships with the AI rollout wave. The Worker Service hosts only non-AI jobs.
 
 ### Multi-Device Architecture
 
@@ -188,10 +189,10 @@ Device APIs (Fitbit, Apple, Garmin, Samsung, Withings, Oura, Whoop)
         (Steps, Heart Rate, Sleep, SpO2, etc.)
                     ↓
         Pattern Analysis Engine
-        (SSA-LSTM pre-processing + MedGemma 1.5 4B)
+        (MedGemma via Ollama on Cloud Run)
                     ↓
         Contextual Family Alerts
-        (SMS, Email, Push Notifications)
+        (Push, Email — delivery channels planned)
 ```
 
 ---
@@ -229,12 +230,12 @@ Device APIs (Fitbit, Apple, Garmin, Samsung, Withings, Oura, Whoop)
 
 ### 2. AI-Powered Pattern Analysis
 
-**Technology:** MedGemma 1.5 4B (medical LLM) with SSA-LSTM pre-processing — see [llm_design.md](./llm_design.md) for the full pipeline design. The MVP launches with statistical threshold alerts; the MedGemma pipeline replaces them per the [release matrix](./release_matrix.md).
+**Technology:** MedGemma 4B (medical LLM, served via Ollama on Cloud Run) with SSA-LSTM pre-processing — see [llm_design.md](./llm_design.md) for the full pipeline design. The MVP launches with statistical threshold alerts; the MedGemma pipeline replaces them per the [release matrix](./release_matrix.md).
 
 **Algorithms:**
 - **Signal decomposition**: SSA (Singular Spectrum Analysis) — separates trend, oscillation, and noise per metric
 - **Time-series forecasting**: per-user LSTM (trend prediction and 24–72h risk scoring)
-- **Anomaly assessment**: MedGemma 1.5 4B interprets denoised trends and anomaly scores, assigns severity
+- **Anomaly assessment**: MedGemma interprets denoised trends and anomaly scores, assigns severity
 
 **Learning Process:**
 1. Collect baseline data per CardiMember — default 30 days (configurable up to 90)
@@ -322,13 +323,13 @@ Prevention: Catches gradual decline before it becomes severe
 - Cross-platform (iOS & Android)
 - Push notifications for critical alerts
 - Quick health overview
-- Offline support with local SQLite cache
-- Platform-specific integrations (HealthKit on iOS)
+- Offline support with local SQLite cache *(planned — R4)*
+- Platform-specific integrations (HealthKit on iOS) *(planned — R4)*
 
 ### 5. HIPAA Compliance
 
 **Technical Safeguards:**
-- ✅ Encryption at rest (Azure SQL TDE)
+- ✅ Encryption at rest (Cloud SQL encryption at rest)
 - ✅ Encryption in transit (TLS 1.2+)
 - ✅ Field-level encryption (OAuth tokens, medical notes)
 - ✅ Access controls (RBAC, MFA for admins)
@@ -501,28 +502,18 @@ Prevention: Catches gradual decline before it becomes severe
 
 ## Infrastructure & Operations
 
-### Cloud Infrastructure (Azure)
+### Cloud Infrastructure (Google Cloud)
 
-**MVP Phase (0-100 users):**
-- App Service (Basic B1 — API): $13/month
-- Azure SQL (Basic): $5/month
-- Worker (App Service Basic B1): $13/month
-- **Total**: ~$31-35/month
+All environments run on GCP (project `carditrack-490120`, region `europe-west2`); exact sizing and costs live in [infrastructure.md](./infrastructure.md).
 
-**Growth Phase (1,000-10,000 users):**
-- App Service (Premium P1V2 — API): $146/month
-- Azure SQL (Standard S2): $75/month
-- Worker (Container App): ~$30-50/month
-- SignalR (Standard): $50/month
-- **AI pipeline** (from AI rollout — see [llm_design.md](./llm_design.md)):
-  - ACA T4 GPU, 1 replica always-on: ~$430/month
-  - Event Hubs (Standard): ~$11/month
-  - Cosmos DB (serverless): ~$25/month
-  - Notification Hubs: ~$6/month
-  - Azure Functions (consumption): near-zero at this scale
-- **Total**: ~$775-795/month (incl. AI pipeline)
-- **Per user cost at 10,000 users**: ~$0.08/month
-- **Margin**: ~$14.9/user/month (Tier 2)
+**Core shape (dev and prod):**
+- **Cloud Run** services: `api`, `web`, `worker`, `medgemma` (Ollama, CPU) + a migrator Cloud Run Job for EF migrations — scale-to-zero-friendly, pay-per-use
+- **Cloud SQL PostgreSQL 16**: small shared-core instance in dev, `db-custom-2-7680` in prod
+- **GCS** buckets (builds, data protection keys) and **Secret Manager** (all secrets)
+- **Pub/Sub** (prod-only, reserved for the AI pipeline rollout)
+- Optional domain-gated **Load Balancer + Cloud Armor** (not yet enabled in prod)
+
+The Cloud Run pay-per-use model keeps pre-launch costs near zero and scales linearly with traffic; the dominant fixed costs are the prod Cloud SQL instance and the MedGemma Cloud Run service.
 
 ### Database Storage
 
@@ -535,23 +526,22 @@ Prevention: Catches gradual decline before it becomes severe
 **10,000 CardiMembers:**
 - Data: 2.6 GB/year
 - With indexes: ~5 GB/year
-- Azure SQL Standard S2 (250 GB): Ample headroom
+- Cloud SQL PostgreSQL (`db-custom-2-7680`): Ample headroom
 
 ### Scaling Strategy
 
 **Horizontal Scaling:**
-- Auto-scale App Service based on CPU (>70%) and memory (>80%)
-- Worker Service scales by replica count (Azure Container Apps)
-- Max instances: 10 (API), configurable replicas (Worker)
+- Cloud Run auto-scales instances on request concurrency and CPU
+- Worker scales by Cloud Run instance count
+- Max instances configurable per service via Terraform
 
 **Database Scaling:**
-- Read replicas for dashboard queries
+- Read replicas for dashboard queries (when needed)
 - Partition ActivityLogs by CardiMemberId
-- Archive logs >2 years to cold storage (Azure Blob)
+- Archive logs >2 years to cold storage (GCS)
 
 **Caching:**
-- Redis for user sessions and dashboard data
-- In-memory cache for reference data
+- In-memory cache for reference data (no Redis provisioned; can be added if session/dashboard caching demands it)
 - CDN for static assets
 
 ---
@@ -569,7 +559,7 @@ Prevention: Catches gradual decline before it becomes severe
 - **Backup**: User-configurable sensitivity settings
 
 **Risk 3: OAuth Token Management**
-- **Mitigation**: Proactive token refresh every 4 hours
+- **Mitigation**: Proactive token refresh inside the 30-minute sync path
 - **Monitoring**: Alert team if refresh rate drops
 
 ### Business Risks
@@ -620,32 +610,40 @@ Prevention: Catches gradual decline before it becomes severe
 
 ## Development Roadmap
 
-### Q1 2026 (Months 1-3): MVP Development
-- ✅ Core backend (.NET 10, EF Core, Azure SQL)
-- ✅ Fitbit device integration (OAuth, data sync — migrating to Google Health API before the Sept 2026 legacy shutdown)
-- ✅ Blazor dashboard (basic features)
-- ✅ Statistical anomaly detection
-- ✅ SMS/Email alerts
-- ✅ Database schema & migrations
-- 🔄 Beta testing with 20 families
+> Waves re-baselined August 2026: **R1 → Q4 2026, R2 → Q1 2027, R3 → Q2 2027, R4 → Q3 2027.** The [release matrix](./release_matrix.md) remains canonical for what ships in each wave.
 
-### Q2 2026 (Months 4-6): Public Launch
-- 🔄 AI pipeline rollout — Event Hubs ingestion, SSA-LSTM pre-processing, MedGemma inference (see [llm_design.md](./llm_design.md))
-- 🔄 .NET MAUI mobile app (iOS & Android)
-- 🔄 Advanced dashboard features
+### Built so far (as of August 2026)
+- ✅ Core backend (.NET 10, EF Core, Cloud SQL PostgreSQL 16)
+- ✅ Fitbit device integration — migration to the **Google Health API is done** (code + docs); Google console registration is pending, and the app is capped at 100 users until restricted-scope verification completes
+- ✅ Database schema & migrations (deployed via the migrator Cloud Run Job)
+- ✅ Worker ingestion: 30-minute wearable sync + daily orphan cleanup
+- ✅ AI providers wired in the API: MedGemma (Ollama on Cloud Run) + Gemini 2.0 Flash (chat, insights, reports)
+- ✅ Datadog APM with opt-in metrics (PR #4); atomic onboarding + orphaned-organization cleanup (PR #5); health-data disclosure banner on Web (PR #9 — a Google verification prerequisite; the mobile equivalent is pending)
+
+### R1 — Q4 2026: MVP Launch
+- 🔄 Blazor dashboard (basic features)
+- 🔄 Statistical anomaly detection
+- 🔄 Email/push alerts
 - 🔄 Subscription management
-- 🔄 Apply for device intraday access
+- 🔄 Beta testing with 20 families
 - 🔄 Public launch (BYOD model)
 
-### Q3 2026 (Months 7-9): Multi-Device Support
-- ⏳ Apple Watch integration
+### R2 — Q1 2027: AI Pipeline & Multi-Device Start
+- ⏳ AI pipeline rollout — Pub/Sub ingestion, SSA-LSTM pre-processing, MedGemma inference (see [llm_design.md](./llm_design.md))
+- ⏳ .NET MAUI mobile app (iOS & Android)
 - ⏳ Garmin integration
+- ⏳ Advanced dashboard features
+- ⏳ Apply for device intraday access
+
+### R3 — Q2 2027: Multi-Device Support
+- ⏳ Apple Watch integration
 - ⏳ Samsung Health integration
 - ⏳ Device bundle option
 - ⏳ Healthcare provider partnerships
 
-### Q4 2026 (Months 10-12): Enterprise & Scale
+### R4 — Q3 2027: Enterprise & Scale
 - ⏳ Enterprise features (assisted living)
+- ⏳ Mobile offline support (local SQLite cache) + HealthKit integration
 - ⏳ Withings, Oura, Whoop support
 - ⏳ Refined per-user LSTM risk models (predictive monitoring at scale)
 - ⏳ Telemedicine integration
@@ -681,7 +679,7 @@ Prevention: Catches gradual decline before it becomes severe
 **Website**: https://carditrack.com
 **Email**: info@carditrack.com
 **Support**: support@carditrack.com
-**GitHub**: https://github.com/marigbede/CardiTrack
+**GitHub**: https://github.com/Codesistance/product-carditrack
 
 ---
 
@@ -691,6 +689,6 @@ Proprietary and confidential. All rights reserved.
 
 ---
 
-**Last Updated**: February 24, 2026
-**Version**: 1.0.0
+**Last Updated**: August 7, 2026
+**Version**: 1.1.0
 **Status**: In Development

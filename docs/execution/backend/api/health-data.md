@@ -1,65 +1,119 @@
 # Health Data API
 
-Provides health metrics, daily summaries, trend charts, baselines, and multi-member dashboard data for caregivers. Also supports offline caching via timestamped data and data export.
+Provides health metrics, baselines, and dashboard data for caregivers.
+
+**Implementation status:** the **per-member dashboard** below is implemented and is the single health-data read endpoint today (plus the AI narrative baseline under `/api/v1/insights`). The multi-member dashboard, daily summary, trends, numeric baseline, batch ingestion, and export endpoints are **planned — not yet implemented** and marked as such.
 
 **User Stories:** 2.1 (Daily Health Overview), 2.2 (Multi-Member Dashboard), 2.3 (Trend Charts), 5.2 (Mobile Widget), 6.3 (Health Data Export), 10.1 (Offline Support)
 
 ---
 
-## GET `/api/v1/dashboard`
+## GET `/api/v1/cardimembers/{id}/dashboard` — implemented
 
-Returns a summary for all CardiMembers accessible to the authenticated user. Used as the main dashboard view and mobile widget data source.
+Composed dashboard payload for **one CardiMember** (mobile Main Dashboard, M1-09): hero status, key metrics with 7-day series, recent alerts, and device/baseline state in a single round-trip. (There is **no** account-wide `GET /api/v1/dashboard` — the multi-member view is assembled client-side from `GET /api/Onboarding/cardimembers` plus per-member calls.)
 
-**Priority:** P0 | **Auth Required:** Yes
+**Priority:** P0 | **Auth Required:** Yes (active `UserCardiMember` link with `CanViewHealthData`)
 
-### Query Parameters
+### Path Parameters
 
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `sort` | string | `"status"` (alerts first, default) or `"name"` |
-| `filter` | string | `"alerts"` — show only members with active alerts |
+| Parameter | Description |
+|-----------|-------------|
+| `id` | CardiMember ID (GUID) |
 
 ### Response `200 OK`
 
+Wrapped in the standard `ApiResponse<T>` envelope:
+
 ```json
 {
-  "generatedAt": "2026-03-09T10:00:00Z",
-  "cardimembers": [
+  "cardiMemberId": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+  "name": "Margaret Doe",
+  "age": 80,
+  "phone": "+15551234567",
+  "photoUrl": null,
+  "healthStatus": "yellow",
+  "lastSyncedAt": "2026-08-07T08:30:00Z",
+  "unreadAlertCount": 1,
+  "device": {
+    "hasActiveConnection": true,
+    "deviceType": "Fitbit",
+    "deviceName": "Fitbit Charge 6",
+    "connectionStatus": "Connected",
+    "lastSyncDate": "2026-08-07T08:30:00Z"
+  },
+  "baseline": {
+    "isLearning": false,
+    "daysCaptured": 30,
+    "daysRequired": 30,
+    "percentComplete": 100
+  },
+  "metrics": {
+    "steps": {
+      "value": 2500,
+      "baseline": 5000,
+      "changePercent": -50.0,
+      "unit": "steps",
+      "status": "yellow",
+      "goal": 5000,
+      "rangeLow": null,
+      "rangeHigh": null,
+      "qualityScore": null,
+      "series": [
+        { "date": "2026-08-01", "value": 4800 },
+        { "date": "2026-08-07", "value": 2500 }
+      ]
+    },
+    "restingHeartRate": {
+      "value": 68,
+      "baseline": 65,
+      "changePercent": 4.6,
+      "unit": "bpm",
+      "status": "green",
+      "goal": null,
+      "rangeLow": 61,
+      "rangeHigh": 69,
+      "qualityScore": null,
+      "series": [ { "date": "2026-08-07", "value": 68 } ]
+    },
+    "sleep": {
+      "value": 7.2,
+      "baseline": 7.5,
+      "changePercent": -4.0,
+      "unit": "hours",
+      "status": "green",
+      "goal": null,
+      "rangeLow": null,
+      "rangeHigh": null,
+      "qualityScore": 4,
+      "series": [ { "date": "2026-08-07", "value": 7.2 } ]
+    }
+  },
+  "recentAlerts": [
     {
-      "id": "cm_01J8K2...",
-      "name": "Margaret Doe",
-      "photoUrl": "https://cdn.carditrack.com/photos/cm_01J8K2.jpg",
-      "healthStatus": "yellow",
-      "activeAlertCount": 1,
-      "lastSyncedAt": "2026-03-09T08:30:00Z",
-      "monitoringPaused": false,
-      "summary": {
-        "steps": {
-          "value": 2500,
-          "baseline": 5000,
-          "changePercent": -50,
-          "unit": "steps/day"
-        },
-        "restingHeartRate": {
-          "value": 68,
-          "baseline": 65,
-          "changePercent": 4.6,
-          "unit": "bpm"
-        },
-        "sleepHours": {
-          "value": 7.2,
-          "baseline": 7.5,
-          "changePercent": -4,
-          "unit": "hours"
-        }
-      }
+      "alertId": "9b2f5f64-5717-4562-b3fc-2c963f66afa6",
+      "type": "Inactivity",
+      "severity": "yellow",
+      "title": "Margaret's activity is lower than usual",
+      "message": "Steps well below baseline for two days.",
+      "triggeredAt": "2026-08-07T09:00:00Z",
+      "isAcknowledged": false
     }
   ],
-  "total": 1
+  "generatedAt": "2026-08-07T10:00:00Z"
 }
 ```
 
-**Health Status Values:**
+Field notes:
+
+- The sleep metric key is **`sleep`** (not `sleepHours`); there is **no `activeMinutes` metric**.
+- `photoUrl` is always `null` today (no photo storage exists).
+- `metrics` is **`null`** when the member has no activity logs in the last 30 days.
+- Each metric carries a 7-day `series` of `{date, value}` points (missing days → `value: null`).
+- `device.connectionStatus` is the internal enum name (`Connected`, `TokenExpired`, …) — unlike the lowercase statuses in [devices.md](devices.md).
+- `recentAlerts` holds the **5 most recent** active alerts; `unreadAlertCount` counts unresolved, unacknowledged alerts.
+- `goal` on steps defaults to the baseline average (or 10 000 when no baseline); `rangeLow`/`rangeHigh` are heart-rate mean ± one standard deviation; `qualityScore` is a 1–5 sleep-efficiency bucket.
+
+**Health Status Values** (`healthStatus` and per-metric `status` — lowercase strings):
 
 | Value | Meaning |
 |-------|---------|
@@ -69,270 +123,95 @@ Returns a summary for all CardiMembers accessible to the authenticated user. Use
 | `red` | Critical alert — immediate attention |
 | `unknown` | Insufficient data (baseline still learning) |
 
+**Deviation thresholds and baseline window** (fixed constants, no per-user sensitivity settings):
+
+- Baselines are computed over a **30-day window** (`daysRequired: 30`); `isLearning` is true until a pattern baseline exists.
+- Per-metric status: deviation from baseline **≤ 30%** → `green`, **> 30%** → `yellow`, **> 50%** → `orange`. (`red` comes only from alert severity, not metric deviation.)
+- The member-level `healthStatus` is the worst unresolved alert severity, else `green` (or `unknown` while learning / no data).
+
+### Errors
+
+| Status | When |
+|--------|------|
+| 403 | JWT valid but no local user row |
+| 404 | No active, view-permitted link between the caller and this CardiMember, or member inactive |
+
+---
+
+## GET `/api/v1/insights/members/{id}/baseline` — implemented (AI narrative)
+
+MedGemma-generated **narrative** analysis of a CardiMember's baseline trends — this is prose, not the numeric baseline endpoint planned below.
+
+**Priority:** P1 | **Auth Required:** Yes
+
+### Response `200 OK` (wrapped in `ApiResponse<T>`)
+
+```json
+{
+  "cardiMemberId": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+  "summary": "Margaret's activity has been stable over the past month...",
+  "keyFindings": [
+    "Resting heart rate trending slightly upward",
+    "Sleep duration consistent with baseline"
+  ],
+  "generatedAt": "2026-08-07T10:00:00Z"
+}
+```
+
+> Note: this endpoint performs no member-link check of its own beyond authentication — access control hardening is tracked.
+
 ---
 
 ## GET `/api/v1/cardimembers/{id}/health/summary`
 
-Get the daily health overview for a single CardiMember, including all key metrics and comparison to baseline.
+> **Planned — not yet implemented.** The dashboard endpoint above is the current source for daily metrics.
 
-**Priority:** P0 | **Auth Required:** Yes
+Get the daily health overview for a single CardiMember for a specific date, including all key metrics and comparison to baseline. (Design intent: adds a `date` query parameter, an `activeMinutes` metric, and a `deviceSource` block.)
 
-### Path Parameters
-
-| Parameter | Description |
-|-----------|-------------|
-| `id` | CardiMember ID |
-
-### Query Parameters
-
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `date` | string (ISO 8601) | Specific date (default: today) |
-
-### Response `200 OK`
-
-```json
-{
-  "cardiMemberId": "cm_01J8K2...",
-  "date": "2026-03-09",
-  "healthStatus": "yellow",
-  "lastSyncedAt": "2026-03-09T08:30:00Z",
-  "metrics": {
-    "steps": {
-      "value": 2500,
-      "baseline": 5000,
-      "changePercent": -50,
-      "unit": "steps",
-      "status": "yellow"
-    },
-    "restingHeartRate": {
-      "value": 68,
-      "baseline": 65,
-      "changePercent": 4.6,
-      "unit": "bpm",
-      "status": "green"
-    },
-    "sleepHours": {
-      "value": 7.2,
-      "baseline": 7.5,
-      "changePercent": -4,
-      "unit": "hours",
-      "status": "green"
-    },
-    "activeMinutes": {
-      "value": 18,
-      "baseline": 45,
-      "changePercent": -60,
-      "unit": "minutes",
-      "status": "yellow"
-    }
-  },
-  "deviceSource": {
-    "deviceId": "dev_01J9...",
-    "provider": "fitbit",
-    "displayName": "Fitbit Charge 6"
-  }
-}
-```
-
-### Errors
-
-| Code | Status | Description |
-|------|--------|-------------|
-| `NO_DEVICE_CONNECTED` | 422 | No active devices for this CardiMember |
-| `NO_DATA_FOR_DATE` | 404 | No health data available for the requested date |
+**Priority:** P0
 
 ---
 
 ## GET `/api/v1/cardimembers/{id}/health/trends`
 
-Get time-series trend data for charts. Supports predefined and custom date ranges.
+> **Planned — not yet implemented.** Today the only time-series available is the 7-day `series` inside each dashboard metric.
 
-**Priority:** P1 | **Auth Required:** Yes
+Get time-series trend data for charts over `7d`/`30d`/`90d`/custom ranges, with per-day alert annotations.
 
-### Query Parameters
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `range` | string | Yes* | `7d`, `30d`, `90d`, or `custom` |
-| `from` | string (ISO 8601) | If `range=custom` | Start date |
-| `to` | string (ISO 8601) | If `range=custom` | End date (max 365 days) |
-| `metrics` | string | No | Comma-separated: `steps,heartRate,sleep,activeMinutes` (default: all) |
-
-### Response `200 OK`
-
-```json
-{
-  "cardiMemberId": "cm_01J8K2...",
-  "range": "30d",
-  "from": "2026-02-07",
-  "to": "2026-03-09",
-  "baseline": {
-    "steps": 5000,
-    "restingHeartRate": 65,
-    "sleepHours": 7.5,
-    "activeMinutes": 45
-  },
-  "series": [
-    {
-      "date": "2026-02-07",
-      "steps": 4800,
-      "restingHeartRate": 66,
-      "sleepHours": 7.3,
-      "activeMinutes": 40,
-      "alerts": []
-    },
-    {
-      "date": "2026-03-09",
-      "steps": 2500,
-      "restingHeartRate": 68,
-      "sleepHours": 7.2,
-      "activeMinutes": 18,
-      "alerts": ["alert_xyz_001"]
-    }
-  ]
-}
-```
-
-> `alerts` array in each data point contains alert IDs that occurred on that date — enables chart annotations.
+**Priority:** P1
 
 ---
 
 ## GET `/api/v1/cardimembers/{id}/health/baseline`
 
-Get the current calculated baseline values and learning progress for a CardiMember.
+> **Planned — not yet implemented.** The dashboard's `baseline` block covers learning progress today; the AI narrative version exists at `GET /api/v1/insights/members/{id}/baseline` (above) but returns prose, not numbers.
 
-**Priority:** P1 | **Auth Required:** Yes
+Get the current calculated numeric baseline values (steps, resting heart rate, sleep, typical wake/sleep times) and learning progress.
 
-### Response `200 OK`
-
-```json
-{
-  "cardiMemberId": "cm_01J8K2...",
-  "learningProgress": {
-    "daysCaptured": 12,
-    "daysRequired": 30,
-    "percentComplete": 40,
-    "estimatedReadyDate": "2026-04-01"
-  },
-  "baselineValues": {
-    "steps": 5000,
-    "restingHeartRate": 65,
-    "sleepHours": 7.5,
-    "activeMinutes": 45,
-    "typicalWakeTime": "07:00",
-    "typicalSleepTime": "22:30"
-  },
-  "usingStatisticalAlerts": true,
-  "baselineLastUpdatedAt": "2026-03-08T23:00:00Z"
-}
-```
+**Priority:** P1
 
 ---
 
 ## POST `/api/v1/cardimembers/{id}/health-data/batch`
 
-Device-bridge ingestion for **on-device providers** (Apple Health). The CardiTrack mobile app reads HealthKit locally and uploads normalized daily samples. Not used by server-OAuth providers, whose data arrives via webhooks.
+> **Planned — not yet implemented.** No Apple Health bridge exists — there is no ingestion endpoint, and server-OAuth data arrives via the Worker's 30-minute provider poll (not webhooks).
 
-**Priority:** P1 (ships with Apple Watch support — see [release matrix](../../../release_matrix.md)) | **Auth Required:** Yes
+Device-bridge ingestion for **on-device providers** (Apple Health): the mobile app would read HealthKit locally and upload normalized daily samples.
 
-### Request Body
-
-```json
-{
-  "deviceId": "dev_03J9...",
-  "samples": [
-    {
-      "date": "2026-03-09",
-      "steps": 4100,
-      "restingHeartRate": 66,
-      "sleepMinutes": 432,
-      "activeMinutes": 38
-    }
-  ]
-}
-```
-
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `deviceId` | string | Yes | The on-device-bridge connection this data belongs to |
-| `samples` | array | Yes | Normalized daily samples (max 90 per request); upserted by `(cardiMemberId, date, dataSource)` |
-
-### Response `202 Accepted`
-
-```json
-{
-  "accepted": 1,
-  "rejected": 0
-}
-```
-
-### Errors
-
-| Code | Status | Description |
-|------|--------|-------------|
-| `DEVICE_NOT_FOUND` | 404 | Device ID not found for this CardiMember |
-| `INVALID_DEVICE_MODE` | 422 | Device is a server-OAuth connection; batch upload not permitted |
+**Priority:** P1 (ships with Apple Watch support — see [release matrix](../../../release_matrix.md))
 
 ---
 
 ## GET `/api/v1/cardimembers/{id}/health/export`
 
-Export health data for a CardiMember. Supports human-readable formats (PDF, CSV) and interoperable medical formats (FHIR R4, HL7 v2). Used for doctor visit preparation and EHR integration.
+> **Planned — not yet implemented.** No FHIR/HL7/PDF/CSV export code exists (only unused DTO fields on the reports request). The nearest current capability is the LLM-generated text report — see [reports.md](reports.md).
 
-**Priority:** P0 (PDF, CSV, FHIR R4 in MVP 1) | P1 (HL7 v2 added in MVP 2) | **Auth Required:** Yes
+Export health data in human-readable (PDF, CSV) and interoperable medical formats (FHIR R4, HL7 v2) for doctor visits and EHR integration.
 
-### Query Parameters
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `format` | string | Yes | `pdf`, `csv`, `fhir_r4` (**MVP 1**), or `hl7_v2` (MVP 2) |
-| `range` | string | Yes | `7d`, `30d`, `90d`, or `custom` |
-| `from` | string (ISO 8601) | If `range=custom` | Start date |
-| `to` | string (ISO 8601) | If `range=custom` | End date |
-| `sections` | string | No | Comma-separated: `metrics,alerts,notes` (default: all). Ignored for `fhir_r4` and `hl7_v2` — full dataset always exported in medical formats. |
-| `fhir_profile` | string | No | FHIR R4 profile to validate against. Default: `us-core`. Only valid when `format=fhir_r4`. |
-| `fhir_resources` | string | No | Comma-separated FHIR resource types to include. Default: `Patient,Observation,Device`. Only valid when `format=fhir_r4`. |
-
-### Response `200 OK`
-
-**PDF / CSV:**
-```
-Content-Type: application/pdf  (or text/csv)
-Content-Disposition: attachment; filename="carditrack-margaret-doe-2026-03-09.pdf"
-```
-
-**FHIR R4:**
-```
-Content-Type: application/fhir+json
-Content-Disposition: attachment; filename="carditrack-margaret-doe-fhir-r4-2026-03-09.json"
-```
-
-Returns a FHIR R4 Bundle (type: `document`) containing:
-- `Patient` — CardiMember demographics
-- `Observation` — activity, heart rate, and sleep measurements (LOINC-coded)
-- `Device` — connected wearable device(s)
-- `Condition` — any logged conditions from medical notes (if consented)
-
-**HL7 v2 (MVP 2):**
-```
-Content-Type: application/hl7-v2+er7
-Content-Disposition: attachment; filename="carditrack-margaret-doe-hl7-v2-2026-03-09.hl7"
-```
-
-Returns an HL7 v2.5.1 ORU^R01 message containing observation results.
-
-All responses: binary file stream.
-
-### Errors
-
-| Code | Status | Description |
-|------|--------|-------------|
-| `EXPORT_RANGE_TOO_LARGE` | 400 | Range exceeds 365 days |
-| `NO_DATA_IN_RANGE` | 404 | No health data in the specified range |
-| `FORMAT_NOT_AVAILABLE` | 403 | Requested format not available in current MVP (e.g., `hl7_v2` before MVP 2 release) |
-| `INVALID_FHIR_PROFILE` | 400 | Specified `fhir_profile` is not supported |
+**Priority:** P0 (PDF, CSV, FHIR R4 in MVP 1) | P1 (HL7 v2 added in MVP 2)
 
 ---
 
-**Related:** [readme.md](readme.md) | [alerts.md](alerts.md) | [reports.md](reports.md) | [User Stories 2.1, 2.2, 2.3, 5.2, 10.1](../../ui/mobile/user_stories.md)
+**Related:** [readme.md](readme.md) | [alerts.md](alerts.md) | [reports.md](reports.md) | [devices.md](devices.md) | [User Stories 2.1, 2.2, 2.3, 5.2, 10.1](../../ui/mobile/user_stories.md)
+
+**Last Updated:** August 7, 2026

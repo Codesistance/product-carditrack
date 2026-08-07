@@ -1,50 +1,58 @@
 # CardiTrack - MVP 1 Screen Specifications
 
-> **Extract — do not edit directly.** This file is extracted from the canonical [ui_screens_maui_mobile.md](../ui_screens_maui_mobile.md) (v3.0); make changes there and re-extract. Release sequencing is governed by the [release matrix](../../../../release_matrix.md).
+> **Extract — do not edit directly.** This file is extracted from the canonical [ui_screens_maui_mobile.md](../ui_screens_maui_mobile.md) (v3.1); make changes there and re-extract. Release sequencing is governed by the [release matrix](../../../../release_matrix.md).
 
 ## Project Overview
 
 **Product:** CardiTrack - Remote health monitoring for elderly family members
-**Release:** MVP 1 — Core Monitoring (37 screens)
+**Release:** MVP 1 — Core Monitoring (R1, Q4 2026) — 17 designed screens / 37 designed states; **9 of 17 built** as of August 7, 2026
 **Platform:** iOS 16+ (iPhone 12+) & Android 10+ (API 29)
 **Minimum OS:** iOS 16.0 · Android 10 (API level 29)
 **Target OS:** iOS 18 · Android 15 (API level 35)
 **Orientation:** Portrait primary, landscape supported
 **Target Users:** Family caregivers across the US & EU monitoring elderly relatives' wearable health data
-**Document Version:** 1.0 (extracted from full spec v3.0)
-**Last Updated:** February 24, 2026
+**Document Version:** 1.1 (extracted from full spec v3.1)
+**Last Updated:** August 7, 2026
+
+---
+
+## Build Status (as of August 7, 2026)
+
+> **9 of 17 Figma M1 screens are built** in `CardiTrack.Mobile` (M1-01 through M1-09). **M1-10 through M1-17 are not built** — their entry points show "Coming soon" dialogs, except the dashboard's Add-Member action, which pushes M1-04 (AddCardiMemberPage) directly. **Four shipped screens have no Figma M1 frame — needs design sync:** SignInPage, ForgotPasswordPage, VerifyEmailPage, Onboarding/AccountSetupPage (specs in the canonical doc). Unbuilt screens below remain design intent, each marked with a status line.
 
 ---
 
 ## What MVP 1 Delivers
 
-A single user can sign up, add one or more CardiMembers, connect devices, manage CardiMember profiles, view the health dashboard, receive and manage all alert types, and export health data in PDF, CSV, or FHIR R4 format. This is the essential monitoring loop — everything needed for the app to be useful from day one.
+A single user can sign up, add a CardiMember, connect devices, manage CardiMember profiles, view the health dashboard, receive and manage all alert types, and export health data in PDF, CSV, or FHIR R4 format. This is the essential monitoring loop — everything needed for the app to be useful from day one. MVP 1 monitors **one CardiMember** — the multi-member dashboard (M3-03) is an MVP 2 feature, and the shipped dashboard displays only the first active member.
 
 ---
 
 ## Screen Index
 
-| ID | Screen | Variations |
-|----|--------|------------|
-| M1-01 | Splash Screen | 2 (a–b) |
-| M1-02 | Welcome / Landing | 1 |
-| M1-03 | Sign Up | 4 (a–d) |
-| M1-04 | Add First CardiMember | 3 (a–c) |
-| M1-05 | Device Connection - Selection | 1 |
-| M1-06 | Device Connection - OAuth | 3 (a–c) |
-| M1-07 | Device Connection - Success | 3 (a–c) |
-| M1-08 | Baseline Learning Info | 1 |
-| M1-09 | Main Dashboard | 5 (a–e) |
-| M1-10 | Alerts List | 4 (a–d) |
-| M1-11 | Alert Detail - Activity | 1 |
-| M1-12 | Alert Detail - Critical | 1 |
-| M1-13 | CardiMember Detail | 1 |
-| M1-14 | Edit CardiMember | 1 |
-| M1-15 | Device Management | 1 |
-| M1-16 | Alert Detail - Heart Rate | 1 |
-| M1-17 | Health Data Export | 4 (a–d) |
+| ID | Screen | Variations | Built |
+|----|--------|------------|-------|
+| M1-01 | Splash Screen | 2 (a–b) | ✅ `SplashPage` |
+| M1-02 | Welcome / Landing | 1 | ✅ `WelcomePage` |
+| M1-03 | Sign Up | 4 (a–d) | ✅ `CreateAccountPage` |
+| M1-04 | Add First CardiMember | 3 (a–c) | ✅ `AddCardiMemberPage` |
+| M1-05 | Device Connection - Selection | 1 | ✅ `DeviceSelectionPage` |
+| M1-06 | Device Connection - OAuth | 3 (a–c) | ✅ `FitbitConnectionPage` |
+| M1-07 | Device Connection - Success | 3 (a–c) | ✅ `ConnectionSuccessPage` |
+| M1-08 | Baseline Learning Info | 1 | ✅ `BaselineLearningPage` |
+| M1-09 | Main Dashboard | 5 (a–e) + 2 as-built | ✅ `DashboardPage` |
+| M1-10 | Alerts List | 4 (a–d) | ❌ stub ("Coming soon") |
+| M1-11 | Alert Detail - Activity | 1 | ❌ not built |
+| M1-12 | Alert Detail - Critical | 1 | ❌ not built |
+| M1-13 | CardiMember Detail | 1 | ❌ not built |
+| M1-14 | Edit CardiMember | 1 | ❌ not built |
+| M1-15 | Device Management | 1 | ❌ not built |
+| M1-16 | Alert Detail - Heart Rate | 1 | ❌ not built |
+| M1-17 | Health Data Export | 4 (a–d) | ❌ not built |
 
-**Total: 17 screens · 37 states**
+**Total: 17 designed screens · 37 designed states — 9 of 17 built**
+
+**Shipped screens without Figma M1 frames** (need design sync; no M1 IDs assigned per project convention): SignInPage, ForgotPasswordPage, VerifyEmailPage, Onboarding/AccountSetupPage — see the canonical [ui_screens_maui_mobile.md](../ui_screens_maui_mobile.md) for full specs.
 
 ---
 
@@ -52,19 +60,33 @@ A single user can sign up, add one or more CardiMembers, connect devices, manage
 
 ### Flow 1: First-Time Onboarding
 
+As built: Welcome's only affordances lead to Sign Up; SignInPage is reached from CreateAccount's "Already have an account? Sign In" link. Email verification (VerifyEmailPage) gates entry, then PostLoginRouter routes to AccountSetupPage (if account type not yet set) or AddCardiMemberPage. Onboarding pages hide the tab bar (`Shell.TabBarIsVisible=False`).
+
 ```
 [M1-01 Splash] ──────────────────────────────────────────> [M1-09 Dashboard]
       │                                                      (returning user)
       ▼
 [M1-02 Welcome]
       │              │
-   "Get Started"  "Sign In"
-      │              ▼
-      │         [Login screen] ──────────────────────────> [M1-09 Dashboard]
+"Start Free Trial" "Sign up" (top-right — same destination)
       ▼
-[M1-03 Sign Up]
+[M1-03 Sign Up (CreateAccountPage)]
+      │                        │
+      │              "Already have an account? Sign In"
+      │                        ▼
+      │                  [SignInPage] ───────────────────> [M1-09 Dashboard]
+      ▼                  (no Figma M1 frame)
+[VerifyEmailPage]  (email verification gate — no Figma M1 frame)
       │
       ▼
+[PostLoginRouter]
+      │                        │
+ account type not set     account type set
+      ▼                        │
+[AccountSetupPage]             │
+ (no Figma M1 frame)           │
+      └──────────┬─────────────┘
+                 ▼
 [M1-04 Add CardiMember]
       │                  │
    "Continue"         "Skip"
@@ -85,12 +107,14 @@ Success             Failure
    │                   └──> [M1-05 Device Selection]
    ▼
 [M1-08 Baseline Learning Info]
-   │
-"Go to Dashboard"
-   │
-   ▼
+   │                   │
+"Go to Dashboard"   "Invite Family Member First"
+   │                   └──> [M3-02 Invite Family Modal] (MVP 2 —
+   ▼                        link ships in MVP 1 but is a dead end today)
 [M1-09 Dashboard]
 ```
+
+The dashboard's Add-Member action (empty state and add-member button) pushes M1-04 directly; when pushed from the dashboard, "Skip" pops back to the dashboard.
 
 ### Flow 2: Daily Monitoring
 
@@ -112,6 +136,8 @@ Success             Failure
                        └──────────┴──────────┘
                                   │
                              Back to M1-10
+                                  │
+                         "View Trends" ──> [M2-03 Trend Charts] _(MVP 2)_
 ```
 
 ### Flow 3: Data Export
@@ -164,30 +190,26 @@ Push notification (any time) ─────────────────
 
 - Badge count on Alerts tab for unread alerts
 - Family tab shows placeholder / "Coming Soon" in MVP 1, or can be hidden
+- As built, the Shell defines a **TabBar only** (Dashboard / Alerts / Family / Settings, SVG icons). Alerts and Family tabs are stubs; Settings is minimal (account card, "More settings (M2-01) coming soon", Sign out). Onboarding pages hide the tab bar via `Shell.TabBarIsVisible=False`.
 
-### Flyout Menu (swipe from left edge)
+### Flyout Menu
 
-- User profile header (photo, name, email)
-- Dashboard
-- CardiMembers (badge: member count)
-- Alerts (badge: unread count)
-- Family & Sharing _(MVP 2)_
-- Subscription
-- Settings
-- Help & Support
-- Sign Out
+**Not built — there is no flyout menu in the shipped app.** The Shell is TabBar-only, with no edge-swipe flyout. The flyout concept below is retired unless re-introduced through Figma:
+
+- ~~User profile header, Dashboard, CardiMembers, Alerts, Family & Sharing, Subscription, Settings, Help & Support, Sign Out~~
 
 ### Gesture Patterns
 
-| Gesture | Context | Action |
-|---------|---------|--------|
-| Pull down | Any scrollable screen | Refresh data |
-| Swipe left | List items | Reveal quick actions |
-| Swipe right | List items | Reveal secondary actions |
-| Swipe right (edge) | Any screen | Open flyout menu |
-| Pinch | Chart views | Zoom in/out |
-| Long press | Chart data points | Show tooltip |
-| Long press | CardiMember photo | Change photo |
+| Gesture | Context | Action | Status |
+|---------|---------|--------|--------|
+| Pull down | Dashboard (and future scrollable screens) | Refresh data | **Shipped** (Dashboard) |
+| Swipe left | List items | Reveal quick actions | Planned (no list-item swipes shipped) |
+| Swipe right | List items | Reveal secondary actions | Planned (no list-item swipes shipped) |
+| Pinch | Chart views | Zoom in/out | Planned (no chart gestures shipped) |
+| Long press | Chart data points | Show tooltip | Planned (no chart gestures shipped) |
+| Long press | CardiMember photo | Change photo | Planned (not shipped) |
+
+There is no edge-swipe flyout gesture (no flyout exists).
 
 ---
 
@@ -203,13 +225,14 @@ Five MVP 1 screens selected to validate the core design language — covering br
 | 4 | **M1-10 — Alerts List** | Alert management; demonstrates severity badges, grouped list design, filter chips, and swipe actions |
 | 5 | **M1-12 — Alert Detail - Critical** | Highest-stakes screen; validates urgency design, pulsing severity treatment, and primary CTA hierarchy |
 
-These five screens span onboarding → daily use → emergency response and collectively exercise the full design system: typography, color severity levels, card components, form patterns, and navigation affordances.
+These five screens span onboarding → daily use → emergency response. **Build status:** M1-02, M1-04, and M1-09 are built; M1-10 is a stub ("Coming soon") and M1-12 is not built — so the POC set currently validates onboarding and daily monitoring in code, but not yet the alert management or emergency-response design language.
 
 ---
 
 ## Screens
 
 ### M1-01: Splash Screen
+**Status:** Built (`SplashPage`)
 **User Story:** 1.1-1.3 Onboarding
 **Entry:** App launch
 **Exit:** → M1-02 Welcome (first launch) | → M1-09 Dashboard (returning user) | → M4-02 Biometric Login (MVP 3, if enabled)
@@ -230,15 +253,16 @@ These five screens span onboarding → daily use → emergency response and coll
 ---
 
 ### M1-02: Welcome / Landing Screen
+**Status:** Built (`WelcomePage`)
 **User Story:** 1.1 First-Time Registration
 **Entry:** ← M1-01 Splash (first launch only)
-**Exit:** → M1-03 Sign Up | → Login screen ("Sign In")
+**Exit:** → M1-03 Sign Up (primary CTA and top-right "Sign up" — same destination). There is **no Sign In affordance on Welcome**; sign-in is reached via CreateAccount's "Already have an account? Sign In" link.
 
 **Layout:**
 
 **Header (top 20%):**
 - CardiTrack logo (top-left, small)
-- "Sign In" link (top-right)
+- "Sign up" label (top-right) → M1-03 (same destination as primary CTA)
 
 **Hero Carousel (middle 50%):**
 - 3 swipeable slides with pagination dots:
@@ -256,25 +280,27 @@ These five screens span onboarding → daily use → emergency response and coll
 - Legal link (small): "By continuing, you agree to Terms & Privacy"
 
 **Interactions:**
-- Carousel auto-advances every 4 seconds, pauses on touch
+- Carousel is **swipe-only** (`Loop=False`, no auto-advance)
 - Pagination dots indicate current slide
 - Swipe left/right between slides
+- Terms & Privacy link is a **stub** — shows a placeholder alert ("Terms and privacy will open here.")
 
 ---
 
 ### M1-03: Sign Up Screen
+**Status:** Built (`CreateAccountPage`)
 **User Story:** 1.1 Account Creation
-**Entry:** ← M1-02 Welcome ("Start Free Trial")
-**Exit:** → M1-04 Add CardiMember (success) | ← M1-02 Welcome (back) | → Login screen ("Already have an account?")
+**Entry:** ← M1-02 Welcome ("Start Free Trial" or "Sign up")
+**Exit:** → VerifyEmailPage (success; email verification gate) → PostLoginRouter → AccountSetupPage or M1-04 Add CardiMember | → SignInPage ("Already have an account? Sign In")
 
 **Header:**
-- Back button
+- Gradient header (no back button)
 - Title: "Create Account"
 - Progress indicator: "Step 1 of 4"
 
 **Form (scrollable):**
 
-**Email & Password Section:**
+- **First field is required "Full Name"** — text input
 - Label: "Email Address"
   - Text input, email keyboard, autocapitalization off
 - Label: "Password"
@@ -284,46 +310,49 @@ These five screens span onboarding → daily use → emergency response and coll
 - Label: "Confirm Password"
   - Password input (masked)
 
-**Divider:** Horizontal line with "OR" centered
-
-**Social Login:**
-- Button: "Continue with Google" (white background, Google logo)
-- Button: "Continue with Apple" (black background, Apple logo)
-
 **Terms:**
 - Checkbox + label: "I agree to Terms of Service and Privacy Policy"
 - "Terms of Service" and "Privacy Policy" are tappable links
 
 **CTA:**
-- Primary button: "Create Account" (disabled until form is valid)
-- Error message area (hidden until error occurs)
+- Primary button: "Create Account" — **never disabled**; tapping while invalid runs validation and shows inline errors; the button's gradient swaps to the active treatment when the form becomes valid
+- Error banner area (reserved for weak-password, network, and generic errors)
+
+**Divider (below CTA):** Horizontal line with "Or continue with" centered
+
+**Social Login (2-up icon grid):**
+- "Google" card (white background, Google logo)
+- "Apple" card (dark background, Apple logo)
+- **Unwired** — the social buttons have no tap handlers yet
 
 **Bottom:**
-- Link: "Already have an account? Sign In"
+- Link: "Already have an account? Sign In" → SignInPage
 
 **Validation Rules:**
+- Full Name: required
 - Email: valid format, real-time feedback
 - Password: min 8 characters, 1 uppercase, 1 number
 - Confirm password: must match
 - Terms checkbox: must be checked
-- Button enables only when all validations pass
 
 **States:**
 - **M1-03a — Default:** Empty form
 - **M1-03b — Validating:** Inline error messages appear beneath invalid fields
 - **M1-03c — Loading:** Button shows spinner, form disabled
-- **M1-03d — Error:** Error banner at top (e.g., "Email already registered")
+- **M1-03d — Error:** **Duplicate email shows as an inline field error under Email**; the top error banner is reserved for weak-password, network, and generic failures
+
+**Post-signup:** Success pushes **VerifyEmailPage** (the email-verification gate); after verification, PostLoginRouter routes to AccountSetupPage (account type not yet set) or M1-04 AddCardiMemberPage.
 
 ---
 
 ### M1-04: Add First CardiMember
+**Status:** Built (`Onboarding/AddCardiMemberPage`)
 **User Story:** 1.2 Adding First CardiMember
-**Entry:** ← M1-03 Sign Up (success)
-**Exit:** → M1-05 Device Selection ("Continue") | → M1-09 Dashboard ("Skip for Now")
+**Entry:** ← M1-03 Sign Up (success, after VerifyEmailPage/PostLoginRouter) | ← M1-09 Dashboard (Add-Member action pushes this page directly)
+**Exit:** → M1-05 Device Selection ("Continue") | → M1-09 Dashboard ("Skip for Now"; when pushed from the dashboard, Skip pops back to it)
 
 **Header:**
-- Back button
-- Title: "Add CardiMember"
+- Title: "Add First CardiMember"
 - Progress indicator: "Step 2 of 4"
 
 **Introduction:**
@@ -334,11 +363,12 @@ These five screens span onboarding → daily use → emergency response and coll
 **Photo Section:**
 - Circular photo placeholder (large)
 - "Add Photo" button below
-- Tap opens choice: Camera or Gallery
+- **Gallery only** (`MediaPicker.PickPhotosAsync`) — no camera option shipped
 
 **Required Fields:**
 - "Full Name *" — text input
 - "Date of Birth *" — date picker (format: MM/DD/YYYY)
+  - As built, **DOB silently defaults to today** if not changed — not validated (known limitation)
 - "Relationship *" — dropdown picker:
   - Parent, Grandparent, Spouse, Sibling, Other
 
@@ -349,13 +379,14 @@ These five screens span onboarding → daily use → emergency response and coll
     - Encrypted indicator icon visible
   - "Emergency Contact Name" — text input
   - "Emergency Contact Phone" — phone keyboard input
+    - Placeholder is localized by device region (PR #8): US/CA "+1 555 000 0000", GB "+44 7700 900000"; **all other regions fall back to the US format** — worth noting given the product's US + EU framing
 
 **Privacy Notice:**
-- Info card with lock icon
-- Text: "[Name] will know you're looking out for them and can give their okay"
+- ~~Info card with lock icon: "[Name] will know you're looking out for them and can give their okay"~~
+- **Not built** — the shipped screen has no privacy-notice card (product follow-up, relevant to the consent-first principle)
 
 **CTA:**
-- Primary button: "Continue"
+- Primary button: "Continue" — enabled by **name ≥ 2 characters + relationship selected** only
 - Text link: "Skip for Now"
 
 **States:**
@@ -366,9 +397,10 @@ These five screens span onboarding → daily use → emergency response and coll
 ---
 
 ### M1-05: Device Connection - Selection
+**Status:** Built (`Onboarding/DeviceSelectionPage`)
 **User Story:** 1.3 Device Connection Wizard
 **Entry:** ← M1-04 Add CardiMember ("Continue")
-**Exit:** → M1-06 OAuth Permission (device selected)
+**Exit:** → M1-06 OAuth Permission ("Continue with Fitbit")
 
 **Header:**
 - Back button
@@ -376,57 +408,57 @@ These five screens span onboarding → daily use → emergency response and coll
 - Progress indicator: "Step 3 of 4"
 
 **Introduction:**
-- Text: "What does [Name] wear?"
+- Heading: "What do they wear?" (no name interpolation)
 - Subtext: "We'll connect with their device to keep you in the loop"
 
-**Device Grid (2 columns on phone, 3 on tablet):**
+**Device Grid (fixed 2-column grid):**
 
 Each device card:
 - Rounded frame with shadow
 - Device logo (medium)
 - Device name (bold)
-- Badge: "Supported" (checkmark) for active devices; "Coming Soon" (clock) for future devices
-- Future device cards are visible but non-tappable (greyed out, no interaction)
-- Entire active card is tappable, highlights on selection
+- "Coming Soon" badge for future devices
+- Coming Soon cards render at **0.55 opacity** and are non-tappable
 
 **Supported Devices (MVP 1 — Fitbit only; remaining devices shown as Coming Soon):**
 
-| Device | Models | MVP Availability |
-|--------|--------|-----------------|
+| Device | Card text (models) | MVP Availability |
+|--------|--------------------|-----------------|
 | Fitbit | Charge, Versa, Sense series | **MVP 1** |
-| Garmin | Venu, Forerunner, etc. | MVP 2 |
+| Garmin | Venu, Forerunner, etc. | MVP 2 (shown Coming Soon) |
 | Apple Watch | Series 4+ | Coming Soon |
-| Samsung Galaxy Watch | All models | Coming Soon |
+| Samsung Galaxy | All models | Coming Soon |
 | Withings | ScanWatch, Move | Coming Soon |
-| Other / Manual Entry | Limited features | Coming Soon |
+| Other | All models | Coming Soon |
 
 **Bottom:**
 - Link: "Don't see their device? We can help"
 
 **Interactions:**
-- Single selection — tap to select, tap again to deselect
-- Only Fitbit cards are selectable in MVP 1; others are greyed out with "Coming Soon" badge
-- Selected card shows highlighted border + checkmark overlay
-- Selecting a device automatically proceeds to M1-06
+- **Fitbit is preselected** — it cannot be deselected, and there is no auto-advance
+- Explicit primary button: **"Continue with Fitbit"** proceeds to M1-06
+- Coming Soon cards are greyed out (0.55 opacity) with "Coming Soon" badges
 
 ---
 
 ### M1-06: Device Connection - OAuth Permission
+**Status:** Built (`Onboarding/FitbitConnectionPage`) — Fitbit-only, hardcoded copy
 **User Story:** 1.3 OAuth Flow
-**Entry:** ← M1-05 Device Selection (device chosen)
+**Entry:** ← M1-05 Device Selection ("Continue with Fitbit")
 **Exit:** → M1-07 Success (authorization complete) | ← M1-05 Device Selection ("Cancel")
 
 **Header:**
 - Back button
-- Title: "[Device Name] Connection"
+- Title: hardcoded "Fitbit Connection"
 
 **Visual Connection (centered):**
+- Heading: "Connect Your Fitbit"
 - Large device logo
 - Arrow/connection icon
 - Large CardiTrack logo
 
 **Permission List:**
-- Label: "To look after [Name], CardiTrack needs:"
+- Label: "To look after them, CardiTrack needs:" (no name interpolation)
 - Each permission in its own row:
 
 | Icon | Permission | Info Tooltip |
@@ -439,7 +471,7 @@ Each device card:
 
 **Privacy Notice:**
 - Card with light background
-- Lock icon + text: "Your family's health data stays private — always. We never sell or share it."
+- Lock icon + text: "Your family's health data stays private always. We never sell or share it with third parties."
 
 **CTA:**
 - Primary button: "Authorize [Device Name]"
@@ -451,23 +483,26 @@ Each device card:
 - **M1-06b — Authorizing:** Loading overlay with "Connecting to [Name]'s [Device]..." message
 - **M1-06c — Error:** "We couldn't connect — let's try that again" with retry button
 
+> **State-letter mismatch:** the shipped code maps **B = Error** and **C = Authorizing overlay** — the reverse of the lettering above. Figma is the arbiter of state letters; the code should be realigned (or the Figma frame updated) at the next design sync.
+
 ---
 
 ### M1-07: Device Connection - Success
+**Status:** Built (`Onboarding/ConnectionSuccessPage`)
 **User Story:** 1.3 Connection Success
 **Entry:** ← M1-06 OAuth (authorization complete)
 **Exit:** → M1-08 Baseline Info ("Continue to Dashboard") | → M1-05 Device Selection ("Add Another Device")
 
-**Animation:**
-- Animated checkmark (plays once on entry)
+**Checkmark:**
+- **Static green circle with ✓** (no entry animation shipped)
 
 **Success Message:**
 - Heading: "You're all set!"
-- Text: "[Name]'s [Device] is now connected"
+- Text: "The Fitbit is now connected" (no name/device interpolation)
 - Subtext: "We're pulling in their latest data — just a moment"
 
 **Data Preview Card:**
-- Title: "Latest Data"
+- Title: "Latest Data" with **"SYNCING" badge**
 - Rows:
   - Steps Today: 4,250
   - Last Synced: Just now
@@ -475,10 +510,10 @@ Each device card:
 
 **Options:**
 - Outlined button: "+ Add Another Device"
-- Helper text: "Does [Name] have another device? The more data, the better we can watch over them"
 
 **CTA:**
 - Primary button: "Continue to Dashboard"
+- Helper text **below the button**: "You can sync multiple devices to get a more accurate picture of their health."
 
 **States:**
 - **M1-07a — Syncing:** Preview card shows shimmer/skeleton loading
@@ -488,20 +523,21 @@ Each device card:
 ---
 
 ### M1-08: Baseline Learning Info
+**Status:** Built (`Onboarding/BaselineLearningPage`)
 **User Story:** 1.3 Baseline Setup
 **Entry:** ← M1-07 Device Success
-**Exit:** → M1-09 Dashboard ("Go to Dashboard")
+**Exit:** → M1-09 Dashboard ("Go to Dashboard") | "Invite Family Member First" link (ships now; dead end until M3-02)
 
 **Header:**
 - Title: "Learning Phase"
 - Progress indicator: "Step 4 of 4"
 
 **Illustration:**
-- Animated graphic: brain with gears (learning concept)
+- Static emoji glyphs: 🧠⚙ (no Lottie animation shipped)
 
 **Explanation:**
-- Heading: "Getting to Know [Name]"
-- Body: "Over the next 30 days, CardiTrack will learn what a normal day looks like for [Name]:"
+- Heading: "Getting to know them" (singular, no name interpolation)
+- Body: "Over the next 30 days, CardiTrack will learn what a normal day looks like for them:"
 - Bullet list:
   - "When they usually wake up and go to sleep"
   - "How active they are day to day"
@@ -517,12 +553,12 @@ Each device card:
 
 **CTA:**
 - Primary button: "Go to Dashboard"
-
-**MVP 2 addition:** Text link "Invite Family Members First" → M3-02
+- Text link: "Invite Family Member First" — **ships now in MVP 1** (unconditional), but the invite flow (M3-02) does not exist yet, so the link is currently a dead end. Not an MVP 2 addition.
 
 ---
 
 ### M1-09: Main Dashboard (Single CardiMember)
+**Status:** Built (`DashboardPage`)
 **User Story:** 2.1 Daily Health Overview
 **Entry:** Tab bar (Home) | ← M1-08 Baseline Info (first time)
 **Exit:** → M1-10 Alerts List | → M2-03 Trend Charts | → M1-13 CardiMember Detail | → Phone call / SMS
@@ -572,7 +608,7 @@ Each device card:
 **Card 3: Sleep**
 - Icon: moon
 - Large value: "7.2 hours"
-- Quality: "Good" (4 out of 5 stars)
+- Quality label: "Good" (no star rating shipped)
 - Comparison: "Better than average"
 - Mini sparkline
 
@@ -582,26 +618,33 @@ Each device card:
 - Each card: icon, title, time, status
 - Tap any card → M1-11 or M1-12 Alert Detail
 
+**Verify-Email Nudge (conditional):**
+- Dismissible banner prompting the user to verify their email address
+
 **Bottom:**
 - Button: "View Trends & History" → M2-03 _(MVP 2)_
 
 **Interactions:**
-- Pull-to-refresh triggers data sync
-- Swipe left on metric card → see detail view
-- Long-press on photo → change photo option
+- Pull-to-refresh triggers data sync; manual refresh icon sits in the page **header**
+- ~~Swipe left on metric card → see detail view~~ (not shipped — no metric-card swipe gesture)
+- ~~Long-press on photo → change photo option~~ (not shipped — no photo long-press gesture)
 
-**States:**
+**States (7 as built):**
 - **M1-09a — Loading:** Skeleton/shimmer cards
 - **M1-09b — Normal:** Full data displayed
-- **M1-09c — Stale data:** Banner: "Last update was X hours ago — pull down to check in"
+- **M1-09c — Stale data / offline:** Cached data with banner: "Last update was X hours ago — pull down to check in"
 - **M1-09d — No device connected:** Prompt card: "Connect [Name]'s device so CardiTrack can start watching over them" → M1-05
 - **M1-09e — Baseline learning:** Shows progress bar instead of "% of normal" comparisons
+- **Refresh / sync-error:** RefreshView in-flight state, plus sync-error surface
+- **Error:** "We couldn't load the dashboard" + "Try again" button
+- **No CardiMember:** "Who are you watching over?" + "Add CardiMember" button → pushes M1-04 (AddCardiMemberPage) directly; its Skip pops back here
 
-**MVP 2 change:** When user has multiple CardiMembers, Home tab shows M3-03 instead
+**Single-member only:** the dashboard shows the **first `IsActive` CardiMember** (cached in Preferences); there is no member switcher. Multi-member is deferred to M3-03 (MVP 2).
 
 ---
 
 ### M1-10: Alerts List
+**Status:** Not built — Alerts tab is a stub ("Coming soon"); design intent below
 **User Story:** 3.1 Alert Management | 3.3 Alert Acknowledgment & Notes
 **Entry:** Tab bar (Alerts) | ← M1-09 Dashboard (Recent Alerts)
 **Exit:** → M1-11 Alert Detail (Activity) | → M1-12 Alert Detail (Critical) | → Phone call
@@ -650,6 +693,7 @@ Heart rate alerts tap → M1-16
 ---
 
 ### M1-11: Alert Detail - Activity
+**Status:** Not built — design intent below
 **User Story:** 11.1 Activity Decline | 3.3 Alert Acknowledgment & Notes
 **Entry:** ← M1-10 Alerts List (tap alert card)
 **Exit:** ← M1-10 Alerts List (back) | → Phone call | → SMS | → M2-03 Trend Charts
@@ -710,6 +754,7 @@ Heart rate alerts tap → M1-16
 ---
 
 ### M1-12: Alert Detail - Critical (No Movement)
+**Status:** Not built — design intent below
 **User Story:** 11.3 No Morning Activity | 3.3 Alert Acknowledgment & Notes
 **Entry:** ← M1-10 Alerts List | Push notification (direct)
 **Exit:** ← M1-10 Alerts List (back) | → Phone call | → Note input
@@ -759,6 +804,7 @@ This is the most safety-critical screen in the app. Design for urgency and immed
 ---
 
 ### M1-13: CardiMember Detail
+**Status:** Not built — entry points show "Coming soon"; design intent below
 **User Story:** 1.4 CardiMember Profile Management
 **Entry:** ← M1-09 Dashboard ("View Details") | ← M2-01 Settings ("Manage CardiMembers")
 **Exit:** ← Previous screen (back) | → M1-14 Edit CardiMember | → M1-09 Dashboard | → M1-10 Alerts
@@ -774,8 +820,7 @@ This is the most safety-critical screen in the app. Design for urgency and immed
 **Medical Info Card (encrypted):**
 - Lock icon in card header
 - Collapsible: "Medical Notes"
-- Viewing requires biometric authentication
-- "Edit" also requires biometric auth
+- Biometric gating of medical notes is **deferred to R4** (per the [release matrix](../../../../release_matrix.md)) — not an MVP 1 requirement
 
 **Monitoring Info Card:**
 - Connected devices: "2 devices"
@@ -794,6 +839,7 @@ This is the most safety-critical screen in the app. Design for urgency and immed
 ---
 
 ### M1-14: Edit CardiMember
+**Status:** Not built — design intent below
 **User Story:** 1.4 CardiMember Profile Management
 **Entry:** ← M1-13 CardiMember Detail (edit button)
 **Exit:** ← M1-13 CardiMember Detail (cancel or save)
@@ -831,6 +877,7 @@ This is the most safety-critical screen in the app. Design for urgency and immed
 ---
 
 ### M1-15: Device Management
+**Status:** Not built — design intent below
 **User Story:** 6.2 Devices
 **Entry:** ← M2-01 Settings ("Connected Devices") | ← M1-13 CardiMember Detail ("Manage Devices")
 **Exit:** ← Previous screen (back) | → M1-05 Device Selection ("Add Device")
@@ -877,6 +924,7 @@ This is the most safety-critical screen in the app. Design for urgency and immed
 ---
 
 ### M1-16: Alert Detail - Heart Rate
+**Status:** Not built — design intent below
 **User Story:** 11.2 Elevated HR
 **Entry:** ← M1-10 Alerts List
 **Exit:** ← M1-10 Alerts List (back) | → Phone call | → M2-03 Trend Charts
@@ -920,6 +968,7 @@ This is the most safety-critical screen in the app. Design for urgency and immed
 ---
 
 ### M1-17: Health Data Export
+**Status:** Not built — design intent below (P0 for MVP 1, still to be implemented)
 **User Story:** 6.3 Health Data Export
 **Entry:** ← M2-03 Trend Charts (Export icon) | ← M2-01 Settings ("Export Health Data") | ← M1-13 CardiMember Detail ("Export Data")
 **Exit:** ← Previous screen (back) | → Share sheet / email
@@ -986,7 +1035,7 @@ This is the most safety-critical screen in the app. Design for urgency and immed
 | 1 | Onboarding Slide 1 | M1-02 | Happy elderly person wearing a smartwatch — warm, reassuring tone |
 | 2 | Onboarding Slide 2 | M1-02 | Phone showing a health dashboard — conveys "at-a-glance monitoring" |
 | 3 | Onboarding Slide 3 | M1-02 | Family members on their phones — conveys shared caregiving |
-| 4 | Learning Phase | M1-08 | Brain with gears concept. Animated (Lottie). Source from LottieFiles or use static illustration + platform progress animation |
+| 4 | Learning Phase | M1-08 | Brain with gears concept. Animated (Lottie). Source from LottieFiles or use static illustration + platform progress animation. **As built:** static 🧠⚙ emoji glyphs. |
 | 5 | Empty Alerts | M1-10 | Muted bell or peaceful scene — "nothing to worry about" feeling |
 | 6 | No Device Connected | M1-09 | Prompt to connect a device — friendly nudge, not an error |
 
@@ -1003,10 +1052,10 @@ This is the most safety-critical screen in the app. Design for urgency and immed
 
 | # | Animation | Screen | Source |
 |---|-----------|--------|--------|
-| 1 | Success checkmark | M1-07 | LottieFiles — search "success checkmark" (free options available) |
-| 2 | Shimmer / skeleton loading | M1-09, M1-10 | Open-source library (e.g., Shimmer.Maui). Reusable across all screens. |
+| 1 | Success checkmark | M1-07 | LottieFiles — search "success checkmark" (free options available). **As built:** static green circle + ✓ glyph, no animation. |
+| 2 | Shimmer / skeleton loading | M1-09, M1-10 | **As built:** custom `SkeletonView` control (M1-09). |
 | 3 | Critical alert pulse | M1-12 | XAML/CSS animation — opacity + scale loop on severity banner |
-| 4 | Learning phase brain/gears | M1-08 | LottieFiles — search "machine learning" or "brain processing." |
+| 4 | Learning phase brain/gears | M1-08 | LottieFiles — search "machine learning" or "brain processing." **As built:** static 🧠⚙ emoji glyphs, no Lottie. |
 
 ### Third-Party Logos (vendor-provided, no design needed)
 
@@ -1034,5 +1083,5 @@ This is the most safety-critical screen in the app. Design for urgency and immed
 
 ---
 
-**Source:** Extracted from [ui_screens_maui_mobile.md](../ui_screens_maui_mobile.md) v3.0
-**Total MVP 1 Screens:** 17 screens · 37 states
+**Source:** Extracted from [ui_screens_maui_mobile.md](../ui_screens_maui_mobile.md) v3.1 (manually re-synced August 7, 2026)
+**Total MVP 1 Screens:** 17 designed screens · 37 designed states — **9 of 17 built**; 4 additional shipped screens have no Figma M1 frame (SignIn, ForgotPassword, VerifyEmail, AccountSetup)

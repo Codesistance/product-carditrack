@@ -1,8 +1,65 @@
 # Alerts API
 
+> **Status: Planned — not yet implemented.** None of the endpoints below exist yet. See "Implemented today" for current coverage.
+
 Handles alert retrieval, acknowledgment, status lifecycle, photo attachments, and per-member alert notification preferences including quiet hours and sensitivity.
 
 **User Stories:** 3.1 (Receiving Critical Alerts), 3.2 (Managing Alert Notifications), 3.3 (Alert Acknowledgment & Notes), 11.1 (Activity Alerts), 11.2 (Heart Rate Alerts), 11.3 (Pattern Break Alerts)
+
+---
+
+## Implemented today
+
+### GET `/api/v1/insights/alerts/{alertId}` — AI alert analysis
+
+The one alert-related endpoint that exists: on-demand **MedGemma analysis** of a single alert (explanation, severity, recommended action). Returns 200 with `ApiResponse<AlertInsightResponse>`, **404** for an unknown alert ID.
+
+```json
+{
+  "alertId": "9b2f5f64-5717-4562-b3fc-2c963f66afa6",
+  "explanation": "Margaret's step count dropped 50% below her 30-day baseline...",
+  "severity": 2,
+  "recommendedAction": "Consider a check-in call today."
+}
+```
+
+> `severity` is the **integer** `AlertSeverity` enum (Green=1, Yellow=2, Orange=3, Red=4) — enums serialize as integers on the wire (see [readme.md](readme.md)).
+
+Alert **summaries** also surface in the dashboard's `recentAlerts` array — see [health-data.md](health-data.md). There is no alert list, detail, acknowledge, status, photo, history, or preferences endpoint yet.
+
+### Actual alert-type taxonomy
+
+The implemented `AlertType` enum (integers on the wire) differs from the string taxonomy designed below:
+
+| Value | Name | Meaning |
+|-------|------|---------|
+| 1 | `Inactivity` | Activity well below baseline |
+| 2 | `HeartRate` | Resting HR outside normal range |
+| 3 | `Sleep` | Sleep duration significantly off baseline |
+| 4 | `PatternBreak` | Break from established daily pattern |
+| 5 | `Trend` | Multi-week decline trend |
+
+### Sensitivity: fixed constants only
+
+There are **no sensitivity settings, quiet hours, or channel routing** in the system. The only thresholds that exist are the fixed dashboard-coloring constants (deviation > 30% → yellow, > 50% → orange — the "medium" profile below, hard-coded).
+
+The nearest artifact is an **unwired** `NotificationPreferencesRequest` DTO (validator registered, no endpoint consumes it), whose intended shape is simpler than the model designed below:
+
+```json
+{
+  "cardiMemberId": "3fa85f64-...",
+  "receiveSmsAlerts": false,
+  "receiveEmailAlerts": true,
+  "receivePushAlerts": true,
+  "enabledAlertTypes": [1, 2, 4],
+  "quietHoursStart": "22:00",
+  "quietHoursEnd": "07:00"
+}
+```
+
+(`enabledAlertTypes` are `AlertType` integers; quiet hours are plain `TimeOnly` values with no timezone or severity override.)
+
+Everything below is the **planned** contract, kept as design intent.
 
 ---
 
@@ -48,16 +105,16 @@ List all alerts across all accessible CardiMembers.
 }
 ```
 
-**Alert Types:**
+**Alert Types** (design-intent scenarios; the implemented enum is the five-value integer `AlertType` in "Implemented today" above — mappings shown):
 
-| Type | Severity Range | Description |
-|------|---------------|-------------|
-| `activity_decline` | yellow | Gradual step/activity reduction |
-| `elevated_heart_rate` | orange | Resting HR above normal range |
-| `no_morning_activity` | red | No movement detected past typical wake time (device is syncing) |
-| `irregular_sleep` | yellow | Sleep duration significantly off baseline |
-| `device_disconnected` | yellow | Wearable not syncing (>2h silence during waking hours) |
-| `long_term_trend` | orange | Multi-week decline trend (e.g. steps −5%/week for 4 weeks) — *ships with the AI pipeline, see [release matrix](../../../release_matrix.md)* |
+| Type | Severity Range | Implemented enum | Description |
+|------|---------------|------------------|-------------|
+| `activity_decline` | yellow | `Inactivity` (1) | Gradual step/activity reduction |
+| `elevated_heart_rate` | orange | `HeartRate` (2) | Resting HR above normal range |
+| `no_morning_activity` | red | `PatternBreak` (4) | No movement detected past typical wake time (device is syncing) |
+| `irregular_sleep` | yellow | `Sleep` (3) | Sleep duration significantly off baseline |
+| `device_disconnected` | yellow | — (no equivalent) | Wearable not syncing (>2h silence during waking hours) |
+| `long_term_trend` | orange | `Trend` (5) | Multi-week decline trend (e.g. steps −5%/week for 4 weeks) — *ships with the AI pipeline, see [release matrix](../../../release_matrix.md)* |
 
 > Severities use the product taxonomy (`yellow`/`orange`/`red`). `green` is a *health status*, not an alert severity — no alert is emitted for normal states. The AI pipeline's internal Critical/High/Medium/Low scale maps to these values — see [llm_design.md](../../../llm_design.md).
 
@@ -368,12 +425,12 @@ Update alert notification preferences for a CardiMember.
 }
 ```
 
-**Sensitivity Values:**
+**Sensitivity Values** (design intent — today only the `medium` thresholds exist, as fixed constants; see "Implemented today"):
 
 | Value | Description |
 |-------|-------------|
 | `low` | Only trigger alerts on large deviations (>50% from baseline) |
-| `medium` | Standard thresholds (>30% deviation) |
+| `medium` | Standard thresholds (>30% deviation) — **current hard-coded behavior** |
 | `high` | Sensitive thresholds (>15% deviation) |
 
 ### Response `200 OK`
@@ -383,3 +440,5 @@ Returns updated preferences object (same schema as GET).
 ---
 
 **Related:** [readme.md](readme.md) | [notifications.md](notifications.md) | [family.md](family.md) | [User Stories 3.1, 3.2, 3.3, 11.1–11.3](../../ui/mobile/user_stories.md)
+
+**Last Updated:** August 7, 2026

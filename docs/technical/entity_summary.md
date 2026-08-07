@@ -1,6 +1,8 @@
 # CardiTrack Entity Summary
 
-This document provides an overview of all domain entities in the CardiTrack system. All entities live in **Azure SQL**, the transactional system of record (see [storage boundary](../infrastructure.md#storage-boundary)); AI pipeline outputs live in Cosmos DB and are documented in [llm_design.md](../llm_design.md).
+This document provides an overview of all domain entities in the CardiTrack system. All entities live in **PostgreSQL 16 on GCP Cloud SQL**, the transactional system of record; the planned AI pipeline's outputs are documented separately in [llm_design.md](../llm_design.md). Field-level protection (what is encrypted, and what is planned to be) is covered in [data_protection_architecture.md](./data_protection_architecture.md).
+
+**Implemented today:** 11 entities and 13 enums exist in `CardiTrack.Domain`, mapped by EF Core (6 migrations applied). A further set of feature entities is designed but not yet built — see the "Planned" section below.
 
 ## Entity Overview
 
@@ -9,49 +11,54 @@ This document provides an overview of all domain entities in the CardiTrack syst
 #### 1. **Organization**
 - Represents either a Family account or Business (care home)
 - Contains: Name, Type (Family/Business), IsActive
-- **No FK constraints** - uses Guid references only
+- Guid references only, except the Subscription FK (see Design Principles)
 
 #### 2. **User**
 - Login account for family members or care home staff
-- Contains: Auth0UserId (unique — Auth0 owns credentials, no local passwords), Email, Name, Phone, Role, OrganizationId
+- Contains: Auth0UserId, Email, PasswordHash, Name, Phone, Role, EmailVerified, LastLoginDate, OrganizationId, Locale, TimeZoneId, HealthDataDisclosureDismissedDate
+- Credentials are Auth0-hosted; the `PasswordHash` column (required, max 500) is a legacy artifact pending removal — it is never populated with a real hash
+- `Locale`/`TimeZoneId` default `en-US`/`UTC`, derived from the request's Accept-Language
+- `HealthDataDisclosureDismissedDate` records dismissal of the Google-required health-data disclosure banner (PR #9)
+- Indexes: unique Email, OrganizationId, IsActive, and a **unique FILTERED index on Auth0UserId** (filter: not-empty) that makes onboarding retries race-safe
 - Role hidden in UI for Family type organizations
 
 #### 3. **CardiMember**
 - Person being monitored (can be the User themselves)
-- Contains: Name, Email, Phone, DateOfBirth, Gender, OrganizationId
-- Monitoring pause state: MonitoringPausedUntil, MonitoringPauseReason
-- Medical notes stored encrypted
+- Contains: Name, Email, Phone, DateOfBirth, Gender, OrganizationId, LastSyncDate
+- Emergency contact: two flat columns — EmergencyContactName, EmergencyContactPhone (no JSON, no separate entity yet)
+- MedicalNotes: **intended encrypted, currently stored in plain text** — application-level encryption is a tracked follow-up (only device OAuth tokens are encrypted today)
+- No monitoring-pause fields (MonitoringPausedUntil/PauseReason were designed but not built)
 - Links to devices, activity logs, alerts, and pattern baselines
 
 #### 4. **UserCardiMember** (Join Table)
 - Many-to-many relationship between Users and CardiMembers
-- Contains: RelationshipType, IsPrimaryCaregiver, permissions
+- Contains: RelationshipType, IsPrimaryCaregiver, CanViewHealthData, ReceiveAlerts, NotificationPreferences (JSON: `{"sms":..., "email":..., "push":...}`), AssignedDate
 - Enables multiple users to monitor same CardiMember (care home scenario)
-- Also scopes AI-pipeline family reads (see [llm_design.md](../llm_design.md) privacy guardrails)
 
 ### Device & Health Data Entities
 
 #### 5. **DeviceConnection**
 - Stores OAuth tokens for connected wearable devices
 - **Device-agnostic design** - supports Fitbit, Apple Watch, Garmin, Samsung, etc.
-- Contains: DeviceType, ConnectionStatus, AccessToken (encrypted), RefreshToken (encrypted)
-- On-device-bridge providers (Apple Health) have connection records without tokens
+- Contains: DeviceType, DeviceName, IsPrimary, ConnectionStatus, AccessToken (encrypted AES-256-GCM), RefreshToken (encrypted), TokenExpiry, Scopes (JSON), ConnectedDate, LastSyncDate, Metadata (JSON)
+- `SyncFrequencyMinutes` — default **30** (drives the polling sync cycle)
 - No FK constraints - uses CardiMemberId (Guid)
 
 #### 6. **ActivityLog**
-- Normalized health data from all device types
-- Contains: Steps, Heart Rate, Sleep metrics, SpO2, VO2Max, etc.
+- Normalized daily health data from all device types, keyed by CardiMemberId + DeviceConnectionId + Date
+- **Rich metric surface (~25 nullable metrics)**: Steps, Distance, ActiveMinutes, SedentaryMinutes, Floors, CaloriesBurned; Resting/Avg/Max/Min heart rate; sleep duration, start/end, efficiency, and Deep/Light/REM/Awake stage minutes; SpO2 (avg/min/max), VO2Max, StressScore, BreathingRate, Temperature
 - Tracks DataSource (which device provided the data)
 - No FK constraints - uses CardiMemberId and DeviceConnectionId (Guid)
 
 #### 7. **Alert**
-- AI-generated health alerts
-- AlertType: ActivityDecline, ElevatedHeartRate, NoMorningActivity, IrregularSleep, DeviceDisconnected, LongTermTrend
-- Alert severity levels: Yellow, Orange, Red (Green is a *health status*, not an alert severity — no alert exists for normal states)
-- Tracks acknowledgment by users; lifecycle `New → Acknowledged → Resolved`
+- AI-generated health alerts (generation is planned; the table exists)
+- AlertType: Inactivity, HeartRate, Sleep, PatternBreak, Trend
+- AlertSeverity: Green, Yellow, Orange, Red (Green = 1, informational)
+- No AlertStatus enum — lifecycle is tracked with `AcknowledgedDate`, `AcknowledgedByUserId`, and a boolean `IsResolved`
+- MetricValues JSON captures the triggering readings
 
 #### 8. **PatternBaseline**
-- AI-learned normal patterns for each CardiMember
+- AI-learned normal patterns for each CardiMember (calculation job not yet built)
 - Calculated over 30, 60, or 90 day periods
 - Contains: Average steps, heart rate baselines, sleep patterns
 - Includes day-of-week variations (JSON)
@@ -59,52 +66,47 @@ This document provides an overview of all domain entities in the CardiTrack syst
 ### Business Entities
 
 #### 9. **Subscription**
-- Billing and subscription management (Stripe-backed)
-- Contains: Tier (Basic, Complete, Plus), Status, Price, BillingCycle
-- MaxCardiMembers and MaxUsers (tier limits — Basic: 2/5, Complete: 5/20)
-- TrialEndsAt (30-day free trial), Stripe customer/subscription IDs
-- Features stored as JSON for flexibility
+- Trial/subscription state per organization — **no billing integration and no Stripe fields**
+- Contains: Tier (Basic, Complete, Plus), Status, StartDate, EndDate, `TrialEndDate` (30-day trial), BillingCycle, Price, Currency (default USD), PaymentMethod (JSON), Features (JSON)
+- MaxCardiMembers and MaxUsers are **organization-type driven**, not tier driven: Family 5 members / 1 user; Business 50 / 20
+- Unique index on OrganizationId; **FK to Organizations with cascade delete** (the one FK in the schema)
 
 #### 10. **Device** (Catalog)
 - Reference data for supported wearable devices
-- Contains: DeviceType, Manufacturer, ModelName, Capabilities (JSON)
-- IntegrationMode: ServerOAuth or OnDeviceBridge (Apple Health)
-- OAuth configuration stored as JSON (null for on-device providers)
-- Used for UI display and capability checking
+- Contains: DeviceType, Manufacturer, ModelName, DisplayName, Capabilities (JSON), ApiEndpoint, OAuthConfig (JSON), SortOrder, IconUrl
+- Used for UI display and capability checking; catalog `DisplayName` takes precedence over the enum display name
 
 ### Compliance Entities
 
 #### 11. **AuditLog**
-- HIPAA compliance audit trail
-- Tracks all PHI (Protected Health Information) access
-- Contains: UserId, CardiMemberId, Action, EntityType, Timestamp
-- IP address, user agent, request details
-- **6-year retention** (1 year hot in SQL, then archive tier)
+- HIPAA compliance audit trail for PHI access
+- Contains: UserId, CardiMemberId, Action, EntityType, Timestamp, IP address, user agent, request details, DataAccessed/ChangedFields (JSON)
+- **90-day minimum retention** (configured 30 days dev / 90 days prod via tfvars)
+- The table and entity exist, but **nothing writes to it yet** — audit-writing middleware is a planned follow-up
 
-### Feature Entities
+## Planned Entities — not yet implemented
 
-These back the API features in [/execution/backend/api/](../execution/backend/api/readme.md); table definitions are in [infrastructure.md](../infrastructure.md).
+> **Status: Planned — not yet implemented.** The entities below back designed API features (see [/execution/backend/api/](../execution/backend/api/readme.md)) but have no classes, tables, or migrations today. Where a slice of the capability already exists in another shape, it is noted.
 
-#### 12. **EmergencyContact** — up to 5 per CardiMember (name, phone, relationship)
-#### 13. **ConsentRecord** — append-only per-metric consent history (activity/heart rate/sleep, method, consented-by); latest row is current
-#### 14. **FamilyInvitation** — email invitations with role, 7-day expiry, Pending/Accepted/Revoked/Expired status
-#### 15. **SharedNote** — care-coordination notes per CardiMember with @mentions (JSON) and view receipts (JSON)
-#### 16. **CardiMemberNote** — self-authored notes by the monitored person (max 1000 chars)
-#### 17. **AlertNote** — follow-up notes on an alert, with optional actionTaken analytics key
-#### 18. **AlertPhoto** — photo attachments on alerts (blob URL, caption)
-#### 19. **AlertPreference** — one per CardiMember: sensitivity (low/medium/high), channels, quiet hours, per-type settings, family routing rules (JSON columns)
-#### 20. **PushNotificationToken** — APNS/FCM tokens per user device (upsert by user+device)
-#### 21. **NotificationPreference** — one per User: global channels and weekly digest settings (JSON)
-#### 22. **Report** — async report generation state (format, parameters, status, blob URL, 24h download expiry)
+- **EmergencyContact** — up to 5 per CardiMember (name, phone, relationship). *Today: two flat columns on CardiMember (EmergencyContactName/Phone).*
+- **ConsentRecord** — append-only per-metric consent history; latest row is current
+- **FamilyInvitation** — email invitations with role, 7-day expiry, Pending/Accepted/Revoked/Expired status
+- **SharedNote** — care-coordination notes per CardiMember with @mentions (JSON) and view receipts (JSON)
+- **CardiMemberNote** — self-authored notes by the monitored person (max 1000 chars)
+- **AlertNote** — follow-up notes on an alert, with optional actionTaken analytics key
+- **AlertPhoto** — photo attachments on alerts (blob URL, caption)
+- **AlertPreference** — one per CardiMember: sensitivity, channels, quiet hours, per-type settings, routing rules (JSON columns)
+- **PushNotificationToken** — APNS/FCM tokens per user device (upsert by user+device)
+- **NotificationPreference** — one per User: global channels and weekly digest settings. *Today: a per-relationship `NotificationPreferences` JSON column on UserCardiMember.*
+- **Report** — async report generation state (format, parameters, status, download expiry). *Today: report state lives in the distributed cache only (fire-and-forget, lost on restart) — no entity or table.*
 
 > **Biometric credentials have no entity** — biometrics are a local device gate over the Auth0 refresh token (see [auth.md](../execution/backend/api/auth.md)).
 
 ## Design Principles
 
-### 1. No Foreign Key Constraints
-- All relationships use Guid references without FK constraints
-- Prevents orphan record issues during deletions
-- Application-level referential integrity via repositories
+### 1. Minimal Foreign Key Constraints
+- Relationships use Guid references without FK constraints, **with one exception: Subscriptions → Organizations (cascade delete)**, added Aug 2026 so a subscription can never outlive its organization
+- Application-level referential integrity via repositories elsewhere
 - More flexible for soft deletes and data archival
 
 ### 2. Guid Primary Keys
@@ -117,72 +119,65 @@ These back the API features in [/execution/backend/api/](../execution/backend/ap
 - DeviceType enum supports all wearables (Fitbit, Apple Watch, Garmin, Samsung, Withings, Oura, Whoop)
 - ActivityLog.DataSource tracks which device provided data
 - Normalized data schema works with any device
-- Device catalog table for device capabilities and integration mode
+- Device catalog table for device capabilities
 
 ### 4. Soft Deletes
-- Entities implement ISoftDeletable interface
-- IsActive flag instead of hard deletes
+- `ISoftDeletable` (IsActive flag) applies to **Organization, User, CardiMember, UserCardiMember, DeviceConnection, Alert, and Device** only — ActivityLog, PatternBaseline, Subscription, and AuditLog are not soft-deletable
 - Maintains data integrity and audit trail
 - HIPAA compliance for data retention
 
 ### 5. JSON for Flexibility
-- NotificationPreferences, Metadata, Features stored as JSON
+- NotificationPreferences, Metadata, Features, PaymentMethod, Scopes, Capabilities stored as JSON
 - Allows schema evolution without migrations
-- Device-specific data stored flexibly
 - Pattern baselines store day-of-week arrays
 
 ### 6. Security & Encryption
-- OAuth tokens (AccessToken, RefreshToken) encrypted in database
-- MedicalNotes encrypted
-- **No password storage** — authentication is Auth0-hosted; Users carry only Auth0UserId
-- Audit logging for all PHI access
+- Device OAuth tokens (AccessToken, RefreshToken) encrypted with AES-256-GCM — the only application-level encryption implemented today
+- MedicalNotes encryption is planned (currently plain text) — see [data_protection_architecture.md](./data_protection_architecture.md)
+- Credentials are Auth0-hosted; a legacy `PasswordHash` column remains on Users pending removal
+- Audit logging designed for all PHI access (writes not yet wired)
 
 ## Entity Relationships
 
 ```
 Organization (1) ──→ (N) User
 Organization (1) ──→ (N) CardiMember
-Organization (1) ──→ (1) Subscription
-Organization (1) ──→ (N) FamilyInvitation
+Organization (1) ──→ (1) Subscription   [FK, cascade delete]
 
 User (M) ←──→ (N) CardiMember (via UserCardiMember join table)
-User (1) ──→ (N) PushNotificationToken
-User (1) ──→ (1) NotificationPreference
-User (1) ──→ (N) Report
 
 CardiMember (1) ──→ (N) DeviceConnection
 CardiMember (1) ──→ (N) ActivityLog
 CardiMember (1) ──→ (N) Alert
 CardiMember (1) ──→ (N) PatternBaseline
-CardiMember (1) ──→ (N) EmergencyContact
-CardiMember (1) ──→ (N) ConsentRecord
-CardiMember (1) ──→ (N) SharedNote / CardiMemberNote
-CardiMember (1) ──→ (1) AlertPreference
 
-Alert (1) ──→ (N) AlertNote / AlertPhoto
 DeviceConnection (1) ──→ (N) ActivityLog
+User (1) ──→ (N) AuditLog
 ```
+
+Planned relationships (when the planned entities land): Organization→FamilyInvitation, User→PushNotificationToken/NotificationPreference/Report, CardiMember→EmergencyContact/ConsentRecord/SharedNote/CardiMemberNote/AlertPreference, Alert→AlertNote/AlertPhoto.
 
 ## Enums
 
-- **OrganizationType**: Family, Business
-- **UserRole**: Admin, Staff, Viewer
-- **RelationshipType**: Self, Parent, Spouse, Grandparent, Sibling, Child, Other
-- **DeviceType**: Fitbit, AppleWatch, Garmin, Samsung, Withings, Oura, Whoop, Other
-- **IntegrationMode**: ServerOAuth, OnDeviceBridge
-- **ConnectionStatus**: Pending, Connected, Disconnected, TokenExpired, AuthError, SyncError
-- **AlertType**: ActivityDecline, ElevatedHeartRate, NoMorningActivity, IrregularSleep, DeviceDisconnected, LongTermTrend
-- **AlertSeverity**: Yellow, Orange, Red
-- **HealthStatus**: Green, Yellow, Orange, Red, Unknown
-- **AlertStatus**: New, Acknowledged, Resolved
-- **SubscriptionTier**: Basic, Complete, Plus
-- **SubscriptionStatus**: Trialing, Active, PastDue, Cancelled, Suspended
-- **BillingCycle**: Monthly, Annual
-- **InvitationStatus**: Pending, Accepted, Revoked, Expired
-- **ReportStatus**: Pending, Ready, Failed, Expired
-- **Gender**: Male, Female, Other, PreferNotToSay
+The 13 domain enums:
 
-> API surfaces serialize enum values in `snake_case`/lowercase (e.g. `activity_decline`, `token_expired`, `yellow`) per the [API spec](../execution/backend/api/readme.md); the PascalCase names above are the C# domain enums.
+- **OrganizationType**: Family, Business
+- **UserRole**: Member, Admin, Staff (displays "Member" / "Administrator" / "Staff Member")
+- **Gender**: Male, Female, Other, PreferNotToSay
+- **RelationshipType**: Self, Parent, Spouse, Grandparent, Sibling, Child, Other (= 99)
+- **DeviceType**: Fitbit, AppleWatch, Garmin, Samsung, Withings, Oura, Whoop, Other (= 99)
+- **ConnectionStatus**: Connected, Disconnected, TokenExpired, AuthError, SyncError (no Pending)
+- **AlertType**: Inactivity, HeartRate, Sleep, PatternBreak, Trend
+- **AlertSeverity**: Green (1), Yellow, Orange, Red
+- **SubscriptionTier**: Basic, Complete, Plus
+- **SubscriptionStatus**: Trial (1), Active, PastDue, Cancelled, Suspended
+- **BillingCycle**: Monthly, Annual
+- **ReportFormat**: Pdf, Csv, FhirR4, Hl7V2
+- **ReportStatus**: Pending, Ready, Failed, Expired
+
+There are no IntegrationMode, HealthStatus, AlertStatus, or InvitationStatus enums.
+
+> API surfaces serialize enum values as **integers** (no string-enum converter is registered) — e.g. `"severity": 2` for Yellow. The PascalCase names above are the C# domain enums; display names come from `[Display]` attributes server-side (see [enum_extensions_guide.md](./enum_extensions_guide.md)).
 
 ## File Structure
 
@@ -194,54 +189,46 @@ CardiTrack.Domain/
 │   ├── IEntity.cs
 │   └── ISoftDeletable.cs
 ├── Enums/
-│   ├── OrganizationType.cs
-│   ├── UserRole.cs
-│   ├── RelationshipType.cs
-│   ├── DeviceType.cs
-│   ├── IntegrationMode.cs
-│   ├── ConnectionStatus.cs
-│   ├── AlertType.cs
 │   ├── AlertSeverity.cs
-│   ├── HealthStatus.cs
-│   ├── AlertStatus.cs
-│   ├── SubscriptionTier.cs
-│   ├── SubscriptionStatus.cs
+│   ├── AlertType.cs
 │   ├── BillingCycle.cs
-│   ├── InvitationStatus.cs
+│   ├── ConnectionStatus.cs
+│   ├── DeviceType.cs
+│   ├── Gender.cs
+│   ├── OrganizationType.cs
+│   ├── RelationshipType.cs
+│   ├── ReportFormat.cs
 │   ├── ReportStatus.cs
-│   └── Gender.cs
+│   ├── SubscriptionStatus.cs
+│   ├── SubscriptionTier.cs
+│   └── UserRole.cs
 └── Entities/
-    ├── Organization.cs
-    ├── User.cs
-    ├── CardiMember.cs
-    ├── UserCardiMember.cs
-    ├── DeviceConnection.cs
     ├── ActivityLog.cs
     ├── Alert.cs
-    ├── AlertNote.cs
-    ├── AlertPhoto.cs
-    ├── AlertPreference.cs
+    ├── AuditLog.cs
+    ├── CardiMember.cs
+    ├── Device.cs
+    ├── DeviceConnection.cs
+    ├── Organization.cs
     ├── PatternBaseline.cs
     ├── Subscription.cs
-    ├── Device.cs
-    ├── EmergencyContact.cs
-    ├── ConsentRecord.cs
-    ├── FamilyInvitation.cs
-    ├── SharedNote.cs
-    ├── CardiMemberNote.cs
-    ├── PushNotificationToken.cs
-    ├── NotificationPreference.cs
-    ├── Report.cs
-    └── AuditLog.cs
+    ├── User.cs
+    └── UserCardiMember.cs
 ```
+
+EF Core mapping lives in `CardiTrack.Infrastructure/Persistence` (a configuration class per entity; plural table names — Users, CardiMembers, ActivityLogs, PatternBaselines, Alerts, AuditLogs, ...). Six migrations exist: InitialCreate, AddUserLocale, CleanupOrphanedOnboardingOrganizations, AddSubscriptionOrganizationForeignKey, AddUserAuth0UserIdUniqueIndex, AddUserHealthDataDisclosureDismissed.
 
 ## Next Steps
 
-1. Create EF Core DbContext and entity configurations (CardiTrack.Infrastructure)
-2. Configure entity mappings (FluentAPI)
-3. Set up encryption for sensitive fields (tokens, medical notes)
-4. Create migrations for the feature entities (#12–#22)
-5. Implement repositories with Guid-based queries
-6. Add indexes for performance (CardiMemberId, UserId, Date fields)
-7. Configure JSON column serialization
-8. Set up audit logging middleware and archive tiering job
+1. ~~Create EF Core DbContext and entity configurations~~ — done (`CardiTrackDbContext` + per-entity FluentAPI configurations, 6 migrations)
+2. ~~Set up encryption for device OAuth tokens~~ — done (AES-256-GCM); **MedicalNotes encryption still pending**
+3. ~~Implement repositories with Guid-based queries~~ — done (UnitOfWork + repositories)
+4. ~~Add core indexes~~ — done (unique Email, filtered unique Auth0UserId, OrganizationId, status indexes)
+5. Wire audit-logging middleware so AuditLogs actually receives writes
+6. Remove the legacy `Users.PasswordHash` column
+7. Create migrations for the planned feature entities when their features are scheduled
+8. Persist Report state (currently cache-only, lost on restart)
+
+---
+
+**Last Updated:** August 7, 2026

@@ -1,10 +1,47 @@
 # Subscription Management API
 
+> **Status: Planned — not yet implemented.** None of the endpoints below exist yet. See "Implemented today" for current coverage.
+
 Handles plan retrieval, upgrades/downgrades, billing history, and payment method updates. The Guardian Plus business tier is out of scope for MVP and handled via a dedicated business account flow.
 
 > **Release note:** MVP 1 runs trial-only (every account starts a 30-day trial at signup; no billing UI). The subscription endpoints below ship with **MVP 2**, before the first trials require payment — priorities in this file are relative to that release. See the [release matrix](../../../release_matrix.md).
 
 **User Stories:** 6.1 (Subscription Management)
+
+---
+
+## Implemented today
+
+The trial-only model is real: a trial subscription is **auto-created inside the onboarding transaction** (`SubscriptionService.CreateTrialSubscriptionAsync`, called from `POST /api/Onboarding/setup` / `POST /api/Onboarding/organization`). There is no standalone subscription endpoint — the subscription is returned **nested in the onboarding response** at `data.organization.subscription`:
+
+```json
+{
+  "id": "5c2f5f64-5717-4562-b3fc-2c963f66afa6",
+  "tier": 2,
+  "status": 1,
+  "startDate": "2026-08-07T10:00:00Z",
+  "trialEndDate": "2026-09-06T10:00:00Z",
+  "maxCardiMembers": 5,
+  "maxUsers": 1
+}
+```
+
+Trial parameters (fixed in code):
+
+| Parameter | Value |
+|-----------|-------|
+| Tier | `Complete` (2) |
+| Status | `Trial` (1) |
+| Duration | 30 days from signup |
+| Price | 0 USD, monthly billing cycle |
+| Limits — Family org | 5 CardiMembers / 1 user |
+| Limits — Business org | 50 CardiMembers / 20 users |
+
+- `tier` and `status` are **integer enums**: `SubscriptionTier` Basic=1, Complete=2, Plus=3; `SubscriptionStatus` Trial=1, Active=2, PastDue=3, Cancelled=4, Suspended=5. (Note: `Trial` is the first enum member — there is no `trialing` string status.)
+- **Limits are not enforced anywhere** — `MaxCardiMembers`/`MaxUsers` exist on the entity but no endpoint checks them.
+- **No Stripe or billing code exists** — no payment methods, invoices, proration, or plan catalog.
+
+Everything below is the **planned** contract, kept as design intent.
 
 ---
 
@@ -276,3 +313,5 @@ Update the payment method on file. Uses a Stripe SetupIntent token collected cli
 ---
 
 **Related:** [readme.md](readme.md) | [User Story 6.1](../../ui/mobile/user_stories.md)
+
+**Last Updated:** August 7, 2026

@@ -2,1101 +2,195 @@
 
 ## Overview
 
-The CardiTrack Mobile App is a cross-platform .NET MAUI (Multi-platform App UI) application that enables family members and caregivers to monitor CardiMember health data on-the-go. The app provides real-time notifications, offline support, and seamless integration with device-native features like push notifications and HealthKit.
+The CardiTrack Mobile App is a cross-platform **.NET 10 MAUI** application for family members and caregivers. What exists today is the **authentication + onboarding experience and the tabbed app shell**: native Auth0 email/password login with a hard email-verification gate, the M1 onboarding wizard (account setup → add CardiMember → device selection → Fitbit connection → baseline learning), and a Dashboard tab, with Alerts/Family as stubs and a minimal Settings page. HealthKit/Health Connect, offline storage, and push notifications are **planned** — see [Planned](#planned).
+
+The app is built **code-behind first (XAML + `.xaml.cs`) — there is no MVVM layer**, no ViewModels folder, and no data-binding framework. Platform-independent logic (API client, Auth0 client, token handling, localization) lives in the separate plain-`net10.0` library **`CardiTrack.Mobile.Core`**, which is what the unit tests target.
+
+> UI scope is governed by the Figma M1 file — only screens that exist in Figma get built. Screen specs: [mobile screen specifications](../../execution/ui/mobile/ui_screens_maui_mobile.md), [MVP 1 user stories](../../execution/ui/mobile/mvp1/user_stories.md).
 
 ## Technology Stack
 
-- **.NET 10**: Core framework
-- **.NET MAUI**: Cross-platform UI framework
-- **XAML**: UI markup language
-- **MVVM Pattern**: Model-View-ViewModel architecture
-- **Platform APIs**: iOS HealthKit, Android Health Connect
-- **SQLite**: Local offline storage
-- **Push Notifications**: Firebase Cloud Messaging (FCM) / Apple Push Notification Service (APNS)
+- **.NET 10 / .NET MAUI** (`Microsoft.Maui.Controls` 10.0.x): cross-platform UI
+- **XAML + code-behind**: no MVVM — event handlers in `.xaml.cs`, DI via constructor injection for Shell tab pages and `ServiceHelper` for pages constructed with `new`
+- **CardiTrack.Mobile.Core** (`net10.0` class library): `CardiTrackApiClient`, Auth0 auth stack, options, localization — unit-testable without MAUI
+- **Auth0**: native password-realm login (no browser redirect)
+- **SecureStorage** (`SecureTokenStore`): token persistence — there is **no SQLite** in the app
+- **Datadog.Maui** (Android/iOS only): crash reporting + RUM, wired through the `MobileApm` registry
+- **Serilog** (`AppLogging`): debug + local-file sinks; logs stay on device (no remote log shipping outside the APM engine)
 
 ## Platform Support
 
-### Supported Platforms
+`TargetFrameworks` is **OS-conditional** in the csproj — you can only build the targets your host OS supports:
 
-- **iOS**: 16.0+ (target: iOS 18)
-- **Android**: API 29+ (Android 10; target: Android 15 / API 35)
-- **macOS Catalyst**: 15.0+
-- **Windows**: 10.0.17763.0+ (Optional)
+| Host OS | Targets |
+|---|---|
+| Windows | `net10.0-android;net10.0-windows10.0.19041.0` |
+| macOS | `net10.0-ios` |
+| Linux | `net10.0-android` |
 
-> Platform minimums match the [mobile screen specifications](../../execution/ui/mobile/ui_screens_maui_mobile.md) and [MVP 1 user stories](../../execution/ui/mobile/mvp1/user_stories.md).
+**iOS cannot be built on Windows** — CI's macOS runner (or a Mac) produces iOS builds.
 
-### Recommended Devices
+Platform minimums:
 
-- **iOS**: iPhone 12 and newer
-- **Android**: Devices with 2GB+ RAM
-- **Tablets**: iPad, Android tablets with 7+ inch screens
+- **iOS**: 17.0
+- **Android**: API 23 (Android 6.0) — raised from 21 because the **Datadog RUM SDK requires 23+**
+- **Windows**: 10.0.17763.0, optional dev convenience target (`WindowsPackageType=None` — unpackaged, no MSIX identity; Datadog does not support Windows)
+- **MacCatalyst**: **not targeted** (the `Platforms/MacCatalyst` folder is template residue)
 
-## Project Structure
+App identity: `com.codesistance.carditrack.mobile`, display name **CardiTrack**. Release Android builds run R8 (`AndroidLinkTool=r8`).
+
+## Project Structure (actual)
 
 ```
-CardiTrack.Mobile/
-├── Platforms/
-│   ├── Android/
-│   │   ├── MainActivity.cs
-│   │   ├── MainApplication.cs
-│   │   ├── AndroidManifest.xml
-│   │   └── Resources/
-│   ├── iOS/
-│   │   ├── AppDelegate.cs
-│   │   ├── Program.cs
-│   │   ├── Info.plist
-│   │   └── Entitlements.plist
-│   ├── MacCatalyst/
-│   └── Windows/
-├── Views/
-│   ├── DashboardPage.xaml
-│   ├── CardiMemberListPage.xaml
-│   ├── CardiMemberDetailPage.xaml
-│   ├── AlertsPage.xaml
-│   ├── SettingsPage.xaml
-│   └── LoginPage.xaml
-├── ViewModels/
-│   ├── BaseViewModel.cs
-│   ├── DashboardViewModel.cs
-│   ├── CardiMemberListViewModel.cs
-│   ├── CardiMemberDetailViewModel.cs
-│   ├── AlertsViewModel.cs
-│   └── SettingsViewModel.cs
-├── Models/
-│   ├── CardiMember.cs
-│   ├── Alert.cs
-│   ├── HealthMetric.cs
-│   └── DeviceConnection.cs
+src/Presentation/CardiTrack.Mobile/
+├── SplashPage / WelcomePage                  # Entry + carousel (WelcomeSlide model)
+├── SignInPage / CreateAccountPage            # Native Auth0 credential forms
+├── ForgotPasswordPage / VerifyEmailPage      # Reset flow; hard email-verification gate
+├── DashboardPage                             # Main tab — metrics, alerts, empty state
+├── AlertsPage / FamilyPage                   # Tab stubs
+├── SettingsPage                              # Minimal (sign-out, verify-email nudge reset)
+├── Onboarding/
+│   ├── AccountSetupPage                      # M1-03: org/user creation (atomic setup call)
+│   ├── AddCardiMemberPage                    # M1-04: first CardiMember (skippable)
+│   ├── DeviceSelectionPage
+│   ├── FitbitConnectionPage
+│   ├── ConnectionSuccessPage
+│   └── BaselineLearningPage
+├── Controls/                                 # AlertMiniCard, MetricCard, SkeletonView,
+│                                             # SparklineView, StatusHeroCard, WizardHeader
 ├── Services/
-│   ├── IApiService.cs
-│   ├── ApiService.cs
-│   ├── IAuthService.cs
-│   ├── AuthService.cs
-│   ├── INotificationService.cs
-│   ├── NotificationService.cs
-│   ├── ILocalStorageService.cs
-│   └── LocalStorageService.cs
-├── Helpers/
-│   ├── Constants.cs
-│   └── Extensions.cs
-├── Resources/
-│   ├── Fonts/
-│   ├── Images/
-│   ├── AppIcon/
-│   ├── Splash/
-│   └── Raw/
-├── App.xaml                         # Application resources
-├── App.xaml.cs                      # Application lifecycle
-├── AppShell.xaml                    # Shell navigation
-├── AppShell.xaml.cs
-├── MainPage.xaml                    # Initial page
-├── MainPage.xaml.cs
-├── MauiProgram.cs                   # App configuration
-└── CardiTrack.Mobile.csproj         # Project file
+│   ├── AppLogging.cs                         # Serilog config + unhandled-exception hooks
+│   ├── MobileApm.cs                          # APM engine registry (Datadog)
+│   ├── PostLoginRouter.cs                    # Root-page routing after login
+│   ├── RelativeTime.cs
+│   ├── SecureTokenStore.cs                   # ITokenStore over SecureStorage
+│   └── ServiceHelper.cs                      # Service locator for non-DI pages
+├── AppConfig.cs                              # Build-time config from assembly metadata
+├── WindowNavigation.cs                       # Root-page swaps
+├── AppShell.xaml                             # TabBar-only shell
+├── Local.props.sample                        # Dev-local config overrides (git-ignored copy)
+├── MauiProgram.cs
+└── Platforms/ (Android, iOS, Windows, MacCatalyst)
+
+src/Presentation/CardiTrack.Mobile.Core/
+├── Api/           # ICardiTrackApiClient, CardiTrackApiClient, ApiException
+├── Auth/          # Auth0AuthClient, AuthService, TokenRefresher, JwtPayloadReader,
+│                  # AuthTokens, ITokenStore, AuthErrorCode/AuthException
+├── Configuration/ # ApiOptions, Auth0Options
+├── Http/          # AuthHttpMessageHandler (bearer attach + refresh)
+└── Localization/  # PhonePlaceholder
 ```
 
-## Key Features
+## Navigation & App Flow
 
-### 1. Real-Time Health Dashboard
+### Shell
 
-Monitor CardiMember health metrics in real-time:
+`AppShell.xaml` is a **TabBar-only Shell** — four tabs (Dashboard, Alerts, Family, Settings) with `.svg` icons; there is no flyout. Tab pages resolve through DI (`AddTransient` in `MauiProgram`).
 
-- **Today's Metrics**: Steps, distance, heart rate, sleep
-- **Trend Charts**: Weekly and monthly health trends
-- **Quick Stats**: At-a-glance health status
-- **Device Status**: Connection and sync information
-- **Pull-to-Refresh**: Manual data refresh
+### Auth & onboarding flow
 
-### 2. Push Notifications
-
-Receive instant alerts about health changes:
-
-- **Alert Notifications**: High-priority health alerts
-- **Severity Indicators**: Color-coded alert levels
-- **Deep Linking**: Tap notification to view details
-- **Notification History**: Review past notifications
-- **Customizable Settings**: Configure notification preferences
-
-### 3. Offline Support
-
-Work seamlessly without connectivity:
-
-- **Local Data Cache**: SQLite database for offline access
-- **Sync Queue**: Queue actions when offline
-- **Auto-Sync**: Automatic sync when connection restored
-- **Offline Indicators**: Clear offline/online status
-- **Conflict Resolution**: Handle data conflicts intelligently
-
-### 4. Platform-Specific Features
-
-#### iOS Integration
-
-- **HealthKit Access**: Read health data from Apple Health
-- **3D Touch**: Quick actions from home screen
-- **Face ID/Touch ID**: Biometric authentication
-- **Siri Shortcuts**: Voice commands for common tasks
-- **Widgets**: Home screen widgets for quick status
-
-#### Android Integration
-
-- **Health Connect**: Integration with Android Health
-- **Material Design**: Native Android UI patterns
-- **Quick Settings**: Toggle notifications from quick settings
-- **App Shortcuts**: Long-press shortcuts
-- **Widgets**: Home screen widgets
-
-### 5. Multi-Member Management
-
-Monitor multiple CardiMembers:
-
-- **Member List**: Scrollable list of all members
-- **Member Cards**: Summary cards with key metrics
-- **Favorites**: Pin frequently accessed members
-- **Search & Filter**: Find members quickly
-- **Member Switching**: Easy navigation between members
-
-## Application Configuration
-
-### MauiProgram.cs
-
-Application startup and service configuration:
-
-```csharp
-using Microsoft.Extensions.Logging;
-
-namespace CardiTrack.Mobile;
-
-public static class MauiProgram
-{
-    public static MauiApp CreateMauiApp()
-    {
-        var builder = MauiApp.CreateBuilder();
-
-        builder
-            .UseMauiApp<App>()
-            .ConfigureFonts(fonts =>
-            {
-                fonts.AddFont("OpenSans-Regular.ttf", "OpenSansRegular");
-                fonts.AddFont("OpenSans-Semibold.ttf", "OpenSansSemibold");
-            });
-
-        // Register services
-        builder.Services.AddSingleton<IApiService, ApiService>();
-        builder.Services.AddSingleton<IAuthService, AuthService>();
-        builder.Services.AddSingleton<INotificationService, NotificationService>();
-        builder.Services.AddSingleton<ILocalStorageService, LocalStorageService>();
-
-        // Register ViewModels
-        builder.Services.AddTransient<DashboardViewModel>();
-        builder.Services.AddTransient<CardiMemberListViewModel>();
-        builder.Services.AddTransient<AlertsViewModel>();
-        builder.Services.AddTransient<SettingsViewModel>();
-
-        // Register Pages
-        builder.Services.AddTransient<DashboardPage>();
-        builder.Services.AddTransient<CardiMemberListPage>();
-        builder.Services.AddTransient<AlertsPage>();
-        builder.Services.AddTransient<SettingsPage>();
-
-#if DEBUG
-        builder.Logging.AddDebug();
-#endif
-
-        return builder.Build();
-    }
-}
+```
+Splash → Welcome → SignIn / CreateAccount
+                     └→ VerifyEmail (hard gate: unverified accounts go here, not into the app)
+                          └→ PostLoginRouter:
+                               no server user record   → AccountSetupPage (wizard)
+                               user but no CardiMember → AddCardiMemberPage (wizard, skippable)
+                               otherwise               → AppShell (Dashboard)
 ```
 
-### App.xaml.cs
+- `PostLoginRouter` asks the API for onboarding status and swaps the window's **root page** (`WindowNavigation.SetRootPage`) — the wizard runs in a `NavigationPage`, outside the Shell.
+- **Onboarding pages hide the tab bar** (`Shell.TabBarIsVisible="False"` on the wizard pages) so the wizard also renders chrome-free when pushed over the Shell.
+- **Dashboard empty state** (recent change): "Add your first CardiMember" now pushes `AddCardiMemberPage` — the real M1-04 wizard page — directly onto the navigation stack, instead of the previous "Coming soon" alert.
+- `AddCardiMemberPage` **Skip** is context-aware: pushed from the dashboard it pops back; as the onboarding root it hands over to a fresh `AppShell`.
+- Remaining dashboard touchpoints (member details M1-13, alert details M1-11, device connection M1-05, trends M2-03) still show "Coming soon" alerts.
 
-Application lifecycle management:
+## Configuration
 
-```csharp
-namespace CardiTrack.Mobile;
+Build-time configuration is stamped into the assembly as **MSBuild properties → `AssemblyMetadata`**, read at runtime by `AppConfig` (no appsettings.json in the app):
 
-public partial class App : Application
-{
-    public App()
-    {
-        InitializeComponent();
-        MainPage = new AppShell();
-    }
+- Keys: `ApiBaseUrl`, `Auth0Domain`, `Auth0ClientId`, `Auth0Audience`, `ApmEngine`, `ApmData`.
+- Defaults in the csproj: Debug → `https://api.dev.carditrack.com`, Release → `https://api.carditrack.com`; Auth0/APM values default empty.
+- **Local development**: copy `Local.props.sample` to `Local.props` (git-ignored) — e.g. `ApiBaseUrl` `http://10.0.2.2:5230` for the Android emulator against a local API (cleartext allowed via `network_security_config.xml`), plus the Auth0 dev-tenant identifiers.
+- **CI** stamps values with `-p:ApiBaseUrl=... -p:Auth0Domain=...` etc.
+- `AppConfig.Validate()` runs at startup: a missing/invalid `ApiBaseUrl` throws; empty Auth0 values are tolerated (auth then fails with `AuthErrorCode.NotConfigured`).
 
-    protected override Window CreateWindow(IActivationState? activationState)
-    {
-        var window = base.CreateWindow(activationState);
+## Authentication
 
-        // Set window size for desktop platforms
-        window.Width = 400;
-        window.Height = 800;
+All auth logic lives in `CardiTrack.Mobile.Core/Auth`:
 
-        return window;
-    }
+- **`Auth0AuthClient`** — native, embedded login using Auth0's **password-realm grant** (`http://auth0.com/oauth/grant-type/password-realm`) against the tenant's DB connection; signup and password reset go through `/dbconnections`. No system browser, no PKCE flow.
+- **`TokenRefresher`** — `refresh_token` grant; **`JwtPayloadReader`** extracts claims (email, verification state) from access tokens without validation (validation is the API's job).
+- **`AuthHttpMessageHandler`** — DelegatingHandler on the API client: attaches the bearer token and coordinates refresh. The Auth0 client deliberately has **no** auth handler, so login/refresh calls can't recurse through the bearer pipeline.
+- **`SecureTokenStore`** — tokens persist in platform `SecureStorage` (Keychain / Keystore). No database.
+- **Email verification is a hard gate**: sign-in with an unverified account lands on `VerifyEmailPage` (which can resend, rate-limited server-side at 5/hour/IP); the dashboard additionally shows a dismissible verify-email nudge while `IsEmailVerified == false`.
 
-    protected override void OnStart()
-    {
-        // Handle app start
-        base.OnStart();
-    }
+## Device OAuth Deep Link
 
-    protected override void OnSleep()
-    {
-        // Handle app going to background
-        base.OnSleep();
-    }
+Wearable (Fitbit / Google Health API) OAuth returns to the app via the **`carditrack://` custom scheme**:
 
-    protected override void OnResume()
-    {
-        // Handle app coming to foreground
-        base.OnResume();
-    }
-}
-```
+- **iOS**: `CFBundleURLTypes` in `Platforms/iOS/Info.plist` registers the `carditrack` scheme.
+- **Android**: `WebAuthenticationCallbackActivity` (intent filter with `DataScheme = "carditrack"`).
+- Google's web OAuth clients cannot redirect to a custom scheme, so the provider first redirects to the API's **https bounce endpoint** (`GET /api/v1/oauth/redirect/fitbit`), which 302s into the deep link.
 
-### AppShell.xaml
+## Monitoring (Mobile APM)
 
-Shell-based navigation structure:
+`Services/MobileApm.cs` is the mobile twin of the server's `ApmProviderRegistry` (shipped in PR #4):
 
-```xml
-<?xml version="1.0" encoding="UTF-8" ?>
-<Shell
-    x:Class="CardiTrack.Mobile.AppShell"
-    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
-    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
-    xmlns:local="clr-namespace:CardiTrack.Mobile.Views"
-    Title="CardiTrack">
+- **Engine selection**: `AppConfig.ApmEngine` names an entry in the registry — currently **Datadog only**. `ApmData` carries that engine's client-side connection JSON (`{"ClientToken":"pub...","ApplicationId":"...","Site":"Eu1"}`), stamped by CI as base64 (raw JSON accepted from `Local.props`). Client token and application id are write-only identifiers, safe to embed.
+- **Fail-soft**: unlike the server, an unknown engine or malformed data **logs and disables monitoring** instead of failing — a monitoring misconfiguration must never brick the app. Unstamped builds ship nothing.
+- **Datadog config**: `Datadog.Maui` package on **Android/iOS only** (no Windows support); site defaults to **Eu1**; `SessionSampleRate` 100; `NativeCrashReportEnabled`; service name `carditrack-mobile`; environment tag derived from the API base URL (dev/prod).
+- **Session Replay is deliberately NOT enabled** — health data must not be recorded.
+- **`FirstPartyHosts`**: the API host is marked first-party with W3C `traceparent` (+ Datadog) headers, so RUM resources correlate with the API's OTel traces (RUM-to-APM).
+- **Consent (follow-up)**: `TrackingConsent` is currently set to `Granted` at first launch, and there is no in-app opt-out. This is the current state of the code, flagged for follow-up, not a settled privacy posture.
+- **Provisioning**: the `apm_mobile_engine` tfvar plus the per-environment secrets `carditrack-<env>-apm-mobile-engine` / `carditrack-<env>-apm-mobile-data` (env stacks, not `common/`) feed CI's `-p:ApmEngine`/`-p:ApmData` stamping — see the [APM setup runbook](../../technical/apm_setup_runbook.md).
 
-    <TabBar>
-        <ShellContent
-            Title="Dashboard"
-            Icon="dashboard.png"
-            ContentTemplate="{DataTemplate local:DashboardPage}"
-            Route="dashboard" />
+## Localization
 
-        <ShellContent
-            Title="Members"
-            Icon="members.png"
-            ContentTemplate="{DataTemplate local:CardiMemberListPage}"
-            Route="members" />
+PR #8 added region-localized **emergency-phone placeholders** (`CardiTrack.Mobile.Core/Localization/PhonePlaceholder.cs`): US/CA `+1 555 000 0000`, GB `+44 7700 900000` (Ofcom drama range), any other region falls back to the US format. The placeholder is resolved once at page construction from `RegionInfo.CurrentRegion` (e.g. `AddCardiMemberPage`'s emergency-contact field).
 
-        <ShellContent
-            Title="Alerts"
-            Icon="alerts.png"
-            ContentTemplate="{DataTemplate local:AlertsPage}"
-            Route="alerts" />
+## Privacy & Platform Manifests
 
-        <ShellContent
-            Title="Settings"
-            Icon="settings.png"
-            ContentTemplate="{DataTemplate local:SettingsPage}"
-            Route="settings" />
-    </TabBar>
-
-</Shell>
-```
-
-## MVVM Architecture
-
-### Base ViewModel
-
-```csharp
-public class BaseViewModel : INotifyPropertyChanged
-{
-    private bool _isBusy;
-    private string _title;
-
-    public bool IsBusy
-    {
-        get => _isBusy;
-        set => SetProperty(ref _isBusy, value);
-    }
-
-    public string Title
-    {
-        get => _title;
-        set => SetProperty(ref _title, value);
-    }
-
-    protected bool SetProperty<T>(ref T backingStore, T value,
-        [CallerMemberName] string propertyName = "",
-        Action? onChanged = null)
-    {
-        if (EqualityComparer<T>.Default.Equals(backingStore, value))
-            return false;
-
-        backingStore = value;
-        onChanged?.Invoke();
-        OnPropertyChanged(propertyName);
-        return true;
-    }
-
-    public event PropertyChangedEventHandler? PropertyChanged;
-
-    protected void OnPropertyChanged([CallerMemberName] string propertyName = "")
-    {
-        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
-    }
-}
-```
-
-### Example ViewModel
-
-```csharp
-public class DashboardViewModel : BaseViewModel
-{
-    private readonly IApiService _apiService;
-    private readonly INotificationService _notificationService;
-
-    private CardiMember _selectedMember;
-    private HealthMetrics _todayMetrics;
-    private ObservableCollection<Alert> _recentAlerts;
-
-    public DashboardViewModel(IApiService apiService, INotificationService notificationService)
-    {
-        _apiService = apiService;
-        _notificationService = notificationService;
-
-        Title = "Dashboard";
-        RecentAlerts = new ObservableCollection<Alert>();
-
-        LoadDataCommand = new Command(async () => await LoadDataAsync());
-        RefreshCommand = new Command(async () => await RefreshAsync());
-        AcknowledgeAlertCommand = new Command<Alert>(async (alert) => await AcknowledgeAlertAsync(alert));
-    }
-
-    public CardiMember SelectedMember
-    {
-        get => _selectedMember;
-        set => SetProperty(ref _selectedMember, value);
-    }
-
-    public HealthMetrics TodayMetrics
-    {
-        get => _todayMetrics;
-        set => SetProperty(ref _todayMetrics, value);
-    }
-
-    public ObservableCollection<Alert> RecentAlerts
-    {
-        get => _recentAlerts;
-        set => SetProperty(ref _recentAlerts, value);
-    }
-
-    public ICommand LoadDataCommand { get; }
-    public ICommand RefreshCommand { get; }
-    public ICommand AcknowledgeAlertCommand { get; }
-
-    private async Task LoadDataAsync()
-    {
-        if (IsBusy) return;
-
-        try
-        {
-            IsBusy = true;
-
-            // Load today's metrics
-            TodayMetrics = await _apiService.GetTodayMetricsAsync(SelectedMember.Id);
-
-            // Load recent alerts
-            var alerts = await _apiService.GetRecentAlertsAsync(SelectedMember.Id);
-            RecentAlerts.Clear();
-            foreach (var alert in alerts)
-            {
-                RecentAlerts.Add(alert);
-            }
-        }
-        catch (Exception ex)
-        {
-            await Shell.Current.DisplayAlert("Error", $"Unable to load data: {ex.Message}", "OK");
-        }
-        finally
-        {
-            IsBusy = false;
-        }
-    }
-
-    private async Task RefreshAsync()
-    {
-        await LoadDataAsync();
-    }
-
-    private async Task AcknowledgeAlertAsync(Alert alert)
-    {
-        try
-        {
-            await _apiService.AcknowledgeAlertAsync(alert.Id);
-            RecentAlerts.Remove(alert);
-        }
-        catch (Exception ex)
-        {
-            await Shell.Current.DisplayAlert("Error", $"Unable to acknowledge alert: {ex.Message}", "OK");
-        }
-    }
-}
-```
-
-### Example View
-
-```xml
-<?xml version="1.0" encoding="utf-8" ?>
-<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
-             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
-             xmlns:viewmodels="clr-namespace:CardiTrack.Mobile.ViewModels"
-             x:Class="CardiTrack.Mobile.Views.DashboardPage"
-             x:DataType="viewmodels:DashboardViewModel"
-             Title="{Binding Title}">
-
-    <RefreshView IsRefreshing="{Binding IsBusy}"
-                 Command="{Binding RefreshCommand}">
-        <ScrollView>
-            <VerticalStackLayout Padding="20" Spacing="20">
-
-                <!-- Member Header -->
-                <Frame>
-                    <Grid ColumnDefinitions="Auto,*" ColumnSpacing="10">
-                        <Image Source="member_avatar.png"
-                               WidthRequest="50"
-                               HeightRequest="50"
-                               Aspect="AspectFill" />
-                        <VerticalStackLayout Grid.Column="1" VerticalOptions="Center">
-                            <Label Text="{Binding SelectedMember.FullName}"
-                                   FontSize="18"
-                                   FontAttributes="Bold" />
-                            <Label Text="{Binding SelectedMember.Age, StringFormat='Age: {0}'}"
-                                   FontSize="14"
-                                   TextColor="Gray" />
-                        </VerticalStackLayout>
-                    </Grid>
-                </Frame>
-
-                <!-- Today's Metrics -->
-                <Label Text="Today's Activity"
-                       FontSize="20"
-                       FontAttributes="Bold" />
-
-                <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto" ColumnSpacing="10" RowSpacing="10">
-                    <Frame Grid.Column="0" Grid.Row="0">
-                        <VerticalStackLayout>
-                            <Label Text="Steps" FontSize="12" TextColor="Gray" />
-                            <Label Text="{Binding TodayMetrics.Steps, StringFormat='{0:N0}'}"
-                                   FontSize="24"
-                                   FontAttributes="Bold" />
-                        </VerticalStackLayout>
-                    </Frame>
-
-                    <Frame Grid.Column="1" Grid.Row="0">
-                        <VerticalStackLayout>
-                            <Label Text="Heart Rate" FontSize="12" TextColor="Gray" />
-                            <Label Text="{Binding TodayMetrics.HeartRate, StringFormat='{0} bpm'}"
-                                   FontSize="24"
-                                   FontAttributes="Bold" />
-                        </VerticalStackLayout>
-                    </Frame>
-
-                    <Frame Grid.Column="0" Grid.Row="1">
-                        <VerticalStackLayout>
-                            <Label Text="Distance" FontSize="12" TextColor="Gray" />
-                            <Label Text="{Binding TodayMetrics.Distance, StringFormat='{0:F1} mi'}"
-                                   FontSize="24"
-                                   FontAttributes="Bold" />
-                        </VerticalStackLayout>
-                    </Frame>
-
-                    <Frame Grid.Column="1" Grid.Row="1">
-                        <VerticalStackLayout>
-                            <Label Text="Sleep" FontSize="12" TextColor="Gray" />
-                            <Label Text="{Binding TodayMetrics.SleepHours, StringFormat='{0:F1} hrs'}"
-                                   FontSize="24"
-                                   FontAttributes="Bold" />
-                        </VerticalStackLayout>
-                    </Frame>
-                </Grid>
-
-                <!-- Recent Alerts -->
-                <Label Text="Recent Alerts"
-                       FontSize="20"
-                       FontAttributes="Bold" />
-
-                <CollectionView ItemsSource="{Binding RecentAlerts}">
-                    <CollectionView.ItemTemplate>
-                        <DataTemplate>
-                            <Frame Padding="10" Margin="0,5">
-                                <Grid ColumnDefinitions="*,Auto">
-                                    <VerticalStackLayout>
-                                        <Label Text="{Binding Title}"
-                                               FontAttributes="Bold" />
-                                        <Label Text="{Binding Message}"
-                                               FontSize="12"
-                                               TextColor="Gray" />
-                                        <Label Text="{Binding TriggeredDate, StringFormat='{0:MMM dd, h:mm tt}'}"
-                                               FontSize="10"
-                                               TextColor="Gray" />
-                                    </VerticalStackLayout>
-                                    <Button Grid.Column="1"
-                                            Text="Ack"
-                                            Command="{Binding Source={RelativeSource AncestorType={x:Type viewmodels:DashboardViewModel}}, Path=AcknowledgeAlertCommand}"
-                                            CommandParameter="{Binding .}" />
-                                </Grid>
-                            </Frame>
-                        </DataTemplate>
-                    </CollectionView.ItemTemplate>
-                </CollectionView>
-
-            </VerticalStackLayout>
-        </ScrollView>
-    </RefreshView>
-
-    <ActivityIndicator IsVisible="{Binding IsBusy}"
-                       IsRunning="{Binding IsBusy}"
-                       HorizontalOptions="Center"
-                       VerticalOptions="Center" />
-
-</ContentPage>
-```
-
-## Platform-Specific Implementations
-
-### iOS - Push Notifications
-
-#### Info.plist Configuration
-
-```xml
-<key>UIBackgroundModes</key>
-<array>
-    <string>remote-notification</string>
-</array>
-```
-
-#### AppDelegate.cs
-
-```csharp
-[Register("AppDelegate")]
-public class AppDelegate : MauiUIApplicationDelegate
-{
-    protected override MauiApp CreateMauiApp() => MauiProgram.CreateMauiApp();
-
-    public override bool FinishedLaunching(UIApplication application, NSDictionary launchOptions)
-    {
-        // Register for push notifications
-        UNUserNotificationCenter.Current.RequestAuthorization(
-            UNAuthorizationOptions.Alert | UNAuthorizationOptions.Badge | UNAuthorizationOptions.Sound,
-            (granted, error) =>
-            {
-                if (granted)
-                {
-                    InvokeOnMainThread(() =>
-                    {
-                        UIApplication.SharedApplication.RegisterForRemoteNotifications();
-                    });
-                }
-            });
-
-        return base.FinishedLaunching(application, launchOptions);
-    }
-
-    public override void RegisteredForRemoteNotifications(UIApplication application, NSData deviceToken)
-    {
-        // Send device token to server
-        var token = deviceToken.Description
-            .Replace("<", "").Replace(">", "").Replace(" ", "");
-
-        // Store token or send to backend
-        Preferences.Set("DeviceToken", token);
-    }
-
-    public override void FailedToRegisterForRemoteNotifications(UIApplication application, NSError error)
-    {
-        Console.WriteLine($"Failed to register for remote notifications: {error.LocalizedDescription}");
-    }
-}
-```
-
-### iOS - HealthKit Integration
-
-#### Entitlements.plist
-
-```xml
-<key>com.apple.developer.healthkit</key>
-<true/>
-<key>com.apple.developer.healthkit.access</key>
-<array>
-    <string>health-records</string>
-</array>
-```
-
-#### Info.plist
-
-```xml
-<key>NSHealthShareUsageDescription</key>
-<string>CardiTrack needs access to read your health data</string>
-<key>NSHealthUpdateUsageDescription</key>
-<string>CardiTrack needs access to update your health data</string>
-```
-
-#### HealthKit Service
-
-```csharp
-#if IOS
-using HealthKit;
-
-public class HealthKitService : IHealthKitService
-{
-    private HKHealthStore healthStore;
-
-    public HealthKitService()
-    {
-        healthStore = new HKHealthStore();
-    }
-
-    public async Task<bool> RequestAuthorizationAsync()
-    {
-        var typesToRead = new NSSet(
-            HKObjectType.GetQuantityType(HKQuantityTypeIdentifier.StepCount),
-            HKObjectType.GetQuantityType(HKQuantityTypeIdentifier.HeartRate),
-            HKObjectType.GetQuantityType(HKQuantityTypeIdentifier.DistanceWalkingRunning)
-        );
-
-        var (success, error) = await healthStore.RequestAuthorizationToShareAsync(new NSSet(), typesToRead);
-        return success;
-    }
-
-    public async Task<int> GetTodayStepsAsync()
-    {
-        var stepsType = HKQuantityType.GetQuantityType(HKQuantityTypeIdentifier.StepCount);
-        var startOfDay = NSDate.FromTimeIntervalSinceNow(-86400); // 24 hours ago
-        var now = NSDate.Now;
-
-        var predicate = HKQuery.GetPredicateForSamples(startOfDay, now, HKQueryOptions.StrictStartDate);
-
-        var query = new HKStatisticsQuery(stepsType, predicate, HKStatisticsOptions.CumulativeSum,
-            (query, result, error) =>
-            {
-                if (error != null)
-                {
-                    Console.WriteLine($"Error querying steps: {error.LocalizedDescription}");
-                    return;
-                }
-
-                var steps = result?.SumQuantity()?.GetDoubleValue(HKUnit.Count) ?? 0;
-                // Return steps
-            });
-
-        healthStore.ExecuteQuery(query);
-        return 0; // Async handling needed
-    }
-}
-#endif
-```
-
-### Android - Push Notifications
-
-#### AndroidManifest.xml
-
-```xml
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
-    <application>
-        <receiver android:name="com.google.firebase.iid.FirebaseInstanceIdInternalReceiver"
-                  android:exported="false" />
-        <receiver android:name="com.google.firebase.iid.FirebaseInstanceIdReceiver"
-                  android:exported="true"
-                  android:permission="com.google.android.c2dm.permission.SEND">
-            <intent-filter>
-                <action android:name="com.google.android.c2dm.intent.RECEIVE" />
-            </intent-filter>
-        </receiver>
-    </application>
-
-    <uses-permission android:name="android.permission.INTERNET" />
-    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
-</manifest>
-```
-
-#### MainActivity.cs
-
-```csharp
-[Activity(Theme = "@style/Maui.SplashTheme", MainLauncher = true)]
-public class MainActivity : MauiAppCompatActivity
-{
-    protected override void OnCreate(Bundle? savedInstanceState)
-    {
-        base.OnCreate(savedInstanceState);
-
-        // Create notification channel for Android 8.0+
-        if (Build.VERSION.SdkInt >= BuildVersionCodes.O)
-        {
-            CreateNotificationChannel();
-        }
-    }
-
-    private void CreateNotificationChannel()
-    {
-        var channelId = "carditrack_alerts";
-        var channelName = "Health Alerts";
-        var channelDescription = "Receive health alerts for CardiMembers";
-        var importance = NotificationImportance.High;
-
-        var channel = new NotificationChannel(channelId, channelName, importance)
-        {
-            Description = channelDescription
-        };
-
-        var notificationManager = GetSystemService(NotificationService) as NotificationManager;
-        notificationManager?.CreateNotificationChannel(channel);
-    }
-}
-```
-
-### Android - Health Connect Integration
-
-```csharp
-#if ANDROID
-using AndroidX.Health.Connect.Client;
-
-public class HealthConnectService : IHealthConnectService
-{
-    private readonly HealthConnectClient _client;
-
-    public HealthConnectService()
-    {
-        _client = HealthConnectClient.GetOrCreate(Android.App.Application.Context);
-    }
-
-    public async Task<bool> RequestPermissionsAsync()
-    {
-        var permissions = new[]
-        {
-            HealthPermission.GetReadPermission(StepsRecord.class),
-            HealthPermission.GetReadPermission(HeartRateRecord.class),
-            HealthPermission.GetReadPermission(DistanceRecord.class)
-        };
-
-        // Request permissions
-        // Implementation depends on Health Connect SDK version
-        return true;
-    }
-
-    public async Task<int> GetTodayStepsAsync()
-    {
-        var startTime = DateTime.Today;
-        var endTime = DateTime.Now;
-
-        var request = new ReadRecordsRequest.Builder<StepsRecord>()
-            .SetTimeRangeFilter(startTime, endTime)
-            .Build();
-
-        var response = await _client.ReadRecordsAsync(request);
-        var totalSteps = response.Records.Sum(r => r.Count);
-        return totalSteps;
-    }
-}
-#endif
-```
-
-## Services Implementation
-
-### API Service
-
-```csharp
-public class ApiService : IApiService
-{
-    private readonly HttpClient _httpClient;
-    private readonly IAuthService _authService;
-    private const string BaseUrl = "https://api.carditrack.com";
-
-    public ApiService(IAuthService authService)
-    {
-        _authService = authService;
-        _httpClient = new HttpClient
-        {
-            BaseAddress = new Uri(BaseUrl)
-        };
-    }
-
-    private async Task<HttpClient> GetAuthenticatedClientAsync()
-    {
-        var token = await _authService.GetAccessTokenAsync();
-        _httpClient.DefaultRequestHeaders.Authorization =
-            new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
-        return _httpClient;
-    }
-
-    public async Task<List<CardiMember>> GetCardiMembersAsync()
-    {
-        var client = await GetAuthenticatedClientAsync();
-        var response = await client.GetAsync("/api/cardimembers");
-        response.EnsureSuccessStatusCode();
-
-        var json = await response.Content.ReadAsStringAsync();
-        return JsonSerializer.Deserialize<List<CardiMember>>(json);
-    }
-
-    public async Task<HealthMetrics> GetTodayMetricsAsync(Guid cardiMemberId)
-    {
-        var client = await GetAuthenticatedClientAsync();
-        var response = await client.GetAsync($"/api/dashboard/{cardiMemberId}/today");
-        response.EnsureSuccessStatusCode();
-
-        var json = await response.Content.ReadAsStringAsync();
-        return JsonSerializer.Deserialize<HealthMetrics>(json);
-    }
-
-    public async Task<List<Alert>> GetRecentAlertsAsync(Guid cardiMemberId, int count = 10)
-    {
-        var client = await GetAuthenticatedClientAsync();
-        var response = await client.GetAsync($"/api/alerts/{cardiMemberId}?limit={count}");
-        response.EnsureSuccessStatusCode();
-
-        var json = await response.Content.ReadAsStringAsync();
-        return JsonSerializer.Deserialize<List<Alert>>(json);
-    }
-
-    public async Task AcknowledgeAlertAsync(Guid alertId)
-    {
-        var client = await GetAuthenticatedClientAsync();
-        var response = await client.PostAsync($"/api/alerts/{alertId}/acknowledge", null);
-        response.EnsureSuccessStatusCode();
-    }
-}
-```
-
-### Local Storage Service
-
-```csharp
-public class LocalStorageService : ILocalStorageService
-{
-    private readonly SQLiteAsyncConnection _database;
-    private const string DatabaseFilename = "carditrack.db3";
-
-    public LocalStorageService()
-    {
-        var dbPath = Path.Combine(FileSystem.AppDataDirectory, DatabaseFilename);
-        _database = new SQLiteAsyncConnection(dbPath);
-
-        // Create tables
-        _database.CreateTableAsync<CardiMember>().Wait();
-        _database.CreateTableAsync<Alert>().Wait();
-        _database.CreateTableAsync<HealthMetric>().Wait();
-    }
-
-    public async Task<List<CardiMember>> GetCardiMembersAsync()
-    {
-        return await _database.Table<CardiMember>().ToListAsync();
-    }
-
-    public async Task SaveCardiMemberAsync(CardiMember member)
-    {
-        var existing = await _database.Table<CardiMember>()
-            .Where(m => m.Id == member.Id)
-            .FirstOrDefaultAsync();
-
-        if (existing != null)
-            await _database.UpdateAsync(member);
-        else
-            await _database.InsertAsync(member);
-    }
-
-    public async Task<List<Alert>> GetAlertsAsync(Guid cardiMemberId)
-    {
-        return await _database.Table<Alert>()
-            .Where(a => a.CardiMemberId == cardiMemberId)
-            .OrderByDescending(a => a.TriggeredDate)
-            .ToListAsync();
-    }
-
-    public async Task SaveAlertAsync(Alert alert)
-    {
-        await _database.InsertOrReplaceAsync(alert);
-    }
-
-    public async Task DeleteAlertAsync(Guid alertId)
-    {
-        await _database.DeleteAsync<Alert>(alertId);
-    }
-
-    public async Task ClearAllDataAsync()
-    {
-        await _database.DeleteAllAsync<CardiMember>();
-        await _database.DeleteAllAsync<Alert>();
-        await _database.DeleteAllAsync<HealthMetric>();
-    }
-}
-```
-
-### Notification Service
-
-```csharp
-public class NotificationService : INotificationService
-{
-    public async Task RegisterForNotificationsAsync()
-    {
-#if IOS
-        await RequestiOSPermissionsAsync();
-#elif ANDROID
-        await RequestAndroidPermissionsAsync();
-#endif
-    }
-
-    public async Task ShowLocalNotificationAsync(string title, string message)
-    {
-        var notification = new NotificationRequest
-        {
-            NotificationId = new Random().Next(),
-            Title = title,
-            Description = message,
-            Schedule = new NotificationRequestSchedule
-            {
-                NotifyTime = DateTime.Now.AddSeconds(1)
-            }
-        };
-
-        await LocalNotificationCenter.Current.Show(notification);
-    }
-
-    public async Task<string> GetDeviceTokenAsync()
-    {
-        return await Task.FromResult(Preferences.Get("DeviceToken", string.Empty));
-    }
-
-#if IOS
-    private async Task RequestiOSPermissionsAsync()
-    {
-        var (granted, error) = await UNUserNotificationCenter.Current
-            .RequestAuthorizationAsync(
-                UNAuthorizationOptions.Alert |
-                UNAuthorizationOptions.Badge |
-                UNAuthorizationOptions.Sound);
-
-        if (granted)
-        {
-            await MainThread.InvokeOnMainThreadAsync(() =>
-            {
-                UIApplication.SharedApplication.RegisterForRemoteNotifications();
-            });
-        }
-    }
-#endif
-
-#if ANDROID
-    private async Task RequestAndroidPermissionsAsync()
-    {
-        // Android 13+ requires explicit notification permission
-        if (Build.VERSION.SdkInt >= BuildVersionCodes.Tiramisu)
-        {
-            var status = await Permissions.RequestAsync<Permissions.PostNotifications>();
-            // Handle permission result
-        }
-    }
-#endif
-}
-```
+- **iOS**: `Platforms/iOS/Resources/PrivacyInfo.xcprivacy` — Apple privacy manifest (required-reason API declarations).
+- **Android**: `Platforms/Android/Resources/xml/network_security_config.xml` — permits cleartext to the emulator loopback (`10.0.2.2`) for local development only.
 
 ## Building and Deploying
 
 ### Prerequisites
 
-- .NET 10 SDK
-- Visual Studio 2025 or VS Code with .NET MAUI workload
-- Xcode 15+ (for iOS development)
-- Android SDK 34+ (for Android development)
+- .NET 10 SDK with the MAUI workloads (`dotnet workload install maui` — pulls the matching Android SDK/JDK toolchain)
+- Visual Studio 2025 or VS Code with the .NET MAUI extension
+- **Xcode 16+** on macOS for iOS builds (iOS cannot be built on Windows)
 
-### Install .NET MAUI Workload
-
-```bash
-dotnet workload install maui
-```
-
-### Build for Development
+### Build & run
 
 ```bash
-# Navigate to mobile project
-cd C:\Code\Github\Carditrack\src\Presentation\CardiTrack.Mobile
+cd src/Presentation/CardiTrack.Mobile
 
-# Restore dependencies
-dotnet restore
-
-# Build for Android
+# Android (Windows/macOS/Linux)
 dotnet build -f net10.0-android
+dotnet run -f net10.0-android          # deploys to the running emulator/device
 
-# Build for iOS (Mac only)
+# iOS (macOS only)
 dotnet build -f net10.0-ios
-
-# Build for all platforms
-dotnet build
-```
-
-### Run on Emulator/Simulator
-
-```bash
-# Run on Android emulator
-dotnet run -f net10.0-android
-
-# Run on iOS simulator (Mac only)
-dotnet run -f net10.0-ios
-```
-
-### Deploy to Physical Devices
-
-#### iOS
-
-```bash
-# Build for device
-dotnet build -f net10.0-ios -c Release
-
-# Deploy to connected device
 dotnet build -f net10.0-ios -c Release -p:RuntimeIdentifier=ios-arm64 -t:Run
+
+# Windows (Windows only, unpackaged)
+dotnet build -f net10.0-windows10.0.19041.0
 ```
 
-#### Android
+### Store builds
+
+Signed store builds are normally produced by CI (below). For a local signed Android AAB, use the same properties CI uses (note the plural `-p:AndroidPackageFormats=aab`):
 
 ```bash
-# Build APK
-dotnet publish -f net10.0-android -c Release
-
-# Deploy to connected device
-adb install bin/Release/net10.0-android/publish/com.codesistance.carditrack.mobile-Signed.apk
+dotnet publish src/Presentation/CardiTrack.Mobile/CardiTrack.Mobile.csproj \
+  -f net10.0-android -c Release \
+  -p:AndroidPackageFormats=aab -p:AndroidKeyStore=true \
+  -p:AndroidSigningKeyStore=<path>.jks -p:AndroidSigningKeyAlias=carditrack \
+  -p:AndroidSigningStorePass=<password> -p:AndroidSigningKeyPass=<password>
 ```
 
-### Publishing to App Stores
-
-#### iOS App Store
-
-1. **Configure signing**:
-   ```xml
-   <PropertyGroup Condition="'$(Configuration)' == 'Release'">
-     <CodesignKey>Apple Distribution</CodesignKey>
-     <CodesignProvision>CardiTrack Distribution</CodesignProvision>
-   </PropertyGroup>
-   ```
-
-2. **Build archive**:
-   ```bash
-   dotnet publish -f net10.0-ios -c Release
-   ```
-
-3. **Upload to App Store Connect**:
-   - Use Xcode or Transporter app
-   - Submit for review
-
-#### Google Play Store
-
-1. **Generate signed APK**:
-   ```bash
-   dotnet publish -f net10.0-android -c Release -p:AndroidKeyStore=true \
-     -p:AndroidSigningKeyStore=carditrack.keystore \
-     -p:AndroidSigningKeyAlias=carditrack \
-     -p:AndroidSigningKeyPass=<password> \
-     -p:AndroidSigningStorePass=<password>
-   ```
-
-2. **Generate AAB (Android App Bundle)**:
-   ```bash
-   dotnet publish -f net10.0-android -c Release -p:AndroidPackageFormat=aab
-   ```
-
-3. **Upload to Play Console**:
-   - Go to Google Play Console
-   - Upload AAB file
-   - Submit for review
+iOS release signing uses `CodesignKey=Apple Distribution` and `CodesignProvision=CardiTrack Distribution`. Certificates, profiles, keystores, and store accounts are covered step-by-step in **[store_provisioning.md](./store_provisioning.md)**.
 
 ### CI/CD Pipeline
 
@@ -1135,118 +229,33 @@ One-time setup before the first store upload — full step-by-step commands in
 
 ## Testing
 
-### Unit Testing ViewModels
+Unit tests live in `tests/CardiTrack.UnitTests/Mobile/` — **xunit + NSubstitute**, exercising the platform-independent `CardiTrack.Mobile.Core` code:
 
-```csharp
-public class DashboardViewModelTests
-{
-    private readonly Mock<IApiService> _mockApiService;
-    private readonly Mock<INotificationService> _mockNotificationService;
-    private readonly DashboardViewModel _viewModel;
+- `Auth0AuthClientTests` — login/signup/reset request shapes and error mapping
+- `AuthHttpMessageHandlerTests` — bearer attach + refresh behavior (via `FakeHttpMessageHandler`)
+- `CardiTrackApiClientTests` — API client contract
+- `JwtPayloadReaderTests` / `TokenRefresherTests`
+- `PhonePlaceholderTests` — region placeholder mapping
 
-    public DashboardViewModelTests()
-    {
-        _mockApiService = new Mock<IApiService>();
-        _mockNotificationService = new Mock<INotificationService>();
-        _viewModel = new DashboardViewModel(_mockApiService.Object, _mockNotificationService.Object);
-    }
-
-    [Fact]
-    public async Task LoadData_Success_UpdatesMetrics()
-    {
-        // Arrange
-        var metrics = new HealthMetrics { Steps = 5000, HeartRate = 70 };
-        _mockApiService.Setup(x => x.GetTodayMetricsAsync(It.IsAny<Guid>()))
-            .ReturnsAsync(metrics);
-
-        // Act
-        await _viewModel.LoadDataCommand.ExecuteAsync(null);
-
-        // Assert
-        Assert.Equal(5000, _viewModel.TodayMetrics.Steps);
-        Assert.Equal(70, _viewModel.TodayMetrics.HeartRate);
-    }
-}
-```
-
-### UI Testing
-
-```csharp
-[TestClass]
-public class AppTests : UITest
-{
-    [TestMethod]
-    public void LoginPage_ValidCredentials_NavigatesToDashboard()
-    {
-        // Arrange
-        App.EnterText("EmailEntry", "test@example.com");
-        App.EnterText("PasswordEntry", "password123");
-
-        // Act
-        App.Tap("LoginButton");
-
-        // Assert
-        App.WaitForElement("DashboardPage");
-    }
-}
-```
-
-## Troubleshooting
-
-### Common Issues
-
-**Issue: Build fails on iOS**
 ```bash
-# Clean build artifacts
-dotnet clean
-rm -rf bin obj
-
-# Rebuild
-dotnet build -f net10.0-ios
+dotnet test tests/CardiTrack.UnitTests
 ```
 
-**Issue: Android emulator not detected**
-```bash
-# List available devices
-adb devices
+There are no UI/device automation tests yet.
 
-# Start emulator
-emulator -avd Pixel_5_API_34
-```
+## Planned
 
-**Issue: App crashes on startup**
-- Check Application Output window for exceptions
-- Verify all NuGet packages are restored
-- Ensure platform-specific code has proper conditionals
+None of the following exists in the app today:
 
-**Issue: Push notifications not working**
-- Verify Firebase/APNS configuration
-- Check device token registration
-- Confirm notification permissions granted
-
-## Performance Optimization
-
-1. **Use compiled bindings**: Add `x:DataType` to improve performance
-2. **Virtualize collections**: Use `CollectionView` with virtualization
-3. **Optimize images**: Use compressed formats, appropriate sizes
-4. **Lazy loading**: Load views and data on demand
-5. **Background tasks**: Use background services for sync operations
-6. **Caching**: Cache API responses locally
-7. **Reduce app size**: Enable linking and AOT compilation
-
-## Best Practices
-
-1. **MVVM Pattern**: Separate business logic from UI
-2. **Dependency Injection**: Use DI for loose coupling
-3. **Async/Await**: Use async operations for responsiveness
-4. **Error Handling**: Implement comprehensive error handling
-5. **Offline Support**: Design for intermittent connectivity
-6. **Security**: Never store sensitive data in plain text
-7. **Accessibility**: Support screen readers and font scaling
-8. **Localization**: Support multiple languages and cultures
+- **HealthKit (iOS) / Health Connect (Android)** integration for on-device health data
+- **SQLite offline cache** and sync queue (today the app is online-only; only tokens persist, in SecureStorage)
+- **Push notifications** (FCM / APNS) with alert deep-linking
+- **Widgets, Siri shortcuts, app shortcuts**
+- **MVVM refactor** — only if/when page complexity warrants it; the current code-behind approach is deliberate
 
 ## Related Documentation
 
+- [Store provisioning (signing, TestFlight, Play Console)](./store_provisioning.md)
 - [Web Dashboard Documentation](../web/readme.md)
 - [API Documentation](../api/readme.md)
 - [Infrastructure Guide](../../infrastructure.md)
@@ -1255,3 +264,7 @@ emulator -avd Pixel_5_API_34
 ## Support
 
 For mobile app issues, contact: mobile-support@carditrack.com
+
+---
+
+**Last Updated:** August 7, 2026

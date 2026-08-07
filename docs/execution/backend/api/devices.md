@@ -2,6 +2,18 @@
 
 Handles wearable device connections via OAuth, device status management, primary device designation, and token refresh.
 
+**Implementation status:** the core OAuth connection flow (list, connect, bounce redirect, callback) is **implemented**. The per-device management endpoints (get single device, set primary, reconnect, delete) are **planned — not yet implemented** and marked as such below.
+
+Key implementation facts (verified against `DeviceConnectionService`):
+
+- **Authorization is member-link only.** Every device operation checks that an active `UserCardiMember` link exists between the caller and the CardiMember (failure → 404 "CardiMember not found"). There are **no role checks** on any device endpoint.
+- **State tokens are single-use with a 15-minute TTL**, held server-side in the distributed cache keyed to the initiating user, member, and provider. The callback consumes the state even if the code exchange fails — a replayed state always fails.
+- **Google authorize URLs include `access_type=offline` and `prompt=consent`** (config-driven), without which Google issues no refresh token.
+- **OAuth tokens are AES-encrypted at rest** before being stored on the connection record.
+- **Syncing is a 30-minute cron poll** by the Worker (`WearableSyncWorker`), not provider webhooks.
+- The anonymous bounce endpoint **only redirects into the `carditrack://` app scheme** — any other cached redirect target is rejected, preventing open-redirect leakage of `code`+`state`.
+- **Only Fitbit is actually connectable.** Garmin, Samsung Health, and Withings pass request validation but are **config-only stubs** (placeholder ClientIds, no DI registration) — a connect attempt returns 400 "not configured for connections". Only the Fitbit provider client is registered.
+
 **User Stories:** 1.3 (Device Connection Wizard), 6.2 (Device Management)
 
 ---
@@ -20,41 +32,36 @@ List all wearable devices connected to a CardiMember.
 
 ### Response `200 OK`
 
+Wrapped in the standard `ApiResponse<T>` envelope; `deviceId` is a raw GUID (no `dev_` prefix):
+
 ```json
 {
   "devices": [
     {
-      "deviceId": "dev_01J9...",
+      "deviceId": "8c1f5f64-5717-4562-b3fc-2c963f66afa6",
       "provider": "fitbit",
       "displayName": "Fitbit Charge 6",
       "status": "active",
       "isPrimary": true,
-      "lastSyncedAt": "2026-03-09T08:30:00Z",
-      "connectedAt": "2026-01-15T09:00:00Z",
-      "tokenExpiresAt": "2026-06-09T09:00:00Z"
-    },
-    {
-      "deviceId": "dev_02J9...",
-      "provider": "garmin",
-      "displayName": "Garmin Venu 3",
-      "status": "token_expired",
-      "isPrimary": false,
-      "lastSyncedAt": "2026-02-01T10:00:00Z",
-      "connectedAt": "2025-12-01T09:00:00Z",
-      "tokenExpiresAt": "2026-02-01T09:00:00Z"
+      "lastSyncedAt": "2026-08-07T08:30:00Z",
+      "connectedAt": "2026-06-15T09:00:00Z",
+      "tokenExpiresAt": "2026-08-07T09:30:00Z"
     }
   ]
 }
 ```
 
-**Device Status Values:**
+**Device Status Values** (mapped from the internal `ConnectionStatus` enum):
 
-| Status | Description |
-|--------|-------------|
-| `active` | Syncing normally |
-| `disconnected` | OAuth connection removed |
-| `token_expired` | OAuth token needs refresh |
-| `pending` | OAuth flow not yet completed |
+| Wire status | Internal status | Description |
+|-------------|-----------------|-------------|
+| `active` | `Connected` **and** `SyncError` | Connected; see quirk below |
+| `disconnected` | `Disconnected` | OAuth connection removed |
+| `token_expired` | `TokenExpired`, `AuthError` (and any other state) | OAuth token needs re-authorization |
+
+> **Doc-noted quirk:** a device in `SyncError` (provider polling is failing) still reports `active` on the wire — a sync-failing device looks healthy to clients. There is **no `pending` status**: state before the callback completes lives only in the cache, never as a device row.
+
+Errors: **403** if the JWT is valid but no local user row exists; **404** if the caller has no active link to the CardiMember.
 
 ---
 
@@ -144,28 +151,41 @@ OAuth callback completion. After the provider redirects the client back to `redi
 
 ### Response `201 Created`
 
+Wrapped in `ApiResponse<T>`; full `DeviceResponse` shape (same as the list endpoint):
+
 ```json
 {
-  "deviceId": "dev_01J9...",
+  "deviceId": "8c1f5f64-5717-4562-b3fc-2c963f66afa6",
   "provider": "fitbit",
   "displayName": "Fitbit Charge 6",
   "status": "active",
-  "isPrimary": false,
-  "connectedAt": "2026-03-09T10:00:00Z"
+  "isPrimary": true,
+  "lastSyncedAt": null,
+  "connectedAt": "2026-08-07T10:00:00Z",
+  "tokenExpiresAt": "2026-08-07T11:00:00Z"
 }
 ```
 
+> **Upsert by device type:** if a connection for the same provider already exists on this CardiMember, the callback **updates it in place** (new tokens, status back to `Connected`) rather than creating a duplicate. A brand-new connection is marked `isPrimary` when it is the member's **first** device. This is also how **reconnect** works today — see below.
+
 ### Errors
 
-| Code | Status | Description |
-|------|--------|-------------|
-| `INVALID_STATE_TOKEN` | 400 | CSRF state mismatch |
-| `OAUTH_EXCHANGE_FAILED` | 502 | Provider rejected code exchange |
-| `PROVIDER_PERMISSION_DENIED` | 403 | User denied required scopes |
+No machine-readable `code` field is emitted — the `ErrorResponse` carries a human-readable `message`; branch on HTTP status:
+
+| Status | When |
+|--------|------|
+| 400 | Invalid or expired state token (single-use, 15-min TTL, must match caller + provider); or unsupported/unconfigured provider |
+| 403 | JWT valid but no local user row |
+| 404 | Caller has no active link to the CardiMember bound to the state |
+| 502 | Provider rejected the authorization code exchange |
+
+> The planned `PROVIDER_PERMISSION_DENIED` (user denied scopes) case is **never produced** — a denial surfaces as a failed exchange (502) or the user simply never returns to the app.
 
 ---
 
 ## GET `/api/v1/cardimembers/{id}/devices/{deviceId}`
+
+> **Planned — not yet implemented.** Use the list endpoint and filter client-side.
 
 Get details and current status for a single connected device.
 
@@ -197,6 +217,8 @@ Get details and current status for a single connected device.
 
 ## PUT `/api/v1/cardimembers/{id}/devices/{deviceId}/primary`
 
+> **Planned — not yet implemented.** Today `isPrimary` is set automatically: the member's first connection becomes primary and cannot be changed via the API.
+
 Set this device as the primary data source. Clears primary flag from any previously primary device.
 
 **Priority:** P1 | **Auth Required:** Yes
@@ -214,6 +236,8 @@ Set this device as the primary data source. Clears primary flag from any previou
 ---
 
 ## POST `/api/v1/cardimembers/{id}/devices/{deviceId}/reconnect`
+
+> **Planned — not yet implemented.** Reconnection works today by **re-running the normal connect + callback flow**: `POST .../devices` then `POST /api/v1/oauth/callback/{provider}`. The callback upserts by device type, so the existing connection gets fresh tokens and returns to `active` — no dedicated reconnect endpoint is needed for the happy path.
 
 Initiate a token refresh for a device with an expired or revoked OAuth token.
 
@@ -243,11 +267,11 @@ Initiate a token refresh for a device with an expired or revoked OAuth token.
 
 ## DELETE `/api/v1/cardimembers/{id}/devices/{deviceId}`
 
-Remove a device connection. Historical data synced via this device is retained.
+> **Planned — not yet implemented.** There is no way to remove a connection via the API today, and no role checks exist on device endpoints (member-link authorization only).
 
-A CardiMember **may have zero connected devices** (e.g. between switching devices). In that state their `healthStatus` becomes `unknown`, health-summary endpoints return `NO_DEVICE_CONNECTED`, and family members are notified that monitoring is inactive. If the deleted device was primary, the oldest remaining active device (if any) becomes primary.
+Remove a device connection. Historical data synced via this device is retained. A CardiMember **may have zero connected devices** (e.g. before their first connection); the dashboard reports `device.hasActiveConnection: false` in that state.
 
-**Priority:** P1 | **Auth Required:** Yes | **Required Role:** Admin, Staff
+**Priority:** P1 | **Auth Required:** Yes
 
 ### Response `204 No Content`
 
@@ -261,20 +285,24 @@ A CardiMember **may have zero connected devices** (e.g. between switching device
 
 **Supported Providers:**
 
-| Provider | `provider` Value | Integration Mode | Scopes / Permissions |
-|----------|-----------------|------------------|----------------------|
-| Fitbit / Pixel Watch | `fitbit` | `server_oauth` | Google Health API scope bundles: `activity_and_fitness.readonly`, `health_metrics_and_measurements.readonly`, `sleep.readonly` |
-| Apple Health | `apple_health` | `on_device_bridge` | `HKQuantityTypeStepCount`, `HKQuantityTypeHeartRate`, `HKCategoryTypeAsleepCore` |
-| Garmin | `garmin` | `server_oauth` | `activities`, `heart_rate`, `sleep` |
-| Samsung Health | `samsung_health` | `server_oauth` | `steps`, `heart_rate`, `sleep` |
-| Withings | `withings` | `server_oauth` | `user.metrics` |
+| Provider | `provider` Value | Integration Mode | Status | Scopes / Permissions |
+|----------|-----------------|------------------|--------|----------------------|
+| Fitbit / Pixel Watch | `fitbit` | `server_oauth` | **Implemented** | Google Health API scope bundles: `activity_and_fitness.readonly`, `health_metrics_and_measurements.readonly`, `sleep.readonly` |
+| Apple Health | `apple_health` | `on_device_bridge` | Planned | `HKQuantityTypeStepCount`, `HKQuantityTypeHeartRate`, `HKCategoryTypeAsleepCore` |
+| Garmin | `garmin` | `server_oauth` | Config-only stub | `activities`, `heart_rate`, `sleep` |
+| Samsung Health | `samsung_health` | `server_oauth` | Config-only stub | `steps`, `heart_rate`, `sleep` |
+| Withings | `withings` | `server_oauth` | Config-only stub | `user.metrics` |
+
+> **Config-only stubs:** `garmin`, `samsung_health`, and `withings` are accepted by request validation, but their configuration holds placeholder ClientIds and no provider client is registered in DI — a connect attempt fails with **400** ("not configured for connections"). Only Fitbit is wired end-to-end. See the [OAuth client inventory](../../../technical/oauth_clients.md) for provisioning state.
 
 > The `fitbit` provider authorizes via **Google OAuth 2.0** and syncs through the **Google Health API** (`health.googleapis.com`), which covers Fitbit devices, Pixel Watch, and connected third-party sources — the legacy Fitbit Web API is decommissioned September 2026.
 
 > **Integration modes:**
-> - **`server_oauth`** — CardiTrack's backend holds OAuth tokens and receives data via the provider's cloud API/webhooks.
-> - **`on_device_bridge`** (Apple Health) — HealthKit has **no server-side OAuth**. Permissions are granted on the CardiMember's iPhone; the CardiTrack mobile app reads HealthKit locally and uploads normalized samples to `POST /api/v1/cardimembers/{id}/health-data/batch` (device-bridge ingestion). The connection record exists for status/primary tracking, but has no tokens and cannot use the OAuth endpoints above.
+> - **`server_oauth`** — CardiTrack's backend holds OAuth tokens (AES-encrypted at rest) and **polls** the provider's cloud API on a 30-minute Worker cron — there is no webhook ingestion.
+> - **`on_device_bridge`** (Apple Health — *planned*) — HealthKit has **no server-side OAuth**. Permissions would be granted on the CardiMember's iPhone and the mobile app would upload normalized samples; no ingestion endpoint for this exists yet, and `apple_health` is not a valid value for the OAuth endpoints above.
 
 ---
 
-**Related:** [readme.md](readme.md) | [health-data.md](health-data.md) | [User Stories 1.3, 6.2](../../ui/mobile/user_stories.md)
+**Related:** [readme.md](readme.md) | [health-data.md](health-data.md) | [OAuth Client Inventory](../../../technical/oauth_clients.md) | [User Stories 1.3, 6.2](../../ui/mobile/user_stories.md)
+
+**Last Updated:** August 7, 2026

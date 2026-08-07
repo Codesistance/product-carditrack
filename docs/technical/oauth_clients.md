@@ -21,8 +21,12 @@ lifecycles.
 | 2 | CardiTrack Mobile | Identity | Public (Native, PKCE, no secret) | Auth0 | `auth0-mobile-client-id` | Created per [runbook §3](./auth0_setup_runbook.md) |
 | 3 | Google sign-in (social) | Identity | Web app client **used by Auth0**, not by our code | Google Cloud | Stored inside the Auth0 connection | Pending (Phase 9, below) |
 | 4 | Apple Sign In (social) | Identity | Services ID + .p8 key **used by Auth0** | Apple Developer | Stored inside the Auth0 connection | Pending (Phase 9, below) |
-| 5 | Fitbit provider (Google Health API) | Device data | Confidential Web application | Google Cloud | `fitbit-client-id` / `fitbit-client-secret` | Code ready (PR #10); console registration pending |
-| 6+ | Garmin / Withings / Oura / Whoop | Device data | Per-vendor | Each vendor's portal | Not yet provisioned | Future |
+| 5 | Fitbit provider (Google Health API) | Device data | Confidential Web application | Google Cloud | `fitbit-client-id` / `fitbit-client-secret` | Code merged (PR #10); console registration pending |
+| 6+ | Garmin / Withings / Oura / Whoop | Device data | Per-vendor | Each vendor's portal | Not yet provisioned | Future — config stubs only; **only Fitbit is registered in DI** |
+
+Related shared secret: `carditrack-{env}-encryption-key` (`Encryption__Key`) — the
+AES-256-GCM key protecting the device-data tokens stored in `DeviceConnections`.
+It belongs to no single OAuth client but every device-data flow depends on it.
 
 > **The #3 vs #5 foot-gun:** both are "Google OAuth clients" in the same Google
 > Cloud organisation, but they are different registrations with different
@@ -40,13 +44,14 @@ Developer membership.
 
 ## Social log-on (Phase 9) — scope
 
-The mobile app already renders **Google** and **Apple** buttons
-(`CreateAccountPage`), and the Auth0 Native app already allows the
-`carditrack://oauth/callback` callback and Authorization Code + PKCE grant
-([runbook §3](./auth0_setup_runbook.md)) — so the remaining work is
-**credentials + Auth0 connection config**, not app code. Microsoft
-(`windowslive`) appears in [auth0_integration.md](./auth0_integration.md) but
-has no button in the mobile UI — treat it as deferred until product asks.
+The mobile app already renders **Google** and **Apple** buttons on **both**
+`CreateAccountPage` and `SignInPage`, and the Auth0 Native app already allows
+the `carditrack://oauth/callback` callback and Authorization Code + PKCE grant
+([runbook §3](./auth0_setup_runbook.md)). The buttons are **unwired** — they
+have no tap handlers, and the app-side PKCE invocation is still to build — so
+the remaining work is **app code + credentials + Auth0 connection config**.
+Microsoft (`windowslive`) is not planned for MVP and has no button in the
+mobile UI — treat it as deferred until product asks.
 
 **What's needed per provider:**
 
@@ -86,15 +91,14 @@ Required by App Store review: an iOS app offering any third-party social login
 
 ### Cross-cutting items (both providers)
 
-- **Email verification**: the post-login Action treats social identities as
-  verified ([auth0_integration.md](./auth0_integration.md)) — confirm the
-  Action deployed per [runbook §8](./auth0_setup_runbook.md) still short-circuits
-  for `google-oauth2`/`apple` so social users aren't blocked by the gate.
+- **Email verification**: social identities arrive pre-verified, but the Action
+  deployed per [runbook §8](./auth0_setup_runbook.md) denies **all** unverified
+  logins with no social exception — Phase 9 must **add a short-circuit** for
+  `google-oauth2`/`apple` so social users aren't blocked by the gate.
 - **Account linking**: the same person arriving via password and via Google
   creates two Auth0 identities with the same email. The API keys users on the
   `sub` claim, so unlinked duplicates become two CardiTrack users. Decide
-  before launch: enable Auth0 account-linking (design sketch in
-  auth0_integration.md) or accept distinct accounts.
+  before launch: enable Auth0 account-linking or accept distinct accounts.
 - **Per-environment**: everything above is per Auth0 tenant — repeat for dev
   and prod, and keep prod's Google/Apple credentials out of the repo (they live
   only in the Auth0 dashboard).
@@ -116,11 +120,17 @@ Fully scripted in the [Auth0 setup runbook](./auth0_setup_runbook.md); summary:
 
 ## Provisioning steps — device-data client (Google Health API)
 
-> **Depends on [PR #10](https://github.com/Codesistance/product-carditrack/pull/10) being merged and deployed** — it adds the
+> **[PR #10](https://github.com/Codesistance/product-carditrack/pull/10) is merged** — the
 > `GET /api/v1/oauth/redirect/{provider}` bounce endpoint and the
-> `DeviceProviders` Google configuration these steps register against. Until
-> that deploy, the redirect URIs below point at an endpoint that doesn't exist.
-> Steps 1–2 (API enablement, consent screen, test users) can be done any time.
+> `DeviceProviders` Google configuration exist in the codebase; only the
+> **deploy** is pending. Until a deployed revision includes it, the redirect
+> URIs below point at an endpoint that isn't live yet. Steps 1–2 (API
+> enablement, consent screen, test users) can be done any time.
+
+Flow security notes: the `state` values in this flow are **opaque,
+server-cached, single-use tokens with a 15-minute TTL** (never encode member
+ids in them), and the bounce endpoint only ever redirects into the
+`carditrack://` scheme — any other target would be an open redirect.
 
 1. Google Cloud console (cloud-ops account), project per environment (or the
    existing `carditrack-{env}` project): **enable the Google Health API**.
@@ -152,7 +162,9 @@ Fully scripted in the [Auth0 setup runbook](./auth0_setup_runbook.md); summary:
    and fix any mismatches.
 6. **Before public launch**: restricted-scope verification + CASA assessment —
    prerequisites checklist in
-   [user_onboarding_process.md](./user_onboarding_process.md) (Step 6).
+   [user_onboarding_process.md](./user_onboarding_process.md) (Step 6). Status:
+   the Google-format in-app disclosure banner shipped on Web (PR #9); the
+   mobile equivalent is still pending.
 
 Future device providers (Garmin, Withings, …) repeat steps 3–4 in their own
 portals with their own `DeviceProviders` entry and secrets; the multi-provider

@@ -1,8 +1,33 @@
 # Family Collaboration API
 
+> **Status: Planned — not yet implemented.** None of the endpoints below exist yet. See "Implemented today" for current coverage.
+
 Manages family member accounts, role-based access, email invitations, shared care notes with @mention support, and the HIPAA-compliant activity audit log.
 
 **User Stories:** 4.1 (Inviting Family Members), 4.2 (Coordinating Care), 8.3 (Family Communication / Facility Portal)
+
+---
+
+## Implemented today
+
+There are no family-member, invitation, shared-note, or audit-log endpoints. The collaboration primitive that **does** exist is the **`UserCardiMember` link entity** — the per-user, per-member access grant every implemented endpoint authorizes against:
+
+| Field | Purpose |
+|-------|---------|
+| `UserId` / `CardiMemberId` | Which user may access which member |
+| `RelationshipType` | Caregiver's relationship (integer enum) |
+| `IsPrimaryCaregiver` | Primary caregiver flag |
+| `CanViewHealthData` | Gates the dashboard (`GET .../dashboard` requires it) |
+| `ReceiveAlerts` | Intended alert-routing flag (nothing sends alerts yet) |
+| `IsActive` | Soft enable/disable of the link |
+
+Links are created automatically when a CardiMember is added during onboarding; there is no API to grant another user access yet.
+
+**Roles:** the implemented `UserRole` enum is `Member` (1), `Admin` (2), `Staff` (3) — **integers on the wire, and there is no `viewer` role**. No endpoint currently enforces role-based restrictions; authorization is member-link based.
+
+**Naming collision warning:** this doc's "activity log" means the HIPAA **audit trail** (an `AuditLog` entity exists but **nothing writes to it** — planned). The codebase's `ActivityLog` entity is something else entirely: **daily health metrics** (steps, heart rate, sleep) synced from wearables.
+
+Everything below is the **planned** contract, kept as design intent.
 
 ---
 
@@ -31,13 +56,13 @@ List all family members who have access to the authenticated user's CardiTrack a
 }
 ```
 
-**Role Values:**
+**Role Values** (per the implemented `UserRole` enum — integers on the wire; there is no `viewer` role):
 
-| Role | Description |
-|------|-------------|
-| `admin` | Full access — can invite/remove members, edit CardiMember settings |
-| `staff` | Can view and acknowledge alerts, edit CardiMember details |
-| `viewer` | Read-only — can view dashboard and alerts, cannot modify settings |
+| Role | Enum value | Description |
+|------|-----------|-------------|
+| `Member` | 1 | Default for Family accounts — can view dashboards and alerts for linked CardiMembers |
+| `Admin` | 2 | Full access — can invite/remove members, edit CardiMember settings |
+| `Staff` | 3 | Business staff — can view and acknowledge alerts, edit CardiMember details |
 
 ---
 
@@ -60,7 +85,7 @@ Send an email invitation to a new family member. The invitation includes a role 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `email` | string | Yes | Invitee's email address |
-| `role` | string | Yes | `admin`, `staff`, or `viewer` |
+| `role` | string | Yes | `Member`, `Admin`, or `Staff` (see Role Values above) |
 | `message` | string | No | Personal message included in invitation email (max 500 chars) |
 
 ### Response `201 Created`
@@ -305,6 +330,8 @@ Add a shared care coordination note. Supports @mentions to notify specific famil
 
 ## GET `/api/v1/activity-log`
 
+> **Naming note:** despite the route name, this is the **audit trail**, not the codebase's `ActivityLog` entity (daily health metrics) — see the collision warning in "Implemented today".
+
 HIPAA-compliant audit log of all access events — who viewed what data and when. Required for compliance. Audit records are retained for **6 years** (most recent year queryable via this endpoint; older records available from the archive tier on request — see [infrastructure.md](../../../infrastructure.md)).
 
 **Priority:** P1 | **Auth Required:** Yes | **Required Role:** Admin
@@ -356,3 +383,5 @@ HIPAA-compliant audit log of all access events — who viewed what data and when
 ---
 
 **Related:** [readme.md](readme.md) | [alerts.md](alerts.md) | [notifications.md](notifications.md) | [User Stories 4.1, 4.2, 8.3](../../ui/mobile/user_stories.md)
+
+**Last Updated:** August 7, 2026

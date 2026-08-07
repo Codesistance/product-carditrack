@@ -15,7 +15,14 @@ Quota guardrails are enforced in code (`CardiTrack.Observability`), engine-indep
 only Warning+ logs ship, traces are head-sampled at 20% (DB commands included via Npgsql
 spans), `/health(z)` is never traced, and metrics (runtime, ASP.NET Core, HttpClient,
 Npgsql) ship only when the `apm_metrics_enabled` tfvar is true (→ `Apm__MetricsEnabled`
-env var) — they bill as custom metrics, so the switch is off by default.
+env var) — they bill as custom metrics, so the switch is off by default. Current
+per-environment values: **dev `apm_metrics_enabled = true`, prod `= false`**.
+
+**Known exception to the guardrails**: the API's `appsettings.json` overrides the
+defaults with `Apm:MinimumLogLevel = "Information"` and `Apm:TracesSampleRatio = 1.0`
+(100% sampling) — so the API ships far more than the Warning+/20% baseline wherever
+APM is configured. This is flagged as a code follow-up; until it lands, this override
+is the deployed reality.
 
 ## 1. Datadog console steps
 
@@ -133,7 +140,11 @@ printf '%s' '{"ClientToken":"<pub...>","ApplicationId":"<uuid>","Site":"Eu1"}' \
 
 Notes: the Datadog SDK raised the Android minimum from API 21 to 23; `Site` defaults to
 `Eu1` when omitted; consent is currently `Granted` at first launch — add a settings
-toggle before any store review that requires opt-in analytics consent.
+toggle before any store review that requires opt-in analytics consent. RUM sessions are
+**unsampled** (`SessionSampleRate = 100`) — fine at beta scale, revisit before broad
+rollout. The app also sets `FirstPartyHosts` for the API host with Datadog + W3C
+`traceparent` tracing headers, so RUM resource timings correlate with the API's OTel
+traces (RUM→APM correlation).
 
 ## 6. Later / non-blocking
 

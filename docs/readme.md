@@ -35,23 +35,25 @@ Welcome to the CardiTrack documentation. This directory contains comprehensive d
 **Read this** to understand the competitive landscape and CardiTrack's market position.
 
 #### [llm_design.md](./llm_design.md)
-**The target AI pipeline: MedGemma 1.5 4B inference on Azure Container Apps.**
-- Model selection rationale (4B vs 27B, T4 vs A100)
-- vLLM serving configuration and flags
-- Google Health API webhook ingestion (Event Hubs + 5-min batching)
-- SSA-LSTM pre-processing, prompt structure, and prefix caching
-- Predictive monitoring, severity routing, cost estimates, and caveats
+**AI pipeline design on GCP (Pub/Sub + Cloud Run).**
+- MedGemma (Ollama on Cloud Run) as the medical model + Gemini as the general model
+- Google Health API ingestion feeding the pipeline
+- Pre-processing, prompt structure, and severity routing
+- Predictive monitoring, cost estimates, and caveats
 
 #### [infrastructure.md](./infrastructure.md)
 **Complete infrastructure and database documentation.**
-- Storage boundary: Azure SQL (transactional) + Cosmos DB (AI pipeline)
+- Cloud SQL PostgreSQL 16 as the system of record
 - Database schema and entity relationships
-- Entity Framework Core setup and migrations
-- Security and encryption (AES-256-GCM)
-- Cloud infrastructure (Azure resources)
-- Terraform configuration and deployment
+- Entity Framework Core setup and migrations (via the migrator Cloud Run Job)
+- Security and encryption (AES-256-GCM, Secret Manager)
+- GCP resources: Cloud Run, Cloud SQL, GCS, Pub/Sub, optional LB/Cloud Armor
+- Terraform configuration and deployment (common/dev/prod stacks)
 - CI/CD pipeline and monitoring
 - Scaling strategy and disaster recovery
+
+#### [google_credits_pitch.md](./google_credits_pitch.md)
+**Google for Startups Cloud credits application** — company overview, problem/solution narrative, and GCP usage plan for the credits programme.
 
 **Reference this** for infrastructure setup, deployment, and database operations.
 
@@ -77,13 +79,16 @@ Located in `/apps/` — each application has its own README covering stack, stru
 **ASP.NET Core Web API** — stack, project structure, middleware, configuration, running locally. Endpoint documentation lives in [`/execution/backend/api/`](./execution/backend/api/readme.md).
 
 #### [apps/web/](./apps/web/readme.md)
-**Blazor Server Web Dashboard** — component structure, SignalR real-time integration, authentication flow, running locally, deployment, testing.
+**Blazor Web App** — current state (template shell, health-data disclosure banner, privacy page, APM/DataProtection wiring), planned dashboard features, running locally, deployment.
 
 #### [apps/mobile/](./apps/mobile/readme.md)
-**.NET MAUI Mobile App** — cross-platform architecture (iOS, Android), MVVM pattern, platform integrations (HealthKit, Health Connect), push notifications, offline support, store publishing.
+**.NET MAUI Mobile App** — cross-platform architecture (iOS, Android), code-behind pages + Mobile.Core (Auth0 native login, API client), onboarding flow, APM/crash reporting, store publishing; planned platform integrations (HealthKit, Health Connect, push, offline).
+
+#### [apps/mobile/store_provisioning.md](./apps/mobile/store_provisioning.md)
+**Store provisioning** — one-time keys, certificates, and Secret Manager secrets that let CI deliver signed builds to TestFlight and the Google Play internal testing track.
 
 #### [apps/worker/](./apps/worker/readme.md)
-**CardiTrack.Worker Background Service** — the .NET Worker Service hosting **non-AI background jobs** (OAuth token refresh, baseline recalculation, cleanup) using cron scheduling via Cronos. The AI ingestion/inference pipeline runs in Azure Functions — see [llm_design.md](./llm_design.md).
+**CardiTrack.Worker Background Service** — the .NET Worker Service hosting **non-AI background jobs** (30-minute wearable data sync with in-path OAuth token refresh, daily orphaned-organization cleanup) using cron scheduling via Cronos. The AI ingestion/inference pipeline is designed to run on GCP (Pub/Sub + Cloud Run) — see [llm_design.md](./llm_design.md).
 
 ---
 
@@ -93,6 +98,12 @@ Located in `/technical/` — detailed technical guides and specifications.
 
 #### [auth0_integration.md](./technical/auth0_integration.md)
 Complete guide to Auth0 authentication integration, OAuth flows, and security configuration.
+
+#### [auth0_setup_runbook.md](./technical/auth0_setup_runbook.md)
+Operator runbook for configuring the Auth0 tenant per environment (dev, prod) to match the implemented mobile auth and the API's JWT validation.
+
+#### [apm_setup_runbook.md](./technical/apm_setup_runbook.md)
+**Observability/APM** — Serilog + OpenTelemetry with a switchable APM engine (`Apm:Engine`; Datadog deployed, console-only when unset locally); token provisioning and setup steps.
 
 #### [oauth_clients.md](./technical/oauth_clients.md)
 Inventory of every OAuth client (identity vs device-data), social log-on scope, and provisioning steps for the Auth0 and Google Health API clients.
@@ -108,6 +119,15 @@ Guide to enum extensions and helper methods used throughout the solution.
 
 #### [user_onboarding_process.md](./technical/user_onboarding_process.md)
 Step-by-step guide to the user onboarding process, device connection flows, and OAuth integration.
+
+---
+
+### Compliance
+
+Located in `/compliance/`.
+
+#### [dpia.md](./compliance/dpia.md)
+Data Protection Impact Assessment (GDPR Art. 35) — processing inventory, risk assessment, and mitigations for the platform's health-data processing.
 
 ---
 
@@ -136,13 +156,14 @@ Deprecated or superseded documentation kept for historical reference. Nothing in
 ### For DevOps/Infrastructure
 
 1. **Read**: [infrastructure.md](./infrastructure.md) — complete infrastructure guide
-2. **Read**: [llm_design.md](./llm_design.md) — AI pipeline deployment (Container Apps GPU, Event Hubs, Cosmos DB)
-3. **Reference**: Terraform modules and Azure resource setup in infrastructure.md
+2. **Read**: [llm_design.md](./llm_design.md) — AI pipeline design (Pub/Sub, Cloud Run, MedGemma on Cloud Run)
+3. **Read**: [technical/apm_setup_runbook.md](./technical/apm_setup_runbook.md) — observability/APM wiring (Datadog)
+4. **Reference**: Terraform stacks (common/dev/prod) and GCP resource setup in infrastructure.md
 
 ### For API Consumers
 
 1. **Read**: [execution/backend/api/readme.md](./execution/backend/api/readme.md) — canonical API documentation
-2. **Test**: Use Swagger UI at https://localhost:7001/swagger (local development)
+2. **Test**: Use Swagger UI at https://localhost:7130/swagger (http: 5230) — Swagger is enabled in non-production environments only
 
 ---
 
@@ -207,12 +228,23 @@ dotnet build
 | apps/api/ | Backend Team | On API changes |
 | apps/web/ | Frontend Team | On UI changes |
 | apps/mobile/ | Mobile Team | On mobile app changes |
+| apps/mobile/store_provisioning.md | Mobile Team / DevOps | On store or signing changes |
 | apps/worker/ | Backend Team | On worker changes |
 | /technical/ | Tech Lead | As needed |
+| technical/apm_setup_runbook.md | DevOps Lead | On observability changes |
+| technical/auth0_setup_runbook.md | Tech Lead | On auth changes |
+| /compliance/ | Compliance Owner | On processing or legal changes |
+| google_credits_pitch.md | Product Lead | On application updates |
 
 ---
 
 ## 📝 Documentation Version History
+
+### Version 2.2 (August 7, 2026)
+- ✅ Aligned the index with the GCP platform: llm_design.md (Pub/Sub + Cloud Run + MedGemma via Ollama + Gemini), infrastructure.md (Cloud SQL PostgreSQL 16, Cloud Run, Secret Manager, GCS), and Terraform Google Provider references
+- ✅ Corrected the Worker description to the implemented jobs (30-minute wearable sync, daily orphan cleanup)
+- ✅ Indexed new docs: apm_setup_runbook.md, auth0_setup_runbook.md, google_credits_pitch.md, apps/mobile/store_provisioning.md, compliance/dpia.md
+- ✅ Fixed the Swagger URL (https://localhost:7130; non-production only) and the GitHub repository URL
 
 ### Version 2.1 (July 17, 2026)
 - ✅ Reconciled the spec around the target architecture ([llm_design.md](./llm_design.md)): webhook ingestion + Event Hubs + Azure Functions + MedGemma, with Azure SQL as the transactional system of record and Cosmos DB for AI pipeline outputs
@@ -257,7 +289,7 @@ For questions about:
 ## 🔗 External Resources
 
 ### CardiTrack Resources
-- **GitHub Repository**: https://github.com/marigbede/CardiTrack
+- **GitHub Repository**: https://github.com/Codesistance/product-carditrack
 - **Website**: (Coming soon)
 - **Support**: support@carditrack.com
 
@@ -267,8 +299,8 @@ For questions about:
 - [Entity Framework Core](https://docs.microsoft.com/ef/core/)
 - [Blazor](https://docs.microsoft.com/aspnet/core/blazor/)
 - [.NET MAUI](https://docs.microsoft.com/dotnet/maui/)
-- [Azure Documentation](https://docs.microsoft.com/azure/)
-- [Terraform Azure Provider](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs)
+- [Google Cloud Documentation](https://cloud.google.com/docs)
+- [Terraform Google Provider](https://registry.terraform.io/providers/hashicorp/google/latest/docs)
 
 ### Device Integration Documentation
 - [Google Health API](https://developers.google.com/health) (Fitbit, Pixel Watch, third-party sources — replaces the legacy Fitbit Web API, decommissioned Sept 2026)
@@ -284,6 +316,6 @@ All documentation is proprietary and confidential.
 
 ---
 
-**Last Updated**: July 17, 2026
+**Last Updated**: August 7, 2026
 **Maintained By**: CardiTrack Development Team
-**Version**: 2.1
+**Version**: 2.2

@@ -2,7 +2,7 @@
 
 ## Overview
 
-This document covers the complete infrastructure setup for CardiTrack, including database schema, encryption, deployment, and cloud resources.
+This document covers the complete infrastructure setup for CardiTrack, including the data architecture, encryption, deployment, and cloud resources. The platform runs entirely on **Google Cloud Platform** (project `carditrack-490120`, region `europe-west2`) and is provisioned with Terraform from [`infrastructure/`](../infrastructure/README.md).
 
 ## Table of Contents
 
@@ -10,486 +10,90 @@ This document covers the complete infrastructure setup for CardiTrack, including
 2. [Database Infrastructure](#database-infrastructure)
 3. [Entity Framework Core Setup](#entity-framework-core-setup)
 4. [Security & Encryption](#security--encryption)
-5. [Cloud Infrastructure (Azure)](#cloud-infrastructure-azure)
-6. [Terraform Configuration](#terraform-configuration)
-7. [CI/CD Pipeline](#cicd-pipeline)
-8. [Monitoring & Observability](#monitoring--observability)
-9. [Scaling Strategy](#scaling-strategy)
+5. [Cloud Infrastructure (GCP)](#cloud-infrastructure-gcp)
+6. [Secrets Management](#secrets-management)
+7. [Terraform Configuration](#terraform-configuration)
+8. [CI/CD Pipeline](#cicd-pipeline)
+9. [Monitoring & Observability](#monitoring--observability)
+10. [Scaling Strategy](#scaling-strategy)
+11. [Backup & Disaster Recovery](#backup--disaster-recovery)
+12. [Security Best Practices](#security-best-practices)
+13. [Cost Shape](#cost-shape)
+14. [Troubleshooting](#troubleshooting)
 
 ---
 
 ## Storage Boundary
 
-CardiTrack uses two data planes with a strict boundary:
+CardiTrack uses a **single data plane**: Cloud SQL for PostgreSQL is the system of record for everything.
 
 | Plane | Store | Holds |
 |-------|-------|-------|
-| **Transactional (system of record)** | **Azure SQL** + EF Core | Identity (users, orgs, roles), CardiMembers, device connections + **encrypted OAuth tokens**, normalized activity logs, baselines, alerts, subscriptions, invitations, notes, preferences, audit logs |
-| **AI pipeline** | **Azure Cosmos DB** (serverless) | MedGemma inference results, prediction cards, trend aggregates, digest logs — see [llm_design.md](./llm_design.md) |
+| **Transactional (system of record)** | **Cloud SQL PostgreSQL 16** + EF Core (Npgsql) | Identity (users, orgs, roles), CardiMembers, device connections + **encrypted OAuth tokens**, normalized activity logs, baselines, alerts, subscriptions, audit logs |
+| **AI pipeline (target design)** | Same Cloud SQL instance — **JSONB tables** for derived AI outputs | MedGemma inference results, prediction cards, trend aggregates, digest logs — see [llm_design.md](./llm_design.md) |
 
 Rules:
-- Azure SQL is the **only** system of record. Cosmos DB holds derived AI outputs that can be regenerated; nothing in Cosmos is authoritative for identity, consent, billing, or audit.
-- OAuth tokens, user profiles, and family relationships live in Azure SQL (encrypted where sensitive) — **not** in Table Storage.
-- The AI pipeline reads reference data (tokens, relationships, sensitivity settings) from SQL and writes results to Cosmos DB.
+- Cloud SQL is the **only** system of record. AI-pipeline outputs are derived data that can be regenerated; a second data plane (document store) was deliberately avoided.
+- OAuth tokens, user profiles, and family relationships live in Cloud SQL, encrypted where sensitive (AES-256-GCM at field level).
+- Files (report exports, mobile build artifacts, Data Protection keys, audit log exports) live in **Google Cloud Storage** buckets — never in the database.
 
 ---
 
 ## Database Infrastructure
 
 ### Database Provider
-- **Primary**: SQL Server (Azure SQL Database)
-- **Alternative**: PostgreSQL (supported)
-- **HIPAA Compliance**: TDE (Transparent Data Encryption) enabled
 
-### Core Tables
+- **Engine**: Cloud SQL for **PostgreSQL 16** (`POSTGRES_16`), Enterprise edition
+- **Driver**: Npgsql via EF Core
+- **Connectivity**: **Private IP only** (`ipv4_enabled = false` in both environments). Cloud Run services connect through the **Cloud SQL Auth Proxy Unix socket** (`/cloudsql/<connection-name>`) over the VPC; the proxy provides TLS, so the connection string uses `SSL Mode=Disable` for the local socket only. Direct TCP connections are `ENCRYPTED_ONLY`.
+- **Audit flags**: `log_connections` / `log_disconnections` are switched on when `enable_hipaa_compliance` is set (prod)
 
-#### Organizations
-Multi-tenant support for families and businesses.
+### Environment sizing
 
-```sql
-CREATE TABLE Organizations (
-    Id UNIQUEIDENTIFIER PRIMARY KEY,
-    Name NVARCHAR(200) NOT NULL,
-    Type NVARCHAR(50) NOT NULL, -- 'Family' or 'Business'
-    SubscriptionId UNIQUEIDENTIFIER,
-    IsActive BIT DEFAULT 1,
-    CreatedDate DATETIME2 DEFAULT GETUTCDATE(),
-    UpdatedDate DATETIME2
-);
-```
+| Setting | Dev | Prod |
+|---------|-----|------|
+| Tier | `db-f1-micro` (shared-core) | `db-custom-2-7680` (2 vCPU / 7.5 GB) |
+| Disk | 10 GB PD_SSD (autoresize) | 100 GB PD_SSD (autoresize) |
+| Availability | `ZONAL` | `REGIONAL` (high availability) |
+| Deletion protection | Off | **On** |
+| Automated backups | 7 retained, daily at 03:00 | 7 retained, daily at 03:00 |
 
-#### Users
-Family members and caregivers.
+### Schema
 
-```sql
-CREATE TABLE Users (
-    Id UNIQUEIDENTIFIER PRIMARY KEY,
-    OrganizationId UNIQUEIDENTIFIER NOT NULL,
-    Auth0UserId NVARCHAR(128) UNIQUE NOT NULL, -- Auth0 owns credentials; no local passwords
-    Email NVARCHAR(255) UNIQUE NOT NULL,
-    FirstName NVARCHAR(100) NOT NULL,
-    LastName NVARCHAR(100) NOT NULL,
-    Phone NVARCHAR(20),
-    Role NVARCHAR(50) NOT NULL, -- 'Admin', 'Staff', 'Viewer'
-    IsActive BIT DEFAULT 1,
-    CreatedDate DATETIME2 DEFAULT GETUTCDATE(),
-    UpdatedDate DATETIME2
-);
-```
+The schema is **defined by EF Core migrations** in `src/Infrastructure/CardiTrack.Infrastructure/Migrations/` — there is no hand-maintained DDL. For per-entity field documentation see [entity_summary.md](./technical/entity_summary.md).
 
-#### CardiMembers
-People being monitored (elderly individuals).
+Current tables (11):
 
-```sql
-CREATE TABLE CardiMembers (
-    Id UNIQUEIDENTIFIER PRIMARY KEY,
-    OrganizationId UNIQUEIDENTIFIER NOT NULL,
-    FirstName NVARCHAR(100) NOT NULL,
-    LastName NVARCHAR(100) NOT NULL,
-    Email NVARCHAR(255),
-    Phone NVARCHAR(20),
-    DateOfBirth DATE NOT NULL,
-    Gender NVARCHAR(20),
-    MedicalNotes NVARCHAR(2000), -- Encrypted
-    MonitoringPausedUntil DATETIME2, -- NULL = monitoring active
-    MonitoringPauseReason NVARCHAR(255),
-    IsActive BIT DEFAULT 1,
-    CreatedDate DATETIME2 DEFAULT GETUTCDATE(),
-    UpdatedDate DATETIME2
-);
-```
+| Table | Purpose |
+|-------|---------|
+| `Organizations` | Multi-tenant root — Family or Business accounts |
+| `Users` | Login accounts (Auth0-backed; no local passwords) |
+| `CardiMembers` | People being monitored |
+| `UserCardiMembers` | Many-to-many join between Users and CardiMembers |
+| `DeviceConnections` | Per-CardiMember OAuth device connections (encrypted tokens) |
+| `Devices` | Wearable device catalog (reference data) |
+| `ActivityLogs` | Normalized, device-agnostic daily health data |
+| `PatternBaselines` | Learned normal-pattern statistics per CardiMember |
+| `Alerts` | Health alerts generated by pattern analysis |
+| `AuditLogs` | Compliance audit trail for PHI access |
+| `Subscriptions` | Billing state per organization |
 
-#### DeviceConnections
-Multi-device OAuth connections per CardiMember.
+**Key recent migrations:**
 
-```sql
-CREATE TABLE DeviceConnections (
-    Id UNIQUEIDENTIFIER PRIMARY KEY,
-    CardiMemberId UNIQUEIDENTIFIER NOT NULL,
-    DeviceId UNIQUEIDENTIFIER NOT NULL, -- Reference to Devices table
-    DeviceType NVARCHAR(50) NOT NULL, -- 'Fitbit', 'AppleWatch', 'Garmin', etc.
-    DeviceUserId NVARCHAR(100),
-    AccessToken NVARCHAR(2000), -- Encrypted
-    RefreshToken NVARCHAR(2000), -- Encrypted
-    TokenExpiry DATETIME2,
-    Scopes NVARCHAR(500), -- JSON array
-    Status NVARCHAR(50) NOT NULL, -- 'Pending', 'Connected', 'Disconnected', 'TokenExpired', 'AuthError', 'SyncError'
-    IsPrimary BIT DEFAULT 0,
-    ConnectedDate DATETIME2,
-    LastSyncDate DATETIME2,
-    Metadata NVARCHAR(MAX), -- JSON for device-specific data
-    IsActive BIT DEFAULT 1,
-    CreatedDate DATETIME2 DEFAULT GETUTCDATE(),
-    UpdatedDate DATETIME2
-);
-```
+- `AddSubscriptionOrganizationForeignKey` + `CleanupOrphanedOnboardingOrganizations` — added a `Subscription → Organization` FK with cascade delete and cleaned up orphaned onboarding organizations (org-orphaning fix)
+- `AddUserAuth0UserIdUniqueIndex` — unique **filtered** index on `Users.Auth0UserId` (non-empty values only), backing onboarding's idempotent-retry lookup
+- `AddUserHealthDataDisclosureDismissed` — `HealthDataDisclosureDismissedDate` on `Users`, backing the health-data disclosure banner
+- `AddUserLocale` — `Users.Locale` for localization
 
-#### ActivityLogs
-Normalized, device-agnostic health data.
-
-```sql
-CREATE TABLE ActivityLogs (
-    Id UNIQUEIDENTIFIER PRIMARY KEY,
-    CardiMemberId UNIQUEIDENTIFIER NOT NULL,
-    DeviceConnectionId UNIQUEIDENTIFIER,
-    DataSource NVARCHAR(50) NOT NULL, -- Which device provided data
-    Date DATE NOT NULL,
-    Steps INT,
-    Distance DECIMAL(10,2),
-    Floors INT,
-    ActiveMinutes INT,
-    SedentaryMinutes INT,
-    CaloriesBurned INT,
-    RestingHeartRate INT,
-    AvgHeartRate INT,
-    MaxHeartRate INT,
-    HrvAverage INT, -- Heart Rate Variability
-    SleepMinutes INT,
-    SleepStartTime DATETIME2,
-    SleepEndTime DATETIME2,
-    SleepEfficiency INT,
-    DeepSleepMinutes INT,
-    LightSleepMinutes INT,
-    RemSleepMinutes INT,
-    AwakeMinutes INT,
-    SpO2Average DECIMAL(5,2),
-    SpO2Min DECIMAL(5,2),
-    SpO2Max DECIMAL(5,2),
-    VO2Max DECIMAL(5,2),
-    BreathingRate DECIMAL(5,2),
-    Temperature DECIMAL(5,2),
-    StressScore INT,
-    RawData NVARCHAR(MAX), -- JSON for device-specific extras
-    CreatedDate DATETIME2 DEFAULT GETUTCDATE(),
-    CONSTRAINT UQ_ActivityLog_CardiMember_Date_Source UNIQUE(CardiMemberId, Date, DataSource)
-);
-```
-
-#### PatternBaselines
-AI-learned normal health patterns.
-
-```sql
-CREATE TABLE PatternBaselines (
-    Id UNIQUEIDENTIFIER PRIMARY KEY,
-    CardiMemberId UNIQUEIDENTIFIER NOT NULL,
-    CalculatedDate DATETIME2 NOT NULL,
-    PeriodDays INT NOT NULL, -- e.g., 30, 60, 90
-    AvgSteps INT,
-    StdDevSteps DECIMAL(10,2),
-    AvgActiveMinutes INT,
-    StdDevActiveMinutes DECIMAL(10,2),
-    AvgRestingHeartRate INT,
-    StdDevRestingHeartRate DECIMAL(10,2),
-    AvgSleepMinutes INT,
-    StdDevSleepMinutes DECIMAL(10,2),
-    TypicalBedtime TIME,
-    TypicalWakeTime TIME,
-    AvgSleepEfficiency INT,
-    StepsByDayOfWeek NVARCHAR(500), -- JSON array
-    IsActive BIT DEFAULT 1,
-    CreatedDate DATETIME2 DEFAULT GETUTCDATE()
-);
-```
-
-#### Alerts
-Health alerts generated by pattern analysis.
-
-```sql
-CREATE TABLE Alerts (
-    Id UNIQUEIDENTIFIER PRIMARY KEY,
-    CardiMemberId UNIQUEIDENTIFIER NOT NULL,
-    AlertType NVARCHAR(50) NOT NULL, -- 'activity_decline', 'elevated_heart_rate', 'no_morning_activity', 'irregular_sleep', 'device_disconnected', 'long_term_trend'
-    Severity NVARCHAR(20) NOT NULL, -- 'yellow', 'orange', 'red' (alerts exist only for non-green states)
-    Title NVARCHAR(255) NOT NULL,
-    Message NVARCHAR(MAX) NOT NULL,
-    MetricValues NVARCHAR(MAX), -- JSON with relevant metrics
-    TriggeredDate DATETIME2 NOT NULL,
-    AcknowledgedDate DATETIME2,
-    AcknowledgedBy UNIQUEIDENTIFIER, -- UserId
-    IsResolved BIT DEFAULT 0,
-    ResolvedDate DATETIME2,
-    ResolvedBy UNIQUEIDENTIFIER, -- UserId
-    CreatedDate DATETIME2 DEFAULT GETUTCDATE()
-);
-```
-
-#### AuditLogs
-HIPAA-compliant audit trail.
-
-```sql
-CREATE TABLE AuditLogs (
-    Id UNIQUEIDENTIFIER PRIMARY KEY,
-    UserId UNIQUEIDENTIFIER,
-    CardiMemberId UNIQUEIDENTIFIER,
-    Action NVARCHAR(100) NOT NULL,
-    EntityType NVARCHAR(100),
-    EntityId UNIQUEIDENTIFIER,
-    Timestamp DATETIME2 DEFAULT GETUTCDATE(),
-    IpAddress NVARCHAR(50),
-    UserAgent NVARCHAR(500),
-    DataAccessed NVARCHAR(MAX), -- JSON summary
-    ChangedFields NVARCHAR(MAX), -- JSON of before/after
-    CreatedDate DATETIME2 DEFAULT GETUTCDATE()
-);
-```
-
-> **AuditLogs retention:** 6 years (HIPAA documentation retention). Rows older than 1 year are moved to an archive tier (Azure Blob, immutable storage); the most recent year stays queryable in SQL.
-
-#### Devices (Catalog)
-Reference data for supported wearable devices.
-
-```sql
-CREATE TABLE Devices (
-    Id UNIQUEIDENTIFIER PRIMARY KEY,
-    DeviceType NVARCHAR(50) NOT NULL, -- 'Fitbit', 'AppleWatch', 'Garmin', ...
-    Manufacturer NVARCHAR(100) NOT NULL,
-    ModelName NVARCHAR(100) NOT NULL,
-    Capabilities NVARCHAR(MAX), -- JSON: heartRate, spo2, ecg, steps, sleep, gps
-    IntegrationMode NVARCHAR(30) NOT NULL, -- 'server_oauth' | 'on_device_bridge' (Apple Health)
-    OAuthConfig NVARCHAR(MAX), -- JSON; NULL for on-device providers
-    IsActive BIT DEFAULT 1,
-    CreatedDate DATETIME2 DEFAULT GETUTCDATE(),
-    UpdatedDate DATETIME2
-);
-```
-
-#### Subscriptions
-Billing state per organization (Stripe-backed).
-
-```sql
-CREATE TABLE Subscriptions (
-    Id UNIQUEIDENTIFIER PRIMARY KEY,
-    OrganizationId UNIQUEIDENTIFIER NOT NULL,
-    Tier NVARCHAR(50) NOT NULL, -- 'Basic', 'Complete', 'Plus'
-    Status NVARCHAR(50) NOT NULL, -- 'Trialing', 'Active', 'PastDue', 'Cancelled', 'Suspended'
-    BillingCycle NVARCHAR(20) NOT NULL, -- 'Monthly', 'Annual'
-    PricePerMonth DECIMAL(10,2) NOT NULL,
-    Currency NVARCHAR(3) DEFAULT 'USD',
-    MaxCardiMembers INT NOT NULL, -- Basic: 2, Complete: 5
-    MaxUsers INT NOT NULL,        -- Basic: 5, Complete: 20
-    TrialEndsAt DATETIME2,
-    CurrentPeriodStart DATE,
-    CurrentPeriodEnd DATE,
-    CancelAtPeriodEnd BIT DEFAULT 0,
-    StripeCustomerId NVARCHAR(100),
-    StripeSubscriptionId NVARCHAR(100),
-    Features NVARCHAR(MAX), -- JSON
-    CreatedDate DATETIME2 DEFAULT GETUTCDATE(),
-    UpdatedDate DATETIME2
-);
-```
-
-#### UserCardiMembers
-Many-to-many join between Users and CardiMembers.
-
-```sql
-CREATE TABLE UserCardiMembers (
-    Id UNIQUEIDENTIFIER PRIMARY KEY,
-    UserId UNIQUEIDENTIFIER NOT NULL,
-    CardiMemberId UNIQUEIDENTIFIER NOT NULL,
-    RelationshipType NVARCHAR(50) NOT NULL, -- 'Self', 'Parent', 'Spouse', ...
-    IsPrimaryCaregiver BIT DEFAULT 0,
-    CreatedDate DATETIME2 DEFAULT GETUTCDATE(),
-    CONSTRAINT UQ_UserCardiMember UNIQUE(UserId, CardiMemberId)
-);
-```
-
-### Feature Tables
-
-These tables back API features defined in [/execution/backend/api/](./execution/backend/api/readme.md).
-
-```sql
--- Emergency contacts (up to 5 per CardiMember) — cardimembers.md
-CREATE TABLE EmergencyContacts (
-    Id UNIQUEIDENTIFIER PRIMARY KEY,
-    CardiMemberId UNIQUEIDENTIFIER NOT NULL,
-    Name NVARCHAR(200) NOT NULL,
-    Phone NVARCHAR(20) NOT NULL,
-    Relationship NVARCHAR(50),
-    SortOrder INT DEFAULT 0,
-    CreatedDate DATETIME2 DEFAULT GETUTCDATE()
-);
-
--- Consent history (append-only; latest row is current) — cardimembers.md
-CREATE TABLE ConsentRecords (
-    Id UNIQUEIDENTIFIER PRIMARY KEY,
-    CardiMemberId UNIQUEIDENTIFIER NOT NULL,
-    ShareActivity BIT NOT NULL,
-    ShareHeartRate BIT NOT NULL,
-    ShareSleep BIT NOT NULL,
-    ConsentedByName NVARCHAR(200) NOT NULL,
-    ConsentMethod NVARCHAR(30) NOT NULL, -- 'digital_signature' | 'verbal_confirmed'
-    ConsentedAt DATETIME2 DEFAULT GETUTCDATE()
-);
-
--- Family invitations (7-day expiry) — family.md
-CREATE TABLE FamilyInvitations (
-    Id UNIQUEIDENTIFIER PRIMARY KEY,
-    OrganizationId UNIQUEIDENTIFIER NOT NULL,
-    Email NVARCHAR(255) NOT NULL,
-    Role NVARCHAR(50) NOT NULL, -- 'Admin', 'Staff', 'Viewer'
-    Message NVARCHAR(500),
-    Status NVARCHAR(30) NOT NULL, -- 'Pending', 'Accepted', 'Revoked', 'Expired'
-    InvitedByUserId UNIQUEIDENTIFIER NOT NULL,
-    ExpiresAt DATETIME2 NOT NULL,
-    SentAt DATETIME2 DEFAULT GETUTCDATE()
-);
-
--- Shared care-coordination notes with @mentions — family.md
-CREATE TABLE SharedNotes (
-    Id UNIQUEIDENTIFIER PRIMARY KEY,
-    CardiMemberId UNIQUEIDENTIFIER NOT NULL,
-    AuthorUserId UNIQUEIDENTIFIER NOT NULL,
-    Content NVARCHAR(2000) NOT NULL,
-    MentionedUserIds NVARCHAR(MAX), -- JSON array of UserIds
-    ViewReceipts NVARCHAR(MAX),     -- JSON array of {userId, viewedAt}
-    CreatedDate DATETIME2 DEFAULT GETUTCDATE()
-);
-
--- CardiMember self-authored notes — cardimembers.md
-CREATE TABLE CardiMemberNotes (
-    Id UNIQUEIDENTIFIER PRIMARY KEY,
-    CardiMemberId UNIQUEIDENTIFIER NOT NULL,
-    Content NVARCHAR(1000) NOT NULL,
-    CreatedDate DATETIME2 DEFAULT GETUTCDATE()
-);
-
--- Alert follow-up notes and photo attachments — alerts.md
-CREATE TABLE AlertNotes (
-    Id UNIQUEIDENTIFIER PRIMARY KEY,
-    AlertId UNIQUEIDENTIFIER NOT NULL,
-    AuthorUserId UNIQUEIDENTIFIER NOT NULL,
-    Content NVARCHAR(2000) NOT NULL,
-    ActionTaken NVARCHAR(50), -- id from recommendedActions (analytics)
-    CreatedDate DATETIME2 DEFAULT GETUTCDATE()
-);
-
-CREATE TABLE AlertPhotos (
-    Id UNIQUEIDENTIFIER PRIMARY KEY,
-    AlertId UNIQUEIDENTIFIER NOT NULL,
-    UploadedByUserId UNIQUEIDENTIFIER NOT NULL,
-    BlobUrl NVARCHAR(500) NOT NULL, -- Azure Blob Storage
-    Caption NVARCHAR(255),
-    UploadedAt DATETIME2 DEFAULT GETUTCDATE()
-);
-
--- Per-CardiMember alert preferences (quiet hours, sensitivity, routing) — alerts.md
-CREATE TABLE AlertPreferences (
-    Id UNIQUEIDENTIFIER PRIMARY KEY,
-    CardiMemberId UNIQUEIDENTIFIER NOT NULL UNIQUE,
-    Sensitivity NVARCHAR(20) NOT NULL DEFAULT 'medium', -- 'low' | 'medium' | 'high'
-    Channels NVARCHAR(MAX),          -- JSON: {push, email, sms}
-    QuietHours NVARCHAR(MAX),        -- JSON: {enabled, from, to, timezone, overrideForSeverity}
-    AlertTypeSettings NVARCHAR(MAX), -- JSON array: [{type, enabled, minSeverity}]
-    FamilyRoutingRules NVARCHAR(MAX),-- JSON array: [{userId, receivesSeverity}]
-    UpdatedDate DATETIME2
-);
-
--- Push notification device tokens — notifications.md
-CREATE TABLE PushNotificationTokens (
-    Id UNIQUEIDENTIFIER PRIMARY KEY,
-    UserId UNIQUEIDENTIFIER NOT NULL,
-    DeviceId NVARCHAR(100) NOT NULL,
-    Platform NVARCHAR(10) NOT NULL, -- 'ios' | 'android'
-    PushToken NVARCHAR(500) NOT NULL,
-    AppVersion NVARCHAR(20),
-    LastSeenAt DATETIME2,
-    CreatedDate DATETIME2 DEFAULT GETUTCDATE(),
-    CONSTRAINT UQ_PushToken_User_Device UNIQUE(UserId, DeviceId)
-);
-
--- Per-user global notification preferences — notifications.md
-CREATE TABLE NotificationPreferences (
-    Id UNIQUEIDENTIFIER PRIMARY KEY,
-    UserId UNIQUEIDENTIFIER NOT NULL UNIQUE,
-    GlobalChannels NVARCHAR(MAX), -- JSON: {push, email, sms}
-    WeeklyDigest NVARCHAR(MAX),   -- JSON: {enabled, deliveryDay, deliveryTime, timezone}
-    UpdatedDate DATETIME2
-);
-
--- Async report generation — reports.md
-CREATE TABLE Reports (
-    Id UNIQUEIDENTIFIER PRIMARY KEY,
-    RequestedByUserId UNIQUEIDENTIFIER NOT NULL,
-    CardiMemberIds NVARCHAR(MAX) NOT NULL, -- JSON array (max 5)
-    Format NVARCHAR(20) NOT NULL, -- 'pdf' | 'csv' | 'fhir_r4' | 'hl7_v2'
-    Parameters NVARCHAR(MAX), -- JSON: dateRange, sections, fhirProfile, fhirResources, title
-    Status NVARCHAR(20) NOT NULL, -- 'Pending', 'Ready', 'Failed', 'Expired'
-    BlobUrl NVARCHAR(500),
-    FileSizeBytes BIGINT,
-    Error NVARCHAR(1000),
-    DownloadExpiresAt DATETIME2, -- 24h after completion
-    CreatedDate DATETIME2 DEFAULT GETUTCDATE(),
-    CompletedAt DATETIME2
-);
-```
+**Planned tables (designed in the API spec, not yet implemented):** `EmergencyContacts`, `ConsentRecords`, `FamilyInvitations`, `SharedNotes`, `CardiMemberNotes`, `AlertNotes`, `AlertPhotos`, `AlertPreferences`, `PushNotificationTokens`, `NotificationPreferences`, `Reports`. These back API features defined in [/execution/backend/api/](./execution/backend/api/readme.md) and will be added via EF migrations as the features land.
 
 > **Biometric login:** no server-side table. Under the Auth0-only auth model, biometrics are a **local device gate** that unlocks the securely stored Auth0 refresh token — see [auth.md](./execution/backend/api/auth.md).
 
-### Indexes for Performance
-
-```sql
--- Activity Logs
-CREATE INDEX IX_ActivityLogs_CardiMemberId ON ActivityLogs(CardiMemberId);
-CREATE INDEX IX_ActivityLogs_Date ON ActivityLogs(Date);
-CREATE INDEX IX_ActivityLogs_DataSource ON ActivityLogs(DataSource);
-
--- Alerts
-CREATE INDEX IX_Alerts_CardiMemberId ON Alerts(CardiMemberId);
-CREATE INDEX IX_Alerts_TriggeredDate ON Alerts(TriggeredDate);
-CREATE INDEX IX_Alerts_Severity ON Alerts(Severity);
-
--- Device Connections
-CREATE INDEX IX_DeviceConnections_CardiMemberId ON DeviceConnections(CardiMemberId);
-CREATE INDEX IX_DeviceConnections_Status ON DeviceConnections(Status);
-
--- Audit Logs
-CREATE INDEX IX_AuditLogs_CardiMemberId_Timestamp ON AuditLogs(CardiMemberId, Timestamp);
-CREATE INDEX IX_AuditLogs_UserId_Timestamp ON AuditLogs(UserId, Timestamp);
-```
+> **AuditLogs retention:** application-level audit rows follow the product retention policy; platform-level audit logs are additionally exported to a retention-locked GCS bucket in prod (see [Monitoring & Observability](#monitoring--observability)).
 
 ---
 
 ## Entity Framework Core Setup
-
-### DbContext Configuration
-
-```csharp
-public class CardiTrackDbContext : DbContext
-{
-    public DbSet<Organization> Organizations { get; set; }
-    public DbSet<User> Users { get; set; }
-    public DbSet<CardiMember> CardiMembers { get; set; }
-    public DbSet<DeviceConnection> DeviceConnections { get; set; }
-    public DbSet<ActivityLog> ActivityLogs { get; set; }
-    public DbSet<PatternBaseline> PatternBaselines { get; set; }
-    public DbSet<Alert> Alerts { get; set; }
-    public DbSet<AuditLog> AuditLogs { get; set; }
-
-    public override int SaveChanges()
-    {
-        UpdateTimestamps();
-        return base.SaveChanges();
-    }
-
-    public override async Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
-    {
-        UpdateTimestamps();
-        return await base.SaveChangesAsync(cancellationToken);
-    }
-
-    private void UpdateTimestamps()
-    {
-        var entries = ChangeTracker.Entries()
-            .Where(e => e.Entity is BaseEntity && e.State == EntityState.Modified);
-
-        foreach (var entry in entries)
-        {
-            ((BaseEntity)entry.Entity).UpdatedDate = DateTime.UtcNow;
-        }
-    }
-}
-```
 
 ### Creating Migrations
 
@@ -498,11 +102,15 @@ public class CardiTrackDbContext : DbContext
 cd src/Infrastructure/CardiTrack.Infrastructure
 
 # Create migration
-dotnet ef migrations add InitialCreate --startup-project ../../Presentation/CardiTrack.API
+dotnet ef migrations add MyMigration --startup-project ../../Presentation/CardiTrack.API
 
-# Update database
+# Update local database
 dotnet ef database update --startup-project ../../Presentation/CardiTrack.API
 ```
+
+### Applying Migrations in Deployed Environments
+
+Deployed environments never run `dotnet ef` directly. Migrations are executed by the **Cloud Run migrator Job** (`carditrack-<env>-api-migrator`), built from `src/Presentation/CardiTrack.API/Dockerfile.migrate`. The CI pipeline updates the job image and executes it (with `--wait`) before deploying application services, connecting to the private database over the Cloud SQL Auth Proxy socket.
 
 ---
 
@@ -510,33 +118,7 @@ dotnet ef database update --startup-project ../../Presentation/CardiTrack.API
 
 ### AES-256-GCM Encryption
 
-CardiTrack uses AES-256-GCM (Galois/Counter Mode) for field-level encryption of sensitive data.
-
-```csharp
-public class AesEncryptionService : IEncryptionService
-{
-    private readonly byte[] _key;
-
-    public string Encrypt(string plaintext)
-    {
-        using var aes = new AesGcm(_key);
-        var nonce = new byte[AesGcm.NonceByteSizes.MaxSize];
-        var tag = new byte[AesGcm.TagByteSizes.MaxSize];
-        var ciphertext = new byte[plaintext.Length];
-
-        RandomNumberGenerator.Fill(nonce);
-        aes.Encrypt(nonce, Encoding.UTF8.GetBytes(plaintext), ciphertext, tag);
-
-        return Convert.ToBase64String(nonce.Concat(tag).Concat(ciphertext).ToArray());
-    }
-
-    public string Decrypt(string ciphertext)
-    {
-        var combined = Convert.FromBase64String(ciphertext);
-        // Decryption logic...
-    }
-}
-```
+CardiTrack uses AES-256-GCM (Galois/Counter Mode) for field-level encryption of sensitive data, implemented in the Infrastructure layer's encryption service.
 
 ### Encrypted Fields
 
@@ -546,68 +128,109 @@ public class AesEncryptionService : IEncryptionService
 
 ### Key Management
 
-**Development:**
-- Store in `appsettings.Development.json`
+- **Development**: `Encryption:Key` in `appsettings.Development.json` / user secrets
+- **Deployed**: the key lives in **Secret Manager** as `carditrack-<env>-encryption-key` and is injected into the API and Worker as the `Encryption__Key` environment variable. Terraform seeds the secret with a `REPLACE_ME` placeholder; an operator sets the real value (see [Secrets Management](#secrets-management)). The key is never stored in tfvars or source control.
 
-**Production:**
-- **Azure Key Vault** (recommended)
-- Managed identities for access
-
-```json
-{
-  "Encryption": {
-    "Key": "<<NEVER COMMIT THIS>>"
-  },
-  "KeyVault": {
-    "VaultUri": "https://carditrack-kv.vault.azure.net/"
-  }
-}
-```
+For the wider data-protection picture (Auth0, DPIA, ASP.NET Data Protection), see [data_protection_architecture.md](./technical/data_protection_architecture.md) and the [DPIA](./compliance/dpia.md).
 
 ---
 
-## Cloud Infrastructure (Azure)
+## Cloud Infrastructure (GCP)
 
-### Resource Group Structure
+All resources live in GCP project **`carditrack-490120`**, region **`europe-west2`**, and are managed by Terraform.
+
+### Resource inventory (per environment)
 
 ```
-carditrack-dev-rg
-├── carditrack-dev-app (App Service — API)
-├── carditrack-dev-sql (SQL Database — transactional system of record)
-├── carditrack-dev-worker (App Service / Container App — Worker, non-AI jobs)
-├── carditrack-dev-kv (Key Vault)
-├── carditrack-dev-insights (Application Insights)
-├── carditrack-dev-signalr (SignalR Service)
-│
-│   AI pipeline (from AI rollout — see llm_design.md)
-├── carditrack-dev-eh (Event Hubs — wearable-raw ingestion buffer)
-├── carditrack-dev-cosmos (Cosmos DB serverless — AI results)
-├── carditrack-dev-func (Azure Functions — pipeline logic, dotnet-isolated)
-├── carditrack-dev-aca (Container Apps env + GPU workload profile — MedGemma/vLLM)
-├── carditrack-dev-notif (Notification Hubs — FCM/APNs routing)
-└── carditrack-dev-blob (Blob Storage — per-user LSTM models, report files, audit archive)
+carditrack-<env>
+├── Cloud Run services
+│   ├── carditrack-<env>-api        (public*, Cloud SQL socket, VPC egress)
+│   ├── carditrack-<env>-web        (public*, gen2, GCS dp-keys volume)
+│   ├── carditrack-<env>-worker     (internal-only — non-AI background jobs)
+│   └── carditrack-<env>-medgemma   (internal-only, optional — Ollama-served MedGemma;
+│                                    created only when medgemma_image is non-empty)
+├── Cloud Run job
+│   └── carditrack-<env>-api-migrator  (EF Core migrations, run per deploy by CI)
+├── Cloud SQL
+│   └── carditrack-<env>-sql  (PostgreSQL 16, private IP only)
+├── Cloud Storage
+│   ├── carditrack-490120-carditrack-<env>          (main application bucket, EU)
+│   ├── carditrack-490120-carditrack-<env>-dp-keys  (ASP.NET Data Protection key ring for Web,
+│   │                                                mounted as a gen2 GCS volume at /var/dpkeys)
+│   └── carditrack-490120-carditrack-<env>-audit    (COLDLINE, retention-policy-locked bucket
+│                                                    fed by a Cloud Logging sink — HIPAA-gated,
+│                                                    so prod only today)
+├── Secret Manager        (per-env secrets — see Secrets Management)
+├── VPC
+│   ├── carditrack-<env>-vpc + carditrack-<env>-subnet (10.0.0.0/24)
+│   └── Private services access peering (/16) for Cloud SQL private IP
+├── Global HTTPS LB + Cloud CDN + Cloud Armor WAF   (optional — created only when custom
+│   domains are set; dev only today)
+└── Pub/Sub topic carditrack-<env>-realtime + subscription (optional — enable_pubsub,
+    prod only today)
 ```
 
-### Cost Estimates
+\* When custom domains are configured, API and Web ingress switches to `INTERNAL_LOAD_BALANCER` so traffic must pass through the load balancer and WAF; without domains they use Cloud Run default URLs with `INGRESS_TRAFFIC_ALL`. Worker and MedGemma are always `INTERNAL_ONLY`.
 
-#### MVP Phase (0-100 users, pre-AI rollout)
-- **App Service** (Basic B1 — API): $13/month
-- **Azure SQL** (Basic): $5/month
-- **Worker** (App Service Basic B1): $13/month
-- **Key Vault**: Free tier
-- **Total**: ~$31-35/month
+Service enablement (`run`, `sqladmin`, `storage`, `secretmanager`, `monitoring`, `logging`, `compute`, `servicenetworking`, and `pubsub` when enabled) is managed in `infrastructure/deployments/apis.tf`.
 
-#### Growth Phase (1,000-10,000 users, AI pipeline live)
-- **App Service** (Premium P1V2 — API): $146/month
-- **Azure SQL** (Standard S2): $75/month
-- **Worker** (Container App): ~$30-50/month
-- **SignalR** (Standard): $50/month
-- **ACA T4 GPU** (1 replica always-on, MedGemma inference): ~$430/month
-- **Event Hubs** (Standard, 1 TU): ~$11/month
-- **Cosmos DB** (serverless): ~$25/month
-- **Notification Hubs** (Basic): ~$6/month
-- **Azure Functions** (consumption): near-zero at this scale
-- **Total**: ~$775-795/month + third-party services
+### Edge: load balancer + Cloud Armor (domain-gated)
+
+The Global External HTTPS Load Balancer, Cloud CDN (Web backend only), Google-managed certificates, TLS 1.2+ MODERN SSL policy, and the Cloud Armor WAF policy are all created **only when at least one custom domain is set** in the environment's tfvars.
+
+- **Dev** has `api.dev.carditrack.com` / `app.dev.carditrack.com` configured → full LB + WAF + CDN stack is active.
+- **Prod** has empty domains → **no load balancer and no WAF in prod**; services are reached on their Cloud Run default URLs. This is a known, deferred posture — edge enablement is pending custom domain setup.
+
+Cloud Armor rules (dev, where the WAF exists): block requests not using a configured Host header (prevents direct-IP access), block known scanner user agents (curl, libredtail-http, Go-http-client/1.1, CensysInspect), block sensitive file extensions (`.config`, `.xml`, `.php`, `.env`, `.yaml`, `.toml`, `.cfg`, `.conf`, `.gpg`), block CMS/WordPress scanner paths (`/wp-json`, `/wp-admin`, `/wp-content`, `/wp-includes`), per-IP rate limiting (100 req/min), and the preconfigured OWASP rule sets (XSS, SQLi, RCE, LFI — `v33-stable`).
+
+### MedGemma service
+
+MedGemma is served by **Ollama on Cloud Run (CPU)** — image built from `src/Infrastructure/MedGemma/Dockerfile`, which bakes the model tag from `.model-version` (`medgemma:4b`) into the image. Sizing: 8 vCPU / 16 Gi, max **1 instance** (Ollama cannot safely multi-instance), `cpu_idle = false`, startup CPU boost, internal-only ingress on port 8080. The service is created only when `medgemma_image` is non-empty. After each deploy, CI writes the service URL to the `carditrack-<env>-medgemma-service-url` secret, which the API consumes as `AI__Providers__0__BaseUrl`. See [llm_design.md](./llm_design.md) for the AI architecture.
+
+### Common stack (shared across environments)
+
+`infrastructure/common/` is a separate Terraform root with its own state, holding resources with no environment distinction:
+
+- **Artifact Registry** `carditrack-common` — central Docker repository (cleanup policy keeps the last 50 versions)
+- **Builds bucket** `carditrack-common-builds` — mobile build artifacts (10-day lifecycle delete)
+- **9 store distribution secrets** (`carditrack-common-*`) — Apple distribution cert/password, App Store provisioning profile and Connect API credentials, Android keystore/password, Play service account key
+
+The Artifact Registry and builds bucket were **migrated out of the dev/prod stacks into common**; `infrastructure/artifact_registry.tf` and `infrastructure/builds_bucket.tf` now contain only `removed {}` blocks that drop the old resources from dev/prod state without destroying them. See the [infrastructure README](../infrastructure/README.md) for the operational implications.
+
+---
+
+## Secrets Management
+
+All application secrets live in **Secret Manager** and are injected into Cloud Run as environment variables via `secret_key_ref` (version `latest`). Terraform grants the Cloud Run runtime service account `secretmanager.secretAccessor` per secret.
+
+### The seeding contract
+
+Terraform creates most app secrets with a **`REPLACE_ME` placeholder** and `lifecycle { ignore_changes = [secret_data] }` on the version. Operators overwrite the value out-of-band:
+
+```bash
+echo -n "real-value" | gcloud secrets versions add carditrack-<env>-<name> --data-file=-
+```
+
+Subsequent `terraform apply` runs never revert operator-set values. The application treats placeholder values as "not configured".
+
+### Per-environment secrets
+
+| Secret (`carditrack-<env>-…`) | Owner | Consumed as |
+|-------------------------------|-------|-------------|
+| `db-password` | Terraform (`random_password`, 32 chars) | Embedded in the connection string |
+| `db-connection-string` | Terraform (composed; Auth Proxy socket) | `ConnectionStrings__DefaultConnection` |
+| `auth0-domain`, `auth0-audience`, `auth0-client-id`, `auth0-client-secret` | Operator (`scripts/set-auth0-secrets.sh`) | `Auth0__*` |
+| `auth0-mobile-client-id` | Operator (same script) | Stamped into mobile builds by CI |
+| `encryption-key` | Operator | `Encryption__Key` |
+| `health-token` | Terraform (`random_password`, 40 chars) | `Health__Token` — `/health` requires the `X-Health-Token` header; CI reads it for smoke tests |
+| `fitbit-client-id`, `fitbit-client-secret` | Operator | `DeviceProviders__0__ClientId/ClientSecret` (Google Health API OAuth client) |
+| `gemini-api-key` | Operator | `AI__Providers__1__ApiKey` |
+| `medgemma-service-url` | CI (written after each MedGemma deploy) | `AI__Providers__0__BaseUrl` |
+| `apm-data` | Operator (`scripts/set-apm-secrets.sh`) | `Apm__Data` (APM connection JSON) |
+| `apm-mobile-data` | Operator | Stamped into mobile builds by CI |
+| `apm-mobile-engine` | Terraform (tracks the `apm_mobile_engine` tfvar) | Stamped into mobile builds by CI |
+
+Passwords are generated with `random_password` inside Terraform — **never** placed in tfvars or committed.
 
 ---
 
@@ -617,195 +240,116 @@ carditrack-dev-rg
 
 ```
 infrastructure/
-├── main.tf
+├── main.tf                    # Orchestration — wires vars into the deployments module
 ├── variables.tf
 ├── outputs.tf
 ├── providers.tf
-├── versions.tf
-├── backend.tf
+├── versions.tf                # Terraform >= 1.14.7, google ~> 7.23, random ~> 3.6
+├── backend.tf                 # GCS backend; bucket/prefix supplied at init time
+├── backend_override.tf.example  # Copy to backend_override.tf for local state
+├── artifact_registry.tf       # removed{} blocks only (migrated to common/)
+├── builds_bucket.tf           # removed{} blocks only (migrated to common/)
 ├── environments/
+│   ├── common.tfvars
 │   ├── dev.tfvars
-│   ├── staging.tfvars
 │   └── prod.tfvars
-└── deployments/
-    ├── app_service.tf
-    ├── azure_sql.tf
-    ├── worker.tf
-    ├── key_vault.tf
-    ├── monitoring.tf
-    ├── signalr.tf
-    ├── event_hubs.tf        # AI pipeline: ingestion buffer
-    ├── cosmos_db.tf         # AI pipeline: results store
-    ├── functions.tf         # AI pipeline: dotnet-isolated Function App
-    ├── container_apps.tf    # AI pipeline: ACA env + GPU workload profile (MedGemma/vLLM)
-    └── notification_hubs.tf # AI pipeline: push routing
+├── common/                    # Separate root: Artifact Registry, builds bucket, store secrets
+└── deployments/               # Single module with all per-env resources
+    ├── main.tf
+    ├── apis.tf                # Service enablement
+    ├── cloud_run.tf           # api, web, worker, medgemma + migrator job
+    ├── cloud_sql.tf
+    ├── cloud_storage.tf       # main + dp-keys buckets
+    ├── cloud_monitoring.tf    # audit bucket + logging sink (HIPAA-gated)
+    ├── load_balancer.tf       # GCLB + CDN + Cloud Armor (domain-gated)
+    ├── networking.tf          # VPC, subnet, private services access
+    ├── pubsub.tf              # optional (enable_pubsub)
+    ├── secret_manager.tf
+    └── outputs.tf
 ```
 
-### Example: App Service
-
-```hcl
-resource "azurerm_service_plan" "main" {
-  name                = "${var.prefix}-plan"
-  resource_group_name = azurerm_resource_group.main.name
-  location            = var.location
-  os_type             = "Linux"
-  sku_name            = var.app_service_sku
-}
-
-resource "azurerm_linux_web_app" "api" {
-  name                = "${var.prefix}-api"
-  resource_group_name = azurerm_resource_group.main.name
-  location            = var.location
-  service_plan_id     = azurerm_service_plan.main.id
-
-  site_config {
-    always_on = true
-    application_stack {
-      dotnet_version = "10.0"
-    }
-  }
-
-  app_settings = {
-    "ASPNETCORE_ENVIRONMENT" = var.environment
-    "KeyVault__VaultUri"     = azurerm_key_vault.main.vault_uri
-  }
-
-  identity {
-    type = "SystemAssigned"
-  }
-}
-```
+There is no `modules/` directory and **no staging environment** — the model is three stacks: `common`, `dev`, `prod`, each with its own state prefix in a GCS backend.
 
 ### Deploying Infrastructure
 
 ```bash
-# Initialize Terraform
-terraform init
+# Initialize with the environment's state location
+terraform -chdir=infrastructure init \
+  -backend-config="bucket=<state-bucket>" \
+  -backend-config="prefix=carditrack/<env>"
 
-# Plan changes
-terraform plan -var-file="environments/dev.tfvars"
-
-# Apply infrastructure
-terraform apply -var-file="environments/dev.tfvars"
+# Plan / apply
+terraform -chdir=infrastructure plan  -var-file="environments/<env>.tfvars"
+terraform -chdir=infrastructure apply -var-file="environments/<env>.tfvars"
 ```
+
+The normal apply path is the `deploy-infra-*` GitHub workflows, not local applies — see [infrastructure/README.md](../infrastructure/README.md) for the full operator guide.
 
 ---
 
 ## CI/CD Pipeline
 
-### GitHub Actions Workflow
+All GitHub Actions workflows authenticate to GCP with **Workload Identity Federation** (no long-lived keys) as the `carditrack-deploy` service account.
 
-```yaml
-name: Deploy CardiTrack
+| Workflow | Trigger | What it does |
+|----------|---------|--------------|
+| `deploy-apps-dev.yml` | Push to `main` | Builds/tests API, Web, Worker, migrator, and mobile; security scans; pushes images to Artifact Registry; runs the migrator job; deploys to dev Cloud Run |
+| `deploy-apps-prod.yml` | Manual (`workflow_dispatch` with a semver tag) | Validates tag + images, runs prod migrations via the migrator job, deploys API/Web/Worker, deploys MedGemma (`deploy-medgemma` job, then writes `carditrack-prod-medgemma-service-url`), uploads mobile builds to the stores |
+| `deploy-infra-dev.yml` / `deploy-infra-prod.yml` | Push to `main` on infra paths (dev), manual (prod) | `terraform fmt`/`validate`, state-bucket bootstrap, plan (pinned + latest Terraform compatibility matrix), apply |
+| `deploy-infra-common.yml` | Infra changes to `common/` | Same flow for the shared stack |
 
-on:
-  push:
-    branches: [main]
-
-jobs:
-  build:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-
-      - name: Setup .NET
-        uses: actions/setup-dotnet@v3
-        with:
-          dotnet-version: '10.0.x'
-
-      - name: Restore dependencies
-        run: dotnet restore
-
-      - name: Build
-        run: dotnet build --configuration Release
-
-      - name: Test
-        run: dotnet test --no-build --verbosity normal
-
-      - name: Publish API
-        run: dotnet publish src/Presentation/CardiTrack.API -c Release -o ./publish/api
-
-      - name: Deploy to Azure
-        uses: azure/webapps-deploy@v2
-        with:
-          app-name: carditrack-dev-api
-          publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE }}
-          package: ./publish/api
-```
+Shared configuration (versions, project ID, region, WIF provider, state buckets) is centralized in the reusable `_env.yml` workflow.
 
 ---
 
 ## Monitoring & Observability
 
-### Application Insights
+### Application telemetry: CardiTrack.Observability
 
-```csharp
-services.AddApplicationInsightsTelemetry(options =>
-{
-    options.ConnectionString = configuration["ApplicationInsights:ConnectionString"];
-});
-```
+API, Web, and Worker share the `CardiTrack.Observability` library — **Serilog** structured logging plus **OpenTelemetry** traces (and optional metrics), shipped to a switchable APM backend:
 
-### Key Metrics to Track
+- `Apm:Engine` selects the provider from `ApmProviderRegistry` — **`BetterStack` or `Datadog`**. Both dev and prod tfvars set **Datadog**. ⚠️ **Trap:** the Terraform variable *default* is `BetterStack` — if an environment omits `apm_engine`, the deployment silently reverts to the BetterStack provider. Locally, with no engine set, telemetry is console-only.
+- `Apm:Data` (secret `carditrack-<env>-apm-data`) carries the engine's connection JSON (`IngestUrl`, `IngestToken`, optional extras). Placeholder value ⇒ nothing ships.
+- `Apm:MetricsEnabled` (tfvar `apm_metrics_enabled`) opts into OTel metrics (runtime, ASP.NET Core, HttpClient, Npgsql). **Dev: true, prod: false** — metrics bill as custom metrics and stream continuously.
 
-- **API Performance**: Request duration, failure rate
-- **Device Sync Success**: % successful syncs per device type
-- **Alert Accuracy**: False positive rate
-- **Database Performance**: Query duration, deadlocks
-- **Token Refresh**: Success rate per device
+Setup, token provisioning, and backend-switching instructions: [apm_setup_runbook.md](./technical/apm_setup_runbook.md).
 
-### Alerts Configuration
+### Platform audit logging (HIPAA-gated)
 
-```hcl
-resource "azurerm_monitor_metric_alert" "api_errors" {
-  name                = "api-error-rate"
-  resource_group_name = azurerm_resource_group.main.name
-  scopes              = [azurerm_linux_web_app.api.id]
+When `enable_hipaa_compliance` is set (prod), Terraform creates:
 
-  criteria {
-    metric_namespace = "Microsoft.Web/sites"
-    metric_name      = "Http5xx"
-    aggregation      = "Total"
-    operator         = "GreaterThan"
-    threshold        = 10
-  }
+- A **COLDLINE audit bucket** with a retention policy of `audit_retention_days` (90 in prod; dev configures 30 but has the flag off, so no dev audit bucket exists)
+- A **Cloud Logging sink** routing Cloud SQL and Cloud Run logs into that bucket
+- Cloud SQL connection audit flags (`log_connections` / `log_disconnections`)
 
-  action {
-    action_group_id = azurerm_monitor_action_group.main.id
-  }
-}
-```
+### Key metrics to track
+
+- **API performance**: request duration, failure rate (via APM traces)
+- **Device sync success**: % successful syncs per device connection (Worker logs)
+- **Token refresh**: success rate per device
+- **Database**: query duration via Npgsql instrumentation (when metrics enabled)
 
 ---
 
 ## Scaling Strategy
 
-### Horizontal Scaling
+### Cloud Run autoscaling
 
-**API & Web:**
-- Auto-scale based on CPU (>70%)
-- Auto-scale based on memory (>80%)
-- Max instances: 10
+| Service | Dev | Prod |
+|---------|-----|------|
+| API / Web / Worker | 0–1 instances, 1 vCPU / 512 Mi | 1–3 instances, 2 vCPU / 1 Gi |
+| MedGemma | max **1** instance (Ollama single-instance), 8 vCPU / 16 Gi | same |
 
-**Background Jobs:**
-- `CardiTrack.Worker` (non-AI jobs: token refresh, baseline recalculation, cleanup) deploys as an Azure Container App or App Service; scale out by running multiple replicas — each instance claims a DI scope per cron tick
-- AI pipeline Functions scale automatically on the consumption plan; MedGemma inference scales 1→5 ACA GPU replicas on HTTP concurrency (see [llm_design.md](./llm_design.md))
+Prod keeps a warm minimum instance; dev scales to zero.
 
-### Database Scaling
+### Background jobs
 
-**Read Replicas:**
-- Create read-only replica for dashboard queries
-- Use read replica for reporting
+`CardiTrack.Worker` runs non-AI jobs (wearable sync polling every 30 minutes, orphaned-organization cleanup nightly) as cron-scheduled hosted services inside the Worker Cloud Run service. The AI pipeline's target scaling model is described in [llm_design.md](./llm_design.md).
 
-**Partitioning:**
-- Partition `ActivityLogs` by CardiMemberId
-- Archive logs older than 2 years to cold storage
+### Caching
 
-### Caching Strategy
-
-- **Redis Cache**: User sessions, dashboard data
-- **In-Memory Cache**: Reference data (devices, capabilities)
-- **CDN**: Static assets
+- **No Redis is provisioned.** The API checks for a Redis connection string and, when absent (the current state in every environment), falls back to the in-memory distributed cache (`AddDistributedMemoryCache`).
+- **Cloud CDN** caches Web static assets — only where the load balancer exists (dev today).
 
 ---
 
@@ -813,24 +357,22 @@ resource "azurerm_monitor_metric_alert" "api_errors" {
 
 ### Database Backups
 
-- **Automated backups**: Enabled (7-day retention)
-- **Long-term retention**: Monthly backups (1 year)
-- **Geo-redundant**: Enabled for production
+- **Automated backups**: enabled, daily at 03:00, **7 backups retained** (`retained_backups = 7`)
+- **Point-in-time / long-term retention**: no long-term retention or cross-region/geo-redundant backup configuration exists today — the 7 automated backups are the recovery envelope
+- **Prod resilience**: REGIONAL (HA) instance + deletion protection
 
-### Recovery Procedures
-
-**RTO (Recovery Time Objective):** 4 hours
-**RPO (Recovery Point Objective):** 1 hour
+### Recovery
 
 ```bash
-# Restore database from backup
-az sql db restore \
-  --resource-group carditrack-prod-rg \
-  --server carditrack-prod-sql \
-  --name carditrack-db \
-  --dest-name carditrack-db-restored \
-  --time "2026-01-08T10:00:00Z"
+# List available backups
+gcloud sql backups list --instance=carditrack-prod-sql
+
+# Restore a backup (in place or to a target instance)
+gcloud sql backups restore <BACKUP_ID> \
+  --restore-instance=carditrack-prod-sql
 ```
+
+GCS buckets are versioned (main and dp-keys), providing object-level rollback.
 
 ---
 
@@ -838,55 +380,72 @@ az sql db restore \
 
 ### Network Security
 
-- **VNet Integration**: Isolate App Service
-- **Private Endpoints**: SQL Database accessible only from VNet
-- **NSG Rules**: Restrict inbound traffic
-- **DDoS Protection**: Standard tier for production
+- **Private-only database**: Cloud SQL has no public IP; access is via VPC private services peering and the Cloud SQL Auth Proxy socket
+- **VPC egress control**: all Cloud Run services use Direct VPC egress with `PRIVATE_RANGES_ONLY`
+- **Internal-only services**: Worker and MedGemma are unreachable from the internet
+- **Edge protection**: TLS 1.2+ (MODERN policy), HTTP→HTTPS redirect, and the Cloud Armor WAF — active in dev; prod has no LB/WAF until custom domains are configured (known deferred posture)
 
 ### Access Control
 
-- **Managed Identities**: For Azure service authentication
-- **RBAC**: Least privilege access
-- **Key Vault**: Centralized secret management
-- **MFA**: Required for admin access
+- **Workload Identity Federation** for CI — no service account keys
+- **Per-secret IAM**: the runtime service account gets `secretAccessor` per secret; the deploy service account gets only what CI needs (e.g. `secretVersionManager` on `medgemma-service-url`)
+- **Least-privilege bucket IAM**: e.g. the log sink's writer identity gets `objectCreator` only on the audit bucket
 
 ### Compliance
 
-- **HIPAA**: Business Associate Agreement with Microsoft
-- **SOC 2**: Azure compliance inherited
-- **Encryption**: TLS 1.2+ enforced
-- **Audit Logging**: All PHI access tracked
+- **HIPAA**: Business Associate Agreement with **Google Cloud**; HIPAA-gated controls (`enable_hipaa_compliance`) enable database audit flags and the retention-locked audit log sink in prod
+- **Encryption**: TLS in transit; Google-managed encryption at rest; AES-256-GCM field-level encryption for tokens and medical notes
+- **DPIA**: see [docs/compliance/dpia.md](./compliance/dpia.md) and [data_protection_architecture.md](./technical/data_protection_architecture.md)
+
+---
+
+## Cost Shape
+
+Precise figures depend on traffic; the cost structure is:
+
+- **Cloud Run** — request-based billing; dev scales to zero, prod keeps one warm instance per service. The MedGemma service (8 vCPU / 16 Gi, `cpu_idle = false`) is the largest single line item when deployed.
+- **Cloud SQL** — the dominant fixed cost: shared-core ZONAL in dev; 2 vCPU REGIONAL HA in prod (HA roughly doubles the instance cost).
+- **GCS** — negligible at current volumes (versioned STANDARD buckets, COLDLINE audit).
+- **Secret Manager / Pub/Sub / networking** — minor.
+- **APM** — external (Datadog); metrics export is the cost lever, hence `apm_metrics_enabled` off in prod.
 
 ---
 
 ## Troubleshooting
 
-### Common Issues
-
-**Migration Failures:**
+**Migration failures (deployed):**
 ```bash
-# Drop and recreate database
-dotnet ef database drop --force
-dotnet ef database update
+# Inspect the last migrator job execution
+gcloud run jobs executions list --job=carditrack-dev-api-migrator --region=europe-west2
+gcloud run jobs executions describe <EXECUTION> --region=europe-west2
 ```
 
-**Connection Issues:**
+**Database connectivity (local debugging):**
 ```bash
-# Test SQL connection
-sqlcmd -S carditrack-dev-sql.database.windows.net -U admin -P <password>
+# Connect through the Cloud SQL Auth Proxy
+cloud-sql-proxy carditrack-490120:europe-west2:carditrack-dev-sql
+psql "host=127.0.0.1 dbname=carditrack-dev-db user=carditrackadmin"
 ```
 
-**Terraform State Lock:**
+**Terraform state lock:**
 ```bash
-# Force unlock (use with caution)
-terraform force-unlock <lock-id>
+terraform force-unlock <lock-id>   # use with caution
 ```
 
 ---
 
 ## References
 
-- [Entity Framework Core Documentation](https://docs.microsoft.com/ef/core/)
-- [Azure SQL Database](https://docs.microsoft.com/azure/azure-sql/)
-- [Terraform Azure Provider](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs)
-- [HIPAA Compliance on Azure](https://docs.microsoft.com/azure/compliance/offerings/offering-hipaa-us)
+- [Infrastructure operator guide](../infrastructure/README.md)
+- [Entity summary](./technical/entity_summary.md)
+- [LLM design](./llm_design.md)
+- [APM setup runbook](./technical/apm_setup_runbook.md)
+- [Data protection architecture](./technical/data_protection_architecture.md)
+- [DPIA](./compliance/dpia.md)
+- [Terraform Google provider](https://registry.terraform.io/providers/hashicorp/google/latest/docs)
+- [Cloud SQL for PostgreSQL](https://cloud.google.com/sql/docs/postgres)
+- [HIPAA on Google Cloud](https://cloud.google.com/security/compliance/hipaa)
+
+---
+
+*Version 2.0 — Last Updated: August 7, 2026*

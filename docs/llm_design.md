@@ -1,8 +1,13 @@
 # LLM Design — CardiTrack
 
+> **STATUS — read this first**
+>
+> - **Built today:** MedGemma (Ollama-served `medgemma:4b` on Cloud Run) as the **Medical** AI provider and **Gemini 2.0 Flash** as the **General** provider, consumed by `GenerativeAiService`, `MedicalAiService`, `HealthInsightService`, and `ReportGenerationService` and surfaced through the API's **chat, insights, and reports** endpoints (`ChatController`, `InsightsController`, `ReportsController`). Ingestion is **30-minute polling** of the Google Health API by `WearableSyncWorker` in `CardiTrack.Worker`.
+> - **Target architecture (this document):** the webhook-driven real-time pipeline, SSA-LSTM pre-processing, severity routing, digests, and predictive monitoring described below are the **design** for the GCP pipeline (Pub/Sub + Cloud Run) — they are **not built yet**. Push notification infrastructure (FCM/APNs) does not exist yet either.
+
 ## Overview
 
-CardiTrack uses MedGemma 1.5 4B as its inference model for cardiovascular analysis of wearable data from up to 10,000 wearable devices (Fitbit, Pixel Watch, and other sources connected through the Google Health API). The AI pipeline runs two parallel paths: a real-time anomaly detection path (5-minute windows, SSA-LSTM pre-processing → MedGemma) and a daily predictive path (per-user LSTM risk model → MedGemma interpretation → family-facing health outlook). All pipeline logic runs on Azure Functions (CPU); only MedGemma inference runs on GPU via Azure Container Apps.
+CardiTrack uses MedGemma as its inference model for cardiovascular analysis of wearable data from up to 10,000 wearable devices (Fitbit, Pixel Watch, and other sources connected through the Google Health API). The AI pipeline design runs two parallel paths: a real-time anomaly detection path (5-minute windows, SSA-LSTM pre-processing → MedGemma) and a daily predictive path (per-user LSTM risk model → MedGemma interpretation → family-facing health outlook). All pipeline logic runs on **Cloud Run services and jobs (CPU), scheduled by Cloud Scheduler**, in the same GCP project as the rest of the platform (`carditrack-490120`, `europe-west2`).
 
 ---
 
@@ -10,205 +15,101 @@ CardiTrack uses MedGemma 1.5 4B as its inference model for cardiovascular analys
 
 | Property | Value |
 |----------|-------|
-| Model | `google/medgemma-1.5-4b-it` |
-| Version | MedGemma 1.5 (updated Jan 2026) |
+| Model | `medgemma:4b` (Ollama tag; MedGemma 4B instruction-tuned) |
 | Parameters | 4B |
 | Type | Multimodal instruction-tuned |
-| Source | HuggingFace |
+| Serving | Ollama on Cloud Run (CPU) — see [Infrastructure](#infrastructure) |
 
-MedGemma 1.5 4B was chosen over the 27B variant for cost and latency reasons — at 4B parameters it fits on a single T4 GPU (~8GB in float16) with sufficient KV cache headroom for concurrent batched requests. It delivers improved accuracy on medical text reasoning and EHR understanding, both directly applicable to structured wearable time-series data.
-
-> **⚠️ HuggingFace access required:** This model requires acceptance of the [Health AI Developer Foundations terms of use](https://huggingface.co/google/medgemma-1.5-4b-it) on HuggingFace before the weights can be pulled. Ensure `HF_TOKEN` is from an account that has accepted these terms.
+MedGemma 4B was chosen over the 27B variant for cost and latency reasons — at 4B parameters it runs on CPU-only Cloud Run today and would fit on a single T4 GPU (~8 GB in float16) if GPU serving is ever needed. It delivers strong accuracy on medical text reasoning and EHR understanding, both directly applicable to structured wearable time-series data.
 
 ---
 
 ## Infrastructure
 
-### Service map
+### Service map (GCP)
 
-| Service | Role | SKU / Plan |
-|---------|------|-----------|
-| **Azure Container Apps** (GPU) | MedGemma 1.5 4B inference via vLLM | `Consumption-GPU-NC8as-T4` (T4 16 GB) |
-| **Azure Functions** | All pipeline logic — webhook, aggregation, SSA-LSTM, predictive batch, digest, push | Consumption plan (CPU only) |
-| **Azure Event Hubs** | Wearable raw event stream buffer | Standard, 1 TU, 1 consumer group |
-| **Azure Cosmos DB** | Results, prediction cards, trend store | Serverless (pay-per-RU) |
-| **Azure SQL** (existing) | OAuth tokens (encrypted), user profiles, sensitivity settings, family relationships — the transactional system of record (see [infrastructure.md](./infrastructure.md#storage-boundary)) | Per infrastructure.md |
-| **Azure Blob Storage** | Per-user LSTM model files (~50 KB each, ~500 MB at 10 K users) | Standard LRS, Hot tier |
-| **Azure Notification Hubs** | FCM / APNs push routing for alerts and digests | Basic (free ≤ 1 M pushes/mo) |
-| **Azure Key Vault** | `HF_TOKEN`, Google Health API client secret, Twilio API key | Standard |
+| Service | Role | Status |
+|---------|------|--------|
+| **Cloud Run — `carditrack-<env>-medgemma`** | MedGemma inference via Ollama (CPU) | **Built** (prod deploy pipeline in place) |
+| **Cloud Run services/jobs + Cloud Scheduler** | All pipeline logic — webhook receiver, aggregation, SSA-LSTM, predictive batch, digest, push dispatch | Target design |
+| **Cloud Pub/Sub** (`carditrack-prod-realtime`) | Wearable raw event stream buffer | Topic provisioned (prod, `enable_pubsub`); pipeline not built |
+| **Cloud SQL PostgreSQL (existing instance)** | OAuth tokens (encrypted AES-256-GCM in `DeviceConnections`), user profiles, sensitivity settings, family relationships — the transactional system of record (see [infrastructure.md](./infrastructure.md#storage-boundary)); plus **JSONB tables** for AI results (below) | Built (core schema); AI tables not built |
+| **Google Cloud Storage** | Per-user LSTM model files (~50 KB each, ~500 MB at 10 K users) | Target design — no per-user model files exist yet |
+| **FCM / APNs** | Push routing for alerts and digests | **Planned — no push infrastructure exists yet** |
+| **Secret Manager** | Google Health API OAuth client secret, `gemini-api-key`, `medgemma-service-url` | Built |
 
----
-
-### Azure Functions: role breakdown
-
-Each function is a separate deployment within the same consumption plan. All are CPU-only — no GPU required outside of ACA.
-
-| Function | Trigger | Cadence | Purpose |
-|----------|---------|---------|---------|
-| `HealthWebhookReceiver` | HTTP | On event (~333/s peak) | Answers the Google Health API webhook verification handshake; acknowledges notifications with `204` and forwards the payload (user, data type, changed interval) to Event Hubs |
-| `WearableAggregator` | Timer | Every 5 min | Reads Event Hubs notifications → fetches changed data from the Google Health API per user/interval → aggregates per-user window → runs SSA-LSTM pre-processor → calls MedGemma → writes result to Cosmos DB → routes severity |
-| `SeverityRouter` | Cosmos DB trigger | On new result document | Reads severity tag; dispatches immediate push via Notification Hubs for Critical/High; queues Medium events for digest |
-| `PredictiveFeatureAggregator` | Timer | Daily 03:00 local | Reads 30–90 day Cosmos DB history per user → computes daily feature vectors → runs per-user LSTM → applies confidence gate → writes prediction card to Cosmos DB |
-| `PredictionCardPush` | Timer | Daily 06:00 local | Reads today's prediction cards → calls MedGemma (`CARDITRACK_PREDICT_PROMPT`) → pushes via Notification Hubs (risk ≥ 40) |
-| `DigestGenerator` | Timer | Daily 08:00 local | Aggregates prior 24 h Cosmos events per user → calls MedGemma (`CARDITRACK_DIGEST_PROMPT` / `CARDITRACK_FAMILY_PROMPT`) → pushes via Notification Hubs |
-| `InactivityDetector` | Timer | Every 15 min | Checks last event timestamp per user during waking hours (07:00–22:00); pushes rule-based "device check" if > 2 h silence — no MedGemma call |
-| `ModelRetrainer` | Timer (dispatcher) | Weekly (Sunday 02:00) | Triggers a containerized **Python training job** (ACA job, CPU) that pulls 90-day feature history from Cosmos per user → retrains LSTM → exports **ONNX** model file to Blob Storage |
-
-> **Runtime note:** all Azure Functions run on the **dotnet-isolated** runtime (.NET 10). LSTM/SSA *inference* inside Functions uses **ONNX Runtime**; model *training* (TensorFlow) runs only in the separate Python container job above. No mixed-runtime Function App.
-
-> **Timeout note:** `WearableAggregator` and `PredictiveFeatureAggregator` are the longest-running functions. Azure Functions consumption plan enforces a 10-minute maximum execution timeout — both are designed to process users in parallel batches and complete well within this limit at 10 K users.
+Deliberate decision: AI results live in **PostgreSQL JSONB tables inside the existing Cloud SQL instance** rather than a separate document store — one data plane, one backup story, and family-read scoping can join directly against `UserCardiMembers`.
 
 ---
 
-### MedGemma on Azure Container Apps (GPU)
+### Pipeline components: role breakdown (target design)
 
-Azure App Service does not support GPUs. Azure Container Apps (ACA) with serverless GPU workload profiles provides the same managed, serverless feel — no cluster to operate, per-second billing, and scale-to-zero.
+Each component is a Cloud Run service (event/HTTP-triggered) or Cloud Run job (Cloud Scheduler-triggered). All are CPU-only.
+
+| Component | Trigger | Cadence | Purpose |
+|-----------|---------|---------|---------|
+| `HealthWebhookReceiver` | HTTP (Cloud Run service) | On event (~333/s peak) | Answers the Google Health API webhook verification handshake; acknowledges notifications with `204` and forwards the payload (user, data type, changed interval) to Pub/Sub |
+| `WearableAggregator` | Cloud Scheduler | Every 5 min | Pulls Pub/Sub notifications → fetches changed data from the Google Health API per user/interval → aggregates per-user window → runs SSA-LSTM pre-processor → calls MedGemma → writes result to the `realtime_results` table → routes severity |
+| `SeverityRouter` | On new result row | On write | Reads severity tag; dispatches immediate push via FCM/APNs for Critical/High; queues Medium events for digest |
+| `PredictiveFeatureAggregator` | Cloud Scheduler | Daily 03:00 local | Reads 30–90 day history per user → computes daily feature vectors → runs per-user LSTM → applies confidence gate → writes prediction card |
+| `PredictionCardPush` | Cloud Scheduler | Daily 06:00 local | Reads today's prediction cards → calls MedGemma (`CARDITRACK_PREDICT_PROMPT`) → pushes via FCM/APNs (risk ≥ 40) |
+| `DigestGenerator` | Cloud Scheduler | Daily 08:00 local | Aggregates prior 24 h events per user → calls MedGemma (`CARDITRACK_DIGEST_PROMPT` / `CARDITRACK_FAMILY_PROMPT`) → pushes via FCM/APNs |
+| `InactivityDetector` | Cloud Scheduler | Every 15 min | Checks last event timestamp per user during waking hours (07:00–22:00); pushes rule-based "device check" if > 2 h silence — no MedGemma call |
+| `ModelRetrainer` | Cloud Scheduler (dispatcher) | Weekly (Sunday 02:00) | Triggers a containerized **Python training job** (Cloud Run job, CPU) that pulls 90-day feature history per user → retrains LSTM → exports **ONNX** model file to GCS |
+
+> **Runtime note:** pipeline components run on **.NET**, matching the rest of the platform. LSTM/SSA *inference* uses **ONNX Runtime**; model *training* (TensorFlow) runs only in the separate Python container job above. No mixed-runtime services.
+>
+> **Timeout note:** `WearableAggregator` and `PredictiveFeatureAggregator` are the longest-running components. Cloud Run jobs allow generous task timeouts (up to 24 h), so both are designed to process users in parallel batches and complete comfortably at 10 K users.
+
+> **Ingestion today:** until this pipeline is built, `WearableSyncWorker` in `CardiTrack.Worker` polls the Google Health API on a **30-minute cron** and writes normalized `ActivityLogs`. The webhook path below replaces polling when it lands.
+
+---
+
+### MedGemma serving: what ships
+
+MedGemma runs as the Cloud Run service `carditrack-<env>-medgemma`, provisioned by Terraform (`infrastructure/deployments/cloud_run.tf`) and deployed by CI:
 
 | Property | Value |
 |----------|-------|
-| Platform | Azure Container Apps |
-| GPU | NVIDIA T4 (16 GB VRAM) — `Consumption-GPU-NC8as-T4` |
-| Serving engine | vLLM (OpenAI-compatible endpoint) |
-| Min replicas | 1 (keep warm — GPU cold start is 3–5 min) |
-| Max replicas | 5 (autoscale on HTTP concurrency) |
+| Platform | Cloud Run (**CPU** — no GPU) |
+| Serving engine | **Ollama** (`ollama/ollama` base image; model baked in at build time) |
+| Model tag | `medgemma:4b` — pinned in `src/Infrastructure/MedGemma/.model-version` |
+| Resources | 8 vCPU / 16 Gi, `cpu_idle = false`, startup CPU boost |
+| Scaling | Max **1 instance** (Ollama cannot safely multi-instance) |
+| Ingress | Internal-only (VPC); port 8080 |
+| Enablement | Service is created only when the `medgemma_image` tfvar is non-empty |
 
-**Why T4 over A100:** T4 is the cheapest GPU in ACA (~$0.59/hr vs ~$3.67/hr for A100). MedGemma 4B fits on 16 GB VRAM in float16 — A100 is unnecessary at this model size.
+Deployment flow: the `deploy-medgemma` job in `.github/workflows/deploy-apps-prod.yml` deploys the image tag, then writes the resulting service URL to the Secret Manager secret `carditrack-<env>-medgemma-service-url`, which the API consumes as **`AI__Providers__0__BaseUrl`**. The API's provider configuration (Terraform-set env vars) selects MedGemma as `AI__MedicalProvider` and Gemini 2.0 Flash (`AI__Providers__1__*`, key from the `gemini-api-key` secret) as `AI__GeneralProvider`.
 
-**vLLM flags:**
-```
---model google/medgemma-1.5-4b-it
---dtype float16                  # T4 is compute capability 7.5; bfloat16 requires 8.0+
---enable-prefix-caching          # all four system prompts are fixed-prefix = big throughput win
---max-num-seqs 32
---gpu-memory-utilization 0.90
---max-model-len 8192
-```
+> **GPU scaling option (future):** if CPU latency becomes a bottleneck at scale, the same model can be served by vLLM on a single NVIDIA T4 (16 GB, float16 — the 4B model fits with KV-cache headroom), with `--enable-prefix-caching` exploiting the fixed system prompts, autoscaling on HTTP concurrency. This would require HuggingFace weights access (Health AI Developer Foundations terms) and a GPU-capable runtime (e.g. Cloud Run GPU or GKE Autopilot). Provisioning would be added to the existing Terraform — no imperative scripts.
 
 ---
 
-### Cosmos DB document structure
+### AI results: PostgreSQL JSONB tables (target design)
 
-All data is partitioned by `wearerUserId` for efficient per-user queries.
+AI outputs are derived data in the **existing Cloud SQL instance** — regenerable, never authoritative. All tables are keyed by `wearer_user_id` for efficient per-user queries, with a JSONB payload column.
 
-| Collection | Partition key | Key fields | Retention |
-|------------|--------------|-----------|-----------|
-| `realtime-results` | `wearerUserId` | `windowStart`, `severity`, `medgemmaOutput`, `anomalyScores` | 90 days (TTL) |
-| `prediction-cards` | `wearerUserId` | `date`, `riskScores`, `confidences`, `medgemmaOutput` | 90 days (TTL) |
-| `trend-aggregates` | `wearerUserId` | `date`, `restingHR_7dMA`, `hrv_7dMA`, `sleepScore_7dMA` | 2 years |
-| `digest-log` | `wearerUserId` | `date`, `audience`, `digestText` | 1 year |
+| Table | Key columns | JSONB payload | Retention |
+|-------|-------------|---------------|-----------|
+| `realtime_results` | `wearer_user_id`, `window_start`, `severity` | `medgemma_output`, `anomaly_scores` | 90 days (scheduled cleanup job) |
+| `prediction_cards` | `wearer_user_id`, `date` | `risk_scores`, `confidences`, `medgemma_output` | 90 days |
+| `trend_aggregates` | `wearer_user_id`, `date` | `resting_hr_7d_ma`, `hrv_7d_ma`, `sleep_score_7d_ma` | 2 years |
+| `digest_log` | `wearer_user_id`, `date`, `audience` | `digest_text` | 1 year |
+
+Row expiry runs in the same scheduled cleanup machinery as other retention jobs (a Worker/Cloud Run job), since PostgreSQL has no document TTL.
 
 ---
 
 ### Deployment
 
-#### Prerequisites
+Everything is provisioned by the existing Terraform (`infrastructure/` — see the [operator guide](../infrastructure/README.md)):
 
-```bash
-# Register required providers (once per subscription)
-az provider register --namespace Microsoft.App
-az provider register --namespace Microsoft.EventHub
-az provider register --namespace Microsoft.DocumentDB
-az provider register --namespace Microsoft.NotificationHubs
-```
+- **MedGemma service** — `deployments/cloud_run.tf` (gated on `medgemma_image`); image built from `src/Infrastructure/MedGemma/Dockerfile`
+- **Pub/Sub topic + subscription** — `deployments/pubsub.tf` (gated on `enable_pubsub`; prod only today)
+- **Secrets** — `deployments/secret_manager.tf` (`gemini-api-key`, `medgemma-service-url`)
+- Pipeline components (webhook receiver, aggregator, scheduler jobs) will be added to the same Terraform as they are built
 
-> **GPU quota:** Request `Consumption-GPU-NC8as-T4` quota before deploying — requires an Azure support ticket, allow 1–2 days. Recommended region: `swedencentral`.
-
-#### Provision all services
-
-```bash
-LOCATION="swedencentral"
-RG="carditrack-rg"
-ENV="carditrack-env"
-STORAGE="carditrackstorage"
-EVENTHUB_NS="carditrack-eh"
-COSMOS="carditrack-cosmos"
-NOTIF_NS="carditrack-notif"
-NOTIF_HUB="carditrack-hub"
-BLOB="carditrackblob"
-KV="carditrack-kv"
-FUNC_APP="carditrack-functions"
-ACA_APP="medgemma-inference"
-
-az group create --name $RG --location $LOCATION
-
-# Storage (Table + Blob in one account)
-az storage account create \
-  --name $STORAGE --resource-group $RG --location $LOCATION \
-  --sku Standard_LRS --kind StorageV2
-
-# Event Hubs
-az eventhubs namespace create \
-  --name $EVENTHUB_NS --resource-group $RG --location $LOCATION \
-  --sku Standard --capacity 1
-
-az eventhubs eventhub create \
-  --name wearable-raw \
-  --namespace-name $EVENTHUB_NS --resource-group $RG \
-  --partition-count 8 --message-retention 1
-
-# Cosmos DB (serverless)
-az cosmosdb create \
-  --name $COSMOS --resource-group $RG \
-  --capabilities EnableServerless \
-  --default-consistency-level Session
-
-az cosmosdb sql database create \
-  --account-name $COSMOS --resource-group $RG \
-  --name carditrack
-
-for COLL in realtime-results prediction-cards trend-aggregates digest-log; do
-  az cosmosdb sql container create \
-    --account-name $COSMOS --resource-group $RG \
-    --database-name carditrack --name $COLL \
-    --partition-key-path /wearerUserId
-done
-
-# Notification Hubs
-az notification-hub namespace create \
-  --name $NOTIF_NS --resource-group $RG --location $LOCATION \
-  --sku Basic
-
-az notification-hub create \
-  --name $NOTIF_HUB \
-  --namespace-name $NOTIF_NS --resource-group $RG --location $LOCATION
-
-# Key Vault
-az keyvault create \
-  --name $KV --resource-group $RG --location $LOCATION
-
-# Azure Functions (consumption plan)
-az functionapp create \
-  --name $FUNC_APP --resource-group $RG \
-  --storage-account $STORAGE \
-  --consumption-plan-location $LOCATION \
-  --runtime dotnet-isolated --runtime-version 10 \
-  --functions-version 4
-
-# ACA environment + GPU profile
-az containerapp env create \
-  --name $ENV --resource-group $RG --location $LOCATION
-
-az containerapp env workload-profile add \
-  --name $ENV --resource-group $RG \
-  --workload-profile-name "NC8as-T4" \
-  --workload-profile-type "Consumption-GPU-NC8as-T4"
-
-# MedGemma inference container
-az containerapp create \
-  --name $ACA_APP \
-  --resource-group $RG \
-  --environment $ENV \
-  --workload-profile-name "NC8as-T4" \
-  --image vllm/vllm-openai:latest \
-  --command "python,-m,vllm.entrypoints.openai.api_server" \
-  --args "--model,google/medgemma-1.5-4b-it,--dtype,float16,--enable-prefix-caching,--max-num-seqs,32,--gpu-memory-utilization,0.90,--max-model-len,8192" \
-  --env-vars "HF_TOKEN=secretref:hf-token" \
-  --ingress internal --target-port 8000 \
-  --min-replicas 1 --max-replicas 5 \
-  --cpu 8 --memory 56Gi
-```
-
-> **Ingress change:** ACA ingress is set to `internal` — the vLLM endpoint is only reachable from within the ACA environment VNet. Azure Functions access it via the Functions VNet integration. It is not exposed to the public internet.
+No imperative CLI provisioning scripts are used.
 
 ---
 
@@ -220,14 +121,14 @@ CardiTrack operates two parallel AI paths with distinct cadences and purposes:
 ┌─────────────────────────────────────────────────────────────┐
 │                    REAL-TIME PATH (5-min)                   │
 │                                                             │
-│  Wearable event → Event Hubs → Aggregator → SSA-LSTM        │
+│  Wearable event → Pub/Sub → Aggregator → SSA-LSTM           │
 │  → MedGemma (anomaly) → Severity router → Alert / Digest   │
 └─────────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────────┐
 │               PREDICTIVE PATH (daily batch)                 │
 │                                                             │
-│  Cosmos DB (30-90 day history) → Feature aggregator         │
+│  Cloud SQL (30-90 day history) → Feature aggregator         │
 │  → Risk model (per-user LSTM) → MedGemma (interpretation)  │
 │  → Prediction card → Wearer + Family digest                 │
 └─────────────────────────────────────────────────────────────┘
@@ -238,7 +139,7 @@ The predictive path answers: *"Is something likely to go wrong in the next 24–
 
 ---
 
-## Data Ingestion Pipeline (Real-Time)
+## Data Ingestion Pipeline (Real-Time, target design)
 
 > **API note:** the legacy Fitbit Web API is decommissioned in September 2026. All device data access uses the **Google Health API** (`health.googleapis.com`) — a single integration covering Fitbit devices, Pixel Watch, and connected third-party sources, with per-reading source attribution. Webhook subscriptions (including heart rate) replace the old Fitbit Subscriptions API; notifications carry the user, data type, and changed interval, and the pipeline fetches the data itself (notify-then-fetch).
 
@@ -247,17 +148,17 @@ Wearable devices (up to 10,000 — Fitbit, Pixel Watch, third-party)
   ↓
 Google Health API webhooks (push notifications — no polling)
   ↓
-Azure Function (HTTP trigger) — verifies webhook auth, forwards notification
+Cloud Run service (HTTP) — verifies webhook auth, forwards notification
   ↓
-Azure Event Hubs (wearable-raw)
+Cloud Pub/Sub (carditrack-prod-realtime)
   ↓
-Azure Function (timer, every 5 min) — fetches changed data, aggregates per user
+Cloud Run job (Cloud Scheduler, every 5 min) — fetches changed data, aggregates per user
   ↓
 SSA-LSTM pre-processor — denoises signal, extracts trend features
   ↓
-ACA vLLM endpoint (MedGemma 1.5 4B)
+MedGemma service (Ollama on Cloud Run, internal VPC)
   ↓
-Azure Cosmos DB (results store)
+Cloud SQL JSONB tables (results store)
 ```
 
 ---
@@ -301,11 +202,11 @@ Methods follow the v4 REST shape: `GET /v4/users/me/dataTypes/{type}/dataPoints`
 | `window_size` (L) | `30` | 30-minute lag window captures ~2 cardiac cycles and one activity micro-burst |
 | Number of components | `3` (Trend + 2 Oscillations) | Isolates circadian rhythm + short activity oscillation from noise |
 | LSTM `look_back` | `60` samples (60 min) | Sufficient history to detect slow-onset anomalies (e.g., rising resting HR) |
-| LSTM hidden units | `64` | Balances capacity vs. inference latency on CPU (pre-processor runs on Azure Functions) |
+| LSTM hidden units | `64` | Balances capacity vs. inference latency on CPU (pre-processor runs on CPU Cloud Run) |
 
 ### Implementation
 
-> **Reference implementation** (Python, for algorithm clarity). The production pre-processor runs in **.NET (dotnet-isolated Functions)**: SSA implemented natively, LSTM inference via **ONNX Runtime** on models exported by the Python training job.
+> **Reference implementation** (Python, for algorithm clarity). The production pre-processor runs in **.NET**: SSA implemented natively, LSTM inference via **ONNX Runtime** on models exported by the Python training job.
 
 ```python
 # pip install pyts tensorflow pandas numpy
@@ -331,19 +232,19 @@ def preprocess(hr_series: list[float], window_size: int = 30) -> dict:
     }
 ```
 
-> **Deployment note:** The SSA-LSTM pre-processor runs inside the existing 5-minute Azure Function timer (CPU only — no GPU required). LSTM inference on a 60-sample sequence takes ~5ms on a consumption plan instance, well within the Function timeout.
+> **Deployment note:** The SSA-LSTM pre-processor runs inside the 5-minute aggregator (CPU only — no GPU required). LSTM inference on a 60-sample sequence takes ~5ms, negligible against the window budget.
 
 ### Why not Terra?
 
 Terra provides a unified wearable API but costs $499+/month minimum — too expensive at 10,000 users. CardiTrack integrates directly with the Google Health API, whose webhook subscriptions are free and already aggregate Fitbit, Pixel Watch, and connected third-party sources.
 
-### Why Event Hubs + 5-min batching?
+### Why Pub/Sub + 5-min batching?
 
-10,000 devices at ~1 event/30s = ~333 events/s peak. Feeding each event directly to MedGemma would saturate the GPU. Batching per user over 5-minute windows reduces inference requests from ~333/s to a manageable ~33/s burst, significantly improving GPU utilisation and cost.
+10,000 devices at ~1 event/30s = ~333 events/s peak. Feeding each event directly to MedGemma would saturate the inference service. Batching per user over 5-minute windows reduces inference requests from ~333/s to a manageable ~33/s burst, significantly improving utilisation and cost — especially important while MedGemma runs as a single CPU instance.
 
 ### Token storage
 
-Google-issued OAuth tokens for 10,000 device connections are stored **encrypted in Azure SQL** (`DeviceConnections` table) — the transactional system of record. The pipeline reads them via the existing repository layer; `CardiTrack.Worker` owns proactive token refresh. See [infrastructure.md](./infrastructure.md#storage-boundary).
+Google-issued OAuth tokens for device connections are stored **encrypted (AES-256-GCM) in Cloud SQL** (`DeviceConnections` table) — the transactional system of record. The pipeline reads them via the existing repository layer; `CardiTrack.Worker` owns proactive token refresh. See [infrastructure.md](./infrastructure.md#storage-boundary).
 
 ---
 
@@ -351,7 +252,7 @@ Google-issued OAuth tokens for 10,000 device connections are stored **encrypted 
 
 Each inference request covers a single user's 5-minute aggregated window.
 
-**System prompt** (fixed — benefits from vLLM prefix caching):
+**System prompt** (fixed — a fixed prefix benefits from serving-engine prompt caching):
 ```
 [CARDITRACK_SYSTEM_PROMPT]
 You are a medical AI assistant analysing cardiovascular wearable data.
@@ -384,7 +285,7 @@ CardiTrack uses the **caregiver-centric** model defined in the API spec ([cardim
 
 - The account **Admin** (caregiver) creates the CardiMember profile and records the wearer's consent (per-metric: activity, heart rate, sleep) via the consent endpoint. Data types without recorded consent are never processed by the pipeline or shared.
 - Family members join by **Admin invitation** with a role: `admin`, `staff`, or `viewer`.
-- Per-member **family routing rules** control who is pushed what (e.g. a sibling receives `red` only) — stored in `AlertPreferences`.
+- Per-member **family routing rules** control who is pushed what (e.g. a sibling receives `red` only) — stored in the **planned `AlertPreferences` table** (not yet implemented).
 
 Role → visibility mapping:
 
@@ -419,11 +320,11 @@ Each MedGemma response is parsed for a severity tag. The tag drives the push dec
 ```
 MedGemma output (severity + plain-language summary)
   ↓
-Severity router (Azure Function)
-  ├── Critical / High → Azure Notification Hubs → FCM / APNs (immediate push)
-  │                  → SMS fallback if app not installed (Twilio / Azure Communication Services)
-  ├── Medium          → Cosmos DB queue (daily digest job reads at 08:00 local time)
-  └── Low / Normal    → Cosmos DB (trend store only — no push)
+Severity router (Cloud Run)
+  ├── Critical / High → FCM / APNs (immediate push — planned; no push infra yet)
+  │                  → SMS fallback if app not installed (future; provider not selected)
+  ├── Medium          → digest queue (daily digest job reads at 08:00 local time)
+  └── Low / Normal    → trend_aggregates only — no push
 ```
 
 **Daily digest** (08:00 local time, family + wearer):
@@ -460,7 +361,7 @@ Be encouraging where metrics are healthy. Flag concerns clearly but without alar
 Suggest one actionable next step if a pattern warrants it (e.g., "consider an earlier bedtime tonight").
 ```
 
-> Both digest prompts are fixed per audience type and benefit from vLLM prefix caching, the same as the real-time monitoring prompt.
+> Both digest prompts are fixed per audience type, keeping them cacheable as fixed prefixes, the same as the real-time monitoring prompt.
 
 ---
 
@@ -480,7 +381,7 @@ The notification reads: *"[Name]'s device hasn't synced in 2 hours. You may want
 ### Privacy guardrails
 
 - Family members **never** receive the raw MedGemma inference output. A second, family-framed MedGemma call (or a template fill for low/normal windows) is always used.
-- All Cosmos DB documents are partitioned by `wearerUserId`. Family member reads are scoped by the `UserCardiMembers` relationship record in Azure SQL — the query layer enforces this; there is no client-side filtering.
+- All AI-result rows are keyed by `wearer_user_id`. Family member reads are scoped by the `UserCardiMembers` relationship record in Cloud SQL — the query layer enforces this; there is no client-side filtering.
 - Access is revocable at any time: an Admin removes the family member (or the wearer withdraws consent per metric); the relationship record is deleted and all future pushes for that pair stop immediately.
 - Family-facing digests **do not include skin temperature** — this is too intimate a signal for a non-clinical audience and can cause disproportionate alarm.
 
@@ -509,9 +410,9 @@ Predictions are scoped to the 24–72 hour horizon. Longer horizons have insuffi
 ### Predictive AI pipeline
 
 ```
-Cosmos DB (30–90 day per-user history)
+Cloud SQL (30–90 day per-user history)
   ↓
-Daily feature aggregator (Azure Function, 03:00 local time)
+Daily feature aggregator (Cloud Run job, 03:00 local time)
   — Computes: resting HR 7d MA, HRV 7d MA, sleep score 7d MA,
               active minutes 7d MA, skin temp delta (if available),
               day-of-week seasonality index
@@ -535,7 +436,7 @@ MedGemma (CARDITRACK_PREDICT_PROMPT) — interprets risk scores
 Routing
   ├── Risk score ≥ 70 → prediction card in wearer's morning push + family digest
   ├── Risk score 40–69 → prediction card in wearer's morning push only
-  └── Risk score < 40 → silent (stored in Cosmos DB for trend view only)
+  └── Risk score < 40 → silent (stored in trend_aggregates for trend view only)
 ```
 
 ---
@@ -549,7 +450,7 @@ Routing
 | **Personalized model** | Day 90+ | Model retrained weekly on rolling 90-day window. Day-of-week and seasonal effects modelled explicitly. |
 | **Retraining trigger** | Any time | Major life event flag (user-reported illness, travel, device change) resets the baseline and pauses predictions for 7 days. |
 
-Models are stored per user in Azure Blob Storage (one ~50KB serialised LSTM file per user). At 10,000 users this is ~500 MB — negligible. Retraining runs as a batch Azure Function on a consumption plan (CPU only, ~2s per model).
+The design stores models per user in **Google Cloud Storage** (one ~50 KB serialised LSTM file per user — ~500 MB at 10,000 users, negligible). Retraining runs as a batch Cloud Run job (CPU only, ~2s per model). **No per-user model files exist yet** — this ships with the predictive path.
 
 ---
 
@@ -561,7 +462,7 @@ False positives are CardiTrack's primary churn risk (market target: <5% FP rate 
 
 **2. Consecutive signal requirement** — a risk score must exceed its threshold on 2 consecutive daily runs before a push notification is triggered. A single-day spike is logged but not surfaced.
 
-**3. User-adjustable sensitivity** — Admins/Staff can set per-member sensitivity to Low / Medium / High (see [alerts.md](./execution/backend/api/alerts.md) alert-preferences). This shifts the risk score threshold for pushes (Low = 80+, Medium = 70+ [default], High = 50+). Sensitivity is stored in the `AlertPreferences` table in Azure SQL.
+**3. User-adjustable sensitivity** — Admins/Staff can set per-member sensitivity to Low / Medium / High (see [alerts.md](./execution/backend/api/alerts.md) alert-preferences). This shifts the risk score threshold for pushes (Low = 80+, Medium = 70+ [default], High = 50+). Sensitivity will be stored in the planned `AlertPreferences` table in Cloud SQL (not yet implemented).
 
 ---
 
@@ -587,7 +488,7 @@ Never mention specific risk score numbers. Never diagnose. Never alarm.
 **Example output for a low-risk day:**
 > "[Name]'s health patterns look settled for today. Resting heart rate and sleep quality have been consistent this week — a good sign."
 
-> Both variants are fixed-prefix prompts and benefit from vLLM prefix caching.
+> Both variants are fixed-prefix prompts, cacheable by the serving engine.
 
 ---
 
@@ -606,13 +507,12 @@ Never mention specific risk score numbers. Never diagnose. Never alarm.
 
 | Component | Estimated Cost | Notes |
 |-----------|---------------|-------|
-| ACA T4 GPU (1 replica, always-on) | ~$0.59/hr (~£430/mo) | Real-time MedGemma inference |
-| ACA T4 GPU (scale-to-zero, active hours only) | ~$0.24/hr when active | Alternative if cost is priority |
-| Azure Event Hubs (Standard) | ~£9/mo | Real-time ingestion |
-| Azure Functions (consumption plan) | Near-zero at this scale | SSA-LSTM pre-processor + predictive batch |
-| Azure Blob Storage (model store) | ~£0.50/mo | ~500 MB for 10,000 per-user LSTM models |
-| Azure Cosmos DB | ~£20/mo | Results + prediction cards |
-| Azure Notification Hubs | ~£5/mo | Push routing for family alerts |
+| Cloud Run — MedGemma (8 vCPU / 16 Gi, CPU always-allocated, 1 instance) | ~£300–350/mo when kept warm | Largest AI line item; scale-to-zero in dev keeps idle cost near zero |
+| Cloud Run — pipeline services/jobs (CPU) | Near-zero at this scale | SSA-LSTM pre-processor + predictive batch |
+| Cloud Pub/Sub | ~£5–10/mo | Real-time ingestion buffer at ~333 events/s peak |
+| Cloud SQL headroom (JSONB result tables) | Within existing instance | No separate data plane to pay for |
+| GCS (per-user model store) | ~£0.50/mo | ~500 MB for 10,000 per-user LSTM models |
+| Gemini 2.0 Flash API | Usage-based, small | General-provider calls (chat/reports) |
 | Google Health API | Free | Restricted scopes — production access requires Google's privacy & security review |
 | Terra API | Not used — $499+/mo | |
 
@@ -621,7 +521,11 @@ Never mention specific risk score numbers. Never diagnose. Never alarm.
 ## Important Caveats
 
 - MedGemma is **not clinical-grade** out of the box. Outputs must be validated before use in any production health context.
-- MedGemma 1.5 is **not optimised for multi-turn conversation**. Treat each inference request as stateless.
+- MedGemma is **not optimised for multi-turn conversation**. Treat each inference request as stateless.
 - All patient data processed through MedGemma must comply with applicable health data regulations (HIPAA, GDPR, etc.).
 - All Google Health API scopes are classified **Restricted** — production (verified) access requires passing Google's privacy & security review; before verification, only enrolled test users can connect devices.
-- The system prompt is identical across all users, making it an ideal candidate for vLLM prefix caching — ensure it is never personalised per user to preserve this benefit.
+- The system prompt is identical across all users, making it an ideal candidate for serving-engine prefix caching — ensure it is never personalised per user to preserve this benefit.
+
+---
+
+*Version 2.0 — Last Updated: August 7, 2026*

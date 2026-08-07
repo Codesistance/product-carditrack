@@ -1,18 +1,20 @@
 # Enum Extensions Guide
 
-All enums in CardiTrack have been enhanced with Display attributes and powerful extension methods for easy UI rendering.
+CardiTrack's enums carry Display attributes and extension methods for easy UI rendering.
 
 ## Features
 
-✅ Display Name attributes on all enum values
+✅ Display Name attributes on enum values (one exception: `ReportStatus` has none and falls back to `ToString()`)
 ✅ Extension methods to convert enums to lists/dictionaries
 ✅ Select list generation for dropdowns
 ✅ Safe parsing with defaults
 ✅ Value validation
 
+> **Serialization note:** enums serialize as **integers** over HTTP (no string-enum converter is registered), so `GetDisplayName()` is a **server-side** rendering helper — API clients receive `4`, not `"Samsung"`. Display names reach clients only when the server maps them into response DTO string fields.
+
 ## Display Attributes
 
-All enum values now have `[Display(Name = "...")]` attributes:
+Enum values have `[Display(Name = "...")]` attributes:
 
 ```csharp
 public enum DeviceType
@@ -23,10 +25,13 @@ public enum DeviceType
     [Display(Name = "Apple Watch")]
     AppleWatch = 2,
 
-    [Display(Name = "Samsung Galaxy Watch")]
+    [Display(Name = "Samsung")]
     Samsung = 4,
 
-    // ... etc
+    // ...
+
+    [Display(Name = "Other")]
+    Other = 99   // note: non-sequential — RelationshipType.Other is also 99
 }
 ```
 
@@ -44,8 +49,10 @@ var device = DeviceType.AppleWatch;
 var displayName = device.GetDisplayName(); // Returns: "Apple Watch"
 
 var severity = AlertSeverity.Red;
-var severityName = severity.GetDisplayName(); // Returns: "Critical"
+var severityName = severity.GetDisplayName(); // Returns: "Red"
 ```
+
+If a value has no `[Display]` attribute (e.g. any `ReportStatus` member), it falls back to `ToString()`.
 
 ### 2. ToList<TEnum>()
 
@@ -63,8 +70,11 @@ foreach (var (value, displayName) in deviceList)
 // Fitbit (1): Fitbit
 // AppleWatch (2): Apple Watch
 // Garmin (3): Garmin
-// Samsung (4): Samsung Galaxy Watch
-// ...
+// Samsung (4): Samsung
+// Withings (5): Withings
+// Oura (6): Oura
+// Whoop (7): Whoop
+// Other (99): Other
 ```
 
 ### 3. ToDictionary<TEnum>()
@@ -87,9 +97,9 @@ var subscriptionTiers = EnumExtensions.ToKeyValueList<SubscriptionTier>();
 
 // Returns:
 // [
-//   { Key: 1, Value: "Basic Care" },
-//   { Key: 2, Value: "Complete Care" },
-//   { Key: 3, Value: "Guardian Plus" }
+//   { Key: 1, Value: "Basic" },
+//   { Key: 2, Value: "Complete" },
+//   { Key: 3, Value: "Plus" }
 // ]
 
 // Serialize for API response
@@ -112,7 +122,7 @@ var genderOptions = EnumExtensions.ToSelectList<Gender>();
 // ]
 ```
 
-**Blazor Example:**
+**Blazor Example** *(illustrative pattern — not existing code)*:
 
 ```razor
 <InputSelect @bind-Value="cardiMember.Gender">
@@ -124,7 +134,7 @@ var genderOptions = EnumExtensions.ToSelectList<Gender>();
 </InputSelect>
 ```
 
-**MVC Example:**
+**MVC Example** *(illustrative pattern — not existing code)*:
 
 ```cshtml
 @using CardiTrack.Domain.Enums
@@ -177,9 +187,11 @@ if (!EnumExtensions.IsDefined<AlertSeverity>(alertValue))
 }
 ```
 
-## Real-World Usage Examples
+## Usage Examples
 
-### API Endpoint - Return Enum Options
+> **Note:** the examples below are **illustrative patterns**, not existing code. The real call sites today are `DashboardService` and `DeviceConnectionService` — the latter uses `GetDisplayName()` for provider error messages and as the fallback device name, where the **catalog `Device.DisplayName` takes precedence over the enum display name** when a catalog entry exists.
+
+### API Endpoint - Return Enum Options *(illustrative)*
 
 ```csharp
 [HttpGet("device-types")]
@@ -198,7 +210,7 @@ public IActionResult GetDeviceTypes()
 // ]
 ```
 
-### Blazor Component - Device Selector
+### Blazor Component - Device Selector *(illustrative)*
 
 ```razor
 @using CardiTrack.Domain.Enums
@@ -223,7 +235,7 @@ public IActionResult GetDeviceTypes()
 }
 ```
 
-### Validation - Check Alert Severity
+### Validation - Check Alert Severity *(illustrative)*
 
 ```csharp
 public class AlertValidator : AbstractValidator<Alert>
@@ -237,7 +249,7 @@ public class AlertValidator : AbstractValidator<Alert>
 }
 ```
 
-### Dashboard - Display Alert with Friendly Name
+### Dashboard - Display Alert with Friendly Name *(illustrative)*
 
 ```csharp
 public class AlertViewModel
@@ -253,14 +265,14 @@ public class AlertViewModel
         {
             Id = alert.Id,
             Title = alert.Title,
-            SeverityDisplay = alert.Severity.GetDisplayName(), // "Critical", "Urgent", "Caution", "Normal"
-            AlertTypeDisplay = alert.AlertType.GetDisplayName() // "Heart Rate Alert", etc.
+            SeverityDisplay = alert.Severity.GetDisplayName(), // "Green", "Yellow", "Orange", "Red"
+            AlertTypeDisplay = alert.AlertType.GetDisplayName() // "Heart Rate", "Inactivity", etc.
         };
     }
 }
 ```
 
-### Filter Form - Subscription Status Dropdown
+### Filter Form - Subscription Status Dropdown *(illustrative)*
 
 ```razor
 @using CardiTrack.Domain.Enums
@@ -286,7 +298,7 @@ public class AlertViewModel
 - **ToList/ToDictionary** - Create new collections, consider caching for repeated use
 - **ToSelectList** - Lightweight, safe to call multiple times
 
-### Caching Example
+### Caching Example *(illustrative)*
 
 ```csharp
 public static class EnumCache
@@ -308,30 +320,36 @@ public static class EnumCache
 
 ## All Available Enums
 
+Display names below are the exact `[Display(Name = "...")]` values from `src/Core/CardiTrack.Domain/Enums/`.
+
 ### Core Enums
-- **OrganizationType** - Family Account, Business Account
-- **UserRole** - Viewer, Administrator, Staff Member
-- **Gender** - Male, Female, Other, Prefer Not to Say
+- **OrganizationType** — Family Account, Business Account
+- **UserRole** — Member, Administrator, Staff Member
+- **Gender** — Male, Female, Other, Prefer Not to Say
 
 ### Relationship & Monitoring
-- **RelationshipType** - Self, Parent, Spouse, Grandparent, Sibling, Child, Other
+- **RelationshipType** — Self, Parent, Spouse, Grandparent, Sibling, Child, Other (Other = 99, non-sequential)
 
 ### Device & Connection
-- **DeviceType** - Fitbit, Apple Watch, Garmin, Samsung Galaxy Watch, Withings, Oura Ring, Whoop, Other Device
-- **ConnectionStatus** - Connected, Disconnected, Token Expired, Authentication Error, Sync Error
+- **DeviceType** — Fitbit, Apple Watch, Garmin, Samsung, Withings, Oura, Whoop, Other (Other = 99, non-sequential)
+- **ConnectionStatus** — Connected, Disconnected, Token Expired, Authentication Error, Sync Error
 
 ### Alerts
-- **AlertType** - Inactivity Alert, Heart Rate Alert, Sleep Quality Alert, Pattern Break Alert, Trend Alert
-- **AlertSeverity** - Normal (Green), Caution (Yellow), Urgent (Orange), Critical (Red)
+- **AlertType** — Inactivity, Heart Rate, Sleep, Pattern Break, Trend
+- **AlertSeverity** — Green (1), Yellow (2), Orange (3), Red (4)
 
 ### Billing
-- **SubscriptionTier** - Basic Care, Complete Care, Guardian Plus
-- **SubscriptionStatus** - Trial Period, Active, Past Due, Cancelled, Suspended
-- **BillingCycle** - Monthly, Annual
+- **SubscriptionTier** — Basic, Complete, Plus
+- **SubscriptionStatus** — Trial, Active, Past Due, Cancelled, Suspended
+- **BillingCycle** — Monthly, Annual
+
+### Reports
+- **ReportFormat** — PDF, CSV, FHIR R4, HL7 v2
+- **ReportStatus** — Pending, Ready, Failed, Expired (**no Display attributes** — `GetDisplayName()` falls back to `ToString()`)
 
 ## Testing
 
-Example unit test:
+> **Note:** no unit tests exist for `EnumExtensions` yet — the samples below are the shape such tests would take.
 
 ```csharp
 using CardiTrack.Domain.Enums;
@@ -361,7 +379,7 @@ public class EnumExtensionsTests
 
         // Assert
         Assert.Equal(4, list.Count); // Green, Yellow, Orange, Red
-        Assert.Contains(list, item => item.DisplayName == "Urgent");
+        Assert.Contains(list, item => item.DisplayName == "Yellow");
     }
 
     [Fact]
@@ -398,10 +416,14 @@ public class EnumExtensionsTests
 
 With these enum extensions, you can:
 
-✅ Display user-friendly names in the UI
+✅ Display user-friendly names in server-rendered UI
 ✅ Generate dropdown lists automatically
 ✅ Safely parse and validate enum values
 ✅ Reduce boilerplate code
 ✅ Maintain consistency across the application
 
-All enums are ready to use with zero additional configuration!
+Remember: display names are server-side only — over HTTP, enums are plain integers, so clients needing friendly labels should consume DTO string fields (or an options endpoint) rather than expecting named values in JSON.
+
+---
+
+**Last Updated:** August 7, 2026

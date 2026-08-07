@@ -4,7 +4,7 @@
 
 The elderly health monitoring market is experiencing rapid growth driven by aging populations, increased healthcare costs, and technological advancement in wearable devices. CardiTrack enters this market with a unique value proposition: **affordable, preventive health monitoring using existing consumer wearables with AI-powered pattern analysis**.
 
-**Market Opportunity**: $9B+ addressable market (150M+ elderly aged 65+ across the US & EU × $6-30/month average spend)
+**Market Opportunity**: $9B+ addressable market (150M+ elderly aged 65+ across the US & EU × $6-30/month average spend). The initial serviceable segment — US medical alert systems plus remote patient monitoring — is $3.8B+ today.
 
 **Key Competitive Advantage**: 50-70% cheaper than medical alert systems while providing preventive (not just reactive) monitoring across multiple device brands.
 
@@ -46,6 +46,7 @@ The elderly health monitoring market is experiencing rapid growth driven by agin
 **Market Value:**
 - **Medical Alert Systems**: $1.8B (US, 2024)
 - **Remote Patient Monitoring**: $2.1B (US, 2024)
+- **Initial serviceable segment (the two above)**: $3.8B+ (US, 2024)
 - **Wearable Health Devices**: $81B (Global, 2024)
 - **Projected CAGR**: 19.5% (2024-2030)
 
@@ -84,7 +85,7 @@ The elderly health monitoring market is experiencing rapid growth driven by agin
 **Trend 4: Subscription-Based Care**
 - Shift from hardware sales to recurring revenue
 - $8-30/month sweet spot for consumers
-- CardiTrack Alignment: ✅ **$8-30/month pricing**
+- CardiTrack Alignment: ✅ **$8-15/month consumer pricing** (business tier post-MVP)
 
 ---
 
@@ -194,7 +195,7 @@ The elderly health monitoring market is experiencing rapid growth driven by agin
 
 **CardiTrack Advantages:**
 - ✅ 70% cheaper ($15 vs $47/month)
-- ✅ Works with existing Fitbit/Apple Watch
+- ✅ Works with the watch they already wear (Fitbit today via the Google Health API; Apple Watch on the roadmap)
 - ✅ Preventive health monitoring (pattern analysis)
 - ✅ Consumer-grade UX (not medical device)
 - ✅ Multi-metric analysis (not just falls)
@@ -225,7 +226,7 @@ The elderly health monitoring market is experiencing rapid growth driven by agin
 **CardiTrack Advantages:**
 - ✅ 78% cheaper ($15 vs $68/month)
 - ✅ No contracts, cancel anytime
-- ✅ Preventive monitoring + emergency detection
+- ✅ Preventive monitoring (early-warning pattern analysis; emergency response stays with dedicated medical alert services)
 - ✅ Stylish consumer devices
 - ✅ AI-powered pattern learning
 
@@ -280,7 +281,7 @@ The elderly health monitoring market is experiencing rapid growth driven by agin
 - ❌ Over-featured for elderly (complexity)
 
 **CardiTrack Advantages:**
-- ✅ Works with cheaper Fitbit ($100) OR existing Apple Watch
+- ✅ Works with a cheaper Fitbit ($100) today; Apple Watch support on the roadmap (Q2 2027)
 - ✅ No phone ecosystem lock-in
 - ✅ Preventive health monitoring (not just falls)
 - ✅ Dedicated family dashboard
@@ -305,9 +306,9 @@ The elderly health monitoring market is experiencing rapid growth driven by agin
 - Acquired but discontinued
 
 **CardiTrack Improvements:**
-- ✅ Multi-platform (Web, iOS, Android)
+- ✅ Multi-platform (iOS + Android shipped; web dashboard in development)
 - ✅ Modern AI anomaly detection (MedGemma 1.5 4B + SSA-LSTM)
-- ✅ Multi-device support (not just Fitbit)
+- ✅ Multi-device roadmap (Fitbit today; Garmin, Apple Watch, Samsung and more per release wave)
 - ✅ Active development & support
 - ✅ Better pricing ($8 vs $15+)
 - ✅ Proven market validation (concept worked, execution failed)
@@ -389,7 +390,7 @@ The elderly health monitoring market is experiencing rapid growth driven by agin
 **CardiTrack Advantages:**
 - ✅ AI-powered anomaly detection
 - ✅ Automated preventive alerts
-- ✅ Works across Apple, Fitbit, Garmin, etc.
+- ✅ Multi-brand roadmap (Fitbit today via the Google Health API; Apple, Garmin, Samsung planned)
 - ✅ Dedicated caregiver interface
 
 ---
@@ -421,27 +422,27 @@ The elderly health monitoring market is experiencing rapid growth driven by agin
 
 | Feature | CardiTrack | Medical Alert Watches | Fitbit Premium | Apple Health | Care\|Mind (defunct) |
 |---------|-----------|----------------------|----------------|-------------|---------------------|
-| **Pricing** | $8-30/mo | $47-68/mo | $10/mo | Free | ~$15/mo |
-| **Multi-Device Support** | ✅ Fitbit, Apple, Garmin, Samsung | ❌ Proprietary only | ✅ Fitbit only | ✅ Apple only | ✅ Fitbit only |
+| **Pricing** | $8-15/mo consumer ($29.99 business tier post-MVP) | $47-68/mo | $10/mo | Free | ~$15/mo |
+| **Multi-Device Support** | 🔄 Fitbit shipped (Google Health API, incl. Pixel Watch); Garmin Q1 2027; Apple/Samsung Q2 2027; Withings/Oura/Whoop Q3 2027 | ❌ Proprietary only | ✅ Fitbit only | ✅ Apple only | ✅ Fitbit only |
 | **Preventive Monitoring** | ✅ AI pattern analysis | ❌ Reactive only | ⚠️ Basic insights | ❌ None | ✅ Basic patterns |
-| **Family Dashboard** | ✅ Web + Mobile | ⚠️ Limited | ❌ No | ⚠️ Manual check | ✅ iOS only |
-| **Automated Alerts** | ✅ SMS, Email, Push | ✅ Emergency only | ❌ None | ❌ None | ✅ Email |
+| **Family Dashboard** | 🔄 Mobile shipped; web in development | ⚠️ Limited | ❌ No | ⚠️ Manual check | ✅ iOS only |
+| **Automated Alerts** | 🔄 In development (SMS/email/push delivery on roadmap) | ✅ Emergency only | ❌ None | ❌ None | ✅ Email |
 | **Pattern Learning** | ✅ MedGemma personalized | ❌ None | ⚠️ Generic | ❌ None | ⚠️ Basic statistical |
-| **Multiple CardiMembers** | ✅ Up to unlimited | ❌ One device/user | ❌ N/A | ❌ N/A | ❌ One elder |
-| **Fall Detection** | 🔄 Coming Q3 2026 | ✅ Primary feature | ❌ No | ✅ Apple Watch | ❌ No |
+| **Multiple CardiMembers** | ✅ 2 (Basic) / 5 (Complete Care) | ❌ One device/user | ❌ N/A | ❌ N/A | ❌ One elder |
+| **Fall Detection** | ❌ Not planned (preventive focus, not emergency response) | ✅ Primary feature | ❌ No | ✅ Apple Watch | ❌ No |
 | **Sleep Analysis** | ✅ Pattern deviations | ❌ No | ✅ Yes | ✅ Yes | ✅ Basic |
 | **Heart Rate Alerts** | ✅ Deviation detection | ❌ No | ⚠️ Zones only | ❌ No | ✅ Basic |
 | **Activity Trends** | ✅ Long-term + short-term | ❌ No | ✅ Yes | ✅ Yes | ✅ Basic |
-| **HIPAA Compliant** | ✅ Yes | ✅ Yes | ⚠️ Partially | ❌ No | ⚠️ Unknown |
-| **API Access** | ✅ Enterprise tier | ❌ No | ❌ No | ✅ HealthKit | ❌ No |
-| **Offline Support** | ✅ Mobile app | ❌ No | ✅ Yes | ✅ Yes | ❌ No |
+| **HIPAA Compliant** | 🔄 Designed for HIPAA compliance (no BAA/attestation yet) | ✅ Yes | ⚠️ Partially | ❌ No | ⚠️ Unknown |
+| **API Access** | 🔄 Business tier, post-Q3 2027 | ❌ No | ❌ No | ✅ HealthKit | ❌ No |
+| **Offline Support** | 🔄 Q3 2027 (mobile) | ❌ No | ✅ Yes | ✅ Yes | ❌ No |
 | **Customer Support** | ✅ Email, Chat | ✅ 24/7 monitoring | ⚠️ Limited | ⚠️ Apple Support | ❌ Defunct |
 
 **Legend:**
-- ✅ Fully supported
+- ✅ Fully supported / shipped
 - ⚠️ Partially supported / Limited
 - ❌ Not supported
-- 🔄 Coming soon
+- 🔄 On roadmap (wave/date shown)
 
 ---
 
@@ -450,8 +451,9 @@ The elderly health monitoring market is experiencing rapid growth driven by agin
 #### 1. **Multi-Device, Brand-Agnostic Support**
 
 **What It Means:**
-- Works with Fitbit, Apple Watch, Garmin, Samsung, Withings, Oura, Whoop
-- Families can choose the device their elderly parent prefers
+- Supported today: Fitbit via the Google Health API (which also covers Pixel Watch)
+- Supported roadmap: Garmin (Q1 2027), Apple Watch and Samsung (Q2 2027), Withings/Oura/Whoop (Q3 2027)
+- Families can keep the device their elderly parent already wears
 - No vendor lock-in
 
 **Why Competitors Don't Have This:**
@@ -485,7 +487,7 @@ The elderly health monitoring market is experiencing rapid growth driven by agin
 
 ---
 
-#### 3. **Affordable Pricing ($8-30 vs $47-68)**
+#### 3. **Affordable Pricing ($8-15 vs $47-68)**
 
 **What It Means:**
 - 50-70% cheaper than medical alert systems
@@ -553,7 +555,7 @@ The elderly health monitoring market is experiencing rapid growth driven by agin
 - Consumer wearable apps focused on individual use
 
 **Business Advantage:**
-- ✅ Higher revenue per family ($29.99 tier: unlimited members)
+- ✅ Higher revenue per family (Complete Care: 5 CardiMembers + 20 family members; larger limits in the post-MVP business tier)
 - ✅ Lower churn (monitoring multiple people = higher switching cost)
 - ✅ Network effects (add more family members over time)
 
@@ -580,7 +582,7 @@ The elderly health monitoring market is experiencing rapid growth driven by agin
  (Emergency Only)        │              (Pattern Analysis)
                          │
                          │     CardiTrack ★
-                         │     ($8-30/mo)
+                         │     ($8-15/mo)
                          │
                          │     Fitbit Premium
                          │     ($10/mo)
@@ -610,7 +612,7 @@ The elderly health monitoring market is experiencing rapid growth driven by agin
 **For Elderly:**
 - "Stay independent. Stay safe."
 - "Your family cares. We help them help you."
-- "No ugly medical devices. Just your Fitbit."
+- "No ugly medical devices. Just the watch you already wear." (Fitbit and Pixel Watch at launch via the Google Health API; more brands per roadmap)
 
 **For Facilities:**
 - "Monitor 100 residents with 1 dashboard."
@@ -620,9 +622,14 @@ The elderly health monitoring market is experiencing rapid growth driven by agin
 
 ## Go-to-Market Strategy
 
-### Phase 1: MVP & Beta (Months 1-3)
+### Phase 1: MVP & Beta (Q4 2026)
 
 **Target:** 20-50 beta families
+
+**Prerequisites:**
+- Google Cloud console registration for the Health API client + sandbox verification (must complete before the legacy Fitbit Web API sunsets in September 2026)
+- Google-mandated health-data disclosure in-app (shipped on web; mobile pending — required before beta wearers connect)
+- Beta stays within the **100-connected-user cap** that applies to unverified restricted-scope apps
 
 **Channels:**
 - Personal network (friends, family)
@@ -635,12 +642,15 @@ The elderly health monitoring market is experiencing rapid growth driven by agin
 - Validate false positive rate <10%
 - Collect testimonials
 - Refine UX based on feedback
+- Submit Google restricted-scope verification (Gate 1 Trust & Safety + Gate 2 CASA) — 4-8 week combined runway must land before Phase 2
 
 ---
 
-### Phase 2: Launch (Months 4-6)
+### Phase 2: Launch (Q1-Q2 2027)
 
 **Target:** 100-500 paying customers
+
+**Prerequisite — Google verification gate:** this phase exceeds 100 connected wearers, so **Google restricted-scope verification (Gate 1 + CASA) must have passed** before public launch. Mobile disclosure banner must also be live.
 
 **Channels:**
 1. **Content Marketing**:
@@ -664,9 +674,10 @@ The elderly health monitoring market is experiencing rapid growth driven by agin
    - AARP magazine feature
 
 **Pricing:**
-- Basic: $8/month (limited features)
-- Complete Care: $15/month (full features)
-- 30-day free trial
+- Basic: $8/month (2 CardiMembers, 5 family members, no export)
+- Complete Care: $15/month (5 CardiMembers, 20 family members, export)
+- Annual billing: 15% discount
+- 30-day free trial (provisions the Complete Care tier)
 
 **Goals:**
 - 100+ paying customers
@@ -675,9 +686,11 @@ The elderly health monitoring market is experiencing rapid growth driven by agin
 
 ---
 
-### Phase 3: Scale (Months 7-12)
+### Phase 3: Scale (H2 2027)
 
 **Target:** 1,000-5,000 customers
+
+**Prerequisites:** Google verification already passed in Phase 2; the **annual CASA reassessment** ($500-$4,500/year, 2-6 weeks per cycle) is now a recurring operating cost and must be scheduled so certification never lapses while >100 wearers are connected.
 
 **Channels:**
 1. **Google Ads**:
@@ -700,14 +713,15 @@ The elderly health monitoring market is experiencing rapid growth driven by agin
    - Staff training and onboarding support
 
 **Pricing:**
-- Guardian Plus: $29.99/month (unlimited members, API access)
+- Basic $8 / Complete Care $15 (consumer tiers, limits as above)
+- Guardian Plus: $29.99/month — **post-MVP business tier (post-Q3 2027)**: larger member limits and API access for facilities/power users
 - Device Bundle: +$100 upfront (Fitbit Charge 6)
 - Annual discount: 15% off
 
 **Goals:**
 - 1,000+ paying customers
 - $15,000+ MRR
-- CAC <$50, LTV >$300
+- CAC <$50, LTV >$300 (~$13/month gross profit on Complete Care × ~24-month retention; net of the annual CASA reassessment, which is fixed-cost and amortizes to well under $1/subscriber/year at this scale)
 
 ---
 
@@ -724,7 +738,7 @@ The elderly health monitoring market is experiencing rapid growth driven by agin
 **Mitigation:**
 - Move fast, capture market share early
 - Build brand loyalty and network effects
-- Support multiple devices (not just Fitbit)
+- Execute the multi-device roadmap (Garmin Q1 2027, Apple/Samsung Q2 2027) so we are not solely a Google Health API front-end — note that today Fitbit is our **only** shipped integration, which makes this risk compound with Risk 5 (Google platform dependency) below
 - Position for acquisition by Google/Fitbit
 
 **Opportunity:** If Google/Fitbit acquires CardiTrack, exit with 5-10x return.
@@ -770,11 +784,33 @@ The elderly health monitoring market is experiencing rapid growth driven by agin
 **Impact:** Critical (business-ending)
 
 **Mitigation:**
-- HIPAA compliance from day 1
+- Designed for HIPAA compliance from day 1
 - Regular security audits
-- Encryption (TDE, TLS 1.2+, field-level)
+- Encryption: Cloud SQL encryption at rest, TLS 1.2+ in transit, field-level AES-256-GCM for wearable OAuth tokens (see [data_protection_architecture.md](./technical/data_protection_architecture.md) and [dpia.md](./compliance/dpia.md))
 - Cyber insurance ($1-2M coverage)
 - Incident response plan
+
+---
+
+**Risk 5: Google Platform Dependency & Verification Gate**
+
+**Probability:** High (structural — already in effect)
+
+**Impact:** High (blocks scale and, near-term, basic operation)
+
+CardiTrack's data supply chain is single-vendor: Google owns the Health API, the restricted-scope verification gates, and the MedGemma model we run for inference. Specific exposures:
+
+- **September 2026 legacy sunset (~4 weeks away):** we have migrated to the Google Health API, but Google Cloud console registration is still pending and several API response field mappings are "(assumed)" until sandbox verification — until both are done, ingestion is not proven against the replacement API
+- **100-connected-user cap:** all Google Health scopes are Restricted; unverified apps cannot exceed 100 connected wearers. Growth beyond beta is gated on Gate 1 (Trust & Safety restricted-scope review) + Gate 2 (CASA security assessment) — combined runway 4-8 weeks
+- **Recurring cost:** the CASA assessment is **annual** ($500-$4,500 per cycle, 2-6 weeks) — a permanent compliance line item
+- **Policy risk:** Google can change API terms, scope policy, or verification requirements unilaterally
+
+**Mitigation:**
+- Complete console registration and sandbox field verification immediately (blocking task, pre-beta)
+- Submit verification during Phase 1 beta so approval lands before Phase 2 launch
+- Budget the annual CASA reassessment as fixed operating cost and calendar it so certification never lapses
+- Execute the non-Google device roadmap (Garmin Q1 2027, Apple/Samsung Q2 2027, Withings/Oura/Whoop Q3 2027) to reduce single-API dependence over time
+- Keep MedGemma self-hosted (Ollama on Cloud Run) so model access does not depend on a Google-hosted inference API
 
 ---
 
@@ -791,7 +827,7 @@ The elderly health monitoring market is experiencing rapid growth driven by agin
 - Staff dashboard for multi-resident monitoring
 - Integration with facility EHR systems
 
-**Timeline:** Q4 2026
+**Timeline:** Q4 2027+ (post-R4 business tier)
 
 ---
 
@@ -806,7 +842,7 @@ The elderly health monitoring market is experiencing rapid growth driven by agin
 - Partner with local device retailers
 - GDPR compliance already addressed through EU core market
 
-**Timeline:** 2027
+**Timeline:** 2027 — groundwork already started: region-localized phone input (UK placeholder) shipped August 2026
 
 ---
 
@@ -835,13 +871,13 @@ The elderly health monitoring market is experiencing rapid growth driven by agin
 
 **Valuation:** 5-10x revenue ($1M ARR = $5-10M acquisition)
 
-**Timeline:** 2027+ (after proving scale)
+**Timeline:** 2028+ (after proving scale)
 
 ---
 
 ## Conclusion
 
-CardiTrack enters a growing $3.8B+ market with a unique value proposition: **affordable, preventive, multi-device elderly health monitoring**. By combining AI-powered pattern analysis with consumer-grade wearables, CardiTrack offers 50-70% cost savings over medical alert systems while providing superior preventive insights.
+CardiTrack enters a growing market — $9B+ addressable across the US & EU, with a $3.8B+ initial serviceable segment (US medical alert + remote patient monitoring) — with a unique value proposition: **affordable, preventive, multi-device elderly health monitoring**. By combining AI-powered pattern analysis with consumer-grade wearables, CardiTrack offers 50-70% cost savings over medical alert systems while providing superior preventive insights.
 
 **Key Success Factors:**
 1. ✅ Proven market demand (Care|Mind validated concept)
@@ -851,16 +887,16 @@ CardiTrack enters a growing $3.8B+ market with a unique value proposition: **aff
 5. ✅ Multiple monetization paths (B2C, B2B, enterprise)
 
 **Next Steps:**
-1. Complete MVP development (Q1 2026)
-2. Beta test with 20-50 families (Q1 2026)
-3. Public launch with Fitbit support (Q2 2026)
-4. Add Apple Watch & Garmin (Q3 2026)
-5. Scale to 1,000+ customers (Q4 2026)
+1. Complete Google Cloud console registration + sandbox verification of the Google Health API integration — before the September 2026 legacy Fitbit Web API sunset (Aug-Sep 2026)
+2. Complete R1 core monitoring and beta test with 20-50 families (Q4 2026 — within the 100-user cap for unverified apps); submit Google restricted-scope verification (Gate 1 + CASA)
+3. Public launch with Fitbit + Garmin support (Q1 2027 — **requires Google verification passed** to exceed 100 connected wearers, and the mobile disclosure banner shipped)
+4. Add Apple Watch & Samsung (Q2 2027)
+5. Scale to 1,000+ customers (H2 2027), with the annual CASA reassessment as an ongoing operating item
 
-**Long-term Vision:** Become the **leading multi-device elderly health monitoring platform**, serving 100,000+ families by 2028, with potential acquisition by major tech/healthcare company.
+**Long-term Vision:** Become the **leading multi-device elderly health monitoring platform**, serving 100,000+ families by 2029, with potential acquisition by major tech/healthcare company.
 
 ---
 
-**Document Version:** 1.0
-**Last Updated:** February 24, 2026
-**Next Review:** April 2026 (post-beta)
+**Document Version:** 1.1
+**Last Updated:** August 7, 2026
+**Next Review:** December 2026 (post-beta)
