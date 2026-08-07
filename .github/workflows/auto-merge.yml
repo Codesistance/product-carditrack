@@ -1,10 +1,22 @@
 name: Auto-merge
 
-# Merges a pull request automatically once it carries the `automerge` label and
-# every check on its head commit has finished successfully.
+# Merges a pull request automatically once it carries the `automerge` label,
+# every check on its head commit has finished successfully, and code review has
+# come to rest: no review is still pending from Copilot, no reviewer is holding
+# changes requested, and every review thread is resolved.
 #
 # Triggers:
 #   - pull_request/labeled: covers the "checks already finished, label added last" case.
+#   - pull_request_review/submitted: covers Copilot (or a human) posting the review
+#     the PR was waiting on. Reviews submitted by an app use that app's own token,
+#     not this workflow's GITHUB_TOKEN, so they are delivered rather than suppressed
+#     by the recursion guard.
+#   - schedule: resolving a review thread fires no workflow event at all
+#     (pull_request_review_thread is a webhook event, not an Actions trigger), so a
+#     periodic sweep is the only way to notice that the last thread went resolved.
+#     It re-evaluates every open PR carrying the label. workflow_dispatch runs the
+#     same sweep on demand. Note GitHub disables scheduled workflows after 60 days
+#     of repository inactivity.
 #   - workflow_run/completed: covers the "label added first, checks finish later" case.
 #     GitHub does not deliver check_suite events for suites created by Actions
 #     (recursion guard), so each PR-triggered workflow must be listed by name here.
@@ -19,6 +31,11 @@ name: Auto-merge
 on:
   pull_request:
     types: [labeled]
+  pull_request_review:
+    types: [submitted, dismissed]
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
   workflow_run:
     workflows:
       - 'CI / Deploy Apps → Dev'
@@ -55,15 +72,93 @@ jobs:
             const label = process.env.AUTOMERGE_LABEL;
             const ownJob = process.env.OWN_JOB_NAME;
 
+            // GraphQL reports the reviewer as a Bot node whose login has no '[bot]'
+            // suffix; REST reports 'copilot-pull-request-reviewer[bot]'. Strip the
+            // suffix so either spelling matches.
+            const COPILOT_REVIEWER = 'copilot-pull-request-reviewer';
+            const normalizeLogin = login => (login || '').replace(/\[bot\]$/, '').toLowerCase();
+
+            // reviewRequests holds only reviewers who have not yet submitted, so a
+            // PR that was never sent to Copilot is not blocked, while a re-review
+            // requested after new commits blocks again.
+            const REVIEW_STATE_QUERY = `
+              query($owner: String!, $repo: String!, $number: Int!, $cursor: String) {
+                repository(owner: $owner, name: $repo) {
+                  pullRequest(number: $number) {
+                    reviewRequests(first: 100) {
+                      nodes {
+                        requestedReviewer {
+                          __typename
+                          ... on Bot { login }
+                          ... on User { login }
+                        }
+                      }
+                    }
+                    latestReviews(first: 100) {
+                      nodes { state author { login } }
+                    }
+                    reviewThreads(first: 100, after: $cursor) {
+                      pageInfo { hasNextPage endCursor }
+                      nodes { isResolved }
+                    }
+                  }
+                }
+              }`;
+
+            async function getReviewState(prNumber) {
+              let cursor = null;
+              let firstPage = true;
+              let copilotPending = false;
+              let changesRequestedBy = [];
+              let unresolvedThreads = 0;
+
+              do {
+                const { repository } = await github.graphql(REVIEW_STATE_QUERY, {
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  number: prNumber,
+                  cursor,
+                });
+                const gqlPr = repository.pullRequest;
+
+                if (firstPage) {
+                  copilotPending = gqlPr.reviewRequests.nodes.some(
+                    node => normalizeLogin(node.requestedReviewer?.login) === COPILOT_REVIEWER
+                  );
+                  changesRequestedBy = gqlPr.latestReviews.nodes
+                    .filter(review => review.state === 'CHANGES_REQUESTED')
+                    .map(review => review.author?.login || 'unknown');
+                  firstPage = false;
+                }
+
+                unresolvedThreads += gqlPr.reviewThreads.nodes.filter(t => !t.isResolved).length;
+                const { hasNextPage, endCursor } = gqlPr.reviewThreads.pageInfo;
+                cursor = hasNextPage ? endCursor : null;
+              } while (cursor);
+
+              return { copilotPending, changesRequestedBy, unresolvedThreads };
+            }
+
             let prNumbers;
-            if (context.eventName === 'pull_request') {
-              prNumbers = [context.payload.pull_request.number];
-            } else {
+            if (context.eventName === 'workflow_run') {
               // Empty for fork PRs; those are not auto-merged.
               prNumbers = (context.payload.workflow_run.pull_requests || []).map(pr => pr.number);
+            } else if (context.payload.pull_request) {
+              prNumbers = [context.payload.pull_request.number];
+            } else {
+              // schedule / workflow_dispatch: sweep every open PR carrying the label.
+              const openPrs = await github.paginate(github.rest.pulls.list, {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                state: 'open',
+                per_page: 100,
+              });
+              prNumbers = openPrs
+                .filter(pr => pr.labels.some(l => l.name === label))
+                .map(pr => pr.number);
             }
             if (prNumbers.length === 0) {
-              core.info('Event has no associated same-repo pull requests; nothing to do.');
+              core.info('No same-repo pull requests to evaluate; nothing to do.');
               return;
             }
 
@@ -84,6 +179,22 @@ jobs:
               }
               if (pr.head.repo.full_name !== `${context.repo.owner}/${context.repo.repo}`) {
                 core.info(`#${prNumber} is from a fork; skipping.`);
+                continue;
+              }
+
+              // Review must have come to rest before checks are even considered:
+              // green CI on unreviewed or unaddressed code is exactly what this guards.
+              const review = await getReviewState(prNumber);
+              if (review.copilotPending) {
+                core.info(`#${prNumber}: Copilot review still pending; skipping.`);
+                continue;
+              }
+              if (review.changesRequestedBy.length > 0) {
+                core.info(`#${prNumber}: changes requested by ${review.changesRequestedBy.join(', ')}; skipping.`);
+                continue;
+              }
+              if (review.unresolvedThreads > 0) {
+                core.info(`#${prNumber}: ${review.unresolvedThreads} unresolved review thread(s); skipping.`);
                 continue;
               }
 
