@@ -260,6 +260,13 @@ public partial class DashboardPage : ContentPage
             // this may have been the first one.
             await LoadAsync(force: true);
         }
+        catch (Exception ex)
+        {
+            // async void: anything escaping here takes the app down rather than
+            // reaching a caller. RunModalAsync rethrows when the modal can't be
+            // pushed, so the dashboard has to absorb it and stay usable.
+            await _popups.ShowErrorAsync(ex.Message, "Couldn't add a CardiMember");
+        }
         finally
         {
             _wizardActive = false;
@@ -286,6 +293,12 @@ public partial class DashboardPage : ContentPage
         }
         catch (ApiException ex)
         {
+            await _popups.ShowErrorAsync(ex.Message, "Couldn't start device setup");
+        }
+        catch (Exception ex)
+        {
+            // ApiException covers the members fetch above, but a failed modal push
+            // arrives as something else — and this is async void too.
             await _popups.ShowErrorAsync(ex.Message, "Couldn't start device setup");
         }
         finally
