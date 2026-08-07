@@ -342,6 +342,9 @@ resource "google_cloud_run_v2_service" "web" {
 # ── DB Migrator Job ──────────────────────────────────────────────────────────
 # Runs EF Core migrations against the private DB via Cloud SQL Auth Proxy socket.
 # Executed once per deploy by the CI pipeline; exits when migrations are complete.
+# The image is owned by CI (`gcloud run jobs update --image`), not Terraform — the
+# variable default only bootstraps the initial create, so image changes are ignored
+# here exactly as they are for the api/web/worker/medgemma services.
 resource "google_cloud_run_v2_job" "migrator" {
   name     = "${var.api_service_name}-migrator"
   location = var.cloud_run_location
@@ -394,6 +397,9 @@ resource "google_cloud_run_v2_job" "migrator" {
     }
   }
 
+  lifecycle {
+    ignore_changes = [template[0].template[0].containers[0].image]
+  }
   depends_on = [
     google_project_service.run,
     google_secret_manager_secret_version.db_connection_string,
