@@ -53,7 +53,8 @@ public static class DeviceProviderServiceExtensions
                 sp.GetRequiredService<IOAuthTokenRefreshService>(),
                 sp.GetRequiredKeyedService<IDeviceApiClient>(DeviceType.Fitbit),
                 sp.GetRequiredService<IDeviceConnectionRepository>(),
-                sp.GetRequiredService<IActivityLogRepository>(),
+                sp.GetRequiredService<IDeviceActivityLogRepository>(),
+                sp.GetRequiredService<IActivityLogAggregationService>(),
                 sp.GetRequiredService<IUnitOfWork>(),
                 sp.GetRequiredService<IOptions<List<DeviceProviderSettings>>>()));
 

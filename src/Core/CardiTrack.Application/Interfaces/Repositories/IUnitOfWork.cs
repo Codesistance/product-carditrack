@@ -9,6 +9,7 @@ public interface IUnitOfWork : IDisposable
     IUserCardiMemberRepository UserCardiMembers { get; }
     IDeviceConnectionRepository DeviceConnections { get; }
     IActivityLogRepository ActivityLogs { get; }
+    IDeviceActivityLogRepository DeviceActivityLogs { get; }
     IDeviceRepository Devices { get; }
     IAlertRepository Alerts { get; }
     IPatternBaselineRepository PatternBaselines { get; }

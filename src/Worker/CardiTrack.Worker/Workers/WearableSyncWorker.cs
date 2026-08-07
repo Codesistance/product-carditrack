@@ -25,7 +25,10 @@ public class WearableSyncWorker : CronBackgroundService
 
         using var scope = _scopeFactory.CreateScope();
         var deviceConnections = scope.ServiceProvider.GetRequiredService<IDeviceConnectionRepository>();
-        var connections = await deviceConnections.GetDueForSyncAsync(thresholdMinutes: 30);
+        // Every due connection syncs. Each writes its own raw DeviceActivityLogs row, and the
+        // merge folds a member's devices into the single ActivityLogs row readers consume, so
+        // two devices on one member no longer contend for it.
+        var connections = await deviceConnections.GetDueForSyncAsync();
 
         var successCount = 0;
         var failureCount = 0;

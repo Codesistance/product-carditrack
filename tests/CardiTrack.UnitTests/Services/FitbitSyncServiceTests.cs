@@ -1,4 +1,5 @@
 using CardiTrack.Application.Interfaces.Repositories;
+using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Domain.Entities;
 using CardiTrack.Domain.Enums;
 using CardiTrack.Infrastructure.ExternalClients;
@@ -15,7 +16,8 @@ public class DeviceSyncServiceTests
     private readonly IOAuthTokenRefreshService _tokenRefresh = Substitute.For<IOAuthTokenRefreshService>();
     private readonly IDeviceApiClient _deviceApi = Substitute.For<IDeviceApiClient>();
     private readonly IDeviceConnectionRepository _deviceConnections = Substitute.For<IDeviceConnectionRepository>();
-    private readonly IActivityLogRepository _activityLogs = Substitute.For<IActivityLogRepository>();
+    private readonly IDeviceActivityLogRepository _deviceActivityLogs = Substitute.For<IDeviceActivityLogRepository>();
+    private readonly IActivityLogAggregationService _aggregation = Substitute.For<IActivityLogAggregationService>();
     private readonly IUnitOfWork _unitOfWork = Substitute.For<IUnitOfWork>();
 
     private readonly DeviceConnection _fitbitConnection = new()
@@ -27,59 +29,76 @@ public class DeviceSyncServiceTests
         IsActive = true
     };
 
+    private const int LookbackDays = 3;
+
+    // Computed per access, not captured once at type initialization: the service derives its own
+    // "yesterday" when it runs, so a cached value would disagree with it if the suite crosses UTC
+    // midnight between class load and the assertion.
+    private static DateOnly Yesterday => DateOnly.FromDateTime(DateTime.UtcNow.AddDays(-1));
+
     private readonly DeviceProviderSettings _fitbitConfig = new()
     {
         Provider = "Fitbit",
         ClientId = "test_client",
         ClientSecret = "test_secret",
         TokenUrl = "https://api.fitbit.com/oauth2/token",
-        TokenLifetimeHours = 8
+        TokenLifetimeHours = 8,
+        SyncLookbackDays = LookbackDays
     };
 
     private DeviceSyncService CreateSut()
     {
         var options = Options.Create(new List<DeviceProviderSettings> { _fitbitConfig });
         return new DeviceSyncService(
-            _tokenRefresh, _deviceApi, _deviceConnections, _activityLogs, _unitOfWork, options);
+            _tokenRefresh, _deviceApi, _deviceConnections, _deviceActivityLogs,
+            _aggregation, _unitOfWork, options);
     }
+
+    private static DeviceHealthSnapshot Snapshot(int steps = 8000) =>
+        new(Steps: steps, DistanceKm: 5.2m, ActiveMinutes: 45, SedentaryMinutes: 600,
+            Floors: 10, CaloriesBurned: 2100,
+            RestingHeartRate: 65, AvgHeartRate: 72, MaxHeartRate: 120, MinHeartRate: 55,
+            TotalSleepMinutes: 450, SleepEfficiency: 87,
+            SleepStartTime: null, SleepEndTime: null,
+            DeepSleepMinutes: 90, LightSleepMinutes: 240, RemSleepMinutes: 90, AwakeMinutes: 30);
 
     private void SetupDefaultApiResponse()
     {
-        var yesterday = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(-1));
-        _deviceApi.GetHealthSnapshotAsync(Arg.Any<string>(), yesterday)
-            .Returns(new DeviceHealthSnapshot(
-                Steps: 8000, DistanceKm: 5.2m, ActiveMinutes: 45, SedentaryMinutes: 600,
-                Floors: 10, CaloriesBurned: 2100,
-                RestingHeartRate: 65, AvgHeartRate: 72, MaxHeartRate: 120, MinHeartRate: 55,
-                TotalSleepMinutes: 450, SleepEfficiency: 87,
-                SleepStartTime: null, SleepEndTime: null,
-                DeepSleepMinutes: 90, LightSleepMinutes: 240, RemSleepMinutes: 90, AwakeMinutes: 30));
+        _deviceApi.GetHealthSnapshotAsync(Arg.Any<string>(), Arg.Any<DateOnly>())
+            .Returns(Snapshot());
+    }
+
+    private void SetupSuccessfulTokenRefresh()
+    {
+        _tokenRefresh.RefreshIfExpiredAsync(Arg.Any<DeviceConnection>(), Arg.Any<DeviceProviderSettings>())
+            .Returns("access_token");
     }
 
     [Fact]
     public async Task SyncCardiMemberAsync_CallsTokenRefresh_BeforeFetchingData()
     {
-        _tokenRefresh.RefreshIfExpiredAsync(Arg.Any<DeviceConnection>(), Arg.Any<DeviceProviderSettings>())
-            .Returns("access_token");
+        SetupSuccessfulTokenRefresh();
         SetupDefaultApiResponse();
 
         await CreateSut().SyncCardiMemberAsync(_fitbitConnection);
 
         await _tokenRefresh.Received(1).RefreshIfExpiredAsync(_fitbitConnection, _fitbitConfig);
-        await _deviceApi.Received(1).GetHealthSnapshotAsync(Arg.Any<string>(), Arg.Any<DateOnly>());
+        await _deviceApi.Received(LookbackDays).GetHealthSnapshotAsync(Arg.Any<string>(), Arg.Any<DateOnly>());
     }
 
     [Fact]
     public async Task SyncCardiMemberAsync_MapsSnapshotToActivityLog_Correctly()
     {
-        _tokenRefresh.RefreshIfExpiredAsync(Arg.Any<DeviceConnection>(), Arg.Any<DeviceProviderSettings>())
-            .Returns("access_token");
+        SetupSuccessfulTokenRefresh();
         SetupDefaultApiResponse();
 
         await CreateSut().SyncCardiMemberAsync(_fitbitConnection);
 
-        await _activityLogs.Received(1).UpsertAsync(Arg.Is<ActivityLog>(log =>
+        await _deviceActivityLogs.Received(1).UpsertAsync(Arg.Is<DeviceActivityLog>(log =>
             log != null &&
+            log.Date == Yesterday &&
+            log.CardiMemberId == _fitbitConnection.CardiMemberId &&
+            log.DeviceConnectionId == _fitbitConnection.Id &&
             log.Steps == 8000 &&
             log.ActiveMinutes == 45 &&
             log.RestingHeartRate == 65 &&
@@ -87,24 +106,82 @@ public class DeviceSyncServiceTests
             log.SleepEfficiency == 87));
     }
 
+    // A sync that only ever fetched yesterday left a permanent hole for any day the worker was
+    // down. The window ends at yesterday and reaches back SyncLookbackDays.
     [Fact]
-    public async Task SyncCardiMemberAsync_UpsertsActivityLog_WithYesterdayDate()
+    public async Task SyncCardiMemberAsync_UpsertsEveryDay_InTheTrailingWindow()
     {
-        _tokenRefresh.RefreshIfExpiredAsync(Arg.Any<DeviceConnection>(), Arg.Any<DeviceProviderSettings>())
-            .Returns("access_token");
+        SetupSuccessfulTokenRefresh();
         SetupDefaultApiResponse();
 
-        var expectedDate = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(-1));
         await CreateSut().SyncCardiMemberAsync(_fitbitConnection);
 
-        await _activityLogs.Received(1).UpsertAsync(Arg.Is<ActivityLog>(log => log != null && log.Date == expectedDate));
+        for (var offset = 0; offset < LookbackDays; offset++)
+        {
+            var expected = Yesterday.AddDays(-offset);
+            await _deviceActivityLogs.Received(1).UpsertAsync(Arg.Is<DeviceActivityLog>(log =>
+                log != null && log.Date == expected));
+        }
+
+        await _deviceActivityLogs.Received(LookbackDays).UpsertAsync(Arg.Any<DeviceActivityLog>());
+    }
+
+    [Fact]
+    public async Task SyncCardiMemberAsync_FetchesOnlyYesterday_WhenLookbackIsOne()
+    {
+        _fitbitConfig.SyncLookbackDays = 1;
+        SetupSuccessfulTokenRefresh();
+        SetupDefaultApiResponse();
+
+        await CreateSut().SyncCardiMemberAsync(_fitbitConnection);
+
+        await _deviceActivityLogs.Received(1).UpsertAsync(Arg.Is<DeviceActivityLog>(log =>
+            log != null && log.Date == Yesterday));
+        await _deviceActivityLogs.Received(1).UpsertAsync(Arg.Any<DeviceActivityLog>());
+    }
+
+    // The raw row is the sync's output; the ActivityLogs row readers consume is derived from it,
+    // so every synced day must trigger a recompute for that member-day.
+    [Fact]
+    public async Task SyncCardiMemberAsync_RecomputesTheMergedRow_ForEveryDaySynced()
+    {
+        SetupSuccessfulTokenRefresh();
+        SetupDefaultApiResponse();
+
+        await CreateSut().SyncCardiMemberAsync(_fitbitConnection);
+
+        for (var offset = 0; offset < LookbackDays; offset++)
+        {
+            var expected = Yesterday.AddDays(-offset);
+            await _aggregation.Received(1)
+                .RecomputeAsync(_fitbitConnection.CardiMemberId, expected);
+        }
+    }
+
+    // The merge reads stored rows, so the raw row has to be saved before the recompute runs.
+    [Fact]
+    public async Task SyncCardiMemberAsync_SavesTheRawRow_BeforeRecomputing()
+    {
+        // One day, so the asserted order is the whole call sequence.
+        _fitbitConfig.SyncLookbackDays = 1;
+        SetupSuccessfulTokenRefresh();
+        SetupDefaultApiResponse();
+
+        await CreateSut().SyncCardiMemberAsync(_fitbitConnection);
+
+        Received.InOrder(() =>
+        {
+            _deviceActivityLogs.UpsertAsync(Arg.Any<DeviceActivityLog>());
+            _unitOfWork.SaveChangesAsync();
+            _aggregation.RecomputeAsync(Arg.Any<Guid>(), Arg.Any<DateOnly>());
+            _unitOfWork.SaveChangesAsync();
+        });
     }
 
     [Fact]
     public async Task SyncCardiMemberAsync_UpdatesLastSyncDate_OnSuccess()
     {
-        _tokenRefresh.RefreshIfExpiredAsync(Arg.Any<DeviceConnection>(), Arg.Any<DeviceProviderSettings>())
-            .Returns("access_token");
+        SetupSuccessfulTokenRefresh();
         SetupDefaultApiResponse();
 
         await CreateSut().SyncCardiMemberAsync(_fitbitConnection);
@@ -116,10 +193,8 @@ public class DeviceSyncServiceTests
     [Fact]
     public async Task SyncCardiMemberAsync_SetsStatusToSyncError_WhenApiFails()
     {
-        _tokenRefresh.RefreshIfExpiredAsync(Arg.Any<DeviceConnection>(), Arg.Any<DeviceProviderSettings>())
-            .Returns("access_token");
-        var yesterday = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(-1));
-        _deviceApi.GetHealthSnapshotAsync(Arg.Any<string>(), yesterday)
+        SetupSuccessfulTokenRefresh();
+        _deviceApi.GetHealthSnapshotAsync(Arg.Any<string>(), Arg.Any<DateOnly>())
             .ThrowsAsync(new FitbitApiException(500, "Internal Server Error"));
 
         await Assert.ThrowsAsync<FitbitApiException>(() =>
@@ -127,6 +202,41 @@ public class DeviceSyncServiceTests
 
         await _deviceConnections.Received(1)
             .UpdateStatusAsync(_fitbitConnection.Id, ConnectionStatus.SyncError);
+    }
+
+    // A partial window must stay due: stamping LastSyncDate would hide the gap until the next
+    // interval, and the missing day would never be retried.
+    [Fact]
+    public async Task SyncCardiMemberAsync_DoesNotUpdateLastSyncDate_WhenALaterDayFails()
+    {
+        SetupSuccessfulTokenRefresh();
+        _deviceApi.GetHealthSnapshotAsync(Arg.Any<string>(), Arg.Any<DateOnly>())
+            .Returns(Snapshot());
+        _deviceApi.GetHealthSnapshotAsync(Arg.Any<string>(), Yesterday)
+            .ThrowsAsync(new FitbitApiException(503, "Service Unavailable"));
+
+        await Assert.ThrowsAsync<FitbitApiException>(() =>
+            CreateSut().SyncCardiMemberAsync(_fitbitConnection));
+
+        await _deviceConnections.DidNotReceive()
+            .UpdateLastSyncDateAsync(Arg.Any<Guid>(), Arg.Any<DateTime>());
+    }
+
+    // Oldest day first, so the days that did come back are already saved when a later one fails.
+    [Fact]
+    public async Task SyncCardiMemberAsync_KeepsEarlierDays_WhenALaterDayFails()
+    {
+        SetupSuccessfulTokenRefresh();
+        _deviceApi.GetHealthSnapshotAsync(Arg.Any<string>(), Arg.Any<DateOnly>())
+            .Returns(Snapshot());
+        _deviceApi.GetHealthSnapshotAsync(Arg.Any<string>(), Yesterday)
+            .ThrowsAsync(new FitbitApiException(503, "Service Unavailable"));
+
+        await Assert.ThrowsAsync<FitbitApiException>(() =>
+            CreateSut().SyncCardiMemberAsync(_fitbitConnection));
+
+        await _deviceActivityLogs.Received(LookbackDays - 1).UpsertAsync(Arg.Any<DeviceActivityLog>());
+        await _aggregation.Received(LookbackDays - 1).RecomputeAsync(Arg.Any<Guid>(), Arg.Any<DateOnly>());
     }
 
     [Fact]

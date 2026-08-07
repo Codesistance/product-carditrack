@@ -5,7 +5,9 @@ public record FitbitActivitiesResult(
     int Steps,
     decimal DistanceKm,
     int ActiveMinutes,
-    int SedentaryMinutes,
+    // Null when the provider has no such data type — never 0, which the merge would treat
+    // as a real reading and prefer over another device's genuine value.
+    int? SedentaryMinutes,
     int Floors,
     int CaloriesBurned);
 

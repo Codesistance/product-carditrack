@@ -25,5 +25,16 @@ public record DeviceHealthSnapshot(
     int? DeepSleepMinutes,
     int? LightSleepMinutes,
     int? RemSleepMinutes,
-    int? AwakeMinutes
+    int? AwakeMinutes,
+    // Additional health metrics. No provider populates these yet — the Google Health API
+    // data-type names for them are unverified pending sandbox access (see FitbitApiClient),
+    // so clients leave them null rather than guess. They are declared here so the contract
+    // really is 1:1 with ActivityLog and a provider can fill them without a signature change.
+    decimal? SpO2Average = null,
+    decimal? SpO2Min = null,
+    decimal? SpO2Max = null,
+    decimal? VO2Max = null,
+    int? StressScore = null,
+    decimal? BreathingRate = null,
+    decimal? Temperature = null
 );

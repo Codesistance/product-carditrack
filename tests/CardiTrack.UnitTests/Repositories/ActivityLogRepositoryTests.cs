@@ -79,6 +79,70 @@ public class ActivityLogRepositoryTests(TestDatabaseFixture fixture)
         Assert.Equal(95, saved.SleepEfficiency);
     }
 
+    // The unique index is on (CardiMemberId, Date), so a member's second device must update
+    // the day's existing row rather than insert a second one and violate the index.
+    [Fact]
+    public async Task UpsertAsync_UpdatesTheSameRow_WhenASecondDeviceReportsTheSameDay()
+    {
+        using var scope = fixture.CreateScope();
+        var repo = scope.ServiceProvider.GetRequiredService<IActivityLogRepository>();
+        var uow = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
+
+        var org = await TestDataSeeder.SeedOrganizationAsync(scope);
+        var member = await TestDataSeeder.SeedCardiMemberAsync(scope, org.Id);
+        var watch = await TestDataSeeder.SeedDeviceConnectionAsync(scope, member.Id);
+        var ring = await TestDataSeeder.SeedDeviceConnectionAsync(scope, member.Id);
+
+        var date = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(-1));
+
+        await repo.UpsertAsync(BuildLog(member.Id, watch.Id, date));
+        await uow.SaveChangesAsync();
+
+        var fromRing = BuildLog(member.Id, ring.Id, date);
+        fromRing.Steps = 12345;
+        await repo.UpsertAsync(fromRing);
+        await uow.SaveChangesAsync();
+
+        var results = await repo.GetByCardiMemberAndDateRangeAsync(member.Id, date, date);
+        var saved = Assert.Single(results);
+        Assert.Equal(12345, saved.Steps);
+        Assert.Equal(ring.Id, saved.DeviceConnectionId);
+    }
+
+    [Fact]
+    public async Task UpsertAsync_PersistsAdditionalHealthMetrics_OnUpdate()
+    {
+        using var scope = fixture.CreateScope();
+        var repo = scope.ServiceProvider.GetRequiredService<IActivityLogRepository>();
+        var uow = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
+
+        var org = await TestDataSeeder.SeedOrganizationAsync(scope);
+        var member = await TestDataSeeder.SeedCardiMemberAsync(scope, org.Id);
+        var connection = await TestDataSeeder.SeedDeviceConnectionAsync(scope, member.Id);
+
+        var date = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(-4));
+
+        await repo.UpsertAsync(BuildLog(member.Id, connection.Id, date));
+        await uow.SaveChangesAsync();
+
+        var enriched = BuildLog(member.Id, connection.Id, date);
+        enriched.SpO2Average = 96.5m;
+        enriched.VO2Max = 42.1m;
+        enriched.StressScore = 30;
+        enriched.BreathingRate = 14.2m;
+        enriched.Temperature = 36.6m;
+        await repo.UpsertAsync(enriched);
+        await uow.SaveChangesAsync();
+
+        var results = await repo.GetByCardiMemberAndDateRangeAsync(member.Id, date, date);
+        var saved = Assert.Single(results);
+        Assert.Equal(96.5m, saved.SpO2Average);
+        Assert.Equal(42.1m, saved.VO2Max);
+        Assert.Equal(30, saved.StressScore);
+        Assert.Equal(14.2m, saved.BreathingRate);
+        Assert.Equal(36.6m, saved.Temperature);
+    }
+
     // ── GetByCardiMemberAndDateRangeAsync ────────────────────────────────────────
 
     [Fact]

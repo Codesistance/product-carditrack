@@ -54,7 +54,10 @@ public static class TestDataSeeder
         Guid cardiMemberId,
         ConnectionStatus status = ConnectionStatus.Connected,
         bool isActive = true,
-        DateTime? lastSyncDate = null)
+        DateTime? lastSyncDate = null,
+        int syncFrequencyMinutes = 30,
+        bool isPrimary = false,
+        DateTime? connectedDate = null)
     {
         var repo = scope.ServiceProvider.GetRequiredService<IDeviceConnectionRepository>();
         var uow = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
@@ -69,7 +72,10 @@ public static class TestDataSeeder
             AccessToken = "enc_access",
             RefreshToken = "enc_refresh",
             TokenExpiry = DateTime.UtcNow.AddHours(8),
-            LastSyncDate = lastSyncDate
+            LastSyncDate = lastSyncDate,
+            SyncFrequencyMinutes = syncFrequencyMinutes,
+            IsPrimary = isPrimary,
+            ConnectedDate = connectedDate
         };
 
         await repo.AddAsync(connection);
