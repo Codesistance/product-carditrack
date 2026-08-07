@@ -35,13 +35,13 @@ The primary web user checks in from a laptop or desktop at home or work. They wa
 - **Screen:** W1-02
 - **MVP:** 1
 - **Acceptance Criteria:**
-  - Email/password or social login (Google, Apple) — user's choice
+  - Email/password or social login (Google, Apple) — user's choice. _Social login is pending: no Google/Apple OAuth credentials or Auth0 social connections are wired yet_
   - Password strength indicator updates in real-time as user types
   - Inline field validation — errors appear beneath the field, not on submit
   - "Create Account" button is disabled until all fields are valid and terms accepted
   - Terms and Privacy Policy links open in a new tab (do not navigate away)
   - Error banner for duplicate email is clear and actionable ("Sign in instead?")
-  - On success: redirect directly to onboarding, no email verification gate
+  - On success: user must verify their email before first login — the Auth0 tenant enforces a hard email-verification gate (a post-login Action denies unverified logins), and the web app inherits it. After verification, redirect directly to onboarding
 
 **Story 1.3: Adding First CardiMember**
 - **As a** new CardiTrack user just signed up
@@ -105,7 +105,7 @@ The primary web user checks in from a laptop or desktop at home or work. They wa
   - 3 metric cards (Activity, Heart Rate, Sleep) show current value, baseline comparison, and mini sparkline
   - Quick action buttons (Call, Message, View Details) are reachable with a single click
   - Desktop layout uses a 2-column split: primary status + metrics left; alerts feed and quick links right
-  - SignalR pushes updates to the page in real-time — no manual refresh needed
+  - SignalR pushes updates to the page in real-time — no manual refresh needed _(planned — no SignalR hub exists yet)_
   - "Updated just now" toast appears when new data arrives via SignalR
 
 **Story 2.2: Real-Time Updates Without Refresh**
@@ -114,7 +114,7 @@ The primary web user checks in from a laptop or desktop at home or work. They wa
 - **So that** I always see current information without having to reload the page
 - **Screen:** W1-08
 - **MVP:** 1
-- **Acceptance Criteria:**
+- **Acceptance Criteria:** _(all planned — no application SignalR hub exists yet; today only the Blazor template's ReconnectModal covers circuit reconnection state)_
   - SignalR connection established on page load — connection state is visible in the UI (subtle indicator)
   - Metric cards, status hero, and recent alerts section update without page reload
   - "Just updated" indicator appears briefly after each data push
@@ -239,7 +239,7 @@ The primary web user checks in from a laptop or desktop at home or work. They wa
 - **MVP:** 3
 - **Acceptance Criteria:**
   - Modal overlay for invite — does not leave current page
-  - Role selector with plain-language description of each role (Admin / Staff / Viewer)
+  - Role selector with plain-language description of each role (Admin / Staff / Member)
   - Optional personal message field with a helpful placeholder
   - Invitation sent via email with a deep link to accept
   - Pending invitations visible in a separate tab (W3-01) with Resend / Revoke options
@@ -357,6 +357,37 @@ The primary web user checks in from a laptop or desktop at home or work. They wa
 
 ---
 
+### Compliance & Privacy (Shipped)
+
+**Story 5.1: Health Data Disclosure Banner** ✅ **Shipped (PR #9) — the only implemented web story to date**
+- **As a** signed-in caregiver whose family's health data CardiTrack processes
+- **I want to** see a clear, dismissible in-app disclosure of what health data is collected and why
+- **So that** I understand the data practices before relying on the product — and CardiTrack satisfies Google Health API restricted-scope verification (Gate 1), which requires a prominent in-app disclosure
+- **Screen:** Global shell component (W1-00) — `Components/Shared/HealthDataDisclosureBanner.razor`, mounted in `MainLayout` above the page body as an InteractiveServer island (`prerender: false`)
+- **MVP:** Shipped (currently inert — no login flow exists yet, so no user is ever authenticated; it activates automatically once Auth0 login ships)
+- **Acceptance Criteria:**
+  - Banner renders on every page, but only when the cascading auth state reports an authenticated principal (identity from `ClaimTypes.NameIdentifier`, falling back to the `sub` claim)
+  - Banner is hidden when the user has already dismissed it (`IUserService.HasDismissedHealthDataDisclosureAsync`)
+  - Dismissal hides the banner **only after** it is persisted server-side (`DismissHealthDataDisclosureAsync`); if persistence fails, the banner remains visible
+  - Dismissal is stored per user (`User.HealthDataDisclosureDismissedDate`), so it follows the user across devices and browsers
+  - Copy: "CardiTrack collects health and fitness data to enable anomaly alerts, daily health digests, and trend monitoring." with a "Learn more" link → `/privacy`
+  - Accessible: `role="region"` with `aria-label="Health data disclosure"`; dismiss button has an `aria-label`; decorative icons hidden from assistive tech
+  - Behaviour covered by bUnit tests
+
+**Story 5.2: Public Privacy Policy Page** ✅ **Shipped (PR #9, static content)**
+- **As a** visitor or user following the disclosure banner's "Learn more" link
+- **I want to** read what health data CardiTrack collects, how it is used, and how to exercise control
+- **So that** I can make an informed decision and know who to contact
+- **Screen:** `/privacy` (public — no authentication required; reachable in-app only via the banner link today)
+- **MVP:** Shipped
+- **Acceptance Criteria:**
+  - States what is collected: activity, heart-rate, and sleep data from connected devices, plus signup account details
+  - States how it is used: anomaly detection, daily digests, trend monitoring — and that health data is never sold or shared
+  - States retention and control: disconnecting a device stops collection; deletion of previously collected data available on request
+  - Provides a contact: cloudoperations@codesistance.com
+
+---
+
 ## 🌐 Web Platform-Specific Stories
 
 ### Real-Time & Connectivity
@@ -367,7 +398,7 @@ The primary web user checks in from a laptop or desktop at home or work. They wa
 - **So that** I never miss an alert because I forgot to reload
 - **Screen:** W1-08, W1-09
 - **MVP:** 1
-- **Acceptance Criteria:**
+- **Acceptance Criteria:** _(all planned — no application SignalR hub exists yet)_
   - SignalR hub connected on authenticated page load
   - New alerts trigger: alert badge count increments, recent alerts section updates, toast notification appears
   - Dashboard metrics update in real-time when device syncs
@@ -488,7 +519,7 @@ The primary web user checks in from a laptop or desktop at home or work. They wa
 
 ### Print & Export
 
-**Story 9.3: Print-Optimised Health Report**
+**Story 9.4: Print-Optimised Health Report** _(renumbered from a duplicate 9.3 — the screens doc maps W4-07 to this story)_
 - **As a** caregiver going to a doctor's appointment
 - **I want to** print a clean, readable health summary for the GP
 - **So that** the doctor can review the last 30 days quickly without needing to log in
@@ -627,26 +658,33 @@ Business account features are post-MVP but user stories are defined here for pla
 
 ## 🎯 Priority Matrix for Web MVP
 
-### Must Have — MVP 1 (P0)
-- [x] Story 1.1: Landing page & value discovery
-- [x] Story 1.2: Account creation
-- [x] Story 1.3: Adding first CardiMember
-- [x] Story 1.4: Device connection wizard
-- [x] Story 2.1: Daily status check (desktop)
-- [x] Story 2.2: Real-time SignalR updates
-- [x] Story 3.1: Understanding a critical alert
-- [x] Story 3.2: Split-pane alert browsing
-- [x] Story 3.4: Acknowledging an alert with notes
-- [x] Story 6.2: Device management
-- [x] Story 10.1: Keyboard navigation throughout
+### Shipped Today
+- [x] Story 5.1: Health data disclosure banner (PR #9 — inert until auth ships)
+- [x] Story 5.2: Public privacy policy page (`/privacy`)
 
-### Should Have — MVP 2 (P1)
+### Must Have — MVP 1 (P0) — target Q4 2026
+
+> **Status (August 7, 2026):** none of the stories below are implemented. The web app today ships only the template shell plus the health-data disclosure banner and `/privacy` page (Stories 5.1 / 5.2 above).
+
+- [ ] Story 1.1: Landing page & value discovery
+- [ ] Story 1.2: Account creation
+- [ ] Story 1.3: Adding first CardiMember
+- [ ] Story 1.4: Device connection wizard
+- [ ] Story 2.1: Daily status check (desktop)
+- [ ] Story 2.2: Real-time SignalR updates
+- [ ] Story 3.1: Understanding a critical alert
+- [ ] Story 3.2: Split-pane alert browsing
+- [ ] Story 3.4: Acknowledging an alert with notes
+- [ ] Story 6.2: Device management
+- [ ] Story 10.1: Keyboard navigation throughout
+
+### Should Have — MVP 2 (P1) — target Q1 2027
 - [ ] Story 2.4: Trend charts & historical data
 - [ ] Story 3.5: Alert notification preferences
 - [ ] Story 6.1: Subscription management
 - [ ] Story 6.3: Health data export
 
-### Should Have — MVP 3 (P2)
+### Should Have — MVP 3 (P2) — target Q2 2027
 - [ ] Story 2.3: Multi-member overview
 - [ ] Story 4.1: Inviting a sibling
 - [ ] Story 4.2: Managing family roles
@@ -654,10 +692,10 @@ Business account features are post-MVP but user stories are defined here for pla
 - [ ] Story 7.1: Uploading lab test results
 - [ ] Story 7.2: Reviewing parsed results
 
-### Nice to Have — MVP 4 (P3)
+### Nice to Have — MVP 4 (P3) — target Q3 2027
 - [ ] Story 9.2: Browser notification permission
-- [ ] Story 9.3 (duplicate ref): Rich browser notifications
-- [ ] Story 9.3: Print-optimised health report
+- [ ] Story 9.3: Rich browser notifications
+- [ ] Story 9.4: Print-optimised health report
 - [ ] Story 10.2: Command palette & quick search
 - [ ] Story 10.3: Alert list keyboard shortcuts
 - [ ] Story 10.4: Keyboard shortcuts reference
@@ -681,27 +719,30 @@ Business account features are post-MVP but user stories are defined here for pla
 | Family Collaboration | 3 | 0 | 0 | 3 | 0 | 0 |
 | Health Records | 2 | 0 | 0 | 2 | 0 | 0 |
 | Settings & Account | 3 | 1 | 2 | 0 | 0 | 0 |
+| Compliance & Privacy (shipped)* | 2 | 0 | 0 | 0 | 0 | 0 |
 | Real-Time & Connectivity | 2 | 1 | 0 | 0 | 1 | 0 |
 | Keyboard & Power Users | 4 | 1 | 0 | 0 | 3 | 0 |
 | Offline & PWA | 2 | 0 | 0 | 0 | 2 | 0 |
 | Print & Export | 1 | 0 | 0 | 0 | 1 | 0 |
 | Elderly CardiMember | 2 | 0 | 0 | 0 | 0 | 2 |
 | Enterprise (Business) | 3 | 0 | 0 | 0 | 0 | 3 |
-| **TOTAL** | **36** | **13** | **4** | **6** | **8** | **5** |
+| **TOTAL** | **38** | **13** | **4** | **6** | **8** | **5** |
+
+\* Stories 5.1 and 5.2 shipped ahead of MVP 1 (PR #9) and are counted in the Total column only.
 
 ---
 
 ## 🔗 Related Documentation
 
 - [Web Screen Specifications](./ui_screens_blazor_web.md) — Screen-by-screen layout, states, and interactions
-- [Mobile User Stories](../MOBILE/USER_STORIES.md) — Mobile-specific stories and shared design principles
+- [Mobile User Stories](../mobile/user_stories.md) — Mobile-specific stories and shared design principles
 - [Mobile Screen Specifications](../mobile/ui_screens_maui_mobile.md) — MAUI mobile screen specs
-- [Solution Manifest](../../../SOLUTION_MANIFEST.md) — Technical architecture and business model
-- [Market Analysis](../../../MARKET_ANALYSIS.md) — Competitive landscape and positioning
+- [Solution Manifest](../../../solution_manifest.md) — Technical architecture and business model
+- [Market Analysis](../../../market_analysis.md) — Competitive landscape and positioning
 
 ---
 
-**Document Version:** 1.0
-**Last Updated:** February 24, 2026
+**Document Version:** 1.1
+**Last Updated:** August 7, 2026
 **Next Review:** Post-MVP 1 beta feedback
 **Owner:** Product & UX Team

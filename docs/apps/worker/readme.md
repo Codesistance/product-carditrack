@@ -2,28 +2,43 @@
 
 ## Overview
 
-`CardiTrack.Worker` is a standard .NET Worker Service (`Microsoft.NET.Sdk.Worker`) that runs the platform's **non-AI scheduled background jobs** — OAuth token refresh, pattern-baseline recalculation, trial expiration reminders, and data-retention/cleanup — using cron expressions and the [Cronos](https://github.com/HangfireIO/Cronos) library. It runs as an ordinary .NET executable — no Azure Functions runtime, no Azure Storage dependency.
+`CardiTrack.Worker` hosts the platform's **non-AI scheduled background jobs**, driven by cron expressions and the [Cronos](https://github.com/HangfireIO/Cronos) library. Although it is a background service, the project uses the **`Microsoft.NET.Sdk.Web` SDK with `Exe` output** — Cloud Run requires an HTTP listener for startup probes, so the worker binds Kestrel to the `PORT` env var (default 8080) and exposes a minimal `GET /healthz` endpoint alongside its hosted services.
 
-> **Scope note:** device data ingestion is **webhook-driven** and handled by the Azure Functions AI pipeline (see [llm_design.md](../../llm_design.md)). The `WearableSyncWorker` polling job documented below is the interim MVP ingestion path and a backfill/fallback mechanism; it is superseded as the primary ingestion route once the webhook pipeline ships (see [release_matrix.md](../../release_matrix.md)).
+Two workers are registered today:
+
+| Worker | Default cron (UTC) | Purpose |
+|---|---|---|
+| `WearableSyncWorker` | `0 */30 * * * *` (every 30 min) | Polls due device connections and syncs wearable data |
+| `OrphanedOrganizationCleanupWorker` | `0 0 3 * * *` (daily 03:00) | Deletes organizations stranded by a failed onboarding |
+
+OAuth token refresh is **not a separate cron job** — it happens inside the sync path (`DeviceSyncService` calls `IOAuthTokenRefreshService` before hitting the provider API). Pattern-baseline recalculation, trial expiration reminders, and data-retention/cleanup jobs are **planned** but not yet implemented.
+
+> **Scope note:** the AI ingestion/inference pipeline (webhook aggregation, pre-processing, MedGemma calls, severity routing, digests) is a **planned GCP design** — Pub/Sub + dedicated Cloud Run services per [llm_design.md](../../llm_design.md). Until it ships, the `WearableSyncWorker` polling job below is the **current and only ingestion path**; once the webhook pipeline exists it becomes a backfill/fallback mechanism (see [release_matrix.md](../../release_matrix.md)).
 
 ## Technology Stack
 
-- **.NET 10**: Core framework (`Microsoft.NET.Sdk.Worker`)
-- **Cronos 0.8.4**: Cron expression parsing (HangfireIO)
+- **.NET 10**: Core framework (`Microsoft.NET.Sdk.Web`, `OutputType=Exe`)
+- **Cronos 0.13.0**: Cron expression parsing (HangfireIO)
 - **BackgroundService**: Built-in .NET hosted service base class
 - **Keyed DI** (.NET 10): Per-provider sync service dispatch
-- **Entity Framework Core**: SQL Server data access
-- **Serilog / `ILogger`**: Structured logging
+- **Entity Framework Core (Npgsql)**: PostgreSQL data access; `Npgsql.EnableLegacyTimestampBehavior` is disabled so all `timestamptz` values surface as UTC
+- **Serilog / `ILogger`**: Structured logging (console + APM shipping via `CardiTrack.Observability`)
 
 ## Project Structure
 
 ```
 src/Worker/CardiTrack.Worker/
+├── Workers/
+│   ├── WearableSyncWorker.cs               # Polls + syncs due device connections
+│   └── OrphanedOrganizationCleanupWorker.cs # Sweeps orgs with no user/CardiMember
 ├── CronBackgroundService.cs    # Abstract base — parses cron, loops on schedule
-├── WearableSyncWorker.cs       # Concrete worker — dispatches per-device sync
-├── Program.cs                  # Host setup, DI registration
-├── appsettings.json            # Configuration skeleton
-└── CardiTrack.Worker.csproj    # SDK: Microsoft.NET.Sdk.Worker, Cronos package
+├── WorkerOptions.cs            # { CronExpression } options record (default "0 * * * * *")
+├── WorkerServiceExtensions.cs  # Generic AddWorker<T> registration helper
+├── Program.cs                  # Host setup, DI registration, /healthz endpoint
+├── Dockerfile                  # Chiseled aspnet runtime image
+├── Properties/launchSettings.json
+├── appsettings.json
+└── CardiTrack.Worker.csproj    # SDK: Microsoft.NET.Sdk.Web, Cronos 0.13.0
 ```
 
 ## Core Components
@@ -67,16 +82,16 @@ public abstract class CronBackgroundService : BackgroundService
 
 ### WearableSyncWorker
 
-The active worker. Reads the cron schedule from config, creates a DI scope per run, and dispatches to the keyed `IDeviceSyncService` for each device type.
+Reads its cron schedule from the named `WorkerOptions` (see [Configuration](#configuration)), creates a DI scope per run, and dispatches to the keyed `IDeviceSyncService` for each due device connection.
 
 ```csharp
 public class WearableSyncWorker : CronBackgroundService
 {
     public WearableSyncWorker(
-        IConfiguration configuration,
+        IOptionsMonitor<WorkerOptions> options,
         IServiceScopeFactory scopeFactory,
         ILogger<WearableSyncWorker> logger)
-        : base(configuration["Worker:SyncCronExpression"] ?? "0 */30 * * * *")
+        : base(options.Get(nameof(WearableSyncWorker)).CronExpression)
     { ... }
 
     protected override async Task ExecuteJobAsync(CancellationToken stoppingToken)
@@ -105,28 +120,61 @@ public class WearableSyncWorker : CronBackgroundService
 }
 ```
 
+Each sync goes through `DeviceSyncService`, which first refreshes the connection's OAuth token via `OAuthTokenRefreshService` when needed — token refresh is part of the sync path, not a standalone job.
+
+### OrphanedOrganizationCleanupWorker
+
+Safety net behind the API's atomic `POST /api/Onboarding/setup` endpoint. The legacy two-call onboarding flow (`POST organization` then `POST user`) can strand an organization if the client dies between calls; this worker sweeps them up.
+
+- Runs daily at 03:00 UTC (`0 0 3 * * *` by default).
+- Calls `IOrganizationRepository.DeleteOrphanedAsync(MinAge)` with **`MinAge = 24 hours`** — far longer than any onboarding gap, so an in-flight signup is never swept.
+- An organization is *orphaned* when it has **no users and no CardiMembers**; its trial subscription is removed with it via the `Subscription → Organization` FK cascade.
+- When anything is removed it logs at **Warning**, deliberately: orphans mean some client bypassed the atomic setup endpoint and failed mid-onboarding — worth investigating, not just cleaning. A no-op run logs at Information.
+
 ### Multi-Provider Dispatch
 
-Providers register keyed services by `DeviceType` enum via extension methods:
+Providers register keyed services by `DeviceType` enum via extension methods (shared with the API in `CardiTrack.Infrastructure/Extensions/DeviceProviderServiceExtensions.cs`):
 
 ```csharp
-// In DeviceProviderServiceExtensions.cs
-services.AddKeyedScoped<IDeviceApiClient, FitbitApiClient>(DeviceType.Fitbit);
-services.AddKeyedScoped<IDeviceSyncService>(DeviceType.Fitbit,
-    (sp, _) => new DeviceSyncService(
-        sp.GetRequiredService<IOAuthTokenRefreshService>(),
-        sp.GetRequiredKeyedService<IDeviceApiClient>(DeviceType.Fitbit),
-        ...));
+// Program.cs
+builder.Services.AddFitbitProvider();
 
-// To add Garmin later:
-// services.AddGarminProvider();
+// AddFitbitProvider registers:
+services.AddKeyedScoped<IDeviceApiClient, FitbitApiClient>(DeviceType.Fitbit);
+services.AddKeyedScoped<IDeviceSyncService>(DeviceType.Fitbit, (sp, _) => new DeviceSyncService(...));
+
+// To add Garmin later: create an equivalent AddGarminProvider()
 ```
 
-Unknown device types produce a `LogWarning` and are skipped — no crash.
+Unknown device types produce a `LogWarning` and are skipped — no crash. `AddFitbitProvider` also enforces the positional-index contract: **`DeviceProviders[0]` must be the Fitbit provider** (deployment injects its secrets as `DeviceProviders__0__*`), and startup throws if the list is reordered.
+
+### Adding a new worker
+
+`WorkerServiceExtensions.AddWorker<T>` is the generic registration pattern — one line per job:
+
+```csharp
+// WorkerServiceExtensions.cs
+public static IServiceCollection AddWorker<T>(
+    this IServiceCollection services, IConfiguration configuration, string name)
+    where T : BackgroundService
+{
+    services.Configure<WorkerOptions>(name, configuration.GetSection($"Workers:{name}"));
+    services.AddHostedService<T>();
+    return services;
+}
+
+// Program.cs
+builder.Services.AddWorker<WearableSyncWorker>(configuration, nameof(WearableSyncWorker));
+builder.Services.AddWorker<OrphanedOrganizationCleanupWorker>(configuration, nameof(OrphanedOrganizationCleanupWorker));
+```
+
+To add a job: derive from `CronBackgroundService`, take `IOptionsMonitor<WorkerOptions>` in the constructor and pass `options.Get(nameof(YourWorker)).CronExpression` to the base, then call `AddWorker<YourWorker>(configuration, nameof(YourWorker))` and add a `Workers:YourWorker:CronExpression` entry to config. Without a config entry the `WorkerOptions` default (`"0 * * * * *"` — every minute) applies.
 
 ## Configuration
 
 ### appsettings.json
+
+Cron schedules bind per worker class name under the `Workers` section, consumed through named `IOptionsMonitor<WorkerOptions>`:
 
 ```json
 {
@@ -146,14 +194,25 @@ Unknown device types produce a `LogWarning` and are skipped — no crash.
       "TokenLifetimeHours": 1
     }
   ],
-  "Worker": {
-    "SyncCronExpression": "0 */30 * * * *"
-  },
-  "Logging": {
-    "LogLevel": {
-      "Default": "Information",
-      "Microsoft.Hosting.Lifetime": "Information"
+  "Workers": {
+    "WearableSyncWorker": {
+      "CronExpression": "0 */30 * * * *"
+    },
+    "OrphanedOrganizationCleanupWorker": {
+      "CronExpression": "0 0 3 * * *"
     }
+  },
+  "Serilog": {
+    "MinimumLevel": {
+      "Default": "Information",
+      "Override": { "Microsoft": "Warning", "Microsoft.EntityFrameworkCore": "Warning" }
+    }
+  },
+  "Apm": {
+    "Engine": "",
+    "Data": { "IngestUrl": "", "IngestToken": "" },
+    "MinimumLogLevel": "Warning",
+    "TracesSampleRatio": 0.2
   }
 }
 ```
@@ -166,19 +225,24 @@ The worker uses 6-field cron with seconds (Cronos `IncludeSeconds`):
 |-----------------------|---------------------------|
 | `0 */30 * * * *`      | Every 30 minutes          |
 | `0 0 * * * *`         | Every hour                |
-| `0 0 2 * * *`         | Daily at 2 AM UTC         |
+| `0 0 3 * * *`         | Daily at 3 AM UTC         |
 | `0 0 2 * * MON`       | Every Monday at 2 AM UTC  |
 
 ### Production Secrets
 
-Store sensitive values in environment variables or Azure Key Vault — never in `appsettings.json`:
+Deployed configuration comes from env vars on the Cloud Run service; sensitive values are **GCP Secret Manager-backed** (`worker_secret_env_vars` in `infrastructure/main.tf`) — never in `appsettings.json`:
 
 ```
-ConnectionStrings__DefaultConnection = <sql connection string>
-Encryption__Key                      = <base64 256-bit key>
-DeviceProviders__0__ClientId         = <Google Cloud OAuth client id>
-DeviceProviders__0__ClientSecret     = <Google Cloud OAuth client secret>
+ConnectionStrings__DefaultConnection = carditrack-<env>-db-connection-string
+Auth0__Domain / __Audience / __ClientId / __ClientSecret = carditrack-<env>-auth0-*
+Encryption__Key                      = carditrack-<env>-encryption-key
+Health__Token                        = carditrack-<env>-health-token
+DeviceProviders__0__ClientId         = carditrack-<env>-fitbit-client-id
+DeviceProviders__0__ClientSecret     = carditrack-<env>-fitbit-client-secret
+Apm__Data                            = carditrack-<env>-apm-data
 ```
+
+Plaintext env vars: `ASPNETCORE_ENVIRONMENT`, `GCP_PROJECT_ID`, `Apm__Engine`, `Apm__MetricsEnabled`.
 
 > **Provider note:** the `Fitbit` provider authenticates against **Google OAuth** and pulls data from the **Google Health API** (`health.googleapis.com`) — the legacy Fitbit Web API is decommissioned September 2026. Google access tokens are short-lived (~1 hour), hence `TokenLifetimeHours: 1`. `FitbitApiClient` reads daily metrics via per-data-type `dataPoints:dailyRollUp` calls and sleep sessions via `dataPoints` list; some response field names are pending live-sandbox verification (marked "(assumed)" in the client).
 
@@ -192,111 +256,65 @@ cd src/Worker/CardiTrack.Worker
 dotnet run
 ```
 
-The worker logs when it starts and after each sync run:
+The worker starts an HTTP listener (default port 8080, or `PORT` if set) for `/healthz` and logs each run:
 ```
-info: CardiTrack.Worker.WearableSyncWorker[0]
-      WearableSync triggered at 2026-03-12T06:00:00.000Z
-info: CardiTrack.Worker.WearableSyncWorker[0]
-      WearableSync complete. Success: 12, Failed: 0.
+[06:00:00 INF] WearableSync triggered at 2026-03-12T06:00:00.000Z
+[06:00:04 INF] WearableSync complete. Success: 12, Failed: 0.
 ```
 
 ## Deployment
 
-### As a standalone executable
+### Docker
 
-```bash
-dotnet publish src/Worker/CardiTrack.Worker -c Release -o ./publish/worker
-
-# Run
-./publish/worker/CardiTrack.Worker
-```
-
-### As a Docker container
+The real `Dockerfile` is multi-stage (SDK build → publish → chiseled runtime). Key points of the runtime stage — note the **aspnet** base (not `runtime`; Cloud Run needs the HTTP listener) and the cleared `ASPNETCORE_HTTP_PORTS`:
 
 ```dockerfile
-FROM mcr.microsoft.com/dotnet/runtime:10.0 AS runtime
+# Runtime — chiseled Ubuntu: minimal, non-root (UID 1654), no shell.
+# aspnet (not runtime) because Cloud Run health probes need /healthz over HTTP.
+FROM mcr.microsoft.com/dotnet/aspnet:10.0-noble-chiseled AS final
 WORKDIR /app
-COPY --from=publish /app/publish .
+COPY --chown=1654:1654 --from=publish /app/publish .
+EXPOSE 8080
+
+# Clear the base image's ASPNETCORE_HTTP_PORTS so the app's UseUrls
+# (bound to Cloud Run's PORT env var) is the sole binding source
+ENV ASPNETCORE_HTTP_PORTS=
+ENV ASPNETCORE_ENVIRONMENT=Production
 ENTRYPOINT ["dotnet", "CardiTrack.Worker.dll"]
 ```
 
 ```bash
-docker build -t carditrack-worker .
-docker run -e ConnectionStrings__DefaultConnection="..." carditrack-worker
+docker build -f src/Worker/CardiTrack.Worker/Dockerfile -t carditrack-worker .
+docker run -e ConnectionStrings__DefaultConnection="..." -e PORT=8080 carditrack-worker
 ```
 
-### On Azure (App Service or Container Apps)
+### Cloud Run
 
-Deploy as a Docker container or zip-deploy the published output to an **App Service** (Always On) or **Azure Container Apps**. Set environment variables via the portal or `az webapp config appsettings set`.
+The worker deploys as the Cloud Run service `carditrack-<env>-worker` (Terraform module `deployments`, config in `infrastructure/main.tf`). Cloud Run supplies `PORT`; the startup probe hits `/healthz`.
 
 ### CI/CD (GitHub Actions)
 
-```yaml
-name: Deploy Worker
+The worker rides the shared app pipelines — there is no worker-specific workflow file:
 
-on:
-  push:
-    branches: [main]
-    paths:
-      - 'src/Worker/CardiTrack.Worker/**'
-      - 'src/Infrastructure/CardiTrack.Infrastructure/**'
-
-jobs:
-  deploy:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-
-      - name: Setup .NET
-        uses: actions/setup-dotnet@v5
-        with:
-          dotnet-version: '10.0.x'
-
-      - name: Build & Test
-        run: |
-          dotnet build --configuration Release
-          dotnet test --no-build
-
-      - name: Publish Worker
-        run: dotnet publish src/Worker/CardiTrack.Worker -c Release -o ./publish/worker
-
-      - name: Deploy to Azure Container Apps
-        uses: azure/container-apps-deploy-action@v1
-        with:
-          appSourcePath: ./publish/worker
-          acrName: ${{ secrets.ACR_NAME }}
-          containerAppName: carditrack-worker
-          resourceGroup: carditrack-rg
-```
-
-## Adding a New Device Provider
-
-1. Create `GarminApiClient : IDeviceApiClient` in `CardiTrack.Infrastructure/ExternalClients/`
-2. Add `AddGarminProvider()` extension in `DeviceProviderServiceExtensions.cs`
-3. Call `services.AddGarminProvider()` in `Program.cs`
-4. The worker picks it up automatically — no other changes needed
+- `.github/workflows/deploy-apps-dev.yml` — on changes under `src/Worker/**` (or shared projects): `build-worker` → `test-unit-worker` → `security-worker` → `push-worker-image` → `deploy-worker-dev` (`gcloud run deploy carditrack-dev-worker`).
+- `.github/workflows/deploy-apps-prod.yml` — the promotion path to `carditrack-prod-worker`.
 
 ## Monitoring
 
-The worker uses `ILogger<WearableSyncWorker>` with structured log properties. Route to Application Insights, Seq, or any logging sink by configuring the host:
-
-```csharp
-Host.CreateDefaultBuilder(args)
-    .ConfigureLogging(logging =>
-    {
-        logging.AddApplicationInsights(config["ApplicationInsights:ConnectionString"]);
-    })
-```
+Logging mirrors the API: **Serilog console sink** always, plus `AddApmShipping` (logs) and `AddApmTracing` (OTel traces) from `CardiTrack.Observability` when `Apm__Engine` + `Apm__Data` are configured. `/healthz` probe traffic is excluded from tracing. See the [API readme's APM section](../api/readme.md#apm-shipping-carditrackobservability) for the shared config contract.
 
 ### Key log events
 
 | Message | Level | Meaning |
 |---|---|---|
-| `WearableSync triggered at {Time}` | Info | Job started |
+| `WearableSync triggered at {Time}` | Info | Sync job started |
 | `Synced DeviceConnection {Id}` | Info | One device synced OK |
-| `No sync service for {DeviceType}` | Warning | Provider not registered |
+| `No sync service registered for DeviceType {DeviceType}` | Warning | Provider not registered |
 | `Failed to sync DeviceConnection {Id}` | Error | API/network failure |
-| `WearableSync complete. Success: {S}, Failed: {F}` | Info | Run summary |
+| `WearableSync complete. Success: {S}, Failed: {F}` | Info | Sync run summary |
+| `OrphanedOrganizationCleanup triggered at {Time}` | Info | Cleanup job started |
+| `OrphanedOrganizationCleanup removed {Count} organizations older than {MinAge} ...` | Warning | Orphans found and deleted — a client bypassed the atomic setup endpoint; investigate |
+| `OrphanedOrganizationCleanup complete. Nothing to remove.` | Info | Cleanup no-op run |
 
 ## Related Documentation
 
@@ -304,3 +322,7 @@ Host.CreateDefaultBuilder(args)
 - [Web Dashboard Documentation](../web/readme.md)
 - [Mobile App Documentation](../mobile/readme.md)
 - [Infrastructure Guide](../../infrastructure.md)
+
+---
+
+**Last Updated:** August 7, 2026

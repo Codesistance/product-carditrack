@@ -2,9 +2,11 @@
 
 ## Company Overview
 
-**CardiTrack** is an AI-powered health monitoring platform that helps family caregivers keep elderly loved ones safe at home — affordably. We connect to wearable devices people already own (Fitbit, Apple Watch, Garmin, Samsung) and use machine learning to detect health decline *before* it becomes an emergency.
+**CardiTrack** is an AI-powered health monitoring platform that helps family caregivers keep elderly loved ones safe at home — affordably. We connect to the wearable devices people already own and use machine learning to detect health decline *before* it becomes an emergency.
 
-We are currently in active development, targeting a public beta in Q3 2026.
+CardiTrack is **built on Google end to end**: wearable data via the **Google Health API** (we migrated off the legacy Fitbit Web API ahead of its September 2026 decommission), medical inference with **MedGemma** (Google's medical LLM, self-hosted via Ollama on **Cloud Run**), conversational insights and report generation with **Gemini 2.0 Flash**, sign-in via **Google OAuth**, and a Terraform-managed **Google Cloud** footprint — Cloud Run, Cloud SQL (PostgreSQL), Secret Manager, Cloud Storage — in `europe-west2`.
+
+We are currently in active development, targeting a private beta in Q4 2026.
 
 ---
 
@@ -18,15 +20,23 @@ Traditional medical alert systems charge $47–68/month for reactive, one-size-f
 
 ## Our Solution
 
-CardiTrack monitors the wearable data elderly users generate every day and applies personalized AI baselines to detect anomalies — unusual inactivity, elevated resting heart rate, disrupted sleep patterns, gradual mobility decline — and surfaces alerts to the family caregiver's web or mobile dashboard.
+CardiTrack monitors the wearable data elderly users generate every day and applies personalized AI baselines to detect anomalies — unusual inactivity, elevated resting heart rate, disrupted sleep patterns, gradual mobility decline — and surfaces them to the family caregiver's dashboard.
 
-**Key capabilities:**
-- Multi-device support — works with 7+ consumer wearable brands, no proprietary hardware
-- Personalized AI anomaly detection — MedGemma 1.5 4B (Google's medical LLM) with SSA-LSTM per-user baselines — targeting <5% false positive rate vs. 20–30% industry standard
-- Five alert types: activity decline, heart rate elevation, sleep disruption, no morning activity, long-term trend
-- Family collaboration — multiple caregivers monitoring one or more elderly members
-- HIPAA-compliant audit logs, encrypted health notes, and FHIR R4 / HL7 v2 data exports
-- Web dashboard (Blazor Server) and mobile app (.NET MAUI for iOS and Android)
+**What is built today (August 2026):**
+- **Fitbit integration via the Google Health API** — server-side OAuth and REST client shipped, migrated ahead of the September 2026 legacy-API sunset; the same API covers Pixel Watch
+- **Background ingestion** — our worker service polls the Google Health API on a 30-minute cadence for all monitored users
+- **AI insights and chat** — MedGemma (Ollama on Cloud Run, internal ingress — health data never leaves the project) and Gemini 2.0 Flash for caregiver Q&A and plain-text health reports
+- **Mobile app (.NET MAUI, iOS + Android)** — onboarding and per-member health dashboard live
+- **Google-mandated health-data disclosure** — already shipped on the web app
+- 30-day free trial (provisions the Complete Care tier), email-verification gate, opt-in observability
+
+**On the roadmap (see table below):**
+- Five alert types (activity decline, heart rate elevation, sleep disruption, no morning activity, long-term trend) — **designed**, with alert delivery (push/SMS/email) shipping in the coming waves
+- Event-driven AI pipeline on **Pub/Sub + Cloud Run**: SSA-LSTM per-user baselines feeding MedGemma, targeting <5% false positive rate vs. 20–30% industry standard
+- Additional wearable brands: Garmin (Q1 2027), Apple Watch and Samsung (Q2 2027), Withings/Oura/Whoop (Q3 2027)
+- Real-time alerting to web and mobile clients — planned
+- FHIR R4 / HL7 v2 data exports — planned (data contracts defined)
+- Blazor Server web dashboard — in early development; mobile is the primary surface today
 
 ---
 
@@ -45,46 +55,52 @@ CardiTrack monitors the wearable data elderly users generate every day and appli
 
 ## Business Model
 
-| Plan | Price | Target |
-|---|---|---|
-| Basic Care | $8/month | Budget-conscious families |
-| Complete Care | $15/month | Core offering — 3 CardiMembers, real-time alerts |
-| Guardian Plus | $29.99/month | Power users, multi-member households |
-| Enterprise | $5–10/resident/month | Assisted living facilities |
+| Plan | Price | Limits | Target |
+|---|---|---|---|
+| Basic | $8/month | 2 CardiMembers, 5 family members, no export | Budget-conscious families |
+| Complete Care | $15/month | 5 CardiMembers, 20 family members, data export | Core offering |
+| Guardian Plus | $29.99/month | Business tier — **post-MVP** (after Q3 2027) | Facilities, power users |
+| Enterprise | $5–10/resident/month | Custom | Assisted living facilities |
 
-**Unit economics (Tier 2):** ~$13/month gross profit per subscriber, $156/year LTV baseline. CAC target: <$50.
+Annual billing carries a 15% discount. The 30-day free trial provisions the Complete Care tier.
+
+**Unit economics (Complete Care, $15/month):** ~$13/month gross profit per subscriber after cloud costs. Assuming ~24-month average retention, that is ~$312 lifetime gross profit — consistent with the LTV >$300 target in our market analysis. CAC target: <$50. Recurring compliance cost: the annual Google CASA security assessment for restricted health scopes ($500–$4,500/year) is budgeted as a fixed operating cost.
 
 ---
 
 ## Why We Need Cloud Credits
 
-CardiTrack is built on a cloud-native, infrastructure-as-code stack (Terraform, Docker, GitHub Actions CI/CD). Our current and near-term cloud workloads include:
+CardiTrack is cloud-native and infrastructure-as-code from day one (Terraform, Docker, GitHub Actions CI/CD), running entirely on Google Cloud in `europe-west2`. Our current and near-term workloads:
 
-- **Background worker service** — continuous polling and processing of wearable API data for all monitored users
-- **ML inference pipeline** — running personalized anomaly detection models per CardiMember
-- **Real-time alerting** — SignalR-powered push notifications to web and mobile clients
-- **HIPAA-compliant data storage** — encrypted PostgreSQL, audit logging, backup and retention
-- **Multi-device API integration** — Fitbit, Apple HealthKit, Garmin Connect, Samsung Health
-- **CI/CD and staging environments** — GitHub Actions pipelines for continuous deployment
+- **Cloud Run services** — API, web app, and self-hosted MedGemma inference (Ollama, internal ingress)
+- **Background worker** — 30-minute polling of the Google Health API for every monitored user (shipped)
+- **Cloud SQL (PostgreSQL)** — encrypted health data store with field-level AES-256-GCM for OAuth tokens
+- **Gemini 2.0 Flash** — caregiver chat and health report generation (shipped)
+- **AI pipeline build-out (Q1 2027)** — Pub/Sub event ingestion + Cloud Run: SSA-LSTM pre-processing, MedGemma anomaly scoring, severity routing, daily digests
+- **Secret Manager, Cloud Storage, CI/CD staging environments**
 
 Google Cloud credits would allow us to:
-1. Complete MVP 1 development and run a private beta with 20–50 families
-2. Scale to public launch (Q2 2026) with confidence in infrastructure costs
+1. Complete R1 (core monitoring) and run a private beta with 20–50 families
+2. Fund GPU/CPU inference headroom as the Pub/Sub + Cloud Run AI pipeline comes online
 3. Validate unit economics before committing to paid cloud spend at scale
 
 ---
 
 ## Traction & Roadmap
 
+All dates below are the current re-baselined plan (as of August 7, 2026); nothing has publicly launched yet.
+
 | Milestone | Timeline |
 |---|---|
-| MVP 1 — Fitbit support, web dashboard, alerts | Q1 2026 |
-| Private beta — 20–50 families | Q1–Q2 2026 |
-| Public launch | Q2 2026 |
-| Apple Watch & Garmin support | Q3 2026 |
-| 1,000+ paying subscribers | Q4 2026 |
-| Enterprise / assisted living tier | 2027 |
-| UK, Canada, Australia expansion | 2027+ |
+| **Google Cloud console registration** for the Health API client + sandbox verification of the migrated integration (legacy Fitbit Web API sunsets September 2026) | Aug–Sep 2026 |
+| R1 — core monitoring complete: Fitbit via Google Health API, mobile dashboard, alerts | Q4 2026 |
+| Private beta — 20–50 families (within the 100-user cap for unverified restricted-scope apps) | Q4 2026 |
+| **Google restricted-scope verification submission** — Gate 1 Trust & Safety review + Gate 2 CASA security assessment (annual). The Google-required health-data disclosure already ships on our web app — we treat verification as diligence, not a checkbox | Q4 2026 |
+| Public launch + subscriptions/billing + Garmin support + AI pipeline (Pub/Sub + Cloud Run) — requires verification passed to exceed 100 connected users | Q1 2027 |
+| Apple Watch & Samsung support, family collaboration features | Q2 2027 |
+| Offline support, expanded clinical exports; 1,000+ paying subscribers | Q3 2027 |
+| Enterprise / assisted-living tier (Guardian Plus) | Q4 2027+ |
+| UK, Canada, Australia expansion (groundwork begun: region-localized onboarding shipped Aug 2026) | 2027+ |
 
 ---
 
@@ -96,4 +112,9 @@ CardiTrack is being built by a founder with full-stack .NET development experien
 
 ## Summary
 
-CardiTrack addresses a large, underserved market with a meaningfully differentiated product: 50–70% cheaper than incumbents, preventive rather than reactive, compatible with devices people already own, and powered by personalized AI. Google Cloud credits would directly accelerate our ability to get a working product into the hands of families who need it.
+CardiTrack addresses a large, underserved market with a meaningfully differentiated product: 50–70% cheaper than incumbents, preventive rather than reactive, compatible with devices people already own, and powered by Google's own health AI stack — Google Health API in, MedGemma and Gemini inference in the middle, Google Cloud underneath. Cloud credits would directly accelerate our ability to get a working product into the hands of families who need it.
+
+---
+
+**Document Version:** 2.0
+**Last Updated:** August 7, 2026

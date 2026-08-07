@@ -197,7 +197,7 @@ No retention is enforced in code today (no purge jobs exist). Documented stateme
 | OAuth tokens | None beyond provider expiry | Delete on device disconnect and member deletion |
 | Cloud Logging / Datadog / GCLB logs | None | 30 days operational logs; define Datadog retention explicitly |
 | DB backups | 7 backups (Terraform) vs 90 days (docs) | Decide and align — OI-8 |
-| Planned Cosmos AI stores | 90d / 90d / 2y / 1y TTLs (`docs/llm_design.md`) | Adopt as designed when built |
+| Planned AI pipeline stores (PostgreSQL JSONB on GCP; formerly Cosmos) | 90d / 90d / 2y / 1y TTLs (`docs/llm_design.md`) | Adopt as designed when built |
 
 The docs' "no hard deletions to preserve audit trail" policy is **irreconcilable with Art. 17 erasure** as an absolute rule and must be narrowed to the audit log itself.
 

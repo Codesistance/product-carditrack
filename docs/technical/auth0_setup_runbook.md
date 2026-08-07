@@ -167,6 +167,10 @@ exports.onExecutePostLogin = async (event, api) => {
 };
 ```
 
+Note the Action as deployed denies **all** unverified logins — there is no
+short-circuit for social connections, so Phase 9 must **add** one (social identities
+arrive pre-verified) rather than merely confirm it exists.
+
 The API reads `https://carditrack.com/email_verified` (see `UserContextMiddleware`) at
 user creation and refreshes it on every `GET /api/Onboarding/status`. Role/organization
 claims can be added to this same Action later (section 13).
@@ -296,7 +300,8 @@ curl -s -X POST https://<tenant-domain>/dbconnections/change_password \
 
 - **Social login (Phase 9)**: enable `google-oauth2` + `apple` connections (Google
   Cloud OAuth credentials / Apple Services ID), attach them to the Native app; the
-  app already renders the buttons. Scoped step-by-step in
+  app already renders the buttons on **both** `CreateAccountPage` and `SignInPage`
+  (no tap handlers yet). Scoped step-by-step in
   [oauth_clients.md](./oauth_clients.md) — note the sign-in Google client is a
   **different registration** from the Google Health API device client.
 - **More claims in the section 8 Action** (`https://carditrack.com/role`,

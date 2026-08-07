@@ -10,6 +10,12 @@ skip with a warning; nothing fails.
 Commands below are Windows-oriented (PowerShell + the JDK/openssl paths used on the dev machine);
 any environment with `keytool`, `openssl`, and `gcloud` works the same way.
 
+> **Related but separate:** signed builds also need the **per-environment mobile APM secrets**
+> (`carditrack-<env>-apm-mobile-engine` / `carditrack-<env>-apm-mobile-data` — defined in the
+> env stacks, *not* `common/`) populated before crash/session monitoring works in the shipped
+> app; unstamped builds run fine but ship no telemetry. See the
+> [APM setup runbook §5 — Mobile app monitoring](../../technical/apm_setup_runbook.md#5-mobile-app-monitoring).
+
 ## Secret reference
 
 | Secret | Content | Encoding |
@@ -202,3 +208,7 @@ $raw = [Text.Encoding]::ASCII.GetString([IO.File]::ReadAllBytes("<profile>.mobil
 - GitHub↔GCP auth (WIF): `scripts/setup-gcp-auth.sh` — the OIDC attribute condition must match the
   current repo slug (`Codesistance/product-carditrack`); a repo rename/transfer breaks all CI auth
   until the provider condition and service-account binding are updated.
+
+---
+
+**Last Updated:** August 7, 2026

@@ -2,775 +2,116 @@
 
 ## OVERVIEW
 
-CardiTrack uses **Auth0** as its authentication backend to provide secure, HIPAA-compliant user authentication with support for multiple authentication methods including social login, email/password, and enterprise SSO.
+CardiTrack uses **Auth0** as its authentication backend: Auth0 owns credentials and issues the RS256 JWTs the API validates. This document covers **why Auth0, the design decisions, and tenant policy**. All operational detail (tenant setup, application configuration, secrets, verification curls) lives in the [Auth0 setup runbook](./auth0_setup_runbook.md); the client inventory and social-connection provisioning live in [oauth_clients.md](./oauth_clients.md). Where this document and the runbook disagree, the runbook wins.
 
 ---
 
-## AUTH0 CONFIGURATION
+## WHAT IS IMPLEMENTED TODAY
 
-### **Auth0 Account Setup**
+The shipped authentication flow is **not** the Universal Login redirect — mobile uses the **embedded password-realm grant** with native screens:
 
-**Step 1: Create Auth0 Tenant**
-```
-Tenant Name: carditrack-prod (or carditrack-dev for development)
-Region: US (for HIPAA compliance)
-Environment Tag: Production
-```
+- **Login**: the mobile app (`Auth0AuthClient`) posts credentials directly to `/oauth/token` with `grant_type=http://auth0.com/oauth/grant-type/password-realm` (realm `Username-Password-Authentication`), receiving access + refresh tokens without leaving the app.
+- **Signup**: `POST /dbconnections/signup` from the app's Create Account screen.
+- **Password reset**: `POST /dbconnections/change_password` from the Forgot Password flow.
+- **Email-verification gate**: a single tenant **post-login Action** denies every unverified login with the exact deny reason `email_not_verified` — this string is an exact-match contract with the app, which routes the user to its Verify Email screen. The same Action stamps the namespaced claim `https://carditrack.com/email_verified` into the access token.
+- **Claim consumption**: the API's `UserContextMiddleware` reads `https://carditrack.com/email_verified`; the stored `User.EmailVerified` flag is refreshed on every `GET /api/Onboarding/status`.
+- **Resend verification**: `POST /api/v1/auth/resend-verification` (`AllowAnonymous`, rate-limited 5/hour/IP, always answers success to prevent user enumeration). It is backed by a hand-rolled `HttpClient`-based `Auth0ManagementClient` whose only operation is `TrySendVerificationEmailAsync` — client-credentials token (cached until near expiry) + `api/v2/jobs/verification-email`. There is no Auth0.ManagementApi SDK dependency.
+- **Authorization policies**: `RequireAdmin`, `RequireBusinessAccount`, `RequireFamilyAccount` plus a global `FallbackPolicy` (require authenticated user) are registered in `Auth0Extensions`. The three claim-based policies are **inert today** — the tenant does not yet issue `role`/`organization_type` claims (see runbook §13); the API derives identity from the `sub` claim + database lookup.
+- **Social buttons**: Google and Apple buttons render on both `CreateAccountPage` and `SignInPage`, but they are **not wired to any handler yet** — social login is Phase 9 ([oauth_clients.md](./oauth_clients.md)).
+- **CardiTrack.Web**: has **no auth wiring at all**. The Web/API Regular Web Application client exists so the API's Management API grant and future Blazor login have real credentials.
 
-**Step 2: Enable HIPAA BAA**
-- Contact Auth0 sales to enable HIPAA features
-- Sign Business Associate Agreement (BAA)
-- Enable HIPAA compliance mode (restricts certain features)
-- Configure audit logging and retention policies
-
-### **Application Configuration**
-
-**Create Auth0 Application:**
-```
-Application Type: Regular Web Application
-Name: CardiTrack Web
-Technology: ASP.NET Core
-```
-
-**Application Settings:**
-```
-Client ID: {auto-generated}
-Client Secret: {auto-generated} - STORE SECURELY
-Application Login URI: https://app.carditrack.com/login
-Allowed Callback URLs:
-  - https://app.carditrack.com/auth/callback
-  - https://localhost:7001/auth/callback (development)
-  - carditrack://auth/callback (mobile app)
-
-Allowed Logout URLs:
-  - https://app.carditrack.com/
-  - https://localhost:7001/ (development)
-
-Allowed Web Origins:
-  - https://app.carditrack.com
-  - https://localhost:7001 (development)
-
-Allowed Origins (CORS):
-  - https://app.carditrack.com
-  - https://localhost:7001 (development)
-```
-
-**Token Settings:**
-```json
-{
-  "id_token_expiration": 36000,  // 10 hours
-  "access_token_expiration": 3600, // 1 hour
-  "refresh_token_rotation": "rotating",
-  "refresh_token_expiration": 2592000, // 30 days
-  "refresh_token_leeway": 0
-}
-```
+> **Status: Planned — not yet implemented.** Universal Login for web, social connections (Google/Apple handlers), account linking, MFA, and enterprise SSO (SAML / Azure AD / Okta) are all future work. Microsoft (`windowslive`) and Facebook connections are **not planned for MVP** and have no UI. There are no `/api/auth/check-status` or `/api/auth/sync-user` endpoints, and no legacy Auth0 Rules — the single post-login Action in [runbook §8](./auth0_setup_runbook.md) supersedes the four-rule design that used to live in this document.
 
 ---
 
-## SOCIAL CONNECTIONS
+## WHY AUTH0
 
-### **Google OAuth 2.0**
-
-**Setup:**
-1. Go to [Google Cloud Console](https://console.cloud.google.com)
-2. Create new project: "CardiTrack"
-3. Enable Google+ API
-4. Create OAuth 2.0 credentials:
-   - Application type: Web application
-   - Authorized redirect URIs: `https://carditrack-prod.us.auth0.com/login/callback`
-5. Copy Client ID and Client Secret
-
-**Auth0 Configuration:**
-```
-Connection Name: google-oauth2
-Client ID: {from Google Console}
-Client Secret: {from Google Console}
-Scopes: email, profile
-Attributes:
-  - email (required)
-  - name
-  - picture
-```
-
-### **Microsoft Account**
-
-**Setup:**
-1. Go to [Azure Portal](https://portal.azure.com)
-2. Register application in Azure AD
-3. Create client secret
-4. Add redirect URI: `https://carditrack-prod.us.auth0.com/login/callback`
-
-**Auth0 Configuration:**
-```
-Connection Name: windowslive
-Client ID: {Application (client) ID from Azure}
-Client Secret: {Client secret value}
-Scopes: openid, profile, email
-```
-
-### **Apple Sign In**
-
-**Setup:**
-1. Go to [Apple Developer Portal](https://developer.apple.com)
-2. Create App ID with Sign In with Apple capability
-3. Create Service ID
-4. Configure Return URLs: `https://carditrack-prod.us.auth0.com/login/callback`
-5. Create private key for Sign In with Apple
-
-**Auth0 Configuration:**
-```
-Connection Name: apple
-Client ID: {Service ID}
-Team ID: {from Apple Developer account}
-Key ID: {from private key}
-Private Key: {upload .p8 file}
-Scopes: name, email
-```
-
-### **Facebook Login (Optional)**
-
-**Setup:**
-1. Go to [Facebook Developers](https://developers.facebook.com)
-2. Create app
-3. Add Facebook Login product
-4. Configure OAuth Redirect URIs: `https://carditrack-prod.us.auth0.com/login/callback`
-
-**Auth0 Configuration:**
-```
-Connection Name: facebook
-App ID: {from Facebook}
-App Secret: {from Facebook}
-Scopes: public_profile, email
-```
+- **Credential outsourcing**: no password verification logic in CardiTrack. (Note: a legacy `PasswordHash` column remains on the `Users` table pending removal — it is never written with a real hash; credentials are Auth0-hosted.)
+- **HIPAA BAA available**: Auth0 offers a BAA and compliance mode — required before prod go-live (runbook §1).
+- **Attack protection built in**: brute-force protection, breached-password detection. Note the embedded password-grant flow **cannot render a captcha**, so bot detection stays off (runbook §6); the escape hatch is switching to Universal Login later.
+- **Cheaper than building it**: HIPAA-compliant auth plus verification email delivery, token rotation, and anomaly detection for a per-MAU fee.
 
 ---
 
-## DATABASE CONNECTION (EMAIL/PASSWORD)
+## TENANT POLICY
 
-### **Auth0 Database Configuration**
+| | dev | prod |
+|---|---|---|
+| Tenant | `carditrack-dev` | `carditrack-prod` |
+| Region | **UK** (aligns with GCP europe-west2/London) | **UK or EU** (GCP europe-west2 data residency) |
+| HIPAA BAA | not required | sign BAA + enable compliance mode **before go-live** |
 
-**Connection Name:** Username-Password-Authentication
-
-**Password Strength:**
-```json
-{
-  "min_length": 8,
-  "max_length": 128,
-  "require_lowercase": true,
-  "require_uppercase": true,
-  "require_numbers": true,
-  "require_symbols": true
-}
-```
-
-**Password Policy:**
-- Good: 8+ characters with mixed case, numbers, symbols
-- Fair: 6+ characters
-- Excellent: 10+ characters with all requirements + no dictionary words
-
-**Security Features:**
-- ✅ Breached password detection (enabled)
-- ✅ Brute force protection (10 failed attempts → account locked)
-- ✅ Password history (prevent reuse of last 5 passwords)
-- ✅ Password expiration (optional, disabled for consumer app)
-
-**Sign-Up Settings:**
-```json
-{
-  "disable_signup": false,
-  "requires_username": false,
-  "custom_scripts": {
-    "login": "// Custom login validation",
-    "create": "// Custom signup validation"
-  }
-}
-```
+- **One API identifier across tenants**: `https://api.carditrack.com` on both dev and prod. Cross-tenant isolation is enforced by issuer + signature validation (decision 2026-08-04, runbook §2).
+- **Token policy**: access tokens 3600s; refresh tokens rotating, 30-day absolute lifetime, 15-day inactivity lifetime (runbook §§2–3).
+- **Applications**: `CardiTrack Mobile` (Native, public, no secret; Password + Authorization Code + Refresh Token grants) and `CardiTrack Web` (Regular Web App, confidential; Client Credentials only for the narrow Management API grant). Full setup: runbook §§3–4.
+- **Management API scopes**: exactly `read:users` + `update:users`, granted to the Web/API application (runbook §9). No broader scopes.
 
 ---
 
-## ENTERPRISE CONNECTIONS (BUSINESS ACCOUNTS)
+## CONNECTIONS
 
-### **SAML 2.0 (Generic)**
+### Database (email/password) — implemented
 
-For healthcare organizations with existing SAML IdP:
+`Username-Password-Authentication`, the tenant Default Directory. Sign-ups enabled (the app registers via `/dbconnections/signup`); password policy `Good` or stronger — the policy text surfaces verbatim in the app's weak-password error banner (runbook §5).
 
-**Configuration:**
-```
-Connection Name: {organization-name}-saml
-Sign In URL: {from enterprise IdP}
-Sign Out URL: {from enterprise IdP}
-X509 Signing Certificate: {from enterprise IdP}
+### Social — planned (Phase 9)
 
-User ID Attribute: http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier
-Email Attribute: http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress
-Name Attribute: http://schemas.xmlsoap.org/ws/2005/05/identity/claims/name
+Google (`google-oauth2`) and Apple (`apple`) only. The app already renders the buttons (both Create Account and Sign In pages); the remaining work is credentials + Auth0 connection config **plus the app-side PKCE invocation** — provisioning steps in [oauth_clients.md](./oauth_clients.md). Note the sign-in Google client is a **different registration** from the Google Health API device-data client.
 
-IdP-Initiated SSO: Enabled (optional)
-```
+### Enterprise SSO — planned, post-MVP
 
-### **Azure AD (Enterprise)**
-
-For Microsoft-based healthcare organizations:
-
-**Configuration:**
-```
-Connection Name: {organization-name}-azure-ad
-Microsoft Azure AD Domain: {organization}.onmicrosoft.com
-Client ID: {from Azure AD app registration}
-Client Secret: {from Azure AD}
-Scopes: openid, profile, email
-
-Sync user profile attributes at each login: Yes
-Extended Attributes:
-  - department
-  - job_title
-  - employee_id
-```
-
-### **Okta**
-
-**Configuration:**
-```
-Connection Name: {organization-name}-okta
-Okta Domain: {organization}.okta.com
-Client ID: {from Okta application}
-Client Secret: {from Okta}
-Scopes: openid, profile, email
-```
+> **Status: Planned — not yet implemented.** SAML 2.0 / Azure AD / Okta connections for business accounts are a future capability with no code, no tenant configuration, and no committed release.
 
 ---
 
-## AUTH0 RULES & ACTIONS
+## CONFIGURATION
 
-### **Rule 1: Add Custom Claims to Token**
-
-```javascript
-function addCustomClaims(user, context, callback) {
-  const namespace = 'https://carditrack.com';
-
-  // Add user metadata to access token
-  if (user.user_metadata) {
-    context.accessToken[namespace + '/organization_id'] = user.user_metadata.organization_id;
-    context.accessToken[namespace + '/role'] = user.user_metadata.role;
-    context.accessToken[namespace + '/user_id'] = user.user_metadata.carditrack_user_id;
-  }
-
-  // Add email verified status
-  context.accessToken[namespace + '/email_verified'] = user.email_verified;
-
-  callback(null, user, context);
-}
-```
-
-### **Rule 2: Enforce Email Verification**
-
-```javascript
-function enforceEmailVerification(user, context, callback) {
-  // Skip for social connections (auto-verified)
-  const socialConnections = ['google-oauth2', 'windowslive', 'apple', 'facebook'];
-  if (socialConnections.includes(context.connection)) {
-    return callback(null, user, context);
-  }
-
-  // Require email verification for database connections
-  if (!user.email_verified) {
-    return callback(
-      new UnauthorizedError('Please verify your email before logging in.')
-    );
-  }
-
-  callback(null, user, context);
-}
-```
-
-### **Rule 3: Block Suspended Accounts**
-
-```javascript
-function blockSuspendedAccounts(user, context, callback) {
-  const namespace = 'https://carditrack.com';
-  const ManagementClient = require('auth0@2.42.0').ManagementClient;
-
-  const management = new ManagementClient({
-    token: auth0.accessToken,
-    domain: auth0.domain
-  });
-
-  // Check if user is suspended in our database
-  const userId = user.user_metadata && user.user_metadata.carditrack_user_id;
-
-  if (userId) {
-    // Call CardiTrack API to check account status
-    request.get({
-      url: configuration.CARDITRACK_API_URL + '/api/auth/check-status',
-      headers: {
-        'Authorization': 'Bearer ' + configuration.CARDITRACK_API_SECRET
-      },
-      qs: {
-        user_id: userId
-      }
-    }, (err, response, body) => {
-      if (err) return callback(err);
-
-      const status = JSON.parse(body);
-      if (status.is_suspended || !status.is_active) {
-        return callback(
-          new UnauthorizedError('Your account has been suspended. Please contact support.')
-        );
-      }
-
-      callback(null, user, context);
-    });
-  } else {
-    callback(null, user, context);
-  }
-}
-```
-
-### **Rule 4: Multi-Factor Authentication (MFA)**
-
-```javascript
-function enforceMFA(user, context, callback) {
-  const namespace = 'https://carditrack.com';
-
-  // Require MFA for Admin and Staff roles
-  const role = user.user_metadata && user.user_metadata.role;
-  const requireMFA = ['Admin', 'Staff'].includes(role);
-
-  if (requireMFA && context.authentication.methods.length === 1) {
-    context.multifactor = {
-      provider: 'any',
-      allowRememberBrowser: false
-    };
-  }
-
-  callback(null, user, context);
-}
-```
-
-### **Action 1: Sync User to CardiTrack Database (Post-Login)**
-
-```javascript
-exports.onExecutePostLogin = async (event, api) => {
-  const axios = require('axios');
-
-  const auth0UserId = event.user.user_id;
-  const email = event.user.email;
-  const name = event.user.name;
-  const picture = event.user.picture;
-  const emailVerified = event.user.email_verified;
-
-  try {
-    // Sync user data to CardiTrack API
-    await axios.post(
-      `${event.secrets.CARDITRACK_API_URL}/api/auth/sync-user`,
-      {
-        auth0_user_id: auth0UserId,
-        email: email,
-        name: name,
-        picture: picture,
-        email_verified: emailVerified,
-        last_login: new Date().toISOString()
-      },
-      {
-        headers: {
-          'Authorization': `Bearer ${event.secrets.CARDITRACK_API_SECRET}`
-        }
-      }
-    );
-
-    // Update last login in Auth0 metadata
-    api.user.setUserMetadata('last_login_at', new Date().toISOString());
-
-  } catch (error) {
-    console.error('Failed to sync user:', error);
-    // Don't block login if sync fails
-  }
-};
-```
-
----
-
-## AUTH0 APIs
-
-### **Auth0 Management API**
-
-Used for programmatic user management:
-
-**Setup:**
-1. Create Machine-to-Machine Application in Auth0
-2. Authorize app for Auth0 Management API
-3. Grant scopes:
-   - `read:users`
-   - `update:users`
-   - `create:users`
-   - `delete:users`
-   - `read:user_idp_tokens`
-   - `update:user_metadata`
-
-**Usage in C#:**
-```csharp
-using Auth0.ManagementApi;
-using Auth0.ManagementApi.Models;
-
-public class Auth0Service
-{
-    private readonly IManagementApiClient _managementClient;
-
-    public Auth0Service(IConfiguration config)
-    {
-        var token = GetManagementApiToken();
-        _managementClient = new ManagementApiClient(
-            token,
-            new Uri($"https://{config["Auth0:Domain"]}/api/v2")
-        );
-    }
-
-    public async Task UpdateUserMetadata(string auth0UserId, object metadata)
-    {
-        var updateRequest = new UserUpdateRequest
-        {
-            UserMetadata = metadata
-        };
-
-        await _managementClient.Users.UpdateAsync(auth0UserId, updateRequest);
-    }
-
-    public async Task<User> GetUserByAuth0Id(string auth0UserId)
-    {
-        return await _managementClient.Users.GetAsync(auth0UserId);
-    }
-
-    public async Task LinkAccounts(string primaryUserId, string secondaryUserId)
-    {
-        var linkRequest = new UserAccountLinkRequest
-        {
-            Provider = secondaryUserId.Split('|')[0],
-            UserId = secondaryUserId.Split('|')[1]
-        };
-
-        await _managementClient.Users.LinkAccountAsync(primaryUserId, linkRequest);
-    }
-
-    private string GetManagementApiToken()
-    {
-        // Implement token caching
-        // Exchange client credentials for access token
-        var client = new HttpClient();
-        var request = new FormUrlEncodedContent(new[]
-        {
-            new KeyValuePair<string, string>("grant_type", "client_credentials"),
-            new KeyValuePair<string, string>("client_id", _config["Auth0:ManagementClientId"]),
-            new KeyValuePair<string, string>("client_secret", _config["Auth0:ManagementClientSecret"]),
-            new KeyValuePair<string, string>("audience", $"https://{_config["Auth0:Domain"]}/api/v2/")
-        });
-
-        var response = await client.PostAsync($"https://{_config["Auth0:Domain"]}/oauth/token", request);
-        var content = await response.Content.ReadAsStringAsync();
-        var tokenResponse = JsonSerializer.Deserialize<TokenResponse>(content);
-
-        return tokenResponse.AccessToken;
-    }
-}
-```
-
----
-
-## SECURITY CONFIGURATIONS
-
-### **Attack Protection**
-
-**Brute Force Protection:**
-```json
-{
-  "enabled": true,
-  "shields": ["block", "user_notification"],
-  "allowlist": [],
-  "mode": "count_per_identifier_and_ip",
-  "max_attempts": 10,
-  "triggers": [
-    {
-      "name": "consecutive_failed_logins"
-    }
-  ]
-}
-```
-
-**Suspicious IP Throttling:**
-```json
-{
-  "enabled": true,
-  "shields": ["block"],
-  "allowlist": [],
-  "stage": {
-    "pre-login": {
-      "max_attempts": 100,
-      "rate": 864000
-    },
-    "pre-user-registration": {
-      "max_attempts": 50,
-      "rate": 1200
-    }
-  }
-}
-```
-
-**Breached Password Detection:**
-```json
-{
-  "enabled": true,
-  "shields": ["block", "user_notification"],
-  "admin_notification_frequency": "daily",
-  "method": "standard"
-}
-```
-
-### **Bot Detection**
-
-**reCAPTCHA Integration:**
-```json
-{
-  "enabled": true,
-  "provider": "recaptcha_enterprise",
-  "site_key": "{Google reCAPTCHA site key}",
-  "secret_key": "{Google reCAPTCHA secret key}",
-  "score_threshold": 0.5
-}
-```
-
-### **Anomaly Detection**
-
-**Configuration:**
-```json
-{
-  "enabled": true,
-  "shields": ["block"],
-  "triggers": [
-    "impossible_travel",
-    "new_device",
-    "new_location",
-    "velocity_attack"
-  ]
-}
-```
-
----
-
-## LOGGING & MONITORING
-
-### **Log Streams**
-
-**Stream to Azure Application Insights:**
-```json
-{
-  "type": "http",
-  "name": "Azure Application Insights",
-  "sink": {
-    "http_endpoint": "https://{app-insights}.azurewebsites.net/api/logs",
-    "http_content_type": "application/json",
-    "http_authorization": "Bearer {token}"
-  },
-  "filters": [
-    {
-      "type": "log_type",
-      "name": "ss"  // Successful login
-    },
-    {
-      "type": "log_type",
-      "name": "f"   // Failed login
-    },
-    {
-      "type": "log_type",
-      "name": "fsa" // Failed signup
-    }
-  ]
-}
-```
-
-**Important Log Event Types:**
-- `s` - Success login
-- `f` - Failed login
-- `fsa` - Failed signup
-- `fu` - Failed change password
-- `pwd_leak` - Breached password
-- `limit_wc` - Blocked account (brute force)
-- `limit_mu` - Blocked IP address
-- `api_limit` - Rate limit exceeded
-
-### **Audit Log Retention**
-
-For HIPAA compliance:
-```
-Retention Period: 90 days minimum (recommended 1 year)
-Export to: Azure Blob Storage (encrypted)
-Format: JSON
-Schedule: Daily incremental backups
-```
-
----
-
-## APPSETTINGS CONFIGURATION
-
-### **appsettings.json**
+Canonical configuration keys (from `ConfigurationKeys.cs` — these are the **only** Auth0 keys the code reads):
 
 ```json
 {
   "Auth0": {
-    "Domain": "carditrack-prod.us.auth0.com",
-    "ClientId": "{your-client-id}",
-    "ClientSecret": "{your-client-secret}",
+    "Domain": "{tenant-domain, bare host}",
     "Audience": "https://api.carditrack.com",
-    "CallbackPath": "/auth/callback",
-    "RedirectUri": "https://app.carditrack.com/auth/callback",
-    "LogoutRedirectUri": "https://app.carditrack.com/",
-    "Scopes": "openid profile email phone",
-
-    "ManagementApi": {
-      "ClientId": "{management-api-client-id}",
-      "ClientSecret": "{management-api-client-secret}",
-      "Audience": "https://carditrack-prod.us.auth0.com/api/v2/"
-    },
-
-    "Connections": {
-      "Google": "google-oauth2",
-      "Microsoft": "windowslive",
-      "Apple": "apple",
-      "Facebook": "facebook",
-      "EmailPassword": "Username-Password-Authentication"
-    }
-  },
-
-  "JwtBearer": {
-    "Authority": "https://carditrack-prod.us.auth0.com/",
-    "Audience": "https://api.carditrack.com",
-    "ValidateIssuer": true,
-    "ValidateAudience": true,
-    "ValidateLifetime": true,
-    "ClockSkew": "00:00:00"
+    "ClientId": "{CardiTrack Web client id}",
+    "ClientSecret": "{CardiTrack Web client secret}",
+    "CallbackUrl": "https://localhost:7001/api/auth/callback",
+    "LogoutUrl": "https://localhost:7001/"
   }
 }
 ```
 
-### **Environment Variables (Secrets)**
+There is no `JwtBearer` section (JWT validation is wired in code from `Auth0:Domain` + `Auth0:Audience`), no `Auth0:ManagementApi:*` (the management client reuses `Auth0:ClientId`/`ClientSecret`), and no `Auth0:Connections:*` section.
 
-Store in Azure Key Vault or GitHub Secrets:
-```
-AUTH0_DOMAIN=carditrack-prod.us.auth0.com
-AUTH0_CLIENT_ID={client-id}
-AUTH0_CLIENT_SECRET={client-secret}
-AUTH0_MANAGEMENT_CLIENT_ID={management-client-id}
-AUTH0_MANAGEMENT_CLIENT_SECRET={management-client-secret}
-```
+**Deployment**: values arrive as env vars (`Auth0__Domain`, `Auth0__Audience`, `Auth0__ClientId`, `Auth0__ClientSecret`) bound to Secret Manager secrets `carditrack-{env}-auth0-domain`, `-audience`, `-client-id`, `-client-secret`, plus `carditrack-{env}-auth0-mobile-client-id` stamped into mobile builds at build time. Populate with `scripts/set-auth0-secrets.sh <env>` (runbook §11).
 
----
-
-## TESTING
-
-### **Auth0 Test Users**
-
-Create test users for each connection type:
-```
-Email/Password: test@carditrack.com (password: TestPass123!)
-Google: testuser@gmail.com (configure in Google Workspace)
-Microsoft: testuser@outlook.com
-```
-
-### **Integration Tests**
-
-```csharp
-[Fact]
-public async Task Auth0_Login_ReturnsValidJWT()
-{
-    // Arrange
-    var client = _factory.CreateClient();
-    var authUrl = $"https://{_auth0Config.Domain}/authorize?...";
-
-    // Act
-    var response = await client.GetAsync(authUrl);
-
-    // Assert
-    Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
-}
-
-[Fact]
-public async Task JWT_Validation_AcceptsValidToken()
-{
-    // Arrange
-    var validToken = await GetTestJWTToken();
-
-    // Act
-    var result = await _jwtValidator.ValidateToken(validToken);
-
-    // Assert
-    Assert.True(result.IsValid);
-    Assert.NotNull(result.Claims["sub"]);
-}
-```
+**Callback URLs (reality)**:
+- Blazor dev runs at `https://localhost:7177` (not 7001/7002 — those appear only in stale config).
+- Mobile deep link: `carditrack://oauth/callback` (allowed on the Native app for Phase 9 social login).
+- Web prod: `https://app.carditrack.com/callback`.
 
 ---
 
 ## COST ESTIMATE
 
 **Auth0 Pricing (HIPAA-Compliant Plan):**
-- **Professional Plan**: $240/month (up to 1,000 active users)
-- **BAA Add-on**: Included in Professional plan
-- **Additional Users**: $0.40/month per additional MAU (Monthly Active User)
-- **MFA**: SMS-based MFA costs extra via Twilio
+- **Professional Plan**: ~$240/month (up to 1,000 active users), BAA included
+- **Additional Users**: ~$0.40/month per additional MAU
+- 10,000+ MAU: Enterprise pricing (contact sales)
 
-**Projected Costs:**
-```
-0-1,000 users: $240/month
-1,000-10,000 users: $240 + (9,000 × $0.40) = $3,840/month
-10,000-100,000 users: Enterprise pricing (contact sales)
-```
-
-**Cost per User:**
-- 1,000 MAU: $0.24/user/month
-- 10,000 MAU: $0.38/user/month
-- Still cheaper than building custom auth + HIPAA compliance
-
----
-
-## MIGRATION PLAN
-
-### **Phase 1: Setup (Week 1)**
-- [ ] Create Auth0 tenant
-- [ ] Sign BAA
-- [ ] Configure social connections
-- [ ] Set up development environment
-
-### **Phase 2: Integration (Week 2-3)**
-- [ ] Implement Auth0 SDK in .NET backend
-- [ ] Add Universal Login to web app
-- [ ] Implement JWT validation middleware
-- [ ] Add user sync endpoints
-
-### **Phase 3: Testing (Week 4)**
-- [ ] Test all authentication flows
-- [ ] Validate JWT token handling
-- [ ] Test MFA enforcement
-- [ ] Security audit
-
-### **Phase 4: Production (Week 5)**
-- [ ] Deploy to production
-- [ ] Configure production connections
-- [ ] Enable monitoring and logging
-- [ ] User acceptance testing
+Still cheaper than building custom auth + HIPAA compliance in-house.
 
 ---
 
 ## SUPPORT & RESOURCES
 
-**Auth0 Documentation:**
-- [Quickstart: ASP.NET Core](https://auth0.com/docs/quickstart/webapp/aspnet-core)
-- [HIPAA Compliance Guide](https://auth0.com/docs/compliance/hipaa)
+- [Auth0 setup runbook](./auth0_setup_runbook.md) — operator steps, per environment
+- [oauth_clients.md](./oauth_clients.md) — client inventory, social provisioning (Phase 9)
+- [Auth0 HIPAA Compliance Guide](https://auth0.com/docs/compliance/hipaa)
 - [Management API Reference](https://auth0.com/docs/api/management/v2)
 
-**Support Channels:**
-- Auth0 Community Forum
-- Professional Plan: Email support
-- Enterprise: 24/7 phone support
-
 ---
+
+**Last Updated:** August 7, 2026
 
 **END OF AUTH0 INTEGRATION DOCUMENTATION**

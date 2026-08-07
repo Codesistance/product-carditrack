@@ -1,13 +1,52 @@
 # CardiTrack - Web App Screen Specifications
 
+> **Status: Planned — not yet implemented.** The web app currently ships the template shell plus the health-data disclosure banner and /privacy page (see "Implemented today"). All screens below are design specs for future waves.
+
 ## Project Overview
 
 **Product:** CardiTrack - Remote health monitoring for elderly family members
-**Platform:** Blazor Server (.NET 10) — Chrome, Firefox, Safari, Edge (latest 2 versions)
+**Platform:** Blazor Web App (.NET 10), static SSR with per-component InteractiveServer islands — Chrome, Firefox, Safari, Edge (latest 2 versions)
 **Responsive Breakpoints:** Mobile (< 768px), Tablet (768–1024px), Desktop (> 1024px)
 **Target Users:** Family caregivers across the US & EU monitoring elderly relatives' wearable health data
-**Document Version:** 3.0
-**Last Updated:** February 24, 2026
+**Document Version:** 3.1
+**Last Updated:** August 7, 2026
+
+---
+
+## Implemented today
+
+What `src/Presentation/CardiTrack.Web` actually contains right now — a stock Blazor Web App template plus two product additions from PR #9. None of the W1–W4 screens below exist yet.
+
+### Real routes
+
+| Route | Page | Status |
+|-------|------|--------|
+| `/` | Home ("Hello, world!") | Template leftover — will become W1-01 Landing Page |
+| `/counter` | Counter | Template leftover — to be removed |
+| `/weather` | Weather | Template leftover — to be removed |
+| `/privacy` | Privacy Policy | **Product page (shipped)** — public privacy policy: What we collect / How we use it / Retention and control / Contact (cloudoperations@codesistance.com). Reachable in-app only via the disclosure banner's "Learn more" link |
+| `/not-found` | NotFound | Router `NotFoundPage` + `UseStatusCodePagesWithReExecute("/not-found")` |
+| `/Error` | Error | Production exception handler page |
+
+The nav menu still shows the template links (Home / Counter / Weather). No login page or auth flow is wired — the app registers `AddCascadingAuthenticationState()` only, so no user is ever authenticated yet. The template's `ReconnectModal` (in the layout) surfaces Blazor circuit connection state (reconnecting / retry / resume).
+
+### Global Components (shipped)
+
+#### W1-00: Health Data Disclosure Banner
+**Files:** `Components/Shared/HealthDataDisclosureBanner.razor` (+ scoped `.css`)
+**Mount point:** `MainLayout`, directly above `@Body` — appears on every page
+**Render mode:** `InteractiveServer` island (`prerender: false`) inside the otherwise static SSR layout
+**Motivation:** Google Health API restricted-scope verification (prominent in-app disclosure)
+
+**Behavior:**
+- Visible only when the cascading authentication state reports an authenticated principal — the user identity is read from `ClaimTypes.NameIdentifier`, falling back to the raw `sub` claim
+- Hidden when the user has already dismissed it (`IUserService.HasDismissedHealthDataDisclosureAsync`)
+- Dismiss (X) hides the banner **only after** `DismissHealthDataDisclosureAsync` persists successfully — if persistence fails, the banner stays visible
+- Dismissal is stored per user in `User.HealthDataDisclosureDismissedDate`, so it follows the user across devices and browsers
+- Copy: "CardiTrack collects health and fitness data to enable anomaly alerts, daily health digests, and trend monitoring." + "Learn more" link → `/privacy`
+- Accessibility: `role="region"` with `aria-label="Health data disclosure"`; dismiss button has `aria-label="Dismiss"`; icons are `aria-hidden`
+- Currently inert in practice: with no login flow, no user is ever authenticated, so the banner never renders. It activates automatically once Auth0 login ships
+- Covered by bUnit tests
 
 ---
 
@@ -15,12 +54,12 @@
 
 68 screens across 4 MVPs (counting each state as a screen). Each MVP is a fully functional, shippable release.
 
-| Release | Screens | Theme | User Gets |
-|---------|---------|-------|-----------|
-| **MVP 1** | 33 | Core Monitoring | Public landing page, sign up, connect and manage device (Fitbit), monitor one to n parent(s), CardiMember profile, device management, view dashboard, receive and manage all alert types |
-| **MVP 2** | 8 | Management & Settings | Trend charts, notification preferences, personal subscription (Basic & Complete Care), health data export (HL7, FHIR), connect and manage device (Garmin) |
-| **MVP 3** | 14 | Family & Multi-Member | Invite family, share notes, manage multiple CardiMembers, scan test results with CardiTrack medical insights, export data in LOINC/CCD |
-| **MVP 4** | 13 | Web Native & Offline | PWA install, browser notifications with inline actions, offline support with sync queue, keyboard shortcuts, print/PDF export view, SNOMED CT export |
+| Release | Screens | Theme | Target | User Gets |
+|---------|---------|-------|--------|-----------|
+| **MVP 1** | 33 | Core Monitoring | Q4 2026 | Public landing page, sign up, connect and manage device (Fitbit), monitor one to n parent(s), CardiMember profile, device management, view dashboard, receive and manage all alert types |
+| **MVP 2** | 8 | Management & Settings | Q1 2027 | Trend charts, notification preferences, personal subscription (Basic & Complete Care), health data export (HL7, FHIR), connect and manage device (Garmin) |
+| **MVP 3** | 14 | Family & Multi-Member | Q2 2027 | Invite family, share notes, manage multiple CardiMembers, scan test results with CardiTrack medical insights, export data in LOINC/CCD |
+| **MVP 4** | 13 | Web Native & Offline | Q3 2027 | PWA install, browser notifications with inline actions, offline support with sync queue, keyboard shortcuts, print/PDF export view, SNOMED CT export |
 
 ---
 
@@ -96,6 +135,8 @@
                ▼
            [W1-08 Dashboard]
 ```
+
+> **Note:** No login page exists yet — authentication (Auth0) is planned but not wired. All "Login page" / "Sign In" references in this document are forward-looking.
 
 ### Flow 2: Daily Monitoring (MVP 1)
 
@@ -184,6 +225,8 @@
 ```
 ┌─────────────────────────────────────────────────────────┐
 │  [CardiTrack Logo]  [Search ⌘K]  [🔔 3]  [User Avatar ▼] │  ← Top Bar (fixed)
+├─────────────────────────────────────────────────────────┤
+│  [W1-00 Health Data Disclosure Banner — shipped]        │  ← Global, authenticated + not dismissed
 ├──────────┬──────────────────────────────────────────────┤
 │          │                                              │
 │  Dashboard│           Main Content Area                 │
@@ -196,6 +239,8 @@
 └──────────┴──────────────────────────────────────────────┘
   Sidebar    Content (1024px+ always visible; tablet/mobile collapsible)
 ```
+
+The W1-00 Health Data Disclosure Banner (see "Implemented today") renders above the page body on every screen for authenticated users who have not dismissed it.
 
 ### Sidebar Navigation
 
@@ -245,7 +290,7 @@ A user can visit the public landing page, sign up, add one or more CardiMembers,
 **URL:** `/`
 **User Story:** 1.1 First-Time Registration
 **Entry:** Direct URL / organic / referral
-**Exit:** → W1-02 Sign Up ("Start Free Trial") | → Login page ("Sign In") | → `/pricing`
+**Exit:** → W1-02 Sign Up ("Start Free Trial") | → Login page ("Sign In" — not yet implemented; auth is planned) | → `/pricing`
 
 **Header (sticky on scroll):**
 - CardiTrack logo (left)
@@ -290,9 +335,9 @@ A user can visit the public landing page, sign up, add one or more CardiMembers,
 
 ### W1-02: Sign Up
 **URL:** `/signup`
-**User Story:** 1.1 Account Creation
+**User Story:** 1.2 Account Creation
 **Entry:** ← W1-01 Landing ("Start Free Trial") | any CTA on landing page
-**Exit:** → W1-03 Add CardiMember (success) | → Login page ("Already have an account?")
+**Exit:** → W1-03 Add CardiMember (success) | → Login page ("Already have an account?" — not yet implemented; auth is planned)
 
 **Layout:** Centered card (max-width 480px), full-page background
 
@@ -340,7 +385,7 @@ A user can visit the public landing page, sign up, add one or more CardiMembers,
 
 ### W1-03: Add First CardiMember
 **URL:** `/onboarding/add-member`
-**User Story:** 1.2 Adding First CardiMember
+**User Story:** 1.3 Adding First CardiMember
 **Entry:** ← W1-02 Sign Up (success)
 **Exit:** → W1-04 Device Selection ("Continue") | → W1-08 Dashboard ("Skip for Now")
 
@@ -389,7 +434,7 @@ A user can visit the public landing page, sign up, add one or more CardiMembers,
 
 ### W1-04: Device Connection - Selection
 **URL:** `/onboarding/connect-device`
-**User Story:** 1.3 Device Connection Wizard
+**User Story:** 1.4 Device Connection Wizard
 **Entry:** ← W1-03 Add CardiMember ("Continue")
 **Exit:** → W1-05 OAuth Permission (device selected)
 
@@ -438,7 +483,7 @@ Each device card:
 
 ### W1-05: Device Connection - OAuth Permission
 **URL:** `/onboarding/connect-device/authorize`
-**User Story:** 1.3 OAuth Flow
+**User Story:** 1.4 OAuth Flow
 **Entry:** ← W1-04 Device Selection (device chosen)
 **Exit:** → W1-06 Success (authorization complete) | ← W1-04 Device Selection ("Cancel")
 
@@ -476,7 +521,7 @@ Each device card:
 
 ### W1-06: Device Connection - Success
 **URL:** `/onboarding/connect-device/success`
-**User Story:** 1.3 Connection Success
+**User Story:** 1.4 Connection Success
 **Entry:** ← W1-05 OAuth (authorization complete)
 **Exit:** → W1-07 Baseline Info ("Continue to Dashboard") | → W1-04 Device Selection ("Add Another Device")
 
@@ -510,7 +555,7 @@ Each device card:
 
 ### W1-07: Baseline Learning Info
 **URL:** `/onboarding/baseline`
-**User Story:** 1.3 Baseline Setup
+**User Story:** 1.5 Baseline Setup
 **Entry:** ← W1-06 Device Success
 **Exit:** → W1-08 Dashboard ("Go to Dashboard")
 
@@ -620,7 +665,7 @@ Each device card:
 
 ### W1-09: Alerts List
 **URL:** `/alerts`
-**User Story:** 3.1 Alert Management
+**User Story:** 3.2, 3.3 Alert Management
 **Entry:** Sidebar (Alerts) | ← W1-08 Dashboard (Recent Alerts section)
 **Exit:** → W1-10 Alert Detail (Activity) | → W1-11 Alert Detail (Critical) | → W1-15 Alert Detail (Heart Rate)
 
@@ -668,7 +713,7 @@ Heart rate alerts click → W1-15
 
 ### W1-10: Alert Detail - Activity
 **URL:** `/alerts/{id}`
-**User Story:** 11.1 Activity Decline
+**User Story:** 3.1, 3.2
 **Entry:** ← W1-09 Alerts List (click row) | Right-panel in split-pane view
 **Exit:** ← W1-09 Alerts List (back / close panel) | → Phone call | → W2-03 Trend Charts
 
@@ -724,7 +769,7 @@ Heart rate alerts click → W1-15
 
 ### W1-11: Alert Detail - Critical (No Movement)
 **URL:** `/alerts/{id}` (critical severity)
-**User Story:** 11.3 No Morning Activity
+**User Story:** 3.1, 3.4
 **Entry:** ← W1-09 Alerts List | Browser notification (direct link)
 **Exit:** ← W1-09 Alerts List (back) | → Phone call | → Note input
 
@@ -884,7 +929,7 @@ This is the most safety-critical screen. Design for urgency and immediate action
 
 ### W1-15: Alert Detail - Heart Rate
 **URL:** `/alerts/{id}` (heart rate type)
-**User Story:** 11.2 Elevated HR
+**User Story:** 3.1, 3.2
 **Entry:** ← W1-09 Alerts List
 **Exit:** ← W1-09 Alerts List (back) | → Phone call | → W2-03 Trend Charts
 
@@ -1014,14 +1059,14 @@ Extends MVP 1 with account management: view trends and historical data, configur
 - Button: "Manage Subscription"
 
 **Included Features (checklist):**
-- Up to 3 CardiMembers
+- Up to 5 CardiMembers
 - Advanced ML Alerts
 - Family Sharing
 - 90-day data retention
 - Priority support
 
 **Usage Section:**
-- Progress bars: CardiMembers: 2 of 3 | Data retention: 45 days of 90
+- Progress bars: CardiMembers: 2 of 5 | Data retention: 45 days of 90
 
 **Plan Comparison (side-by-side cards, 2 plans):**
 - Each card: Plan name + price/month + "Current Plan" badge (if active) + feature list
@@ -1039,7 +1084,7 @@ Extends MVP 1 with account management: view trends and historical data, configur
 
 ### W2-03: Trend Charts
 **URL:** `/members/{id}/trends`
-**User Story:** 2.3 Historical Data
+**User Story:** 2.4 Historical Data
 **Entry:** ← W1-08 Dashboard ("View Trends") | ← W1-10 Alert Detail ("View Detailed Data")
 **Exit:** ← Previous page (back) | → W2-05 Health Data Export
 
@@ -1084,7 +1129,7 @@ Extends MVP 1 with account management: view trends and historical data, configur
 
 ### W2-04: Notification Settings
 **URL:** `/settings/notifications`
-**User Story:** 3.2 Alert Preferences
+**User Story:** 3.5 Alert Preferences
 **Entry:** ← W2-01 Settings | ← W1-09 Alerts List (settings gear icon)
 **Exit:** ← Previous page (back)
 
@@ -1190,7 +1235,7 @@ Adds family collaboration: invite siblings to share caregiving, shared notes, ma
 
 ### W3-01: Family Members List
 **URL:** `/family`
-**User Story:** 4.1 Family Management
+**User Story:** 4.2 Family Management
 **Entry:** Sidebar (Family & Sharing) | ← W2-01 Settings ("Family & Sharing")
 **Exit:** → W3-02 Invite Modal | → Role management | → W3-04 Shared Notes
 
@@ -1265,7 +1310,7 @@ Adds family collaboration: invite siblings to share caregiving, shared notes, ma
 
 ### W3-03: Multi-Member Dashboard
 **URL:** `/dashboard` (replaces W1-08 when multiple CardiMembers exist)
-**User Story:** 2.2 Multi-Member View
+**User Story:** 2.3 Multi-Member View
 **Entry:** Sidebar (Dashboard) — replaces W1-08 when user has multiple CardiMembers
 **Exit:** → W1-08 Single Dashboard (click member) | → W1-03 Add CardiMember ("+ Add")
 
@@ -1291,7 +1336,7 @@ Each card:
 
 ### W3-04: Shared Notes Feed
 **URL:** `/family/notes`
-**User Story:** 4.2 Coordination
+**User Story:** 4.3 Coordination
 **Entry:** Sidebar (Family) → Notes tab | ← W3-01 Family List
 **Exit:** → W3-05 Add Note | ← Previous page (back)
 
@@ -1328,7 +1373,7 @@ Each note card:
 
 ### W3-05: Add / Edit Note
 **URL:** `/family/notes/new` (or modal)
-**User Story:** 4.2 Shared Notes
+**User Story:** 4.3 Shared Notes
 **Entry:** ← W3-04 Notes Feed (click input or "+ Add Note" button)
 **Exit:** ← W3-04 Notes Feed (cancel or post)
 
@@ -1486,7 +1531,7 @@ Adds web-native polish: PWA installation, browser notification permission and ri
 ---
 
 ### W4-01: PWA Install Prompt
-**User Story:** 10.3 PWA Install
+**User Story:** 10.6 PWA Install
 **Entry:** Automatic — browser detects PWA manifest and triggers install eligibility
 **Exit:** App installed | User dismisses
 
@@ -1504,7 +1549,7 @@ Adds web-native polish: PWA installation, browser notification permission and ri
 ---
 
 ### W4-02: Browser Notification Permission
-**User Story:** 5.1 Browser Notifications
+**User Story:** 9.2 Browser Notification Permission
 **Entry:** ← W1-07 Baseline Info (triggered post-onboarding) | ← W2-04 Notification Settings ("Enable Browser Push")
 **Exit:** → W2-04 Notification Settings | Permission granted/denied
 
@@ -1525,7 +1570,7 @@ Adds web-native polish: PWA installation, browser notification permission and ri
 ---
 
 ### W4-03: Offline Mode Indicator
-**User Story:** 10.1 Offline Support
+**User Story:** 10.5 Offline Support
 **Entry:** Automatic — appears when browser loses internet connectivity
 **Exit:** Automatic — disappears when connection restored
 
@@ -1560,7 +1605,7 @@ Adds web-native polish: PWA installation, browser notification permission and ri
 
 ### W4-04: Offline Data Cache Settings
 **URL:** `/settings/offline`
-**User Story:** 10.1 Cache Management
+**User Story:** 10.5 Cache Management
 **Entry:** ← W2-01 Settings
 **Exit:** ← W2-01 Settings (back)
 
@@ -1580,7 +1625,7 @@ Adds web-native polish: PWA installation, browser notification permission and ri
 ---
 
 ### W4-05: Browser Notifications
-**User Story:** 5.1 Notification Types
+**User Story:** 9.3 Rich Browser Notifications
 **Entry:** System — triggered by backend alert events via Service Worker
 
 Designs for system-level browser notification UI.
@@ -1638,7 +1683,7 @@ Designs for system-level browser notification UI.
 
 ### W4-07: Print / PDF Export View
 **URL:** `/print/{memberId}` (print-optimized route)
-**User Story:** 6.3 Print Export
+**User Story:** 9.4 Print-Optimised Health Report
 **Entry:** ← W2-03 Trend Charts ("Print" option) | ← W2-05 Health Data Export ("Print" delivery method) | ← W3-07 Test Results Detail ("Print")
 **Exit:** Browser print dialog | ← Previous page (cancel)
 
@@ -1713,8 +1758,8 @@ The design system is **yours to define**. The following are functional requireme
 **Platform:**
 - Desktop-first layout — sidebar + content area as primary pattern
 - Responsive down to 375px mobile width
-- Blazor components must support SSR + interactivity (Server render mode)
-- SignalR connection state must be visually represented (connected / reconnecting / offline)
+- Blazor components must support static SSR + per-component InteractiveServer islands
+- SignalR connection state must be visually represented (connected / reconnecting / offline) — *satisfied today by the template's `ReconnectModal` in the layout, which surfaces Blazor circuit reconnection state*
 
 **User context:**
 - Primary users are 30–65 year old adults; critical alerts may be read in high-stress moments — design for quick scanning

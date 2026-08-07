@@ -36,17 +36,36 @@ Token refresh is performed **directly against Auth0** (`POST https://{tenant}.au
 
 ### JWT claims consumed by the API
 
+The API reads only **three** claims from the access token (via `UserContextMiddleware`):
+
+| Claim | Used for |
+|-------|----------|
+| `sub` | Auth0 user ID — the key linking the token to the local `Users` row |
+| `email` | Identity email (onboarding overwrites any client-supplied email with this) |
+| `https://carditrack.com/email_verified` | Verification state, set by the tenant's post-login Action (a bare `email_verified` claim is accepted as fallback for tests/other issuers; absent → `null`) |
+
 ```json
 {
   "sub": "auth0|65f1c2...",
   "email": "jane@example.com",
-  "https://carditrack.com/role": "Admin",
-  "https://carditrack.com/organization_id": "450e8400-...",
+  "https://carditrack.com/email_verified": "true",
   "exp": 1704844800
 }
 ```
 
-Roles (`Admin`, `Staff`, `Viewer`) and `organization_id` are added to the access token by an Auth0 post-login Action — see [Auth0 Integration](../../../technical/auth0_integration.md).
+**Role and organization do not come from claims.** After token validation, the middleware looks the user up in the **database** by `Auth0UserId` and enriches the request context with the local `UserId`, `OrganizationId`, and `Role`. Roles are `Member`, `Admin`, and `Staff` (integer enum `UserRole` — there is no `Viewer` role).
+
+> Three authorization policies (`RequireAdmin`, `RequireBusinessAccount`, `RequireFamilyAccount`) are registered but **used by no endpoint**. They require bare `role` / `organization_type` claims that no Auth0 Action currently issues — if wired up as-is they would deny everyone. Treat them as scaffolding.
+
+### Token-derived identity (onboarding)
+
+Onboarding endpoints deliberately **overwrite identity fields in the request body from the request context** (introduced in PR #5):
+
+- `email` — taken from the token's email claim (body value is only a fallback when the claim is absent)
+- `auth0UserId` and `emailVerified` — token-only; never read from the body
+- `locale` — parsed from the `Accept-Language` header (first language tag; default `en-US`)
+
+The `Users.Auth0UserId` column has a **unique filtered index** (excluding empty strings), making onboarding retries idempotent per Auth0 identity.
 
 ---
 
@@ -65,23 +84,61 @@ Biometrics are a **local device gate, not a server-side credential**. No biometr
 
 ## Session Revocation
 
-- **Logout**: client discards tokens and calls Auth0 `/oidc/logout`; the mobile app also unregisters its push token (`DELETE /api/v1/notifications/devices/{tokenId}` — see [notifications.md](notifications.md)).
+- **Logout**: client discards tokens and calls Auth0 `/oidc/logout`. (Push-token unregistration will be added when the notifications domain ships — see [notifications.md](notifications.md), currently planned.)
 - **Admin-initiated removal** (family member removed from account): the API rejects further requests at the authorization layer immediately, regardless of remaining token validity, because org membership is checked against the database.
 - **Suspicious activity**: sessions can be revoked tenant-wide via the Auth0 Management API.
 
 ---
 
+## API Endpoint
+
+### POST `/api/v1/auth/resend-verification`
+
+The only implemented endpoint in this domain. Resends Auth0's verification email via the Management API. **Anonymous by design** — the caller cannot log in until verified — and rate-limited to **5 requests/hour/IP**.
+
+**Priority:** P0 | **Auth Required:** No
+
+#### Request Body
+
+```json
+{
+  "email": "jane@example.com"
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `email` | string | Yes | Address to resend verification to (validated for email format) |
+
+#### Response `200 OK` — always, wrapped `ApiResponse<bool>`
+
+```json
+{
+  "success": true,
+  "message": "If that email is registered with us, a verification link is on its way!",
+  "data": true,
+  "timestamp": "2026-08-07T10:00:00Z"
+}
+```
+
+> **Non-enumerating:** the endpoint answers 200 whether or not the email exists — there is no signal distinguishing registered from unregistered addresses. A malformed email returns 400 (validation).
+
+---
+
 ## Errors
 
-Authentication errors surface as standard API errors (see [readme.md](readme.md)):
+Authentication errors surface as standard API errors (see [readme.md](readme.md)). **There are no machine-readable error codes on the wire** — the `ErrorResponse` body carries only a human-readable `message`; clients branch on HTTP status:
 
-| Code | Status | Description |
-|------|--------|-------------|
-| `UNAUTHORIZED` | 401 | Missing, expired, or invalid access token |
-| `EMAIL_NOT_VERIFIED` | 403 | Auth0 email verification pending (database connections) |
-| `ACCOUNT_SUSPENDED` | 403 | User suspended in CardiTrack; enforced by Auth0 Action + API |
-| `INSUFFICIENT_PERMISSIONS` | 403 | Authenticated but role does not permit the operation |
+| Status | Description |
+|--------|-------------|
+| 401 | Missing, expired, or invalid access token (validated with zero clock skew) |
+| 403 | Token valid but no local user row yet (onboarding incomplete), or member-link authorization failed |
+| 429 | Rate limit exceeded (see [readme.md](readme.md)) |
+
+> **Email verification is not enforced by the API.** The verification state from the token is persisted on the user record and echoed in onboarding status, but no API endpoint rejects unverified users — the gate is the **Auth0 post-login Action**, which blocks login until the email is verified. There is no `EMAIL_NOT_VERIFIED` API error.
 
 ---
 
 **Related:** [readme.md](readme.md) | [Auth0 Integration](../../../technical/auth0_integration.md) | [User Onboarding](../../../technical/user_onboarding_process.md) | [User Stories 1.1, 10.2](../../ui/mobile/user_stories.md)
+
+**Last Updated:** August 7, 2026

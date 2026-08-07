@@ -1,8 +1,34 @@
 # Notifications API
 
-Manages push notification device token registration and global notification preferences. Alert-specific preferences (quiet hours, sensitivity, routing) are managed via the [Alerts API](alerts.md).
+> **Status: Planned — not yet implemented.** None of the endpoints below exist yet. See "Implemented today" for current coverage.
+
+Manages push notification device token registration and global notification preferences. Alert-specific preferences (quiet hours, sensitivity, routing) are designed for the [Alerts API](alerts.md) — also entirely planned.
 
 **User Stories:** 3.2 (Managing Alert Notifications), 5.1 (Mobile Push Notifications)
+
+---
+
+## Implemented today
+
+**Nothing.** There is no push infrastructure at all: no push-token entity, no APNS/FCM integration, and no notification sender anywhere in the codebase.
+
+The nearest artifact is an **unwired `NotificationPreferencesRequest` DTO** (a validator is registered for it, but no endpoint consumes it). Notably, it is **per-CardiMember**, which contradicts the per-user *global* preferences model designed below:
+
+```json
+{
+  "cardiMemberId": "3fa85f64-...",
+  "receiveSmsAlerts": false,
+  "receiveEmailAlerts": true,
+  "receivePushAlerts": true,
+  "enabledAlertTypes": [1, 2, 4],
+  "quietHoursStart": "22:00",
+  "quietHoursEnd": "07:00"
+}
+```
+
+(`enabledAlertTypes` are integer `AlertType` values — see [alerts.md](alerts.md); quiet hours are plain `TimeOnly` values with no timezone, digest, or severity-override support.) The `UserCardiMember` link entity also carries a `NotificationPreferences` JSON column and a `ReceiveAlerts` flag, but nothing reads them for delivery.
+
+Everything below is the **planned** contract, kept as design intent.
 
 ---
 
@@ -111,7 +137,7 @@ Get the authenticated user's global notification preferences across all CardiMem
 }
 ```
 
-> Per-CardiMember alert preferences (quiet hours, sensitivity, routing rules) are managed via `GET /api/v1/cardimembers/{id}/alert-preferences` in [alerts.md](alerts.md).
+> Per-CardiMember alert preferences (quiet hours, sensitivity, routing rules) are designed as `GET /api/v1/cardimembers/{id}/alert-preferences` in [alerts.md](alerts.md) — also planned, not yet implemented.
 
 ---
 
@@ -181,3 +207,5 @@ Rich push notifications sent by the backend include action buttons to allow care
 ---
 
 **Related:** [readme.md](readme.md) | [alerts.md](alerts.md) | [User Stories 3.2, 5.1](../../ui/mobile/user_stories.md)
+
+**Last Updated:** August 7, 2026

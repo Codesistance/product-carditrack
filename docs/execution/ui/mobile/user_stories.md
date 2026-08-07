@@ -1,5 +1,7 @@
 # CardiTrack User Stories for UI/UX Design
 
+> **Build status (August 7, 2026):** 9 of 17 Figma M1 screens are built in `CardiTrack.Mobile` (M1-01 through M1-09); M1-10 through M1-17 show "Coming soon" dialogs. Four shipped screens have **no Figma M1 frame — needs design sync**: SignInPage, ForgotPasswordPage, VerifyEmailPage, and Onboarding/AccountSetupPage (see Stories 1.5–1.8). Release waves re-baselined: MVP 1 (R1) → Q4 2026, MVP 2 (R2) → Q1 2027, MVP 3 (R3) → Q2 2027. Release sequencing is governed by the [release matrix](../../../release_matrix.md).
+
 Based on the solution manifest, market analysis, and README, here are comprehensive user stories organized by user persona and platform:
 
 ## 👨‍👩‍👧 Primary Persona: Family Caregiver (Ages 45-65)
@@ -14,8 +16,7 @@ Based on the solution manifest, market analysis, and README, here are comprehens
   - Simple signup flow (email/password or social login via Auth0)
   - Clear value proposition on landing page
   - 30-day free trial messaging prominent
-  - "How it works" video or interactive tutorial
-  - Mobile-responsive design
+  - Account creation leads into email verification (Story 1.7) — the user cannot enter the app until their email is verified
 
 **Story 1.2: Adding First CardiMember**
 - **As a** new CardiTrack user
@@ -26,14 +27,15 @@ Based on the solution manifest, market analysis, and README, here are comprehens
   - Required fields: Name, Date of Birth, Relationship
   - Optional fields: Photo, medical notes (encrypted), emergency contacts
   - Clear privacy messaging ("Your parent will be notified")
-  - Visual progress indicator (Step 1 of 3)
+  - Visual progress indicator (Step 2 of 4)
+  - Emergency-phone placeholder localized by device region (PR #8): US/CA "+1 555 000 0000", GB "+44 7700 900000" — **limitation:** all other regions fall back to the US format, notable given the US + EU target market
 
 **Story 1.3: Device Connection Wizard**
 - **As a** caregiver setting up monitoring
 - **I want to** connect my parent's wearable device through a guided wizard
 - **So that** I understand what permissions are needed and why
 - **Acceptance Criteria:**
-  - Device selection screen with icons (Fitbit, Apple Watch, Garmin, Samsung)
+  - Device selection screen with icons — **Fitbit only in MVP 1**; Apple Watch, Garmin, Samsung, Withings, Other shown as "Coming Soon"
   - OAuth flow with clear permission explanations
   - "Why we need this" tooltips for each permission
   - Success confirmation with sample data preview
@@ -46,12 +48,58 @@ Based on the solution manifest, market analysis, and README, here are comprehens
 - **So that** their information stays accurate and I can quickly act in an emergency
 - **Acceptance Criteria:**
   - View profile summary: name, DOB, relationship, photo, emergency contact
-  - Encrypted medical notes (require biometric auth to view/edit)
+  - Encrypted medical notes (biometric gating deferred to R4 per the release matrix — not an MVP 1 criterion)
   - Enable/disable monitoring toggle with confirmation
   - Alert sensitivity control (Low / Medium / High)
   - Quick-action buttons: View Dashboard, View Alerts, Manage Devices
   - Danger-zone actions: Pause Monitoring, Remove CardiMember (with confirmation dialogs)
   - Screens: M1-13 (CardiMember Detail), M1-14 (Edit CardiMember)
+
+**Story 1.5: Sign In** _(shipped — no Figma M1 frame, needs design sync)_
+- **As a** returning caregiver
+- **I want to** sign in quickly with my email and password
+- **So that** I can get back to monitoring without friction
+- **Acceptance Criteria:**
+  - Email + password form with password show/hide toggle
+  - **"Remember me" checkbox**
+  - "Forgot password" link → Story 1.6
+  - Inline error message for failed sign-in (no banner)
+  - Social sign-in options (Google / Apple) presented consistently with sign-up
+  - Link back to sign-up for users without an account
+  - Screen: SignInPage (no Figma M1 frame)
+
+**Story 1.6: Forgot Password** _(shipped — no Figma M1 frame, needs design sync)_
+- **As a** caregiver who forgot my password
+- **I want to** request a reset link by email
+- **So that** I can regain access without contacting support
+- **Acceptance Criteria:**
+  - Request state: email input + send-reset-link CTA
+  - Confirmation state: "Check your email" with resend option (cooldown to prevent spamming)
+  - "Back to sign in" path from both states
+  - Screen: ForgotPasswordPage (no Figma M1 frame)
+
+**Story 1.7: Verify Email** _(shipped — no Figma M1 frame, needs design sync)_
+- **As a** newly registered caregiver
+- **I want to** verify my email address right after signing up
+- **So that** my account is secured and I can proceed into the app
+- **Acceptance Criteria:**
+  - **Hard tenant gate:** account creation does not auto-login; the user lands on the verification screen and cannot proceed until verified (threads between Story 1.1 and Story 1.2)
+  - "I've verified — continue" action with a checking state
+  - "Open mail app" shortcut
+  - Resend verification email (cooldown; confirmation message)
+  - Clear error state when the address is still unverified
+  - Screen: VerifyEmailPage (no Figma M1 frame)
+
+**Story 1.8: Account-Type Setup** _(shipped — no Figma M1 frame, needs design sync)_
+- **As a** first-time user after verification
+- **I want to** say whether I'm caring for my family or providing care professionally
+- **So that** CardiTrack can tailor my account
+- **Acceptance Criteria:**
+  - Radio-cards: "My Family" (personal) vs "My Organization" (professional care)
+  - Selecting "My Organization" reveals a required Organization Name field
+  - Continue disabled until a type is chosen
+  - Screen: Onboarding/AccountSetupPage (no Figma M1 frame)
+  - **Flagged scope question (not a resolution):** the Organization option surfaces business onboarding in MVP 1 while the Guardian Plus business tier is post-R4 in the release matrix — needs a product decision
 
 ### Dashboard & Monitoring
 
@@ -129,7 +177,7 @@ Based on the solution manifest, market analysis, and README, here are comprehens
 - **I want to** invite my siblings to view our parent's health data
 - **So that** we can share caregiving responsibilities
 - **Acceptance Criteria:**
-  - Email invitation with role selection (Admin, Staff, Viewer)
+  - Email invitation with role selection (Admin, Staff, Member)
   - Permission matrix clearly explained (who can see/do what)
   - Pending invitations list with resend/revoke options
   - Activity log showing who accessed what and when (HIPAA compliance)
@@ -180,7 +228,7 @@ Based on the solution manifest, market analysis, and README, here are comprehens
 
 ### Settings & Preferences
 
-**Story 6.1: Subscription Management**
+**Story 6.1: Subscription Management** _(P1 — Should Have, R2/MVP 2 per the release matrix)_
 - **As a** paying customer
 - **I want to** easily understand my current plan and upgrade/downgrade options
 - **So that** I can make informed decisions about features vs cost
@@ -199,7 +247,7 @@ Based on the solution manifest, market analysis, and README, here are comprehens
 - **So that** I can share it with healthcare providers or keep it for my records
 - **Acceptance Criteria:**
   - Date range selector for the export window
-  - Format options: PDF, CSV, FHIR R4 (**MVP 1**); HL7 v2 (MVP 2); LOINC/CCD (MVP 3); SNOMED CT (MVP 4)
+  - Format options: PDF, CSV, FHIR R4 (**MVP 1**); HL7 v2 (MVP 2); LOINC/CCD (MVP 2); SNOMED CT (MVP 3)
   - Delivery options: save to device, share via system share sheet, email to self
   - Clear format explanations ("FHIR R4 is accepted by most US patient portals and EHR systems")
   - Export confirmation with file size estimate
@@ -253,9 +301,20 @@ Based on the solution manifest, market analysis, and README, here are comprehens
   - Auto-resume with reminder
   - Easy reactivation
 
+**Story 7.4: Telemetry Consent** _(GAP — product follow-up, not yet designed or built)_
+- **As an** app user
+- **I want to** control whether crash reports and usage telemetry are collected from my device
+- **So that** monitoring my family doesn't mean being monitored myself without consent
+- **Current state (shipped):** crash reporting and RUM (PR #4) ship enabled with `TrackingConsent.Granted` hardcoded — consent is granted by default, there is no in-app opt-out and no diagnostics screen. **There is no in-app telemetry control in MVP 1.**
+- **Why it matters:** in tension with the "consent-first" design principle (Principle 4) and the transparency framing of Story 7.1
+- **Acceptance Criteria (proposed):**
+  - Telemetry disclosure during onboarding or first run
+  - Settings toggle to opt out of non-essential telemetry
+  - Crash reporting and RUM respect the stored consent state
+
 ---
 
-## 🧪 Test Results & Medical Documents (MVP 3)
+## 🧪 Test Results & Medical Documents (MVP 2)
 
 **Story 12.1: Lab Results Capture**
 - **As a** caregiver who received physical lab results or a discharge summary for my parent
@@ -278,7 +337,7 @@ Based on the solution manifest, market analysis, and README, here are comprehens
   - CardiTrack Insights section with plain-language explanation
   - Trend comparison: current result vs. previous results (if available)
   - Ability to correct/verify OCR-extracted values before saving
-  - Export options (LOINC/CCD in MVP 3, SNOMED CT in MVP 4)
+  - Export options (LOINC/CCD in MVP 2, SNOMED CT in MVP 3)
   - Share via native share sheet (Story 5.3)
   - Screen: M3-07 (Test Results Detail)
 
@@ -461,19 +520,19 @@ Based on the solution manifest, market analysis, and README, here are comprehens
 - CTA: "Start Free 30-Day Trial"
 
 ### Step 2: Account Creation (1 minute)
-- Email/password or "Continue with Google/Apple"
+- Email/password or "Continue with Google/Apple" (social buttons shipped but not yet wired)
 - Checkbox: "I agree to Terms & Privacy Policy" (with links)
-- Auto-login after creation
+- **No auto-login after creation** — the user must verify their email (VerifyEmailPage, Story 1.7) before entering the app; PostLoginRouter then routes to account-type setup (Story 1.8) or Add CardiMember
 
 ### Step 3: Add CardiMember (2 minutes)
 - "Who would you like to monitor?"
 - Form: Name, DOB, Relationship, Photo (optional)
-- Tone: "We'll help you set up monitoring in 3 simple steps"
+- Tone: "We'll help you set up monitoring in 4 simple steps" (the wizard is a 4-step flow: Create Account → Add CardiMember → Connect Device → Baseline)
 
 ### Step 4: Device Connection (3 minutes)
 - "What wearable device does [Name] use?"
-- Device icons with brands (Fitbit, Apple, Garmin, Samsung, Withings)
-- Click → OAuth flow → Success
+- Device icons with brands — **Fitbit only active in MVP 1**; Apple Watch, Garmin, Samsung, Withings, Other shown as "Coming Soon"
+- Tap "Continue with Fitbit" → OAuth flow → Success
 - "Great! We're syncing [Name]'s data. This may take a few minutes."
 
 ### Step 5: Baseline Learning (Info screen)
@@ -484,12 +543,13 @@ Based on the solution manifest, market analysis, and README, here are comprehens
 
 ### Step 6: Invite Family (Optional)
 - "Want to share monitoring with family members?"
-- Email invite form with role selection
+- The "Invite Family Member First" link **ships in MVP 1** on the baseline screen, but the invite flow (M3-02) is MVP 2 — the link is currently a dead end
+- Email invite form with role selection _(MVP 2)_
 - Skip option: "I'll do this later"
 
 ### Step 7: First Dashboard View
 - Celebratory tone: "You're all set! Here's [Name]'s health overview."
-- Guided tour overlay (5 tooltips):
+- Guided tour overlay (5 tooltips) — **planned, not shipped** (no guided tour exists in the current app):
   1. "This shows overall health status"
   2. "View detailed trends here"
   3. "Alerts appear in this section"
@@ -518,14 +578,14 @@ Based on the solution manifest, market analysis, and README, here are comprehens
 
 ---
 
-## 🎯 Priority Matrix for MVP (Q1 2026)
+## 🎯 Priority Matrix for MVP 1 (Q4 2026)
 
 ### Must Have (P0)
 - [ ] Story 1.1-1.3: Onboarding flow
 - [ ] Story 1.4: CardiMember profile management
+- [ ] Story 1.5-1.8: Sign In, Forgot Password, Verify Email, Account-Type Setup (shipped; need Figma frames)
 - [ ] Story 2.1: Daily health overview
 - [ ] Story 3.1: Critical alert display
-- [ ] Story 6.1: Subscription management
 - [ ] Story 6.3: Health data export (PDF, CSV, FHIR R4)
 
 ### Should Have (P1)
@@ -533,6 +593,7 @@ Based on the solution manifest, market analysis, and README, here are comprehens
 - [ ] Story 3.2: Alert notification preferences
 - [ ] Story 3.3: Alert acknowledgment & notes
 - [ ] Story 4.1: Family member invitations
+- [ ] Story 6.1: Subscription management _(moved from P0 — R2/MVP 2 per the release matrix)_
 - [ ] Story 10.1: Mobile offline support
 - [ ] Story 12.1: Lab results capture
 - [ ] Story 12.2: Medical insights from lab results
@@ -547,6 +608,7 @@ Based on the solution manifest, market analysis, and README, here are comprehens
 ### Future (Post-MVP)
 - [ ] Story 8.1-8.3: Enterprise features
 - [ ] Story 7.3: Pause monitoring
+- [ ] Story 7.4: Telemetry consent (flagged gap — currently granted by default with no UI)
 - [ ] Advanced ML features
 
 ---
@@ -555,17 +617,17 @@ Based on the solution manifest, market analysis, and README, here are comprehens
 
 | Category | Total Stories | Must Have (P0) | Should Have (P1) | Nice to Have (P2) | Future |
 |----------|---------------|----------------|------------------|-------------------|---------|
-| Onboarding & Setup | 4 | 4 | 0 | 0 | 0 |
+| Onboarding & Setup | 8 | 8 | 0 | 0 | 0 |
 | Dashboard & Monitoring | 3 | 1 | 1 | 1 | 0 |
 | Alert Management | 6 | 1 | 2 | 0 | 0 |
 | Family Collaboration | 2 | 0 | 1 | 0 | 1 |
 | Mobile Experience | 3 | 0 | 0 | 2 | 1 |
-| Settings & Preferences | 3 | 2 | 0 | 0 | 1 |
-| Elderly CardiMember | 3 | 0 | 0 | 1 | 2 |
+| Settings & Preferences | 3 | 1 | 1 | 0 | 1 |
+| Elderly CardiMember | 4 | 0 | 0 | 1 | 3 |
 | Enterprise Features | 3 | 0 | 0 | 0 | 3 |
 | Platform-Specific | 4 | 0 | 1 | 1 | 2 |
 | Test Results & Medical Documents | 2 | 0 | 2 | 0 | 0 |
-| **TOTAL** | **33** | **8** | **7** | **6** | **10** |
+| **TOTAL** | **38** | **11** | **8** | **6** | **11** |
 
 ---
 
@@ -579,9 +641,9 @@ Based on the solution manifest, market analysis, and README, here are comprehens
 
 ---
 
-**Document Version:** 1.0
-**Last Updated:** February 24, 2026
-**Next Review:** February 2026 (post-MVP beta feedback)
+**Document Version:** 1.1
+**Last Updated:** August 7, 2026
+**Next Review:** Q4 2026 (MVP 1 / R1 wave — post-beta feedback)
 **Owner:** Product & UX Team
 
 ---

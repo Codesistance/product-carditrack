@@ -6,616 +6,158 @@ CardiTrack supports **two organization types** with distinct onboarding flows:
 1. **Family Accounts**: Individual/family monitoring elderly relatives
 2. **Business Accounts**: Care homes and healthcare facilities with staff management
 
+**Implemented today:** embedded Auth0 email/password auth with a hard email-verification gate, atomic organization + trial subscription + user setup (`POST /api/Onboarding/setup`), CardiMember creation, and Fitbit device connection via Google OAuth (PKCE) with 30-minute polling ingestion. Social login, notifications, baseline calculation, and billing are planned (marked below).
+
 ---
 
 ## ONBOARDING FLOW
 
 ### **STEP 1: AUTHENTICATION (Auth0)**
 
-Users authenticate before selecting account type:
+**Implemented today** — the mobile app uses Auth0's **embedded password-realm grant** with native screens, not the Universal Login redirect:
 
-**Authentication Options:**
-- **Social Login**: Google, Microsoft, Apple, Facebook (OAuth 2.0)
-- **Traditional**: Email/password (Auth0 Database)
-- **Enterprise SSO**: SAML 2.0, Azure AD, Okta (Business accounts only)
+1. User opens `CreateAccountPage` and registers with email/password → `POST /dbconnections/signup` on the Auth0 tenant.
+2. Sign-in posts credentials from `SignInPage` directly to `/oauth/token` (`grant_type=http://auth0.com/oauth/grant-type/password-realm`, realm `Username-Password-Authentication`), receiving access + refresh tokens in-app.
+3. Password reset uses `POST /dbconnections/change_password` (Forgot Password flow).
+4. The API validates the RS256 JWT on every request; identity is **token-derived on every request** via `UserContextMiddleware` (`sub` claim + database lookup) — there is no server session.
 
-**Flow:**
-1. User clicks "Sign In" or "Sign Up"
-2. Redirected to Auth0 Universal Login
-3. Chooses authentication method (Google, Microsoft, Apple, Email, etc.)
-4. Authenticates via chosen provider
-5. Auth0 returns to CardiTrack with authorization code
-6. System exchanges code for JWT tokens
-7. System checks if user exists in database
-8. **New users**: Redirect to Step 2 (Organization Creation)
-9. **Existing users**: Redirect to dashboard
+**Social login:** Google and Apple buttons render on both `CreateAccountPage` and `SignInPage`, but they are **not wired to any handler yet** — social login is Phase 9 ([oauth_clients.md](./oauth_clients.md)). Microsoft, Facebook, enterprise SSO (SAML/Azure AD/Okta), MFA, and passwordless are not part of the MVP.
+
+#### **Email Verification Gate (mandatory, between account creation and onboarding)**
+
+The tenant's post-login Action ([runbook §8](./auth0_setup_runbook.md)) **denies every unverified login** with the exact reason `email_not_verified`; the app matches that string and routes to `VerifyEmailPage`. Until the emailed link is clicked, the user cannot sign in and therefore cannot start onboarding.
+
+- **Resend**: `VerifyEmailPage` calls `POST /api/v1/auth/resend-verification` (`AllowAnonymous`, rate-limited **5/hour/IP**, always answers success — no user enumeration).
+- **Claim sync**: the Action stamps `https://carditrack.com/email_verified` into the access token; the API reads it in `UserContextMiddleware` and refreshes the stored `User.EmailVerified` flag on every `GET /api/Onboarding/status`.
 
 ---
 
 ### **STEP 2: ORGANIZATION TYPE SELECTION**
 
-**After successful Auth0 authentication**, new users select their account type:
+After first sign-in (verified email), new users select their account type on the native `AccountSetupPage`:
 
 **Family Account:**
 - Individual or family monitoring elderly relatives
-- Single "Viewer" role by default (role chip hidden in the family UI)
+- First user receives the `Member` role (role chip hidden in the family UI)
 - Simplified caregiver relationship structure
 - Consumer-focused pricing
 
 **Business Account:**
 - Care homes, healthcare facilities
-- Multi-tier roles: Admin, Staff, Viewer
+- First user receives the `Admin` role; subsequent users get `Staff`
 - Enterprise-level user management
-- Volume pricing, Enterprise SSO available
 
-**User Interface:**
-```html
-<!-- Onboarding: Choose Account Type -->
-<h2>Welcome, {UserName}!</h2>
-<p>What type of account would you like to create?</p>
-
-<div class="account-type-selection">
-    <button @onclick="SelectFamily">
-        <h3>👨‍👩‍👧 Family Account</h3>
-        <p>Monitor your elderly loved ones</p>
-        <ul>
-            <li>Track health patterns</li>
-            <li>Get preventive alerts</li>
-            <li>Peace of mind for family</li>
-        </ul>
-    </button>
-
-    <button @onclick="SelectBusiness">
-        <h3>🏥 Business Account</h3>
-        <p>For care homes and healthcare facilities</p>
-        <ul>
-            <li>Manage multiple residents</li>
-            <li>Staff access control</li>
-            <li>Enterprise SSO</li>
-        </ul>
-    </button>
-</div>
-```
+Roles come from the `UserRole` enum: `Member` (1), `Admin` (2), `Staff` (3). **There is no Viewer role.**
 
 **System Action:**
-- Creates `Organization` entity with selected type
-- Sets `IsActive = true`, captures `CreatedDate`
-- Associates authenticated Auth0 user with new organization
+- The selection feeds the atomic setup call in Step 4 — organization, trial subscription, and user are created together (see below). `Organization` gets the selected type, `IsActive = true`, `CreatedDate`.
 
 ---
 
 ### **STEP 3: SUBSCRIPTION INITIALIZATION**
 
-Automatically triggered upon organization creation:
+Created automatically inside the atomic setup transaction (`SubscriptionService.CreateTrialSubscriptionAsync`):
 
-**Trial Setup:**
-- **Status**: Trial (default)
-- **Duration**: 30 days default (configurable up to 90 days)
-- **Tier Options**:
-  - **Basic Care**: Limited features, restricted CardiMembers and Users
-  - **Complete Care**: Full feature set
-  - **Guardian Plus**: Premium features, highest limits
+**Trial Setup (implemented today):**
+- **Status**: `Trial` (first member of `SubscriptionStatus`)
+- **Duration**: fixed **30 days** (`TrialEndDate = StartDate + 30`)
+- **Tier**: hardcoded `Complete` during trial — tier selection/billing is planned
+- **Limits are organization-type driven, not tier driven**:
+  - Family: `MaxCardiMembers = 5`, `MaxUsers = 1`
+  - Business: `MaxCardiMembers = 50`, `MaxUsers = 20`
+- `BillingCycle = Monthly`, `Price = 0`, `Currency = "USD"`, `Features` JSON (all devices/alerts)
+- There is **no Stripe or billing code** — payment collection is planned (Step 9)
 
-**Configuration:**
-- `StartDate`: Automatic (UTC)
-- `TrialEndDate`: StartDate + Trial period
-- `BillingCycle`: Monthly or Annual
-- `Price`: $0.00 during trial
-- `Currency`: USD
-- `MaxCardiMembers`: Tier-dependent limit
-- `MaxUsers`: Tier-dependent limit
-- `Features`: JSON object with feature flags
+**Tier names** (`SubscriptionTier`): `Basic`, `Complete`, `Plus`. Public pricing: Basic $8/mo (2 CardiMembers), Complete Care $15/mo (5 CardiMembers), annual billing −15%; Guardian Plus ($29.99) is a post-MVP business tier.
 
 **Database:**
-- Unique constraint on `OrganizationId` (1 subscription per org)
-- Status and EndDate indexed for performance
+- Unique index on `OrganizationId` (1 subscription per org); `Status` and `(Status, EndDate)` indexed
+- **FK with cascade delete to Organizations** (migration Aug 2026) — a subscription can never outlive its organization
 
 ---
 
 ### **STEP 4: USER ACCOUNT CREATION**
 
-After organization type selection, the system creates the user account record in the CardiTrack database, linking it to the Auth0 identity.
+**Implemented today** — the preferred path is the **atomic** `POST /api/Onboarding/setup`, which creates the organization, trial subscription, and user **in one database transaction**:
 
-**User Information (from Auth0):**
-- **Auth0UserId**: Subject ID from Auth0 (e.g., "google-oauth2|123456" or "auth0|789012")
-- **Email**: Retrieved from Auth0 ID token
-- **Name**: Full name from social provider or Auth0 database
-- **ProfilePictureUrl**: Profile picture from social provider (Google, Microsoft, etc.)
-- **EmailVerified**: Email verification status from Auth0
-- **AuthProvider**: Which provider was used (Google, Microsoft, Apple, Facebook, Auth0Database, SAML)
+- **Identity is token-derived**: `Auth0UserId` and `EmailVerified` come from the access token (never the request body); email comes from the token's email claim (body only as fallback); `Locale`/`TimeZoneId` are derived from the `Accept-Language` header (defaults `en-US`/`UTC`).
+- **Idempotent on retry**: if a user with the same `Auth0UserId` already exists, the endpoint returns the existing organization + user instead of provisioning duplicates.
+- **Race-safe**: concurrent retries that pass the existence check are stopped by the **unique filtered index** on `Users.Auth0UserId` (filtered to non-empty values — the PR #5 fix); the loser's insert fails and the winner's account is returned.
+- **Legacy path**: the separate `POST /api/Onboarding/organization` → `POST /api/Onboarding/user` two-call flow still exists. A client dying between the calls can orphan an organization, which is why the atomic endpoint is preferred.
+- **Safety net (PR #5)**: `OrphanedOrganizationCleanupWorker` runs daily at 03:00 UTC and deletes organizations older than 24 hours that have no users and no CardiMembers (FK cascade removes their trial subscriptions). Removals are logged at **Warning** because orphans mean a client bypassed the atomic endpoint and failed mid-onboarding.
 
-**Additional Information (collected during onboarding):**
-- **Phone**: Optional contact number (can pre-fill from Auth0 if available)
-- **Organization Name**: For business accounts (e.g., "Sunshine Care Home")
+**Role assignment (client-selected, server default `Member`):**
+- **Family Account**: first user gets `Member`
+- **Business Account**: first user gets `Admin`; subsequent users `Staff`
 
-**Role Assignment:**
-- **Family Account**: First user receives `Admin` role; invited family members default to `Viewer`
-- **Business Account**: First user receives `Admin` role; subsequent users get `Staff` or `Viewer`
-
-#### **Auth0 Integration Architecture**
+#### **User entity (actual schema)**
 
 ```
-User Registration/Login Flow:
-┌──────────────────────────────────────────────────┐
-│  CardiTrack Web/Mobile App                      │
-│  - Login button                                  │
-│  - Social login buttons (Google, Microsoft, etc) │
-└──────────────────────────────────────────────────┘
-                    ↓
-┌──────────────────────────────────────────────────┐
-│  Auth0 Universal Login                           │
-│  - Hosted authentication page                    │
-│  - Supports all connection types                 │
-│  - MFA enforcement                               │
-│  - Passwordless options                          │
-└──────────────────────────────────────────────────┘
-                    ↓
-        ┌───────────┴───────────┐
-        ↓                       ↓
-┌─────────────────┐    ┌─────────────────┐
-│ Social Provider │    │ Email/Password  │
-│ (Google, etc)   │    │ (Auth0 Database)│
-└─────────────────┘    └─────────────────┘
-        │                       │
-        └───────────┬───────────┘
-                    ↓
-┌──────────────────────────────────────────────────┐
-│  Auth0 Returns:                                  │
-│  - ID Token (user info)                          │
-│  - Access Token (API authorization)              │
-│  - Refresh Token (session management)            │
-└──────────────────────────────────────────────────┘
-                    ↓
-┌──────────────────────────────────────────────────┐
-│  CardiTrack Backend API                          │
-│  - Validates JWT token                           │
-│  - Extracts Auth0 user ID (sub claim)            │
-│  - Creates/updates User entity                   │
-└──────────────────────────────────────────────────┘
+Users table
+├── Id: Guid PK
+├── OrganizationId: Guid (indexed)
+├── Auth0UserId: string — UNIQUE FILTERED index (filter: not-empty; PR #5)
+├── Email: string(255), UNIQUE
+├── PasswordHash: string(500), required — legacy column; credentials are
+│     Auth0-hosted and this column is pending removal (tracked code follow-up)
+├── Name: string(200)
+├── Phone: string(20), optional
+├── Role: UserRole (stored as string; Member/Admin/Staff)
+├── EmailVerified: bool (synced from the Auth0 claim)
+├── LastLoginDate: DateTime?
+├── HealthDataDisclosureDismissedDate: DateTime? (PR #9 — Google-required
+│     disclosure banner dismissal; null = still show)
+├── Locale: string(10), default "en-US" (derived from Accept-Language)
+├── TimeZoneId: string(50), default "UTC"
+├── IsActive: bool (soft delete)
+└── CreatedDate / UpdatedDate
+
+Indexes: UNIQUE(Email), OrganizationId, IsActive, UNIQUE FILTERED(Auth0UserId)
 ```
 
-#### **Database Schema Updates**
+The entity has **no** `ProfilePictureUrl`, `AuthProvider`, or `Auth0Metadata` — those belonged to an earlier design and were never built.
 
-```csharp
-User Entity (Updated):
-├── Id: Internal database ID (UNIQUEIDENTIFIER PRIMARY KEY)
-├── Auth0UserId: Auth0 subject ID (NVARCHAR(255) UNIQUE) - "auth0|123" or "google-oauth2|456"
-├── Email: Email address (NVARCHAR(255) UNIQUE)
-├── (no password field — credentials are Auth0-hosted)
-├── Name: Full name
-├── Phone: Optional contact number
-├── ProfilePictureUrl: From social provider (NVARCHAR(500))
-├── AuthProvider: Enum (Auth0Database, Google, Microsoft, Apple, Facebook, SAML)
-├── EmailVerified: Boolean (from Auth0)
-├── Role: Admin, Staff, Viewer
-├── OrganizationId: Link to organization
-├── IsActive: Boolean
-├── CreatedDate: DateTime (UTC)
-├── UpdatedDate: DateTime (UTC)
-├── LastLoginDate: DateTime (UTC)
-└── Auth0Metadata: JSON (custom user metadata from Auth0)
+#### **Authentication & Authorization (as wired)**
 
-Indexes:
-- UNIQUE INDEX on Auth0UserId
-- UNIQUE INDEX on Email
-- INDEX on OrganizationId
-- INDEX on LastLoginDate
-```
+JWT bearer validation uses `Auth0:Domain` + `Auth0:Audience` (issuer, audience, lifetime, signing key all validated; zero clock skew). Registered policies: `RequireAdmin`, `RequireBusinessAccount`, `RequireFamilyAccount`, plus a global `FallbackPolicy` requiring an authenticated user. The three claim-based policies are **inert today** — the tenant does not issue `role`/`organization_type` claims yet ([runbook §13](./auth0_setup_runbook.md)).
 
-#### **User Registration Flow (Auth0)**
-
-**Step 1: User Clicks "Sign Up"**
-```csharp
-// Frontend redirects to Auth0 Universal Login
-var authUrl = $"https://{Auth0Domain}/authorize?" +
-              $"response_type=code&" +
-              $"client_id={Auth0ClientId}&" +
-              $"redirect_uri={RedirectUri}&" +
-              $"scope=openid profile email phone&" +
-              $"audience={Auth0Audience}&" +
-              $"state={GenerateSecureState()}";
-
-NavigateTo(authUrl);
-```
-
-**Step 2: User Chooses Authentication Method**
-- Click "Continue with Google" → OAuth to Google
-- Click "Continue with Microsoft" → OAuth to Microsoft
-- Click "Continue with Email" → Enter email/password
-
-**Step 3: Auth0 Callback**
-```csharp
-[HttpGet("auth/callback")]
-public async Task<IActionResult> HandleAuth0Callback(string code, string state)
-{
-    // Validate state (CSRF protection)
-    if (!ValidateState(state))
-        return BadRequest("Invalid state");
-
-    // Exchange authorization code for tokens
-    var tokens = await ExchangeCodeForTokens(code);
-
-    // Validate and decode ID token (JWT)
-    var userInfo = await ValidateAndDecodeIdToken(tokens.IdToken);
-
-    // Extract Auth0 user information
-    var auth0UserId = userInfo.Sub; // "auth0|123" or "google-oauth2|456"
-    var email = userInfo.Email;
-    var name = userInfo.Name;
-    var emailVerified = userInfo.EmailVerified;
-    var picture = userInfo.Picture;
-    var authProvider = DetermineAuthProvider(auth0UserId);
-
-    // Check if user exists in our database
-    var user = await _userRepo.GetByAuth0UserId(auth0UserId);
-
-    if (user == null)
-    {
-        // NEW USER: Redirect to onboarding flow
-        // Store Auth0 info in session for onboarding
-        HttpContext.Session.SetString("Auth0UserId", auth0UserId);
-        HttpContext.Session.SetString("Email", email);
-        HttpContext.Session.SetString("Name", name);
-        HttpContext.Session.SetString("Picture", picture);
-        HttpContext.Session.SetString("AuthProvider", authProvider.ToString());
-
-        return Redirect("/onboarding/organization-setup");
-    }
-    else
-    {
-        // EXISTING USER: Log in
-        await _userRepo.UpdateLastLoginDate(user.Id);
-
-        // Create application session
-        await SignInUser(user.Id, tokens.AccessToken, tokens.RefreshToken);
-
-        return Redirect("/dashboard");
-    }
-}
-
-private async Task<Auth0Tokens> ExchangeCodeForTokens(string code)
-{
-    var client = new HttpClient();
-    var request = new FormUrlEncodedContent(new[]
-    {
-        new KeyValuePair<string, string>("grant_type", "authorization_code"),
-        new KeyValuePair<string, string>("client_id", _auth0Config.ClientId),
-        new KeyValuePair<string, string>("client_secret", _auth0Config.ClientSecret),
-        new KeyValuePair<string, string>("code", code),
-        new KeyValuePair<string, string>("redirect_uri", _auth0Config.RedirectUri)
-    });
-
-    var response = await client.PostAsync($"https://{_auth0Config.Domain}/oauth/token", request);
-    var content = await response.Content.ReadAsStringAsync();
-
-    return JsonSerializer.Deserialize<Auth0Tokens>(content);
-}
-```
-
-**Step 4: Complete Onboarding (New Users)**
-```csharp
-[HttpPost("onboarding/complete")]
-public async Task<IActionResult> CompleteOnboarding(OnboardingRequest request)
-{
-    var auth0UserId = HttpContext.Session.GetString("Auth0UserId");
-    var email = HttpContext.Session.GetString("Email");
-    var name = HttpContext.Session.GetString("Name");
-    var picture = HttpContext.Session.GetString("Picture");
-    var authProvider = Enum.Parse<AuthProvider>(HttpContext.Session.GetString("AuthProvider"));
-
-    // Create organization
-    var org = new Organization
-    {
-        Name = request.OrganizationName,
-        Type = request.OrganizationType
-    };
-    await _orgRepo.Create(org);
-
-    // Create subscription (Trial)
-    await _subscriptionService.CreateTrial(org.Id);
-
-    // Create user in our database
-    var user = new User
-    {
-        Auth0UserId = auth0UserId,
-        Email = email,
-        // No password field — credentials are Auth0-hosted
-        Name = name,
-        Phone = request.Phone,
-        ProfilePictureUrl = picture,
-        AuthProvider = authProvider,
-        EmailVerified = true, // Auth0 handles verification
-        Role = request.OrganizationType == OrganizationType.Family ? UserRole.Member : UserRole.Admin,
-        OrganizationId = org.Id,
-        IsActive = true
-    };
-    await _userRepo.Create(user);
-
-    // Sync user metadata to Auth0 (optional)
-    await _auth0Service.UpdateUserMetadata(auth0UserId, new
-    {
-        organization_id = org.Id,
-        role = user.Role.ToString()
-    });
-
-    // Create session
-    await SignInUser(user.Id, accessToken, refreshToken);
-
-    // Audit log
-    await _auditLogger.LogAction(user.Id, "UserRegistered", authProvider.ToString());
-
-    return Ok(new { userId = user.Id, organizationId = org.Id });
-}
-```
-
-#### **Authentication & Authorization**
-
-**JWT Token Validation:**
-```csharp
-// Startup.cs or Program.cs
-services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-    .AddJwtBearer(options =>
-    {
-        options.Authority = $"https://{Configuration["Auth0:Domain"]}/";
-        options.Audience = Configuration["Auth0:Audience"];
-        options.TokenValidationParameters = new TokenValidationParameters
-        {
-            ValidateIssuer = true,
-            ValidIssuer = $"https://{Configuration["Auth0:Domain"]}/",
-            ValidateAudience = true,
-            ValidAudience = Configuration["Auth0:Audience"],
-            ValidateLifetime = true,
-            ClockSkew = TimeSpan.Zero // No tolerance for expired tokens
-        };
-    });
-
-services.AddAuthorization(options =>
-{
-    options.AddPolicy("RequireAdmin", policy =>
-        policy.RequireClaim("role", "Admin"));
-
-    options.AddPolicy("RequireBusinessAccount", policy =>
-        policy.RequireClaim("organization_type", "Business"));
-});
-```
-
-**Protected API Endpoints:**
-```csharp
-[Authorize] // Requires valid Auth0 JWT
-[HttpGet("api/dashboard")]
-public async Task<IActionResult> GetDashboard()
-{
-    var auth0UserId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-    var user = await _userRepo.GetByAuth0UserId(auth0UserId);
-
-    // ... rest of logic
-}
-
-[Authorize(Policy = "RequireAdmin")] // Admin only
-[HttpPost("api/organization/settings")]
-public async Task<IActionResult> UpdateSettings(OrganizationSettings settings)
-{
-    // ... admin-only logic
-}
-```
-
-#### **Role Assignment**
-
-- **Family Account**: `Admin` (account creator); invited family default to `Viewer`
-- **Business Account**: `Admin` (first user), `Staff`, or `Viewer`
-
-**Auth0 Rules (Custom Role Assignment):**
-```javascript
-// Auth0 Rule: Add roles to JWT token
-function addRolesToToken(user, context, callback) {
-  const namespace = 'https://carditrack.com';
-
-  // Fetch user metadata from our API
-  const userId = user.user_metadata.carditrack_user_id;
-
-  if (userId) {
-    // Add role to access token
-    context.accessToken[namespace + '/role'] = user.user_metadata.role;
-    context.accessToken[namespace + '/organization_id'] = user.user_metadata.organization_id;
-  }
-
-  callback(null, user, context);
-}
-```
-
-#### **Security Features**
-
-**Auth0 Provides:**
-- ✅ **Secure Password Storage**: Bcrypt hashing with salt
-- ✅ **Email Verification**: Automatic verification emails
-- ✅ **Multi-Factor Authentication (MFA)**: SMS, Authenticator app, WebAuthn
-- ✅ **Passwordless Login**: Magic links, SMS OTP
-- ✅ **Breached Password Detection**: Checks against known breached passwords
-- ✅ **Bot Detection**: reCAPTCHA integration
-- ✅ **Anomaly Detection**: Suspicious login attempts
-- ✅ **Session Management**: Automatic token refresh
-- ✅ **HIPAA BAA Available**: Auth0 provides BAA for healthcare apps
-
-**Additional Security in CardiTrack:**
-- ✅ **Token Encryption at Rest**: Store Auth0 refresh tokens encrypted
-- ✅ **Audit Logging**: Log all authentication events
-- ✅ **Session Timeout**: 15-minute idle timeout
-- ✅ **IP Whitelisting**: For business accounts (optional)
-- ✅ **Role-Based Access Control (RBAC)**: Enforced at API level
-
-#### **Social Login User Experience**
-
-**Login Page UI:**
-```html
-<!-- Blazor Login Component -->
-<div class="auth-container">
-    <h2>Sign in to CardiTrack</h2>
-
-    <!-- Social Login Buttons -->
-    <div class="social-login">
-        <button @onclick="LoginWithGoogle" class="btn-social btn-google">
-            <img src="/icons/google.svg" alt="Google" />
-            Continue with Google
-        </button>
-
-        <button @onclick="LoginWithMicrosoft" class="btn-social btn-microsoft">
-            <img src="/icons/microsoft.svg" alt="Microsoft" />
-            Continue with Microsoft
-        </button>
-
-        <button @onclick="LoginWithApple" class="btn-social btn-apple">
-            <img src="/icons/apple.svg" alt="Apple" />
-            Continue with Apple
-        </button>
-    </div>
-
-    <div class="divider">
-        <span>OR</span>
-    </div>
-
-    <!-- Email/Password Login -->
-    <button @onclick="LoginWithEmail" class="btn-primary">
-        Continue with Email
-    </button>
-
-    <p class="terms">
-        By continuing, you agree to our
-        <a href="/terms">Terms of Service</a> and
-        <a href="/privacy">Privacy Policy</a>
-    </p>
-</div>
-
-@code {
-    private void LoginWithGoogle()
-    {
-        var authUrl = BuildAuth0Url(connection: "google-oauth2");
-        NavigationManager.NavigateTo(authUrl, forceLoad: true);
-    }
-
-    private void LoginWithMicrosoft()
-    {
-        var authUrl = BuildAuth0Url(connection: "windowslive");
-        NavigationManager.NavigateTo(authUrl, forceLoad: true);
-    }
-
-    private void LoginWithApple()
-    {
-        var authUrl = BuildAuth0Url(connection: "apple");
-        NavigationManager.NavigateTo(authUrl, forceLoad: true);
-    }
-
-    private void LoginWithEmail()
-    {
-        var authUrl = BuildAuth0Url(connection: "Username-Password-Authentication");
-        NavigationManager.NavigateTo(authUrl, forceLoad: true);
-    }
-
-    private string BuildAuth0Url(string connection)
-    {
-        return $"https://{Auth0Domain}/authorize?" +
-               $"response_type=code&" +
-               $"client_id={Auth0ClientId}&" +
-               $"connection={connection}&" +
-               $"redirect_uri={RedirectUri}&" +
-               $"scope=openid profile email phone&" +
-               $"audience={Auth0Audience}&" +
-               $"state={GenerateSecureState()}";
-    }
-}
-```
-
-#### **Account Linking**
-
-Users can link multiple authentication methods to one account:
-
-**Scenario**: User signs up with Google, later wants to add Microsoft login
-```csharp
-[Authorize]
-[HttpPost("api/auth/link-account")]
-public async Task<IActionResult> LinkAccount(string provider)
-{
-    var primaryAuth0UserId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-
-    // Generate linking authorization URL
-    var linkingUrl = $"https://{_auth0Config.Domain}/authorize?" +
-                     $"response_type=code&" +
-                     $"client_id={_auth0Config.ClientId}&" +
-                     $"connection={provider}&" +
-                     $"redirect_uri={_auth0Config.LinkingRedirectUri}&" +
-                     $"scope=openid profile email&" +
-                     $"state={primaryAuth0UserId}"; // Pass primary user ID
-
-    return Ok(new { linkingUrl });
-}
-
-[HttpGet("auth/link-callback")]
-public async Task<IActionResult> HandleLinkCallback(string code, string state)
-{
-    var primaryAuth0UserId = state;
-
-    // Exchange code for secondary account tokens
-    var tokens = await ExchangeCodeForTokens(code);
-    var secondaryUserInfo = await ValidateAndDecodeIdToken(tokens.IdToken);
-
-    // Link accounts in Auth0
-    await _auth0ManagementClient.LinkAccountsAsync(
-        primaryUserId: primaryAuth0UserId,
-        secondaryUserId: secondaryUserInfo.Sub
-    );
-
-    return Redirect("/settings/linked-accounts");
-}
-```
-
-#### **System Actions**
-
-- Redirects to Auth0 Universal Login
-- User authenticates via chosen method (email/password or social)
-- Auth0 returns authorization code
-- Backend exchanges code for JWT tokens
-- Validates JWT signature and claims
-- Extracts `Auth0UserId` (sub claim)
-- Creates or retrieves `User` entity
-- Links to `OrganizationId`
-- Sets `IsActive = true`, `CreatedDate`, `UpdatedDate`
-- Updates `LastLoginDate`
-- Stores encrypted Auth0 refresh token for session management
-- Logs authentication event in `AuditLog`
+**API behavior notes:**
+- Global rate limits: 100 requests/minute and 1,000/hour per IP (resend-verification stricter at 5/hour).
+- All 2xx responses wrap payloads in `ApiResponse<T>` (`{success, message, data, timestamp}`); errors use `ErrorResponse` (`{success:false, message, errors:[{field,message}], traceId, timestamp}`).
+- **Enums serialize as integers** in JSON (no string-enum converter is registered).
 
 ---
 
 ### **STEP 5: CARDIMEMBER SETUP**
 
-Users add the elderly person(s) to monitor:
+Users add the elderly person(s) to monitor (`POST /api/Onboarding/cardimember` — requires an organization; enforced via the token-derived user context):
 
-**Personal Information:**
-- **Name**: Full name of monitored individual
-- **Date of Birth**: For age calculations, baseline adjustments
-- **Gender**: Male, Female, Other, PreferNotToSay
-- **Phone**: Emergency contact number
-- **EmergencyContact**: Additional contact info (JSON)
-- **Medical Notes**: Encrypted field for health context
+**Personal Information (actual schema):**
+- **Name**, **DateOfBirth** (DateOnly), **Gender** (Male/Female/Other/PreferNotToSay)
+- **Email / Phone**: optional contacts
+- **EmergencyContactName / EmergencyContactPhone**: two flat columns on `CardiMembers` (not JSON; a richer multi-contact entity is planned)
+- **MedicalNotes**: intended to be encrypted at rest; **currently stored unencrypted** — only device OAuth tokens are AES-256-GCM encrypted today. Encryption of MedicalNotes is a tracked follow-up (see [data_protection_architecture.md](./data_protection_architecture.md)).
 
-**Relationship Definition:**
+The add-member form localizes the emergency phone placeholder to the device region (PR #8).
+
+**Relationship Definition (actual `UserCardiMembers` schema):**
 ```
 UserCardiMembers (Many-to-Many Linking Table)
 ├── RelationshipType: Self, Parent, Spouse, Grandparent, Sibling, Child, Other
-├── IsPrimaryCaregiver: Boolean (primary caregiver flag)
-├── CanViewHealthData: Boolean
-├── CanReceiveAlerts: Boolean
-├── CanManageDevices: Boolean
-└── Permissions: JSON (granular access control)
+├── IsPrimaryCaregiver: bool
+├── CanViewHealthData: bool (default true)
+├── ReceiveAlerts: bool (default true)
+├── NotificationPreferences: JSON — { "sms": true, "email": true, "push": false }
+├── AssignedDate: DateTime
+└── IsActive: bool
 ```
+
+There are no `CanManageDevices` or `Permissions` columns — granular per-relationship permissions beyond the flags above are planned.
 
 **Key Features:**
 - One CardiMember can have multiple caregivers
 - One caregiver can monitor multiple CardiMembers
-- Permission scoping per relationship
 - Primary caregiver designation for escalation
-
-**Encryption:**
-- `MedicalNotes` encrypted using AES-256-GCM
-- Ensures HIPAA compliance for PHI at rest
 
 ---
 
@@ -634,6 +176,8 @@ Supports 8+ device types:
 - Whoop
 - Other
 
+> **Implemented today:** only the **Fitbit (Google Health API)** provider is registered in DI; the other providers exist as configuration stubs only.
+
 **OAuth Authorization Flow:**
 
 > Fitbit/Pixel Watch connections go through the **Google Health API** (the legacy Fitbit Web API is decommissioned September 2026). Authorization uses Google OAuth 2.0 — the wearer signs in with the Google account their Fitbit is linked to.
@@ -641,7 +185,8 @@ Supports 8+ device types:
 ```
 1. User clicks "Connect Fitbit"
    ↓
-2. System generates secure state token
+2. System generates an opaque state token + PKCE pair, cached server-side
+   (single-use, 15-minute TTL) with the initiating user/member/provider
    ↓
 3. Redirect to Google OAuth consent page
    https://accounts.google.com/o/oauth2/v2/auth?
@@ -652,7 +197,8 @@ Supports 8+ device types:
            https://www.googleapis.com/auth/googlehealth.activity_and_fitness.readonly
            https://www.googleapis.com/auth/googlehealth.sleep.readonly
      (full scope URIs, space-delimited and URL-encoded in the real request)
-     state={CardiMemberId}:{Token}
+     state={opaque server-cached token}
+     code_challenge={S256 challenge}&code_challenge_method=S256
      access_type=offline
      prompt=consent
    ↓
@@ -661,16 +207,18 @@ Supports 8+ device types:
 5. Google redirects to the API bounce endpoint (web OAuth clients require an
    https redirect), which 302s back into the app deep link with code + state:
    GET /api/v1/oauth/redirect/fitbit → 302 carditrack://oauth/callback?code=...
+   (the bounce only ever redirects into the carditrack:// scheme — any other
+   target would be an open redirect leaking code+state)
    ↓
-6. System exchanges code for access/refresh tokens
+6. System exchanges code for access/refresh tokens (with the PKCE verifier)
    POST https://oauth2.googleapis.com/token
    Body: grant_type=authorization_code&code={code}&redirect_uri={RedirectUri}
          &client_id={ClientId}&client_secret={ClientSecret}
    ↓
-7. Save encrypted tokens to database (Azure SQL, DeviceConnections)
+7. Save encrypted tokens to database (Cloud SQL PostgreSQL, DeviceConnections)
    ↓
-8. Webhook subscription created (Google Health API, subscriptionCreatePolicy
-   AUTOMATIC) + trigger initial history backfill
+8. Initial sync runs; thereafter the connection is picked up by the 30-minute
+   polling cycle (webhook push ingestion is planned, not built)
    ↓
 9. Notify family: "Fitbit Connected!"
 ```
@@ -683,9 +231,12 @@ DeviceConnection Entity:
 ├── AccessToken: Encrypted (AES-256-GCM)
 ├── RefreshToken: Encrypted (AES-256-GCM)
 ├── TokenExpiry: DateTime (UTC)
-├── ConnectionStatus: Pending, Connected, Disconnected, TokenExpired, AuthError, SyncError
-└── LastSyncDate: DateTime (UTC) — timestamp of last webhook event received
+├── ConnectionStatus: Connected, Disconnected, TokenExpired, AuthError, SyncError
+├── SyncFrequencyMinutes: default 30
+└── LastSyncDate: DateTime (UTC) — timestamp of the last successful polling sync
 ```
+
+(`ConnectionStatus` has no `Pending` value.)
 
 **Permission Scoping:**
 Google Health API scope bundles requested (full form `https://www.googleapis.com/auth/googlehealth.<bundle>`):
@@ -705,57 +256,47 @@ Unverified apps are capped at 100 connected users — enough for dev and beta, b
 - [ ] Public homepage on the verified domain — reachable without login, same app name/branding as the OAuth consent screen, describes the health-data functionality, prominently links the privacy policy
 - [ ] Privacy policy on the same domain with a **dedicated Google Health API section** (not blended into generic disclosures): data collected (heart rate incl. intraday, HRV, SpO2, activity, sleep), purposes (anomaly alerts, daily digests, trend monitoring), sharing (authorized family members only — no ads, no resale), retention/deletion, and the Limited Use affirmation: *"CardiTrack's use and transfer of information received from Google APIs adheres to the [Google API Services User Data Policy](https://developers.google.com/terms/api-services-user-data-policy), including the Limited Use requirements."*
 - [ ] Terms of service page linked from the consent screen
-- [ ] In-app disclosure shown during normal usage in **both** the mobile app and the web dashboard (show-once, dismissible), in Google's prescribed format: *"CardiTrack collects health and fitness data to enable anomaly alerts, daily health digests, and trend monitoring."*
+- [x] In-app disclosure on the **web dashboard** — shipped (PR #9): `HealthDataDisclosureBanner` shows Google's prescribed format verbatim (*"CardiTrack collects health and fitness data to enable anomaly alerts, daily health digests, and trend monitoring."*), show-once and dismissible (`HealthDataDisclosureDismissedDate`); renders only for authenticated users
+- [ ] In-app disclosure in the **mobile app** — still missing
 - [ ] Per-scope written justification tied to user-facing features
 - [ ] Screen recording of the full OAuth consent flow and where health data surfaces in the app
 
 *Gate 2 — CASA security assessment:*
 - [ ] Annual assessment by an authorized third-party lab (self-scan not accepted; ~$500–$4,500, 2–6 weeks) → Letter of Assessment submitted to Google, renewed every 12 months
 
-**Data Ingestion & Token Management:**
-- **Webhook push** — Google Health API webhook subscriptions notify CardiTrack on new data (notify-then-fetch); events flow through Event Hubs into the AI pipeline (see [llm_design.md](../llm_design.md)). No polling sync job.
-- **Token refresh** — `CardiTrack.Worker` proactively refreshes OAuth tokens before expiry (cron-driven, Cronos)
-- Retry logic with exponential backoff
-- `device_disconnected` alert to family if no events for >2 hours during waking hours
+**Data Ingestion & Token Management (implemented today):**
+- **30-minute polling** — `WearableSyncWorker` (in `CardiTrack.Worker`, cron `0 */30 * * * *`) finds connections due for sync and pulls data through the keyed per-provider sync service. There is no webhook ingestion.
+- **Token refresh** — happens **inside the sync path**: `OAuthTokenRefreshService` refreshes expiring OAuth tokens as part of each sync. There is no separate token-refresh worker.
+- **Planned**: Google Health API webhook push (notify-then-fetch) feeding the AI pipeline (see [llm_design.md](../llm_design.md)), and a `device_disconnected` alert when a device goes quiet.
 
 ---
 
 ### **STEP 7: NOTIFICATION PREFERENCES**
 
-Configure alert system:
+> **Status: Planned — not yet implemented.** No SMS, email, or push notification delivery code exists (no Twilio, SendGrid, or SignalR anywhere in the stack). What exists today is the `NotificationPreferences` JSON column on `UserCardiMembers` (`{"sms":..., "email":..., "push":...}`) and the `ReceiveAlerts` flag.
 
-**Alert Types:**
+**Planned alert types:**
 1. **Inactivity Alerts**: Steps < 50% baseline for 2+ days
 2. **Heart Rate Alerts**: Resting HR >15% above baseline for 3+ days
 3. **Sleep Disruption**: Sleep efficiency < 70% for 5+ days
 4. **Sudden Pattern Break**: No morning activity by 11am
 5. **Long-term Trends**: Declining mobility over 4 weeks
 
-**Alert Severity Levels:**
+**Alert Severity Levels** (`AlertSeverity`, displays as color names):
 - **Green**: Informational, no action needed
 - **Yellow**: Minor deviation, "worth a call"
 - **Orange**: Concerning pattern, "consider doctor visit"
 - **Red**: Urgent, "please check on them"
 
-**Notification Channels:**
-- **SMS**: Via Twilio (requires BAA for HIPAA)
-- **Email**: Via SendGrid (requires BAA for HIPAA)
-- **Push Notifications**: Mobile app (iOS/Android via .NET MAUI)
-- **In-App**: Dashboard notifications with real-time SignalR updates
-
-**Customization:**
-- Alert sensitivity tuning (z-score thresholds)
-- Quiet hours (no alerts during sleep)
-- Escalation rules (Red alerts → SMS, Yellow → Email)
-- Per-alert-type enable/disable
+**Planned customization:** sensitivity tuning (z-score thresholds), quiet hours, escalation rules, per-alert-type enable/disable.
 
 ---
 
 ### **STEP 8: BASELINE ESTABLISHMENT**
 
-System begins learning normal patterns:
+> **Status: Planned — not yet implemented.** The `PatternBaselines` table and entity exist, but no baseline-calculation worker runs yet.
 
-**Learning Period:**
+**Planned learning period:**
 - **Duration**: 30 days default (configurable up to 90 days)
 - **Frequency**: Recalculated weekly after initial baseline
 
@@ -784,76 +325,33 @@ PatternBaseline Entity:
     └── AvgSleepEfficiency: Mean efficiency %
 ```
 
-**AI/ML Pattern Analysis:**
+**AI/ML Pattern Analysis (planned):**
 - **Algorithm**: statistical thresholds at R1; SSA-LSTM + MedGemma from R2 (see [llm_design.md](../llm_design.md))
-- **Z-Score Calculation**: (TodayValue - Baseline) / StdDev
-- **Threshold**: |Z-Score| > 2.0 triggers alert
-- **Day-of-Week Awareness**: Monday vs Saturday different baselines
-- **Multi-Day Trend Detection**: 7-day rolling average analysis
-
-**Onboarding Experience:**
-```
-Days 1-30: "Learning your patterns..."
-  - Dashboard shows: "Building your baseline (Day 15 of 30)"
-  - Limited alerts (only severe anomalies)
-  - Educational tips about what we're learning
-
-Day 31: "Baseline established!"
-  - Full AI anomaly detection activated
-  - Alert system fully operational
-  - Email notification to family
-```
+- **Z-Score Calculation**: (TodayValue - Baseline) / StdDev; |Z| > 2.0 triggers alert
+- **Day-of-Week Awareness** and 7-day rolling trend detection
 
 ---
 
 ### **STEP 9: TRIAL PERIOD & CONVERSION**
 
-**Trial Experience:**
-- Full access to all tier features
-- No payment information required upfront
-- `SubscriptionStatus = Trial`
-- `TrialEndDate` tracked in database
+**Implemented today:** every organization gets a 30-day trial (`Status = Trial`, `TrialEndDate` tracked, tier `Complete`, price $0). Nothing enforces or converts the trial yet.
 
-**Trial End Reminders:**
-- **Day -14**: "Your trial ends in 2 weeks"
-- **Day -7**: "Trial ends in 1 week, select your plan"
-- **Day -3**: "3 days left, upgrade now to avoid interruption"
-- **Day 0**: Convert or suspend service
+> **Status: Planned — not yet implemented.** Trial-expiration reminders, payment collection, tier selection, invoicing, and suspension are future work. There is no Stripe or billing integration.
 
-**Conversion Flow:**
+**Planned conversion flow:**
 ```
 1. User selects subscription tier
-   ├── Basic Care: $8/month
-   ├── Complete Care: $15/month
-   └── Guardian Plus: $29.99/month
+   ├── Basic: $8/month (2 CardiMembers)
+   ├── Complete Care: $15/month (5 CardiMembers)
+   └── (annual billing −15%; Guardian Plus $29.99 is a post-MVP business tier)
 
-2. Payment information collection
-   ├── Credit card via Stripe/PayPal
-   ├── PCI-DSS compliant (use tokenization)
-   └── Auto-renewal enabled by default
+2. Payment collection (PCI-DSS-compliant tokenization)
 
-3. Subscription activation
-   ├── Status: Trial → Active
-   ├── StartDate: Today
-   ├── EndDate: Today + Billing cycle (Monthly/Annual)
-   ├── Price: Tier price
-   └── NextBillingDate: EndDate
+3. Subscription activation: Trial → Active, billing dates set
 
-4. Invoice generation
-   ├── Email receipt
-   └── Store in Invoices table (HIPAA audit trail)
-
-5. Feature limits enforcement
-   ├── Apply tier-specific MaxCardiMembers
-   ├── Apply tier-specific MaxUsers
-   └── Enable/disable features per JSON config
+4. Failed conversion: Trial → Suspended, 7-day read-only grace,
+   90-day retention before soft delete
 ```
-
-**Failed Conversion:**
-- **Status**: Trial → Suspended
-- **Grace Period**: 7 days read-only access
-- **Data Retention**: 90 days before soft delete
-- **Re-activation**: Allow within 90 days
 
 ---
 
@@ -862,21 +360,20 @@ Day 31: "Baseline established!"
 ### **HIPAA Compliance**
 
 **Data Encryption:**
-- **At Rest**: Azure SQL TDE (Transparent Data Encryption)
-  - OAuth tokens: AES-256-GCM
-  - Medical notes: AES-256-GCM
+- **At Rest**: Cloud SQL for PostgreSQL encryption at rest (Google-managed)
+  - Device OAuth tokens: AES-256-GCM application-level encryption (implemented)
+  - Medical notes: application-level encryption **planned** — currently stored unencrypted (tracked follow-up; see [data_protection_architecture.md](./data_protection_architecture.md))
 - **In Transit**: HTTPS/TLS 1.2+ for all connections
-- **Backups**: Automatic encrypted backups (Azure)
+- **Backups**: automated encrypted Cloud SQL backups
 
 **Access Controls:**
-- **Role-Based Access Control (RBAC)**: Admin, Staff, Viewer roles
+- **Role-Based Access Control (RBAC)**: Member, Admin, Staff roles (claim-based policies registered but inert until the tenant issues role claims)
 - **Relationship-Scoped Access**: Caregivers only see assigned CardiMembers
-- **Multi-Factor Authentication (MFA)**: For admin accounts (recommended)
-- **Automatic Session Timeout**: 15 minutes idle timeout
+- **Email-verification gate**: unverified accounts cannot log in at all
 
 **Audit Trail:**
 ```csharp
-AuditLog Entity (90-day minimum retention):
+AuditLog Entity (90-day minimum retention; 30 dev / 90 prod via tfvars):
 ├── UserId: Who accessed
 ├── CardiMemberId: Whose data was accessed
 ├── Action: ViewDashboard, ViewAlert, ExportData, etc.
@@ -885,173 +382,132 @@ AuditLog Entity (90-day minimum retention):
 ├── UserAgent: Browser/device info
 └── DataAccessed: JSON (specific fields viewed)
 ```
-
-**User Rights (HIPAA Required):**
-- **Right to Access**: Export all PHI as encrypted PDF
-- **Right to Amend**: Request data corrections
-- **Right to Accounting**: View access log
-- **Right to Restrict**: Limit data sharing (optional feature)
+(The table and entity exist; audit-writing middleware is a planned follow-up — nothing writes to it yet.)
 
 **Business Associate Agreements (BAAs):**
-- ✅ **Auth0**: Provides BAA for HIPAA-compliant authentication
-- ✅ **Azure (Microsoft)**: App Service, SQL, Functions
-- ✅ **Twilio**: SMS alerts
-- ✅ **SendGrid**: Email alerts
-- ❌ **Google Health API** (Fitbit/Pixel Watch data): Does NOT provide BAA (user consent model)
+- ✅ **Auth0**: BAA required before prod go-live ([runbook §1](./auth0_setup_runbook.md))
+- ✅ **Google Cloud**: covers Cloud Run, Cloud SQL, GCS, Secret Manager
+- ❌ **Google Health API** (Fitbit/Pixel Watch data): does NOT provide BAA (user consent model)
+- Notification vendors (SMS/email): to be selected when notifications are built
 
 ### **Data Protection**
 
 **Soft Deletes:**
-- `IsActive` flag on Organizations, Users, CardiMembers
-- No hard deletions to preserve audit trail
-- 90-day retention before purging
+- `IsActive` flag on Organizations, Users, CardiMembers, UserCardiMembers, DeviceConnections, Alerts, Devices
+- No hard deletions to preserve audit trail (exception: orphaned-organization cleanup, which removes only orgs that never completed onboarding)
 
-**No Foreign Key Constraints:**
-- Application-level referential integrity
-- Allows flexible permission enforcement
-- Prevents cascading deletes that violate audit requirements
+**Foreign Keys:**
+- One FK exists: **Subscriptions → Organizations with cascade delete** (migration Aug 2026), so orphan cleanup is a single organization delete. All other relationships use Guid references with application-level integrity.
 
 **Authentication Security (Auth0):**
 - **Password Hashing**: Bcrypt with salt (managed by Auth0)
-- **Password Complexity**: Enforced by Auth0 (8+ chars, mixed case, numbers, symbols)
-- **No Local Password Storage**: Passwords NEVER stored in CardiTrack database
-- **Breached Password Detection**: Auth0 checks against known breached password databases
-- **Auth0 Refresh Tokens**: Stored encrypted (AES-256-GCM) in CardiTrack database
-- **JWT Tokens**: Short-lived access tokens (1 hour expiry)
-- **No Credentials in Logs**: Auth tokens never logged or stored in audit trails
+- **Credentials are Auth0-hosted** — a legacy `PasswordHash` column remains on the `Users` table pending removal (tracked code follow-up); it is never populated with a real hash
+- **Breached Password Detection**: enabled in prod (Auth0 attack protection)
+- **JWT Tokens**: 1-hour access tokens; rotating refresh tokens (30-day absolute / 15-day inactivity)
+- **No Credentials in Logs**: auth tokens never logged
 
 ---
 
 ## TECHNICAL ARCHITECTURE SUMMARY
 
-### **Database Tables Involved in Onboarding**
+### **Database Tables Involved in Onboarding** (Cloud SQL PostgreSQL 16)
 
 ```
 Organizations
 ├── Id, Name, Type (Family/Business), IsActive, CreatedDate, UpdatedDate
 
-Users (Updated with Auth0 Integration)
-├── Id, Auth0UserId (UNIQUE), Email (UNIQUE) — no password column (Auth0-hosted)
-├── Name, Phone, ProfilePictureUrl, AuthProvider (Enum), EmailVerified
-├── Role, OrganizationId, Auth0Metadata (JSON)
-└── IsActive, CreatedDate, UpdatedDate, LastLoginDate
+Users
+├── Id, Auth0UserId (UNIQUE FILTERED), Email (UNIQUE), PasswordHash (legacy,
+│     pending removal), Name, Phone, Role, EmailVerified, LastLoginDate
+├── HealthDataDisclosureDismissedDate, Locale, TimeZoneId, OrganizationId
+└── IsActive, CreatedDate, UpdatedDate
 
 CardiMembers
-├── Id, OrganizationId, Name, DateOfBirth, Gender, Phone, EmergencyContact
-├── MedicalNotes (ENCRYPTED), IsActive, CreatedDate, UpdatedDate
+├── Id, OrganizationId, Name, Email, Phone, DateOfBirth, Gender
+├── EmergencyContactName, EmergencyContactPhone, MedicalNotes (encryption planned)
+└── LastSyncDate, IsActive, CreatedDate, UpdatedDate
 
 UserCardiMembers (Relationship Table)
 ├── Id, UserId, CardiMemberId, RelationshipType, IsPrimaryCaregiver
-├── CanViewHealthData, CanReceiveAlerts, CanManageDevices, Permissions (JSON)
-└── CreatedDate
+├── CanViewHealthData, ReceiveAlerts, NotificationPreferences (JSON)
+└── AssignedDate, IsActive, CreatedDate
 
 Subscriptions
-├── Id, OrganizationId (UNIQUE), Tier, Status, StartDate, EndDate, TrialEndDate
-├── Price, Currency, BillingCycle, MaxCardiMembers, MaxUsers, Features (JSON)
-└── CreatedDate, UpdatedDate
+├── Id, OrganizationId (UNIQUE, FK→Organizations CASCADE), Tier, Status
+├── StartDate, EndDate, TrialEndDate, Price, Currency, BillingCycle
+└── MaxCardiMembers, MaxUsers, Features (JSON), PaymentMethod (JSON)
 
 DeviceConnections
-├── Id, CardiMemberId, DeviceType, AccessToken (ENCRYPTED), RefreshToken (ENCRYPTED)
-├── TokenExpiry, ConnectionStatus, LastSyncDate, SyncFrequencyMinutes
-└── CreatedDate
+├── Id, CardiMemberId, DeviceType, DeviceName, IsPrimary, ConnectionStatus
+├── AccessToken (ENCRYPTED), RefreshToken (ENCRYPTED), TokenExpiry, Scopes (JSON)
+└── ConnectedDate, LastSyncDate, SyncFrequencyMinutes (default 30), Metadata (JSON)
 
 Devices (Reference Table)
-├── Id, DeviceType, Manufacturer, ModelName, Capabilities (JSON)
-└── OAuthConfig (JSON: clientId, scopes, endpoints)
+├── Id, DeviceType, Manufacturer, ModelName, DisplayName, Capabilities (JSON)
+└── ApiEndpoint, OAuthConfig (JSON), SortOrder, IconUrl
 
-ActivityLog (Populated Post-Onboarding)
-├── Id, CardiMemberId, DeviceConnectionId, Date, Steps, HeartRate, Sleep, SpO2
-└── CreatedDate
+ActivityLogs (Populated by polling sync)
+├── Id, CardiMemberId, DeviceConnectionId, DataSource, Date
+└── ~25 nullable metrics: Steps, HeartRate, Sleep stages, SpO2, VO2Max, ...
 
-PatternBaseline (Created After 30 Days)
-├── Id, CardiMemberId, CalculatedDate, PeriodDays, AvgSteps, StdDevSteps
-├── AvgRestingHeartRate, StdDevHeartRate, AvgSleepMinutes, StepsByDayOfWeek (JSON)
-
-Alerts (Generated by AI Engine)
-├── Id, CardiMemberId, AlertType, Severity, Title, Message, TriggeredDate
-├── AcknowledgedDate, AcknowledgedByUserId, IsResolved
-
-AuditLog (HIPAA Compliance)
-├── Id, UserId, CardiMemberId, Action, Timestamp, IpAddress, UserAgent
-└── DataAccessed (JSON)
+PatternBaselines (Planned — table exists, no calculation job yet)
+Alerts (Planned generation — table exists)
+AuditLogs (Planned writes — table exists)
 ```
 
 ### **Background Jobs (CardiTrack.Worker — Cronos)**
 
-Non-AI background jobs run in `CardiTrack.Worker` as `CronBackgroundService` subclasses (see [apps/worker/](../apps/worker/readme.md)). Data ingestion itself is webhook-driven — there is no sync polling job.
+Non-AI background jobs run in `CardiTrack.Worker` as `CronBackgroundService` subclasses. **Exactly two workers exist today** (6-field cron, Cronos IncludeSeconds, configured in appsettings):
 
 ```csharp
-// Cron expressions are 6-field (Cronos IncludeSeconds), configured in appsettings
+// Every 30 minutes — polls device connections due for sync; token refresh
+// happens inside the sync path (OAuthTokenRefreshService)
+public class WearableSyncWorker : CronBackgroundService              // "0 */30 * * * *"
 
-// Hourly — refresh OAuth tokens expiring within the next hour
-public class TokenRefreshWorker : CronBackgroundService      // "0 0 * * * *"
-
-// Weekly (Sundays 02:00 UTC) — recalculate pattern baselines
-public class BaselineRecalculationWorker : CronBackgroundService // "0 0 2 * * SUN"
-
-// Daily (midnight UTC) — trial expiration reminders (14/7/3 days)
-public class TrialExpirationWorker : CronBackgroundService   // "0 0 0 * * *"
-
-// Daily — data retention/cleanup (report expiry, audit archive tiering)
-public class RetentionWorker : CronBackgroundService         // "0 30 0 * * *"
+// Daily 03:00 UTC — deletes orphaned organizations (>24h, no users/members);
+// removals logged at Warning (PR #5 safety net)
+public class OrphanedOrganizationCleanupWorker : CronBackgroundService // "0 0 3 * * *"
 ```
 
-> The AI pipeline's scheduled jobs (5-minute aggregation, daily predictive batch, digests) are Azure Functions timers — see [llm_design.md](../llm_design.md). They are not Worker jobs.
+> **Planned workers (not yet built):** baseline recalculation, trial-expiration reminders, retention/cleanup. The AI pipeline's scheduled jobs (aggregation, predictive batch, digests) belong to the planned GCP ingestion pipeline — see [llm_design.md](../llm_design.md).
 
 ---
 
 ## USER ONBOARDING CHECKLIST
 
 ### **Family Member Actions:**
-- [ ] **Choose authentication method** (Google, Microsoft, Apple, Facebook, or Email/Password)
-- [ ] **Authenticate via Auth0** Universal Login
-- [ ] **Verify email** (automatic with social login, manual with email/password)
-- [ ] **Complete onboarding**: Select organization type (Family/Business)
-- [ ] **Add CardiMember profile** (name, DOB, gender, medical notes)
+- [ ] **Create account** with email/password (Google/Apple buttons exist but are not yet functional)
+- [ ] **Verify email** via the emailed link (mandatory — login is blocked until verified; resend available)
+- [ ] **Sign in** and complete setup: select organization type (Family/Business)
+- [ ] **Add CardiMember profile** (name, DOB, gender, emergency contact, medical notes)
 - [ ] **Define relationship** (Parent, Spouse, Grandparent, etc.)
-- [ ] **Send device connection invitation** to elderly person
-- [ ] **Wait for elderly person** to authorize Fitbit/Apple Watch/Garmin
-- [ ] **Configure notification preferences** (SMS/Email/Push)
-- [ ] **Review baseline learning progress** (30 days)
-- [ ] **Select subscription tier** before trial ends
-- [ ] **Optional**: Link additional auth providers (e.g., add Microsoft after signing up with Google)
+- [ ] **Connect device** (Fitbit via Google OAuth today)
+- [ ] *(Planned)* Configure notification preferences, review baseline progress, select paid tier
 
 ### **Elderly Person Actions:**
-- [ ] Receive invitation (Email + SMS)
-- [ ] Click secure connection link
 - [ ] Review privacy notice (what family will see)
 - [ ] Click "Connect Fitbit" button
 - [ ] Log into Google account linked to the device (Google OAuth)
 - [ ] Approve data access permissions
 - [ ] Confirm connection success
 
-### **System Actions (Automated):**
-- [ ] **Redirect to Auth0** Universal Login
-- [ ] **Authenticate user** via chosen provider (Google, Microsoft, Apple, Email/Password)
-- [ ] **Receive Auth0 callback** with authorization code
-- [ ] **Exchange code for JWT tokens** (ID token, Access token, Refresh token)
-- [ ] **Validate JWT signature** and claims
-- [ ] **Extract Auth0UserId** (sub claim) and user info
-- [ ] **Check if user exists** in CardiTrack database
-- [ ] **If new user**: Store Auth0 info in session, redirect to onboarding
-- [ ] **Create Organization** entity
-- [ ] **Initialize Subscription** (Trial status)
-- [ ] **Create User account** with Auth0UserId (NO password storage)
-- [ ] **Sync user metadata** to Auth0 (organization_id, role)
-- [ ] **Send welcome email** (via SendGrid)
-- [ ] **Link User to CardiMember** (UserCardiMembers table)
-- [ ] **Generate secure device connection token** (24-hour expiry)
-- [ ] **Send device connection invitation** to elderly person
-- [ ] **Validate connection token** on Fitbit/device callback
-- [ ] **Exchange OAuth code for device access/refresh tokens**
-- [ ] **Encrypt and store device tokens** (AES-256-GCM)
-- [ ] **Register device webhook subscription** (Google Health API) + trigger initial history backfill
-- [ ] **Notify family** of successful device connection
-- [ ] **Calculate baseline** after 30 days
-- [ ] **Activate AI anomaly detection**
-- [ ] **Log authentication events** in AuditLog
-- [ ] **Send trial expiration reminders** (14, 7, 3 days)
-- [ ] **Convert to Active or Suspended** on trial end
+### **System Actions (Automated, implemented):**
+- [ ] **Register account** via Auth0 `/dbconnections/signup`
+- [ ] **Deny unverified logins** (post-login Action, `email_not_verified`)
+- [ ] **Validate JWT** on every request; derive identity from the `sub` claim (`UserContextMiddleware`)
+- [ ] **Atomic setup**: Organization + trial Subscription + User in one transaction (`POST /api/Onboarding/setup`), idempotent on retry
+- [ ] **Sync EmailVerified** claim on `GET /api/Onboarding/status`
+- [ ] **Create CardiMember** and `UserCardiMembers` link
+- [ ] **Generate opaque OAuth state + PKCE** (single-use, 15-min TTL) for device connection
+- [ ] **Bounce** Google's redirect into the `carditrack://` deep link
+- [ ] **Exchange OAuth code, encrypt and store device tokens** (AES-256-GCM)
+- [ ] **Poll device data every 30 minutes**; refresh OAuth tokens in the sync path
+- [ ] **Clean up orphaned organizations** daily (03:00 UTC)
+
+### **System Actions (Planned):**
+- [ ] Welcome email; device connection invitations; webhook ingestion
+- [ ] Baseline calculation after 30 days; AI anomaly detection
+- [ ] Audit-log writes; trial expiration reminders; trial conversion/suspension
 
 ---
 
@@ -1060,23 +516,16 @@ public class RetentionWorker : CronBackgroundService         // "0 30 0 * * *"
 **Onboarding Completion Rate:**
 - Target: >80% of signups complete full onboarding
 - Track drop-off at each step:
-  - Account creation → CardiMember setup: >95%
-  - CardiMember setup → Device connection invitation sent: >90%
-  - Invitation sent → Device connected: >70% (hardest step)
+  - Account creation → email verified: >90%
+  - Email verified → CardiMember setup: >95%
+  - CardiMember setup → Device connected: >70% (hardest step)
   - Device connected → Baseline established: >95%
   - Trial → Paid conversion: >60%
 
 **Time to Value:**
 - Account creation → First device connection: <24 hours
-- Device connection → First webhook data received: <30 minutes
-- First sync → First alert: Varies (0-30 days)
-- Trial start → Baseline established: 30 days
-
-**Key Drop-Off Points:**
-- Elderly person clicks invitation link: 80%
-- Elderly person completes Fitbit OAuth: 75%
-- Family reviews dashboard within 7 days: 85%
-- Trial converts to paid: 60%
+- Device connection → First synced data: <30 minutes (initial sync + 30-minute polling cycle)
+- Trial start → Baseline established: 30 days (planned)
 
 ---
 
@@ -1099,56 +548,29 @@ public class RetentionWorker : CronBackgroundService         // "0 30 0 * * *"
 
 **Multi-Language Support:**
 - Spanish, Mandarin, French (high elderly populations)
-- Localized date/time formats
+- Localized date/time formats (Locale/TimeZoneId columns already exist)
 - Cultural sensitivity in messaging
 
 ---
 
 ## SUMMARY
 
-The CardiTrack user onboarding process is designed to be **secure, compliant, and user-friendly**, balancing the needs of family caregivers (ease of use) with elderly users (simplicity, privacy) while maintaining HIPAA compliance and AI-powered preventive health monitoring capabilities.
+The CardiTrack user onboarding process is designed to be **secure, compliant, and user-friendly**, balancing the needs of family caregivers (ease of use) with elderly users (simplicity, privacy) while maintaining HIPAA compliance.
 
 **Key Success Factors:**
-1. **Low friction**: 5-step process, 10-minute completion
-2. **Flexible authentication**: Email/password, Google, Microsoft, Apple, Facebook, Enterprise SSO
-3. **Auth0 integration**: Secure, HIPAA-compliant authentication backend
-4. **Security first**: Encryption, HIPAA compliance, audit trails, MFA support
-5. **Privacy transparency**: Clear explanation of what family sees
-6. **Immediate value**: Dashboard goes live within 30 minutes
-7. **Flexible pricing**: Trial period, multiple tiers, BYOD option
+1. **Low friction**: atomic single-call setup after sign-in; no orphaned half-created accounts
+2. **Auth0 integration**: credentials Auth0-hosted, hard email-verification gate
+3. **Security first**: encrypted device tokens, rate limiting, opaque single-use OAuth state with PKCE
+4. **Privacy transparency**: clear explanation of what family sees; Google-format health-data disclosure (web shipped, mobile pending)
+5. **Immediate value**: first device data within one polling cycle (30 minutes)
 
-**Authentication Options:**
-- **Social Login**: Google, Microsoft, Apple, Facebook (OAuth 2.0)
-- **Traditional**: Email/password (Auth0 Database)
-- **Enterprise SSO**: SAML 2.0, Azure AD, Okta (Business accounts)
-- **Account Linking**: Users can link multiple providers to one account
-- **MFA**: SMS, Authenticator app, WebAuthn support
-- **Passwordless**: Magic links, SMS OTP available
+**Authentication today:** email/password via Auth0's embedded password-realm grant, with mandatory email verification. **Planned:** Google/Apple social login (buttons rendered, handlers pending — Phase 9), enterprise SSO, MFA, account linking.
 
 **Critical Path:**
-Auth0 Authentication (Social/Email Login) → Organization Type Selection (Family/Business) → Subscription Trial Initialization → User Account Creation → CardiMember Setup → Device Connection (Fitbit/Apple Watch/Garmin OAuth) → Notification Preferences → Baseline Learning (30 days) → Paid Conversion
-
-**Onboarding Steps Summary:**
-1. **Authentication**: Choose Google, Microsoft, Apple, Facebook, or Email/Password via Auth0
-2. **Organization Type**: Select Family or Business account
-3. **Subscription**: Automatic trial initialization (30-90 days)
-4. **User Account**: Create database record linked to Auth0 identity
-5. **CardiMember**: Add elderly person to monitor
-6. **Device**: Connect Fitbit/Apple Watch/Garmin via OAuth
-7. **Notifications**: Configure alert preferences
-8. **Baseline**: AI learns patterns over 30 days
-9. **Conversion**: Choose paid tier at trial end
-
-**Auth0 Benefits:**
-- ✅ No password storage in CardiTrack database
-- ✅ Breached password detection
-- ✅ Automatic email verification
-- ✅ Enterprise SSO for healthcare organizations
-- ✅ HIPAA BAA available
-- ✅ Bot detection and anomaly detection
-- ✅ Session management and token refresh
-- ✅ Profile pictures from social providers
+Create Account (Auth0 signup) → Verify Email (mandatory gate) → Sign In → Atomic Setup (Organization + Trial + User) → CardiMember Setup → Device Connection (Fitbit via Google OAuth + PKCE) → 30-minute polling ingestion → *(planned)* Notifications → Baseline → Paid Conversion
 
 ---
+
+**Last Updated:** August 7, 2026
 
 **END OF ONBOARDING DOCUMENTATION**

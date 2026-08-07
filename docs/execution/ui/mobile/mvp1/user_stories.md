@@ -2,7 +2,9 @@
 
 > **Extract — do not edit directly.** This file is extracted from the canonical [user_stories.md](../user_stories.md); make changes there and re-extract. Release sequencing is governed by the [release matrix](../../../../release_matrix.md).
 
-Stories mapped to MVP 1 screens (M1-01 through M1-17).
+> **Build status (August 7, 2026):** 9 of 17 Figma M1 screens are built (M1-01 through M1-09); M1-10 through M1-17 show "Coming soon" dialogs. Four shipped screens have **no Figma M1 frame — needs design sync**: SignInPage, ForgotPasswordPage, VerifyEmailPage, Onboarding/AccountSetupPage (Stories 1.5–1.8).
+
+Stories mapped to MVP 1 screens (M1-01 through M1-17), plus the four shipped screens without Figma M1 frames.
 
 **Platform Requirements**
 - **Minimum iOS:** 16.0 — covers ~90%+ of active iPhones; required for modern platform APIs and reliable background push delivery
@@ -22,8 +24,7 @@ Stories mapped to MVP 1 screens (M1-01 through M1-17).
   - Simple signup flow (email/password or social login via Auth0)
   - Clear value proposition on landing page
   - 30-day free trial messaging prominent
-  - "How it works" video or interactive tutorial
-  - Mobile-responsive design
+  - Account creation leads into email verification (Story 1.7) — the user cannot enter the app until their email is verified
 - **Screens:** M1-02 (Welcome), M1-03 (Sign Up)
 
 **Story 1.2: Adding First CardiMember** _(P0 — Must Have)_
@@ -35,7 +36,8 @@ Stories mapped to MVP 1 screens (M1-01 through M1-17).
   - Required fields: Name, Date of Birth, Relationship
   - Optional fields: Photo, medical notes (encrypted), emergency contacts
   - Clear privacy messaging ("Your parent will be notified")
-  - Visual progress indicator (Step 1 of 3)
+  - Visual progress indicator (Step 2 of 4)
+  - Emergency-phone placeholder localized by device region (PR #8): US/CA "+1 555 000 0000", GB "+44 7700 900000" — **limitation:** all other regions fall back to the US format, notable given the US + EU target market
 - **Screens:** M1-04 (Add First CardiMember)
 
 **Story 1.3: Device Connection Wizard** _(P0 — Must Have)_
@@ -57,12 +59,58 @@ Stories mapped to MVP 1 screens (M1-01 through M1-17).
 - **So that** their information stays accurate and I can quickly act in an emergency
 - **Acceptance Criteria:**
   - View profile summary: name, DOB, relationship, photo, emergency contact
-  - Encrypted medical notes (require biometric auth to view/edit)
+  - Encrypted medical notes (biometric gating deferred to R4 per the release matrix — not an MVP 1 criterion)
   - Enable/disable monitoring toggle with confirmation
   - Alert sensitivity control (Low / Medium / High)
   - Quick-action buttons: View Dashboard, View Alerts, Manage Devices
   - Danger-zone actions: Pause Monitoring, Remove CardiMember (with confirmation dialogs)
 - **Screens:** M1-13 (CardiMember Detail), M1-14 (Edit CardiMember)
+
+**Story 1.5: Sign In** _(P0 — shipped; no Figma M1 frame, needs design sync)_
+- **As a** returning caregiver
+- **I want to** sign in quickly with my email and password
+- **So that** I can get back to monitoring without friction
+- **Acceptance Criteria:**
+  - Email + password form with password show/hide toggle
+  - **"Remember me" checkbox**
+  - "Forgot password" link → Story 1.6
+  - Inline error message for failed sign-in (no banner)
+  - Social sign-in options (Google / Apple) presented consistently with sign-up
+  - Link back to sign-up for users without an account
+- **Screens:** SignInPage (no Figma M1 frame)
+
+**Story 1.6: Forgot Password** _(P0 — shipped; no Figma M1 frame, needs design sync)_
+- **As a** caregiver who forgot my password
+- **I want to** request a reset link by email
+- **So that** I can regain access without contacting support
+- **Acceptance Criteria:**
+  - Request state: email input + send-reset-link CTA
+  - Confirmation state: "Check your email" with resend option (cooldown to prevent spamming)
+  - "Back to sign in" path from both states
+- **Screens:** ForgotPasswordPage (no Figma M1 frame)
+
+**Story 1.7: Verify Email** _(P0 — shipped; no Figma M1 frame, needs design sync)_
+- **As a** newly registered caregiver
+- **I want to** verify my email address right after signing up
+- **So that** my account is secured and I can proceed into the app
+- **Acceptance Criteria:**
+  - **Hard tenant gate:** account creation does not auto-login; the user lands on the verification screen and cannot proceed until verified (threads between Story 1.1 and Story 1.2)
+  - "I've verified — continue" action with a checking state
+  - "Open mail app" shortcut
+  - Resend verification email (cooldown; confirmation message)
+  - Clear error state when the address is still unverified
+- **Screens:** VerifyEmailPage (no Figma M1 frame)
+
+**Story 1.8: Account-Type Setup** _(P0 — shipped; no Figma M1 frame, needs design sync)_
+- **As a** first-time user after verification
+- **I want to** say whether I'm caring for my family or providing care professionally
+- **So that** CardiTrack can tailor my account
+- **Acceptance Criteria:**
+  - Radio-cards: "My Family" (personal) vs "My Organization" (professional care)
+  - Selecting "My Organization" reveals a required Organization Name field
+  - Continue disabled until a type is chosen
+  - **Flagged scope question (not a resolution):** the Organization option surfaces business onboarding in MVP 1 while the Guardian Plus business tier is post-R4 in the release matrix — needs a product decision
+- **Screens:** Onboarding/AccountSetupPage (no Figma M1 frame)
 
 ---
 
@@ -124,7 +172,7 @@ Stories mapped to MVP 1 screens (M1-01 through M1-17).
   - Data source indicator on charts (which device provided this data)
 - **Screens:** M1-15 (Device Management)
 
-**Story 6.3: Health Data Export** _(P0 — Must Have)_
+**Story 6.3: Health Data Export** _(P0 — Must Have; **status: M1-17 not built yet** — entry points show "Coming soon")_
 - **As a** caregiver preparing for a doctor's visit or needing records
 - **I want to** export a CardiMember's health data in standard medical formats
 - **So that** I can share it with healthcare providers or keep it for my records
@@ -190,14 +238,14 @@ Stories mapped to MVP 1 screens (M1-01 through M1-17).
 - CTA: "Start Free 30-Day Trial"
 
 ### Step 2: Account Creation (1 minute)
-- Email/password or "Continue with Google/Apple"
+- Email/password or "Continue with Google/Apple" (social buttons shipped but not yet wired)
 - Checkbox: "I agree to Terms & Privacy Policy" (with links)
-- Auto-login after creation
+- **No auto-login after creation** — the user must verify their email (VerifyEmailPage, Story 1.7) before entering the app; PostLoginRouter then routes to account-type setup (Story 1.8) or Add CardiMember
 
 ### Step 3: Add CardiMember (2 minutes)
 - "Who would you like to monitor?"
 - Form: Name, DOB, Relationship, Photo (optional)
-- Tone: "We'll help you set up monitoring in 3 simple steps"
+- Tone: "We'll help you set up monitoring in 4 simple steps" (the wizard is a 4-step flow: Create Account → Add CardiMember → Connect Device → Baseline)
 
 ### Step 4: Device Connection (3 minutes)
 - "What wearable device does [Name] use?"
@@ -213,7 +261,8 @@ Stories mapped to MVP 1 screens (M1-01 through M1-17).
 
 ### Step 6: First Dashboard View
 - Celebratory tone: "You're all set! Here's [Name]'s health overview."
-- Guided tour overlay (5 tooltips):
+- The baseline screen's "Invite Family Member First" link **ships in MVP 1** but the invite flow (M3-02) is MVP 2 — the link is currently a dead end
+- Guided tour overlay (5 tooltips) — **planned, not shipped** (no guided tour exists in the current app):
   1. "This shows overall health status"
   2. "View detailed trends here"
   3. "Alerts appear in this section"
@@ -224,20 +273,26 @@ Stories mapped to MVP 1 screens (M1-01 through M1-17).
 
 ## MVP 1 Priority Summary
 
-| Story | Title | Priority |
-|-------|-------|----------|
-| 1.1 | First-Time User Registration | P0 |
-| 1.2 | Adding First CardiMember | P0 |
-| 1.3 | Device Connection Wizard | P0 |
-| 1.4 | CardiMember Profile Management | P0 |
-| 2.1 | Daily Health Overview | P0 |
-| 3.1 | Receiving Critical Alerts | P0 |
-| 6.3 | Health Data Export | P0 |
-| 3.3 | Alert Acknowledgment & Notes | P1 |
-| 6.2 | Device Management | P1 |
-| 11.1 | Gradual Activity Decline | — |
-| 11.2 | Elevated Resting Heart Rate | — |
-| 11.3 | No Morning Activity | — |
+| Story | Title | Priority | Build Status |
+|-------|-------|----------|--------------|
+| 1.1 | First-Time User Registration | P0 | Built (M1-02, M1-03) |
+| 1.2 | Adding First CardiMember | P0 | Built (M1-04) |
+| 1.3 | Device Connection Wizard | P0 | Built (M1-05–M1-08) |
+| 1.4 | CardiMember Profile Management | P0 | Not built (M1-13, M1-14) |
+| 1.5 | Sign In | P0 | Built — no Figma M1 frame |
+| 1.6 | Forgot Password | P0 | Built — no Figma M1 frame |
+| 1.7 | Verify Email | P0 | Built — no Figma M1 frame |
+| 1.8 | Account-Type Setup | P0 | Built — no Figma M1 frame |
+| 2.1 | Daily Health Overview | P0 | Built (M1-09) |
+| 3.1 | Receiving Critical Alerts | P0 | Not built (M1-10–M1-12, M1-16) |
+| 6.3 | Health Data Export | P0 | **Not built** (M1-17 — P0 but unbuilt) |
+| 3.3 | Alert Acknowledgment & Notes | P1 | Not built |
+| 6.2 | Device Management | P1 | Not built (M1-15) |
+| 11.1 | Gradual Activity Decline | — | Not built (M1-11) |
+| 11.2 | Elevated Resting Heart Rate | — | Not built (M1-16) |
+| 11.3 | No Morning Activity | — | Not built (M1-12) |
+
+> **Telemetry-consent gap (product follow-up):** crash reporting and RUM (PR #4) ship enabled with `TrackingConsent.Granted` hardcoded — consent is granted by default, with no in-app opt-out and no diagnostics screen. **There is no in-app telemetry control in MVP 1.** This is in tension with the consent-first principle (Principle 4) — see Story 7.4 in the canonical [user_stories.md](../user_stories.md).
 
 ---
 
@@ -272,5 +327,5 @@ Stories mapped to MVP 1 screens (M1-01 through M1-17).
 
 ---
 
-**Source:** Extracted from [user_stories.md](../user_stories.md) v1.0
-**Screens covered:** M1-01 through M1-17
+**Source:** Extracted from [user_stories.md](../user_stories.md) v1.1 (manually re-synced August 7, 2026)
+**Screens covered:** M1-01 through M1-17, plus SignInPage, ForgotPasswordPage, VerifyEmailPage, and Onboarding/AccountSetupPage (no Figma M1 frames — need design sync)

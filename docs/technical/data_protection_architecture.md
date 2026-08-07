@@ -2,7 +2,8 @@
 
 **Status:** Proposed (ADR — awaiting engineering review and the legal/compliance decisions in [§10](#10-decisions-required-from-legalcompliance-not-engineering))
 **Scope:** Classification, pseudonymization, Safe Harbor de-identification, retention/deletion, access controls, consent, and subprocessor obligations for all medical/health data in CardiTrack.
-**Relationship to other docs:** [infrastructure.md](../infrastructure.md) describes the target Azure data model; the *deployed* system is PostgreSQL (Cloud SQL) on GCP per `infrastructure/` Terraform. This ADR designs against the deployed system and notes where the planned Azure AI pipeline ([llm_design.md](../llm_design.md)) must follow the same rules.
+**Relationship to other docs:** [infrastructure.md](../infrastructure.md) describes the deployed PostgreSQL (Cloud SQL) on GCP data model per `infrastructure/` Terraform. This ADR designs against the deployed system and notes where the planned AI pipeline ([llm_design.md](../llm_design.md)) must follow the same rules.
+> **Platform note (Aug 7, 2026):** the AI pipeline design has been re-platformed from Azure to GCP (Pub/Sub + Cloud Run, with pipeline outputs as PostgreSQL JSONB tables — see [llm_design.md](../llm_design.md)). References to Azure services and Cosmos DB collections below describe the superseded design; the retention/TTL, consent, and erasure controls carry over unchanged to their GCP equivalents.
 
 ---
 

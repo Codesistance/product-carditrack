@@ -1,219 +1,137 @@
 # CardiTrack Terraform Infrastructure
 
-This directory contains Terraform configurations for provisioning Azure infrastructure for the CardiTrack platform.
-
-## Structure
-
-```
-terraform/
-├── environments/
-│   ├── dev/              # Development environment
-│   └── production/       # Production environment
-├── modules/              # Reusable Terraform modules (future)
-├── backend.tf            # Remote state configuration
-├── providers.tf          # Azure provider configuration
-└── versions.tf           # Terraform version constraints
-```
+Terraform for CardiTrack's Google Cloud platform — project **`carditrack-490120`**, region **`europe-west2`**. This is the operator guide; for the architecture reference see [docs/infrastructure.md](../docs/infrastructure.md).
 
 ## Prerequisites
 
-1. **Install Terraform**
-   - Download from https://www.terraform.io/downloads
-   - Version: >= 1.0.0
+1. **Terraform** `>= 1.14.7` (provider pins: `google ~> 7.23`, `random ~> 3.6`)
+2. **gcloud CLI**, authenticated with access to `carditrack-490120`:
+   ```bash
+   gcloud auth login
+   gcloud auth application-default login
+   gcloud config set project carditrack-490120
+   ```
 
-2. **Azure CLI**
-   - Install: https://docs.microsoft.com/en-us/cli/azure/install-azure-cli
-   - Login: `az login`
+## The three-stack model
 
-3. **Azure Subscription**
-   - Ensure you have owner or contributor access
+| Stack | Root | State prefix | Holds |
+|-------|------|--------------|-------|
+| `common` | `infrastructure/common/` | `carditrack/common` | Artifact Registry (`carditrack-common`), mobile builds bucket (`carditrack-common-builds`), 9 store distribution secrets |
+| `dev` | `infrastructure/` | `carditrack/dev` | Full per-env stack (Cloud Run, Cloud SQL, buckets, secrets, LB/WAF, …) |
+| `prod` | `infrastructure/` | `carditrack/prod` | Same, with prod sizing/flags |
 
-## Getting Started
+There is **no staging environment** and no `modules/` directory — all per-env resources live in the single `deployments/` module, selected via tfvars.
 
-### 1. Configure Azure Authentication
+**Apply order:** `common` first (dev/prod images live in its Artifact Registry), then `dev`, then `prod`.
 
-```bash
-# Login to Azure
-az login
+## Running Terraform
 
-# Set the subscription (if you have multiple)
-az account set --subscription "YOUR_SUBSCRIPTION_ID"
-
-# Verify
-az account show
-```
-
-### 2. Initialize Terraform Backend (Optional)
-
-For production use, configure remote state storage:
+State lives in GCS; the bucket and prefix are supplied at init time (CI derives them from GitHub Variables):
 
 ```bash
-# Create a storage account for Terraform state
-az group create --name carditrack-tfstate-rg --location eastus
-az storage account create --name carditracktfstate --resource-group carditrack-tfstate-rg --location eastus --sku Standard_LRS
-az storage container create --name tfstate --account-name carditracktfstate
+# Dev / prod (root: infrastructure/)
+terraform -chdir=infrastructure init \
+  -backend-config="bucket=<state-bucket>" \
+  -backend-config="prefix=carditrack/<env>"
+terraform -chdir=infrastructure plan  -var-file="environments/<env>.tfvars"
+terraform -chdir=infrastructure apply -var-file="environments/<env>.tfvars"
 
-# Uncomment the backend configuration in backend.tf
+# Common (root: infrastructure/common/)
+terraform -chdir=infrastructure/common init \
+  -backend-config="bucket=<common-state-bucket>" \
+  -backend-config="prefix=carditrack/common"
+terraform -chdir=infrastructure/common apply -var-file="../environments/common.tfvars"
 ```
 
-### 3. Deploy Development Environment
+### Local state (experiments only)
 
 ```bash
-cd environments/dev
-
-# Copy the example variables file
-cp terraform.tfvars.example terraform.tfvars
-
-# Edit terraform.tfvars with your values
-# IMPORTANT: Set strong passwords and never commit this file to git
-
-# Initialize Terraform
-terraform init
-
-# Review the plan
-terraform plan
-
-# Apply the configuration
-terraform apply
+cp infrastructure/backend_override.tf.example infrastructure/backend_override.tf
+terraform -chdir=infrastructure init
 ```
 
-### 4. Deploy Production Environment
+`backend_override.tf` is gitignored and switches the backend to local state. Never use local state against real environments.
+
+### The normal apply path is CI
+
+The GitHub workflows `deploy-infra-dev.yml`, `deploy-infra-prod.yml`, and `deploy-infra-common.yml` are the standard way changes reach GCP. They run `fmt`/`validate`, bootstrap the state bucket if missing, plan on both the pinned and latest Terraform versions (compatibility matrix), post plans to PRs, and apply on `main` (dev) or manual dispatch (prod). Authentication is **Workload Identity Federation** as `carditrack-deploy@carditrack-490120.iam.gserviceaccount.com` — no service account keys. Prefer a PR + CI apply over local applies.
+
+## ⚠️ The `removed {}` blocks trap
+
+The Artifact Registry and builds bucket were **migrated from the dev/prod stacks into `common/`**. `infrastructure/artifact_registry.tf` and `infrastructure/builds_bucket.tf` now contain only `removed {}` blocks with `destroy = false` — they drop those resources from dev/prod state **without destroying them**, and were designed to be applied once after `common` was deployed.
+
+Do **not** re-apply an old copy of this configuration (or revert these files) without understanding this: reintroducing the old resource blocks alongside the `common` stack would make two states claim the same registry and bucket, and a destroy from the wrong state would take out shared CI infrastructure.
+
+## Secret seeding contract
+
+- Terraform creates app secrets with a **`REPLACE_ME` placeholder** and `lifecycle { ignore_changes = [secret_data] }` — applies never overwrite operator-set values.
+- Operators set real values out-of-band:
+  ```bash
+  echo -n "value" | gcloud secrets versions add carditrack-<env>-<name> --data-file=-
+  ```
+- **Passwords are generated inside Terraform** (`random_password` for the DB password and health token) — they are never placed in tfvars and never committed.
+- Terraform-owned values (DB connection string, `apm-mobile-engine`) track Terraform; do not edit them by hand.
+- `medgemma-service-url` is written by CI after each MedGemma deploy.
+
+Helper scripts (prompt for values, keep current version on empty input):
 
 ```bash
-cd environments/production
-
-# Copy the example variables file
-cp terraform.tfvars.example terraform.tfvars
-
-# Edit terraform.tfvars with your values
-# IMPORTANT: Set very strong passwords and configure Azure AD admin
-
-# Initialize Terraform
-terraform init
-
-# Review the plan
-terraform plan
-
-# Apply the configuration
-terraform apply
+bash scripts/set-auth0-secrets.sh <dev|prod>   # auth0-domain/audience/client-id/client-secret/mobile-client-id
+bash scripts/set-apm-secrets.sh   <dev|prod>   # apm-data connection JSON (Datadog / Better Stack)
 ```
 
-## Environment Differences
+Remaining operator-seeded secrets (`encryption-key`, `fitbit-client-id`, `fitbit-client-secret`, `gemini-api-key`, `apm-mobile-data`, and the `carditrack-common-*` store secrets) are set directly with `gcloud secrets versions add`.
 
-### Development
-- **App Service Plan**: B1 (Basic)
-- **SQL Database**: Basic tier
-- **Storage**: Locally redundant (LRS)
-- **Key Vault**: Standard, no purge protection
-- **Always On**: Disabled (cost savings)
-- **Backups**: Limited retention
+## Environment differences
 
-### Production
-- **App Service Plan**: P1v2 (Premium)
-- **SQL Database**: S2 (Standard) with 250GB
-- **Storage**: Geo-redundant (GRS)
-- **Key Vault**: Premium with HSM, purge protection enabled
-- **Always On**: Enabled
-- **Backups**: 90-day retention (HIPAA compliant)
-- **SignalR**: Standard tier
-- **Monitoring**: Enhanced with Application Insights
-
-## HIPAA Compliance Features
-
-The production environment includes:
-
-- ✅ **Encryption at rest**: TDE on SQL Database, storage encryption
-- ✅ **Encryption in transit**: TLS 1.2+ enforced
-- ✅ **Audit logging**: SQL Database auditing enabled (90 days)
-- ✅ **Key Vault**: Premium with HSM-backed keys
-- ✅ **Purge protection**: Enabled on Key Vault
-- ✅ **Data retention**: 90-day retention policies
-- ✅ **Network security**: Key Vault network ACLs
+| Setting | Dev | Prod |
+|---------|-----|------|
+| Cloud Run CPU / memory | 1 vCPU / 512 Mi | 2 vCPU / 1 Gi |
+| Cloud Run instances | 0–1 | 1–3 |
+| MedGemma | 8 vCPU / 16 Gi, max 1 instance (service exists only when `medgemma_image` set) | same |
+| Cloud SQL tier | `db-f1-micro`, 10 GB | `db-custom-2-7680`, 100 GB |
+| Cloud SQL HA | ZONAL | **REGIONAL** |
+| Cloud SQL deletion protection | off | **on** |
+| Public IP on Cloud SQL | no (private only) | no (private only) |
+| `enable_pubsub` | false | **true** (`carditrack-prod-realtime`) |
+| `enable_hipaa_compliance` | false | **true** (audit flags + audit sink/bucket) |
+| `audit_retention_days` | 30 (inert — HIPAA flag off) | 90 |
+| `apm_engine` | Datadog | Datadog (variable default is `BetterStack` — don't omit the tfvar) |
+| `apm_metrics_enabled` | true | false |
+| Custom domains | `api.dev.carditrack.com`, `app.dev.carditrack.com` | *(empty)* |
+| GCLB + Cloud CDN + Cloud Armor WAF | **active** (domain-gated) | **none** — prod runs on Cloud Run default URLs; edge enablement deferred |
 
 ## Outputs
 
-After deployment, Terraform will output:
+`terraform output` after an env apply:
 
-- **API URL**: Endpoint for the API application
-- **Web URL**: Endpoint for the web dashboard
-- **SQL Server FQDN**: Database connection string
-- **Key Vault URI**: Secrets management endpoint
-- **Application Insights Keys**: For monitoring (sensitive)
+- `gcp_project_id`, `gcp_region`
+- `api_service_url`, `api_service_name`
+- `web_service_url`, `web_service_name`
+- `cloud_sql_connection_name`, `cloud_sql_instance_name`, `cloud_sql_database_name`
+- `storage_bucket_name`, `storage_bucket_url`
+- `secret_manager_project`
+- `pubsub_topic_name`, `pubsub_topic_id` (null when Pub/Sub disabled)
 
-View outputs:
-```bash
-terraform output
-```
-
-## Destroy Environment
-
-**WARNING**: This will delete all resources. Only use for dev/test environments.
-
-```bash
-terraform destroy
-```
-
-## Cost Estimates
-
-### Development Environment
-- App Service Plan (B1): ~$13/month
-- SQL Database (Basic): ~$5/month
-- Storage Account: ~$2/month
-- Key Vault: ~$1/month
-- Application Insights: ~$2/month
-- **Total**: ~$25-30/month
-
-### Production Environment
-- App Service Plan (P1v2): ~$146/month
-- SQL Database (S2): ~$75/month
-- Storage Account (GRS): ~$10/month
-- Key Vault (Premium): ~$5/month
-- Application Insights: ~$10/month
-- SignalR (Standard): ~$50/month
-- **Total**: ~$300-350/month
+Common stack: `artifact_registry_repository`, `builds_bucket_name`, `store_distribution_secret_ids`.
 
 ## Troubleshooting
 
-### Authentication Issues
+**gcloud auth**
 ```bash
-# Re-login to Azure
-az login
-az account show
+gcloud auth list                             # active account?
+gcloud auth application-default login        # ADC for the google provider
+gcloud config set project carditrack-490120
+```
+Permission errors during plan/apply usually mean ADC is missing or points at the wrong account — Terraform uses Application Default Credentials, not your `gcloud auth login` session.
+
+**State lock**
+```bash
+terraform force-unlock <LOCK_ID>   # only after confirming no apply is running (check Actions)
 ```
 
-### State Lock Issues
-```bash
-# If using remote backend and state is locked
-terraform force-unlock <LOCK_ID>
-```
+**Backend init errors** — the GCS backend has no hardcoded bucket; always pass both `-backend-config` values shown above. Switching between local override and GCS requires `terraform init -reconfigure`.
 
-### Resource Name Conflicts
-- Azure resource names must be globally unique
-- Modify names in main.tf if needed
+---
 
-## Security Best Practices
-
-1. **Never commit terraform.tfvars** to source control
-2. Use **Azure Key Vault** for secrets in production
-3. Enable **Multi-Factor Authentication** on Azure accounts
-4. Rotate **SQL passwords** regularly
-5. Review **Azure security recommendations** regularly
-6. Enable **Azure Defender** for production resources
-
-## Next Steps
-
-After infrastructure is deployed:
-
-1. Configure **CI/CD pipelines** (see `.github/workflows/`)
-2. Deploy **application code** to App Services
-3. Run **database migrations** with EF Core
-4. Configure **custom domains** and SSL certificates
-5. Set up **monitoring alerts** in Application Insights
-6. Configure **device API credentials** (Fitbit, etc.)
-
-## Support
-
-For issues or questions, refer to:
-- [Terraform Azure Provider Docs](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs)
-- [Azure Documentation](https://docs.microsoft.com/en-us/azure/)
-- Project documentation in `/docs/`
+*Last Updated: August 7, 2026*

@@ -1,8 +1,54 @@
 # CardiMembers API
 
+> **Status: Planned — not yet implemented.** None of the endpoints below exist yet. See "Implemented today" for current coverage.
+
 Manages the elderly individuals being monitored (CardiMembers), their consent settings, monitoring pause state, and self-authored notes.
 
 **User Stories:** 1.2 (Adding First CardiMember), 7.1 (Consent & Transparency), 7.2 (Viewing Own Data), 7.3 (Pausing Monitoring)
+
+---
+
+## Implemented today
+
+CardiMember create/list currently lives on the **Onboarding** controller (note the `/api/Onboarding` route — no `v1` segment):
+
+### POST `/api/Onboarding/cardimember`
+
+Creates a CardiMember in the caller's organization (organization comes from the authenticated user context, never the body). Returns **201** with the member wrapped in the standard `ApiResponse<T>` envelope. Returns **403** if the caller has no organization yet ("set up your organization first"), **400** with field-level `errors` on validation failure.
+
+### GET `/api/Onboarding/cardimembers`
+
+Returns **200** with a plain list of the organization's CardiMembers — **no sorting, filtering, or `total` count**. Returns **403** if the caller has no organization.
+
+### Actual `CardiMemberResponse` shape
+
+```json
+{
+  "id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+  "name": "Margaret Doe",
+  "dateOfBirth": "1945-06-15",
+  "age": 80,
+  "gender": 2,
+  "email": "margaret@example.com",
+  "phone": "+15551234567",
+  "relationship": 2,
+  "isPrimaryCaregiver": false,
+  "isActive": true,
+  "createdDate": "2026-01-15T09:00:00Z"
+}
+```
+
+- `id` is a **raw GUID** — no `cm_` prefix.
+- `gender` and `relationship` are **integer enums** (`Gender`: Male=1, Female=2, Other=3, PreferNotToSay=4; `RelationshipType`: Self=1, Parent=2, Spouse=3, Grandparent=4, Sibling=5, Child=6, Other=99).
+- There is **no** `photoUrl`, `healthStatus`, `lastSyncedAt`, `monitoringPaused`, `activeAlertCount`, `medicalNotes`, `emergencyContacts`, `consentSettings`, or `baselineLearningProgress` — those fields below are design intent only.
+
+### Not yet built
+
+- **Plan-limit enforcement**: subscription `MaxCardiMembers` exists on the entity but **nothing enforces it** — the `CARDIMEMBER_LIMIT_REACHED` error below does not occur.
+- **Consent, monitoring pause, self-authored notes, photos**: no entities or endpoints exist for any of these.
+- Get-by-id, update, and delete endpoints do not exist.
+
+Everything below is the **planned** contract, kept as design intent.
 
 ---
 
@@ -334,3 +380,5 @@ Add a self-authored note as the CardiMember.
 ---
 
 **Related:** [readme.md](readme.md) | [devices.md](devices.md) | [User Stories 1.2, 7.1–7.3](../../ui/mobile/user_stories.md)
+
+**Last Updated:** August 7, 2026
