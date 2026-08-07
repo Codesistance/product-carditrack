@@ -479,10 +479,21 @@ jobs:
             -p:ApmEngine=${{ steps.auth0.outputs.apm_mobile_engine }} \
             -p:ApmData=$(printf '%s' "$APM_DATA" | base64 | tr -d '\n')
 
+  # Main only. Nothing ships from the Windows target — there is no store upload
+  # and deploy-apps-prod.yml never references it; the msix just lands in the GCS
+  # builds bucket. Its exclusive compile surface is one #if WINDOWS block in
+  # SecureTokenStore.cs (a fallback its own comment marks dev-only) plus the
+  # Platforms/Windows boilerplate, so running it per-PR bought little and, once
+  # the iOS and Android builds were cut to Debug, it *was* the PR critical path
+  # at ~5 min. A break here is caught on the next merge and blocks no release.
+  #
+  # The guard matches upload-mobile-artifacts, the only consumer of the msix:
+  # workflow_dispatch is not ref-restricted, so excluding pull_request alone
+  # would still build an artifact nothing collects on a feature-branch dispatch.
   build-mobile-windows:
     name: Build Mobile (Windows)
     needs: changes
-    if: needs.changes.outputs.mobile == 'true'
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && needs.changes.outputs.mobile == 'true'
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v6
@@ -500,14 +511,12 @@ jobs:
       - run: dotnet restore src/Core/CardiTrack.Domain/CardiTrack.Domain.csproj
       - run: dotnet restore src/Presentation/CardiTrack.Mobile.Core/CardiTrack.Mobile.Core.csproj
       # Auth0 config is stamped from Secret Manager (carditrack-dev-auth0-*).
-      # PR builds skip the fetch (no WIF auth off main) and compile unstamped.
+      # No PR guard needed on these — the job itself is main-only.
       - uses: google-github-actions/auth@v3
-        if: github.event_name != 'pull_request'
         with:
           workload_identity_provider: ${{ needs.changes.outputs.gcp_wif_provider }}
           service_account: ${{ needs.changes.outputs.gcp_service_account }}
       - uses: google-github-actions/get-secretmanager-secrets@v2
-        if: github.event_name != 'pull_request'
         id: auth0
         with:
           secrets: |
@@ -526,9 +535,8 @@ jobs:
             -p:Auth0Domain=${{ steps.auth0.outputs.domain }} `
             -p:Auth0ClientId=${{ steps.auth0.outputs.mobile_client_id }} `
             -p:Auth0Audience=${{ steps.auth0.outputs.audience }}
-      # Only main consumes these (upload-mobile-artifacts → GCS).
+      # Consumed by upload-mobile-artifacts → GCS.
       - uses: actions/upload-artifact@v7
-        if: github.event_name != 'pull_request'
         with:
           name: mobile-windows
           path: '**/*.msix'
