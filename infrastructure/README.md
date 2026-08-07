@@ -69,7 +69,8 @@ Do **not** re-apply an old copy of this configuration (or revert these files) wi
   ```bash
   echo -n "value" | gcloud secrets versions add carditrack-<env>-<name> --data-file=-
   ```
-- **Passwords are generated inside Terraform** (`random_password` for the DB password and health token) — they are never placed in tfvars and never committed.
+- **Secrets that need no human value are generated inside Terraform** (`random_password` for the DB password and health token, `random_bytes` for `encryption-key`) — never placed in tfvars, never committed.
+- `encryption-key` carries `ignore_changes = [secret_data]` for a reason beyond the usual one: the AES-GCM envelope has no key id, so rotating it makes existing device OAuth tokens undecryptable. An environment provisioned before this became Terraform-owned keeps whatever value it holds — check it is a real base64 32-byte key, not `REPLACE_ME`.
 - Terraform-owned values (DB connection string, `apm-mobile-engine`) track Terraform; do not edit them by hand.
 - `medgemma-service-url` is written by CI after each MedGemma deploy.
 
@@ -80,7 +81,7 @@ bash scripts/set-auth0-secrets.sh <dev|prod>   # auth0-domain/audience/client-id
 bash scripts/set-apm-secrets.sh   <dev|prod>   # apm-data connection JSON (Datadog / Better Stack)
 ```
 
-Remaining operator-seeded secrets (`encryption-key`, `devices-fitbit-client-id`, `devices-fitbit-client-secret`, `gemini-api-key`, `apm-mobile-data`, and the `carditrack-common-*` store secrets) are set directly with `gcloud secrets versions add`.
+Remaining operator-seeded secrets (`devices-fitbit-client-id`, `devices-fitbit-client-secret`, `gemini-api-key`, `apm-mobile-data`, and the `carditrack-common-*` store secrets) are set directly with `gcloud secrets versions add`.
 
 ## Environment differences
 

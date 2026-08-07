@@ -68,6 +68,10 @@ services:
       ASPNETCORE_ENVIRONMENT: Development
       ConnectionStrings__DefaultConnection: "Host=db;Port=5432;Database=carditrack;Username=postgres;Password=postgres"
       ConnectionStrings__Redis: "redis:6379"
+      # Local-development key ONLY — a throwaway value committed alongside the local
+      # postgres credentials so `docker compose up` works with no extra setup. Deployed
+      # environments read the real key from Secret Manager (carditrack-<env>-encryption-key).
+      Encryption__Key: "W2iqrS4VgOXDgwZQWCGj716pKcu2nLs1tk5j66oNzBY="
       AI__GeneralProvider: "Gemini"
       AI__MedicalProvider: "MedGemma"
       AI__Providers__0__Name: "MedGemma"
@@ -95,6 +99,8 @@ services:
       ASPNETCORE_ENVIRONMENT: Development
       ConnectionStrings__DefaultConnection: "Host=db;Port=5432;Database=carditrack;Username=postgres;Password=postgres"
       ConnectionStrings__Redis: "redis:6379"
+      # Must match the API's key — both encrypt/decrypt the same stored OAuth tokens.
+      Encryption__Key: "W2iqrS4VgOXDgwZQWCGj716pKcu2nLs1tk5j66oNzBY="
     depends_on:
       migrator:
         condition: service_completed_successfully

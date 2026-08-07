@@ -30,6 +30,42 @@ public class AesEncryptionServiceTests
         Assert.Throws<ArgumentException>(() => new AesEncryptionService(shortKey));
     }
 
+    [Theory]
+    [InlineData("GENERATE_32_BYTE_ENCRYPTION_KEY_HERE_REPLACE_WITH_SECURE_KEY")] // historical appsettings stub
+    [InlineData("REPLACE_ME")]                                                   // Terraform Secret Manager placeholder
+    [InlineData("replace_me")]
+    [InlineData("  REPLACE_ME  ")]
+    public void Ctor_RejectsPlaceholderKeysAsUnset(string key)
+    {
+        var ex = Assert.Throws<ArgumentException>(() => new AesEncryptionService(key));
+
+        Assert.Contains("Encryption:Key", ex.Message);
+        Assert.Contains("is not set", ex.Message);
+    }
+
+    [Theory]
+    [InlineData("not base64 at all!")]
+    [InlineData("****")]
+    public void Ctor_RejectsNonBase64KeysWithAnActionableMessage(string key)
+    {
+        // A raw FormatException from Convert.FromBase64String names neither the setting nor the fix.
+        var ex = Assert.Throws<ArgumentException>(() => new AesEncryptionService(key));
+
+        Assert.Contains("Encryption:Key", ex.Message);
+        Assert.Contains("base64", ex.Message);
+    }
+
+    [Fact]
+    public void Ctor_AcceptsKeyWithSurroundingWhitespace()
+    {
+        // Secret Manager values are frequently seeded with a trailing newline.
+        var padded = $"\n{AesEncryptionService.GenerateKey()}\n";
+
+        var service = new AesEncryptionService(padded);
+
+        Assert.Equal("payload", service.Decrypt(service.Encrypt("payload")));
+    }
+
     [Fact]
     public void GenerateKey_ProducesDistinct256BitKeys()
     {

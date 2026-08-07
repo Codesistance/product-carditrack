@@ -44,7 +44,7 @@ locals {
     "auth0-client-id"        = "REPLACE_ME"
     "auth0-client-secret"    = "REPLACE_ME"
     "auth0-mobile-client-id" = "REPLACE_ME" # Auth0 Native app client for the MAUI mobile app (public, no secret)
-    "encryption-key"         = "REPLACE_ME"
+    # encryption-key is NOT here — Terraform generates it (see "Encryption key" below).
     # Device-provider OAuth clients, one pair per provider, named
     # devices-{provider}-client-{id,secret} — Garmin, Withings and Oura follow the
     # same shape. Fitbit's pair is the Google Health API web client, created in the
@@ -106,7 +106,7 @@ resource "google_secret_manager_secret_version" "db_connection_string" {
   secret_data = local.db_connection_string
 }
 
-# ── Auth0 + Encryption (placeholder values, operator-overwritten) ─────────────
+# ── Auth0 + device OAuth + APM (placeholder values, operator-overwritten) ─────
 
 resource "google_secret_manager_secret" "app_secrets" {
   for_each  = local.placeholder_secrets
@@ -126,6 +126,63 @@ resource "google_secret_manager_secret_version" "app_secrets" {
   lifecycle {
     ignore_changes = [secret_data]
   }
+}
+
+# ── Encryption key (Terraform-owned, generated) ──────────────────────────────
+# Base64-encoded 256-bit AES-GCM key for field-level encryption of device OAuth
+# tokens (Encryption__Key). Generated here rather than left as a REPLACE_ME
+# placeholder: the placeholder is not valid base64, so an unseeded environment
+# fails at runtime the moment a device endpoint is hit.
+#
+# ignore_changes on the version is load-bearing, not cosmetic. Rotating this key
+# makes every token already encrypted under the old one permanently undecryptable
+# — there is no key id in the ciphertext envelope today (see
+# docs/technical/data_protection_architecture.md §7.1). Environments that already
+# hold a value therefore keep it; only a fresh environment takes the generated one.
+
+resource "random_bytes" "encryption_key" {
+  length = 32 # 256 bits
+}
+
+resource "google_secret_manager_secret" "encryption_key" {
+  secret_id = "${var.secret_id_prefix}-encryption-key"
+  replication {
+    auto {}
+  }
+  labels     = var.secret_labels
+  depends_on = [google_project_service.secretmanager]
+}
+
+resource "google_secret_manager_secret_version" "encryption_key" {
+  secret      = google_secret_manager_secret.encryption_key.id
+  secret_data = random_bytes.encryption_key.base64
+
+  lifecycle {
+    ignore_changes = [secret_data]
+  }
+}
+
+resource "google_secret_manager_secret_iam_member" "encryption_key_accessor" {
+  secret_id = google_secret_manager_secret.encryption_key.id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${data.google_project.current.number}-compute@developer.gserviceaccount.com"
+}
+
+# Adopt the secret, version and IAM binding the placeholder loop created in
+# already-provisioned environments instead of destroying and recreating them.
+moved {
+  from = google_secret_manager_secret.app_secrets["encryption-key"]
+  to   = google_secret_manager_secret.encryption_key
+}
+
+moved {
+  from = google_secret_manager_secret_version.app_secrets["encryption-key"]
+  to   = google_secret_manager_secret_version.encryption_key
+}
+
+moved {
+  from = google_secret_manager_secret_iam_member.app_secrets_accessor["encryption-key"]
+  to   = google_secret_manager_secret_iam_member.encryption_key_accessor
 }
 
 # ── Mobile APM engine (Terraform-owned — the mobile monitoring switch) ────────
