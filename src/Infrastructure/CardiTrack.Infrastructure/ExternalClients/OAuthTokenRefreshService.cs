@@ -1,5 +1,6 @@
 using System.Net.Http.Headers;
 using CardiTrack.Application.Interfaces.Repositories;
+using CardiTrack.Application.Interfaces.Security;
 using CardiTrack.Domain.Entities;
 using CardiTrack.Domain.Enums;
 using CardiTrack.Application.Interfaces.Security;

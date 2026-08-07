@@ -85,7 +85,13 @@ try
 
     // MIDDLEWARE PIPELINE
     app.UseHttpsRedirection();
-    app.UseSerilogRequestLogging();
+    // Pinned, not left to the library default. The OAuth callback carries the provider's
+    // authorization code and our state token in the query string, so logging it would put a
+    // live credential in Cloud Logging and the APM provider. Serilog 10 defaults this to false
+    // and the Microsoft.AspNetCore level override in appsettings suppresses the hosting
+    // diagnostics that would otherwise log the full URL — this makes the guarantee explicit
+    // rather than a coincidence of two defaults. Do not set to true.
+    app.UseSerilogRequestLogging(options => options.IncludeQueryInRequestPath = false);
     app.UseMiddleware<ExceptionHandlingMiddleware>();
     app.UseIpRateLimiting();
 

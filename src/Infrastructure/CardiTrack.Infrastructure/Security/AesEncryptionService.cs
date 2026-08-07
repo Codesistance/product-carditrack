@@ -12,9 +12,19 @@ namespace CardiTrack.Infrastructure.Security;
 public class AesEncryptionService : IEncryptionService
 {
     private readonly byte[] _key;
+    private readonly string _keyId;
+
     private const int NonceSize = 12; // 96 bits for GCM
     private const int TagSize = 16;   // 128 bits authentication tag
     private const int KeySize = 32;   // 256 bits
+
+    // Ciphertext is stored as "{version}:{keyId}:{base64}". Recording the key id is what makes
+    // rotation and crypto-shredding possible later: without it, nothing can tell which key any
+    // given row was written under, so a key can never be retired and erasure-by-key-destruction
+    // is not available. ':' is outside the base64 alphabet, so it cannot occur in the payload.
+    private const string EnvelopeVersion = "v1";
+    private const char Separator = ':';
+    private const int KeyIdLength = 8;
 
     /// <summary>
     /// Seeded values that document the shape of the setting but are not keys — Terraform's
@@ -48,7 +58,14 @@ public class AesEncryptionService : IEncryptionService
                 nameof(base64Key));
 
         _key = buffer;
+        _keyId = DeriveKeyId(buffer);
     }
+
+    /// <summary>
+    /// The key this service holds, as it appears in envelopes. Exposed for operational
+    /// diagnostics — telling which key a deployment is configured with without revealing it.
+    /// </summary>
+    public string KeyId => _keyId;
 
     public string Encrypt(string plainText)
     {
@@ -57,7 +74,7 @@ public class AesEncryptionService : IEncryptionService
 
         var plainBytes = Encoding.UTF8.GetBytes(plainText);
         var cipherBytes = EncryptBytes(plainBytes);
-        return Convert.ToBase64String(cipherBytes);
+        return $"{EnvelopeVersion}{Separator}{_keyId}{Separator}{Convert.ToBase64String(cipherBytes)}";
     }
 
     public string Decrypt(string cipherText)
@@ -65,10 +82,43 @@ public class AesEncryptionService : IEncryptionService
         if (string.IsNullOrEmpty(cipherText))
             return cipherText ?? string.Empty;
 
-        var cipherBytes = Convert.FromBase64String(cipherText);
+        var (keyId, payload) = ParseEnvelope(cipherText);
+
+        // A value written under a key we no longer hold cannot be read, and must say so plainly.
+        // Without this the failure surfaces as a bare AuthenticationTagMismatchException, which
+        // reads like corruption rather than "the wrong key is deployed".
+        if (keyId is not null && !string.Equals(keyId, _keyId, StringComparison.Ordinal))
+            throw new InvalidOperationException(
+                $"Ciphertext was written under encryption key '{keyId}', but this service holds " +
+                $"key '{_keyId}'. Restore that key to read this value, or re-encrypt it under the " +
+                "current key. Dropping a retired key is what makes its data unrecoverable by design.");
+
+        var cipherBytes = Convert.FromBase64String(payload);
         var plainBytes = DecryptBytes(cipherBytes);
         return Encoding.UTF8.GetString(plainBytes);
     }
+
+    /// <summary>
+    /// Splits "<c>{version}:{keyId}:{base64}</c>". Returns a null key id for values written
+    /// before envelopes existed — those are bare base64 and were encrypted under the key in use
+    /// at the time, so they decrypt with the current key or not at all.
+    /// </summary>
+    private static (string? KeyId, string Payload) ParseEnvelope(string cipherText)
+    {
+        var parts = cipherText.Split(Separator);
+        if (parts.Length != 3 || parts[0] != EnvelopeVersion)
+            return (null, cipherText);
+
+        return (parts[1], parts[2]);
+    }
+
+    /// <summary>
+    /// A short, stable fingerprint of the key — not the key itself, and not reversible to it.
+    /// Derived rather than configured so a rotated key cannot accidentally keep the old id and
+    /// silently make old and new ciphertext indistinguishable.
+    /// </summary>
+    private static string DeriveKeyId(byte[] key) =>
+        Convert.ToHexStringLower(SHA256.HashData(key))[..KeyIdLength];
 
     public byte[] EncryptBytes(byte[] plainBytes)
     {
