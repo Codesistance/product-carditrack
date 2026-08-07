@@ -16,6 +16,7 @@ public class UnitOfWork : IUnitOfWork
     public IUserCardiMemberRepository UserCardiMembers { get; }
     public IDeviceConnectionRepository DeviceConnections { get; }
     public IActivityLogRepository ActivityLogs { get; }
+    public IDeviceActivityLogRepository DeviceActivityLogs { get; }
     public IDeviceRepository Devices { get; }
     public IAlertRepository Alerts { get; }
     public IPatternBaselineRepository PatternBaselines { get; }
@@ -29,6 +30,7 @@ public class UnitOfWork : IUnitOfWork
         IUserCardiMemberRepository userCardiMembers,
         IDeviceConnectionRepository deviceConnections,
         IActivityLogRepository activityLogs,
+        IDeviceActivityLogRepository deviceActivityLogs,
         IDeviceRepository devices,
         IAlertRepository alerts,
         IPatternBaselineRepository patternBaselines)
@@ -41,6 +43,7 @@ public class UnitOfWork : IUnitOfWork
         UserCardiMembers = userCardiMembers;
         DeviceConnections = deviceConnections;
         ActivityLogs = activityLogs;
+        DeviceActivityLogs = deviceActivityLogs;
         Devices = devices;
         Alerts = alerts;
         PatternBaselines = patternBaselines;

@@ -38,9 +38,11 @@ public class FitbitApiClient : IFitbitApiClient, IDeviceApiClient
         var calories = ReadInt(caloriesTask.Result, "kilocalories_sum", "kilocalories", "count") ?? 0; // (assumed)
         var floors = ReadInt(floorsTask.Result, "count", "floors_sum") ?? 0; // (assumed)
 
-        // The Health API has no sedentary-minutes data type; ActivityLog treats 0 as "not provided".
+        // The Health API has no sedentary-minutes data type. Report it as null, not 0: the
+        // multi-device merge coalesces on the first non-null value, and a placeholder 0 from a
+        // higher-priority device would beat another device's genuine reading.
         return new FitbitActivitiesResult(
-            steps, decimal.Round(distanceMeters / 1000m, 3), activeMinutes, 0, floors, calories);
+            steps, decimal.Round(distanceMeters / 1000m, 3), activeMinutes, null, floors, calories);
     }
 
     public async Task<FitbitHeartRateResult> GetHeartRateAsync(string accessToken, DateOnly date)

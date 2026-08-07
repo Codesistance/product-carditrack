@@ -86,10 +86,28 @@ public abstract class CronBackgroundService : BackgroundService
 
 Reads its cron schedule from the named `WorkerOptions` (see [Configuration](#configuration)), creates a DI scope per run, and dispatches to the keyed `IDeviceSyncService` for each due device connection.
 
-Two rules shape which connections it actually syncs:
+**Due** means the connection's own `SyncFrequencyMinutes` has elapsed since its `LastSyncDate` — the interval is per connection, not a fixed threshold, so the cron schedule sets only how often the worker *looks*. Every due connection syncs, including several belonging to the same CardiMember.
 
-- **Due** means the connection's own `SyncFrequencyMinutes` has elapsed since its `LastSyncDate` — the interval is per connection, not a fixed threshold, so the cron schedule sets only how often the worker *looks*.
-- **One device per CardiMember per run.** `ActivityLogs` is unique on `(CardiMemberId, Date)`, so a member's devices would otherwise overwrite each other's row every cycle. The member's `IsPrimary` device wins, falling back to the longest-connected one so the choice is stable across runs.
+`GetDueForSyncAsync` also excludes connections whose CardiMember has been removed or has monitoring paused. That filter lives in the query rather than the worker so every caller inherits it — pausing monitoring has to actually stop collection, not merely change what the app displays.
+
+### Two-tier health data
+
+Wearable data lands in two tables:
+
+| Table | Grain | Written by |
+|-------|-------|------------|
+| `DeviceActivityLogs` | one row per **device** per day — unique on `(DeviceConnectionId, Date)` | `DeviceSyncService`, straight from the provider |
+| `ActivityLogs` | one row per **CardiMember** per day — unique on `(CardiMemberId, Date)` | `ActivityLogAggregationService`, derived from the raw rows |
+
+Every reader (`DashboardService`, `HealthInsightService`, `ReportGenerationService`, the chat endpoint) consumes `ActivityLogs` only, so a member wearing two devices still presents as one clean daily series.
+
+The merge (`ActivityLogMerge`) resolves **each metric independently**: the first device, in priority order, that reported a non-null value wins. Values are **never summed** — a watch and a ring worn by the same person both count the same steps, so adding them would double-count. Coalescing instead lets devices fill each other's gaps, which is the real benefit of wearing more than one: the ring supplies sleep and SpO2, the watch supplies steps and heart rate.
+
+Priority is `IsPrimary` desc → `ConnectedDate` asc → `Id`, the same ordering everywhere. A raw row whose connection has since been removed is kept and simply sorted last, so deleting a device never silently drops history.
+
+Because the merge always rebuilds from the full raw set for that member-day, it is idempotent and order-independent — re-running it, or running it after any device's row changes, converges on the same result. A provider that later revises a day is picked up on the next sync.
+
+> **Providers must report a missing metric as `null`, never `0`.** The merge coalesces on the first non-null value, so a placeholder `0` from a higher-priority device would beat another device's genuine reading.
 
 ```csharp
 public class WearableSyncWorker : CronBackgroundService
@@ -108,17 +126,7 @@ public class WearableSyncWorker : CronBackgroundService
             .GetRequiredService<IDeviceConnectionRepository>();
 
         // Due per each connection's own SyncFrequencyMinutes
-        var due = (await deviceConnections.GetDueForSyncAsync()).ToList();
-
-        // One writer per CardiMember — primary device first, then longest-connected
-        var connections = due
-            .GroupBy(c => c.CardiMemberId)
-            .Select(g => g
-                .OrderByDescending(c => c.IsPrimary)
-                .ThenBy(c => c.ConnectedDate ?? DateTime.MaxValue)
-                .ThenBy(c => c.Id)
-                .First())
-            .ToList();
+        var connections = await deviceConnections.GetDueForSyncAsync();
 
         foreach (var connection in connections)
         {
@@ -140,7 +148,7 @@ public class WearableSyncWorker : CronBackgroundService
 
 Each sync goes through `DeviceSyncService`, which first refreshes the connection's OAuth token via `OAuthTokenRefreshService` when needed — token refresh is part of the sync path, not a standalone job.
 
-It then fetches a **trailing window** of days rather than a single day. Providers finalise a day's data only after midnight, so the window ends at yesterday and reaches back `DeviceProviders:<provider>:SyncLookbackDays` (default **3**). Days are fetched oldest first and each is upserted and saved as it arrives, so a provider failure part-way through still leaves the earlier days stored; `LastSyncDate` is stamped only once the whole window lands, which keeps a partially-synced connection due for retry instead of silently leaving a hole.
+It then fetches a **trailing window** of days rather than a single day. Providers finalise a day's data only after midnight, so the window ends at yesterday and reaches back `DeviceProviders:<provider>:SyncLookbackDays` (default **3**). Days are fetched oldest first; each is written to `DeviceActivityLogs` and saved, then that member-day is re-merged into `ActivityLogs`. The raw row is saved before the merge runs because the merge reads every device's *stored* row for the day. A provider failure part-way through still leaves the earlier days stored; `LastSyncDate` is stamped only once the whole window lands, which keeps a partially-synced connection due for retry instead of silently leaving a hole.
 
 ### OrphanedOrganizationCleanupWorker
 

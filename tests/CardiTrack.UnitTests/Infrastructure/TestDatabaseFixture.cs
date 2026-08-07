@@ -1,4 +1,6 @@
 using CardiTrack.Application.Interfaces.Repositories;
+using CardiTrack.Application.Interfaces.Services;
+using CardiTrack.Application.Services;
 using CardiTrack.Infrastructure.Persistence;
 using CardiTrack.Infrastructure.Repositories;
 using Microsoft.EntityFrameworkCore;
@@ -28,6 +30,8 @@ public class TestDatabaseFixture : IAsyncLifetime
         services.AddScoped<ICardiMemberRepository, CardiMemberRepository>();
         services.AddScoped<IDeviceConnectionRepository, DeviceConnectionRepository>();
         services.AddScoped<IActivityLogRepository, ActivityLogRepository>();
+        services.AddScoped<IDeviceActivityLogRepository, DeviceActivityLogRepository>();
+        services.AddScoped<IActivityLogAggregationService, ActivityLogAggregationService>();
         services.AddScoped<IUserRepository, UserRepository>();
         services.AddScoped<ISubscriptionRepository, SubscriptionRepository>();
         services.AddScoped<IUserCardiMemberRepository, UserCardiMemberRepository>();

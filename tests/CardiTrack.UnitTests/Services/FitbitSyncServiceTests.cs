@@ -1,4 +1,5 @@
 using CardiTrack.Application.Interfaces.Repositories;
+using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Domain.Entities;
 using CardiTrack.Domain.Enums;
 using CardiTrack.Infrastructure.ExternalClients;
@@ -15,7 +16,8 @@ public class DeviceSyncServiceTests
     private readonly IOAuthTokenRefreshService _tokenRefresh = Substitute.For<IOAuthTokenRefreshService>();
     private readonly IDeviceApiClient _deviceApi = Substitute.For<IDeviceApiClient>();
     private readonly IDeviceConnectionRepository _deviceConnections = Substitute.For<IDeviceConnectionRepository>();
-    private readonly IActivityLogRepository _activityLogs = Substitute.For<IActivityLogRepository>();
+    private readonly IDeviceActivityLogRepository _deviceActivityLogs = Substitute.For<IDeviceActivityLogRepository>();
+    private readonly IActivityLogAggregationService _aggregation = Substitute.For<IActivityLogAggregationService>();
     private readonly IUnitOfWork _unitOfWork = Substitute.For<IUnitOfWork>();
 
     private readonly DeviceConnection _fitbitConnection = new()
@@ -45,7 +47,8 @@ public class DeviceSyncServiceTests
     {
         var options = Options.Create(new List<DeviceProviderSettings> { _fitbitConfig });
         return new DeviceSyncService(
-            _tokenRefresh, _deviceApi, _deviceConnections, _activityLogs, _unitOfWork, options);
+            _tokenRefresh, _deviceApi, _deviceConnections, _deviceActivityLogs,
+            _aggregation, _unitOfWork, options);
     }
 
     private static DeviceHealthSnapshot Snapshot(int steps = 8000) =>
@@ -88,7 +91,7 @@ public class DeviceSyncServiceTests
 
         await CreateSut().SyncCardiMemberAsync(_fitbitConnection);
 
-        await _activityLogs.Received(1).UpsertAsync(Arg.Is<ActivityLog>(log =>
+        await _deviceActivityLogs.Received(1).UpsertAsync(Arg.Is<DeviceActivityLog>(log =>
             log != null &&
             log.Date == Yesterday &&
             log.CardiMemberId == _fitbitConnection.CardiMemberId &&
@@ -113,11 +116,11 @@ public class DeviceSyncServiceTests
         for (var offset = 0; offset < LookbackDays; offset++)
         {
             var expected = Yesterday.AddDays(-offset);
-            await _activityLogs.Received(1).UpsertAsync(Arg.Is<ActivityLog>(log =>
+            await _deviceActivityLogs.Received(1).UpsertAsync(Arg.Is<DeviceActivityLog>(log =>
                 log != null && log.Date == expected));
         }
 
-        await _activityLogs.Received(LookbackDays).UpsertAsync(Arg.Any<ActivityLog>());
+        await _deviceActivityLogs.Received(LookbackDays).UpsertAsync(Arg.Any<DeviceActivityLog>());
     }
 
     [Fact]
@@ -129,9 +132,47 @@ public class DeviceSyncServiceTests
 
         await CreateSut().SyncCardiMemberAsync(_fitbitConnection);
 
-        await _activityLogs.Received(1).UpsertAsync(Arg.Is<ActivityLog>(log =>
+        await _deviceActivityLogs.Received(1).UpsertAsync(Arg.Is<DeviceActivityLog>(log =>
             log != null && log.Date == Yesterday));
-        await _activityLogs.Received(1).UpsertAsync(Arg.Any<ActivityLog>());
+        await _deviceActivityLogs.Received(1).UpsertAsync(Arg.Any<DeviceActivityLog>());
+    }
+
+    // The raw row is the sync's output; the ActivityLogs row readers consume is derived from it,
+    // so every synced day must trigger a recompute for that member-day.
+    [Fact]
+    public async Task SyncCardiMemberAsync_RecomputesTheMergedRow_ForEveryDaySynced()
+    {
+        SetupSuccessfulTokenRefresh();
+        SetupDefaultApiResponse();
+
+        await CreateSut().SyncCardiMemberAsync(_fitbitConnection);
+
+        for (var offset = 0; offset < LookbackDays; offset++)
+        {
+            var expected = Yesterday.AddDays(-offset);
+            await _aggregation.Received(1)
+                .RecomputeAsync(_fitbitConnection.CardiMemberId, expected);
+        }
+    }
+
+    // The merge reads stored rows, so the raw row has to be saved before the recompute runs.
+    [Fact]
+    public async Task SyncCardiMemberAsync_SavesTheRawRow_BeforeRecomputing()
+    {
+        // One day, so the asserted order is the whole call sequence.
+        _fitbitConfig.SyncLookbackDays = 1;
+        SetupSuccessfulTokenRefresh();
+        SetupDefaultApiResponse();
+
+        await CreateSut().SyncCardiMemberAsync(_fitbitConnection);
+
+        Received.InOrder(() =>
+        {
+            _deviceActivityLogs.UpsertAsync(Arg.Any<DeviceActivityLog>());
+            _unitOfWork.SaveChangesAsync();
+            _aggregation.RecomputeAsync(Arg.Any<Guid>(), Arg.Any<DateOnly>());
+            _unitOfWork.SaveChangesAsync();
+        });
     }
 
     [Fact]
@@ -191,8 +232,8 @@ public class DeviceSyncServiceTests
         await Assert.ThrowsAsync<FitbitApiException>(() =>
             CreateSut().SyncCardiMemberAsync(_fitbitConnection));
 
-        await _activityLogs.Received(LookbackDays - 1).UpsertAsync(Arg.Any<ActivityLog>());
-        await _unitOfWork.Received(LookbackDays - 1).SaveChangesAsync();
+        await _deviceActivityLogs.Received(LookbackDays - 1).UpsertAsync(Arg.Any<DeviceActivityLog>());
+        await _aggregation.Received(LookbackDays - 1).RecomputeAsync(Arg.Any<Guid>(), Arg.Any<DateOnly>());
     }
 
     [Fact]

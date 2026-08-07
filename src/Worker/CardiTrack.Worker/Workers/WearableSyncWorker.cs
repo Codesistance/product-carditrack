@@ -25,28 +25,10 @@ public class WearableSyncWorker : CronBackgroundService
 
         using var scope = _scopeFactory.CreateScope();
         var deviceConnections = scope.ServiceProvider.GetRequiredService<IDeviceConnectionRepository>();
-        var due = (await deviceConnections.GetDueForSyncAsync()).ToList();
-
-        // ActivityLogs holds one row per CardiMember per day, so only one of a member's devices
-        // may write it — otherwise two connections would overwrite each other every cycle. The
-        // member's primary device wins, falling back to the longest-connected one so the choice
-        // stays stable across runs when no device is flagged primary.
-        var connections = due
-            .GroupBy(c => c.CardiMemberId)
-            .Select(g => g
-                .OrderByDescending(c => c.IsPrimary)
-                .ThenBy(c => c.ConnectedDate ?? DateTime.MaxValue)
-                .ThenBy(c => c.Id)
-                .First())
-            .ToList();
-
-        var skippedCount = due.Count - connections.Count;
-        if (skippedCount > 0)
-        {
-            _logger.LogInformation(
-                "Skipping {Skipped} non-primary connection(s); their CardiMember is synced from another device.",
-                skippedCount);
-        }
+        // Every due connection syncs. Each writes its own raw DeviceActivityLogs row, and the
+        // merge folds a member's devices into the single ActivityLogs row readers consume, so
+        // two devices on one member no longer contend for it.
+        var connections = await deviceConnections.GetDueForSyncAsync();
 
         var successCount = 0;
         var failureCount = 0;

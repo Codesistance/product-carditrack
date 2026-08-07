@@ -55,7 +55,9 @@ public static class TestDataSeeder
         ConnectionStatus status = ConnectionStatus.Connected,
         bool isActive = true,
         DateTime? lastSyncDate = null,
-        int syncFrequencyMinutes = 30)
+        int syncFrequencyMinutes = 30,
+        bool isPrimary = false,
+        DateTime? connectedDate = null)
     {
         var repo = scope.ServiceProvider.GetRequiredService<IDeviceConnectionRepository>();
         var uow = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
@@ -71,7 +73,9 @@ public static class TestDataSeeder
             RefreshToken = "enc_refresh",
             TokenExpiry = DateTime.UtcNow.AddHours(8),
             LastSyncDate = lastSyncDate,
-            SyncFrequencyMinutes = syncFrequencyMinutes
+            SyncFrequencyMinutes = syncFrequencyMinutes,
+            IsPrimary = isPrimary,
+            ConnectedDate = connectedDate
         };
 
         await repo.AddAsync(connection);

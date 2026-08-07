@@ -37,6 +37,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<CardiTrack.Application.Interfaces.Services.ICardiMemberService, CardiTrack.Application.Services.CardiMemberService>();
         services.AddScoped<CardiTrack.Application.Interfaces.Services.ISubscriptionService, CardiTrack.Application.Services.SubscriptionService>();
         services.AddScoped<CardiTrack.Application.Interfaces.Services.IDashboardService, CardiTrack.Application.Services.DashboardService>();
+        services.AddScoped<CardiTrack.Application.Interfaces.Services.IActivityLogAggregationService, CardiTrack.Application.Services.ActivityLogAggregationService>();
         services.AddScoped<CardiTrack.Application.Interfaces.Services.IOnboardingService, CardiTrack.Application.Services.OnboardingService>();
 
         return services;
@@ -68,6 +69,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IUserCardiMemberRepository, CardiTrack.Infrastructure.Repositories.UserCardiMemberRepository>();
         services.AddScoped<IDeviceConnectionRepository, CardiTrack.Infrastructure.Repositories.DeviceConnectionRepository>();
         services.AddScoped<IActivityLogRepository, CardiTrack.Infrastructure.Repositories.ActivityLogRepository>();
+        services.AddScoped<IDeviceActivityLogRepository, CardiTrack.Infrastructure.Repositories.DeviceActivityLogRepository>();
         services.AddScoped<IDeviceRepository, DeviceRepository>();
         services.AddScoped<IAlertRepository, CardiTrack.Infrastructure.Repositories.AlertRepository>();
         services.AddScoped<IPatternBaselineRepository, CardiTrack.Infrastructure.Repositories.PatternBaselineRepository>();

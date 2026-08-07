@@ -1,5 +1,7 @@
 using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Interfaces.Security;
+using CardiTrack.Application.Interfaces.Services;
+using CardiTrack.Application.Services;
 using CardiTrack.Infrastructure.Extensions;
 using CardiTrack.Infrastructure.ExternalClients;
 using CardiTrack.Infrastructure.Persistence;
@@ -61,10 +63,14 @@ builder.Services.AddScoped<ISubscriptionRepository, SubscriptionRepository>();
 builder.Services.AddScoped<IUserCardiMemberRepository, UserCardiMemberRepository>();
 builder.Services.AddScoped<IDeviceConnectionRepository, DeviceConnectionRepository>();
 builder.Services.AddScoped<IActivityLogRepository, ActivityLogRepository>();
+builder.Services.AddScoped<IDeviceActivityLogRepository, DeviceActivityLogRepository>();
 builder.Services.AddScoped<IDeviceRepository, DeviceRepository>();
 builder.Services.AddScoped<IAlertRepository, AlertRepository>();
 builder.Services.AddScoped<IPatternBaselineRepository, PatternBaselineRepository>();
 builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
+
+// Application services
+builder.Services.AddScoped<IActivityLogAggregationService, ActivityLogAggregationService>();
 
 // External clients
 builder.Services.AddScoped<IOAuthTokenRefreshService, OAuthTokenRefreshService>();

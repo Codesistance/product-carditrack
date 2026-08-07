@@ -2,7 +2,7 @@
 
 This document provides an overview of all domain entities in the CardiTrack system. All entities live in **PostgreSQL 16 on GCP Cloud SQL**, the transactional system of record; the planned AI pipeline's outputs are documented separately in [llm_design.md](../llm_design.md). Field-level protection (what is encrypted, and what is planned to be) is covered in [data_protection_architecture.md](./data_protection_architecture.md).
 
-**Implemented today:** 11 entities and 13 enums exist in `CardiTrack.Domain`, mapped by EF Core (6 migrations applied). A further set of feature entities is designed but not yet built — see the "Planned" section below.
+**Implemented today:** 12 entities and 13 enums exist in `CardiTrack.Domain`, mapped by EF Core (7 migrations applied). A further set of feature entities is designed but not yet built — see the "Planned" section below.
 
 ## Entity Overview
 
@@ -45,20 +45,28 @@ This document provides an overview of all domain entities in the CardiTrack syst
 - `SyncFrequencyMinutes` — default **30** (drives the polling sync cycle)
 - No FK constraints - uses CardiMemberId (Guid)
 
-#### 6. **ActivityLog**
-- Normalized daily health data from all device types, keyed by CardiMemberId + DeviceConnectionId + Date
-- **Rich metric surface (~25 nullable metrics)**: Steps, Distance, ActiveMinutes, SedentaryMinutes, Floors, CaloriesBurned; Resting/Avg/Max/Min heart rate; sleep duration, start/end, efficiency, and Deep/Light/REM/Awake stage minutes; SpO2 (avg/min/max), VO2Max, StressScore, BreathingRate, Temperature
-- Tracks DataSource (which device provided the data)
+#### 6. **DeviceActivityLog** *(raw)*
+- One day of metrics exactly as a **single device** reported them — **unique on (DeviceConnectionId, Date)**
+- Same ~25 nullable metric columns as ActivityLog; indexed on (CardiMemberId, Date) for the merge read
+- A CardiMember wearing several devices has one row here **per device per day**
 - No FK constraints - uses CardiMemberId and DeviceConnectionId (Guid)
 
-#### 7. **Alert**
+#### 7. **ActivityLog** *(derived)*
+- Normalized daily health data for a CardiMember — **unique on (CardiMemberId, Date)**, one row per member per day
+- Derived from that member's DeviceActivityLog rows by `ActivityLogMerge`; **every reader consumes this table, not the raw one**
+- Merge rule: each metric resolved independently, first non-null wins by device priority (`IsPrimary` desc → `ConnectedDate` asc → `Id`). **Never sums** — two wearables on one body count the same steps. Idempotent, since it always rebuilds from the full raw set
+- **Rich metric surface (~25 nullable metrics)**: Steps, Distance, ActiveMinutes, SedentaryMinutes, Floors, CaloriesBurned; Resting/Avg/Max/Min heart rate; sleep duration, start/end, efficiency, and Deep/Light/REM/Awake stage minutes; SpO2 (avg/min/max), VO2Max, StressScore, BreathingRate, Temperature
+- DataSource / DeviceConnectionId record the highest-priority contributing device
+- No FK constraints - uses CardiMemberId and DeviceConnectionId (Guid)
+
+#### 8. **Alert**
 - AI-generated health alerts (generation is planned; the table exists)
 - AlertType: Inactivity, HeartRate, Sleep, PatternBreak, Trend
 - AlertSeverity: Green, Yellow, Orange, Red (Green = 1, informational)
 - No AlertStatus enum — lifecycle is tracked with `AcknowledgedDate`, `AcknowledgedByUserId`, and a boolean `IsResolved`
 - MetricValues JSON captures the triggering readings
 
-#### 8. **PatternBaseline**
+#### 9. **PatternBaseline**
 - AI-learned normal patterns for each CardiMember (calculation job not yet built)
 - Calculated over 30, 60, or 90 day periods
 - Contains: Average steps, heart rate baselines, sleep patterns
@@ -66,20 +74,20 @@ This document provides an overview of all domain entities in the CardiTrack syst
 
 ### Business Entities
 
-#### 9. **Subscription**
+#### 10. **Subscription**
 - Trial/subscription state per organization — **no billing integration and no Stripe fields**
 - Contains: Tier (Basic, Complete, Plus), Status, StartDate, EndDate, `TrialEndDate` (30-day trial), BillingCycle, Price, Currency (default USD), PaymentMethod (JSON), Features (JSON)
 - MaxCardiMembers and MaxUsers are **organization-type driven**, not tier driven: Family 5 members / 1 user; Business 50 / 20
 - Unique index on OrganizationId; **FK to Organizations with cascade delete** (the one FK in the schema)
 
-#### 10. **Device** (Catalog)
+#### 11. **Device** (Catalog)
 - Reference data for supported wearable devices
 - Contains: DeviceType, Manufacturer, ModelName, DisplayName, Capabilities (JSON), ApiEndpoint, OAuthConfig (JSON), SortOrder, IconUrl
 - Used for UI display and capability checking; catalog `DisplayName` takes precedence over the enum display name
 
 ### Compliance Entities
 
-#### 11. **AuditLog**
+#### 12. **AuditLog**
 - HIPAA compliance audit trail for PHI access
 - Contains: UserId, CardiMemberId, Action, EntityType, Timestamp, IP address, user agent, request details, DataAccessed/ChangedFields (JSON)
 - **90-day minimum retention** (configured 30 days dev / 90 days prod via tfvars)
@@ -147,7 +155,8 @@ Organization (1) ──→ (1) Subscription   [FK, cascade delete]
 User (M) ←──→ (N) CardiMember (via UserCardiMember join table)
 
 CardiMember (1) ──→ (N) DeviceConnection
-CardiMember (1) ──→ (N) ActivityLog
+DeviceConnection (1) ──→ (N) DeviceActivityLog   [raw: one per device per day]
+CardiMember (1) ──→ (N) ActivityLog              [derived: one per member per day]
 CardiMember (1) ──→ (N) Alert
 CardiMember (1) ──→ (N) PatternBaseline
 

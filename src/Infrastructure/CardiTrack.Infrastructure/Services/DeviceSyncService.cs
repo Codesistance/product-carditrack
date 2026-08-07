@@ -17,7 +17,8 @@ public class DeviceSyncService : IDeviceSyncService
     private readonly IOAuthTokenRefreshService _tokenRefresh;
     private readonly IDeviceApiClient _deviceApi;
     private readonly IDeviceConnectionRepository _deviceConnections;
-    private readonly IActivityLogRepository _activityLogs;
+    private readonly IDeviceActivityLogRepository _deviceActivityLogs;
+    private readonly IActivityLogAggregationService _aggregation;
     private readonly IUnitOfWork _unitOfWork;
     private readonly List<DeviceProviderSettings> _providers;
 
@@ -25,14 +26,16 @@ public class DeviceSyncService : IDeviceSyncService
         IOAuthTokenRefreshService tokenRefresh,
         IDeviceApiClient deviceApi,
         IDeviceConnectionRepository deviceConnections,
-        IActivityLogRepository activityLogs,
+        IDeviceActivityLogRepository deviceActivityLogs,
+        IActivityLogAggregationService aggregation,
         IUnitOfWork unitOfWork,
         IOptions<List<DeviceProviderSettings>> providers)
     {
         _tokenRefresh = tokenRefresh;
         _deviceApi = deviceApi;
         _deviceConnections = deviceConnections;
-        _activityLogs = activityLogs;
+        _deviceActivityLogs = deviceActivityLogs;
+        _aggregation = aggregation;
         _unitOfWork = unitOfWork;
         _providers = providers.Value;
     }
@@ -70,7 +73,7 @@ public class DeviceSyncService : IDeviceSyncService
                 var targetDate = yesterday.AddDays(-offset);
                 var snapshot = await _deviceApi.GetHealthSnapshotAsync(accessToken, targetDate);
 
-                var log = new ActivityLog
+                var log = new DeviceActivityLog
                 {
                     Id = Guid.NewGuid(),
                     CardiMemberId = connection.CardiMemberId,
@@ -112,7 +115,12 @@ public class DeviceSyncService : IDeviceSyncService
                     Temperature = snapshot.Temperature
                 };
 
-                await _activityLogs.UpsertAsync(log);
+                // Save the raw row first — the merge reads every device's stored row for the day,
+                // so it has to see this one.
+                await _deviceActivityLogs.UpsertAsync(log);
+                await _unitOfWork.SaveChangesAsync();
+
+                await _aggregation.RecomputeAsync(connection.CardiMemberId, targetDate);
                 await _unitOfWork.SaveChangesAsync();
             }
 
