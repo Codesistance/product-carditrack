@@ -16,6 +16,9 @@ public partial class HealthInsightService : IHealthInsightService
     /// </summary>
     private const int PrimaryBaselinePeriodDays = 30;
 
+    /// <summary>Baseline windows compared in a trend analysis, shortest first.</summary>
+    private static readonly int[] BaselinePeriodDays = [PrimaryBaselinePeriodDays, 60, 90];
+
     /// <summary>
     /// Caregiver notes are unbounded free text. A long note would crowd the metrics out of the
     /// context window and cost inference time on a single CPU-served model, so it is truncated
@@ -124,10 +127,28 @@ public partial class HealthInsightService : IHealthInsightService
     {
         await _access.RequireViewAccessAsync(requestingUserId, cardiMemberId, ct);
 
-        var baselines = await Task.WhenAll(
-            _unitOfWork.PatternBaselines.GetLatestByCardiMemberAsync(cardiMemberId, PrimaryBaselinePeriodDays),
-            _unitOfWork.PatternBaselines.GetLatestByCardiMemberAsync(cardiMemberId, 60),
-            _unitOfWork.PatternBaselines.GetLatestByCardiMemberAsync(cardiMemberId, 90));
+        // Sequential, not Task.WhenAll. All three repositories share the request's DbContext,
+        // and EF Core refuses a second operation on a context while one is still running —
+        // starting them together threw before the first result came back, so this endpoint
+        // failed on every call. Three indexed point-lookups cost little in series.
+        // The 30-day baseline is tracked by name rather than by position: the list holds only the
+        // windows that exist, so an index would point at the 60-day baseline whenever the 30-day
+        // one is missing — exactly the case that decides which prompt gets sent.
+        var baselines = new List<Domain.Entities.PatternBaseline>();
+        Domain.Entities.PatternBaseline? primaryBaseline = null;
+
+        foreach (var periodDays in BaselinePeriodDays)
+        {
+            var baseline = await _unitOfWork.PatternBaselines
+                .GetLatestByCardiMemberAsync(cardiMemberId, periodDays);
+            if (baseline is null)
+                continue;
+
+            if (periodDays == PrimaryBaselinePeriodDays)
+                primaryBaseline = baseline;
+
+            baselines.Add(baseline);
+        }
 
         var to = DateOnly.FromDateTime(DateTime.UtcNow);
         var from = to.AddDays(-14);
@@ -138,11 +159,11 @@ public partial class HealthInsightService : IHealthInsightService
 
         // No 30-day baseline means the member is still being learned — the same test DashboardService
         // makes, so the app's "getting to know you" state and this summary never disagree.
-        var isLearning = baselines[0] is null;
+        var isLearning = primaryBaseline is null;
 
         var prompt = isLearning
             ? BuildLearningPrompt(member, recentLogs, to)
-            : BuildBaselinePrompt(member, baselines.Where(b => b is not null)!, recentLogs, to);
+            : BuildBaselinePrompt(member, baselines, recentLogs, to);
 
         var aiResponse = await _medicalAi.GenerateAsync(prompt, ct);
 
