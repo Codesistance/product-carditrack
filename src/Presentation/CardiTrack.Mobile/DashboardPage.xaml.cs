@@ -2,6 +2,7 @@ using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Mobile.Controls;
 using CardiTrack.Mobile.Core.Api;
 using CardiTrack.Mobile.Core.Auth;
+using CardiTrack.Mobile.Core.Onboarding;
 using CardiTrack.Mobile.Onboarding;
 using CardiTrack.Mobile.Services;
 
@@ -21,6 +22,7 @@ public partial class DashboardPage : ContentPage
     private enum DashboardState { Loading, Loaded, NoMember, Error }
 
     private bool _isLoading;
+    private bool _wizardActive;
     private DateTime _lastLoadedUtc = DateTime.MinValue;
     private DashboardResponse? _lastData;
 
@@ -129,8 +131,7 @@ public partial class DashboardPage : ContentPage
         if (!force && Guid.TryParse(cached, out var cachedId))
             return cachedId;
 
-        var members = await _api.GetCardiMembersAsync();
-        var primary = members.FirstOrDefault(m => m.IsActive) ?? members.FirstOrDefault();
+        var primary = PrimaryCardiMember.From(await _api.GetCardiMembersAsync());
         if (primary is null)
         {
             Preferences.Default.Remove(PrimaryMemberIdKey);
@@ -247,11 +248,64 @@ public partial class DashboardPage : ContentPage
     private async void OnAlertTapped(object? sender, Guid alertId) =>
         await _popups.ShowInfoAsync("Alert details (M1-11) are on the way.", "Coming soon");
 
-    private async void OnAddMemberClicked(object? sender, EventArgs e) =>
-        await Navigation.PushAsync(new AddCardiMemberPage());
+    private async void OnAddMemberClicked(object? sender, EventArgs e)
+    {
+        if (_wizardActive)
+            return;
+        _wizardActive = true;
+        try
+        {
+            await WizardLauncher.RunModalAsync(Navigation, member: null);
+            // Bypass the auto-refresh window and re-resolve the primary member —
+            // this may have been the first one.
+            await LoadAsync(force: true);
+        }
+        catch (Exception ex)
+        {
+            // async void: anything escaping here takes the app down rather than
+            // reaching a caller. RunModalAsync rethrows when the modal can't be
+            // pushed, so the dashboard has to absorb it and stay usable.
+            await _popups.ShowErrorAsync(ex.Message, "Couldn't add a CardiMember");
+        }
+        finally
+        {
+            _wizardActive = false;
+        }
+    }
 
-    private async void OnConnectDeviceClicked(object? sender, EventArgs e) =>
-        await _popups.ShowInfoAsync("Device connection (M1-05) is on the way.", "Coming soon");
+    private async void OnConnectDeviceClicked(object? sender, EventArgs e)
+    {
+        if (_wizardActive)
+            return;
+        _wizardActive = true;
+        try
+        {
+            // One round trip: the members list answers both "which member" and "is there one".
+            var cached = Preferences.Default.Get(PrimaryMemberIdKey, string.Empty);
+            var member = PrimaryCardiMember.From(
+                await _api.GetCardiMembersAsync(),
+                Guid.TryParse(cached, out var cachedId) ? cachedId : null);
+            if (member is null)
+                return;
+
+            await WizardLauncher.RunModalAsync(Navigation, member);
+            await LoadAsync(force: true);
+        }
+        catch (ApiException ex)
+        {
+            await _popups.ShowErrorAsync(ex.Message, "Couldn't start device setup");
+        }
+        catch (Exception ex)
+        {
+            // ApiException covers the members fetch above, but a failed modal push
+            // arrives as something else — and this is async void too.
+            await _popups.ShowErrorAsync(ex.Message, "Couldn't start device setup");
+        }
+        finally
+        {
+            _wizardActive = false;
+        }
+    }
 
     private async void OnViewTrendsClicked(object? sender, EventArgs e) =>
         await _popups.ShowInfoAsync("Trends & history (M2-03) are on the way.", "Coming soon");

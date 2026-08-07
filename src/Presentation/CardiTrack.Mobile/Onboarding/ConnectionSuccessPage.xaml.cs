@@ -11,14 +11,16 @@ namespace CardiTrack.Mobile.Onboarding;
 public partial class ConnectionSuccessPage : ContentPage
 {
     private readonly ICardiTrackApiClient _api;
+    private readonly WizardContext _ctx;
     private readonly CardiMemberResponse _member;
 
-    public ConnectionSuccessPage(CardiMemberResponse member, DeviceResponse device)
+    public ConnectionSuccessPage(WizardContext ctx, DeviceResponse device)
     {
         InitializeComponent();
         _api = ServiceHelper.GetRequiredService<ICardiTrackApiClient>();
-        _member = member;
-        ConnectedLabel.Text = $"{member.Name}'s {device.DisplayName} is now connected";
+        _ctx = ctx;
+        _member = ctx.RequireMember();
+        ConnectedLabel.Text = $"{_member.Name}'s {device.DisplayName} is now connected";
     }
 
     protected override async void OnAppearing()
@@ -63,11 +65,11 @@ public partial class ConnectionSuccessPage : ContentPage
     private async void OnAddAnotherClicked(object? sender, EventArgs e)
     {
         // Back to M1-05 for a second device.
-        await Navigation.PushAsync(new DeviceSelectionPage(_member));
+        await Navigation.PushAsync(new DeviceSelectionPage(_ctx));
     }
 
     private async void OnContinueClicked(object? sender, EventArgs e)
     {
-        await Navigation.PushAsync(new BaselineLearningPage(_member));
+        await Navigation.PushAsync(new BaselineLearningPage(_ctx));
     }
 }

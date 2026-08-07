@@ -1,4 +1,6 @@
 using CardiTrack.Mobile.Core.Auth;
+using CardiTrack.Mobile.Core.Onboarding;
+using CardiTrack.Mobile.Onboarding;
 using CardiTrack.Mobile.Services;
 
 namespace CardiTrack.Mobile;
@@ -7,12 +9,14 @@ public partial class SettingsPage : ContentPage
 {
     private readonly IAuthService _authService;
     private readonly IPopupService _popups;
+    private readonly CardiMemberDraftStore _drafts;
 
-    public SettingsPage(IAuthService authService, IPopupService popups)
+    public SettingsPage(IAuthService authService, IPopupService popups, CardiMemberDraftStore drafts)
     {
         InitializeComponent();
         _authService = authService;
         _popups = popups;
+        _drafts = drafts;
     }
 
     protected override void OnAppearing()
@@ -36,6 +40,9 @@ public partial class SettingsPage : ContentPage
             await _authService.SignOutAsync();
             Preferences.Default.Remove("PrimaryCardiMemberId");
             Preferences.Default.Remove("VerifyEmailNudgeDismissed");
+            Preferences.Default.Remove(WizardLauncher.ResumeDismissedKey);
+            // Holds a name, DOB and medical notes — must not survive into the next session.
+            await _drafts.ClearAsync();
             WindowNavigation.SetRootPage(this, new NavigationPage(new SignInPage()));
         }
         finally

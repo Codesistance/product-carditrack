@@ -21,6 +21,18 @@ public class DeviceConnectionRepository : Repository<DeviceConnection>, IDeviceC
             .ToListAsync();
     }
 
+    public async Task<bool> AnyActiveForCardiMembersAsync(IEnumerable<Guid> cardiMemberIds)
+    {
+        var ids = cardiMemberIds as IReadOnlyCollection<Guid> ?? cardiMemberIds.ToList();
+        if (ids.Count == 0)
+            return false;
+
+        return await _dbSet
+            .AnyAsync(dc => ids.Contains(dc.CardiMemberId)
+                            && dc.IsActive
+                            && dc.ConnectionStatus == ConnectionStatus.Connected);
+    }
+
     public async Task<IEnumerable<DeviceConnection>> GetByCardiMemberIdAsync(Guid cardiMemberId)
     {
         return await _dbSet

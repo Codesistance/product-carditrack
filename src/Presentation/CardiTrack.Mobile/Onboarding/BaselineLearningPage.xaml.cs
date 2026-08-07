@@ -8,15 +8,24 @@ namespace CardiTrack.Mobile.Onboarding;
 public partial class BaselineLearningPage : ContentPage
 {
     private readonly ICardiTrackApiClient _api;
+    private readonly WizardContext _ctx;
     private readonly CardiMemberResponse _member;
 
-    public BaselineLearningPage(CardiMemberResponse member)
+    public BaselineLearningPage(WizardContext ctx)
     {
         InitializeComponent();
         _api = ServiceHelper.GetRequiredService<ICardiTrackApiClient>();
-        _member = member;
-        TitleLabel.Text = $"Getting to know {member.Name}";
-        IntroLabel.Text = $"Over the next 30 days, CardiTrack will learn what a normal day looks like for {member.Name}:";
+        _ctx = ctx;
+        _member = ctx.RequireMember();
+        TitleLabel.Text = $"Getting to know {_member.Name}";
+        IntroLabel.Text = $"Over the next 30 days, CardiTrack will learn what a normal day looks like for {_member.Name}:";
+
+        if (ctx.Origin == WizardOrigin.Modal)
+        {
+            // Mid-flow entry: the onboarding "Step N of 4" story doesn't apply.
+            Header.Step = string.Empty;
+            Header.Progress = 0;
+        }
     }
 
     protected override async void OnAppearing()
@@ -37,8 +46,8 @@ public partial class BaselineLearningPage : ContentPage
         }
     }
 
-    private void OnGoToDashboardClicked(object? sender, EventArgs e) =>
-        WindowNavigation.SetRootPage(this, new AppShell());
+    private async void OnGoToDashboardClicked(object? sender, EventArgs e) =>
+        await _ctx.FinishAsync(this);
 
     private async void OnInviteFamilyTapped(object? sender, EventArgs e)
     {

@@ -118,14 +118,17 @@ public class UserService : IUserService
         }
 
         var organization = await _unitOfWork.Organizations.GetByIdAsync(user.OrganizationId);
-        var cardiMembers = await _unitOfWork.UserCardiMembers.GetByUserIdAsync(userId);
+        var cardiMembers = (await _unitOfWork.UserCardiMembers.GetByUserIdAsync(userId)).ToList();
+
+        var hasDeviceConnected = await _unitOfWork.DeviceConnections
+            .AnyActiveForCardiMembersAsync(cardiMembers.Select(link => link.CardiMemberId));
 
         var status = new OnboardingStatusResponse
         {
             HasOrganization = organization != null,
             HasUserAccount = true,
             HasCardiMember = cardiMembers.Any(),
-            HasDeviceConnected = false, // TODO: Check device connections
+            HasDeviceConnected = hasDeviceConnected,
             HasNotificationPreferences = false, // TODO: Check notification prefs
             CurrentStep = 2
         };
