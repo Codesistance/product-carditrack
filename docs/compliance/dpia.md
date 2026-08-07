@@ -5,8 +5,9 @@
 | Field | Value |
 |---|---|
 | Status | **DRAFT — pending review and sign-off** |
-| Version | 0.1 |
-| Date | 2026-08-05 |
+| Version | 0.2 |
+| Date | 2026-08-07 |
+| Changes since 0.1 | Behavioural-baseline calculation moved from planned to implemented (§2 criterion 1, §4.2 A10, §6.3, Appendix A-6) |
 | Accountable owner | Moses Arigbede (founder/lead) |
 | Data Protection Officer | **Not appointed — open item OI-1.** Large-scale processing of special-category health data likely makes a DPO mandatory (EU/UK GDPR Art. 37(1)(c)). |
 | Legal regimes assessed | EU GDPR, UK GDPR, US state health-privacy laws (CCPA/CPRA; Washington My Health My Data Act) |
@@ -38,7 +39,7 @@ Assessed against the EDPB (WP248) nine criteria; two or more generally makes a D
 
 | # | Criterion | Met? | Evidence |
 |---|---|---|---|
-| 1 | Evaluation or scoring | **Yes** | Pattern baselines and deviation scoring (`src/Core/CardiTrack.Domain/Entities/PatternBaseline.cs`; `src/Core/CardiTrack.Application/Services/DashboardService.cs`). Planned: per-user LSTM risk scores 0–100, illness/fall-risk prediction (`docs/llm_design.md`). |
+| 1 | Evaluation or scoring | **Yes** | Behavioural profiles built automatically from wearable history and scored against (`src/Core/CardiTrack.Application/Services/BaselineCalculator.cs`; `src/Worker/CardiTrack.Worker/Workers/BaselineCalculationWorker.cs`; `src/Core/CardiTrack.Domain/Entities/PatternBaseline.cs`; `src/Core/CardiTrack.Application/Services/DashboardService.cs`). Planned: per-user LSTM risk scores 0–100, illness/fall-risk prediction (`docs/llm_design.md`). |
 | 2 | Automated decision-making with significant effect | **Yes (planned)** | LLM severity classification decides whether family are alerted in real time, incl. SMS fallback — a decision that dispatches a human to check on the wearer (`docs/llm_design.md` severity routing). See risk R-B1. |
 | 3 | Systematic monitoring | **Yes** | Continuous wearable monitoring, 30-minute sync (`src/Worker/CardiTrack.Worker/Workers/WearableSyncWorker.cs`); planned 5-minute windows and inactivity detection (`docs/llm_design.md`). |
 | 4 | Sensitive / special-category data | **Yes** | Health data throughout (Art. 9): heart rate, SpO2, sleep architecture, medical notes (§4.2). |
@@ -103,6 +104,7 @@ Minimisation observations (feed §7): the schema holds fields nothing populates 
 | A7 | **Auth** — Auth0 identity (email, name, verification); Management API calls scoped `read:users`/`update:users` | Identity | `docs/technical/auth0_setup_runbook.md` |
 | A8 | **Orphaned-org cleanup** — hard-deletes empty organizations older than 24h | Org records | `OrphanedOrganizationCleanupWorker.cs` |
 | A9 | **Telemetry** — Serilog → Cloud Logging; Warning+ logs and 20%-sampled traces → Datadog EU; mobile RUM at 100% session sampling with consent hardcoded Granted | Includes **email + Auth0 ID on every request log line** (risk R-A5) | `UserContextMiddleware.cs`; `ApmExtensions.cs`; `MobileApm.cs` |
+| A10 | **Baseline calculation** — weekly job deriving a behavioural profile per member from 30/60/90 days of `ActivityLog` history: mean and σ for steps and resting heart rate, sleep duration and efficiency, **typical bedtime and wake time**, and a steps-by-weekday profile. Written to `PatternBaselines`; no external recipient | **H** (behavioural profile) → stays in-project | `src/Worker/CardiTrack.Worker/Workers/BaselineCalculationWorker.cs`; `src/Core/CardiTrack.Application/Services/BaselineCalculator.cs` |
 
 ### 4.3 Recipients and processors (current)
 
@@ -191,7 +193,7 @@ No retention is enforced in code today (no purge jobs exist). Documented stateme
 | Audit logs | **6 years** (`docs/infrastructure.md`) vs **90 days minimum** (`AuditLog.cs` doc-comment, `docs/technical/user_onboarding_process.md`) | 6 years, aligning with the stated HIPAA posture; correct the 90-day references |
 | Health data (`ActivityLog`) | None (plan tiers cap *visible history* at 90/365 days — a feature limit, not deletion) | Active members: retain while relationship active; post-deletion: 90 days then purge (matches `cardimembers.md`) |
 | Deleted CardiMember | 90 days (`cardimembers.md`) | 90 days, then hard purge incl. baselines, alerts, device connections (cascade currently undefined — see R-A6 note) |
-| Baselines, alerts | None | Same lifecycle as ActivityLog |
+| Baselines, alerts | None | Same lifecycle as ActivityLog. Note `PatternBaselines` is **append-only** — one row per member per period per weekly run (~156/member/year), retained so baseline drift stays visible; the future RetentionWorker must prune old rows as well as purge on member deletion |
 | Report artifacts | 24h link (docs) vs 1h cache TTL (code) | 24 h; make code match docs |
 | Soft-deleted records | "90 days before purging" (docs; no purge exists) | 90 days, implemented by the future RetentionWorker |
 | OAuth tokens | None beyond provider expiry | Delete on device disconnect and member deletion |
@@ -338,7 +340,7 @@ The DPIA relies on the implemented layer. These doc claims are **not true of the
 | A-3 | "No local passwords / API never stores passwords" | `User.PasswordHash` is a required column (unused) | `docs/technical/entity_summary.md`, `docs/execution/backend/api/auth.md` |
 | A-4 | "All PHI access is audit-logged", 6-year retention | `AuditLog` never written | `docs/apps/api/readme.md` |
 | A-5 | Consent recorded per metric; "data types without recorded consent are never processed" | No consent entity/endpoint; sync unconditional | `docs/llm_design.md`, `docs/infrastructure.md` |
-| A-6 | Worker hosts token-refresh, baseline, trial, retention jobs | Worker has exactly two jobs (sync, orphaned-org cleanup); refresh is inline in sync | `docs/apps/worker/readme.md`, `docs/technical/user_onboarding_process.md` |
+| A-6 | Worker hosts token-refresh, baseline, trial, retention jobs | Worker has three jobs (sync, orphaned-org cleanup, baseline calculation); refresh is inline in sync; trial and retention jobs remain absent | `docs/apps/worker/readme.md`, `docs/technical/user_onboarding_process.md` |
 | A-7 | Webhook-driven ingestion | 30-minute polling of daily rollups | `docs/llm_design.md`, `docs/apps/worker/readme.md` (notes polling is interim) |
 | A-8 | Report links 24h, PDF/CSV/FHIR/HL7, plan-gated | Gemini plain text, 1h Redis TTL, no gate, no ownership check | `docs/execution/backend/api/reports.md` |
 | A-9 | Roles Admin/Staff/Viewer | Code enum: Member/Admin/Staff | `docs/execution/backend/api/family.md` vs `UserRole.cs` |
