@@ -57,7 +57,7 @@ must stay intact.
 | `carditrack-490120` | All Terraform-managed infra, **dev and prod**: Cloud Run, Cloud SQL, Secret Manager, the deploy and Play-publisher service accounts. **No OAuth clients.** | none |
 | `carditrack-signin` | `CardiTrack Sign-In (dev)` + `CardiTrack Sign-In (prod)` — client #3, used by Auth0 | `openid profile email` only; **Published** (branding review only, no user cap) |
 | `carditrack-devices-dev` | `CardiTrack Devices (dev)` — client #5, dev | restricted `googlehealth.*`; **stays in Testing permanently**, test users only (max 100) |
-| `carditrack-devices-prod` | `CardiTrack Devices (prod)` — client #5, prod | restricted `googlehealth.*`; the **only** project that goes through restricted-scope verification + CASA |
+| `carditrack-devices-prod` | `CardiTrack Devices (prod)` — client #5, prod | restricted `googlehealth.*`; **Testing — not yet submitted** (as of 2026-08-07). The only project that will *ever* be submitted for restricted-scope verification + CASA |
 
 Consequences worth holding onto:
 
@@ -73,6 +73,17 @@ Consequences worth holding onto:
   created in `carditrack-devices-{env}`, but its id/secret are stored in
   Secret Manager in `carditrack-490120` — pass `--project=carditrack-490120`
   when writing them.
+- **Prod is in Testing too, for now.** `carditrack-devices-prod` has **not**
+  been submitted for verification (as of 2026-08-07), so prod can only serve
+  wearers explicitly listed as test users, max 100. Registering the client is
+  not the same as being verified — public launch waits on step 6 below.
+
+> **Console UI note:** Google now presents all of this as **Auth Platform**
+> (left nav: *Overview · Branding · Audience · Clients · Data Access ·
+> Verification Center*), not the single "OAuth consent screen" page that most
+> third-party guides still describe. Scopes live under **Data Access**, test
+> users and the Testing/Published switch under **Audience**, and clients under
+> **Clients**.
 
 ---
 
@@ -216,7 +227,8 @@ ids in them), and the bounce endpoint only ever redirects into the
    distance/active-minutes/total-calories/floors rollup values, the
    resting-heart-rate union member, and the sleep session shape. Confirm each
    and fix any mismatches.
-6. **Before public launch**, in `carditrack-devices-prod` only: restricted-scope
+6. **Before public launch**, in `carditrack-devices-prod` only — **not yet
+   submitted as of 2026-08-07**: restricted-scope
    verification + CASA assessment — prerequisites checklist in
    [user_onboarding_process.md](./user_onboarding_process.md) (Step 6). Status:
    the Google-format in-app disclosure banner shipped on Web (PR #9); the
