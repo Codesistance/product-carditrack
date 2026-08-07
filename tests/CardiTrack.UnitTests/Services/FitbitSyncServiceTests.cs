@@ -31,7 +31,10 @@ public class DeviceSyncServiceTests
 
     private const int LookbackDays = 3;
 
-    private static readonly DateOnly Yesterday = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(-1));
+    // Computed per access, not captured once at type initialization: the service derives its own
+    // "yesterday" when it runs, so a cached value would disagree with it if the suite crosses UTC
+    // midnight between class load and the assertion.
+    private static DateOnly Yesterday => DateOnly.FromDateTime(DateTime.UtcNow.AddDays(-1));
 
     private readonly DeviceProviderSettings _fitbitConfig = new()
     {
