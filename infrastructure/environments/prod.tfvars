@@ -10,10 +10,8 @@ project_name = "carditrack"
 # Password is read from GCP Secret Manager: carditrack-prod-db-password
 db_admin_username = "carditrackadmin"
 
-# Container Images — updated by deploy-apps-prod.yml workflow
-# Format: REGION-docker.pkg.dev/PROJECT_ID/REPO/IMAGE:TAG
-api_container_image = "europe-west2-docker.pkg.dev/carditrack-490120/carditrack/api:latest"
-web_container_image = "europe-west2-docker.pkg.dev/carditrack-490120/carditrack/web:latest"
+# Container images are deliberately absent: deploy-apps-prod.yml deploys them by tag
+# and Terraform ignores the image on every Cloud Run resource. See variables.tf.
 
 # Custom Domains (optional — leave empty to use Cloud Run default URLs)
 api_custom_domain = ""
