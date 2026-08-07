@@ -91,6 +91,12 @@
 		<MauiImage Update="Resources\Images\welcome_hero_a.png" Resize="True" BaseSize="440,571" />
 		<MauiImage Update="Resources\Images\welcome_hero_b.png" Resize="True" BaseSize="440,571" />
 		<MauiImage Update="Resources\Images\welcome_hero_c.png" Resize="True" BaseSize="440,571" />
+		<MauiImage Update="Resources\Images\device_fitbit.png" Resize="True" BaseSize="85,96" />
+		<MauiImage Update="Resources\Images\device_garmin.png" Resize="True" BaseSize="96,96" />
+		<MauiImage Update="Resources\Images\device_apple_watch.png" Resize="True" BaseSize="85,96" />
+		<MauiImage Update="Resources\Images\device_samsung.png" Resize="True" BaseSize="85,96" />
+		<MauiImage Update="Resources\Images\device_withings.png" Resize="True" BaseSize="96,96" />
+		<MauiImage Update="Resources\Images\device_other.png" Resize="True" BaseSize="85,96" />
 		
 		<!-- Custom Fonts -->
 		<MauiFont Include="Resources\Fonts\*" />
