@@ -43,9 +43,11 @@ you type so it does not linger in terminal scrollback. Piped input
 (`echo $TOKEN | dotnet run …`) cannot be masked — the prompt says so rather
 than implying otherwise.
 
-`--date` defaults to yesterday (UTC); today is usually still partial. An
-unparseable `--date` is rejected rather than silently falling back to
-yesterday, since probing the wrong day looks identical to a field-name bug.
+`--date` takes an ISO date (`yyyy-MM-dd`) and defaults to yesterday (UTC); today
+is usually still partial. Anything else is rejected rather than silently falling
+back to yesterday: probing the wrong day looks identical to a field-name bug, and
+a locale-sensitive format like `08/06/2026` would mean different days on
+different machines.
 
 ## Output
 

@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
@@ -34,7 +35,7 @@ var showValues = args.Contains("--raw");
 // and send the operator hunting a field-name bug that isn't there.
 if (args.Contains("--date") && ParseDate(args) is null)
 {
-    Console.Error.WriteLine("--date needs a parseable date, e.g. --date 2026-08-06.");
+    Console.Error.WriteLine("--date needs an ISO date (yyyy-MM-dd), e.g. --date 2026-08-06.");
     return 1;
 }
 var date = ParseDate(args) ?? DateOnly.FromDateTime(DateTime.UtcNow.AddDays(-1));
@@ -144,12 +145,18 @@ catch (FitbitApiException ex)
 
 return 0;
 
+// ISO only, parsed invariantly: "08/06/2026" means 8 June or 6 August depending on
+// the machine's locale, and silently probing the wrong day is this tool's worst
+// failure mode — an empty rollup looks exactly like the field-name bug it hunts.
 static DateOnly? ParseDate(string[] args)
 {
     var index = Array.IndexOf(args, "--date");
     if (index < 0 || index + 1 >= args.Length)
         return null;
-    return DateOnly.TryParse(args[index + 1], out var parsed) ? parsed : null;
+    return DateOnly.TryParseExact(
+        args[index + 1], "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var parsed)
+        ? parsed
+        : null;
 }
 
 // Masks the token as it is typed: it is a live credential for someone's health
