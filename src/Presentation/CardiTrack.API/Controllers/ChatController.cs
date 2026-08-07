@@ -57,7 +57,7 @@ public class ChatController : BaseApiController
         var logs = await _unitOfWork.ActivityLogs
             .GetByCardiMemberAndDateRangeAsync(request.CardiMemberId, from, to);
 
-        var systemContext = BuildSystemContext(request.CardiMemberId, logs);
+        var systemContext = BuildSystemContext(logs);
         var history = request.History.Prepend(systemContext).ToList();
 
         var reply = await _generativeAi.ChatAsync(history, request.Message, ct);
@@ -69,8 +69,13 @@ public class ChatController : BaseApiController
         });
     }
 
+    /// <summary>
+    /// Carries readings only. Chat goes to the general provider — today Gemini's consumer
+    /// endpoint, outside the Google Cloud BAA — so nothing that identifies the member goes with
+    /// them. The CardiMember id used to be included here and bought the model nothing: it cannot
+    /// look the id up, and the caller already knows whose data they asked for.
+    /// </summary>
     private static ChatMessage BuildSystemContext(
-        Guid cardiMemberId,
         IEnumerable<Domain.Entities.ActivityLog> logs)
     {
         var summary = logs.Any()
@@ -81,8 +86,7 @@ public class ChatController : BaseApiController
         return new ChatMessage
         {
             Role = ChatRole.User,
-            Content = $"[System context] CardiMember ID: {cardiMemberId}. " +
-                      $"Recent health data (last 3 days): {summary}. " +
+            Content = $"[System context] Recent health data for the patient (last 3 days): {summary}. " +
                       "You are a helpful health assistant. Answer questions about this patient's health data accurately and concisely."
         };
     }
