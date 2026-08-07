@@ -101,7 +101,11 @@ public static class ServiceCollectionExtensions
     {
         var configLoader = new ConfigurationLoader(configuration);
         var redisConnection = configLoader.Get(ConfigurationKeys.ConnectionStrings.Redis);
-        if (!string.IsNullOrEmpty(redisConnection))
+
+        // Whitespace counts as unset, matching ConfigurationLoader.GetRequired: an env var set
+        // to blanks otherwise reaches ConfigurationOptions.Parse and throws instead of falling
+        // back to the in-memory cache.
+        if (!string.IsNullOrWhiteSpace(redisConnection))
         {
             var redisCaCertificate = configLoader.Get(ConfigurationKeys.Redis.CaCertificate);
 
@@ -111,7 +115,7 @@ public static class ServiceCollectionExtensions
 
                 // Only Memorystore ships a CA; locally docker-compose speaks plain Redis and
                 // leaves this unset, so the defaults parsed from the connection string stand.
-                if (!string.IsNullOrEmpty(redisCaCertificate))
+                if (!string.IsNullOrWhiteSpace(redisCaCertificate))
                 {
                     // The pinned CA is not a public issuer, so revocation cannot be checked.
                     redisOptions.CheckCertificateRevocation = false;

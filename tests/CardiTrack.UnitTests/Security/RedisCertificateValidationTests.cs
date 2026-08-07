@@ -107,6 +107,24 @@ public class RedisCertificateValidationTests
     }
 
     [Fact]
+    public void Callback_AcceptsACertificatePresentedAsTheBaseType()
+    {
+        using var ca = CreateCa("CN=memorystore-test-ca");
+        using var leaf = IssueLeaf(ca, "CN=redis-instance");
+
+        // RemoteCertificateValidationCallback is typed as X509Certificate. SslStream passes the
+        // derived type today, but a base instance must not be silently rejected — that would
+        // fail every handshake.
+#pragma warning disable SYSLIB0057 // obsolete ctor is the only way to build a base instance
+        using var asBaseType = new X509Certificate(leaf.RawData);
+#pragma warning restore SYSLIB0057
+
+        var validate = RedisCertificateValidation.Create(ca.ExportCertificatePem());
+
+        Assert.True(validate(new object(), asBaseType, null, MemorystoreErrors));
+    }
+
+    [Fact]
     public void Callback_RejectsWhenNoCertificateWasPresented()
     {
         using var ca = CreateCa("CN=memorystore-test-ca");

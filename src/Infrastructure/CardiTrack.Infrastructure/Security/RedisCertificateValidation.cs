@@ -41,12 +41,23 @@ public static class RedisCertificateValidation
                 return true;
             }
 
-            // Nothing to validate: no certificate presented, or one in a form we cannot inspect.
-            if (certificate is not X509Certificate2 leaf)
+            if (certificate is null)
             {
                 return false;
             }
 
+            // SslStream hands over an X509Certificate2 in practice, but the delegate is typed
+            // as the base class — so promote rather than reject. Rejecting a base instance
+            // would fail every handshake with nothing to show for it.
+            X509Certificate2? promoted = null;
+            if (certificate is not X509Certificate2 leaf)
+            {
+                leaf = promoted =
+                    X509CertificateLoader.LoadCertificate(certificate.GetRawCertData());
+            }
+
+            // Only a certificate created here is ours to dispose.
+            using var promotedOwner = promoted;
             using var chain = new X509Chain();
 
             // The instance is addressed by its private IP, which the leaf certificate does not
