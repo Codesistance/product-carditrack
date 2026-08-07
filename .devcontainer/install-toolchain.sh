@@ -53,6 +53,19 @@ log()  { printf '\033[0;36m[toolchain]\033[0m %s\n' "$*"; }
 warn() { printf '\033[0;33m[toolchain] WARN:\033[0m %s\n' "$*" >&2; }
 die()  { printf '\033[0;31m[toolchain] ERROR:\033[0m %s\n' "$*" >&2; exit 1; }
 
+# Version of an installed tool, or "MISSING" when it is absent or silent.
+#
+# Deliberately no `| head -1`: under `set -o pipefail` head closes the pipe as
+# soon as it has its line, the producer dies of SIGPIPE, and the pipeline
+# reports 141 — so a trailing `|| echo MISSING` would fire on success and append
+# a bogus second line. `awk NR==1` drains the stream instead, and the fallback
+# keys off empty output rather than exit status.
+tool_version() {
+  local out
+  out="$("$@" 2>/dev/null | awk 'NR==1{print $NF; exit}')" || true
+  printf '%s' "${out:-MISSING}"
+}
+
 # Re-exec through sudo only when we are not already root and sudo exists.
 as_root() {
   if [ "$(id -u)" -eq 0 ]; then
@@ -253,8 +266,8 @@ main() {
   fi
 
   log "Done."
-  log "  dotnet    $(dotnet --version 2>/dev/null || echo 'MISSING')"
-  log "  terraform $(terraform version 2>/dev/null | head -1 | awk '{print $2}' || echo 'MISSING')"
+  log "  dotnet    $(tool_version dotnet --version)"
+  log "  terraform $(tool_version terraform version)"
 }
 
 main "$@"

@@ -12,7 +12,35 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 MARKER="${HOME}/.cache/carditrack-restore-complete"
 
+DOCKERD_LOG="${DOCKERD_LOG:-/var/log/dockerd.log}"
+
 log() { printf '\033[0;36m[bootstrap]\033[0m %s\n' "$*"; }
+
+# Version of an installed tool, or "MISSING" when it is absent or silent.
+# See install-toolchain.sh for why this avoids `| head -1` under pipefail.
+tool_version() {
+  local out
+  out="$("$@" 2>/dev/null | awk 'NR==1{print $NF; exit}')" || true
+  printf '%s' "${out:-MISSING}"
+}
+
+as_root() {
+  if [ "$(id -u)" -eq 0 ]; then
+    "$@"
+  elif command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
+    sudo "$@"
+  else
+    return 1
+  fi
+}
+
+# Start a daemon fully detached: setsid gives it its own session, so it survives
+# this script's process group being torn down when the session hook finishes.
+# The redirection runs inside the elevated shell so the log path needs no
+# write access from the calling user.
+as_root_bg() {
+  as_root sh -c "exec setsid nohup $* >\"${DOCKERD_LOG}\" 2>&1 </dev/null &"
+}
 
 # ── Toolchain ────────────────────────────────────────────────────────────────
 "${REPO_ROOT}/.devcontainer/install-toolchain.sh"
@@ -37,21 +65,33 @@ export DOTNET_NOLOGO=1
 # The integration tests and parts of the unit suite start PostgreSQL through
 # Testcontainers, which needs a daemon. Cloud containers ship the binaries but
 # no init system to run them, so start it here when it is not already up.
-if command -v dockerd >/dev/null 2>&1 && ! docker info >/dev/null 2>&1; then
-  log "Starting the Docker daemon (Testcontainers needs it)"
-  if [ "$(id -u)" -eq 0 ]; then
-    nohup dockerd >/var/log/dockerd.log 2>&1 &
-  else
-    sudo -n true 2>/dev/null && sudo -b nohup dockerd >/var/log/dockerd.log 2>&1 || true
+start_dockerd() {
+  # A daemon killed without an init system to reap it leaves its socket and its
+  # managed-containerd pid file behind. dockerd then reads that pid file, decides
+  # containerd "is still running", waits 15s for a process that is gone, and
+  # exits. Clear the leftovers whenever no dockerd is actually running.
+  if ! pgrep -x dockerd >/dev/null 2>&1; then
+    as_root rm -f /var/run/docker.sock /var/run/docker/containerd/containerd.pid 2>/dev/null || true
   fi
-  for _ in $(seq 1 15); do
-    docker info >/dev/null 2>&1 && break
+
+  # No root and no passwordless sudo — nothing to wait for.
+  as_root_bg dockerd || return 1
+
+  # dockerd's own wait for containerd is 15s, so allow comfortably more than
+  # that before calling it a failure.
+  for _ in $(seq 1 45); do
+    docker info >/dev/null 2>&1 && return 0
     sleep 1
   done
-  if docker info >/dev/null 2>&1; then
+  return 1
+}
+
+if command -v dockerd >/dev/null 2>&1 && ! docker info >/dev/null 2>&1; then
+  log "Starting the Docker daemon (Testcontainers needs it)"
+  if start_dockerd; then
     log "  Docker daemon up"
   else
-    log "  Could not start dockerd — Testcontainers-backed tests will fail (see /var/log/dockerd.log)"
+    log "  Could not start dockerd — Testcontainers-backed tests will fail (see ${DOCKERD_LOG})"
   fi
 fi
 
@@ -71,4 +111,4 @@ else
   fi
 fi
 
-log "Ready: dotnet $(dotnet --version 2>/dev/null || echo MISSING), terraform $(terraform version 2>/dev/null | head -1 | awk '{print $2}' || echo MISSING)"
+log "Ready: dotnet $(tool_version dotnet --version), terraform $(tool_version terraform version)"
