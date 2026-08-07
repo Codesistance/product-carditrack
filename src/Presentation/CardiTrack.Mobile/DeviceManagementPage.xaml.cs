@@ -64,9 +64,12 @@ public partial class DeviceManagementPage : ContentPage
         try
         {
             // The member is fetched alongside the devices so the list can be headed by whose
-            // devices these are — M1-15 groups by CardiMember.
+            // devices these are — M1-15 groups by CardiMember. WhenAll rather than awaiting in
+            // turn: if the first call fails, awaiting it alone would leave the second task's
+            // exception unobserved.
             var memberTask = _api.GetCardiMemberAsync(_memberId);
             var devicesTask = _api.GetDevicesAsync(_memberId);
+            await Task.WhenAll(memberTask, devicesTask);
             _member = await memberTask;
             var devices = await devicesTask;
 

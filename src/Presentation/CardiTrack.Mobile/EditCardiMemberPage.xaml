@@ -8,12 +8,11 @@
 
     <Grid RowDefinitions="Auto,*">
 
+        <!-- Flush on all four edges — full-bleed page shell per CLAUDE.md, no page-level
+             rounding even though the Figma frame shows rounded bottom corners. -->
         <Border Grid.Row="0"
                 StrokeThickness="0"
                 Padding="20,16,20,22">
-            <Border.StrokeShape>
-                <RoundRectangle CornerRadius="0,0,28,28"/>
-            </Border.StrokeShape>
             <Border.Background>
                 <StaticResource Key="GradientButtonBrush"/>
             </Border.Background>

@@ -278,6 +278,21 @@ public class CardiMemberServiceTests
     }
 
     [Fact]
+    public async Task GetDetail_ReturnsNullLastSynced_WhenMemberHasNoDevices()
+    {
+        // Zero connected devices is a supported state (a member added but not yet paired).
+        // LastSyncedAt falls through to Max over an empty sequence, which yields null for a
+        // nullable selector rather than throwing — pinned here because it reads like a bug.
+        var member = SeedMember();
+        _devices.GetActiveByCardiMemberIdAsync(member.Id).Returns([]);
+
+        var detail = await CreateSut().GetDetailAsync(_userId, member.Id);
+
+        Assert.Null(detail.LastSyncedAt);
+        Assert.Equal(0, detail.ConnectedDeviceCount);
+    }
+
+    [Fact]
     public async Task GetDetail_ReportsElapsedPauseAsNotPaused()
     {
         var member = SeedMember(pausedUntil: DateTime.UtcNow.AddHours(-1));

@@ -1,6 +1,7 @@
 using CardiTrack.Application.DTOs.Requests;
 using CardiTrack.Application.Exceptions;
 using CardiTrack.Application.Interfaces.Repositories;
+using CardiTrack.Application.Services;
 using CardiTrack.Domain.Entities;
 using CardiTrack.Domain.Enums;
 using CardiTrack.Infrastructure.ExternalClients;
@@ -31,16 +32,30 @@ public class DeviceConnectionServiceTests
 
     public DeviceConnectionServiceTests()
     {
-        _unitOfWork.UserCardiMembers.GetByUserIdAsync(_userId).Returns(
-        [
-            new UserCardiMember { UserId = _userId, CardiMemberId = _memberId, IsActive = true }
-        ]);
+        SetupCaregiverLink(isPrimaryCaregiver: true);
         _unitOfWork.CardiMembers.GetByIdAsync(_memberId).Returns(
             new CardiMember { Id = _memberId, Name = "Dad", IsActive = true });
         _unitOfWork.DeviceConnections.GetByCardiMemberIdAsync(_memberId).Returns([]);
         _unitOfWork.Devices.GetByDeviceTypeAsync(DeviceType.Fitbit).Returns((Device?)null);
         _encryption.Encrypt(Arg.Any<string>()).Returns(c => $"enc({c.Arg<string>()})");
     }
+
+    /// <summary>
+    /// A caregiver who may view but not manage — the case the M1-15 mutating actions must
+    /// refuse. Primary caregivers get the full set.
+    /// </summary>
+    private void SetupCaregiverLink(bool isPrimaryCaregiver) =>
+        _unitOfWork.UserCardiMembers.GetByUserIdAsync(_userId).Returns(
+        [
+            new UserCardiMember
+            {
+                UserId = _userId,
+                CardiMemberId = _memberId,
+                IsActive = true,
+                CanViewHealthData = true,
+                IsPrimaryCaregiver = isPrimaryCaregiver,
+            }
+        ]);
 
     private DeviceConnectionService CreateSut(Action<DeviceProviderSettings>? configure = null)
     {
@@ -54,12 +69,16 @@ public class DeviceConnectionServiceTests
             Scopes = ["activity", "heartrate", "sleep"],
         };
         configure?.Invoke(fitbit);
+        // Composed with the real access service rather than a stub: the caregiver-link rules
+        // are exactly what the M1-15 mutating actions are being asserted against, so
+        // substituting it away would leave nothing testing the gate.
         return new DeviceConnectionService(
             _unitOfWork,
             _encryption,
             _cache,
             _codeExchange,
             _tokenRefresh,
+            new CardiMemberAccessService(_unitOfWork),
             Options.Create(new List<DeviceProviderSettings> { fitbit }));
     }
 
@@ -623,5 +642,62 @@ public class DeviceConnectionServiceTests
         // The user is told to reconnect, and the stored state agrees with what they were told.
         Assert.Equal(DeviceConnectionException.OAuthExchangeFailed, ex.Code);
         Assert.Equal(ConnectionStatus.TokenExpired, connection.ConnectionStatus);
+    }
+
+    // ── Manage authorization on the mutating actions (Copilot review round 1) ────
+
+    [Fact]
+    public async Task Disconnect_Throws_ForViewOnlyCaregiver()
+    {
+        SetupCaregiverLink(isPrimaryCaregiver: false);
+        var connection = SeedConnection();
+        _unitOfWork.DeviceConnections.GetByCardiMemberIdAsync(_memberId).Returns([connection]);
+
+        await Assert.ThrowsAsync<KeyNotFoundException>(
+            () => CreateSut().DisconnectAsync(_userId, _memberId, connection.Id));
+
+        // Cutting off someone's data feed is a manage action, not a viewing one.
+        Assert.True(connection.IsActive);
+        Assert.NotNull(connection.AccessToken);
+    }
+
+    [Fact]
+    public async Task SetPrimary_Throws_ForViewOnlyCaregiver()
+    {
+        SetupCaregiverLink(isPrimaryCaregiver: false);
+        var connection = SeedConnection();
+        _unitOfWork.DeviceConnections.GetByCardiMemberIdAsync(_memberId).Returns([connection]);
+
+        await Assert.ThrowsAsync<KeyNotFoundException>(
+            () => CreateSut().SetPrimaryAsync(_userId, _memberId, connection.Id));
+
+        Assert.False(connection.IsPrimary);
+    }
+
+    [Fact]
+    public async Task RefreshConnection_Throws_ForViewOnlyCaregiver()
+    {
+        SetupCaregiverLink(isPrimaryCaregiver: false);
+        var connection = SeedConnection();
+        _unitOfWork.DeviceConnections.GetByCardiMemberIdAsync(_memberId).Returns([connection]);
+
+        await Assert.ThrowsAsync<KeyNotFoundException>(
+            () => CreateSut().RefreshConnectionAsync(_userId, _memberId, connection.Id));
+
+        await _tokenRefresh.DidNotReceive()
+            .RefreshIfExpiredAsync(Arg.Any<DeviceConnection>(), Arg.Any<DeviceProviderSettings>());
+    }
+
+    [Fact]
+    public async Task GetDevices_StillAllowed_ForViewOnlyCaregiver()
+    {
+        // Viewing is not gated on manage access — a relative invited to watch over someone
+        // must still be able to see which devices are connected.
+        SetupCaregiverLink(isPrimaryCaregiver: false);
+        _unitOfWork.DeviceConnections.GetByCardiMemberIdAsync(_memberId).Returns([SeedConnection()]);
+
+        var result = await CreateSut().GetDevicesAsync(_userId, _memberId);
+
+        Assert.Single(result.Devices);
     }
 }

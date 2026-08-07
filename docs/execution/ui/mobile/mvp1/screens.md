@@ -896,6 +896,8 @@ Saves via `PUT /api/v1/cardimembers/{id}` — a full replacement, so clearing a 
 - Primary device star when designated
 - ~~Menu icon (three dots)~~ — **actions are inline** rather than behind a menu, matching the Figma frame
 
+**Permissions:** the three actions below require a **primary caregiver**; a view-only caregiver can see the list but not change it.
+
 **Actions (inline on each card):**
 - **Refresh Connection** — renews the OAuth token and reports the result. Does **not** pull health data: syncing is the Worker's job per `CLAUDE.md`. A provider that can't be reached marks the connection `token_expired` so the screen agrees with what the user was told.
 - **Set as Primary** — switch; disabled on the device that already is primary, since turning it off would leave the member without one

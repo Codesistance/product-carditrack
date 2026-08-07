@@ -9,14 +9,13 @@
     <Grid RowDefinitions="Auto,*">
 
         <!-- ════════════════════════════════════════
-             GRADIENT HEADER (edge-to-edge)
+             GRADIENT HEADER — flush on all four edges. The Figma frame rounds the bottom
+             corners, but CLAUDE.md requires full-bleed page shells with no page-level
+             rounding; radius stays on in-layout components only.
              ════════════════════════════════════════ -->
         <Border Grid.Row="0"
                 StrokeThickness="0"
                 Padding="20,16,20,22">
-            <Border.StrokeShape>
-                <RoundRectangle CornerRadius="0,0,28,28"/>
-            </Border.StrokeShape>
             <Border.Background>
                 <StaticResource Key="GradientButtonBrush"/>
             </Border.Background>

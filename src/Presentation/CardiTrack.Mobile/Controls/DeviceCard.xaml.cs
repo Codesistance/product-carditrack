@@ -43,10 +43,11 @@ public partial class DeviceCard : ContentView
                 ? $"synced {RelativeTime.Format(synced)}"
                 : "not synced yet";
 
+            // A connection sharing no data types is worth saying out loud — it looks connected
+            // but sends nothing — so the label stays visible either way.
             ScopesLabel.Text = device.Scopes.Count > 0
                 ? string.Join(", ", device.Scopes.Select(FriendlyScope))
                 : "No data types shared";
-            ScopesLabel.IsVisible = device.Scopes.Count > 0;
 
             LastSyncValue.Text = device.LastSyncedAt is { } last
                 ? RelativeTime.Format(last)

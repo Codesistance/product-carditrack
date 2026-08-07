@@ -6,7 +6,7 @@ Handles wearable device connections via OAuth, device status management, primary
 
 Key implementation facts (verified against `DeviceConnectionService`):
 
-- **Authorization is member-link only.** Every device operation checks that an active `UserCardiMember` link exists between the caller and the CardiMember (failure → 404 "CardiMember not found"). There are **no role checks** on any device endpoint.
+- **Authorization is two-tier, member-link based** (failure → 404 "CardiMember not found" in both tiers, so an unauthorised caller can't tell a member exists). *Reading and connecting* — list, initiate, callback — need only an **active `UserCardiMember` link**. The *management* actions that change how a member is monitored — **delete, set-primary, refresh** — additionally require **`IsPrimaryCaregiver`**, so a relative invited only to watch over someone cannot cut off their data feed. There are no Auth0 **role** checks on any device endpoint.
 - **State tokens are single-use with a 15-minute TTL**, held server-side in the distributed cache keyed to the initiating user, member, and provider. The callback consumes the state even if the code exchange fails — a replayed state always fails.
 - **Google authorize URLs include `access_type=offline`** (config-driven), without which Google issues no refresh token. `prompt=consent` (`FirstConsentAuthorizationParams`) is added **only while the member holds no refresh token** on that provider — Google re-issues one only when consent is shown again, but forcing it on every connect makes a reconnect look like a failure. A token exchange that returns no refresh token **leaves the stored one in place** rather than nulling it — unless the exchange came back with a **different `providerUserId`**, in which case the old account's token is dropped so background syncs can't keep pulling the previous wearer's data (and the next initiation re-prompts for consent).
 - **OAuth tokens are AES-encrypted at rest** before being stored on the connection record.
@@ -282,7 +282,7 @@ Initiate a token refresh for a device with an expired or revoked OAuth token.
 
 ## DELETE `/api/v1/cardimembers/{id}/devices/{deviceId}`
 
-> **Implemented** (M1-15). Authorization is member-link only — there are still no role checks on device endpoints.
+> **Implemented** (M1-15). Requires a **primary-caregiver** link, not merely an active one.
 
 Removes a device connection. Soft delete: the connection is deactivated, its status set to `disconnected`, and its **stored OAuth tokens discarded** — revoking the grant at the provider remains the user's own step. If the removed device was the primary, another active connection is promoted, so a member with devices always has a primary.
 

@@ -251,6 +251,20 @@ public class DashboardServiceTests
         Assert.Equal(lastSync, result.LastSyncedAt);
     }
 
+    [Fact]
+    public async Task Dashboard_ReturnsNullLastSynced_WhenMemberHasNoDevices()
+    {
+        // A member with no paired device is a supported state, so LastSyncedAt resolves via
+        // Max over an empty sequence. With a nullable selector that yields null rather than
+        // throwing — pinned here because it reads like a bug.
+        _connections.GetActiveByCardiMemberIdAsync(_memberId).Returns([]);
+
+        var result = await CreateSut().GetDashboardAsync(_userId, _memberId);
+
+        Assert.Null(result.LastSyncedAt);
+        Assert.False(result.Device.HasActiveConnection);
+    }
+
     // ── Monitoring pause (M1-13) ────────────────────────────────────────────────
 
     private void SetupPausedMember(DateTime? pausedUntil, string? reason = null) =>

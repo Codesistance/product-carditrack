@@ -47,6 +47,7 @@ public class DeviceConnectionService : IDeviceConnectionService
     private readonly IDistributedCache _cache;
     private readonly IOAuthCodeExchangeService _codeExchange;
     private readonly IOAuthTokenRefreshService _tokenRefresh;
+    private readonly ICardiMemberAccessService _access;
     private readonly List<DeviceProviderSettings> _providerConfigs;
 
     public DeviceConnectionService(
@@ -55,6 +56,7 @@ public class DeviceConnectionService : IDeviceConnectionService
         IDistributedCache cache,
         IOAuthCodeExchangeService codeExchange,
         IOAuthTokenRefreshService tokenRefresh,
+        ICardiMemberAccessService access,
         IOptions<List<DeviceProviderSettings>> providerConfigs)
     {
         _unitOfWork = unitOfWork;
@@ -62,6 +64,7 @@ public class DeviceConnectionService : IDeviceConnectionService
         _cache = cache;
         _codeExchange = codeExchange;
         _tokenRefresh = tokenRefresh;
+        _access = access;
         _providerConfigs = providerConfigs.Value;
     }
 
@@ -274,7 +277,7 @@ public class DeviceConnectionService : IDeviceConnectionService
     public async Task DisconnectAsync(
         Guid requestingUserId, Guid cardiMemberId, Guid deviceId, CancellationToken ct = default)
     {
-        await EnsureMemberAccessAsync(requestingUserId, cardiMemberId);
+        await EnsureManageAccessAsync(requestingUserId, cardiMemberId, ct);
         var connections = (await _unitOfWork.DeviceConnections.GetByCardiMemberIdAsync(cardiMemberId)).ToList();
         var connection = RequireConnection(connections, deviceId);
 
@@ -305,7 +308,7 @@ public class DeviceConnectionService : IDeviceConnectionService
     public async Task<DeviceResponse> SetPrimaryAsync(
         Guid requestingUserId, Guid cardiMemberId, Guid deviceId, CancellationToken ct = default)
     {
-        await EnsureMemberAccessAsync(requestingUserId, cardiMemberId);
+        await EnsureManageAccessAsync(requestingUserId, cardiMemberId, ct);
         var connections = (await _unitOfWork.DeviceConnections.GetByCardiMemberIdAsync(cardiMemberId)).ToList();
         var connection = RequireConnection(connections, deviceId);
 
@@ -328,7 +331,7 @@ public class DeviceConnectionService : IDeviceConnectionService
     public async Task<DeviceResponse> RefreshConnectionAsync(
         Guid requestingUserId, Guid cardiMemberId, Guid deviceId, CancellationToken ct = default)
     {
-        await EnsureMemberAccessAsync(requestingUserId, cardiMemberId);
+        await EnsureManageAccessAsync(requestingUserId, cardiMemberId, ct);
         var connections = (await _unitOfWork.DeviceConnections.GetByCardiMemberIdAsync(cardiMemberId)).ToList();
         var connection = RequireConnection(connections, deviceId);
 
@@ -380,6 +383,22 @@ public class DeviceConnectionService : IDeviceConnectionService
         var today = DateOnly.FromDateTime(DateTime.UtcNow);
         var logs = await _unitOfWork.ActivityLogs.GetByCardiMemberAndDateRangeAsync(cardiMemberId, today, today);
         return logs.Count(l => l.DeviceConnectionId == deviceId);
+    }
+
+    /// <summary>
+    /// Gate for the M1-15 actions that change how a member is monitored — disconnecting a
+    /// device, moving the primary, forcing a token refresh. Stricter than
+    /// <see cref="EnsureMemberAccessAsync"/>: a relative invited only to watch over someone
+    /// must not be able to cut off the data feed. Denial surfaces as 404, like every other
+    /// CardiMember access failure.
+    /// </summary>
+    private async Task EnsureManageAccessAsync(Guid requestingUserId, Guid cardiMemberId, CancellationToken ct)
+    {
+        await _access.RequireManageAccessAsync(requestingUserId, cardiMemberId, ct);
+
+        var member = await _unitOfWork.CardiMembers.GetByIdAsync(cardiMemberId);
+        if (member is null || !member.IsActive)
+            throw new KeyNotFoundException("CardiMember not found");
     }
 
     private async Task EnsureMemberAccessAsync(Guid requestingUserId, Guid cardiMemberId)
