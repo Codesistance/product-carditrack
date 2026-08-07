@@ -11,10 +11,16 @@ public class ActivityLogRepository : Repository<ActivityLog>, IActivityLogReposi
     {
     }
 
+    /// <summary>
+    /// Writes one row per CardiMember per day. The match must use the same key as the
+    /// unique index on (CardiMemberId, Date) — keying the lookup on DeviceConnectionId
+    /// instead would miss the existing row for a member's second device and insert a
+    /// duplicate that the index then rejects.
+    /// </summary>
     public async Task UpsertAsync(ActivityLog log)
     {
         var existing = await _dbSet
-            .FirstOrDefaultAsync(al => al.DeviceConnectionId == log.DeviceConnectionId
+            .FirstOrDefaultAsync(al => al.CardiMemberId == log.CardiMemberId
                                        && al.Date == log.Date);
 
         if (existing is null)
@@ -23,6 +29,10 @@ public class ActivityLogRepository : Repository<ActivityLog>, IActivityLogReposi
         }
         else
         {
+            // Record which device supplied the day, so a switch of source device is visible.
+            existing.DeviceConnectionId = log.DeviceConnectionId;
+            existing.DataSource = log.DataSource;
+
             existing.Steps = log.Steps;
             existing.Distance = log.Distance;
             existing.ActiveMinutes = log.ActiveMinutes;
@@ -41,6 +51,13 @@ public class ActivityLogRepository : Repository<ActivityLog>, IActivityLogReposi
             existing.LightSleepMinutes = log.LightSleepMinutes;
             existing.RemSleepMinutes = log.RemSleepMinutes;
             existing.AwakeMinutes = log.AwakeMinutes;
+            existing.SpO2Average = log.SpO2Average;
+            existing.SpO2Min = log.SpO2Min;
+            existing.SpO2Max = log.SpO2Max;
+            existing.VO2Max = log.VO2Max;
+            existing.StressScore = log.StressScore;
+            existing.BreathingRate = log.BreathingRate;
+            existing.Temperature = log.Temperature;
             _dbSet.Update(existing);
         }
     }

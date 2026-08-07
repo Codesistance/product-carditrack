@@ -56,48 +56,68 @@ public class DeviceSyncService : IDeviceSyncService
             throw;
         }
 
-        // Most wearable providers finalise the previous day's data — sync yesterday
-        var targetDate = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(-1));
+        // Most wearable providers finalise a day's data only after midnight, so the window ends
+        // at yesterday. It starts further back so a day missed while the worker was down is
+        // picked up on the next run instead of being lost for good.
+        var yesterday = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(-1));
+        var lookbackDays = Math.Max(1, providerConfig.SyncLookbackDays);
 
         try
         {
-            var snapshot = await _deviceApi.GetHealthSnapshotAsync(accessToken, targetDate);
-
-            var log = new ActivityLog
+            // Oldest first, so a mid-window provider failure still leaves the earlier days stored.
+            for (var offset = lookbackDays - 1; offset >= 0; offset--)
             {
-                Id = Guid.NewGuid(),
-                CardiMemberId = connection.CardiMemberId,
-                DeviceConnectionId = connection.Id,
-                DataSource = connection.DeviceType,
-                Date = targetDate,
+                var targetDate = yesterday.AddDays(-offset);
+                var snapshot = await _deviceApi.GetHealthSnapshotAsync(accessToken, targetDate);
 
-                // Activity
-                Steps = snapshot.Steps,
-                Distance = snapshot.DistanceKm,
-                ActiveMinutes = snapshot.ActiveMinutes,
-                SedentaryMinutes = snapshot.SedentaryMinutes,
-                Floors = snapshot.Floors,
-                CaloriesBurned = snapshot.CaloriesBurned,
+                var log = new ActivityLog
+                {
+                    Id = Guid.NewGuid(),
+                    CardiMemberId = connection.CardiMemberId,
+                    DeviceConnectionId = connection.Id,
+                    DataSource = connection.DeviceType,
+                    Date = targetDate,
 
-                // Heart rate
-                RestingHeartRate = snapshot.RestingHeartRate,
-                AvgHeartRate = snapshot.AvgHeartRate,
-                MaxHeartRate = snapshot.MaxHeartRate,
-                MinHeartRate = snapshot.MinHeartRate,
+                    // Activity
+                    Steps = snapshot.Steps,
+                    Distance = snapshot.DistanceKm,
+                    ActiveMinutes = snapshot.ActiveMinutes,
+                    SedentaryMinutes = snapshot.SedentaryMinutes,
+                    Floors = snapshot.Floors,
+                    CaloriesBurned = snapshot.CaloriesBurned,
 
-                // Sleep
-                SleepMinutes = snapshot.TotalSleepMinutes,
-                SleepEfficiency = snapshot.SleepEfficiency,
-                SleepStartTime = snapshot.SleepStartTime,
-                SleepEndTime = snapshot.SleepEndTime,
-                DeepSleepMinutes = snapshot.DeepSleepMinutes,
-                LightSleepMinutes = snapshot.LightSleepMinutes,
-                RemSleepMinutes = snapshot.RemSleepMinutes,
-                AwakeMinutes = snapshot.AwakeMinutes
-            };
+                    // Heart rate
+                    RestingHeartRate = snapshot.RestingHeartRate,
+                    AvgHeartRate = snapshot.AvgHeartRate,
+                    MaxHeartRate = snapshot.MaxHeartRate,
+                    MinHeartRate = snapshot.MinHeartRate,
 
-            await _activityLogs.UpsertAsync(log);
-            await _unitOfWork.SaveChangesAsync();
+                    // Sleep
+                    SleepMinutes = snapshot.TotalSleepMinutes,
+                    SleepEfficiency = snapshot.SleepEfficiency,
+                    SleepStartTime = snapshot.SleepStartTime,
+                    SleepEndTime = snapshot.SleepEndTime,
+                    DeepSleepMinutes = snapshot.DeepSleepMinutes,
+                    LightSleepMinutes = snapshot.LightSleepMinutes,
+                    RemSleepMinutes = snapshot.RemSleepMinutes,
+                    AwakeMinutes = snapshot.AwakeMinutes,
+
+                    // Additional health metrics — null until a provider populates them
+                    SpO2Average = snapshot.SpO2Average,
+                    SpO2Min = snapshot.SpO2Min,
+                    SpO2Max = snapshot.SpO2Max,
+                    VO2Max = snapshot.VO2Max,
+                    StressScore = snapshot.StressScore,
+                    BreathingRate = snapshot.BreathingRate,
+                    Temperature = snapshot.Temperature
+                };
+
+                await _activityLogs.UpsertAsync(log);
+                await _unitOfWork.SaveChangesAsync();
+            }
+
+            // Only once the whole window landed — otherwise a partial sync would look complete
+            // and the connection would not come due again until the next interval.
             await _deviceConnections.UpdateLastSyncDateAsync(connection.Id, DateTime.UtcNow);
         }
         catch (Exception ex) when (IsProviderApiException(ex))

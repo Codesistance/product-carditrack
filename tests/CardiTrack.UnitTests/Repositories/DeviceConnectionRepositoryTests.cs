@@ -125,7 +125,7 @@ public class DeviceConnectionRepositoryTests(TestDatabaseFixture fixture)
         var connection = await TestDataSeeder.SeedDeviceConnectionAsync(
             scope, member.Id, lastSyncDate: null);
 
-        var result = await repo.GetDueForSyncAsync(30);
+        var result = await repo.GetDueForSyncAsync();
 
         Assert.Contains(result, c => c.Id == connection.Id);
     }
@@ -141,7 +141,7 @@ public class DeviceConnectionRepositoryTests(TestDatabaseFixture fixture)
         var connection = await TestDataSeeder.SeedDeviceConnectionAsync(
             scope, member.Id, lastSyncDate: DateTime.UtcNow.AddMinutes(-45));
 
-        var result = await repo.GetDueForSyncAsync(30);
+        var result = await repo.GetDueForSyncAsync();
 
         Assert.Contains(result, c => c.Id == connection.Id);
     }
@@ -157,7 +157,7 @@ public class DeviceConnectionRepositoryTests(TestDatabaseFixture fixture)
         var connection = await TestDataSeeder.SeedDeviceConnectionAsync(
             scope, member.Id, lastSyncDate: DateTime.UtcNow.AddMinutes(-5));
 
-        var result = await repo.GetDueForSyncAsync(30);
+        var result = await repo.GetDueForSyncAsync();
 
         Assert.DoesNotContain(result, c => c.Id == connection.Id);
     }
@@ -174,7 +174,7 @@ public class DeviceConnectionRepositoryTests(TestDatabaseFixture fixture)
         var connection = await TestDataSeeder.SeedDeviceConnectionAsync(
             scope, member.Id, lastSyncDate: null);
 
-        var result = await repo.GetDueForSyncAsync(30);
+        var result = await repo.GetDueForSyncAsync();
 
         // Pausing monitoring has to stop the data actually being collected, not just change
         // what the app shows.
@@ -193,7 +193,7 @@ public class DeviceConnectionRepositoryTests(TestDatabaseFixture fixture)
         var connection = await TestDataSeeder.SeedDeviceConnectionAsync(
             scope, member.Id, lastSyncDate: null);
 
-        var result = await repo.GetDueForSyncAsync(30);
+        var result = await repo.GetDueForSyncAsync();
 
         // A pause expires on its own — nothing has to run to un-pause a member.
         Assert.Contains(result, c => c.Id == connection.Id);
@@ -210,9 +210,47 @@ public class DeviceConnectionRepositoryTests(TestDatabaseFixture fixture)
         var connection = await TestDataSeeder.SeedDeviceConnectionAsync(
             scope, member.Id, lastSyncDate: null);
 
-        var result = await repo.GetDueForSyncAsync(30);
+        var result = await repo.GetDueForSyncAsync();
 
         Assert.DoesNotContain(result, c => c.Id == connection.Id);
+    }
+
+    // The interval is the connection's own SyncFrequencyMinutes, not a fixed 30 — a connection
+    // configured to sync slowly must not come due just because 30 minutes have passed.
+    [Fact]
+    public async Task GetDueForSyncAsync_ExcludesConnection_WhenItsOwnLongerIntervalHasNotElapsed()
+    {
+        using var scope = fixture.CreateScope();
+        var repo = scope.ServiceProvider.GetRequiredService<IDeviceConnectionRepository>();
+
+        var org = await TestDataSeeder.SeedOrganizationAsync(scope);
+        var member = await TestDataSeeder.SeedCardiMemberAsync(scope, org.Id);
+        var connection = await TestDataSeeder.SeedDeviceConnectionAsync(
+            scope, member.Id,
+            lastSyncDate: DateTime.UtcNow.AddMinutes(-45),
+            syncFrequencyMinutes: 240);
+
+        var result = await repo.GetDueForSyncAsync();
+
+        Assert.DoesNotContain(result, c => c.Id == connection.Id);
+    }
+
+    [Fact]
+    public async Task GetDueForSyncAsync_ReturnsConnection_WhenItsOwnShorterIntervalHasElapsed()
+    {
+        using var scope = fixture.CreateScope();
+        var repo = scope.ServiceProvider.GetRequiredService<IDeviceConnectionRepository>();
+
+        var org = await TestDataSeeder.SeedOrganizationAsync(scope);
+        var member = await TestDataSeeder.SeedCardiMemberAsync(scope, org.Id);
+        var connection = await TestDataSeeder.SeedDeviceConnectionAsync(
+            scope, member.Id,
+            lastSyncDate: DateTime.UtcNow.AddMinutes(-10),
+            syncFrequencyMinutes: 5);
+
+        var result = await repo.GetDueForSyncAsync();
+
+        Assert.Contains(result, c => c.Id == connection.Id);
     }
 
     // ── UpdateTokenAsync ─────────────────────────────────────────────────────────

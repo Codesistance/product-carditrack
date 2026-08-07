@@ -86,6 +86,11 @@ public abstract class CronBackgroundService : BackgroundService
 
 Reads its cron schedule from the named `WorkerOptions` (see [Configuration](#configuration)), creates a DI scope per run, and dispatches to the keyed `IDeviceSyncService` for each due device connection.
 
+Two rules shape which connections it actually syncs:
+
+- **Due** means the connection's own `SyncFrequencyMinutes` has elapsed since its `LastSyncDate` — the interval is per connection, not a fixed threshold, so the cron schedule sets only how often the worker *looks*.
+- **One device per CardiMember per run.** `ActivityLogs` is unique on `(CardiMemberId, Date)`, so a member's devices would otherwise overwrite each other's row every cycle. The member's `IsPrimary` device wins, falling back to the longest-connected one so the choice is stable across runs.
+
 ```csharp
 public class WearableSyncWorker : CronBackgroundService
 {
@@ -102,7 +107,18 @@ public class WearableSyncWorker : CronBackgroundService
         var deviceConnections = scope.ServiceProvider
             .GetRequiredService<IDeviceConnectionRepository>();
 
-        var connections = await deviceConnections.GetDueForSyncAsync(thresholdMinutes: 30);
+        // Due per each connection's own SyncFrequencyMinutes
+        var due = (await deviceConnections.GetDueForSyncAsync()).ToList();
+
+        // One writer per CardiMember — primary device first, then longest-connected
+        var connections = due
+            .GroupBy(c => c.CardiMemberId)
+            .Select(g => g
+                .OrderByDescending(c => c.IsPrimary)
+                .ThenBy(c => c.ConnectedDate ?? DateTime.MaxValue)
+                .ThenBy(c => c.Id)
+                .First())
+            .ToList();
 
         foreach (var connection in connections)
         {
@@ -123,6 +139,8 @@ public class WearableSyncWorker : CronBackgroundService
 ```
 
 Each sync goes through `DeviceSyncService`, which first refreshes the connection's OAuth token via `OAuthTokenRefreshService` when needed — token refresh is part of the sync path, not a standalone job.
+
+It then fetches a **trailing window** of days rather than a single day. Providers finalise a day's data only after midnight, so the window ends at yesterday and reaches back `DeviceProviders:<provider>:SyncLookbackDays` (default **3**). Days are fetched oldest first and each is upserted and saved as it arrives, so a provider failure part-way through still leaves the earlier days stored; `LastSyncDate` is stamped only once the whole window lands, which keeps a partially-synced connection due for retry instead of silently leaving a hole.
 
 ### OrphanedOrganizationCleanupWorker
 
@@ -214,7 +232,8 @@ Cron schedules bind per worker class name under the `Workers` section, consumed 
       "ClientSecret": "",
       "TokenUrl": "https://oauth2.googleapis.com/token",
       "ApiBaseUrl": "https://health.googleapis.com",
-      "TokenLifetimeHours": 1
+      "TokenLifetimeHours": 1,
+      "SyncLookbackDays": 3
     }
   ],
   "Workers": {

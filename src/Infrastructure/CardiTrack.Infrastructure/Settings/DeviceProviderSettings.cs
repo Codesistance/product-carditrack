@@ -36,4 +36,12 @@ public class DeviceProviderSettings
 
     /// <summary>Access token lifetime in hours. Used to compute TokenExpiry on storage.</summary>
     public int TokenLifetimeHours { get; set; } = 8;
+
+    /// <summary>
+    /// How many days back each sync re-fetches, ending at yesterday. Providers finalise a day's
+    /// data some hours after midnight, and a sync that only ever fetched yesterday would leave a
+    /// permanent hole for any day the worker was down. Re-fetching a short trailing window makes
+    /// the job self-healing; the upsert keeps it idempotent.
+    /// </summary>
+    public int SyncLookbackDays { get; set; } = 3;
 }

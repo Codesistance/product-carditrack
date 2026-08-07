@@ -15,7 +15,10 @@ public interface IDeviceConnectionRepository : IRepository<DeviceConnection>
     Task<bool> AnyActiveForCardiMembersAsync(IEnumerable<Guid> cardiMemberIds);
 
     Task<IEnumerable<DeviceConnection>> GetByCardiMemberIdAsync(Guid cardiMemberId);
-    Task<IEnumerable<DeviceConnection>> GetDueForSyncAsync(int thresholdMinutes);
+    /// <summary>
+    /// Connections due a sync, judged against each connection's own SyncFrequencyMinutes.
+    /// </summary>
+    Task<IEnumerable<DeviceConnection>> GetDueForSyncAsync();
     Task UpdateTokenAsync(Guid id, string encryptedAccessToken, string encryptedRefreshToken, DateTime tokenExpiry);
     Task UpdateStatusAsync(Guid id, ConnectionStatus status);
     Task UpdateLastSyncDateAsync(Guid id, DateTime syncDate);

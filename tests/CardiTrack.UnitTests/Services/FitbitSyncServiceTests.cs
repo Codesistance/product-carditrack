@@ -27,13 +27,18 @@ public class DeviceSyncServiceTests
         IsActive = true
     };
 
+    private const int LookbackDays = 3;
+
+    private static readonly DateOnly Yesterday = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(-1));
+
     private readonly DeviceProviderSettings _fitbitConfig = new()
     {
         Provider = "Fitbit",
         ClientId = "test_client",
         ClientSecret = "test_secret",
         TokenUrl = "https://api.fitbit.com/oauth2/token",
-        TokenLifetimeHours = 8
+        TokenLifetimeHours = 8,
+        SyncLookbackDays = LookbackDays
     };
 
     private DeviceSyncService CreateSut()
@@ -43,43 +48,51 @@ public class DeviceSyncServiceTests
             _tokenRefresh, _deviceApi, _deviceConnections, _activityLogs, _unitOfWork, options);
     }
 
+    private static DeviceHealthSnapshot Snapshot(int steps = 8000) =>
+        new(Steps: steps, DistanceKm: 5.2m, ActiveMinutes: 45, SedentaryMinutes: 600,
+            Floors: 10, CaloriesBurned: 2100,
+            RestingHeartRate: 65, AvgHeartRate: 72, MaxHeartRate: 120, MinHeartRate: 55,
+            TotalSleepMinutes: 450, SleepEfficiency: 87,
+            SleepStartTime: null, SleepEndTime: null,
+            DeepSleepMinutes: 90, LightSleepMinutes: 240, RemSleepMinutes: 90, AwakeMinutes: 30);
+
     private void SetupDefaultApiResponse()
     {
-        var yesterday = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(-1));
-        _deviceApi.GetHealthSnapshotAsync(Arg.Any<string>(), yesterday)
-            .Returns(new DeviceHealthSnapshot(
-                Steps: 8000, DistanceKm: 5.2m, ActiveMinutes: 45, SedentaryMinutes: 600,
-                Floors: 10, CaloriesBurned: 2100,
-                RestingHeartRate: 65, AvgHeartRate: 72, MaxHeartRate: 120, MinHeartRate: 55,
-                TotalSleepMinutes: 450, SleepEfficiency: 87,
-                SleepStartTime: null, SleepEndTime: null,
-                DeepSleepMinutes: 90, LightSleepMinutes: 240, RemSleepMinutes: 90, AwakeMinutes: 30));
+        _deviceApi.GetHealthSnapshotAsync(Arg.Any<string>(), Arg.Any<DateOnly>())
+            .Returns(Snapshot());
+    }
+
+    private void SetupSuccessfulTokenRefresh()
+    {
+        _tokenRefresh.RefreshIfExpiredAsync(Arg.Any<DeviceConnection>(), Arg.Any<DeviceProviderSettings>())
+            .Returns("access_token");
     }
 
     [Fact]
     public async Task SyncCardiMemberAsync_CallsTokenRefresh_BeforeFetchingData()
     {
-        _tokenRefresh.RefreshIfExpiredAsync(Arg.Any<DeviceConnection>(), Arg.Any<DeviceProviderSettings>())
-            .Returns("access_token");
+        SetupSuccessfulTokenRefresh();
         SetupDefaultApiResponse();
 
         await CreateSut().SyncCardiMemberAsync(_fitbitConnection);
 
         await _tokenRefresh.Received(1).RefreshIfExpiredAsync(_fitbitConnection, _fitbitConfig);
-        await _deviceApi.Received(1).GetHealthSnapshotAsync(Arg.Any<string>(), Arg.Any<DateOnly>());
+        await _deviceApi.Received(LookbackDays).GetHealthSnapshotAsync(Arg.Any<string>(), Arg.Any<DateOnly>());
     }
 
     [Fact]
     public async Task SyncCardiMemberAsync_MapsSnapshotToActivityLog_Correctly()
     {
-        _tokenRefresh.RefreshIfExpiredAsync(Arg.Any<DeviceConnection>(), Arg.Any<DeviceProviderSettings>())
-            .Returns("access_token");
+        SetupSuccessfulTokenRefresh();
         SetupDefaultApiResponse();
 
         await CreateSut().SyncCardiMemberAsync(_fitbitConnection);
 
         await _activityLogs.Received(1).UpsertAsync(Arg.Is<ActivityLog>(log =>
             log != null &&
+            log.Date == Yesterday &&
+            log.CardiMemberId == _fitbitConnection.CardiMemberId &&
+            log.DeviceConnectionId == _fitbitConnection.Id &&
             log.Steps == 8000 &&
             log.ActiveMinutes == 45 &&
             log.RestingHeartRate == 65 &&
@@ -87,24 +100,44 @@ public class DeviceSyncServiceTests
             log.SleepEfficiency == 87));
     }
 
+    // A sync that only ever fetched yesterday left a permanent hole for any day the worker was
+    // down. The window ends at yesterday and reaches back SyncLookbackDays.
     [Fact]
-    public async Task SyncCardiMemberAsync_UpsertsActivityLog_WithYesterdayDate()
+    public async Task SyncCardiMemberAsync_UpsertsEveryDay_InTheTrailingWindow()
     {
-        _tokenRefresh.RefreshIfExpiredAsync(Arg.Any<DeviceConnection>(), Arg.Any<DeviceProviderSettings>())
-            .Returns("access_token");
+        SetupSuccessfulTokenRefresh();
         SetupDefaultApiResponse();
 
-        var expectedDate = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(-1));
         await CreateSut().SyncCardiMemberAsync(_fitbitConnection);
 
-        await _activityLogs.Received(1).UpsertAsync(Arg.Is<ActivityLog>(log => log != null && log.Date == expectedDate));
+        for (var offset = 0; offset < LookbackDays; offset++)
+        {
+            var expected = Yesterday.AddDays(-offset);
+            await _activityLogs.Received(1).UpsertAsync(Arg.Is<ActivityLog>(log =>
+                log != null && log.Date == expected));
+        }
+
+        await _activityLogs.Received(LookbackDays).UpsertAsync(Arg.Any<ActivityLog>());
+    }
+
+    [Fact]
+    public async Task SyncCardiMemberAsync_FetchesOnlyYesterday_WhenLookbackIsOne()
+    {
+        _fitbitConfig.SyncLookbackDays = 1;
+        SetupSuccessfulTokenRefresh();
+        SetupDefaultApiResponse();
+
+        await CreateSut().SyncCardiMemberAsync(_fitbitConnection);
+
+        await _activityLogs.Received(1).UpsertAsync(Arg.Is<ActivityLog>(log =>
+            log != null && log.Date == Yesterday));
+        await _activityLogs.Received(1).UpsertAsync(Arg.Any<ActivityLog>());
     }
 
     [Fact]
     public async Task SyncCardiMemberAsync_UpdatesLastSyncDate_OnSuccess()
     {
-        _tokenRefresh.RefreshIfExpiredAsync(Arg.Any<DeviceConnection>(), Arg.Any<DeviceProviderSettings>())
-            .Returns("access_token");
+        SetupSuccessfulTokenRefresh();
         SetupDefaultApiResponse();
 
         await CreateSut().SyncCardiMemberAsync(_fitbitConnection);
@@ -116,10 +149,8 @@ public class DeviceSyncServiceTests
     [Fact]
     public async Task SyncCardiMemberAsync_SetsStatusToSyncError_WhenApiFails()
     {
-        _tokenRefresh.RefreshIfExpiredAsync(Arg.Any<DeviceConnection>(), Arg.Any<DeviceProviderSettings>())
-            .Returns("access_token");
-        var yesterday = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(-1));
-        _deviceApi.GetHealthSnapshotAsync(Arg.Any<string>(), yesterday)
+        SetupSuccessfulTokenRefresh();
+        _deviceApi.GetHealthSnapshotAsync(Arg.Any<string>(), Arg.Any<DateOnly>())
             .ThrowsAsync(new FitbitApiException(500, "Internal Server Error"));
 
         await Assert.ThrowsAsync<FitbitApiException>(() =>
@@ -127,6 +158,41 @@ public class DeviceSyncServiceTests
 
         await _deviceConnections.Received(1)
             .UpdateStatusAsync(_fitbitConnection.Id, ConnectionStatus.SyncError);
+    }
+
+    // A partial window must stay due: stamping LastSyncDate would hide the gap until the next
+    // interval, and the missing day would never be retried.
+    [Fact]
+    public async Task SyncCardiMemberAsync_DoesNotUpdateLastSyncDate_WhenALaterDayFails()
+    {
+        SetupSuccessfulTokenRefresh();
+        _deviceApi.GetHealthSnapshotAsync(Arg.Any<string>(), Arg.Any<DateOnly>())
+            .Returns(Snapshot());
+        _deviceApi.GetHealthSnapshotAsync(Arg.Any<string>(), Yesterday)
+            .ThrowsAsync(new FitbitApiException(503, "Service Unavailable"));
+
+        await Assert.ThrowsAsync<FitbitApiException>(() =>
+            CreateSut().SyncCardiMemberAsync(_fitbitConnection));
+
+        await _deviceConnections.DidNotReceive()
+            .UpdateLastSyncDateAsync(Arg.Any<Guid>(), Arg.Any<DateTime>());
+    }
+
+    // Oldest day first, so the days that did come back are already saved when a later one fails.
+    [Fact]
+    public async Task SyncCardiMemberAsync_KeepsEarlierDays_WhenALaterDayFails()
+    {
+        SetupSuccessfulTokenRefresh();
+        _deviceApi.GetHealthSnapshotAsync(Arg.Any<string>(), Arg.Any<DateOnly>())
+            .Returns(Snapshot());
+        _deviceApi.GetHealthSnapshotAsync(Arg.Any<string>(), Yesterday)
+            .ThrowsAsync(new FitbitApiException(503, "Service Unavailable"));
+
+        await Assert.ThrowsAsync<FitbitApiException>(() =>
+            CreateSut().SyncCardiMemberAsync(_fitbitConnection));
+
+        await _activityLogs.Received(LookbackDays - 1).UpsertAsync(Arg.Any<ActivityLog>());
+        await _unitOfWork.Received(LookbackDays - 1).SaveChangesAsync();
     }
 
     [Fact]
