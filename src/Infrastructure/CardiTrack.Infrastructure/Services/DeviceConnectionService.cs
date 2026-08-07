@@ -9,7 +9,6 @@ using CardiTrack.Domain.Entities;
 using CardiTrack.Domain.Enums;
 using CardiTrack.Domain.Extensions;
 using CardiTrack.Infrastructure.ExternalClients;
-using CardiTrack.Application.Interfaces.Security;
 using CardiTrack.Infrastructure.Security;
 using CardiTrack.Infrastructure.Settings;
 using CardiTrack.Shared.Json;

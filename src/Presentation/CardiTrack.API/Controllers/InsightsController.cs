@@ -1,3 +1,4 @@
+using CardiTrack.API.Infrastructure.Auditing;
 using CardiTrack.API.Infrastructure.UserContext;
 using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Application.Interfaces.Services;
@@ -7,6 +8,7 @@ using Microsoft.AspNetCore.Mvc;
 namespace CardiTrack.API.Controllers;
 
 [Authorize]
+[AuditHealthDataAccess("ViewInsight")]
 [Route("api/v1/insights")]
 public class InsightsController : BaseApiController
 {
