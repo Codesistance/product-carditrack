@@ -1,0 +1,307 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:controls="clr-namespace:CardiTrack.Mobile.Controls"
+             x:Class="CardiTrack.Mobile.CardiMemberDetailPage"
+             Shell.NavBarIsVisible="False"
+             BackgroundColor="{StaticResource White}">
+
+    <Grid RowDefinitions="Auto,*">
+
+        <!-- ════════════════════════════════════════
+             GRADIENT HEADER — flush on all four edges. The Figma frame rounds the bottom
+             corners, but CLAUDE.md requires full-bleed page shells with no page-level
+             rounding; radius stays on in-layout components only.
+             ════════════════════════════════════════ -->
+        <Border Grid.Row="0"
+                StrokeThickness="0"
+                Padding="20,16,20,22">
+            <Border.Background>
+                <StaticResource Key="GradientButtonBrush"/>
+            </Border.Background>
+
+            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="14">
+                <Border Grid.Column="0"
+                        WidthRequest="38" HeightRequest="38"
+                        StrokeThickness="0"
+                        BackgroundColor="#33FFFFFF"
+                        VerticalOptions="Center">
+                    <Border.StrokeShape>
+                        <RoundRectangle CornerRadius="19"/>
+                    </Border.StrokeShape>
+                    <ImageButton Source="icon_back_white.svg"
+                                 WidthRequest="20" HeightRequest="20"
+                                 BackgroundColor="Transparent"
+                                 Clicked="OnBackClicked"/>
+                </Border>
+
+                <Label Grid.Column="1"
+                       Text="Member Details"
+                       Style="{StaticResource Heading2}"
+                       TextColor="{StaticResource White}"
+                       VerticalTextAlignment="Center"/>
+
+                <Border Grid.Column="2"
+                        WidthRequest="40" HeightRequest="40"
+                        StrokeThickness="0"
+                        BackgroundColor="{StaticResource White}"
+                        VerticalOptions="Center">
+                    <Border.StrokeShape>
+                        <RoundRectangle CornerRadius="12"/>
+                    </Border.StrokeShape>
+                    <ImageButton x:Name="EditButton"
+                                 Source="icon_edit.svg"
+                                 WidthRequest="20" HeightRequest="20"
+                                 BackgroundColor="Transparent"
+                                 Clicked="OnEditClicked"/>
+                </Border>
+            </Grid>
+        </Border>
+
+        <!-- ════════════════════════════════════════
+             CONTENT
+             ════════════════════════════════════════ -->
+        <RefreshView x:Name="Refresher"
+                     Grid.Row="1"
+                     RefreshColor="{StaticResource Primary}"
+                     Refreshing="OnPullToRefresh">
+            <ScrollView>
+                <Grid Padding="20,16,20,28">
+
+                    <!-- ── Loading ── -->
+                    <VerticalStackLayout x:Name="SkeletonPanel" Spacing="14" IsVisible="False">
+                        <controls:SkeletonView HeightRequest="88"/>
+                        <controls:SkeletonView HeightRequest="150"/>
+                        <controls:SkeletonView HeightRequest="110"/>
+                        <controls:SkeletonView HeightRequest="60"/>
+                    </VerticalStackLayout>
+
+                    <!-- ── Error ── -->
+                    <VerticalStackLayout x:Name="ErrorPanel"
+                                         Spacing="10"
+                                         IsVisible="False"
+                                         Padding="0,60,0,0">
+                        <Label Text="We couldn't load these details"
+                               Style="{StaticResource Heading3}"
+                               HorizontalTextAlignment="Center"/>
+                        <Label x:Name="ErrorDetailLabel"
+                               Style="{StaticResource Body2}"
+                               HorizontalTextAlignment="Center"/>
+                        <Button Text="Try again"
+                                Style="{StaticResource SecondaryOutlineButton}"
+                                HorizontalOptions="Center"
+                                Clicked="OnRetryClicked"/>
+                    </VerticalStackLayout>
+
+                    <!-- ── Loaded ── -->
+                    <VerticalStackLayout x:Name="ContentPanel" Spacing="14" IsVisible="False">
+
+                        <!-- Profile -->
+                        <Border Style="{StaticResource DashboardCard}">
+                            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="14">
+                                <Border Grid.Column="0"
+                                        WidthRequest="64" HeightRequest="64"
+                                        StrokeThickness="0"
+                                        VerticalOptions="Center">
+                                    <Border.StrokeShape>
+                                        <RoundRectangle CornerRadius="12"/>
+                                    </Border.StrokeShape>
+                                    <Border.Background>
+                                        <StaticResource Key="GradientButtonBrush"/>
+                                    </Border.Background>
+                                    <!-- Initials stand in for a photo: no photo storage exists yet. -->
+                                    <Label x:Name="InitialsLabel"
+                                           FontFamily="QuicksandSemiBold"
+                                           FontSize="24"
+                                           TextColor="{StaticResource White}"
+                                           HorizontalOptions="Center"
+                                           VerticalOptions="Center"/>
+                                </Border>
+
+                                <VerticalStackLayout Grid.Column="1" Spacing="2" VerticalOptions="Center">
+                                    <Label x:Name="NameLabel" Style="{StaticResource Heading2}"/>
+                                    <Label x:Name="AgeRelationshipLabel" Style="{StaticResource Body2}"/>
+                                </VerticalStackLayout>
+                            </Grid>
+                        </Border>
+
+                        <!-- Paused banner -->
+                        <Border x:Name="PausedBanner"
+                                IsVisible="False"
+                                BackgroundColor="{StaticResource StaleBannerBackground}"
+                                StrokeThickness="0"
+                                Padding="14,10">
+                            <Border.StrokeShape>
+                                <RoundRectangle CornerRadius="12"/>
+                            </Border.StrokeShape>
+                            <Label x:Name="PausedBannerLabel"
+                                   Style="{StaticResource Body2Medium}"/>
+                        </Border>
+
+                        <!-- Monitoring status -->
+                        <Border Style="{StaticResource DashboardCard}">
+                            <VerticalStackLayout Spacing="12">
+                                <HorizontalStackLayout Spacing="8">
+                                    <Image Source="icon_monitoring.svg"
+                                           WidthRequest="20" HeightRequest="20"
+                                           VerticalOptions="Center"/>
+                                    <Label Text="Monitoring Status"
+                                           Style="{StaticResource DashboardSectionTitle}"
+                                           VerticalTextAlignment="Center"/>
+                                </HorizontalStackLayout>
+
+                                <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto" RowSpacing="8">
+                                    <Label Grid.Row="0" Grid.Column="0"
+                                           Text="Connected Devices"
+                                           Style="{StaticResource Body2}"/>
+                                    <Label x:Name="DeviceCountLabel"
+                                           Grid.Row="0" Grid.Column="1"
+                                           Style="{StaticResource Body2Medium}"
+                                           TextColor="{StaticResource Primary}"/>
+
+                                    <Label Grid.Row="1" Grid.Column="0"
+                                           Text="Monitoring Since"
+                                           Style="{StaticResource Body2}"/>
+                                    <Label x:Name="MonitoringSinceLabel"
+                                           Grid.Row="1" Grid.Column="1"
+                                           Style="{StaticResource Body2Medium}"/>
+                                </Grid>
+
+                                <Grid ColumnDefinitions="*,Auto">
+                                    <Label x:Name="BaselineLabel"
+                                           Grid.Column="0"
+                                           Style="{StaticResource Body2Medium}"/>
+                                    <Label x:Name="BaselineDaysLabel"
+                                           Grid.Column="1"
+                                           Style="{StaticResource Body2Medium}"
+                                           TextColor="{StaticResource Primary}"/>
+                                </Grid>
+                                <ProgressBar x:Name="BaselineProgress"
+                                             ProgressColor="{StaticResource Primary}"
+                                             HeightRequest="6"/>
+                            </VerticalStackLayout>
+                        </Border>
+
+                        <!-- Emergency contact -->
+                        <Border Style="{StaticResource DashboardCard}">
+                            <VerticalStackLayout Spacing="10">
+                                <Label Text="Emergency Contact"
+                                       Style="{StaticResource DashboardSectionTitle}"/>
+                                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+                                    <VerticalStackLayout Grid.Column="0" Spacing="2" VerticalOptions="Center">
+                                        <Label x:Name="EmergencyNameLabel"
+                                               Style="{StaticResource Body1SemiBoldDark}"/>
+                                        <Label x:Name="EmergencyPhoneLabel"
+                                               Style="{StaticResource Body2}"/>
+                                    </VerticalStackLayout>
+                                    <Border x:Name="EmergencyCallButton"
+                                            Grid.Column="1"
+                                            WidthRequest="44" HeightRequest="44"
+                                            StrokeThickness="0"
+                                            BackgroundColor="{StaticResource SelectedOptionBackground}"
+                                            VerticalOptions="Center">
+                                        <Border.StrokeShape>
+                                            <RoundRectangle CornerRadius="12"/>
+                                        </Border.StrokeShape>
+                                        <Border.GestureRecognizers>
+                                            <TapGestureRecognizer Tapped="OnCallEmergencyContactTapped"/>
+                                        </Border.GestureRecognizers>
+                                        <Image Source="icon_action_call.svg"
+                                               WidthRequest="20" HeightRequest="20"
+                                               HorizontalOptions="Center" VerticalOptions="Center"/>
+                                    </Border>
+                                </Grid>
+                            </VerticalStackLayout>
+                        </Border>
+
+                        <!-- Medical information (collapsible) -->
+                        <Border Style="{StaticResource DashboardCard}">
+                            <VerticalStackLayout Spacing="10">
+                                <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8">
+                                    <Grid.GestureRecognizers>
+                                        <TapGestureRecognizer Tapped="OnToggleMedicalTapped"/>
+                                    </Grid.GestureRecognizers>
+                                    <Image Grid.Column="0"
+                                           Source="icon_lock.svg"
+                                           WidthRequest="20" HeightRequest="20"
+                                           VerticalOptions="Center"/>
+                                    <Label Grid.Column="1"
+                                           Text="Medical Information"
+                                           Style="{StaticResource DashboardSectionTitle}"
+                                           VerticalTextAlignment="Center"/>
+                                    <Image x:Name="MedicalChevron"
+                                           Grid.Column="2"
+                                           Source="icon_chevron_down.svg"
+                                           WidthRequest="20" HeightRequest="20"
+                                           VerticalOptions="Center"/>
+                                </Grid>
+                                <Label x:Name="MedicalNotesLabel"
+                                       IsVisible="False"
+                                       Style="{StaticResource Body2}"/>
+                            </VerticalStackLayout>
+                        </Border>
+
+                        <!-- Actions -->
+                        <Button Text="View Dashboard"
+                                Style="{StaticResource AuthGradientButton}"
+                                Clicked="OnViewDashboardClicked"/>
+
+                        <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
+                            <Button Grid.Column="0"
+                                    Text="View Alerts"
+                                    FontSize="15"
+                                    Style="{StaticResource SecondaryOutlineButton}"
+                                    Clicked="OnViewAlertsClicked"/>
+                            <Button Grid.Column="1"
+                                    Text="Manage Device"
+                                    FontSize="15"
+                                    Style="{StaticResource SecondaryOutlineButton}"
+                                    Clicked="OnManageDevicesClicked"/>
+                        </Grid>
+
+                        <!-- Management / danger zone -->
+                        <VerticalStackLayout Spacing="4" Margin="0,10,0,0">
+                            <Label Text="Management" Style="{StaticResource DashboardSectionTitle}"/>
+                            <Label Text="Critical settings for this CardiMember"
+                                   Style="{StaticResource Body2}"/>
+                        </VerticalStackLayout>
+
+                        <Border Style="{StaticResource DashboardCard}" Padding="14,4">
+                            <Border.GestureRecognizers>
+                                <TapGestureRecognizer Tapped="OnPauseMonitoringTapped"/>
+                            </Border.GestureRecognizers>
+                            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12" HeightRequest="52">
+                                <Image Grid.Column="0" Source="icon_pause.svg"
+                                       WidthRequest="22" HeightRequest="22" VerticalOptions="Center"/>
+                                <Label x:Name="PauseRowLabel"
+                                       Grid.Column="1"
+                                       Text="Pause Monitoring"
+                                       Style="{StaticResource Body1SemiBoldDark}"
+                                       VerticalTextAlignment="Center"/>
+                                <Image Grid.Column="2" Source="icon_chevron.svg"
+                                       WidthRequest="20" HeightRequest="20" VerticalOptions="Center"/>
+                            </Grid>
+                        </Border>
+
+                        <Border Style="{StaticResource DashboardCard}" Padding="14,4">
+                            <Border.GestureRecognizers>
+                                <TapGestureRecognizer Tapped="OnRemoveMemberTapped"/>
+                            </Border.GestureRecognizers>
+                            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12" HeightRequest="52">
+                                <Image Grid.Column="0" Source="icon_person_remove.svg"
+                                       WidthRequest="22" HeightRequest="22" VerticalOptions="Center"/>
+                                <Label Grid.Column="1"
+                                       Text="Remove CardiMember"
+                                       Style="{StaticResource Body1SemiBoldDark}"
+                                       VerticalTextAlignment="Center"/>
+                                <Image Grid.Column="2" Source="icon_chevron.svg"
+                                       WidthRequest="20" HeightRequest="20" VerticalOptions="Center"/>
+                            </Grid>
+                        </Border>
+
+                    </VerticalStackLayout>
+                </Grid>
+            </ScrollView>
+        </RefreshView>
+    </Grid>
+</ContentPage>

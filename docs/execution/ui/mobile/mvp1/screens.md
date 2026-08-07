@@ -44,13 +44,13 @@ A single user can sign up, add a CardiMember, connect devices, manage CardiMembe
 | M1-10 | Alerts List | 4 (a–d) | ❌ stub ("Coming soon") |
 | M1-11 | Alert Detail - Activity | 1 | ❌ not built |
 | M1-12 | Alert Detail - Critical | 1 | ❌ not built |
-| M1-13 | CardiMember Detail | 1 | ❌ not built |
-| M1-14 | Edit CardiMember | 1 | ❌ not built |
-| M1-15 | Device Management | 1 | ❌ not built |
+| M1-13 | CardiMember Detail | 1 + 3 as-built | ✅ `CardiMemberDetailPage` |
+| M1-14 | Edit CardiMember | 1 + 2 as-built | ✅ `EditCardiMemberPage` |
+| M1-15 | Device Management | 1 + 3 as-built | ✅ `DeviceManagementPage` |
 | M1-16 | Alert Detail - Heart Rate | 1 | ❌ not built |
 | M1-17 | Health Data Export | 4 (a–d) | ❌ not built |
 
-**Total: 17 designed screens · 37 designed states — 9 of 17 built**
+**Total: 17 designed screens · 37 designed states — 12 of 17 built**
 
 **Shipped screens without Figma M1 frames** (need design sync; no M1 IDs assigned per project convention): SignInPage, ForgotPasswordPage, VerifyEmailPage, Onboarding/AccountSetupPage — see the canonical [ui_screens_maui_mobile.md](../ui_screens_maui_mobile.md) for full specs.
 
@@ -580,14 +580,17 @@ Each device card:
 | Caution | "Something looks a little different" | Warning triangle |
 | Urgent | "You should check in" | Lightning bolt |
 | Critical | "Reach out to [Name] now" | Siren |
+| Paused | "Monitoring is paused for [Name]" | Pause |
 
 - Last synced: "Updated 10 minutes ago"
 - Tap sync icon for manual refresh
+- **Tap the card body → M1-13 CardiMember Detail**
+- The Paused row is outside the green/yellow/orange/red severity scale on purpose: it says "we are not watching", not "we looked and it's fine"
 
 **Quick Actions Row (3 horizontal buttons):**
 - "Call [Name]" (phone icon) → initiates phone call
 - "Send Message" (SMS icon) → opens SMS
-- "View Details" (chart icon) → navigates to M1-13
+- "View Details" (chart icon) → navigates to M1-13 (as does tapping the hero card)
 
 **Key Metrics (3 cards in a row):**
 
@@ -629,10 +632,11 @@ Each device card:
 - ~~Swipe left on metric card → see detail view~~ (not shipped — no metric-card swipe gesture)
 - ~~Long-press on photo → change photo option~~ (not shipped — no photo long-press gesture)
 
-**States (7 as built):**
+**States (8 as built):**
 - **M1-09a — Loading:** Skeleton/shimmer cards
 - **M1-09b — Normal:** Full data displayed
-- **M1-09c — Stale data / offline:** Cached data with banner: "Last update was X hours ago — pull down to check in"
+- **M1-09c — Stale data / offline:** Cached data with banner: "Last update was X hours ago — pull down to check in". **Suppressed while monitoring is paused** — the data is meant to be stale then, and "pull down to check in" is advice the app can't honour.
+- **Monitoring paused:** amber banner naming the resume time; hero shows the paused status
 - **M1-09d — No device connected:** Prompt card: "Connect [Name]'s device so CardiTrack can start watching over them" → M1-05
 - **M1-09e — Baseline learning:** Shows progress bar instead of "% of normal" comparisons
 - **Refresh / sync-error:** RefreshView in-flight state, plus sync-error surface
@@ -804,122 +808,109 @@ This is the most safety-critical screen in the app. Design for urgency and immed
 ---
 
 ### M1-13: CardiMember Detail
-**Status:** Not built — entry points show "Coming soon"; design intent below
+**Status:** Built (`CardiMemberDetailPage`)
 **User Story:** 1.4 CardiMember Profile Management
-**Entry:** ← M1-09 Dashboard ("View Details") | ← M2-01 Settings ("Manage CardiMembers")
-**Exit:** ← Previous screen (back) | → M1-14 Edit CardiMember | → M1-09 Dashboard | → M1-10 Alerts
+**Entry:** ← M1-09 Dashboard (hero card tap **or** "View Details") | ← M2-01 Settings ("Manage CardiMembers") _(MVP 2)_
+**Exit:** ← Previous screen (back) | → M1-14 Edit CardiMember | → M1-15 Device Management | → M1-09 Dashboard | → M1-10 Alerts
 
-**Profile Section (centered):**
-- Large photo (prominent, centered)
-- Name (large text)
-- Age & relationship: "78 years old - Dad"
+Backed by a single `GET /api/v1/cardimembers/{id}` round trip — see [cardimembers.md](../../../backend/api/cardimembers.md).
 
-**Contact Info Card:**
-- Emergency contact: name, phone (tappable to call), relationship
-
-**Medical Info Card (encrypted):**
-- Lock icon in card header
-- Collapsible: "Medical Notes"
-- Biometric gating of medical notes is **deferred to R4** (per the [release matrix](../../../../release_matrix.md)) — not an MVP 1 requirement
+**Profile Section:**
+- ~~Large photo~~ — **initials avatar as built.** No photo storage exists server-side (`PhotoUrl` is always null and there is no upload path), so a photo would have nothing to render.
+- Name and "78 years old • Dad" (the *requesting caregiver's* relationship, not the first link on the member)
 
 **Monitoring Info Card:**
-- Connected devices: "2 devices"
-- Monitoring since: "Jan 1, 2026"
-- Baseline status: "Learning (15 days)" or "Established"
+- Connected devices: "2 Devices" · Monitoring since: "Jan 1, 2026"
+- Baseline status: "Learning" / "Established" with a `daysCaptured`/`daysRequired` progress bar
+
+**Contact Info Card:**
+- Emergency contact name and phone, with a call button (hidden when no number is stored)
+- Falls back to "No emergency contact yet" rather than rendering an empty card
+
+**Medical Info Card (encrypted):**
+- Lock icon in card header; collapsible notes, collapsed by default
+- Notes are **encrypted at rest** (AES-256-GCM) as of this screen — rows written before that are still readable
+- Biometric gating of medical notes remains **deferred to R4** (per the [release matrix](../../../../release_matrix.md)) — not an MVP 1 requirement
 
 **Action Buttons:**
-- "View Dashboard" → M1-09
-- "View Alerts" → M1-10
-- "Manage Devices" → M1-15
+- "View Dashboard" → M1-09 · "View Alerts" → M1-10 · "Manage Device" → M1-15
 
-**Danger Zone (separated):**
-- "Pause Monitoring" button (warning treatment)
-- "Remove CardiMember" button (destructive treatment)
+**Management (danger zone):**
+- "Pause Monitoring" — bounded 1 hour to 7 days, chosen from an action sheet then confirmed. The row becomes "Resume Monitoring" while paused. A pause **stops data collection**, not just the display: the sync worker skips paused members, and the dashboard hero shows a distinct `paused` status rather than a health colour.
+- "Remove CardiMember" — confirmed, then soft-deletes the member, their caregiver links and their device connections, discarding stored OAuth tokens. Health history is retained.
+
+**Permissions:** editing, pausing and removing require the caller to be a **primary caregiver**; the edit button is hidden and the management rows explain themselves for view-only caregivers.
+
+**States (4 as built):**
+- **Loading:** skeleton cards
+- **Loaded:** as above
+- **Error:** "We couldn't load these details" with retry
+- **Paused:** amber banner naming the resume time and reason
 
 ---
 
 ### M1-14: Edit CardiMember
-**Status:** Not built — design intent below
+**Status:** Built (`EditCardiMemberPage`)
 **User Story:** 1.4 CardiMember Profile Management
 **Entry:** ← M1-13 CardiMember Detail (edit button)
 **Exit:** ← M1-13 CardiMember Detail (cancel or save)
 
+Saves via `PUT /api/v1/cardimembers/{id}` — a full replacement, so clearing a field is expressed as an empty value rather than "leave it alone".
+
 **Header:**
-- Cancel button
-- Title: "Edit [Name]"
-- Save button (enabled when changes exist)
+- Back/cancel button, title "Edit Profile", Save button
 
 **Form (scrollable):**
 
-**Photo:** Large circular image + "Change Photo" button
+**Photo:** initials avatar, live-updating as the name is typed. ~~"Change Photo" button~~ — **not shipped**: there is no photo upload path, so the button would do nothing.
 
-**Basic Info:**
-- "Full Name" — text input
-- "Date of Birth" — date picker
-- "Relationship" — dropdown picker
+**Basic Info:** "Full Name*", "Date of Birth*" (picker), "Relationship*" (picker)
 
-**Optional Info:**
-- "Medical Notes" — multi-line (encrypted)
-- "Emergency Contact Name" — text input
-- "Emergency Contact Phone" — phone input
+**Medical & Emergency:** "Medical Notes" (multi-line, ≤2000 chars, encrypted at rest), "Emergency Contact Name", "Emergency Contact Number"
 
 **Monitoring Preferences:**
-- Toggle: "Enable Monitoring"
-- Dropdown: "Alert Sensitivity" — Low / Medium / High
-
-**CTA:**
-- Primary button: "Save Changes"
+- ~~Toggle: "Enable Monitoring"~~ — **not shipped here.** Monitoring is paused from M1-13's Management section, where it is time-bounded; an open-ended toggle on an edit form is how someone stops being monitored without anyone deciding to.
+- Dropdown: "Alert Sensitivity" — Low / Medium / High. **Stored but not yet consumed**: alert generation lives in the unbuilt GCP pipeline (`docs/llm_design.md`), and the form says so under the field.
 
 **Behavior:**
-- Tracks unsaved changes
-- "Unsaved changes" warning if navigating away without saving
+- Client-side validation mirrors the server's rules (name 2–100, age 18–120, phone format, notes ≤2000)
+- Tracks unsaved changes and warns before discarding them on cancel
+
+**States (3 as built):** loading skeleton · form · error with retry
 
 ---
 
 ### M1-15: Device Management
-**Status:** Not built — design intent below
+**Status:** Built (`DeviceManagementPage`)
 **User Story:** 6.2 Devices
-**Entry:** ← M2-01 Settings ("Connected Devices") | ← M1-13 CardiMember Detail ("Manage Devices")
-**Exit:** ← Previous screen (back) | → M1-05 Device Selection ("Add Device")
+**Entry:** ← M1-13 CardiMember Detail ("Manage Device") | ← M2-01 Settings ("Connected Devices") _(MVP 2)_
+**Exit:** ← Previous screen (back) | → M1-05 Device Selection ("+ Add Device")
 
-**Header:**
-- Back button
-- Title: "Connected Devices"
-- "+ Add Device" button
+**Header:** back button, "Connected Devices", "+ Add Device" (launches the M1-05..M1-07 wizard modally)
 
-**Devices List (grouped by CardiMember):**
-
-**Group Header:** CardiMember name + photo
+**Devices List:** headed by the CardiMember's name; one card per connection.
 
 **Device Card:**
-- Device logo (small, left)
-- Device info:
-  - Name: "Dad's Fitbit Charge 5"
-  - Status badge:
-    - Normal: "Active" (synced 10m ago)
-    - Caution: "Token Expiring Soon"
-    - Critical: "Disconnected"
-  - Data sources: "Activity, HR, Sleep"
-  - Primary device star (if designated)
-- Menu icon (three dots)
+- Provider logo, device name, status chip (`ACTIVE` / `NEEDS RECONNECT` / `DISCONNECTED`), "synced 10m ago"
+- Data sources from the granted OAuth scopes: "Activity, HR, Sleep"
+- Primary device star when designated
+- ~~Menu icon (three dots)~~ — **actions are inline** rather than behind a menu, matching the Figma frame
 
-**Context Menu:**
-- Refresh Connection
-- Set as Primary (toggle)
-- View Sync History
-- Remove Device (destructive text)
+**Permissions:** the three actions below require a **primary caregiver**; a view-only caregiver can see the list but not change it.
 
-**Expanded Detail (tap card to expand):**
-- Last sync: "10 minutes ago"
-- Next sync: "In 20 minutes"
-- Data synced today: "4 updates"
-- Battery: "75%" (if available from device)
+**Actions (inline on each card):**
+- **Refresh Connection** — renews the OAuth token and reports the result. Does **not** pull health data: syncing is the Worker's job per `CLAUDE.md`. A provider that can't be reached marks the connection `token_expired` so the screen agrees with what the user was told.
+- **Set as Primary** — switch; disabled on the device that already is primary, since turning it off would leave the member without one
+- **Remove Device** — confirmed, then soft-deletes the connection and discards its stored tokens. If it was the primary, another active device is promoted.
 
-**Troubleshooting (bottom, collapsible):**
-- "Having trouble?"
-  - Make sure Bluetooth is on
-  - Try reconnecting the device
-  - We're here to help — contact support
+**Stats row:**
+- Last sync · Next sync (derived from last sync + the connection's interval) · Today's data ("4 updates")
+- ~~Battery: "75%"~~ — **not shipped.** No battery level is stored on `DeviceConnection` or fetched from any provider, so the tile has no source. Three tiles instead of four.
+- ~~View Sync History~~ — no sync-history endpoint exists
+
+**Troubleshooting (bottom, collapsible):** "Having trouble?" with reconnect guidance. Wording avoids Bluetooth — these are cloud OAuth connections, not paired peripherals.
+
+**States (4 as built):** loading skeleton · device list · empty ("No devices connected yet" + connect CTA) · error with retry
 
 ---
 

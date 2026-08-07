@@ -1,4 +1,5 @@
 using CardiTrack.Application.Interfaces.Repositories;
+using CardiTrack.Application.Interfaces.Security;
 using CardiTrack.Infrastructure.Extensions;
 using CardiTrack.Infrastructure.ExternalClients;
 using CardiTrack.Infrastructure.Persistence;

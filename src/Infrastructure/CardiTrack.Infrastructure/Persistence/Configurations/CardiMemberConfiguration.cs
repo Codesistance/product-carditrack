@@ -39,11 +39,23 @@ public class CardiMemberConfiguration : IEntityTypeConfiguration<CardiMember>
         builder.Property(c => c.EmergencyContactPhone)
             .HasMaxLength(20);
 
-        // Encrypted field - will be encrypted by encryption service
-        builder.Property(c => c.MedicalNotes)
-            .HasMaxLength(2000);
+        // Encrypted at rest by CardiMemberService. Deliberately unbounded: the request caps
+        // notes at 2000 characters, but base64 of AES-GCM ciphertext over 2000 multi-byte
+        // characters runs to roughly 10k — a 2000-char column would reject valid input.
+        builder.Property(c => c.MedicalNotes);
 
         builder.Property(c => c.LastSyncDate);
+
+        builder.Property(c => c.MonitoringPausedUntil);
+
+        builder.Property(c => c.MonitoringPauseReason)
+            .HasMaxLength(200);
+
+        builder.Property(c => c.AlertSensitivity)
+            .IsRequired()
+            .HasConversion<string>()
+            .HasMaxLength(20)
+            .HasDefaultValue(Domain.Enums.AlertSensitivity.Medium);
 
         builder.Property(c => c.IsActive)
             .IsRequired()
@@ -59,6 +71,8 @@ public class CardiMemberConfiguration : IEntityTypeConfiguration<CardiMember>
         builder.HasIndex(c => c.OrganizationId);
         builder.HasIndex(c => c.IsActive);
         builder.HasIndex(c => c.LastSyncDate);
+        // The sync-due query joins members and filters on the pause window every worker tick.
+        builder.HasIndex(c => c.MonitoringPausedUntil);
 
         // Ignore navigation properties
         builder.Ignore(c => c.UserCardiMembers);

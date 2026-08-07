@@ -3,6 +3,7 @@ using CardiTrack.API.Infrastructure.UserContext;
 using CardiTrack.API.Validators;
 using CardiTrack.Application.DTOs.Requests;
 using CardiTrack.Application.Interfaces.Repositories;
+using CardiTrack.Application.Interfaces.Security;
 using CardiTrack.Infrastructure.Extensions;
 using CardiTrack.Infrastructure.ExternalClients;
 using CardiTrack.Infrastructure.Repositories;
@@ -20,6 +21,8 @@ public static class ServiceCollectionExtensions
     {
         services.AddScoped<IValidator<CreateOrganizationRequest>, CreateOrganizationValidator>();
         services.AddScoped<IValidator<CreateCardiMemberRequest>, CreateCardiMemberValidator>();
+        services.AddScoped<IValidator<UpdateCardiMemberRequest>, UpdateCardiMemberValidator>();
+        services.AddScoped<IValidator<PauseMonitoringRequest>, PauseMonitoringValidator>();
         services.AddScoped<IValidator<NotificationPreferencesRequest>, NotificationPreferencesValidator>();
         services.AddScoped<IValidator<ConnectDeviceRequest>, ConnectDeviceValidator>();
         services.AddScoped<IValidator<OAuthCallbackRequest>, OAuthCallbackValidator>();

@@ -1,0 +1,131 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentView xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="CardiTrack.Mobile.Controls.DeviceCard">
+
+    <Border Style="{StaticResource DashboardCard}">
+        <VerticalStackLayout Spacing="12">
+
+            <!-- Identity -->
+            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
+                <Border Grid.Column="0"
+                        WidthRequest="44" HeightRequest="44"
+                        StrokeThickness="0"
+                        BackgroundColor="{StaticResource SelectedOptionBackground}"
+                        VerticalOptions="Start">
+                    <Border.StrokeShape>
+                        <RoundRectangle CornerRadius="12"/>
+                    </Border.StrokeShape>
+                    <Image x:Name="ProviderImage"
+                           WidthRequest="26" HeightRequest="26"
+                           Aspect="AspectFit"
+                           HorizontalOptions="Center" VerticalOptions="Center"/>
+                </Border>
+
+                <VerticalStackLayout Grid.Column="1" Spacing="4">
+                    <Label x:Name="NameLabel" Style="{StaticResource Body1SemiBoldDark}"/>
+                    <HorizontalStackLayout Spacing="8">
+                        <Border x:Name="StatusChip"
+                                StrokeThickness="0"
+                                Padding="8,2"
+                                VerticalOptions="Center">
+                            <Border.StrokeShape>
+                                <RoundRectangle CornerRadius="8"/>
+                            </Border.StrokeShape>
+                            <Label x:Name="StatusLabel"
+                                   FontFamily="QuicksandSemiBold"
+                                   FontSize="10"/>
+                        </Border>
+                        <Label x:Name="SyncedLabel"
+                               Style="{StaticResource Body2}"
+                               FontSize="12"
+                               VerticalTextAlignment="Center"/>
+                    </HorizontalStackLayout>
+                    <Label x:Name="ScopesLabel" Style="{StaticResource Body2}" FontSize="13"/>
+                </VerticalStackLayout>
+
+                <Image x:Name="PrimaryStar"
+                       Grid.Column="2"
+                       Source="icon_star.svg"
+                       WidthRequest="20" HeightRequest="20"
+                       IsVisible="False"
+                       VerticalOptions="Start"/>
+            </Grid>
+
+            <!-- Stats. Battery is absent by design — no provider battery level is stored. -->
+            <Grid ColumnDefinitions="*,*,*" ColumnSpacing="8">
+                <Border Grid.Column="0" StrokeThickness="0" Padding="10,8"
+                        BackgroundColor="{StaticResource SelectedOptionBackground}">
+                    <Border.StrokeShape>
+                        <RoundRectangle CornerRadius="10"/>
+                    </Border.StrokeShape>
+                    <VerticalStackLayout Spacing="2">
+                        <Label Text="LAST SYNC" FontFamily="QuicksandSemiBold" FontSize="9"
+                               TextColor="{StaticResource MutedText}"/>
+                        <Label x:Name="LastSyncValue" Style="{StaticResource Body2Medium}" FontSize="12"/>
+                    </VerticalStackLayout>
+                </Border>
+                <Border Grid.Column="1" StrokeThickness="0" Padding="10,8"
+                        BackgroundColor="{StaticResource SelectedOptionBackground}">
+                    <Border.StrokeShape>
+                        <RoundRectangle CornerRadius="10"/>
+                    </Border.StrokeShape>
+                    <VerticalStackLayout Spacing="2">
+                        <Label Text="NEXT SYNC" FontFamily="QuicksandSemiBold" FontSize="9"
+                               TextColor="{StaticResource MutedText}"/>
+                        <Label x:Name="NextSyncValue" Style="{StaticResource Body2Medium}" FontSize="12"/>
+                    </VerticalStackLayout>
+                </Border>
+                <Border Grid.Column="2" StrokeThickness="0" Padding="10,8"
+                        BackgroundColor="{StaticResource SelectedOptionBackground}">
+                    <Border.StrokeShape>
+                        <RoundRectangle CornerRadius="10"/>
+                    </Border.StrokeShape>
+                    <VerticalStackLayout Spacing="2">
+                        <Label Text="TODAY'S DATA" FontFamily="QuicksandSemiBold" FontSize="9"
+                               TextColor="{StaticResource MutedText}"/>
+                        <Label x:Name="TodayValue" Style="{StaticResource Body2Medium}" FontSize="12"/>
+                    </VerticalStackLayout>
+                </Border>
+            </Grid>
+
+            <BoxView Style="{StaticResource DividerLine}"/>
+
+            <!-- Actions -->
+            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12" HeightRequest="40">
+                <Grid.GestureRecognizers>
+                    <TapGestureRecognizer Tapped="OnRefreshTapped"/>
+                </Grid.GestureRecognizers>
+                <Image Grid.Column="0" Source="icon_refresh.svg"
+                       WidthRequest="20" HeightRequest="20" VerticalOptions="Center"/>
+                <Label x:Name="RefreshLabel" Grid.Column="1" Text="Refresh Connection"
+                       Style="{StaticResource Body2Medium}" VerticalTextAlignment="Center"/>
+            </Grid>
+
+            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12" HeightRequest="40">
+                <Image Grid.Column="0" Source="icon_star.svg"
+                       WidthRequest="20" HeightRequest="20" VerticalOptions="Center"/>
+                <Label Grid.Column="1" Text="Set as Primary"
+                       Style="{StaticResource Body2Medium}" VerticalTextAlignment="Center"/>
+                <Switch x:Name="PrimarySwitch"
+                        Grid.Column="2"
+                        OnColor="{StaticResource Primary}"
+                        VerticalOptions="Center"
+                        Toggled="OnPrimaryToggled"/>
+            </Grid>
+
+            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12" HeightRequest="40">
+                <Grid.GestureRecognizers>
+                    <TapGestureRecognizer Tapped="OnRemoveTapped"/>
+                </Grid.GestureRecognizers>
+                <Image Grid.Column="0" Source="icon_trash.svg"
+                       WidthRequest="20" HeightRequest="20" VerticalOptions="Center"/>
+                <Label Grid.Column="1" Text="Remove Device"
+                       Style="{StaticResource Body2Medium}"
+                       TextColor="{StaticResource ErrorRed}"
+                       VerticalTextAlignment="Center"/>
+            </Grid>
+
+        </VerticalStackLayout>
+    </Border>
+</ContentView>

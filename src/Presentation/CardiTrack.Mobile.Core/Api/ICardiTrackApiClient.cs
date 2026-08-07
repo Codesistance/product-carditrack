@@ -18,8 +18,32 @@ public interface ICardiTrackApiClient
     Task<UserResponse> CreateUserAsync(CreateUserRequest request, CancellationToken ct = default);
     Task<CardiMemberResponse> CreateCardiMemberAsync(CreateCardiMemberRequest request, CancellationToken ct = default);
     Task<List<CardiMemberResponse>> GetCardiMembersAsync(CancellationToken ct = default);
+
+    /// <summary>Full profile for the CardiMember Detail screen (M1-13).</summary>
+    Task<CardiMemberDetailResponse> GetCardiMemberAsync(Guid cardiMemberId, CancellationToken ct = default);
+
+    /// <summary>Saves the edit form (M1-14).</summary>
+    Task<CardiMemberDetailResponse> UpdateCardiMemberAsync(
+        Guid cardiMemberId, UpdateCardiMemberRequest request, CancellationToken ct = default);
+
+    /// <summary>Removes a CardiMember (M1-13 danger zone).</summary>
+    Task RemoveCardiMemberAsync(Guid cardiMemberId, CancellationToken ct = default);
+
+    Task<MonitoringPauseResponse> PauseMonitoringAsync(
+        Guid cardiMemberId, PauseMonitoringRequest request, CancellationToken ct = default);
+
+    Task<MonitoringPauseResponse> ResumeMonitoringAsync(Guid cardiMemberId, CancellationToken ct = default);
+
     Task<DashboardResponse> GetDashboardAsync(Guid cardiMemberId, CancellationToken ct = default);
     Task<DeviceListResponse> GetDevicesAsync(Guid cardiMemberId, CancellationToken ct = default);
+
+    /// <summary>M1-15 device management.</summary>
+    Task DisconnectDeviceAsync(Guid cardiMemberId, Guid deviceId, CancellationToken ct = default);
+
+    Task<DeviceResponse> SetPrimaryDeviceAsync(Guid cardiMemberId, Guid deviceId, CancellationToken ct = default);
+
+    Task<DeviceResponse> RefreshDeviceConnectionAsync(
+        Guid cardiMemberId, Guid deviceId, CancellationToken ct = default);
     Task<OAuthInitiationResponse> InitiateDeviceConnectionAsync(Guid cardiMemberId, ConnectDeviceRequest request, CancellationToken ct = default);
     Task<DeviceResponse> CompleteDeviceConnectionAsync(string provider, OAuthCallbackRequest request, CancellationToken ct = default);
 

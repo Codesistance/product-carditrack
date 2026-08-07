@@ -26,8 +26,9 @@ This document provides an overview of all domain entities in the CardiTrack syst
 - Person being monitored (can be the User themselves)
 - Contains: Name, Email, Phone, DateOfBirth, Gender, OrganizationId, LastSyncDate
 - Emergency contact: two flat columns — EmergencyContactName, EmergencyContactPhone (no JSON, no separate entity yet)
-- MedicalNotes: **intended encrypted, currently stored in plain text** — application-level encryption is a tracked follow-up (only device OAuth tokens are encrypted today)
-- No monitoring-pause fields (MonitoringPausedUntil/PauseReason were designed but not built)
+- MedicalNotes: **encrypted at rest** (AES-256-GCM, applied in `CardiMemberService`). Column is `text`, not `varchar(2000)` — ciphertext is longer than the 2000-character input limit
+- Monitoring pause: MonitoringPausedUntil (null = monitoring normally) and MonitoringPauseReason. Time-bounded and self-expiring; enforced in `GetDueForSyncAsync`, so a paused member is genuinely not synced
+- AlertSensitivity (Low/Medium/High, default Medium) — **stored but not yet consumed**; alert generation is not built
 - Links to devices, activity logs, alerts, and pattern baselines
 
 #### 4. **UserCardiMember** (Join Table)
@@ -132,8 +133,7 @@ This document provides an overview of all domain entities in the CardiTrack syst
 - Pattern baselines store day-of-week arrays
 
 ### 6. Security & Encryption
-- Device OAuth tokens (AccessToken, RefreshToken) encrypted with AES-256-GCM — the only application-level encryption implemented today
-- MedicalNotes encryption is planned (currently plain text) — see [data_protection_architecture.md](./data_protection_architecture.md)
+- Device OAuth tokens (AccessToken, RefreshToken) and CardiMember MedicalNotes are encrypted with AES-256-GCM — see [data_protection_architecture.md](./data_protection_architecture.md)
 - Credentials are Auth0-hosted; a legacy `PasswordHash` column remains on Users pending removal
 - Audit logging designed for all PHI access (writes not yet wired)
 

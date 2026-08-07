@@ -102,7 +102,9 @@ Splash → Welcome → SignIn / CreateAccount
 - **Onboarding pages hide the tab bar** (`Shell.TabBarIsVisible="False"` on the wizard pages) so the wizard also renders chrome-free when pushed over the Shell.
 - **Dashboard empty state** (recent change): "Add your first CardiMember" now pushes `AddCardiMemberPage` — the real M1-04 wizard page — directly onto the navigation stack, instead of the previous "Coming soon" alert.
 - `AddCardiMemberPage` **Skip** is context-aware: pushed from the dashboard it pops back; as the onboarding root it hands over to a fresh `AppShell`.
-- Remaining dashboard touchpoints (member details M1-13, alert details M1-11, device connection M1-05, trends M2-03) still show "Coming soon" alerts.
+- **Member details** are reachable two ways from the dashboard: tapping the status hero card, or the "View Details" quick action. Both route to `CardiMemberDetailPage` (M1-13), which in turn reaches `EditCardiMemberPage` (M1-14) and `DeviceManagementPage` (M1-15).
+- These three are the app's **first routed (non-tab) pages**: registered with `Routing.RegisterRoute` in `AppShell` and navigated to as `GoToAsync("<route>?memberId=…")`, resolved through DI like the tab pages.
+- Remaining dashboard touchpoints (alert details M1-11, trends M2-03) still show "Coming soon" alerts.
 
 ## Configuration
 

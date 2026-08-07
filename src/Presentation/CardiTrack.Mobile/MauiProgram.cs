@@ -67,6 +67,11 @@ public static class MauiProgram
         builder.Services.AddTransient<FamilyPage>();
         builder.Services.AddTransient<SettingsPage>();
 
+        // Routed pages pushed over a tab (M1-13 / M1-14 / M1-15).
+        builder.Services.AddTransient<CardiMemberDetailPage>();
+        builder.Services.AddTransient<EditCardiMemberPage>();
+        builder.Services.AddTransient<DeviceManagementPage>();
+
         var app = builder.Build();
         AppLogging.HookUnhandledExceptions(app.Services);
         return app;

@@ -162,6 +162,59 @@ public class DeviceConnectionRepositoryTests(TestDatabaseFixture fixture)
         Assert.DoesNotContain(result, c => c.Id == connection.Id);
     }
 
+    [Fact]
+    public async Task GetDueForSyncAsync_ExcludesConnection_WhenMonitoringIsPaused()
+    {
+        using var scope = fixture.CreateScope();
+        var repo = scope.ServiceProvider.GetRequiredService<IDeviceConnectionRepository>();
+
+        var org = await TestDataSeeder.SeedOrganizationAsync(scope);
+        var member = await TestDataSeeder.SeedCardiMemberAsync(
+            scope, org.Id, monitoringPausedUntil: DateTime.UtcNow.AddHours(12));
+        var connection = await TestDataSeeder.SeedDeviceConnectionAsync(
+            scope, member.Id, lastSyncDate: null);
+
+        var result = await repo.GetDueForSyncAsync(30);
+
+        // Pausing monitoring has to stop the data actually being collected, not just change
+        // what the app shows.
+        Assert.DoesNotContain(result, c => c.Id == connection.Id);
+    }
+
+    [Fact]
+    public async Task GetDueForSyncAsync_ReturnsConnection_WhenPauseHasElapsed()
+    {
+        using var scope = fixture.CreateScope();
+        var repo = scope.ServiceProvider.GetRequiredService<IDeviceConnectionRepository>();
+
+        var org = await TestDataSeeder.SeedOrganizationAsync(scope);
+        var member = await TestDataSeeder.SeedCardiMemberAsync(
+            scope, org.Id, monitoringPausedUntil: DateTime.UtcNow.AddHours(-1));
+        var connection = await TestDataSeeder.SeedDeviceConnectionAsync(
+            scope, member.Id, lastSyncDate: null);
+
+        var result = await repo.GetDueForSyncAsync(30);
+
+        // A pause expires on its own — nothing has to run to un-pause a member.
+        Assert.Contains(result, c => c.Id == connection.Id);
+    }
+
+    [Fact]
+    public async Task GetDueForSyncAsync_ExcludesConnection_WhenMemberIsRemoved()
+    {
+        using var scope = fixture.CreateScope();
+        var repo = scope.ServiceProvider.GetRequiredService<IDeviceConnectionRepository>();
+
+        var org = await TestDataSeeder.SeedOrganizationAsync(scope);
+        var member = await TestDataSeeder.SeedCardiMemberAsync(scope, org.Id, isActive: false);
+        var connection = await TestDataSeeder.SeedDeviceConnectionAsync(
+            scope, member.Id, lastSyncDate: null);
+
+        var result = await repo.GetDueForSyncAsync(30);
+
+        Assert.DoesNotContain(result, c => c.Id == connection.Id);
+    }
+
     // ── UpdateTokenAsync ─────────────────────────────────────────────────────────
 
     [Fact]

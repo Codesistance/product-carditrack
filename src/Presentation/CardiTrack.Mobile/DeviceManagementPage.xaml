@@ -1,0 +1,142 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:controls="clr-namespace:CardiTrack.Mobile.Controls"
+             x:Class="CardiTrack.Mobile.DeviceManagementPage"
+             Shell.NavBarIsVisible="False"
+             BackgroundColor="{StaticResource White}">
+
+    <Grid RowDefinitions="Auto,*">
+
+        <!-- Flush on all four edges — full-bleed page shell per CLAUDE.md, no page-level
+             rounding even though the Figma frame shows rounded bottom corners. -->
+        <Border Grid.Row="0"
+                StrokeThickness="0"
+                Padding="20,16,20,22">
+            <Border.Background>
+                <StaticResource Key="GradientButtonBrush"/>
+            </Border.Background>
+
+            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
+                <Border Grid.Column="0"
+                        WidthRequest="38" HeightRequest="38"
+                        StrokeThickness="0"
+                        BackgroundColor="#33FFFFFF"
+                        VerticalOptions="Center">
+                    <Border.StrokeShape>
+                        <RoundRectangle CornerRadius="19"/>
+                    </Border.StrokeShape>
+                    <ImageButton Source="icon_back_white.svg"
+                                 WidthRequest="20" HeightRequest="20"
+                                 BackgroundColor="Transparent"
+                                 Clicked="OnBackClicked"/>
+                </Border>
+
+                <Label Grid.Column="1"
+                       Text="Connected Devices"
+                       Style="{StaticResource Heading3}"
+                       TextColor="{StaticResource White}"
+                       VerticalTextAlignment="Center"/>
+
+                <Button Grid.Column="2"
+                        Text="+ Add Device"
+                        FontFamily="QuicksandSemiBold"
+                        FontSize="13"
+                        TextColor="{StaticResource White}"
+                        BackgroundColor="Transparent"
+                        BorderColor="{StaticResource White}"
+                        BorderWidth="1"
+                        CornerRadius="18"
+                        HeightRequest="36"
+                        Padding="14,0"
+                        VerticalOptions="Center"
+                        Clicked="OnAddDeviceClicked"/>
+            </Grid>
+        </Border>
+
+        <RefreshView x:Name="Refresher"
+                     Grid.Row="1"
+                     RefreshColor="{StaticResource Primary}"
+                     Refreshing="OnPullToRefresh">
+            <ScrollView>
+                <Grid Padding="20,16,20,28">
+
+                    <VerticalStackLayout x:Name="SkeletonPanel" Spacing="14" IsVisible="False">
+                        <controls:SkeletonView HeightRequest="70"/>
+                        <controls:SkeletonView HeightRequest="190"/>
+                        <controls:SkeletonView HeightRequest="190"/>
+                    </VerticalStackLayout>
+
+                    <VerticalStackLayout x:Name="ErrorPanel"
+                                         Spacing="10"
+                                         IsVisible="False"
+                                         Padding="0,60,0,0">
+                        <Label Text="We couldn't load these devices"
+                               Style="{StaticResource Heading3}"
+                               HorizontalTextAlignment="Center"/>
+                        <Label x:Name="ErrorDetailLabel"
+                               Style="{StaticResource Body2}"
+                               HorizontalTextAlignment="Center"/>
+                        <Button Text="Try again"
+                                Style="{StaticResource SecondaryOutlineButton}"
+                                HorizontalOptions="Center"
+                                Clicked="OnRetryClicked"/>
+                    </VerticalStackLayout>
+
+                    <VerticalStackLayout x:Name="ContentPanel" Spacing="14" IsVisible="False">
+
+                        <VerticalStackLayout Spacing="2">
+                            <Label Text="Devices List" Style="{StaticResource Heading2}"/>
+                            <Label x:Name="MemberSubtitleLabel" Style="{StaticResource Body2}"/>
+                        </VerticalStackLayout>
+
+                        <!-- Empty state -->
+                        <VerticalStackLayout x:Name="EmptyPanel" Spacing="10" IsVisible="False" Padding="0,40,0,0">
+                            <Label Text="No devices connected yet"
+                                   Style="{StaticResource Heading3}"
+                                   HorizontalTextAlignment="Center"/>
+                            <Label x:Name="EmptyDetailLabel"
+                                   Style="{StaticResource Body2}"
+                                   HorizontalTextAlignment="Center"/>
+                            <Button Text="Connect a device"
+                                    Style="{StaticResource AuthGradientButton}"
+                                    HorizontalOptions="Center"
+                                    Clicked="OnAddDeviceClicked"/>
+                        </VerticalStackLayout>
+
+                        <!-- One card per connection, built in code-behind -->
+                        <VerticalStackLayout x:Name="DevicesStack" Spacing="14"/>
+
+                        <!-- Troubleshooting -->
+                        <Border Style="{StaticResource DashboardCard}">
+                            <VerticalStackLayout Spacing="10">
+                                <Grid ColumnDefinitions="*,Auto">
+                                    <Grid.GestureRecognizers>
+                                        <TapGestureRecognizer Tapped="OnToggleHelpTapped"/>
+                                    </Grid.GestureRecognizers>
+                                    <Label Text="Having trouble?"
+                                           Style="{StaticResource DashboardSectionTitle}"
+                                           VerticalTextAlignment="Center"/>
+                                    <Image x:Name="HelpChevron"
+                                           Grid.Column="1"
+                                           Source="icon_chevron_down.svg"
+                                           WidthRequest="20" HeightRequest="20"
+                                           VerticalOptions="Center"/>
+                                </Grid>
+                                <VerticalStackLayout x:Name="HelpPanel" Spacing="8" IsVisible="False">
+                                    <Label Text="• Make sure the device has synced with its own app recently."
+                                           Style="{StaticResource Body2}"/>
+                                    <Label Text="• Try &quot;Refresh Connection&quot; — it renews the link without reconnecting."
+                                           Style="{StaticResource Body2}"/>
+                                    <Label Text="• Still stuck? Remove the device and connect it again."
+                                           Style="{StaticResource Body2}"/>
+                                </VerticalStackLayout>
+                            </VerticalStackLayout>
+                        </Border>
+
+                    </VerticalStackLayout>
+                </Grid>
+            </ScrollView>
+        </RefreshView>
+    </Grid>
+</ContentPage>

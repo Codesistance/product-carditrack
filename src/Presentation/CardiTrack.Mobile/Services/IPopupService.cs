@@ -23,4 +23,10 @@ public interface IPopupService
 
     /// <summary>Warning-styled confirmation; false when cancelled or dismissed via back.</summary>
     Task<bool> ConfirmWarningAsync(string message, string? title = null, string? confirmText = null, string? cancelText = null);
+
+    /// <summary>
+    /// Asks the user to pick one of several options — used for the M1-13 pause duration.
+    /// Returns null when cancelled or dismissed via back.
+    /// </summary>
+    Task<string?> ChooseAsync(string title, string cancelText, params string[] options);
 }

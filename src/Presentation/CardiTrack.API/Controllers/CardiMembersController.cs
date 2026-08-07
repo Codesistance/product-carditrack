@@ -1,0 +1,181 @@
+using CardiTrack.API.Infrastructure.UserContext;
+using CardiTrack.Application.DTOs.Requests;
+using CardiTrack.Application.DTOs.Responses;
+using CardiTrack.Application.Interfaces.Services;
+using FluentValidation;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+
+namespace CardiTrack.API.Controllers;
+
+/// <summary>
+/// CardiMember detail, editing, monitoring pause and removal — the M1-13/M1-14 screens.
+/// Creation and listing still live on <see cref="OnboardingController"/>; see
+/// docs/execution/backend/api/cardimembers.md.
+/// </summary>
+/// <remarks>
+/// Every action reports a denied CardiMember as 404, never 403: a 403 would confirm the
+/// member exists, which is itself a disclosure. See <see cref="ICardiMemberAccessService"/>.
+/// </remarks>
+[Authorize]
+[Route("api/v1")]
+public class CardiMembersController : BaseApiController
+{
+    private readonly ICardiMemberService _cardiMembers;
+    private readonly IValidator<UpdateCardiMemberRequest> _updateValidator;
+    private readonly IValidator<PauseMonitoringRequest> _pauseValidator;
+
+    public CardiMembersController(
+        IUserContext userContext,
+        ILogger<CardiMembersController> logger,
+        ICardiMemberService cardiMembers,
+        IValidator<UpdateCardiMemberRequest> updateValidator,
+        IValidator<PauseMonitoringRequest> pauseValidator)
+        : base(userContext, logger)
+    {
+        _cardiMembers = cardiMembers;
+        _updateValidator = updateValidator;
+        _pauseValidator = pauseValidator;
+    }
+
+    /// <summary>Full profile for one CardiMember (M1-13).</summary>
+    [HttpGet("cardimembers/{cardiMemberId:guid}")]
+    [ProducesResponseType(typeof(ApiResponse<CardiMemberDetailResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<ApiResponse<CardiMemberDetailResponse>>> GetDetail(
+        Guid cardiMemberId, CancellationToken ct)
+    {
+        if (NotSignedIn(out var error))
+            return error;
+
+        try
+        {
+            return Success(await _cardiMembers.GetDetailAsync(UserContext.UserId, cardiMemberId, ct));
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return Error(ex.Message, StatusCodes.Status404NotFound);
+        }
+    }
+
+    /// <summary>Saves the edit form (M1-14).</summary>
+    [HttpPut("cardimembers/{cardiMemberId:guid}")]
+    [ProducesResponseType(typeof(ApiResponse<CardiMemberDetailResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<ApiResponse<CardiMemberDetailResponse>>> Update(
+        Guid cardiMemberId, [FromBody] UpdateCardiMemberRequest request, CancellationToken ct)
+    {
+        if (NotSignedIn(out var error))
+            return error;
+
+        var validation = await _updateValidator.ValidateAsync(request, ct);
+        if (!validation.IsValid)
+            return ValidationFailed(validation);
+
+        try
+        {
+            var updated = await _cardiMembers.UpdateAsync(UserContext.UserId, cardiMemberId, request, ct);
+            return Success(updated, $"{updated.Name}'s details are saved.");
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return Error(ex.Message, StatusCodes.Status404NotFound);
+        }
+    }
+
+    /// <summary>
+    /// Removes a CardiMember (M1-13 "Remove CardiMember"). Soft delete — health history is
+    /// retained for the retention window, but monitoring stops immediately.
+    /// </summary>
+    [HttpDelete("cardimembers/{cardiMemberId:guid}")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
+    public async Task<ActionResult> Remove(Guid cardiMemberId, CancellationToken ct)
+    {
+        if (NotSignedIn(out var error))
+            return error;
+
+        try
+        {
+            await _cardiMembers.RemoveAsync(UserContext.UserId, cardiMemberId, ct);
+            Logger.LogInformation(
+                "CardiMember {CardiMemberId} removed by user {UserId}", cardiMemberId, UserContext.UserId);
+            return NoContent();
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return Error(ex.Message, StatusCodes.Status404NotFound);
+        }
+    }
+
+    /// <summary>Pauses monitoring for a bounded window (M1-13).</summary>
+    [HttpPost("cardimembers/{cardiMemberId:guid}/pause")]
+    [ProducesResponseType(typeof(ApiResponse<MonitoringPauseResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<ApiResponse<MonitoringPauseResponse>>> Pause(
+        Guid cardiMemberId, [FromBody] PauseMonitoringRequest request, CancellationToken ct)
+    {
+        if (NotSignedIn(out var error))
+            return error;
+
+        var validation = await _pauseValidator.ValidateAsync(request, ct);
+        if (!validation.IsValid)
+            return ValidationFailed(validation);
+
+        try
+        {
+            var state = await _cardiMembers.PauseMonitoringAsync(UserContext.UserId, cardiMemberId, request, ct);
+            Logger.LogInformation(
+                "Monitoring paused for CardiMember {CardiMemberId} until {Until} by user {UserId}",
+                cardiMemberId, state.MonitoringPausedUntil, UserContext.UserId);
+            return Success(state, "Monitoring is paused — we'll pick things back up automatically.");
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return Error(ex.Message, StatusCodes.Status404NotFound);
+        }
+    }
+
+    /// <summary>Resumes monitoring ahead of the scheduled time (M1-13).</summary>
+    [HttpDelete("cardimembers/{cardiMemberId:guid}/pause")]
+    [ProducesResponseType(typeof(ApiResponse<MonitoringPauseResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<ApiResponse<MonitoringPauseResponse>>> Resume(
+        Guid cardiMemberId, CancellationToken ct)
+    {
+        if (NotSignedIn(out var error))
+            return error;
+
+        try
+        {
+            var state = await _cardiMembers.ResumeMonitoringAsync(UserContext.UserId, cardiMemberId, ct);
+            Logger.LogInformation(
+                "Monitoring resumed for CardiMember {CardiMemberId} by user {UserId}",
+                cardiMemberId, UserContext.UserId);
+            return Success(state, "Monitoring is back on.");
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return Error(ex.Message, StatusCodes.Status404NotFound);
+        }
+    }
+
+    private bool NotSignedIn(out ActionResult error)
+    {
+        if (!UserContext.IsAuthenticated || UserContext.UserId == Guid.Empty)
+        {
+            error = Error("We couldn't find your account — please sign in again.", StatusCodes.Status403Forbidden);
+            return true;
+        }
+
+        error = null!;
+        return false;
+    }
+}

@@ -107,5 +107,11 @@
         <GradientStop Color="#174E86" Offset="0.0" />
         <GradientStop Color="#1884DC" Offset="1.0" />
     </LinearGradientBrush>
+    <!-- Paused monitoring: deliberately outside the status palette so it can't be mistaken
+         for a health reading. -->
+    <LinearGradientBrush x:Key="HeroPausedBrush" StartPoint="0,0" EndPoint="1,1">
+        <GradientStop Color="#5C6672" Offset="0.0" />
+        <GradientStop Color="#7E8794" Offset="1.0" />
+    </LinearGradientBrush>
 
 </ResourceDictionary>

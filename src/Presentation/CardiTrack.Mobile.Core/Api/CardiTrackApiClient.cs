@@ -44,11 +44,45 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
     public Task<List<CardiMemberResponse>> GetCardiMembersAsync(CancellationToken ct = default) =>
         GetAsync<List<CardiMemberResponse>>("api/Onboarding/cardimembers", ct);
 
+    public Task<CardiMemberDetailResponse> GetCardiMemberAsync(Guid cardiMemberId, CancellationToken ct = default) =>
+        GetAsync<CardiMemberDetailResponse>($"api/v1/cardimembers/{cardiMemberId}", ct);
+
+    public Task<CardiMemberDetailResponse> UpdateCardiMemberAsync(
+        Guid cardiMemberId, UpdateCardiMemberRequest request, CancellationToken ct = default) =>
+        SendAsync<UpdateCardiMemberRequest, CardiMemberDetailResponse>(
+            HttpMethod.Put, $"api/v1/cardimembers/{cardiMemberId}", request, ct);
+
+    public Task RemoveCardiMemberAsync(Guid cardiMemberId, CancellationToken ct = default) =>
+        SendNoContentAsync(HttpMethod.Delete, $"api/v1/cardimembers/{cardiMemberId}", ct);
+
+    public Task<MonitoringPauseResponse> PauseMonitoringAsync(
+        Guid cardiMemberId, PauseMonitoringRequest request, CancellationToken ct = default) =>
+        PostAsync<PauseMonitoringRequest, MonitoringPauseResponse>(
+            $"api/v1/cardimembers/{cardiMemberId}/pause", request, ct);
+
+    public Task<MonitoringPauseResponse> ResumeMonitoringAsync(
+        Guid cardiMemberId, CancellationToken ct = default) =>
+        SendAsync<MonitoringPauseResponse>(
+            HttpMethod.Delete, $"api/v1/cardimembers/{cardiMemberId}/pause", ct);
+
     public Task<DashboardResponse> GetDashboardAsync(Guid cardiMemberId, CancellationToken ct = default) =>
         GetAsync<DashboardResponse>($"api/v1/cardimembers/{cardiMemberId}/dashboard", ct);
 
     public Task<DeviceListResponse> GetDevicesAsync(Guid cardiMemberId, CancellationToken ct = default) =>
         GetAsync<DeviceListResponse>($"api/v1/cardimembers/{cardiMemberId}/devices", ct);
+
+    public Task DisconnectDeviceAsync(Guid cardiMemberId, Guid deviceId, CancellationToken ct = default) =>
+        SendNoContentAsync(HttpMethod.Delete, $"api/v1/cardimembers/{cardiMemberId}/devices/{deviceId}", ct);
+
+    public Task<DeviceResponse> SetPrimaryDeviceAsync(
+        Guid cardiMemberId, Guid deviceId, CancellationToken ct = default) =>
+        SendAsync<DeviceResponse>(
+            HttpMethod.Post, $"api/v1/cardimembers/{cardiMemberId}/devices/{deviceId}/primary", ct);
+
+    public Task<DeviceResponse> RefreshDeviceConnectionAsync(
+        Guid cardiMemberId, Guid deviceId, CancellationToken ct = default) =>
+        SendAsync<DeviceResponse>(
+            HttpMethod.Post, $"api/v1/cardimembers/{cardiMemberId}/devices/{deviceId}/refresh", ct);
 
     public Task<OAuthInitiationResponse> InitiateDeviceConnectionAsync(Guid cardiMemberId, ConnectDeviceRequest request, CancellationToken ct = default) =>
         PostAsync<ConnectDeviceRequest, OAuthInitiationResponse>($"api/v1/cardimembers/{cardiMemberId}/devices", request, ct);
@@ -86,6 +120,46 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
             throw NetworkError("POST", path, ex, ct);
         }
         return await ReadEnvelopeAsync<TResponse>("POST", path, response, ct);
+    }
+
+    /// <summary>PUT/DELETE/bodyless-POST returning the standard envelope.</summary>
+    private Task<TResponse> SendAsync<TResponse>(HttpMethod method, string path, CancellationToken ct) =>
+        SendAsync<object?, TResponse>(method, path, body: null, ct);
+
+    private async Task<TResponse> SendAsync<TRequest, TResponse>(
+        HttpMethod method, string path, TRequest? body, CancellationToken ct)
+    {
+        var response = await SendCoreAsync(method, path, body, ct);
+        return await ReadEnvelopeAsync<TResponse>(method.Method, path, response, ct);
+    }
+
+    /// <summary>For 204 endpoints — success is the status code, there is no envelope to read.</summary>
+    private async Task SendNoContentAsync(HttpMethod method, string path, CancellationToken ct)
+    {
+        var response = await SendCoreAsync<object?>(method, path, body: null, ct);
+        if (!response.IsSuccessStatusCode)
+            throw await MapErrorAsync(method.Method, path, response, ct);
+    }
+
+    private async Task<HttpResponseMessage> SendCoreAsync<TRequest>(
+        HttpMethod method, string path, TRequest? body, CancellationToken ct)
+    {
+        using var request = new HttpRequestMessage(method, path);
+        if (body is not null)
+        {
+            // JsonContent re-serializes on each read, so the auth handler's 401 retry can
+            // re-send this request — same reason PostAsJsonAsync is used above.
+            request.Content = JsonContent.Create(body, mediaType: null, Json);
+        }
+
+        try
+        {
+            return await _http.SendAsync(request, ct);
+        }
+        catch (Exception ex) when (IsTransport(ex))
+        {
+            throw NetworkError(method.Method, path, ex, ct);
+        }
     }
 
     private async Task<T> ReadEnvelopeAsync<T>(string method, string path, HttpResponseMessage response, CancellationToken ct)

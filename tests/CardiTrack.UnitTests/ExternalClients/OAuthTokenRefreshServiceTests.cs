@@ -5,7 +5,7 @@ using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Domain.Entities;
 using CardiTrack.Domain.Enums;
 using CardiTrack.Infrastructure.ExternalClients;
-using CardiTrack.Infrastructure.Security;
+using CardiTrack.Application.Interfaces.Security;
 using CardiTrack.Infrastructure.Settings;
 using NSubstitute;
 

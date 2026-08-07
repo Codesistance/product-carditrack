@@ -26,4 +26,16 @@ public interface ICardiMemberAccessService
     /// </summary>
     Task RequireViewAccessAsync(
         Guid requestingUserId, IReadOnlyCollection<Guid> cardiMemberIds, CancellationToken ct = default);
+
+    /// <summary>
+    /// Throws <see cref="KeyNotFoundException"/> unless the user may <em>change</em> this
+    /// CardiMember — edit the profile, pause monitoring, disconnect a device, or remove them.
+    /// </summary>
+    /// <remarks>
+    /// Stricter than view access: it additionally requires the link to be flagged
+    /// <c>IsPrimaryCaregiver</c>. A relative invited purely to watch over someone must not be
+    /// able to silence their monitoring or delete them. Denial is again reported as
+    /// <see cref="KeyNotFoundException"/>, for the same non-disclosure reason.
+    /// </remarks>
+    Task RequireManageAccessAsync(Guid requestingUserId, Guid cardiMemberId, CancellationToken ct = default);
 }

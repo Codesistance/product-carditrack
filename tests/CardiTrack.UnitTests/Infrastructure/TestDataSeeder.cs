@@ -25,7 +25,11 @@ public static class TestDataSeeder
         return org;
     }
 
-    public static async Task<CardiMember> SeedCardiMemberAsync(IServiceScope scope, Guid organizationId)
+    public static async Task<CardiMember> SeedCardiMemberAsync(
+        IServiceScope scope,
+        Guid organizationId,
+        bool isActive = true,
+        DateTime? monitoringPausedUntil = null)
     {
         var repo = scope.ServiceProvider.GetRequiredService<ICardiMemberRepository>();
         var uow = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
@@ -36,7 +40,8 @@ public static class TestDataSeeder
             Name = $"Member {Guid.NewGuid():N}",
             DateOfBirth = new DateOnly(1955, 6, 15),
             Gender = Gender.Other,
-            IsActive = true
+            MonitoringPausedUntil = monitoringPausedUntil,
+            IsActive = isActive
         };
 
         await repo.AddAsync(member);

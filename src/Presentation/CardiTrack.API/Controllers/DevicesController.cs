@@ -57,6 +57,90 @@ public class DevicesController : BaseApiController
         }
     }
 
+    /// <summary>Disconnects and forgets a device (M1-15 "Remove Device").</summary>
+    [HttpDelete("cardimembers/{cardiMemberId:guid}/devices/{deviceId:guid}")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
+    public async Task<ActionResult> Disconnect(Guid cardiMemberId, Guid deviceId, CancellationToken ct)
+    {
+        if (!UserContext.IsAuthenticated || UserContext.UserId == Guid.Empty)
+        {
+            return Error("We couldn't find your account — please sign in again.", StatusCodes.Status403Forbidden);
+        }
+
+        try
+        {
+            await _deviceConnections.DisconnectAsync(UserContext.UserId, cardiMemberId, deviceId, ct);
+            Logger.LogInformation(
+                "Device {DeviceId} disconnected from CardiMember {CardiMemberId} by user {UserId}",
+                deviceId, cardiMemberId, UserContext.UserId);
+            return NoContent();
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return Error(ex.Message, StatusCodes.Status404NotFound);
+        }
+    }
+
+    /// <summary>Makes a device the CardiMember's primary data source (M1-15).</summary>
+    [HttpPost("cardimembers/{cardiMemberId:guid}/devices/{deviceId:guid}/primary")]
+    [ProducesResponseType(typeof(ApiResponse<DeviceResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<ApiResponse<DeviceResponse>>> SetPrimary(
+        Guid cardiMemberId, Guid deviceId, CancellationToken ct)
+    {
+        if (!UserContext.IsAuthenticated || UserContext.UserId == Guid.Empty)
+        {
+            return Error("We couldn't find your account — please sign in again.", StatusCodes.Status403Forbidden);
+        }
+
+        try
+        {
+            var device = await _deviceConnections.SetPrimaryAsync(UserContext.UserId, cardiMemberId, deviceId, ct);
+            return Success(device, $"{device.DisplayName} is now the primary device.");
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return Error(ex.Message, StatusCodes.Status404NotFound);
+        }
+    }
+
+    /// <summary>Renews an expired OAuth token and reports connection state (M1-15 "Refresh Connection").</summary>
+    [HttpPost("cardimembers/{cardiMemberId:guid}/devices/{deviceId:guid}/refresh")]
+    [ProducesResponseType(typeof(ApiResponse<DeviceResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status502BadGateway)]
+    public async Task<ActionResult<ApiResponse<DeviceResponse>>> RefreshConnection(
+        Guid cardiMemberId, Guid deviceId, CancellationToken ct)
+    {
+        if (!UserContext.IsAuthenticated || UserContext.UserId == Guid.Empty)
+        {
+            return Error("We couldn't find your account — please sign in again.", StatusCodes.Status403Forbidden);
+        }
+
+        try
+        {
+            var device = await _deviceConnections.RefreshConnectionAsync(
+                UserContext.UserId, cardiMemberId, deviceId, ct);
+            return Success(device, "Connection refreshed.");
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return Error(ex.Message, StatusCodes.Status404NotFound);
+        }
+        catch (DeviceConnectionException ex)
+        {
+            Logger.LogWarning(ex, "Device refresh failed with code {Code}", ex.Code);
+            var status = ex.Code == DeviceConnectionException.OAuthExchangeFailed
+                ? StatusCodes.Status502BadGateway
+                : StatusCodes.Status400BadRequest;
+            return Error(ex.Message, status);
+        }
+    }
+
     /// <summary>Initiates a PKCE server-OAuth connection; returns the provider authorization URL (M1-06).</summary>
     [HttpPost("cardimembers/{cardiMemberId:guid}/devices")]
     [ProducesResponseType(typeof(ApiResponse<OAuthInitiationResponse>), StatusCodes.Status200OK)]

@@ -147,4 +147,65 @@ public class CardiMemberAccessServiceTests
         // validation problem, not an access failure.
         await CreateSut().RequireViewAccessAsync(_userId, Array.Empty<Guid>());
     }
+
+    // ── RequireManageAccessAsync ────────────────────────────────────────────────
+
+    [Fact]
+    public async Task RequireManageAccess_Passes_ForPrimaryCaregiver()
+    {
+        var link = Link(_memberId);
+        link.IsPrimaryCaregiver = true;
+        SetupLinks(link);
+
+        await CreateSut().RequireManageAccessAsync(_userId, _memberId);
+    }
+
+    [Fact]
+    public async Task RequireManageAccess_Throws_ForViewOnlyCaregiver()
+    {
+        // A relative invited to watch over someone may read their data but must not be able
+        // to silence monitoring or delete them.
+        var link = Link(_memberId);
+        link.IsPrimaryCaregiver = false;
+        SetupLinks(link);
+
+        await Assert.ThrowsAsync<KeyNotFoundException>(
+            () => CreateSut().RequireManageAccessAsync(_userId, _memberId));
+    }
+
+    [Fact]
+    public async Task RequireManageAccess_Throws_ForInactiveLink()
+    {
+        var link = Link(_memberId, isActive: false);
+        link.IsPrimaryCaregiver = true;
+        SetupLinks(link);
+
+        await Assert.ThrowsAsync<KeyNotFoundException>(
+            () => CreateSut().RequireManageAccessAsync(_userId, _memberId));
+    }
+
+    [Fact]
+    public async Task RequireManageAccess_Throws_ForMemberTheUserIsNotLinkedTo()
+    {
+        await Assert.ThrowsAsync<KeyNotFoundException>(
+            () => CreateSut().RequireManageAccessAsync(_userId, _foreignMemberId));
+    }
+
+    [Fact]
+    public async Task RequireManageAccess_Throws_ForEmptyUserId()
+    {
+        await Assert.ThrowsAsync<KeyNotFoundException>(
+            () => CreateSut().RequireManageAccessAsync(Guid.Empty, _memberId));
+    }
+
+    [Fact]
+    public async Task RequireManageAccess_ReportsDenialAsNotFound()
+    {
+        // Same message as a genuinely missing member — a distinct one would confirm the
+        // member exists.
+        var ex = await Assert.ThrowsAsync<KeyNotFoundException>(
+            () => CreateSut().RequireManageAccessAsync(_userId, _foreignMemberId));
+
+        Assert.Equal("CardiMember not found", ex.Message);
+    }
 }

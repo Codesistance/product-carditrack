@@ -312,6 +312,13 @@ namespace CardiTrack.Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<string>("AlertSensitivity")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasDefaultValue("Medium");
+
                     b.Property<DateTime>("CreatedDate")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("timestamp with time zone")
@@ -346,8 +353,14 @@ namespace CardiTrack.Infrastructure.Migrations
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("MedicalNotes")
-                        .HasMaxLength(2000)
-                        .HasColumnType("character varying(2000)");
+                        .HasColumnType("text");
+
+                    b.Property<string>("MonitoringPauseReason")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<DateTime?>("MonitoringPausedUntil")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("Name")
                         .IsRequired()
@@ -369,6 +382,8 @@ namespace CardiTrack.Infrastructure.Migrations
                     b.HasIndex("IsActive");
 
                     b.HasIndex("LastSyncDate");
+
+                    b.HasIndex("MonitoringPausedUntil");
 
                     b.HasIndex("OrganizationId");
 

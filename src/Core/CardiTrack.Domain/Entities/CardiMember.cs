@@ -14,9 +14,24 @@ public class CardiMember : BaseEntity, ISoftDeletable
     public Gender Gender { get; set; }
     public string? EmergencyContactName { get; set; }
     public string? EmergencyContactPhone { get; set; }
-    public string? MedicalNotes { get; set; } // Encrypted in database
+    public string? MedicalNotes { get; set; } // Encrypted at rest — see CardiMemberService
     public DateTime? LastSyncDate { get; set; }
     public bool IsActive { get; set; } = true;
+
+    /// <summary>
+    /// When monitoring resumes, or null when the member is being monitored normally (M1-13).
+    /// A time-bounded pause rather than a flag so a caregiver can never leave someone
+    /// silently unmonitored by forgetting to switch it back on.
+    /// </summary>
+    public DateTime? MonitoringPausedUntil { get; set; }
+
+    /// <summary>Optional caregiver-supplied reason shown to the rest of the family.</summary>
+    public string? MonitoringPauseReason { get; set; }
+
+    public AlertSensitivity AlertSensitivity { get; set; } = AlertSensitivity.Medium;
+
+    /// <summary>Paused state expires on its own — callers must never treat the pause as sticky.</summary>
+    public bool IsMonitoringPaused(DateTime utcNow) => MonitoringPausedUntil > utcNow;
 
     // Navigation properties
     public ICollection<UserCardiMember> UserCardiMembers { get; set; } = new List<UserCardiMember>();

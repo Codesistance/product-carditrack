@@ -12,6 +12,11 @@
         <Border.Background>
             <StaticResource Key="HeroUnknownBrush"/>
         </Border.Background>
+        <!-- Tapping the card opens M1-13. The sync ImageButton below handles its own taps,
+             so it is not swallowed by this recognizer. -->
+        <Border.GestureRecognizers>
+            <TapGestureRecognizer Tapped="OnCardTapped"/>
+        </Border.GestureRecognizers>
 
         <VerticalStackLayout Spacing="12">
 
