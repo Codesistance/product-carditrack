@@ -1,16 +1,24 @@
+using System.Globalization;
 using CardiTrack.Domain.Extensions;
 
 namespace CardiTrack.UnitTests.Shared;
 
 public class DateOnlyExtensionsTests
 {
+    /// <summary>
+    /// Invariant and exact: <c>DateOnly.Parse</c> follows the ambient culture, and one with a
+    /// non-Gregorian default calendar (th-TH, ar-SA) reads "1948" as a different year entirely.
+    /// </summary>
+    private static DateOnly Date(string value) =>
+        DateOnly.ParseExact(value, "yyyy-MM-dd", CultureInfo.InvariantCulture);
+
     [Theory]
     [InlineData("1948-03-15", "2026-03-15", 78)]  // on the birthday
     [InlineData("1948-03-15", "2026-03-14", 77)]  // the day before — the case a naive year subtraction gets wrong
     [InlineData("1948-03-15", "2026-03-16", 78)]
     public void ToAgeInYears_CountsCompletedYears(string birth, string asOf, int expected)
     {
-        Assert.Equal(expected, DateOnly.Parse(birth).ToAgeInYears(DateOnly.Parse(asOf)));
+        Assert.Equal(expected, Date(birth).ToAgeInYears(Date(asOf)));
     }
 
     [Fact]

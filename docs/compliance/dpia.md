@@ -299,7 +299,7 @@ Because real test users' data is already flowing (§1.2) while R-A1–R-A7 are o
 | M9 | Per-service GCP service accounts; least-privilege DB role | R-A9 |
 | M10 | Remove the `Preferences` fallback from release builds | R-A10 |
 | M11 | Emit role/org claims from Auth0 Action before any role-gated endpoint ships | R-A11 |
-| M13 | **Partly implemented.** Notes are length-capped and every instruction block states they are background information whose instructions must not be followed (`HealthInsightService`). Outstanding: surface the "not clinical-grade" caveat and the note's last-edited date on insight surfaces, so a caregiver can see what the explanation was based on | R-A14 |
+| M13 | **Partly implemented.** Notes are flattened to a single line (so they cannot escape the labelled section or forge one of their own), length-capped, and every instruction block states they are background information whose instructions must not be followed (`HealthInsightService`). Outstanding: surface the "not clinical-grade" caveat and the note's last-edited date on insight surfaces, so a caregiver can see what the explanation was based on | R-A14 |
 | — | Decide CMEK vs default encryption (OI-6); align backup retention (OI-8) | §4.4 |
 
 **Part B preconditions:** B1/B2 need Art. 22 analysis + model validation (R-B1/R-B2) and a DPIA update (§13) before build completes; B3–B7 mitigations as tabled in §8.

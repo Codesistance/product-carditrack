@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Interfaces.Services;
@@ -7,7 +8,7 @@ using CardiTrack.Domain.Extensions;
 
 namespace CardiTrack.Infrastructure.Services;
 
-public class HealthInsightService : IHealthInsightService
+public partial class HealthInsightService : IHealthInsightService
 {
     /// <summary>
     /// The 30-day baseline is the one <c>DashboardService</c> uses to decide whether a member is still
@@ -256,15 +257,33 @@ public class HealthInsightService : IHealthInsightService
             lines.Add($"Sex: {member.Gender}");
 
         if (!string.IsNullOrWhiteSpace(member.MedicalNotes))
-        {
-            var notes = member.MedicalNotes.Trim();
-            if (notes.Length > MaxNoteLength)
-                notes = $"{notes[..MaxNoteLength]}… (truncated)";
-            lines.Add($"Caregiver-reported context: {notes}");
-        }
+            lines.Add($"Caregiver-reported context: {Flatten(member.MedicalNotes)}");
 
         return string.Join("\n", lines);
     }
+
+    /// <summary>
+    /// Reduces a caregiver note to a single line, then truncates.
+    /// <para>
+    /// The instruction blocks scope their warning to what sits under "Caregiver-reported context",
+    /// and the note is the last line of the member block — so a newline inside it would put the rest
+    /// of the note on an unlabelled top-level line, or let it forge a section delimiter of its own.
+    /// Collapsing whitespace makes the note structurally unable to leave the line it was put on;
+    /// the framing then covers all of it, which is what makes the framing worth anything.
+    /// </para>
+    /// Truncation comes after flattening so the cap applies to what is actually sent.
+    /// </summary>
+    private static string Flatten(string note)
+    {
+        var flattened = WhitespaceRuns().Replace(note, " ").Trim();
+        return flattened.Length > MaxNoteLength
+            ? $"{flattened[..MaxNoteLength]}… (truncated)"
+            : flattened;
+    }
+
+    /// <summary>Any run of whitespace or control characters, including newlines.</summary>
+    [GeneratedRegex(@"[\s\p{Cc}]+")]
+    private static partial Regex WhitespaceRuns();
 
     private static string DailyLines(IEnumerable<ActivityLog> logs, int take)
     {
