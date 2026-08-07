@@ -21,6 +21,7 @@ locals {
   web_service_name    = "${var.project_name}-${local.environment}-web"
   worker_service_name = "${var.project_name}-${local.environment}-worker"
   cloud_sql_name      = "${var.project_name}-${local.environment}-sql"
+  redis_instance_name = "${var.project_name}-${local.environment}-redis"
   cloud_sql_db_name   = "${var.project_name}-${local.environment}-db"
   storage_bucket_name = "${var.project_id}-${var.project_name}-${local.environment}"
   pubsub_topic_name   = "${var.project_name}-${local.environment}-realtime"
@@ -74,20 +75,28 @@ module "deployments" {
       "DeviceProviders__0__RedirectUri" = "https://${var.api_custom_domain}/api/v1/oauth/redirect/fitbit"
     } : {}
   )
-  api_secret_env_vars = {
-    "ConnectionStrings__DefaultConnection" = "${var.project_name}-${local.environment}-db-connection-string"
-    "Auth0__Domain"                        = "${var.project_name}-${local.environment}-auth0-domain"
-    "Auth0__Audience"                      = "${var.project_name}-${local.environment}-auth0-audience"
-    "Auth0__ClientId"                      = "${var.project_name}-${local.environment}-auth0-client-id"
-    "Auth0__ClientSecret"                  = "${var.project_name}-${local.environment}-auth0-client-secret"
-    "Encryption__Key"                      = "${var.project_name}-${local.environment}-encryption-key"
-    "Health__Token"                        = "${var.project_name}-${local.environment}-health-token"
-    "DeviceProviders__0__ClientId"         = "${var.project_name}-${local.environment}-devices-fitbit-client-id"
-    "DeviceProviders__0__ClientSecret"     = "${var.project_name}-${local.environment}-devices-fitbit-client-secret"
-    "AI__Providers__0__BaseUrl"            = "${var.project_name}-${local.environment}-medgemma-service-url"
-    "AI__Providers__1__ApiKey"             = "${var.project_name}-${local.environment}-gemini-api-key"
-    "Apm__Data"                            = "${var.project_name}-${local.environment}-apm-data"
-  }
+  api_secret_env_vars = merge(
+    {
+      "ConnectionStrings__DefaultConnection" = "${var.project_name}-${local.environment}-db-connection-string"
+      "Auth0__Domain"                        = "${var.project_name}-${local.environment}-auth0-domain"
+      "Auth0__Audience"                      = "${var.project_name}-${local.environment}-auth0-audience"
+      "Auth0__ClientId"                      = "${var.project_name}-${local.environment}-auth0-client-id"
+      "Auth0__ClientSecret"                  = "${var.project_name}-${local.environment}-auth0-client-secret"
+      "Encryption__Key"                      = "${var.project_name}-${local.environment}-encryption-key"
+      "Health__Token"                        = "${var.project_name}-${local.environment}-health-token"
+      "DeviceProviders__0__ClientId"         = "${var.project_name}-${local.environment}-devices-fitbit-client-id"
+      "DeviceProviders__0__ClientSecret"     = "${var.project_name}-${local.environment}-devices-fitbit-client-secret"
+      "AI__Providers__0__BaseUrl"            = "${var.project_name}-${local.environment}-medgemma-service-url"
+      "AI__Providers__1__ApiKey"             = "${var.project_name}-${local.environment}-gemini-api-key"
+      "Apm__Data"                            = "${var.project_name}-${local.environment}-apm-data"
+    },
+    # Both are Terraform-owned and only exist when the instance does. Without them the
+    # API keeps the appsettings.json localhost default and every cache write times out.
+    var.enable_redis ? {
+      "ConnectionStrings__Redis" = "${var.project_name}-${local.environment}-redis-connection-string"
+      "Redis__CaCertificate"     = "${var.project_name}-${local.environment}-redis-ca"
+    } : {}
+  )
 
   # Cloud Run - Worker
   worker_service_name    = local.worker_service_name
@@ -156,6 +165,14 @@ module "deployments" {
   secret_labels          = local.common_labels
   deploy_service_account = "carditrack-deploy@${var.project_id}.iam.gserviceaccount.com"
   apm_mobile_engine      = var.apm_mobile_engine
+
+  # Memorystore for Redis (distributed cache — API only; the Worker has no IDistributedCache consumer)
+  redis_instance_name  = local.redis_instance_name
+  enable_redis         = var.enable_redis
+  redis_tier           = var.redis_tier
+  redis_memory_size_gb = var.redis_memory_size_gb
+  redis_version        = var.redis_version
+  redis_labels         = local.common_labels
 
   # Cloud Pub/Sub (real-time messaging)
   pubsub_topic_name = local.pubsub_topic_name

@@ -10,6 +10,7 @@ using CardiTrack.Infrastructure.Security;
 using CardiTrack.Infrastructure.Settings;
 using CardiTrack.Shared;
 using FluentValidation;
+using StackExchange.Redis;
 
 namespace CardiTrack.API.Extensions;
 
@@ -98,12 +99,31 @@ public static class ServiceCollectionExtensions
         this IServiceCollection services,
         IConfiguration configuration)
     {
-        var redisConnection = new ConfigurationLoader(configuration).Get(ConfigurationKeys.ConnectionStrings.Redis);
-        if (!string.IsNullOrEmpty(redisConnection))
+        var configLoader = new ConfigurationLoader(configuration);
+        var redisConnection = configLoader.Get(ConfigurationKeys.ConnectionStrings.Redis);
+
+        // Whitespace counts as unset, matching ConfigurationLoader.GetRequired: an env var set
+        // to blanks otherwise reaches ConfigurationOptions.Parse and throws instead of falling
+        // back to the in-memory cache.
+        if (!string.IsNullOrWhiteSpace(redisConnection))
         {
+            var redisCaCertificate = configLoader.Get(ConfigurationKeys.Redis.CaCertificate);
+
             services.AddStackExchangeRedisCache(options =>
             {
-                options.Configuration = redisConnection;
+                var redisOptions = ConfigurationOptions.Parse(redisConnection);
+
+                // Only Memorystore ships a CA; locally docker-compose speaks plain Redis and
+                // leaves this unset, so the defaults parsed from the connection string stand.
+                if (!string.IsNullOrWhiteSpace(redisCaCertificate))
+                {
+                    // The pinned CA is not a public issuer, so revocation cannot be checked.
+                    redisOptions.CheckCertificateRevocation = false;
+                    redisOptions.CertificateValidation +=
+                        RedisCertificateValidation.Create(redisCaCertificate);
+                }
+
+                options.ConfigurationOptions = redisOptions;
                 options.InstanceName = "CardiTrack_";
             });
         }

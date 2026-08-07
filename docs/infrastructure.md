@@ -162,10 +162,13 @@ carditrack-<env>
 │   └── carditrack-490120-carditrack-<env>-audit    (COLDLINE, retention-policy-locked bucket
 │                                                    fed by a Cloud Logging sink — HIPAA-gated,
 │                                                    so prod only today)
+├── Memorystore for Redis
+│   └── carditrack-<env>-redis  (optional — enable_redis, dev only today; AUTH + TLS on
+│                                port 6378, private services access)
 ├── Secret Manager        (per-env secrets — see Secrets Management)
 ├── VPC
 │   ├── carditrack-<env>-vpc + carditrack-<env>-subnet (10.0.0.0/24)
-│   └── Private services access peering (/16) for Cloud SQL private IP
+│   └── Private services access peering (/16) for Cloud SQL private IP and Memorystore
 ├── Global HTTPS LB + Cloud CDN + Cloud Armor WAF   (optional — created only when custom
 │   domains are set; dev only today)
 └── Pub/Sub topic carditrack-<env>-realtime + subscription (optional — enable_pubsub,
@@ -226,6 +229,8 @@ Subsequent `terraform apply` runs never revert operator-set values. The applicat
 | `encryption-key` | Terraform (`random_bytes`, 32 bytes base64) | `Encryption__Key` — never rotate; see [Key Management](#key-management) |
 | `health-token` | Terraform (`random_password`, 40 chars) | `Health__Token` — `/health` requires the `X-Health-Token` header; CI reads it for smoke tests |
 | `devices-fitbit-client-id`, `devices-fitbit-client-secret` | Operator | `DeviceProviders__0__ClientId/ClientSecret` (Google Health API OAuth client). Further providers follow `devices-{provider}-client-{id,secret}` |
+| `redis-connection-string` | Terraform (composed from the Memorystore instance) | `ConnectionStrings__Redis` — only when `enable_redis` |
+| `redis-ca` | Terraform (the instance's CA bundle) | `Redis__CaCertificate` — only when `enable_redis` |
 | `gemini-api-key` | Operator | `AI__Providers__1__ApiKey` |
 | `medgemma-service-url` | CI (written after each MedGemma deploy) | `AI__Providers__0__BaseUrl` |
 | `apm-data` | Operator (`scripts/set-apm-secrets.sh`) | `Apm__Data` (APM connection JSON) |
@@ -350,7 +355,11 @@ Prod keeps a warm minimum instance; dev scales to zero.
 
 ### Caching
 
-- **No Redis is provisioned.** The API checks for a Redis connection string and, when absent (the current state in every environment), falls back to the in-memory distributed cache (`AddDistributedMemoryCache`).
+- **Memorystore for Redis** backs the API's `IDistributedCache` (OAuth PKCE state during device linking, 1-hour report cache). Provisioned by `enable_redis`: **on in dev** (BASIC tier, 1 GB), **off in prod**. Private services access only — it reuses the /16 already allocated for Cloud SQL, and Cloud Run reaches it over direct VPC egress.
+  - `auth_enabled` and `transit_encryption_mode = SERVER_AUTHENTICATION` are both on, which moves the endpoint to **port 6378**. Terraform builds the connection string from the instance's own `host`/`port`/`auth_string` and writes it, plus the CA bundle, to Secret Manager (`{prefix}-redis-connection-string`, `{prefix}-redis-ca`).
+  - The instance is addressed by private IP, which its certificate does not carry, so hostname verification cannot succeed. `RedisCertificateValidation` (CardiTrack.Infrastructure.Security) pins the per-instance CA instead of relaxing validation.
+  - Only the API is bound — the Worker has no `IDistributedCache` consumer.
+  - With `enable_redis = false` the API gets no `ConnectionStrings__Redis` env var and falls back to the `localhost:6379` default in `appsettings.json`, *not* to `AddDistributedMemoryCache` — so cache writes time out. This is prod's current state.
 - **Cloud CDN** caches Web static assets — only where the load balancer exists (dev today).
 
 ---
