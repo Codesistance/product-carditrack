@@ -1,4 +1,5 @@
 using CardiTrack.Mobile.Core.Auth;
+using CardiTrack.Mobile.Onboarding;
 using CardiTrack.Mobile.Services;
 
 namespace CardiTrack.Mobile;
@@ -36,6 +37,7 @@ public partial class SettingsPage : ContentPage
             await _authService.SignOutAsync();
             Preferences.Default.Remove("PrimaryCardiMemberId");
             Preferences.Default.Remove("VerifyEmailNudgeDismissed");
+            Preferences.Default.Remove(WizardLauncher.ResumeDismissedKey);
             WindowNavigation.SetRootPage(this, new NavigationPage(new SignInPage()));
         }
         finally

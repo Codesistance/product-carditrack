@@ -11,7 +11,8 @@
     <ScrollView>
         <Grid RowDefinitions="Auto,*">
 
-            <controls:WizardHeader Grid.Row="0"
+            <controls:WizardHeader x:Name="Header"
+                                   Grid.Row="0"
                                    Title="Add First CardiMember"
                                    Step="Step 2 of 4"
                                    Progress="0.45"

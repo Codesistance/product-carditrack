@@ -57,10 +57,12 @@
     <ScrollView>
         <Grid RowDefinitions="Auto,*">
 
-            <controls:WizardHeader Grid.Row="0"
+            <controls:WizardHeader x:Name="Header"
+                                   Grid.Row="0"
                                    Title="Connect Device"
                                    Step="Step 3 of 4"
-                                   Progress="0.65"/>
+                                   Progress="0.65"
+                                   BackRequested="OnBackRequested"/>
 
             <Grid Grid.Row="1"
                   BackgroundColor="{StaticResource White}"

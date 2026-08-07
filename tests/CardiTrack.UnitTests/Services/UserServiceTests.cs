@@ -12,6 +12,7 @@ public class UserServiceTests
     private readonly IUserRepository _users = Substitute.For<IUserRepository>();
     private readonly IOrganizationRepository _organizations = Substitute.For<IOrganizationRepository>();
     private readonly IUserCardiMemberRepository _links = Substitute.For<IUserCardiMemberRepository>();
+    private readonly IDeviceConnectionRepository _deviceConnections = Substitute.For<IDeviceConnectionRepository>();
 
     private readonly Guid _userId = Guid.NewGuid();
 
@@ -20,7 +21,9 @@ public class UserServiceTests
         _unitOfWork.Users.Returns(_users);
         _unitOfWork.Organizations.Returns(_organizations);
         _unitOfWork.UserCardiMembers.Returns(_links);
+        _unitOfWork.DeviceConnections.Returns(_deviceConnections);
         _links.GetByUserIdAsync(_userId).Returns([]);
+        _deviceConnections.GetActiveByCardiMemberIdAsync(Arg.Any<Guid>()).Returns([]);
     }
 
     private UserService CreateSut() => new(_unitOfWork);
@@ -73,6 +76,35 @@ public class UserServiceTests
 
         Assert.True(user.EmailVerified);
         await _unitOfWork.DidNotReceive().SaveChangesAsync();
+    }
+
+    [Fact]
+    public async Task OnboardingStatus_ReportsDeviceConnected_WhenAMemberHasAnActiveConnection()
+    {
+        var memberId = Guid.NewGuid();
+        _users.GetByIdAsync(_userId).Returns(ExistingUser(emailVerified: true));
+        _links.GetByUserIdAsync(_userId).Returns([new UserCardiMember { UserId = _userId, CardiMemberId = memberId }]);
+        _deviceConnections.GetActiveByCardiMemberIdAsync(memberId)
+            .Returns([new DeviceConnection { CardiMemberId = memberId }]);
+
+        var status = await CreateSut().GetOnboardingStatusAsync(_userId);
+
+        Assert.True(status.HasDeviceConnected);
+        Assert.Equal(7, status.CurrentStep);
+        Assert.Equal("Choose how you'd like to be notified", status.NextStepMessage);
+    }
+
+    [Fact]
+    public async Task OnboardingStatus_ReportsNoDevice_WhenMembersHaveNoActiveConnections()
+    {
+        _users.GetByIdAsync(_userId).Returns(ExistingUser(emailVerified: true));
+        _links.GetByUserIdAsync(_userId).Returns([new UserCardiMember { UserId = _userId, CardiMemberId = Guid.NewGuid() }]);
+
+        var status = await CreateSut().GetOnboardingStatusAsync(_userId);
+
+        Assert.False(status.HasDeviceConnected);
+        Assert.Equal(6, status.CurrentStep);
+        Assert.Equal("Now let's connect a health device", status.NextStepMessage);
     }
 
     [Fact]

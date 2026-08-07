@@ -6,14 +6,33 @@ namespace CardiTrack.Mobile.Onboarding;
 /// <summary>M1-05: choose the wearable to connect. Fitbit only in MVP 1.</summary>
 public partial class DeviceSelectionPage : ContentPage
 {
+    private readonly WizardContext _ctx;
     private readonly CardiMemberResponse _member;
     private bool _fitbitSelected = true;
 
-    public DeviceSelectionPage(CardiMemberResponse member)
+    public DeviceSelectionPage(WizardContext ctx)
     {
         InitializeComponent();
-        _member = member;
-        TitleLabel.Text = $"What does {member.Name} wear?";
+        _ctx = ctx;
+        _member = ctx.RequireMember();
+        TitleLabel.Text = $"What does {_member.Name} wear?";
+
+        if (ctx.Origin == WizardOrigin.Modal)
+        {
+            // Mid-flow entry: the onboarding "Step N of 4" story doesn't apply.
+            Header.Step = string.Empty;
+            Header.Progress = 0;
+        }
+    }
+
+    // The WizardHeader fallback resolves the window root's navigation, which is not
+    // the wizard's own stack when launched modally — handle back explicitly.
+    private async void OnBackRequested(object? sender, EventArgs e)
+    {
+        if (Navigation.NavigationStack.Count > 1)
+            await Navigation.PopAsync();
+        else
+            await _ctx.CancelAsync(this);
     }
 
     private void OnFitbitTapped(object? sender, EventArgs e)
@@ -31,7 +50,7 @@ public partial class DeviceSelectionPage : ContentPage
     {
         if (!_fitbitSelected)
             return;
-        await Navigation.PushAsync(new FitbitConnectionPage(_member));
+        await Navigation.PushAsync(new FitbitConnectionPage(_ctx));
     }
 
     private async void OnHelpTapped(object? sender, EventArgs e)

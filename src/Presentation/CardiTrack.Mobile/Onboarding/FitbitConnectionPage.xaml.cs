@@ -17,16 +17,18 @@ public partial class FitbitConnectionPage : ContentPage
 
     private readonly ICardiTrackApiClient _api;
     private readonly IPopupService _popups;
+    private readonly WizardContext _ctx;
     private readonly CardiMemberResponse _member;
 
-    public FitbitConnectionPage(CardiMemberResponse member)
+    public FitbitConnectionPage(WizardContext ctx)
     {
         InitializeComponent();
         _api = ServiceHelper.GetRequiredService<ICardiTrackApiClient>();
         _popups = ServiceHelper.GetRequiredService<IPopupService>();
-        _member = member;
-        NeedsLabel.Text = $"To look after {member.Name}, CardiTrack needs:";
-        AuthorizingLabel.Text = $"Connecting to {member.Name}'s Fitbit...";
+        _ctx = ctx;
+        _member = ctx.RequireMember();
+        NeedsLabel.Text = $"To look after {_member.Name}, CardiTrack needs:";
+        AuthorizingLabel.Text = $"Connecting to {_member.Name}'s Fitbit...";
     }
 
     private async void OnAuthorizeClicked(object? sender, EventArgs e)
@@ -64,7 +66,11 @@ public partial class FitbitConnectionPage : ContentPage
                 CodeVerifier = initiation.CodeVerifier,
             });
 
-            await Navigation.PushAsync(new ConnectionSuccessPage(_member, device));
+            _ctx.DeviceConnected = true;
+            // A fresh connection means the post-login resume prompt is welcome again
+            // if this device is ever disconnected later.
+            Preferences.Default.Remove(WizardLauncher.ResumeDismissedKey);
+            await Navigation.PushAsync(new ConnectionSuccessPage(_ctx, device));
         }
         catch (TaskCanceledException)
         {

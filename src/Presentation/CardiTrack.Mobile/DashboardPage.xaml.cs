@@ -21,6 +21,7 @@ public partial class DashboardPage : ContentPage
     private enum DashboardState { Loading, Loaded, NoMember, Error }
 
     private bool _isLoading;
+    private bool _wizardActive;
     private DateTime _lastLoadedUtc = DateTime.MinValue;
     private DashboardResponse? _lastData;
 
@@ -247,11 +248,49 @@ public partial class DashboardPage : ContentPage
     private async void OnAlertTapped(object? sender, Guid alertId) =>
         await _popups.ShowInfoAsync("Alert details (M1-11) are on the way.", "Coming soon");
 
-    private async void OnAddMemberClicked(object? sender, EventArgs e) =>
-        await Navigation.PushAsync(new AddCardiMemberPage());
+    private async void OnAddMemberClicked(object? sender, EventArgs e)
+    {
+        if (_wizardActive)
+            return;
+        _wizardActive = true;
+        try
+        {
+            await WizardLauncher.RunModalAsync(Navigation, member: null);
+            // Bypass the auto-refresh window and re-resolve the primary member —
+            // this may have been the first one.
+            await LoadAsync(force: true);
+        }
+        finally
+        {
+            _wizardActive = false;
+        }
+    }
 
-    private async void OnConnectDeviceClicked(object? sender, EventArgs e) =>
-        await _popups.ShowInfoAsync("Device connection (M1-05) is on the way.", "Coming soon");
+    private async void OnConnectDeviceClicked(object? sender, EventArgs e)
+    {
+        if (_wizardActive)
+            return;
+        _wizardActive = true;
+        try
+        {
+            var memberId = await ResolveMemberIdAsync(force: false);
+            var members = await _api.GetCardiMembersAsync();
+            var member = members.FirstOrDefault(m => m.Id == memberId) ?? members.FirstOrDefault();
+            if (member is null)
+                return;
+
+            await WizardLauncher.RunModalAsync(Navigation, member);
+            await LoadAsync(force: true);
+        }
+        catch (ApiException ex)
+        {
+            await _popups.ShowErrorAsync(ex.Message, "Couldn't start device setup");
+        }
+        finally
+        {
+            _wizardActive = false;
+        }
+    }
 
     private async void OnViewTrendsClicked(object? sender, EventArgs e) =>
         await _popups.ShowInfoAsync("Trends & history (M2-03) are on the way.", "Coming soon");

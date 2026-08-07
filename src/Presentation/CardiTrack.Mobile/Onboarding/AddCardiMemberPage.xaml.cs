@@ -22,13 +22,22 @@ public partial class AddCardiMemberPage : ContentPage
 
     private readonly ICardiTrackApiClient _api;
     private readonly IPopupService _popups;
+    private readonly WizardContext _ctx;
     private FileResult? _photo;
 
-    public AddCardiMemberPage()
+    public AddCardiMemberPage(WizardContext ctx)
     {
         InitializeComponent();
         _api = ServiceHelper.GetRequiredService<ICardiTrackApiClient>();
         _popups = ServiceHelper.GetRequiredService<IPopupService>();
+        _ctx = ctx;
+
+        if (ctx.Origin == WizardOrigin.Modal)
+        {
+            // Mid-flow entry: the onboarding "Step N of 4" story doesn't apply.
+            Header.Step = string.Empty;
+            Header.Progress = 0;
+        }
 
         RelationshipPicker.ItemsSource = Relationships.Select(r => r.Label).ToList();
         DobPicker.MaximumDate = DateTime.Today;
@@ -40,6 +49,8 @@ public partial class AddCardiMemberPage : ContentPage
     {
         if (Navigation.NavigationStack.Count > 1)
             await Navigation.PopAsync();
+        else
+            await _ctx.CancelAsync(this);
     }
 
     private async void OnAddPhotoTapped(object? sender, EventArgs e)
@@ -103,7 +114,9 @@ public partial class AddCardiMemberPage : ContentPage
                 EmergencyContactPhone = NullIfEmpty(EmergencyPhoneEntry.Text),
             });
 
-            await Navigation.PushAsync(new DeviceSelectionPage(member));
+            _ctx.Member = member;
+            _ctx.MemberCreated = true;
+            await Navigation.PushAsync(new DeviceSelectionPage(_ctx));
         }
         catch (ApiException ex)
         {
@@ -117,14 +130,8 @@ public partial class AddCardiMemberPage : ContentPage
         }
     }
 
-    // Pushed from the dashboard's empty state → pop back; onboarding root → hand over to the shell.
-    private async void OnSkipTapped(object? sender, EventArgs e)
-    {
-        if (Navigation.NavigationStack.Count > 1)
-            await Navigation.PopAsync();
-        else
-            WindowNavigation.SetRootPage(this, new AppShell());
-    }
+    private async void OnSkipTapped(object? sender, EventArgs e) =>
+        await _ctx.FinishAsync(this);
 
     private static string? NullIfEmpty(string? value) =>
         string.IsNullOrWhiteSpace(value) ? null : value.Trim();
