@@ -262,6 +262,136 @@ public class DeviceConnectionServiceTests
     }
 
     [Fact]
+    public async Task CompleteConnection_KeepsStoredRefreshToken_WhenProviderIssuesNone()
+    {
+        // Google only issues a refresh token alongside a consent prompt, so a reconnect comes
+        // back without one — nulling the stored token would strand the next silent refresh.
+        var existing = new DeviceConnection
+        {
+            CardiMemberId = _memberId,
+            DeviceType = DeviceType.Fitbit,
+            DeviceName = "Fitbit",
+            IsActive = true,
+            ConnectionStatus = ConnectionStatus.Connected,
+            AccessToken = "enc(old_access)",
+            RefreshToken = "enc(old_refresh)",
+        };
+        _unitOfWork.DeviceConnections.GetByCardiMemberIdAsync(_memberId).Returns([existing]);
+        _codeExchange.ExchangeCodeAsync(Arg.Any<DeviceProviderSettings>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>())
+            .Returns(new OAuthTokenResult("new_access", null, 3600, null, null));
+
+        var sut = CreateSut();
+        var initiation = await sut.InitiateConnectionAsync(_userId, _memberId, FitbitRequest());
+
+        await sut.CompleteConnectionAsync(_userId, "fitbit", new OAuthCallbackRequest
+        {
+            Code = "code",
+            State = initiation.State,
+            CodeVerifier = initiation.CodeVerifier,
+        });
+
+        Assert.Equal("enc(new_access)", existing.AccessToken);
+        Assert.Equal("enc(old_refresh)", existing.RefreshToken);
+    }
+
+    [Fact]
+    public async Task CompleteConnection_DropsStoredRefreshToken_WhenReconnectingOnAnotherAccount()
+    {
+        // Keeping the old account's refresh token here would leave background syncs pulling a
+        // stranger's health data under this member.
+        var existing = new DeviceConnection
+        {
+            CardiMemberId = _memberId,
+            DeviceType = DeviceType.Fitbit,
+            DeviceName = "Fitbit",
+            IsActive = true,
+            ConnectionStatus = ConnectionStatus.Connected,
+            RefreshToken = "enc(old_refresh)",
+            Metadata = """{"providerUserId":"ACCOUNT_A"}""",
+        };
+        _unitOfWork.DeviceConnections.GetByCardiMemberIdAsync(_memberId).Returns([existing]);
+        _codeExchange.ExchangeCodeAsync(Arg.Any<DeviceProviderSettings>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>())
+            .Returns(new OAuthTokenResult("new_access", null, 3600, null, "ACCOUNT_B"));
+
+        var sut = CreateSut();
+        var initiation = await sut.InitiateConnectionAsync(_userId, _memberId, FitbitRequest());
+
+        await sut.CompleteConnectionAsync(_userId, "fitbit", new OAuthCallbackRequest
+        {
+            Code = "code",
+            State = initiation.State,
+            CodeVerifier = initiation.CodeVerifier,
+        });
+
+        Assert.Null(existing.RefreshToken);
+    }
+
+    [Fact]
+    public async Task InitiateConnection_AddsFirstConsentParams_WhenNoRefreshTokenHeld()
+    {
+        var sut = CreateSut(ForcesConsent);
+
+        var result = await sut.InitiateConnectionAsync(_userId, _memberId, FitbitRequest());
+
+        Assert.Contains("&prompt=consent", result.AuthorizationUrl);
+    }
+
+    [Fact]
+    public async Task InitiateConnection_OmitsFirstConsentParams_WhenRefreshTokenAlreadyHeld()
+    {
+        _unitOfWork.DeviceConnections.GetByCardiMemberIdAsync(_memberId).Returns(
+        [
+            new DeviceConnection
+            {
+                CardiMemberId = _memberId,
+                DeviceType = DeviceType.Fitbit,
+                DeviceName = "Fitbit",
+                IsActive = true,
+                ConnectionStatus = ConnectionStatus.Connected,
+                RefreshToken = "enc(refresh)",
+            }
+        ]);
+
+        var result = await CreateSut(ForcesConsent).InitiateConnectionAsync(_userId, _memberId, FitbitRequest());
+
+        Assert.DoesNotContain("prompt=consent", result.AuthorizationUrl);
+        // The unconditional params are unaffected.
+        Assert.Contains("&access_type=offline", result.AuthorizationUrl);
+    }
+
+    [Theory]
+    // Disconnected: the provider may well have revoked the token, so re-consent is how we
+    // get a usable one back. Connected but tokenless: there is nothing to preserve.
+    [InlineData(ConnectionStatus.Disconnected, "enc(refresh)")]
+    [InlineData(ConnectionStatus.Connected, null)]
+    public async Task InitiateConnection_AddsFirstConsentParams_WhenExistingConnectionCannotRefresh(
+        ConnectionStatus status, string? refreshToken)
+    {
+        _unitOfWork.DeviceConnections.GetByCardiMemberIdAsync(_memberId).Returns(
+        [
+            new DeviceConnection
+            {
+                CardiMemberId = _memberId,
+                DeviceType = DeviceType.Fitbit,
+                DeviceName = "Fitbit",
+                IsActive = true,
+                ConnectionStatus = status,
+                RefreshToken = refreshToken,
+            }
+        ]);
+
+        var result = await CreateSut(ForcesConsent).InitiateConnectionAsync(_userId, _memberId, FitbitRequest());
+
+        Assert.Contains("&prompt=consent", result.AuthorizationUrl);
+    }
+
+    private static void ForcesConsent(DeviceProviderSettings settings)
+    {
+        settings.AdditionalAuthorizationParams = new Dictionary<string, string> { ["access_type"] = "offline" };
+        settings.FirstConsentAuthorizationParams = new Dictionary<string, string> { ["prompt"] = "consent" };
+    }
+
+    [Fact]
     public async Task GetAppRedirectUri_ReturnsDeepLink_WithoutConsumingState()
     {
         _codeExchange.ExchangeCodeAsync(Arg.Any<DeviceProviderSettings>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>())

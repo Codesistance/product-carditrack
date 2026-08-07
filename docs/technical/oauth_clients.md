@@ -189,6 +189,17 @@ server-cached, single-use tokens with a 15-minute TTL** (never encode member
 ids in them), and the bounce endpoint only ever redirects into the
 `carditrack://` scheme — any other target would be an open redirect.
 
+The bounce endpoint hands off to the app on **every** outcome, including a
+denied consent, because the deep link is the only thing that dismisses the
+in-app browser; a response that ends in the browser leaves the user on the
+consent page with the app still waiting. It hands off with an HTML page that
+calls `location.replace()` rather than a `Location:` header, since a redirect
+naming a custom scheme is dropped by browsers and proxies that only forward
+http(s). `prompt=consent` is sent **only while no refresh token is held** for
+that member and provider (`FirstConsentAuthorizationParams`) — Google re-issues
+a refresh token only when consent is shown again, but forcing it on every
+connect makes a reconnect look like a failed one.
+
 1. Google Cloud console (cloud-ops account), project `carditrack-devices-{env}`
    — one per environment, never shared (see the project layout above):
    **enable the Google Health API**. Do this **before** the consent screen: the

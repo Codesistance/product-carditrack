@@ -8,7 +8,7 @@ Key implementation facts (verified against `DeviceConnectionService`):
 
 - **Authorization is member-link only.** Every device operation checks that an active `UserCardiMember` link exists between the caller and the CardiMember (failure → 404 "CardiMember not found"). There are **no role checks** on any device endpoint.
 - **State tokens are single-use with a 15-minute TTL**, held server-side in the distributed cache keyed to the initiating user, member, and provider. The callback consumes the state even if the code exchange fails — a replayed state always fails.
-- **Google authorize URLs include `access_type=offline` and `prompt=consent`** (config-driven), without which Google issues no refresh token.
+- **Google authorize URLs include `access_type=offline`** (config-driven), without which Google issues no refresh token. `prompt=consent` (`FirstConsentAuthorizationParams`) is added **only while the member holds no refresh token** on that provider — Google re-issues one only when consent is shown again, but forcing it on every connect makes a reconnect look like a failure. A token exchange that returns no refresh token **leaves the stored one in place** rather than nulling it — unless the exchange came back with a **different `providerUserId`**, in which case the old account's token is dropped so background syncs can't keep pulling the previous wearer's data (and the next initiation re-prompts for consent).
 - **OAuth tokens are AES-encrypted at rest** before being stored on the connection record.
 - **Syncing is a 30-minute cron poll** by the Worker (`WearableSyncWorker`), not provider webhooks.
 - The anonymous bounce endpoint **only redirects into the `carditrack://` app scheme** — any other cached redirect target is rejected, preventing open-redirect leakage of `code`+`state`.
@@ -95,7 +95,7 @@ Initiate an OAuth device connection. Returns a redirect URL for the provider's a
 }
 ```
 
-> The client stores `codeVerifier` and `state` locally, then redirects the user to `authorizationUrl`. After authorization the browser lands back on the app deep link (`redirectUri`) with `code` and `state` parameters, which the app sends to the OAuth callback endpoint.
+> The client stores `codeVerifier` and `state` locally, then redirects the user to `authorizationUrl`. After authorization the browser lands back on the app deep link (`redirectUri`) with `state` and either `code` or `error`; on `code` the app sends it to the OAuth callback endpoint, on `error` it surfaces the failure and stays put.
 
 > **Provider redirect vs app deep link:** Google's web OAuth clients only accept **https** redirect URIs, so for providers with a configured `DeviceProviders[].RedirectUri` (Fitbit) the `redirect_uri` sent to the provider is the API's bounce endpoint below — not the deep link from the request body. The deep link is cached with the state and used by the bounce. Providers without a configured redirect keep the legacy direct-deep-link behavior.
 
@@ -103,11 +103,21 @@ Initiate an OAuth device connection. Returns a redirect URL for the provider's a
 
 ## GET `/api/v1/oauth/redirect/{provider}`
 
-Anonymous provider-facing redirect target (the "bounce"). Google redirects the wearer's browser here after consent; the endpoint looks up the pending `state` (without consuming it) and issues a `302` to the app deep link cached at initiation, preserving `code` and `state`:
+Anonymous provider-facing redirect target (the "bounce"). Google redirects the wearer's browser here after consent; the endpoint looks up the pending `state` (without consuming it) and returns an **HTML hand-off page** that navigates the browser into the app deep link cached at initiation:
 
 ```
-302 Location: carditrack://oauth/callback?code=...&state=...
+200 text/html   →  location.replace("carditrack://oauth/callback?state=...&code=...")
 ```
+
+A `Location:` header naming a custom scheme is honoured by Chrome Custom Tabs and `ASWebAuthenticationSession` but dropped by browsers and proxies that only forward http(s), so the navigation is done from the page, with a tappable fallback link. Responses are `Cache-Control: no-store` and `Referrer-Policy: no-referrer` — the URL carries an authorization code.
+
+**Every outcome hands off to the app**, because the deep link is the only thing that dismisses the in-app browser. When the provider returns no `code`, its `error`/`error_description` are forwarded (`error=invalid_request` when it names none):
+
+```
+carditrack://oauth/callback?state=...&error=access_denied&error_description=...
+```
+
+Only a `state` that cannot be resolved at all — absent, expired, already spent, or not this provider's — has nowhere to go; that renders a terminal "start the connection again" page with a `400`.
 
 **Priority:** P0 | **Auth Required:** No (the state token scopes it; completing the flow still requires the authenticated callback below)
 
@@ -115,7 +125,7 @@ Anonymous provider-facing redirect target (the "bounce"). Google redirects the w
 
 | Code | Status | Description |
 |------|--------|-------------|
-| — | 400 | Missing `code`/`state`, or unknown/expired `state` for this provider |
+| — | 400 | Missing `state`, or unknown/expired `state` for this provider (HTML, not JSON) |
 
 ---
 
