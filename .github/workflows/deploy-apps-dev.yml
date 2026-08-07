@@ -486,10 +486,14 @@ jobs:
   # Platforms/Windows boilerplate, so running it per-PR bought little and, once
   # the iOS and Android builds were cut to Debug, it *was* the PR critical path
   # at ~5 min. A break here is caught on the next merge and blocks no release.
+  #
+  # The guard matches upload-mobile-artifacts, the only consumer of the msix:
+  # workflow_dispatch is not ref-restricted, so excluding pull_request alone
+  # would still build an artifact nothing collects on a feature-branch dispatch.
   build-mobile-windows:
     name: Build Mobile (Windows)
     needs: changes
-    if: needs.changes.outputs.mobile == 'true' && github.event_name != 'pull_request'
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && needs.changes.outputs.mobile == 'true'
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v6
