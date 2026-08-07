@@ -4,6 +4,7 @@
 **/TestResults/
 **/.vs/
 **/.vscode/
+.devcontainer/
 **/.git/
 **/.gitignore
 **/*.md

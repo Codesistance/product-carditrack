@@ -1,0 +1,38 @@
+{
+  "$schema": "https://raw.githubusercontent.com/devcontainers/spec/main/schemas/devContainer.schema.json",
+  "name": "CardiTrack",
+  "dockerComposeFile": "docker-compose.yml",
+  "service": "app",
+  "workspaceFolder": "/workspaces/product-carditrack",
+
+  "postCreateCommand": "bash .devcontainer/post-create.sh",
+
+  "forwardPorts": [5230, 7130, 5026, 7177, 8080, 5432, 6379],
+  "portsAttributes": {
+    "5230": { "label": "API (http)" },
+    "7130": { "label": "API (https)" },
+    "5026": { "label": "Web (http)" },
+    "7177": { "label": "Web (https)" },
+    "8080": { "label": "Worker healthz" },
+    "5432": { "label": "PostgreSQL" },
+    "6379": { "label": "Redis" }
+  },
+
+  "remoteUser": "vscode",
+
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-dotnettools.csdevkit",
+        "ms-dotnettools.csharp",
+        "hashicorp.terraform",
+        "ms-azuretools.vscode-docker",
+        "editorconfig.editorconfig"
+      ],
+      "settings": {
+        "dotnet.defaultSolution": "CardiTrack.Server.slnf",
+        "terminal.integrated.defaultProfile.linux": "bash"
+      }
+    }
+  }
+}
