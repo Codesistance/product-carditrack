@@ -223,7 +223,7 @@ Subsequent `terraform apply` runs never revert operator-set values. The applicat
 | `auth0-mobile-client-id` | Operator (same script) | Stamped into mobile builds by CI |
 | `encryption-key` | Operator | `Encryption__Key` |
 | `health-token` | Terraform (`random_password`, 40 chars) | `Health__Token` — `/health` requires the `X-Health-Token` header; CI reads it for smoke tests |
-| `fitbit-client-id`, `fitbit-client-secret` | Operator | `DeviceProviders__0__ClientId/ClientSecret` (Google Health API OAuth client) |
+| `devices-fitbit-client-id`, `devices-fitbit-client-secret` | Operator | `DeviceProviders__0__ClientId/ClientSecret` (Google Health API OAuth client). Further providers follow `devices-{provider}-client-{id,secret}` |
 | `gemini-api-key` | Operator | `AI__Providers__1__ApiKey` |
 | `medgemma-service-url` | CI (written after each MedGemma deploy) | `AI__Providers__0__BaseUrl` |
 | `apm-data` | Operator (`scripts/set-apm-secrets.sh`) | `Apm__Data` (APM connection JSON) |

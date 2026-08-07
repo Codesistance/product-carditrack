@@ -21,8 +21,11 @@ lifecycles.
 | 2 | CardiTrack Mobile | Identity | Public (Native, PKCE, no secret) | Auth0 | `auth0-mobile-client-id` | Created per [runbook §3](./auth0_setup_runbook.md) |
 | 3 | Google sign-in (social) | Identity | Web app client **used by Auth0**, not by our code | Google Cloud | Stored inside the Auth0 connection | Pending (Phase 9, below) |
 | 4 | Apple Sign In (social) | Identity | Services ID + .p8 key **used by Auth0** | Apple Developer | Stored inside the Auth0 connection | Pending (Phase 9, below) |
-| 5 | Fitbit provider (Google Health API) | Device data | Confidential Web application | Google Cloud | `fitbit-client-id` / `fitbit-client-secret` | Code merged (PR #10); console registration pending |
-| 6+ | Garmin / Withings / Oura / Whoop | Device data | Per-vendor | Each vendor's portal | Not yet provisioned | Future — config stubs only; **only Fitbit is registered in DI** |
+| 5 | Fitbit provider (Google Health API) | Device data | Confidential Web application | Google Cloud | `devices-fitbit-client-id` / `devices-fitbit-client-secret` | Code merged (PR #10); console registration pending |
+| 6+ | Garmin / Withings / Oura / Whoop | Device data | Per-vendor | Each vendor's portal | Not yet provisioned (`devices-{provider}-client-{id,secret}`) | Future — config stubs only; **only Fitbit is registered in DI** |
+
+Device-data secrets are namespaced `devices-{provider}-client-{id,secret}` so each
+new provider adds a matching pair rather than another bare `{vendor}-client-*`.
 
 Related shared secret: `carditrack-{env}-encryption-key` (`Encryption__Key`) — the
 AES-256-GCM key protecting the device-data tokens stored in `DeviceConnections`.
@@ -149,8 +152,8 @@ ids in them), and the bounce endpoint only ever redirects into the
    - prod: `https://api.carditrack.com/api/v1/oauth/redirect/fitbit`
 4. Populate Secret Manager (after `terraform apply` creates the secrets):
    ```bash
-   printf '%s' "$CLIENT_ID"     | gcloud secrets versions add carditrack-{env}-fitbit-client-id     --data-file=-
-   printf '%s' "$CLIENT_SECRET" | gcloud secrets versions add carditrack-{env}-fitbit-client-secret --data-file=-
+   printf '%s' "$CLIENT_ID"     | gcloud secrets versions add carditrack-{env}-devices-fitbit-client-id     --data-file=-
+   printf '%s' "$CLIENT_SECRET" | gcloud secrets versions add carditrack-{env}-devices-fitbit-client-secret --data-file=-
    ```
    then roll new API + Worker revisions so the env bindings pick up the values.
 5. **Sandbox verification**: with a test user connected, exercise a sync and
@@ -167,6 +170,7 @@ ids in them), and the bounce endpoint only ever redirects into the
    mobile equivalent is still pending.
 
 Future device providers (Garmin, Withings, …) repeat steps 3–4 in their own
-portals with their own `DeviceProviders` entry and secrets; the multi-provider
+portals with their own `DeviceProviders` entry and their own
+`devices-{provider}-client-{id,secret}` pair; the multi-provider
 config, keyed DI, and (if the vendor requires https redirects) the bounce
 endpoint generalize as-is.

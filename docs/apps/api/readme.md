@@ -205,7 +205,7 @@ X-Rate-Limit-Reset: 2026-08-07T12:01:00.0000000Z
 
 Secrets are supplied via environment variables backed by **GCP Secret Manager** in all deployed environments — never committed. (See `api_secret_env_vars` in `infrastructure/main.tf` for the full env-var → secret mapping.)
 
-> The Fitbit provider runs on the **Google Health API** (Google OAuth endpoints, `googlehealth.*` scope URIs, ~1-hour access tokens). `RedirectUri` is the provider-facing **https bounce endpoint** — Google web OAuth clients cannot redirect to a custom scheme, so `GET /api/v1/oauth/redirect/fitbit` 302s back into the app deep link. `AdditionalAuthorizationParams` carries Google's `access_type=offline` (required for a refresh token) and `prompt=consent`. Client id/secret come from Secret Manager (`fitbit-client-id` / `fitbit-client-secret`). Event ingestion config for the AI pipeline arrives with its rollout ([llm_design.md](../../llm_design.md)).
+> The Fitbit provider runs on the **Google Health API** (Google OAuth endpoints, `googlehealth.*` scope URIs, ~1-hour access tokens). `RedirectUri` is the provider-facing **https bounce endpoint** — Google web OAuth clients cannot redirect to a custom scheme, so `GET /api/v1/oauth/redirect/fitbit` 302s back into the app deep link. `AdditionalAuthorizationParams` carries Google's `access_type=offline` (required for a refresh token) and `prompt=consent`. Client id/secret come from Secret Manager (`devices-fitbit-client-id` / `devices-fitbit-client-secret`). Event ingestion config for the AI pipeline arrives with its rollout ([llm_design.md](../../llm_design.md)).
 
 ### Device providers — positional-index contract
 

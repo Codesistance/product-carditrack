@@ -237,8 +237,8 @@ ConnectionStrings__DefaultConnection = carditrack-<env>-db-connection-string
 Auth0__Domain / __Audience / __ClientId / __ClientSecret = carditrack-<env>-auth0-*
 Encryption__Key                      = carditrack-<env>-encryption-key
 Health__Token                        = carditrack-<env>-health-token
-DeviceProviders__0__ClientId         = carditrack-<env>-fitbit-client-id
-DeviceProviders__0__ClientSecret     = carditrack-<env>-fitbit-client-secret
+DeviceProviders__0__ClientId         = carditrack-<env>-devices-fitbit-client-id
+DeviceProviders__0__ClientSecret     = carditrack-<env>-devices-fitbit-client-secret
 Apm__Data                            = carditrack-<env>-apm-data
 ```
 

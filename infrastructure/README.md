@@ -80,7 +80,7 @@ bash scripts/set-auth0-secrets.sh <dev|prod>   # auth0-domain/audience/client-id
 bash scripts/set-apm-secrets.sh   <dev|prod>   # apm-data connection JSON (Datadog / Better Stack)
 ```
 
-Remaining operator-seeded secrets (`encryption-key`, `fitbit-client-id`, `fitbit-client-secret`, `gemini-api-key`, `apm-mobile-data`, and the `carditrack-common-*` store secrets) are set directly with `gcloud secrets versions add`.
+Remaining operator-seeded secrets (`encryption-key`, `devices-fitbit-client-id`, `devices-fitbit-client-secret`, `gemini-api-key`, `apm-mobile-data`, and the `carditrack-common-*` store secrets) are set directly with `gcloud secrets versions add`.
 
 ## Environment differences
 

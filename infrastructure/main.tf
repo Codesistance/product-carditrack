@@ -82,8 +82,8 @@ module "deployments" {
     "Auth0__ClientSecret"                  = "${var.project_name}-${local.environment}-auth0-client-secret"
     "Encryption__Key"                      = "${var.project_name}-${local.environment}-encryption-key"
     "Health__Token"                        = "${var.project_name}-${local.environment}-health-token"
-    "DeviceProviders__0__ClientId"         = "${var.project_name}-${local.environment}-fitbit-client-id"
-    "DeviceProviders__0__ClientSecret"     = "${var.project_name}-${local.environment}-fitbit-client-secret"
+    "DeviceProviders__0__ClientId"         = "${var.project_name}-${local.environment}-devices-fitbit-client-id"
+    "DeviceProviders__0__ClientSecret"     = "${var.project_name}-${local.environment}-devices-fitbit-client-secret"
     "AI__Providers__0__BaseUrl"            = "${var.project_name}-${local.environment}-medgemma-service-url"
     "AI__Providers__1__ApiKey"             = "${var.project_name}-${local.environment}-gemini-api-key"
     "Apm__Data"                            = "${var.project_name}-${local.environment}-apm-data"
@@ -106,8 +106,8 @@ module "deployments" {
     "Auth0__ClientSecret"                  = "${var.project_name}-${local.environment}-auth0-client-secret"
     "Encryption__Key"                      = "${var.project_name}-${local.environment}-encryption-key"
     "Health__Token"                        = "${var.project_name}-${local.environment}-health-token"
-    "DeviceProviders__0__ClientId"         = "${var.project_name}-${local.environment}-fitbit-client-id"
-    "DeviceProviders__0__ClientSecret"     = "${var.project_name}-${local.environment}-fitbit-client-secret"
+    "DeviceProviders__0__ClientId"         = "${var.project_name}-${local.environment}-devices-fitbit-client-id"
+    "DeviceProviders__0__ClientSecret"     = "${var.project_name}-${local.environment}-devices-fitbit-client-secret"
     "Apm__Data"                            = "${var.project_name}-${local.environment}-apm-data"
   }
 
