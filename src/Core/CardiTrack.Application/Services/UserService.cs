@@ -120,16 +120,8 @@ public class UserService : IUserService
         var organization = await _unitOfWork.Organizations.GetByIdAsync(user.OrganizationId);
         var cardiMembers = (await _unitOfWork.UserCardiMembers.GetByUserIdAsync(userId)).ToList();
 
-        var hasDeviceConnected = false;
-        foreach (var link in cardiMembers)
-        {
-            var connections = await _unitOfWork.DeviceConnections.GetActiveByCardiMemberIdAsync(link.CardiMemberId);
-            if (connections.Any())
-            {
-                hasDeviceConnected = true;
-                break;
-            }
-        }
+        var hasDeviceConnected = await _unitOfWork.DeviceConnections
+            .AnyActiveForCardiMembersAsync(cardiMembers.Select(link => link.CardiMemberId));
 
         var status = new OnboardingStatusResponse
         {

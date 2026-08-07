@@ -1,6 +1,7 @@
 using CardiTrack.Mobile.Core.Api;
 using CardiTrack.Mobile.Core.Onboarding;
 using CardiTrack.Mobile.Onboarding;
+using Microsoft.Extensions.Logging;
 
 namespace CardiTrack.Mobile.Services;
 
@@ -16,10 +17,12 @@ namespace CardiTrack.Mobile.Services;
 public sealed class PostLoginRouter
 {
     private readonly ICardiTrackApiClient _api;
+    private readonly ILogger<PostLoginRouter>? _logger;
 
-    public PostLoginRouter(ICardiTrackApiClient api)
+    public PostLoginRouter(ICardiTrackApiClient api, ILogger<PostLoginRouter>? logger = null)
     {
         _api = api;
+        _logger = logger;
     }
 
     public async Task RouteAsync(Page current, CancellationToken ct = default)
@@ -69,6 +72,15 @@ public sealed class PostLoginRouter
         catch (ApiException)
         {
             // The dashboard still works; its "Connect a device" card offers the same flow.
+        }
+        catch (Exception ex)
+        {
+            // Started fire-and-forget from the Loaded handler, so anything escaping here
+            // becomes an unobserved task exception rather than something a caller can
+            // handle — including a failed modal push, which RunModalAsync rethrows.
+            // Resuming device setup is best-effort: record it and leave the dashboard's
+            // "Connect a device" card as the way in.
+            _logger?.LogWarning(ex, "Resuming device setup after login failed.");
         }
     }
 }

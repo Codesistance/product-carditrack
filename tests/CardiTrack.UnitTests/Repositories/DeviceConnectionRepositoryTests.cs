@@ -57,6 +57,61 @@ public class DeviceConnectionRepositoryTests(TestDatabaseFixture fixture)
         Assert.DoesNotContain(result, c => c.Id == inactive.Id);
     }
 
+    // ── AnyActiveForCardiMembersAsync ────────────────────────────────────────────
+
+    [Fact]
+    public async Task AnyActiveForCardiMembersAsync_IsTrue_WhenAnyMemberHasAnActiveConnection()
+    {
+        using var scope = fixture.CreateScope();
+        var repo = scope.ServiceProvider.GetRequiredService<IDeviceConnectionRepository>();
+
+        var org = await TestDataSeeder.SeedOrganizationAsync(scope);
+        var withoutDevice = await TestDataSeeder.SeedCardiMemberAsync(scope, org.Id);
+        var withDevice = await TestDataSeeder.SeedCardiMemberAsync(scope, org.Id);
+        await TestDataSeeder.SeedDeviceConnectionAsync(scope, withDevice.Id);
+
+        Assert.True(await repo.AnyActiveForCardiMembersAsync([withoutDevice.Id, withDevice.Id]));
+    }
+
+    [Fact]
+    public async Task AnyActiveForCardiMembersAsync_IsFalse_WhenMembersHaveNoConnections()
+    {
+        using var scope = fixture.CreateScope();
+        var repo = scope.ServiceProvider.GetRequiredService<IDeviceConnectionRepository>();
+
+        var org = await TestDataSeeder.SeedOrganizationAsync(scope);
+        var member = await TestDataSeeder.SeedCardiMemberAsync(scope, org.Id);
+
+        Assert.False(await repo.AnyActiveForCardiMembersAsync([member.Id]));
+    }
+
+    [Theory]
+    [InlineData(ConnectionStatus.Disconnected, true)]
+    [InlineData(ConnectionStatus.Connected, false)]
+    public async Task AnyActiveForCardiMembersAsync_IgnoresDisconnectedAndInactiveConnections(
+        ConnectionStatus status, bool isActive)
+    {
+        using var scope = fixture.CreateScope();
+        var repo = scope.ServiceProvider.GetRequiredService<IDeviceConnectionRepository>();
+
+        var org = await TestDataSeeder.SeedOrganizationAsync(scope);
+        var member = await TestDataSeeder.SeedCardiMemberAsync(scope, org.Id);
+        await TestDataSeeder.SeedDeviceConnectionAsync(scope, member.Id, status: status, isActive: isActive);
+
+        Assert.False(await repo.AnyActiveForCardiMembersAsync([member.Id]));
+    }
+
+    // An empty member list must not reach the database — a user with no CardiMembers
+    // hits this on every app launch.
+    [Fact]
+    public async Task AnyActiveForCardiMembersAsync_IsFalse_ForAnEmptyMemberList()
+    {
+        using var scope = fixture.CreateScope();
+        var repo = scope.ServiceProvider.GetRequiredService<IDeviceConnectionRepository>();
+
+        Assert.False(await repo.AnyActiveForCardiMembersAsync([]));
+    }
+
     // ── GetDueForSyncAsync ───────────────────────────────────────────────────────
 
     [Fact]

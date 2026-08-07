@@ -36,7 +36,19 @@ internal static class WizardLauncher
         }
 
         app.ModalPopped += OnPopped;
-        await navigation.PushModalAsync(wizardNav);
+        try
+        {
+            await navigation.PushModalAsync(wizardNav);
+        }
+        catch
+        {
+            // The modal never went up, so ModalPopped will never fire for it. Without
+            // this the handler — and the context, nav stack and TCS it captures — stays
+            // on an application-lifetime event, one leak per failed attempt, and the
+            // awaited task below could never complete.
+            app.ModalPopped -= OnPopped;
+            throw;
+        }
         return await tcs.Task;
     }
 }

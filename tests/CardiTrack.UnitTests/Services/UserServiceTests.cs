@@ -23,7 +23,7 @@ public class UserServiceTests
         _unitOfWork.UserCardiMembers.Returns(_links);
         _unitOfWork.DeviceConnections.Returns(_deviceConnections);
         _links.GetByUserIdAsync(_userId).Returns([]);
-        _deviceConnections.GetActiveByCardiMemberIdAsync(Arg.Any<Guid>()).Returns([]);
+        _deviceConnections.AnyActiveForCardiMembersAsync(Arg.Any<IEnumerable<Guid>>()).Returns(false);
     }
 
     private UserService CreateSut() => new(_unitOfWork);
@@ -84,8 +84,9 @@ public class UserServiceTests
         var memberId = Guid.NewGuid();
         _users.GetByIdAsync(_userId).Returns(ExistingUser(emailVerified: true));
         _links.GetByUserIdAsync(_userId).Returns([new UserCardiMember { UserId = _userId, CardiMemberId = memberId }]);
-        _deviceConnections.GetActiveByCardiMemberIdAsync(memberId)
-            .Returns([new DeviceConnection { CardiMemberId = memberId }]);
+        _deviceConnections
+            .AnyActiveForCardiMembersAsync(Arg.Is<IEnumerable<Guid>>(ids => ids != null && ids.Contains(memberId)))
+            .Returns(true);
 
         var status = await CreateSut().GetOnboardingStatusAsync(_userId);
 
