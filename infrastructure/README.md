@@ -95,8 +95,8 @@ Remaining operator-seeded secrets (`devices-fitbit-client-id`, `devices-fitbit-c
 | Cloud SQL deletion protection | off | **on** |
 | Public IP on Cloud SQL | no (private only) | no (private only) |
 | `enable_pubsub` | false | **true** (`carditrack-prod-realtime`) |
-| `enable_hipaa_compliance` | false | **true** (audit flags + audit sink/bucket) |
-| `audit_retention_days` | 30 (inert — HIPAA flag off) | 90 |
+| `enable_platform_audit_logging` | false | **true** (Cloud SQL audit flags + audit sink/bucket) |
+| `audit_retention_days` | 30 (inert — sink disabled) | 90 |
 | `apm_engine` | Datadog | Datadog (variable default is `BetterStack` — don't omit the tfvar) |
 | `apm_metrics_enabled` | true | false |
 | Custom domains | `api.dev.carditrack.com`, `app.dev.carditrack.com` | *(empty)* |
