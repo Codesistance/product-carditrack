@@ -31,8 +31,13 @@ public class ConnectDeviceValidatorTests
 
     [Theory]
     [InlineData("")]
+    [InlineData("oauth/callback")]
+    // A bare path is the case that makes an "absolute URI" check insufficient: on Linux —
+    // where the API actually runs — Uri.TryCreate reads it as an absolute file: URI and
+    // accepts it, so only the scheme check rejects it on both platforms.
     [InlineData("/oauth/callback")]
-    public void Rejects_AnythingThatIsNotAnAbsoluteUri(string redirectUri)
+    [InlineData("https://attacker.example.com/collect")]
+    public void Rejects_AnythingThatIsNotAnAppDeepLink(string redirectUri)
     {
         Assert.False(_sut.Validate(Request(redirectUri)).IsValid);
     }

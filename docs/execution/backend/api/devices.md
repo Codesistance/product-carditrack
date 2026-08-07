@@ -83,7 +83,7 @@ Initiate an OAuth device connection. Returns a redirect URL for the provider's a
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `provider` | string | Yes | A **server-OAuth** provider: `fitbit`, `garmin`, `samsung_health`, `withings`. (`apple_health` uses the on-device bridge — see below — and is not valid here.) |
-| `redirectUri` | string | Yes | Deep link URI for mobile callback |
+| `redirectUri` | string | Yes | Deep link URI for mobile callback. Must be a `carditrack://` URI **with no fragment** — the bounce forwards into whatever is cached here and appends the callback params to it, so another scheme would be an open redirect and a `#` would swallow the params. Rejected at initiation rather than only at the bounce. (An "absolute URI" check alone is not enough: on Linux `Uri.TryCreate` accepts a bare path like `/oauth/callback` as an absolute `file:` URI.) |
 
 ### Response `200 OK`
 

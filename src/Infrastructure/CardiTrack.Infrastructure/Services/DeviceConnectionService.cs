@@ -27,8 +27,9 @@ public class DeviceConnectionService : IDeviceConnectionService
     private const string StateKeyPrefix = "deviceoauth:";
 
     // The anonymous bounce endpoint may only forward into the mobile app's own scheme —
-    // an https/other target would make it an open redirect leaking code+state.
-    private const string AppRedirectScheme = "carditrack";
+    // an https/other target would make it an open redirect leaking code+state. Shared with
+    // the request validator so the fail-fast and point-of-use gates can't drift apart.
+    private const string AppRedirectScheme = ConnectDeviceRequest.AppRedirectScheme;
 
     // Route/body provider names per the REST contract. apple_health is on-device-bridge only
     // and deliberately absent — it must not enter the server OAuth flow.
