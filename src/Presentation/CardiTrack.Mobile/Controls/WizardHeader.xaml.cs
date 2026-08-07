@@ -10,7 +10,12 @@ public partial class WizardHeader : ContentView
 
     public static readonly BindableProperty ProgressProperty =
         BindableProperty.Create(nameof(Progress), typeof(double), typeof(WizardHeader), 0d,
-            propertyChanged: (b, _, v) => ((WizardHeader)b).StepProgress.IsVisible = (double)v > 0);
+            propertyChanged: (b, _, v) =>
+            {
+                var header = (WizardHeader)b;
+                header.StepProgress.IsVisible = (double)v > 0;
+                header.UpdateProgressFill();
+            });
 
     public static readonly BindableProperty IsBackVisibleProperty =
         BindableProperty.Create(nameof(IsBackVisible), typeof(bool), typeof(WizardHeader), true,
@@ -21,6 +26,15 @@ public partial class WizardHeader : ContentView
     public WizardHeader()
     {
         InitializeComponent();
+        StepProgress.SizeChanged += (_, _) => UpdateProgressFill();
+    }
+
+    private void UpdateProgressFill()
+    {
+        if (StepProgress.Width <= 0)
+            return;
+
+        StepProgressFill.WidthRequest = StepProgress.Width * Math.Clamp(Progress, 0d, 1d);
     }
 
     public string Title

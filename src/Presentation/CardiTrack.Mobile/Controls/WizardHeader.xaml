@@ -45,11 +45,26 @@
             </VerticalStackLayout>
         </Grid>
 
-        <ProgressBar x:Name="StepProgress"
-                     Progress="{Binding Progress, Source={x:Reference Root}}"
-                     ProgressColor="{StaticResource PrimaryDark}"
-                     BackgroundColor="#B3FFFFFF"
-                     Margin="20,0,20,24"
-                     VerticalOptions="End"/>
+        <!-- Figma M1-04 progress bar: 8px white pill track, gradient pill fill -->
+        <Border x:Name="StepProgress"
+                HeightRequest="8"
+                BackgroundColor="{StaticResource White}"
+                StrokeThickness="0"
+                Margin="20,0,20,24"
+                VerticalOptions="End"
+                SemanticProperties.Description="Wizard progress">
+            <Border.StrokeShape>
+                <RoundRectangle CornerRadius="4"/>
+            </Border.StrokeShape>
+            <Border x:Name="StepProgressFill"
+                    Background="{StaticResource GradientButtonBrush}"
+                    StrokeThickness="0"
+                    HorizontalOptions="Start"
+                    WidthRequest="0">
+                <Border.StrokeShape>
+                    <RoundRectangle CornerRadius="4"/>
+                </Border.StrokeShape>
+            </Border>
+        </Border>
     </Grid>
 </ContentView>
