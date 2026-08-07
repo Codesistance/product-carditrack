@@ -27,32 +27,37 @@ variable "cloud_run_location" {
   type        = string
 }
 
+# The four image variables below seed the initial create only. Each resource sets
+# lifecycle.ignore_changes on its image because the deploy workflows re-point them
+# per release, so a later change here is a no-op against an existing resource.
 variable "api_container_image" {
-  description = "Container image for the API service"
+  description = "Bootstrap image seeding the API service's initial create; CI/CD owns it thereafter"
   type        = string
   default     = "us-docker.pkg.dev/cloudrun/container/hello"
 }
 
 variable "web_container_image" {
-  description = "Container image for the Web service"
+  description = "Bootstrap image seeding the Web service's initial create; CI/CD owns it thereafter"
   type        = string
   default     = "us-docker.pkg.dev/cloudrun/container/hello"
 }
 
 variable "worker_container_image" {
-  description = "Container image for the Worker service"
+  description = "Bootstrap image seeding the Worker service's initial create; CI/CD owns it thereafter"
   type        = string
   default     = "us-docker.pkg.dev/cloudrun/container/hello"
 }
 
 variable "migrator_container_image" {
-  description = "Container image for the DB migrator Cloud Run Job"
+  description = "Bootstrap image seeding the DB migrator Job's initial create; CI/CD owns it thereafter"
   type        = string
   default     = "us-docker.pkg.dev/cloudrun/container/hello"
 }
 
+# Unlike the four above this one is load-bearing after create: it gates whether the
+# service exists at all. The image value itself is still CI/CD-owned once it does.
 variable "medgemma_image" {
-  description = "Container image for MedGemma (empty string disables the service)"
+  description = "Container image for MedGemma (empty string disables the service); seeds the initial create only"
   type        = string
   default     = ""
 }

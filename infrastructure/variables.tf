@@ -46,14 +46,24 @@ variable "cloud_run_memory" {
   default     = "512Mi"
 }
 
+# ── Container images ─────────────────────────────────────────────────────────
+# These four (api, web, worker, migrator) are bootstrap placeholders, not the
+# images we run. A Cloud Run resource cannot be created without a pullable image,
+# but the app images do not exist yet on a first apply — hence the hello-world
+# default. Every one of those resources then carries lifecycle.ignore_changes on
+# its image (deployments/cloud_run.tf), because the deploy workflows re-point them
+# on each release via `gcloud run deploy/jobs update --image`.
+#
+# So editing these values changes nothing once a resource exists, and no tfvars
+# file sets them. Leave them at the default; to change a deployed image, deploy.
 variable "api_container_image" {
-  description = "Container image for the API service"
+  description = "Bootstrap image seeding the API service's initial create; CI/CD owns it thereafter"
   type        = string
   default     = "us-docker.pkg.dev/cloudrun/container/hello"
 }
 
 variable "web_container_image" {
-  description = "Container image for the Web service"
+  description = "Bootstrap image seeding the Web service's initial create; CI/CD owns it thereafter"
   type        = string
   default     = "us-docker.pkg.dev/cloudrun/container/hello"
 }
@@ -95,14 +105,15 @@ variable "cloud_sql_public_ip_enabled" {
   default     = false
 }
 
+# Bootstrap placeholders — see the container images note above api_container_image.
 variable "migrator_container_image" {
-  description = "Container image for the DB migrator Cloud Run Job"
+  description = "Bootstrap image seeding the DB migrator Job's initial create; CI/CD owns it thereafter"
   type        = string
   default     = "us-docker.pkg.dev/cloudrun/container/hello"
 }
 
 variable "worker_container_image" {
-  description = "Container image for the Worker service"
+  description = "Bootstrap image seeding the Worker service's initial create; CI/CD owns it thereafter"
   type        = string
   default     = "us-docker.pkg.dev/cloudrun/container/hello"
 }
