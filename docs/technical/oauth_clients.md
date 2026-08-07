@@ -19,9 +19,9 @@ lifecycles.
 |---|--------|--------|------|---------|---------|--------|
 | 1 | CardiTrack Web (`Auth0__ClientId/Secret`) | Identity | Confidential (Regular Web App) | Auth0 | `auth0-client-id` / `auth0-client-secret` | Created per [runbook §4](./auth0_setup_runbook.md) |
 | 2 | CardiTrack Mobile | Identity | Public (Native, PKCE, no secret) | Auth0 | `auth0-mobile-client-id` | Created per [runbook §3](./auth0_setup_runbook.md) |
-| 3 | Google sign-in (social) | Identity | Web app client **used by Auth0**, not by our code | Google Cloud | Stored inside the Auth0 connection | Pending (Phase 9, below) |
+| 3 | Google sign-in (social) | Identity | Web app client **used by Auth0**, not by our code | Google Cloud (`carditrack-signin`) | Stored inside the Auth0 connection | **Provisioned 2026-08-07** — clients created, both tenants' Auth0 connections wired; **app buttons still unwired** (Phase 9, below) |
 | 4 | Apple Sign In (social) | Identity | Services ID + .p8 key **used by Auth0** | Apple Developer | Stored inside the Auth0 connection | Pending (Phase 9, below) |
-| 5 | Fitbit provider (Google Health API) | Device data | Confidential Web application | Google Cloud | `devices-fitbit-client-id` / `devices-fitbit-client-secret` | Code merged (PR #10); console registration pending |
+| 5 | Fitbit provider (Google Health API) | Device data | Confidential Web application | Google Cloud (`carditrack-devices-{env}`) | `devices-fitbit-client-id` / `devices-fitbit-client-secret` | **Provisioned 2026-08-07** — clients created, secrets loaded, API + Worker revisions rolled; **sandbox field verification outstanding** (step 5 below) |
 | 6+ | Garmin / Withings / Oura / Whoop | Device data | Per-vendor | Each vendor's portal | Not yet provisioned (`devices-{provider}-client-{id,secret}`) | Future — config stubs only; **only Fitbit is registered in DI** |
 
 Device-data secrets are namespaced `devices-{provider}-client-{id,secret}` so each
@@ -31,17 +31,59 @@ Related shared secret: `carditrack-{env}-encryption-key` (`Encryption__Key`) —
 AES-256-GCM key protecting the device-data tokens stored in `DeviceConnections`.
 It belongs to no single OAuth client but every device-data flow depends on it.
 
-> **The #3 vs #5 foot-gun:** both are "Google OAuth clients" in the same Google
-> Cloud organisation, but they are different registrations with different
+> **The #3 vs #5 foot-gun:** both are "Google OAuth clients" under the same
+> cloud-ops account, but they are different registrations with different
 > purposes. #3 asks for `openid profile email` so a caregiver can *sign in*;
 > #5 asks for restricted `googlehealth.*` scopes so a wearer can *share heart
 > data*. Never reuse one for the other — mixing them would drag the sign-in
 > client into Google's restricted-scope verification, and put health scopes on
-> a login button.
+> a login button. They live in **separate projects** precisely so this cannot
+> happen by accident (below).
 
 All non-Apple registrations live under the cloud-ops Google account
 (cloudoperations@codesistance.com); Apple uses the same account's Apple
 Developer membership.
+
+## Google Cloud project layout
+
+OAuth clients are split across four projects. The reason is one non-obvious
+Google rule: **the consent screen, and its verification status, are per-project,
+not per-client.** A project is either Testing or Published — so a single project
+cannot host both a dev client that churns and a prod client whose verification
+must stay intact.
+
+| Project | Holds | Consent screen |
+|---|---|---|
+| `carditrack-490120` | All Terraform-managed infra, **dev and prod**: Cloud Run, Cloud SQL, Secret Manager, the deploy and Play-publisher service accounts. **No OAuth clients.** | none |
+| `carditrack-signin` | `CardiTrack Sign-In (dev)` + `CardiTrack Sign-In (prod)` — client #3, used by Auth0 | `openid profile email` only; **Published** (branding review only, no user cap) |
+| `carditrack-devices-dev` | `CardiTrack Devices (dev)` — client #5, dev | restricted `googlehealth.*`; **stays in Testing permanently**, test users only (max 100) |
+| `carditrack-devices-prod` | `CardiTrack Devices (prod)` — client #5, prod | restricted `googlehealth.*`; **Testing — not yet submitted** (as of 2026-08-07). The only project that will *ever* be submitted for restricted-scope verification + CASA |
+
+Consequences worth holding onto:
+
+- **Both sign-in clients share one project** because their scopes and branding
+  are identical — only the redirect URI differs, and that is per-client.
+- **The two device projects cannot be merged.** Dev iteration (new redirect
+  URIs, scope experiments, branding tweaks) on a Published project can put
+  verification back under review — a ~4–8 week round trip to regain.
+- **The device projects are shells**: one consent screen and one OAuth client
+  each, no service accounts and no infra. The Play-publisher and GitHub deploy
+  service accounts are never duplicated out of `carditrack-490120`.
+- **Clients and their secrets live in different projects.** A Devices client is
+  created in `carditrack-devices-{env}`, but its id/secret are stored in
+  Secret Manager in `carditrack-490120` — pass `--project=carditrack-490120`
+  when writing them.
+- **Prod is in Testing too, for now.** `carditrack-devices-prod` has **not**
+  been submitted for verification (as of 2026-08-07), so prod can only serve
+  wearers explicitly listed as test users, max 100. Registering the client is
+  not the same as being verified — public launch waits on step 6 below.
+
+> **Console UI note:** Google now presents all of this as **Auth Platform**
+> (left nav: *Overview · Branding · Audience · Clients · Data Access ·
+> Verification Center*), not the single "OAuth consent screen" page that most
+> third-party guides still describe. Scopes live under **Data Access**, test
+> users and the Testing/Published switch under **Audience**, and clients under
+> **Clients**.
 
 ---
 
@@ -51,31 +93,42 @@ The mobile app already renders **Google** and **Apple** buttons on **both**
 `CreateAccountPage` and `SignInPage`, and the Auth0 Native app already allows
 the `carditrack://oauth/callback` callback and Authorization Code + PKCE grant
 ([runbook §3](./auth0_setup_runbook.md)). The buttons are **unwired** — they
-have no tap handlers, and the app-side PKCE invocation is still to build — so
-the remaining work is **app code + credentials + Auth0 connection config**.
-Microsoft (`windowslive`) is not planned for MVP and has no button in the
-mobile UI — treat it as deferred until product asks.
+have no tap handlers, and the app-side PKCE invocation is still to build.
+**Google's credentials and Auth0 connection are done as of 2026-08-07**, so for
+Google the only remaining work is **app code**; Apple still needs its
+credentials. Microsoft (`windowslive`) is not planned for MVP and has no button
+in the mobile UI — treat it as deferred until product asks.
 
 **What's needed per provider:**
 
-### Google (`google-oauth2` connection)
+### Google (`google-oauth2` connection) — provisioned
 
-1. Google Cloud console (cloud-ops account) → **APIs & Services → Credentials →
-   Create OAuth client**, type **Web application**, name `CardiTrack Sign-In
-   ({env})` — a separate client from the Health API one (#5).
+Done on 2026-08-07; recorded here because it must be repeated for any new Auth0
+tenant. Both clients live in `carditrack-signin` (never the device projects).
+
+1. Google Cloud console (cloud-ops account), project `carditrack-signin` →
+   **Google Auth Platform → Clients → Create client**, type **Web application**,
+   name `CardiTrack Sign-In ({env})` — a separate client from the Health API
+   one (#5).
 2. Authorized redirect URI: `https://{auth0-tenant-domain}/login/callback`
    (custom-domain tenants use that domain instead).
-3. Consent screen: only non-sensitive scopes (`openid`, `profile`, `email`) —
+3. **Data Access**: only the non-sensitive scopes `openid`, `profile`, `email` —
    **no restricted-scope review applies to this client**; basic branding
-   verification only.
-4. Auth0 dashboard → **Authentication → Social → Google** → paste client ID +
-   secret → enable for the **CardiTrack Mobile** app (and Web when its login
-   ships).
+   verification only. **Audience → Publish app** straight away: with no
+   sensitive scopes there is nothing to review, and publishing removes the
+   100-test-user cap that would otherwise throttle sign-in.
+4. Auth0 dashboard → **Authentication → Social → Google** → paste that
+   environment's client ID + secret, then on the connection's **Applications**
+   tab enable it for **CardiTrack Mobile** (and Web when its login ships). The
+   Applications toggle is load-bearing: with it off, a login carrying
+   `connection=google-oauth2` is rejected even though the connection exists.
+   **Try Connection** verifies the credentials before any app code exists.
 
 > Auth0's built-in **dev keys** make the Google connection work with zero
 > setup, but they show Auth0 branding on the consent screen, break SSO/silent
-> auth, and are unsuitable beyond a smoke test. Use our own keys from step 1
-> in every environment.
+> auth, and are unsuitable beyond a smoke test. Leaving the client ID/secret
+> fields empty silently falls back to them — so confirm both fields are
+> populated in **every** tenant, not just dev.
 
 ### Apple (`apple` connection)
 
@@ -119,55 +172,68 @@ Fully scripted in the [Auth0 setup runbook](./auth0_setup_runbook.md); summary:
    for the narrow Management API grant) — §4.
 4. Tenant settings, attack protection, email, post-login Action — §§5–8.
 5. Populate Secret Manager and roll out: `scripts/set-auth0-secrets.sh <env>` — §11.
-6. Social connections (Phase 9) — section above.
+6. Social connections (Phase 9) — section above. Google is wired in both
+   tenants as of 2026-08-07; Apple is not.
 
 ## Provisioning steps — device-data client (Google Health API)
 
-> **[PR #10](https://github.com/Codesistance/product-carditrack/pull/10) is merged** — the
-> `GET /api/v1/oauth/redirect/{provider}` bounce endpoint and the
-> `DeviceProviders` Google configuration exist in the codebase; only the
-> **deploy** is pending. Until a deployed revision includes it, the redirect
-> URIs below point at an endpoint that isn't live yet. Steps 1–2 (API
-> enablement, consent screen, test users) can be done any time.
+> **Provisioned 2026-08-07.** Steps 1–4 are done in both environments: projects
+> created, Google Health API enabled, consent screens configured, both
+> `CardiTrack Devices` clients registered, secret values loaded and API + Worker
+> revisions rolled. Step 5 (sandbox field verification) is **still outstanding**,
+> and step 6 gates public launch. The steps stay documented because they must be
+> repeated for each new provider and any new environment.
 
 Flow security notes: the `state` values in this flow are **opaque,
 server-cached, single-use tokens with a 15-minute TTL** (never encode member
 ids in them), and the bounce endpoint only ever redirects into the
 `carditrack://` scheme — any other target would be an open redirect.
 
-1. Google Cloud console (cloud-ops account), project per environment (or the
-   existing `carditrack-{env}` project): **enable the Google Health API**.
-2. **OAuth consent screen**: External; app name `CardiTrack`; support email +
-   branding matching the public homepage; add the restricted scopes
+1. Google Cloud console (cloud-ops account), project `carditrack-devices-{env}`
+   — one per environment, never shared (see the project layout above):
+   **enable the Google Health API**. Do this **before** the consent screen: the
+   restricted scopes do not appear in the Data Access picker until the API is
+   enabled on the project.
+2. **Consent screen** (**Google Auth Platform → Get started**, then
+   **Branding**): External; app name `CardiTrack`; support email + branding
+   matching the public homepage. **Data Access →** add the restricted scopes
    `googlehealth.activity_and_fitness.readonly`,
    `googlehealth.health_metrics_and_measurements.readonly`,
-   `googlehealth.sleep.readonly`; add **test users** (dev/beta wearers' Google
-   accounts) — until verification passes, only they can connect, max 100.
-3. **Create OAuth client**, type **Web application**, name
+   `googlehealth.sleep.readonly`. **Audience →** add **test users** (dev/beta
+   wearers' Google accounts) and leave the project in **Testing**: only listed
+   accounts can connect, max 100. Dev stays in Testing permanently; prod leaves
+   it only via step 6.
+3. **Clients → Create client**, type **Web application**, name
    `CardiTrack Devices ({env})`. Authorized redirect URIs are the API's
    **bounce endpoint** — never the `carditrack://` deep link (Google rejects
    custom schemes on web clients):
    - dev: `https://localhost:7001/api/v1/oauth/redirect/fitbit` and the
      deployed dev API URL + `/api/v1/oauth/redirect/fitbit`
    - prod: `https://api.carditrack.com/api/v1/oauth/redirect/fitbit`
-4. Populate Secret Manager (after `terraform apply` creates the secrets):
+4. Populate Secret Manager. The secrets live in the **infra** project, not the
+   device project the client was created in — hence the explicit `--project`:
    ```bash
-   printf '%s' "$CLIENT_ID"     | gcloud secrets versions add carditrack-{env}-devices-fitbit-client-id     --data-file=-
-   printf '%s' "$CLIENT_SECRET" | gcloud secrets versions add carditrack-{env}-devices-fitbit-client-secret --data-file=-
+   printf '%s' "$CLIENT_ID"     | gcloud secrets versions add carditrack-{env}-devices-fitbit-client-id     --data-file=- --project=carditrack-490120
+   printf '%s' "$CLIENT_SECRET" | gcloud secrets versions add carditrack-{env}-devices-fitbit-client-secret --data-file=- --project=carditrack-490120
    ```
    then roll new API + Worker revisions so the env bindings pick up the values.
-5. **Sandbox verification**: with a test user connected, exercise a sync and
+   **Ordering:** run `terraform apply` for the environment *before* loading
+   values. Renaming a `placeholder_secrets` key destroys and recreates the
+   secret shell, so a value written first would be discarded with it.
+5. **Sandbox verification — the outstanding step.** With a test user connected, exercise a sync and
    compare `FitbitApiClient`'s parsing against real payloads. The v4 reference
    only documents some rollup value schemas, so several field names were
    inferred from the documented naming convention (PR #10): the
    distance/active-minutes/total-calories/floors rollup values, the
    resting-heart-rate union member, and the sleep session shape. Confirm each
    and fix any mismatches.
-6. **Before public launch**: restricted-scope verification + CASA assessment —
-   prerequisites checklist in
+6. **Before public launch**, in `carditrack-devices-prod` only — **not yet
+   submitted as of 2026-08-07**: restricted-scope
+   verification + CASA assessment — prerequisites checklist in
    [user_onboarding_process.md](./user_onboarding_process.md) (Step 6). Status:
    the Google-format in-app disclosure banner shipped on Web (PR #9); the
-   mobile equivalent is still pending.
+   mobile equivalent is still pending. `carditrack-devices-dev` is never
+   submitted.
 
 Future device providers (Garmin, Withings, …) repeat steps 3–4 in their own
 portals with their own `DeviceProviders` entry and their own
