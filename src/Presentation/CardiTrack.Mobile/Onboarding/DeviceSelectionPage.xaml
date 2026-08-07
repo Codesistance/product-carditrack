@@ -93,7 +93,9 @@
                             </Border.GestureRecognizers>
                             <VerticalStackLayout>
                                 <Grid>
-                                    <Border Style="{StaticResource DeviceImageFrame}"/>
+                                    <Border Style="{StaticResource DeviceImageFrame}">
+                                        <Image Source="device_fitbit.png" Aspect="AspectFit" Margin="8"/>
+                                    </Border>
                                     <Border x:Name="FitbitCheck"
                                             WidthRequest="24" HeightRequest="24"
                                             BackgroundColor="{StaticResource Primary}"
@@ -119,7 +121,9 @@
                         <!-- Coming Soon cards -->
                         <Border Grid.Row="0" Grid.Column="1" Style="{StaticResource DeviceCard}" Opacity="0.55">
                             <VerticalStackLayout>
-                                <Border Style="{StaticResource DeviceImageFrame}"/>
+                                <Border Style="{StaticResource DeviceImageFrame}">
+                                    <Image Source="device_garmin.png" Aspect="AspectFit" Margin="8"/>
+                                </Border>
                                 <Label Text="Garmin" Style="{StaticResource DeviceName}"/>
                                 <Label Text="Venu, Forerunner, etc." Style="{StaticResource DeviceModels}"/>
                                 <Border Style="{StaticResource ComingSoonBadge}">
@@ -130,7 +134,9 @@
 
                         <Border Grid.Row="1" Grid.Column="0" Style="{StaticResource DeviceCard}" Opacity="0.55">
                             <VerticalStackLayout>
-                                <Border Style="{StaticResource DeviceImageFrame}"/>
+                                <Border Style="{StaticResource DeviceImageFrame}">
+                                    <Image Source="device_apple_watch.png" Aspect="AspectFit" Margin="8"/>
+                                </Border>
                                 <Label Text="Apple Watch" Style="{StaticResource DeviceName}"/>
                                 <Label Text="Series 4+" Style="{StaticResource DeviceModels}"/>
                                 <Border Style="{StaticResource ComingSoonBadge}">
@@ -141,7 +147,9 @@
 
                         <Border Grid.Row="1" Grid.Column="1" Style="{StaticResource DeviceCard}" Opacity="0.55">
                             <VerticalStackLayout>
-                                <Border Style="{StaticResource DeviceImageFrame}"/>
+                                <Border Style="{StaticResource DeviceImageFrame}">
+                                    <Image Source="device_samsung.png" Aspect="AspectFit" Margin="8"/>
+                                </Border>
                                 <Label Text="Samsung Galaxy" Style="{StaticResource DeviceName}"/>
                                 <Label Text="All models" Style="{StaticResource DeviceModels}"/>
                                 <Border Style="{StaticResource ComingSoonBadge}">
@@ -152,7 +160,9 @@
 
                         <Border Grid.Row="2" Grid.Column="0" Style="{StaticResource DeviceCard}" Opacity="0.55">
                             <VerticalStackLayout>
-                                <Border Style="{StaticResource DeviceImageFrame}"/>
+                                <Border Style="{StaticResource DeviceImageFrame}">
+                                    <Image Source="device_withings.png" Aspect="AspectFit" Margin="8"/>
+                                </Border>
                                 <Label Text="Withings" Style="{StaticResource DeviceName}"/>
                                 <Label Text="ScanWatch, Move" Style="{StaticResource DeviceModels}"/>
                                 <Border Style="{StaticResource ComingSoonBadge}">
@@ -163,7 +173,9 @@
 
                         <Border Grid.Row="2" Grid.Column="1" Style="{StaticResource DeviceCard}" Opacity="0.55">
                             <VerticalStackLayout>
-                                <Border Style="{StaticResource DeviceImageFrame}"/>
+                                <Border Style="{StaticResource DeviceImageFrame}">
+                                    <Image Source="device_other.png" Aspect="AspectFit" Margin="8"/>
+                                </Border>
                                 <Label Text="Other / Manual Entry" Style="{StaticResource DeviceName}"/>
                                 <Label Text="All models" Style="{StaticResource DeviceModels}"/>
                                 <Border Style="{StaticResource ComingSoonBadge}">
