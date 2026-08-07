@@ -45,13 +45,15 @@
             </VerticalStackLayout>
         </Grid>
 
-        <!-- Figma M1-04 progress bar: 8px white pill track, gradient pill fill -->
+        <!-- Figma M1-04 progress bar: 8px white pill track, gradient pill fill.
+             Hidden until Progress > 0 (some wizard screens have no progress bar). -->
         <Border x:Name="StepProgress"
                 HeightRequest="8"
                 BackgroundColor="{StaticResource White}"
                 StrokeThickness="0"
                 Margin="20,0,20,24"
                 VerticalOptions="End"
+                IsVisible="False"
                 SemanticProperties.Description="Wizard progress">
             <Border.StrokeShape>
                 <RoundRectangle CornerRadius="4"/>

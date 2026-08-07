@@ -15,6 +15,9 @@ public partial class WizardHeader : ContentView
                 var header = (WizardHeader)b;
                 header.StepProgress.IsVisible = (double)v > 0;
                 header.UpdateProgressFill();
+
+                var percent = (int)Math.Round(Math.Clamp((double)v, 0d, 1d) * 100);
+                SemanticProperties.SetDescription(header.StepProgress, $"Wizard progress: {percent} percent");
             });
 
     public static readonly BindableProperty IsBackVisibleProperty =
