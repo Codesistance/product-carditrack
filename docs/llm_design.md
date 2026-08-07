@@ -2,7 +2,7 @@
 
 > **STATUS — read this first**
 >
-> - **Built today:** MedGemma (Ollama-served `medgemma:4b` on Cloud Run) as the **Medical** AI provider and **Gemini 2.0 Flash** as the **General** provider, consumed by `GenerativeAiService`, `MedicalAiService`, `HealthInsightService`, and `ReportGenerationService` and surfaced through the API's **chat, insights, and reports** endpoints (`ChatController`, `InsightsController`, `ReportsController`). Ingestion is **30-minute polling** of the Google Health API by `WearableSyncWorker` in `CardiTrack.Worker`.
+> - **Built today:** MedGemma (Ollama-served `medgemma:4b` on Cloud Run) as the **Medical** AI provider and **Gemini 2.0 Flash** as the **General** provider, consumed by `GenerativeAiService`, `MedicalAiService`, `HealthInsightService`, and `ReportGenerationService` and surfaced through the API's **chat, insights, and reports** endpoints (`ChatController`, `InsightsController`, `ReportsController`). Insight prompts carry a **member context block** (age, sex, caregiver notes — never name or id) and switch to a **learning-phase variant** until a 30-day baseline exists. Ingestion is **30-minute polling** of the Google Health API by `WearableSyncWorker` in `CardiTrack.Worker`.
 > - **Target architecture (this document):** the webhook-driven real-time pipeline, SSA-LSTM pre-processing, severity routing, digests, and predictive monitoring described below are the **design** for the GCP pipeline (Pub/Sub + Cloud Run) — they are **not built yet**. Push notification infrastructure (FCM/APNs) does not exist yet either.
 
 ## Overview
@@ -273,6 +273,27 @@ Patient wearable data (5-minute window, SSA-denoised):
 Assess for cardiovascular anomalies or patterns requiring attention.
 ```
 
+### Member context block (built today)
+
+The synchronous insight prompts (`HealthInsightService`) put a **member context block** between the fixed instructions and the metrics. Wearable numbers alone are not interpretable — a resting HR of 78 reads differently at 82 than at 42, and differently again on a beta blocker:
+
+```
+--- Member ---
+Age: 78
+Sex: Female
+Caregiver-reported context: Type 2 diabetes, takes metformin
+```
+
+Rules this block follows:
+
+- **Age and sex only, never name or id.** Neither identifier changes the clinical reading, so neither is sent. `Other`/`Prefer not to say` are omitted rather than passed through — they tell the model nothing it can use.
+- **Caregiver notes are untrusted input.** They are free text a caregiver typed, so every instruction block states that this section is background information and that instructions inside it must not be followed. Notes are truncated at 1000 characters, visibly.
+- **It goes after the fixed instructions, never inside them.** Anything above the block is the cacheable prefix.
+
+### Learning-phase prompt (built today)
+
+Before a member has a 30-day `PatternBaseline` there is no normal to deviate from, so `CARDITRACK_LEARNING_PROMPT` replaces the trend prompt and asks the model to describe what has been observed so far and what is still missing — explicitly forbidding words like *elevated*, *low*, or *deviation*. The API reports this state as `isLearning` on the baseline-insight response, matching the dashboard's learning state so the two surfaces never disagree.
+
 ---
 
 ## Family Sharing: When and How to Push Data
@@ -497,6 +518,7 @@ Never mention specific risk score numbers. Never diagnose. Never alarm.
 | Prompt | Cadence | Audience | Purpose |
 |--------|---------|----------|---------|
 | `CARDITRACK_SYSTEM_PROMPT` | Every 5 min | Internal (clinical review queue) | Real-time anomaly flagging |
+| `CARDITRACK_LEARNING_PROMPT` | On request, first ~30 days | Caregiver | What has been observed so far, before any baseline exists — **built today** |
 | `CARDITRACK_FAMILY_PROMPT` | On high/critical events | Family members | Plain-language alert |
 | `CARDITRACK_DIGEST_PROMPT` | Daily 08:00 | Wearer | 24h summary + medium events |
 | `CARDITRACK_PREDICT_PROMPT` | Daily 06:00 | Wearer + family (risk ≥ 40) | Next-day health outlook |

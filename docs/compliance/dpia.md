@@ -5,9 +5,10 @@
 | Field | Value |
 |---|---|
 | Status | **DRAFT — pending review and sign-off** |
-| Version | 0.2 |
+| Version | 0.3 |
 | Date | 2026-08-07 |
 | Changes since 0.1 | Behavioural-baseline calculation moved from planned to implemented (§2 criterion 1, §4.2 A10, §6.3, Appendix A-6) |
+| Changes since 0.2 | MedGemma insight prompts now carry member context — derived age, sex, and free-text `MedicalNotes` (§4.2 A5, §6.2, new risk R-A14). §13 names a prompt-content change as a review trigger, so this update is required, not optional |
 | Accountable owner | Moses Arigbede (founder/lead) |
 | Data Protection Officer | **Not appointed — open item OI-1.** Large-scale processing of special-category health data likely makes a DPO mandatory (EU/UK GDPR Art. 37(1)(c)). |
 | Legal regimes assessed | EU GDPR, UK GDPR, US state health-privacy laws (CCPA/CPRA; Washington My Health My Data Act) |
@@ -99,7 +100,7 @@ Minimisation observations (feed §7): the schema holds fields nothing populates 
 | A2 | **Device OAuth connect** — PKCE flow; encrypted token storage; deep-link return | OAuth tokens, scopes | `DeviceConnectionService.cs`, `OAuthCodeExchangeService.cs` |
 | A3 | **Dashboard** — health status derivation with 30%/50% deviation thresholds; relationship-checked | ActivityLog, baselines | `DashboardService.cs` |
 | A4 | **AI chat** — member GUID + last 3 days of steps/HR/sleep + free-text user message sent to **Google Gemini** (`generativelanguage.googleapis.com`, `gemini-2.0-flash`) | **H** → external Google API | `src/Presentation/CardiTrack.API/Controllers/ChatController.cs`; `GeminiClient.cs`; `infrastructure/main.tf` |
-| A5 | **AI insights** — alert details, 30-day baselines, 3–7 days of metrics sent to **self-hosted MedGemma** (Ollama on Cloud Run, internal ingress) | **H** → stays in-project | `HealthInsightService.cs`; `MedGemmaClient.cs`; `infrastructure/deployments/cloud_run.tf` |
+| A5 | **AI insights** — alert details, baselines, 3–14 days of metrics, plus a **member context block** (age derived from date of birth, sex, and free-text `MedicalNotes` truncated at 1000 chars) sent to **self-hosted MedGemma** (Ollama on Cloud Run, internal ingress). Name and member id are deliberately excluded | **H** → stays in-project | `HealthInsightService.cs`; `MedGemmaClient.cs`; `infrastructure/deployments/cloud_run.tf` |
 | A6 | **Report generation** — member **name** + all daily metrics + alerts in range sent to **Gemini**; plain-text result cached in Redis 1 hour | **H** → external Google API | `ReportGenerationService.cs` |
 | A7 | **Auth** — Auth0 identity (email, name, verification); Management API calls scoped `read:users`/`update:users` | Identity | `docs/technical/auth0_setup_runbook.md` |
 | A8 | **Orphaned-org cleanup** — hard-deletes empty organizations older than 24h | Org records | `OrphanedOrganizationCleanupWorker.cs` |
@@ -180,7 +181,8 @@ The hard problem: **the data subject may not be the consenting party.** The defa
 - Ingestion is limited to three restricted read-only scopes and daily rollups — proportionate for trend detection. Planned intraday/5-min collection (Part B) needs its own justification.
 - Fields collected but unused (unpopulated vitals columns, `PasswordHash`, `PaymentMethod`) should be removed or justified.
 - Precise date of birth is required; consider whether year alone would serve the age-gate and baseline purposes.
-- Gemini receives the member's **name** in report prompts (A6) — a pseudonymous identifier would serve identically. Same for the GUID in chat prompts.
+- Gemini receives the member's **name** in report prompts (A6) — a pseudonymous identifier would serve identically. Same for the GUID in chat prompts. The MedGemma insight prompts (A5) apply the opposite rule deliberately: age and sex go in because they change how a heart rate or sleep duration should be read, while name and member id are excluded because they change nothing about the clinical reading. A6 and A4 should be brought into line.
+- `MedicalNotes` in A5 is the most sensitive field the system holds and it is now sent verbatim (truncated) to the model. It earns its place — conditions and medication are invisible to a wearable and change the interpretation — but two conditions attach: the note is uncontrolled free text (R-A14), and it is still stored **plaintext** pending M1.
 - Push payload design (B3) puts health state on lock screens by default — offer a discreet-notification option.
 - `CanViewHealthData` defaults to **true** for every new relationship — default-on sharing of Art. 9 data should be an explicit choice.
 
@@ -247,6 +249,7 @@ Likelihood × severity assessed from the **data subject's** perspective. Scale: 
 | R-A11 | Inert role policies (missing Auth0 claims) if an admin-gated endpoint ships | M | M | **Medium** | M11 |
 | R-A12 | Third-party data without notice (emergency contacts, invitees) | H | L | **Medium** | M12 |
 | R-A13 | DP key ring unencrypted on GCS — **accepted risk** (antiforgery only; KMS rejected) | L | L | **Accepted** | Compensating controls in §4.4; re-review only if the key ring's use expands beyond antiforgery |
+| R-A14 | **Caregiver free text as model input**: `MedicalNotes` is sent to MedGemma with the metrics (A5). Two failure modes — a stale or mistaken note ("takes metformin" after the drug was stopped) steers an explanation the caregiver reads as authoritative; and the note is untrusted text reaching a medical model, so it can carry instructions rather than facts | M | M | **Medium** | M13 |
 
 ### Part B — planned state (pre-conditions to build/launch)
 
@@ -296,6 +299,7 @@ Because real test users' data is already flowing (§1.2) while R-A1–R-A7 are o
 | M9 | Per-service GCP service accounts; least-privilege DB role | R-A9 |
 | M10 | Remove the `Preferences` fallback from release builds | R-A10 |
 | M11 | Emit role/org claims from Auth0 Action before any role-gated endpoint ships | R-A11 |
+| M13 | **Partly implemented.** Notes are flattened to a single line (so they cannot escape the labelled section or forge one of their own), length-capped, and every instruction block states they are background information whose instructions must not be followed (`HealthInsightService`). Outstanding: surface the "not clinical-grade" caveat and the note's last-edited date on insight surfaces, so a caregiver can see what the explanation was based on | R-A14 |
 | — | Decide CMEK vs default encryption (OI-6); align backup retention (OI-8) | §4.4 |
 
 **Part B preconditions:** B1/B2 need Art. 22 analysis + model validation (R-B1/R-B2) and a DPIA update (§13) before build completes; B3–B7 mitigations as tabled in §8.

@@ -58,7 +58,7 @@ public class DashboardService : IDashboardService
         {
             CardiMemberId = member.Id,
             Name = member.Name,
-            Age = CalculateAge(member.DateOfBirth),
+            Age = member.DateOfBirth.ToAgeInYears(today),
             Phone = member.Phone,
             PhotoUrl = null,
             HealthStatus = ComputeHealthStatus(unresolvedAlerts, isLearning, metrics),
@@ -193,13 +193,4 @@ public class DashboardService : IDashboardService
 
     private static string SeverityLabel(AlertSeverity severity) =>
         severity.ToString().ToLowerInvariant();
-
-    private static int CalculateAge(DateOnly dateOfBirth)
-    {
-        var today = DateOnly.FromDateTime(DateTime.UtcNow);
-        var age = today.Year - dateOfBirth.Year;
-        if (today < dateOfBirth.AddYears(age))
-            age--;
-        return age;
-    }
 }
