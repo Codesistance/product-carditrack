@@ -45,7 +45,10 @@ public class DashboardServiceTests
         _alerts.GetByCardiMemberAsync(_memberId, true).Returns([]);
     }
 
-    private DashboardService CreateSut() => new(_unitOfWork);
+    // Composed with the real access service rather than a stub: the link rules under test here
+    // (active + CanViewHealthData) now live in CardiMemberAccessService, so substituting it away
+    // would leave nothing asserting that the dashboard is actually gated.
+    private DashboardService CreateSut() => new(_unitOfWork, new CardiMemberAccessService(_unitOfWork));
 
     private void SetupLink(bool canViewHealthData, bool isActive = true)
     {

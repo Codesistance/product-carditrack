@@ -16,6 +16,7 @@ public class ReportGenerationService : IReportGenerationService
     private readonly IGenerativeAiService _generativeAi;
     private readonly IUnitOfWork _unitOfWork;
     private readonly IDistributedCache _cache;
+    private readonly ICardiMemberAccessService _access;
     private readonly ILogger<ReportGenerationService> _logger;
 
     private static readonly TimeSpan ReportTtl = TimeSpan.FromHours(1);
@@ -24,18 +25,24 @@ public class ReportGenerationService : IReportGenerationService
         IGenerativeAiService generativeAi,
         IUnitOfWork unitOfWork,
         IDistributedCache cache,
+        ICardiMemberAccessService access,
         ILogger<ReportGenerationService> logger)
     {
         _generativeAi = generativeAi;
         _unitOfWork = unitOfWork;
         _cache = cache;
+        _access = access;
         _logger = logger;
     }
 
     public async Task<ReportQueuedResponse> GenerateAsync(Guid requestingUserId, GenerateReportRequest request)
     {
+        // Checked here, before anything is queued, so an unauthorised request fails as a 404 on
+        // the call rather than as a silently-abandoned background job. Because the whole set is
+        // vetted up front, prompt building below can trust every id in the request.
+        await _access.RequireViewAccessAsync(requestingUserId, request.CardiMemberIds);
+
         var reportId = Guid.NewGuid().ToString("N");
-        var statusKey = ReportKey(reportId);
 
         var initialStatus = new ReportStatusResponse
         {
@@ -50,8 +57,7 @@ public class ReportGenerationService : IReportGenerationService
             }
         };
 
-        await _cache.SetStringAsync(statusKey, Serialize(initialStatus),
-            new DistributedCacheEntryOptions { AbsoluteExpirationRelativeToNow = ReportTtl });
+        await WriteStatusAsync(reportId, requestingUserId, initialStatus);
 
         _ = Task.Run(() => GenerateInBackground(reportId, requestingUserId, request));
 
@@ -66,8 +72,15 @@ public class ReportGenerationService : IReportGenerationService
 
     public async Task<ReportStatusResponse?> GetStatusAsync(Guid requestingUserId, string reportId)
     {
-        var json = await _cache.GetStringAsync(ReportKey(reportId));
-        return json is null ? null : Deserialize<ReportStatusResponse>(json);
+        var cached = await ReadAsync(reportId);
+
+        // A report id is a bearer-style handle, so ownership is what actually protects the
+        // content. Someone else's report reads as "no such report" — same as an expired one —
+        // rather than a 403 that would confirm the id is live.
+        if (cached is null || requestingUserId == Guid.Empty || cached.OwnerUserId != requestingUserId)
+            return null;
+
+        return cached.Status;
     }
 
     public async Task<(byte[] Content, string ContentType, string FileName)> DownloadAsync(
@@ -98,7 +111,7 @@ public class ReportGenerationService : IReportGenerationService
             await _cache.SetStringAsync(ContentKey(reportId), content,
                 new DistributedCacheEntryOptions { AbsoluteExpirationRelativeToNow = ReportTtl });
 
-            var status = await GetStatusAsync(requestingUserId, reportId);
+            var status = (await ReadAsync(reportId))?.Status;
             var updated = new ReportStatusResponse
             {
                 ReportId = reportId,
@@ -113,8 +126,7 @@ public class ReportGenerationService : IReportGenerationService
                 Metadata = status?.Metadata
             };
 
-            await _cache.SetStringAsync(ReportKey(reportId), Serialize(updated),
-                new DistributedCacheEntryOptions { AbsoluteExpirationRelativeToNow = ReportTtl });
+            await WriteStatusAsync(reportId, requestingUserId, updated);
         }
         catch (Exception ex)
         {
@@ -127,9 +139,32 @@ public class ReportGenerationService : IReportGenerationService
                 CompletedAt = DateTimeOffset.UtcNow,
                 Error = "Report generation failed. Please try again."
             };
-            await _cache.SetStringAsync(ReportKey(reportId), Serialize(failed),
-                new DistributedCacheEntryOptions { AbsoluteExpirationRelativeToNow = ReportTtl });
+            await WriteStatusAsync(reportId, requestingUserId, failed);
         }
+    }
+
+    /// <summary>Reads the cache envelope — status plus owner. Callers outside this type go through
+    /// <see cref="GetStatusAsync"/>, which applies the ownership check.</summary>
+    private async Task<CachedReport?> ReadAsync(string reportId)
+    {
+        var json = await _cache.GetStringAsync(ReportKey(reportId));
+        return json is null ? null : Deserialize<CachedReport>(json);
+    }
+
+    private Task WriteStatusAsync(string reportId, Guid ownerUserId, ReportStatusResponse status) =>
+        _cache.SetStringAsync(
+            ReportKey(reportId),
+            Serialize(new CachedReport { OwnerUserId = ownerUserId, Status = status }),
+            new DistributedCacheEntryOptions { AbsoluteExpirationRelativeToNow = ReportTtl });
+
+    /// <summary>
+    /// What actually goes in the cache: the client-facing status wrapped with the id of the user
+    /// entitled to it. Internal to this service — the owner id is never returned to a caller.
+    /// </summary>
+    private sealed class CachedReport
+    {
+        public Guid OwnerUserId { get; set; }
+        public ReportStatusResponse Status { get; set; } = null!;
     }
 
     private async Task<string> BuildReportPromptAsync(GenerateReportRequest request)

@@ -21,8 +21,10 @@ public class ReportGenerationServiceTests
     private readonly IActivityLogRepository _activityLogs = Substitute.For<IActivityLogRepository>();
     private readonly IAlertRepository _alerts = Substitute.For<IAlertRepository>();
     private readonly InMemoryDistributedCache _cache = new();
+    private readonly ICardiMemberAccessService _access = Substitute.For<ICardiMemberAccessService>();
 
     private readonly Guid _userId = Guid.NewGuid();
+    private readonly Guid _otherUserId = Guid.NewGuid();
     private readonly Guid _memberId = Guid.NewGuid();
 
     public ReportGenerationServiceTests()
@@ -41,7 +43,18 @@ public class ReportGenerationServiceTests
     }
 
     private ReportGenerationService CreateSut() =>
-        new(_generativeAi, _unitOfWork, _cache, Substitute.For<ILogger<ReportGenerationService>>());
+        new(_generativeAi, _unitOfWork, _cache, _access,
+            Substitute.For<ILogger<ReportGenerationService>>());
+
+    /// <summary>Makes the access service refuse the given member, as it does for an unlinked user.</summary>
+    private void DenyAccessTo(Guid memberId)
+    {
+        _access.RequireViewAccessAsync(
+                Arg.Any<Guid>(),
+                Arg.Is<IReadOnlyCollection<Guid>>(ids => ids != null && ids.Contains(memberId)),
+                Arg.Any<CancellationToken>())
+            .Returns(Task.FromException(new KeyNotFoundException("CardiMember not found")));
+    }
 
     private GenerateReportRequest BuildRequest(
         ReportFormat format = ReportFormat.Pdf,
@@ -144,6 +157,80 @@ public class ReportGenerationServiceTests
         Assert.Equal(ReportStatus.Failed, status.Status);
         Assert.NotNull(status.Error);
         Assert.DoesNotContain("quota", status.Error);
+    }
+
+    // ── Access control ──────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task GenerateAsync_Throws_WhenUserMayNotViewARequestedMember()
+    {
+        DenyAccessTo(_memberId);
+
+        await Assert.ThrowsAsync<KeyNotFoundException>(() =>
+            CreateSut().GenerateAsync(_userId, BuildRequest()));
+    }
+
+    [Fact]
+    public async Task GenerateAsync_QueuesNothing_WhenAccessIsRefused()
+    {
+        DenyAccessTo(_memberId);
+
+        await Assert.ThrowsAsync<KeyNotFoundException>(() =>
+            CreateSut().GenerateAsync(_userId, BuildRequest()));
+
+        // Nothing was handed to the model and no job was left running behind the failed call.
+        await _generativeAi.DidNotReceive().GenerateAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task GenerateAsync_ChecksEveryRequestedMember_NotJustTheFirst()
+    {
+        var secondMemberId = Guid.NewGuid();
+        _members.GetByIdAsync(secondMemberId).Returns(new CardiMember { Id = secondMemberId, Name = "John Doe" });
+        DenyAccessTo(secondMemberId);
+
+        var request = new GenerateReportRequest
+        {
+            CardiMemberIds = [_memberId, secondMemberId],
+            DateRangeFrom = new DateOnly(2026, 2, 7),
+            DateRangeTo = new DateOnly(2026, 3, 9),
+            Format = ReportFormat.Pdf
+        };
+
+        await Assert.ThrowsAsync<KeyNotFoundException>(() =>
+            CreateSut().GenerateAsync(_userId, request));
+    }
+
+    [Fact]
+    public async Task GetStatusAsync_ReturnsNull_ForAnotherUsersReport()
+    {
+        var sut = CreateSut();
+        var queued = await sut.GenerateAsync(_userId, BuildRequest());
+        await WaitForTerminalStatusAsync(sut, queued.ReportId);
+
+        // Holding the report id is not enough — it reads as "no such report" for anyone else.
+        Assert.Null(await sut.GetStatusAsync(_otherUserId, queued.ReportId));
+    }
+
+    [Fact]
+    public async Task DownloadAsync_Throws_ForAnotherUsersReport()
+    {
+        var sut = CreateSut();
+        var queued = await sut.GenerateAsync(_userId, BuildRequest());
+        await WaitForTerminalStatusAsync(sut, queued.ReportId);
+
+        await Assert.ThrowsAsync<KeyNotFoundException>(() =>
+            sut.DownloadAsync(_otherUserId, queued.ReportId));
+    }
+
+    [Fact]
+    public async Task GetStatusAsync_ReturnsNull_ForUnauthenticatedCaller()
+    {
+        var sut = CreateSut();
+        var queued = await sut.GenerateAsync(_userId, BuildRequest());
+        await WaitForTerminalStatusAsync(sut, queued.ReportId);
+
+        Assert.Null(await sut.GetStatusAsync(Guid.Empty, queued.ReportId));
     }
 
     // ── GetStatusAsync ──────────────────────────────────────────────────────────

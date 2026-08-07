@@ -20,20 +20,18 @@ public class DashboardService : IDashboardService
     private const decimal DefaultStepsGoal = 10000m;
 
     private readonly IUnitOfWork _unitOfWork;
+    private readonly ICardiMemberAccessService _access;
 
-    public DashboardService(IUnitOfWork unitOfWork)
+    public DashboardService(IUnitOfWork unitOfWork, ICardiMemberAccessService access)
     {
         _unitOfWork = unitOfWork;
+        _access = access;
     }
 
     public async Task<DashboardResponse> GetDashboardAsync(
         Guid requestingUserId, Guid cardiMemberId, CancellationToken ct = default)
     {
-        var links = await _unitOfWork.UserCardiMembers.GetByUserIdAsync(requestingUserId);
-        var link = links.FirstOrDefault(l =>
-            l.CardiMemberId == cardiMemberId && l.IsActive && l.CanViewHealthData);
-        if (link is null)
-            throw new KeyNotFoundException("CardiMember not found");
+        await _access.RequireViewAccessAsync(requestingUserId, cardiMemberId, ct);
 
         var member = await _unitOfWork.CardiMembers.GetByIdAsync(cardiMemberId);
         if (member is null || !member.IsActive)

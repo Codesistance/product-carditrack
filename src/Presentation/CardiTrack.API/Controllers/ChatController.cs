@@ -15,25 +15,43 @@ public class ChatController : BaseApiController
 {
     private readonly IGenerativeAiService _generativeAi;
     private readonly IUnitOfWork _unitOfWork;
+    private readonly ICardiMemberAccessService _access;
 
     public ChatController(
         IUserContext userContext,
         ILogger<ChatController> logger,
         IGenerativeAiService generativeAi,
-        IUnitOfWork unitOfWork)
+        IUnitOfWork unitOfWork,
+        ICardiMemberAccessService access)
         : base(userContext, logger)
     {
         _generativeAi = generativeAi;
         _unitOfWork = unitOfWork;
+        _access = access;
     }
 
     /// <summary>Send a message to the AI, with the CardiMember's recent health data injected as context.</summary>
     [HttpPost]
     [ProducesResponseType(typeof(ApiResponse<ChatResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status403Forbidden)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
     public async Task<ActionResult<ApiResponse<ChatResponse>>> Chat(
         [FromBody] ChatRequest request, CancellationToken ct)
     {
+        if (!UserContext.IsAuthenticated || UserContext.UserId == Guid.Empty)
+        {
+            return Error("We couldn't find your account — please sign in again.", StatusCodes.Status403Forbidden);
+        }
+
+        try
+        {
+            await _access.RequireViewAccessAsync(UserContext.UserId, request.CardiMemberId, ct);
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return Error(ex.Message, StatusCodes.Status404NotFound);
+        }
+
         var to = DateOnly.FromDateTime(DateTime.UtcNow);
         var from = to.AddDays(-3);
         var logs = await _unitOfWork.ActivityLogs

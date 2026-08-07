@@ -26,22 +26,39 @@ public class ReportsController : BaseApiController
     [HttpPost]
     [ProducesResponseType(typeof(ApiResponse<ReportQueuedResponse>), StatusCodes.Status202Accepted)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
     public async Task<ActionResult<ApiResponse<ReportQueuedResponse>>> Generate(
         [FromBody] GenerateReportRequest request)
     {
-        if (!UserContext.IsAuthenticated)
-            return Error("You'll need to sign in to do that.", StatusCodes.Status401Unauthorized);
+        if (!UserContext.IsAuthenticated || UserContext.UserId == Guid.Empty)
+        {
+            return Error("We couldn't find your account — please sign in again.", StatusCodes.Status403Forbidden);
+        }
 
-        var result = await _reportService.GenerateAsync(UserContext.UserId, request);
-        return Accepted(Success(result, "We're preparing your report — it'll be ready shortly!").Value);
+        try
+        {
+            var result = await _reportService.GenerateAsync(UserContext.UserId, request);
+            return Accepted(Success(result, "We're preparing your report — it'll be ready shortly!").Value);
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return Error(ex.Message, StatusCodes.Status404NotFound);
+        }
     }
 
     /// <summary>Get current status of a queued or completed report.</summary>
     [HttpGet("{reportId}")]
     [ProducesResponseType(typeof(ApiResponse<ReportStatusResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status403Forbidden)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
     public async Task<ActionResult<ApiResponse<ReportStatusResponse>>> GetStatus(string reportId)
     {
+        if (!UserContext.IsAuthenticated || UserContext.UserId == Guid.Empty)
+        {
+            return Error("We couldn't find your account — please sign in again.", StatusCodes.Status403Forbidden);
+        }
+
         var status = await _reportService.GetStatusAsync(UserContext.UserId, reportId);
         if (status is null)
             return Error("We couldn't find that report — it may have expired. Try generating a new one.", StatusCodes.Status404NotFound);
@@ -52,9 +69,15 @@ public class ReportsController : BaseApiController
     /// <summary>Download a completed report.</summary>
     [HttpGet("{reportId}/download")]
     [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status403Forbidden)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
     public async Task<IActionResult> Download(string reportId)
     {
+        if (!UserContext.IsAuthenticated || UserContext.UserId == Guid.Empty)
+        {
+            return Error("We couldn't find your account — please sign in again.", StatusCodes.Status403Forbidden);
+        }
+
         try
         {
             var (content, contentType, fileName) = await _reportService.DownloadAsync(UserContext.UserId, reportId);
