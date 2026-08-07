@@ -24,4 +24,12 @@ public class CardiMemberRepository : Repository<CardiMember>, ICardiMemberReposi
             .Include(cm => cm.UserCardiMembers)
             .FirstOrDefaultAsync(cm => cm.Id == id);
     }
+
+    public async Task<IReadOnlyList<Guid>> GetActiveIdsWithActivitySinceAsync(DateOnly since)
+    {
+        return await _dbSet
+            .Where(cm => cm.IsActive && cm.ActivityLogs.Any(al => al.Date >= since))
+            .Select(cm => cm.Id)
+            .ToListAsync();
+    }
 }

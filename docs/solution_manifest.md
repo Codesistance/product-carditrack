@@ -89,7 +89,7 @@ With Device Bundle:
 - .NET 10 (ASP.NET Core Web API)
 - Entity Framework Core (Npgsql)
 - Cloud SQL PostgreSQL 16 (system of record — identity, organizations, subscriptions, health data, audit)
-- .NET Worker Service + Cronos (**non-AI background jobs only**: `WearableSyncWorker` every 30 minutes with in-path OAuth token refresh, `OrphanedOrganizationCleanupWorker` daily at 03:00; baseline recalculation, trial reminders, and retention jobs are planned)
+- .NET Worker Service + Cronos (**non-AI background jobs only**: `WearableSyncWorker` every 30 minutes with in-path OAuth token refresh, `OrphanedOrganizationCleanupWorker` daily at 03:00, `BaselineCalculationWorker` weekly on Sunday at 02:30; trial reminders and retention jobs are planned)
 
 **AI:**
 - MedGemma (`medgemma:4b`) served via **Ollama on Cloud Run** — the Medical provider for health-data interpretation
@@ -159,8 +159,8 @@ With Device Bundle:
 │  - WearableSyncWorker (every 30 min — device data sync,     │
 │    OAuth token refresh inside the sync path)                │
 │  - OrphanedOrganizationCleanupWorker (daily 03:00)          │
-│  - Planned: baseline recalculation, trial reminders,        │
-│    data retention/cleanup                                   │
+│  - BaselineCalculationWorker (weekly, Sunday 02:30)         │
+│  - Planned: trial reminders, data retention/cleanup         │
 └─────────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────────┐

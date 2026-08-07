@@ -10,8 +10,9 @@ Two workers are registered today:
 |---|---|---|
 | `WearableSyncWorker` | `0 */30 * * * *` (every 30 min) | Polls due device connections and syncs wearable data |
 | `OrphanedOrganizationCleanupWorker` | `0 0 3 * * *` (daily 03:00) | Deletes organizations stranded by a failed onboarding |
+| `BaselineCalculationWorker` | `0 30 2 * * 0` (Sunday 02:30) | Recalculates each member's 30/60/90-day `PatternBaseline` |
 
-OAuth token refresh is **not a separate cron job** — it happens inside the sync path (`DeviceSyncService` calls `IOAuthTokenRefreshService` before hitting the provider API). Pattern-baseline recalculation, trial expiration reminders, and data-retention/cleanup jobs are **planned** but not yet implemented.
+OAuth token refresh is **not a separate cron job** — it happens inside the sync path (`DeviceSyncService` calls `IOAuthTokenRefreshService` before hitting the provider API). Trial expiration reminders and data-retention/cleanup jobs are **planned** but not yet implemented.
 
 > **Scope note:** the AI ingestion/inference pipeline (webhook aggregation, pre-processing, MedGemma calls, severity routing, digests) is a **planned GCP design** — Pub/Sub + dedicated Cloud Run services per [llm_design.md](../../llm_design.md). Until it ships, the `WearableSyncWorker` polling job below is the **current and only ingestion path**; once the webhook pipeline exists it becomes a backfill/fallback mechanism (see [release_matrix.md](../../release_matrix.md)).
 
@@ -30,7 +31,8 @@ OAuth token refresh is **not a separate cron job** — it happens inside the syn
 src/Worker/CardiTrack.Worker/
 ├── Workers/
 │   ├── WearableSyncWorker.cs               # Polls + syncs due device connections
-│   └── OrphanedOrganizationCleanupWorker.cs # Sweeps orgs with no user/CardiMember
+│   ├── OrphanedOrganizationCleanupWorker.cs # Sweeps orgs with no user/CardiMember
+│   └── BaselineCalculationWorker.cs        # Recalculates PatternBaseline rows weekly
 ├── CronBackgroundService.cs    # Abstract base — parses cron, loops on schedule
 ├── WorkerOptions.cs            # { CronExpression } options record (default "0 * * * * *")
 ├── WorkerServiceExtensions.cs  # Generic AddWorker<T> registration helper
@@ -131,6 +133,26 @@ Safety net behind the API's atomic `POST /api/Onboarding/setup` endpoint. The le
 - An organization is *orphaned* when it has **no users and no CardiMembers**; its trial subscription is removed with it via the `Subscription → Organization` FK cascade.
 - When anything is removed it logs at **Warning**, deliberately: orphans mean some client bypassed the atomic setup endpoint and failed mid-onboarding — worth investigating, not just cleaning. A no-op run logs at Information.
 
+### BaselineCalculationWorker
+
+Turns accumulated `ActivityLog` history into `PatternBaseline` rows — the statistical picture of "a normal day" that `DashboardService` colours today's metrics against, and the thing that ends a member's *"getting to know you"* phase (`DashboardService` treats a member with no 30-day baseline as still learning).
+
+- Runs weekly, Sunday 02:30 UTC (`0 30 2 * * 0` by default). Baselines describe habits, so recalculating more often adds load without moving the numbers.
+- Selects **active members with at least one activity log in the last 90 days** (`ICardiMemberRepository.GetActiveIdsWithActivitySinceAsync`), so dormant records are not rescanned every week.
+- Fetches each member's logs **once** for the longest period and calculates all three windows (30/60/90) from that one read.
+- Uses **one DI scope per member**: the read tracks up to 90 rows each, which would accumulate across the whole run on a shared `DbContext`, and a member that fails takes nothing else down with it.
+- **Appends** rather than replacing, so a shift in a member's own normal stays visible in history. Retention for these rows falls under the planned retention job (see [dpia.md](../../compliance/dpia.md) §6.3).
+
+The arithmetic lives in `BaselineCalculator` (`CardiTrack.Application/Services`) — pure and stateless, so it is unit-tested without a database or a clock. Its rules:
+
+| Rule | Behaviour |
+|---|---|
+| Coverage gate | No baseline at all unless **80% of the window** has data (24 of 30 days). Below that the member stays in the learning state rather than being scored against an average of almost nothing. |
+| Per-metric floor | Each metric needs **7 samples** of its own; ingestion populates metrics unevenly, so a thin metric is left null instead of averaged. |
+| Spread | **Sample** standard deviation (n−1) — the dashboard turns σ into the member's normal range, so the population form would narrow that band on every member. |
+| Bedtime / wake time | **Circular** mean over the 24-hour clock; an arithmetic mean of 23:40 and 00:20 is midday. Reported in **UTC** — `CardiMember` carries no timezone. |
+| Weekday profile | Monday-first JSON array of average steps. A weekday with fewer than 2 samples is `null`, not `0` — "no data for Sundays" must not read as "this member does not move on Sundays". |
+
 ### Multi-Provider Dispatch
 
 Providers register keyed services by `DeviceType` enum via extension methods (shared with the API in `CardiTrack.Infrastructure/Extensions/DeviceProviderServiceExtensions.cs`):
@@ -166,6 +188,7 @@ public static IServiceCollection AddWorker<T>(
 // Program.cs
 builder.Services.AddWorker<WearableSyncWorker>(configuration, nameof(WearableSyncWorker));
 builder.Services.AddWorker<OrphanedOrganizationCleanupWorker>(configuration, nameof(OrphanedOrganizationCleanupWorker));
+builder.Services.AddWorker<BaselineCalculationWorker>(configuration, nameof(BaselineCalculationWorker));
 ```
 
 To add a job: derive from `CronBackgroundService`, take `IOptionsMonitor<WorkerOptions>` in the constructor and pass `options.Get(nameof(YourWorker)).CronExpression` to the base, then call `AddWorker<YourWorker>(configuration, nameof(YourWorker))` and add a `Workers:YourWorker:CronExpression` entry to config. Without a config entry the `WorkerOptions` default (`"0 * * * * *"` — every minute) applies.
@@ -200,6 +223,9 @@ Cron schedules bind per worker class name under the `Workers` section, consumed 
     },
     "OrphanedOrganizationCleanupWorker": {
       "CronExpression": "0 0 3 * * *"
+    },
+    "BaselineCalculationWorker": {
+      "CronExpression": "0 30 2 * * 0"
     }
   },
   "Serilog": {

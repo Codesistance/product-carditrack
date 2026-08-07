@@ -6,7 +6,7 @@ CardiTrack supports **two organization types** with distinct onboarding flows:
 1. **Family Accounts**: Individual/family monitoring elderly relatives
 2. **Business Accounts**: Care homes and healthcare facilities with staff management
 
-**Implemented today:** embedded Auth0 email/password auth with a hard email-verification gate, atomic organization + trial subscription + user setup (`POST /api/Onboarding/setup`), CardiMember creation, and Fitbit device connection via Google OAuth (PKCE) with 30-minute polling ingestion. Social login, notifications, baseline calculation, and billing are planned (marked below).
+**Implemented today:** embedded Auth0 email/password auth with a hard email-verification gate, atomic organization + trial subscription + user setup (`POST /api/Onboarding/setup`), CardiMember creation, Fitbit device connection via Google OAuth (PKCE) with 30-minute polling ingestion, and weekly pattern-baseline calculation. Social login, notifications, and billing are planned (marked below).
 
 ---
 
@@ -294,11 +294,12 @@ Unverified apps are capped at 100 connected users — enough for dev and beta, b
 
 ### **STEP 8: BASELINE ESTABLISHMENT**
 
-> **Status: Planned — not yet implemented.** The `PatternBaselines` table and entity exist, but no baseline-calculation worker runs yet.
+> **Status: Implemented.** `BaselineCalculationWorker` (`CardiTrack.Worker`) writes `PatternBaselines` weekly using `BaselineCalculator` (`CardiTrack.Application`). Alert generation from these baselines is still planned — see STEP 7.
 
-**Planned learning period:**
-- **Duration**: 30 days default (configurable up to 90 days)
-- **Frequency**: Recalculated weekly after initial baseline
+**Learning period:**
+- **Duration**: 30, 60 and 90-day baselines are written per member
+- **Coverage gate**: a period needs data on **80% of its days** (24 of 30) before any baseline is written. Until the 30-day baseline exists, `DashboardService` reports the member as still learning and the app shows the "getting to know {Name}" state.
+- **Frequency**: recalculated weekly (Sunday 02:30 UTC), appended rather than replaced so baseline drift stays visible
 
 **Pattern Baseline Calculation:**
 ```csharp
@@ -324,6 +325,8 @@ PatternBaseline Entity:
     ├── TypicalWakeTime: Time (HH:MM)
     └── AvgSleepEfficiency: Mean efficiency %
 ```
+
+Each metric is gated on **7 samples of its own** and left null when thinner — ingestion populates metrics unevenly, so a member can have steps every day and sleep on half of them. Spread is the **sample** standard deviation (n−1), bedtime/wake time are **circular** means over the 24-hour clock (an arithmetic mean of 23:40 and 00:20 is midday) reported in UTC, and weekday buckets are null rather than zero when unsampled. See [worker readme](../apps/worker/readme.md#baselinecalculationworker).
 
 **AI/ML Pattern Analysis (planned):**
 - **Algorithm**: statistical thresholds at R1; SSA-LSTM + MedGemma from R2 (see [llm_design.md](../llm_design.md))
@@ -450,7 +453,7 @@ ActivityLogs (Populated by polling sync)
 ├── Id, CardiMemberId, DeviceConnectionId, DataSource, Date
 └── ~25 nullable metrics: Steps, HeartRate, Sleep stages, SpO2, VO2Max, ...
 
-PatternBaselines (Planned — table exists, no calculation job yet)
+PatternBaselines (Written weekly by BaselineCalculationWorker)
 Alerts (Planned generation — table exists)
 AuditLogs (Planned writes — table exists)
 ```
