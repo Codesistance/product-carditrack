@@ -160,6 +160,93 @@ public class ReportGenerationServiceTests
         Assert.DoesNotContain("quota", status.Error);
     }
 
+    // ── Pseudonymisation ────────────────────────────────────────────────────────
+    //
+    // Reports go to the general provider (Gemini's consumer endpoint, outside the Google Cloud
+    // BAA). Readings on their own are not identifying; a name attached to them is.
+
+    [Fact]
+    public async Task Prompt_CarriesNoPatientName()
+    {
+        var prompt = await CapturePromptAsync(BuildRequest());
+
+        Assert.DoesNotContain("Margaret Doe", prompt);
+        Assert.Contains("Patient A", prompt);
+    }
+
+    [Fact]
+    public async Task Prompt_LabelsEachMemberDistinctly()
+    {
+        var secondMemberId = Guid.NewGuid();
+        _members.GetByIdAsync(secondMemberId).Returns(new CardiMember { Id = secondMemberId, Name = "John Roe" });
+        _activityLogs.GetByCardiMemberAndDateRangeAsync(secondMemberId, Arg.Any<DateOnly>(), Arg.Any<DateOnly>())
+            .Returns([]);
+        _alerts.GetByCardiMemberAsync(secondMemberId, false).Returns([]);
+
+        var prompt = await CapturePromptAsync(new GenerateReportRequest
+        {
+            CardiMemberIds = [_memberId, secondMemberId],
+            DateRangeFrom = new DateOnly(2026, 2, 7),
+            DateRangeTo = new DateOnly(2026, 3, 9),
+            Format = ReportFormat.Pdf
+        });
+
+        Assert.DoesNotContain("Margaret Doe", prompt);
+        Assert.DoesNotContain("John Roe", prompt);
+        Assert.Contains("Patient A", prompt);
+        Assert.Contains("Patient B", prompt);
+    }
+
+    [Fact]
+    public async Task GeneratedReport_HasRealNamesRestored()
+    {
+        _generativeAi.GenerateAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns("Patient A is walking less than usual. Check in with Patient A this week.");
+        var sut = CreateSut();
+
+        var queued = await sut.GenerateAsync(_userId, BuildRequest());
+        await WaitForTerminalStatusAsync(sut, queued.ReportId);
+        var (content, _, _) = await sut.DownloadAsync(_userId, queued.ReportId);
+
+        // Every occurrence, not just the first — the caregiver reads a report about a person.
+        Assert.Equal(
+            "Margaret Doe is walking less than usual. Check in with Margaret Doe this week.",
+            Encoding.UTF8.GetString(content));
+    }
+
+    [Fact]
+    public async Task GeneratedReport_RestoresLongLabelsWithoutPrefixCollision()
+    {
+        // 27 members, so labels run past "Patient Z" into "Patient AA" — a naive replace would
+        // rewrite the "Patient A" prefix inside "Patient AA" and corrupt the report.
+        var memberIds = new List<Guid> { _memberId };
+        for (var i = 1; i < 27; i++)
+        {
+            var id = Guid.NewGuid();
+            _members.GetByIdAsync(id).Returns(new CardiMember { Id = id, Name = $"Member {i:00}" });
+            _activityLogs.GetByCardiMemberAndDateRangeAsync(id, Arg.Any<DateOnly>(), Arg.Any<DateOnly>())
+                .Returns([]);
+            _alerts.GetByCardiMemberAsync(id, false).Returns([]);
+            memberIds.Add(id);
+        }
+
+        _generativeAi.GenerateAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns("Patient AA is stable. Patient A is not.");
+        var sut = CreateSut();
+
+        var queued = await sut.GenerateAsync(_userId, new GenerateReportRequest
+        {
+            CardiMemberIds = memberIds,
+            DateRangeFrom = new DateOnly(2026, 2, 7),
+            DateRangeTo = new DateOnly(2026, 3, 9),
+            Format = ReportFormat.Pdf
+        });
+        await WaitForTerminalStatusAsync(sut, queued.ReportId);
+        var (content, _, _) = await sut.DownloadAsync(_userId, queued.ReportId);
+
+        Assert.Equal("Member 26 is stable. Margaret Doe is not.", Encoding.UTF8.GetString(content));
+    }
+
     // ── Access control ──────────────────────────────────────────────────────────
 
     [Fact]
@@ -378,11 +465,12 @@ public class ReportGenerationServiceTests
     }
 
     [Fact]
-    public async Task Prompt_IncludesMemberName_FormatAndPeriod()
+    public async Task Prompt_IncludesPseudonymisedMember_FormatAndPeriod()
     {
         var prompt = await CapturePromptAsync(BuildRequest(ReportFormat.Csv));
 
-        Assert.Contains("## Patient: Margaret Doe", prompt);
+        // Was "## Patient: Margaret Doe" — the name is now withheld from the provider.
+        Assert.Contains("## Patient A", prompt);
         Assert.Contains("Report format: Csv", prompt);
         Assert.Contains($"Period: {new DateOnly(2026, 2, 7)} to {new DateOnly(2026, 3, 9)}", prompt);
     }

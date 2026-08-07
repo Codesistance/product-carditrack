@@ -106,7 +106,11 @@ public class ReportGenerationService : IReportGenerationService
         try
         {
             var prompt = await BuildReportPromptAsync(request);
-            var content = await _generativeAi.GenerateAsync(prompt);
+            var generated = await _generativeAi.GenerateAsync(prompt.Text);
+
+            // Names are restored only here, after the model has answered — the provider never
+            // saw them.
+            var content = RestoreNames(generated, prompt.Pseudonyms);
 
             await _cache.SetStringAsync(ContentKey(reportId), content,
                 new DistributedCacheEntryOptions { AbsoluteExpirationRelativeToNow = ReportTtl });
@@ -201,9 +205,21 @@ public class ReportGenerationService : IReportGenerationService
         public ReportStatusResponse Status { get; set; } = null!;
     }
 
-    private async Task<string> BuildReportPromptAsync(GenerateReportRequest request)
+    /// <summary>
+    /// A prompt with no patient names in it, plus the mapping needed to put them back.
+    /// </summary>
+    private sealed record ReportPrompt(string Text, IReadOnlyDictionary<string, string> Pseudonyms);
+
+    /// <summary>
+    /// Reports go to the general provider — today Gemini's consumer endpoint, which is outside
+    /// the Google Cloud BAA. Health readings alone are not identifying; a name attached to them
+    /// is. Members are labelled positionally here and the labels are swapped back for real names
+    /// after the response returns, so identity and health data never leave together.
+    /// </summary>
+    private async Task<ReportPrompt> BuildReportPromptAsync(GenerateReportRequest request)
     {
         var sections = new List<string>();
+        var pseudonyms = new Dictionary<string, string>(StringComparer.Ordinal);
 
         foreach (var memberId in request.CardiMemberIds)
         {
@@ -213,8 +229,11 @@ public class ReportGenerationService : IReportGenerationService
             var logs = await _unitOfWork.ActivityLogs
                 .GetByCardiMemberAndDateRangeAsync(memberId, request.DateRangeFrom, request.DateRangeTo);
 
+            var label = PseudonymFor(pseudonyms.Count);
+            pseudonyms[label] = member.Name;
+
             var sb = new StringBuilder();
-            sb.AppendLine($"## Patient: {member.Name}");
+            sb.AppendLine($"## {label}");
 
             if (request.IncludeMetrics && logs.Any())
             {
@@ -241,7 +260,7 @@ public class ReportGenerationService : IReportGenerationService
             sections.Add(sb.ToString());
         }
 
-        return $"""
+        var text = $"""
             You are a medical AI assistant generating a health report.
             Report format: {request.Format}
             Period: {request.DateRangeFrom} to {request.DateRangeTo}
@@ -250,8 +269,39 @@ public class ReportGenerationService : IReportGenerationService
 
             Generate a clear, structured health report summarising the above data.
             Include trend observations and any patterns worth noting.
+            Refer to each person by the exact label given above.
             Keep the language appropriate for a non-clinical caregiver.
             """;
+
+        return new ReportPrompt(text, pseudonyms);
+    }
+
+    /// <summary>
+    /// Positional labels, stable within one report: "Patient A", "Patient B", … Past 26 members
+    /// they become "Patient AA" and so on, so every member gets a distinct label no matter how
+    /// many are requested.
+    /// </summary>
+    private static string PseudonymFor(int index)
+    {
+        var suffix = string.Empty;
+        for (var n = index; ; n = n / 26 - 1)
+        {
+            suffix = (char)('A' + n % 26) + suffix;
+            if (n < 26) break;
+        }
+        return $"Patient {suffix}";
+    }
+
+    /// <summary>
+    /// Swaps each pseudonym in the model's answer back to the real name. Longest label first so
+    /// "Patient A" cannot claim the prefix of "Patient AA".
+    /// </summary>
+    private static string RestoreNames(string content, IReadOnlyDictionary<string, string> pseudonyms)
+    {
+        foreach (var (label, name) in pseudonyms.OrderByDescending(p => p.Key.Length))
+            content = content.Replace(label, name, StringComparison.Ordinal);
+
+        return content;
     }
 
     private static string ReportKey(string reportId) => $"report:status:{reportId}";
