@@ -76,11 +76,15 @@ public partial class BottomNavBar : ContentView
 
     private void OnSettingsTapped(object? sender, TappedEventArgs e) => GoTo(NavTab.Settings, "//settings");
 
-    // Re-navigating to the tab you are already on would pop any page pushed above it, so the
-    // tap is swallowed instead.
+    /// <remarks>
+    /// Sitting on a tab's own root, re-navigating to it would rebuild the page for nothing, so
+    /// the tap is swallowed. From a page pushed above that root — a member's details, say — the
+    /// same tap has to take you back down to it, which is what makes the bar usable there at all.
+    /// </remarks>
     private void GoTo(NavTab tab, string route)
     {
-        if (Tab == tab)
+        var isTabRoot = Shell.Current.Navigation.NavigationStack.Count <= 1;
+        if (Tab == tab && isTabRoot)
             return;
         _ = Shell.Current.GoToAsync(route);
     }

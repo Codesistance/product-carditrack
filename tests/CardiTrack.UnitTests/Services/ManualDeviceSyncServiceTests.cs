@@ -184,6 +184,50 @@ public class ManualDeviceSyncServiceTests
         Assert.Equal(1, result.FailedCount);
     }
 
+    // A caller who gave up must not be reported a 200 with per-device failures, and the devices
+    // behind the cancelled one must not keep pulling.
+    [Fact]
+    public async Task SyncMemberAsync_WhenCancelled_StopsInsteadOfReportingAFailedDevice()
+    {
+        var first = Connection();
+        var second = Connection();
+        GivenConnections(first, second);
+
+        using var cts = new CancellationTokenSource();
+        _fitbitSync
+            .When(s => s.SyncCardiMemberAsync(first))
+            .Do(_ =>
+            {
+                cts.Cancel();
+                throw new OperationCanceledException(cts.Token);
+            });
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            () => CreateSut().SyncMemberAsync(_userId, _memberId, cts.Token));
+
+        await _fitbitSync.DidNotReceive().SyncCardiMemberAsync(second);
+    }
+
+    // A provider HTTP timeout also arrives as TaskCanceledException, but nobody asked us to stop —
+    // that one is a provider failure and the other devices still deserve their turn.
+    [Fact]
+    public async Task SyncMemberAsync_WhenAProviderTimesOut_TreatsItAsAFailureNotACancellation()
+    {
+        var slow = Connection();
+        var healthy = Connection();
+        GivenConnections(slow, healthy);
+
+        _fitbitSync
+            .When(s => s.SyncCardiMemberAsync(slow))
+            .Do(_ => throw new TaskCanceledException("The request timed out."));
+
+        var result = await CreateSut().SyncMemberAsync(_userId, _memberId, CancellationToken.None);
+
+        Assert.Equal(1, result.SyncedCount);
+        Assert.Equal(1, result.FailedCount);
+        await _fitbitSync.Received(1).SyncCardiMemberAsync(healthy);
+    }
+
     // Provider quotas are per-app, so one caregiver leaning on refresh spends everyone's budget.
     [Fact]
     public async Task SyncMemberAsync_TwiceInsideTheCooldown_RefusesTheSecond()

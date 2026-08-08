@@ -18,7 +18,8 @@ public class ManualDeviceSyncService : IManualDeviceSyncService
     /// <remarks>
     /// Provider quotas are per-app, not per-user, so one caregiver leaning on the refresh button
     /// spends everyone's budget. The window is short enough that a caregiver who genuinely wants
-    /// fresher data can retry, and the scheduled pull is unaffected either way.
+    /// fresher data can retry, and the scheduled pull is unaffected either way. See
+    /// <see cref="EnforceCooldownAsync"/> for what this does and does not guarantee.
     /// </remarks>
     internal static readonly TimeSpan Cooldown = TimeSpan.FromMinutes(1);
 
@@ -78,7 +79,10 @@ public class ManualDeviceSyncService : IManualDeviceSyncService
         var outcomes = new List<DeviceSyncOutcome>(connections.Count);
         foreach (var connection in connections)
         {
-            outcomes.Add(await SyncOneAsync(connection));
+            // Between devices rather than only up front: a caller who has walked away should not
+            // pay for the second provider's round trip.
+            ct.ThrowIfCancellationRequested();
+            outcomes.Add(await SyncOneAsync(connection, ct));
         }
 
         // Re-read rather than trusting DateTime.UtcNow: SyncCardiMemberAsync only stamps
@@ -97,7 +101,7 @@ public class ManualDeviceSyncService : IManualDeviceSyncService
         };
     }
 
-    private async Task<DeviceSyncOutcome> SyncOneAsync(DeviceConnection connection)
+    private async Task<DeviceSyncOutcome> SyncOneAsync(DeviceConnection connection, CancellationToken ct)
     {
         var outcome = new DeviceSyncOutcome
         {
@@ -120,6 +124,14 @@ public class ManualDeviceSyncService : IManualDeviceSyncService
             await syncService.SyncCardiMemberAsync(connection);
             outcome.Succeeded = true;
         }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            // The caller gave up. Reporting that as a per-device provider failure would dress an
+            // abandoned request up as a 200 and let the remaining devices keep pulling. Note the
+            // filter: a provider HTTP timeout also surfaces as TaskCanceledException, and that one
+            // genuinely is a provider failure, so it falls through to the handler below.
+            throw;
+        }
         catch (Exception ex)
         {
             // One failing provider must not sink the others, and the caller still gets a 200
@@ -136,12 +148,21 @@ public class ManualDeviceSyncService : IManualDeviceSyncService
     }
 
     /// <summary>
-    /// Claims the member's cooldown slot, throwing if someone else already holds it.
+    /// Claims the member's cooldown slot, throwing if it is already held.
     /// </summary>
     /// <remarks>
-    /// The slot is taken before any pull runs, so two caregivers hitting refresh at once can't
-    /// both get through. It is deliberately not released on failure: a provider that just failed
-    /// is the last one worth retrying immediately.
+    /// A rate limiter, not a mutex, and the distinction is deliberate. The get-then-set is not
+    /// atomic — <see cref="IDistributedCache"/> exposes no set-if-absent — so two requests landing
+    /// in the same instant can both pass and both pull. What it does stop is the case that
+    /// actually happens: a caregiver tapping refresh repeatedly, which is sequential and hits the
+    /// claim every time. Losing the race costs one extra pull against a per-app quota measured in
+    /// hundreds per hour, which does not justify a Redis <c>SET NX</c> path that only works when
+    /// Redis is configured — the cache falls back to in-memory otherwise. Revisit if quota
+    /// pressure ever makes the duplicate pull matter.
+    /// <para>
+    /// The slot is deliberately not released on failure: a provider that just failed is the last
+    /// one worth retrying immediately.
+    /// </para>
     /// </remarks>
     private async Task EnforceCooldownAsync(Guid cardiMemberId, CancellationToken ct)
     {

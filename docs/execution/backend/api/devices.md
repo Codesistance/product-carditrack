@@ -270,7 +270,9 @@ Pulls **every active connection** the member has, now. Takes no request body and
 
 **200 even when some devices failed** — a member can have more than one connection, and one provider being down is not a failed request. `lastSyncedAt` is re-read from the connections afterwards rather than stamped from the clock, because a pull that dies mid-window deliberately leaves `LastSyncDate` where it was.
 
-Refusals carry their own status: **409** when monitoring is paused (`MONITORING_PAUSED`) or the member has no connected device (`NO_CONNECTED_DEVICE`), and **429** when a manual sync ran for that member within the last minute (`SYNC_TOO_SOON`). The cooldown is per member and is claimed *before* any pull runs, so two caregivers refreshing at once cannot both spend the provider quota — which is per-app, not per-user.
+Refusals carry their own status: **409** when monitoring is paused (`MONITORING_PAUSED`) or the member has no connected device (`NO_CONNECTED_DEVICE`), and **429** when a manual sync ran for that member within the last minute (`SYNC_TOO_SOON`). The cooldown is per member and is claimed before any pull runs.
+
+It is a **rate limiter, not a mutex**: `IDistributedCache` has no set-if-absent, so the claim is a get-then-set and two requests arriving in the same instant can both pass. It stops the case that actually occurs — a caregiver tapping refresh repeatedly, which is sequential — and losing the race costs one extra pull against a quota measured in hundreds per hour. A Redis `SET NX` claim would only hold where Redis is configured (the cache falls back to in-memory), so it is not worth the second code path today.
 
 Authorization is the **view** tier, not the management tier: refreshing surfaces nothing the caller could not already see, and a relative invited to watch over someone should not be staring at a dead refresh button.
 
