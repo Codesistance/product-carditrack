@@ -115,6 +115,77 @@ public class HealthInsightServiceAccessTests
             unknown.Message.Replace(unknownAlertId.ToString(), "<id>"));
     }
 
+    // ── Baseline loading ────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task AnalyzeBaseline_LoadsBaselinesOneAtATime()
+    {
+        // These repositories share the request's DbContext, and EF Core rejects a second
+        // operation while one is in flight. The three lookups used to be started together with
+        // Task.WhenAll, so this endpoint threw on every call. A substitute cannot reproduce the
+        // EF failure, so the invariant itself is asserted: never two calls open at once.
+        var inFlight = 0;
+        var overlapped = 0;
+
+        // The task must genuinely stay in flight. Returning a value from a synchronous lambda
+        // lets NSubstitute hand back an already-completed task, so each call finishes before the
+        // next begins and even Task.WhenAll would look sequential — the assertion would hold
+        // against the very code it is meant to reject.
+        async Task<PatternBaseline?> TrackedLookupAsync()
+        {
+            if (Interlocked.Increment(ref inFlight) > 1)
+                Interlocked.Exchange(ref overlapped, 1);
+
+            await Task.Delay(25);
+
+            Interlocked.Decrement(ref inFlight);
+            return null;
+        }
+
+        _baselines.GetLatestByCardiMemberAsync(_memberId, Arg.Any<int>())
+            .Returns(_ => TrackedLookupAsync());
+
+        await CreateSut().AnalyzeBaselineAsync(_userId, _memberId);
+
+        Assert.True(
+            Volatile.Read(ref overlapped) == 0,
+            "baseline lookups overlapped — concurrent operations on a shared DbContext");
+        await _baselines.Received(3).GetLatestByCardiMemberAsync(_memberId, Arg.Any<int>());
+    }
+
+    [Fact]
+    public async Task AnalyzeBaseline_TreatsAMissing30DayBaselineAsStillLearning()
+    {
+        // Only the 60-day window exists. "Still learning" is defined by the absence of the
+        // 30-day baseline specifically, so a longer window must not stand in for it — picking
+        // the first available baseline by position would silently claim the member is known.
+        _baselines.GetLatestByCardiMemberAsync(_memberId, 30).Returns((PatternBaseline?)null);
+        _baselines.GetLatestByCardiMemberAsync(_memberId, 60).Returns(new PatternBaseline
+        {
+            CardiMemberId = _memberId,
+            PeriodDays = 60,
+            AvgSteps = 4200,
+        });
+        _baselines.GetLatestByCardiMemberAsync(_memberId, 90).Returns((PatternBaseline?)null);
+
+        var result = await CreateSut().AnalyzeBaselineAsync(_userId, _memberId);
+
+        Assert.NotNull(result);
+        await _medicalAi.Received(1).GenerateAsync(
+            Arg.Is<string>(p => p.Contains("not yet enough history")), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task AnalyzeBaseline_SucceedsWhenNoBaselinesExistAtAll()
+    {
+        // Every window empty — a brand-new member. Must not index into an empty collection.
+        _baselines.GetLatestByCardiMemberAsync(_memberId, Arg.Any<int>()).Returns((PatternBaseline?)null);
+
+        var result = await CreateSut().AnalyzeBaselineAsync(_userId, _memberId);
+
+        Assert.Equal(_memberId, result.CardiMemberId);
+    }
+
     // ── AnalyzeBaselineAsync ────────────────────────────────────────────────────
 
     [Fact]
