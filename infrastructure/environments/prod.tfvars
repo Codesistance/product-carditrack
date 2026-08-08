@@ -41,8 +41,9 @@ apm_mobile_engine = "Datadog"
 apm_metrics_enabled = false
 
 # Serilog root level per service — Warning keeps Cloud Logging and APM ingest lean.
-# Turn a single service up (Information/Debug) for an investigation, then put it back;
-# the APM sink stays pinned at Warning by appsettings, so a raise here does not ship more.
+# The APM sink inherits this level, so a raise here ships more to Datadog as well as
+# widening Cloud Logging. Turn a single service up (Information/Debug) for an
+# investigation, then put it back — prod volume makes that a real spend change.
 log_minimum_level = {
   api    = "Warning"
   web    = "Warning"

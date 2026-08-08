@@ -166,7 +166,7 @@ variable "apm_metrics_enabled" {
 # service can be turned up for an investigation without touching the other two; every
 # attribute is optional, so `{ api = "Debug" }` leaves Web and Worker on the default.
 variable "log_minimum_level" {
-  description = "Serilog root minimum level per service (Serilog__MinimumLevel__Default). Warning by default — everything below it never reaches Cloud Logging or the APM sink. Note: dropping a service below Information also needs Logging__LogLevel__Default, which filters ahead of Serilog"
+  description = "Serilog root minimum level per service (Serilog__MinimumLevel__Default). Warning by default — everything below it never reaches Cloud Logging or the APM sink. Raising a service raises both, since the APM sink inherits this level unless Apm__MinimumLogLevel pins it lower, so treat a raise as an ingest-spend change. Note: dropping a service below Information also needs Logging__LogLevel__Default, which filters ahead of Serilog"
   type = object({
     api    = optional(string, "Warning")
     web    = optional(string, "Warning")

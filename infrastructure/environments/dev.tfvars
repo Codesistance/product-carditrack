@@ -37,12 +37,14 @@ apm_mobile_engine = "Datadog"
 apm_metrics_enabled = true
 
 # Serilog root level per service — Warning keeps Cloud Logging and APM ingest lean.
-# Turn a single service up (Information/Debug) for an investigation, then put it back;
-# the APM sink stays pinned at Warning by appsettings, so a raise here does not ship more.
+# The APM sink inherits this level, so a raise here ships more to Datadog as well as
+# widening Cloud Logging. API and Worker run at Information in dev deliberately: this is
+# where wearable syncs and OAuth bounces are diagnosed, and their per-run detail
+# (WearableSync summaries, per-connection outcomes) is Information. Web stays lean.
 log_minimum_level = {
-  api    = "Warning"
+  api    = "Information"
   web    = "Warning"
-  worker = "Warning"
+  worker = "Information"
 }
 
 # Trace head-sampling per service, 0.0-1.0. Full sampling: the ingest cost lever to
