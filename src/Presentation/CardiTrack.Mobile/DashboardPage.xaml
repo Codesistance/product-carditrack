@@ -4,9 +4,10 @@
              xmlns:controls="clr-namespace:CardiTrack.Mobile.Controls"
              x:Class="CardiTrack.Mobile.DashboardPage"
              Shell.NavBarIsVisible="False"
+             Shell.TabBarIsVisible="False"
              BackgroundColor="{StaticResource White}">
 
-    <Grid RowDefinitions="Auto,Auto,*">
+    <Grid RowDefinitions="Auto,Auto,*,Auto">
 
         <!-- ════════════════════════════════════════
              FIXED HEADER
@@ -44,7 +45,8 @@
                 </Border>
             </Grid>
 
-            <ImageButton Grid.Column="2"
+            <ImageButton x:Name="RefreshButton"
+                         Grid.Column="2"
                          Source="icon_refresh.svg"
                          WidthRequest="24" HeightRequest="24"
                          BackgroundColor="Transparent"
@@ -209,9 +211,12 @@
 
                         <controls:StatusHeroCard x:Name="HeroCard"/>
 
-                        <!-- Quick actions -->
+                        <!-- Quick actions. Call and Send Message dim when the CardiMember has no
+                             phone number (issue #67) — they stay tappable so the tap can explain
+                             why, which is the only affordance a dimmed tile has on touch. -->
                         <Grid ColumnDefinitions="*,*,*" ColumnSpacing="10">
-                            <Border Grid.Column="0" Style="{StaticResource DashboardCard}" Padding="10">
+                            <Border x:Name="CallAction"
+                                    Grid.Column="0" Style="{StaticResource DashboardCard}" Padding="10">
                                 <Border.GestureRecognizers>
                                     <TapGestureRecognizer Tapped="OnCallTapped"/>
                                 </Border.GestureRecognizers>
@@ -223,13 +228,14 @@
                                            HorizontalTextAlignment="Center"/>
                                 </VerticalStackLayout>
                             </Border>
-                            <Border Grid.Column="1" Style="{StaticResource DashboardCard}" Padding="10">
+                            <Border x:Name="MessageAction"
+                                    Grid.Column="1" Style="{StaticResource DashboardCard}" Padding="10">
                                 <Border.GestureRecognizers>
                                     <TapGestureRecognizer Tapped="OnMessageTapped"/>
                                 </Border.GestureRecognizers>
                                 <VerticalStackLayout Spacing="4">
                                     <Image Source="icon_action_sms.svg" WidthRequest="22" HeightRequest="22"/>
-                                    <Label Text="Send Message"
+                                    <Label x:Name="MessageLabel" Text="Send Message"
                                            FontFamily="QuicksandMedium" FontSize="12"
                                            TextColor="{StaticResource HeadingText}"
                                            HorizontalTextAlignment="Center"/>
@@ -275,5 +281,7 @@
                 </Grid>
             </ScrollView>
         </RefreshView>
+
+        <controls:BottomNavBar Grid.Row="3" Tab="Dashboard"/>
     </Grid>
 </ContentPage>

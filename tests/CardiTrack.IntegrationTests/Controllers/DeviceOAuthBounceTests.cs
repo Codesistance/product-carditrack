@@ -30,6 +30,7 @@ public class DeviceOAuthBounceTests
             Substitute.For<IUserContext>(),
             Substitute.For<ILogger<DevicesController>>(),
             _connections,
+            Substitute.For<IManualDeviceSyncService>(),
             Substitute.For<IValidator<ConnectDeviceRequest>>(),
             Substitute.For<IValidator<OAuthCallbackRequest>>())
         {

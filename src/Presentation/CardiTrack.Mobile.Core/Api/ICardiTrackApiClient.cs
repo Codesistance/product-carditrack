@@ -44,6 +44,12 @@ public interface ICardiTrackApiClient
 
     Task<DeviceResponse> RefreshDeviceConnectionAsync(
         Guid cardiMemberId, Guid deviceId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Pulls every connected device now rather than waiting for the scheduled sync — what the
+    /// dashboard's refresh button does (issue #67).
+    /// </summary>
+    Task<DeviceSyncResultResponse> SyncDevicesAsync(Guid cardiMemberId, CancellationToken ct = default);
     Task<OAuthInitiationResponse> InitiateDeviceConnectionAsync(Guid cardiMemberId, ConnectDeviceRequest request, CancellationToken ct = default);
     Task<DeviceResponse> CompleteDeviceConnectionAsync(string provider, OAuthCallbackRequest request, CancellationToken ct = default);
 

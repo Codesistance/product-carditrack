@@ -84,6 +84,11 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
         SendAsync<DeviceResponse>(
             HttpMethod.Post, $"api/v1/cardimembers/{cardiMemberId}/devices/{deviceId}/refresh", ct);
 
+    public Task<DeviceSyncResultResponse> SyncDevicesAsync(
+        Guid cardiMemberId, CancellationToken ct = default) =>
+        SendAsync<DeviceSyncResultResponse>(
+            HttpMethod.Post, $"api/v1/cardimembers/{cardiMemberId}/devices/sync", ct);
+
     public Task<OAuthInitiationResponse> InitiateDeviceConnectionAsync(Guid cardiMemberId, ConnectDeviceRequest request, CancellationToken ct = default) =>
         PostAsync<ConnectDeviceRequest, OAuthInitiationResponse>($"api/v1/cardimembers/{cardiMemberId}/devices", request, ct);
 

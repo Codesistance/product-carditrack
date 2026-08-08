@@ -2,11 +2,11 @@
 
 Handles wearable device connections via OAuth, device status management, primary device designation, and token refresh.
 
-**Implementation status:** the core OAuth connection flow (list, connect, bounce redirect, callback) is **implemented**, as are the M1-15 management endpoints — **delete**, **set primary**, and a **refresh** endpoint. Get-single-device remains **planned — not yet implemented**; note the implemented routes differ from the planned shapes below (`POST .../primary` not `PUT`, `POST .../refresh` not `POST .../reconnect`).
+**Implementation status:** the core OAuth connection flow (list, connect, bounce redirect, callback) is **implemented**, as are the M1-15 management endpoints — **delete**, **set primary**, and a **refresh** endpoint — plus an on-demand **sync** endpoint (issue #67). Get-single-device remains **planned — not yet implemented**; note the implemented routes differ from the planned shapes below (`POST .../primary` not `PUT`, `POST .../refresh` not `POST .../reconnect`).
 
 Key implementation facts (verified against `DeviceConnectionService`):
 
-- **Authorization is two-tier, member-link based** (failure → 404 "CardiMember not found" in both tiers, so an unauthorised caller can't tell a member exists). *Reading and connecting* — list, initiate, callback — need only an **active `UserCardiMember` link**. The *management* actions that change how a member is monitored — **delete, set-primary, refresh** — additionally require **`IsPrimaryCaregiver`**, so a relative invited only to watch over someone cannot cut off their data feed. There are no Auth0 **role** checks on any device endpoint.
+- **Authorization is two-tier, member-link based** (failure → 404 "CardiMember not found" in both tiers, so an unauthorised caller can't tell a member exists). *Reading and connecting* — list, initiate, callback — need only an **active `UserCardiMember` link**. The *management* actions that change how a member is monitored — **delete, set-primary, refresh** — additionally require **`IsPrimaryCaregiver`**, so a relative invited only to watch over someone cannot cut off their data feed. **Sync** sits in the reading tier: it changes nothing about the connection and shows the caller nothing they could not already see. There are no Auth0 **role** checks on any device endpoint.
 - **State tokens are single-use with a 15-minute TTL**, held server-side in the distributed cache keyed to the initiating user, member, and provider. The callback consumes the state even if the code exchange fails — a replayed state always fails.
 - **Google authorize URLs include `access_type=offline`** (config-driven), without which Google issues no refresh token. `prompt=consent` (`FirstConsentAuthorizationParams`) is added **only while the member holds no refresh token** on that provider — Google re-issues one only when consent is shown again, but forcing it on every connect makes a reconnect look like a failure. A token exchange that returns no refresh token **leaves the stored one in place** rather than nulling it — unless the exchange came back with a **different `providerUserId`**, in which case the old account's token is dropped so background syncs can't keep pulling the previous wearer's data (and the next initiation re-prompts for consent).
 - **OAuth tokens are AES-encrypted at rest** before being stored on the connection record.
@@ -244,9 +244,41 @@ Sets this device as the primary data source, clearing the flag from any previous
 
 Renews the connection's OAuth token if it has expired and returns the updated device object. Takes **no request body**.
 
-Deliberately **does not pull health data** — syncing is the Worker's job per the background-job rule in `CLAUDE.md`, and this is a user-initiated request. When the provider cannot be reached, the connection is recorded as `token_expired` before the error is returned (**502**), so the stored state agrees with what the user was told.
+Deliberately **does not pull health data** — this endpoint is about the *connection*, not its contents. To pull on demand, use `POST .../devices/sync` below. When the provider cannot be reached, the connection is recorded as `token_expired` before the error is returned (**502**), so the stored state agrees with what the user was told.
 
 A device whose OAuth grant has been revoked outright still needs the full reconnect flow below.
+
+---
+
+## POST `/api/v1/cardimembers/{id}/devices/sync`
+
+> **Implemented** (issue #67). Backs the dashboard's refresh button, which previously only re-read what the Worker had already stored — so a member whose scheduled sync had not run yet sat on "Not synced yet" however often the caregiver tapped it.
+
+Pulls **every active connection** the member has, now. Takes no request body and returns per-device outcomes:
+
+```jsonc
+{
+  "syncedCount": 1,
+  "failedCount": 1,
+  "lastSyncedAt": "2026-08-08T12:00:00Z",
+  "devices": [
+    { "deviceId": "…", "provider": "fitbit", "succeeded": true,  "message": null },
+    { "deviceId": "…", "provider": "garmin", "succeeded": false, "message": "We couldn't reach this device's provider." }
+  ]
+}
+```
+
+**200 even when some devices failed** — a member can have more than one connection, and one provider being down is not a failed request. `lastSyncedAt` is re-read from the connections afterwards rather than stamped from the clock, because a pull that dies mid-window deliberately leaves `LastSyncDate` where it was.
+
+Refusals carry their own status: **409** when monitoring is paused (`MONITORING_PAUSED`) or the member has no connected device (`NO_CONNECTED_DEVICE`), and **429** when a manual sync ran for that member within the last minute (`SYNC_TOO_SOON`). The cooldown is per member and is claimed before any pull runs.
+
+It is a **rate limiter, not a mutex**: `IDistributedCache` has no set-if-absent, so the claim is a get-then-set and two requests arriving in the same instant can both pass. It stops the case that actually occurs — a caregiver tapping refresh repeatedly, which is sequential — and losing the race costs one extra pull against a quota measured in hundreds per hour. A Redis `SET NX` claim would only hold where Redis is configured (the cache falls back to in-memory), so it is not worth the second code path today.
+
+Authorization is the **view** tier, not the management tier: refreshing surfaces nothing the caller could not already see, and a relative invited to watch over someone should not be staring at a dead refresh button.
+
+**This is not a background job.** It runs inside the request that asked for it, and it reuses the same `IDeviceSyncService` per connection that `WearableSyncWorker` drives, so a manual pull and a scheduled one cannot diverge in what they store. *Scheduled* pulling and all DB polling remain `CardiTrack.Worker`'s alone, per `CLAUDE.md`.
+
+> **Known limitation:** `DeviceSyncService` fetches a trailing window that **ends at yesterday**, because most providers only finalise a day's data after midnight. A manual sync therefore fills in history and clears "Not synced yet", but will not surface today's readings.
 
 ---
 

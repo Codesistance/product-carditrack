@@ -4,30 +4,28 @@
     xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
     xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
     xmlns:local="clr-namespace:CardiTrack.Mobile"
-    Title="CardiTrack"
-    Shell.TabBarBackgroundColor="{StaticResource White}"
-    Shell.TabBarTitleColor="{StaticResource Primary}"
-    Shell.TabBarUnselectedColor="{StaticResource MutedText}">
+    Title="CardiTrack">
 
+    <!-- The platform tab bar is hidden: it can't swap an icon on selection or carry the design's
+         upward shadow, so Controls/BottomNavBar draws the Figma bar (101:2949) instead. Each tab
+         page sets Shell.TabBarIsVisible="False" itself, the same way the onboarding pages do.
+         The TabBar below still owns routing — every bar tap is a "//route" Shell navigation, so
+         the Icon values here are no longer rendered. -->
     <TabBar>
         <ShellContent
             Title="Dashboard"
-            Icon="icon_tab_home.svg"
             ContentTemplate="{DataTemplate local:DashboardPage}"
             Route="dashboard" />
         <ShellContent
             Title="Alerts"
-            Icon="icon_tab_alerts.svg"
             ContentTemplate="{DataTemplate local:AlertsPage}"
             Route="alerts" />
         <ShellContent
             Title="Family"
-            Icon="icon_tab_family.svg"
             ContentTemplate="{DataTemplate local:FamilyPage}"
             Route="family" />
         <ShellContent
             Title="Settings"
-            Icon="icon_tab_settings.svg"
             ContentTemplate="{DataTemplate local:SettingsPage}"
             Route="settings" />
     </TabBar>

@@ -11,7 +11,21 @@ public class DashboardResponse
     public Guid CardiMemberId { get; set; }
     public string Name { get; set; } = string.Empty;
     public int Age { get; set; }
-    public string? Phone { get; set; }
+
+    /// <summary>
+    /// The number behind the dashboard's Call and Send Message actions (issue #67).
+    /// </summary>
+    /// <remarks>
+    /// Deliberately the emergency contact rather than <c>CardiMember.Phone</c>: the emergency
+    /// contact is the only phone number any screen actually captures (M1-04 / M1-14), so
+    /// <c>Phone</c> is null for every member created in the app and shipping the quick actions
+    /// against it would leave them permanently dead.
+    /// </remarks>
+    public string? EmergencyContactPhone { get; set; }
+
+    /// <summary>Who <see cref="EmergencyContactPhone"/> belongs to, so the UI can say.</summary>
+    public string? EmergencyContactName { get; set; }
+
     public string? PhotoUrl { get; set; }
     /// <summary>green/yellow/orange/red/unknown, or "paused" while monitoring is paused.</summary>
     public string HealthStatus { get; set; } = "unknown";

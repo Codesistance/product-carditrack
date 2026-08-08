@@ -87,6 +87,10 @@ public static class ServiceCollectionExtensions
         services.AddScoped<CardiTrack.Application.Interfaces.Services.IAuth0ManagementService, Auth0ManagementClient>();
         services.AddScoped<CardiTrack.Application.Interfaces.Services.IDeviceConnectionService,
             CardiTrack.Infrastructure.Services.DeviceConnectionService>();
+        // Caregiver-triggered sync (issue #67). Request-scoped, not a background job — the
+        // scheduled pull stays CardiTrack.Worker's, per CLAUDE.md.
+        services.AddScoped<CardiTrack.Application.Interfaces.Services.IManualDeviceSyncService,
+            CardiTrack.Infrastructure.Services.ManualDeviceSyncService>();
 
         // HTTP Client for Auth0 service
         services.AddHttpClient("Auth0Client", client =>

@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentView xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="CardiTrack.Mobile.Controls.BottomNavBar">
+
+    <!-- Figma 101:2949. Shell's native tab bar can't carry the upward shadow, the white
+         hairline, or a per-state icon, so the bar is drawn here and Shell's own is hidden.
+         Square corners are deliberate: the design's bar is edge-to-edge, and CLAUDE.md
+         keeps radius off page-level chrome. -->
+    <Border x:Name="BarBorder"
+            BackgroundColor="{StaticResource White}"
+            Stroke="{StaticResource White}"
+            StrokeThickness="0"
+            Padding="0"
+            HeightRequest="77"
+            VerticalOptions="End">
+        <Border.Shadow>
+            <Shadow Brush="#014297" Opacity="0.11" Radius="14" Offset="0,-5"/>
+        </Border.Shadow>
+
+        <Grid ColumnDefinitions="*,*,*,*" Padding="0,14,0,0" VerticalOptions="Start">
+
+            <VerticalStackLayout x:Name="DashboardTab" Grid.Column="0" Spacing="4">
+                <VerticalStackLayout.GestureRecognizers>
+                    <TapGestureRecognizer Tapped="OnDashboardTapped"/>
+                </VerticalStackLayout.GestureRecognizers>
+                <Image x:Name="DashboardIcon"
+                       Source="icon_tab_home.svg"
+                       WidthRequest="28" HeightRequest="28"
+                       HorizontalOptions="Center"/>
+                <Label x:Name="DashboardLabel"
+                       Text="Dashboard"
+                       Style="{StaticResource TabBarLabel}"/>
+            </VerticalStackLayout>
+
+            <VerticalStackLayout x:Name="AlertsTab" Grid.Column="1" Spacing="4">
+                <VerticalStackLayout.GestureRecognizers>
+                    <TapGestureRecognizer Tapped="OnAlertsTapped"/>
+                </VerticalStackLayout.GestureRecognizers>
+                <Image x:Name="AlertsIcon"
+                       Source="icon_tab_alerts.svg"
+                       WidthRequest="28" HeightRequest="28"
+                       HorizontalOptions="Center"/>
+                <Label x:Name="AlertsLabel"
+                       Text="Alerts"
+                       Style="{StaticResource TabBarLabel}"/>
+            </VerticalStackLayout>
+
+            <!-- Family and Settings render at 24: their glyphs fill their own 24-unit box,
+                 where the Figma pair sits inset in a 28 one. Same optical size either way. -->
+            <VerticalStackLayout x:Name="FamilyTab" Grid.Column="2" Spacing="4">
+                <VerticalStackLayout.GestureRecognizers>
+                    <TapGestureRecognizer Tapped="OnFamilyTapped"/>
+                </VerticalStackLayout.GestureRecognizers>
+                <Image x:Name="FamilyIcon"
+                       Source="icon_tab_family.svg"
+                       WidthRequest="24" HeightRequest="24"
+                       Margin="0,2"
+                       HorizontalOptions="Center"/>
+                <Label x:Name="FamilyLabel"
+                       Text="Family"
+                       Style="{StaticResource TabBarLabel}"/>
+            </VerticalStackLayout>
+
+            <VerticalStackLayout x:Name="SettingsTab" Grid.Column="3" Spacing="4">
+                <VerticalStackLayout.GestureRecognizers>
+                    <TapGestureRecognizer Tapped="OnSettingsTapped"/>
+                </VerticalStackLayout.GestureRecognizers>
+                <Image x:Name="SettingsIcon"
+                       Source="icon_tab_settings.svg"
+                       WidthRequest="24" HeightRequest="24"
+                       Margin="0,2"
+                       HorizontalOptions="Center"/>
+                <Label x:Name="SettingsLabel"
+                       Text="Settings"
+                       Style="{StaticResource TabBarLabel}"/>
+            </VerticalStackLayout>
+
+        </Grid>
+    </Border>
+</ContentView>

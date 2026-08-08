@@ -4,9 +4,10 @@
              xmlns:controls="clr-namespace:CardiTrack.Mobile.Controls"
              x:Class="CardiTrack.Mobile.DeviceManagementPage"
              Shell.NavBarIsVisible="False"
+             Shell.TabBarIsVisible="False"
              BackgroundColor="{StaticResource White}">
 
-    <Grid RowDefinitions="Auto,*">
+    <Grid RowDefinitions="Auto,*,Auto">
 
         <!-- Flush on all four edges — full-bleed page shell per CLAUDE.md, no page-level
              rounding even though the Figma frame shows rounded bottom corners. -->
@@ -138,5 +139,9 @@
                 </Grid>
             </ScrollView>
         </RefreshView>
+
+        <!-- M1-13/M1-14/M1-15 all show the bottom nav in Figma, and these pages sit on
+             top of the Dashboard tab. Tapping Home here pops back down to it. -->
+        <controls:BottomNavBar Grid.Row="2" Tab="Dashboard"/>
     </Grid>
 </ContentPage>

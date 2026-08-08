@@ -85,7 +85,11 @@ src/Presentation/CardiTrack.Mobile.Core/
 
 ### Shell
 
-`AppShell.xaml` is a **TabBar-only Shell** — four tabs (Dashboard, Alerts, Family, Settings) with `.svg` icons; there is no flyout. Tab pages resolve through DI (`AddTransient` in `MauiProgram`).
+`AppShell.xaml` is a **TabBar-only Shell** — four tabs (Dashboard, Alerts, Family, Settings); there is no flyout. Tab pages resolve through DI (`AddTransient` in `MauiProgram`).
+
+The **platform tab bar is hidden** (`Shell.TabBarIsVisible="False"` on each tab page) and `Controls/BottomNavBar` draws the Figma bar (node `101:2949`) instead — the native bar cannot swap an icon on selection or carry the design's upward shadow. Shell still owns routing: each item navigates `GoToAsync("//route")`, and a tap on the tab you are already on is swallowed so it can't pop a page pushed above it. Each host page sets `Tab="…"`, which picks the gradient `_active` glyph and the `PrimaryDark` label.
+
+> Figma's bar reads Home / Health / Alerts / Profile, but the M1 file has no Health or Profile screen, so the tab set is unchanged. Dashboard and Alerts use the exported Figma glyphs; Family and Settings keep their hand-authored ones, with `_active` variants that apply the tab-bar gradient to the existing stroke rather than inventing a filled glyph.
 
 ### Auth & onboarding flow
 
@@ -104,6 +108,9 @@ Splash → Welcome → SignIn / CreateAccount
 - `AddCardiMemberPage` **Skip** is context-aware: pushed from the dashboard it pops back; as the onboarding root it hands over to a fresh `AppShell`.
 - **Member details** are reachable two ways from the dashboard: tapping the status hero card, or the "View Details" quick action. Both route to `CardiMemberDetailPage` (M1-13), which in turn reaches `EditCardiMemberPage` (M1-14) and `DeviceManagementPage` (M1-15).
 - These three are the app's **first routed (non-tab) pages**: registered with `Routing.RegisterRoute` in `AppShell` and navigated to as `GoToAsync("<route>?memberId=…")`, resolved through DI like the tab pages.
+- **Refresh** (header button, hero-card sync button, and pull-to-refresh) calls `POST .../devices/sync` and *then* reloads, so it pulls from the wearable rather than re-reading what the Worker last stored. The button disables and the `RefreshView` spinner runs for the duration; a refused sync (paused, no device, too soon) is reported afterwards rather than swallowed. The reload happens either way, so a merely stale screen still catches up.
+- **Call / Send Message dial the emergency contact**, not `CardiMember.Phone`. `Phone` exists on the entity and on both request DTOs, but **no screen in the design captures it** — M1-04's optional block and M1-14 offer Medical Notes, Emergency Contact Name and Emergency Contact Number only — so it is null for every member created in the app, and quick actions built on it would be permanently dead. The tiles dim when `EmergencyContactPhone` is unset and stay tappable, since a dimmed tile on touch has no hover state to explain itself with; the tap and `ToolTipProperties` both point at the emergency-contact field, which the forms really do have.
+  > Open question: the tile is labelled with the *CardiMember's* name ("Call Dad") but dials the *emergency contact's* number, who may be someone else entirely. The tooltip names them for that reason. Whether the label should change is a design decision — see #67.
 - Remaining dashboard touchpoints (alert details M1-11, trends M2-03) still show "Coming soon" alerts.
 
 ## Configuration
