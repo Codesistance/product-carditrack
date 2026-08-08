@@ -78,6 +78,14 @@ public class DeviceConnectionRepository : Repository<DeviceConnection>, IDeviceC
     /// filter is deliberately identical to <see cref="GetDueForSyncAsync"/> minus due-ness: an
     /// audit still fetches a member's health data, so a paused or removed member must be excluded
     /// exactly as they are from a routine pull.
+    /// <para>
+    /// The randomised order costs a scan of the eligible set plus a bounded top-N sort, which is
+    /// the right trade at this size and cadence — the audit runs weekly over a sample of tens.
+    /// The index-friendly alternatives buy their speed by returning adjacent rows (an id-pivot
+    /// scan, say), and adjacency is exactly the clustering this method exists to avoid: a sample
+    /// of neighbours measures one corner of the population no less than a stable ordering does.
+    /// Worth revisiting if the eligible set ever reaches the millions, not before.
+    /// </para>
     /// </remarks>
     public async Task<IEnumerable<DeviceConnection>> GetRandomSyncableSampleAsync(int count)
     {

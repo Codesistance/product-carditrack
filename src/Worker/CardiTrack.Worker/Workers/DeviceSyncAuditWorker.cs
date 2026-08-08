@@ -17,9 +17,11 @@ namespace CardiTrack.Worker.Workers;
 /// rather than a fact about the provider. This job is the only thing that looks further out.
 /// </para>
 /// <para>
-/// It is an observation, so it stamps nothing: no LastSyncDate, no status change. It does still
-/// store and merge whatever it finds, which means a provider's late correction to a member's
-/// history gets repaired as a side effect of measuring it.
+/// It is an observation, so it stamps no LastSyncDate and never marks a connection SyncError. A
+/// failed token refresh is the one status change it can still cause, and deliberately so: that is
+/// a broken connection, not a casualty of the wide window. It does still store and merge whatever
+/// it finds, which means a provider's late correction to a member's history gets repaired as a
+/// side effect of measuring it.
 /// </para>
 /// </remarks>
 public class DeviceSyncAuditWorker : CronBackgroundService
