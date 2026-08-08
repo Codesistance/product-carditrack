@@ -459,4 +459,40 @@ public class ApmConfigurationTests
     {
         Assert.Equal(expected, BetterStackApmProvider.NormalizeIngestUrl(input));
     }
+
+    [Fact]
+    public void ServiceNames_AreTheAppTypes()
+    {
+        Assert.Equal(["api", "web", "worker"], ApmServiceNames.All);
+        Assert.Equal(ApmServiceNames.All.Count, ApmServiceNames.All.Distinct().Count());
+    }
+
+    [Fact]
+    public void ServiceNames_CarryNoProductPrefixOrNamespace()
+    {
+        // The backend groups, filters and alerts on these, so they stay bare app types:
+        // a namespace-shaped name ("CardiTrack.API") is what left every host reporting
+        // as one undifferentiated service.
+        foreach (var name in ApmServiceNames.All)
+        {
+            Assert.Equal(name.ToLowerInvariant(), name);
+            Assert.DoesNotContain('.', name);
+            Assert.DoesNotContain("carditrack", name, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    [Fact]
+    public void Datadog_LogTags_TagTheReleaseUnderTheReservedKey()
+    {
+        var versionTags = DatadogApmProvider.LogTags()
+            .Where(tag => tag.StartsWith("version:", StringComparison.Ordinal))
+            .ToList();
+
+        // Lowercase "version" exactly: the Version facet reads Datadog's reserved tag, and
+        // any other spelling shows up as a plain tag the facet never sees.
+        var versionTag = Assert.Single(versionTags);
+        Assert.Equal($"version:{DeploymentInfo.Version}", versionTag);
+        // The test host is stamped 0.0.0-local, so an "unknown" here means resolution broke.
+        Assert.NotEqual($"version:{DeploymentInfo.UnknownVersion}", versionTag);
+    }
 }

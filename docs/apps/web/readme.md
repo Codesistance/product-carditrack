@@ -68,7 +68,7 @@ src/Presentation/CardiTrack.Web/
 In order, `Program.cs` wires:
 
 1. **Serilog** — console sink always, `AddApmShipping` when the `Apm` engine is configured; `Npgsql.EnableLegacyTimestampBehavior` disabled (UTC everywhere). Enriched with the release version (`DeploymentInfo.Version`) as the `Version` property.
-2. **APM tracing** — `AddApmTracing("CardiTrack.Web")` (no-op until `Apm__Engine` + `Apm__Data` are set); reports the same release as OTel's `service.version`.
+2. **APM tracing** — `AddApmTracing(ApmServiceNames.Web)` (no-op until `Apm__Engine` + `Apm__Data` are set); reports the same release as OTel's `service.version`. The app names itself `web` to the backend — the same constant the log sink gets, so logs and traces share one service.
 3. **Razor components** — `AddRazorComponents().AddInteractiveServerComponents()`.
 4. **Auth state** — `AddCascadingAuthenticationState()` so components can read the principal. **No authentication scheme is registered yet**, so the cascaded principal is always unauthenticated.
 5. **Database + repositories** — `CardiTrackDbContext` on Npgsql plus the full repository set (`IOrganizationRepository` … `IPatternBaselineRepository`), `IUnitOfWork`, and `IUserService`. **Architecturally notable: the Web app talks to PostgreSQL directly** (it needs `IUserService` for the banner's per-user dismissal, and `UnitOfWork` requires every repository) rather than going through the API.

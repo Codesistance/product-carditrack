@@ -82,10 +82,22 @@ Volume control (enforced engine-independently in `ApmExtensions`):
 All three services (API, Web, Worker) carry identical values for these — the API's earlier
 `Information` / `1.0` deviation from the others is resolved.
 
+### Service naming (`ApmServiceNames`)
+
+Each host reports as its **app type**, lowercase — `api`, `web`, `worker` (the MAUI app is
+separate, `carditrack-mobile`). One constant per host feeds both signals: `AddApmShipping`
+sets it as the log sink's service field and `AddApmTracing` sets it as the OTel resource's
+`service.name`. They must be the same string — Datadog joins a log to its trace on
+service, so a mismatch correlates with nothing, and a shared name across hosts (the old
+hardcoded `carditrack`) collapses every app into one service on the Service facet.
+
 ### Release version on telemetry (`DeploymentInfo`)
 
-Logs carry a `Version` property and the OTel resource carries `service.version` (Datadog's
-`version` tag), so telemetry can be attributed to a release. The value is the deploy's
+Logs carry a `Version` property **and a `version:<semver>` Datadog tag**, and the OTel
+resource carries `service.version`, so telemetry can be attributed to a release. The tag
+is what Datadog's reserved **Version** facet and its release comparison actually read —
+the log property alone is an ordinary attribute and leaves the facet empty, which is why
+both are sent. The value is the deploy's
 semver tag: CI computes it (`v1.2.3`), tags the image with it as-is, and passes it —
 **without the leading `v`**, which MSBuild will not accept in a `Version` — as the
 Dockerfile's `VERSION` build arg for `-p:Version=` to stamp into the assembly.

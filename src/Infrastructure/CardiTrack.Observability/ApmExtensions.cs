@@ -77,13 +77,17 @@ public static class ApmExtensions
     /// <summary>
     /// Serilog side. Call while building the logger — this runs pre-DI (bootstrap
     /// logging), which is why the provider comes from the registry, not the container.
+    /// Pass the host's <see cref="ApmServiceNames"/> constant, the same one it later
+    /// hands <see cref="AddApmTracing"/>: logs and traces have to name the service
+    /// identically for a backend to tie them together.
     /// </summary>
-    public static LoggerConfiguration AddApmShipping(this LoggerConfiguration loggerConfiguration, ApmOptions options)
+    public static LoggerConfiguration AddApmShipping(
+        this LoggerConfiguration loggerConfiguration, ApmOptions options, string serviceName)
     {
         if (!options.IsConfigured)
             return loggerConfiguration;
 
-        return ApmProviderRegistry.Resolve(options.Engine!).AddLogShipping(loggerConfiguration, options);
+        return ApmProviderRegistry.Resolve(options.Engine!).AddLogShipping(loggerConfiguration, options, serviceName);
     }
 
     /// <summary>

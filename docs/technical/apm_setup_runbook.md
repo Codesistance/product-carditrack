@@ -48,6 +48,25 @@ only when nothing configures the value at all, stays at `0.2`
 (`ApmOptions.TracesSampleRatio`) so an unconfigured host fails cheap rather than at
 full sampling.
 
+### How each app identifies itself
+
+Each host reports as its **app type**, lowercase — `api`, `web`, `worker` (the mobile app
+is separate: `carditrack-mobile`, set in `MobileApm`). That is what the **Service** facet
+filters on in Logs and APM, and both signals use the same string: the log sink's service
+field and the OTel resource's `service.name` come from one constant per host
+(`ApmServiceNames`), because Datadog joins a log to its trace on service — different
+spellings correlate with nothing. The names are code, not config; changing one means
+changing the constant and re-deploying, and any saved view or monitor filtering the old
+value goes blank.
+
+The running release is tagged `version:<semver>` on every log and set as `service.version`
+on every span, both from `DeploymentInfo.Version` (the deploy's image tag, stamped in at
+build time — see the `VERSION` build arg in each Dockerfile). It has to travel as a
+Datadog *tag*: the reserved **Version** facet reads tags, so the `Version` log property
+the hosts also enrich with is only an ordinary attribute to it. A build that was not
+stamped reports `0.0.0-local`, and one whose version cannot be resolved at all reports
+`unknown` — both mean "not a release", visibly.
+
 ## 1. Datadog console steps
 
 1. Sign in (or create the org) with the cloud-ops account
@@ -120,6 +139,8 @@ for i in $(seq 20); do curl -s -o /dev/null https://api.dev.carditrack.com/api/d
 
 # Logs: check Datadog -> Logs -> Live Tail. A quiet healthy app ships NOTHING
 # (only Warning+) — absence of logs is not a fault.
+# Filter by app with service:api / service:web / service:worker, and confirm the
+# release landed with the Version facet (or "version:<semver>" in the query bar).
 # Startup self-report: each service logs its effective APM state at boot — look in
 # Cloud Run logs for "APM configured: engine Datadog shipping logs+traces+metrics ..."
 # (Information) or "APM shipping disabled: ..." / "APM (Datadog): traces will not

@@ -16,7 +16,7 @@ public static class SerilogExtensions
             .Enrich.WithProperty("Version", DeploymentInfo.Version)
             .WriteTo.Console(
                 outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] {Message:lj} {Properties:j}{NewLine}{Exception}")
-            .AddApmShipping(builder.Configuration.GetApmOptions())
+            .AddApmShipping(builder.Configuration.GetApmOptions(), ApmServiceNames.Api)
             .CreateLogger();
 
         builder.Host.UseSerilog();
