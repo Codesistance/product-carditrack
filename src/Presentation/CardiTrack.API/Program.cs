@@ -109,8 +109,9 @@ try
         // ApmExtensions. Cloud Run probes continuously, so once a service is turned up to
         // Information the probe would otherwise outnumber real requests in Cloud Logging and
         // the APM sink — the noise that makes a raised level unusable. Verbose sits below
-        // every level any service configures, so nothing emits it in practice. A probe that
-        // throws or 500s is not a probe worth hiding and keeps the normal Error level.
+        // every level deployed today, so nothing emits it in practice — a service
+        // deliberately turned down to Verbose would log probes too. A probe that throws
+        // or 500s is not a probe worth hiding and keeps the normal Error level.
         options.GetLevel = (httpContext, _, exception) =>
         {
             if (exception is not null || httpContext.Response.StatusCode >= 500)

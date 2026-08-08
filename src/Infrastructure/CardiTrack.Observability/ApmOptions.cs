@@ -27,8 +27,8 @@ public sealed class ApmOptions
     /// in which case the sink follows <see cref="InheritedLogLevel"/> — so the per-service
     /// Serilog root level (Serilog__MinimumLevel__Default, owned by the log_minimum_level
     /// tfvar) is the single knob moving console, Cloud Logging and the APM backend together.
-    /// Set this only to pin the sink below the root, which is the ingest-cost lever rather
-    /// than the everyday one.
+    /// Set this only to hold the sink at a stricter (higher) minimum level than the root,
+    /// which is the ingest-cost lever rather than the everyday one.
     /// </summary>
     public string? MinimumLogLevel { get; set; }
 

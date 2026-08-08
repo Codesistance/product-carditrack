@@ -216,8 +216,8 @@ public class ApmConfigurationTests
     }
 
     /// <summary>
-    /// The escape hatch survives inheritance: pinning the sink below the root is how ingest
-    /// spend gets cut without going dark on the console.
+    /// The escape hatch survives inheritance: holding the sink at a stricter level than the
+    /// root is how ingest spend gets cut without going dark on the console.
     /// </summary>
     [Fact]
     public void GetApmOptions_ExplicitShipLevel_OverridesSerilogRoot()
