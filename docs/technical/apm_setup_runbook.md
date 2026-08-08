@@ -146,7 +146,45 @@ rollout. The app also sets `FirstPartyHosts` for the API host with Datadog + W3C
 `traceparent` tracing headers, so RUM resource timings correlate with the API's OTel
 traces (RUM→APM correlation).
 
-## 6. Later / non-blocking
+## 6. Release version on telemetry
+
+Every log line and every trace carries the release that produced it, so a spike can be
+pinned to a deploy without cross-referencing CI:
+
+- **Logs** — the `Version` property, alongside the existing `Application`, `MachineName`
+  and `EnvironmentName` enrichers.
+- **Traces/metrics** — the OTel resource attribute `service.version`, which Datadog reads
+  as its `version` tag (the second half of unified service tagging; `env` is not wired
+  yet). Note that the Serilog side ships `Version` as a plain log attribute — pair it with
+  a Datadog remapper if you want log-side unified tagging too.
+
+Nothing to provision: the value is the deploy's semver tag. `compute-version` in
+`deploy-apps-dev.yml` derives it, it names the image, and the same string is passed to
+`docker build --build-arg VERSION=` so `-p:Version=` stamps it into the assembly.
+`DeploymentInfo` reads it back at startup. Prod redeploys an existing tag, so its
+containers report whatever they were built as — which is the point.
+
+Two consequences worth knowing:
+
+- Anything not built by the release pipeline reports **`0.0.0-local`** (the host projects'
+  default `<Version>`). Seeing that in Cloud Run means an image was built by hand.
+- `DEPLOY_VERSION` (plaintext env var, no section) overrides the baked-in value. It exists
+  for one-offs — a hotfix image built out of band, or correcting a mis-stamped revision
+  without a rebuild. Normal deploys leave it unset.
+
+Verify after a deploy:
+
+```bash
+gcloud run services describe carditrack-dev-api --region=europe-west2 --project=carditrack-490120 \
+  --format='value(spec.template.spec.containers[0].image)'   # tag == what logs report
+# Then in Cloud Run logs, the boot line names it:
+#   "APM configured: engine Datadog shipping ... as CardiTrack.API 1.4.2 (...)"
+```
+
+The mobile app does the same in its local log files (`v<version>` on each line), sourced
+from `ApplicationDisplayVersion`, which the signed CI builds set from the release tag.
+
+## 7. Later / non-blocking
 
 - Per-app keys/sources (separate tokens for API and Web) — split into per-app `apm-data`
   secrets if quota attribution ever matters; today all services share the one secret.

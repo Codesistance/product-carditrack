@@ -16,7 +16,7 @@ The app is built **code-behind first (XAML + `.xaml.cs`) — there is no MVVM la
 - **Auth0**: native password-realm login (no browser redirect)
 - **SecureStorage** (`SecureTokenStore`): token persistence — there is **no SQLite** in the app
 - **Datadog.Maui** (Android/iOS only): crash reporting + RUM, wired through the `MobileApm` registry
-- **Serilog** (`AppLogging`): debug + local-file sinks; logs stay on device (no remote log shipping outside the APM engine)
+- **Serilog** (`AppLogging`): debug + local-file sinks; logs stay on device (no remote log shipping outside the APM engine). File lines are prefixed with the app version (`v<ApplicationDisplayVersion>`, set from the release tag by the signed CI builds) so a support bundle names the build that wrote it
 
 ## Platform Support
 

@@ -6,6 +6,8 @@
     <Nullable>enable</Nullable>
     <OutputType>Exe</OutputType>
     <RootNamespace>CardiTrack.Worker</RootNamespace>
+    <!-- Overridden by the release pipeline via -p:Version=<tag>; see CardiTrack.API.csproj. -->
+    <Version>0.0.0-local</Version>
   </PropertyGroup>
 
   <ItemGroup>

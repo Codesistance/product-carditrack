@@ -13,6 +13,7 @@ public static class SerilogExtensions
             .Enrich.WithMachineName()
             .Enrich.WithEnvironmentName()
             .Enrich.WithProperty("Application", "CardiTrack.API")
+            .Enrich.WithProperty("Version", DeploymentInfo.Version)
             .WriteTo.Console(
                 outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] {Message:lj} {Properties:j}{NewLine}{Exception}")
             .AddApmShipping(builder.Configuration.GetApmOptions())

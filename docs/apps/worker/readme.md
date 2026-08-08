@@ -356,7 +356,7 @@ The worker rides the shared app pipelines — there is no worker-specific workfl
 
 ## Monitoring
 
-Logging mirrors the API: **Serilog console sink** always, plus `AddApmShipping` (logs) and `AddApmTracing` (OTel traces) from `CardiTrack.Observability` when `Apm__Engine` + `Apm__Data` are configured. `/healthz` probe traffic is excluded from tracing. See the [API readme's APM section](../api/readme.md#apm-shipping-carditrackobservability) for the shared config contract.
+Logging mirrors the API: **Serilog console sink** always, plus `AddApmShipping` (logs) and `AddApmTracing` (OTel traces) from `CardiTrack.Observability` when `Apm__Engine` + `Apm__Data` are configured. `/healthz` probe traffic is excluded from tracing. Both signals carry the release version — the `Version` log property and OTel's `service.version`, from `DeploymentInfo`. See the [API readme's APM section](../api/readme.md#apm-shipping-carditrackobservability) for the shared config contract and [release version on telemetry](../api/readme.md#release-version-on-telemetry-deploymentinfo) for how the version is stamped.
 
 ### Key log events
 

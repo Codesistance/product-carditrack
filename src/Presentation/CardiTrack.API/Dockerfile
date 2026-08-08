@@ -2,6 +2,11 @@
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src
 
+# Release version — CI passes the deploy's semver tag (--build-arg VERSION=1.2.3) so the
+# running container can report which release it is, in logs and as OTel's service.version.
+# The default marks images built outside the release pipeline.
+ARG VERSION=0.0.0-local
+
 # Copy solution and project files
 COPY ["CardiTrack.sln", "./"]
 COPY ["src/Presentation/CardiTrack.API/CardiTrack.API.csproj", "src/Presentation/CardiTrack.API/"]
@@ -19,11 +24,13 @@ COPY . .
 
 # Build
 WORKDIR "/src/src/Presentation/CardiTrack.API"
-RUN dotnet build "CardiTrack.API.csproj" -c Release -o /app/build
+RUN dotnet build "CardiTrack.API.csproj" -c Release -o /app/build /p:Version=$VERSION
 
 # Stage 2: Publish
 FROM build AS publish
+ARG VERSION=0.0.0-local
 RUN dotnet publish "CardiTrack.API.csproj" -c Release -o /app/publish \
+    /p:Version=$VERSION \
     /p:UseAppHost=false \
     /p:PublishTrimmed=false \
     /p:PublishSingleFile=false
@@ -32,6 +39,7 @@ RUN mkdir -p /app/publish/logs
 
 # Stage 3: Runtime - Chiseled Ubuntu (Ultra-minimal, non-root, distroless-like)
 FROM mcr.microsoft.com/dotnet/aspnet:10.0-noble-chiseled AS final
+ARG VERSION=0.0.0-local
 WORKDIR /app
 
 # Chiseled images are:
@@ -64,4 +72,4 @@ ENTRYPOINT ["dotnet", "CardiTrack.API.dll"]
 LABEL org.opencontainers.image.title="CardiTrack API"
 LABEL org.opencontainers.image.description="HIPAA-compliant health monitoring API with chiseled Ubuntu base"
 LABEL org.opencontainers.image.vendor="CardiTrack"
-LABEL org.opencontainers.image.version="1.0.0"
+LABEL org.opencontainers.image.version="$VERSION"

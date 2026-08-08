@@ -16,6 +16,8 @@
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <!-- Overridden by the release pipeline via -p:Version=<tag>; see CardiTrack.API.csproj. -->
+    <Version>0.0.0-local</Version>
     <BlazorDisableThrowNavigationException>true</BlazorDisableThrowNavigationException>
   </PropertyGroup>
 

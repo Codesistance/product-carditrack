@@ -76,6 +76,19 @@ Free-tier prudence (enforced engine-independently in `ApmExtensions`):
 > engine is configured. This is the current reality, not the intent; tightening it back to the
 > `Warning` / `0.2` defaults is an open follow-up.
 
+### Release version on telemetry (`DeploymentInfo`)
+
+Logs carry a `Version` property and the OTel resource carries `service.version` (Datadog's
+`version` tag), so telemetry can be attributed to a release. The value is the deploy's
+semver tag: CI computes it, tags the image with it, and passes the same string as the
+Dockerfile's `VERSION` build arg, which `-p:Version=` stamps into the assembly.
+`DeploymentInfo` reads it back — trimming the `+<sha>` the SDK appends — so what the app
+reports matches the image tag exactly.
+
+Builds outside the release pipeline report `0.0.0-local` (the host projects' default
+`<Version>`) rather than posing as a release. The plaintext `DEPLOY_VERSION` env var
+overrides the baked-in value for out-of-band images; normal deploys leave it unset.
+
 ## Project Structure
 
 > **Target structure** — the tree below is the planned layout, not a mirror of the current code. Today's `Controllers/` holds `Auth`, `Onboarding`, `Dashboard`, `Devices`, `Reports`, `Chat`, and `Insights` controllers, all deriving from `BaseApiController`; the `Webhooks/` folder (Google Health API, Garmin, Stripe) arrives with the AI-pipeline rollout ([llm_design.md](../../llm_design.md)).
