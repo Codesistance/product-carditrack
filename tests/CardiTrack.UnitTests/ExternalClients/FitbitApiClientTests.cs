@@ -554,6 +554,53 @@ public class FitbitApiClientTests
     }
 
     /// <summary>
+    /// Sleep bounds must come back as <c>Kind=Utc</c>. They are the only DateTimes the sync writes,
+    /// and their column is `timestamp with time zone`, which Npgsql writes only from UTC — a
+    /// <c>Kind=Local</c> value threw <c>ArgumentException</c> inside SaveChanges and took down the
+    /// whole day's upsert, sleep fields and step counts alike.
+    ///
+    /// Kind is asserted, not just the instant: a bare parse of a `Z` literal on a UTC-configured
+    /// host yields the right wall-clock reading stamped <c>Local</c>, so value-only assertions stay
+    /// green while production fails. The offset literal covers the conversion itself — 23:30-07:00
+    /// is 06:30Z the next day.
+    /// </summary>
+    [Theory]
+    [InlineData("2026-08-04T22:30:00Z", "2026-08-05T06:30:00Z", 4, 22, 30, 5, 6, 30)]
+    [InlineData("2026-08-04T23:30:00-07:00", "2026-08-05T07:30:00-07:00", 5, 6, 30, 5, 14, 30)]
+    // Offsetless: read as UTC rather than as host-local, which would land Kind=Unspecified and be
+    // rejected by the same column.
+    [InlineData("2026-08-04T22:30:00", "2026-08-05T06:30:00", 4, 22, 30, 5, 6, 30)]
+    public async Task GetSleepAsync_ReturnsBoundsAsUtc(
+        string start, string end,
+        int startDay, int startHour, int startMinute,
+        int endDay, int endHour, int endMinute)
+    {
+        var handler = new RoutedFakeHttpHandler()
+            .Map("/dataTypes/sleep/", $$"""
+                {
+                  "dataPoints": [
+                    {
+                      "sleep": {
+                        "interval": { "startTime": "{{start}}", "endTime": "{{end}}" },
+                        "summary": { "minutesAsleep": "395" }
+                      }
+                    }
+                  ]
+                }
+                """);
+
+        var (sut, _) = CreateSut(handler);
+        var result = await sut.GetSleepAsync("token", Today);
+
+        Assert.Equal(new DateTime(2026, 8, startDay, startHour, startMinute, 0, DateTimeKind.Utc),
+            result.SleepStartTime);
+        Assert.Equal(new DateTime(2026, 8, endDay, endHour, endMinute, 0, DateTimeKind.Utc),
+            result.SleepEndTime);
+        Assert.Equal(DateTimeKind.Utc, result.SleepStartTime!.Value.Kind);
+        Assert.Equal(DateTimeKind.Utc, result.SleepEndTime!.Value.Kind);
+    }
+
+    /// <summary>
     /// The API exposes no efficiency field, so it is derived as minutes asleep over minutes in the
     /// sleep period — 395/435 here. Reading a literal `efficiency` member (there isn't one) left
     /// the 1-5 quality bucket permanently empty.

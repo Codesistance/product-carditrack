@@ -118,11 +118,8 @@ public class FitbitApiClient : IFitbitApiClient, IDeviceApiClient
         var root = await ParseBodyAsync(response, "sleep");
         var sleep = (root["dataPoints"] as JArray)?.OfType<JObject>().FirstOrDefault()?["sleep"];
 
-        DateTime? startTime = null, endTime = null;
-        if (DateTime.TryParse(sleep?["interval"]?.Value<string>("startTime"), out var stParsed))
-            startTime = stParsed;
-        if (DateTime.TryParse(sleep?["interval"]?.Value<string>("endTime"), out var etParsed))
-            endTime = etParsed;
+        var startTime = ParseInstantUtc(sleep?["interval"]?.Value<string>("startTime"));
+        var endTime = ParseInstantUtc(sleep?["interval"]?.Value<string>("endTime"));
 
         var summary = sleep?["summary"];
 
@@ -313,6 +310,29 @@ public class FitbitApiClient : IFitbitApiClient, IDeviceApiClient
             .FirstOrDefault(s => string.Equals(s.Value<string>("type"), stageType, StringComparison.Ordinal));
         return ReadInt(stage, "minutes");
     }
+
+    /// <summary>
+    /// Reads a physical instant (`interval.startTime`/`endTime`, RFC-3339) as a UTC
+    /// <see cref="DateTime"/>, or null when the field is absent or unparseable.
+    /// </summary>
+    /// <remarks>
+    /// The Kind is the point. A bare <c>DateTime.TryParse</c> honours the offset by converting the
+    /// instant into the *host machine's* local zone and stamping it <c>Kind=Local</c>, which
+    /// Npgsql refuses to write to a <c>timestamp with time zone</c> column — the whole sync day
+    /// fails at SaveChanges, not just the sleep fields. <c>AssumeUniversal</c> covers the other
+    /// end: an offsetless literal would otherwise be read as local and land as
+    /// <c>Kind=Unspecified</c>, rejected for the same column. Both styles together mean every
+    /// parse returns <c>Kind=Utc</c> whatever the provider sends, and the instant itself is
+    /// unchanged.
+    /// </remarks>
+    private static DateTime? ParseInstantUtc(string? value) =>
+        DateTime.TryParse(
+            value,
+            CultureInfo.InvariantCulture,
+            DateTimeStyles.AdjustToUniversal | DateTimeStyles.AssumeUniversal,
+            out var parsed)
+            ? parsed
+            : null;
 
     private static int? ReadInt(JToken? obj, string name)
     {
