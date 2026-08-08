@@ -40,6 +40,23 @@ apm_mobile_engine = "Datadog"
 # off until dev proves the volume is affordable, flip to true to enable
 apm_metrics_enabled = false
 
+# Serilog root level per service — Warning keeps Cloud Logging and APM ingest lean.
+# Turn a single service up (Information/Debug) for an investigation, then put it back;
+# the APM sink stays pinned at Warning by appsettings, so a raise here does not ship more.
+log_minimum_level = {
+  api    = "Warning"
+  web    = "Warning"
+  worker = "Warning"
+}
+
+# Trace head-sampling per service, 0.0-1.0. Full sampling: the ingest cost lever to
+# reach for first if Datadog spend needs cutting.
+traces_sample_ratio = {
+  api    = 1.0
+  web    = 1.0
+  worker = 1.0
+}
+
 # Memorystore for Redis — NOT yet provisioned in prod.
 # Known consequence: with no instance the API gets no ConnectionStrings__Redis env var,
 # falls back to the appsettings.json localhost:6379 default and times out on every

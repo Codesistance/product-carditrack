@@ -257,7 +257,7 @@ Cron schedules bind per worker class name under the `Workers` section, consumed 
   },
   "Serilog": {
     "MinimumLevel": {
-      "Default": "Information",
+      "Default": "Warning",
       "Override": { "Microsoft": "Warning", "Microsoft.EntityFrameworkCore": "Warning" }
     }
   },
@@ -265,7 +265,7 @@ Cron schedules bind per worker class name under the `Workers` section, consumed 
     "Engine": "",
     "Data": { "IngestUrl": "", "IngestToken": "" },
     "MinimumLogLevel": "Warning",
-    "TracesSampleRatio": 0.2
+    "TracesSampleRatio": 1.0
   }
 }
 ```
@@ -297,7 +297,9 @@ DeviceProviders__0__ClientSecret     = carditrack-<env>-devices-fitbit-client-se
 Apm__Data                            = carditrack-<env>-apm-data
 ```
 
-Plaintext env vars: `ASPNETCORE_ENVIRONMENT`, `GCP_PROJECT_ID`, `Apm__Engine`, `Apm__MetricsEnabled`.
+Plaintext env vars: `ASPNETCORE_ENVIRONMENT`, `GCP_PROJECT_ID`, `Apm__Engine`, `Apm__MetricsEnabled`, `Apm__TracesSampleRatio`, `Serilog__MinimumLevel__Default`. The last two come from the per-service `traces_sample_ratio` / `log_minimum_level` tfvars (`worker` attribute) — `1.0` and `Warning` in both environments.
+
+> **Consequence of the `Warning` baseline:** the per-run `LogInformation` lines below (`triggered`, `complete. Success: n, Failed: n`) are **not emitted** — a healthy run leaves no trace, and only per-member failures (`LogWarning`/`LogError`) surface. Cron is internal to the service (`CronBackgroundService`), so there is no per-run request log to fall back on: to answer "did the job run?" from logs, set `log_minimum_level = { worker = "Information" }` in the environment's tfvars.
 
 > **Provider note:** the `Fitbit` provider authenticates against **Google OAuth** and pulls data from the **Google Health API** (`health.googleapis.com`) — the legacy Fitbit Web API is decommissioned September 2026. Google access tokens are short-lived (~1 hour), hence `TokenLifetimeHours: 1`. `FitbitApiClient` reads daily metrics via per-data-type `dataPoints:dailyRollUp` calls and sleep sessions via `dataPoints` list; some response field names are pending live-sandbox verification (marked "(assumed)" in the client).
 
@@ -311,7 +313,7 @@ cd src/Worker/CardiTrack.Worker
 dotnet run
 ```
 
-The worker starts an HTTP listener (default port 8080, or `PORT` if set) for `/healthz` and logs each run:
+The worker starts an HTTP listener (default port 8080, or `PORT` if set) for `/healthz`. Run logging is `Information`, which the `Warning` baseline suppresses — set `Serilog__MinimumLevel__Default=Information` (and `Logging__LogLevel__Default=Information`, already the appsettings value) to see each run:
 ```
 [06:00:00 INF] WearableSync triggered at 2026-03-12T06:00:00.000Z
 [06:00:04 INF] WearableSync complete. Success: 12, Failed: 0.

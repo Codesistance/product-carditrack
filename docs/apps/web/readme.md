@@ -88,19 +88,19 @@ Middleware pipeline: exception handler + HSTS outside Development, `UseStatusCod
     "BaseUrl": "https://localhost:7001"
   },
   "Serilog": {
-    "MinimumLevel": { "Default": "Information", "Override": { "Microsoft": "Warning" } }
+    "MinimumLevel": { "Default": "Warning", "Override": { "Microsoft": "Warning" } }
   },
   "Apm": {
     "Engine": "",
     "Data": { "IngestUrl": "", "IngestToken": "" },
     "MinimumLogLevel": "Warning",
-    "TracesSampleRatio": 0.2
+    "TracesSampleRatio": 1.0
   },
   "AllowedHosts": "*"
 }
 ```
 
-Deployed, `Apm__Engine` / `Apm__MetricsEnabled` arrive as plaintext env vars and `Apm__Data` from Secret Manager (`carditrack-<env>-apm-data`) — see the [API readme's APM section](../api/readme.md#apm-shipping-carditrackobservability) for the shared contract.
+Deployed, `Apm__Engine` / `Apm__MetricsEnabled` / `Apm__TracesSampleRatio` / `Serilog__MinimumLevel__Default` arrive as plaintext env vars and `Apm__Data` from Secret Manager (`carditrack-<env>-apm-data`) — see the [API readme's APM section](../api/readme.md#apm-shipping-carditrackobservability) for the shared contract. The last two come from the per-service `traces_sample_ratio` / `log_minimum_level` tfvars (`web` attribute), so Web's volume can be tuned without touching API or Worker.
 
 ### Running locally
 
