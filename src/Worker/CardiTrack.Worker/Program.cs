@@ -47,7 +47,7 @@ builder.Services.Configure<List<DeviceProviderSettings>>(
 
 // Database
 builder.Services.AddDbContext<CardiTrackDbContext>(options =>
-    options.UseNpgsql(configLoader.Get(ConfigurationKeys.ConnectionStrings.DefaultConnection)));
+    options.UseCardiTrackNpgsql(configLoader.Get(ConfigurationKeys.ConnectionStrings.DefaultConnection)));
 
 // Encryption — key must be a base64-encoded 256-bit value in config/Secret Manager.
 // Built eagerly so a missing or malformed key stops the Worker at startup rather than

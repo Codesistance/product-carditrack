@@ -1,3 +1,4 @@
+using CardiTrack.Infrastructure.Extensions;
 using CardiTrack.Shared;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Design;
@@ -22,7 +23,7 @@ public class CardiTrackDbContextFactory : IDesignTimeDbContextFactory<CardiTrack
             ?? "Host=localhost;Database=carditrack_designtime;Username=postgres;Password=postgres";
 
         var optionsBuilder = new DbContextOptionsBuilder<CardiTrackDbContext>();
-        optionsBuilder.UseNpgsql(connectionString, b => b.MigrationsAssembly("CardiTrack.Infrastructure"));
+        optionsBuilder.UseCardiTrackNpgsql(connectionString, b => b.MigrationsAssembly("CardiTrack.Infrastructure"));
 
         return new CardiTrackDbContext(optionsBuilder.Options);
     }

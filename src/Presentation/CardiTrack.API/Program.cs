@@ -1,6 +1,7 @@
 using AspNetCoreRateLimit;
 using CardiTrack.API.Extensions;
 using CardiTrack.API.Middleware;
+using CardiTrack.Infrastructure.Extensions;
 using CardiTrack.Infrastructure.Persistence;
 using CardiTrack.Observability;
 using CardiTrack.Shared;
@@ -24,7 +25,7 @@ try
     // 1. DATABASE
     var dbConnectionString = configLoader.Get(ConfigurationKeys.ConnectionStrings.DefaultConnection);
     builder.Services.AddDbContext<CardiTrackDbContext>(options =>
-        options.UseNpgsql(
+        options.UseCardiTrackNpgsql(
             dbConnectionString,
             b => b.MigrationsAssembly("CardiTrack.Infrastructure")));
 
@@ -32,7 +33,7 @@ try
     // whatever else the request had tracked, and the entry would die with a rolled-back
     // transaction. The factory hands the audit repository its own short-lived context.
     builder.Services.AddDbContextFactory<CardiTrackDbContext>(options =>
-        options.UseNpgsql(
+        options.UseCardiTrackNpgsql(
             dbConnectionString,
             b => b.MigrationsAssembly("CardiTrack.Infrastructure")),
         lifetime: ServiceLifetime.Scoped);
