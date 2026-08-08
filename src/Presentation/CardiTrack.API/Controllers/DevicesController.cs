@@ -19,6 +19,7 @@ namespace CardiTrack.API.Controllers;
 public class DevicesController : BaseApiController
 {
     private readonly IDeviceConnectionService _deviceConnections;
+    private readonly IManualDeviceSyncService _manualSync;
     private readonly IValidator<ConnectDeviceRequest> _connectValidator;
     private readonly IValidator<OAuthCallbackRequest> _callbackValidator;
 
@@ -26,11 +27,13 @@ public class DevicesController : BaseApiController
         IUserContext userContext,
         ILogger<DevicesController> logger,
         IDeviceConnectionService deviceConnections,
+        IManualDeviceSyncService manualSync,
         IValidator<ConnectDeviceRequest> connectValidator,
         IValidator<OAuthCallbackRequest> callbackValidator)
         : base(userContext, logger)
     {
         _deviceConnections = deviceConnections;
+        _manualSync = manualSync;
         _connectValidator = connectValidator;
         _callbackValidator = callbackValidator;
     }
@@ -106,6 +109,47 @@ public class DevicesController : BaseApiController
         catch (KeyNotFoundException ex)
         {
             return Error(ex.Message, StatusCodes.Status404NotFound);
+        }
+    }
+
+    /// <summary>
+    /// Pulls every connected device for one CardiMember now, instead of waiting for the
+    /// scheduled sync (issue #67 — the dashboard refresh button).
+    /// </summary>
+    /// <remarks>
+    /// Returns 200 with per-device outcomes even when some providers failed: a member can have
+    /// more than one connection, and one being down is not a failed request.
+    /// </remarks>
+    [HttpPost("cardimembers/{cardiMemberId:guid}/devices/sync")]
+    [ProducesResponseType(typeof(ApiResponse<DeviceSyncResultResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status409Conflict)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status429TooManyRequests)]
+    public async Task<ActionResult<ApiResponse<DeviceSyncResultResponse>>> SyncDevices(
+        Guid cardiMemberId, CancellationToken ct)
+    {
+        if (!UserContext.IsAuthenticated || UserContext.UserId == Guid.Empty)
+        {
+            return Error("We couldn't find your account — please sign in again.", StatusCodes.Status403Forbidden);
+        }
+
+        try
+        {
+            var result = await _manualSync.SyncMemberAsync(UserContext.UserId, cardiMemberId, ct);
+            return Success(result, "Sync complete.");
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return Error(ex.Message, StatusCodes.Status404NotFound);
+        }
+        catch (ManualSyncUnavailableException ex)
+        {
+            Logger.LogInformation("Manual sync refused with code {Code}", ex.Code);
+            var status = ex.Code == ManualSyncUnavailableException.TooSoon
+                ? StatusCodes.Status429TooManyRequests
+                : StatusCodes.Status409Conflict;
+            return Error(ex.Message, status);
         }
     }
 
