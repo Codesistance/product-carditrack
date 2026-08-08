@@ -1,0 +1,93 @@
+name: example-workload
+tier: 1
+region: us-central1
+
+compute:
+  type: cloud-run
+  avg_instances: 3
+  vcpu_per_instance: 2
+  memory_gib_per_instance: 4
+  requests_millions_per_month: 12
+  multi_zone: true
+  regional: true
+  multi_region: false
+  autoscale: true
+
+data:
+  - service: cloud-sql
+    vcpus: 4
+    memory_gb: 16
+    storage_gb: 250
+    ha: true
+    backup_tested: true
+    cud_purchased: false
+    public_ip: false
+  - service: gcs
+    size_gb: 2000
+    storage_class: standard
+    avg_access_days: 45
+
+network:
+  vpc: example-vpc
+  private_service_connect: true
+  firewall_least_privilege: true
+  default_vpc_in_use: false
+  egress_gb_per_month: 400
+
+identity:
+  workload_identity: true
+  service_account_keys: false
+  uses_basic_roles: false
+
+security:
+  encryption_at_rest: true
+  secret_manager: true
+  min_tls_1_2: true
+  mfa_enforced: true
+  scc_enabled: true
+  scc_premium: false
+
+observability:
+  cloud_logging: true
+  ingest_gb_per_day: 8
+  slo_alerts: true
+  audit_log_export: true
+
+operations:
+  iac: true
+  ci_cd: true
+  staging_env: true
+  health_probes: true
+  runbooks: true
+  on_call_defined: true
+  gradual_rollout: true
+  traffic_split: true
+  retry_policies: true
+  org_policies: true
+  blameless_pir: false
+  chaos_last_run: false
+
+reliability:
+  rto_minutes: 30
+  rpo_minutes: 15
+
+cost:
+  right_sized: true
+  cuds_purchased: false
+  spot_used: false
+  storage_tiered: false
+  budgets_configured: true
+  log_retention_tuned: true
+  devtest_schedule: false
+  orphans_cleaned: true
+
+performance:
+  slos_defined: true
+  load_tested: true
+  caching: true
+  cdn_assets: true
+  db_optimized: true
+  data_partitioned: false
+  async_io: true
+  profiler: false
+  payload_reviewed: true

@@ -110,6 +110,10 @@ __azurite_db*__.json
 # Docker
 docker-compose.override.yml
 
+# Python (skill scripts, doc tooling) — bytecode lands next to tracked sources
+__pycache__/
+*.pyc
+
 # Node (if using npm for frontend tooling)
 node_modules/
 npm-debug.log*
