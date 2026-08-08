@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text;
+using System.Text.Json;
 using CardiTrack.Infrastructure.ExternalClients;
 using NSubstitute;
 
@@ -15,7 +16,26 @@ public class FitbitApiClientTests
     {
         private readonly List<(string PathContains, string Body, HttpStatusCode Status)> _routes = [];
 
-        public List<HttpRequestMessage> Requests { get; } = [];
+        /// <summary>
+        /// Guards what the handler records. Snapshot methods read every metric a member needs
+        /// concurrently (five rollups under one Task.WhenAll), so SendAsync must assume it is
+        /// re-entered on other threads — an unsynchronized List.Add loses entries or throws.
+        /// </summary>
+        private readonly Lock _recorded = new();
+
+        private readonly List<HttpRequestMessage> _requests = [];
+
+        /// <summary>
+        /// Request payloads by path, captured while the request is in flight — the client disposes
+        /// each HttpRequestMessage once sent, which disposes its content along with it.
+        /// </summary>
+        private readonly List<(string Path, string Body)> _sentBodies = [];
+
+        /// <summary>Snapshot, so a caller cannot enumerate the list while a request is in flight.</summary>
+        public IReadOnlyList<HttpRequestMessage> Requests
+        {
+            get { lock (_recorded) return [.. _requests]; }
+        }
 
         public RoutedFakeHttpHandler Map(string pathContains, string body, HttpStatusCode status = HttpStatusCode.OK)
         {
@@ -23,18 +43,36 @@ public class FitbitApiClientTests
             return this;
         }
 
-        protected override Task<HttpResponseMessage> SendAsync(
+        public string BodyFor(string pathContains)
+        {
+            lock (_recorded)
+                return _sentBodies.Single(b => b.Path.Contains(pathContains, StringComparison.Ordinal)).Body;
+        }
+
+        protected override async Task<HttpResponseMessage> SendAsync(
             HttpRequestMessage request, CancellationToken cancellationToken)
         {
-            Requests.Add(request);
             var path = request.RequestUri!.AbsolutePath;
+
+            // Read the content before taking the lock — awaiting inside a lock is not allowed.
+            var requestBody = request.Content is null
+                ? null
+                : await request.Content.ReadAsStringAsync(cancellationToken);
+
+            lock (_recorded)
+            {
+                _requests.Add(request);
+                if (requestBody is not null)
+                    _sentBodies.Add((path, requestBody));
+            }
+
             var route = _routes.FirstOrDefault(r => path.Contains(r.PathContains, StringComparison.Ordinal));
             var body = route == default ? """{ "rollupDataPoints": [] }""" : route.Body;
             var status = route == default ? HttpStatusCode.OK : route.Status;
-            return Task.FromResult(new HttpResponseMessage(status)
+            return new HttpResponseMessage(status)
             {
                 Content = new StringContent(body, Encoding.UTF8, "application/json")
-            });
+            };
         }
     }
 
@@ -114,6 +152,36 @@ public class FitbitApiClientTests
     }
 
     [Fact]
+    public async Task GetActivitiesAsync_PostsClosedOpenCivilTimeIntervalRange()
+    {
+        var (sut, handler) = CreateSut();
+
+        // Month end, so the exclusive end also exercises the rollover into the next month.
+        await sut.GetActivitiesAsync("token", new DateOnly(2026, 8, 31));
+
+        using var document = JsonDocument.Parse(handler.BodyFor("/dataTypes/steps/"));
+        var range = document.RootElement.GetProperty("range");
+        AssertCivilDateTime(new DateOnly(2026, 8, 31), range.GetProperty("start"));
+        AssertCivilDateTime(new DateOnly(2026, 9, 1), range.GetProperty("end"));
+        Assert.Equal(1, document.RootElement.GetProperty("windowSizeDays").GetInt32());
+    }
+
+    /// <summary>
+    /// A CivilDateTime nests the calendar date under "date" and omits "time" to mean midnight.
+    /// Inline year/month/day is the shape the API rejects outright, so it is asserted against.
+    /// </summary>
+    private static void AssertCivilDateTime(DateOnly expected, JsonElement civilDateTime)
+    {
+        Assert.False(civilDateTime.TryGetProperty("year", out _));
+
+        var date = civilDateTime.GetProperty("date");
+        Assert.Equal(expected.Year, date.GetProperty("year").GetInt32());
+        Assert.Equal(expected.Month, date.GetProperty("month").GetInt32());
+        Assert.Equal(expected.Day, date.GetProperty("day").GetInt32());
+        Assert.False(civilDateTime.TryGetProperty("time", out _));
+    }
+
+    [Fact]
     public async Task GetActivitiesAsync_ThrowsFitbitApiException_OnNon2xxResponse()
     {
         var handler = new RoutedFakeHttpHandler()
@@ -159,6 +227,61 @@ public class FitbitApiClientTests
 
         Assert.Null(result.RestingHeartRate);
         Assert.Equal(71, result.AvgHeartRate);
+    }
+
+    [Fact]
+    public async Task GetHeartRateAsync_ToleratesRestingHeartRate400_WithoutFieldViolations()
+    {
+        var handler = new RoutedFakeHttpHandler()
+            .Map("/dataTypes/heart-rate/", Rollup("heartRate", """{ "beatsPerMinute_avg": 71 }"""))
+            .Map("/dataTypes/resting-heart-rate/",
+                """
+                {
+                  "error": {
+                    "code": 400,
+                    "status": "INVALID_ARGUMENT",
+                    "message": "Data type not available for this user."
+                  }
+                }
+                """,
+                HttpStatusCode.BadRequest);
+
+        var (sut, _) = CreateSut(handler);
+        var result = await sut.GetHeartRateAsync("token", Today);
+
+        Assert.Null(result.RestingHeartRate);
+        Assert.Equal(71, result.AvgHeartRate);
+    }
+
+    [Fact]
+    public async Task GetHeartRateAsync_Throws_WhenRestingHeartRateRequestIsMalformed()
+    {
+        // A payload the API could not bind is a bug on this side; swallowing it would report a
+        // missing resting HR and silently skew the baseline it anchors.
+        var handler = new RoutedFakeHttpHandler()
+            .Map("/dataTypes/heart-rate/", Rollup("heartRate", """{ "beatsPerMinute_avg": 71 }"""))
+            .Map("/dataTypes/resting-heart-rate/", """
+                {
+                  "error": {
+                    "code": 400,
+                    "status": "INVALID_ARGUMENT",
+                    "message": "Invalid JSON payload received.",
+                    "details": [
+                      {
+                        "@type": "type.googleapis.com/google.rpc.BadRequest",
+                        "fieldViolations": [
+                          { "field": "range.start", "description": "Cannot find field." }
+                        ]
+                      }
+                    ]
+                  }
+                }
+                """, HttpStatusCode.BadRequest);
+
+        var (sut, _) = CreateSut(handler);
+
+        var ex = await Assert.ThrowsAsync<FitbitApiException>(() => sut.GetHeartRateAsync("token", Today));
+        Assert.True(ex.IsMalformedRequest);
     }
 
     [Fact]
