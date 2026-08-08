@@ -6,15 +6,25 @@ namespace CardiTrack.Mobile;
 
 public partial class SignInPage : ContentPage
 {
+    /// <summary>Shown when the app returns here on its own after the session ended.</summary>
+    public const string SessionExpiredNotice = "Your session expired — please sign in again.";
+
     private readonly IAuthService _authService;
     private readonly PostLoginRouter _router;
 
-    public SignInPage()
+    /// <param name="notice">
+    /// Why the user is looking at this page, when they didn't ask to be. Without it an
+    /// expired session drops them on a bare sign-in form with no explanation.
+    /// </param>
+    public SignInPage(string? notice = null)
     {
         InitializeComponent();
         _authService = ServiceHelper.GetRequiredService<IAuthService>();
         _router = ServiceHelper.GetRequiredService<PostLoginRouter>();
         UpdateSignInButtonState();
+
+        if (!string.IsNullOrEmpty(notice))
+            ShowError(notice);
     }
 
     private async void OnSignInClicked(object? sender, EventArgs e)

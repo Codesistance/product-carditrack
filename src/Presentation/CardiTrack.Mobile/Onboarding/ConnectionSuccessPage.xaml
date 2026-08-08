@@ -95,7 +95,8 @@
                             Margin="0,32,0,0"
                             Clicked="OnAddAnotherClicked"/>
 
-                    <Button Text="Continue to Dashboard"
+                    <Button x:Name="ContinueBtn"
+                            Text="Continue to Dashboard"
                             Style="{StaticResource AuthGradientButton}"
                             HorizontalOptions="Fill"
                             Margin="0,14,0,0"

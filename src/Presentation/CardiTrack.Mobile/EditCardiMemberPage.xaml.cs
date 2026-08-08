@@ -186,11 +186,15 @@ public partial class EditCardiMemberPage : ContentPage
             // Detail refetches on appearing, so it picks these up without extra plumbing.
             await Shell.Current.GoToAsync("..");
         }
-        catch (ApiException ex)
+        catch (ApiException ex) when (!ex.IsSessionExpired)
         {
             await _popups.ShowErrorAsync(
                 ex.Errors is { Count: > 0 } ? string.Join('\n', ex.Errors) : ex.Message,
                 "Couldn't save these changes");
+        }
+        catch (ApiException)
+        {
+            // Session gone — the app is already on its way back to sign-in.
         }
         finally
         {

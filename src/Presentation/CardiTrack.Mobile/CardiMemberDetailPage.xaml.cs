@@ -234,10 +234,14 @@ public partial class CardiMemberDetailPage : ContentPage
             await _api.PauseMonitoringAsync(_memberId, new PauseMonitoringRequest { DurationHours = hours });
             await LoadAsync();
         }
-        catch (ApiException ex)
+        catch (ApiException ex) when (!ex.IsSessionExpired)
         {
             await _popups.ShowErrorAsync(ex.Message, "Couldn't change monitoring");
             await LoadAsync();
+        }
+        catch (ApiException)
+        {
+            // Session gone — the app is already on its way back to sign-in.
         }
         finally
         {
@@ -275,9 +279,13 @@ public partial class CardiMemberDetailPage : ContentPage
             Preferences.Default.Remove(DashboardPage.PrimaryMemberIdKey);
             await Shell.Current.GoToAsync("//dashboard");
         }
-        catch (ApiException ex)
+        catch (ApiException ex) when (!ex.IsSessionExpired)
         {
             await _popups.ShowErrorAsync(ex.Message, "Couldn't remove this CardiMember");
+        }
+        catch (ApiException)
+        {
+            // Session gone — the app is already on its way back to sign-in.
         }
         finally
         {

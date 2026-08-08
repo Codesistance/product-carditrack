@@ -316,9 +316,14 @@ public partial class DashboardPage : ContentPage
             await WizardLauncher.RunModalAsync(Navigation, member);
             await LoadAsync(force: true);
         }
-        catch (ApiException ex)
+        catch (ApiException ex) when (!ex.IsSessionExpired)
         {
             await _popups.ShowErrorAsync(ex.Message, "Couldn't start device setup");
+        }
+        catch (ApiException)
+        {
+            // An expired session is already taking the user back to sign-in — a popup
+            // here would only land on top of that page explaining nothing.
         }
         catch (Exception ex)
         {
