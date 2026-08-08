@@ -228,8 +228,13 @@ resource "google_cloud_run_v2_service" "api" {
   }
 
   labels = var.cloud_run_labels
+  # client/client_version are provenance only — a record of which tool last wrote
+  # the resource. CI deploys with `gcloud run deploy`, which stamps client=gcloud,
+  # and an apply stamps client=terraform straight back, so every plan after a
+  # release wanted to change all of them. Nothing functional rides on the value.
+  # Every Cloud Run resource below repeats this list for the same reason.
   lifecycle {
-    ignore_changes = [template[0].containers[0].image]
+    ignore_changes = [template[0].containers[0].image, client, client_version]
   }
   depends_on = [
     google_project_service.run,
@@ -264,17 +269,21 @@ resource "google_cloud_run_v2_service" "web" {
     # deploys don't depend on Cloud Run's auto-selection.
     execution_environment = "EXECUTION_ENVIRONMENT_GEN2"
 
-    volumes {
-      name = "cloudsql"
-      cloud_sql_instance {
-        instances = [google_sql_database_instance.main.connection_name]
-      }
-    }
-
+    # Declared dpkeys-first to match the order the Cloud Run API reports back.
+    # volumes and volume_mounts are ordered lists in the provider schema, so a
+    # config order that disagrees with the API's replans the whole block on every
+    # run — the diff never converges no matter how often it is applied.
     volumes {
       name = "dpkeys"
       gcs {
         bucket = google_storage_bucket.dataprotection_keys.name
+      }
+    }
+
+    volumes {
+      name = "cloudsql"
+      cloud_sql_instance {
+        instances = [google_sql_database_instance.main.connection_name]
       }
     }
 
@@ -310,13 +319,13 @@ resource "google_cloud_run_v2_service" "web" {
       }
 
       volume_mounts {
-        name       = "cloudsql"
-        mount_path = "/cloudsql"
+        name       = "dpkeys"
+        mount_path = "/var/dpkeys"
       }
 
       volume_mounts {
-        name       = "dpkeys"
-        mount_path = "/var/dpkeys"
+        name       = "cloudsql"
+        mount_path = "/cloudsql"
       }
 
       resources {
@@ -335,7 +344,7 @@ resource "google_cloud_run_v2_service" "web" {
 
   labels = var.cloud_run_labels
   lifecycle {
-    ignore_changes = [template[0].containers[0].image]
+    ignore_changes = [template[0].containers[0].image, client, client_version]
   }
   depends_on = [
     google_project_service.run,
@@ -404,7 +413,7 @@ resource "google_cloud_run_v2_job" "migrator" {
   }
 
   lifecycle {
-    ignore_changes = [template[0].template[0].containers[0].image]
+    ignore_changes = [template[0].template[0].containers[0].image, client, client_version]
   }
   depends_on = [
     google_project_service.run,
@@ -481,7 +490,7 @@ resource "google_cloud_run_v2_service" "worker" {
 
   labels = var.cloud_run_labels
   lifecycle {
-    ignore_changes = [template[0].containers[0].image]
+    ignore_changes = [template[0].containers[0].image, client, client_version]
   }
   depends_on = [
     google_project_service.run,
@@ -543,7 +552,7 @@ resource "google_cloud_run_v2_service" "medgemma" {
 
   labels = var.cloud_run_labels
   lifecycle {
-    ignore_changes = [template[0].containers[0].image]
+    ignore_changes = [template[0].containers[0].image, client, client_version]
   }
   depends_on = [google_project_service.run]
 }
