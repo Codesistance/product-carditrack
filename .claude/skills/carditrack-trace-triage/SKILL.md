@@ -5,8 +5,11 @@ description: Triage a CardiTrack trace, error or slow request in Datadog — wha
 
 # CardiTrack trace triage
 
-`datadog-pup` knows how to talk to Datadog. This skill is what CardiTrack's telemetry
-*means*. Use `pup` for retrieval; use this for interpretation.
+Retrieval is somebody else's job. The `datadog-pup` skill — user-level, not in this repo —
+drives the `pup` CLI, which is installed and pre-authenticated against the CardiTrack org.
+This skill adds no retrieval of its own; it is what CardiTrack's telemetry *means* once you
+have it. If `datadog-pup` isn't available, pull the trace any way you like (the Datadog UI
+is fine) — everything below still applies.
 
 ## Before anything: the ID you were handed is probably not a trace ID
 
