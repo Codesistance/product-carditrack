@@ -78,6 +78,20 @@ public class AccessTokenAudienceTests
     }
 
     [Fact]
+    public void Check_ReportsMismatch_WhenAReadableTokenCarriesNoUsableAudience()
+    {
+        // A decodable JWT is not an unreadable one, however unhelpful its aud claim: calling
+        // it unreadable would blame the wrong thing in the log line that exists to name the
+        // right one. It still won't authorize, so mismatch is the honest verdict.
+        Assert.Equal(AudienceCheck.Mismatch,
+            AccessTokenAudience.Check(Jwt("""{"sub":"auth0|1"}"""), Api));
+        Assert.Equal(AudienceCheck.Mismatch,
+            AccessTokenAudience.Check(Jwt("""{"aud":42}"""), Api));
+        Assert.Equal(AudienceCheck.Mismatch,
+            AccessTokenAudience.Check(Jwt("""{"aud":[]}"""), Api));
+    }
+
+    [Fact]
     public void Describe_NamesTheAudiences_ForTheLog()
     {
         Assert.Equal(Api, AccessTokenAudience.Describe(Jwt($$"""{"aud":"{{Api}}"}""")));

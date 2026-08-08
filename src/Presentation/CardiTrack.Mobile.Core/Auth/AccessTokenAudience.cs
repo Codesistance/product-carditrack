@@ -9,7 +9,10 @@ public enum AudienceCheck
     /// <summary>The token names the configured audience — API calls will authorize.</summary>
     Match,
 
-    /// <summary>The token is a JWT for some other audience — every API call will 401.</summary>
+    /// <summary>
+    /// The token decodes but doesn't name the configured audience — either it names another
+    /// one, or it carries no usable <c>aud</c> at all. Every API call will 401 regardless.
+    /// </summary>
     Mismatch,
 
     /// <summary>Not a readable JWT: Auth0 issues an opaque /userinfo token when no API audience was requested.</summary>
@@ -27,31 +30,34 @@ public static class AccessTokenAudience
     /// The token's audiences. <c>aud</c> is a single string or an array of them (RFC 7519),
     /// so both shapes are flattened here; an opaque or malformed token yields none.
     /// </summary>
-    public static IReadOnlyList<string> Read(string? accessToken)
-    {
-        if (JwtPayloadReader.ReadPayload(accessToken)?["aud"] is not { } audience)
-            return [];
+    public static IReadOnlyList<string> Read(string? accessToken) =>
+        JwtPayloadReader.ReadPayload(accessToken) is { } payload ? ReadFrom(payload) : [];
 
-        return audience switch
-        {
-            JValue { Type: JTokenType.String } single => [(string)single!],
-            JArray many => [.. many
-                .OfType<JValue>()
-                .Where(value => value.Type == JTokenType.String)
-                .Select(value => (string)value!)],
-            _ => [],
-        };
-    }
-
+    /// <remarks>
+    /// Keyed off whether the payload decoded, not off how many audiences came back: a readable
+    /// JWT that simply carries no usable <c>aud</c> is a mismatch, not an unreadable token, and
+    /// calling it unreadable would name the wrong fault in the one log line that exists to
+    /// name the right one.
+    /// </remarks>
     public static AudienceCheck Check(string? accessToken, string expectedAudience)
     {
-        var audiences = Read(accessToken);
-        if (audiences.Count == 0)
+        if (JwtPayloadReader.ReadPayload(accessToken) is not { } payload)
             return AudienceCheck.Unreadable;
-        return audiences.Contains(expectedAudience, StringComparer.Ordinal)
+
+        return ReadFrom(payload).Contains(expectedAudience, StringComparer.Ordinal)
             ? AudienceCheck.Match
             : AudienceCheck.Mismatch;
     }
+
+    private static IReadOnlyList<string> ReadFrom(JObject payload) => payload["aud"] switch
+    {
+        JValue { Type: JTokenType.String } single => [(string)single!],
+        JArray many => [.. many
+            .OfType<JValue>()
+            .Where(value => value.Type == JTokenType.String)
+            .Select(value => (string)value!)],
+        _ => [],
+    };
 
     /// <summary>The audiences as a log-safe string. Auth0 audiences are API identifiers, not secrets.</summary>
     public static string Describe(string? accessToken)

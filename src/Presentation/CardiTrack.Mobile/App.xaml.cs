@@ -37,11 +37,20 @@ public partial class App : Microsoft.Maui.Controls.Application
         _returningToSignIn = true;
         try
         {
+            // DismissModalsAsync swallows its own failures, so the root still swaps when the
+            // wizard refuses to come down — better a sign-in page behind a stuck modal than
+            // no sign-in page at all.
             await DismissModalsAsync(root);
+            window.Page = new NavigationPage(new SignInPage(SignInPage.SessionExpiredNotice));
+        }
+        catch (Exception ex)
+        {
+            // Reached from a fire-and-forget handler on the UI thread: anything escaping here
+            // kills the app while it is already coping with a dead session.
+            LogWarning(ex, "Returning to sign-in after session expiry failed");
         }
         finally
         {
-            window.Page = new NavigationPage(new SignInPage(SignInPage.SessionExpiredNotice));
             _returningToSignIn = false;
         }
     }
@@ -65,12 +74,27 @@ public partial class App : Microsoft.Maui.Controls.Application
             }
             catch (Exception ex)
             {
-                // Best-effort: the root swap below still has to happen, or the user is left
+                // Best-effort: the root swap still has to happen, or the user is left
                 // holding a wizard that can no longer talk to the API.
-                ServiceHelper.GetRequiredService<ILogger<App>>()
-                    .LogWarning(ex, "Dismissing modals before returning to sign-in failed");
+                LogWarning(ex, "Dismissing modals before returning to sign-in failed");
                 return;
             }
+        }
+    }
+
+    /// <summary>
+    /// Logging is the last thing standing between a failed sign-out and a crash, so it must
+    /// not be the thing that throws — resolving the logger needs a live service provider.
+    /// </summary>
+    private static void LogWarning(Exception ex, string message)
+    {
+        try
+        {
+            ServiceHelper.GetRequiredService<ILogger<App>>().LogWarning(ex, message);
+        }
+        catch
+        {
+            // Nothing left to report it with.
         }
     }
 
