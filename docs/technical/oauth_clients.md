@@ -232,17 +232,17 @@ connect makes a reconnect look like a failed one.
    values. Renaming a `placeholder_secrets` key destroys and recreates the
    secret shell, so a value written first would be discarded with it.
 5. **Sandbox verification — the outstanding step.** With a test user connected, exercise a sync and
-   compare `FitbitApiClient`'s parsing against real payloads. The v4 reference
-   only documents some rollup value schemas, so several field names were
-   inferred from the documented naming convention (PR #10): the
-   distance/active-minutes/total-calories/floors rollup values, the
-   resting-heart-rate union member, and the sleep session shape. Confirm each
-   and fix any mismatches. Use the
+   compare `FitbitApiClient`'s parsing against real payloads. Every field name
+   the client reads is now taken from the v4 reference rather than inferred —
+   the earlier guesses (PR #10) were wrong in every case and were corrected
+   against the reference after a dev sync failed on the non-existent
+   `resting-heart-rate` data type. Use the
    [Health API probe](../../tools/HealthApiProbe/README.md)
    (`dotnet run --project tools/HealthApiProbe`) — it prints each response's
-   field names beside what the client extracts, so a wrong guess shows up as a
-   flagged zero. A wrong name never throws, it just yields `0`, so this pass is
-   not optional.
+   field names beside what the client extracts, so a mismatch shows up as a
+   flagged zero. Still not optional: a name that is right on paper but never
+   populated for that wearer's device fails the same silent way, yielding `0`
+   rather than throwing, and only a live account tells the two apart.
 6. **Before public launch**, in `carditrack-devices-prod` only — **not yet
    submitted as of 2026-08-07**: restricted-scope
    verification + CASA assessment — prerequisites checklist in
