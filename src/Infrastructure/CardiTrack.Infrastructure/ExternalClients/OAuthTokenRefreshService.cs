@@ -1,3 +1,4 @@
+using System.Net;
 using System.Net.Http.Headers;
 using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Interfaces.Security;
@@ -61,15 +62,21 @@ public class OAuthTokenRefreshService : IOAuthTokenRefreshService
         }
         catch (Exception ex)
         {
-            await _deviceConnections.UpdateStatusAsync(connection.Id, ConnectionStatus.TokenExpired);
+            // The call never reached the provider, so nothing was said about the grant. Leaving
+            // the status alone is what lets the next scheduled sync retry — writing TokenExpired
+            // here retired a working connection on a DNS blip and put the app into "reconnect
+            // your device" for a device that had never lost authorisation.
             throw new InvalidOperationException(
                 $"Token refresh HTTP call failed for DeviceConnection {connection.Id}.", ex);
         }
 
         if (!response.IsSuccessStatusCode)
         {
-            await _deviceConnections.UpdateStatusAsync(connection.Id, ConnectionStatus.TokenExpired);
             var errorBody = await response.Content.ReadAsStringAsync();
+
+            if (IsGrantRejection(response.StatusCode, errorBody))
+                await _deviceConnections.UpdateStatusAsync(connection.Id, ConnectionStatus.TokenExpired);
+
             throw new InvalidOperationException(
                 $"Token refresh returned {(int)response.StatusCode} for DeviceConnection {connection.Id}: {errorBody}");
         }
@@ -96,5 +103,53 @@ public class OAuthTokenRefreshService : IOAuthTokenRefreshService
             newExpiry);
 
         return newAccessToken;
+    }
+
+    /// <summary>
+    /// OAuth error codes that mean this refresh token will never work again — revoked, already
+    /// spent, or consent withdrawn — as opposed to the request being wrong.
+    /// </summary>
+    private static readonly HashSet<string> GrantDeathCodes = new(StringComparer.Ordinal)
+    {
+        // RFC 6749 §5.2 — the refresh token is invalid, expired or revoked.
+        "invalid_grant",
+        // RFC 6750 and provider dialects of it; Fitbit returns these for a dead token.
+        "invalid_token",
+        "expired_token",
+        // The resource owner took the authorisation away.
+        "access_denied",
+    };
+
+    /// <summary>
+    /// Whether the provider is refusing this grant rather than merely failing to serve it. Only
+    /// a rejection retires the connection, so the cost of a false positive is a working device
+    /// dropped out of syncing until the user reconnects it by hand.
+    /// </summary>
+    /// <remarks>
+    /// The status has to be one the token endpoint uses to carry a credential verdict at all:
+    /// a 404, 405 or 415 says our URL, method or content type is wrong, which is a deployment
+    /// fault and would otherwise retire every connection for the provider at once.
+    /// <para>
+    /// Status alone is still not enough, because a 400 covers both "your refresh token is dead"
+    /// and "your client secret is wrong" — and the second, left to the status, would retire the
+    /// whole fleet the first time a secret was rotated badly. So when the body carries an
+    /// <c>error</c> code, that decides it; a body we cannot parse, or one with no code, falls
+    /// back to the status.
+    /// </para>
+    /// </remarks>
+    private static bool IsGrantRejection(HttpStatusCode status, string errorBody)
+    {
+        if (status is not (HttpStatusCode.BadRequest
+                           or HttpStatusCode.Unauthorized
+                           or HttpStatusCode.Forbidden))
+        {
+            return false;
+        }
+
+        if (!JsonUtility.TryParse(errorBody, out var root, out _) || root is null)
+            return true;
+
+        var error = root.Value<string>("error");
+        return error is null || GrantDeathCodes.Contains(error);
     }
 }

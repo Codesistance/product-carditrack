@@ -88,6 +88,7 @@ public class DeviceConnectionRepositoryTests(TestDatabaseFixture fixture)
     [Theory]
     [InlineData(ConnectionStatus.Disconnected, true)]
     [InlineData(ConnectionStatus.Connected, false)]
+    [InlineData(ConnectionStatus.TokenExpired, false)]
     public async Task AnyActiveForCardiMembersAsync_IgnoresDisconnectedAndInactiveConnections(
         ConnectionStatus status, bool isActive)
     {
@@ -99,6 +100,28 @@ public class DeviceConnectionRepositoryTests(TestDatabaseFixture fixture)
         await TestDataSeeder.SeedDeviceConnectionAsync(scope, member.Id, status: status, isActive: isActive);
 
         Assert.False(await repo.AnyActiveForCardiMembersAsync([member.Id]));
+    }
+
+    // This is what the app's onboarding status asks on every launch to decide whether to push the
+    // add-device wizard. A device mid-fault is still a device the user owns, so every one of these
+    // has to answer true — answering false sent people who already had a Fitbit back through
+    // provider consent to "add" the one they were already wearing.
+    [Theory]
+    [InlineData(ConnectionStatus.Connected)]
+    [InlineData(ConnectionStatus.SyncError)]
+    [InlineData(ConnectionStatus.TokenExpired)]
+    [InlineData(ConnectionStatus.AuthError)]
+    public async Task AnyActiveForCardiMembersAsync_IsTrue_ForAnyConnectionThatIsNotDisconnected(
+        ConnectionStatus status)
+    {
+        using var scope = fixture.CreateScope();
+        var repo = scope.ServiceProvider.GetRequiredService<IDeviceConnectionRepository>();
+
+        var org = await TestDataSeeder.SeedOrganizationAsync(scope);
+        var member = await TestDataSeeder.SeedCardiMemberAsync(scope, org.Id);
+        await TestDataSeeder.SeedDeviceConnectionAsync(scope, member.Id, status: status);
+
+        Assert.True(await repo.AnyActiveForCardiMembersAsync([member.Id]));
     }
 
     // An empty member list must not reach the database — a user with no CardiMembers
@@ -253,6 +276,63 @@ public class DeviceConnectionRepositoryTests(TestDatabaseFixture fixture)
         Assert.Contains(result, c => c.Id == connection.Id);
     }
 
+    // A provider that failed us last run is not a connection the user has to repair, and nothing
+    // else puts it back in service — the status only returns to Connected on a sync that would
+    // never be scheduled. Excluding it retired healthy devices on one bad response.
+    [Fact]
+    public async Task GetDueForSyncAsync_ReturnsConnection_WhenItsLastPullErrored()
+    {
+        using var scope = fixture.CreateScope();
+        var repo = scope.ServiceProvider.GetRequiredService<IDeviceConnectionRepository>();
+
+        var org = await TestDataSeeder.SeedOrganizationAsync(scope);
+        var member = await TestDataSeeder.SeedCardiMemberAsync(scope, org.Id);
+        var connection = await TestDataSeeder.SeedDeviceConnectionAsync(
+            scope, member.Id, status: ConnectionStatus.SyncError, lastSyncDate: null);
+
+        var result = await repo.GetDueForSyncAsync();
+
+        Assert.Contains(result, c => c.Id == connection.Id);
+    }
+
+    // The other side of it: these mean the provider refused our credentials, and only re-consent
+    // produces working ones. Retrying just spends requests to be refused again.
+    [Theory]
+    [InlineData(ConnectionStatus.TokenExpired)]
+    [InlineData(ConnectionStatus.AuthError)]
+    public async Task GetDueForSyncAsync_ExcludesConnection_WhenItNeedsReconsent(ConnectionStatus status)
+    {
+        using var scope = fixture.CreateScope();
+        var repo = scope.ServiceProvider.GetRequiredService<IDeviceConnectionRepository>();
+
+        var org = await TestDataSeeder.SeedOrganizationAsync(scope);
+        var member = await TestDataSeeder.SeedCardiMemberAsync(scope, org.Id);
+        var connection = await TestDataSeeder.SeedDeviceConnectionAsync(
+            scope, member.Id, status: status, lastSyncDate: null);
+
+        var result = await repo.GetDueForSyncAsync();
+
+        Assert.DoesNotContain(result, c => c.Id == connection.Id);
+    }
+
+    // Disconnected is excluded for a different reason than the two above: there is nothing wrong
+    // with the credentials, the user simply removed the device. Nothing may pull from it again.
+    [Fact]
+    public async Task GetDueForSyncAsync_ExcludesConnection_WhenTheUserRemovedTheDevice()
+    {
+        using var scope = fixture.CreateScope();
+        var repo = scope.ServiceProvider.GetRequiredService<IDeviceConnectionRepository>();
+
+        var org = await TestDataSeeder.SeedOrganizationAsync(scope);
+        var member = await TestDataSeeder.SeedCardiMemberAsync(scope, org.Id);
+        var connection = await TestDataSeeder.SeedDeviceConnectionAsync(
+            scope, member.Id, status: ConnectionStatus.Disconnected, lastSyncDate: null);
+
+        var result = await repo.GetDueForSyncAsync();
+
+        Assert.DoesNotContain(result, c => c.Id == connection.Id);
+    }
+
     // ── UpdateTokenAsync ─────────────────────────────────────────────────────────
 
     [Fact]
@@ -304,10 +384,10 @@ public class DeviceConnectionRepositoryTests(TestDatabaseFixture fixture)
         Assert.Equal(ConnectionStatus.TokenExpired, updated!.ConnectionStatus);
     }
 
-    // ── UpdateLastSyncDateAsync ──────────────────────────────────────────────────
+    // ── MarkSyncSucceededAsync ───────────────────────────────────────────────────
 
     [Fact]
-    public async Task UpdateLastSyncDateAsync_PersistsNewSyncDate()
+    public async Task MarkSyncSucceededAsync_PersistsNewSyncDate()
     {
         Guid connectionId;
         var syncDate = DateTime.UtcNow;
@@ -319,7 +399,7 @@ public class DeviceConnectionRepositoryTests(TestDatabaseFixture fixture)
             var member = await TestDataSeeder.SeedCardiMemberAsync(scope, org.Id);
             var connection = await TestDataSeeder.SeedDeviceConnectionAsync(scope, member.Id);
             connectionId = connection.Id;
-            await repo.UpdateLastSyncDateAsync(connectionId, syncDate);
+            await repo.MarkSyncSucceededAsync(connectionId, syncDate);
         }
 
         using var readScope = fixture.CreateScope();
@@ -327,6 +407,60 @@ public class DeviceConnectionRepositoryTests(TestDatabaseFixture fixture)
         var updated = await readRepo.GetByIdAsync(connectionId);
         Assert.NotNull(updated!.LastSyncDate);
         Assert.Equal(syncDate.Date, updated.LastSyncDate!.Value.Date);
+    }
+
+    // The window landed, so whatever the last run hit, the connection works — leaving the fault
+    // on the row would keep the app reporting a device that needs attention when it does not.
+    [Theory]
+    [InlineData(ConnectionStatus.SyncError)]
+    [InlineData(ConnectionStatus.TokenExpired)]
+    [InlineData(ConnectionStatus.AuthError)]
+    public async Task MarkSyncSucceededAsync_ClearsAFaultedStatus(ConnectionStatus status)
+    {
+        Guid connectionId;
+
+        using (var scope = fixture.CreateScope())
+        {
+            var repo = scope.ServiceProvider.GetRequiredService<IDeviceConnectionRepository>();
+            var org = await TestDataSeeder.SeedOrganizationAsync(scope);
+            var member = await TestDataSeeder.SeedCardiMemberAsync(scope, org.Id);
+            var connection = await TestDataSeeder.SeedDeviceConnectionAsync(
+                scope, member.Id, status: status);
+            connectionId = connection.Id;
+            await repo.MarkSyncSucceededAsync(connectionId, DateTime.UtcNow);
+        }
+
+        using var readScope = fixture.CreateScope();
+        var readRepo = readScope.ServiceProvider.GetRequiredService<IDeviceConnectionRepository>();
+        var updated = await readRepo.GetByIdAsync(connectionId);
+        Assert.Equal(ConnectionStatus.Connected, updated!.ConnectionStatus);
+    }
+
+    // A pull already in flight when the user removes the device must not hand it back to them.
+    [Theory]
+    [InlineData(ConnectionStatus.Disconnected, true)]
+    [InlineData(ConnectionStatus.Connected, false)]
+    public async Task MarkSyncSucceededAsync_LeavesATornDownConnectionAlone(
+        ConnectionStatus status, bool isActive)
+    {
+        Guid connectionId;
+
+        using (var scope = fixture.CreateScope())
+        {
+            var repo = scope.ServiceProvider.GetRequiredService<IDeviceConnectionRepository>();
+            var org = await TestDataSeeder.SeedOrganizationAsync(scope);
+            var member = await TestDataSeeder.SeedCardiMemberAsync(scope, org.Id);
+            var connection = await TestDataSeeder.SeedDeviceConnectionAsync(
+                scope, member.Id, status: status, isActive: isActive);
+            connectionId = connection.Id;
+            await repo.MarkSyncSucceededAsync(connectionId, DateTime.UtcNow);
+        }
+
+        using var readScope = fixture.CreateScope();
+        var readRepo = readScope.ServiceProvider.GetRequiredService<IDeviceConnectionRepository>();
+        var updated = await readRepo.GetByIdAsync(connectionId);
+        Assert.Equal(status, updated!.ConnectionStatus);
+        Assert.Null(updated.LastSyncDate);
     }
 
     // ── GetRandomSyncableSampleAsync ─────────────────────────────────────────────
@@ -446,5 +580,25 @@ public class DeviceConnectionRepositoryTests(TestDatabaseFixture fixture)
 
         Assert.Empty(await repo.GetRandomSyncableSampleAsync(0));
         Assert.Empty(await repo.GetRandomSyncableSampleAsync(-1));
+    }
+
+    // The audit measures how faithfully healthy connections are being pulled, so unlike the
+    // routine due query it stays on Connected alone — a connection mid-recovery from a provider
+    // failure would move the number the audit exists to report without saying anything about
+    // the pull. Guards the two filters against being "aligned" by a later change.
+    [Fact]
+    public async Task GetRandomSyncableSampleAsync_ExcludesSyncErroredConnections()
+    {
+        using var scope = fixture.CreateScope();
+        var repo = scope.ServiceProvider.GetRequiredService<IDeviceConnectionRepository>();
+
+        var org = await TestDataSeeder.SeedOrganizationAsync(scope);
+        var member = await TestDataSeeder.SeedCardiMemberAsync(scope, org.Id);
+        var errored = await TestDataSeeder.SeedDeviceConnectionAsync(
+            scope, member.Id, status: ConnectionStatus.SyncError);
+
+        var result = await repo.GetRandomSyncableSampleAsync(50);
+
+        Assert.DoesNotContain(result, c => c.Id == errored.Id);
     }
 }

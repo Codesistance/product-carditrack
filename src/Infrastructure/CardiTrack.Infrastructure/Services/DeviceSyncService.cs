@@ -44,8 +44,9 @@ public class DeviceSyncService : IDeviceSyncService
     {
         var providerConfig = ResolveProviderConfig(connection);
 
-        // RefreshIfExpiredAsync updates the connection's status itself on failure; letting it
-        // propagate is what gets the failure logged against this connection by the caller.
+        // RefreshIfExpiredAsync marks the connection itself when the provider refuses the grant;
+        // letting the failure propagate is what gets it logged against this connection by the
+        // caller.
         var accessToken = await _tokenRefresh.RefreshIfExpiredAsync(connection, providerConfig);
 
         var lookbackDays = Math.Max(1, providerConfig.SyncLookbackDays);
@@ -55,8 +56,10 @@ public class DeviceSyncService : IDeviceSyncService
             await PullWindowAsync(connection, accessToken, lookbackDays);
 
             // Only once the whole window landed — otherwise a partial sync would look complete
-            // and the connection would not come due again until the next interval.
-            await _deviceConnections.UpdateLastSyncDateAsync(connection.Id, DateTime.UtcNow);
+            // and the connection would not come due again until the next interval. This also
+            // clears a SyncError left by an earlier run: the window just landed, so whatever
+            // the provider was doing then, the connection is working now.
+            await _deviceConnections.MarkSyncSucceededAsync(connection.Id, DateTime.UtcNow);
         }
         catch (Exception ex) when (IsProviderApiException(ex))
         {
