@@ -22,8 +22,22 @@ public sealed class ApmOptions
 
     public ApmData Data { get; set; } = new();
 
-    /// <summary>Minimum Serilog level shipped to the backend. Default Warning — free-tier prudence.</summary>
-    public string MinimumLogLevel { get; set; } = "Warning";
+    /// <summary>
+    /// Explicit override for the minimum Serilog level shipped to the backend. Normally unset,
+    /// in which case the sink follows <see cref="InheritedLogLevel"/> — so the per-service
+    /// Serilog root level (Serilog__MinimumLevel__Default, owned by the log_minimum_level
+    /// tfvar) is the single knob moving console, Cloud Logging and the APM backend together.
+    /// Set this only to hold the sink at a stricter (higher) minimum level than the root,
+    /// which is the ingest-cost lever rather than the everyday one.
+    /// </summary>
+    public string? MinimumLogLevel { get; set; }
+
+    /// <summary>
+    /// The Serilog root minimum level read from the same configuration, applied when
+    /// <see cref="MinimumLogLevel"/> is unset. Populated by GetApmOptions; null when Serilog
+    /// configures no root level, which leaves the sink on the Warning default below.
+    /// </summary>
+    public string? InheritedLogLevel { get; set; }
 
     /// <summary>Head-sampling ratio for OTel traces, 0.0–1.0. Default 0.2 — free-tier prudence.</summary>
     public double TracesSampleRatio { get; set; } = 0.2;
@@ -50,10 +64,18 @@ public sealed class ApmOptions
         !string.IsNullOrWhiteSpace(value)
         && !string.Equals(value.Trim(), TerraformPlaceholder, StringComparison.Ordinal);
 
+    /// <summary>
+    /// Explicit pin first, then the Serilog root, then Warning. An unparsable value is
+    /// treated as absent rather than fatal — a typo in one key must not silently take the
+    /// sink somewhere neither key asked for.
+    /// </summary>
     public LogEventLevel ShipLevel =>
-        Enum.TryParse<LogEventLevel>(MinimumLogLevel, ignoreCase: true, out var level)
+        ParseLevel(MinimumLogLevel) ?? ParseLevel(InheritedLogLevel) ?? LogEventLevel.Warning;
+
+    private static LogEventLevel? ParseLevel(string? value) =>
+        HasRealValue(value) && Enum.TryParse<LogEventLevel>(value!.Trim(), ignoreCase: true, out var level)
             ? level
-            : LogEventLevel.Warning;
+            : null;
 
     public double ClampedSampleRatio => Math.Clamp(TracesSampleRatio, 0.0, 1.0);
 }

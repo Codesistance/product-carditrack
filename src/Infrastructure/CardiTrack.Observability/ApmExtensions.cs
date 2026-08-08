@@ -12,7 +12,8 @@ namespace CardiTrack.Observability;
 /// <summary>
 /// App-facing entry points. Both are no-ops until the Apm section is fully configured,
 /// so dev machines ship nothing. Free-tier prudence is enforced here, engine-
-/// independently: Warning+ logs only, head-sampled traces, health probes never traced,
+/// independently: logs at the Serilog root level and no lower (Warning unless a service
+/// is turned up on purpose), head-sampled traces, health probes never traced,
 /// and metrics only behind the explicit Apm:MetricsEnabled switch (apm_metrics_enabled
 /// tfvar) — meters stream around the clock and would drain a free plan fastest.
 /// </summary>
@@ -47,8 +48,15 @@ public static class ApmExtensions
         {
             Engine = new ConfigurationLoader(configuration).Get(ConfigurationKeys.Apm.Engine),
         };
-        if (section[nameof(ApmOptions.MinimumLogLevel)] is { } shipLevel)
-            options.MinimumLogLevel = shipLevel;
+        if (ApmOptions.HasRealValue(section[nameof(ApmOptions.MinimumLogLevel)]))
+            options.MinimumLogLevel = section[nameof(ApmOptions.MinimumLogLevel)];
+
+        // Unpinned, the sink follows the Serilog root, so raising one service to Information
+        // ships that service's Information logs too instead of only widening the console.
+        // Both Serilog spellings are accepted: the object form Terraform writes per service
+        // (Serilog__MinimumLevel__Default) and the flat string form.
+        options.InheritedLogLevel = configuration["Serilog:MinimumLevel:Default"]
+            ?? configuration["Serilog:MinimumLevel"];
         if (double.TryParse(section[nameof(ApmOptions.TracesSampleRatio)],
                 System.Globalization.NumberStyles.Float,
                 System.Globalization.CultureInfo.InvariantCulture, out var ratio))

@@ -6,6 +6,7 @@ using CardiTrack.Observability;
 using CardiTrack.Shared;
 using Microsoft.EntityFrameworkCore;
 using Serilog;
+using Serilog.Events;
 
 // Enforce UTC for all DateTime values read from PostgreSQL timestamptz columns
 AppContext.SetSwitch("Npgsql.EnableLegacyTimestampBehavior", false);
@@ -101,7 +102,27 @@ try
     // and the Microsoft.AspNetCore level override in appsettings suppresses the hosting
     // diagnostics that would otherwise log the full URL — this makes the guarantee explicit
     // rather than a coincidence of two defaults. Do not set to true.
-    app.UseSerilogRequestLogging(options => options.IncludeQueryInRequestPath = false);
+    app.UseSerilogRequestLogging(options =>
+    {
+        options.IncludeQueryInRequestPath = false;
+        // Probe traffic is dropped rather than logged, matching the trace filter in
+        // ApmExtensions. Cloud Run probes continuously, so once a service is turned up to
+        // Information the probe would otherwise outnumber real requests in Cloud Logging and
+        // the APM sink — the noise that makes a raised level unusable. Verbose sits below
+        // every level deployed today, so nothing emits it in practice — a service
+        // deliberately turned down to Verbose would log probes too. A probe that throws
+        // or 500s is not a probe worth hiding and keeps the normal Error level.
+        options.GetLevel = (httpContext, _, exception) =>
+        {
+            if (exception is not null || httpContext.Response.StatusCode >= 500)
+                return LogEventLevel.Error;
+
+            var path = httpContext.Request.Path;
+            return path.StartsWithSegments("/health") || path.StartsWithSegments("/healthz")
+                ? LogEventLevel.Verbose
+                : LogEventLevel.Information;
+        };
+    });
     // Outside ExceptionHandlingMiddleware, deliberately. Everything this middleware does
     // happens on the way back out, so it still sees a populated user context and a resolved
     // endpoint — but it now also sees the status the exception handler produced. Registered

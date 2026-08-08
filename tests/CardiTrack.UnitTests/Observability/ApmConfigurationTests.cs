@@ -183,6 +183,88 @@ public class ApmConfigurationTests
         Assert.Equal(LogEventLevel.Warning, options.ShipLevel);
     }
 
+    /// <summary>
+    /// The deployed shape: Terraform writes only Serilog__MinimumLevel__Default per service,
+    /// and the sink follows it. Without this, turning a service up widens Cloud Logging while
+    /// the APM backend silently stays at Warning.
+    /// </summary>
+    [Theory]
+    [InlineData("Serilog:MinimumLevel:Default", LogEventLevel.Information)]
+    [InlineData("Serilog:MinimumLevel", LogEventLevel.Information)]
+    public void GetApmOptions_UnpinnedShipLevel_InheritsSerilogRoot(string key, LogEventLevel expected)
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> { [key] = "Information" })
+            .Build();
+
+        Assert.Equal(expected, configuration.GetApmOptions().ShipLevel);
+    }
+
+    /// <summary>The object form wins: it is what Terraform sets, over a stale flat value.</summary>
+    [Fact]
+    public void GetApmOptions_BothSerilogSpellings_PrefersTheObjectForm()
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Serilog:MinimumLevel:Default"] = "Debug",
+                ["Serilog:MinimumLevel"] = "Error",
+            })
+            .Build();
+
+        Assert.Equal(LogEventLevel.Debug, configuration.GetApmOptions().ShipLevel);
+    }
+
+    /// <summary>
+    /// The escape hatch survives inheritance: holding the sink at a stricter level than the
+    /// root is how ingest spend gets cut without going dark on the console.
+    /// </summary>
+    [Fact]
+    public void GetApmOptions_ExplicitShipLevel_OverridesSerilogRoot()
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Serilog:MinimumLevel:Default"] = "Information",
+                ["Apm:MinimumLogLevel"] = "Error",
+            })
+            .Build();
+
+        Assert.Equal(LogEventLevel.Error, configuration.GetApmOptions().ShipLevel);
+    }
+
+    /// <summary>
+    /// An empty or placeholder pin is not a pin — it must fall through to the root rather
+    /// than reading as a deliberate choice of Warning.
+    /// </summary>
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    [InlineData("REPLACE_ME")]
+    public void GetApmOptions_BlankOrPlaceholderPin_FallsThroughToSerilogRoot(string pin)
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Serilog:MinimumLevel:Default"] = "Information",
+                ["Apm:MinimumLogLevel"] = pin,
+            })
+            .Build();
+
+        Assert.Equal(LogEventLevel.Information, configuration.GetApmOptions().ShipLevel);
+    }
+
+    /// <summary>Neither key set — the Warning default still holds.</summary>
+    [Fact]
+    public void GetApmOptions_NoLevelAnywhere_StaysAtWarning()
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> { ["Apm:Engine"] = "Datadog" })
+            .Build();
+
+        Assert.Equal(LogEventLevel.Warning, configuration.GetApmOptions().ShipLevel);
+    }
+
     [Theory]
     [InlineData(-1.0, 0.0)]
     [InlineData(3.0, 1.0)]
