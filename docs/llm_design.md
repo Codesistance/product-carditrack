@@ -193,15 +193,19 @@ Prefer the **civil** variants throughout. Physical-instant filtering buckets by 
 | Metric | Data type / method | Sampling Rate | SSA Input |
 |--------|--------------------|----|-----------|
 | Heart Rate (intraday) | `heart-rate` — `list` | 1-min intervals | Primary time-series for SSA decomposition |
-| Resting Heart Rate | `resting-heart-rate` — `dailyRollUp` | Daily scalar | Baseline anchor for HR trend |
-| HRV (RMSSD) | `daily-heart-rate-variability` — `dailyRollUp` (granular: `heart-rate-variability` — `list`) | Daily scalar | Secondary series |
+| Resting Heart Rate | `daily-resting-heart-rate` — `list` | Daily scalar | Baseline anchor for HR trend |
+| HRV (RMSSD) | `daily-heart-rate-variability` — `list` (granular: `heart-rate-variability` — `list`) | Daily scalar | Secondary series |
 | SpO2 (intraday) | `oxygen-saturation` — `list` | ~5-min intervals | Upsample to 1-min via forward-fill before SSA |
 | Steps (intraday) | `steps` — `list` | 1-min intervals | Used as activity context feature alongside HR |
 | Active Zone Minutes | `active-zone-minutes` — `list` | 1-min intervals | Exogenous input to LSTM |
 | Skin Temperature | skin-temperature data type — `dailyRollUp` | Daily scalar (nightly) | Early-warning feature; include when available |
 | Sleep Stages | `sleep` — `list` (session-shaped) | Daily summary | Context feature for next-day recovery model |
 
-> Rollup responses carry a union value per data type (e.g. `steps.count`, `heartRate.beatsPerMinute_min/max/avg` — both verified against the v4 reference). Remaining field names in `FitbitApiClient` marked "(assumed)" follow the documented `{field}_{aggregation}` convention and need live-sandbox confirmation once console access exists. Those are **response** names only: the request body is verified, and a unit test pins the `range` shape so it cannot regress silently.
+> **Not every data type supports every method.** A type's *record type* decides: Interval and Sample types (`steps`, `distance`, `active-minutes`, `total-calories`, `floors`, `heart-rate`) roll up; **Daily** types (`daily-resting-heart-rate`, `daily-heart-rate-variability`) are already one point per day and support only `list`/`reconcile`; Session types (`sleep`) support `list`/`get`. Asking a Daily type for a rollup returns 400 `INVALID_ARGUMENT` with reason `INVALID_PARENT_DATA_TYPE_COLLECTION` — `FitbitApiClient` rolled up a `resting-heart-rate` that is neither a real type ID nor rollable, which failed every wearable sync until it was corrected. A Daily type's window is a `filter` on its own `date` field (`dailyRestingHeartRate.date >= "2026-08-05"`), using the same ISO literal and `>=`/`<` grammar as the civil-time fields above.
+>
+> Rollup responses carry a union value per data type, and its fields are named **`{field}{Aggregation}` in camelCase** — `steps.countSum`, `heartRate.beatsPerMinuteMin/Max/Avg`, `distance.millimetersSum`, `totalCalories.kcalSum`, `floors.countSum`. Two consequences worth pinning: **int64 fields serialise as JSON strings** under proto3 JSON (`"countSum": "9423"`), so a numeric-only parse reads them as absent; and units are the reference's own — distance is **millimetres**, not metres. `active-minutes` is the exception with no scalar total, returning `activeMinutesRollupByActivityLevel[]` per `ActivityLevel`, of which CardiTrack sums `MODERATELY_ACTIVE` and `VERY_ACTIVE` to match Fitbit's classic figure. Sleep carries `summary.stagesSummary[]` keyed by stage `type` (`DEEP`/`LIGHT`/`REM`/`ASLEEP`/`AWAKE`/`RESTLESS`) plus `minutesAsleep`/`minutesAwake`/`minutesInSleepPeriod`; there is **no efficiency field**, so CardiTrack derives it as asleep ÷ sleep period.
+>
+> An earlier snake_case reading of the convention (`count`, `beatsPerMinute_avg`, `meters_sum`) matched nothing and returned **zeros rather than errors** — the whole class of bug this paragraph exists to prevent. All names above are now taken from the v4 reference and pinned by unit tests, but the reference cannot prove a field is *populated* for a given wearer: [`tools/HealthApiProbe`](../tools/HealthApiProbe/README.md) checks that against a live account.
 
 ### SSA Parameters
 

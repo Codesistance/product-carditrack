@@ -9,15 +9,18 @@ using Microsoft.Extensions.DependencyInjection;
 // *shape* of each response, then runs the real FitbitApiClient over the same
 // account so any field it fails to find shows up as a zero/null.
 //
-// Why this exists: Google's v4 reference documents only some rollup value
-// schemas, so several field names in FitbitApiClient were inferred from the
-// documented `{field}_{aggregation}` convention. A wrong guess does not throw —
-// it silently yields 0 — so it has to be checked against a live account once.
+// Why this exists: FitbitApiClient's field names now match the v4 reference, but
+// a name that is right on paper and absent in practice fails silently — it
+// yields 0 rather than throwing — so the pairing still has to be seen against a
+// live account once. It also catches per-account gaps the reference cannot show:
+// a data type the wearer's device never populates looks identical to a bug here.
 
 const string BaseUrl = "https://health.googleapis.com";
 
 // Data types read via dataPoints:dailyRollUp, with the union member
 // FitbitApiClient expects on the rollup point (camelCase of the type name).
+// daily-resting-heart-rate is absent by design — it is a Daily record and is
+// probed through list below, the only method it supports.
 string[] rollupDataTypes =
 [
     "steps",
@@ -26,7 +29,6 @@ string[] rollupDataTypes =
     "total-calories",
     "floors",
     "heart-rate",
-    "resting-heart-rate",
 ];
 
 var showValues = args.Contains("--raw");
@@ -100,6 +102,19 @@ foreach (var dataType in rollupDataTypes)
         Content = new StringContent(body, Encoding.UTF8, "application/json"),
     };
     await ReportAsync(http, request, token!, showValues);
+}
+
+Console.WriteLine();
+Console.WriteLine("--- daily-resting-heart-rate (dataPoints list) ---");
+Console.WriteLine("    FitbitApiClient expects union member: \"dailyRestingHeartRate\"");
+// A Daily record carries no rollup: dataPoints:dailyRollUp answers INVALID_ARGUMENT
+// naming the type, so it is listed and filtered on its own google.type.Date field.
+var restingFilter = Uri.EscapeDataString(
+    $"dailyRestingHeartRate.date >= \"{date:yyyy-MM-dd}\" AND dailyRestingHeartRate.date < \"{date.AddDays(1):yyyy-MM-dd}\"");
+using (var restingRequest = new HttpRequestMessage(
+    HttpMethod.Get, $"/v4/users/me/dataTypes/daily-resting-heart-rate/dataPoints?filter={restingFilter}"))
+{
+    await ReportAsync(http, restingRequest, token!, showValues);
 }
 
 Console.WriteLine();

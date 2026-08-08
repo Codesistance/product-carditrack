@@ -3,12 +3,15 @@
 One-shot diagnostic that answers a single question: **do the field names
 `FitbitApiClient` looks for actually match what the Google Health API returns?**
 
-Google's v4 reference documents the request shape and a few rollup value
-schemas (`steps.count`, `heartRate.beatsPerMinute_min/max/avg`) but not the
-rest, so several field names in `FitbitApiClient` were inferred from the
-documented `{field}_{aggregation}` convention. A wrong guess **does not throw** —
-the value simply comes back `0`, so a sync looks healthy while producing empty
-data. This has to be checked once against a live account.
+Every name `FitbitApiClient` reads is now taken from the v4 reference
+(`steps.countSum`, `heartRate.beatsPerMinuteAvg`, …), but a name being right on
+paper is not the same as it being populated for a given wearer, and the failure
+mode is silent either way: a name that matches nothing **does not throw**, the
+value simply comes back `0`, so a sync looks healthy while producing empty data.
+The pairing still has to be seen once against a live account.
+
+It also separates two things the reference cannot: a data type the wearer's
+device never records looks exactly like a parsing bug on our side.
 
 Not in `CardiTrack.sln` and not built by CI: it needs a real OAuth token and a
 real wearer's data, so it can only be run by hand.
