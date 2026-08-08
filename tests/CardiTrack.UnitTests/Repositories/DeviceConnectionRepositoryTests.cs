@@ -300,7 +300,6 @@ public class DeviceConnectionRepositoryTests(TestDatabaseFixture fixture)
     [Theory]
     [InlineData(ConnectionStatus.TokenExpired)]
     [InlineData(ConnectionStatus.AuthError)]
-    [InlineData(ConnectionStatus.Disconnected)]
     public async Task GetDueForSyncAsync_ExcludesConnection_WhenItNeedsReconsent(ConnectionStatus status)
     {
         using var scope = fixture.CreateScope();
@@ -310,6 +309,24 @@ public class DeviceConnectionRepositoryTests(TestDatabaseFixture fixture)
         var member = await TestDataSeeder.SeedCardiMemberAsync(scope, org.Id);
         var connection = await TestDataSeeder.SeedDeviceConnectionAsync(
             scope, member.Id, status: status, lastSyncDate: null);
+
+        var result = await repo.GetDueForSyncAsync();
+
+        Assert.DoesNotContain(result, c => c.Id == connection.Id);
+    }
+
+    // Disconnected is excluded for a different reason than the two above: there is nothing wrong
+    // with the credentials, the user simply removed the device. Nothing may pull from it again.
+    [Fact]
+    public async Task GetDueForSyncAsync_ExcludesConnection_WhenTheUserRemovedTheDevice()
+    {
+        using var scope = fixture.CreateScope();
+        var repo = scope.ServiceProvider.GetRequiredService<IDeviceConnectionRepository>();
+
+        var org = await TestDataSeeder.SeedOrganizationAsync(scope);
+        var member = await TestDataSeeder.SeedCardiMemberAsync(scope, org.Id);
+        var connection = await TestDataSeeder.SeedDeviceConnectionAsync(
+            scope, member.Id, status: ConnectionStatus.Disconnected, lastSyncDate: null);
 
         var result = await repo.GetDueForSyncAsync();
 
