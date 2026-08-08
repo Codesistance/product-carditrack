@@ -111,6 +111,9 @@ Inventory of every OAuth client (identity vs device-data), social log-on scope, 
 #### [entity_summary.md](./technical/entity_summary.md)
 Detailed summary of all domain entities, their properties, and relationships.
 
+#### [data_sync_architecture.md](./technical/data_sync_architecture.md)
+**Data sync & data pull allocation view** — which component runs on which node, over which technology, at which cadence: the 30-minute Worker poll, per-connection due-ness, the trailing window, manual sync, the weekly audit pull, and the R2 webhook pipeline.
+
 #### [data_protection_architecture.md](./technical/data_protection_architecture.md)
 HIPAA/GDPR data architecture (ADR): identifier/clinical schema separation, Safe Harbor de-identification pipeline, retention & erasure jobs, audit/consent models, and the subprocessor register.
 
