@@ -319,6 +319,37 @@ public class FitbitApiClientTests
         }
         """;
 
+    /// <summary>
+    /// The filter grammar pairs each field with one literal format: `civil_end_time` takes an ISO
+    /// date, its physical-instant sibling `end_time` demands RFC-3339. Sending the date against
+    /// `end_time` is the bug this pins — a 400 carrying reason `INVALID_DATA_POINT_FILTER` with
+    /// `detailedReasons: INVALID_DATA_POINT_FILTER_TIMESTAMP_FORMAT` (both strings appear, at the
+    /// two levels of one error). The shape-only sleep tests above cannot see it, because the fake
+    /// handler routes on path and ignores the query.
+    /// </summary>
+    [Fact]
+    public async Task GetSleepAsync_ListsWithClosedOpenCivilEndTimeFilter()
+    {
+        var handler = new RoutedFakeHttpHandler()
+            .Map("/dataTypes/sleep/", SleepSessionJson);
+
+        var (sut, _) = CreateSut(handler);
+        // Month end, so the exclusive upper bound also exercises the rollover into the next month.
+        await sut.GetSleepAsync("token", new DateOnly(2026, 8, 31));
+
+        var request = handler.Requests.Single();
+        Assert.Equal(HttpMethod.Get, request.Method);
+        Assert.EndsWith("/dataTypes/sleep/dataPoints", request.RequestUri!.AbsolutePath);
+
+        Assert.StartsWith("?filter=", request.RequestUri.Query, StringComparison.Ordinal);
+        var filter = Uri.UnescapeDataString(request.RequestUri.Query["?filter=".Length..]);
+        Assert.Equal(
+            """
+            sleep.interval.civil_end_time >= "2026-08-31" AND sleep.interval.civil_end_time < "2026-09-01"
+            """,
+            filter);
+    }
+
     [Fact]
     public async Task GetSleepAsync_SumsStageMinutes_WhenTotalAbsent()
     {
