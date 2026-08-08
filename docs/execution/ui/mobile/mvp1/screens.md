@@ -892,7 +892,8 @@ Saves via `PUT /api/v1/cardimembers/{id}` — a full replacement, so clearing a 
 
 **Device Card:**
 - Provider logo, device name, status chip (`ACTIVE` / `NEEDS RECONNECT` / `DISCONNECTED`), "synced 10m ago"
-- Data sources from the granted OAuth scopes: "Activity, HR, Sleep"
+- **Dataset pills** — one pill per reading the connection shares, mapped from the granted OAuth scopes by `DeviceDatasets` (`CardiTrack.Mobile.Core`): a fully-granted Fitbit shows Steps · Distance · Active Minutes · Floors · Calories · Heart Rate · Resting HR · Sleep · Sleep Stages. Pills are tinted by family (activity blue, heart rose, sleep purple, body teal, unrecognised grey) and wrap across the card width. A connection sharing nothing shows a single "No data shared" pill.
+  - The mapping is deliberately narrower than the scopes: `health_metrics_and_measurements` also covers HRV and SpO2, but `FitbitApiClient` fetches neither, so neither gets a pill. Scopes we don't recognise are humanised (`irregular_rhythm` → "Irregular Rhythm") rather than rendered as raw URIs — the pre-pill label printed the full `googleapis.com/auth/...` scope strings on the card.
 - Primary device star when designated
 - ~~Menu icon (three dots)~~ — **actions are inline** rather than behind a menu, matching the Figma frame
 

@@ -1,5 +1,7 @@
 using CardiTrack.Application.DTOs.Responses;
+using CardiTrack.Mobile.Core.Devices;
 using CardiTrack.Mobile.Services;
+using Microsoft.Maui.Controls.Shapes;
 
 namespace CardiTrack.Mobile.Controls;
 
@@ -43,11 +45,7 @@ public partial class DeviceCard : ContentView
                 ? $"synced {RelativeTime.Format(synced)}"
                 : "not synced yet";
 
-            // A connection sharing no data types is worth saying out loud — it looks connected
-            // but sends nothing — so the label stays visible either way.
-            ScopesLabel.Text = device.Scopes.Count > 0
-                ? string.Join(", ", device.Scopes.Select(FriendlyScope))
-                : "No data types shared";
+            ApplyDatasets(device.Scopes);
 
             LastSyncValue.Text = device.LastSyncedAt is { } last
                 ? RelativeTime.Format(last)
@@ -95,16 +93,62 @@ public partial class DeviceCard : ContentView
         };
     }
 
-    private static string FriendlyScope(string scope) => scope.ToLowerInvariant() switch
+    /// <summary>
+    /// Rebuilds the dataset pill row. A connection sharing nothing is worth saying out loud —
+    /// it looks connected but sends no data — so the row keeps a pill either way.
+    /// </summary>
+    private void ApplyDatasets(List<string> scopes)
     {
-        "activity" => "Activity",
-        "heartrate" => "HR",
-        "sleep" => "Sleep",
-        "profile" => "Profile",
-        "weight" => "Weight",
-        "oxygen_saturation" or "spo2" => "SpO2",
-        _ => scope,
-    };
+        DatasetPills.Children.Clear();
+
+        var datasets = DeviceDatasets.For(scopes);
+        if (datasets.Count == 0)
+        {
+            DatasetPills.Children.Add(BuildPill("No data shared", DatasetFamily.Other));
+            return;
+        }
+
+        foreach (var dataset in datasets)
+            DatasetPills.Children.Add(BuildPill(dataset.Name, dataset.Family));
+    }
+
+    private static Border BuildPill(string text, DatasetFamily family)
+    {
+        var (background, foreground) = PillColours(family);
+
+        return new Border
+        {
+            StrokeThickness = 0,
+            BackgroundColor = background,
+            Padding = new Thickness(10, 4),
+            // FlexLayout has no spacing of its own; the margin is the gutter between pills.
+            Margin = new Thickness(0, 0, 6, 6),
+            StrokeShape = new RoundRectangle { CornerRadius = 10 },
+            Content = new Label
+            {
+                Text = text,
+                TextColor = foreground,
+                FontFamily = "QuicksandSemiBold",
+                FontSize = 11,
+            },
+        };
+    }
+
+    /// <summary>Resolves a family's tint/ink pair from the Colors.xaml palette.</summary>
+    private static (Color Background, Color Foreground) PillColours(DatasetFamily family)
+    {
+        var token = family switch
+        {
+            DatasetFamily.Activity => "DatasetActivity",
+            DatasetFamily.Heart => "DatasetHeart",
+            DatasetFamily.Sleep => "DatasetSleep",
+            DatasetFamily.Body => "DatasetBody",
+            _ => "DatasetOther",
+        };
+
+        var resources = Microsoft.Maui.Controls.Application.Current!.Resources;
+        return ((Color)resources[$"{token}Background"], (Color)resources[$"{token}Text"]);
+    }
 
     private static string ProviderImageFor(string provider) => provider.ToLowerInvariant() switch
     {
