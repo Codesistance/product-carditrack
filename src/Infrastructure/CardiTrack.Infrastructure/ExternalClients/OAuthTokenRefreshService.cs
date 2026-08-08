@@ -1,3 +1,4 @@
+using System.Net;
 using System.Net.Http.Headers;
 using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Interfaces.Security;
@@ -61,14 +62,19 @@ public class OAuthTokenRefreshService : IOAuthTokenRefreshService
         }
         catch (Exception ex)
         {
-            await _deviceConnections.UpdateStatusAsync(connection.Id, ConnectionStatus.TokenExpired);
+            // The call never reached the provider, so nothing was said about the grant. Leaving
+            // the status alone is what lets the next scheduled sync retry — writing TokenExpired
+            // here retired a working connection on a DNS blip and put the app into "reconnect
+            // your device" for a device that had never lost authorisation.
             throw new InvalidOperationException(
                 $"Token refresh HTTP call failed for DeviceConnection {connection.Id}.", ex);
         }
 
         if (!response.IsSuccessStatusCode)
         {
-            await _deviceConnections.UpdateStatusAsync(connection.Id, ConnectionStatus.TokenExpired);
+            if (IsGrantRejection(response.StatusCode))
+                await _deviceConnections.UpdateStatusAsync(connection.Id, ConnectionStatus.TokenExpired);
+
             var errorBody = await response.Content.ReadAsStringAsync();
             throw new InvalidOperationException(
                 $"Token refresh returned {(int)response.StatusCode} for DeviceConnection {connection.Id}: {errorBody}");
@@ -97,4 +103,18 @@ public class OAuthTokenRefreshService : IOAuthTokenRefreshService
 
         return newAccessToken;
     }
+
+    /// <summary>
+    /// Whether the provider is refusing this grant rather than merely failing to serve it.
+    /// </summary>
+    /// <remarks>
+    /// A 4xx from the token endpoint means the refresh token itself is dead — revoked, already
+    /// spent, or issued to another client — and only re-consent produces a working one, so the
+    /// connection is marked <see cref="ConnectionStatus.TokenExpired"/> and stops being synced.
+    /// A 5xx, a rate limit or a server-side timeout says nothing about the grant; those keep the
+    /// connection's status so the next scheduled sync tries again.
+    /// </remarks>
+    private static bool IsGrantRejection(HttpStatusCode status) =>
+        status is >= HttpStatusCode.BadRequest and < HttpStatusCode.InternalServerError
+        && status is not (HttpStatusCode.RequestTimeout or HttpStatusCode.TooManyRequests);
 }

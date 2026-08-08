@@ -6,7 +6,6 @@ using CardiTrack.Application.Interfaces.Security;
 using CardiTrack.Domain.Entities;
 using CardiTrack.Domain.Enums;
 using CardiTrack.Infrastructure.ExternalClients;
-using CardiTrack.Application.Interfaces.Security;
 using CardiTrack.Infrastructure.Settings;
 using NSubstitute;
 
@@ -107,8 +106,15 @@ public class OAuthTokenRefreshServiceTests
                 Arg.Is<DateTime>(d => d > before));
     }
 
-    [Fact]
-    public async Task RefreshIfExpiredAsync_SetsTokenExpiredStatus_WhenProviderReturns400()
+    // A 4xx is the provider refusing the grant itself — revoked, already spent, wrong client.
+    // Nothing but re-consent fixes that, so the connection is retired from syncing and the app
+    // is told to ask for a reconnect.
+    [Theory]
+    [InlineData(HttpStatusCode.BadRequest)]
+    [InlineData(HttpStatusCode.Unauthorized)]
+    [InlineData(HttpStatusCode.Forbidden)]
+    public async Task RefreshIfExpiredAsync_SetsTokenExpiredStatus_WhenProviderRefusesTheGrant(
+        HttpStatusCode status)
     {
         _encryption.Decrypt("enc_refresh").Returns("plain_refresh");
         _encryption.Decrypt("enc_access").Returns("plain_access");
@@ -116,11 +122,54 @@ public class OAuthTokenRefreshServiceTests
         var connection = ActiveConnection(expiry: DateTime.UtcNow.AddMinutes(-10));
 
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            CreateSut(new FakeHttpHandler(statusCode: HttpStatusCode.BadRequest))
+            CreateSut(new FakeHttpHandler(statusCode: status))
                 .RefreshIfExpiredAsync(connection, _config));
 
         await _deviceConnections.Received(1)
             .UpdateStatusAsync(connection.Id, ConnectionStatus.TokenExpired);
+    }
+
+    // These say nothing about the grant — the provider is having a bad minute, or throttling us.
+    // Marking them TokenExpired retired a working connection on a transient fault: it dropped out
+    // of the sync rotation for good and the app started asking the user to reconnect a device
+    // that had never lost authorisation.
+    [Theory]
+    [InlineData(HttpStatusCode.InternalServerError)]
+    [InlineData(HttpStatusCode.BadGateway)]
+    [InlineData(HttpStatusCode.ServiceUnavailable)]
+    [InlineData(HttpStatusCode.TooManyRequests)]
+    [InlineData(HttpStatusCode.RequestTimeout)]
+    public async Task RefreshIfExpiredAsync_LeavesStatusAlone_WhenTheProviderFailsTransiently(
+        HttpStatusCode status)
+    {
+        _encryption.Decrypt("enc_refresh").Returns("plain_refresh");
+        _encryption.Decrypt("enc_access").Returns("plain_access");
+
+        var connection = ActiveConnection(expiry: DateTime.UtcNow.AddMinutes(-10));
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            CreateSut(new FakeHttpHandler(statusCode: status))
+                .RefreshIfExpiredAsync(connection, _config));
+
+        await _deviceConnections.DidNotReceive()
+            .UpdateStatusAsync(Arg.Any<Guid>(), Arg.Any<ConnectionStatus>());
+    }
+
+    // The request never reached the provider, so it never said anything about the grant at all.
+    [Fact]
+    public async Task RefreshIfExpiredAsync_LeavesStatusAlone_WhenTheCallNeverReachedTheProvider()
+    {
+        _encryption.Decrypt("enc_refresh").Returns("plain_refresh");
+        _encryption.Decrypt("enc_access").Returns("plain_access");
+
+        var connection = ActiveConnection(expiry: DateTime.UtcNow.AddMinutes(-10));
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            CreateSut(new ThrowingHttpHandler(new HttpRequestException("no such host")))
+                .RefreshIfExpiredAsync(connection, _config));
+
+        await _deviceConnections.DidNotReceive()
+            .UpdateStatusAsync(Arg.Any<Guid>(), Arg.Any<ConnectionStatus>());
     }
 
     [Fact]
@@ -167,4 +216,12 @@ internal class FakeHttpHandler : HttpMessageHandler
         {
             Content = new StringContent(_responseBody, Encoding.UTF8, "application/json")
         });
+}
+
+/// <summary>A handler that fails before any response exists — DNS, connect and timeout faults.</summary>
+internal class ThrowingHttpHandler(Exception failure) : HttpMessageHandler
+{
+    protected override Task<HttpResponseMessage> SendAsync(
+        HttpRequestMessage request, CancellationToken cancellationToken)
+        => Task.FromException<HttpResponseMessage>(failure);
 }

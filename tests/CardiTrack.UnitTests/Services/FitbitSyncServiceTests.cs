@@ -179,7 +179,7 @@ public class DeviceSyncServiceTests
     }
 
     [Fact]
-    public async Task SyncCardiMemberAsync_UpdatesLastSyncDate_OnSuccess()
+    public async Task SyncCardiMemberAsync_RecordsTheSuccessfulSync_OnSuccess()
     {
         SetupSuccessfulTokenRefresh();
         SetupDefaultApiResponse();
@@ -187,7 +187,24 @@ public class DeviceSyncServiceTests
         await CreateSut().SyncCardiMemberAsync(_fitbitConnection);
 
         await _deviceConnections.Received(1)
-            .UpdateLastSyncDateAsync(_fitbitConnection.Id, Arg.Any<DateTime>());
+            .MarkSyncSucceededAsync(_fitbitConnection.Id, Arg.Any<DateTime>());
+    }
+
+    // The recovery half of the SyncError transition below. A connection that errored last run is
+    // still pulled, and a window that lands is what puts it back in service — without this it
+    // would keep reporting a fault it had already recovered from, and the app would keep telling
+    // the user their device needs attention.
+    [Fact]
+    public async Task SyncCardiMemberAsync_RecordsTheSuccessfulSync_EvenWhenTheConnectionWasInSyncError()
+    {
+        _fitbitConnection.ConnectionStatus = ConnectionStatus.SyncError;
+        SetupSuccessfulTokenRefresh();
+        SetupDefaultApiResponse();
+
+        await CreateSut().SyncCardiMemberAsync(_fitbitConnection);
+
+        await _deviceConnections.Received(1)
+            .MarkSyncSucceededAsync(_fitbitConnection.Id, Arg.Any<DateTime>());
     }
 
     [Fact]
@@ -207,7 +224,7 @@ public class DeviceSyncServiceTests
     // A partial window must stay due: stamping LastSyncDate would hide the gap until the next
     // interval, and the missing day would never be retried.
     [Fact]
-    public async Task SyncCardiMemberAsync_DoesNotUpdateLastSyncDate_WhenALaterDayFails()
+    public async Task SyncCardiMemberAsync_DoesNotRecordSuccess_WhenALaterDayFails()
     {
         SetupSuccessfulTokenRefresh();
         _deviceApi.GetHealthSnapshotAsync(Arg.Any<string>(), Arg.Any<DateOnly>())
@@ -219,7 +236,7 @@ public class DeviceSyncServiceTests
             CreateSut().SyncCardiMemberAsync(_fitbitConnection));
 
         await _deviceConnections.DidNotReceive()
-            .UpdateLastSyncDateAsync(Arg.Any<Guid>(), Arg.Any<DateTime>());
+            .MarkSyncSucceededAsync(Arg.Any<Guid>(), Arg.Any<DateTime>());
     }
 
     // Oldest day first, so the days that did come back are already saved when a later one fails.
@@ -284,9 +301,11 @@ public class DeviceSyncServiceTests
     }
 
     // Stamping LastSyncDate would push the connection's next routine pull out by a whole interval,
-    // so a job that only measures would silently change what gets collected.
+    // so a job that only measures would silently change what gets collected. The status reset the
+    // same call carries is withheld for the same reason: the audit reads a stale window, so it is
+    // not evidence about the connection's health either way.
     [Fact]
-    public async Task AuditSyncAsync_DoesNotUpdateLastSyncDate()
+    public async Task AuditSyncAsync_DoesNotRecordASuccessfulSync()
     {
         SetupSuccessfulTokenRefresh();
         SetupDefaultApiResponse();
@@ -294,7 +313,7 @@ public class DeviceSyncServiceTests
         await CreateSut().AuditSyncAsync(_fitbitConnection);
 
         await _deviceConnections.DidNotReceive()
-            .UpdateLastSyncDateAsync(Arg.Any<Guid>(), Arg.Any<DateTime>());
+            .MarkSyncSucceededAsync(Arg.Any<Guid>(), Arg.Any<DateTime>());
     }
 
     // A historical day failing says nothing about whether the connection works now. Marking it
