@@ -4,9 +4,10 @@
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <!-- The release pipeline overrides this with -p:Version=<tag> (a global property, so
-         it wins over the value here); DeploymentInfo reports it to logs and OTel. Anything
-         built outside the pipeline keeps the local marker rather than looking like a release. -->
+    <!-- The release pipeline overrides this with -p:Version=<semver> — the deploy tag minus
+         its leading "v", which MSBuild will not accept. It is a global property, so it wins
+         over the value here; DeploymentInfo reports it to logs and OTel. Anything built
+         outside the pipeline keeps the local marker rather than looking like a release. -->
     <Version>0.0.0-local</Version>
     <DockerDefaultTargetOS>Linux</DockerDefaultTargetOS>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>

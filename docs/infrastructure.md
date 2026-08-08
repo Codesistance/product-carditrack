@@ -319,7 +319,7 @@ API, Web, and Worker share the `CardiTrack.Observability` library — **Serilog*
 - `Apm:Data` (secret `carditrack-<env>-apm-data`) carries the engine's connection JSON (`IngestUrl`, `IngestToken`, optional extras). Placeholder value ⇒ nothing ships.
 - `Apm:MetricsEnabled` (tfvar `apm_metrics_enabled`) opts into OTel metrics (runtime, ASP.NET Core, HttpClient, Npgsql). **Dev: true, prod: false** — metrics bill as custom metrics and stream continuously.
 
-Both signals are attributed to a release: logs carry a `Version` property and traces carry the OTel `service.version` resource attribute (Datadog's `version` tag), resolved by `DeploymentInfo`. The value is the deploy's semver tag, stamped into the assembly by the Dockerfile's `VERSION` build arg, which CI feeds from the same tag that names the image — so an image built outside the pipeline reports `0.0.0-local` rather than posing as a release. `DEPLOY_VERSION` overrides it for out-of-band images.
+Both signals are attributed to a release: logs carry a `Version` property and traces carry the OTel `service.version` resource attribute (Datadog's `version` tag), resolved by `DeploymentInfo`. The value is the deploy's semver tag, stamped into the assembly by the Dockerfile's `VERSION` build arg, which CI feeds from the tag that names the image minus its leading `v` (MSBuild rejects a v-prefixed `Version`) — so an image tagged `v1.2.3` reports `1.2.3`, and an image built outside the pipeline reports `0.0.0-local` rather than posing as a release. `DEPLOY_VERSION` overrides it for out-of-band images.
 
 Setup, token provisioning, and backend-switching instructions: [apm_setup_runbook.md](./technical/apm_setup_runbook.md).
 

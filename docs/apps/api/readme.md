@@ -80,10 +80,12 @@ Free-tier prudence (enforced engine-independently in `ApmExtensions`):
 
 Logs carry a `Version` property and the OTel resource carries `service.version` (Datadog's
 `version` tag), so telemetry can be attributed to a release. The value is the deploy's
-semver tag: CI computes it, tags the image with it, and passes the same string as the
-Dockerfile's `VERSION` build arg, which `-p:Version=` stamps into the assembly.
-`DeploymentInfo` reads it back — trimming the `+<sha>` the SDK appends — so what the app
-reports matches the image tag exactly.
+semver tag: CI computes it (`v1.2.3`), tags the image with it as-is, and passes it —
+**without the leading `v`**, which MSBuild will not accept in a `Version` — as the
+Dockerfile's `VERSION` build arg for `-p:Version=` to stamp into the assembly.
+`DeploymentInfo` reads it back, trimming the `+<sha>` the SDK appends. Net effect: an
+image tagged `v1.2.3` reports `1.2.3`, so the two differ by that one character and
+nothing else.
 
 Builds outside the release pipeline report `0.0.0-local` (the host projects' default
 `<Version>`) rather than posing as a release. The plaintext `DEPLOY_VERSION` env var

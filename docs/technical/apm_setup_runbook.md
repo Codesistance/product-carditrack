@@ -159,8 +159,11 @@ pinned to a deploy without cross-referencing CI:
   a Datadog remapper if you want log-side unified tagging too.
 
 Nothing to provision: the value is the deploy's semver tag. `compute-version` in
-`deploy-apps-dev.yml` derives it, it names the image, and the same string is passed to
-`docker build --build-arg VERSION=` so `-p:Version=` stamps it into the assembly.
+`deploy-apps-dev.yml` derives it (`v1.2.3`), and that string tags the image as-is. The
+`docker build --build-arg VERSION=` that stamps the assembly gets it **without the leading
+`v`** (`${TAG#v}`) — MSBuild rejects a v-prefixed `Version`. So an image tagged `v1.2.3`
+reports `1.2.3` in logs and traces: the same release, one character apart. Watch for that
+when correlating a Datadog `version:` value against a Cloud Run image tag by eye.
 `DeploymentInfo` reads it back at startup. Prod redeploys an existing tag, so its
 containers report whatever they were built as — which is the point.
 
@@ -176,8 +179,8 @@ Verify after a deploy:
 
 ```bash
 gcloud run services describe carditrack-dev-api --region=europe-west2 --project=carditrack-490120 \
-  --format='value(spec.template.spec.containers[0].image)'   # tag == what logs report
-# Then in Cloud Run logs, the boot line names it:
+  --format='value(spec.template.spec.containers[0].image)'   # ...:v1.4.2
+# Then in Cloud Run logs, the boot line names it — the same version, minus the "v":
 #   "APM configured: engine Datadog shipping ... as CardiTrack.API 1.4.2 (...)"
 ```
 

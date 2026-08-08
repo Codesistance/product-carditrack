@@ -36,8 +36,8 @@ public class DeploymentInfoTests
     [Fact]
     public void Resolve_DropsTheSourceRevisionSuffixTheSdkAppends()
     {
-        // The image tag is "1.2.3"; matching it exactly is what lets the backend line
-        // telemetry up with a release.
+        // The bare semver is what the backend lines telemetry up on — an image tagged
+        // v1.2.3 must report 1.2.3, not 1.2.3+<sha>.
         Assert.Equal("1.2.3", DeploymentInfo.Resolve(null, "1.2.3+a1b2c3d4e5"));
     }
 

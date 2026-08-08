@@ -5,8 +5,9 @@ namespace CardiTrack.Observability;
 
 /// <summary>
 /// Which build is running. The release version is the semver tag CI computes for the
-/// deploy (v1.2.3): it names the image, and the Dockerfile's VERSION build arg stamps
-/// the same value into the assembly so a running container can report what it is.
+/// deploy: the tag names the image as-is (v1.2.3), while the Dockerfile's VERSION build
+/// arg gets it without the "v" (1.2.3), because MSBuild rejects a v-prefixed Version.
+/// So an image tagged v1.2.3 reports 1.2.3 — the same release, one character apart.
 /// Every host attaches it to its logs (the "Version" property) and to its OTel resource
 /// (service.version), so a spike in errors or latency can be pinned to a release.
 ///
@@ -48,9 +49,10 @@ public static class DeploymentInfo
     }
 
     /// <summary>
-    /// Trims the leading "v" CI tags carry and the "+&lt;sha&gt;" build metadata the SDK
-    /// appends when a source revision is known, so the reported version matches the image
-    /// tag exactly — APM backends key release comparisons on that string.
+    /// Reduces a version to the bare semver APM backends key release comparisons on:
+    /// drops the "+&lt;sha&gt;" build metadata the SDK appends when a source revision is
+    /// known, and the leading "v" of a tag-shaped value. CI already strips that "v" before
+    /// the build arg; doing it here too means a DEPLOY_VERSION override can be a pasted tag.
     /// </summary>
     private static string Clean(string value)
     {

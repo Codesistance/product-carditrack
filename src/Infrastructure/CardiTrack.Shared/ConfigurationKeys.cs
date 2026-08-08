@@ -72,8 +72,9 @@ public static class ConfigurationKeys
         /// <summary>
         /// Bare env var (no section) overriding the version baked into the image at build
         /// time. Normally unset: the release version is stamped into the assembly by the
-        /// Dockerfile's VERSION build arg, which CI feeds from the image tag. Read via
-        /// DeploymentInfo, which runs before configuration exists — hence no section.
+        /// Dockerfile's VERSION build arg, which CI feeds from the deploy's tag without its
+        /// leading "v". Read via DeploymentInfo, which runs before configuration exists —
+        /// hence no section.
         /// </summary>
         public const string Version = "DEPLOY_VERSION";
     }
