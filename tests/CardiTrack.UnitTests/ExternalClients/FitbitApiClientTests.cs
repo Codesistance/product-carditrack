@@ -16,7 +16,14 @@ public class FitbitApiClientTests
     {
         private readonly List<(string PathContains, string Body, HttpStatusCode Status)> _routes = [];
 
-        public List<HttpRequestMessage> Requests { get; } = [];
+        /// <summary>
+        /// Guards what the handler records. Snapshot methods read every metric a member needs
+        /// concurrently (five rollups under one Task.WhenAll), so SendAsync must assume it is
+        /// re-entered on other threads — an unsynchronized List.Add loses entries or throws.
+        /// </summary>
+        private readonly Lock _recorded = new();
+
+        private readonly List<HttpRequestMessage> _requests = [];
 
         /// <summary>
         /// Request payloads by path, captured while the request is in flight — the client disposes
@@ -24,22 +31,40 @@ public class FitbitApiClientTests
         /// </summary>
         private readonly List<(string Path, string Body)> _sentBodies = [];
 
+        /// <summary>Snapshot, so a caller cannot enumerate the list while a request is in flight.</summary>
+        public IReadOnlyList<HttpRequestMessage> Requests
+        {
+            get { lock (_recorded) return [.. _requests]; }
+        }
+
         public RoutedFakeHttpHandler Map(string pathContains, string body, HttpStatusCode status = HttpStatusCode.OK)
         {
             _routes.Add((pathContains, body, status));
             return this;
         }
 
-        public string BodyFor(string pathContains) =>
-            _sentBodies.Single(b => b.Path.Contains(pathContains, StringComparison.Ordinal)).Body;
+        public string BodyFor(string pathContains)
+        {
+            lock (_recorded)
+                return _sentBodies.Single(b => b.Path.Contains(pathContains, StringComparison.Ordinal)).Body;
+        }
 
         protected override async Task<HttpResponseMessage> SendAsync(
             HttpRequestMessage request, CancellationToken cancellationToken)
         {
-            Requests.Add(request);
             var path = request.RequestUri!.AbsolutePath;
-            if (request.Content is not null)
-                _sentBodies.Add((path, await request.Content.ReadAsStringAsync(cancellationToken)));
+
+            // Read the content before taking the lock — awaiting inside a lock is not allowed.
+            var requestBody = request.Content is null
+                ? null
+                : await request.Content.ReadAsStringAsync(cancellationToken);
+
+            lock (_recorded)
+            {
+                _requests.Add(request);
+                if (requestBody is not null)
+                    _sentBodies.Add((path, requestBody));
+            }
 
             var route = _routes.FirstOrDefault(r => path.Contains(r.PathContains, StringComparison.Ordinal));
             var body = route == default ? """{ "rollupDataPoints": [] }""" : route.Body;
