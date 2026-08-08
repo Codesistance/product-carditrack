@@ -228,8 +228,13 @@ resource "google_cloud_run_v2_service" "api" {
   }
 
   labels = var.cloud_run_labels
+  # client/client_version are provenance only — a record of which tool last wrote
+  # the resource. CI deploys with `gcloud run deploy`, which stamps client=gcloud,
+  # and an apply stamps client=terraform straight back, so every plan after a
+  # release wanted to change all of them. Nothing functional rides on the value.
+  # Every Cloud Run resource below repeats this list for the same reason.
   lifecycle {
-    ignore_changes = [template[0].containers[0].image]
+    ignore_changes = [template[0].containers[0].image, client, client_version]
   }
   depends_on = [
     google_project_service.run,
@@ -339,7 +344,7 @@ resource "google_cloud_run_v2_service" "web" {
 
   labels = var.cloud_run_labels
   lifecycle {
-    ignore_changes = [template[0].containers[0].image]
+    ignore_changes = [template[0].containers[0].image, client, client_version]
   }
   depends_on = [
     google_project_service.run,
@@ -408,7 +413,7 @@ resource "google_cloud_run_v2_job" "migrator" {
   }
 
   lifecycle {
-    ignore_changes = [template[0].template[0].containers[0].image]
+    ignore_changes = [template[0].template[0].containers[0].image, client, client_version]
   }
   depends_on = [
     google_project_service.run,
@@ -485,7 +490,7 @@ resource "google_cloud_run_v2_service" "worker" {
 
   labels = var.cloud_run_labels
   lifecycle {
-    ignore_changes = [template[0].containers[0].image]
+    ignore_changes = [template[0].containers[0].image, client, client_version]
   }
   depends_on = [
     google_project_service.run,
@@ -547,7 +552,7 @@ resource "google_cloud_run_v2_service" "medgemma" {
 
   labels = var.cloud_run_labels
   lifecycle {
-    ignore_changes = [template[0].containers[0].image]
+    ignore_changes = [template[0].containers[0].image, client, client_version]
   }
   depends_on = [google_project_service.run]
 }
