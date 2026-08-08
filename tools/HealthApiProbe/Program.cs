@@ -108,9 +108,11 @@ Console.WriteLine();
 Console.WriteLine("--- daily-resting-heart-rate (dataPoints list) ---");
 Console.WriteLine("    FitbitApiClient expects union member: \"dailyRestingHeartRate\"");
 // A Daily record carries no rollup: dataPoints:dailyRollUp answers INVALID_ARGUMENT
-// naming the type, so it is listed and filtered on its own google.type.Date field.
+// naming the type, so it is listed and filtered on its own google.type.Date field. The filter
+// names the data type in snake_case ({daily_summary_data_type}.date), not the camelCase union
+// member the response is keyed by — that spelling is rejected as INVALID_DATA_POINT_FILTER.
 var restingFilter = Uri.EscapeDataString(
-    $"dailyRestingHeartRate.date >= \"{date:yyyy-MM-dd}\" AND dailyRestingHeartRate.date < \"{date.AddDays(1):yyyy-MM-dd}\"");
+    $"daily_resting_heart_rate.date >= \"{date:yyyy-MM-dd}\" AND daily_resting_heart_rate.date < \"{date.AddDays(1):yyyy-MM-dd}\"");
 using (var restingRequest = new HttpRequestMessage(
     HttpMethod.Get, $"/v4/users/me/dataTypes/daily-resting-heart-rate/dataPoints?filter={restingFilter}"))
 {
