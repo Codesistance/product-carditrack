@@ -1,4 +1,5 @@
 using CardiTrack.Mobile.Core.Auth;
+using CardiTrack.Mobile.Core.Configuration;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
 
@@ -6,10 +7,13 @@ namespace CardiTrack.UnitTests.Mobile;
 
 public class TokenRefresherTests
 {
+    private static readonly Auth0Options Options =
+        new("tenant.eu.auth0.com", "client123", "https://api.carditrack.com");
+
     private readonly ITokenStore _store = Substitute.For<ITokenStore>();
     private readonly IAuth0AuthClient _auth0 = Substitute.For<IAuth0AuthClient>();
 
-    private TokenRefresher CreateSut() => new(_store, _auth0);
+    private TokenRefresher CreateSut() => new(_store, _auth0, Options);
 
     private static AuthTokens Valid(string access = "access-1", string? refresh = "refresh-1") =>
         new(access, refresh, "id-1", DateTimeOffset.UtcNow.AddMinutes(30));
@@ -107,6 +111,49 @@ public class TokenRefresherTests
 
         Assert.Null(await sut.GetValidAccessTokenAsync());
         await _store.Received(1).ClearAsync();
+    }
+
+    /// <remarks>
+    /// The dashboard and device list load together, so a dead session produces several
+    /// simultaneous 401s. Each one raising SessionExpired would have the app racing to swap
+    /// its own root out from under itself; clearing the store inside the gate is what stops it.
+    /// </remarks>
+    [Fact]
+    public async Task RaisesSessionExpiredOnce_WhenConcurrentCallersHitARejectedRefresh()
+    {
+        AuthTokens? stored = Expired();
+        _store.GetAsync().Returns(_ => stored);
+        _store.When(s => s.ClearAsync()).Do(_ => stored = null);
+        _auth0.RefreshAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(new AuthException(AuthErrorCode.InvalidCredentials, "invalid_grant"));
+
+        var sut = CreateSut();
+        var raised = 0;
+        sut.SessionExpired += () => Interlocked.Increment(ref raised);
+
+        var results = await Task.WhenAll(
+            Enumerable.Range(0, 5).Select(_ => sut.GetValidAccessTokenAsync(forceRefresh: true)));
+
+        Assert.All(results, Assert.Null);
+        Assert.Equal(1, raised);
+        await _auth0.Received(1).RefreshAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task DoesNotRaiseSessionExpiredAgain_AfterTheSessionHasEnded()
+    {
+        AuthTokens? stored = Expired(refresh: null);
+        _store.GetAsync().Returns(_ => stored);
+        _store.When(s => s.ClearAsync()).Do(_ => stored = null);
+
+        var sut = CreateSut();
+        var raised = 0;
+        sut.SessionExpired += () => Interlocked.Increment(ref raised);
+
+        Assert.Null(await sut.GetValidAccessTokenAsync());
+        Assert.Null(await sut.GetValidAccessTokenAsync());
+
+        Assert.Equal(1, raised);
     }
 
     [Fact]

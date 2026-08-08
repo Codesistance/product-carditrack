@@ -21,6 +21,13 @@ public partial class ConnectionSuccessPage : ContentPage
         _ctx = ctx;
         _member = ctx.RequireMember();
         ConnectedLabel.Text = $"{_member.Name}'s {device.DisplayName} is now connected";
+
+        if (!ctx.ShowBaselineIntro)
+        {
+            // Adding a device to a member who already has one: this exits back to where the
+            // wizard was launched from, not the dashboard, so don't promise a dashboard.
+            ContinueBtn.Text = "Done";
+        }
     }
 
     protected override async void OnAppearing()
@@ -64,12 +71,17 @@ public partial class ConnectionSuccessPage : ContentPage
 
     private async void OnAddAnotherClicked(object? sender, EventArgs e)
     {
-        // Back to M1-05 for a second device.
+        // Back to M1-05 for a second device. ShowBaselineIntro is deliberately left alone:
+        // it says whether this member had a device before the wizard opened, so a run that
+        // started from none still ends on M1-08 however many devices get connected in it.
         await Navigation.PushAsync(new DeviceSelectionPage(_ctx));
     }
 
     private async void OnContinueClicked(object? sender, EventArgs e)
     {
-        await Navigation.PushAsync(new BaselineLearningPage(_ctx));
+        if (_ctx.ShowBaselineIntro)
+            await Navigation.PushAsync(new BaselineLearningPage(_ctx));
+        else
+            await _ctx.FinishAsync(this);
     }
 }

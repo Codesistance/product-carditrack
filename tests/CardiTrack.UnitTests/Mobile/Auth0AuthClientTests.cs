@@ -166,4 +166,18 @@ public class Auth0AuthClientTests
         Assert.Contains("grant_type=refresh_token", body);
         Assert.Contains("refresh_token=rt-old", body);
     }
+
+    [Fact]
+    public async Task Refresh_SendsNoAudience()
+    {
+        var (client, http) = CreateSut();
+        http.Enqueue(HttpStatusCode.OK, TokenJson);
+
+        await client.RefreshAsync("rt-old");
+
+        // Auth0's refresh_token grant takes no audience — the refresh token is already bound
+        // to the audience and scope granted at login. Sending one looks like a fix for an
+        // audience mismatch while doing nothing; the real fault is the login-time config.
+        Assert.DoesNotContain("audience", http.Requests.Single().Body!);
+    }
 }

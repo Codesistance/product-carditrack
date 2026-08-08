@@ -19,9 +19,15 @@ internal static class WizardLauncher
     /// completes when the modal is dismissed — wizard exit, Android hardware back, or iOS swipe —
     /// via the application's ModalPopped event, so callers can always await the outcome.
     /// </summary>
-    public static async Task<WizardResult> RunModalAsync(INavigation navigation, CardiMemberResponse? member)
+    /// <param name="showBaselineIntro">
+    /// Pass false when the member already has a connected device, so success exits straight
+    /// back to the caller instead of via the M1-08 baseline explainer.
+    /// </param>
+    public static async Task<WizardResult> RunModalAsync(
+        INavigation navigation, CardiMemberResponse? member, bool showBaselineIntro = true)
     {
         var ctx = WizardContext.ForModal(member);
+        ctx.ShowBaselineIntro = showBaselineIntro;
         Page entry = member is null ? new AddCardiMemberPage(ctx) : new DeviceSelectionPage(ctx);
         var wizardNav = new NavigationPage(entry);
         var tcs = new TaskCompletionSource<WizardResult>(TaskCreationOptions.RunContinuationsAsynchronously);

@@ -26,6 +26,14 @@ public sealed class WizardContext
     public bool MemberCreated { get; set; }
     public bool DeviceConnected { get; set; }
 
+    /// <summary>
+    /// Whether M1-07 hands on to the M1-08 baseline explainer before exiting. True for the
+    /// member's first device — the 30-day learning story is news then. False when a second
+    /// device is being added to a member who already has one: there the explainer is a
+    /// detour past the exit the user asked for.
+    /// </summary>
+    public bool ShowBaselineIntro { get; set; } = true;
+
     private WizardContext(WizardOrigin origin, CardiMemberResponse? member)
     {
         Origin = origin;

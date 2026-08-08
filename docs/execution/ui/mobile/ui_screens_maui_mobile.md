@@ -626,7 +626,7 @@ Each device card:
 **Status:** Built (`Onboarding/ConnectionSuccessPage`)
 **User Story:** 1.3 Connection Success
 **Entry:** ← M1-06 OAuth (authorization complete)
-**Exit:** → M1-08 Baseline Info ("Continue to Dashboard") | → M1-05 Device Selection ("Add Another Device")
+**Exit:** → M1-08 Baseline Info ("Continue to Dashboard", first device only) | → wizard exit ("Done", additional device) | → M1-05 Device Selection ("Add Another Device")
 
 **Checkmark:**
 - **Static green circle with ✓** (no entry animation shipped)
@@ -647,7 +647,9 @@ Each device card:
 - Outlined button: "+ Add Another Device"
 
 **CTA:**
-- Primary button: "Continue to Dashboard"
+- Primary button: "Continue to Dashboard" — connecting the member's **first** device; continues to M1-08
+- Primary button: **"Done"** — connecting an **additional** device (launched from M1-15 for a member who already had one); exits the wizard straight back to where it was launched from. M1-08 is the 30-day learning story, which is news once per member, not once per device; the label changes with it because this exit does not land on the dashboard.
+- Which of the two shows is fixed when the wizard opens, by whether the member had a device then — so a run that starts from none and connects two via "Add Another Device" still ends on M1-08.
 - Helper text **below the button**: "You can sync multiple devices to get a more accurate picture of their health."
 
 **States:**
@@ -660,7 +662,7 @@ Each device card:
 ### M1-08: Baseline Learning Info
 **Status:** Built (`Onboarding/BaselineLearningPage`)
 **User Story:** 1.3 Baseline Setup
-**Entry:** ← M1-07 Device Success
+**Entry:** ← M1-07 Device Success — **first connected device only**; skipped when an additional device is added (see M1-07 CTA)
 **Exit:** → M1-09 Dashboard ("Go to Dashboard") | "Invite Family Member First" link (ships now; dead end until M3-02)
 
 **Header:**

@@ -13,12 +13,34 @@ public static class JwtPayloadReader
     public static IReadOnlyDictionary<string, string> ReadClaims(string? jwt)
     {
         var result = new Dictionary<string, string>(StringComparer.Ordinal);
-        if (string.IsNullOrEmpty(jwt))
+        if (ReadPayload(jwt) is not { } claims)
             return result;
+
+        foreach (var property in claims.Properties())
+        {
+            // Booleans surface as "true"/"false" — email_verified is a JSON bool.
+            if (property.Value is JValue { Type: JTokenType.String } text)
+                result[property.Name] = (string?)text ?? string.Empty;
+            else if (property.Value is JValue { Type: JTokenType.Boolean } flag)
+                result[property.Name] = (bool)flag ? "true" : "false";
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// The decoded payload object, or null when the token is absent, not a JWT, or
+    /// carries a payload that isn't a JSON object. Shared with <see cref="AccessTokenAudience"/>,
+    /// which needs claim shapes <see cref="ReadClaims"/> flattens away.
+    /// </summary>
+    internal static JObject? ReadPayload(string? jwt)
+    {
+        if (string.IsNullOrEmpty(jwt))
+            return null;
 
         var parts = jwt.Split('.');
         if (parts.Length < 2)
-            return result;
+            return null;
 
         string json;
         try
@@ -29,21 +51,9 @@ public static class JwtPayloadReader
         }
         catch (FormatException)
         {
-            return result;
+            return null;
         }
 
-        if (JsonUtility.TryParse(json, out var root, out _) && root is JObject claims)
-        {
-            foreach (var property in claims.Properties())
-            {
-                // Booleans surface as "true"/"false" — email_verified is a JSON bool.
-                if (property.Value is JValue { Type: JTokenType.String } text)
-                    result[property.Name] = (string?)text ?? string.Empty;
-                else if (property.Value is JValue { Type: JTokenType.Boolean } flag)
-                    result[property.Name] = (bool)flag ? "true" : "false";
-            }
-        }
-
-        return result;
+        return JsonUtility.TryParse(json, out var root, out _) ? root as JObject : null;
     }
 }

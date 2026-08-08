@@ -86,8 +86,10 @@ public partial class DeviceManagementPage : ContentPage
                 ErrorDetailLabel.Text = ex.Message;
                 SetState(error: true);
             }
-            else
+            else if (!ex.IsSessionExpired)
             {
+                // An expired session is already taking the user back to sign-in — a popup
+                // here would only land on top of that page explaining nothing.
                 await _popups.ShowWarningAsync(ex.Message, "Couldn't refresh");
             }
         }
@@ -148,12 +150,16 @@ public partial class DeviceManagementPage : ContentPage
             if (member is null)
                 return;
 
-            await WizardLauncher.RunModalAsync(Navigation, member);
+            await WizardLauncher.RunModalAsync(Navigation, member, showBaselineIntro: _cards.Count == 0);
             await LoadAsync();
         }
-        catch (ApiException ex)
+        catch (ApiException ex) when (!ex.IsSessionExpired)
         {
             await _popups.ShowErrorAsync(ex.Message, "Couldn't start device setup");
+        }
+        catch (ApiException)
+        {
+            // Session gone — the app is already on its way back to sign-in.
         }
         catch (Exception ex)
         {
@@ -216,11 +222,15 @@ public partial class DeviceManagementPage : ContentPage
             await action();
             await LoadAsync();
         }
-        catch (ApiException ex)
+        catch (ApiException ex) when (!ex.IsSessionExpired)
         {
             await _popups.ShowErrorAsync(ex.Message, errorTitle);
             // Re-read state so a half-applied toggle doesn't linger on screen.
             await LoadAsync();
+        }
+        catch (ApiException)
+        {
+            // Session gone — the app is already on its way back to sign-in.
         }
         finally
         {

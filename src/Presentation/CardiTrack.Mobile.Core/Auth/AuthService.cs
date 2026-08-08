@@ -1,3 +1,7 @@
+using CardiTrack.Mobile.Core.Configuration;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
+
 namespace CardiTrack.Mobile.Core.Auth;
 
 public sealed class AuthService : IAuthService
@@ -5,15 +9,24 @@ public sealed class AuthService : IAuthService
     private readonly IAuth0AuthClient _auth0;
     private readonly ITokenStore _store;
     private readonly ITokenRefresher _refresher;
+    private readonly Auth0Options _options;
+    private readonly ILogger<AuthService> _logger;
 
     private IReadOnlyDictionary<string, string> _claims =
         new Dictionary<string, string>(StringComparer.Ordinal);
 
-    public AuthService(IAuth0AuthClient auth0, ITokenStore store, ITokenRefresher refresher)
+    public AuthService(
+        IAuth0AuthClient auth0,
+        ITokenStore store,
+        ITokenRefresher refresher,
+        Auth0Options options,
+        ILogger<AuthService>? logger = null)
     {
         _auth0 = auth0;
         _store = store;
         _refresher = refresher;
+        _options = options;
+        _logger = logger ?? NullLogger<AuthService>.Instance;
     }
 
     public string? CurrentUserName =>
@@ -34,6 +47,9 @@ public sealed class AuthService : IAuthService
         var tokens = await _auth0.LoginAsync(email, password, ct);
         await _store.SaveAsync(tokens);
         _claims = JwtPayloadReader.ReadClaims(tokens.IdToken);
+        // Checked here as well as on refresh: a build stamped with the wrong audience is
+        // wrong from the very first token, and this is the only place that sees one issued.
+        AccessTokenAudience.Warn(_logger, tokens.AccessToken, _options.Audience, "sign-in");
     }
 
     public Task SignUpAsync(string name, string email, string password, CancellationToken ct = default) =>
