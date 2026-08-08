@@ -67,7 +67,8 @@ public class DashboardService : IDashboardService
             CardiMemberId = member.Id,
             Name = member.Name,
             Age = member.DateOfBirth.ToAgeInYears(today),
-            Phone = member.Phone,
+            EmergencyContactPhone = member.EmergencyContactPhone,
+            EmergencyContactName = member.EmergencyContactName,
             PhotoUrl = null,
             // A paused member is not being watched, so no reassuring colour may be shown for
             // them — stale metrics would otherwise keep reading "doing well" indefinitely.

@@ -206,7 +206,7 @@ public partial class DashboardPage : ContentPage
 
         var firstName = NameFormatting.FirstName(data.Name);
         CallLabel.Text = $"Call {firstName}";
-        ApplyPhoneAvailability(data.Phone, firstName);
+        ApplyPhoneAvailability(data, firstName);
 
         // Paused banner (M1-13)
         PausedBanner.IsVisible = data.MonitoringPaused;
@@ -269,22 +269,33 @@ public partial class DashboardPage : ContentPage
     /// <remarks>
     /// The tiles keep their tap handlers: a dimmed tile on touch has no hover state to explain
     /// itself with, so the tap has to. <c>ToolTipProperties</c> covers long-press and desktop.
+    /// The tooltip names the emergency contact when we have it, because the tile is labelled
+    /// with the CardiMember's name but dials someone else's number.
     /// </remarks>
-    private void ApplyPhoneAvailability(string? phone, string firstName)
+    private void ApplyPhoneAvailability(DashboardResponse data, string firstName)
     {
-        var hasPhone = !string.IsNullOrWhiteSpace(phone);
+        var hasPhone = !string.IsNullOrWhiteSpace(data.EmergencyContactPhone);
+        var tooltip = hasPhone
+            ? string.IsNullOrWhiteSpace(data.EmergencyContactName)
+                ? $"Calls {firstName}'s emergency contact."
+                : $"Calls {data.EmergencyContactName}, {firstName}'s emergency contact."
+            : NoPhoneMessage(firstName);
 
         CallAction.Opacity = hasPhone ? 1 : UnavailableActionOpacity;
         MessageAction.Opacity = hasPhone ? 1 : UnavailableActionOpacity;
 
-        ToolTipProperties.SetText(CallAction, hasPhone ? null : NoPhoneMessage(firstName));
-        ToolTipProperties.SetText(MessageAction, hasPhone ? null : NoPhoneMessage(firstName));
+        ToolTipProperties.SetText(CallAction, tooltip);
+        ToolTipProperties.SetText(MessageAction, tooltip);
     }
 
+    /// <summary>
+    /// Points at the emergency contact number, which is the one the add and edit forms actually
+    /// capture — so this is advice the reader can act on.
+    /// </summary>
     private static string NoPhoneMessage(string firstName) =>
         string.IsNullOrWhiteSpace(firstName)
-            ? "We don't have a phone number for this CardiMember yet."
-            : $"We don't have a phone number for {firstName} yet.";
+            ? "Add an emergency contact number to this CardiMember to call from here."
+            : $"Add an emergency contact number for {firstName} to call from here.";
 
     private void SetState(DashboardState state)
     {
@@ -296,7 +307,7 @@ public partial class DashboardPage : ContentPage
 
     private async void OnCallTapped(object? sender, EventArgs e)
     {
-        if (string.IsNullOrWhiteSpace(_lastData?.Phone))
+        if (string.IsNullOrWhiteSpace(_lastData?.EmergencyContactPhone))
         {
             await _popups.ShowInfoAsync(
                 NoPhoneMessage(NameFormatting.FirstName(_lastData?.Name)), "No number yet");
@@ -304,7 +315,7 @@ public partial class DashboardPage : ContentPage
         }
         try
         {
-            PhoneDialer.Default.Open(_lastData.Phone);
+            PhoneDialer.Default.Open(_lastData.EmergencyContactPhone);
         }
         catch (Exception)
         {
@@ -314,7 +325,7 @@ public partial class DashboardPage : ContentPage
 
     private async void OnMessageTapped(object? sender, EventArgs e)
     {
-        if (string.IsNullOrWhiteSpace(_lastData?.Phone))
+        if (string.IsNullOrWhiteSpace(_lastData?.EmergencyContactPhone))
         {
             await _popups.ShowInfoAsync(
                 NoPhoneMessage(NameFormatting.FirstName(_lastData?.Name)), "No number yet");
@@ -322,7 +333,7 @@ public partial class DashboardPage : ContentPage
         }
         try
         {
-            await Sms.Default.ComposeAsync(new SmsMessage(string.Empty, _lastData.Phone));
+            await Sms.Default.ComposeAsync(new SmsMessage(string.Empty, _lastData.EmergencyContactPhone));
         }
         catch (Exception)
         {

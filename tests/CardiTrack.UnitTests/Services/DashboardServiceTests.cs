@@ -36,6 +36,8 @@ public class DashboardServiceTests
             Name = "Margaret Doe",
             DateOfBirth = DateOnly.FromDateTime(DateTime.UtcNow.AddYears(-78)),
             Phone = "+441234567890",
+            EmergencyContactName = "Lorri Warf",
+            EmergencyContactPhone = "+441234567891",
             IsActive = true,
         });
         _connections.GetActiveByCardiMemberIdAsync(_memberId).Returns([]);
@@ -79,6 +81,18 @@ public class DashboardServiceTests
         }).ToList();
         _activityLogs.GetByCardiMemberAndDateRangeAsync(_memberId, Arg.Any<DateOnly>(), Arg.Any<DateOnly>())
             .Returns(logs);
+    }
+
+    // The dashboard's Call and Send Message actions run off the emergency contact, because that
+    // is the only phone number M1-04 and M1-14 capture — CardiMember.Phone is null for every
+    // member created in the app, so shipping the tiles against it would leave them always dead.
+    [Fact]
+    public async Task Returns_TheEmergencyContact_NotTheMembersOwnPhone()
+    {
+        var result = await CreateSut().GetDashboardAsync(_userId, _memberId);
+
+        Assert.Equal("+441234567891", result.EmergencyContactPhone);
+        Assert.Equal("Lorri Warf", result.EmergencyContactName);
     }
 
     [Fact]
