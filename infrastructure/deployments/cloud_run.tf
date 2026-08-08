@@ -264,17 +264,21 @@ resource "google_cloud_run_v2_service" "web" {
     # deploys don't depend on Cloud Run's auto-selection.
     execution_environment = "EXECUTION_ENVIRONMENT_GEN2"
 
-    volumes {
-      name = "cloudsql"
-      cloud_sql_instance {
-        instances = [google_sql_database_instance.main.connection_name]
-      }
-    }
-
+    # Declared dpkeys-first to match the order the Cloud Run API reports back.
+    # volumes and volume_mounts are ordered lists in the provider schema, so a
+    # config order that disagrees with the API's replans the whole block on every
+    # run — the diff never converges no matter how often it is applied.
     volumes {
       name = "dpkeys"
       gcs {
         bucket = google_storage_bucket.dataprotection_keys.name
+      }
+    }
+
+    volumes {
+      name = "cloudsql"
+      cloud_sql_instance {
+        instances = [google_sql_database_instance.main.connection_name]
       }
     }
 
@@ -310,13 +314,13 @@ resource "google_cloud_run_v2_service" "web" {
       }
 
       volume_mounts {
-        name       = "cloudsql"
-        mount_path = "/cloudsql"
+        name       = "dpkeys"
+        mount_path = "/var/dpkeys"
       }
 
       volume_mounts {
-        name       = "dpkeys"
-        mount_path = "/var/dpkeys"
+        name       = "cloudsql"
+        mount_path = "/cloudsql"
       }
 
       resources {

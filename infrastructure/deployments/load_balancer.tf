@@ -223,11 +223,13 @@ resource "google_compute_backend_service" "web" {
     sample_rate = 1.0
   }
 
+  # No default_ttl/client_ttl/max_ttl here on purpose: GCP only honours those under
+  # CACHE_ALL_STATIC or FORCE_CACHE_ALL. Under USE_ORIGIN_HEADERS it stores them as
+  # 0, so setting them replanned this block on every run without ever taking effect.
+  # The Web app's MapStaticAssets() fingerprints assets and serves them immutable,
+  # which is stronger than any blanket TTL we would set here.
   cdn_policy {
     cache_mode        = "USE_ORIGIN_HEADERS"
-    default_ttl       = 300
-    client_ttl        = 300
-    max_ttl           = 86400
     negative_caching  = true
     serve_while_stale = 86400
 
