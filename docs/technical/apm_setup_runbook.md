@@ -67,6 +67,26 @@ the hosts also enrich with is only an ordinary attribute to it. A build that was
 stamped reports `0.0.0-local`, and one whose version cannot be resolved at all reports
 `unknown` — both mean "not a release", visibly.
 
+The environment completes the `env` / `service` / `version` triple: logs carry an
+`env:<name>` tag and spans carry `deployment.environment.name` (plus the older
+`deployment.environment`, since OTLP intakes are mid-migration between the two keys).
+Unlike the version it **cannot be baked into the image** — dev and prod deploy the *same*
+image, promoted by tag — so it arrives at runtime from `ASPNETCORE_ENVIRONMENT`, which
+Terraform already sets per environment as `title(var.environment)`. `DeploymentInfo`
+lowercases it, so `Dev` ships as `env:dev` and `Prod` as `env:prod`; without that they
+would be two environments, since tags are case-sensitive.
+
+Two things follow from reading that variable:
+
+- It is the same value that selects `appsettings.<env>.json`. Deployed hosts get `Dev` /
+  `Prod`, **not** .NET's `Development` / `Production`, so `IsDevelopment()` is false
+  everywhere and dev runs production-like config. Set `DEPLOY_ENVIRONMENT` to relabel
+  telemetry without disturbing that.
+- When neither variable is set, the environment is reported as **nothing at all** rather
+  than defaulting to `Production` the way `IHostEnvironment` would. The `env` tag is then
+  omitted and startup logs a Warning naming both variables. An unlabelled log is findable;
+  one mislabelled `prod` is a false alarm at 3am.
+
 ## 1. Datadog console steps
 
 1. Sign in (or create the org) with the cloud-ops account
@@ -141,6 +161,9 @@ for i in $(seq 20); do curl -s -o /dev/null https://api.dev.carditrack.com/api/d
 # (only Warning+) — absence of logs is not a fault.
 # Filter by app with service:api / service:web / service:worker, and confirm the
 # release landed with the Version facet (or "version:<semver>" in the query bar).
+# env:dev / env:prod separates the environments — mobile already reports the same two
+# values. Logs with no env at all mean neither ASPNETCORE_ENVIRONMENT nor
+# DEPLOY_ENVIRONMENT reached the revision; the startup Warning names both.
 # Startup self-report: each service logs its effective APM state at boot — look in
 # Cloud Run logs for "APM configured: engine Datadog shipping logs+traces+metrics ..."
 # (Information) or "APM shipping disabled: ..." / "APM (Datadog): traces will not

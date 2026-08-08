@@ -4,7 +4,7 @@ using CardiTrack.Shared;
 namespace CardiTrack.Observability;
 
 /// <summary>
-/// Which build is running. The release version is the semver tag CI computes for the
+/// Which build is running, and where. The release version is the semver tag CI computes for the
 /// deploy: the tag names the image as-is (v1.2.3), while the Dockerfile's VERSION build
 /// arg gets it without the "v" (1.2.3), because MSBuild rejects a v-prefixed Version.
 /// So an image tagged v1.2.3 reports 1.2.3 — the same release, one character apart.
@@ -14,6 +14,11 @@ namespace CardiTrack.Observability;
 /// Anything not built by the release pipeline reports "0.0.0-local" — the default
 /// &lt;Version&gt; carried by this project and the hosts — so an unstamped build is visible
 /// as such rather than masquerading as a release.
+///
+/// The environment is the other half of the pair: unlike the version it cannot be baked
+/// in, because dev and prod run the SAME image — it has to arrive at runtime, which it
+/// does as an env var Terraform sets per environment. Together with the service name they
+/// form the env/service/version triple backends group telemetry by.
 /// </summary>
 public static class DeploymentInfo
 {
@@ -29,8 +34,20 @@ public static class DeploymentInfo
             .GetCustomAttribute<AssemblyInformationalVersionAttribute>()
             ?.InformationalVersion));
 
+    private static readonly Lazy<string?> ResolvedEnvironment = new(() => ResolveEnvironment(
+        Environment.GetEnvironmentVariable(ConfigurationKeys.Deployment.Environment),
+        Environment.GetEnvironmentVariable(ConfigurationKeys.Deployment.AspNetCoreEnvironment)));
+
     /// <summary>The running build's version, resolved once per process.</summary>
     public static string Version => Resolved.Value;
+
+    /// <summary>
+    /// The environment this process is deployed to — "dev", "prod" — or null when nothing
+    /// says which. Null is deliberate: callers omit the environment from telemetry rather
+    /// than guess it, because a wrong answer here is worse than a missing one (it files
+    /// one environment's errors under another).
+    /// </summary>
+    public static string? EnvironmentName => ResolvedEnvironment.Value;
 
     /// <summary>
     /// Resolution order: the DEPLOY_VERSION override, then the assembly's informational
@@ -46,6 +63,21 @@ public static class DeploymentInfo
         return string.IsNullOrWhiteSpace(informationalVersion)
             ? UnknownVersion
             : Clean(informationalVersion);
+    }
+
+    /// <summary>
+    /// Resolution order: the DEPLOY_ENVIRONMENT override, then ASPNETCORE_ENVIRONMENT,
+    /// then nothing. Lowercased, because the value arrives title-cased from Terraform
+    /// ("Dev") while backends treat environment tags as case-sensitive strings and every
+    /// convention writes them lowercase — left as-is, "Dev" and "dev" would be two
+    /// environments. Takes the strings rather than reading the env vars so the precedence
+    /// is testable; callers want <see cref="EnvironmentName"/>.
+    /// </summary>
+    public static string? ResolveEnvironment(string? overrideValue, string? aspNetCoreEnvironment)
+    {
+        var value = string.IsNullOrWhiteSpace(overrideValue) ? aspNetCoreEnvironment : overrideValue;
+
+        return string.IsNullOrWhiteSpace(value) ? null : value.Trim().ToLowerInvariant();
     }
 
     /// <summary>
