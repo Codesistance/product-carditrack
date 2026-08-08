@@ -77,6 +77,25 @@ public static class ConfigurationKeys
         /// hence no section.
         /// </summary>
         public const string Version = "DEPLOY_VERSION";
+
+        /// <summary>
+        /// Bare env var (no section) overriding the environment reported on telemetry.
+        /// Normally unset — the environment comes from <see cref="AspNetCoreEnvironment"/>
+        /// below. This exists for the case where telemetry should be labelled differently
+        /// from the name that selects appsettings files, so relabelling one does not
+        /// silently repoint the other.
+        /// </summary>
+        public const string Environment = "DEPLOY_ENVIRONMENT";
+
+        /// <summary>
+        /// The standard ASP.NET Core environment variable, which Terraform sets per
+        /// environment ("Dev" / "Prod" — note it is not .NET's "Development" /
+        /// "Production", so deployed hosts all run production-like config). Read as a raw
+        /// env var rather than through IHostEnvironment on purpose: IHostEnvironment
+        /// substitutes "Production" when nothing is set, and a machine that never said
+        /// which environment it is should report none, not prod.
+        /// </summary>
+        public const string AspNetCoreEnvironment = "ASPNETCORE_ENVIRONMENT";
     }
 
     /// <summary>Section — options-bound via IConfiguration.GetSection(), not ConfigurationLoader.Get().</summary>

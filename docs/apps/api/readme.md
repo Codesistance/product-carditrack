@@ -109,6 +109,27 @@ Builds outside the release pipeline report `0.0.0-local` (the host projects' def
 `<Version>`) rather than posing as a release. The plaintext `DEPLOY_VERSION` env var
 overrides the baked-in value for out-of-band images; normal deploys leave it unset.
 
+### Environment on telemetry (`DeploymentInfo.EnvironmentName`)
+
+Logs carry an `env:<name>` tag and spans carry `deployment.environment.name` (plus the
+older `deployment.environment`, because OTLP intakes are mid-migration between the two
+keys). With service and version this is the `env`/`service`/`version` triple backends
+group telemetry by.
+
+The environment is the one piece that **cannot be baked into the image**: dev and prod run
+the *same* image, promoted by tag, so it has to arrive at runtime. It comes from
+`ASPNETCORE_ENVIRONMENT`, which Terraform sets per environment as `title(var.environment)`
+— `Dev` / `Prod`, deliberately not .NET's `Development` / `Production`, so deployed hosts
+all run production-like config. `DeploymentInfo` lowercases it (`env:dev`, `env:prod`);
+tags are case-sensitive, so `Dev` and `dev` would otherwise be two environments.
+`DEPLOY_ENVIRONMENT` overrides it when telemetry should be labelled differently from the
+name that selects appsettings files.
+
+The env vars are read **raw, not through `IHostEnvironment`**, which substitutes
+`Production` whenever nothing is set. With neither set, the environment resolves to null:
+the `env` tag is omitted and startup logs a Warning naming both variables. A missing
+environment is visibly missing; an invented `prod` is a false alarm.
+
 ## Project Structure
 
 > **Target structure** — the tree below is the planned layout, not a mirror of the current code. Today's `Controllers/` holds `Auth`, `Onboarding`, `Dashboard`, `Devices`, `Reports`, `Chat`, and `Insights` controllers, all deriving from `BaseApiController`; the `Webhooks/` folder (Google Health API, Garmin, Stripe) arrives with the AI-pipeline rollout ([llm_design.md](../../llm_design.md)).

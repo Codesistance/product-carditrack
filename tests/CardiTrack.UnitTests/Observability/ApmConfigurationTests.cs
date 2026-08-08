@@ -495,4 +495,20 @@ public class ApmConfigurationTests
         // The test host is stamped 0.0.0-local, so an "unknown" here means resolution broke.
         Assert.NotEqual($"version:{DeploymentInfo.UnknownVersion}", versionTag);
     }
+
+    [Fact]
+    public void Datadog_LogTags_TagTheEnvironmentOnlyWhenOneIsKnown()
+    {
+        var environmentTags = DatadogApmProvider.LogTags()
+            .Where(tag => tag.StartsWith("env:", StringComparison.Ordinal))
+            .ToList();
+
+        // Lowercase "env" exactly — the reserved key behind Datadog's environment selector.
+        // Whether one is set depends on the host running the tests, so assert the rule
+        // rather than a value: tagged when known, absent (never a placeholder) when not.
+        if (DeploymentInfo.EnvironmentName is { } environmentName)
+            Assert.Equal($"env:{environmentName}", Assert.Single(environmentTags));
+        else
+            Assert.Empty(environmentTags);
+    }
 }

@@ -116,9 +116,17 @@ public static class ApmExtensions
         var status = provider.Describe(options);
         Log.Information(
             "APM configured: engine {Engine} shipping {Signals} to {IngestUrl} as {ServiceName} {ServiceVersion} "
-            + "(log ship level {ShipLevel}, trace sampling {SampleRatio:P0}, metrics switch {MetricsSwitch})",
+            + "in {Environment} (log ship level {ShipLevel}, trace sampling {SampleRatio:P0}, "
+            + "metrics switch {MetricsSwitch})",
             provider.Name, status.Summary, options.Data.IngestUrl, serviceName, DeploymentInfo.Version,
+            DeploymentInfo.EnvironmentName ?? "no environment",
             options.ShipLevel, options.ClampedSampleRatio, options.MetricsEnabled ? "on" : "off");
+        if (DeploymentInfo.EnvironmentName is null)
+            Log.Warning(
+                "APM ({Engine}): telemetry will ship without an environment — neither {OverrideKey} nor "
+                + "{EnvironmentKey} is set, so this host's logs and traces cannot be told apart from any "
+                + "other environment's", provider.Name, ConfigurationKeys.Deployment.Environment,
+                ConfigurationKeys.Deployment.AspNetCoreEnvironment);
         foreach (var warning in status.Warnings)
             Log.Warning("APM ({Engine}): {Reason}", provider.Name, warning);
 
@@ -126,9 +134,7 @@ public static class ApmExtensions
             // service.version is the release the spans belong to — the deploy's semver tag,
             // not the assembly version (which stays at the SDK default nobody stamps).
             // Backends key their release comparisons on it.
-            .ConfigureResource(resource => resource.AddService(
-                serviceName: serviceName,
-                serviceVersion: DeploymentInfo.Version))
+            .ConfigureResource(resource => ConfigureApmResource(resource, serviceName))
             .WithTracing(tracing =>
             {
                 tracing
@@ -163,6 +169,31 @@ public static class ApmExtensions
             });
 
         return builder;
+    }
+
+    /// <summary>
+    /// The resource every signal is stamped with: who is reporting (service.name), which
+    /// build (service.version), and where it runs.
+    ///
+    /// The environment goes on under both spellings on purpose. "deployment.environment"
+    /// is the original semantic-convention key and "deployment.environment.name" the one
+    /// that replaced it; OTLP intakes are mid-migration and read one or the other, so
+    /// sending both costs a duplicated string and removes the failure mode where every
+    /// span arrives with no environment at all. Drop the older key once the backend in
+    /// use is confirmed to read the newer one.
+    /// </summary>
+    private static ResourceBuilder ConfigureApmResource(ResourceBuilder resource, string serviceName)
+    {
+        resource.AddService(serviceName: serviceName, serviceVersion: DeploymentInfo.Version);
+
+        if (DeploymentInfo.EnvironmentName is { } environmentName)
+            resource.AddAttributes(
+            [
+                new KeyValuePair<string, object>("deployment.environment.name", environmentName),
+                new KeyValuePair<string, object>("deployment.environment", environmentName),
+            ]);
+
+        return resource;
     }
 
     /// <summary>

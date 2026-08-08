@@ -36,12 +36,25 @@ public sealed class DatadogApmProvider : IApmProvider
 
     /// <summary>
     /// The ddtags every log carries. Datadog's reserved tags — the ones behind the Service
-    /// and Version facets and behind release comparison — are read from the tag list and
-    /// the sink's own service field, never from log attributes: the "Version" property the
-    /// hosts enrich with shows up as an ordinary attribute and leaves the Version facet
-    /// empty, which is why the release is repeated here as a tag.
+    /// and Version facets, the environment selector, and release comparison — are read from
+    /// the tag list and the sink's own service field, never from log attributes: the
+    /// "Version" property the hosts enrich with shows up as an ordinary attribute and
+    /// leaves the Version facet empty, which is why the release is repeated here as a tag.
+    /// With the sink's service field, these complete the env/service/version triple.
+    ///
+    /// "env" is dropped when the environment is unknown rather than sent as a placeholder:
+    /// an untagged log is findable and obviously unlabelled, whereas an "unknown"
+    /// environment becomes a real value in the selector that nothing can be done about.
     /// </summary>
-    public static string[] LogTags() => [$"version:{DeploymentInfo.Version}"];
+    public static string[] LogTags()
+    {
+        var tags = new List<string> { $"version:{DeploymentInfo.Version}" };
+
+        if (DeploymentInfo.EnvironmentName is { } environmentName)
+            tags.Add($"env:{environmentName}");
+
+        return [.. tags];
+    }
 
     public void AddTraceExporter(TracerProviderBuilder tracing, ApmOptions options)
     {
