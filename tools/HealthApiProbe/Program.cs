@@ -82,11 +82,13 @@ foreach (var dataType in rollupDataTypes)
     Console.WriteLine($"--- {dataType} (dataPoints:dailyRollUp) ---");
     Console.WriteLine($"    FitbitApiClient expects union member: \"{ToCamelCase(dataType)}\"");
 
+    // range is a CivilTimeInterval: start/end are CivilDateTime, so the calendar date nests under
+    // "date". Omitting "time" means midnight, giving a closed-open single-day range.
     var body = $$"""
         {
           "range": {
-            "start": { "year": {{date.Year}}, "month": {{date.Month}}, "day": {{date.Day}} },
-            "end":   { "year": {{date.AddDays(1).Year}}, "month": {{date.AddDays(1).Month}}, "day": {{date.AddDays(1).Day}} }
+            "start": { "date": { "year": {{date.Year}}, "month": {{date.Month}}, "day": {{date.Day}} } },
+            "end":   { "date": { "year": {{date.AddDays(1).Year}}, "month": {{date.AddDays(1).Month}}, "day": {{date.AddDays(1).Day}} } }
           },
           "windowSizeDays": 1
         }

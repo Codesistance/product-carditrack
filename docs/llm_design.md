@@ -184,6 +184,8 @@ The Google Health API consolidates the legacy per-endpoint surface into **data t
 
 Methods follow the v4 REST shape: `GET /v4/users/me/dataTypes/{type}/dataPoints` (list) and `POST .../dataPoints:dailyRollUp` (daily summary; heart-rate/active-minutes/total-calories rollups max 14-day range, others 90 days).
 
+A `dailyRollUp` body takes `range` as a **`CivilTimeInterval`** — closed-open, with `start`/`end` each a **`CivilDateTime`**, meaning the calendar date nests under `date` (`{"start": {"date": {"year": …, "month": …, "day": …}}}`) and `time` is omitted to mean midnight. A bare `{year, month, day}` at `range.start` is rejected with `INVALID_ARGUMENT` field violations — the shape `FitbitApiClient` sent until it was corrected against the live API.
+
 | Metric | Data type / method | Sampling Rate | SSA Input |
 |--------|--------------------|----|-----------|
 | Heart Rate (intraday) | `heart-rate` — `list` | 1-min intervals | Primary time-series for SSA decomposition |
@@ -195,7 +197,7 @@ Methods follow the v4 REST shape: `GET /v4/users/me/dataTypes/{type}/dataPoints`
 | Skin Temperature | skin-temperature data type — `dailyRollUp` | Daily scalar (nightly) | Early-warning feature; include when available |
 | Sleep Stages | `sleep` — `list` (session-shaped) | Daily summary | Context feature for next-day recovery model |
 
-> Rollup responses carry a union value per data type (e.g. `steps.count`, `heartRate.beatsPerMinute_min/max/avg` — both verified against the v4 reference). Remaining field names in `FitbitApiClient` marked "(assumed)" follow the documented `{field}_{aggregation}` convention and need live-sandbox confirmation once console access exists.
+> Rollup responses carry a union value per data type (e.g. `steps.count`, `heartRate.beatsPerMinute_min/max/avg` — both verified against the v4 reference). Remaining field names in `FitbitApiClient` marked "(assumed)" follow the documented `{field}_{aggregation}` convention and need live-sandbox confirmation once console access exists. Those are **response** names only: the request body is verified, and a unit test pins the `range` shape so it cannot regress silently.
 
 ### SSA Parameters
 

@@ -300,6 +300,8 @@ Apm__Data                            = carditrack-<env>-apm-data
 Plaintext env vars: `ASPNETCORE_ENVIRONMENT`, `GCP_PROJECT_ID`, `Apm__Engine`, `Apm__MetricsEnabled`.
 
 > **Provider note:** the `Fitbit` provider authenticates against **Google OAuth** and pulls data from the **Google Health API** (`health.googleapis.com`) — the legacy Fitbit Web API is decommissioned September 2026. Google access tokens are short-lived (~1 hour), hence `TokenLifetimeHours: 1`. `FitbitApiClient` reads daily metrics via per-data-type `dataPoints:dailyRollUp` calls and sleep sessions via `dataPoints` list; some response field names are pending live-sandbox verification (marked "(assumed)" in the client).
+>
+> One metric is allowed to fail without failing the sync: a `400`/`404` on `resting-heart-rate` leaves `RestingHeartRate` null, since not every account exposes that data type. The exception is a **malformed-request** `400` — one carrying `google.rpc.BadRequest` field violations, which only ever means the request we built is wrong. Those propagate and mark the connection `SyncError`, because resting HR anchors the HR baseline and a silent null there degrades alerting instead of reporting a fault.
 
 ## Running Locally
 

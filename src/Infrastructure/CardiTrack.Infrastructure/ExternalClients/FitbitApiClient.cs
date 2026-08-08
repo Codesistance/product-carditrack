@@ -54,14 +54,16 @@ public class FitbitApiClient : IFitbitApiClient, IDeviceApiClient
         var avgHr = ReadInt(heartRate, "beatsPerMinute_avg");
 
         // Daily resting HR sits on its own data type; tolerate its absence rather than failing
-        // the whole snapshot — the rollup union name is (assumed).
+        // the whole snapshot — the rollup union name is (assumed). A malformed-request 400 is
+        // excluded: resting HR anchors the HR baseline, so a bug in the request we build has to
+        // surface as a sync error instead of a silent null that quietly degrades the baseline.
         int? restingHr = null;
         try
         {
             var resting = await DailyRollupValueAsync(accessToken, "resting-heart-rate", date);
             restingHr = ReadInt(resting, "beatsPerMinute_avg", "beatsPerMinute", "count");
         }
-        catch (FitbitApiException ex) when (ex.StatusCode is 400 or 404)
+        catch (FitbitApiException ex) when ((ex.StatusCode is 400 or 404) && !ex.IsMalformedRequest)
         {
         }
 
@@ -158,11 +160,11 @@ public class FitbitApiClient : IFitbitApiClient, IDeviceApiClient
 
         var body = new JObject
         {
-            // Closed-open civil interval covering the single requested day.
+            // Closed-open CivilTimeInterval covering the single requested day.
             ["range"] = new JObject
             {
-                ["start"] = CivilDate(date),
-                ["end"] = CivilDate(date.AddDays(1)),
+                ["start"] = CivilDateTime(date),
+                ["end"] = CivilDateTime(date.AddDays(1)),
             },
             ["windowSizeDays"] = 1,
         };
@@ -176,11 +178,18 @@ public class FitbitApiClient : IFitbitApiClient, IDeviceApiClient
         return point?[ToCamelCase(dataType)];
     }
 
-    private static JObject CivilDate(DateOnly date) => new()
+    /// <summary>
+    /// A `CivilDateTime` — a `google.type.Date` under `date`, never year/month/day inline. `time`
+    /// is omitted, which the API reads as midnight: exactly the day boundary a rollup range wants.
+    /// </summary>
+    private static JObject CivilDateTime(DateOnly date) => new()
     {
-        ["year"] = date.Year,
-        ["month"] = date.Month,
-        ["day"] = date.Day,
+        ["date"] = new JObject
+        {
+            ["year"] = date.Year,
+            ["month"] = date.Month,
+            ["day"] = date.Day,
+        },
     };
 
     /// <summary>kebab-case data type name → camelCase union member ("heart-rate" → "heartRate").</summary>
@@ -224,7 +233,26 @@ public class FitbitApiClient : IFitbitApiClient, IDeviceApiClient
         {
             var body = await response.Content.ReadAsStringAsync();
             throw new FitbitApiException((int)response.StatusCode,
-                $"Google Health API returned {(int)response.StatusCode}: {body}");
+                $"Google Health API returned {(int)response.StatusCode}: {body}",
+                IsMalformedRequest((int)response.StatusCode, body));
         }
+    }
+
+    /// <summary>
+    /// A payload the API could not bind comes back as 400 with a `google.rpc.BadRequest` detail
+    /// listing field violations. Recognising that shape is what separates "this request is wrong"
+    /// from "this account has no such data", which some callers tolerate. Parsed best-effort: an
+    /// unparseable or differently-shaped error body is not treated as a request bug.
+    /// </summary>
+    private static bool IsMalformedRequest(int statusCode, string body)
+    {
+        if (statusCode != 400 || !JsonUtility.TryParse(body, out var root, out _))
+            return false;
+
+        return (root?["error"]?["details"] as JArray)?
+            .OfType<JObject>()
+            .Any(detail =>
+                detail.Value<string>("@type")?.EndsWith("google.rpc.BadRequest", StringComparison.Ordinal) == true
+                && detail["fieldViolations"] is JArray { Count: > 0 }) == true;
     }
 }
