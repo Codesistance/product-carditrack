@@ -152,7 +152,8 @@ verification that it works.
 Notes: the Datadog SDK raised the Android minimum from API 21 to 23; `Site` defaults to
 `Eu1` when omitted, and a `Site` the enum does not name **disables monitoring** unless a
 `CustomEndpoint` is set alongside it (better nothing than telemetry delivered to the wrong
-region — the app logs the reason at startup); consent is currently `Granted` at first launch — add a settings
+region — the app logs the reason at startup to the on-device Serilog file, so it is
+readable from a Release build too); consent is currently `Granted` at first launch — add a settings
 toggle before any store review that requires opt-in analytics consent. RUM sessions are
 **unsampled** (`SessionSampleRate = 100`) — fine at beta scale, revisit before broad
 rollout. The app also sets `FirstPartyHosts` for the API host with Datadog + W3C
