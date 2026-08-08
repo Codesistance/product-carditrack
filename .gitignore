@@ -18,6 +18,8 @@ out/
 # excluded directory, and settings.json is checked in (SessionStart bootstrap).
 .claude/*
 !.claude/settings.json
+# Re-include the directory (not a file below it) so checked-in skills are tracked.
+!.claude/skills/
 *.userprefs
 *.pidb
 *.DotSettings.user
