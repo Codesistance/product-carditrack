@@ -28,9 +28,10 @@ is the deployed reality.
 
 1. Sign in (or create the org) with the cloud-ops account
    (cloudoperations@codesistance.com — not a personal account). The **site** is fixed at
-   org creation (EU data residency → `datadoghq.eu`); note the site from the browser URL
-   (e.g. `app.datadoghq.eu` → site `datadoghq.eu`, `us5.datadoghq.com` → `us5.datadoghq.com`).
-   This becomes `IngestUrl`.
+   org creation; read it off the browser URL (e.g. `app.datadoghq.eu` → site
+   `datadoghq.eu`, `us5.datadoghq.com` → `us5.datadoghq.com`). This becomes `IngestUrl`.
+   **This org is on UK1 (`uk1.datadoghq.com`)** — every example below uses that site, and
+   sending to the wrong one silently lands the data in an org nobody is watching.
 2. **Organization Settings → API Keys → New Key**, name `carditrack-<env>`. The key value
    becomes `IngestToken`. (API key, not Application key.)
 3. Traces need the **agentless OTLP intake endpoint**. It follows the per-site pattern
@@ -46,7 +47,7 @@ is the deployed reality.
 Datadog `Apm__Data` shape:
 
 ```json
-{"IngestUrl":"datadoghq.eu","IngestToken":"<api key>","TraceEndpoint":"https://otlp.datadoghq.eu/v1/traces"}
+{"IngestUrl":"uk1.datadoghq.com","IngestToken":"<api key>","TraceEndpoint":"https://otlp.uk1.datadoghq.com/v1/traces"}
 ```
 
 <details>
@@ -127,9 +128,19 @@ must not be screen-recorded):
 2. Populate the data secret:
 
 ```bash
-printf '%s' '{"ClientToken":"<pub...>","ApplicationId":"<uuid>","Site":"Eu1"}' \
+printf '%s' '{"ClientToken":"<pub...>","ApplicationId":"<uuid>","Site":"Uk1","CustomEndpoint":"https://browser-intake-uk1-datadoghq.com"}' \
   | gcloud secrets versions add carditrack-dev-apm-mobile-data --project=carditrack-490120 --data-file=-
 ```
+
+**`CustomEndpoint` is mandatory on UK1.** `Datadog.Maui`'s `DatadogSite` enum names only
+`Us1`, `Us3`, `Us5`, `Eu1`, `Ap1`, `Ap2` and `Us1Fed` — there is no `Uk1` member, even
+though the native Android/iOS SDKs it wraps support the site. `CustomEndpoint` points the
+Logs and RUM features at the UK1 intake host directly
+(`https://browser-intake-uk1-datadoghq.com`, the same base URL dd-sdk-android's own `UK1`
+entry uses). Only one version of `Datadog.Maui` has ever shipped (0.2.0), so this is not
+something a package bump fixes. Note the property is undocumented for RUM — Datadog
+documents `CustomEndpoint` for Logs and Traces only — so treat the first build as the
+verification that it works.
 
 3. The next mobile CI build stamps engine + data in (`-p:ApmEngine=... -p:ApmData=<base64>`);
    placeholder data stamps as empty, which disables monitoring entirely — unprovisioned
@@ -139,7 +150,9 @@ printf '%s' '{"ClientToken":"<pub...>","ApplicationId":"<uuid>","Site":"Eu1"}' \
    **RUM → Sessions** (and force a crash in a test build for Error Tracking).
 
 Notes: the Datadog SDK raised the Android minimum from API 21 to 23; `Site` defaults to
-`Eu1` when omitted; consent is currently `Granted` at first launch — add a settings
+`Eu1` when omitted, and a `Site` the enum does not name **disables monitoring** unless a
+`CustomEndpoint` is set alongside it (better nothing than telemetry delivered to the wrong
+region — the app logs the reason at startup); consent is currently `Granted` at first launch — add a settings
 toggle before any store review that requires opt-in analytics consent. RUM sessions are
 **unsampled** (`SessionSampleRate = 100`) — fine at beta scale, revisit before broad
 rollout. The app also sets `FirstPartyHosts` for the API host with Datadog + W3C

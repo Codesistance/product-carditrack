@@ -12,5 +12,13 @@
 		<!-- <Auth0Domain>your-tenant.eu.auth0.com</Auth0Domain> -->
 		<!-- <Auth0ClientId>yourNativeAppClientId</Auth0ClientId> -->
 		<!-- <Auth0Audience>https://api.carditrack.com</Auth0Audience> -->
+
+		<!-- Mobile APM (optional — unset means monitoring is off, which is the norm for
+		     local builds). Raw JSON is accepted here; CI stamps the same value base64-encoded.
+		     Embed-safe identifiers only, never runtime secrets. CustomEndpoint is required
+		     for sites Datadog.Maui's DatadogSite enum cannot name (Uk1 among them) — see
+		     docs/technical/apm_setup_runbook.md §5. Android/iOS only. -->
+		<!-- <ApmEngine>Datadog</ApmEngine> -->
+		<!-- <ApmData>{"ClientToken":"pub...","ApplicationId":"...","Site":"Uk1","CustomEndpoint":"https://browser-intake-uk1-datadoghq.com"}</ApmData> -->
 	</PropertyGroup>
 </Project>
