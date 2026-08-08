@@ -322,8 +322,10 @@ public class FitbitApiClientTests
     /// <summary>
     /// The filter grammar pairs each field with one literal format: `civil_end_time` takes an ISO
     /// date, its physical-instant sibling `end_time` demands RFC-3339. Sending the date against
-    /// `end_time` is an INVALID_DATA_POINT_FILTER 400 — the bug this pins, which the shape-only
-    /// sleep tests above cannot see because the fake handler routes on path and ignores the query.
+    /// `end_time` is the bug this pins — a 400 carrying reason `INVALID_DATA_POINT_FILTER` with
+    /// `detailedReasons: INVALID_DATA_POINT_FILTER_TIMESTAMP_FORMAT` (both strings appear, at the
+    /// two levels of one error). The shape-only sleep tests above cannot see it, because the fake
+    /// handler routes on path and ignores the query.
     /// </summary>
     [Fact]
     public async Task GetSleepAsync_ListsWithClosedOpenCivilEndTimeFilter()
