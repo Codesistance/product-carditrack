@@ -41,7 +41,6 @@
                                FontSize="12"
                                VerticalTextAlignment="Center"/>
                     </HorizontalStackLayout>
-                    <Label x:Name="ScopesLabel" Style="{StaticResource Body2}" FontSize="13"/>
                 </VerticalStackLayout>
 
                 <Image x:Name="PrimaryStar"
@@ -51,6 +50,16 @@
                        IsVisible="False"
                        VerticalOptions="Start"/>
             </Grid>
+
+            <!-- Datasets this connection shares, one pill each, coloured by family. Full card
+                 width rather than inside the identity grid: nine pills in the name column would
+                 stack almost one per line. -->
+            <FlexLayout x:Name="DatasetPills"
+                        Direction="Row"
+                        Wrap="Wrap"
+                        JustifyContent="Start"
+                        AlignItems="Center"
+                        AlignContent="Start"/>
 
             <!-- Stats. Battery is absent by design — no provider battery level is stored. -->
             <Grid ColumnDefinitions="*,*,*" ColumnSpacing="8">

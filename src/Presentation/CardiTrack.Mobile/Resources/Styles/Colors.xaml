@@ -48,6 +48,21 @@
     <Color x:Key="SleepPurple">#7C6FDC</Color>
     <Color x:Key="StaleBannerBackground">#FFF7E8</Color>
 
+    <!-- ── Device dataset pills (M1-15) ──
+         One tint/ink pair per DatasetFamily, so a device card's pills group by the kind of
+         reading they carry. The heart pair is deliberately rosier than ErrorRed: a pill sits
+         inches from the DISCONNECTED status chip and must not read as an alarm. -->
+    <Color x:Key="DatasetActivityBackground">#E8F3FD</Color>
+    <Color x:Key="DatasetActivityText">#10659F</Color>
+    <Color x:Key="DatasetHeartBackground">#FDEEF1</Color>
+    <Color x:Key="DatasetHeartText">#B93A55</Color>
+    <Color x:Key="DatasetSleepBackground">#EEECFB</Color>
+    <Color x:Key="DatasetSleepText">#5A4EBF</Color>
+    <Color x:Key="DatasetBodyBackground">#E4F6F2</Color>
+    <Color x:Key="DatasetBodyText">#1F8A72</Color>
+    <Color x:Key="DatasetOtherBackground">#EEF1F5</Color>
+    <Color x:Key="DatasetOtherText">#5C6672</Color>
+
     <!-- ── Solid colour brushes ── -->
     <SolidColorBrush x:Key="PrimaryBrush" Color="{StaticResource Primary}"/>
     <SolidColorBrush x:Key="WhiteBrush" Color="{StaticResource White}"/>
