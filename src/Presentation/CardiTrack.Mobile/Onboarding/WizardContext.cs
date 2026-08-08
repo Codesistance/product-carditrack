@@ -34,6 +34,13 @@ public sealed class WizardContext
     /// </summary>
     public bool ShowBaselineIntro { get; set; } = true;
 
+    /// <summary>
+    /// Set by <see cref="GoToDashboardAsync"/>, and read by the launcher once the modal is
+    /// gone: a caller that is itself pushed over a tab — device management — has been popped
+    /// off the stack by then, so it must not carry on refreshing a page nobody is looking at.
+    /// </summary>
+    public bool ExitedToDashboard { get; private set; }
+
     private WizardContext(WizardOrigin origin, CardiMemberResponse? member)
     {
         Origin = origin;
@@ -51,6 +58,23 @@ public sealed class WizardContext
     public Task FinishAsync(Page current) => Origin == WizardOrigin.OnboardingRoot
         ? MainThread.InvokeOnMainThreadAsync(() => WindowNavigation.SetRootPage(current, new AppShell()))
         : current.Navigation.PopModalAsync();
+
+    /// <summary>
+    /// Terminal exit for the steps whose button names the dashboard. <see cref="FinishAsync"/>
+    /// alone would only unwind the modal, landing back on whatever launched the wizard —
+    /// device management, say — which is not what the button offered. As onboarding root the
+    /// fresh shell opens on the dashboard tab already, so only the modal case has to navigate.
+    /// </summary>
+    public async Task GoToDashboardAsync(Page current)
+    {
+        ExitedToDashboard = true;
+        await FinishAsync(current);
+
+        // Shell.Current is null for the onboarding-root path until the swap settles, and the
+        // shell it would resolve to is already showing the dashboard, so this is modal-only.
+        if (Origin == WizardOrigin.Modal && Shell.Current is { } shell)
+            await shell.GoToAsync(AppShell.DashboardRoute);
+    }
 
     /// <summary>Back out from the bottom of the wizard stack. As onboarding root there is nowhere to go.</summary>
     public Task CancelAsync(Page current) => Origin == WizardOrigin.Modal

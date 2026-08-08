@@ -356,7 +356,7 @@ public partial class DashboardPage : ContentPage
     }
 
     private async void OnBellClicked(object? sender, EventArgs e) =>
-        await Shell.Current.GoToAsync("//alerts");
+        await Shell.Current.GoToAsync(AppShell.AlertsRoute);
 
     private async void OnAlertTapped(object? sender, Guid alertId) =>
         await _popups.ShowInfoAsync("Alert details (M1-11) are on the way.", "Coming soon");

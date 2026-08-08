@@ -68,13 +68,13 @@ public partial class BottomNavBar : ContentView
         }
     }
 
-    private void OnDashboardTapped(object? sender, TappedEventArgs e) => GoTo(NavTab.Dashboard, "//dashboard");
+    private void OnDashboardTapped(object? sender, TappedEventArgs e) => GoTo(NavTab.Dashboard, AppShell.DashboardRoute);
 
-    private void OnAlertsTapped(object? sender, TappedEventArgs e) => GoTo(NavTab.Alerts, "//alerts");
+    private void OnAlertsTapped(object? sender, TappedEventArgs e) => GoTo(NavTab.Alerts, AppShell.AlertsRoute);
 
-    private void OnFamilyTapped(object? sender, TappedEventArgs e) => GoTo(NavTab.Family, "//family");
+    private void OnFamilyTapped(object? sender, TappedEventArgs e) => GoTo(NavTab.Family, AppShell.FamilyRoute);
 
-    private void OnSettingsTapped(object? sender, TappedEventArgs e) => GoTo(NavTab.Settings, "//settings");
+    private void OnSettingsTapped(object? sender, TappedEventArgs e) => GoTo(NavTab.Settings, AppShell.SettingsRoute);
 
     /// <remarks>
     /// Sitting on a tab's own root, re-navigating to it would rebuild the page for nothing, so
