@@ -103,17 +103,20 @@ public static class ApmExtensions
 
         var status = provider.Describe(options);
         Log.Information(
-            "APM configured: engine {Engine} shipping {Signals} to {IngestUrl} "
+            "APM configured: engine {Engine} shipping {Signals} to {IngestUrl} as {ServiceName} {ServiceVersion} "
             + "(log ship level {ShipLevel}, trace sampling {SampleRatio:P0}, metrics switch {MetricsSwitch})",
-            provider.Name, status.Summary, options.Data.IngestUrl, options.ShipLevel,
-            options.ClampedSampleRatio, options.MetricsEnabled ? "on" : "off");
+            provider.Name, status.Summary, options.Data.IngestUrl, serviceName, DeploymentInfo.Version,
+            options.ShipLevel, options.ClampedSampleRatio, options.MetricsEnabled ? "on" : "off");
         foreach (var warning in status.Warnings)
             Log.Warning("APM ({Engine}): {Reason}", provider.Name, warning);
 
         var telemetry = builder.Services.AddOpenTelemetry()
+            // service.version is the release the spans belong to — the deploy's semver tag,
+            // not the assembly version (which stays at the SDK default nobody stamps).
+            // Backends key their release comparisons on it.
             .ConfigureResource(resource => resource.AddService(
                 serviceName: serviceName,
-                serviceVersion: System.Reflection.Assembly.GetEntryAssembly()?.GetName().Version?.ToString()))
+                serviceVersion: DeploymentInfo.Version))
             .WithTracing(tracing =>
             {
                 tracing

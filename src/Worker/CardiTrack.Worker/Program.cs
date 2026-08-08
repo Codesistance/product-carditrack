@@ -30,6 +30,7 @@ Log.Logger = new LoggerConfiguration()
     .Enrich.WithMachineName()
     .Enrich.WithEnvironmentName()
     .Enrich.WithProperty("Application", "CardiTrack.Worker")
+    .Enrich.WithProperty("Version", DeploymentInfo.Version)
     .WriteTo.Console(
         outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] {Message:lj} {Properties:j}{NewLine}{Exception}")
     .AddApmShipping(configuration.GetApmOptions())

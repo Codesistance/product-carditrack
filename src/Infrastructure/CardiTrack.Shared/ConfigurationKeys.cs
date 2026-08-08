@@ -67,6 +67,18 @@ public static class ConfigurationKeys
         public const string Port = "PORT";
     }
 
+    public static class Deployment
+    {
+        /// <summary>
+        /// Bare env var (no section) overriding the version baked into the image at build
+        /// time. Normally unset: the release version is stamped into the assembly by the
+        /// Dockerfile's VERSION build arg, which CI feeds from the deploy's tag without its
+        /// leading "v". Read via DeploymentInfo, which runs before configuration exists —
+        /// hence no section.
+        /// </summary>
+        public const string Version = "DEPLOY_VERSION";
+    }
+
     /// <summary>Section — options-bound via IConfiguration.GetSection(), not ConfigurationLoader.Get().</summary>
     public static class IpRateLimiting
     {

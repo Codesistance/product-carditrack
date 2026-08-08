@@ -82,6 +82,21 @@ Volume control (enforced engine-independently in `ApmExtensions`):
 All three services (API, Web, Worker) carry identical values for these — the API's earlier
 `Information` / `1.0` deviation from the others is resolved.
 
+### Release version on telemetry (`DeploymentInfo`)
+
+Logs carry a `Version` property and the OTel resource carries `service.version` (Datadog's
+`version` tag), so telemetry can be attributed to a release. The value is the deploy's
+semver tag: CI computes it (`v1.2.3`), tags the image with it as-is, and passes it —
+**without the leading `v`**, which MSBuild will not accept in a `Version` — as the
+Dockerfile's `VERSION` build arg for `-p:Version=` to stamp into the assembly.
+`DeploymentInfo` reads it back, trimming the `+<sha>` the SDK appends. Net effect: an
+image tagged `v1.2.3` reports `1.2.3`, so the two differ by that one character and
+nothing else.
+
+Builds outside the release pipeline report `0.0.0-local` (the host projects' default
+`<Version>`) rather than posing as a release. The plaintext `DEPLOY_VERSION` env var
+overrides the baked-in value for out-of-band images; normal deploys leave it unset.
+
 ## Project Structure
 
 > **Target structure** — the tree below is the planned layout, not a mirror of the current code. Today's `Controllers/` holds `Auth`, `Onboarding`, `Dashboard`, `Devices`, `Reports`, `Chat`, and `Insights` controllers, all deriving from `BaseApiController`; the `Webhooks/` folder (Google Health API, Garmin, Stripe) arrives with the AI-pipeline rollout ([llm_design.md](../../llm_design.md)).

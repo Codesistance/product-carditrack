@@ -967,7 +967,10 @@ jobs:
           IMAGE: ${{ needs.changes.outputs.registry }}/api
           TAG: ${{ needs.compute-version.outputs.version }}
         run: |
+          # VERSION stamps the tag into the assembly so the running revision reports it
+          # in logs and as OTel's service.version; MSBuild needs bare semver, hence ${TAG#v}
           docker build -f src/Presentation/CardiTrack.API/Dockerfile \
+            --build-arg VERSION=${TAG#v} \
             -t $IMAGE:$TAG \
             .
           docker push $IMAGE:$TAG
@@ -1002,6 +1005,7 @@ jobs:
           TAG: ${{ needs.compute-version.outputs.version }}
         run: |
           docker build -f src/Presentation/CardiTrack.API/Dockerfile.migrate \
+            --build-arg VERSION=${TAG#v} \
             -t $IMAGE:$TAG \
             .
           docker push $IMAGE:$TAG
@@ -1033,6 +1037,7 @@ jobs:
           TAG: ${{ needs.compute-version.outputs.version }}
         run: |
           docker build -f src/Presentation/CardiTrack.Web/Dockerfile \
+            --build-arg VERSION=${TAG#v} \
             -t $IMAGE:$TAG \
             .
           docker push $IMAGE:$TAG
@@ -1065,6 +1070,7 @@ jobs:
           TAG: ${{ needs.compute-version.outputs.version }}
         run: |
           docker build -f src/Worker/CardiTrack.Worker/Dockerfile \
+            --build-arg VERSION=${TAG#v} \
             -t $IMAGE:$TAG \
             .
           docker push $IMAGE:$TAG

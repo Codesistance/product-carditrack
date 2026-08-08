@@ -26,13 +26,19 @@ public static class AppLogging
             .MinimumLevel.Override("Microsoft", LogEventLevel.Warning)
             .MinimumLevel.Override("System.Net.Http", LogEventLevel.Warning)
             .Enrich.FromLogContext()
+            // Which build wrote the line. Files roll daily and by size, so a support
+            // bundle can arrive without whatever startup line named the version —
+            // stamping every line keeps each file self-describing. VersionString is
+            // ApplicationDisplayVersion, which the signed CI builds set from the
+            // release tag; unstamped local builds report the csproj default.
+            .Enrich.WithProperty("Version", AppInfo.Current.VersionString)
             .WriteTo.File(
                 path: Path.Combine(LogDirectory, "carditrack-.log"),
                 rollingInterval: RollingInterval.Day,
                 retainedFileCountLimit: 7,
                 fileSizeLimitBytes: 5 * 1024 * 1024,
                 rollOnFileSizeLimit: true,
-                outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} [{Level:u3}] {SourceContext}: {Message:lj}{NewLine}{Exception}");
+                outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} [{Level:u3}] v{Version} {SourceContext}: {Message:lj}{NewLine}{Exception}");
 
         Log.Logger = config.CreateLogger();
         logging.AddSerilog(Log.Logger, dispose: true);

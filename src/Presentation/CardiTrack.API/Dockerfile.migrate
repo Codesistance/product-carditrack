@@ -5,6 +5,11 @@
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src
 
+# Release version — CI passes the deploy's semver tag (--build-arg VERSION=1.2.3). The
+# job boots the API host to resolve the DbContext, so its logs carry the same version
+# as the API revision the migrations are being applied for.
+ARG VERSION=0.0.0-local
+
 # Copy solution and project files for restore
 COPY ["CardiTrack.sln", "./"]
 COPY ["src/Presentation/CardiTrack.API/CardiTrack.API.csproj", "src/Presentation/CardiTrack.API/"]
@@ -18,7 +23,7 @@ RUN dotnet restore "src/Presentation/CardiTrack.API/CardiTrack.API.csproj"
 
 COPY . .
 
-RUN dotnet build "src/Presentation/CardiTrack.API/CardiTrack.API.csproj" -c Release --no-restore
+RUN dotnet build "src/Presentation/CardiTrack.API/CardiTrack.API.csproj" -c Release --no-restore /p:Version=$VERSION
 
 RUN dotnet tool install --global dotnet-ef
 ENV PATH="$PATH:/root/.dotnet/tools"

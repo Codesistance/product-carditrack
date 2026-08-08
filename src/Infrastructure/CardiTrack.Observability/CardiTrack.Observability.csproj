@@ -5,6 +5,10 @@
     <RootNamespace>CardiTrack.Observability</RootNamespace>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <!-- DeploymentInfo reads the release version off THIS assembly. The release pipeline's
+         -p:Version=<semver> is a global property, so it flows here from whichever host is
+         being built; anything else keeps the local marker. See CardiTrack.API.csproj. -->
+    <Version>0.0.0-local</Version>
   </PropertyGroup>
 
   <ItemGroup>
