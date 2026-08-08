@@ -1,0 +1,13 @@
+<!-- Selected "Alerts" tab glyph (Figma 101:7906). Offset viewBox keeps the glyph centred in the
+     same 28x28 box as icon_tab_alerts.svg; the drop shadow is applied by BottomNavBar. -->
+<svg width="28" height="28" viewBox="0.5 -2.3333 28 28" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <path d="M22.3751 8.995V8.1725C22.3751 3.65867 18.8471 0 14.5001 0C10.1531 0 6.62507 3.65867 6.62507 8.1725V8.995C6.62648 9.97681 6.34629 10.9384 5.81774 11.7658L4.52507 13.7783C3.34557 15.6158 4.24624 18.1137 6.29841 18.6947C11.6607 20.2133 17.3394 20.2133 22.7017 18.6947C24.7539 18.1137 25.6546 15.6158 24.4751 13.7795L23.1824 11.767C22.6534 10.9397 22.3729 9.9781 22.3739 8.99617L22.3751 8.995Z" fill="url(#tabAlertsActiveGradient)"/>
+  <path d="M9.25 19.8333C10.0142 21.8727 12.0757 23.3333 14.5 23.3333C16.9243 23.3333 18.9858 21.8727 19.75 19.8333" fill="#1884DC"/>
+  <defs>
+    <linearGradient id="tabAlertsActiveGradient" x1="4" y1="11.4826" x2="25.0001" y2="11.4826" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#174E86"/>
+      <stop offset="0.458145" stop-color="#1884DC"/>
+      <stop offset="1" stop-color="#36C09B"/>
+    </linearGradient>
+  </defs>
+</svg>

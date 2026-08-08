@@ -1,0 +1,14 @@
+<!-- Figma has no Settings glyph (its bar is Home/Health/Alerts/Profile), so the selected state
+     reuses the same outline as icon_tab_settings.svg with the tab-bar gradient on the stroke.
+     A designed filled glyph would match the Home/Alerts tabs more closely — see issue #67. -->
+<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <circle cx="12" cy="12" r="3" stroke="url(#tabSettingsActiveGradient)" stroke-width="2"/>
+  <path d="M19.4 13.5a7.6 7.6 0 0 0 0-3l2-1.5-2-3.5-2.4 1a7.6 7.6 0 0 0-2.6-1.5L14 2.5h-4l-.4 2.5A7.6 7.6 0 0 0 7 6.5l-2.4-1-2 3.5 2 1.5a7.6 7.6 0 0 0 0 3l-2 1.5 2 3.5 2.4-1a7.6 7.6 0 0 0 2.6 1.5l.4 2.5h4l.4-2.5a7.6 7.6 0 0 0 2.6-1.5l2.4 1 2-3.5-2-1.5Z" stroke="url(#tabSettingsActiveGradient)" stroke-width="2" stroke-linejoin="round"/>
+  <defs>
+    <linearGradient id="tabSettingsActiveGradient" x1="2.6" y1="12" x2="21.4" y2="12" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#174E86"/>
+      <stop offset="0.458145" stop-color="#1884DC"/>
+      <stop offset="1" stop-color="#36C09B"/>
+    </linearGradient>
+  </defs>
+</svg>

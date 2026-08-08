@@ -1,0 +1,14 @@
+<!-- Selected "Home" tab glyph (Figma 101:7927). The viewBox is offset so the 23.33-unit
+     glyph sits centred in the same 28x28 box as icon_tab_home.svg — the two must not shift
+     when the tab flips state. Figma's drop shadow is applied by BottomNavBar, not baked in. -->
+<svg width="28" height="28" viewBox="1.6667 -2.3333 28 28" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <path d="M4 11.9047C4 9.23417 4 7.8995 4.60667 6.7935C5.211 5.68633 6.31817 5.00033 8.53133 3.626L10.8647 2.17817C13.2038 0.725667 14.374 0 15.6667 0C16.9593 0 18.1283 0.725667 20.4687 2.17817L22.802 3.626C25.0152 5.00033 26.1223 5.68633 26.7278 6.7935C27.3333 7.90067 27.3333 9.23417 27.3333 11.9035V13.6792C27.3333 18.2292 27.3333 20.5053 25.966 21.9193C24.5987 23.3333 22.3995 23.3333 18 23.3333H13.3333C8.93383 23.3333 6.7335 23.3333 5.36733 21.9193C4.00117 20.5053 4 18.2303 4 13.6792V11.9047Z" fill="url(#tabHomeActiveGradient)"/>
+  <path d="M15.667 15.1667V18.6667" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round"/>
+  <defs>
+    <linearGradient id="tabHomeActiveGradient" x1="15.6667" y1="0" x2="15.6667" y2="23.3333" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#174E86"/>
+      <stop offset="0.458145" stop-color="#1884DC"/>
+      <stop offset="1" stop-color="#36C09B"/>
+    </linearGradient>
+  </defs>
+</svg>

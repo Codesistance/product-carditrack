@@ -98,7 +98,6 @@
         <Setter Property="Shell.ForegroundColor" Value="{AppThemeBinding Light={StaticResource Black}, Dark={StaticResource White}}" />
         <Setter Property="Shell.TitleColor" Value="{AppThemeBinding Light={StaticResource Black}, Dark={StaticResource White}}" />
         <Setter Property="Shell.NavBarHasShadow" Value="False" />
-        <Setter Property="Shell.TabBarBackgroundColor" Value="{AppThemeBinding Light={StaticResource White}, Dark={StaticResource Black}}" />
     </Style>
 
     <Style TargetType="NavigationPage">
@@ -308,6 +307,18 @@
         <Setter Property="FontFamily" Value="QuicksandSemiBold"/>
         <Setter Property="FontSize" Value="18"/>
         <Setter Property="TextColor" Value="{StaticResource HeadingText}"/>
+    </Style>
+
+    <!-- ════════════════════════════════════════════
+         BOTTOM NAVIGATION (Figma "Body 3 Medium")
+         ════════════════════════════════════════════ -->
+
+    <!-- TextColor is set per tab by BottomNavBar (PrimaryDark selected, MutedText not). -->
+    <Style x:Key="TabBarLabel" TargetType="Label">
+        <Setter Property="FontFamily" Value="QuicksandSemiBold"/>
+        <Setter Property="FontSize" Value="12"/>
+        <Setter Property="HorizontalTextAlignment" Value="Center"/>
+        <Setter Property="HorizontalOptions" Value="Center"/>
     </Style>
 
 </ResourceDictionary>
