@@ -15,7 +15,11 @@ public sealed class BetterStackApmProvider : IApmProvider
 
     public string Name => EngineName;
 
-    public LoggerConfiguration AddLogShipping(LoggerConfiguration loggerConfiguration, ApmOptions options) =>
+    // serviceName is unused: a Better Stack source IS the service — the source token routes
+    // logs to it, so there is no per-log service field to set. Traces still carry the name
+    // through the OTel resource.
+    public LoggerConfiguration AddLogShipping(
+        LoggerConfiguration loggerConfiguration, ApmOptions options, string serviceName) =>
         loggerConfiguration.WriteTo.BetterStack(
             sourceToken: options.Data.IngestToken!,
             betterStackEndpoint: NormalizeIngestUrl(options.Data.IngestUrl!),

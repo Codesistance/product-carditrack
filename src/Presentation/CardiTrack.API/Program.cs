@@ -16,7 +16,7 @@ AppContext.SetSwitch("Npgsql.EnableLegacyTimestampBehavior", false);
 var builder = WebApplication.CreateBuilder(args);
 var configLoader = new ConfigurationLoader(builder.Configuration);
 builder.AddSerilogLogging();
-builder.AddApmTracing("CardiTrack.API");
+builder.AddApmTracing(ApmServiceNames.Api);
 
 try
 {

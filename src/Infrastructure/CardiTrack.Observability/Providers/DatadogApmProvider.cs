@@ -24,13 +24,24 @@ public sealed class DatadogApmProvider : IApmProvider
 
     public string Name => EngineName;
 
-    public LoggerConfiguration AddLogShipping(LoggerConfiguration loggerConfiguration, ApmOptions options) =>
+    public LoggerConfiguration AddLogShipping(
+        LoggerConfiguration loggerConfiguration, ApmOptions options, string serviceName) =>
         loggerConfiguration.WriteTo.DatadogLogs(
             apiKey: options.Data.IngestToken!,
             source: "csharp",
-            service: "carditrack",
+            service: serviceName,
+            tags: LogTags(),
             configuration: new DatadogConfiguration(url: LogIntakeUrl(options.Data.IngestUrl!)),
             restrictedToMinimumLevel: options.ShipLevel);
+
+    /// <summary>
+    /// The ddtags every log carries. Datadog's reserved tags — the ones behind the Service
+    /// and Version facets and behind release comparison — are read from the tag list and
+    /// the sink's own service field, never from log attributes: the "Version" property the
+    /// hosts enrich with shows up as an ordinary attribute and leaves the Version facet
+    /// empty, which is why the release is repeated here as a tag.
+    /// </summary>
+    public static string[] LogTags() => [$"version:{DeploymentInfo.Version}"];
 
     public void AddTraceExporter(TracerProviderBuilder tracing, ApmOptions options)
     {

@@ -27,7 +27,7 @@ Log.Logger = new LoggerConfiguration()
     .Enrich.WithProperty("Version", DeploymentInfo.Version)
     .WriteTo.Console(
         outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] {Message:lj} {Properties:j}{NewLine}{Exception}")
-    .AddApmShipping(builder.Configuration.GetApmOptions())
+    .AddApmShipping(builder.Configuration.GetApmOptions(), ApmServiceNames.Web)
     .CreateLogger();
 
 builder.Host.UseSerilog();
@@ -37,7 +37,7 @@ try
     Log.Information("Starting CardiTrack Web");
 
     // 2. APM TRACING
-    builder.AddApmTracing("CardiTrack.Web");
+    builder.AddApmTracing(ApmServiceNames.Web);
 
     // 3. RAZOR COMPONENTS
     builder.Services.AddRazorComponents()

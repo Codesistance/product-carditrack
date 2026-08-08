@@ -33,13 +33,13 @@ Log.Logger = new LoggerConfiguration()
     .Enrich.WithProperty("Version", DeploymentInfo.Version)
     .WriteTo.Console(
         outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] {Message:lj} {Properties:j}{NewLine}{Exception}")
-    .AddApmShipping(configuration.GetApmOptions())
+    .AddApmShipping(configuration.GetApmOptions(), ApmServiceNames.Worker)
     .CreateLogger();
 
 builder.Host.UseSerilog();
 
 // APM TRACING — no-op until Apm__Engine + Apm__Data are configured
-builder.AddApmTracing("CardiTrack.Worker");
+builder.AddApmTracing(ApmServiceNames.Worker);
 
 // Device provider config array
 builder.Services.Configure<List<DeviceProviderSettings>>(
