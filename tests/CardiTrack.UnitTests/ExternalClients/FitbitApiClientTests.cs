@@ -281,6 +281,12 @@ public class FitbitApiClientTests
     /// answers a rollup with a 400 naming the type. Rolling it up failed every wearable sync in
     /// dev, so the method and the filter field are pinned here rather than left to the shape-only
     /// tests, which route on path and never see either.
+    /// <para>
+    /// The filter member path is snake_case — the documented pattern is
+    /// `{daily_summary_data_type}.date`. Spelling it as the camelCase union member the *response*
+    /// uses (`dailyRestingHeartRate.date`) is rejected with INVALID_DATA_POINT_FILTER, which is
+    /// what failed every sync next.
+    /// </para>
     /// </summary>
     [Fact]
     public async Task GetHeartRateAsync_ListsRestingHeartRate_RatherThanRollingItUp()
@@ -301,7 +307,7 @@ public class FitbitApiClientTests
         var filter = Uri.UnescapeDataString(request.RequestUri.Query["?filter=".Length..]);
         Assert.Equal(
             """
-            dailyRestingHeartRate.date >= "2026-08-31" AND dailyRestingHeartRate.date < "2026-09-01"
+            daily_resting_heart_rate.date >= "2026-08-31" AND daily_resting_heart_rate.date < "2026-09-01"
             """,
             filter);
     }

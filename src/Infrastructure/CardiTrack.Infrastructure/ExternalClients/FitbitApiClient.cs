@@ -22,6 +22,11 @@ namespace CardiTrack.Infrastructure.ExternalClients;
 /// reading of that convention (`count`, `beatsPerMinute_avg`) matched nothing and silently
 /// reported zeros. Units are the reference's own: distance in millimetres, calories in kcal.
 /// </para>
+/// <para>
+/// `filter` expressions are the one place that convention does not hold: their member paths are
+/// snake_case throughout — the data type (`daily_resting_heart_rate`) and the field
+/// (`civil_end_time`) alike — not the camelCase the JSON response is keyed by.
+/// </para>
 /// </summary>
 public class FitbitApiClient : IFitbitApiClient, IDeviceApiClient
 {
@@ -231,8 +236,15 @@ public class FitbitApiClient : IFitbitApiClient, IDeviceApiClient
     {
         // A Daily record's date is a google.type.Date, filtered with the same closed-open ISO
         // literal bounds the sleep session filter uses.
+        //
+        // The filter's leading segment is the *data type* in snake_case — the documented pattern is
+        // `{daily_summary_data_type}.date` — not the camelCase union member the response is keyed
+        // by. The two coincide for `sleep`, which is why the session filter above reads as though
+        // either would do; they diverge here, and `dailyRestingHeartRate.date` is rejected with
+        // INVALID_DATA_POINT_FILTER_DATA_TYPE_RESTRICTION ("does not match any data type").
+        var member = ToSnakeCase(dataType);
         var filter = Uri.EscapeDataString(
-            $"{unionMember}.date >= \"{date:yyyy-MM-dd}\" AND {unionMember}.date < \"{date.AddDays(1):yyyy-MM-dd}\"");
+            $"{member}.date >= \"{date:yyyy-MM-dd}\" AND {member}.date < \"{date.AddDays(1):yyyy-MM-dd}\"");
         using var request = new HttpRequestMessage(
             HttpMethod.Get,
             $"/v4/users/me/dataTypes/{dataType}/dataPoints?filter={filter}");
@@ -258,6 +270,12 @@ public class FitbitApiClient : IFitbitApiClient, IDeviceApiClient
             ["day"] = date.Day,
         },
     };
+
+    /// <summary>
+    /// kebab-case data type name → the snake_case name the filter grammar uses
+    /// ("daily-resting-heart-rate" → "daily_resting_heart_rate").
+    /// </summary>
+    private static string ToSnakeCase(string dataType) => dataType.Replace('-', '_');
 
     /// <summary>kebab-case data type name → camelCase union member ("heart-rate" → "heartRate").</summary>
     private static string ToCamelCase(string dataType)
