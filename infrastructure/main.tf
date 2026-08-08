@@ -67,6 +67,8 @@ module "deployments" {
       "AI__Providers__1__Model"             = "gemini-2.0-flash"
       "Apm__Engine"                         = var.apm_engine
       "Apm__MetricsEnabled"                 = tostring(var.apm_metrics_enabled)
+      "Apm__TracesSampleRatio"              = tostring(var.traces_sample_ratio.api)
+      "Serilog__MinimumLevel__Default"      = var.log_minimum_level.api
     },
     # Google's web OAuth clients require an https redirect; the API bounces it to the app deep
     # link. Element 0 of DeviceProviders in appsettings.json is the Fitbit (Google Health API)
@@ -102,10 +104,12 @@ module "deployments" {
   worker_service_name    = local.worker_service_name
   worker_container_image = var.worker_container_image
   worker_env_vars = {
-    "ASPNETCORE_ENVIRONMENT" = title(var.environment)
-    "GCP_PROJECT_ID"         = var.project_id
-    "Apm__Engine"            = var.apm_engine
-    "Apm__MetricsEnabled"    = tostring(var.apm_metrics_enabled)
+    "ASPNETCORE_ENVIRONMENT"         = title(var.environment)
+    "GCP_PROJECT_ID"                 = var.project_id
+    "Apm__Engine"                    = var.apm_engine
+    "Apm__MetricsEnabled"            = tostring(var.apm_metrics_enabled)
+    "Apm__TracesSampleRatio"         = tostring(var.traces_sample_ratio.worker)
+    "Serilog__MinimumLevel__Default" = var.log_minimum_level.worker
   }
   worker_secret_env_vars = {
     "ConnectionStrings__DefaultConnection" = "${var.project_name}-${local.environment}-db-connection-string"
@@ -124,9 +128,11 @@ module "deployments" {
   web_service_name    = local.web_service_name
   web_container_image = var.web_container_image
   web_env_vars = {
-    "ASPNETCORE_ENVIRONMENT" = title(var.environment)
-    "Apm__Engine"            = var.apm_engine
-    "Apm__MetricsEnabled"    = tostring(var.apm_metrics_enabled)
+    "ASPNETCORE_ENVIRONMENT"         = title(var.environment)
+    "Apm__Engine"                    = var.apm_engine
+    "Apm__MetricsEnabled"            = tostring(var.apm_metrics_enabled)
+    "Apm__TracesSampleRatio"         = tostring(var.traces_sample_ratio.web)
+    "Serilog__MinimumLevel__Default" = var.log_minimum_level.web
   }
   web_secret_env_vars = {
     "Apm__Data" = "${var.project_name}-${local.environment}-apm-data"

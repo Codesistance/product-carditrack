@@ -1,8 +1,10 @@
 # APM Setup Runbook (Operator)
 
 Connects the deployed API, Web, and Worker to the APM backend (**Datadog** — selected per
-environment by the `apm_engine` tfvar). The apps are already wired; the whole deployed
-contract is two env vars per service:
+environment by the `apm_engine` tfvar). The apps are already wired. Two env vars per
+service carry the **connection**; the volume knobs (`Apm__MetricsEnabled`,
+`Apm__TracesSampleRatio`, `Serilog__MinimumLevel__Default`) are separate and documented
+below:
 
 - `Apm__Engine` — plaintext, set by Terraform (`"Datadog"`; `"BetterStack"` also supported)
 - `Apm__Data` — Secret Manager-backed (secret `carditrack-<env>-apm-data`) holding one JSON
@@ -11,18 +13,40 @@ contract is two env vars per service:
 Until the secret holds real JSON the apps run normally and ship nothing — the `REPLACE_ME`
 placeholder counts as "not configured". Malformed JSON in the secret fails startup loudly.
 
-Quota guardrails are enforced in code (`CardiTrack.Observability`), engine-independently:
-only Warning+ logs ship, traces are head-sampled at 20% (DB commands included via Npgsql
-spans), `/health(z)` is never traced, and metrics (runtime, ASP.NET Core, HttpClient,
-Npgsql) ship only when the `apm_metrics_enabled` tfvar is true (→ `Apm__MetricsEnabled`
-env var) — they bill as custom metrics, so the switch is off by default. Current
-per-environment values: **dev `apm_metrics_enabled = true`, prod `= false`**.
+Quota guardrails are enforced engine-independently: only Warning+ logs ship,
+`/health(z)` is never traced, and metrics (runtime, ASP.NET Core, HttpClient, Npgsql)
+ship only when the `apm_metrics_enabled` tfvar is true (→ `Apm__MetricsEnabled` env var)
+— they bill as custom metrics, so the switch is off by default. Current per-environment
+values: **dev `apm_metrics_enabled = true`, prod `= false`**.
 
-**Known exception to the guardrails**: the API's `appsettings.json` overrides the
-defaults with `Apm:MinimumLogLevel = "Information"` and `Apm:TracesSampleRatio = 1.0`
-(100% sampling) — so the API ships far more than the Warning+/20% baseline wherever
-APM is configured. This is flagged as a code follow-up; until it lands, this override
-is the deployed reality.
+All three services now carry the **same** volume settings in `appsettings.json` —
+`Serilog:MinimumLevel:Default` and `Apm:MinimumLogLevel` both `Warning`,
+`Apm:TracesSampleRatio` `1.0` (full sampling, DB commands included via Npgsql spans).
+Terraform then sets two of those per service, so one service can be tuned without
+touching the others (both dev and prod tfvars currently list all three services at the
+baseline):
+
+| tfvar (object, one attribute per service) | env var | baseline |
+| --- | --- | --- |
+| `log_minimum_level` | `Serilog__MinimumLevel__Default` | `Warning` |
+| `traces_sample_ratio` | `Apm__TracesSampleRatio` | `1.0` |
+
+Every attribute is optional, so `log_minimum_level = { api = "Debug" }` turns the API up
+and leaves Web and Worker at `Warning`. Two things to know when you do that:
+
+- The APM sink keeps filtering at `Apm:MinimumLogLevel` (`Warning`), so turning a
+  service up floods Cloud Logging only — it does not increase what ships to Datadog.
+  Lower the shipped floor too by setting the `Apm__MinimumLogLevel` env var by hand.
+- Values *below* `Information` need `Logging__LogLevel__Default` set to match: the
+  Microsoft.Extensions.Logging filter runs ahead of Serilog and stays at `Information`
+  in the API and Worker `appsettings.json`, so `Debug`/`Verbose` is dropped before
+  Serilog sees it.
+
+Trace sampling at 100% is the largest ingest lever after metrics — cut
+`traces_sample_ratio` first if Datadog spend needs reducing. The code fallback, used
+only when nothing configures the value at all, stays at `0.2`
+(`ApmOptions.TracesSampleRatio`) so an unconfigured host fails cheap rather than at
+full sampling.
 
 ## 1. Datadog console steps
 
@@ -150,9 +174,11 @@ traces (RUM→APM correlation).
 
 - Per-app keys/sources (separate tokens for API and Web) — split into per-app `apm-data`
   secrets if quota attribution ever matters; today all services share the one secret.
-- Raise `Apm:TracesSampleRatio` / lower `Apm:MinimumLogLevel` via plaintext env vars
-  (`Apm__TracesSampleRatio`, `Apm__MinimumLogLevel`) if the plan is upgraded; flip
-  `apm_metrics_enabled` per environment in tfvars to turn metrics on or off.
+- Tune volume per service in the environment's tfvars: `traces_sample_ratio` (→
+  `Apm__TracesSampleRatio`) and `log_minimum_level` (→ `Serilog__MinimumLevel__Default`);
+  flip `apm_metrics_enabled` to turn metrics on or off. Lowering the *shipped* log floor
+  below `Warning` still needs an `Apm__MinimumLogLevel` env var set by hand — deliberate,
+  so a debugging session cannot quietly raise ingest.
 - Switching backends: implement `IApmProvider`, register it in `ApmProviderRegistry`,
   flip `apm_engine` in the environment's tfvars (`infrastructure/environments/<env>.tfvars`),
   and put the new backend's JSON in the same `apm-data` secret — extra fields beyond

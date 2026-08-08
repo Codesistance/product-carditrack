@@ -35,13 +35,13 @@ Worker through `CardiTrack.Observability` (`AddApmShipping` for Serilog, `AddApm
     "Extra": {}                       // optional provider-specific keys (region, dataset, ...)
   },
   "MinimumLogLevel": "Warning",
-  "TracesSampleRatio": 0.2,
+  "TracesSampleRatio": 1.0,
   "MetricsEnabled": false             // opt-in OTel metrics export
 }
 ```
 
 `Data` is accepted in two forms: the nested section above (appsettings), or — the deployment
-contract — a **single JSON value**. Deployed, the whole config is exactly three env vars:
+contract — a **single JSON value**. Deployed, the whole config is four env vars:
 
 - `Apm__Engine` — plaintext Terraform env var from the `apm_engine` tfvar (**`"Datadog"`**
   in dev and prod; appsettings leaves it empty, so local runs log to console only).
@@ -54,6 +54,10 @@ contract — a **single JSON value**. Deployed, the whole config is exactly thre
   - Better Stack: `{"IngestUrl":"s123456.eu-nbg-2.betterstackdata.com","IngestToken":"<source token>"}`
 - `Apm__MetricsEnabled` — plaintext env var from the `apm_metrics_enabled` tfvar
   (**dev `true`, prod `false`** — metrics bill as custom metrics and stream continuously)
+- `Apm__TracesSampleRatio` — plaintext env var from the `traces_sample_ratio` tfvar, which is
+  an object with one optional attribute per service (`api`, `web`, `worker`), **`1.0`
+  everywhere today**. Its sibling `log_minimum_level` sets `Serilog__MinimumLevel__Default`
+  the same way (**`Warning` everywhere**), so either service can be tuned on its own.
 
 The single-value form wins when both are present. Shipping is **disabled until the engine, URL,
 and token are all real values** — `REPLACE_ME` placeholders count as unset. Provisioning:
@@ -62,19 +66,21 @@ composes the JSON). An unknown `Engine` or malformed `Apm__Data` JSON fails star
 support a new backend, implement `IApmProvider` and register it in `ApmProviderRegistry` —
 nothing changes in the apps.
 
-Free-tier prudence (enforced engine-independently in `ApmExtensions`):
+Volume control (enforced engine-independently in `ApmExtensions`):
 
-- Only `MinimumLogLevel` and above (default `Warning`) is shipped; full detail stays in the console.
-- Traces are head-sampled via `TracesSampleRatio` (default `0.2`); `/health` requests are never traced.
+- Only `MinimumLogLevel` and above (`Warning`) is shipped. `Serilog:MinimumLevel:Default` is
+  also `Warning`, so below-Warning events don't reach the console either; raising the root
+  level via `Serilog__MinimumLevel__Default` widens the console/Cloud Logging output without
+  widening what ships. Below `Information` also needs `Logging__LogLevel__Default`, because the
+  Microsoft.Extensions.Logging filter runs ahead of Serilog.
+- Traces are head-sampled via `TracesSampleRatio` (`1.0` — full sampling); `/health` requests
+  are never traced. The code fallback for an unconfigured host stays `0.2`.
 - Metrics are **off by default** and exported only when `Apm:MetricsEnabled` is true — then the
   ASP.NET Core and HttpClient instrumentation meters plus the `System.Runtime` and `Npgsql`
   meters ship over OTLP.
 
-> **Known deviation (follow-up):** the API's own `appsettings.json` currently overrides both
-> guardrail defaults — `MinimumLogLevel` is set to `Information` and `TracesSampleRatio` to
-> `1.0`. Deployed environments therefore ship full-detail logs and trace every request once an
-> engine is configured. This is the current reality, not the intent; tightening it back to the
-> `Warning` / `0.2` defaults is an open follow-up.
+All three services (API, Web, Worker) carry identical values for these — the API's earlier
+`Information` / `1.0` deviation from the others is resolved.
 
 ## Project Structure
 

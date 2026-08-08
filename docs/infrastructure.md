@@ -318,6 +318,8 @@ API, Web, and Worker share the `CardiTrack.Observability` library — **Serilog*
 - `Apm:Engine` selects the provider from `ApmProviderRegistry` — **`BetterStack` or `Datadog`**. Both dev and prod tfvars set **Datadog**. ⚠️ **Trap:** the Terraform variable *default* is `BetterStack` — if an environment omits `apm_engine`, the deployment silently reverts to the BetterStack provider. Locally, with no engine set, telemetry is console-only.
 - `Apm:Data` (secret `carditrack-<env>-apm-data`) carries the engine's connection JSON (`IngestUrl`, `IngestToken`, optional extras). Placeholder value ⇒ nothing ships.
 - `Apm:MetricsEnabled` (tfvar `apm_metrics_enabled`) opts into OTel metrics (runtime, ASP.NET Core, HttpClient, Npgsql). **Dev: true, prod: false** — metrics bill as custom metrics and stream continuously.
+- **Log volume and trace sampling are per service.** The tfvars `log_minimum_level` (→ `Serilog__MinimumLevel__Default`) and `traces_sample_ratio` (→ `Apm__TracesSampleRatio`) are objects with one optional attribute per service (`api`, `web`, `worker`), so a single service can be turned up for an investigation. Baseline in every environment: **`Warning` and `1.0`**, matching the committed `appsettings.json` of all three services. A partial override (`log_minimum_level = { api = "Debug" }`) leaves the other two at `Warning`; an unrecognised level or an out-of-range ratio fails the plan rather than being silently coerced.
+- Raising a service's root level does **not** increase APM ingest: the sink filters separately at `Apm:MinimumLogLevel` (`Warning` in all three `appsettings.json`). And going below `Information` also needs `Logging__LogLevel__Default`, since the Microsoft.Extensions.Logging filter runs ahead of Serilog.
 
 Setup, token provisioning, and backend-switching instructions: [apm_setup_runbook.md](./technical/apm_setup_runbook.md).
 
@@ -418,7 +420,7 @@ Precise figures depend on traffic; the cost structure is:
 - **Cloud SQL** — the dominant fixed cost: shared-core ZONAL in dev; 2 vCPU REGIONAL HA in prod (HA roughly doubles the instance cost).
 - **GCS** — negligible at current volumes (versioned STANDARD buckets, COLDLINE audit).
 - **Secret Manager / Pub/Sub / networking** — minor.
-- **APM** — external (Datadog); metrics export is the cost lever, hence `apm_metrics_enabled` off in prod.
+- **APM** — external (Datadog); metrics export is the cost lever, hence `apm_metrics_enabled` off in prod. Next lever after it is `traces_sample_ratio` (per service, `1.0` everywhere today); logs are already floored at `Warning`.
 
 ---
 

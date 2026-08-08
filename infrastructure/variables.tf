@@ -162,6 +162,47 @@ variable "apm_metrics_enabled" {
   default     = false
 }
 
+# Logging + tracing volume, per service. Objects (not one shared scalar) so a single
+# service can be turned up for an investigation without touching the other two; every
+# attribute is optional, so `{ api = "Debug" }` leaves Web and Worker on the default.
+variable "log_minimum_level" {
+  description = "Serilog root minimum level per service (Serilog__MinimumLevel__Default). Warning by default — everything below it never reaches Cloud Logging or the APM sink. Note: dropping a service below Information also needs Logging__LogLevel__Default, which filters ahead of Serilog"
+  type = object({
+    api    = optional(string, "Warning")
+    web    = optional(string, "Warning")
+    worker = optional(string, "Warning")
+  })
+  default = {}
+
+  validation {
+    # A typo here reaches the app as a bad Serilog level; fail the plan instead.
+    condition = alltrue([
+      for level in [var.log_minimum_level.api, var.log_minimum_level.web, var.log_minimum_level.worker] :
+      contains(["Verbose", "Debug", "Information", "Warning", "Error", "Fatal"], level)
+    ])
+    error_message = "log_minimum_level values must be one of: Verbose, Debug, Information, Warning, Error, Fatal."
+  }
+}
+
+variable "traces_sample_ratio" {
+  description = "OTel trace head-sampling ratio per service (Apm__TracesSampleRatio), 0.0-1.0. 1.0 by default — full sampling; the main APM ingest cost lever alongside apm_metrics_enabled"
+  type = object({
+    api    = optional(number, 1.0)
+    web    = optional(number, 1.0)
+    worker = optional(number, 1.0)
+  })
+  default = {}
+
+  validation {
+    # The apps clamp out-of-range values; fail the plan instead of deploying a silent clamp.
+    condition = alltrue([
+      for ratio in [var.traces_sample_ratio.api, var.traces_sample_ratio.web, var.traces_sample_ratio.worker] :
+      ratio >= 0.0 && ratio <= 1.0
+    ])
+    error_message = "traces_sample_ratio values must be between 0.0 and 1.0 inclusive."
+  }
+}
+
 # Pub/Sub Configuration (real-time messaging)
 variable "enable_pubsub" {
   description = "Enable Cloud Pub/Sub for real-time messaging (production only)"
