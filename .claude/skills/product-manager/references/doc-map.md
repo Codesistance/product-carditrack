@@ -1,6 +1,6 @@
 # CardiTrack documentation map
 
-Every file in `docs/`, what's in it, and when a PM should open it. Paths are repo-relative; links resolve from this file.
+What's in `docs/` and when a PM should open it. Covers all 37 canonical markdown docs individually; the 3 files in `docs/archive/` are covered as a category (never canonical, so never cited), and the two generated PDFs under `mvp1/` are noted with their source. Paths are repo-relative; links resolve from this file.
 
 ## Precedence when docs disagree
 

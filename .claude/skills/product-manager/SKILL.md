@@ -128,7 +128,7 @@ Match the house style of the existing specs — story numbering (`Story 1.1`), `
 **Architecture & platform**
 - [docs/llm_design.md](../../../docs/llm_design.md) — AI pipeline on GCP: Pub/Sub + Cloud Run, MedGemma via Ollama, Gemini, SSA-LSTM pre-processing, severity routing, digests, cost
 - [docs/infrastructure.md](../../../docs/infrastructure.md) — Cloud SQL PostgreSQL 16, schema, EF Core migrations, encryption, GCP resources, Terraform, CI/CD, DR
-- [docs/apps/](../../../docs/apps/api/readme.md) — per-app READMEs: [api](../../../docs/apps/api/readme.md), [web](../../../docs/apps/web/readme.md), [mobile](../../../docs/apps/mobile/readme.md) (+ [store_provisioning](../../../docs/apps/mobile/store_provisioning.md)), [worker](../../../docs/apps/worker/readme.md)
+- Per-app READMEs (`docs/apps/` has no index file — go straight to one): [api](../../../docs/apps/api/readme.md), [web](../../../docs/apps/web/readme.md), [mobile](../../../docs/apps/mobile/readme.md) (+ [store_provisioning](../../../docs/apps/mobile/store_provisioning.md)), [worker](../../../docs/apps/worker/readme.md)
 
 **Technical reference**
 - [auth0_integration.md](../../../docs/technical/auth0_integration.md) · [auth0_setup_runbook.md](../../../docs/technical/auth0_setup_runbook.md) — auth flows and tenant config
@@ -148,7 +148,9 @@ Match the house style of the existing specs — story numbering (`Story 1.1`), `
 
 The mobile M1 design file is the arbiter of UI scope: **https://www.figma.com/design/ux4slk0SA3BsAxFpGzv4NB** (frames M1-01 … M1-17). Only screens that exist in Figma get built, and only screens in Figma get M1 IDs — do not invent frame IDs for shipped screens that lack a frame.
 
-Known state: 9 of 17 frames built (M1-01 … M1-09); M1-10 … M1-17 are design intent with "Coming soon" stubs; four shipped screens (SignIn, ForgotPassword, VerifyEmail, AccountSetup) have **no Figma frame and need design sync**.
+Known state: **12 of 17 frames built** — M1-01 … M1-09 plus M1-13, M1-14, M1-15. M1-10 (Alerts List) is a 13-line placeholder, and M1-11, M1-12, M1-16, M1-17 don't exist — so the unbuilt frames are almost entirely **alerts and export**, matching the release matrix's ⬜ on the whole alerting loop. Four shipped screens (SignIn, ForgotPassword, VerifyEmail, AccountSetup) have **no Figma frame and need design sync**.
+
+> The docs disagree with themselves here — the prose in `mvp1/screens.md` and `ui_screens_maui_mobile.md` still says "9 of 17". That prose is **stale**; 12 is verified against `src/Presentation/CardiTrack.Mobile` (see [references/figma.md](references/figma.md)). Use 12, and don't propagate the 9.
 
 For reading frames, variables, and screenshots via the Figma MCP tools, and for the design-sync backlog, see [references/figma.md](references/figma.md).
 
