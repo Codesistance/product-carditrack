@@ -1,6 +1,7 @@
 using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Application.Services;
+using CardiTrack.Infrastructure.Extensions;
 using CardiTrack.Infrastructure.Persistence;
 using CardiTrack.Infrastructure.Repositories;
 using CardiTrack.Observability;
@@ -51,7 +52,7 @@ try
     // per user, so it follows the user across devices and sessions. Repository
     // block mirrors CardiTrack.Worker (UnitOfWork requires every repository).
     builder.Services.AddDbContext<CardiTrackDbContext>(options =>
-        options.UseNpgsql(new ConfigurationLoader(builder.Configuration)
+        options.UseCardiTrackNpgsql(new ConfigurationLoader(builder.Configuration)
             .Get(ConfigurationKeys.ConnectionStrings.DefaultConnection)));
     builder.Services.AddScoped<IOrganizationRepository, OrganizationRepository>();
     builder.Services.AddScoped<IUserRepository, UserRepository>();
