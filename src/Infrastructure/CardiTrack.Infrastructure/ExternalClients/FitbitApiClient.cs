@@ -74,8 +74,14 @@ public class FitbitApiClient : IFitbitApiClient, IDeviceApiClient
     {
         // Sleep is session-shaped, so it uses list (get/list are its documented methods) with a
         // civil end-time filter: sessions that ended on the requested date.
+        // `civil_end_time`, not `end_time`: the sibling field is a physical instant and demands an
+        // RFC-3339 literal, so a bare date against it is a parse failure rather than a coercion.
+        // Civil is also the semantics we want — it buckets by the wearer's local day, matching the
+        // CivilTimeInterval range every dailyRollUp above uses. Filtering the physical instant
+        // would bucket by UTC day, dropping a wearer's late-evening session into tomorrow's
+        // snapshot while their steps for the same night stayed in today's.
         var filter = Uri.EscapeDataString(
-            $"sleep.interval.end_time >= \"{date:yyyy-MM-dd}\" AND sleep.interval.end_time < \"{date.AddDays(1):yyyy-MM-dd}\"");
+            $"sleep.interval.civil_end_time >= \"{date:yyyy-MM-dd}\" AND sleep.interval.civil_end_time < \"{date.AddDays(1):yyyy-MM-dd}\"");
         using var request = new HttpRequestMessage(
             HttpMethod.Get,
             $"/v4/users/me/dataTypes/sleep/dataPoints?filter={filter}");

@@ -104,8 +104,10 @@ foreach (var dataType in rollupDataTypes)
 
 Console.WriteLine();
 Console.WriteLine("--- sleep (dataPoints list) ---");
+// civil_end_time takes the ISO date literal below; its physical-instant sibling end_time would
+// reject it and demand RFC-3339. Same filter FitbitApiClient sends, so the probe exercises it.
 var filter = Uri.EscapeDataString(
-    $"sleep.interval.end_time >= \"{date:yyyy-MM-dd}\" AND sleep.interval.end_time < \"{date.AddDays(1):yyyy-MM-dd}\"");
+    $"sleep.interval.civil_end_time >= \"{date:yyyy-MM-dd}\" AND sleep.interval.civil_end_time < \"{date.AddDays(1):yyyy-MM-dd}\"");
 using (var sleepRequest = new HttpRequestMessage(
     HttpMethod.Get, $"/v4/users/me/dataTypes/sleep/dataPoints?filter={filter}"))
 {
