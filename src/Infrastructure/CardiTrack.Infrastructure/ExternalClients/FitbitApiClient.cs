@@ -13,7 +13,7 @@ namespace CardiTrack.Infrastructure.ExternalClients;
 /// <para>
 /// Reads follow the method each data type actually supports. Interval and Sample types
 /// (steps, distance, active-minutes, total-calories, floors, heart-rate) take
-/// `dataPoints:dailyRollUp`; Daily types (daily-resting-heart-rate) support only `list`\`reconcile`
+/// `dataPoints:dailyRollUp`; Daily types (daily-resting-heart-rate) support only `list`/`reconcile`
 /// and 400 on a rollup; Session types (sleep) take `list` with a civil-time filter.
 /// </para>
 /// <para>
