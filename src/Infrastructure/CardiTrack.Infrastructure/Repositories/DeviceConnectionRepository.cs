@@ -69,6 +69,41 @@ public class DeviceConnectionRepository : Repository<DeviceConnection>, IDeviceC
             .ToListAsync();
     }
 
+    /// <summary>
+    /// A random sample of syncable connections, for the audit pull.
+    /// </summary>
+    /// <remarks>
+    /// Randomised rather than ordered, because any stable ordering would audit the same
+    /// connections every week and measure one corner of the population forever. The eligibility
+    /// filter is deliberately identical to <see cref="GetDueForSyncAsync"/> minus due-ness: an
+    /// audit still fetches a member's health data, so a paused or removed member must be excluded
+    /// exactly as they are from a routine pull.
+    /// <para>
+    /// The randomised order costs a scan of the eligible set plus a bounded top-N sort, which is
+    /// the right trade at this size and cadence — the audit runs weekly over a sample of tens.
+    /// The index-friendly alternatives buy their speed by returning adjacent rows (an id-pivot
+    /// scan, say), and adjacency is exactly the clustering this method exists to avoid: a sample
+    /// of neighbours measures one corner of the population no less than a stable ordering does.
+    /// Worth revisiting if the eligible set ever reaches the millions, not before.
+    /// </para>
+    /// </remarks>
+    public async Task<IEnumerable<DeviceConnection>> GetRandomSyncableSampleAsync(int count)
+    {
+        if (count <= 0)
+            return [];
+
+        var now = DateTime.UtcNow;
+        return await _dbSet
+            .Where(dc => dc.IsActive && dc.ConnectionStatus == ConnectionStatus.Connected)
+            .Join(_context.CardiMembers, dc => dc.CardiMemberId, cm => cm.Id, (dc, cm) => new { dc, cm })
+            .Where(x => x.cm.IsActive
+                        && (x.cm.MonitoringPausedUntil == null || x.cm.MonitoringPausedUntil <= now))
+            .Select(x => x.dc)
+            .OrderBy(_ => EF.Functions.Random())
+            .Take(count)
+            .ToListAsync();
+    }
+
     public async Task UpdateTokenAsync(Guid id, string encryptedAccessToken, string encryptedRefreshToken, DateTime tokenExpiry)
     {
         await _dbSet

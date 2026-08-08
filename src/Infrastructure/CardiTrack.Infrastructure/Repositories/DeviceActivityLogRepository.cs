@@ -11,6 +11,18 @@ public class DeviceActivityLogRepository : Repository<DeviceActivityLog>, IDevic
     {
     }
 
+    /// <summary>
+    /// Writes a device's day, leaving the row untouched when the provider reported nothing new.
+    /// </summary>
+    /// <remarks>
+    /// Deliberately no <c>_dbSet.Update(existing)</c> call: the entity is already tracked by the
+    /// query above, so assigning the fields lets EF's change detection decide what actually
+    /// differs. Marking the whole entity Modified instead would stamp <c>UpdatedDate</c> on every
+    /// sync (see <c>CardiTrackDbContext.UpdateTimestamps</c>), which reduces that column to "when
+    /// we last polled". It has to mean "when the provider's numbers last changed" — that is the
+    /// signal sync cadence is calibrated from, and re-fetching a trailing window means most
+    /// upserts legitimately change nothing.
+    /// </remarks>
     public async Task UpsertAsync(DeviceActivityLog log)
     {
         var existing = await _dbSet
@@ -51,7 +63,6 @@ public class DeviceActivityLogRepository : Repository<DeviceActivityLog>, IDevic
         existing.StressScore = log.StressScore;
         existing.BreathingRate = log.BreathingRate;
         existing.Temperature = log.Temperature;
-        _dbSet.Update(existing);
     }
 
     public async Task<IEnumerable<DeviceActivityLog>> GetByCardiMemberAndDateAsync(

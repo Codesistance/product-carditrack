@@ -31,6 +31,36 @@ public static class DeviceProviderServiceExtensions
                     $"DeviceProviders[0] must be the Fitbit provider (found '{providers[0].Provider}') — " +
                     "deployment env vars bind its secrets by index (DeviceProviders__0__*).");
             }
+
+            // Cadence bounds are the only guard on calibrated pull intervals, so a malformed pair
+            // must stop the host rather than silently clamp to nonsense — an inverted range would
+            // otherwise pin every connection of that type to one end of it.
+            foreach (var provider in providers)
+            {
+                if (provider.MinPullIntervalMinutes <= 0 || provider.MaxPullIntervalMinutes <= 0)
+                {
+                    throw new InvalidOperationException(
+                        $"DeviceProviders '{provider.Provider}': MinPullIntervalMinutes and " +
+                        "MaxPullIntervalMinutes must both be greater than zero (found " +
+                        $"{provider.MinPullIntervalMinutes} and {provider.MaxPullIntervalMinutes}).");
+                }
+
+                if (provider.MinPullIntervalMinutes > provider.MaxPullIntervalMinutes)
+                {
+                    throw new InvalidOperationException(
+                        $"DeviceProviders '{provider.Provider}': MinPullIntervalMinutes " +
+                        $"({provider.MinPullIntervalMinutes}) exceeds MaxPullIntervalMinutes " +
+                        $"({provider.MaxPullIntervalMinutes}).");
+                }
+
+                if (provider.DormancyThresholdPulls > 0 && provider.DormancyBackoffFactor <= 1)
+                {
+                    throw new InvalidOperationException(
+                        $"DeviceProviders '{provider.Provider}': DormancyBackoffFactor must be " +
+                        $"greater than 1 when backoff is enabled (found {provider.DormancyBackoffFactor}) — " +
+                        "a factor of 1 or less never widens the interval.");
+                }
+            }
         });
 
         services.AddHttpClient("FitbitClient")

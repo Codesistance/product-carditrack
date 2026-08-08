@@ -203,6 +203,65 @@ variable "traces_sample_ratio" {
   }
 }
 
+# Per-device-type pull parameters. Providers differ in how quickly they finalise a day and how
+# hard they rate-limit, so cadence belongs to the device type rather than to any one connection.
+#
+# The list is index-aligned with the DeviceProviders array the apps bind, and the apps read these
+# as DeviceProviders__<i>__* env vars — the same positional contract already used for provider
+# secrets, which is why element 0 must stay the Fitbit (Google Health API) provider.
+#
+# These bounds are the only guard on a calibrated pull interval: calibration may move a connection
+# within [min, max] but never outside it, so widening the range is deliberately a deploy.
+variable "device_pull_params" {
+  description = "Pull cadence bounds and provider rate ceiling per device type, index-aligned with the DeviceProviders array (DeviceProviders__<i>__*). Element 0 must be Fitbit"
+  type = list(object({
+    provider                  = string
+    sync_lookback_days        = optional(number, 3)
+    audit_lookback_days       = optional(number, 14)
+    min_pull_interval_minutes = optional(number, 30)
+    max_pull_interval_minutes = optional(number, 1440)
+    max_requests_per_second   = optional(number, 0)
+    dormancy_threshold_pulls  = optional(number, 0)
+    dormancy_backoff_factor   = optional(number, 2.0)
+  }))
+  default = [{ provider = "Fitbit" }]
+
+  validation {
+    # Mirrors AddFitbitProvider's startup check. Catching it in the plan beats deploying a
+    # revision that binds Google's credentials to the wrong provider and then crash-loops.
+    condition     = length(var.device_pull_params) > 0 && lower(var.device_pull_params[0].provider) == "fitbit"
+    error_message = "device_pull_params[0] must be the Fitbit provider — the apps bind provider config by index."
+  }
+
+  validation {
+    # An inverted range would pin every connection of that type to one end of it.
+    condition = alltrue([
+      for p in var.device_pull_params :
+      p.min_pull_interval_minutes > 0 &&
+      p.min_pull_interval_minutes <= p.max_pull_interval_minutes
+    ])
+    error_message = "device_pull_params: min_pull_interval_minutes must be positive and no greater than max_pull_interval_minutes."
+  }
+
+  validation {
+    # A factor of 1 or less never widens the interval, so backoff would silently do nothing.
+    condition = alltrue([
+      for p in var.device_pull_params :
+      p.dormancy_threshold_pulls == 0 || p.dormancy_backoff_factor > 1
+    ])
+    error_message = "device_pull_params: dormancy_backoff_factor must exceed 1 when dormancy_threshold_pulls is set."
+  }
+
+  validation {
+    # The audit exists to see past the routine window; narrower makes it pointless.
+    condition = alltrue([
+      for p in var.device_pull_params :
+      p.audit_lookback_days >= p.sync_lookback_days
+    ])
+    error_message = "device_pull_params: audit_lookback_days must be at least sync_lookback_days."
+  }
+}
+
 # Pub/Sub Configuration (real-time messaging)
 variable "enable_pubsub" {
   description = "Enable Cloud Pub/Sub for real-time messaging (production only)"

@@ -24,6 +24,20 @@ public class DeviceConnection : BaseEntity, ISoftDeletable
     public DateTime? LastSyncDate { get; set; }
     public int SyncFrequencyMinutes { get; set; } = 30; // Default: every 30 minutes
 
+    /// <summary>
+    /// When this connection should next be pulled. Null means due-ness falls back to
+    /// <see cref="LastSyncDate"/> plus <see cref="SyncFrequencyMinutes"/>, which is how every
+    /// connection behaves until cadence calibration starts writing a schedule here.
+    /// </summary>
+    public DateTime? NextPullAt { get; set; }
+
+    /// <summary>
+    /// Pulls in a row that returned nothing new. Drives dormancy backoff: past the device type's
+    /// configured threshold the interval widens, and any pull that finds data resets it to zero.
+    /// A device that is simply not being worn should not be polled at the same rate as one in use.
+    /// </summary>
+    public int ConsecutiveEmptyPulls { get; set; }
+
     // JSON: { "model": "Charge 6", "version": "1.0", "firmwareVersion": "2.3.1" }
     public string? Metadata { get; set; }
 
