@@ -45,6 +45,13 @@ Each entry needs `service`: `cloud-sql`, `spanner`, `bigquery`, `gcs`, or `memor
 
 Also read by the scorer: `ha`, `multi_region`, `backup_tested`, `pricing_model`, `monthly_scan_tb`.
 
+Validator-only keys, read per entry rather than from a posture section:
+
+| Key | Applies to | Finding when true |
+|-----|-----------|-------------------|
+| `public_ip` | any `data[]` entry | WS014 — public IP on the service |
+| `public_access`, `all_users_access` | `gcs` entries only | WS017 — bucket open to allUsers |
+
 ## Posture sections
 
 Booleans unless noted. The scorer awards points for `true`; absent counts as failed.
@@ -52,7 +59,7 @@ Booleans unless noted. The scorer awards points for `true`; absent counts as fai
 - **operations** — `iac`, `ci_cd`, `staging_env`, `health_probes`, `runbooks`, `on_call_defined`, `gradual_rollout`, `traffic_split`, `retry_policies`, `org_policies`, `blameless_pir`, `chaos_last_run`
 - **security** — `encryption_at_rest`, `secret_manager`, `min_tls_1_2`, `mfa_enforced`, `scc_enabled`, `scc_premium`
 - **identity** — `workload_identity`, `service_account_keys` (having keys is the *finding* — aim for `false`), `uses_basic_roles` (likewise)
-- **network** — `vpc` (name string), `private_service_connect`, `firewall_least_privilege`, plus validator-only `default_vpc_in_use`, `public_ip`, `public_access`, `all_users_access`
+- **network** — `vpc` (name string), `private_service_connect`, `firewall_least_privilege`, plus validator-only `default_vpc_in_use`. Public-exposure keys are **not** read here — they live on the `data[]` entries above
 - **reliability** — `rto_minutes`, `rpo_minutes` (numbers)
 - **observability** — `cloud_logging` + `ingest_gb_per_day` (default 1) drive the cost line; `slo_alerts`, `audit_log_export` drive the score
 - **cost** — `right_sized`, `cuds_purchased`, `spot_used`, `storage_tiered`, `budgets_configured`, `log_retention_tuned`, `devtest_schedule`, `orphans_cleaned`

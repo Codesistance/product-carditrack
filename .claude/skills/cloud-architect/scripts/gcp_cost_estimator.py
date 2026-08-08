@@ -275,8 +275,6 @@ def cost_bigquery(c: dict[str, Any]) -> list[CostLine]:
     lines.append(CostLine("BigQuery Storage", "active", storage_gb, storage_cost))
     if model == "on-demand":
         scan_tb = c.get("monthly_scan_tb", 10)
-        compute_cost = scan_tb * 1000 * PRICING["bigquery_on_demand_per_tb_scan"] / 1000  # already in TB
-        # simplification: $5/TB
         compute_cost = scan_tb * PRICING["bigquery_on_demand_per_tb_scan"]
         opt = ""
         if scan_tb > 1000:  # > 1PB/mo

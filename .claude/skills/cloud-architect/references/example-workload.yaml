@@ -21,6 +21,7 @@ data:
     ha: true
     backup_tested: true
     cud_purchased: false
+    public_ip: false
   - service: gcs
     size_gb: 2000
     storage_class: standard
@@ -31,7 +32,6 @@ network:
   private_service_connect: true
   firewall_least_privilege: true
   default_vpc_in_use: false
-  public_ip: false
   egress_gb_per_month: 400
 
 identity:
