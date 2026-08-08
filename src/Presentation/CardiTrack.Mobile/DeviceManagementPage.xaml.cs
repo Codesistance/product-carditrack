@@ -150,7 +150,14 @@ public partial class DeviceManagementPage : ContentPage
             if (member is null)
                 return;
 
-            await WizardLauncher.RunModalAsync(Navigation, member, showBaselineIntro: _cards.Count == 0);
+            var result = await WizardLauncher.RunModalAsync(
+                Navigation, member, showBaselineIntro: _cards.Count == 0);
+
+            // "Go to Dashboard" has taken the shell off this page — reloading it here would
+            // fetch for a page that is gone, and surface its errors over the dashboard.
+            if (result.ExitedToDashboard)
+                return;
+
             await LoadAsync();
         }
         catch (ApiException ex) when (!ex.IsSessionExpired)

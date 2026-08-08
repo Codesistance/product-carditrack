@@ -188,10 +188,10 @@ public partial class CardiMemberDetailPage : ContentPage
         await Shell.Current.GoToAsync($"{DeviceManagementPage.Route}?memberId={_memberId}");
 
     private async void OnViewDashboardClicked(object? sender, EventArgs e) =>
-        await Shell.Current.GoToAsync("//dashboard");
+        await Shell.Current.GoToAsync(AppShell.DashboardRoute);
 
     private async void OnViewAlertsClicked(object? sender, EventArgs e) =>
-        await Shell.Current.GoToAsync("//alerts");
+        await Shell.Current.GoToAsync(AppShell.AlertsRoute);
 
     private async void OnPauseMonitoringTapped(object? sender, TappedEventArgs e)
     {
@@ -277,7 +277,7 @@ public partial class CardiMemberDetailPage : ContentPage
             // The dashboard resolves the primary member from scratch, so clearing the cached
             // id keeps it from asking for someone who no longer exists.
             Preferences.Default.Remove(DashboardPage.PrimaryMemberIdKey);
-            await Shell.Current.GoToAsync("//dashboard");
+            await Shell.Current.GoToAsync(AppShell.DashboardRoute);
         }
         catch (ApiException ex) when (!ex.IsSessionExpired)
         {

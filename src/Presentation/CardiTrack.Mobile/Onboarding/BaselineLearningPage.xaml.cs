@@ -47,7 +47,7 @@ public partial class BaselineLearningPage : ContentPage
     }
 
     private async void OnGoToDashboardClicked(object? sender, EventArgs e) =>
-        await _ctx.FinishAsync(this);
+        await _ctx.GoToDashboardAsync(this);
 
     private async void OnInviteFamilyTapped(object? sender, EventArgs e)
     {

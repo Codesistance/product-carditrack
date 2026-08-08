@@ -3,7 +3,14 @@ using CardiTrack.Application.DTOs.Responses;
 namespace CardiTrack.Mobile.Onboarding;
 
 /// <summary>Outcome of a modal wizard run, reported once the modal is dismissed by any path.</summary>
-public readonly record struct WizardResult(bool MemberCreated, bool DeviceConnected);
+/// <param name="MemberCreated">A CardiMember was created during the run.</param>
+/// <param name="DeviceConnected">A device was connected during the run.</param>
+/// <param name="ExitedToDashboard">
+/// The run ended on "Go to Dashboard", which navigates the shell there rather than returning
+/// to the launcher. A caller pushed above a tab is no longer on screen once this is set.
+/// </param>
+public readonly record struct WizardResult(
+    bool MemberCreated, bool DeviceConnected, bool ExitedToDashboard);
 
 /// <summary>
 /// Launches the add-member / connect-device wizard modally over whatever UI needs it.
@@ -38,7 +45,7 @@ internal static class WizardLauncher
             if (!ReferenceEquals(e.Modal, wizardNav))
                 return;
             app.ModalPopped -= OnPopped;
-            tcs.TrySetResult(new WizardResult(ctx.MemberCreated, ctx.DeviceConnected));
+            tcs.TrySetResult(new WizardResult(ctx.MemberCreated, ctx.DeviceConnected, ctx.ExitedToDashboard));
         }
 
         app.ModalPopped += OnPopped;
