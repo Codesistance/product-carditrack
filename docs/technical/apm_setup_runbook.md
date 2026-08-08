@@ -1,8 +1,10 @@
 # APM Setup Runbook (Operator)
 
 Connects the deployed API, Web, and Worker to the APM backend (**Datadog** — selected per
-environment by the `apm_engine` tfvar). The apps are already wired; the whole deployed
-contract is two env vars per service:
+environment by the `apm_engine` tfvar). The apps are already wired. Two env vars per
+service carry the **connection**; the volume knobs (`Apm__MetricsEnabled`,
+`Apm__TracesSampleRatio`, `Serilog__MinimumLevel__Default`) are separate and documented
+below:
 
 - `Apm__Engine` — plaintext, set by Terraform (`"Datadog"`; `"BetterStack"` also supported)
 - `Apm__Data` — Secret Manager-backed (secret `carditrack-<env>-apm-data`) holding one JSON
@@ -21,7 +23,8 @@ All three services now carry the **same** volume settings in `appsettings.json` 
 `Serilog:MinimumLevel:Default` and `Apm:MinimumLogLevel` both `Warning`,
 `Apm:TracesSampleRatio` `1.0` (full sampling, DB commands included via Npgsql spans).
 Terraform then sets two of those per service, so one service can be tuned without
-touching the others (both dev and prod tfvars currently list all three at the baseline):
+touching the others (both dev and prod tfvars currently list all three services at the
+baseline):
 
 | tfvar (object, one attribute per service) | env var | baseline |
 | --- | --- | --- |
