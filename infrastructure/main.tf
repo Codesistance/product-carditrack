@@ -27,6 +27,21 @@ locals {
   pubsub_topic_name   = "${var.project_name}-${local.environment}-realtime"
   log_sink_name       = "${var.project_name}-${local.environment}-audit-sink"
   audit_bucket_name   = "${var.project_id}-${var.project_name}-${local.environment}-audit"
+
+  # Per-device-type pull parameters flattened onto the positional DeviceProviders binding the apps
+  # already use for provider secrets. Whichever service hosts device pull reads them from here, so
+  # cadence is retuned per environment in tfvars rather than in appsettings.json.
+  device_pull_env_vars = merge([
+    for i, p in var.device_pull_params : {
+      "DeviceProviders__${i}__SyncLookbackDays"       = tostring(p.sync_lookback_days)
+      "DeviceProviders__${i}__AuditLookbackDays"      = tostring(p.audit_lookback_days)
+      "DeviceProviders__${i}__MinPullIntervalMinutes" = tostring(p.min_pull_interval_minutes)
+      "DeviceProviders__${i}__MaxPullIntervalMinutes" = tostring(p.max_pull_interval_minutes)
+      "DeviceProviders__${i}__MaxRequestsPerSecond"   = tostring(p.max_requests_per_second)
+      "DeviceProviders__${i}__DormancyThresholdPulls" = tostring(p.dormancy_threshold_pulls)
+      "DeviceProviders__${i}__DormancyBackoffFactor"  = tostring(p.dormancy_backoff_factor)
+    }
+  ]...)
 }
 
 # All deployments are managed through a single module
@@ -103,14 +118,19 @@ module "deployments" {
   # Cloud Run - Worker
   worker_service_name    = local.worker_service_name
   worker_container_image = var.worker_container_image
-  worker_env_vars = {
-    "ASPNETCORE_ENVIRONMENT"         = title(var.environment)
-    "GCP_PROJECT_ID"                 = var.project_id
-    "Apm__Engine"                    = var.apm_engine
-    "Apm__MetricsEnabled"            = tostring(var.apm_metrics_enabled)
-    "Apm__TracesSampleRatio"         = tostring(var.traces_sample_ratio.worker)
-    "Serilog__MinimumLevel__Default" = var.log_minimum_level.worker
-  }
+  worker_env_vars = merge(
+    {
+      "ASPNETCORE_ENVIRONMENT"         = title(var.environment)
+      "GCP_PROJECT_ID"                 = var.project_id
+      "Apm__Engine"                    = var.apm_engine
+      "Apm__MetricsEnabled"            = tostring(var.apm_metrics_enabled)
+      "Apm__TracesSampleRatio"         = tostring(var.traces_sample_ratio.worker)
+      "Serilog__MinimumLevel__Default" = var.log_minimum_level.worker
+    },
+    # The Worker hosts device pull and the audit pull today, so it is where the cadence
+    # parameters land.
+    local.device_pull_env_vars
+  )
   worker_secret_env_vars = {
     "ConnectionStrings__DefaultConnection" = "${var.project_name}-${local.environment}-db-connection-string"
     "Auth0__Domain"                        = "${var.project_name}-${local.environment}-auth0-domain"

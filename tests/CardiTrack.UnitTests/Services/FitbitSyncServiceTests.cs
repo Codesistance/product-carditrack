@@ -250,4 +250,84 @@ public class DeviceSyncServiceTests
 
         await _deviceApi.DidNotReceive().GetHealthSnapshotAsync(Arg.Any<string>(), Arg.Any<DateOnly>());
     }
+
+    // ── AuditSyncAsync ───────────────────────────────────────────────────────────
+    //
+    // The audit exists to measure how far back a provider revises data — something a routine sync
+    // structurally cannot see, since it only ever looks inside its own window. That makes it an
+    // observation: it must reach further back, and it must leave no trace on the connection.
+
+    [Fact]
+    public async Task AuditSyncAsync_FetchesTheWiderAuditWindow()
+    {
+        _fitbitConfig.AuditLookbackDays = 14;
+        SetupSuccessfulTokenRefresh();
+        SetupDefaultApiResponse();
+
+        await CreateSut().AuditSyncAsync(_fitbitConnection);
+
+        await _deviceApi.Received(14).GetHealthSnapshotAsync(Arg.Any<string>(), Arg.Any<DateOnly>());
+        await _deviceActivityLogs.Received(14).UpsertAsync(Arg.Any<DeviceActivityLog>());
+    }
+
+    // Narrower than the routine window would make the audit blinder than the thing it checks.
+    [Fact]
+    public async Task AuditSyncAsync_FallsBackToTheSyncWindow_WhenAuditWindowIsNarrower()
+    {
+        _fitbitConfig.AuditLookbackDays = 1;
+        SetupSuccessfulTokenRefresh();
+        SetupDefaultApiResponse();
+
+        await CreateSut().AuditSyncAsync(_fitbitConnection);
+
+        await _deviceApi.Received(LookbackDays).GetHealthSnapshotAsync(Arg.Any<string>(), Arg.Any<DateOnly>());
+    }
+
+    // Stamping LastSyncDate would push the connection's next routine pull out by a whole interval,
+    // so a job that only measures would silently change what gets collected.
+    [Fact]
+    public async Task AuditSyncAsync_DoesNotUpdateLastSyncDate()
+    {
+        SetupSuccessfulTokenRefresh();
+        SetupDefaultApiResponse();
+
+        await CreateSut().AuditSyncAsync(_fitbitConnection);
+
+        await _deviceConnections.DidNotReceive()
+            .UpdateLastSyncDateAsync(Arg.Any<Guid>(), Arg.Any<DateTime>());
+    }
+
+    // A historical day failing says nothing about whether the connection works now. Marking it
+    // SyncError would take a healthy device out of service on the strength of a stale window.
+    [Fact]
+    public async Task AuditSyncAsync_DoesNotMarkSyncError_WhenTheProviderFails()
+    {
+        SetupSuccessfulTokenRefresh();
+        _deviceApi.GetHealthSnapshotAsync(Arg.Any<string>(), Arg.Any<DateOnly>())
+            .ThrowsAsync(new FitbitApiException(500, "Internal Server Error"));
+
+        await Assert.ThrowsAsync<FitbitApiException>(() =>
+            CreateSut().AuditSyncAsync(_fitbitConnection));
+
+        await _deviceConnections.DidNotReceive()
+            .UpdateStatusAsync(Arg.Any<Guid>(), Arg.Any<ConnectionStatus>());
+    }
+
+    // Whatever the audit turns up is still merged, so a provider's late correction to a member's
+    // history is repaired as a side effect of measuring it.
+    [Fact]
+    public async Task AuditSyncAsync_RecomputesTheMergedRow_ForEveryDayFetched()
+    {
+        _fitbitConfig.AuditLookbackDays = 5;
+        SetupSuccessfulTokenRefresh();
+        SetupDefaultApiResponse();
+
+        await CreateSut().AuditSyncAsync(_fitbitConnection);
+
+        for (var offset = 0; offset < 5; offset++)
+        {
+            await _aggregation.Received(1)
+                .RecomputeAsync(_fitbitConnection.CardiMemberId, Yesterday.AddDays(-offset));
+        }
+    }
 }

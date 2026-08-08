@@ -19,6 +19,13 @@ public interface IDeviceConnectionRepository : IRepository<DeviceConnection>
     /// Connections due a sync, judged against each connection's own SyncFrequencyMinutes.
     /// </summary>
     Task<IEnumerable<DeviceConnection>> GetDueForSyncAsync();
+
+    /// <summary>
+    /// A random sample of connections eligible for syncing, for the audit pull. Carries the same
+    /// active-and-not-paused filter as <see cref="GetDueForSyncAsync"/> — a paused member's data
+    /// must not be collected by any path, and an audit is still collection.
+    /// </summary>
+    Task<IEnumerable<DeviceConnection>> GetRandomSyncableSampleAsync(int count);
     Task UpdateTokenAsync(Guid id, string encryptedAccessToken, string encryptedRefreshToken, DateTime tokenExpiry);
     Task UpdateStatusAsync(Guid id, ConnectionStatus status);
     Task UpdateLastSyncDateAsync(Guid id, DateTime syncDate);

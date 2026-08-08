@@ -328,4 +328,123 @@ public class DeviceConnectionRepositoryTests(TestDatabaseFixture fixture)
         Assert.NotNull(updated!.LastSyncDate);
         Assert.Equal(syncDate.Date, updated.LastSyncDate!.Value.Date);
     }
+
+    // ── GetRandomSyncableSampleAsync ─────────────────────────────────────────────
+    //
+    // The audit pull's input. It fetches a member's health data exactly as a routine pull does, so
+    // it inherits the same eligibility rules — measuring is not an exemption from them.
+
+    [Fact]
+    public async Task GetRandomSyncableSampleAsync_ReturnsEligibleConnections()
+    {
+        using var scope = fixture.CreateScope();
+        var repo = scope.ServiceProvider.GetRequiredService<IDeviceConnectionRepository>();
+
+        var org = await TestDataSeeder.SeedOrganizationAsync(scope);
+        var member = await TestDataSeeder.SeedCardiMemberAsync(scope, org.Id);
+        var connection = await TestDataSeeder.SeedDeviceConnectionAsync(scope, member.Id);
+
+        var result = await repo.GetRandomSyncableSampleAsync(500);
+
+        Assert.Contains(result, c => c.Id == connection.Id);
+    }
+
+    // Pausing monitoring has to actually stop collection, on every path that collects.
+    [Fact]
+    public async Task GetRandomSyncableSampleAsync_ExcludesPausedMembers()
+    {
+        using var scope = fixture.CreateScope();
+        var repo = scope.ServiceProvider.GetRequiredService<IDeviceConnectionRepository>();
+
+        var org = await TestDataSeeder.SeedOrganizationAsync(scope);
+        var paused = await TestDataSeeder.SeedCardiMemberAsync(
+            scope, org.Id, monitoringPausedUntil: DateTime.UtcNow.AddDays(7));
+        var connection = await TestDataSeeder.SeedDeviceConnectionAsync(scope, paused.Id);
+
+        var result = await repo.GetRandomSyncableSampleAsync(500);
+
+        Assert.DoesNotContain(result, c => c.Id == connection.Id);
+    }
+
+    [Fact]
+    public async Task GetRandomSyncableSampleAsync_ExcludesInactiveMembers()
+    {
+        using var scope = fixture.CreateScope();
+        var repo = scope.ServiceProvider.GetRequiredService<IDeviceConnectionRepository>();
+
+        var org = await TestDataSeeder.SeedOrganizationAsync(scope);
+        var removed = await TestDataSeeder.SeedCardiMemberAsync(scope, org.Id, isActive: false);
+        var connection = await TestDataSeeder.SeedDeviceConnectionAsync(scope, removed.Id);
+
+        var result = await repo.GetRandomSyncableSampleAsync(500);
+
+        Assert.DoesNotContain(result, c => c.Id == connection.Id);
+    }
+
+    [Fact]
+    public async Task GetRandomSyncableSampleAsync_ExcludesDisconnectedConnections()
+    {
+        using var scope = fixture.CreateScope();
+        var repo = scope.ServiceProvider.GetRequiredService<IDeviceConnectionRepository>();
+
+        var org = await TestDataSeeder.SeedOrganizationAsync(scope);
+        var member = await TestDataSeeder.SeedCardiMemberAsync(scope, org.Id);
+        var disconnected = await TestDataSeeder.SeedDeviceConnectionAsync(
+            scope, member.Id, status: ConnectionStatus.Disconnected);
+
+        var result = await repo.GetRandomSyncableSampleAsync(500);
+
+        Assert.DoesNotContain(result, c => c.Id == disconnected.Id);
+    }
+
+    // Unlike the routine query, due-ness is irrelevant here — a connection synced a minute ago is
+    // still a valid subject for measuring how far back its provider revises data.
+    [Fact]
+    public async Task GetRandomSyncableSampleAsync_IncludesRecentlySyncedConnections()
+    {
+        using var scope = fixture.CreateScope();
+        var repo = scope.ServiceProvider.GetRequiredService<IDeviceConnectionRepository>();
+
+        var org = await TestDataSeeder.SeedOrganizationAsync(scope);
+        var member = await TestDataSeeder.SeedCardiMemberAsync(scope, org.Id);
+        var justSynced = await TestDataSeeder.SeedDeviceConnectionAsync(
+            scope, member.Id, lastSyncDate: DateTime.UtcNow);
+
+        var result = await repo.GetRandomSyncableSampleAsync(500);
+
+        Assert.Contains(result, c => c.Id == justSynced.Id);
+    }
+
+    [Fact]
+    public async Task GetRandomSyncableSampleAsync_CapsResultsAtRequestedCount()
+    {
+        using var scope = fixture.CreateScope();
+        var repo = scope.ServiceProvider.GetRequiredService<IDeviceConnectionRepository>();
+
+        var org = await TestDataSeeder.SeedOrganizationAsync(scope);
+        var member = await TestDataSeeder.SeedCardiMemberAsync(scope, org.Id);
+        await TestDataSeeder.SeedDeviceConnectionAsync(scope, member.Id);
+        await TestDataSeeder.SeedDeviceConnectionAsync(scope, member.Id);
+        await TestDataSeeder.SeedDeviceConnectionAsync(scope, member.Id);
+
+        var result = await repo.GetRandomSyncableSampleAsync(2);
+
+        Assert.Equal(2, result.Count());
+    }
+
+    // Guards the audit worker's own "sample size not positive" path from ever reaching the
+    // database with an unbounded query.
+    [Fact]
+    public async Task GetRandomSyncableSampleAsync_ReturnsEmpty_WhenCountIsNotPositive()
+    {
+        using var scope = fixture.CreateScope();
+        var repo = scope.ServiceProvider.GetRequiredService<IDeviceConnectionRepository>();
+
+        var org = await TestDataSeeder.SeedOrganizationAsync(scope);
+        var member = await TestDataSeeder.SeedCardiMemberAsync(scope, org.Id);
+        await TestDataSeeder.SeedDeviceConnectionAsync(scope, member.Id);
+
+        Assert.Empty(await repo.GetRandomSyncableSampleAsync(0));
+        Assert.Empty(await repo.GetRandomSyncableSampleAsync(-1));
+    }
 }

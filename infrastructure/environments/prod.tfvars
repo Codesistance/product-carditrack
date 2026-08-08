@@ -58,6 +58,25 @@ traces_sample_ratio = {
   worker = 1.0
 }
 
+# Device pull cadence, per device type. Index-aligned with the DeviceProviders array — element 0
+# is Fitbit (Google Health API). Identical to dev on purpose: prod must not be the environment
+# where a cadence change is tried first, so dev leads and prod follows once a setting has soaked.
+#
+# min_pull_interval_minutes is the figure to revisit once the Google Health API request quota is
+# known — it bounds how early fresh data can arrive, and calibration may not go below it.
+device_pull_params = [
+  {
+    provider                  = "Fitbit"
+    sync_lookback_days        = 3
+    audit_lookback_days       = 14 # Widest range the Google Health API accepts for HR/AZM/calorie roll-ups
+    min_pull_interval_minutes = 30
+    max_pull_interval_minutes = 1440
+    max_requests_per_second   = 0 # Unset — no app-side governor until the quota is measured
+    dormancy_threshold_pulls  = 0 # 0 disables backoff
+    dormancy_backoff_factor   = 2.0
+  }
+]
+
 # Memorystore for Redis — NOT yet provisioned in prod.
 # Known consequence: with no instance the API gets no ConnectionStrings__Redis env var,
 # falls back to the appsettings.json localhost:6379 default and times out on every

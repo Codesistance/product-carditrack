@@ -11,6 +11,7 @@ Two workers are registered today:
 | `WearableSyncWorker` | `0 */30 * * * *` (every 30 min) | Polls due device connections and syncs wearable data |
 | `OrphanedOrganizationCleanupWorker` | `0 0 3 * * *` (daily 03:00) | Deletes organizations stranded by a failed onboarding |
 | `BaselineCalculationWorker` | `0 30 2 * * 0` (Sunday 02:30) | Recalculates each member's 30/60/90-day `PatternBaseline` |
+| `DeviceSyncAuditWorker` | `0 0 4 * * 0` (Sunday 04:00) | Re-fetches a small random sample over a 14-day window to measure how far back each provider revises data |
 
 OAuth token refresh is **not a separate cron job** — it happens inside the sync path (`DeviceSyncService` calls `IOAuthTokenRefreshService` before hitting the provider API). Trial expiration reminders and data-retention/cleanup jobs are **planned** but not yet implemented.
 
@@ -32,9 +33,11 @@ src/Worker/CardiTrack.Worker/
 ├── Workers/
 │   ├── WearableSyncWorker.cs               # Polls + syncs due device connections
 │   ├── OrphanedOrganizationCleanupWorker.cs # Sweeps orgs with no user/CardiMember
-│   └── BaselineCalculationWorker.cs        # Recalculates PatternBaseline rows weekly
+│   ├── BaselineCalculationWorker.cs        # Recalculates PatternBaseline rows weekly
+│   └── DeviceSyncAuditWorker.cs            # Wide-window re-fetch over a sample, to measure revisions
 ├── CronBackgroundService.cs    # Abstract base — parses cron, loops on schedule
 ├── WorkerOptions.cs            # { CronExpression } options record (default "0 * * * * *")
+├── DeviceSyncAuditOptions.cs   # { SampleSize } for the audit worker
 ├── WorkerServiceExtensions.cs  # Generic AddWorker<T> registration helper
 ├── Program.cs                  # Host setup, DI registration, /healthz endpoint
 ├── Dockerfile                  # Chiseled aspnet runtime image
@@ -109,6 +112,20 @@ Because the merge always rebuilds from the full raw set for that member-day, it 
 
 > **Providers must report a missing metric as `null`, never `0`.** The merge coalesces on the first non-null value, so a placeholder `0` from a higher-priority device would beat another device's genuine reading.
 
+### What `UpdatedDate` means on a raw row
+
+`DeviceActivityLogs.UpdatedDate` records **when the provider's numbers last changed**, not when the row was last written. `UpsertAsync` assigns the fields on the already-tracked entity and stops there — it deliberately does not call `_dbSet.Update()`, which would mark the whole entity `Modified` and make `CardiTrackDbContext.UpdateTimestamps` stamp the column on every sync.
+
+The distinction matters because the trailing window means most upserts legitimately carry values the row already holds. If those stamped `UpdatedDate`, the column would only ever describe our own polling schedule, and two things that read it would be measuring the wrong thing:
+
+| Derived from `UpdatedDate` | Question it answers |
+|---|---|
+| **Settle latency** | How long after a day ends does this provider stop revising it? — sets how soon a pull is worth making |
+| **Revision tail** | How far back does it still amend? — sets how wide the trailing window has to be |
+| **Poll yield** | What fraction of pulls find anything new? — once webhook ingestion lands, this doubles as the webhook miss rate |
+
+A side effect worth having: an unchanged day no longer issues an `UPDATE` at all, so a routine sync of a settled window is now read-only.
+
 ```csharp
 public class WearableSyncWorker : CronBackgroundService
 {
@@ -178,6 +195,17 @@ The arithmetic lives in `BaselineCalculator` (`CardiTrack.Application/Services`)
 | Spread | **Sample** standard deviation (n−1) — the dashboard turns σ into the member's normal range, so the population form would narrow that band on every member. |
 | Bedtime / wake time | **Circular** mean over the 24-hour clock; an arithmetic mean of 23:40 and 00:20 is midday. Reported in **UTC** — `CardiMember` carries no timezone. |
 | Weekday profile | Monday-first JSON array of average steps. A weekday with fewer than 2 samples is `null`, not `0` — "no data for Sundays" must not read as "this member does not move on Sundays". |
+
+### DeviceSyncAuditWorker
+
+Measures something `WearableSyncWorker` structurally cannot see. A routine sync only ever looks inside its own trailing window, so with `SyncLookbackDays: 3` a provider that amends day 5 is not merely unmeasured — it is *unmeasurable*, and any picture of "how far back data changes" built from routine syncs alone would be an artefact of our own schedule rather than a fact about the provider.
+
+- Runs weekly, Sunday 04:00 UTC (`0 0 4 * * 0`), after the baseline and cleanup jobs.
+- Re-fetches a **random sample** of `SampleSize` connections (default **25**) over `AuditLookbackDays` (default **14** — the widest range the Google Health API accepts for heart-rate, active-zone-minutes and calorie roll-ups). Randomised because any stable ordering would audit the same connections forever and characterise one corner of the population.
+- Eligibility is identical to the routine query minus due-ness: `GetRandomSyncableSampleAsync` excludes removed and monitoring-paused members, because **an audit still collects a member's health data** and pausing has to stop every collection path, not just the scheduled one.
+- Goes through `IDeviceSyncService.AuditSyncAsync`, which shares the pull-and-merge core with the routine sync but **stamps nothing**: no `LastSyncDate` (that would push the connection's next routine pull out by a full interval, so a job that only measures would quietly change what gets collected) and no `SyncError` transition (a historical day failing says nothing about whether the connection works now).
+- It still stores and merges whatever it finds, so a provider's late correction to a member's history is **repaired as a side effect of measuring it**.
+- Failures log at **Warning**, not Error: an audit failure costs measurement precision, not data.
 
 ### Multi-Provider Dispatch
 
@@ -253,6 +281,10 @@ Cron schedules bind per worker class name under the `Workers` section, consumed 
     },
     "BaselineCalculationWorker": {
       "CronExpression": "0 30 2 * * 0"
+    },
+    "DeviceSyncAuditWorker": {
+      "CronExpression": "0 0 4 * * 0",
+      "SampleSize": 25
     }
   },
   "Serilog": {
@@ -271,6 +303,24 @@ Cron schedules bind per worker class name under the `Workers` section, consumed 
 ```
 
 `Encryption:Key` ships empty and must be supplied at runtime — a base64-encoded 256-bit key, matching the API's (both encrypt and decrypt the same stored OAuth tokens). `docker compose` sets it for you; running standalone, use `openssl rand -base64 32` into `Encryption__Key` or user secrets. The Worker validates the key while building the host and exits if it is missing or malformed, rather than failing every token-refresh run.
+
+### Per-device-type pull parameters
+
+Cadence belongs to the **device type**, not to any one connection: providers differ in how quickly they finalise a day and how hard they rate-limit. These are set per environment in `infrastructure/environments/*.tfvars` under `device_pull_params`, and reach the app as `DeviceProviders__<i>__*` env vars — the same positional binding already used for provider secrets, which is why element 0 must stay Fitbit.
+
+| Parameter | Default | Purpose |
+|---|---|---|
+| `sync_lookback_days` | 3 | Trailing window each routine sync re-fetches |
+| `audit_lookback_days` | 14 | Window `DeviceSyncAuditWorker` uses; must be ≥ `sync_lookback_days` |
+| `min_pull_interval_minutes` | 30 | Floor on a connection's interval — derived from the provider's rate limit |
+| `max_pull_interval_minutes` | 1440 | Ceiling, so dormancy backoff cannot park a connection indefinitely |
+| `max_requests_per_second` | 0 | Provider-wide ceiling for sizing the pull queue; 0 leaves it unset |
+| `dormancy_threshold_pulls` | 0 | Empty pulls in a row before backoff starts; **0 disables backoff** |
+| `dormancy_backoff_factor` | 2.0 | Multiplier per empty pull past the threshold |
+
+> **The bounds are the guard, and widening them is deliberately a deploy.** Cadence calibration may move a connection's interval anywhere within `[min, max]` but never outside it. A miscomputed cadence in a cardiac-monitoring product does not cost throughput — it silently delays alerts — so the range that constrains it lives in version-controlled infrastructure rather than in a table the calculator can rewrite.
+
+Both `AddFitbitProvider`'s `PostConfigure` and the Terraform variable validate the same rules (positive floor, floor ≤ ceiling, backoff factor > 1 when enabled, audit window ≥ sync window). Duplicated on purpose: the plan fails before a bad revision deploys, and the host fails fast if one is set some other way.
 
 ### Cron Format
 
@@ -297,7 +347,7 @@ DeviceProviders__0__ClientSecret     = carditrack-<env>-devices-fitbit-client-se
 Apm__Data                            = carditrack-<env>-apm-data
 ```
 
-Plaintext env vars: `ASPNETCORE_ENVIRONMENT`, `GCP_PROJECT_ID`, `Apm__Engine`, `Apm__MetricsEnabled`, `Apm__TracesSampleRatio`, `Serilog__MinimumLevel__Default`. The last two come from the per-service `traces_sample_ratio` / `log_minimum_level` tfvars (`worker` attribute) — `1.0` and `Warning` in both environments.
+Plaintext env vars: `ASPNETCORE_ENVIRONMENT`, `GCP_PROJECT_ID`, `Apm__Engine`, `Apm__MetricsEnabled`, `Apm__TracesSampleRatio`, `Serilog__MinimumLevel__Default`, plus the per-device-type pull parameters below. The last two come from the per-service `traces_sample_ratio` / `log_minimum_level` tfvars (`worker` attribute) — `1.0` and `Warning` in both environments.
 
 > **Consequence of the `Warning` baseline:** the per-run `LogInformation` lines below (`triggered`, `complete. Success: n, Failed: n`) are **not emitted** — a healthy run leaves no trace, and only per-member failures (`LogWarning`/`LogError`) surface. Cron is internal to the service (`CronBackgroundService`), so there is no per-run request log to fall back on: to answer "did the job run?" from logs, set `log_minimum_level = { worker = "Information" }` in the environment's tfvars.
 
@@ -374,6 +424,9 @@ Logging mirrors the API: **Serilog console sink** always, plus `AddApmShipping` 
 | `OrphanedOrganizationCleanup triggered at {Time}` | Info | Cleanup job started |
 | `OrphanedOrganizationCleanup removed {Count} organizations older than {MinAge} ...` | Warning | Orphans found and deleted — a client bypassed the atomic setup endpoint; investigate |
 | `OrphanedOrganizationCleanup complete. Nothing to remove.` | Info | Cleanup no-op run |
+| `DeviceSyncAudit triggered at {Time} for a sample of {SampleSize}` | Info | Audit run started |
+| `Audit pull failed for DeviceConnection {Id}` | Warning | Wide-window re-fetch failed — measurement precision lost, no data or status affected |
+| `DeviceSyncAudit complete. Sampled: {S}, audited: {A}, failed: {F}` | Info | Audit run summary |
 
 ## Related Documentation
 
@@ -384,4 +437,4 @@ Logging mirrors the API: **Serilog console sink** always, plus `AddApmShipping` 
 
 ---
 
-**Last Updated:** August 7, 2026
+**Last Updated:** August 8, 2026

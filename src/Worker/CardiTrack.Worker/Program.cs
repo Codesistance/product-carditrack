@@ -83,6 +83,11 @@ builder.Services.AddFitbitProvider();
 builder.Services.AddWorker<WearableSyncWorker>(configuration, nameof(WearableSyncWorker));
 builder.Services.AddWorker<OrphanedOrganizationCleanupWorker>(configuration, nameof(OrphanedOrganizationCleanupWorker));
 builder.Services.AddWorker<BaselineCalculationWorker>(configuration, nameof(BaselineCalculationWorker));
+builder.Services.AddWorker<DeviceSyncAuditWorker>(configuration, nameof(DeviceSyncAuditWorker));
+
+// Sample size shares the audit worker's config section — AddWorker binds only the cron from it.
+builder.Services.Configure<DeviceSyncAuditOptions>(
+    configuration.GetSection($"Workers:{nameof(DeviceSyncAuditWorker)}"));
 
 // Bind to PORT env var (Cloud Run sets this to 8080)
 var port = configLoader.Get(ConfigurationKeys.CloudRun.Port) ?? "8080";

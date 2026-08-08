@@ -44,4 +44,50 @@ public class DeviceProviderSettings
     /// the job self-healing; the upsert keeps it idempotent.
     /// </summary>
     public int SyncLookbackDays { get; set; } = 3;
+
+    /// <summary>
+    /// Window used by the periodic audit pull over a sample of connections. Wider than
+    /// <see cref="SyncLookbackDays"/> on purpose: a routine sync can only ever observe revisions
+    /// inside its own window, so a provider that amends day 5 is invisible until something looks
+    /// further back. Defaults to 14 days, the widest range the Google Health API accepts for
+    /// heart-rate, active-zone-minutes and calorie roll-ups.
+    /// </summary>
+    public int AuditLookbackDays { get; set; } = 14;
+
+    // ── Pull cadence bounds ───────────────────────────────────────────────────────────────────
+    // Set per device type from tfvars (DeviceProviders__<i>__* env vars). Providers differ in how
+    // fast they finalise a day and how hard they rate-limit, so these belong to the provider
+    // rather than to any one connection. Calibration may move a connection's interval only
+    // *within* this range — widening it is a deploy, deliberately, because these bounds are the
+    // only guard between a miscomputed cadence and either a rate-limit ban or stale health data.
+
+    /// <summary>
+    /// Floor on a connection's pull interval — derived from the provider's rate limit and the
+    /// device population it has to sustain. Never poll a single connection more often than this.
+    /// </summary>
+    public int MinPullIntervalMinutes { get; set; } = 30;
+
+    /// <summary>
+    /// Ceiling on a connection's pull interval, so dormancy backoff cannot park a connection
+    /// indefinitely. A device that starts reporting again must still be picked up within a day.
+    /// </summary>
+    public int MaxPullIntervalMinutes { get; set; } = 1440;
+
+    /// <summary>
+    /// Provider-wide request ceiling shared across all connections, used to size the dispatch rate
+    /// of the pull queue. 0 leaves it unset — no app-side governor.
+    /// </summary>
+    public double MaxRequestsPerSecond { get; set; }
+
+    /// <summary>
+    /// Consecutive pulls that return nothing new before backoff starts. 0 disables backoff, which
+    /// is the behaviour before cadence calibration is switched on.
+    /// </summary>
+    public int DormancyThresholdPulls { get; set; }
+
+    /// <summary>
+    /// Multiplier applied to the interval on each empty pull past the threshold, clamped at
+    /// <see cref="MaxPullIntervalMinutes"/>. A single non-empty pull resets the interval to the floor.
+    /// </summary>
+    public double DormancyBackoffFactor { get; set; } = 2.0;
 }
