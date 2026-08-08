@@ -51,10 +51,16 @@ public class CardiMemberConfiguration : IEntityTypeConfiguration<CardiMember>
         builder.Property(c => c.MonitoringPauseReason)
             .HasMaxLength(200);
 
+        // EF cannot infer a sentinel here: the string conversion leaves the configured default in
+        // provider space, so it falls back to the CLR default and warns. Pinning it explicitly is a
+        // no-op on behaviour — the sentinel is the same value EF was already assuming — but it makes
+        // the intent checkable: 0 is not a member of AlertSensitivity, so the sentinel is unreachable
+        // and EF always writes the column. The database default only ever covers non-EF inserts.
         builder.Property(c => c.AlertSensitivity)
             .IsRequired()
             .HasConversion<string>()
             .HasMaxLength(20)
+            .HasSentinel(default(Domain.Enums.AlertSensitivity))
             .HasDefaultValue(Domain.Enums.AlertSensitivity.Medium);
 
         builder.Property(c => c.IsActive)
