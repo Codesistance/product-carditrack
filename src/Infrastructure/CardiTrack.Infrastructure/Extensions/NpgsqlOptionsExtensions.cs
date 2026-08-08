@@ -34,4 +34,19 @@ public static class NpgsqlOptionsExtensions
 
             configure?.Invoke(npgsql);
         });
+
+    /// <summary>
+    /// Typed-builder overload, mirroring the pair EF Core itself ships for UseNpgsql. It
+    /// exists so a <see cref="DbContextOptionsBuilder{TContext}"/> survives the call and
+    /// still yields <see cref="DbContextOptions{TContext}"/> — the design-time factory
+    /// builds exactly that, and the non-generic return type cannot satisfy it when chained.
+    /// The cast is the same one EF Core relies on: UseNpgsql returns the instance it was given.
+    /// </summary>
+    public static DbContextOptionsBuilder<TContext> UseCardiTrackNpgsql<TContext>(
+        this DbContextOptionsBuilder<TContext> options,
+        string? connectionString,
+        Action<NpgsqlDbContextOptionsBuilder>? configure = null)
+        where TContext : DbContext
+        => (DbContextOptionsBuilder<TContext>)UseCardiTrackNpgsql(
+            (DbContextOptionsBuilder)options, connectionString, configure);
 }
