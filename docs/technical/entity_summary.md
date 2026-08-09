@@ -98,7 +98,7 @@ This document provides an overview of all domain entities in the CardiTrack syst
 - HIPAA compliance audit trail for PHI access
 - Contains: UserId, CardiMemberId, Action, EntityType, Timestamp, IP address, user agent, request details, DataAccessed/ChangedFields (JSON)
 - **Retention policy is 6 years**; infrastructure currently implements **30 days dev / 90 days prod** (tfvars) — closing that gap is tracked follow-up infra work
-- Written by `AuditLoggingMiddleware` (in `CardiTrack.API`) via `IAuditLogRepository`
+- Written by `AuditLoggingMiddleware` (in `CardiTrack.API`) via `IAuditLogRepository` — opt-in per endpoint through `AuditHealthDataAccessAttribute`, applied controller-wide on the six health-data controllers (CardiMembers, Dashboard, Devices, Insights, Chat, Reports); Auth and Onboarding are not annotated
 
 ## Planned Entities — not yet implemented
 
@@ -150,7 +150,7 @@ This document provides an overview of all domain entities in the CardiTrack syst
 ### 6. Security & Encryption
 - Device OAuth tokens (AccessToken, RefreshToken) and CardiMember MedicalNotes are encrypted with AES-256-GCM — see [data_protection_architecture.md](./data_protection_architecture.md)
 - Credentials are Auth0-hosted; a legacy `PasswordHash` column remains on Users pending removal
-- Audit logging for PHI access is wired via `AuditLoggingMiddleware` in the API
+- Audit logging is wired via `AuditLoggingMiddleware`, opt-in per endpoint through `AuditHealthDataAccessAttribute` (health-data controllers only; onboarding writes are not yet audited)
 
 ## Entity Relationships
 

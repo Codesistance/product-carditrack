@@ -204,7 +204,7 @@ X-Rate-Limit-Reset: 2026-08-07T12:01:00.0000000Z
 
 ## HIPAA Compliance
 
-- All PHI access is audit-logged (user ID, CardiMember ID, action, timestamp, IP, user agent). **Retention policy is 6 years**; the deployed infrastructure currently retains 30 days (dev) / 90 days (prod) via tfvars — extending it to the policy horizon is tracked follow-up infra work
+- PHI access is audit-logged via the opt-in `AuditHealthDataAccess` attribute, applied controller-wide on the six health-data controllers (CardiMembers, Dashboard, Devices, Insights, Chat, Reports); entries record user ID, CardiMember ID, action, timestamp, IP, and user agent. Unannotated endpoints (Auth, Onboarding) are **not** audited — onboarding's CardiMember creation is a known audit gap. **Retention policy is 6 years**; the deployed infrastructure currently retains 30 days (dev) / 90 days (prod) via tfvars — extending it to the policy horizon is tracked follow-up infra work
 - TLS 1.2+ in transit; Cloud SQL encryption at rest (Google-managed keys); field-level AES-256-GCM encryption for OAuth tokens and medical notes
 - See [infrastructure.md](../../infrastructure.md) for encryption and key management details
 

@@ -385,7 +385,7 @@ AuditLog Entity (6-year retention policy; deployed infra currently retains 30 de
 ├── UserAgent: Browser/device info
 └── DataAccessed: JSON (specific fields viewed)
 ```
-(Written on PHI access by `AuditLoggingMiddleware` in the API.)
+(Written by `AuditLoggingMiddleware` for endpoints carrying the opt-in `AuditHealthDataAccessAttribute` — the six health-data controllers; unannotated endpoints such as Onboarding are not audited.)
 
 **Business Associate Agreements (BAAs):**
 - ✅ **Auth0**: BAA required before prod go-live ([runbook §1](./auth0_setup_runbook.md))
@@ -514,7 +514,7 @@ public class DeviceSyncAuditWorker : CronBackgroundService           // "0 0 4 *
 - [ ] **Poll device data every 10 minutes**; refresh OAuth tokens in the sync path
 - [ ] **Clean up orphaned organizations** daily (03:00 UTC)
 - [ ] **Recalculate pattern baselines** weekly (Sunday 02:30 UTC); **audit provider revision windows** weekly (Sunday 04:00 UTC)
-- [ ] **Write audit-log entries** for PHI access (`AuditLoggingMiddleware`)
+- [ ] **Write audit-log entries** for annotated health-data endpoints (`AuditLoggingMiddleware` + `AuditHealthDataAccessAttribute`)
 
 ### **System Actions (Planned):**
 - [ ] Welcome email; device connection invitations; webhook ingestion
