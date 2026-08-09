@@ -26,7 +26,7 @@ Contains frames **M1-01 … M1-17** — 17 designed screens, 37 designed states.
 | M1-07 | Device Connection — Success | 3 (a–c) | ✅ `ConnectionSuccessPage` |
 | M1-08 | Baseline Learning Info | 1 | ✅ `BaselineLearningPage` |
 | M1-09 | Main Dashboard | 5 (a–e) + 2 as-built | ✅ `DashboardPage` |
-| M1-10 | Alerts List | 4 (a–d) | ❌ stub — "Coming soon" |
+| M1-10 | Alerts List | 4 (a–d) | ✅ `AlertsPage` |
 | M1-11 | Alert Detail — Activity | 1 | ❌ not built |
 | M1-12 | Alert Detail — Critical | 1 | ❌ not built |
 | M1-13 | CardiMember Detail | 1 + 3 as-built | ✅ `CardiMemberDetailPage` |
@@ -37,13 +37,13 @@ Contains frames **M1-01 … M1-17** — 17 designed screens, 37 designed states.
 
 Source: [mvp1/screens.md](../../../../docs/execution/ui/mobile/mvp1/screens.md) (extract of the canonical [ui_screens_maui_mobile.md](../../../../docs/execution/ui/mobile/ui_screens_maui_mobile.md)).
 
-> **Doc discrepancy — resolved; the correct count is 12.** The prose build-status blocks in `mvp1/screens.md` and the canonical `ui_screens_maui_mobile.md` say **9 of 17 built** (M1-01 … M1-09, with M1-10 … M1-17 as "Coming soon"), contradicting the screen-index table in the same files, which marks M1-13, M1-14 and M1-15 built and totals **12 of 17**.
+> **Doc discrepancy — resolved, and since fixed in the docs themselves; the count is now 13 with M1-10 built.** Historical note: The prose build-status blocks in `mvp1/screens.md` and the canonical `ui_screens_maui_mobile.md` say **9 of 17 built** (M1-01 … M1-09, with M1-10 … M1-17 as "Coming soon"), contradicting the screen-index table in the same files, which marks M1-13, M1-14 and M1-15 built and totals **12 of 17**.
 >
-> Verified against `src/Presentation/CardiTrack.Mobile` on 2026-08-08: `CardiMemberDetailPage.xaml` (307 lines), `EditCardiMemberPage.xaml` (210) and `DeviceManagementPage.xaml` (142) are all real, substantial pages — **the table is right and the prose is stale**. `AlertsPage.xaml` is a 13-line placeholder, consistent with M1-10 being a stub.
+> Verified against `src/Presentation/CardiTrack.Mobile` on 2026-08-08: `CardiMemberDetailPage.xaml` (307 lines), `EditCardiMemberPage.xaml` (210) and `DeviceManagementPage.xaml` (142) are all real, substantial pages — **the table is right and the prose is stale**. `AlertsPage.xaml` was a 13-line placeholder at that time; M1-10 was built on 2026-08-09 and the prose blocks have since been reconciled.
 >
 > **Use 12.** The stale prose is a live doc bug in both files and still needs fixing at source (the `mvp1/` copy is an extract, so fix the canonical doc and re-extract, regenerating the PDFs via `convert_to_pdf.py`).
 
-Unbuilt frames cluster hard around **alerts and export** (M1-10 stub, M1-11, M1-12, M1-16, M1-17) — which matches the release matrix showing the entire alerting loop as ⬜ Not started. That's the R1 critical path.
+Unbuilt frames cluster hard around **alert detail and export** (M1-11, M1-12, M1-16, M1-17; M1-10 itself is now built) — which matches the release matrix showing the entire alerting loop as ⬜ Not started. That's the R1 critical path.
 
 Frame → page mapping verified in code: M1-01 `SplashPage` · M1-02 `WelcomePage` · M1-03 `CreateAccountPage` · M1-04 `Onboarding/AddCardiMemberPage` · M1-05 `Onboarding/DeviceSelectionPage` · M1-06 `Onboarding/FitbitConnectionPage` · M1-07 `Onboarding/ConnectionSuccessPage` · M1-08 `Onboarding/BaselineLearningPage` · M1-09 `DashboardPage` · M1-13 `CardiMemberDetailPage` · M1-14 `EditCardiMemberPage` · M1-15 `DeviceManagementPage`. `FamilyPage` and `SettingsPage` also ship with no M1 frame, but they are documented tab stubs rather than design gaps — `FamilyPage` is a tab stub and `SettingsPage` is minimal (sign-out, verify-email nudge reset), per [apps/mobile/readme.md](../../../../docs/apps/mobile/readme.md).
 

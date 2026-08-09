@@ -1,0 +1,191 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentView xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="CardiTrack.Mobile.Controls.AlertListCard">
+
+    <!-- One row of the Alerts List (Figma 101:6525). Two stacked rounded rects, exactly as the
+         design draws it: a severity-coloured one underneath and the white card inset 4px from
+         its left edge. That is what makes the severity rail round into the card's corner
+         instead of butting against it as a straight bar would.
+
+         The chevron expands the card in place rather than pushing an alert-detail screen —
+         M1-11/M1-12/M1-16 are not built, and a row that opens nothing would be worse than one
+         that opens its own full text. -->
+    <Border x:Name="SeverityRail"
+            StrokeThickness="0"
+            Padding="4,0,0,0">
+        <Border.StrokeShape>
+            <RoundRectangle CornerRadius="20"/>
+        </Border.StrokeShape>
+        <Border.Shadow>
+            <Shadow Brush="{StaticResource CardShadowBrush}" Opacity="0.15" Radius="14" Offset="0,4"/>
+        </Border.Shadow>
+
+        <Border BackgroundColor="{StaticResource White}"
+                StrokeThickness="0"
+                Padding="15,14,14,14">
+            <Border.StrokeShape>
+                <RoundRectangle CornerRadius="20"/>
+            </Border.StrokeShape>
+
+            <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto"
+                  ColumnDefinitions="Auto,*,Auto"
+                  ColumnSpacing="14"
+                  RowSpacing="4">
+
+                <!-- Initials rather than a photo: no member photo storage exists yet, so the
+                     tile keeps the designed 50x52 box and fills it with initials. -->
+                <Border Grid.Row="0" Grid.RowSpan="3" Grid.Column="0"
+                        WidthRequest="50" HeightRequest="52"
+                        StrokeThickness="0"
+                        BackgroundColor="{StaticResource SelectedOptionBackground}"
+                        VerticalOptions="Start">
+                    <Border.StrokeShape>
+                        <RoundRectangle CornerRadius="11"/>
+                    </Border.StrokeShape>
+                    <Label x:Name="InitialsLabel"
+                           FontFamily="QuicksandSemiBold"
+                           FontSize="18"
+                           TextColor="{StaticResource Primary}"
+                           HorizontalOptions="Center"
+                           VerticalOptions="Center"/>
+                </Border>
+
+                <HorizontalStackLayout Grid.Row="0" Grid.Column="1" Spacing="8">
+                    <Border x:Name="SeverityPill"
+                            StrokeThickness="0"
+                            Padding="8,3"
+                            VerticalOptions="Center">
+                        <Border.StrokeShape>
+                            <RoundRectangle CornerRadius="12"/>
+                        </Border.StrokeShape>
+                        <Label x:Name="SeverityLabel"
+                               FontFamily="QuicksandMedium"
+                               FontSize="13"
+                               TextColor="{StaticResource White}"/>
+                    </Border>
+
+                    <Label x:Name="TimeLabel"
+                           FontFamily="QuicksandMedium"
+                           FontSize="14"
+                           TextColor="{StaticResource MutedText}"
+                           VerticalTextAlignment="Center"/>
+                </HorizontalStackLayout>
+
+                <!-- Unread dot. Hidden once the alert has been acknowledged. -->
+                <Border x:Name="UnreadDot"
+                        Grid.Row="0" Grid.Column="2"
+                        WidthRequest="12" HeightRequest="12"
+                        StrokeThickness="0"
+                        BackgroundColor="{StaticResource Primary}"
+                        VerticalOptions="Center">
+                    <Border.StrokeShape>
+                        <RoundRectangle CornerRadius="6"/>
+                    </Border.StrokeShape>
+                </Border>
+
+                <Label x:Name="TitleLabel"
+                       Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2"
+                       Style="{StaticResource Heading3}"
+                       LineBreakMode="TailTruncation"
+                       MaxLines="2">
+                    <Label.GestureRecognizers>
+                        <TapGestureRecognizer Tapped="OnExpandTapped"/>
+                    </Label.GestureRecognizers>
+                </Label>
+
+                <Label x:Name="MemberLabel"
+                       Grid.Row="2" Grid.Column="1" Grid.ColumnSpan="2"
+                       FontFamily="QuicksandMedium"
+                       FontSize="12"
+                       TextColor="{StaticResource MutedText}"
+                       LineBreakMode="TailTruncation"/>
+
+                <!-- Spans the avatar column too: the expanded message should use the card's
+                     full width rather than staying in the narrow text column. -->
+                <Label x:Name="MessageLabel"
+                       Grid.Row="3" Grid.Column="0" Grid.ColumnSpan="3"
+                       Margin="0,6,0,0"
+                       Style="{StaticResource Body2}"
+                       MaxLines="2"
+                       LineBreakMode="TailTruncation">
+                    <Label.GestureRecognizers>
+                        <TapGestureRecognizer Tapped="OnExpandTapped"/>
+                    </Label.GestureRecognizers>
+                </Label>
+
+                <Grid Grid.Row="4" Grid.Column="0" Grid.ColumnSpan="3"
+                      Margin="0,10,0,0"
+                      ColumnDefinitions="Auto,Auto,Auto,*,Auto"
+                      ColumnSpacing="8">
+
+                    <Border x:Name="StatusPillBorder"
+                            Grid.Column="0"
+                            StrokeThickness="0"
+                            Padding="10,4"
+                            VerticalOptions="Center">
+                        <Border.StrokeShape>
+                            <RoundRectangle CornerRadius="12"/>
+                        </Border.StrokeShape>
+                        <Label x:Name="StatusPillLabel"
+                               FontFamily="QuicksandMedium"
+                               FontSize="12"/>
+                    </Border>
+
+                    <Border x:Name="CallButton"
+                            Grid.Column="1"
+                            WidthRequest="28" HeightRequest="28"
+                            StrokeThickness="0"
+                            BackgroundColor="{StaticResource AlertActionBackground}"
+                            VerticalOptions="Center">
+                        <Border.StrokeShape>
+                            <RoundRectangle CornerRadius="16"/>
+                        </Border.StrokeShape>
+                        <Border.GestureRecognizers>
+                            <TapGestureRecognizer Tapped="OnCallTapped"/>
+                        </Border.GestureRecognizers>
+                        <Image Source="icon_action_call.svg" WidthRequest="16" HeightRequest="16"/>
+                    </Border>
+
+                    <Border x:Name="AcknowledgeButton"
+                            Grid.Column="2"
+                            WidthRequest="28" HeightRequest="28"
+                            StrokeThickness="0"
+                            BackgroundColor="{StaticResource AlertActionBackground}"
+                            VerticalOptions="Center">
+                        <Border.StrokeShape>
+                            <RoundRectangle CornerRadius="16"/>
+                        </Border.StrokeShape>
+                        <Border.GestureRecognizers>
+                            <TapGestureRecognizer Tapped="OnAcknowledgeTapped"/>
+                        </Border.GestureRecognizers>
+                        <Grid>
+                            <Image x:Name="AcknowledgeIcon"
+                                   Source="icon_action_check.svg"
+                                   WidthRequest="16" HeightRequest="16"/>
+                            <ActivityIndicator x:Name="AcknowledgeSpinner"
+                                               IsVisible="False"
+                                               IsRunning="False"
+                                               Color="{StaticResource Primary}"
+                                               WidthRequest="16" HeightRequest="16"/>
+                        </Grid>
+                    </Border>
+
+                    <!-- Wrapped so the tap target is a finger rather than a 20px glyph. -->
+                    <Border Grid.Column="4"
+                            StrokeThickness="0"
+                            BackgroundColor="Transparent"
+                            Padding="6"
+                            VerticalOptions="Center">
+                        <Border.GestureRecognizers>
+                            <TapGestureRecognizer Tapped="OnExpandTapped"/>
+                        </Border.GestureRecognizers>
+                        <Image x:Name="ExpandChevron"
+                               Source="icon_chevron_down.svg"
+                               WidthRequest="20" HeightRequest="20"/>
+                    </Border>
+                </Grid>
+            </Grid>
+        </Border>
+    </Border>
+</ContentView>

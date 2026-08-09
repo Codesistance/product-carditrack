@@ -1,3 +1,4 @@
+using CardiTrack.Application.DTOs.Common;
 using CardiTrack.Domain.Entities;
 
 namespace CardiTrack.Application.Interfaces.Repositories;
@@ -6,4 +7,16 @@ public interface IAlertRepository : IRepository<Alert>
 {
     Task<IEnumerable<Alert>> GetByCardiMemberAsync(Guid cardiMemberId, bool activeOnly);
     Task<Alert?> GetByIdWithCardiMemberAsync(Guid alertId);
+
+    /// <summary>One page of alerts matching <paramref name="query"/>, newest first.</summary>
+    Task<IReadOnlyList<Alert>> QueryAsync(AlertQuery query, CancellationToken ct = default);
+
+    /// <summary>How many alerts match <paramref name="query"/>'s filters, ignoring its paging.</summary>
+    Task<int> CountAsync(AlertQuery query, CancellationToken ct = default);
+
+    /// <summary>
+    /// Unacknowledged, unresolved alerts across <paramref name="cardiMemberIds"/> — the badge
+    /// count, so deliberately unaffected by the caller's severity/date filters.
+    /// </summary>
+    Task<int> CountUnreadAsync(IReadOnlyCollection<Guid> cardiMemberIds, CancellationToken ct = default);
 }

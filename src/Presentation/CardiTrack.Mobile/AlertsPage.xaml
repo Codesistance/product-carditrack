@@ -6,7 +6,16 @@
              Shell.NavBarIsVisible="False"
              Shell.TabBarIsVisible="False"
              BackgroundColor="{StaticResource PageGround}">
-    <Grid RowDefinitions="Auto,*,Auto">
+
+    <!-- M1-10 Alerts List. Figma 101:6525 (default), 101:3840 (empty), 101:6206 (filtered
+         empty), 101:4509 (loading).
+
+         Two deliberate departures from the frames: the header's back arrow is dropped because
+         this is a tab root with nothing behind it, and the loading state is skeleton rows only
+         — Figma's "Syncing with Device… / Refresh Now" card in 101:4509 describes a device
+         sync, not an alerts fetch, and would promise the wrong thing here. -->
+
+    <Grid RowDefinitions="Auto,Auto,*,Auto">
 
         <controls:HeaderBand Grid.Row="0">
             <Label Text="Alerts"
@@ -14,20 +23,83 @@
                    TextColor="{StaticResource White}"/>
         </controls:HeaderBand>
 
-        <!-- Placeholder until M1-10. It still uses the app's card treatment rather than bare
-             text on the ground, so a tab that isn't built yet doesn't read as a broken one. -->
-        <Grid Grid.Row="1" Padding="20,20,20,24" VerticalOptions="Start">
-            <Border Style="{StaticResource ElevatedCard}">
-                <VerticalStackLayout Spacing="6">
-                    <Label Text="Nothing here yet"
-                           Style="{StaticResource Body1SemiBoldDark}"/>
-                    <Label Text="Alert history (M1-10) is coming soon."
-                           Style="{StaticResource Body2}"
-                           TextColor="{StaticResource BodyText}"/>
-                </VerticalStackLayout>
-            </Border>
-        </Grid>
+        <!-- Chips sit outside the scroller so filtering stays reachable while the list is
+             scrolled, and are hidden in the states where there is nothing to filter. -->
+        <controls:FilterChipBar x:Name="Filters"
+                                Grid.Row="1"
+                                Margin="0,20,0,0"/>
 
-        <controls:BottomNavBar Grid.Row="2" Tab="Alerts"/>
+        <RefreshView x:Name="Refresher"
+                     Grid.Row="2"
+                     RefreshColor="{StaticResource Primary}"
+                     Refreshing="OnPullToRefresh">
+            <ScrollView>
+                <Grid Padding="20,20,20,24">
+
+                    <!-- ── M1-10d loading — row heights track the collapsed alert card ── -->
+                    <VerticalStackLayout x:Name="SkeletonPanel" Spacing="13" IsVisible="False">
+                        <controls:SkeletonView HeightRequest="79"/>
+                        <controls:SkeletonView HeightRequest="79"/>
+                        <controls:SkeletonView HeightRequest="79"/>
+                        <controls:SkeletonView HeightRequest="79"/>
+                    </VerticalStackLayout>
+
+                    <!-- ── Error ── -->
+                    <VerticalStackLayout x:Name="ErrorPanel"
+                                         Spacing="10"
+                                         IsVisible="False"
+                                         Padding="0,60,0,0">
+                        <Label Text="We couldn't load your alerts"
+                               Style="{StaticResource Heading3}"
+                               HorizontalTextAlignment="Center"/>
+                        <Label x:Name="ErrorDetailLabel"
+                               Style="{StaticResource Body2}"
+                               TextColor="{StaticResource BodyText}"
+                               HorizontalTextAlignment="Center"/>
+                        <Button Text="Try again"
+                                Style="{StaticResource SecondaryOutlineButton}"
+                                HorizontalOptions="Center"
+                                Clicked="OnRefreshClicked"/>
+                    </VerticalStackLayout>
+
+                    <!-- ── M1-10a loaded: date-grouped cards, with the two empty states
+                           living inside the same panel so the archive toggle stays reachable
+                           when a filter empties the list ── -->
+                    <VerticalStackLayout x:Name="ContentPanel" Spacing="20" IsVisible="False">
+
+                        <!-- M1-10b empty / M1-10c filtered empty. One card, two sets of copy:
+                             which one shows depends on whether a filter is doing the emptying. -->
+                        <Border x:Name="EmptyPanel"
+                                Style="{StaticResource ElevatedCard}"
+                                Padding="20,17,20,20"
+                                IsVisible="False">
+                            <VerticalStackLayout Spacing="4">
+                                <Image Source="illustration_alerts_bell.png"
+                                       WidthRequest="128" HeightRequest="128"
+                                       HorizontalOptions="Center"/>
+                                <Label x:Name="EmptyTitleLabel"
+                                       Style="{StaticResource Heading2}"
+                                       HorizontalTextAlignment="Center"/>
+                                <Label x:Name="EmptyDetailLabel"
+                                       Style="{StaticResource Body2}"
+                                       TextColor="{StaticResource HeadingText}"
+                                       HorizontalTextAlignment="Center"/>
+                            </VerticalStackLayout>
+                        </Border>
+
+                        <VerticalStackLayout x:Name="GroupsStack" Spacing="20"/>
+
+                        <!-- Figma's "View Archived Alerts" CTA. There is no archive screen, so
+                             it switches this list to resolved alerts in place rather than
+                             pushing one, and flips back the same way. -->
+                        <Button x:Name="ArchiveButton"
+                                Style="{StaticResource AuthGradientButton}"
+                                Clicked="OnArchiveClicked"/>
+                    </VerticalStackLayout>
+                </Grid>
+            </ScrollView>
+        </RefreshView>
+
+        <controls:BottomNavBar Grid.Row="3" Tab="Alerts"/>
     </Grid>
 </ContentPage>

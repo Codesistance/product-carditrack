@@ -333,4 +333,86 @@ public class CardiTrackApiClientTests
         Assert.Equal(HttpMethod.Post, request.Method);
         Assert.Equal($"/api/v1/cardimembers/{MemberId}/devices/{DeviceId}/refresh", request.Uri!.AbsolutePath);
     }
+
+    private const string EmptyAlertPage = """
+        {"success":true,"message":"ok","data":{"alerts":[],"total":0,"unreadCount":0},
+         "timestamp":"2026-08-09T00:00:00Z"}
+        """;
+
+    [Fact]
+    public async Task GetAlerts_WithoutFilters_HasNoQueryString()
+    {
+        var (client, http) = CreateSut();
+        http.Enqueue(HttpStatusCode.OK, EmptyAlertPage);
+
+        var page = await client.GetAlertsAsync();
+
+        var request = http.Requests.Single();
+        Assert.Equal("/api/v1/alerts", request.Uri!.AbsolutePath);
+        Assert.Equal(string.Empty, request.Uri.Query);
+        Assert.Empty(page.Alerts);
+    }
+
+    [Fact]
+    public async Task GetAlerts_SendsFiltersAsQueryParameters()
+    {
+        var (client, http) = CreateSut();
+        http.Enqueue(HttpStatusCode.OK, EmptyAlertPage);
+
+        await client.GetAlertsAsync(
+            severity: "red",
+            status: "new",
+            from: new DateTime(2026, 8, 9, 0, 0, 0, DateTimeKind.Utc),
+            limit: 25);
+
+        var query = Uri.UnescapeDataString(http.Requests.Single().Uri!.Query);
+        Assert.Contains("severity=red", query);
+        Assert.Contains("status=new", query);
+        // Round-trip format, so the server sees the caller's offset rather than guessing it.
+        Assert.Contains("from=2026-08-09T00:00:00.0000000Z", query);
+        Assert.Contains("limit=25", query);
+    }
+
+    [Fact]
+    public async Task GetAlerts_UnwrapsTheAlertPage()
+    {
+        var (client, http) = CreateSut();
+        http.Enqueue(HttpStatusCode.OK, """
+            {"success":true,"message":"ok","data":{"alerts":[
+              {"alertId":"7f9619ff-8b86-d011-b42d-00c04fc964ff","cardiMemberId":"3fa85f64-5717-4562-b3fc-2c963f66afa6",
+               "cardiMemberName":"Margaret Doe","emergencyContactPhone":"+441234567891","type":"Heart Rate",
+               "severity":"orange","status":"new","title":"Elevated Heart Rate","message":"Higher than usual.",
+               "triggeredAt":"2026-08-09T07:00:00Z"}],
+              "total":1,"unreadCount":1},"timestamp":"2026-08-09T00:00:00Z"}
+            """);
+
+        var page = await client.GetAlertsAsync();
+
+        var alert = Assert.Single(page.Alerts);
+        Assert.Equal("orange", alert.Severity);
+        Assert.Equal("new", alert.Status);
+        Assert.Equal("Margaret Doe", alert.CardiMemberName);
+        Assert.Equal("+441234567891", alert.EmergencyContactPhone);
+        Assert.Equal(1, page.UnreadCount);
+    }
+
+    [Fact]
+    public async Task AcknowledgeAlert_PostsToAcknowledgeRoute_WithNoBody()
+    {
+        var (client, http) = CreateSut();
+        var alertId = Guid.NewGuid();
+        http.Enqueue(HttpStatusCode.OK, $$"""
+            {"success":true,"message":"ok","data":{"alertId":"{{alertId}}","status":"acknowledged",
+             "acknowledgedAt":"2026-08-09T08:00:00Z","unreadCount":2},"timestamp":"2026-08-09T00:00:00Z"}
+            """);
+
+        var result = await client.AcknowledgeAlertAsync(alertId);
+
+        var request = http.Requests.Single();
+        Assert.Equal(HttpMethod.Post, request.Method);
+        Assert.Equal($"/api/v1/alerts/{alertId}/acknowledge", request.Uri!.AbsolutePath);
+        Assert.True(string.IsNullOrEmpty(request.Body));
+        Assert.Equal("acknowledged", result.Status);
+        Assert.Equal(2, result.UnreadCount);
+    }
 }

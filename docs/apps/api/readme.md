@@ -132,7 +132,7 @@ environment is visibly missing; an invented `prod` is a false alarm.
 
 ## Project Structure
 
-> **Target structure** — the tree below is the planned layout, not a mirror of the current code. Today's `Controllers/` holds `Auth`, `Onboarding`, `Dashboard`, `Devices`, `Reports`, `Chat`, and `Insights` controllers, all deriving from `BaseApiController`; the `Webhooks/` folder (Google Health API, Garmin, Stripe) arrives with the AI-pipeline rollout ([llm_design.md](../../llm_design.md)).
+> **Target structure** — the tree below is the planned layout, not a mirror of the current code. Today's `Controllers/` holds `Alerts`, `Auth`, `CardiMembers`, `Onboarding`, `Dashboard`, `Devices`, `Reports`, `Chat`, and `Insights` controllers, all deriving from `BaseApiController`; the `Webhooks/` folder (Google Health API, Garmin, Stripe) arrives with the AI-pipeline rollout ([llm_design.md](../../llm_design.md)).
 >
 > **Routing note:** `BaseApiController` carries the route template `api/[controller]` (plus `[ApiController]`, JSON `Produces`, and the standard `ApiResponse<T>`/`ErrorResponse` envelope helpers). Controllers that don't override it therefore serve **`/api/Onboarding/*`**-style routes — not the `/api/v1/*` prefix the API spec claims. API versioning is registered (default `1.0`, assumed when unspecified), but the version is not yet part of the route template; reconciling the two is a spec/code alignment task.
 

@@ -22,9 +22,13 @@ public class CardiMemberAccessService : ICardiMemberAccessService
     public async Task<bool> HasViewAccessAsync(
         Guid requestingUserId, Guid cardiMemberId, CancellationToken ct = default)
     {
-        var viewable = await GetViewableMemberIdsAsync(requestingUserId);
+        var viewable = await LoadViewableMemberIdsAsync(requestingUserId);
         return viewable.Contains(cardiMemberId);
     }
+
+    public async Task<IReadOnlyCollection<Guid>> GetViewableMemberIdsAsync(
+        Guid requestingUserId, CancellationToken ct = default)
+        => await LoadViewableMemberIdsAsync(requestingUserId);
 
     public Task RequireViewAccessAsync(
         Guid requestingUserId, Guid cardiMemberId, CancellationToken ct = default)
@@ -36,7 +40,7 @@ public class CardiMemberAccessService : ICardiMemberAccessService
         if (cardiMemberIds.Count == 0)
             return;
 
-        var viewable = await GetViewableMemberIdsAsync(requestingUserId);
+        var viewable = await LoadViewableMemberIdsAsync(requestingUserId);
         if (cardiMemberIds.Any(id => !viewable.Contains(id)))
             throw new KeyNotFoundException(DeniedMessage);
     }
@@ -59,7 +63,7 @@ public class CardiMemberAccessService : ICardiMemberAccessService
     /// set is small (a caregiver watches a handful of members) and callers such as report
     /// generation check several ids at once.
     /// </summary>
-    private async Task<HashSet<Guid>> GetViewableMemberIdsAsync(Guid requestingUserId)
+    private async Task<HashSet<Guid>> LoadViewableMemberIdsAsync(Guid requestingUserId)
     {
         if (requestingUserId == Guid.Empty)
             return [];

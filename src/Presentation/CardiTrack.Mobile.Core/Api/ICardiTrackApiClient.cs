@@ -35,6 +35,23 @@ public interface ICardiTrackApiClient
     Task<MonitoringPauseResponse> ResumeMonitoringAsync(Guid cardiMemberId, CancellationToken ct = default);
 
     Task<DashboardResponse> GetDashboardAsync(Guid cardiMemberId, CancellationToken ct = default);
+
+    /// <summary>
+    /// One page of alerts for the Alerts List (M1-10), newest first, across every CardiMember
+    /// the signed-in user may read.
+    /// </summary>
+    /// <param name="severity">green/yellow/orange/red, or null for any.</param>
+    /// <param name="status">new/acknowledged/resolved, or null for any.</param>
+    Task<AlertListResponse> GetAlertsAsync(
+        string? severity = null,
+        string? status = null,
+        DateTime? from = null,
+        DateTime? to = null,
+        int? limit = null,
+        CancellationToken ct = default);
+
+    /// <summary>Marks one alert as handled (M1-10 card action).</summary>
+    Task<AlertAcknowledgementResponse> AcknowledgeAlertAsync(Guid alertId, CancellationToken ct = default);
     Task<DeviceListResponse> GetDevicesAsync(Guid cardiMemberId, CancellationToken ct = default);
 
     /// <summary>M1-15 device management.</summary>
