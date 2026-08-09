@@ -8,11 +8,7 @@
              BackgroundColor="{StaticResource PageGround}">
 
     <!-- M1-10 Alerts List. Figma 101:6525 (default), 101:3840 (empty), 101:6206 (filtered
-         empty), 101:4509 (loading).
-
-         One departure from the frames: the loading state is skeleton rows only — Figma's
-         "Syncing with Device… / Refresh Now" card in 101:4509 describes a device sync, not an
-         alerts fetch, and would promise the wrong thing here. -->
+         empty), 101:4509 (loading). -->
 
     <Grid RowDefinitions="Auto,Auto,*,Auto">
 
@@ -74,12 +70,68 @@
             <ScrollView>
                 <Grid Padding="20,20,20,24">
 
-                    <!-- ── M1-10d loading — row heights track the collapsed alert card ── -->
-                    <VerticalStackLayout x:Name="SkeletonPanel" Spacing="13" IsVisible="False">
-                        <controls:SkeletonView HeightRequest="79"/>
-                        <controls:SkeletonView HeightRequest="79"/>
-                        <controls:SkeletonView HeightRequest="79"/>
-                        <controls:SkeletonView HeightRequest="79"/>
+                    <!-- ── M1-10d loading: sync card over skeleton rows ── -->
+                    <VerticalStackLayout x:Name="SkeletonPanel" Spacing="27" IsVisible="False">
+
+                        <Border BackgroundColor="{StaticResource White}"
+                                StrokeThickness="0"
+                                Padding="20,26,20,28"
+                                Margin="0,12,0,0">
+                            <Border.StrokeShape>
+                                <RoundRectangle CornerRadius="20"/>
+                            </Border.StrokeShape>
+                            <Border.Shadow>
+                                <Shadow Brush="{StaticResource CardShadowBrush}" Opacity="0.15" Radius="14" Offset="0,4"/>
+                            </Border.Shadow>
+
+                            <VerticalStackLayout Spacing="14">
+                                <Border WidthRequest="78" HeightRequest="78"
+                                        StrokeThickness="0"
+                                        BackgroundColor="{StaticResource SelectedOptionBackground}"
+                                        HorizontalOptions="Center">
+                                    <Border.StrokeShape>
+                                        <RoundRectangle CornerRadius="20"/>
+                                    </Border.StrokeShape>
+                                    <Image Source="icon_refresh.svg"
+                                           WidthRequest="42" HeightRequest="42"/>
+                                </Border>
+
+                                <Label Text="Syncing with Device…"
+                                       Style="{StaticResource Heading2}"
+                                       HorizontalTextAlignment="Center"/>
+
+                                <Label Text="We are fetching your latest cardiac health data from your wearable. This usually takes a few seconds."
+                                       Style="{StaticResource Body2}"
+                                       TextColor="{StaticResource HeadingText}"
+                                       HorizontalTextAlignment="Center"/>
+
+                                <!-- Re-triggers the fetch; the designed affordance for a load
+                                     that is taking longer than it should. -->
+                                <Button x:Name="SyncRefreshButton"
+                                        Text="Refresh Now"
+                                        ImageSource="icon_refresh_white.svg"
+                                        ContentLayout="Right,4"
+                                        FontFamily="Quicksand"
+                                        FontAttributes="Bold"
+                                        FontSize="12"
+                                        TextColor="{StaticResource White}"
+                                        Background="{StaticResource GradientButtonBrush}"
+                                        CornerRadius="5"
+                                        Padding="6,4"
+                                        HeightRequest="34"
+                                        WidthRequest="114"
+                                        Margin="0,13,0,0"
+                                        HorizontalOptions="Center"
+                                        Clicked="OnRefreshClicked"/>
+                            </VerticalStackLayout>
+                        </Border>
+
+                        <VerticalStackLayout Spacing="11">
+                            <controls:AlertSkeletonCard/>
+                            <controls:AlertSkeletonCard/>
+                            <controls:AlertSkeletonCard/>
+                            <controls:AlertSkeletonCard/>
+                        </VerticalStackLayout>
                     </VerticalStackLayout>
 
                     <!-- ── Error ── -->

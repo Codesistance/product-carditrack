@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentView xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:controls="clr-namespace:CardiTrack.Mobile.Controls"
+             x:Class="CardiTrack.Mobile.Controls.AlertSkeletonCard">
+
+    <!-- Loading placeholder for one alert row (Figma 101:4509). Not a plain block: the
+         shimmer blocks sit where the avatar, badge, title and status pill will land, so the
+         list doesn't rearrange itself when the real rows arrive. -->
+    <Border BackgroundColor="{StaticResource White}"
+            StrokeThickness="0"
+            Padding="14"
+            HeightRequest="79">
+        <Border.StrokeShape>
+            <RoundRectangle CornerRadius="20"/>
+        </Border.StrokeShape>
+        <Border.Shadow>
+            <Shadow Brush="{StaticResource CardShadowBrush}" Opacity="0.15" Radius="14" Offset="0,4"/>
+        </Border.Shadow>
+
+        <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="14">
+            <controls:SkeletonView Grid.Column="0"
+                                   WidthRequest="51" HeightRequest="51"/>
+
+            <VerticalStackLayout Grid.Column="1" Spacing="9" VerticalOptions="Center">
+                <controls:SkeletonView WidthRequest="96" HeightRequest="11"
+                                       HorizontalOptions="Start"/>
+                <controls:SkeletonView WidthRequest="124" HeightRequest="16"
+                                       HorizontalOptions="Start"/>
+            </VerticalStackLayout>
+
+            <controls:SkeletonView Grid.Column="2"
+                                   WidthRequest="69" HeightRequest="36"
+                                   VerticalOptions="Start"/>
+        </Grid>
+    </Border>
+</ContentView>

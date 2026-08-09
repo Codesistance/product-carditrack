@@ -24,6 +24,7 @@ public partial class AlertsPage : ContentPage
 
     private bool _isLoading;
     private bool _showArchived;
+    private CancellationTokenSource? _loadCts;
     private DateTime _lastLoadedUtc = DateTime.MinValue;
     private AlertListResponse? _lastData;
 
@@ -43,10 +44,20 @@ public partial class AlertsPage : ContentPage
             _ = LoadAsync();
     }
 
-    private async Task LoadAsync()
+    /// <param name="force">
+    /// Supersedes a request already in flight rather than skipping. Anything the user asked
+    /// for by hand — Refresh Now, pull-to-refresh, a different chip — must not be swallowed
+    /// because a slow load happens to be running; that is the state the loading card is on
+    /// screen for, so its own button would otherwise do nothing.
+    /// </param>
+    private async Task LoadAsync(bool force = false)
     {
-        if (_isLoading)
+        if (_isLoading && !force)
             return;
+
+        _loadCts?.Cancel();
+        var cts = new CancellationTokenSource();
+        _loadCts = cts;
         _isLoading = true;
 
         if (_lastData is null)
@@ -55,7 +66,10 @@ public partial class AlertsPage : ContentPage
         try
         {
             var (severity, status, from) = CurrentQuery();
-            var data = await _api.GetAlertsAsync(severity, status, from);
+            var data = await _api.GetAlertsAsync(severity, status, from, ct: cts.Token);
+            if (cts.IsCancellationRequested)
+                return;
+
             _lastData = data;
             _lastLoadedUtc = DateTime.UtcNow;
             Render(data);
@@ -63,6 +77,11 @@ public partial class AlertsPage : ContentPage
         }
         catch (ApiException ex)
         {
+            // A superseded request reports its cancellation as a transport failure. That is
+            // this page's own doing, so it must not surface as "no connection".
+            if (cts.IsCancellationRequested)
+                return;
+
             if (_lastData is null)
             {
                 ErrorDetailLabel.Text = ex.Message;
@@ -77,8 +96,13 @@ public partial class AlertsPage : ContentPage
         }
         finally
         {
-            _isLoading = false;
-            Refresher.IsRefreshing = false;
+            // Only the newest request owns the page's loading state.
+            if (ReferenceEquals(_loadCts, cts))
+            {
+                _isLoading = false;
+                Refresher.IsRefreshing = false;
+            }
+            cts.Dispose();
         }
     }
 
@@ -201,7 +225,7 @@ public partial class AlertsPage : ContentPage
         // A filter change is a different query, so the cached page no longer applies —
         // dropping it puts the skeleton back rather than leaving stale rows under new chips.
         _lastData = null;
-        _ = LoadAsync();
+        _ = LoadAsync(force: true);
     }
 
     private async void OnArchiveClicked(object? sender, EventArgs e)
@@ -211,7 +235,7 @@ public partial class AlertsPage : ContentPage
         ApplyArchiveButtonText();
         if (!_showArchived)
             Filters.SetSelectedSilently(AlertFilter.All);
-        await LoadAsync();
+        await LoadAsync(force: true);
     }
 
     private void ApplyArchiveButtonText() =>
@@ -244,16 +268,17 @@ public partial class AlertsPage : ContentPage
             ApplyArchiveButtonText();
             Filters.SetSelectedSilently(filter);
             _lastData = null;
-            await LoadAsync();
+            await LoadAsync(force: true);
             return;
         }
 
         Filters.Select(filter);
     }
 
-    private void OnPullToRefresh(object? sender, EventArgs e) => _ = LoadAsync();
+    private void OnPullToRefresh(object? sender, EventArgs e) => _ = LoadAsync(force: true);
 
-    private void OnRefreshClicked(object? sender, EventArgs e) => _ = LoadAsync();
+    /// <summary>The error panel's "Try again" and the loading card's "Refresh Now".</summary>
+    private void OnRefreshClicked(object? sender, EventArgs e) => _ = LoadAsync(force: true);
 
     private async void OnCallRequested(object? sender, AlertSummaryResponse alert)
     {
