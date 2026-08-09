@@ -1,41 +1,86 @@
 <?xml version="1.0" encoding="utf-8" ?>
 <ContentView xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
-             xmlns:controls="clr-namespace:CardiTrack.Mobile.Controls"
              x:Class="CardiTrack.Mobile.Controls.MetricCard">
 
-    <Border Style="{StaticResource DashboardCard}" Padding="12">
-        <VerticalStackLayout Spacing="6">
+    <!-- Figma 101:2807 / 101:2821 / 101:2835. One full-width row per metric: tinted icon tile,
+         name over value, and a right-hand accessory that differs per metric — trend for
+         activity, a status pill for heart rate, a star rating for sleep. -->
+    <Border Style="{StaticResource ElevatedCard}">
+        <VerticalStackLayout Spacing="16">
 
-            <Image x:Name="MetricIcon"
-                   WidthRequest="22" HeightRequest="22"
-                   HorizontalOptions="Start"/>
+            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="11">
 
-            <Label x:Name="ValueLabel"
-                   Style="{StaticResource MetricValue}"
-                   LineBreakMode="TailTruncation"/>
+                <Border Grid.Column="0"
+                        Style="{StaticResource IconTile}"
+                        BackgroundColor="{StaticResource MetricTileTint}"
+                        WidthRequest="54" HeightRequest="54">
+                    <Image x:Name="MetricIcon"
+                           WidthRequest="34" HeightRequest="34"/>
+                </Border>
 
-            <!-- Steps: progress toward goal -->
-            <ProgressBar x:Name="GoalProgress"
-                         IsVisible="False"
-                         ProgressColor="{StaticResource Primary}"
-                         HeightRequest="6"/>
+                <VerticalStackLayout Grid.Column="1" Spacing="4" VerticalOptions="Center">
+                    <Label x:Name="NameLabel"
+                           Style="{StaticResource MetricRowLabel}"
+                           LineBreakMode="TailTruncation"/>
+                    <Label x:Name="ValueLabel"
+                           Style="{StaticResource Heading3}"
+                           LineBreakMode="TailTruncation"/>
+                </VerticalStackLayout>
 
-            <!-- HR range / sleep quality / generic subtitle -->
-            <Label x:Name="SubtitleLabel"
-                   FontFamily="Quicksand"
-                   FontSize="12"
-                   TextColor="{StaticResource BodyText}"
-                   LineBreakMode="TailTruncation"/>
+                <VerticalStackLayout Grid.Column="2"
+                                     Spacing="3"
+                                     HorizontalOptions="End"
+                                     VerticalOptions="Center">
 
-            <!-- Comparison vs baseline; hidden while baseline is learning -->
-            <Label x:Name="ComparisonLabel"
-                   FontFamily="QuicksandMedium"
-                   FontSize="12"
-                   IsVisible="False"
-                   LineBreakMode="TailTruncation"/>
+                    <!-- Accessory slot: exactly one of the three is shown at a time. -->
+                    <Label x:Name="TrendLabel"
+                           IsVisible="False"
+                           FontFamily="QuicksandSemiBold"
+                           FontSize="14"
+                           HorizontalTextAlignment="End"/>
 
-            <controls:SparklineView x:Name="Sparkline" HeightRequest="26"/>
+                    <Border x:Name="StatusPillBorder"
+                            IsVisible="False"
+                            Style="{StaticResource StatusPill}"
+                            HorizontalOptions="End">
+                        <Label x:Name="StatusPillLabel"
+                               Style="{StaticResource StatusPillText}"/>
+                    </Border>
+
+                    <HorizontalStackLayout x:Name="StarRow"
+                                           IsVisible="False"
+                                           Spacing="3"
+                                           HorizontalOptions="End"/>
+
+                    <Label x:Name="CaptionLabel"
+                           Style="{StaticResource MetricRowCaption}"/>
+                </VerticalStackLayout>
+            </Grid>
+
+            <!-- Progress track. Only activity has a real denominator (the daily step goal), so
+                 only activity draws a bar — a bar on heart rate or sleep would need a
+                 percentage the contract does not carry, and inventing one on a health screen
+                 is exactly the sort of implied reading the product must not make. -->
+            <Border x:Name="ProgressTrackBorder"
+                    IsVisible="False"
+                    HeightRequest="7"
+                    BackgroundColor="{StaticResource ProgressTrack}"
+                    StrokeThickness="0"
+                    Padding="0">
+                <Border.StrokeShape>
+                    <RoundRectangle CornerRadius="12"/>
+                </Border.StrokeShape>
+                <Grid x:Name="ProgressGrid" ColumnDefinitions="0*,1*">
+                    <Border Grid.Column="0"
+                            Background="{StaticResource GradientButtonBrush}"
+                            StrokeThickness="0">
+                        <Border.StrokeShape>
+                            <RoundRectangle CornerRadius="12"/>
+                        </Border.StrokeShape>
+                    </Border>
+                </Grid>
+            </Border>
 
         </VerticalStackLayout>
     </Border>

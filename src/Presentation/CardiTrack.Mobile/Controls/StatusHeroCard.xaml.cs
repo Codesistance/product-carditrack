@@ -5,8 +5,6 @@ namespace CardiTrack.Mobile.Controls;
 
 public partial class StatusHeroCard : ContentView
 {
-    public event EventHandler? SyncRequested;
-
     /// <summary>Raised when the card body is tapped — the dashboard's route into M1-13.</summary>
     public event EventHandler? MemberTapped;
 
@@ -24,24 +22,28 @@ public partial class StatusHeroCard : ContentView
             ? $"Updated {RelativeTime.Format(synced)}"
             : "Not synced yet";
 
-        var (brush, icon, statusText) = data.HealthStatus switch
+        // Initials stay behind the photo rather than being replaced, so a photo that fails to
+        // load falls back to something rather than an empty tile. PhotoUrl is external data, so
+        // a relative or malformed value must fall back too rather than throw the whole load.
+        var hasPhoto = Uri.TryCreate(data.PhotoUrl, UriKind.Absolute, out var photoUri);
+        PhotoImage.Source = hasPhoto ? ImageSource.FromUri(photoUri!) : null;
+        PhotoImage.IsVisible = hasPhoto;
+
+        var (colorKey, icon, statusText) = data.HealthStatus switch
         {
-            "green" => ("HeroGreenBrush", "icon_status_check.svg", $"{firstName} is doing well"),
-            "yellow" => ("HeroYellowBrush", "icon_status_warning.svg", "Something looks a little different"),
-            "orange" => ("HeroOrangeBrush", "icon_status_urgent.svg", "You should check in"),
-            "red" => ("HeroRedBrush", "icon_status_critical.svg", $"Reach out to {firstName} now"),
+            "green" => ("StatusGreen", "icon_status_check.svg", $"{firstName} is doing well"),
+            "yellow" => ("StatusYellow", "icon_status_warning.svg", "Something looks a little different"),
+            "orange" => ("StatusOrange", "icon_status_urgent.svg", "You should check in"),
+            "red" => ("StatusRed", "icon_status_critical.svg", $"Reach out to {firstName} now"),
             // Paused is not a health reading — never dress it up as one.
-            "paused" => ("HeroPausedBrush", "icon_status_paused.svg", $"Monitoring is paused for {firstName}"),
-            _ => ("HeroUnknownBrush", "icon_status_check.svg", "Getting to know their routine"),
+            "paused" => ("StatusUnknown", "icon_status_paused.svg", $"Monitoring is paused for {firstName}"),
+            _ => ("StatusUnknown", "icon_status_check.svg", "Getting to know their routine"),
         };
 
-        HeroBorder.Background = (Brush)Microsoft.Maui.Controls.Application.Current!.Resources[brush];
+        StatusLabel.TextColor = (Color)Microsoft.Maui.Controls.Application.Current!.Resources[colorKey];
         StatusIcon.Source = icon;
         StatusLabel.Text = statusText;
     }
-
-    private void OnSyncClicked(object? sender, EventArgs e) =>
-        SyncRequested?.Invoke(this, EventArgs.Empty);
 
     private void OnCardTapped(object? sender, TappedEventArgs e) =>
         MemberTapped?.Invoke(this, EventArgs.Empty);

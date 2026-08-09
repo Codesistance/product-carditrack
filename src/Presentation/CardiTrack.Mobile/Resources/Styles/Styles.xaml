@@ -297,10 +297,80 @@
         </Setter>
     </Style>
 
+    <!-- Used by ConnectionSuccessPage's latest-data rows. M1-09's own metric rows moved to
+         Heading3, but this is not dashboard-only — leave it in place. -->
     <Style x:Key="MetricValue" TargetType="Label">
         <Setter Property="FontFamily" Value="QuicksandSemiBold"/>
         <Setter Property="FontSize" Value="20"/>
         <Setter Property="TextColor" Value="{StaticResource HeadingText}"/>
+    </Style>
+
+    <!-- ── M1-09 elevated card (Figma 101:2821 / 101:2854 / 101:2902) ──
+         The dashboard floats its cards on PageGround, so they carry elevation instead of
+         DashboardCard's hairline. Deliberately a second style rather than a change to
+         DashboardCard, which eight screens outside M1-09 depend on. -->
+    <Style x:Key="ElevatedCard" TargetType="Border">
+        <Setter Property="BackgroundColor" Value="{StaticResource White}"/>
+        <Setter Property="StrokeThickness" Value="0"/>
+        <Setter Property="Padding" Value="14,14,13,17"/>
+        <Setter Property="StrokeShape">
+            <RoundRectangle CornerRadius="20"/>
+        </Setter>
+        <Setter Property="Shadow">
+            <Shadow Brush="{StaticResource CardShadowBrush}" Opacity="0.15" Radius="14" Offset="0,4"/>
+        </Setter>
+    </Style>
+
+    <!-- Icon tile that opens a metric row or an alert card. -->
+    <Style x:Key="IconTile" TargetType="Border">
+        <Setter Property="StrokeThickness" Value="0"/>
+        <Setter Property="Padding" Value="10"/>
+        <Setter Property="StrokeShape">
+            <RoundRectangle CornerRadius="12"/>
+        </Setter>
+    </Style>
+
+    <Style x:Key="MetricRowLabel" TargetType="Label">
+        <Setter Property="FontFamily" Value="QuicksandMedium"/>
+        <Setter Property="FontSize" Value="14"/>
+        <Setter Property="TextColor" Value="{StaticResource HeadingText}"/>
+    </Style>
+
+    <!-- Right-hand caption under a metric pill ("68-75 bpm typical"). -->
+    <Style x:Key="MetricRowCaption" TargetType="Label">
+        <Setter Property="FontFamily" Value="QuicksandSemiBold"/>
+        <Setter Property="FontSize" Value="10"/>
+        <Setter Property="TextColor" Value="{StaticResource BodyText}"/>
+        <Setter Property="HorizontalTextAlignment" Value="End"/>
+    </Style>
+
+    <Style x:Key="StatusPill" TargetType="Border">
+        <Setter Property="StrokeThickness" Value="0"/>
+        <Setter Property="Padding" Value="8,1"/>
+        <Setter Property="StrokeShape">
+            <RoundRectangle CornerRadius="12"/>
+        </Setter>
+    </Style>
+
+    <Style x:Key="StatusPillText" TargetType="Label">
+        <Setter Property="FontFamily" Value="Quicksand"/>
+        <Setter Property="FontAttributes" Value="Bold"/>
+        <Setter Property="FontSize" Value="10"/>
+    </Style>
+
+    <Style x:Key="QuickActionLabel" TargetType="Label">
+        <Setter Property="FontFamily" Value="QuicksandMedium"/>
+        <Setter Property="FontSize" Value="14"/>
+        <Setter Property="TextColor" Value="{StaticResource HeadingText}"/>
+        <Setter Property="HorizontalTextAlignment" Value="Center"/>
+    </Style>
+
+    <Style x:Key="SectionLink" TargetType="Label">
+        <Setter Property="FontFamily" Value="QuicksandSemiBold"/>
+        <Setter Property="FontSize" Value="16"/>
+        <Setter Property="TextColor" Value="{StaticResource HeadingText}"/>
+        <Setter Property="TextDecorations" Value="Underline"/>
+        <Setter Property="VerticalTextAlignment" Value="Center"/>
     </Style>
 
     <Style x:Key="DashboardSectionTitle" TargetType="Label">

@@ -35,8 +35,9 @@ public partial class DashboardPage : ContentPage
         _api = api;
         _authService = authService;
         _popups = popups;
-        HeroCard.SyncRequested += (_, _) => _ = SyncAndReloadAsync();
         HeroCard.MemberTapped += (_, _) => OpenMemberDetails();
+        Header.RefreshRequested += OnRefreshClicked;
+        Header.BellTapped += OnBellClicked;
     }
 
     protected override void OnAppearing()
@@ -76,10 +77,22 @@ public partial class DashboardPage : ContentPage
             _ => "Good Evening",
         };
         var firstName = _authService.CurrentUserName?.Split(' ')[0];
-        GreetingLabel.Text = string.IsNullOrWhiteSpace(firstName)
+        Header.SetGreeting(string.IsNullOrWhiteSpace(firstName)
             ? timeOfDay
-            : $"{timeOfDay}, {firstName}";
+            : $"{timeOfDay}, {firstName}");
     }
+
+    /// <summary>
+    /// The header's presence line reports the CardiMember's monitoring state, not the
+    /// caregiver's session. Silence must never read as "Active now", so a paused member or a
+    /// disconnected device says so here rather than being left on the default.
+    /// </summary>
+    private static string PresenceFor(DashboardResponse data) => data switch
+    {
+        { MonitoringPaused: true } => "Monitoring paused",
+        { Device.HasActiveConnection: false } => "No device connected",
+        _ => "Active now",
+    };
 
     private async void OnPullToRefresh(object? sender, EventArgs e)
     {
@@ -107,7 +120,7 @@ public partial class DashboardPage : ContentPage
         if (_isSyncing)
             return;
         _isSyncing = true;
-        RefreshButton.IsEnabled = false;
+        Header.IsRefreshEnabled = false;
         Refresher.IsRefreshing = true;
 
         string? syncError = null;
@@ -132,7 +145,7 @@ public partial class DashboardPage : ContentPage
         finally
         {
             Refresher.IsRefreshing = false;
-            RefreshButton.IsEnabled = true;
+            Header.IsRefreshEnabled = true;
             _isSyncing = false;
         }
 
@@ -201,8 +214,8 @@ public partial class DashboardPage : ContentPage
     {
         HeroCard.Apply(data);
 
-        BellBadge.IsVisible = data.UnreadAlertCount > 0;
-        BellBadgeLabel.Text = data.UnreadAlertCount > 9 ? "9+" : data.UnreadAlertCount.ToString();
+        Header.SetUnreadCount(data.UnreadAlertCount);
+        Header.SetPresence(PresenceFor(data));
 
         var firstName = NameFormatting.FirstName(data.Name);
         CallLabel.Text = $"Call {firstName}";
@@ -241,14 +254,14 @@ public partial class DashboardPage : ContentPage
         // Metrics
         if (data.Metrics is { } metrics)
         {
-            MetricsGrid.IsVisible = true;
+            MetricsSection.IsVisible = true;
             StepsCard.ApplySteps(metrics.Steps);
             HeartRateCard.ApplyHeartRate(metrics.RestingHeartRate);
             SleepCard.ApplySleep(metrics.Sleep);
         }
         else
         {
-            MetricsGrid.IsVisible = false;
+            MetricsSection.IsVisible = false;
         }
 
         // Recent alerts
@@ -356,6 +369,14 @@ public partial class DashboardPage : ContentPage
     }
 
     private async void OnBellClicked(object? sender, EventArgs e) =>
+        await Shell.Current.GoToAsync(AppShell.AlertsRoute);
+
+    /// <summary>
+    /// Lands on M1-10, which is still a placeholder. The link renders anyway: hiding it would
+    /// make the screen diverge from the design for a reason no caregiver can see, and the
+    /// placeholder is the more honest signal that alerting is not finished.
+    /// </summary>
+    private async void OnViewAllAlertsTapped(object? sender, TappedEventArgs e) =>
         await Shell.Current.GoToAsync(AppShell.AlertsRoute);
 
     private async void OnAlertTapped(object? sender, Guid alertId) =>

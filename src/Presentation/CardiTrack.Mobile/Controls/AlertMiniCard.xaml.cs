@@ -19,16 +19,43 @@ public partial class AlertMiniCard : ContentView
         _alertId = alert.AlertId;
         TitleLabel.Text = alert.Title;
         TimeLabel.Text = RelativeTime.Format(alert.TriggeredAt);
-        StatusChip.Text = alert.IsAcknowledged ? "Acknowledged" : "New";
 
         var resources = Microsoft.Maui.Controls.Application.Current!.Resources;
-        SeverityBar.Color = alert.Severity switch
+
+        // Display names from AlertType; anything unmapped falls back to the warning glyph
+        // rather than to no icon, so the tile is never empty.
+        TypeIcon.Source = alert.Type switch
         {
-            "red" => (Color)resources["StatusRed"],
-            "orange" => (Color)resources["StatusOrange"],
-            "yellow" => (Color)resources["StatusYellow"],
-            _ => (Color)resources["StatusUnknown"],
+            "Inactivity" => "icon_metric_steps.svg",
+            "Heart Rate" => "icon_metric_heart.svg",
+            "Sleep" => "icon_metric_sleep.svg",
+            _ => "icon_status_warning.svg",
         };
+
+        var (tileKey, pillKey, inkKey) = alert.Severity switch
+        {
+            "red" => ("AlertTileRed", "PillRedBackground", "StatusRed"),
+            "orange" => ("AlertTileOrange", "PillOrangeBackground", "StatusOrange"),
+            "yellow" => ("AlertTileYellow", "PillYellowBackground", "StatusYellow"),
+            _ => ("AlertTileNeutral", "PillNeutralBackground", "StatusUnknown"),
+        };
+
+        IconTileBorder.BackgroundColor = (Color)resources[tileKey];
+
+        // An acknowledged alert reads as settled whatever its severity was; an open one keeps
+        // the severity colour so a red alert can't be mistaken for handled.
+        if (alert.IsAcknowledged)
+        {
+            StatusPillBorder.BackgroundColor = (Color)resources["PillGreenBackground"];
+            StatusPillLabel.TextColor = (Color)resources["StatusGreen"];
+            StatusPillLabel.Text = "Resolved";
+        }
+        else
+        {
+            StatusPillBorder.BackgroundColor = (Color)resources[pillKey];
+            StatusPillLabel.TextColor = (Color)resources[inkKey];
+            StatusPillLabel.Text = "New";
+        }
     }
 
     private void OnTapped(object? sender, EventArgs e) =>
