@@ -18,6 +18,14 @@ web_custom_domain = "app.dev.carditrack.com"
 cloud_run_cpu    = "1"
 cloud_run_memory = "512Mi"
 
+# MedGemma — dev runs the real model, not a stand-in, so that an assessment made here means
+# the same thing it will mean in prod. The value below is only the create seed: it gates
+# whether the service exists at all, and deploy-apps-dev.yml re-points the image on every
+# MedGemma build (the resource ignores image changes). Terraform has to create the service
+# first, because `gcloud run deploy` would otherwise create it at Cloud Run's 1 CPU /
+# 512 Mi default with no VPC attachment, and Terraform would then collide with it.
+medgemma_image = "us-docker.pkg.dev/cloudrun/container/hello"
+
 # Cloud SQL
 cloud_sql_tier                = "db-f1-micro" # Shared-core for dev
 cloud_sql_disk_size_gb        = 10
