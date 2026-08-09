@@ -191,7 +191,7 @@ Cloud Armor rules (dev, where the WAF exists): block requests not using a config
 
 ### MedGemma service
 
-MedGemma is served by **Ollama on Cloud Run (CPU)** — image built from `src/Infrastructure/MedGemma/Dockerfile`, which bakes the model tag from `.model-version` (`medgemma:4b`) into the image. Sizing: 8 vCPU / 16 Gi, max **1 instance** (Ollama cannot safely multi-instance), `cpu_idle = false`, startup CPU boost, internal-only ingress on port 8080. The service is created only when `medgemma_image` is non-empty. After each deploy, CI writes the service URL to the `carditrack-<env>-medgemma-service-url` secret, which the API consumes as `AI__Providers__0__BaseUrl`. See [llm_design.md](./llm_design.md) for the AI architecture.
+MedGemma is served by **Ollama on Cloud Run (CPU)** — image built from `src/Infrastructure/MedGemma/Dockerfile`, which bakes the model tag from `.model-version` (`medgemma:4b`) into the image. Sizing: 8 vCPU / 16 Gi, max **1 instance** (Ollama cannot safely multi-instance), min **0 instances** in both environments (`medgemma_min_instances`, deliberately not the shared `cloud_run_min_instances` that prod sets to 1), `cpu_idle = false`, startup CPU boost, internal-only ingress on port 8080. Scaling to zero means the first call after an idle period pays a cold start — image pull plus model load — which is why the API allows it `medgemma_timeout_seconds` (300s) rather than the 120s the other providers get. The service is created only when `medgemma_image` is non-empty; that variable seeds the create and CI owns the image afterwards, so Terraform must create the service before the first `gcloud run deploy` does. After each deploy, CI writes the service URL to the `carditrack-<env>-medgemma-service-url` secret, which the API consumes as `AI__Providers__0__BaseUrl`. See [llm_design.md](./llm_design.md) for the AI architecture.
 
 ### Common stack (shared across environments)
 
@@ -423,7 +423,7 @@ GCS buckets are versioned (main and dp-keys), providing object-level rollback.
 
 Precise figures depend on traffic; the cost structure is:
 
-- **Cloud Run** — request-based billing; dev scales to zero, prod keeps one warm instance per service. The MedGemma service (8 vCPU / 16 Gi, `cpu_idle = false`) is the largest single line item when deployed.
+- **Cloud Run** — request-based billing; dev scales to zero, prod keeps one warm instance per service **except MedGemma**. At 8 vCPU / 16 Gi with `cpu_idle = false`, a warm MedGemma instance would be the largest single line item on the bill, so `medgemma_min_instances` is 0 in both environments and the service bills only while an instance is alive. Raising it to 1 in prod is the lever to pull if MedGemma lands on a latency-sensitive path — and it is a real spend change, not a tuning tweak.
 - **Cloud SQL** — the dominant fixed cost: shared-core ZONAL in dev; 2 vCPU REGIONAL HA in prod (HA roughly doubles the instance cost).
 - **GCS** — negligible at current volumes (versioned STANDARD buckets, COLDLINE audit).
 - **Secret Manager / Pub/Sub / networking** — minor.

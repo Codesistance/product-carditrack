@@ -159,6 +159,16 @@ variable "medgemma_max_instances" {
   default     = 1
 }
 
+# Deliberately not cloud_run_min_instances: at 8 vCPU / 16 Gi with cpu_idle = false a warm
+# MedGemma instance is the largest line item on the bill, and prod sets that shared variable
+# to 1. Scaling to zero trades a cold start (image pull + model load) for paying only while
+# an instance is alive.
+variable "medgemma_min_instances" {
+  description = "Minimum number of MedGemma instances (0 scales to zero between requests)"
+  type        = number
+  default     = 0
+}
+
 # Resources
 resource "google_cloud_run_v2_service" "api" {
   name     = var.api_service_name
@@ -511,7 +521,7 @@ resource "google_cloud_run_v2_service" "medgemma" {
 
   template {
     scaling {
-      min_instance_count = var.cloud_run_min_instances
+      min_instance_count = var.medgemma_min_instances
       max_instance_count = var.medgemma_max_instances
     }
 

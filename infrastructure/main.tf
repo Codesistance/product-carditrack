@@ -76,7 +76,7 @@ module "deployments" {
       "AI__MedicalProvider"                 = "MedGemma"
       "AI__Providers__0__Name"              = "MedGemma"
       "AI__Providers__0__Model"             = "medgemma:4b"
-      "AI__Providers__0__TimeoutSeconds"    = "120"
+      "AI__Providers__0__TimeoutSeconds"    = tostring(var.medgemma_timeout_seconds)
       "AI__Providers__1__Name"              = "Gemini"
       "AI__Providers__1__BaseUrl"           = "https://generativelanguage.googleapis.com"
       "AI__Providers__1__Model"             = "gemini-2.0-flash"
@@ -220,4 +220,5 @@ module "deployments" {
   medgemma_cpu           = var.medgemma_cpu
   medgemma_memory        = var.medgemma_memory
   medgemma_max_instances = 1
+  medgemma_min_instances = var.medgemma_min_instances
 }

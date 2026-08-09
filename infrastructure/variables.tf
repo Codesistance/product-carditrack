@@ -351,3 +351,20 @@ variable "medgemma_memory" {
   type        = string
   default     = "16Gi"
 }
+
+# Kept separate from cloud_run_min_instances so prod can keep a warm API/Web/Worker without
+# also paying for a warm 8 vCPU / 16 Gi inference box. Raise to 1 once MedGemma is on a
+# latency-sensitive path; until then a cold start is the cheaper trade.
+variable "medgemma_min_instances" {
+  description = "Minimum number of MedGemma instances (0 scales to zero between requests)"
+  type        = number
+  default     = 0
+}
+
+# Ceiling for a MedGemma call from the API. Sized for a cold start: the startup probe alone
+# allows up to 150s (30s initial delay + 12 x 10s), and generation follows it.
+variable "medgemma_timeout_seconds" {
+  description = "HTTP client timeout the API applies to MedGemma calls"
+  type        = number
+  default     = 300
+}
