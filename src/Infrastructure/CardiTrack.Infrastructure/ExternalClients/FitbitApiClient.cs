@@ -299,6 +299,58 @@ public class FitbitApiClient : IFitbitApiClient, IDeviceApiClient
     }
 
     /// <summary>
+    /// The sub-daily series for one civil day: heart rate and SpO2 as timestamped samples, steps
+    /// and active-zone-minutes as intervals stamped at their start. Four list calls, concurrent.
+    /// </summary>
+    /// <remarks>
+    /// Field names verified against the v4 discovery document like everything else here:
+    /// `heart-rate` is a Sample type carrying `beatsPerMinute` (int64 — a JSON string on the
+    /// wire); `steps` an Interval type carrying `count` (int64); `active-zone-minutes` an
+    /// Interval type carrying `activeZoneMinutes` (int64) *per heart-rate zone*, so one instant
+    /// can appear once per zone and consumers sum them; `oxygen-saturation` a Sample type
+    /// carrying `percentage` (double).
+    /// <para>
+    /// Each series tolerates a wearer whose device records no such data type — granular series
+    /// are enrichment over the daily snapshot, and an absent type is a fact about the device. A
+    /// malformed-request 400 still throws, for the same reason it does everywhere else in this
+    /// client: a bug in a filter built here must surface as a sync error, not read as a device
+    /// without sensors forever.
+    /// </para>
+    /// </remarks>
+    public async Task<DeviceGranularDay> GetGranularDayAsync(string accessToken, DateOnly date)
+    {
+        var heartRateTask = OptionalSeriesAsync(() =>
+            TimestampedSamplesAsync(accessToken, "heart-rate", "heartRate", "beatsPerMinute", date));
+        var stepsTask = OptionalSeriesAsync(() =>
+            IntervalSamplesAsync(accessToken, "steps", "steps", "count", date));
+        var activeZoneMinutesTask = OptionalSeriesAsync(() =>
+            IntervalSamplesAsync(accessToken, "active-zone-minutes", "activeZoneMinutes", "activeZoneMinutes", date));
+        var spO2Task = OptionalSeriesAsync(() =>
+            TimestampedSamplesAsync(accessToken, "oxygen-saturation", "oxygenSaturation", "percentage", date));
+        await Task.WhenAll(heartRateTask, stepsTask, activeZoneMinutesTask, spO2Task);
+
+        return new DeviceGranularDay(
+            heartRateTask.Result,
+            stepsTask.Result,
+            activeZoneMinutesTask.Result,
+            spO2Task.Result);
+    }
+
+    /// <summary>Empty series, rather than a failed day, for a device without the data type.</summary>
+    private static async Task<IReadOnlyList<GranularSample>> OptionalSeriesAsync(
+        Func<Task<IReadOnlyList<GranularSample>>> read)
+    {
+        try
+        {
+            return await read();
+        }
+        catch (FitbitApiException ex) when (IsAbsentDataType(ex))
+        {
+            return [];
+        }
+    }
+
+    /// <summary>
     /// POSTs a one-day dailyRollUp for a data type and returns the rollup point's union value
     /// object (e.g. the "heartRate" member for data type "heart-rate"), or null when the day has
     /// no data. The union member is the camelCase form of the kebab-case data type name.
@@ -439,34 +491,103 @@ public class FitbitApiClient : IFitbitApiClient, IDeviceApiClient
 
     /// <summary>
     /// Every value of <paramref name="field"/> across a **Sample** data type's points for one civil
-    /// day, following pagination.
+    /// day. Values only — the timestamped variant below serves the granular reads.
+    /// </summary>
+    private async Task<List<decimal>> SampleSeriesAsync(
+        string accessToken, string dataType, string unionMember, string field, DateOnly date)
+    {
+        var points = await ListDataPointsAsync(accessToken, dataType, SampleDayFilter(dataType, date), date);
+        return points
+            .Select(point => ReadDecimal(point[unionMember], field))
+            .Where(value => value.HasValue)
+            .Select(value => value!.Value)
+            .ToList();
+    }
+
+    /// <summary>
+    /// Timestamped readings of a **Sample** data type for one civil day — the granular series the
+    /// minute-grid substrate stores. The instant is <c>sampleTime.physicalTime</c> (RFC-3339,
+    /// parsed to UTC): the civil sibling is output-only presentation, and hour vectors bucket by
+    /// UTC. A point missing its time or value is skipped — the schema marks both Required, so an
+    /// absence is a malformed point, and a reading that cannot be placed on the clock cannot be
+    /// bucketed either.
+    /// </summary>
+    private async Task<IReadOnlyList<GranularSample>> TimestampedSamplesAsync(
+        string accessToken, string dataType, string unionMember, string field, DateOnly date)
+    {
+        var points = await ListDataPointsAsync(accessToken, dataType, SampleDayFilter(dataType, date), date);
+        return points
+            .Select(point => ToSample(
+                ParseInstantUtc(point[unionMember]?["sampleTime"]?.Value<string>("physicalTime")),
+                ReadDecimal(point[unionMember], field)))
+            .OfType<GranularSample>()
+            .ToList();
+    }
+
+    /// <summary>
+    /// Timestamped readings of an **Interval** data type for one civil day, stamped at each
+    /// interval's <c>interval.startTime</c>. Filtered on
+    /// <c>{data_type}.interval.civil_start_time</c> — the interval twin of the sample filter, same
+    /// civil-day semantics.
+    /// </summary>
+    private async Task<IReadOnlyList<GranularSample>> IntervalSamplesAsync(
+        string accessToken, string dataType, string unionMember, string field, DateOnly date)
+    {
+        var points = await ListDataPointsAsync(accessToken, dataType, IntervalDayFilter(dataType, date), date);
+        return points
+            .Select(point => ToSample(
+                ParseInstantUtc(point[unionMember]?["interval"]?.Value<string>("startTime")),
+                ReadDecimal(point[unionMember], field)))
+            .OfType<GranularSample>()
+            .ToList();
+    }
+
+    private static GranularSample? ToSample(DateTime? timeUtc, decimal? value) =>
+        timeUtc.HasValue && value.HasValue
+            ? new GranularSample(timeUtc.Value, (float)value.Value)
+            : null;
+
+    private static string SampleDayFilter(string dataType, DateOnly date)
+    {
+        var member = ToSnakeCase(dataType);
+        return $"{member}.sample_time.civil_time >= \"{date:yyyy-MM-dd}\" AND {member}.sample_time.civil_time < \"{date.AddDays(1):yyyy-MM-dd}\"";
+    }
+
+    private static string IntervalDayFilter(string dataType, DateOnly date)
+    {
+        var member = ToSnakeCase(dataType);
+        return $"{member}.interval.civil_start_time >= \"{date:yyyy-MM-dd}\" AND {member}.interval.civil_start_time < \"{date.AddDays(1):yyyy-MM-dd}\"";
+    }
+
+    /// <summary>
+    /// Lists a data type's points for one civil day, following pagination. The one paginated read
+    /// in this client — every series projection above goes through it.
     /// </summary>
     /// <remarks>
-    /// A sample type is filtered on <c>{data_type}.sample_time.civil_time</c> — civil, matching the
-    /// wearer's local day the way the rollup ranges and the sleep filter do, so a night's readings
-    /// are not split across two UTC days.
+    /// Filters are civil, matching the wearer's local day the way the rollup ranges and the sleep
+    /// filter do, so a night's readings are not split across two UTC days.
     /// <para>
     /// Pagination is followed rather than assumed away: the response caps at
     /// <see cref="SamplePageSize"/> points and a silently dropped tail would understate a maximum
     /// and overstate a minimum. Past <see cref="SampleSeriesCap"/> the read throws instead of
-    /// looping on or returning early — a civil day cannot legitimately hold that many readings, so
-    /// the request is selecting more than one day, and neither more pages nor a truncated series
-    /// would yield the day's figures.
+    /// looping on or returning early — a civil day cannot legitimately hold that many readings
+    /// (a 1-minute cadence yields 1,440), so the request is selecting more than one day, and
+    /// neither more pages nor a truncated series would yield the day's figures. Stopping at the
+    /// cap and returning what we have would report statistics over an arbitrary prefix of a longer
+    /// window as the day's figures — wrong data, silently, for as long as the cause persists.
     /// </para>
     /// </remarks>
-    private async Task<List<decimal>> SampleSeriesAsync(
-        string accessToken, string dataType, string unionMember, string field, DateOnly date)
+    private async Task<List<JObject>> ListDataPointsAsync(
+        string accessToken, string dataType, string filter, DateOnly date)
     {
-        var member = ToSnakeCase(dataType);
-        var filter = Uri.EscapeDataString(
-            $"{member}.sample_time.civil_time >= \"{date:yyyy-MM-dd}\" AND {member}.sample_time.civil_time < \"{date.AddDays(1):yyyy-MM-dd}\"");
+        var escapedFilter = Uri.EscapeDataString(filter);
 
-        var values = new List<decimal>();
+        var points = new List<JObject>();
         string? pageToken = null;
         do
         {
             var url =
-                $"/v4/users/me/dataTypes/{dataType}/dataPoints?pageSize={SamplePageSize}&filter={filter}";
+                $"/v4/users/me/dataTypes/{dataType}/dataPoints?pageSize={SamplePageSize}&filter={escapedFilter}";
             if (!string.IsNullOrEmpty(pageToken))
                 url += $"&pageToken={Uri.EscapeDataString(pageToken)}";
 
@@ -477,31 +598,22 @@ public class FitbitApiClient : IFitbitApiClient, IDeviceApiClient
             await EnsureSuccessAsync(response);
 
             var root = await ParseBodyAsync(response, dataType);
-            foreach (var point in (root["dataPoints"] as JArray)?.OfType<JObject>() ?? [])
-            {
-                if (ReadDecimal(point[unionMember], field) is { } value)
-                    values.Add(value);
-            }
+            points.AddRange((root["dataPoints"] as JArray)?.OfType<JObject>() ?? []);
 
             pageToken = root.Value<string>("nextPageToken");
 
-            // Stopping at the cap and returning what we have would compute the day's average, min
-            // and max over an arbitrary prefix of a longer window and report them as the day's
-            // figures — wrong data, silently, for as long as the cause persists. The cap is only
-            // reachable when the request is selecting more than the civil day it asked for, so this
-            // is a fault to surface, not a limit to absorb.
-            if (!string.IsNullOrEmpty(pageToken) && values.Count >= SampleSeriesCap)
+            if (!string.IsNullOrEmpty(pageToken) && points.Count >= SampleSeriesCap)
             {
                 throw new FitbitApiException(
                     0,
-                    $"Google Health API {dataType} returned more than {SampleSeriesCap} samples for "
+                    $"Google Health API {dataType} returned more than {SampleSeriesCap} points for "
                     + $"{date:yyyy-MM-dd} and still had pages outstanding. A single civil day cannot "
                     + "hold that many readings, so the request is selecting more than one day.");
             }
         }
         while (!string.IsNullOrEmpty(pageToken));
 
-        return values;
+        return points;
     }
 
     /// <summary>

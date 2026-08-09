@@ -1121,4 +1121,208 @@ public class FitbitApiClientTests
         Assert.Equal(480, snapshot.SedentaryMinutes);
         Assert.Null(snapshot.StressScore);
     }
+
+    // ── Granular day ─────────────────────────────────────────────────────────────
+    //
+    // The sub-daily series feeding GranularMetricHours. Field names and record shapes below are
+    // the v4 discovery document's, same as everywhere else in this file: a sample carries its
+    // instant under sampleTime.physicalTime, an interval under interval.startTime, and every
+    // int64 value crosses the wire as a JSON string.
+
+    private static string ListPoints(string unionMember, params string[] valueJson)
+    {
+        var points = string.Join(",", valueJson.Select(v => $$"""{ "{{unionMember}}": {{v}} }"""));
+        return $$"""{ "dataPoints": [ {{points}} ] }""";
+    }
+
+    private static IDeviceApiClient GranularSut(RoutedFakeHttpHandler? handler = null) =>
+        (IDeviceApiClient)CreateSut(handler).Sut;
+
+    [Fact]
+    public async Task GetGranularDayAsync_ParsesHeartRateSamples_TimeAndInt64Value()
+    {
+        var handler = new RoutedFakeHttpHandler()
+            .Map("/dataTypes/heart-rate/", ListPoints("heartRate",
+                """{ "sampleTime": { "physicalTime": "2026-08-05T10:05:00Z" }, "beatsPerMinute": "72" }""",
+                """{ "sampleTime": { "physicalTime": "2026-08-05T10:06:00Z" }, "beatsPerMinute": "74" }"""));
+
+        var day = await GranularSut(handler).GetGranularDayAsync("token", new DateOnly(2026, 8, 5));
+
+        Assert.Equal(2, day.HeartRate.Count);
+        Assert.Equal(new DateTime(2026, 8, 5, 10, 5, 0, DateTimeKind.Utc), day.HeartRate[0].TimeUtc);
+        Assert.Equal(72f, day.HeartRate[0].Value);
+        Assert.Equal(74f, day.HeartRate[1].Value);
+        Assert.True(day.HasAnyData);
+    }
+
+    [Fact]
+    public async Task GetGranularDayAsync_StampsIntervalTypesAtTheirStart()
+    {
+        var handler = new RoutedFakeHttpHandler()
+            .Map("/dataTypes/steps/", ListPoints("steps",
+                """
+                {
+                  "interval": { "startTime": "2026-08-05T09:00:00Z", "endTime": "2026-08-05T09:01:00Z" },
+                  "count": "83"
+                }
+                """));
+
+        var day = await GranularSut(handler).GetGranularDayAsync("token", new DateOnly(2026, 8, 5));
+
+        var sample = Assert.Single(day.Steps);
+        Assert.Equal(new DateTime(2026, 8, 5, 9, 0, 0, DateTimeKind.Utc), sample.TimeUtc);
+        Assert.Equal(83f, sample.Value);
+    }
+
+    // AZM arrives once per heart-rate zone, so one instant can legitimately appear twice; both
+    // entries are kept because they are additive quantities the bucketing sums.
+    [Fact]
+    public async Task GetGranularDayAsync_KeepsOnePointPerZone_ForActiveZoneMinutes()
+    {
+        var handler = new RoutedFakeHttpHandler()
+            .Map("/dataTypes/active-zone-minutes/", ListPoints("activeZoneMinutes",
+                """
+                {
+                  "interval": { "startTime": "2026-08-05T17:30:00Z", "endTime": "2026-08-05T17:31:00Z" },
+                  "heartRateZone": "FAT_BURN",
+                  "activeZoneMinutes": "1"
+                }
+                """,
+                """
+                {
+                  "interval": { "startTime": "2026-08-05T17:30:00Z", "endTime": "2026-08-05T17:31:00Z" },
+                  "heartRateZone": "CARDIO",
+                  "activeZoneMinutes": "2"
+                }
+                """));
+
+        var day = await GranularSut(handler).GetGranularDayAsync("token", new DateOnly(2026, 8, 5));
+
+        Assert.Equal(2, day.ActiveZoneMinutes.Count);
+        Assert.Equal(day.ActiveZoneMinutes[0].TimeUtc, day.ActiveZoneMinutes[1].TimeUtc);
+        Assert.Equal(3f, day.ActiveZoneMinutes.Sum(s => s.Value));
+    }
+
+    [Fact]
+    public async Task GetGranularDayAsync_ParsesSpO2Percentage()
+    {
+        var handler = new RoutedFakeHttpHandler()
+            .Map("/dataTypes/oxygen-saturation/", ListPoints("oxygenSaturation",
+                """{ "sampleTime": { "physicalTime": "2026-08-05T03:10:00Z" }, "percentage": 95.5 }"""));
+
+        var day = await GranularSut(handler).GetGranularDayAsync("token", new DateOnly(2026, 8, 5));
+
+        var sample = Assert.Single(day.SpO2);
+        Assert.Equal(95.5f, sample.Value);
+    }
+
+    /// <summary>
+    /// The filter grammar is the one place the API's naming convention flips to snake_case, and
+    /// sample and interval types filter on different member paths — pinned per type, on a month
+    /// boundary so the exclusive bound's rollover is exercised too.
+    /// </summary>
+    [Theory]
+    [InlineData("heart-rate", """heart_rate.sample_time.civil_time >= "2026-08-31" AND heart_rate.sample_time.civil_time < "2026-09-01" """)]
+    [InlineData("steps", """steps.interval.civil_start_time >= "2026-08-31" AND steps.interval.civil_start_time < "2026-09-01" """)]
+    [InlineData("active-zone-minutes", """active_zone_minutes.interval.civil_start_time >= "2026-08-31" AND active_zone_minutes.interval.civil_start_time < "2026-09-01" """)]
+    [InlineData("oxygen-saturation", """oxygen_saturation.sample_time.civil_time >= "2026-08-31" AND oxygen_saturation.sample_time.civil_time < "2026-09-01" """)]
+    public async Task GetGranularDayAsync_PinsTheGranularFilters(string dataType, string expectedFilter)
+    {
+        var (sut, handler) = CreateSut();
+
+        await ((IDeviceApiClient)sut).GetGranularDayAsync("token", new DateOnly(2026, 8, 31));
+
+        var request = handler.Requests.Single(r =>
+            r.RequestUri!.AbsolutePath.Contains($"/dataTypes/{dataType}/"));
+        Assert.Equal(HttpMethod.Get, request.Method);
+        Assert.Equal(expectedFilter.TrimEnd(), FilterOf(request));
+    }
+
+    [Fact]
+    public async Task GetGranularDayAsync_ToleratesAbsentDataTypes()
+    {
+        var handler = new RoutedFakeHttpHandler()
+            .Map("/dataTypes/heart-rate/", """{ "error": { "status": "NOT_FOUND" } }""",
+                HttpStatusCode.NotFound)
+            .Map("/dataTypes/steps/", """
+                { "error": { "code": 400, "message": "Data type not available for this user." } }
+                """, HttpStatusCode.BadRequest)
+            .Map("/dataTypes/active-zone-minutes/", """{ "error": { "status": "NOT_FOUND" } }""",
+                HttpStatusCode.NotFound)
+            .Map("/dataTypes/oxygen-saturation/", """{ "error": { "status": "NOT_FOUND" } }""",
+                HttpStatusCode.NotFound);
+
+        var day = await GranularSut(handler).GetGranularDayAsync("token", Today);
+
+        Assert.False(day.HasAnyData);
+        Assert.Empty(day.HeartRate);
+        Assert.Empty(day.Steps);
+        Assert.Empty(day.ActiveZoneMinutes);
+        Assert.Empty(day.SpO2);
+    }
+
+    // Same rule as everywhere else in this client: a 400 carrying field violations is a bug in a
+    // filter built here, and tolerating it would read as a device without sensors forever.
+    [Fact]
+    public async Task GetGranularDayAsync_Throws_WhenRequestIsMalformed()
+    {
+        var handler = new RoutedFakeHttpHandler()
+            .Map("/dataTypes/heart-rate/", """
+                {
+                  "error": {
+                    "code": 400,
+                    "status": "INVALID_ARGUMENT",
+                    "details": [
+                      {
+                        "@type": "type.googleapis.com/google.rpc.BadRequest",
+                        "fieldViolations": [ { "field": "filter", "description": "Unknown field." } ]
+                      }
+                    ]
+                  }
+                }
+                """, HttpStatusCode.BadRequest);
+
+        var ex = await Assert.ThrowsAsync<FitbitApiException>(
+            () => GranularSut(handler).GetGranularDayAsync("token", Today));
+        Assert.True(ex.IsMalformedRequest);
+    }
+
+    // The schema marks both time and value Required, so a point missing either is malformed —
+    // and a reading that cannot be placed on the clock cannot be bucketed into a minute grid.
+    [Fact]
+    public async Task GetGranularDayAsync_SkipsPointsMissingTimeOrValue()
+    {
+        var handler = new RoutedFakeHttpHandler()
+            .Map("/dataTypes/heart-rate/", ListPoints("heartRate",
+                """{ "beatsPerMinute": "72" }""",
+                """{ "sampleTime": { "physicalTime": "2026-08-05T10:06:00Z" } }""",
+                """{ "sampleTime": { "physicalTime": "2026-08-05T10:07:00Z" }, "beatsPerMinute": "75" }"""));
+
+        var day = await GranularSut(handler).GetGranularDayAsync("token", new DateOnly(2026, 8, 5));
+
+        var sample = Assert.Single(day.HeartRate);
+        Assert.Equal(75f, sample.Value);
+    }
+
+    [Fact]
+    public async Task GetGranularDayAsync_FollowsPagination()
+    {
+        var page1 = $$"""
+            {
+              "dataPoints": [
+                { "heartRate": { "sampleTime": { "physicalTime": "2026-08-05T10:05:00Z" }, "beatsPerMinute": "72" } }
+              ],
+              "nextPageToken": "page-2"
+            }
+            """;
+        var page2 = ListPoints("heartRate",
+            """{ "sampleTime": { "physicalTime": "2026-08-05T10:06:00Z" }, "beatsPerMinute": "74" }""");
+        var handler = new RoutedFakeHttpHandler()
+            .MapSequence("/dataTypes/heart-rate/", page1, page2);
+
+        var day = await GranularSut(handler).GetGranularDayAsync("token", new DateOnly(2026, 8, 5));
+
+        Assert.Equal(2, day.HeartRate.Count);
+        Assert.Equal(74f, day.HeartRate[1].Value);
+    }
 }
