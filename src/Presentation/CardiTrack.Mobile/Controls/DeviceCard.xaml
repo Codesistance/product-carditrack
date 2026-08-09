@@ -51,15 +51,47 @@
                        VerticalOptions="Start"/>
             </Grid>
 
-            <!-- Datasets this connection shares, one pill each, coloured by family. Full card
-                 width rather than inside the identity grid: nine pills in the name column would
-                 stack almost one per line. -->
-            <FlexLayout x:Name="DatasetPills"
-                        Direction="Row"
-                        Wrap="Wrap"
-                        JustifyContent="Start"
-                        AlignItems="Center"
-                        AlignContent="Start"/>
+            <!-- What this connection shares: one pill per dataset family, not per dataset. Full
+                 card width rather than inside the identity grid — even summary pills read better
+                 on their own line than squeezed beside the device name. The per-dataset names sit
+                 one tap away, so the card answers "is heart data coming in?" at a glance and
+                 "which heart readings?" on demand. -->
+            <VerticalStackLayout Spacing="8">
+
+                <!-- The header alone carries the tap: it is also where the disclosure state is
+                     announced, and an accessibility activation is delivered to the focused
+                     element rather than replayed as a touch that bubbles — a gesture on the
+                     container would leave the announced affordance unactivatable. Full card
+                     width and 28 high so the target stays comfortable, and so a tap on a pill or
+                     on the detail text the user is reading does not collapse the panel. The
+                     description stays off the container for the same reason it always did: it
+                     would fold the pills into one accessibility element and swallow theirs. -->
+                <Grid x:Name="SharingHeader" ColumnDefinitions="*,Auto" HeightRequest="28">
+                    <Grid.GestureRecognizers>
+                        <TapGestureRecognizer Tapped="OnSharingTapped"/>
+                    </Grid.GestureRecognizers>
+                    <Label Text="SHARING"
+                           FontFamily="QuicksandSemiBold"
+                           FontSize="9"
+                           TextColor="{StaticResource MutedText}"
+                           VerticalTextAlignment="Center"/>
+                    <Image x:Name="SharingChevron"
+                           Grid.Column="1"
+                           Source="icon_chevron_down.svg"
+                           WidthRequest="16" HeightRequest="16"
+                           VerticalOptions="Center"/>
+                </Grid>
+
+                <FlexLayout x:Name="DatasetPills"
+                            Direction="Row"
+                            Wrap="Wrap"
+                            JustifyContent="Start"
+                            AlignItems="Center"
+                            AlignContent="Start"/>
+
+                <!-- One line per family, revealed by the chevron. -->
+                <VerticalStackLayout x:Name="SharingDetail" Spacing="4" IsVisible="False"/>
+            </VerticalStackLayout>
 
             <!-- Stats. Battery is absent by design — no provider battery level is stored. -->
             <Grid ColumnDefinitions="*,*,*" ColumnSpacing="8">

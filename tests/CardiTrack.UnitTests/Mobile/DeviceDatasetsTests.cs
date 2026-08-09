@@ -19,8 +19,8 @@ public class DeviceDatasetsTests
         Assert.Equal(
             ["Steps", "Distance", "Active Minutes", "Floors", "Calories",
              "Heart Rate", "Resting HR",
-             "SpO2", "VO2 Max", "Breathing Rate", "Temperature",
-             "Sleep", "Sleep Stages"],
+             "Sleep", "Sleep Stages",
+             "SpO2", "VO2 Max", "Breathing Rate", "Temperature"],
             datasets.Select(d => d.Name));
     }
 
@@ -33,8 +33,8 @@ public class DeviceDatasetsTests
             [DatasetFamily.Activity, DatasetFamily.Activity, DatasetFamily.Activity,
              DatasetFamily.Activity, DatasetFamily.Activity,
              DatasetFamily.Heart, DatasetFamily.Heart,
-             DatasetFamily.Body, DatasetFamily.Body, DatasetFamily.Body, DatasetFamily.Body,
-             DatasetFamily.Sleep, DatasetFamily.Sleep],
+             DatasetFamily.Sleep, DatasetFamily.Sleep,
+             DatasetFamily.Body, DatasetFamily.Body, DatasetFamily.Body, DatasetFamily.Body],
             datasets.Select(d => d.Family));
     }
 
@@ -148,5 +148,82 @@ public class DeviceDatasetsTests
     {
         Assert.Empty(DeviceDatasets.For([]));
         Assert.Empty(DeviceDatasets.For(null));
+    }
+
+    [Fact]
+    public void GroupedFor_FullFitbitGrant_CollapsesThirteenDatasetsToFourPills()
+    {
+        var groups = DeviceDatasets.GroupedFor([ActivityScope, MetricsScope, SleepScope]);
+
+        Assert.Equal(
+            [DatasetFamily.Activity, DatasetFamily.Heart, DatasetFamily.Sleep, DatasetFamily.Body],
+            groups.Select(g => g.Family));
+        Assert.Equal(["Activity", "Heart", "Sleep", "Body"], groups.Select(g => g.Label));
+        Assert.Equal([5, 2, 2, 4], groups.Select(g => g.Count));
+    }
+
+    // Issue #82 added four body readings to health_metrics_and_measurements. Under the family row
+    // those four cost one pill between them, not four — the guard that the row stays bounded as
+    // the mapping grows. Had Weight also been granted, Body would already exist and they would
+    // cost none.
+    [Fact]
+    public void GroupedFor_FourBodyReadingsAddedByIssue82_CostOnePillBetweenThem()
+    {
+        var withoutBody = DeviceDatasets.GroupedFor([ActivityScope, "heartrate", SleepScope]);
+        var withBody = DeviceDatasets.GroupedFor([ActivityScope, MetricsScope, SleepScope]);
+
+        Assert.Equal(3, withoutBody.Count);
+        Assert.Equal(4, withBody.Count);
+        Assert.Equal(9, withoutBody.Sum(g => g.Datasets.Count));
+        Assert.Equal(13, withBody.Sum(g => g.Datasets.Count));
+    }
+
+    [Fact]
+    public void GroupedFor_FamilyWithOneDataset_LabelsThePillWithTheDatasetNotTheFamily()
+    {
+        var group = Assert.Single(DeviceDatasets.GroupedFor(["weight"]));
+
+        Assert.Equal("Weight", group.Label);
+        Assert.Null(group.Count);
+    }
+
+    [Fact]
+    public void GroupedFor_ScopeOrder_DoesNotChangeTheFamilyOrder()
+    {
+        string[] every = [SleepScope, "weight", MetricsScope, ActivityScope, "profile"];
+
+        Assert.Equal(
+            ["Activity", "Heart", "Sleep", "Body", "Other"],
+            DeviceDatasets.GroupedFor(every.Reverse())
+                .Select(g => DeviceDatasetGroup.DisplayName(g.Family)));
+    }
+
+    [Fact]
+    public void GroupedFor_UnknownScopes_ShareTheOtherPill()
+    {
+        var groups = DeviceDatasets.GroupedFor([SleepScope, "irregular_rhythm", "something_new"]);
+
+        var other = Assert.Single(groups, g => g.Family == DatasetFamily.Other);
+        Assert.Equal("Other", other.Label);
+        Assert.Equal(2, other.Count);
+        Assert.Equal("Irregular Rhythm · Something New", other.Detail);
+    }
+
+    [Fact]
+    public void GroupedFor_Detail_ListsTheDatasetsBehindThePill()
+    {
+        var groups = DeviceDatasets.GroupedFor([MetricsScope]);
+
+        Assert.Equal("Heart Rate · Resting HR",
+            Assert.Single(groups, g => g.Family == DatasetFamily.Heart).Detail);
+        Assert.Equal("SpO2 · VO2 Max · Breathing Rate · Temperature",
+            Assert.Single(groups, g => g.Family == DatasetFamily.Body).Detail);
+    }
+
+    [Fact]
+    public void GroupedFor_NoScopes_ReturnsEmpty()
+    {
+        Assert.Empty(DeviceDatasets.GroupedFor([]));
+        Assert.Empty(DeviceDatasets.GroupedFor(null));
     }
 }
