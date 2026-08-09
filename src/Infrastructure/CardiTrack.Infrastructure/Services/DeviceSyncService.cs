@@ -49,7 +49,13 @@ public class DeviceSyncService : IDeviceSyncService
         // caller.
         var accessToken = await _tokenRefresh.RefreshIfExpiredAsync(connection, providerConfig);
 
-        var lookbackDays = Math.Max(1, providerConfig.SyncLookbackDays);
+        // The trailing repair days are re-fetched once a UTC day, not on every pull. They exist to
+        // catch a provider revising a *finished* day, which happens on the order of hours — paying
+        // for them every ten minutes would spend the whole per-user quota re-reading numbers that
+        // cannot have moved. Today is pulled every time, which is the part a caregiver sees.
+        var needsRepairPass = connection.LastSyncDate is not { } last
+            || DateOnly.FromDateTime(last) != DateOnly.FromDateTime(DateTime.UtcNow);
+        var lookbackDays = needsRepairPass ? Math.Max(1, providerConfig.SyncLookbackDays) : 0;
 
         try
         {
@@ -103,9 +109,14 @@ public class DeviceSyncService : IDeviceSyncService
     /// not a reason to withhold them: <c>DashboardService</c> suppresses the
     /// compare-against-baseline reading for a day still in progress, and baselines are calculated
     /// over completed days only. What providers finalise after midnight is instead covered by the
-    /// trailing days, which reach back <paramref name="lookbackDays"/> complete days — unchanged,
-    /// so a day missed while the puller was down is still picked up on a later run rather than
-    /// being lost for good.
+    /// trailing days, which reach back <paramref name="lookbackDays"/> complete days, so a day
+    /// missed while the puller was down is still picked up on a later run rather than being lost
+    /// for good.
+    /// </para>
+    /// <para>
+    /// <paramref name="lookbackDays"/> of 0 fetches today alone. That is the routine case: callers
+    /// pass the trailing days only on the first pull of a UTC day, because re-reading finished days
+    /// every ten minutes costs a per-user quota that today's numbers have a better claim on.
     /// </para>
     /// </remarks>
     private async Task PullWindowAsync(DeviceConnection connection, string accessToken, int lookbackDays)

@@ -8,7 +8,7 @@ Two workers are registered today:
 
 | Worker | Default cron (UTC) | Purpose |
 |---|---|---|
-| `WearableSyncWorker` | `0 */30 * * * *` (every 30 min) | Polls due device connections and syncs wearable data |
+| `WearableSyncWorker` | `0 */10 * * * *` (every 10 min) | Polls due device connections and syncs wearable data |
 | `OrphanedOrganizationCleanupWorker` | `0 0 3 * * *` (daily 03:00) | Deletes organizations stranded by a failed onboarding |
 | `BaselineCalculationWorker` | `0 30 2 * * 0` (Sunday 02:30) | Recalculates each member's 30/60/90-day `PatternBaseline` |
 | `DeviceSyncAuditWorker` | `0 0 4 * * 0` (Sunday 04:00) | Re-fetches a small random sample over a 14-day window to measure how far back each provider revises data |
@@ -165,7 +165,7 @@ public class WearableSyncWorker : CronBackgroundService
 
 Each sync goes through `DeviceSyncService`, which first refreshes the connection's OAuth token via `OAuthTokenRefreshService` when needed — token refresh is part of the sync path, not a standalone job.
 
-It then fetches a **trailing window** of days rather than a single day. The window ends at **today** — so the dashboard's Key Metrics move during the day rather than sitting on a completed day until midnight — and reaches back `DeviceProviders:<provider>:SyncLookbackDays` (default **3**) complete days, which is what covers providers finalising a day only after midnight. Days are fetched oldest first; each is written to `DeviceActivityLogs` and saved, then that member-day is re-merged into `ActivityLogs`. The raw row is saved before the merge runs because the merge reads every device's *stored* row for the day. A provider failure part-way through still leaves the earlier days stored; `LastSyncDate` is stamped only once the whole window lands, which keeps a partially-synced connection due for retry instead of silently leaving a hole.
+It then fetches **today** — so the dashboard's Key Metrics move during the day rather than sitting on a completed day until midnight — and, on the first pull of each UTC day, a **trailing window** reaching back `DeviceProviders:<provider>:SyncLookbackDays` (default **3**) complete days, which is what covers providers finalising a day only after midnight. Splitting the two is what makes a 10-minute cadence affordable: a day's snapshot costs 13 Google Health requests against a ceiling of 300 per minute **per wearer**, so paying for four days on every pull would spend the budget re-reading finished days. Days are fetched oldest first; each is written to `DeviceActivityLogs` and saved, then that member-day is re-merged into `ActivityLogs`. The raw row is saved before the merge runs because the merge reads every device's *stored* row for the day. A provider failure part-way through still leaves the earlier days stored; `LastSyncDate` is stamped only once the whole window lands, which keeps a partially-synced connection due for retry instead of silently leaving a hole.
 
 ### OrphanedOrganizationCleanupWorker
 
@@ -275,7 +275,7 @@ Cron schedules bind per worker class name under the `Workers` section, consumed 
   ],
   "Workers": {
     "WearableSyncWorker": {
-      "CronExpression": "0 */30 * * * *"
+      "CronExpression": "0 */10 * * * *"
     },
     "OrphanedOrganizationCleanupWorker": {
       "CronExpression": "0 0 3 * * *"
@@ -329,7 +329,7 @@ The worker uses 6-field cron with seconds (Cronos `IncludeSeconds`):
 
 | Expression            | Meaning                   |
 |-----------------------|---------------------------|
-| `0 */30 * * * *`      | Every 30 minutes          |
+| `0 */10 * * * *`      | Every 10 minutes          |
 | `0 0 * * * *`         | Every hour                |
 | `0 0 3 * * *`         | Daily at 3 AM UTC         |
 | `0 0 2 * * MON`       | Every Monday at 2 AM UTC  |

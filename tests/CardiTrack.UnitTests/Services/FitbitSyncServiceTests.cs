@@ -131,6 +131,68 @@ public class DeviceSyncServiceTests
         await _deviceActivityLogs.Received(WindowDays(LookbackDays)).UpsertAsync(Arg.Any<DeviceActivityLog>());
     }
 
+    // ── The daily repair pass ───────────────────────────────────────────────────────────────
+
+    // At a ten-minute cadence the trailing days would be re-read ~144 times a day per wearer, to
+    // find numbers that a finished day cannot have changed. They are worth exactly one pull a day.
+    [Fact]
+    public async Task SyncCardiMemberAsync_FetchesTodayAlone_WhenTheRepairPassAlreadyRanToday()
+    {
+        _fitbitConnection.LastSyncDate = DateTime.UtcNow;
+        SetupSuccessfulTokenRefresh();
+        SetupDefaultApiResponse();
+
+        await CreateSut().SyncCardiMemberAsync(_fitbitConnection);
+
+        await _deviceApi.Received(1).GetHealthSnapshotAsync(Arg.Any<string>(), Today);
+        await _deviceApi.Received(1).GetHealthSnapshotAsync(Arg.Any<string>(), Arg.Any<DateOnly>());
+    }
+
+    // First pull of a new UTC day: the trailing days come back, which is what repairs a provider's
+    // overnight revision and any day missed while the puller was down.
+    [Fact]
+    public async Task SyncCardiMemberAsync_FetchesTheFullWindow_OnTheDaysFirstPull()
+    {
+        _fitbitConnection.LastSyncDate = DateTime.UtcNow.AddDays(-1);
+        SetupSuccessfulTokenRefresh();
+        SetupDefaultApiResponse();
+
+        await CreateSut().SyncCardiMemberAsync(_fitbitConnection);
+
+        await _deviceApi.Received(WindowDays(LookbackDays))
+            .GetHealthSnapshotAsync(Arg.Any<string>(), Arg.Any<DateOnly>());
+    }
+
+    // A connection that has never synced has no history at all, so it takes the full window.
+    [Fact]
+    public async Task SyncCardiMemberAsync_FetchesTheFullWindow_WhenNeverSynced()
+    {
+        _fitbitConnection.LastSyncDate = null;
+        SetupSuccessfulTokenRefresh();
+        SetupDefaultApiResponse();
+
+        await CreateSut().SyncCardiMemberAsync(_fitbitConnection);
+
+        await _deviceApi.Received(WindowDays(LookbackDays))
+            .GetHealthSnapshotAsync(Arg.Any<string>(), Arg.Any<DateOnly>());
+    }
+
+    // The audit exists to see revisions the routine pull structurally cannot, so it always reaches
+    // back regardless of whether today's repair pass has run.
+    [Fact]
+    public async Task AuditSyncAsync_StillFetchesItsWholeWindow_WhenSyncedToday()
+    {
+        _fitbitConnection.LastSyncDate = DateTime.UtcNow;
+        _fitbitConfig.AuditLookbackDays = 5;
+        SetupSuccessfulTokenRefresh();
+        SetupDefaultApiResponse();
+
+        await CreateSut().AuditSyncAsync(_fitbitConnection);
+
+        await _deviceApi.Received(WindowDays(5))
+            .GetHealthSnapshotAsync(Arg.Any<string>(), Arg.Any<DateOnly>());
+    }
+
     // The dashboard's Key Metrics read the newest stored day, so a window that stopped at
     // yesterday left them frozen on a completed day however often the caregiver refreshed.
     [Fact]
