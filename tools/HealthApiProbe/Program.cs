@@ -179,9 +179,14 @@ using (var sleepRequest = new HttpRequestMessage(
 Console.WriteLine();
 Console.WriteLine(new string('=', 72));
 Console.WriteLine("FitbitApiClient.GetHealthSnapshotAsync — parsed result");
-Console.WriteLine("null here + data in the shape dump above  = the name/format/enum is wrong.");
-Console.WriteLine("null here + empty shape dump              = this device does not record it.");
-Console.WriteLine("A parsed 0 is neither — it is an explicit zero from the API, deliberately kept.");
+Console.WriteLine("null + data in the shape dump above  = the name/format/enum is wrong.");
+Console.WriteLine("null + empty shape dump              = this device does not record it.");
+Console.WriteLine("0                                    = check the shape dump before trusting it.");
+Console.WriteLine("    An explicit zero from the API is kept as a measurement. But ActiveMinutes,");
+Console.WriteLine("    SleepEfficiency and DistanceKm are derived, so each can also reach 0 when a");
+Console.WriteLine("    filter matches nothing or a unit conversion rounds away — which is the");
+Console.WriteLine("    silent-zero class this probe exists to catch. A 0 beside a shape dump that");
+Console.WriteLine("    plainly holds data is the case to dig into.");
 Console.WriteLine("StressScore is the one exception: v4 has no stress or readiness data type, so it");
 Console.WriteLine("is always null and no shape dump above corresponds to it.");
 Console.WriteLine();
@@ -201,8 +206,10 @@ try
     foreach (var property in typeof(DeviceHealthSnapshot).GetProperties())
     {
         var value = property.GetValue(snapshot);
-        // Only null is worth flagging now: an explicit 0 is a measurement the client keeps
-        // on purpose, so flagging it would train the reader to ignore the marker.
+        // Only null carries an unambiguous meaning, so only null is marked. A 0 is left
+        // unmarked deliberately: most are explicit zeros the client keeps as measurements, and
+        // marking every one would train the reader to skip the marker entirely. The legend
+        // above says which 0s still deserve a second look rather than this line guessing.
         Console.WriteLine($"  {property.Name,-20} {value ?? "(null)"}{(value is null ? "   <-- null" : "")}");
     }
 }

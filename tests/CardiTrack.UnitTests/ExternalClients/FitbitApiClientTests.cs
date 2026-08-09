@@ -335,7 +335,9 @@ public class FitbitApiClientTests
         var (sut, _) = CreateSut(handler);
         var result = await sut.GetActivitiesAsync("token", Today);
 
-        // 28,830.5s = 480.5 minutes, rounded to nearest rather than floored.
+        // 28,830.5s ÷ 60 = 480.508… minutes, which rounds to 481 rather than flooring to 480.
+        // Not a midpoint: 480.5 exactly would round to *480* under decimal.Round's default
+        // banker's rounding, so a fixture sitting on the halfway mark would assert the opposite.
         Assert.Equal(481, result.SedentaryMinutes);
     }
 

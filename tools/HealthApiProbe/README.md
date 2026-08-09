@@ -92,7 +92,8 @@ Two sections:
    field names and value types, with values elided. Error bodies print verbatim
    (they carry no health data and are the useful part when a scope is missing).
 2. **`FitbitApiClient.GetHealthSnapshotAsync`** — what the real client extracts
-   from the same account, with zero/null values flagged.
+   from the same account, with null values flagged. Zeros are printed unmarked;
+   see below for which of those still deserve a look.
 
 The comparison is the point, and it reads in two directions:
 
@@ -102,9 +103,20 @@ The comparison is the point, and it reads in two directions:
 - **Shape dump is empty, parsed value is null** — this wearer's device does not
   populate that type. Not a bug, but worth recording per device model.
 
-A parsed `0` is neither: it means the API sent an explicit zero, which
-`FitbitApiClient` deliberately preserves as a measurement. Absent data is null,
-never 0 — see the "absent is not zero" note in `docs/llm_design.md`.
+- **Parsed value is `0`** — check it against the shape dump rather than assuming.
+  Absence never arrives as 0 (see the "absent is not zero" note in
+  `docs/llm_design.md`), so an explicit zero from the API is a real measurement
+  and is kept as one. But three of these figures are **derived**, and each can
+  reach 0 without the API having sent one:
+
+  | Field | Reaches a derived 0 when |
+  |---|---|
+  | `ActiveMinutes` | the level breakdown exists but no entry matches `MODERATE`/`VIGOROUS` — exactly how the enum-spelling bug read before it was fixed |
+  | `DistanceKm` | the day's millimetres round to `0.000` |
+  | `SleepEfficiency` | minutes asleep is 0 against a non-zero sleep period |
+
+  A `0` beside a shape dump that plainly holds data is the case worth digging
+  into — it is the silent-zero class this probe exists to catch.
 
 Three request shapes are probed, because the filter grammar differs per record
 type and each spelling is rejected outright if used on the wrong one:
