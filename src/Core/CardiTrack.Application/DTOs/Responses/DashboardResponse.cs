@@ -55,6 +55,17 @@ public class DashboardDeviceState
 public class DashboardBaselineState
 {
     public bool IsLearning { get; set; }
+
+    /// <summary>
+    /// True while the metrics are coloured against a baseline shorter than
+    /// <see cref="DaysRequired"/> days — an early impression, not an established normal.
+    /// Clients should caveat comparisons accordingly.
+    /// </summary>
+    public bool IsProvisional { get; set; }
+
+    /// <summary>Window (in days) of the baseline in use; null while still learning.</summary>
+    public int? BaselinePeriodDays { get; set; }
+
     public int DaysCaptured { get; set; }
     public int DaysRequired { get; set; } = 30;
     public int PercentComplete { get; set; }

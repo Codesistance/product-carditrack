@@ -106,6 +106,52 @@ public class BaselineCalculatorTests
             () => BaselineCalculator.Calculate(MemberId, Window(RequiredDays), 0, Today));
     }
 
+    // ── Provisional windows ─────────────────────────────────────────────────────
+    //
+    // The 7- and 14-day windows exist so an early, low-confidence picture can colour the
+    // dashboard while the 30-day window is still filling. Their per-metric floor scales with
+    // the window: a flat 7 would demand a perfect week from exactly the window that exists to
+    // tolerate an imperfect first one.
+
+    [Fact]
+    public void Calculate_WritesASevenDayBaseline_FromSixCoveredDays()
+    {
+        var baseline = BaselineCalculator.Calculate(MemberId, Window(6), 7, Today);
+
+        Assert.NotNull(baseline);
+        Assert.Equal(7, baseline.PeriodDays);
+        // Six samples meet the 7-day window's scaled floor, so the metric is averaged, not nulled.
+        Assert.Equal(60, baseline.AvgRestingHeartRate);
+    }
+
+    [Fact]
+    public void Calculate_ReturnsNull_WhenTheSevenDayWindowHasOnlyFiveDays()
+    {
+        Assert.Null(BaselineCalculator.Calculate(MemberId, Window(5), 7, Today));
+    }
+
+    [Fact]
+    public void Calculate_KeepsTheFullMetricFloor_ForTheFourteenDayWindow()
+    {
+        // ceil(14 × 0.8) = 12 covered days clear the coverage gate, but only 6 of them carry
+        // steps — one short of the 14-day window's unscaled floor of 7 samples.
+        var logs = Window(12);
+        for (var i = 0; i < 6; i++)
+            logs[i].Steps = 4_000;
+
+        var baseline = BaselineCalculator.Calculate(MemberId, logs, 14, Today);
+
+        Assert.NotNull(baseline);
+        Assert.Null(baseline.AvgSteps);
+        Assert.Equal(60, baseline.AvgRestingHeartRate);
+    }
+
+    [Fact]
+    public void SupportedPeriods_CoverProvisionalAndEstablishedWindows()
+    {
+        Assert.Equal(new[] { 7, 14, 30, 60, 90 }, BaselineCalculator.SupportedPeriods);
+    }
+
     // ── Averages and spread ─────────────────────────────────────────────────────
 
     [Fact]

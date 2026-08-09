@@ -92,6 +92,88 @@ public class DashboardServiceTests
         _activityLogs.GetByCardiMemberAndDateRangeAsync(_memberId, Arg.Any<DateOnly>(), Arg.Any<DateOnly>())
             .Returns(logs);
 
+    // ── Provisional baselines ───────────────────────────────────────────────────
+    //
+    // Windows are tried longest-first (30, 14, 7): the established picture when it exists, else
+    // the best provisional one, so the dashboard can colour metrics from about the first week
+    // instead of sitting in "learning" until day 30.
+
+    [Fact]
+    public async Task FallsBackToAProvisionalBaseline_WhenNoEstablishedOneExists()
+    {
+        SetupActivityLogs(days: 8);
+        _baselines.GetLatestByCardiMemberAsync(_memberId, 7).Returns(new PatternBaseline
+        {
+            CardiMemberId = _memberId,
+            PeriodDays = 7,
+            AvgSteps = 5000,
+            AvgRestingHeartRate = 70,
+            AvgSleepMinutes = 432,
+        });
+
+        var result = await CreateSut().GetDashboardAsync(_userId, _memberId);
+
+        Assert.False(result.Baseline.IsLearning);
+        Assert.True(result.Baseline.IsProvisional);
+        Assert.Equal(7, result.Baseline.BaselinePeriodDays);
+        // The colours anchor to the provisional average instead of reading "unknown".
+        Assert.Equal("green", result.Metrics!.RestingHeartRate.Status);
+    }
+
+    [Fact]
+    public async Task PrefersTheEstablishedBaseline_AndNeverAsksForProvisionalOnes()
+    {
+        SetupActivityLogs(days: 30);
+        _baselines.GetLatestByCardiMemberAsync(_memberId, 30).Returns(new PatternBaseline
+        {
+            CardiMemberId = _memberId,
+            PeriodDays = 30,
+            AvgRestingHeartRate = 70,
+        });
+
+        var result = await CreateSut().GetDashboardAsync(_userId, _memberId);
+
+        Assert.False(result.Baseline.IsProvisional);
+        Assert.Equal(30, result.Baseline.BaselinePeriodDays);
+        await _baselines.DidNotReceive().GetLatestByCardiMemberAsync(_memberId, 14);
+        await _baselines.DidNotReceive().GetLatestByCardiMemberAsync(_memberId, 7);
+    }
+
+    [Fact]
+    public async Task PrefersTheFourteenDayWindow_OverTheSevenDay()
+    {
+        SetupActivityLogs(days: 15);
+        _baselines.GetLatestByCardiMemberAsync(_memberId, 14).Returns(new PatternBaseline
+        {
+            CardiMemberId = _memberId,
+            PeriodDays = 14,
+            AvgRestingHeartRate = 70,
+        });
+        _baselines.GetLatestByCardiMemberAsync(_memberId, 7).Returns(new PatternBaseline
+        {
+            CardiMemberId = _memberId,
+            PeriodDays = 7,
+            AvgRestingHeartRate = 99,
+        });
+
+        var result = await CreateSut().GetDashboardAsync(_userId, _memberId);
+
+        Assert.Equal(14, result.Baseline.BaselinePeriodDays);
+        await _baselines.DidNotReceive().GetLatestByCardiMemberAsync(_memberId, 7);
+    }
+
+    [Fact]
+    public async Task StaysLearning_WhenNoWindowHasABaselineYet()
+    {
+        SetupActivityLogs(days: 3);
+
+        var result = await CreateSut().GetDashboardAsync(_userId, _memberId);
+
+        Assert.True(result.Baseline.IsLearning);
+        Assert.False(result.Baseline.IsProvisional);
+        Assert.Null(result.Baseline.BaselinePeriodDays);
+    }
+
     // The dashboard's Call and Send Message actions run off the emergency contact, because that
     // is the only phone number M1-04 and M1-14 capture — CardiMember.Phone is null for every
     // member created in the app, so shipping the tiles against it would leave them always dead.
