@@ -26,10 +26,10 @@ public record DeviceHealthSnapshot(
     int? LightSleepMinutes,
     int? RemSleepMinutes,
     int? AwakeMinutes,
-    // Additional health metrics. No provider populates these yet — the Google Health API
-    // data-type names for them are unverified pending sandbox access (see FitbitApiClient),
-    // so clients leave them null rather than guess. They are declared here so the contract
-    // really is 1:1 with ActivityLog and a provider can fill them without a signature change.
+    // Additional health metrics. Field names are confirmed against the v4 discovery document;
+    // whether a given wearer's device populates them is a per-device fact, so a client that finds
+    // nothing leaves them null rather than substituting a figure. StressScore has no source on
+    // this API at all (see FitbitAdditionalMetricsResult) and is always null.
     decimal? SpO2Average = null,
     decimal? SpO2Min = null,
     decimal? SpO2Max = null,

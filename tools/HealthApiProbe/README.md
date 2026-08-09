@@ -1,20 +1,52 @@
 # Health API Probe
 
-One-shot diagnostic that answers a single question: **do the field names
-`FitbitApiClient` looks for actually match what the Google Health API returns?**
-
-Every name `FitbitApiClient` reads is now taken from the v4 reference
-(`steps.countSum`, `heartRate.beatsPerMinuteAvg`, …), but a name being right on
-paper is not the same as it being populated for a given wearer, and the failure
-mode is silent either way: a name that matches nothing **does not throw**, the
-value simply comes back `0`, so a sync looks healthy while producing empty data.
-The pairing still has to be seen once against a live account.
-
-It also separates two things the reference cannot: a data type the wearer's
-device never records looks exactly like a parsing bug on our side.
+One-shot diagnostic that answers a single question: **does this wearer's device
+actually populate the data types `FitbitApiClient` reads?**
 
 Not in `CardiTrack.sln` and not built by CI: it needs a real OAuth token and a
 real wearer's data, so it can only be run by hand.
+
+## Check the schema first — it is free, and it is stricter
+
+The probe used to carry a second job, confirming that the *field names* were
+right. That question is better answered without a token at all, because the API
+publishes a machine-readable schema:
+
+```bash
+curl -s 'https://health.googleapis.com/$discovery/rest?version=v4' -o discovery.json
+```
+
+It needs no auth, no test user and no wearer. It is also **stronger evidence
+than a live probe** for anything about spelling: it lists every field of every
+data type, each field's wire `format`, and each enum's exact members — so it
+proves a name wrong, where an empty response merely fails to prove it right.
+
+Three things it settles that a payload sample cannot, each of which has already
+cost this codebase a silent bug:
+
+| Ask the schema | Because |
+|---|---|
+| the field's `format` | `int64` → JSON **string** (`"9423"`); `google-duration` → string with an **`s` suffix** (`"28800s"`); `double` → a bare number. All three look like "a number" in an example, and the wrong parse yields null, not an error |
+| the enum's members | `ActiveMinutesRollupByActivityLevel.activityLevel` is `LIGHT`/`MODERATE`/`VIGOROUS`. The similarly named `ActivityLevelRollupByActivityLevelType.activityLevelType` is `SEDENTARY`/`LIGHTLY_ACTIVE`/`MODERATELY_ACTIVE`/`VERY_ACTIVE`. Using the second set on the first type matches nothing and sums to 0 |
+| which union member carries the type | `DailyRollupDataPoint` for rollups, `DataPoint` for `list` — the member name is the camelCase data type (`dailyRestingHeartRate`), while the *filter* path is snake_case (`daily_resting_heart_rate.date`) |
+
+Example — dump one type's real shape:
+
+```bash
+python -c "import json;d=json.load(open('discovery.json',encoding='utf-8'));print(json.dumps(d['schemas']['SedentaryPeriodRollupValue'],indent=2))"
+```
+
+Do this before running the probe. If a name is wrong, the probe will show a zero
+and you will not know whether the field is misnamed or the wearer simply has no
+data for it — the schema tells you which.
+
+## What only a live run can tell you
+
+Whether the wearer's device populates a type at all. A Fitbit that derives no
+VO2 max and a misspelled `vo2Max` produce byte-identical output, and the failure
+mode is silent in both directions: a name that matches nothing **does not
+throw**, it comes back null, so a sync looks healthy while producing empty data.
+That is the question this tool exists for.
 
 ## Prerequisites
 
@@ -62,8 +94,17 @@ Two sections:
 2. **`FitbitApiClient.GetHealthSnapshotAsync`** — what the real client extracts
    from the same account, with zero/null values flagged.
 
-The comparison is the point: a metric whose shape dump shows data but whose
-parsed value is `0` means the field name in `FitbitApiClient` is wrong.
+The comparison is the point, and it reads in two directions:
+
+- **Shape dump shows data, parsed value is null** — the field name, format or
+  enum member in `FitbitApiClient` is wrong. Take it to the discovery document
+  above; it will say which of the three.
+- **Shape dump is empty, parsed value is null** — this wearer's device does not
+  populate that type. Not a bug, but worth recording per device model.
+
+A parsed `0` is neither: it means the API sent an explicit zero, which
+`FitbitApiClient` deliberately preserves as a measurement. Absent data is null,
+never 0 — see the "absent is not zero" note in `docs/llm_design.md`.
 
 Three request shapes are probed, because the filter grammar differs per record
 type and each spelling is rejected outright if used on the wrong one:

@@ -21,7 +21,7 @@ lifecycles.
 | 2 | CardiTrack Mobile | Identity | Public (Native, PKCE, no secret) | Auth0 | `auth0-mobile-client-id` | Created per [runbook §3](./auth0_setup_runbook.md) |
 | 3 | Google sign-in (social) | Identity | Web app client **used by Auth0**, not by our code | Google Cloud (`carditrack-signin`) | Stored inside the Auth0 connection | **Provisioned 2026-08-07** — clients created, both tenants' Auth0 connections wired; **app buttons still unwired** (Phase 9, below) |
 | 4 | Apple Sign In (social) | Identity | Services ID + .p8 key **used by Auth0** | Apple Developer | Stored inside the Auth0 connection | Pending (Phase 9, below) |
-| 5 | Fitbit provider (Google Health API) | Device data | Confidential Web application | Google Cloud (`carditrack-devices-{env}`) | `devices-fitbit-client-id` / `devices-fitbit-client-secret` | **Provisioned 2026-08-07** — clients created, secrets loaded, API + Worker revisions rolled; **sandbox field verification outstanding** (step 5 below) |
+| 5 | Fitbit provider (Google Health API) | Device data | Confidential Web application | Google Cloud (`carditrack-devices-{env}`) | `devices-fitbit-client-id` / `devices-fitbit-client-secret` | **Provisioned 2026-08-07** — clients created, secrets loaded, API + Worker revisions rolled; field names verified against the v4 discovery document 2026-08-09; **live-wearer population check outstanding** (step 5b below) |
 | 6+ | Garmin / Withings / Oura / Whoop | Device data | Per-vendor | Each vendor's portal | Not yet provisioned (`devices-{provider}-client-{id,secret}`) | Future — config stubs only; **only Fitbit is registered in DI** |
 
 Device-data secrets are namespaced `devices-{provider}-client-{id,secret}` so each
@@ -180,9 +180,11 @@ Fully scripted in the [Auth0 setup runbook](./auth0_setup_runbook.md); summary:
 > **Provisioned 2026-08-07.** Steps 1–4 are done in both environments: projects
 > created, Google Health API enabled, consent screens configured, both
 > `CardiTrack Devices` clients registered, secret values loaded and API + Worker
-> revisions rolled. Step 5 (sandbox field verification) is **still outstanding**,
-> and step 6 gates public launch. The steps stay documented because they must be
-> repeated for each new provider and any new environment.
+> revisions rolled. Step 5 is **half done**: field names are verified against the
+> v4 discovery document (2026-08-09), but whether a real wearer's device
+> populates each one is still outstanding and needs a live account. Step 6 gates
+> public launch. The steps stay documented because they must be repeated for each
+> new provider and any new environment.
 
 Flow security notes: the `state` values in this flow are **opaque,
 server-cached, single-use tokens with a 15-minute TTL** (never encode member
@@ -231,18 +233,29 @@ connect makes a reconnect look like a failed one.
    **Ordering:** run `terraform apply` for the environment *before* loading
    values. Renaming a `placeholder_secrets` key destroys and recreates the
    secret shell, so a value written first would be discarded with it.
-5. **Sandbox verification — the outstanding step.** With a test user connected, exercise a sync and
-   compare `FitbitApiClient`'s parsing against real payloads. Every field name
-   the client reads is now taken from the v4 reference rather than inferred —
-   the earlier guesses (PR #10) were wrong in every case and were corrected
-   against the reference after a dev sync failed on the non-existent
-   `resting-heart-rate` data type. Use the
+5. **Sandbox verification.** Two separable questions; the first is now closed.
+
+   **(a) Are the field names right? — done 2026-08-09, no token required.**
+   Every name, wire format and enum member `FitbitApiClient` reads was checked
+   against the v4 **discovery document**
+   (`https://health.googleapis.com/$discovery/rest?version=v4` — public, no
+   auth), which is machine-readable and so settles spelling in a way the prose
+   reference cannot. All six names flagged as inferred in issue #38 are
+   confirmed correct. The pass also found two defects the prose reference had
+   hidden, both silent-zero: `active-minutes` was filtered on another data
+   type's enum members, and `sedentary-period`'s `durationSum` is a protobuf
+   `Duration` (`"28800s"`) that was being parsed as a bare number. Both fixed,
+   with the discovery-document method written up in the
+   [probe README](../../tools/HealthApiProbe/README.md) so it is repeatable.
+
+   **(b) Does a real wearer's device populate them? — still outstanding.**
+   No schema can answer this, and the failure is silent: an unpopulated type and
+   a misnamed field both come back null rather than throwing. With a test user
+   connected, run the
    [Health API probe](../../tools/HealthApiProbe/README.md)
-   (`dotnet run --project tools/HealthApiProbe`) — it prints each response's
-   field names beside what the client extracts, so a mismatch shows up as a
-   flagged zero. Still not optional: a name that is right on paper but never
-   populated for that wearer's device fails the same silent way, yielding `0`
-   rather than throwing, and only a live account tells the two apart.
+   (`dotnet run --project tools/HealthApiProbe`) against a day the wearer
+   genuinely wore the device — it prints each response's field names beside what
+   the client extracts, so the two cases separate. Tracked on issue #38.
 6. **Before public launch**, in `carditrack-devices-prod` only — **not yet
    submitted as of 2026-08-07**: restricted-scope
    verification + CASA assessment — prerequisites checklist in
