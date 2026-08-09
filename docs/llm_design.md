@@ -17,7 +17,7 @@ CardiTrack uses MedGemma as its inference model for cardiovascular analysis of w
 |----------|-------|
 | Model | `hf.co/unsloth/medgemma-1.5-4b-it-GGUF:Q4_K_M` (Ollama tag; MedGemma 1.5 4B instruction-tuned) |
 | Parameters | 4B |
-| Quantisation | Q4_K_M — the same tag runs locally, in dev and in prod, so an assessment made in one is meaningful in the others |
+| Quantisation | Q4_K_M — the one tag the local, dev and prod configs all resolve to, so an assessment made in one environment means the same thing in another. Prod's service is not deployed yet (see the service map above); when it is, it serves these weights |
 | Type | Multimodal instruction-tuned |
 | Serving | Ollama on Cloud Run (CPU) — see [Infrastructure](#infrastructure) |
 
