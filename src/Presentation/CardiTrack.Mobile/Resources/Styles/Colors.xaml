@@ -162,7 +162,7 @@
          slice is baked into the stops below and the feather is the wash layer underneath.
          Stops are sampled straight off the rendered Figma node, top and bottom of the band.
          Both brushes are consumed by Controls/HeaderBand, which every header in the app uses. -->
-    <LinearGradientBrush x:Key="DashboardHeaderBrush" StartPoint="0,0" EndPoint="0,1">
+    <LinearGradientBrush x:Key="HeaderBandBrush" StartPoint="0,0" EndPoint="0,1">
         <GradientStop Color="#1E8FC7" Offset="0.0" />
         <GradientStop Color="#3DADBE" Offset="1.0" />
     </LinearGradientBrush>
@@ -172,7 +172,7 @@
          ramp. The profile came out the same at the top and bottom of the band, which is why one
          horizontal brush models it. Note the slight lift at the far left — the blur's own
          falloff — and the dip to nothing around 30%, where the band is at its most saturated. -->
-    <LinearGradientBrush x:Key="DashboardHeaderWashBrush" StartPoint="0,0.5" EndPoint="1,0.5">
+    <LinearGradientBrush x:Key="HeaderBandWashBrush" StartPoint="0,0.5" EndPoint="1,0.5">
         <GradientStop Color="#1AFFFFFF" Offset="0.0" />
         <GradientStop Color="#05FFFFFF" Offset="0.18" />
         <GradientStop Color="#00FFFFFF" Offset="0.30" />

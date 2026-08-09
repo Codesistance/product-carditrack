@@ -10,7 +10,7 @@
          Figma draws the band as the brand gradient (#174E86 → #1884DC → #36C09B) on an
          oversized rect, blurred 100px and masked to the band, so only a slice of the ramp
          shows and its right edge feathers out towards the page ground. MAUI has no cheap
-         blur, so the visible slice is baked into DashboardHeaderBrush and the feather is a
+         blur, so the visible slice is baked into HeaderBandBrush and the feather is a
          second wash layer stacked on top.
 
          The wash is a plain sibling filling the band, and the padding lives on the content
@@ -27,7 +27,7 @@
         <ControlTemplate>
             <Border StrokeThickness="0"
                     Padding="0"
-                    Background="{StaticResource DashboardHeaderBrush}">
+                    Background="{StaticResource HeaderBandBrush}">
                 <Border.StrokeShape>
                     <RoundRectangle CornerRadius="0,0,45,45"/>
                 </Border.StrokeShape>
@@ -36,7 +36,7 @@
                 </Border.Shadow>
 
                 <Grid>
-                    <Border Background="{StaticResource DashboardHeaderWashBrush}"
+                    <Border Background="{StaticResource HeaderBandWashBrush}"
                             StrokeThickness="0"
                             InputTransparent="True">
                         <Border.StrokeShape>
