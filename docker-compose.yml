@@ -76,7 +76,11 @@ services:
       # Model and ApiKey — Gemini and Anthropic are both supported without a rebuild.
       AI__Public__Kind: "Gemini"
       AI__Public__Model: "gemini-2.0-flash"
-      AI__Public__ApiKey: ""
+      # Placeholder, not blank: the public provider is validated at startup, and a blank key
+      # would stop the API booting for everyone whose local work never touches chat or reports.
+      # Left as-is, chat and reports get a 401 from the provider; insights still run against the
+      # local Ollama below. Replace it with a real key to exercise the public path.
+      AI__Public__ApiKey: "unset-local-placeholder"
       AI__Public__TimeoutSeconds: "60"
       # Private provider for medical insights — always MedGemma, in-project. Only its
       # location and weights are configurable.

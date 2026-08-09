@@ -15,8 +15,11 @@ public class PublicAiSettings
 
     public string Model { get; set; } = string.Empty;
 
-    /// <summary>Null for providers that need no key; validated per <see cref="Kind"/> at startup.</summary>
-    public string? ApiKey { get; set; }
+    /// <summary>
+    /// Required — every supported kind authenticates with one, and the clients pass it straight to
+    /// the provider. Non-nullable rather than optional so the contract matches the validation.
+    /// </summary>
+    public string ApiKey { get; set; } = string.Empty;
 
     /// <summary>
     /// Optional — each kind has a documented default endpoint. Set it to route through a gateway,

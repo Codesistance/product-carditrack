@@ -17,8 +17,9 @@ namespace CardiTrack.Infrastructure.Extensions;
 /// <para>
 /// <b>Public</b> (AI:Public) — reports and chat. The provider is chosen by
 /// <see cref="PublicAiSettings.Kind"/>, so swapping to another public model is a configuration
-/// change. Adding a provider is a new <see cref="IExternalAiClient"/> plus a
-/// <see cref="PublicAiProviderKind"/> member; nothing downstream of the keyed registration moves.
+/// change. Adding a provider means three edits here — a new <see cref="IExternalAiClient"/>, a
+/// <see cref="PublicAiProviderKind"/> member, and its entry in <see cref="DefaultBaseUrls"/> —
+/// and nothing downstream of the keyed registration moves.
 /// </para>
 /// <para>
 /// <b>Private</b> (AI:Private) — health insights. Pinned to <see cref="MedGemmaClient"/> in code.
@@ -155,8 +156,26 @@ public static class AiServiceExtensions
     /// </summary>
     private static bool RequiresHttpClient(PublicAiProviderKind kind) => kind != PublicAiProviderKind.Anthropic;
 
-    private static string ResolveBaseUrl(PublicAiSettings settings) =>
-        string.IsNullOrWhiteSpace(settings.BaseUrl) ? DefaultBaseUrls[settings.Kind] : settings.BaseUrl;
+    /// <summary>
+    /// Falls back to the kind's documented endpoint. A kind with no entry is a gap in this class,
+    /// not operator error, so it says so — an unguarded lookup would surface as a bare
+    /// KeyNotFoundException naming neither the kind nor the fix.
+    /// </summary>
+    private static string ResolveBaseUrl(PublicAiSettings settings)
+    {
+        if (!string.IsNullOrWhiteSpace(settings.BaseUrl))
+            return settings.BaseUrl;
+
+        if (!DefaultBaseUrls.TryGetValue(settings.Kind, out var defaultBaseUrl))
+        {
+            throw new InvalidOperationException(
+                $"No default endpoint is registered for public AI provider kind '{settings.Kind}'. " +
+                $"Add one to {nameof(AiServiceExtensions)}.{nameof(DefaultBaseUrls)}, or set " +
+                $"'{ConfigurationLoader.ToEnvVarKey($"{ConfigurationKeys.AI.PublicSectionName}:{nameof(PublicAiSettings.BaseUrl)}")}'.");
+        }
+
+        return defaultBaseUrl;
+    }
 
     private static void RequireValue(string? value, string section, string key)
     {
