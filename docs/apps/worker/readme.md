@@ -157,7 +157,7 @@ public class WearableSyncWorker : CronBackgroundService
                 continue;
             }
 
-            await syncService.SyncCardiMemberAsync(connection);
+            await syncService.SyncCardiMemberAsync(connection, extendHistory: true);
         }
     }
 }
@@ -166,6 +166,8 @@ public class WearableSyncWorker : CronBackgroundService
 Each sync goes through `DeviceSyncService`, which first refreshes the connection's OAuth token via `OAuthTokenRefreshService` when needed — token refresh is part of the sync path, not a standalone job.
 
 It then fetches **today** — so the dashboard's Key Metrics move during the day rather than sitting on a completed day until midnight — and, on the first pull of each UTC day, a **trailing window** reaching back `DeviceProviders:<provider>:SyncLookbackDays` (default **3**) complete days, which is what covers providers finalising a day only after midnight. Splitting the two is what makes a 10-minute cadence affordable: a day's snapshot costs 13 Google Health requests against a ceiling of 300 per minute **per wearer**, so paying for four days on every pull would spend the budget re-reading finished days. Days are fetched oldest first; each is written to `DeviceActivityLogs` and saved, then that member-day is re-merged into `ActivityLogs`. The raw row is saved before the merge runs because the merge reads every device's *stored* row for the day. A provider failure part-way through still leaves the earlier days stored; `LastSyncDate` is stamped only once the whole window lands, which keeps a partially-synced connection due for retry instead of silently leaving a hole.
+
+After a successful routine window, the Worker's pulls also **backfill history**: `DeviceConnection.HistoryBackfilledTo` walks backwards from the routine window towards `DeviceProviders:<provider>:BackfillDays` (default **90**) days ago, `BackfillChunkDays` (default **7**) days per pull, newest first. A freshly connected wearable's existing history therefore reaches the 30-day baseline within a couple of hours instead of the baseline waiting a month for new days. The chunking is what keeps this inside the per-wearer request ceiling — a 90-day one-shot would rate-limit partway and start over on the next pull. The frontier advances per day fetched, so an interrupted chunk resumes rather than refetching; days the provider has nothing for are checked but not stored, because an all-null row would count as a "data day" to the baseline coverage gate. Only the Worker opts into this (`extendHistory: true`) — the API's manual sync shares `SyncCardiMemberAsync` and a caregiver waiting on a refresh must not pay for a chunk of last month.
 
 ### OrphanedOrganizationCleanupWorker
 

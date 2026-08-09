@@ -40,7 +40,7 @@ public class DeviceSyncService : IDeviceSyncService
         _providers = providers.Value;
     }
 
-    public async Task SyncCardiMemberAsync(DeviceConnection connection)
+    public async Task SyncCardiMemberAsync(DeviceConnection connection, bool extendHistory = false)
     {
         var providerConfig = ResolveProviderConfig(connection);
 
@@ -73,6 +73,13 @@ public class DeviceSyncService : IDeviceSyncService
             // clears a SyncError left by an earlier run: the window just landed, so whatever
             // the provider was doing then, the connection is working now.
             await _deviceConnections.MarkSyncSucceededAsync(connection.Id, DateTime.UtcNow);
+
+            // After the routine window, never instead of it: today's numbers are what a
+            // caregiver is looking at, so history extends only once they have landed. Opt-in
+            // because the manual-sync path shares this method, and a caregiver waiting on a
+            // refresh must not pay for a chunk of last month.
+            if (extendHistory)
+                await BackfillHistoryAsync(connection, accessToken, providerConfig, today);
         }
         catch (Exception ex) when (IsProviderApiException(ex))
         {
@@ -134,57 +141,111 @@ public class DeviceSyncService : IDeviceSyncService
         {
             var targetDate = today.AddDays(-offset);
             var snapshot = await _deviceApi.GetHealthSnapshotAsync(accessToken, targetDate);
-
-            var log = new DeviceActivityLog
-            {
-                Id = Guid.NewGuid(),
-                CardiMemberId = connection.CardiMemberId,
-                DeviceConnectionId = connection.Id,
-                DataSource = connection.DeviceType,
-                Date = targetDate,
-
-                // Activity
-                Steps = snapshot.Steps,
-                Distance = snapshot.DistanceKm,
-                ActiveMinutes = snapshot.ActiveMinutes,
-                SedentaryMinutes = snapshot.SedentaryMinutes,
-                Floors = snapshot.Floors,
-                CaloriesBurned = snapshot.CaloriesBurned,
-
-                // Heart rate
-                RestingHeartRate = snapshot.RestingHeartRate,
-                AvgHeartRate = snapshot.AvgHeartRate,
-                MaxHeartRate = snapshot.MaxHeartRate,
-                MinHeartRate = snapshot.MinHeartRate,
-
-                // Sleep
-                SleepMinutes = snapshot.TotalSleepMinutes,
-                SleepEfficiency = snapshot.SleepEfficiency,
-                SleepStartTime = snapshot.SleepStartTime,
-                SleepEndTime = snapshot.SleepEndTime,
-                DeepSleepMinutes = snapshot.DeepSleepMinutes,
-                LightSleepMinutes = snapshot.LightSleepMinutes,
-                RemSleepMinutes = snapshot.RemSleepMinutes,
-                AwakeMinutes = snapshot.AwakeMinutes,
-
-                // Additional health metrics — null until a provider populates them
-                SpO2Average = snapshot.SpO2Average,
-                SpO2Min = snapshot.SpO2Min,
-                SpO2Max = snapshot.SpO2Max,
-                VO2Max = snapshot.VO2Max,
-                StressScore = snapshot.StressScore,
-                BreathingRate = snapshot.BreathingRate,
-                Temperature = snapshot.Temperature
-            };
-
-            // Save the raw row first — the merge reads every device's stored row for the day,
-            // so it has to see this one.
-            await _deviceActivityLogs.UpsertAsync(log);
-            await _unitOfWork.SaveChangesAsync();
-
-            await _aggregation.RecomputeAsync(connection.CardiMemberId, targetDate);
-            await _unitOfWork.SaveChangesAsync();
+            await StoreDayAsync(connection, snapshot, targetDate);
         }
+    }
+
+    /// <summary>
+    /// Extends a connection's stored history backwards, one chunk per pull, until
+    /// <see cref="DeviceProviderSettings.BackfillDays"/> days back from today have been checked.
+    /// </summary>
+    /// <remarks>
+    /// A fresh connection starts with only the routine window, which leaves the 30-day baseline
+    /// unreachable for weeks even when the wearable holds months of history the provider would
+    /// serve today. Fetching it in one pull is not an option either: a day's snapshot costs 13
+    /// requests against the 300/min per-wearer ceiling, so a 90-day one-shot would rate-limit
+    /// partway, fail the sync, and start over from scratch on the next pull — burning quota
+    /// without ever completing. Each pull therefore takes one chunk, newest-first (the days the
+    /// 30-day baseline needs soonest), and <see cref="DeviceConnection.HistoryBackfilledTo"/>
+    /// advances per day so an interrupted chunk resumes where it stopped.
+    /// <para>
+    /// Days the provider has nothing for are checked but not stored: an all-null row would read
+    /// as a "data day" to <c>BaselineCalculator</c>'s coverage gate and the dashboard's
+    /// days-captured figure, letting a mostly-empty history fake its way past both. The marker
+    /// still advances — checked-and-empty is a final answer, not a retry.
+    /// </para>
+    /// </remarks>
+    private async Task BackfillHistoryAsync(
+        DeviceConnection connection, string accessToken, DeviceProviderSettings providerConfig, DateOnly today)
+    {
+        if (providerConfig.BackfillDays <= 0)
+            return;
+
+        var horizon = today.AddDays(-providerConfig.BackfillDays);
+
+        // Connections that predate the marker resume from the routine window's floor. That
+        // re-fetches at most the trailing repair days once, which is cheaper than querying for
+        // the true edge of what is already stored.
+        var frontier = connection.HistoryBackfilledTo
+            ?? today.AddDays(-Math.Max(1, providerConfig.SyncLookbackDays));
+
+        var chunkFloor = frontier.AddDays(-Math.Max(1, providerConfig.BackfillChunkDays));
+        for (var date = frontier.AddDays(-1); date >= horizon && date >= chunkFloor; date = date.AddDays(-1))
+        {
+            var snapshot = await _deviceApi.GetHealthSnapshotAsync(accessToken, date);
+            if (snapshot.HasAnyData)
+                await StoreDayAsync(connection, snapshot, date);
+
+            await _deviceConnections.UpdateHistoryBackfilledToAsync(connection.Id, date);
+            connection.HistoryBackfilledTo = date;
+        }
+    }
+
+    /// <summary>
+    /// Stores one day's snapshot as this device's raw row and re-merges the member's day.
+    /// </summary>
+    private async Task StoreDayAsync(
+        DeviceConnection connection, DeviceHealthSnapshot snapshot, DateOnly targetDate)
+    {
+        var log = new DeviceActivityLog
+        {
+            Id = Guid.NewGuid(),
+            CardiMemberId = connection.CardiMemberId,
+            DeviceConnectionId = connection.Id,
+            DataSource = connection.DeviceType,
+            Date = targetDate,
+
+            // Activity
+            Steps = snapshot.Steps,
+            Distance = snapshot.DistanceKm,
+            ActiveMinutes = snapshot.ActiveMinutes,
+            SedentaryMinutes = snapshot.SedentaryMinutes,
+            Floors = snapshot.Floors,
+            CaloriesBurned = snapshot.CaloriesBurned,
+
+            // Heart rate
+            RestingHeartRate = snapshot.RestingHeartRate,
+            AvgHeartRate = snapshot.AvgHeartRate,
+            MaxHeartRate = snapshot.MaxHeartRate,
+            MinHeartRate = snapshot.MinHeartRate,
+
+            // Sleep
+            SleepMinutes = snapshot.TotalSleepMinutes,
+            SleepEfficiency = snapshot.SleepEfficiency,
+            SleepStartTime = snapshot.SleepStartTime,
+            SleepEndTime = snapshot.SleepEndTime,
+            DeepSleepMinutes = snapshot.DeepSleepMinutes,
+            LightSleepMinutes = snapshot.LightSleepMinutes,
+            RemSleepMinutes = snapshot.RemSleepMinutes,
+            AwakeMinutes = snapshot.AwakeMinutes,
+
+            // Additional health metrics — null until a provider populates them
+            SpO2Average = snapshot.SpO2Average,
+            SpO2Min = snapshot.SpO2Min,
+            SpO2Max = snapshot.SpO2Max,
+            VO2Max = snapshot.VO2Max,
+            StressScore = snapshot.StressScore,
+            BreathingRate = snapshot.BreathingRate,
+            Temperature = snapshot.Temperature
+        };
+
+        // Save the raw row first — the merge reads every device's stored row for the day,
+        // so it has to see this one.
+        await _deviceActivityLogs.UpsertAsync(log);
+        await _unitOfWork.SaveChangesAsync();
+
+        await _aggregation.RecomputeAsync(connection.CardiMemberId, targetDate);
+        await _unitOfWork.SaveChangesAsync();
     }
 
     /// <summary>

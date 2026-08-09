@@ -47,6 +47,8 @@ locals {
   device_pull_env_vars = merge([
     for i, p in var.device_pull_params : {
       "DeviceProviders__${i}__SyncLookbackDays"       = tostring(p.sync_lookback_days)
+      "DeviceProviders__${i}__BackfillDays"           = tostring(p.backfill_days)
+      "DeviceProviders__${i}__BackfillChunkDays"      = tostring(p.backfill_chunk_days)
       "DeviceProviders__${i}__AuditLookbackDays"      = tostring(p.audit_lookback_days)
       "DeviceProviders__${i}__MinPullIntervalMinutes" = tostring(p.min_pull_interval_minutes)
       "DeviceProviders__${i}__MaxPullIntervalMinutes" = tostring(p.max_pull_interval_minutes)

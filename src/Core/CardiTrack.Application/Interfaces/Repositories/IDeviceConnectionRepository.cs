@@ -41,4 +41,12 @@ public interface IDeviceConnectionRepository : IRepository<DeviceConnection>
     /// recovered from. A connection disconnected while the pull was in flight is left untouched.
     /// </remarks>
     Task MarkSyncSucceededAsync(Guid id, DateTime syncDate);
+
+    /// <summary>
+    /// Advances the history-backfill frontier — the earliest day whose data has been fetched, or
+    /// confirmed absent, for this connection. Written per backfilled day so an interrupted chunk
+    /// resumes where it stopped instead of refetching. Leaves a connection disconnected mid-pull
+    /// untouched, for the same reason as <see cref="MarkSyncSucceededAsync"/>.
+    /// </summary>
+    Task UpdateHistoryBackfilledToAsync(Guid id, DateOnly backfilledTo);
 }

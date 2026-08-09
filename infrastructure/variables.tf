@@ -217,6 +217,8 @@ variable "device_pull_params" {
   type = list(object({
     provider                  = string
     sync_lookback_days        = optional(number, 3)
+    backfill_days             = optional(number, 90)
+    backfill_chunk_days       = optional(number, 7)
     audit_lookback_days       = optional(number, 14)
     min_pull_interval_minutes = optional(number, 30)
     max_pull_interval_minutes = optional(number, 1440)
@@ -259,6 +261,17 @@ variable "device_pull_params" {
       p.audit_lookback_days >= p.sync_lookback_days
     ])
     error_message = "device_pull_params: audit_lookback_days must be at least sync_lookback_days."
+  }
+
+  validation {
+    # Mirrors the app's semantics exactly: 0 disables backfill (negative would too, but only by
+    # accident — reject it here), and a live horizon needs a positive chunk or the backfill is
+    # enabled yet unable to advance.
+    condition = alltrue([
+      for p in var.device_pull_params :
+      p.backfill_days >= 0 && (p.backfill_days == 0 || p.backfill_chunk_days > 0)
+    ])
+    error_message = "device_pull_params: backfill_days must be >= 0 (0 disables), and backfill_chunk_days must be positive when backfill_days is set."
   }
 }
 

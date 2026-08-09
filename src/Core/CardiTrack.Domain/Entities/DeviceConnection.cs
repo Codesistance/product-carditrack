@@ -45,6 +45,15 @@ public class DeviceConnection : BaseEntity, ISoftDeletable
     /// </summary>
     public int ConsecutiveEmptyPulls { get; set; }
 
+    /// <summary>
+    /// Earliest day the history backfill has fetched (or confirmed empty) for this connection;
+    /// null until the first backfill chunk runs. The backfill walks this marker backwards from
+    /// the routine sync window towards the provider's configured horizon, a chunk per pull, so
+    /// a freshly connected wearable's existing history reaches the baseline within hours instead
+    /// of the baseline waiting a month for new days — see <c>DeviceSyncService</c>.
+    /// </summary>
+    public DateOnly? HistoryBackfilledTo { get; set; }
+
     // JSON: { "model": "Charge 6", "version": "1.0", "firmwareVersion": "2.3.1" }
     public string? Metadata { get; set; }
 

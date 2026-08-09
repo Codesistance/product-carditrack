@@ -122,6 +122,7 @@ The Worker polling path writes **only** to Cloud SQL and never publishes to Pub/
    Peak in-flight is therefore ~12 requests for a single wearer. The Google Health per-user ceiling is 300 requests/minute, which this is comfortably inside on volume, but its QPS reading (5/s standard, 2.5/s for an unverified app) is **not** — see the quota note below.
 4. **Write raw** → `SaveChanges` → **re-merge** → `SaveChanges`. The raw row is saved first because the merge reads every device's *stored* row for that day.
 5. **Stamp `LastSyncDate` only once the whole window lands** — a partial sync stays due for retry instead of silently leaving a hole.
+6. **Backfill one chunk of history** (Worker pulls only — `extendHistory: true`; the manual path skips this so a caregiver's refresh never waits on last month). `DeviceConnection.HistoryBackfilledTo` walks backwards from the routine window towards `backfill_days` (**90**) days ago, `backfill_chunk_days` (**7**) days per pull, newest first, advancing per day so an interrupted chunk resumes. A fresh connection's history is fully fetched after ~13 pulls (~2 h at the 10-minute cadence), which is what lets the 30-day baseline exist on day one for a wearable that has been worn before. Empty days are checked but not stored — an all-null row would read as a "data day" to the baseline coverage gate.
 
 ### Two-level frequency
 
@@ -169,6 +170,7 @@ The same query excludes removed and monitoring-paused members — in the query r
 | `DeviceSyncAuditWorker` cron / sample | `0 0 4 * * 0` / 25 | `Workers:DeviceSyncAuditWorker` |
 | `SyncFrequencyMinutes` | 10 | per `DeviceConnection` row |
 | `sync_lookback_days` | 3 | `device_pull_params` tfvars |
+| `backfill_days` / `backfill_chunk_days` | 90 / 7 | `device_pull_params` tfvars |
 | `audit_lookback_days` | 14 | `device_pull_params` tfvars |
 | `min_pull_interval_minutes` | 10 | `device_pull_params` tfvars |
 | `max_pull_interval_minutes` | 1440 | `device_pull_params` tfvars |

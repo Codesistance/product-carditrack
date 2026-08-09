@@ -361,6 +361,177 @@ public class DeviceSyncServiceTests
         await _deviceApi.DidNotReceive().GetHealthSnapshotAsync(Arg.Any<string>(), Arg.Any<DateOnly>());
     }
 
+    // ── History backfill ─────────────────────────────────────────────────────────
+    //
+    // A fresh connection starts with only the routine window, but the wearable often holds months
+    // of history the provider will still serve. The backfill walks that history backwards one
+    // chunk per pull — never in one pull, which would blow the per-wearer request ceiling, fail
+    // partway, and start over on the next pull without ever completing.
+
+    private static DeviceHealthSnapshot EmptySnapshot() =>
+        new(Steps: null, DistanceKm: null, ActiveMinutes: null, SedentaryMinutes: null,
+            Floors: null, CaloriesBurned: null,
+            RestingHeartRate: null, AvgHeartRate: null, MaxHeartRate: null, MinHeartRate: null,
+            TotalSleepMinutes: null, SleepEfficiency: null,
+            SleepStartTime: null, SleepEndTime: null,
+            DeepSleepMinutes: null, LightSleepMinutes: null, RemSleepMinutes: null, AwakeMinutes: null);
+
+    [Fact]
+    public async Task SyncCardiMemberAsync_FetchesOneChunkJustPastTheRoutineWindow_WhenExtendingHistory()
+    {
+        SetupSuccessfulTokenRefresh();
+        SetupDefaultApiResponse();
+
+        await CreateSut().SyncCardiMemberAsync(_fitbitConnection, extendHistory: true);
+
+        // The routine window plus exactly one chunk — never the whole horizon at once.
+        await _deviceApi.Received(WindowDays(LookbackDays) + _fitbitConfig.BackfillChunkDays)
+            .GetHealthSnapshotAsync(Arg.Any<string>(), Arg.Any<DateOnly>());
+
+        // The chunk starts on the first day the routine window does not reach.
+        for (var offset = LookbackDays + 1; offset <= LookbackDays + _fitbitConfig.BackfillChunkDays; offset++)
+        {
+            await _deviceApi.Received(1)
+                .GetHealthSnapshotAsync(Arg.Any<string>(), Today.AddDays(-offset));
+        }
+    }
+
+    // The manual-sync path shares SyncCardiMemberAsync, and a caregiver waiting on a refresh must
+    // not pay for a chunk of last month — history extension is the Worker cadence's job.
+    [Fact]
+    public async Task SyncCardiMemberAsync_DoesNotTouchHistory_ByDefault()
+    {
+        SetupSuccessfulTokenRefresh();
+        SetupDefaultApiResponse();
+
+        await CreateSut().SyncCardiMemberAsync(_fitbitConnection);
+
+        await _deviceApi.Received(WindowDays(LookbackDays))
+            .GetHealthSnapshotAsync(Arg.Any<string>(), Arg.Any<DateOnly>());
+        await _deviceConnections.DidNotReceive()
+            .UpdateHistoryBackfilledToAsync(Arg.Any<Guid>(), Arg.Any<DateOnly>());
+    }
+
+    [Fact]
+    public async Task SyncCardiMemberAsync_AdvancesTheFrontierPerDay_WhileBackfilling()
+    {
+        SetupSuccessfulTokenRefresh();
+        SetupDefaultApiResponse();
+
+        await CreateSut().SyncCardiMemberAsync(_fitbitConnection, extendHistory: true);
+
+        var chunkEnd = Today.AddDays(-(LookbackDays + _fitbitConfig.BackfillChunkDays));
+        await _deviceConnections.Received(_fitbitConfig.BackfillChunkDays)
+            .UpdateHistoryBackfilledToAsync(_fitbitConnection.Id, Arg.Any<DateOnly>());
+        await _deviceConnections.Received(1)
+            .UpdateHistoryBackfilledToAsync(_fitbitConnection.Id, chunkEnd);
+        Assert.Equal(chunkEnd, _fitbitConnection.HistoryBackfilledTo);
+    }
+
+    [Fact]
+    public async Task SyncCardiMemberAsync_ResumesBackfillFromTheStoredFrontier()
+    {
+        _fitbitConnection.HistoryBackfilledTo = Today.AddDays(-30);
+        SetupSuccessfulTokenRefresh();
+        SetupDefaultApiResponse();
+
+        await CreateSut().SyncCardiMemberAsync(_fitbitConnection, extendHistory: true);
+
+        for (var offset = 31; offset <= 30 + _fitbitConfig.BackfillChunkDays; offset++)
+        {
+            await _deviceApi.Received(1)
+                .GetHealthSnapshotAsync(Arg.Any<string>(), Today.AddDays(-offset));
+        }
+    }
+
+    [Fact]
+    public async Task SyncCardiMemberAsync_StopsBackfillingAtTheHorizon()
+    {
+        _fitbitConfig.BackfillDays = 90;
+        _fitbitConnection.HistoryBackfilledTo = Today.AddDays(-88);
+        SetupSuccessfulTokenRefresh();
+        SetupDefaultApiResponse();
+
+        await CreateSut().SyncCardiMemberAsync(_fitbitConnection, extendHistory: true);
+
+        // Only days 89 and 90 remain of the horizon, chunk size notwithstanding.
+        await _deviceApi.Received(WindowDays(LookbackDays) + 2)
+            .GetHealthSnapshotAsync(Arg.Any<string>(), Arg.Any<DateOnly>());
+        Assert.Equal(Today.AddDays(-90), _fitbitConnection.HistoryBackfilledTo);
+    }
+
+    [Fact]
+    public async Task SyncCardiMemberAsync_BackfillsNothing_WhenTheHorizonIsAlreadyReached()
+    {
+        _fitbitConfig.BackfillDays = 90;
+        _fitbitConnection.HistoryBackfilledTo = Today.AddDays(-90);
+        SetupSuccessfulTokenRefresh();
+        SetupDefaultApiResponse();
+
+        await CreateSut().SyncCardiMemberAsync(_fitbitConnection, extendHistory: true);
+
+        await _deviceApi.Received(WindowDays(LookbackDays))
+            .GetHealthSnapshotAsync(Arg.Any<string>(), Arg.Any<DateOnly>());
+        await _deviceConnections.DidNotReceive()
+            .UpdateHistoryBackfilledToAsync(Arg.Any<Guid>(), Arg.Any<DateOnly>());
+    }
+
+    [Fact]
+    public async Task SyncCardiMemberAsync_BackfillsNothing_WhenBackfillIsDisabled()
+    {
+        _fitbitConfig.BackfillDays = 0;
+        SetupSuccessfulTokenRefresh();
+        SetupDefaultApiResponse();
+
+        await CreateSut().SyncCardiMemberAsync(_fitbitConnection, extendHistory: true);
+
+        await _deviceApi.Received(WindowDays(LookbackDays))
+            .GetHealthSnapshotAsync(Arg.Any<string>(), Arg.Any<DateOnly>());
+        await _deviceConnections.DidNotReceive()
+            .UpdateHistoryBackfilledToAsync(Arg.Any<Guid>(), Arg.Any<DateOnly>());
+    }
+
+    // An all-null row would read as a "data day" to the baseline coverage gate and the dashboard's
+    // days-captured figure. Checked-and-empty is a final answer, so the frontier still advances.
+    [Fact]
+    public async Task SyncCardiMemberAsync_ChecksButDoesNotStore_EmptyBackfillDays()
+    {
+        SetupSuccessfulTokenRefresh();
+        var routineFloor = Today.AddDays(-LookbackDays);
+        _deviceApi.GetHealthSnapshotAsync(Arg.Any<string>(), Arg.Any<DateOnly>())
+            .Returns(call => call.Arg<DateOnly>() >= routineFloor ? Snapshot() : EmptySnapshot());
+
+        await CreateSut().SyncCardiMemberAsync(_fitbitConnection, extendHistory: true);
+
+        // Only the routine window stored; the empty history days were checked and skipped.
+        await _deviceActivityLogs.Received(WindowDays(LookbackDays))
+            .UpsertAsync(Arg.Any<DeviceActivityLog>());
+        await _deviceConnections.Received(_fitbitConfig.BackfillChunkDays)
+            .UpdateHistoryBackfilledToAsync(_fitbitConnection.Id, Arg.Any<DateOnly>());
+    }
+
+    // The routine window landed before the chunk started, so its success stands; the frontier
+    // records how far the chunk got, and the next pull resumes from there.
+    [Fact]
+    public async Task SyncCardiMemberAsync_KeepsTheRoutineSuccess_WhenBackfillFails()
+    {
+        SetupSuccessfulTokenRefresh();
+        _deviceApi.GetHealthSnapshotAsync(Arg.Any<string>(), Arg.Any<DateOnly>())
+            .Returns(Snapshot());
+        _deviceApi.GetHealthSnapshotAsync(Arg.Any<string>(), Today.AddDays(-(LookbackDays + 3)))
+            .ThrowsAsync(new FitbitApiException(503, "Service Unavailable"));
+
+        await Assert.ThrowsAsync<FitbitApiException>(() =>
+            CreateSut().SyncCardiMemberAsync(_fitbitConnection, extendHistory: true));
+
+        await _deviceConnections.Received(1)
+            .MarkSyncSucceededAsync(_fitbitConnection.Id, Arg.Any<DateTime>());
+        // Two chunk days completed before the third threw.
+        await _deviceConnections.Received(2)
+            .UpdateHistoryBackfilledToAsync(_fitbitConnection.Id, Arg.Any<DateOnly>());
+        Assert.Equal(Today.AddDays(-(LookbackDays + 2)), _fitbitConnection.HistoryBackfilledTo);
+    }
+
     // ── AuditSyncAsync ───────────────────────────────────────────────────────────
     //
     // The audit exists to measure how far back a provider revises data — something a routine sync
