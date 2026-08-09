@@ -1,15 +1,19 @@
 namespace CardiTrack.Infrastructure.ExternalClients;
 
-// Activities endpoint: GET /1/user/-/activities/date/{date}.json
+/// <summary>
+/// One day of activity totals. Every field is null when the provider reported nothing for that
+/// day — never 0, which the multi-device merge would treat as a real reading and prefer over
+/// another device's genuine value, and which the baseline would average in as a day of stillness.
+/// An explicit zero from the provider (a worn device, no activity) is kept as 0 and is a different
+/// fact entirely.
+/// </summary>
 public record FitbitActivitiesResult(
-    int Steps,
-    decimal DistanceKm,
-    int ActiveMinutes,
-    // Null when the provider has no such data type — never 0, which the merge would treat
-    // as a real reading and prefer over another device's genuine value.
+    int? Steps,
+    decimal? DistanceKm,
+    int? ActiveMinutes,
     int? SedentaryMinutes,
-    int Floors,
-    int CaloriesBurned);
+    int? Floors,
+    int? CaloriesBurned);
 
 // Heart rate endpoint: GET /1/user/-/heart/date/{date}/1d.json
 public record FitbitHeartRateResult(
@@ -19,8 +23,10 @@ public record FitbitHeartRateResult(
     int? MinHeartRate);
 
 // Sleep endpoint: GET /1/user/-/sleep/date/{date}.json
+// TotalSleepMinutes is null when no session was recorded for the day — an unworn or unsynced
+// device, not a sleepless night. See FitbitActivitiesResult for why that distinction is kept.
 public record FitbitSleepResult(
-    int TotalSleepMinutes,
+    int? TotalSleepMinutes,
     int? SleepEfficiency,
     DateTime? SleepStartTime,
     DateTime? SleepEndTime,

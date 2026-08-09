@@ -7,13 +7,14 @@ using Microsoft.Extensions.DependencyInjection;
 
 // Probes the Google Health API with a real access token and reports the JSON
 // *shape* of each response, then runs the real FitbitApiClient over the same
-// account so any field it fails to find shows up as a zero/null.
+// account so any field it fails to find shows up as a null.
 //
-// Why this exists: FitbitApiClient's field names now match the v4 reference, but
-// a name that is right on paper and absent in practice fails silently — it
-// yields 0 rather than throwing — so the pairing still has to be seen against a
-// live account once. It also catches per-account gaps the reference cannot show:
-// a data type the wearer's device never populates looks identical to a bug here.
+// Why this exists: field *names* are settled without a token, against the v4
+// discovery document (see README) — that is the stronger check and it costs
+// nothing. What no schema can answer is whether a given wearer's device
+// populates a type at all, and that failure is silent: an unpopulated type and a
+// misnamed field both come back null rather than throwing. Pairing the raw shape
+// against the parsed result separates them.
 
 const string BaseUrl = "https://health.googleapis.com";
 
@@ -178,8 +179,14 @@ using (var sleepRequest = new HttpRequestMessage(
 Console.WriteLine();
 Console.WriteLine(new string('=', 72));
 Console.WriteLine("FitbitApiClient.GetHealthSnapshotAsync — parsed result");
-Console.WriteLine("A zero/null here for a metric whose shape dump above showed data means the");
-Console.WriteLine("field name in FitbitApiClient is wrong.");
+Console.WriteLine("null + data in the shape dump above  = the name/format/enum is wrong.");
+Console.WriteLine("null + empty shape dump              = this device does not record it.");
+Console.WriteLine("0                                    = check the shape dump before trusting it.");
+Console.WriteLine("    An explicit zero from the API is kept as a measurement. But ActiveMinutes,");
+Console.WriteLine("    SleepEfficiency and DistanceKm are derived, so each can also reach 0 when a");
+Console.WriteLine("    filter matches nothing or a unit conversion rounds away — which is the");
+Console.WriteLine("    silent-zero class this probe exists to catch. A 0 beside a shape dump that");
+Console.WriteLine("    plainly holds data is the case to dig into.");
 Console.WriteLine("StressScore is the one exception: v4 has no stress or readiness data type, so it");
 Console.WriteLine("is always null and no shape dump above corresponds to it.");
 Console.WriteLine();
@@ -199,8 +206,11 @@ try
     foreach (var property in typeof(DeviceHealthSnapshot).GetProperties())
     {
         var value = property.GetValue(snapshot);
-        var suspicious = value is null or 0 or 0m;
-        Console.WriteLine($"  {property.Name,-20} {value ?? "(null)"}{(suspicious ? "   <-- zero/null" : "")}");
+        // Only null carries an unambiguous meaning, so only null is marked. A 0 is left
+        // unmarked deliberately: most are explicit zeros the client keeps as measurements, and
+        // marking every one would train the reader to skip the marker entirely. The legend
+        // above says which 0s still deserve a second look rather than this line guessing.
+        Console.WriteLine($"  {property.Name,-20} {value ?? "(null)"}{(value is null ? "   <-- null" : "")}");
     }
 }
 catch (FitbitApiException ex)

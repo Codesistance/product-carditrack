@@ -20,10 +20,20 @@ namespace CardiTrack.Infrastructure.ExternalClients;
 /// aggregation this client needs — `oxygen-saturation` has no min/max rollup.
 /// </para>
 /// <para>
-/// Every field name below is the one in the v4 reference. Rollup values are named
+/// Every field name and enum member below is checked against the v4 discovery document
+/// (`https://health.googleapis.com/$discovery/rest?version=v4`), which is the machine-readable
+/// schema and so settles spelling in a way the prose reference cannot. Rollup values are named
 /// `{field}{Aggregation}` in camelCase (`countSum`, `beatsPerMinuteAvg`) — an earlier snake_case
 /// reading of that convention (`count`, `beatsPerMinute_avg`) matched nothing and silently
-/// reported zeros. Units are the reference's own: distance in millimetres, calories in kcal.
+/// reported zeros. Units are the schema's own: distance in millimetres, calories in kcal.
+/// </para>
+/// <para>
+/// Two wire encodings hide behind those names and both fail silently if missed: `int64` fields
+/// cross the wire as JSON *strings* under proto3 JSON (`"countSum": "9423"`), and `Duration`
+/// fields as strings with an `s` suffix (`"durationSum": "28800s"`). A numeric-only parse reads
+/// either as absent, which is indistinguishable from a wearer with no data. Check the discovery
+/// document's `format` before adding a field: `int64`, `google-duration` and `double` all present
+/// as "a number" in an example payload and are three different parses.
 /// </para>
 /// <para>
 /// `filter` expressions are the one place that convention does not hold: their member paths are
@@ -35,10 +45,18 @@ public class FitbitApiClient : IFitbitApiClient, IDeviceApiClient
 {
     /// <summary>
     /// Activity levels that count as "active minutes", matching Fitbit's classic definition.
-    /// `active-minutes` rolls up as a breakdown per level, so leaving LIGHTLY_ACTIVE in would
-    /// report a number several times the one wearers see in the Fitbit app.
+    /// `active-minutes` rolls up as a breakdown per level, so leaving LIGHT in would report a
+    /// number several times the one wearers see in the Fitbit app.
     /// </summary>
-    private static readonly string[] ActiveActivityLevels = ["MODERATELY_ACTIVE", "VERY_ACTIVE"];
+    /// <remarks>
+    /// These are the members of <c>ActiveMinutesRollupByActivityLevel.activityLevel</c>, whose
+    /// enum is <c>ACTIVITY_LEVEL_UNSPECIFIED | LIGHT | MODERATE | VIGOROUS</c>. Not to be confused
+    /// with <c>ActivityLevelRollupByActivityLevelType.activityLevelType</c> — a different data type
+    /// (`activity-level`) whose enum really does read
+    /// <c>SEDENTARY | LIGHTLY_ACTIVE | MODERATELY_ACTIVE | VERY_ACTIVE</c>. Borrowing that
+    /// spelling here matched no level at all and summed to a silent 0 on every wearer.
+    /// </remarks>
+    private static readonly string[] ActiveActivityLevels = ["MODERATE", "VIGOROUS"];
 
     /// <summary>
     /// Points per page when listing a Sample series. The API's own maximum; anything larger is
@@ -74,29 +92,39 @@ public class FitbitApiClient : IFitbitApiClient, IDeviceApiClient
         await Task.WhenAll(
             stepsTask, distanceTask, activeMinutesTask, caloriesTask, floorsTask, sedentaryTask);
 
-        var steps = ReadInt(stepsTask.Result, "countSum") ?? 0;
-        var distanceMillimeters = ReadDecimal(distanceTask.Result, "millimetersSum") ?? 0;
+        // Every one of these is null — never 0 — on a day the type reports nothing. The API's own
+        // guidance is explicit that an absent rollup bucket means the device was not worn or has
+        // not synced, while a present `"countSum": "0"` is a true zero; the two are different
+        // facts and only the second is a measurement. Coalescing here would break both consumers
+        // downstream: the multi-device merge takes the first non-null value, so a manufactured 0
+        // from a higher-priority device would beat another device's genuine reading, and the
+        // baseline averages absent days in as zeros, deflating the very figure inactivity
+        // detection compares against. A wearer who has simply not synced would read as a wearer
+        // who has stopped moving.
+        var steps = ReadInt(stepsTask.Result, "countSum");
+        var distanceMillimeters = ReadDecimal(distanceTask.Result, "millimetersSum");
         var activeMinutes = SumActiveMinutes(activeMinutesTask.Result);
-        var calories = ReadInt(caloriesTask.Result, "kcalSum") ?? 0;
-        var floors = ReadInt(floorsTask.Result, "countSum") ?? 0;
+        var calories = ReadInt(caloriesTask.Result, "kcalSum");
+        var floors = ReadInt(floorsTask.Result, "countSum");
 
         // `sedentary-period` is an Interval type, so it rolls up like the rest, but its only rollup
-        // value is a `durationSum` in **seconds** — the sole rollup here not already in the unit its
-        // column wants. It stays null rather than 0 on a day the type reports nothing: the
-        // multi-device merge coalesces on the first non-null value, so a placeholder 0 from a
-        // higher-priority device would beat another device's genuine reading.
+        // value is a `durationSum`, and that field is a protobuf Duration rather than a bare
+        // number — it crosses the wire as `"28800s"`, seconds with a literal `s` suffix. It is the
+        // sole rollup here not already in the unit its column wants.
         // Nearest, not truncated: the sub-minute remainder is roughly uniform, so flooring would
         // under-report by ~30s every single day in the same direction, and this column feeds
         // baselines and trend detection where a standing bias matters more than a ±30s error that
         // averages out. Same conversion idiom as SumActiveMinutes below.
-        var sedentarySeconds = ReadDecimal(sedentaryTask.Result, "durationSum");
+        var sedentarySeconds = ReadDurationSeconds(sedentaryTask.Result, "durationSum");
         var sedentaryMinutes = sedentarySeconds.HasValue
             ? (int)decimal.Round(sedentarySeconds.Value / 60m)
             : (int?)null;
 
         return new FitbitActivitiesResult(
             steps,
-            decimal.Round(distanceMillimeters / 1_000_000m, 3),
+            distanceMillimeters.HasValue
+                ? decimal.Round(distanceMillimeters.Value / 1_000_000m, 3)
+                : (decimal?)null,
             activeMinutes,
             sedentaryMinutes,
             floors,
@@ -172,12 +200,16 @@ public class FitbitApiClient : IFitbitApiClient, IDeviceApiClient
             : (int?)null;
         var asleepMinutes = ReadInt(summary, "minutesAsleep") ?? stageTotal;
 
+        // Null when no session was returned at all, rather than 0: "the wearer logged no sleep
+        // session" and "the wearer slept zero minutes" are different claims, and only the second
+        // is a measurement. A 0 here would enter the sleep baseline as a genuine sleepless night
+        // every time the watch was off the wrist or had not yet synced.
         var totalMinutes = asleepMinutes
             ?? (startTime.HasValue && endTime.HasValue
                 // Clamped: a session whose awake minutes exceed its own span is contradictory
                 // input, and a negative sleep total would poison the baseline downstream.
                 ? Math.Max(0, (int)(endTime.Value - startTime.Value).TotalMinutes - (awake ?? 0))
-                : 0);
+                : (int?)null);
 
         // The API exposes no efficiency field, so it is derived the way Fitbit defines it: minutes
         // asleep over minutes in the sleep period. Null unless both are known — a fabricated 100%
@@ -504,10 +536,15 @@ public class FitbitApiClient : IFitbitApiClient, IDeviceApiClient
     /// Total minutes across the activity levels that count as active. `active-minutes` is the one
     /// rollup with no scalar total — it comes back as a per-activity-level breakdown.
     /// </summary>
-    private static int SumActiveMinutes(JToken? value)
+    /// <remarks>
+    /// Null when the day carries no breakdown at all, for the same reason the scalar rollups stay
+    /// null: an unworn device is not a still one. A breakdown that exists but lists only LIGHT is a
+    /// different matter — the wearer was measured and did nothing qualifying — so that is a real 0.
+    /// </remarks>
+    private static int? SumActiveMinutes(JToken? value)
     {
         if (value?["activeMinutesRollupByActivityLevel"] is not JArray levels)
-            return 0;
+            return null;
 
         var minutes = levels
             .OfType<JObject>()
@@ -577,6 +614,36 @@ public class FitbitApiClient : IFitbitApiClient, IDeviceApiClient
 
             _ => null,
         };
+    }
+
+    /// <summary>
+    /// Reads a protobuf <c>Duration</c> field as a number of seconds, or null when absent or
+    /// unparseable.
+    /// </summary>
+    /// <remarks>
+    /// Proto3 JSON writes a Duration as a decimal string with a mandatory <c>s</c> suffix —
+    /// <c>"28800s"</c>, and fractional for sub-second precision (<c>"1.5s"</c>). Passing that
+    /// through <see cref="ReadDecimal"/> fails on the suffix and yields null, which for
+    /// `sedentary-period` is indistinguishable from a wearer whose device never reported one. The
+    /// suffix is required rather than optional: a bare number is not a valid Duration, so
+    /// accepting one would only mask a field that is not the type we think it is.
+    /// </remarks>
+    private static decimal? ReadDurationSeconds(JToken? obj, string name)
+    {
+        if (obj is not JObject o || o[name] is not JValue { Type: JTokenType.String } value)
+            return null;
+
+        var text = value.Value<string>();
+        if (text is null || !text.EndsWith('s'))
+            return null;
+
+        return decimal.TryParse(
+            text.AsSpan(0, text.Length - 1),
+            NumberStyles.Number,
+            CultureInfo.InvariantCulture,
+            out var seconds)
+            ? seconds
+            : null;
     }
 
     private static async Task<JToken> ParseBodyAsync(HttpResponseMessage response, string what)
