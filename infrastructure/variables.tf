@@ -368,3 +368,55 @@ variable "medgemma_timeout_seconds" {
   type        = number
   default     = 300
 }
+
+# ── Public AI provider (reports and chat) ─────────────────────────────────────
+# Off-estate by definition, and swappable: changing kind + model + the key secret moves
+# reports and chat to another provider without a code change. The medical path is not
+# configurable here — it is pinned to the in-VPC MedGemma service in application code.
+
+variable "public_ai_kind" {
+  description = "Wire protocol of the public AI provider — Gemini or Anthropic"
+  type        = string
+  default     = "Gemini"
+
+  validation {
+    condition     = contains(["Gemini", "Anthropic"], var.public_ai_kind)
+    error_message = "public_ai_kind must be one of: Gemini, Anthropic."
+  }
+}
+
+variable "public_ai_model" {
+  description = "Model identifier passed to the public AI provider"
+  type        = string
+  default     = "gemini-2.0-flash"
+}
+
+# Null keeps the provider's documented default endpoint, which is what dev and prod use.
+# Set it to reach a gateway or a regional endpoint (e.g. Vertex AI) instead.
+variable "public_ai_base_url" {
+  description = "Override for the public AI provider endpoint; null uses the per-kind default"
+  type        = string
+  default     = null
+}
+
+variable "public_ai_timeout_seconds" {
+  description = "HTTP client timeout the API applies to public AI calls"
+  type        = number
+  default     = 60
+}
+
+# A multi-member report is the longest output we ask a public model for; a low ceiling
+# truncates it mid-sentence with no error to catch.
+variable "public_ai_max_output_tokens" {
+  description = "Upper bound on a single public AI completion"
+  type        = number
+  default     = 16000
+}
+
+# Named separately from the provider so a swap can point at a new secret without
+# destroying and recreating the existing one. Defaults to the secret already in place.
+variable "public_ai_api_key_secret_id" {
+  description = "Secret Manager secret holding the public AI API key; null uses the gemini-api-key secret"
+  type        = string
+  default     = null
+}

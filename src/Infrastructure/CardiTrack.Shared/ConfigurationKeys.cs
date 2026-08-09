@@ -125,13 +125,17 @@ public static class ConfigurationKeys
 
     public static class AI
     {
-        /// <summary>Name of the active provider for generative tasks (reports, chat). E.g. "Gemini"</summary>
-        public const string GeneralProvider = "AI:GeneralProvider";
+        /// <summary>
+        /// Swappable off-estate provider for reports and chat — kind, model, key, optional URL.
+        /// Object section: use with IConfiguration.GetSection(), not ConfigurationLoader.Get().
+        /// </summary>
+        public const string PublicSectionName = "AI:Public";
 
-        /// <summary>Name of the active provider for medical analysis tasks. E.g. "MedGemma"</summary>
-        public const string MedicalProvider = "AI:MedicalProvider";
-
-        /// <summary>Array section — use with IConfiguration.GetSection(), not ConfigurationLoader.Get().</summary>
-        public const string ProvidersSectionName = "AI:Providers";
+        /// <summary>
+        /// Self-hosted MedGemma used for medical analysis. Carries where it lives and which weights
+        /// it serves — never which provider to use, which is fixed in code.
+        /// Object section: use with IConfiguration.GetSection(), not ConfigurationLoader.Get().
+        /// </summary>
+        public const string PrivateSectionName = "AI:Private";
     }
 }

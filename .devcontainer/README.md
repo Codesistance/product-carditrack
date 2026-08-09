@@ -92,7 +92,7 @@ work needs. Start it from the repository compose file when required:
 docker compose --profile full up ollama medgemma-init
 ```
 
-Point the app at it with `AI__Providers__0__BaseUrl=http://host.docker.internal:11434`.
+Point the app at it with `AI__Private__BaseUrl=http://host.docker.internal:11434`.
 
 ## Claude Code cloud sessions
 

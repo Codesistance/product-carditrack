@@ -279,7 +279,7 @@ Because real test users' data is already flowing (§1.2) while R-A1–R-A7 are o
 | M3 | Add relationship checks (mirror `DashboardService`) to `InsightsController`, `ChatController`; ownership checks on report status/download and member validation on generation | R-A3 |
 | M1 | Encrypt `MedicalNotes` via the existing `IEncryptionService` (converter in EF config) + migration for existing rows | R-A1 |
 | M5 | Stop logging email (keep internal user ID only); redact query strings on the OAuth redirect route; relocate or justify the US audit bucket; pin Secret Manager replication | R-A5 |
-| M4 | Move Gemini calls to Vertex AI EU endpoint (or route via self-hosted MedGemma); strip names/GUIDs from prompts; document the DPA | R-A4 |
+| M4 | Move Gemini calls to Vertex AI EU endpoint (or route via self-hosted MedGemma); strip names/GUIDs from prompts; document the DPA. The endpoint and provider are now configuration (`AI__Public__Kind`, `AI__Public__BaseUrl`), so the remaining work is the DPA and the decision, not a code change | R-A4 |
 
 **P1 — launch blockers (before Google verification / exceeding test cap):**
 

@@ -10,17 +10,19 @@ namespace CardiTrack.Infrastructure.ExternalClients.Medical;
 public class MedGemmaClient : IExternalAiClient
 {
     private readonly IHttpClientFactory _httpClientFactory;
-    private readonly AiProviderSettings _settings;
+    private readonly PrivateAiSettings _settings;
+    private readonly string _httpClientName;
 
-    public MedGemmaClient(IHttpClientFactory httpClientFactory, AiProviderSettings settings)
+    public MedGemmaClient(IHttpClientFactory httpClientFactory, PrivateAiSettings settings, string httpClientName)
     {
         _httpClientFactory = httpClientFactory;
         _settings = settings;
+        _httpClientName = httpClientName;
     }
 
     public async Task<string> GenerateAsync(string prompt, CancellationToken ct = default)
     {
-        var client = _httpClientFactory.CreateClient("MedGemmaClient");
+        var client = _httpClientFactory.CreateClient(_httpClientName);
         var request = new OllamaGenerateRequest { Model = _settings.Model, Prompt = prompt };
         var response = await client.PostAsJsonAsync("/api/generate", request, ct);
         response.EnsureSuccessStatusCode();
@@ -30,7 +32,7 @@ public class MedGemmaClient : IExternalAiClient
 
     public async Task<string> ChatAsync(IReadOnlyList<ChatMessage> history, string userMessage, CancellationToken ct = default)
     {
-        var client = _httpClientFactory.CreateClient("MedGemmaClient");
+        var client = _httpClientFactory.CreateClient(_httpClientName);
         var messages = history
             .Select(m => new OllamaMessage { Role = m.Role == ChatRole.User ? "user" : "assistant", Content = m.Content })
             .Append(new OllamaMessage { Role = "user", Content = userMessage })

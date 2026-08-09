@@ -3,8 +3,9 @@ using CardiTrack.Application.DTOs.Common;
 namespace CardiTrack.Application.Interfaces.Clients;
 
 /// <summary>
-/// Common interface for all external AI/LLM provider clients.
-/// Register with a keyed DI slot matching AI:GeneralProvider or AI:MedicalProvider.
+/// Common interface for all AI/LLM provider clients — the seam that makes the public provider
+/// swappable. Implementations are registered under the keyed DI slot "GeneralProvider" (public,
+/// selected by AI:Public:Kind) or "MedicalProvider" (private, always MedGemma).
 /// </summary>
 public interface IExternalAiClient
 {
