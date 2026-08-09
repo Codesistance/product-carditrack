@@ -18,7 +18,7 @@
 
 ## Build Status (as of August 9, 2026)
 
-> **13 of 17 Figma M1 screens are built** in `CardiTrack.Mobile`: M1-01 through M1-10, plus M1-13, M1-14 and M1-15. **M1-11, M1-12, M1-16 and M1-17 are not built** — their entry points show "Coming soon" dialogs. **Four shipped screens have no Figma M1 frame — needs design sync:** SignInPage, ForgotPasswordPage, VerifyEmailPage, Onboarding/AccountSetupPage (specs in the canonical doc). Unbuilt screens below remain design intent, each marked with a status line.
+> **13 of 17 Figma M1 screens are built** in `CardiTrack.Mobile` (M1-01 through M1-10, plus M1-13 CardiMemberDetailPage, M1-14 EditCardiMemberPage, M1-15 DeviceManagementPage). **The unbuilt screens are alert detail and export** — M1-11/M1-12/M1-16 Alert Details and M1-17 Health Data Export; their entry points show "Coming soon" dialogs, except the dashboard's Add-Member action, which pushes M1-04 (AddCardiMemberPage) directly. **Four shipped screens have no Figma M1 frame — needs design sync:** SignInPage, ForgotPasswordPage, VerifyEmailPage, Onboarding/AccountSetupPage (specs in the canonical doc). Unbuilt screens below remain design intent, each marked with a status line.
 
 ---
 
@@ -1094,5 +1094,5 @@ Saves via `PUT /api/v1/cardimembers/{id}` — a full replacement, so clearing a 
 
 ---
 
-**Source:** Extracted from [ui_screens_maui_mobile.md](../ui_screens_maui_mobile.md) v3.1 (manually re-synced August 7, 2026)
-**Total MVP 1 Screens:** 17 designed screens · 37 designed states — **9 of 17 built**; 4 additional shipped screens have no Figma M1 frame (SignIn, ForgotPassword, VerifyEmail, AccountSetup)
+**Source:** Extracted from [ui_screens_maui_mobile.md](../ui_screens_maui_mobile.md) v3.1 (manually re-synced August 9, 2026)
+**Total MVP 1 Screens:** 17 designed screens · 37 designed states — **12 of 17 built**; 4 additional shipped screens have no Figma M1 frame (SignIn, ForgotPassword, VerifyEmail, AccountSetup)

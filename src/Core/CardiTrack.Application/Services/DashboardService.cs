@@ -15,6 +15,13 @@ public class DashboardService : IDashboardService
     private const decimal OrangeDeviationPercent = 50m;
 
     private const int BaselinePeriodDays = BaselineProgress.PeriodDays;
+
+    /// <summary>
+    /// Baseline windows tried longest-first: the established 30-day picture when it exists,
+    /// else the best provisional one. The response's baseline state carries which one served,
+    /// so a client can caveat what the colours are anchored to.
+    /// </summary>
+    private static readonly int[] BaselinePeriodPreference = [BaselinePeriodDays, 14, 7];
     private const int SeriesDays = 7;
     private const int RecentAlertCount = 5;
     private const decimal DefaultStepsGoal = 10000m;
@@ -51,7 +58,15 @@ public class DashboardService : IDashboardService
                 cardiMemberId, today.AddDays(-(BaselinePeriodDays - 1)), today))
             .ToList();
 
-        var baseline = await _unitOfWork.PatternBaselines.GetLatestByCardiMemberAsync(cardiMemberId, BaselinePeriodDays);
+        // Sequential, not Task.WhenAll — these run on the request's single DbContext.
+        PatternBaseline? baseline = null;
+        foreach (var periodDays in BaselinePeriodPreference)
+        {
+            baseline = await _unitOfWork.PatternBaselines.GetLatestByCardiMemberAsync(cardiMemberId, periodDays);
+            if (baseline is not null)
+                break;
+        }
+
         var activeAlerts = (await _unitOfWork.Alerts.GetByCardiMemberAsync(cardiMemberId, activeOnly: true)).ToList();
 
         var isLearning = baseline is null;

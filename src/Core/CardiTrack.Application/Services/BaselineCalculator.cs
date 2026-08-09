@@ -14,8 +14,14 @@ namespace CardiTrack.Application.Services;
 /// </summary>
 public static class BaselineCalculator
 {
-    /// <summary>Windows a baseline is calculated over, longest last — the caller fetches once for the longest.</summary>
-    public static readonly IReadOnlyList<int> SupportedPeriods = [30, 60, 90];
+    /// <summary>
+    /// Windows a baseline is calculated over, longest last — the caller fetches once for the
+    /// longest. Windows shorter than <see cref="BaselineProgress.PeriodDays"/> are
+    /// <em>provisional</em>: early, low-confidence pictures that let the dashboard colour metrics
+    /// and insights speak tentatively from about the first week, instead of every surface sitting
+    /// silent until day 30.
+    /// </summary>
+    public static readonly IReadOnlyList<int> SupportedPeriods = [7, 14, 30, 60, 90];
 
     /// <summary>
     /// Fraction of the window that must carry data before a baseline is written at all. A member who
@@ -29,8 +35,15 @@ public static class BaselineCalculator
     /// Per-metric floor. Coverage is measured over days with *any* data, but ingestion populates
     /// metrics unevenly (a member may have steps every day and sleep on half of them), so each
     /// metric is gated on its own sample count and left null when it is too thin to average.
+    /// Windows too short to ever reach this floor scale it down to their own coverage bar
+    /// (see <see cref="MinimumSamples"/>) — a flat 7 would demand a perfect week from the 7-day
+    /// window, which exists precisely to tolerate an imperfect first fortnight.
     /// </summary>
     private const int MinimumSamplesPerMetric = 7;
+
+    /// <summary>The per-metric floor for one window: 6 for the 7-day window, 7 for everything longer.</summary>
+    private static int MinimumSamples(int periodDays) =>
+        Math.Min(MinimumSamplesPerMetric, (int)Math.Ceiling(periodDays * RequiredCoverage));
 
     /// <summary>
     /// Weekday buckets see only ~4 samples in a 30-day window, so they carry their own lighter floor.
@@ -80,6 +93,7 @@ public static class BaselineCalculator
             return null;
 
         var days = daily.Values.ToList();
+        var minimumSamples = MinimumSamples(periodDays);
 
         var steps = Samples(days, l => l.Steps);
         var restingHeartRate = Samples(days, l => l.RestingHeartRate);
@@ -89,20 +103,20 @@ public static class BaselineCalculator
             CardiMemberId = cardiMemberId,
             PeriodDays = periodDays,
 
-            AvgSteps = MeanAsInt(steps),
-            StdDevSteps = StandardDeviation(steps),
-            AvgActiveMinutes = MeanAsInt(Samples(days, l => l.ActiveMinutes)),
+            AvgSteps = MeanAsInt(steps, minimumSamples),
+            StdDevSteps = StandardDeviation(steps, minimumSamples),
+            AvgActiveMinutes = MeanAsInt(Samples(days, l => l.ActiveMinutes), minimumSamples),
 
-            AvgRestingHeartRate = MeanAsInt(restingHeartRate),
-            StdDevHeartRate = StandardDeviation(restingHeartRate),
+            AvgRestingHeartRate = MeanAsInt(restingHeartRate, minimumSamples),
+            StdDevHeartRate = StandardDeviation(restingHeartRate, minimumSamples),
             // An observed maximum is a fact rather than an estimate, so it is reported from whatever
             // readings exist instead of being gated on a sample count.
             MaxHeartRateObserved = days.Select(l => l.MaxHeartRate).Where(v => v.HasValue).Max(),
 
-            AvgSleepMinutes = MeanAsInt(Samples(days, l => l.SleepMinutes)),
-            TypicalBedtime = TypicalTime(days, l => l.SleepStartTime),
-            TypicalWakeTime = TypicalTime(days, l => l.SleepEndTime),
-            AvgSleepEfficiency = MeanAsInt(Samples(days, l => l.SleepEfficiency)),
+            AvgSleepMinutes = MeanAsInt(Samples(days, l => l.SleepMinutes), minimumSamples),
+            TypicalBedtime = TypicalTime(days, l => l.SleepStartTime, minimumSamples),
+            TypicalWakeTime = TypicalTime(days, l => l.SleepEndTime, minimumSamples),
+            AvgSleepEfficiency = MeanAsInt(Samples(days, l => l.SleepEfficiency), minimumSamples),
 
             StepsByDayOfWeek = StepsByDayOfWeek(days),
         };
@@ -111,19 +125,19 @@ public static class BaselineCalculator
     private static List<decimal> Samples(IEnumerable<ActivityLog> logs, Func<ActivityLog, decimal?> selector) =>
         logs.Select(selector).Where(v => v.HasValue).Select(v => v!.Value).ToList();
 
-    private static decimal? Mean(IReadOnlyList<decimal> samples) =>
-        samples.Count < MinimumSamplesPerMetric ? null : samples.Average();
+    private static decimal? Mean(IReadOnlyList<decimal> samples, int minimumSamples) =>
+        samples.Count < minimumSamples ? null : samples.Average();
 
-    private static int? MeanAsInt(IReadOnlyList<decimal> samples) =>
-        Mean(samples) is decimal mean ? (int)Math.Round(mean, MidpointRounding.AwayFromZero) : null;
+    private static int? MeanAsInt(IReadOnlyList<decimal> samples, int minimumSamples) =>
+        Mean(samples, minimumSamples) is decimal mean ? (int)Math.Round(mean, MidpointRounding.AwayFromZero) : null;
 
     /// <summary>
     /// Sample standard deviation (n−1). The dashboard turns this into the member's "normal range"
     /// (avg ± σ), so the population form would quietly narrow that band on every member.
     /// </summary>
-    private static decimal? StandardDeviation(IReadOnlyList<decimal> samples)
+    private static decimal? StandardDeviation(IReadOnlyList<decimal> samples, int minimumSamples)
     {
-        if (samples.Count < MinimumSamplesPerMetric)
+        if (samples.Count < minimumSamples)
             return null;
 
         var mean = samples.Average();
@@ -140,7 +154,8 @@ public static class BaselineCalculator
     /// member's local clock is a presentation concern for whoever displays this.
     /// </para>
     /// </summary>
-    private static TimeOnly? TypicalTime(IEnumerable<ActivityLog> logs, Func<ActivityLog, DateTime?> selector)
+    private static TimeOnly? TypicalTime(
+        IEnumerable<ActivityLog> logs, Func<ActivityLog, DateTime?> selector, int minimumSamples)
     {
         var times = logs
             .Select(selector)
@@ -148,7 +163,7 @@ public static class BaselineCalculator
             .Select(v => TimeOnly.FromDateTime(v!.Value))
             .ToList();
 
-        if (times.Count < MinimumSamplesPerMetric)
+        if (times.Count < minimumSamples)
             return null;
 
         double x = 0, y = 0;

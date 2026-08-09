@@ -15,7 +15,7 @@
 
 ## Build Status (as of August 7, 2026)
 
-> **13 of 17 Figma M1 screens are built** in `CardiTrack.Mobile`: M1-01 Splash, M1-02 Welcome, M1-03 Sign Up (CreateAccountPage), M1-04 Add First CardiMember, M1-05 Device Selection, M1-06 Fitbit Connection, M1-07 Connection Success, M1-08 Baseline Learning, M1-09 Dashboard, M1-10 Alerts List, M1-13 CardiMember Detail, M1-14 Edit CardiMember, M1-15 Device Management.
+> **13 of 17 Figma M1 screens are built** in `CardiTrack.Mobile`: M1-01 Splash, M1-02 Welcome, M1-03 Sign Up (CreateAccountPage), M1-04 Add First CardiMember, M1-05 Device Selection, M1-06 Fitbit Connection, M1-07 Connection Success, M1-08 Baseline Learning, M1-09 Dashboard, M1-10 Alerts List (AlertsPage), M1-13 CardiMember Detail (CardiMemberDetailPage), M1-14 Edit CardiMember (EditCardiMemberPage), M1-15 Device Management (DeviceManagementPage). Unbuilt: M1-11/M1-12/M1-16 Alert Details, M1-17 Health Data Export.
 >
 > **M1-11, M1-12, M1-16 and M1-17 are not built** — their entry points show "Coming soon" dialogs in the shipped app.
 >

@@ -183,20 +183,26 @@ public class FitbitApiClientTests
 
     /// <summary>
     /// active-minutes is the one rollup with no scalar total: it comes back as a breakdown per
-    /// activity level. Only moderately and very active count, matching Fitbit's classic figure —
-    /// including LIGHTLY_ACTIVE would report a number several times what the wearer sees in-app.
+    /// activity level. Only MODERATE and VIGOROUS count, matching Fitbit's classic figure —
+    /// including LIGHT would report a number several times what the wearer sees in-app.
+    /// <para>
+    /// The levels are spelled as `ActiveMinutesRollupByActivityLevel.activityLevel` declares them
+    /// in the v4 discovery document: <c>LIGHT | MODERATE | VIGOROUS</c>. The neighbouring
+    /// `activity-level` data type uses <c>LIGHTLY_ACTIVE | MODERATELY_ACTIVE | VERY_ACTIVE</c>, and
+    /// this fixture once carried those instead — a payload the API never sends, which let the
+    /// client match no level at all and still pass.
+    /// </para>
     /// </summary>
     [Fact]
-    public async Task GetActivitiesAsync_SumsActiveMinutes_ForModeratelyAndVeryActiveOnly()
+    public async Task GetActivitiesAsync_SumsActiveMinutes_ForModerateAndVigorousOnly()
     {
         var handler = new RoutedFakeHttpHandler()
             .Map("/dataTypes/active-minutes/", Rollup("activeMinutes", """
                 {
                   "activeMinutesRollupByActivityLevel": [
-                    { "activityLevel": "SEDENTARY",         "activeMinutesSum": "700" },
-                    { "activityLevel": "LIGHTLY_ACTIVE",    "activeMinutesSum": "180" },
-                    { "activityLevel": "MODERATELY_ACTIVE", "activeMinutesSum": "22"  },
-                    { "activityLevel": "VERY_ACTIVE",       "activeMinutesSum": "18"  }
+                    { "activityLevel": "LIGHT",    "activeMinutesSum": "180" },
+                    { "activityLevel": "MODERATE", "activeMinutesSum": "22"  },
+                    { "activityLevel": "VIGOROUS", "activeMinutesSum": "18"  }
                   ]
                 }
                 """));
@@ -207,25 +213,140 @@ public class FitbitApiClientTests
         Assert.Equal(40, result.ActiveMinutes);
     }
 
+    /// <summary>
+    /// Guards the exact regression this fixture used to hide: the `activity-level` spellings are
+    /// not the `active-minutes` ones, so a payload using them contributes nothing. If the client
+    /// ever accepts both, a wearer's active minutes could be counted twice.
+    /// </summary>
     [Fact]
-    public async Task GetActivitiesAsync_ReturnsZeros_WhenDayHasNoData()
+    public async Task GetActivitiesAsync_IgnoresActivityLevelTypeSpellings_WhichBelongToAnotherDataType()
+    {
+        var handler = new RoutedFakeHttpHandler()
+            .Map("/dataTypes/active-minutes/", Rollup("activeMinutes", """
+                {
+                  "activeMinutesRollupByActivityLevel": [
+                    { "activityLevel": "MODERATELY_ACTIVE", "activeMinutesSum": "22" },
+                    { "activityLevel": "VERY_ACTIVE",       "activeMinutesSum": "18" }
+                  ]
+                }
+                """));
+
+        var (sut, _) = CreateSut(handler);
+        var result = await sut.GetActivitiesAsync("token", Today);
+
+        Assert.Equal(0, result.ActiveMinutes);
+    }
+
+    /// <summary>
+    /// A breakdown that exists but lists no qualifying level is a real 0 — the wearer was measured
+    /// and did nothing moderate or vigorous. That is a different fact from the absent-rollup case
+    /// below, and the two must not collapse into one another.
+    /// </summary>
+    [Fact]
+    public async Task GetActivitiesAsync_ReturnsZeroActiveMinutes_WhenBreakdownHasNoQualifyingLevel()
+    {
+        var handler = new RoutedFakeHttpHandler()
+            .Map("/dataTypes/active-minutes/", Rollup("activeMinutes", """
+                {
+                  "activeMinutesRollupByActivityLevel": [
+                    { "activityLevel": "LIGHT", "activeMinutesSum": "180" }
+                  ]
+                }
+                """));
+
+        var (sut, _) = CreateSut(handler);
+        var result = await sut.GetActivitiesAsync("token", Today);
+
+        Assert.Equal(0, result.ActiveMinutes);
+    }
+
+    /// <summary>
+    /// Null, not 0, on a day no rollup bucket comes back. Google's own guidance is that an absent
+    /// bucket means the device was not worn or has not synced, while a present `"countSum": "0"` is
+    /// a true zero. Coalescing the first into the second is the failure mode this whole product is
+    /// most exposed to: the multi-device merge takes the first non-null value, so a manufactured 0
+    /// would beat another device's genuine reading, and the baseline would average unsynced days in
+    /// as stillness — an unworn watch reading exactly like an elderly wearer who has stopped moving.
+    /// </summary>
+    [Fact]
+    public async Task GetActivitiesAsync_ReturnsNulls_WhenDayHasNoData()
     {
         var (sut, _) = CreateSut(); // every route returns an empty rollup
 
         var result = await sut.GetActivitiesAsync("token", Today);
 
+        Assert.Null(result.Steps);
+        Assert.Null(result.DistanceKm);
+        Assert.Null(result.ActiveMinutes);
+        Assert.Null(result.Floors);
+        Assert.Null(result.CaloriesBurned);
+        Assert.Null(result.SedentaryMinutes);
+    }
+
+    /// <summary>
+    /// A rollup that really does report zero is kept as zero — the wearer wore the device and did
+    /// not move. The pair with the test above is the point: absent and zero must stay distinguishable
+    /// all the way to the column.
+    /// </summary>
+    [Fact]
+    public async Task GetActivitiesAsync_KeepsExplicitZero_WhichIsAMeasurementNotAnAbsence()
+    {
+        var handler = new RoutedFakeHttpHandler()
+            .Map("/dataTypes/steps/", Rollup("steps", """{ "countSum": "0" }"""));
+
+        var (sut, _) = CreateSut(handler);
+        var result = await sut.GetActivitiesAsync("token", Today);
+
         Assert.Equal(0, result.Steps);
-        Assert.Equal(0m, result.DistanceKm);
-        Assert.Equal(0, result.ActiveMinutes);
     }
 
     /// <summary>
     /// `sedentary-period` rolls up a `durationSum` in **seconds** — the one rollup whose unit is not
     /// the unit its column wants. Storing the raw figure would report 8 hours of sitting as 28,800
-    /// minutes, i.e. 20 days. It is an int64, so it arrives quoted.
+    /// minutes, i.e. 20 days.
+    /// <para>
+    /// It is a protobuf `Duration`, not an int64, so proto3 JSON writes it with a mandatory `s`
+    /// suffix. This fixture once sent a bare `"28800"`, which no Duration field ever produces — the
+    /// client's numeric parse passed the test and returned null against the real API.
+    /// </para>
     /// </summary>
     [Fact]
     public async Task GetActivitiesAsync_ConvertsSedentaryDurationSecondsToMinutes()
+    {
+        var handler = new RoutedFakeHttpHandler()
+            .Map("/dataTypes/sedentary-period/", Rollup("sedentaryPeriod", """{ "durationSum": "28800s" }"""));
+
+        var (sut, _) = CreateSut(handler);
+        var result = await sut.GetActivitiesAsync("token", Today);
+
+        Assert.Equal(480, result.SedentaryMinutes);
+    }
+
+    /// <summary>
+    /// Fractional-second Durations are legal proto3 JSON (`"1.5s"`), so the parse must not assume
+    /// an integer prefix and drop the value to null.
+    /// </summary>
+    [Fact]
+    public async Task GetActivitiesAsync_ParsesFractionalSedentaryDuration()
+    {
+        var handler = new RoutedFakeHttpHandler()
+            .Map("/dataTypes/sedentary-period/", Rollup("sedentaryPeriod", """{ "durationSum": "28830.5s" }"""));
+
+        var (sut, _) = CreateSut(handler);
+        var result = await sut.GetActivitiesAsync("token", Today);
+
+        // 28,830.5s ÷ 60 = 480.508… minutes, which rounds to 481 rather than flooring to 480.
+        // Not a midpoint: 480.5 exactly would round to *480* under decimal.Round's default
+        // banker's rounding, so a fixture sitting on the halfway mark would assert the opposite.
+        Assert.Equal(481, result.SedentaryMinutes);
+    }
+
+    /// <summary>
+    /// A bare number is not a valid Duration. Accepting one would only mask a field that has turned
+    /// out not to be the type we think it is, so it reads as absent rather than as seconds.
+    /// </summary>
+    [Fact]
+    public async Task GetActivitiesAsync_ReturnsNullSedentaryMinutes_WhenDurationLacksSuffix()
     {
         var handler = new RoutedFakeHttpHandler()
             .Map("/dataTypes/sedentary-period/", Rollup("sedentaryPeriod", """{ "durationSum": "28800" }"""));
@@ -233,7 +354,7 @@ public class FitbitApiClientTests
         var (sut, _) = CreateSut(handler);
         var result = await sut.GetActivitiesAsync("token", Today);
 
-        Assert.Equal(480, result.SedentaryMinutes);
+        Assert.Null(result.SedentaryMinutes);
     }
 
     /// <summary>
@@ -680,8 +801,14 @@ public class FitbitApiClientTests
         Assert.Equal(91, result.SleepEfficiency);
     }
 
+    /// <summary>
+    /// No session for the day is null, not 0: "the wearer logged no sleep session" and "the wearer
+    /// slept zero minutes" are different claims, and only the second is a measurement. A 0 would
+    /// enter the sleep baseline as a genuine sleepless night every time the watch was off the wrist
+    /// or had not yet synced.
+    /// </summary>
     [Fact]
-    public async Task GetSleepAsync_ReturnsEmptyResult_WhenNoSessions()
+    public async Task GetSleepAsync_ReturnsNullTotal_WhenNoSessions()
     {
         var handler = new RoutedFakeHttpHandler()
             .Map("/dataTypes/sleep/", """{ "dataPoints": [] }""");
@@ -689,7 +816,7 @@ public class FitbitApiClientTests
         var (sut, _) = CreateSut(handler);
         var result = await sut.GetSleepAsync("token", Today);
 
-        Assert.Equal(0, result.TotalSleepMinutes);
+        Assert.Null(result.TotalSleepMinutes);
         Assert.Null(result.SleepEfficiency);
         Assert.Null(result.SleepStartTime);
     }
@@ -980,7 +1107,7 @@ public class FitbitApiClientTests
                 DailyRecord("dailyRespiratoryRate", """{ "breathsPerMinute": 15.4 }"""))
             .Map("/dataTypes/daily-sleep-temperature-derivations/",
                 DailyRecord("dailySleepTemperatureDerivations", """{ "nightlyTemperatureCelsius": 33.8 }"""))
-            .Map("/dataTypes/sedentary-period/", Rollup("sedentaryPeriod", """{ "durationSum": "28800" }"""));
+            .Map("/dataTypes/sedentary-period/", Rollup("sedentaryPeriod", """{ "durationSum": "28800s" }"""));
 
         var (sut, _) = CreateSut(handler);
         var snapshot = await ((IDeviceApiClient)sut).GetHealthSnapshotAsync("token", Today);

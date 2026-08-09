@@ -150,7 +150,7 @@ The mobile M1 design file is the arbiter of UI scope: **https://www.figma.com/de
 
 Known state: **12 of 17 frames built** — M1-01 … M1-09 plus M1-13, M1-14, M1-15. M1-10 (Alerts List) is a 13-line placeholder, and M1-11, M1-12, M1-16, M1-17 don't exist — so the unbuilt frames are almost entirely **alerts and export**, matching the release matrix's ⬜ on the whole alerting loop. Four shipped screens (SignIn, ForgotPassword, VerifyEmail, AccountSetup) have **no Figma frame and need design sync**.
 
-> The docs disagree with themselves here — the prose in `mvp1/screens.md` and `ui_screens_maui_mobile.md` still says "9 of 17". That prose is **stale**; 12 is verified against `src/Presentation/CardiTrack.Mobile` (see [references/figma.md](references/figma.md)). Use 12, and don't propagate the 9.
+> The build-status prose in `mvp1/screens.md` and `ui_screens_maui_mobile.md` was corrected to **12 of 17** on 2026-08-09 (it previously said 9, contradicting its own tables); 12 is verified against `src/Presentation/CardiTrack.Mobile` (see [references/figma.md](references/figma.md)).
 
 For reading frames, variables, and screenshots via the Figma MCP tools, and for the design-sync backlog, see [references/figma.md](references/figma.md).
 

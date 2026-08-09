@@ -46,7 +46,7 @@ Rules:
 - **Engine**: Cloud SQL for **PostgreSQL 16** (`POSTGRES_16`), Enterprise edition
 - **Driver**: Npgsql via EF Core
 - **Connectivity**: **Private IP only** (`ipv4_enabled = false` in both environments). Cloud Run services connect through the **Cloud SQL Auth Proxy Unix socket** (`/cloudsql/<connection-name>`) over the VPC; the proxy provides TLS, so the connection string uses `SSL Mode=Disable` for the local socket only. Direct TCP connections are `ENCRYPTED_ONLY`.
-- **Audit flags**: `log_connections` / `log_disconnections` are switched on when `enable_hipaa_compliance` is set (prod)
+- **Audit flags**: `log_connections` / `log_disconnections` are switched on when `enable_platform_audit_logging` is set (prod)
 
 ### Environment sizing
 
@@ -161,8 +161,8 @@ carditrack-<env>
 │   ├── carditrack-490120-carditrack-<env>-dp-keys  (ASP.NET Data Protection key ring for Web,
 │   │                                                mounted as a gen2 GCS volume at /var/dpkeys)
 │   └── carditrack-490120-carditrack-<env>-audit    (COLDLINE, retention-policy-locked bucket
-│                                                    fed by a Cloud Logging sink — HIPAA-gated,
-│                                                    so prod only today)
+│                                                    fed by a Cloud Logging sink — gated on
+│                                                    enable_platform_audit_logging, prod only today)
 ├── Memorystore for Redis
 │   └── carditrack-<env>-redis  (optional — enable_redis, dev only today; AUTH + TLS on
 │                                port 6378, private services access)
@@ -178,7 +178,7 @@ carditrack-<env>
 
 \* When custom domains are configured, API and Web ingress switches to `INTERNAL_LOAD_BALANCER` so traffic must pass through the load balancer and WAF; without domains they use Cloud Run default URLs with `INGRESS_TRAFFIC_ALL`. Worker and MedGemma are always `INTERNAL_ONLY`.
 
-Service enablement (`run`, `sqladmin`, `storage`, `secretmanager`, `monitoring`, `logging`, `compute`, `servicenetworking`, and `pubsub` when enabled) is managed in `infrastructure/deployments/apis.tf`.
+Service enablement (`run`, `sqladmin`, `storage`, `secretmanager`, `monitoring`, `logging`, `compute`, `servicenetworking`, plus `pubsub` and `redis` when their features are enabled) is managed in `infrastructure/deployments/apis.tf`.
 
 ### Edge: load balancer + Cloud Armor (domain-gated)
 
@@ -211,7 +211,7 @@ All application secrets live in **Secret Manager** and are injected into Cloud R
 
 ### The seeding contract
 
-Terraform creates most app secrets with a **`REPLACE_ME` placeholder** and `lifecycle { ignore_changes = [secret_data] }` on the version. Operators overwrite the value out-of-band:
+Terraform creates most app secrets with a **`REPLACE_ME` placeholder** and `lifecycle { ignore_changes = [secret_data] }` on the version (the two AI secrets — `gemini-api-key` and `medgemma-service-url` — seed the literal `placeholder` instead). Operators overwrite the value out-of-band:
 
 ```bash
 echo -n "real-value" | gcloud secrets versions add carditrack-<env>-<name> --data-file=-
@@ -268,10 +268,11 @@ infrastructure/
     ├── cloud_run.tf           # api, web, worker, medgemma + migrator job
     ├── cloud_sql.tf
     ├── cloud_storage.tf       # main + dp-keys buckets
-    ├── cloud_monitoring.tf    # audit bucket + logging sink (HIPAA-gated)
+    ├── cloud_monitoring.tf    # audit bucket + logging sink (gated on enable_platform_audit_logging)
     ├── load_balancer.tf       # GCLB + CDN + Cloud Armor (domain-gated)
     ├── networking.tf          # VPC, subnet, private services access
     ├── pubsub.tf              # optional (enable_pubsub)
+    ├── redis.tf               # optional (enable_redis)
     ├── secret_manager.tf
     └── outputs.tf
 ```
@@ -326,11 +327,11 @@ Both signals are attributed to a release: logs carry a `Version` property and tr
 
 Setup, token provisioning, and backend-switching instructions: [apm_setup_runbook.md](./technical/apm_setup_runbook.md).
 
-### Platform audit logging (HIPAA-gated)
+### Platform audit logging (`enable_platform_audit_logging`)
 
-When `enable_hipaa_compliance` is set (prod), Terraform creates:
+When `enable_platform_audit_logging` is set (prod), Terraform creates:
 
-- A **COLDLINE audit bucket** with a retention policy of `audit_retention_days` (90 in prod; dev configures 30 but has the flag off, so no dev audit bucket exists)
+- A **COLDLINE audit bucket** with a retention policy of `audit_retention_days` (90 in prod; dev configures 30 but has the flag off, so no dev audit bucket exists). **The audit-retention policy is 6 years**; the deployed 30/90-day windows are an interim posture, and extending them to the policy horizon is tracked follow-up infra work
 - A **Cloud Logging sink** routing Cloud SQL and Cloud Run logs into that bucket
 - Cloud SQL connection audit flags (`log_connections` / `log_disconnections`)
 
@@ -356,7 +357,7 @@ Prod keeps a warm minimum instance; dev scales to zero.
 
 ### Background jobs
 
-`CardiTrack.Worker` runs non-AI jobs (wearable sync polling every 30 minutes, orphaned-organization cleanup nightly, weekly baseline recalculation and a weekly device-sync audit) as cron-scheduled hosted services inside the Worker Cloud Run service. The AI pipeline's target scaling model is described in [llm_design.md](./llm_design.md).
+`CardiTrack.Worker` runs non-AI jobs (wearable sync polling every 10 minutes, orphaned-organization cleanup nightly, weekly baseline recalculation and a weekly device-sync audit) as cron-scheduled hosted services inside the Worker Cloud Run service. The AI pipeline's target scaling model is described in [llm_design.md](./llm_design.md).
 
 **Device pull cadence** is configured per device type in `infrastructure/environments/*.tfvars` under `device_pull_params`, and delivered as `DeviceProviders__<i>__*` env vars on the Worker service — the same positional binding used for provider secrets, so element 0 must remain the Fitbit (Google Health API) provider. It carries the trailing-window widths (`sync_lookback_days`, `audit_lookback_days`) and the cadence bounds (`min_pull_interval_minutes`, `max_pull_interval_minutes`, `max_requests_per_second`, `dormancy_threshold_pulls`, `dormancy_backoff_factor`).
 
@@ -413,7 +414,7 @@ GCS buckets are versioned (main and dp-keys), providing object-level rollback.
 
 ### Compliance
 
-- **HIPAA**: Business Associate Agreement with **Google Cloud**; HIPAA-gated controls (`enable_hipaa_compliance`) enable database audit flags and the retention-locked audit log sink in prod
+- **HIPAA-aligned controls**: Business Associate Agreement with **Google Cloud**; `enable_platform_audit_logging` enables database audit flags and the retention-locked audit log sink in prod. (The variable was renamed from `enable_hipaa_compliance` — the platform does not currently claim a certified HIPAA posture, and the audit-retention gap above is part of closing that.)
 - **Encryption**: TLS in transit; Google-managed encryption at rest; AES-256-GCM field-level encryption for tokens and medical notes
 - **DPIA**: see [docs/compliance/dpia.md](./compliance/dpia.md) and [data_protection_architecture.md](./technical/data_protection_architecture.md)
 

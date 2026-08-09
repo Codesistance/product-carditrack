@@ -150,7 +150,9 @@ public class HealthInsightServiceAccessTests
         Assert.True(
             Volatile.Read(ref overlapped) == 0,
             "baseline lookups overlapped — concurrent operations on a shared DbContext");
-        await _baselines.Received(3).GetLatestByCardiMemberAsync(_memberId, Arg.Any<int>());
+        // The three trend windows, plus the two provisional fallbacks tried because the 30-day
+        // lookup returned null — all on the same shared DbContext, so all under this invariant.
+        await _baselines.Received(5).GetLatestByCardiMemberAsync(_memberId, Arg.Any<int>());
     }
 
     [Fact]

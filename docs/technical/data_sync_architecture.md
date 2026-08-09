@@ -8,7 +8,7 @@ Two different things are called "data pull" in CardiTrack, and they are unrelate
 |---|---|---|
 | Direction | Google Health API → CardiTrack | CardiTrack API → client |
 | Driver | `CardiTrack.Worker` cron + per-connection due-ness | User navigation / pull-to-refresh |
-| Cadence | 30 min (worker *looks*), per-connection interval (what *syncs*) | 5-minute auto-refresh window, or on demand |
+| Cadence | 10 min (worker *looks*), per-connection interval (what *syncs*, default 10 min) | 5-minute auto-refresh window, or on demand |
 
 There is **no push ingestion today**. Webhook subscriptions are R2 — see [release_matrix.md](../release_matrix.md) and [llm_design.md](../llm_design.md).
 

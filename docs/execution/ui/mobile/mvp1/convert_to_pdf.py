@@ -153,21 +153,17 @@ class MarkdownPDF(FPDF):
             continue
 
 
+BASE = pathlib.Path(__file__).resolve().parent
+
 files = [
-    (
-        "c:/Code/Github/Carditrack/docs/execution/UI/MOBILE/mvp1/screens.md",
-        "c:/Code/Github/Carditrack/docs/execution/UI/MOBILE/mvp1/screens.pdf",
-    ),
-    (
-        "c:/Code/Github/Carditrack/docs/execution/UI/MOBILE/mvp1/user_stories.md",
-        "c:/Code/Github/Carditrack/docs/execution/UI/MOBILE/mvp1/user_stories.pdf",
-    ),
+    (BASE / "screens.md", BASE / "screens.pdf"),
+    (BASE / "user_stories.md", BASE / "user_stories.pdf"),
 ]
 
 for md_path, pdf_path in files:
-    text = pathlib.Path(md_path).read_text(encoding="utf-8")
+    text = md_path.read_text(encoding="utf-8")
     pdf = MarkdownPDF()
     pdf.render(text)
-    pdf.output(pdf_path)
-    size = pathlib.Path(pdf_path).stat().st_size // 1024
+    pdf.output(str(pdf_path))
+    size = pdf_path.stat().st_size // 1024
     print(f"Created: {pdf_path} ({size} KB)")

@@ -93,9 +93,10 @@ enable_pubsub = true
 enable_platform_audit_logging = true
 audit_retention_days          = 90
 
-# Labels
+# Labels — "audit = platform" mirrors enable_platform_audit_logging; the label deliberately
+# does not claim a certified HIPAA posture (see the variable's rename rationale in variables.tf).
 additional_labels = {
   cost_center = "engineering"
   owner       = "production_team"
-  compliance  = "hipaa"
+  audit       = "platform"
 }

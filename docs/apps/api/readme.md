@@ -132,9 +132,9 @@ environment is visibly missing; an invented `prod` is a false alarm.
 
 ## Project Structure
 
-> **Target structure** — the tree below is the planned layout, not a mirror of the current code. Today's `Controllers/` holds `Alerts`, `Auth`, `CardiMembers`, `Onboarding`, `Dashboard`, `Devices`, `Reports`, `Chat`, and `Insights` controllers, all deriving from `BaseApiController`; the `Webhooks/` folder (Google Health API, Garmin, Stripe) arrives with the AI-pipeline rollout ([llm_design.md](../../llm_design.md)).
+> **Target structure** — the tree below is the planned layout, not a mirror of the current code. Today's `Controllers/` holds `Alerts`, `Auth`, `Onboarding`, `CardiMembers`, `Dashboard`, `Devices`, `Reports`, `Chat`, and `Insights` controllers (30 endpoints total), all deriving from `BaseApiController`; the `Webhooks/` folder (Google Health API, Garmin, Stripe) arrives with the AI-pipeline rollout ([llm_design.md](../../llm_design.md)).
 >
-> **Routing note:** `BaseApiController` carries the route template `api/[controller]` (plus `[ApiController]`, JSON `Produces`, and the standard `ApiResponse<T>`/`ErrorResponse` envelope helpers). Controllers that don't override it therefore serve **`/api/Onboarding/*`**-style routes — not the `/api/v1/*` prefix the API spec claims. API versioning is registered (default `1.0`, assumed when unspecified), but the version is not yet part of the route template; reconciling the two is a spec/code alignment task.
+> **Routing note:** `BaseApiController` carries the route template `api/[controller]` (plus `[ApiController]`, JSON `Produces`, and the standard `ApiResponse<T>`/`ErrorResponse` envelope helpers). Eight of the nine controllers override it with explicit **`/api/v1/*`** routes; only `OnboardingController` still serves **`/api/Onboarding/*`**-style routes. API versioning is registered (default `1.0`, assumed when unspecified); moving Onboarding onto the versioned template is the remaining spec/code alignment task.
 
 ```
 CardiTrack.API/
@@ -204,7 +204,7 @@ X-Rate-Limit-Reset: 2026-08-07T12:01:00.0000000Z
 
 ## HIPAA Compliance
 
-- All PHI access is audit-logged (user ID, CardiMember ID, action, timestamp, IP, user agent) with **6-year retention**
+- PHI access is audit-logged via the opt-in `AuditHealthDataAccess` attribute, applied controller-wide on the six health-data controllers (CardiMembers, Dashboard, Devices, Insights, Chat, Reports); entries record user ID, CardiMember ID, action, timestamp, IP, and user agent. Unannotated endpoints (Auth, Onboarding) are **not** audited — onboarding's CardiMember creation is a known audit gap. **Retention policy is 6 years**; the deployed infrastructure currently retains 30 days (dev) / 90 days (prod) via tfvars — extending it to the policy horizon is tracked follow-up infra work
 - TLS 1.2+ in transit; Cloud SQL encryption at rest (Google-managed keys); field-level AES-256-GCM encryption for OAuth tokens and medical notes
 - See [infrastructure.md](../../infrastructure.md) for encryption and key management details
 

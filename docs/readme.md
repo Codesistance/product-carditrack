@@ -88,7 +88,7 @@ Located in `/apps/` — each application has its own README covering stack, stru
 **Store provisioning** — one-time keys, certificates, and Secret Manager secrets that let CI deliver signed builds to TestFlight and the Google Play internal testing track.
 
 #### [apps/worker/](./apps/worker/readme.md)
-**CardiTrack.Worker Background Service** — the .NET Worker Service hosting **non-AI background jobs** (30-minute wearable data sync with in-path OAuth token refresh, daily orphaned-organization cleanup) using cron scheduling via Cronos. The AI ingestion/inference pipeline is designed to run on GCP (Pub/Sub + Cloud Run) — see [llm_design.md](./llm_design.md).
+**CardiTrack.Worker Background Service** — the .NET Worker Service hosting **non-AI background jobs** (10-minute wearable data sync with in-path OAuth token refresh, daily orphaned-organization cleanup, weekly baseline calculation and device-sync audit) using cron scheduling via Cronos. The AI ingestion/inference pipeline is designed to run on GCP (Pub/Sub + Cloud Run) — see [llm_design.md](./llm_design.md).
 
 ---
 
@@ -112,10 +112,13 @@ Inventory of every OAuth client (identity vs device-data), social log-on scope, 
 Detailed summary of all domain entities, their properties, and relationships.
 
 #### [data_sync_architecture.md](./technical/data_sync_architecture.md)
-**Data sync & data pull allocation view** — which component runs on which node, over which technology, at which cadence: the 30-minute Worker poll, per-connection due-ness, the trailing window, manual sync, the weekly audit pull, and the R2 webhook pipeline.
+**Data sync & data pull allocation view** — which component runs on which node, over which technology, at which cadence: the 10-minute Worker poll, per-connection due-ness, the trailing window, manual sync, the weekly audit pull, and the R2 webhook pipeline.
 
 #### [data_protection_architecture.md](./technical/data_protection_architecture.md)
 HIPAA/GDPR data architecture (ADR): identifier/clinical schema separation, Safe Harbor de-identification pipeline, retention & erasure jobs, audit/consent models, and the subprocessor register.
+
+#### [granular_timeseries_storage.md](./technical/granular_timeseries_storage.md)
+**Granular time-series storage (ADR)** — sub-daily wearable samples stay in the existing Cloud SQL instance as day-partitioned hour-vector tables (no Bigtable/BigQuery); rollup ladder, retention, alternatives, and the triggers that would reopen the decision.
 
 #### [enum_extensions_guide.md](./technical/enum_extensions_guide.md)
 Guide to enum extensions and helper methods used throughout the solution.
