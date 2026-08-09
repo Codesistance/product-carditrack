@@ -7,9 +7,10 @@ namespace CardiTrack.Worker.Workers;
 /// <summary>
 /// Recalculates every active member's <c>PatternBaseline</c> rows — the statistical profile that ends
 /// the "getting to know you" phase and gives the dashboard something to compare today against.
-/// Weekly, because baselines describe habits: recalculating more often adds load without moving the
-/// numbers, and <see cref="BaselineCalculator"/>'s coverage gate is what decides when a member has
-/// been observed for long enough, not the cron.
+/// Daily, so a member's first baseline lands the morning after their history clears the coverage
+/// gate rather than up to a week later. <see cref="BaselineCalculator"/>'s coverage gate is still
+/// what decides when a member has been observed for long enough — the cron only sets how quickly
+/// its verdict is picked up.
 /// </summary>
 public class BaselineCalculationWorker : CronBackgroundService
 {

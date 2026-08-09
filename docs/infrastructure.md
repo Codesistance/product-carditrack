@@ -357,7 +357,7 @@ Prod keeps a warm minimum instance; dev scales to zero.
 
 ### Background jobs
 
-`CardiTrack.Worker` runs non-AI jobs (wearable sync polling every 10 minutes, orphaned-organization cleanup nightly, weekly baseline recalculation and a weekly device-sync audit) as cron-scheduled hosted services inside the Worker Cloud Run service. The AI pipeline's target scaling model is described in [llm_design.md](./llm_design.md).
+`CardiTrack.Worker` runs non-AI jobs (wearable sync polling every 10 minutes, orphaned-organization cleanup nightly, daily baseline recalculation and a weekly device-sync audit) as cron-scheduled hosted services inside the Worker Cloud Run service. The AI pipeline's target scaling model is described in [llm_design.md](./llm_design.md).
 
 **Device pull cadence** is configured per device type in `infrastructure/environments/*.tfvars` under `device_pull_params`, and delivered as `DeviceProviders__<i>__*` env vars on the Worker service — the same positional binding used for provider secrets, so element 0 must remain the Fitbit (Google Health API) provider. It carries the trailing-window widths (`sync_lookback_days`, `audit_lookback_days`) and the cadence bounds (`min_pull_interval_minutes`, `max_pull_interval_minutes`, `max_requests_per_second`, `dormancy_threshold_pulls`, `dormancy_backoff_factor`).
 

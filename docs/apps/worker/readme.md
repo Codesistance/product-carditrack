@@ -10,7 +10,7 @@ Four workers are registered today:
 |---|---|---|
 | `WearableSyncWorker` | `0 */10 * * * *` (every 10 min) | Polls due device connections and syncs wearable data |
 | `OrphanedOrganizationCleanupWorker` | `0 0 3 * * *` (daily 03:00) | Deletes organizations stranded by a failed onboarding |
-| `BaselineCalculationWorker` | `0 30 2 * * 0` (Sunday 02:30) | Recalculates each member's 30/60/90-day `PatternBaseline` |
+| `BaselineCalculationWorker` | `0 30 2 * * *` (daily 02:30) | Recalculates each member's 30/60/90-day `PatternBaseline` |
 | `DeviceSyncAuditWorker` | `0 0 4 * * 0` (Sunday 04:00) | Re-fetches a small random sample over a 14-day window to measure how far back each provider revises data |
 
 OAuth token refresh is **not a separate cron job** — it happens inside the sync path (`DeviceSyncService` calls `IOAuthTokenRefreshService` before hitting the provider API). Trial expiration reminders and data-retention/cleanup jobs are **planned** but not yet implemented.
@@ -33,7 +33,7 @@ src/Worker/CardiTrack.Worker/
 ├── Workers/
 │   ├── WearableSyncWorker.cs               # Polls + syncs due device connections
 │   ├── OrphanedOrganizationCleanupWorker.cs # Sweeps orgs with no user/CardiMember
-│   ├── BaselineCalculationWorker.cs        # Recalculates PatternBaseline rows weekly
+│   ├── BaselineCalculationWorker.cs        # Recalculates PatternBaseline rows daily
 │   └── DeviceSyncAuditWorker.cs            # Wide-window re-fetch over a sample, to measure revisions
 ├── CronBackgroundService.cs    # Abstract base — parses cron, loops on schedule
 ├── WorkerOptions.cs            # { CronExpression } options record (default "0 * * * * *")
@@ -180,7 +180,7 @@ Safety net behind the API's atomic `POST /api/Onboarding/setup` endpoint. The le
 
 Turns accumulated `ActivityLog` history into `PatternBaseline` rows — the statistical picture of "a normal day" that `DashboardService` colours today's metrics against, and the thing that ends a member's *"getting to know you"* phase (`DashboardService` treats a member with no 30-day baseline as still learning).
 
-- Runs weekly, Sunday 02:30 UTC (`0 30 2 * * 0` by default). Baselines describe habits, so recalculating more often adds load without moving the numbers.
+- Runs daily at 02:30 UTC (`0 30 2 * * *` by default). The coverage gate in `BaselineCalculator` decides when a member has been observed for long enough; the daily cadence means the first baseline lands the morning after eligibility rather than up to a week later.
 - Selects **active members with at least one activity log in the last 90 days** (`ICardiMemberRepository.GetActiveIdsWithActivitySinceAsync`), so dormant records are not rescanned every week.
 - Windows to the **last complete day**, not today. Ingestion stores the day in progress so the dashboard can show live numbers, and a part-finished day averaged in would drag every member's "normal" down by however far through the day the job happened to run.
 - Fetches each member's logs **once** for the longest period and calculates all three windows (30/60/90) from that one read.
@@ -282,7 +282,7 @@ Cron schedules bind per worker class name under the `Workers` section, consumed 
       "CronExpression": "0 0 3 * * *"
     },
     "BaselineCalculationWorker": {
-      "CronExpression": "0 30 2 * * 0"
+      "CronExpression": "0 30 2 * * *"
     },
     "DeviceSyncAuditWorker": {
       "CronExpression": "0 0 4 * * 0",
