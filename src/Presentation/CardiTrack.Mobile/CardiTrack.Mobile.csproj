@@ -81,7 +81,8 @@
 		<!-- App Icon. Do not raise ForegroundScale above 0.58: the logo's outermost
 		     point (the top-right mesh node) then leaves Android's adaptive-icon safe
 		     zone — the centre 66 of 108 dp — and circular launcher masks clip it.
-		     0.58 measures ~1.1 dp of clearance at every density; 0.60 measures ~0. -->
+		     0.58 measures ~1.1 dp of clearance at every generated density; 0.60
+		     measures ~0 dp, which is already too close to rely on. -->
 		<MauiIcon Include="Resources\AppIcon\appicon.svg" ForegroundFile="Resources\AppIcon\appiconfg.png" Color="#F5F6F8" ForegroundScale="0.58" />
 
 		<!-- Splash Screen (aligned to in-app splash blues) -->
