@@ -2,7 +2,7 @@
 
 > **Extract — do not edit directly.** This file is extracted from the canonical [user_stories.md](../user_stories.md); make changes there and re-extract. Release sequencing is governed by the [release matrix](../../../../release_matrix.md).
 
-> **Build status (August 9, 2026):** 12 of 17 Figma M1 screens are built (M1-01 through M1-09, plus M1-13 CardiMember Detail, M1-14 Edit CardiMember, M1-15 Device Management); the unbuilt screens are the alert set (M1-10 stub, M1-11/M1-12/M1-16) and M1-17 Health Data Export. Four shipped screens have **no Figma M1 frame — needs design sync**: SignInPage, ForgotPasswordPage, VerifyEmailPage, Onboarding/AccountSetupPage (Stories 1.5–1.8).
+> **Build status (August 9, 2026):** 13 of 17 Figma M1 screens are built (M1-01 through M1-10, plus M1-13 CardiMember Detail, M1-14 Edit CardiMember, M1-15 Device Management); the unbuilt screens are alert detail (M1-11/M1-12/M1-16) and M1-17 Health Data Export. Four shipped screens have **no Figma M1 frame — needs design sync**: SignInPage, ForgotPasswordPage, VerifyEmailPage, Onboarding/AccountSetupPage (Stories 1.5–1.8).
 
 Stories mapped to MVP 1 screens (M1-01 through M1-17), plus the four shipped screens without Figma M1 frames.
 
@@ -284,7 +284,7 @@ Stories mapped to MVP 1 screens (M1-01 through M1-17), plus the four shipped scr
 | 1.7 | Verify Email | P0 | Built — no Figma M1 frame |
 | 1.8 | Account-Type Setup | P0 | Built — no Figma M1 frame |
 | 2.1 | Daily Health Overview | P0 | Built (M1-09) |
-| 3.1 | Receiving Critical Alerts | P0 | Not built (M1-10–M1-12, M1-16) |
+| 3.1 | Receiving Critical Alerts | P0 | Partial — M1-10 alerts list built; detail screens (M1-11, M1-12, M1-16) not built |
 | 6.3 | Health Data Export | P0 | **Not built** (M1-17 — P0 but unbuilt) |
 | 3.3 | Alert Acknowledgment & Notes | P1 | Not built |
 | 6.2 | Device Management | P1 | Not built (M1-15) |

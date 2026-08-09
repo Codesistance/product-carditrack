@@ -73,6 +73,10 @@
     <Color x:Key="AlertTileYellow">#24F0A92E</Color>
     <Color x:Key="AlertTileNeutral">#24939DAA</Color>
 
+    <!-- Alert card quick actions (M1-10) — Figma rgba(24,132,220,0.18). Distinct from the
+         severity tints above on purpose: these are the caregiver's controls, not a reading. -->
+    <Color x:Key="AlertActionBackground">#2E1884DC</Color>
+
     <!-- ── Device dataset pills (M1-15) ──
          One tint/ink pair per DatasetFamily, so a device card's pills group by the kind of
          reading they carry. The heart pair is deliberately rosier than ErrorRed: a pill sits

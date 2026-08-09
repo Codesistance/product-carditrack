@@ -1,6 +1,6 @@
 # Alerts API
 
-> **Status: Planned — not yet implemented.** None of the endpoints below exist yet. See "Implemented today" for current coverage.
+> **Status: Partially implemented.** The P0 list/acknowledge slice backing the mobile Alerts List (M1-10) ships in `AlertsController`; everything else below is still design intent. See "Implemented today" for exactly what exists.
 
 Handles alert retrieval, acknowledgment, status lifecycle, photo attachments, and per-member alert notification preferences including quiet hours and sensitivity.
 
@@ -25,7 +25,25 @@ The one alert-related endpoint that exists: on-demand **MedGemma analysis** of a
 
 > `severity` is the **integer** `AlertSeverity` enum (Green=1, Yellow=2, Orange=3, Red=4) — enums serialize as integers on the wire (see [readme.md](readme.md)).
 
-Alert **summaries** also surface in the dashboard's `recentAlerts` array — see [health-data.md](health-data.md). There is no alert list, detail, acknowledge, status, photo, history, or preferences endpoint yet.
+### The M1-10 slice — `AlertsController`
+
+Three endpoints are live, serving the mobile Alerts List:
+
+| Endpoint | Notes |
+|----------|-------|
+| `GET /api/v1/alerts` | Query params `cardiMemberId`, `severity`, `status`, `from`, `to`, `limit` (default 50, max 200), `offset`. Scoped to the members the caller may read via `ICardiMemberAccessService`; an unreadable `cardiMemberId` returns **404**, not 403, for the usual non-disclosure reason. Unrecognised `severity`/`status` values are rejected with **400** rather than silently ignored. |
+| `GET /api/v1/cardimembers/{id}/alerts` | Same filters, single member. |
+| `POST /api/v1/alerts/{alertId}/acknowledge` | No request body. Idempotent — re-acknowledging keeps the original timestamp and acknowledger, so a second family member tapping "handled" doesn't overwrite who dealt with it. |
+
+Response shape differs from the design below in three ways, all because the implemented `Alert` entity is what it is:
+
+- `type` is the **`AlertType` display name** ("Inactivity", "Heart Rate", "Sleep", "Pattern Break", "Trend"), not the `activity_decline` string taxonomy.
+- `severity` is the lowercase `AlertSeverity` name (`green`/`yellow`/`orange`/`red`), and `status` is derived from `AcknowledgedDate` + `IsResolved` rather than stored — see `AlertStatus`.
+- Each summary carries `cardiMemberName`, `emergencyContactPhone` and `emergencyContactName` so the M1-10 card can render its avatar and Call action without a second round-trip. `cardiMemberPhotoUrl` is present but always null: no member photo storage exists yet.
+
+**Still not implemented:** alert detail, status transitions (`PUT .../status`), notes, photos, history, and alert preferences. Acknowledgment takes no `note`/`actionTaken` — notes belong to the unbuilt M1-11/M1-12 detail screens and would need a schema change.
+
+Alert **summaries** also surface in the dashboard's `recentAlerts` array — see [health-data.md](health-data.md).
 
 ### Actual alert-type taxonomy
 
@@ -64,6 +82,8 @@ Everything below is the **planned** contract, kept as design intent.
 ---
 
 ## GET `/api/v1/alerts`
+
+> **Implemented** — see "The M1-10 slice" above for how the live response differs from the design intent below.
 
 List all alerts across all accessible CardiMembers.
 
@@ -121,6 +141,8 @@ List all alerts across all accessible CardiMembers.
 ---
 
 ## GET `/api/v1/cardimembers/{id}/alerts`
+
+> **Implemented.**
 
 List alerts for a specific CardiMember.
 
@@ -201,6 +223,8 @@ Get full detail for a single alert, including context, recommended actions, and 
 ---
 
 ## POST `/api/v1/alerts/{alertId}/acknowledge`
+
+> **Partially implemented** — acknowledgment works and is idempotent; the optional note, `actionTaken`, and the family notification are not built.
 
 Acknowledge an alert with an optional note. Notifies all other family members that the alert has been handled.
 
@@ -443,4 +467,4 @@ Returns updated preferences object (same schema as GET).
 
 **Related:** [readme.md](readme.md) | [notifications.md](notifications.md) | [family.md](family.md) | [User Stories 3.1, 3.2, 3.3, 11.1–11.3](../../ui/mobile/user_stories.md)
 
-**Last Updated:** August 7, 2026
+**Last Updated:** August 9, 2026

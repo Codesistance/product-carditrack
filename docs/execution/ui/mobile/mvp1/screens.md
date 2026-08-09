@@ -5,7 +5,7 @@
 ## Project Overview
 
 **Product:** CardiTrack - Remote health monitoring for elderly family members
-**Release:** MVP 1 — Core Monitoring (R1, Q4 2026) — 17 designed screens / 37 designed states; **12 of 17 built** as of August 9, 2026
+**Release:** MVP 1 — Core Monitoring (R1, Q4 2026) — 17 designed screens / 37 designed states; **13 of 17 built** as of August 9, 2026
 **Platform:** iOS 16+ (iPhone 12+) & Android 10+ (API 29)
 **Minimum OS:** iOS 16.0 · Android 10 (API level 29)
 **Target OS:** iOS 18 · Android 15 (API level 35)
@@ -18,7 +18,7 @@
 
 ## Build Status (as of August 9, 2026)
 
-> **12 of 17 Figma M1 screens are built** in `CardiTrack.Mobile` (M1-01 through M1-09, plus M1-13 CardiMemberDetailPage, M1-14 EditCardiMemberPage, M1-15 DeviceManagementPage). **The unbuilt screens are the alert set and export** — M1-10 Alerts List is a "Coming soon" stub, M1-11/M1-12/M1-16 Alert Details and M1-17 Health Data Export are not built; unbuilt entry points show "Coming soon" dialogs, except the dashboard's Add-Member action, which pushes M1-04 (AddCardiMemberPage) directly. **Four shipped screens have no Figma M1 frame — needs design sync:** SignInPage, ForgotPasswordPage, VerifyEmailPage, Onboarding/AccountSetupPage (specs in the canonical doc). Unbuilt screens below remain design intent, each marked with a status line.
+> **13 of 17 Figma M1 screens are built** in `CardiTrack.Mobile` (M1-01 through M1-10, plus M1-13 CardiMemberDetailPage, M1-14 EditCardiMemberPage, M1-15 DeviceManagementPage). **The unbuilt screens are alert detail and export** — M1-11/M1-12/M1-16 Alert Details and M1-17 Health Data Export; their entry points show "Coming soon" dialogs, except the dashboard's Add-Member action, which pushes M1-04 (AddCardiMemberPage) directly. **Four shipped screens have no Figma M1 frame — needs design sync:** SignInPage, ForgotPasswordPage, VerifyEmailPage, Onboarding/AccountSetupPage (specs in the canonical doc). Unbuilt screens below remain design intent, each marked with a status line.
 
 ---
 
@@ -41,7 +41,7 @@ A single user can sign up, add a CardiMember, connect devices, manage CardiMembe
 | M1-07 | Device Connection - Success | 3 (a–c) | ✅ `ConnectionSuccessPage` |
 | M1-08 | Baseline Learning Info | 1 | ✅ `BaselineLearningPage` |
 | M1-09 | Main Dashboard | 5 (a–e) + 2 as-built | ✅ `DashboardPage` |
-| M1-10 | Alerts List | 4 (a–d) | ❌ stub ("Coming soon") |
+| M1-10 | Alerts List | 4 (a–d) | ✅ `AlertsPage` |
 | M1-11 | Alert Detail - Activity | 1 | ❌ not built |
 | M1-12 | Alert Detail - Critical | 1 | ❌ not built |
 | M1-13 | CardiMember Detail | 1 + 3 as-built | ✅ `CardiMemberDetailPage` |
@@ -50,7 +50,7 @@ A single user can sign up, add a CardiMember, connect devices, manage CardiMembe
 | M1-16 | Alert Detail - Heart Rate | 1 | ❌ not built |
 | M1-17 | Health Data Export | 4 (a–d) | ❌ not built |
 
-**Total: 17 designed screens · 37 designed states — 12 of 17 built**
+**Total: 17 designed screens · 37 designed states — 13 of 17 built**
 
 **Shipped screens without Figma M1 frames** (need design sync; no M1 IDs assigned per project convention): SignInPage, ForgotPasswordPage, VerifyEmailPage, Onboarding/AccountSetupPage — see the canonical [ui_screens_maui_mobile.md](../ui_screens_maui_mobile.md) for full specs.
 
@@ -190,7 +190,7 @@ Push notification (any time) ─────────────────
 
 - Badge count on Alerts tab for unread alerts
 - Family tab shows placeholder / "Coming Soon" in MVP 1, or can be hidden
-- As built, the Shell defines a **TabBar only** (Dashboard / Alerts / Family / Settings, SVG icons). Alerts and Family tabs are stubs; Settings is minimal (account card, "More settings (M2-01) coming soon", Sign out). Onboarding pages hide the tab bar via `Shell.TabBarIsVisible=False`.
+- As built, the Shell defines a **TabBar only** (Dashboard / Alerts / Family / Settings, SVG icons). Alerts opens the real M1-10 list; the Family tab is still a stub; Settings is minimal (account card, "More settings (M2-01) coming soon", Sign out). Onboarding pages hide the tab bar via `Shell.TabBarIsVisible=False`.
 
 ### Flyout Menu
 
@@ -225,7 +225,7 @@ Five MVP 1 screens selected to validate the core design language — covering br
 | 4 | **M1-10 — Alerts List** | Alert management; demonstrates severity badges, grouped list design, filter chips, and swipe actions |
 | 5 | **M1-12 — Alert Detail - Critical** | Highest-stakes screen; validates urgency design, pulsing severity treatment, and primary CTA hierarchy |
 
-These five screens span onboarding → daily use → emergency response. **Build status:** M1-02, M1-04, and M1-09 are built; M1-10 is a stub ("Coming soon") and M1-12 is not built — so the POC set currently validates onboarding and daily monitoring in code, but not yet the alert management or emergency-response design language.
+These five screens span onboarding → daily use → emergency response. **Build status:** M1-02, M1-04, M1-09, and M1-10 are built; M1-12 is not built — so the POC set currently validates onboarding, daily monitoring, and alert management in code, but not yet the emergency-response design language.
 
 ---
 
@@ -650,7 +650,7 @@ Each device card:
 ---
 
 ### M1-10: Alerts List
-**Status:** Not built — Alerts tab is a stub ("Coming soon"); design intent below
+**Status:** Built (`AlertsPage`, with `FilterChipBar` and `AlertListCard`)
 **User Story:** 3.1 Alert Management | 3.3 Alert Acknowledgment & Notes
 **Entry:** Tab bar (Alerts) | ← M1-09 Dashboard (Recent Alerts)
 **Exit:** → M1-11 Alert Detail (Activity) | → M1-12 Alert Detail (Critical) | → Phone call
@@ -695,6 +695,17 @@ Section headers: "Today" / "Yesterday" / "This Week" / "Older"
 - **M1-10d — Loading:** Skeleton cards
 
 Heart rate alerts tap → M1-16
+
+**As built** — backed by `GET /api/v1/alerts` and `POST /api/v1/alerts/{id}/acknowledge` (see [alerts.md](../../../backend/api/alerts.md)), listing every CardiMember the caregiver may read, newest first. Differences from the frames, each deliberate:
+
+- **Header is as drawn** — back arrow, title, filter button. Alerts is a tab root, so the arrow goes to M1-09 rather than popping a stack that isn't there. The filter button offers the same five filters as a sheet, which is why M1-10b keeps it while dropping the chip row.
+- **Chips are M1-10a's set in M1-10c's styling.** The frames disagree — M1-10a has [All] [Unread] [Critical] [Today] [This Week] as plain pills, M1-10c has [Recent] [High Priority] [Heart Rate] [Oxygen] with dropdown carets. The set is M1-10a's (the one this spec documents, and the one every chip can actually filter — there is no SpO2 alert type); the pill, caret and spacing are M1-10c's.
+- **Loading is built as drawn** — the "Syncing with Device… / Refresh Now" card over four structured skeleton rows (`AlertSkeletonCard`, whose shimmer blocks sit where the avatar, badge, title and status pill will land). Refresh Now supersedes the in-flight request rather than being swallowed by it, so the button works in the one state it appears in.
+- **Severity badges are severity-coloured.** Wording follows this spec (CRITICAL / URGENT / INFO); the colour follows the app's own scale, so a yellow alert can't show a yellow rail beside Figma's blue "Info" chip.
+- **The chevron expands the card in place.** M1-11 / M1-12 / M1-16 are not built, so a row that pushed a detail screen would open nothing; expanding reveals the full message instead. This is the "Expand (chevron)" action above.
+- **"View Archived Alerts" switches this list to resolved alerts** rather than pushing an archive screen, and flips back the same way. The chip row hides while archived — it is a different list, not a narrower one.
+- **Avatars are initials.** No member photo storage exists yet; `cardiMemberPhotoUrl` is on the wire and the tile keeps its designed box.
+- **Swipe actions are not implemented.** The card's inline Call and Acknowledge buttons cover both gestures.
 
 ---
 

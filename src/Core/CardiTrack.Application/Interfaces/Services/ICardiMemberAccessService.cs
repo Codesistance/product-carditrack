@@ -16,6 +16,18 @@ public interface ICardiMemberAccessService
     /// <summary>Returns whether the user may read this CardiMember's health data.</summary>
     Task<bool> HasViewAccessAsync(Guid requestingUserId, Guid cardiMemberId, CancellationToken ct = default);
 
+    /// <summary>
+    /// Every CardiMember the user may read health data for. Empty when they may read none —
+    /// callers must treat that as "no results", not as "no filter".
+    /// </summary>
+    /// <remarks>
+    /// For surfaces that span the whole family rather than one member, such as the alerts list.
+    /// Exposed here so those queries are still scoped by this service and not by a hand-rolled
+    /// link lookup that could drift from the rules above.
+    /// </remarks>
+    Task<IReadOnlyCollection<Guid>> GetViewableMemberIdsAsync(
+        Guid requestingUserId, CancellationToken ct = default);
+
     /// <summary>Throws <see cref="KeyNotFoundException"/> unless the user may read this CardiMember's health data.</summary>
     Task RequireViewAccessAsync(Guid requestingUserId, Guid cardiMemberId, CancellationToken ct = default);
 

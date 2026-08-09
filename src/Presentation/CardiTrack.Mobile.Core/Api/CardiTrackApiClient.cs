@@ -68,6 +68,32 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
     public Task<DashboardResponse> GetDashboardAsync(Guid cardiMemberId, CancellationToken ct = default) =>
         GetAsync<DashboardResponse>($"api/v1/cardimembers/{cardiMemberId}/dashboard", ct);
 
+    public Task<AlertListResponse> GetAlertsAsync(
+        string? severity = null,
+        string? status = null,
+        DateTime? from = null,
+        DateTime? to = null,
+        int? limit = null,
+        CancellationToken ct = default)
+    {
+        var filters = new List<string>();
+        if (!string.IsNullOrWhiteSpace(severity)) filters.Add($"severity={Uri.EscapeDataString(severity)}");
+        if (!string.IsNullOrWhiteSpace(status)) filters.Add($"status={Uri.EscapeDataString(status)}");
+        // Round-trip ("O") keeps the offset on the wire, so a "Today" filter set on a phone in
+        // Lagos isn't reinterpreted as UTC midnight by the server.
+        if (from is { } f) filters.Add($"from={Uri.EscapeDataString(f.ToString("O"))}");
+        if (to is { } t) filters.Add($"to={Uri.EscapeDataString(t.ToString("O"))}");
+        if (limit is { } l) filters.Add($"limit={l}");
+
+        var path = filters.Count == 0 ? "api/v1/alerts" : $"api/v1/alerts?{string.Join("&", filters)}";
+        return GetAsync<AlertListResponse>(path, ct);
+    }
+
+    public Task<AlertAcknowledgementResponse> AcknowledgeAlertAsync(
+        Guid alertId, CancellationToken ct = default) =>
+        SendAsync<AlertAcknowledgementResponse>(
+            HttpMethod.Post, $"api/v1/alerts/{alertId}/acknowledge", ct);
+
     public Task<DeviceListResponse> GetDevicesAsync(Guid cardiMemberId, CancellationToken ct = default) =>
         GetAsync<DeviceListResponse>($"api/v1/cardimembers/{cardiMemberId}/devices", ct);
 

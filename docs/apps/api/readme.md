@@ -132,9 +132,9 @@ environment is visibly missing; an invented `prod` is a false alarm.
 
 ## Project Structure
 
-> **Target structure** — the tree below is the planned layout, not a mirror of the current code. Today's `Controllers/` holds `Auth`, `Onboarding`, `CardiMembers`, `Dashboard`, `Devices`, `Reports`, `Chat`, and `Insights` controllers (27 endpoints total), all deriving from `BaseApiController`; the `Webhooks/` folder (Google Health API, Garmin, Stripe) arrives with the AI-pipeline rollout ([llm_design.md](../../llm_design.md)).
+> **Target structure** — the tree below is the planned layout, not a mirror of the current code. Today's `Controllers/` holds `Alerts`, `Auth`, `Onboarding`, `CardiMembers`, `Dashboard`, `Devices`, `Reports`, `Chat`, and `Insights` controllers (30 endpoints total), all deriving from `BaseApiController`; the `Webhooks/` folder (Google Health API, Garmin, Stripe) arrives with the AI-pipeline rollout ([llm_design.md](../../llm_design.md)).
 >
-> **Routing note:** `BaseApiController` carries the route template `api/[controller]` (plus `[ApiController]`, JSON `Produces`, and the standard `ApiResponse<T>`/`ErrorResponse` envelope helpers). Seven of the eight controllers override it with explicit **`/api/v1/*`** routes; only `OnboardingController` still serves **`/api/Onboarding/*`**-style routes. API versioning is registered (default `1.0`, assumed when unspecified); moving Onboarding onto the versioned template is the remaining spec/code alignment task.
+> **Routing note:** `BaseApiController` carries the route template `api/[controller]` (plus `[ApiController]`, JSON `Produces`, and the standard `ApiResponse<T>`/`ErrorResponse` envelope helpers). Eight of the nine controllers override it with explicit **`/api/v1/*`** routes; only `OnboardingController` still serves **`/api/Onboarding/*`**-style routes. API versioning is registered (default `1.0`, assumed when unspecified); moving Onboarding onto the versioned template is the remaining spec/code alignment task.
 
 ```
 CardiTrack.API/
