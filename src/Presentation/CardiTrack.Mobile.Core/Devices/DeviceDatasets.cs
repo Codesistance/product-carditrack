@@ -13,9 +13,10 @@ namespace CardiTrack.Mobile.Core.Devices;
 /// <para>
 /// SpO2, VO2 max, breathing rate and body temperature are a deliberate gap in the other direction:
 /// the client now ingests all four under <c>health_metrics_and_measurements</c>, but no screen
-/// displays them yet and M1-15's pill row is design-specified, so adding four pills is a design
-/// decision rather than a mapping fix. Until it is taken, this mapping under-reports what the
-/// connection shares — tracked as issue #82, not an oversight.
+/// displays them yet, so naming them here would promise readings nothing surfaces. This mapping
+/// therefore under-reports what the connection shares — tracked as issue #82, not an oversight.
+/// The card no longer constrains the fix: pills are per family, so the four would land inside
+/// existing groups instead of adding four more pills to the row.
 /// </para>
 /// </remarks>
 public static class DeviceDatasets
@@ -36,7 +37,8 @@ public static class DeviceDatasets
     /// <summary>
     /// Every dataset we can name, in display order. Pills are sorted by this order so the row
     /// reads the same whatever order the provider returned the scopes in, and so the families
-    /// stay grouped.
+    /// stay grouped. Families run Activity → Heart → Sleep → Body → Other, matching the
+    /// "Activity, HR, Sleep" reading order the M1-15 design specifies.
     /// </summary>
     private static readonly DeviceDataset[] Catalogue =
     [
@@ -47,10 +49,10 @@ public static class DeviceDatasets
         new(Calories, DatasetFamily.Activity),
         new(HeartRate, DatasetFamily.Heart),
         new(RestingHeartRate, DatasetFamily.Heart),
-        new(Weight, DatasetFamily.Body),
-        new(Spo2, DatasetFamily.Body),
         new(Sleep, DatasetFamily.Sleep),
         new(SleepStages, DatasetFamily.Sleep),
+        new(Weight, DatasetFamily.Body),
+        new(Spo2, DatasetFamily.Body),
         new(Profile, DatasetFamily.Other),
     ];
 
@@ -123,6 +125,19 @@ public static class DeviceDatasets
 
         return [.. Catalogue.Where(d => known.Contains(d.Name)), .. unknown];
     }
+
+    /// <summary>
+    /// The same datasets as <see cref="For"/>, collapsed to one group per family in catalogue
+    /// order. This is what the M1-15 card renders: the number of pills a card shows is then
+    /// bounded by the number of families (five), not by how generous the grant was, so two cards
+    /// stay the same height and comparable at a glance whatever each device shares.
+    /// </summary>
+    public static IReadOnlyList<DeviceDatasetGroup> GroupedFor(IEnumerable<string>? scopes) =>
+    [
+        .. For(scopes)
+            .GroupBy(d => d.Family)
+            .Select(g => new DeviceDatasetGroup(g.Key, [.. g]))
+    ];
 
     /// <summary>
     /// Reduces a granted scope to its bundle name: <c>googlehealth.sleep.readonly</c> and the full

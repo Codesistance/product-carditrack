@@ -12,10 +12,16 @@ public partial class DeviceCard : ContentView
     public event EventHandler<Guid>? SetPrimaryRequested;
     public event EventHandler<Guid>? RemoveRequested;
 
+    /// <summary>Raised with the new state when the user opens or closes the sharing detail.</summary>
+    public event EventHandler<bool>? SharingExpansionChanged;
+
     private Guid _deviceId;
 
     /// <summary>Guards the Toggled handler while <see cref="Apply"/> sets the switch itself.</summary>
     private bool _applying;
+
+    /// <summary>False when every family names a single dataset — the pills already say it all.</summary>
+    private bool _canExpandSharing;
 
     public DeviceCard()
     {
@@ -94,44 +100,121 @@ public partial class DeviceCard : ContentView
     }
 
     /// <summary>
-    /// Rebuilds the dataset pill row. A connection sharing nothing is worth saying out loud —
+    /// Rebuilds the sharing row: one pill per dataset family, with the family's readings on a
+    /// detail line behind the chevron. A connection sharing nothing is worth saying out loud —
     /// it looks connected but sends no data — so the row keeps a pill either way.
     /// </summary>
     private void ApplyDatasets(List<string> scopes)
     {
         DatasetPills.Children.Clear();
+        SharingDetail.Children.Clear();
 
-        var datasets = DeviceDatasets.For(scopes);
-        if (datasets.Count == 0)
+        var groups = DeviceDatasets.GroupedFor(scopes);
+        if (groups.Count == 0)
         {
-            DatasetPills.Children.Add(BuildPill("No data shared", DatasetFamily.Other));
+            DatasetPills.Children.Add(BuildWarningPill("Not sharing any data"));
+            SetSharingExpandable(false);
             return;
         }
 
-        foreach (var dataset in datasets)
-            DatasetPills.Children.Add(BuildPill(dataset.Name, dataset.Family));
+        foreach (var group in groups)
+        {
+            DatasetPills.Children.Add(BuildPill(group));
+            SharingDetail.Children.Add(BuildDetailLine(group));
+        }
+
+        // Nothing to reveal when every pill already names its one dataset.
+        SetSharingExpandable(groups.Any(g => g.Datasets.Count > 1));
     }
 
-    private static Border BuildPill(string text, DatasetFamily family)
+    /// <summary>
+    /// A family pill: the label, plus the number of readings when the family carries several.
+    /// The count is the whole point of collapsing the row — it keeps "how much" visible after
+    /// "which ones" moves behind the chevron.
+    /// </summary>
+    private static Border BuildPill(DeviceDatasetGroup group)
     {
-        var (background, foreground) = PillColours(family);
+        var (background, foreground) = PillColours(group.Family);
 
-        return new Border
+        var text = new FormattedString();
+        text.Spans.Add(new Span
         {
-            StrokeThickness = 0,
-            BackgroundColor = background,
-            Padding = new Thickness(10, 4),
-            // FlexLayout has no spacing of its own; the margin is the gutter between pills.
-            Margin = new Thickness(0, 0, 6, 6),
-            StrokeShape = new RoundRectangle { CornerRadius = 10 },
-            Content = new Label
+            Text = group.Label,
+            TextColor = foreground,
+            FontFamily = "QuicksandSemiBold",
+            FontSize = 11,
+        });
+
+        if (group.Count is { } count)
+        {
+            text.Spans.Add(new Span
             {
-                Text = text,
+                Text = $"  {count}",
                 TextColor = foreground,
-                FontFamily = "QuicksandSemiBold",
+                FontFamily = "Quicksand",
                 FontSize = 11,
-            },
-        };
+            });
+        }
+
+        var pill = Pill(background, new Label { FormattedText = text });
+
+        // "Activity  5" is only unambiguous once you can see the colour grouping; spell it out
+        // for a screen reader, which gets the pills one after another with no row to compare.
+        SemanticProperties.SetDescription(
+            pill,
+            group.Count is { } n
+                ? $"{group.Label}, {n} readings: {group.Detail}"
+                : $"{group.Label}, 1 reading");
+
+        return pill;
+    }
+
+    private static Border BuildWarningPill(string text)
+    {
+        var resources = Microsoft.Maui.Controls.Application.Current!.Resources;
+
+        return Pill((Color)resources["DatasetWarningBackground"], new Label
+        {
+            Text = text,
+            TextColor = (Color)resources["DatasetWarningText"],
+            FontFamily = "QuicksandSemiBold",
+            FontSize = 11,
+        });
+    }
+
+    private static Border Pill(Color background, Label content) => new()
+    {
+        StrokeThickness = 0,
+        BackgroundColor = background,
+        Padding = new Thickness(10, 4),
+        // FlexLayout has no spacing of its own; the margin is the gutter between pills.
+        Margin = new Thickness(0, 0, 6, 6),
+        StrokeShape = new RoundRectangle { CornerRadius = 10 },
+        Content = content,
+    };
+
+    /// <summary>"Heart  Heart Rate · Resting HR" — the family in its own ink, the readings after.</summary>
+    private static Label BuildDetailLine(DeviceDatasetGroup group)
+    {
+        var (_, foreground) = PillColours(group.Family);
+
+        var text = new FormattedString();
+        text.Spans.Add(new Span
+        {
+            Text = $"{DeviceDatasetGroup.DisplayName(group.Family)}  ",
+            TextColor = foreground,
+            FontFamily = "QuicksandSemiBold",
+            FontSize = 11,
+        });
+        text.Spans.Add(new Span
+        {
+            Text = group.Detail,
+            TextColor = (Color)Microsoft.Maui.Controls.Application.Current!.Resources["BodyText"],
+            FontFamily = "Quicksand",
+            FontSize = 11,
+        });
+
+        return new Label { FormattedText = text };
     }
 
     /// <summary>Resolves a family's tint/ink pair from the Colors.xaml palette.</summary>
@@ -148,6 +231,41 @@ public partial class DeviceCard : ContentView
 
         var resources = Microsoft.Maui.Controls.Application.Current!.Resources;
         return ((Color)resources[$"{token}Background"], (Color)resources[$"{token}Text"]);
+    }
+
+    /// <summary>
+    /// Restores the disclosure state after a reload. The page re-creates every card on refresh,
+    /// so without this an open detail would snap shut each time an action reloads the list.
+    /// </summary>
+    public void SetSharingExpanded(bool expanded)
+    {
+        SharingDetail.IsVisible = _canExpandSharing && expanded;
+        SharingChevron.Source = SharingDetail.IsVisible ? "icon_chevron.svg" : "icon_chevron_down.svg";
+        SemanticProperties.SetDescription(SharingHeader, !_canExpandSharing
+            ? "Shared data"
+            : SharingDetail.IsVisible ? "Shared data, expanded" : "Shared data, collapsed");
+        SemanticProperties.SetHint(SharingHeader, !_canExpandSharing
+            ? string.Empty
+            : SharingDetail.IsVisible ? "Hides each reading" : "Lists each reading shared");
+    }
+
+    private void SetSharingExpandable(bool expandable)
+    {
+        _canExpandSharing = expandable;
+        SharingChevron.IsVisible = expandable;
+        // Re-applied either way so the chevron glyph and the semantic description match the
+        // panel after a rebuild, whichever state the card was left in.
+        SetSharingExpanded(SharingDetail.IsVisible);
+    }
+
+    private void OnSharingTapped(object? sender, TappedEventArgs e)
+    {
+        if (!_canExpandSharing)
+            return;
+
+        var expanded = !SharingDetail.IsVisible;
+        SetSharingExpanded(expanded);
+        SharingExpansionChanged?.Invoke(this, expanded);
     }
 
     private static string ProviderImageFor(string provider) => provider.ToLowerInvariant() switch

@@ -51,15 +51,42 @@
                        VerticalOptions="Start"/>
             </Grid>
 
-            <!-- Datasets this connection shares, one pill each, coloured by family. Full card
-                 width rather than inside the identity grid: nine pills in the name column would
-                 stack almost one per line. -->
-            <FlexLayout x:Name="DatasetPills"
-                        Direction="Row"
-                        Wrap="Wrap"
-                        JustifyContent="Start"
-                        AlignItems="Center"
-                        AlignContent="Start"/>
+            <!-- What this connection shares: one pill per dataset family, not per dataset. Full
+                 card width rather than inside the identity grid — even summary pills read better
+                 on their own line than squeezed beside the device name. The per-dataset names sit
+                 one tap away, so the card answers "is heart data coming in?" at a glance and
+                 "which heart readings?" on demand. -->
+            <VerticalStackLayout Spacing="8">
+                <VerticalStackLayout.GestureRecognizers>
+                    <TapGestureRecognizer Tapped="OnSharingTapped"/>
+                </VerticalStackLayout.GestureRecognizers>
+
+                <!-- The disclosure state is announced from the header rather than the section:
+                     a description on the container would collapse the pills into one
+                     accessibility element and swallow their own descriptions. -->
+                <Grid x:Name="SharingHeader" ColumnDefinitions="*,Auto" HeightRequest="16">
+                    <Label Text="SHARING"
+                           FontFamily="QuicksandSemiBold"
+                           FontSize="9"
+                           TextColor="{StaticResource MutedText}"
+                           VerticalTextAlignment="Center"/>
+                    <Image x:Name="SharingChevron"
+                           Grid.Column="1"
+                           Source="icon_chevron_down.svg"
+                           WidthRequest="16" HeightRequest="16"
+                           VerticalOptions="Center"/>
+                </Grid>
+
+                <FlexLayout x:Name="DatasetPills"
+                            Direction="Row"
+                            Wrap="Wrap"
+                            JustifyContent="Start"
+                            AlignItems="Center"
+                            AlignContent="Start"/>
+
+                <!-- One line per family, revealed by the chevron. -->
+                <VerticalStackLayout x:Name="SharingDetail" Spacing="4" IsVisible="False"/>
+            </VerticalStackLayout>
 
             <!-- Stats. Battery is absent by design — no provider battery level is stored. -->
             <Grid ColumnDefinitions="*,*,*" ColumnSpacing="8">

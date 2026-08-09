@@ -130,4 +130,62 @@ public class DeviceDatasetsTests
         Assert.Empty(DeviceDatasets.For([]));
         Assert.Empty(DeviceDatasets.For(null));
     }
+
+    [Fact]
+    public void GroupedFor_FullFitbitGrant_CollapsesNineDatasetsToThreePills()
+    {
+        var groups = DeviceDatasets.GroupedFor([ActivityScope, MetricsScope, SleepScope]);
+
+        Assert.Equal(
+            [DatasetFamily.Activity, DatasetFamily.Heart, DatasetFamily.Sleep],
+            groups.Select(g => g.Family));
+        Assert.Equal(["Activity", "Heart", "Sleep"], groups.Select(g => g.Label));
+        Assert.Equal([5, 2, 2], groups.Select(g => g.Count));
+    }
+
+    [Fact]
+    public void GroupedFor_FamilyWithOneDataset_LabelsThePillWithTheDatasetNotTheFamily()
+    {
+        var group = Assert.Single(DeviceDatasets.GroupedFor(["weight"]));
+
+        Assert.Equal("Weight", group.Label);
+        Assert.Null(group.Count);
+    }
+
+    [Fact]
+    public void GroupedFor_ScopeOrder_DoesNotChangeTheFamilyOrder()
+    {
+        string[] every = [SleepScope, "weight", MetricsScope, ActivityScope, "profile"];
+
+        Assert.Equal(
+            ["Activity", "Heart", "Sleep", "Body", "Other"],
+            DeviceDatasets.GroupedFor(every.Reverse())
+                .Select(g => DeviceDatasetGroup.DisplayName(g.Family)));
+    }
+
+    [Fact]
+    public void GroupedFor_UnknownScopes_ShareTheOtherPill()
+    {
+        var groups = DeviceDatasets.GroupedFor([SleepScope, "irregular_rhythm", "something_new"]);
+
+        var other = Assert.Single(groups, g => g.Family == DatasetFamily.Other);
+        Assert.Equal("Other", other.Label);
+        Assert.Equal(2, other.Count);
+        Assert.Equal("Irregular Rhythm · Something New", other.Detail);
+    }
+
+    [Fact]
+    public void GroupedFor_Detail_ListsTheDatasetsBehindThePill()
+    {
+        var group = Assert.Single(DeviceDatasets.GroupedFor([MetricsScope]));
+
+        Assert.Equal("Heart Rate · Resting HR", group.Detail);
+    }
+
+    [Fact]
+    public void GroupedFor_NoScopes_ReturnsEmpty()
+    {
+        Assert.Empty(DeviceDatasets.GroupedFor([]));
+        Assert.Empty(DeviceDatasets.GroupedFor(null));
+    }
 }

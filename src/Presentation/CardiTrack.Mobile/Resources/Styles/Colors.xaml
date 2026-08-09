@@ -88,6 +88,10 @@
     <Color x:Key="DatasetBodyText">#1F8A72</Color>
     <Color x:Key="DatasetOtherBackground">#EEF1F5</Color>
     <Color x:Key="DatasetOtherText">#5C6672</Color>
+    <!-- A connection sharing nothing is a problem to fix, not a neutral fact, so its pill takes
+         the caution tint the NEEDS RECONNECT status chip uses rather than the grey "other" pair. -->
+    <Color x:Key="DatasetWarningBackground">#FFF3DE</Color>
+    <Color x:Key="DatasetWarningText">#A9741A</Color>
 
     <!-- ── Solid colour brushes ── -->
     <SolidColorBrush x:Key="CardShadowBrush" Color="{StaticResource CardShadow}"/>

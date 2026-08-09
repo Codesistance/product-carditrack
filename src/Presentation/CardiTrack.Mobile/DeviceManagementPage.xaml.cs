@@ -18,6 +18,12 @@ public partial class DeviceManagementPage : ContentPage
     private readonly Dictionary<Guid, DeviceCard> _cards = [];
     private readonly Dictionary<Guid, string> _deviceNames = [];
 
+    /// <summary>
+    /// Devices whose sharing detail the user opened. Cards are rebuilt on every load, so the
+    /// disclosure state has to live on the page or a pull-to-refresh would close it.
+    /// </summary>
+    private readonly HashSet<Guid> _expandedSharing = [];
+
     private Guid _memberId;
     private bool _isLoading;
     private bool _isBusy;
@@ -108,15 +114,27 @@ public partial class DeviceManagementPage : ContentPage
         EmptyPanel.IsVisible = devices.Count == 0;
         DevicesStack.IsVisible = devices.Count > 0;
 
+        // A device that has gone would otherwise keep its entry here for the life of the page.
+        _expandedSharing.IntersectWith(devices.Select(d => d.DeviceId));
+
         foreach (var device in devices)
         {
+            var id = device.DeviceId;
             var card = new DeviceCard();
             card.Apply(device);
+            card.SetSharingExpanded(_expandedSharing.Contains(id));
             card.RefreshRequested += OnRefreshRequested;
             card.SetPrimaryRequested += OnSetPrimaryRequested;
             card.RemoveRequested += OnRemoveRequested;
-            _cards[device.DeviceId] = card;
-            _deviceNames[device.DeviceId] = device.DisplayName;
+            card.SharingExpansionChanged += (_, expanded) =>
+            {
+                if (expanded)
+                    _expandedSharing.Add(id);
+                else
+                    _expandedSharing.Remove(id);
+            };
+            _cards[id] = card;
+            _deviceNames[id] = device.DisplayName;
             DevicesStack.Add(card);
         }
     }
