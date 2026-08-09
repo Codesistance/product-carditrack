@@ -219,6 +219,7 @@ public partial class HealthInsightService : IHealthInsightService
             KeyFindings = ExtractKeyFindings(aiResponse),
             IsLearning = isLearning,
             IsProvisional = provisionalBaseline is not null,
+            BaselinePeriodDays = (primaryBaseline ?? provisionalBaseline)?.PeriodDays,
             GeneratedAt = DateTimeOffset.UtcNow
         };
     }

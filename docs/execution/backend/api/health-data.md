@@ -159,6 +159,8 @@ MedGemma-generated **narrative** analysis of a CardiMember's baseline trends —
     "Sleep duration consistent with baseline"
   ],
   "isLearning": false,
+  "isProvisional": false,
+  "baselinePeriodDays": 30,
   "generatedAt": "2026-08-07T10:00:00Z"
 }
 ```
@@ -169,11 +171,23 @@ MedGemma-generated **narrative** analysis of a CardiMember's baseline trends —
 {
   "summary": "So far the readings show a settled daily rhythm: activity concentrated in the late morning, and sleep starting at a consistent hour...",
   "keyFindings": ["Nine days of data captured so far"],
-  "isLearning": true
+  "isLearning": true,
+  "isProvisional": false,
+  "baselinePeriodDays": null
 }
 ```
 
-Clients must not label that output as a trend assessment. The prompt behind it is forbidden from calling anything elevated, low, or a deviation.
+```json
+{
+  "summary": "Early signs suggest a steady resting heart rate and consistent sleep — worth revisiting once the full baseline is in.",
+  "keyFindings": ["Resting heart rate steady so far"],
+  "isLearning": false,
+  "isProvisional": true,
+  "baselinePeriodDays": 14
+}
+```
+
+Clients must not label either output as a trend assessment. The learning prompt is forbidden from calling anything elevated, low, or a deviation; the provisional prompt allows tentative comparisons only.
 
 The prompt carries a member context block — age, sex, and caregiver-entered medical notes — because a resting heart rate is not interpretable without them. The member's **name and id are never sent** to the model.
 

@@ -20,5 +20,12 @@ public class BaselineInsightResponse
     /// </summary>
     public bool IsProvisional { get; init; }
 
+    /// <summary>
+    /// Window (in days) of the baseline the summary is anchored to — 7 or 14 while provisional,
+    /// 30 once established; null while learning. Mirrors the dashboard's
+    /// <c>baseline.baselinePeriodDays</c> so clients can caveat both surfaces the same way.
+    /// </summary>
+    public int? BaselinePeriodDays { get; init; }
+
     public required DateTimeOffset GeneratedAt { get; init; }
 }
