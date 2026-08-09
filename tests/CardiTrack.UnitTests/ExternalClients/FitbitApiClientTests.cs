@@ -37,9 +37,23 @@ public class FitbitApiClientTests
             get { lock (_recorded) return [.. _requests]; }
         }
 
+        /// <summary>
+        /// Successive responses for repeated requests to one path, for the paginated reads. Checked
+        /// before <see cref="_routes"/>; over-requesting a sequence answers 500 rather than
+        /// repeating its last page, so a pagination loop that fails to terminate fails the test
+        /// instead of spinning until the client's own cap.
+        /// </summary>
+        private readonly List<(string PathContains, Queue<string> Bodies)> _sequences = [];
+
         public RoutedFakeHttpHandler Map(string pathContains, string body, HttpStatusCode status = HttpStatusCode.OK)
         {
             _routes.Add((pathContains, body, status));
+            return this;
+        }
+
+        public RoutedFakeHttpHandler MapSequence(string pathContains, params string[] bodies)
+        {
+            _sequences.Add((pathContains, new Queue<string>(bodies)));
             return this;
         }
 
@@ -64,6 +78,23 @@ public class FitbitApiClientTests
                 _requests.Add(request);
                 if (requestBody is not null)
                     _sentBodies.Add((path, requestBody));
+            }
+
+            lock (_recorded)
+            {
+                var sequence = _sequences.FirstOrDefault(s =>
+                    path.Contains(s.PathContains, StringComparison.Ordinal));
+                if (sequence != default)
+                {
+                    var (sequenceBody, sequenceStatus) = sequence.Bodies.Count > 0
+                        ? (sequence.Bodies.Dequeue(), HttpStatusCode.OK)
+                        : ($"sequence for {sequence.PathContains} exhausted",
+                            HttpStatusCode.InternalServerError);
+                    return new HttpResponseMessage(sequenceStatus)
+                    {
+                        Content = new StringContent(sequenceBody, Encoding.UTF8, "application/json")
+                    };
+                }
             }
 
             var route = _routes.FirstOrDefault(r => path.Contains(r.PathContains, StringComparison.Ordinal));
@@ -186,6 +217,38 @@ public class FitbitApiClientTests
         Assert.Equal(0, result.Steps);
         Assert.Equal(0m, result.DistanceKm);
         Assert.Equal(0, result.ActiveMinutes);
+    }
+
+    /// <summary>
+    /// `sedentary-period` rolls up a `durationSum` in **seconds** — the one rollup whose unit is not
+    /// the unit its column wants. Storing the raw figure would report 8 hours of sitting as 28,800
+    /// minutes, i.e. 20 days. It is an int64, so it arrives quoted.
+    /// </summary>
+    [Fact]
+    public async Task GetActivitiesAsync_ConvertsSedentaryDurationSecondsToMinutes()
+    {
+        var handler = new RoutedFakeHttpHandler()
+            .Map("/dataTypes/sedentary-period/", Rollup("sedentaryPeriod", """{ "durationSum": "28800" }"""));
+
+        var (sut, _) = CreateSut(handler);
+        var result = await sut.GetActivitiesAsync("token", Today);
+
+        Assert.Equal(480, result.SedentaryMinutes);
+    }
+
+    /// <summary>
+    /// Null, not 0, on a day the type reports nothing. The multi-device merge coalesces on the first
+    /// non-null value, so a placeholder 0 from a higher-priority device would win over another
+    /// device's genuine reading — and 0 sedentary minutes is itself a clinically odd claim.
+    /// </summary>
+    [Fact]
+    public async Task GetActivitiesAsync_ReturnsNullSedentaryMinutes_WhenTypeReportsNothing()
+    {
+        var (sut, _) = CreateSut(); // every route returns an empty rollup
+
+        var result = await sut.GetActivitiesAsync("token", Today);
+
+        Assert.Null(result.SedentaryMinutes);
     }
 
     [Fact]
@@ -640,5 +703,295 @@ public class FitbitApiClientTests
         var (sut, _) = CreateSut(handler);
 
         await Assert.ThrowsAsync<FitbitApiException>(() => sut.GetSleepAsync("bad_token", Today));
+    }
+
+    // ── Additional metrics ───────────────────────────────────────────────────────
+
+    private static string SpO2Samples(string? nextPageToken, params string[] percentages)
+    {
+        var points = string.Join(",\n", percentages.Select(p => $$"""
+            { "oxygenSaturation": { "percentage": {{p}} } }
+            """));
+        var token = nextPageToken is null ? "" : $$""", "nextPageToken": "{{nextPageToken}}" """;
+        return $$"""{ "dataPoints": [ {{points}} ]{{token}} }""";
+    }
+
+    private static string DailyRecord(string unionMember, string valueJson) =>
+        $$"""{ "dataPoints": [ { "{{unionMember}}": {{valueJson}} } ] }""";
+
+    /// <summary>
+    /// The decoded `filter` query parameter, whichever position it occupies — the sample reads pair
+    /// it with a `pageSize`, so it is not always the only one.
+    /// </summary>
+    private static string FilterOf(HttpRequestMessage request)
+    {
+        var pair = request.RequestUri!.Query.TrimStart('?')
+            .Split('&')
+            .Single(p => p.StartsWith("filter=", StringComparison.Ordinal));
+        return Uri.UnescapeDataString(pair["filter=".Length..]);
+    }
+
+    /// <summary>
+    /// All three SpO2 figures come from the sample series, so they describe one series and agree
+    /// with each other. The average is over the readings themselves — 95.0 here, not the midpoint
+    /// of the range.
+    /// </summary>
+    [Fact]
+    public async Task GetAdditionalMetricsAsync_DerivesSpO2AverageMinAndMax_FromSampleSeries()
+    {
+        var handler = new RoutedFakeHttpHandler()
+            .Map("/dataTypes/oxygen-saturation/", SpO2Samples(null, "96.5", "92.0", "97.4", "94.1"));
+
+        var (sut, _) = CreateSut(handler);
+        var result = await sut.GetAdditionalMetricsAsync("token", Today);
+
+        Assert.Equal(95.0m, result.SpO2Average);
+        Assert.Equal(92.0m, result.SpO2Min);
+        Assert.Equal(97.4m, result.SpO2Max);
+    }
+
+    /// <summary>
+    /// A Sample type is filtered on `{data_type}.sample_time.civil_time` — a different pattern from
+    /// both the Daily `{type}.date` and the interval `{type}.interval.civil_start_time`, and
+    /// snake_case like all of them. Civil rather than physical time keeps a night's readings inside
+    /// the wearer's own day instead of splitting them across two UTC days.
+    /// </summary>
+    [Fact]
+    public async Task GetAdditionalMetricsAsync_ListsOxygenSaturationOnCivilSampleTime()
+    {
+        var handler = new RoutedFakeHttpHandler()
+            .Map("/dataTypes/oxygen-saturation/", SpO2Samples(null, "95.0"));
+
+        var (sut, _) = CreateSut(handler);
+        // Month end, so the exclusive upper bound also exercises the rollover into the next month.
+        await sut.GetAdditionalMetricsAsync("token", new DateOnly(2026, 8, 31));
+
+        var request = handler.Requests.Single(r =>
+            r.RequestUri!.AbsolutePath.Contains("/dataTypes/oxygen-saturation/"));
+        Assert.Equal(HttpMethod.Get, request.Method);
+        Assert.EndsWith("/dataTypes/oxygen-saturation/dataPoints", request.RequestUri!.AbsolutePath);
+
+        Assert.Equal(
+            """
+            oxygen_saturation.sample_time.civil_time >= "2026-08-31" AND oxygen_saturation.sample_time.civil_time < "2026-09-01"
+            """,
+            FilterOf(request));
+    }
+
+    /// <summary>
+    /// The tail of a paged series must be read. Dropping page two would understate the maximum and
+    /// overstate the minimum — silently, and in the direction that hides a desaturation.
+    /// </summary>
+    [Fact]
+    public async Task GetAdditionalMetricsAsync_FollowsSpO2Pagination()
+    {
+        var handler = new RoutedFakeHttpHandler()
+            .MapSequence(
+                "/dataTypes/oxygen-saturation/",
+                SpO2Samples("page-2", "96.0", "95.0"),
+                SpO2Samples(null, "88.5", "97.0"));
+
+        var (sut, _) = CreateSut(handler);
+        var result = await sut.GetAdditionalMetricsAsync("token", Today);
+
+        Assert.Equal(88.5m, result.SpO2Min);
+        Assert.Equal(97.0m, result.SpO2Max);
+        Assert.Equal(2, handler.Requests.Count(r =>
+            r.RequestUri!.AbsolutePath.Contains("/dataTypes/oxygen-saturation/")));
+    }
+
+    /// <summary>
+    /// Past the cap with pages still outstanding, the read fails rather than returning the prefix it
+    /// has. Average, min and max computed over part of a longer window are not the day's figures,
+    /// and reporting them as such would be wrong silently and indefinitely — the cap is only
+    /// reachable when the request is selecting more than the civil day it asked for.
+    /// </summary>
+    [Fact]
+    public async Task GetAdditionalMetricsAsync_Throws_WhenSampleSeriesExceedsTheDailyCap()
+    {
+        var overCap = Enumerable.Repeat("95.0", 20_000).ToArray();
+        var handler = new RoutedFakeHttpHandler()
+            .MapSequence("/dataTypes/oxygen-saturation/", SpO2Samples("page-2", overCap));
+
+        var (sut, _) = CreateSut(handler);
+
+        var ex = await Assert.ThrowsAsync<FitbitApiException>(
+            () => sut.GetAdditionalMetricsAsync("token", Today));
+        Assert.Contains("selecting more than one day", ex.Message, StringComparison.Ordinal);
+
+        // Not tolerated as "this device has no SpO2": that guard keys on 400/404, and swallowing
+        // this would put the silent wrong answer back.
+        Assert.Equal(0, ex.StatusCode);
+    }
+
+    /// <summary>
+    /// A device that publishes only the daily summary still contributes its average. Min and max
+    /// stay null: the summary's lowerBound/upperBound pair describes the spread of the day's
+    /// distribution, not the lowest and highest readings taken, and putting a distribution bound in
+    /// SpO2Min would misreport exactly the figure a desaturation check reads.
+    /// </summary>
+    [Fact]
+    public async Task GetAdditionalMetricsAsync_FallsBackToDailySpO2Average_WhenSeriesIsEmpty()
+    {
+        var handler = new RoutedFakeHttpHandler()
+            .Map("/dataTypes/oxygen-saturation/", """{ "dataPoints": [] }""")
+            .Map("/dataTypes/daily-oxygen-saturation/", DailyRecord("dailyOxygenSaturation", """
+                {
+                  "averagePercentage": 94.28,
+                  "lowerBoundPercentage": 90.0,
+                  "upperBoundPercentage": 98.0,
+                  "standardDeviationPercentage": 1.5
+                }
+                """));
+
+        var (sut, _) = CreateSut(handler);
+        var result = await sut.GetAdditionalMetricsAsync("token", Today);
+
+        Assert.Equal(94.3m, result.SpO2Average);
+        Assert.Null(result.SpO2Min);
+        Assert.Null(result.SpO2Max);
+    }
+
+    [Fact]
+    public async Task GetAdditionalMetricsAsync_ReadsVo2MaxBreathingRateAndTemperature_FromDailyRecords()
+    {
+        var handler = new RoutedFakeHttpHandler()
+            .Map("/dataTypes/daily-vo2-max/", DailyRecord("dailyVo2Max", """
+                { "vo2Max": 34.7, "estimated": true, "cardioFitnessLevel": "AVERAGE" }
+                """))
+            .Map("/dataTypes/daily-respiratory-rate/",
+                DailyRecord("dailyRespiratoryRate", """{ "breathsPerMinute": 15.4 }"""))
+            .Map("/dataTypes/daily-sleep-temperature-derivations/",
+                DailyRecord("dailySleepTemperatureDerivations", """
+                {
+                  "nightlyTemperatureCelsius": 33.8,
+                  "baselineTemperatureCelsius": 33.2,
+                  "relativeNightlyStddev30dCelsius": 0.4
+                }
+                """));
+
+        var (sut, _) = CreateSut(handler);
+        var result = await sut.GetAdditionalMetricsAsync("token", Today);
+
+        Assert.Equal(34.7m, result.VO2Max);
+        Assert.Equal(15.4m, result.BreathingRate);
+        Assert.Equal(33.8m, result.Temperature);
+    }
+
+    /// <summary>
+    /// Each Daily record is filtered on the snake_case data type, not the camelCase union member the
+    /// response is keyed by — the mistake that made every resting-HR read a 400.
+    /// </summary>
+    [Theory]
+    [InlineData("daily-vo2-max", "daily_vo2_max")]
+    [InlineData("daily-respiratory-rate", "daily_respiratory_rate")]
+    [InlineData("daily-sleep-temperature-derivations", "daily_sleep_temperature_derivations")]
+    public async Task GetAdditionalMetricsAsync_FiltersDailyRecordsOnSnakeCaseDate(
+        string dataType, string filterMember)
+    {
+        var (sut, handler) = CreateSut();
+
+        await sut.GetAdditionalMetricsAsync("token", new DateOnly(2026, 8, 31));
+
+        var request = handler.Requests.Single(r =>
+            r.RequestUri!.AbsolutePath.Contains($"/dataTypes/{dataType}/"));
+        Assert.Equal(HttpMethod.Get, request.Method);
+
+        Assert.Equal(
+            $"{filterMember}.date >= \"2026-08-31\" AND {filterMember}.date < \"2026-09-01\"",
+            FilterOf(request));
+    }
+
+    /// <summary>
+    /// Most Fitbits derive none of these. An absent data type is a fact about the device, so it
+    /// yields null rather than failing the day's whole snapshot — 404 and a 400 without field
+    /// violations alike.
+    /// </summary>
+    [Fact]
+    public async Task GetAdditionalMetricsAsync_ToleratesAbsentDataTypes()
+    {
+        var handler = new RoutedFakeHttpHandler()
+            .Map("/dataTypes/oxygen-saturation/", """{ "error": { "status": "NOT_FOUND" } }""",
+                HttpStatusCode.NotFound)
+            .Map("/dataTypes/daily-vo2-max/", """
+                { "error": { "code": 400, "message": "Data type not available for this user." } }
+                """, HttpStatusCode.BadRequest)
+            .Map("/dataTypes/daily-respiratory-rate/", """{ "error": { "status": "NOT_FOUND" } }""",
+                HttpStatusCode.NotFound)
+            .Map("/dataTypes/daily-sleep-temperature-derivations/",
+                """{ "error": { "status": "NOT_FOUND" } }""", HttpStatusCode.NotFound);
+
+        var (sut, _) = CreateSut(handler);
+        var result = await sut.GetAdditionalMetricsAsync("token", Today);
+
+        Assert.Null(result.SpO2Average);
+        Assert.Null(result.SpO2Min);
+        Assert.Null(result.SpO2Max);
+        Assert.Null(result.VO2Max);
+        Assert.Null(result.BreathingRate);
+        Assert.Null(result.Temperature);
+    }
+
+    /// <summary>
+    /// A 400 carrying field violations is a request this client built wrong. Tolerating it would
+    /// leave the column permanently empty and looking merely unsupported, so it throws even though
+    /// the metric itself is optional.
+    /// </summary>
+    [Fact]
+    public async Task GetAdditionalMetricsAsync_Throws_WhenRequestIsMalformed()
+    {
+        var handler = new RoutedFakeHttpHandler()
+            .Map("/dataTypes/daily-vo2-max/", """
+                {
+                  "error": {
+                    "code": 400,
+                    "status": "INVALID_ARGUMENT",
+                    "details": [
+                      {
+                        "@type": "type.googleapis.com/google.rpc.BadRequest",
+                        "fieldViolations": [ { "field": "filter", "description": "Unknown field." } ]
+                      }
+                    ]
+                  }
+                }
+                """, HttpStatusCode.BadRequest);
+
+        var (sut, _) = CreateSut(handler);
+
+        var ex = await Assert.ThrowsAsync<FitbitApiException>(
+            () => sut.GetAdditionalMetricsAsync("token", Today));
+        Assert.True(ex.IsMalformedRequest);
+    }
+
+    // ── Snapshot ─────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// The snapshot is the contract the sync writes from, so the additional metrics have to survive
+    /// the trip through it. StressScore is asserted null on purpose: Google Health API v4 has no
+    /// stress or readiness data type, so nothing may quietly appear in that column.
+    /// </summary>
+    [Fact]
+    public async Task GetHealthSnapshotAsync_CarriesAdditionalMetrics_AndLeavesStressScoreNull()
+    {
+        var handler = new RoutedFakeHttpHandler()
+            .Map("/dataTypes/oxygen-saturation/", SpO2Samples(null, "96.0", "93.0"))
+            .Map("/dataTypes/daily-vo2-max/", DailyRecord("dailyVo2Max", """{ "vo2Max": 34.7 }"""))
+            .Map("/dataTypes/daily-respiratory-rate/",
+                DailyRecord("dailyRespiratoryRate", """{ "breathsPerMinute": 15.4 }"""))
+            .Map("/dataTypes/daily-sleep-temperature-derivations/",
+                DailyRecord("dailySleepTemperatureDerivations", """{ "nightlyTemperatureCelsius": 33.8 }"""))
+            .Map("/dataTypes/sedentary-period/", Rollup("sedentaryPeriod", """{ "durationSum": "28800" }"""));
+
+        var (sut, _) = CreateSut(handler);
+        var snapshot = await ((IDeviceApiClient)sut).GetHealthSnapshotAsync("token", Today);
+
+        Assert.Equal(94.5m, snapshot.SpO2Average);
+        Assert.Equal(93.0m, snapshot.SpO2Min);
+        Assert.Equal(96.0m, snapshot.SpO2Max);
+        Assert.Equal(34.7m, snapshot.VO2Max);
+        Assert.Equal(15.4m, snapshot.BreathingRate);
+        Assert.Equal(33.8m, snapshot.Temperature);
+        Assert.Equal(480, snapshot.SedentaryMinutes);
+        Assert.Null(snapshot.StressScore);
     }
 }

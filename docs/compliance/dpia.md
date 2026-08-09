@@ -90,7 +90,7 @@ Special-category (Art. 9 health) data marked **H**; health-revealing-in-context 
 | `AuditLog` | User/member IDs, action, **IP address, user agent**, request path, data-accessed JSON (`AuditLog.cs`) — **schema only; never written** (risk R-A2) | Ordinary |
 | `Subscription` | Tier, status, dates, price, `PaymentMethod` JSON (card last4/brand/expiry — schema present, nothing writes it) (`Subscription.cs`) | Ordinary |
 
-Minimisation observations (feed §7): the schema holds fields nothing populates (SpO2/VO2Max/stress/breathing/temperature columns beyond current ingestion; `PaymentMethod`; `PasswordHash`) — unused sensitive-data capacity should be justified or removed.
+Minimisation observations (feed §7): the schema holds fields nothing populates (`StressScore`; `PaymentMethod`; `PasswordHash`) — unused sensitive-data capacity should be justified or removed. `StressScore` is now known to be unfillable from any source CardiTrack reads: Google Health API v4 exposes no stress or readiness data type, and its `mindfulness`/`logged_symptoms` scopes are write-only. SpO2, VO2Max, breathing rate, body temperature and sedentary minutes are populated as of the additional-metrics ingestion change and are no longer unused capacity — they widen the special-category data actually held, which §4.2 and the retention position must reflect.
 
 ### 4.2 Processing operations (implemented)
 
@@ -178,8 +178,8 @@ The hard problem: **the data subject may not be the consenting party.** The defa
 
 ### 6.2 Minimisation and proportionality findings
 
-- Ingestion is limited to three restricted read-only scopes and daily rollups — proportionate for trend detection. Planned intraday/5-min collection (Part B) needs its own justification.
-- Fields collected but unused (unpopulated vitals columns, `PasswordHash`, `PaymentMethod`) should be removed or justified.
+- Ingestion is limited to three restricted read-only scopes, and to daily granularity **at rest** — proportionate for trend detection. One read is intraday in transit: SpO2 is fetched as its sample series because the API publishes no minimum or maximum in the daily summary, and the samples are reduced to a daily average/min/max in memory with no intraday point persisted. Planned intraday/5-min collection that *stores* sub-daily points (Part B) still needs its own justification.
+- Fields collected but unused (`StressScore` — unfillable from this API at all, `PasswordHash`, `PaymentMethod`) should be removed or justified.
 - Precise date of birth is required; consider whether year alone would serve the age-gate and baseline purposes.
 - Gemini receives the member's **name** in report prompts (A6) — a pseudonymous identifier would serve identically. Same for the GUID in chat prompts. The MedGemma insight prompts (A5) apply the opposite rule deliberately: age and sex go in because they change how a heart rate or sleep duration should be read, while name and member id are excluded because they change nothing about the clinical reading. A6 and A4 should be brought into line.
 - `MedicalNotes` in A5 is the most sensitive field the system holds and it is now sent verbatim (truncated) to the model. It earns its place — conditions and medication are invisible to a wearable and change the interpretation — but two conditions attach: the note is uncontrolled free text (R-A14), and it is still stored **plaintext** pending M1.
