@@ -3,36 +3,42 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              x:Class="CardiTrack.Mobile.Controls.AlertMiniCard">
 
-    <Border Style="{StaticResource DashboardCard}"
-            Padding="12"
-            WidthRequest="220">
+    <!-- Figma 101:2902. Tile tint carries severity; the pill carries whether the alert has
+         been dealt with. -->
+    <Border Style="{StaticResource ElevatedCard}" WidthRequest="245">
         <Border.GestureRecognizers>
             <TapGestureRecognizer Tapped="OnTapped"/>
         </Border.GestureRecognizers>
 
-        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="10">
-            <BoxView x:Name="SeverityBar"
-                     Grid.Column="0"
-                     WidthRequest="4"
-                     CornerRadius="2"
-                     VerticalOptions="Fill"
-                     Color="{StaticResource StatusYellow}"/>
+        <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="11">
 
-            <VerticalStackLayout Grid.Column="1" Spacing="3">
+            <Border x:Name="IconTileBorder"
+                    Grid.Column="0"
+                    Style="{StaticResource IconTile}"
+                    WidthRequest="46" HeightRequest="46"
+                    VerticalOptions="Center">
+                <Image x:Name="TypeIcon"
+                       WidthRequest="26" HeightRequest="26"/>
+            </Border>
+
+            <VerticalStackLayout Grid.Column="1" Spacing="4" VerticalOptions="Center">
                 <Label x:Name="TitleLabel"
                        FontFamily="QuicksandSemiBold"
-                       FontSize="14"
+                       FontSize="16"
                        TextColor="{StaticResource HeadingText}"
+                       MaxLines="2"
                        LineBreakMode="TailTruncation"/>
                 <Label x:Name="TimeLabel"
-                       FontFamily="Quicksand"
-                       FontSize="12"
-                       TextColor="{StaticResource MutedText}"/>
-                <Label x:Name="StatusChip"
-                       FontFamily="QuicksandMedium"
-                       FontSize="11"
-                       TextColor="{StaticResource BodyText}"/>
+                       Style="{StaticResource MetricRowLabel}"/>
             </VerticalStackLayout>
+
+            <Border x:Name="StatusPillBorder"
+                    Grid.Column="2"
+                    Style="{StaticResource StatusPill}"
+                    VerticalOptions="Center">
+                <Label x:Name="StatusPillLabel"
+                       Style="{StaticResource StatusPillText}"/>
+            </Border>
         </Grid>
     </Border>
 </ContentView>

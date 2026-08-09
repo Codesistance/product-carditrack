@@ -4,6 +4,9 @@ namespace CardiTrack.Mobile.Controls;
 
 public partial class MetricCard : ContentView
 {
+    private const int StarCount = 5;
+    private const double DimmedStarOpacity = 0.25;
+
     public MetricCard()
     {
         InitializeComponent();
@@ -12,70 +15,140 @@ public partial class MetricCard : ContentView
     public void ApplySteps(DashboardMetric metric)
     {
         MetricIcon.Source = "icon_metric_steps.svg";
-        Sparkline.LineColor = (Color)Microsoft.Maui.Controls.Application.Current!.Resources["Primary"];
+        NameLabel.Text = "Activity";
         ValueLabel.Text = metric.Value is { } v ? $"{v:N0} steps" : "—";
+
+        ApplyTrend(metric, higherIsBetter: true);
 
         if (metric is { Value: { } value, Goal: > 0 })
         {
-            GoalProgress.IsVisible = true;
-            GoalProgress.Progress = Math.Min(1.0, (double)(value / metric.Goal.Value));
-            SubtitleLabel.Text = $"Goal {metric.Goal:N0}";
+            ProgressTrackBorder.IsVisible = true;
+            SetProgress((double)(value / metric.Goal!.Value));
+            if (!TrendLabel.IsVisible)
+                CaptionLabel.Text = $"Goal {metric.Goal:N0}";
         }
         else
         {
-            GoalProgress.IsVisible = false;
-            SubtitleLabel.Text = "Daily activity";
+            ProgressTrackBorder.IsVisible = false;
+            if (!TrendLabel.IsVisible)
+                CaptionLabel.Text = "Daily activity";
         }
-
-        ApplyComparison(metric, higherIsBetter: true);
-        Sparkline.Points = metric.Series.Select(p => p.Value).ToList();
     }
 
     public void ApplyHeartRate(DashboardMetric metric)
     {
         MetricIcon.Source = "icon_metric_heart.svg";
-        Sparkline.LineColor = (Color)Microsoft.Maui.Controls.Application.Current!.Resources["StatusRed"];
+        NameLabel.Text = "Heart Rate";
         ValueLabel.Text = metric.Value is { } v ? $"{v:N0} bpm" : "—";
-        SubtitleLabel.Text = metric is { RangeLow: { } low, RangeHigh: { } high }
+
+        ApplyStatusPill(metric.Status);
+        CaptionLabel.Text = metric is { RangeLow: { } low, RangeHigh: { } high }
             ? $"{low}-{high} bpm typical"
             : "Resting heart rate";
-
-        ApplyComparison(metric, higherIsBetter: false);
-        Sparkline.Points = metric.Series.Select(p => p.Value).ToList();
     }
 
     public void ApplySleep(DashboardMetric metric)
     {
         MetricIcon.Source = "icon_metric_sleep.svg";
-        Sparkline.LineColor = (Color)Microsoft.Maui.Controls.Application.Current!.Resources["SleepPurple"];
+        NameLabel.Text = "Sleep";
         ValueLabel.Text = metric.Value is { } v ? $"{v:0.#} hours" : "—";
-        SubtitleLabel.Text = metric.QualityScore is { } stars
-            ? string.Concat(Enumerable.Repeat("★", stars)) + string.Concat(Enumerable.Repeat("☆", 5 - stars))
-            : "Sleep";
 
-        ApplyComparison(metric, higherIsBetter: true);
-        Sparkline.Points = metric.Series.Select(p => p.Value).ToList();
+        ApplyStars(metric.QualityScore);
+        CaptionLabel.Text = metric.ChangePercent switch
+        {
+            > 0 => "Better than average",
+            < 0 => "Less than usual",
+            0 => "In line with usual",
+            _ => "Last night",
+        };
     }
 
-    private void ApplyComparison(DashboardMetric metric, bool higherIsBetter)
+    /// <summary>
+    /// Activity's accessory: how today compares with the member's own baseline.
+    /// </summary>
+    private void ApplyTrend(DashboardMetric metric, bool higherIsBetter)
     {
         if (metric.ChangePercent is not { } change)
         {
-            ComparisonLabel.IsVisible = false;
+            TrendLabel.IsVisible = false;
             return;
         }
 
         var resources = Microsoft.Maui.Controls.Application.Current!.Resources;
-        var arrow = change >= 0 ? "▲" : "▼";
         var isGood = higherIsBetter ? change >= 0 : change <= 0;
-        var percentOfNormal = 100 + change;
 
-        ComparisonLabel.Text = $"{arrow} {percentOfNormal:0}% of normal";
-        ComparisonLabel.TextColor = Math.Abs(change) <= 30
+        TrendLabel.Text = $"{(change >= 0 ? "↗" : "↘")} {100 + change:0}%";
+        TrendLabel.TextColor = Math.Abs(change) <= 30 || isGood
             ? (Color)resources["StatusGreen"]
-            : isGood
-                ? (Color)resources["StatusGreen"]
-                : (Color)resources["StatusOrange"];
-        ComparisonLabel.IsVisible = true;
+            : (Color)resources["StatusOrange"];
+        TrendLabel.IsVisible = true;
+        CaptionLabel.Text = "of normal";
+    }
+
+    /// <summary>
+    /// Heart rate's accessory. The wording is deliberately non-clinical — CardiTrack is not a
+    /// medical device, so the pill reports how the reading compares with this member's own
+    /// baseline rather than naming it high or low.
+    /// </summary>
+    private void ApplyStatusPill(string status)
+    {
+        var (tint, ink, text) = status switch
+        {
+            "green" => ("PillGreenBackground", "StatusGreen", "NORMAL"),
+            "yellow" => ("PillYellowBackground", "StatusYellow", "UNUSUAL"),
+            "orange" => ("PillOrangeBackground", "StatusOrange", "CHECK IN"),
+            "red" => ("PillRedBackground", "StatusRed", "URGENT"),
+            _ => (null, null, null),
+        };
+
+        if (tint is null)
+        {
+            StatusPillBorder.IsVisible = false;
+            return;
+        }
+
+        var resources = Microsoft.Maui.Controls.Application.Current!.Resources;
+        StatusPillBorder.BackgroundColor = (Color)resources[tint];
+        StatusPillLabel.TextColor = (Color)resources[ink!];
+        StatusPillLabel.Text = text;
+        StatusPillBorder.IsVisible = true;
+    }
+
+    /// <summary>
+    /// Sleep's accessory. Unearned stars are dimmed rather than swapped for an outline asset —
+    /// the icon set is hand-authored and has no outline star yet.
+    /// </summary>
+    private void ApplyStars(int? qualityScore)
+    {
+        StarRow.Clear();
+        if (qualityScore is not { } score)
+        {
+            StarRow.IsVisible = false;
+            return;
+        }
+
+        var filled = Math.Clamp(score, 0, StarCount);
+        for (var i = 0; i < StarCount; i++)
+        {
+            StarRow.Add(new Image
+            {
+                Source = "icon_star.svg",
+                WidthRequest = 15,
+                HeightRequest = 15,
+                Opacity = i < filled ? 1 : DimmedStarOpacity,
+            });
+        }
+        StarRow.IsVisible = true;
+    }
+
+    /// <summary>
+    /// Fills the track proportionally with two star columns, which avoids having to measure the
+    /// track — a ProgressBar can't carry the design's gradient fill.
+    /// </summary>
+    private void SetProgress(double fraction)
+    {
+        var filled = Math.Clamp(fraction, 0, 1);
+        ProgressGrid.ColumnDefinitions[0].Width = new GridLength(filled, GridUnitType.Star);
+        ProgressGrid.ColumnDefinitions[1].Width = new GridLength(1 - filled, GridUnitType.Star);
     }
 }

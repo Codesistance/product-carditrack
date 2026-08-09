@@ -5,54 +5,15 @@
              x:Class="CardiTrack.Mobile.DashboardPage"
              Shell.NavBarIsVisible="False"
              Shell.TabBarIsVisible="False"
-             BackgroundColor="{StaticResource White}">
+             BackgroundColor="{StaticResource PageGround}">
 
     <Grid RowDefinitions="Auto,Auto,*,Auto">
 
         <!-- ════════════════════════════════════════
-             FIXED HEADER
+             FIXED HEADER (Figma 101:2872) — edge to edge, so it sits outside the
+             content padding rather than inside it.
              ════════════════════════════════════════ -->
-        <Grid Grid.Row="0"
-              ColumnDefinitions="*,Auto,Auto"
-              ColumnSpacing="14"
-              Padding="20,16,20,10">
-            <Label x:Name="GreetingLabel"
-                   Grid.Column="0"
-                   Style="{StaticResource Heading2}"
-                   VerticalTextAlignment="Center"/>
-
-            <Grid Grid.Column="1" VerticalOptions="Center">
-                <ImageButton Source="icon_bell.svg"
-                             WidthRequest="24" HeightRequest="24"
-                             BackgroundColor="Transparent"
-                             Clicked="OnBellClicked"/>
-                <Border x:Name="BellBadge"
-                        IsVisible="False"
-                        BackgroundColor="{StaticResource StatusRed}"
-                        StrokeThickness="0"
-                        WidthRequest="16" HeightRequest="16"
-                        HorizontalOptions="End" VerticalOptions="Start"
-                        TranslationX="6" TranslationY="-4"
-                        InputTransparent="True">
-                    <Border.StrokeShape>
-                        <RoundRectangle CornerRadius="8"/>
-                    </Border.StrokeShape>
-                    <Label x:Name="BellBadgeLabel"
-                           FontSize="10"
-                           FontFamily="QuicksandSemiBold"
-                           TextColor="{StaticResource White}"
-                           HorizontalOptions="Center" VerticalOptions="Center"/>
-                </Border>
-            </Grid>
-
-            <ImageButton x:Name="RefreshButton"
-                         Grid.Column="2"
-                         Source="icon_refresh.svg"
-                         WidthRequest="24" HeightRequest="24"
-                         BackgroundColor="Transparent"
-                         VerticalOptions="Center"
-                         Clicked="OnRefreshClicked"/>
-        </Grid>
+        <controls:DashboardHeader x:Name="Header" Grid.Row="0"/>
 
         <!-- ════════════════════════════════════════
              VERIFY-EMAIL NUDGE (dismissible)
@@ -62,7 +23,7 @@
                 IsVisible="False"
                 BackgroundColor="{StaticResource StaleBannerBackground}"
                 StrokeThickness="0"
-                Margin="20,0,20,8"
+                Margin="20,20,20,0"
                 Padding="14,10">
             <Border.StrokeShape>
                 <RoundRectangle CornerRadius="12"/>
@@ -94,22 +55,23 @@
                      RefreshColor="{StaticResource Primary}"
                      Refreshing="OnPullToRefresh">
             <ScrollView>
-                <Grid Padding="20,0,20,24">
+                <Grid Padding="20,20,20,24">
 
-                    <!-- ── Loading skeleton (M1-09a) ── -->
-                    <VerticalStackLayout x:Name="SkeletonPanel" Spacing="14" IsVisible="False">
-                        <controls:SkeletonView HeightRequest="150"/>
-                        <Grid ColumnDefinitions="*,*,*" ColumnSpacing="10">
-                            <controls:SkeletonView Grid.Column="0" HeightRequest="56"/>
-                            <controls:SkeletonView Grid.Column="1" HeightRequest="56"/>
-                            <controls:SkeletonView Grid.Column="2" HeightRequest="56"/>
+                    <!-- ── Loading skeleton (M1-09a) — block heights track the loaded
+                           layout so the content doesn't jump when it arrives ── -->
+                    <VerticalStackLayout x:Name="SkeletonPanel" Spacing="20" IsVisible="False">
+                        <controls:SkeletonView HeightRequest="102"/>
+                        <Grid ColumnDefinitions="*,*,*" ColumnSpacing="14">
+                            <controls:SkeletonView Grid.Column="0" HeightRequest="84"/>
+                            <controls:SkeletonView Grid.Column="1" HeightRequest="84"/>
+                            <controls:SkeletonView Grid.Column="2" HeightRequest="84"/>
                         </Grid>
-                        <Grid ColumnDefinitions="*,*,*" ColumnSpacing="10">
-                            <controls:SkeletonView Grid.Column="0" HeightRequest="140"/>
-                            <controls:SkeletonView Grid.Column="1" HeightRequest="140"/>
-                            <controls:SkeletonView Grid.Column="2" HeightRequest="140"/>
-                        </Grid>
-                        <controls:SkeletonView HeightRequest="90"/>
+                        <VerticalStackLayout Spacing="11">
+                            <controls:SkeletonView HeightRequest="108"/>
+                            <controls:SkeletonView HeightRequest="108"/>
+                            <controls:SkeletonView HeightRequest="108"/>
+                        </VerticalStackLayout>
+                        <controls:SkeletonView HeightRequest="96"/>
                     </VerticalStackLayout>
 
                     <!-- ── Error state ── -->
@@ -149,7 +111,7 @@
                     </VerticalStackLayout>
 
                     <!-- ── Loaded content ── -->
-                    <VerticalStackLayout x:Name="ContentPanel" Spacing="14" IsVisible="False">
+                    <VerticalStackLayout x:Name="ContentPanel" Spacing="20" IsVisible="False">
 
                         <!-- Monitoring paused (M1-13) — takes precedence over the stale
                              banner, which would otherwise blame a sync that is paused on purpose. -->
@@ -183,7 +145,7 @@
                         <!-- No device connected (M1-09d) -->
                         <Border x:Name="NoDeviceCard"
                                 IsVisible="False"
-                                Style="{StaticResource DashboardCard}">
+                                Style="{StaticResource ElevatedCard}">
                             <VerticalStackLayout Spacing="8">
                                 <Label x:Name="NoDeviceLabel"
                                        Style="{StaticResource Body2Medium}"
@@ -198,7 +160,7 @@
                         <!-- Baseline learning (M1-09e) -->
                         <Border x:Name="LearningCard"
                                 IsVisible="False"
-                                Style="{StaticResource DashboardCard}">
+                                Style="{StaticResource ElevatedCard}">
                             <VerticalStackLayout Spacing="8">
                                 <Label x:Name="LearningLabel"
                                        Style="{StaticResource Body2Medium}"
@@ -214,66 +176,80 @@
                         <!-- Quick actions. Call and Send Message dim when the CardiMember has no
                              phone number (issue #67) — they stay tappable so the tap can explain
                              why, which is the only affordance a dimmed tile has on touch. -->
-                        <Grid ColumnDefinitions="*,*,*" ColumnSpacing="10">
+                        <Grid ColumnDefinitions="*,*,*" ColumnSpacing="14">
                             <Border x:Name="CallAction"
-                                    Grid.Column="0" Style="{StaticResource DashboardCard}" Padding="10">
+                                    Grid.Column="0"
+                                    Style="{StaticResource ElevatedCard}"
+                                    Padding="8,16,8,11">
                                 <Border.GestureRecognizers>
                                     <TapGestureRecognizer Tapped="OnCallTapped"/>
                                 </Border.GestureRecognizers>
-                                <VerticalStackLayout Spacing="4">
-                                    <Image Source="icon_action_call.svg" WidthRequest="22" HeightRequest="22"/>
-                                    <Label x:Name="CallLabel" Text="Call"
-                                           FontFamily="QuicksandMedium" FontSize="12"
-                                           TextColor="{StaticResource HeadingText}"
-                                           HorizontalTextAlignment="Center"/>
+                                <VerticalStackLayout Spacing="13">
+                                    <Image Source="icon_action_call.svg"
+                                           WidthRequest="26" HeightRequest="26"
+                                           HorizontalOptions="Center"/>
+                                    <Label x:Name="CallLabel"
+                                           Text="Call"
+                                           Style="{StaticResource QuickActionLabel}"
+                                           LineBreakMode="TailTruncation"/>
                                 </VerticalStackLayout>
                             </Border>
                             <Border x:Name="MessageAction"
-                                    Grid.Column="1" Style="{StaticResource DashboardCard}" Padding="10">
+                                    Grid.Column="1"
+                                    Style="{StaticResource ElevatedCard}"
+                                    Padding="8,16,8,11">
                                 <Border.GestureRecognizers>
                                     <TapGestureRecognizer Tapped="OnMessageTapped"/>
                                 </Border.GestureRecognizers>
-                                <VerticalStackLayout Spacing="4">
-                                    <Image Source="icon_action_sms.svg" WidthRequest="22" HeightRequest="22"/>
-                                    <Label x:Name="MessageLabel" Text="Send Message"
-                                           FontFamily="QuicksandMedium" FontSize="12"
-                                           TextColor="{StaticResource HeadingText}"
-                                           HorizontalTextAlignment="Center"/>
+                                <VerticalStackLayout Spacing="13">
+                                    <Image Source="icon_action_sms.svg"
+                                           WidthRequest="26" HeightRequest="26"
+                                           HorizontalOptions="Center"/>
+                                    <Label Text="Message" Style="{StaticResource QuickActionLabel}"/>
                                 </VerticalStackLayout>
                             </Border>
-                            <Border Grid.Column="2" Style="{StaticResource DashboardCard}" Padding="10">
+                            <Border Grid.Column="2"
+                                    Style="{StaticResource ElevatedCard}"
+                                    Padding="8,16,8,11">
                                 <Border.GestureRecognizers>
                                     <TapGestureRecognizer Tapped="OnViewDetailsTapped"/>
                                 </Border.GestureRecognizers>
-                                <VerticalStackLayout Spacing="4">
-                                    <Image Source="icon_action_details.svg" WidthRequest="22" HeightRequest="22"/>
-                                    <Label Text="View Details"
-                                           FontFamily="QuicksandMedium" FontSize="12"
-                                           TextColor="{StaticResource HeadingText}"
-                                           HorizontalTextAlignment="Center"/>
+                                <VerticalStackLayout Spacing="13">
+                                    <Image Source="icon_action_details.svg"
+                                           WidthRequest="26" HeightRequest="26"
+                                           HorizontalOptions="Center"/>
+                                    <Label Text="Details" Style="{StaticResource QuickActionLabel}"/>
                                 </VerticalStackLayout>
                             </Border>
                         </Grid>
 
                         <!-- Key metrics -->
-                        <Grid x:Name="MetricsGrid"
-                              ColumnDefinitions="*,*,*"
-                              ColumnSpacing="10">
-                            <controls:MetricCard x:Name="StepsCard" Grid.Column="0"/>
-                            <controls:MetricCard x:Name="HeartRateCard" Grid.Column="1"/>
-                            <controls:MetricCard x:Name="SleepCard" Grid.Column="2"/>
-                        </Grid>
+                        <VerticalStackLayout x:Name="MetricsSection" Spacing="11">
+                            <Label Text="Key Metrics" Style="{StaticResource Heading2}"/>
+                            <controls:MetricCard x:Name="StepsCard"/>
+                            <controls:MetricCard x:Name="HeartRateCard"/>
+                            <controls:MetricCard x:Name="SleepCard"/>
+                        </VerticalStackLayout>
 
                         <!-- Recent alerts -->
-                        <VerticalStackLayout x:Name="AlertsSection" Spacing="8" IsVisible="False">
-                            <Label Text="Recent Alerts" Style="{StaticResource DashboardSectionTitle}"/>
+                        <VerticalStackLayout x:Name="AlertsSection" Spacing="20" IsVisible="False">
+                            <Grid ColumnDefinitions="*,Auto">
+                                <Label Grid.Column="0" Text="Recent Alerts" Style="{StaticResource Heading2}"/>
+                                <Label Grid.Column="1"
+                                       Text="View All"
+                                       Style="{StaticResource SectionLink}">
+                                    <Label.GestureRecognizers>
+                                        <TapGestureRecognizer Tapped="OnViewAllAlertsTapped"/>
+                                    </Label.GestureRecognizers>
+                                </Label>
+                            </Grid>
                             <ScrollView Orientation="Horizontal" HorizontalScrollBarVisibility="Never">
-                                <HorizontalStackLayout x:Name="AlertsStack" Spacing="10"/>
+                                <HorizontalStackLayout x:Name="AlertsStack" Spacing="11" Padding="0,0,0,6"/>
                             </ScrollView>
                         </VerticalStackLayout>
 
                         <Button Text="View Trends &amp; History"
-                                Style="{StaticResource SecondaryOutlineButton}"
+                                Style="{StaticResource AuthGradientButton}"
                                 HorizontalOptions="Fill"
                                 Clicked="OnViewTrendsClicked"/>
 

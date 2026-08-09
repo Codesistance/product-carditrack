@@ -3,74 +3,61 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              x:Class="CardiTrack.Mobile.Controls.StatusHeroCard">
 
-    <Border x:Name="HeroBorder"
-            StrokeThickness="0"
-            Padding="18">
-        <Border.StrokeShape>
-            <RoundRectangle CornerRadius="20"/>
-        </Border.StrokeShape>
-        <Border.Background>
-            <StaticResource Key="HeroUnknownBrush"/>
-        </Border.Background>
-        <!-- Tapping the card opens M1-13. The sync ImageButton below handles its own taps,
-             so it is not swallowed by this recognizer. -->
+    <!-- Figma 101:2853. The card is white and the health status is carried by the status line's
+         colour and icon, not by the card's fill — the gradient in this design belongs to the
+         header band. Tapping the card opens M1-13. -->
+    <Border Style="{StaticResource ElevatedCard}" Padding="16,15">
         <Border.GestureRecognizers>
             <TapGestureRecognizer Tapped="OnCardTapped"/>
         </Border.GestureRecognizers>
 
-        <VerticalStackLayout Spacing="12">
+        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="16">
 
-            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="14">
-                <!-- Initials avatar (photo support arrives with the PhotoUrl field) -->
-                <Border Grid.Column="0"
-                        WidthRequest="64" HeightRequest="64"
-                        StrokeThickness="0"
-                        BackgroundColor="#33FFFFFF">
-                    <Border.StrokeShape>
-                        <RoundRectangle CornerRadius="32"/>
-                    </Border.StrokeShape>
+            <!-- Photo when the member has one, initials otherwise. Both keep the designed
+                 70x72 box so the text column doesn't shift between the two states. -->
+            <Border Grid.Column="0"
+                    WidthRequest="70" HeightRequest="72"
+                    StrokeThickness="0"
+                    BackgroundColor="{StaticResource SelectedOptionBackground}"
+                    VerticalOptions="Start">
+                <Border.StrokeShape>
+                    <RoundRectangle CornerRadius="11"/>
+                </Border.StrokeShape>
+                <Grid>
                     <Label x:Name="InitialsLabel"
-                           Text=""
                            FontFamily="QuicksandSemiBold"
                            FontSize="24"
-                           TextColor="{StaticResource White}"
+                           TextColor="{StaticResource Primary}"
                            HorizontalOptions="Center"
                            VerticalOptions="Center"/>
-                </Border>
+                    <Image x:Name="PhotoImage"
+                           IsVisible="False"
+                           Aspect="AspectFill"
+                           WidthRequest="70" HeightRequest="72"/>
+                </Grid>
+            </Border>
 
-                <VerticalStackLayout Grid.Column="1" Spacing="2" VerticalOptions="Center">
-                    <Label x:Name="NameLabel"
+            <VerticalStackLayout Grid.Column="1" Spacing="6" VerticalOptions="Center">
+                <Label x:Name="NameLabel"
+                       Style="{StaticResource Heading2}"
+                       LineBreakMode="TailTruncation"/>
+
+                <HorizontalStackLayout Spacing="6">
+                    <Label x:Name="StatusLabel"
                            FontFamily="QuicksandSemiBold"
-                           FontSize="20"
-                           TextColor="{StaticResource White}"/>
-                    <HorizontalStackLayout Spacing="8">
-                        <Image x:Name="StatusIcon"
-                               Source="icon_status_check.svg"
-                               WidthRequest="22" HeightRequest="22"
-                               VerticalOptions="Center"/>
-                        <Label x:Name="StatusLabel"
-                               FontFamily="Quicksand"
-                               FontSize="15"
-                               TextColor="{StaticResource White}"
-                               VerticalTextAlignment="Center"/>
-                    </HorizontalStackLayout>
-                </VerticalStackLayout>
-            </Grid>
+                           FontSize="16"
+                           VerticalTextAlignment="Center"/>
+                    <Image x:Name="StatusIcon"
+                           Source="icon_status_check.svg"
+                           WidthRequest="19" HeightRequest="19"
+                           VerticalOptions="Center"/>
+                </HorizontalStackLayout>
 
-            <Grid ColumnDefinitions="*,Auto">
                 <Label x:Name="LastSyncedLabel"
-                       Grid.Column="0"
                        FontFamily="Quicksand"
-                       FontSize="13"
-                       TextColor="#DDFFFFFF"
-                       VerticalTextAlignment="Center"/>
-                <ImageButton Grid.Column="1"
-                             Source="icon_refresh_white.svg"
-                             WidthRequest="22" HeightRequest="22"
-                             BackgroundColor="Transparent"
-                             Clicked="OnSyncClicked"/>
-            </Grid>
-
-        </VerticalStackLayout>
+                       FontSize="12"
+                       TextColor="{StaticResource BodyText}"/>
+            </VerticalStackLayout>
+        </Grid>
     </Border>
 </ContentView>

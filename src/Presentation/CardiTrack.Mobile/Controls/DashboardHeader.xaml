@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentView xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="CardiTrack.Mobile.Controls.DashboardHeader">
+
+    <!-- Figma 101:2872. Edge-to-edge band; radius is on the band's own bottom corners only.
+         The top corners stay square because the band butts against the status bar — rounding
+         them would show page ground in the notch corners, and CLAUDE.md keeps radius off the
+         page shell. Figma's band includes a simulated status bar; MAUI's ContentPage already
+         insets for the real one, so only the 86pt below it is drawn here. -->
+    <Border x:Name="Band"
+            StrokeThickness="0"
+            Padding="20,14,20,26"
+            Background="{StaticResource DashboardHeaderBrush}">
+        <Border.StrokeShape>
+            <RoundRectangle CornerRadius="0,0,45,45"/>
+        </Border.StrokeShape>
+        <Border.Shadow>
+            <Shadow Brush="{StaticResource CardShadowBrush}" Opacity="0.15" Radius="16" Offset="0,11"/>
+        </Border.Shadow>
+
+        <Grid>
+            <!-- Feathered white wash standing in for Figma's 100px blur, which fades the
+                 gradient out towards the right edge of the band. -->
+            <Border Background="{StaticResource DashboardHeaderWashBrush}"
+                    StrokeThickness="0"
+                    Margin="-20,-14,-20,-26"
+                    InputTransparent="True">
+                <Border.StrokeShape>
+                    <RoundRectangle CornerRadius="0,0,45,45"/>
+                </Border.StrokeShape>
+            </Border>
+
+            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="11">
+
+                <Border Grid.Column="0"
+                        WidthRequest="40" HeightRequest="40"
+                        BackgroundColor="{StaticResource HeaderButtonTint}"
+                        StrokeThickness="0"
+                        VerticalOptions="Start">
+                    <Border.StrokeShape>
+                        <RoundRectangle CornerRadius="20"/>
+                    </Border.StrokeShape>
+                    <ImageButton x:Name="RefreshButton"
+                                 Source="icon_refresh_white.svg"
+                                 WidthRequest="24" HeightRequest="24"
+                                 BackgroundColor="Transparent"
+                                 Clicked="OnRefreshClicked"/>
+                </Border>
+
+                <VerticalStackLayout Grid.Column="1" Spacing="4" VerticalOptions="Start">
+                    <Label x:Name="GreetingLabel"
+                           Style="{StaticResource Heading2}"
+                           TextColor="{StaticResource White}"
+                           LineBreakMode="TailTruncation"/>
+                    <Label x:Name="PresenceLabel"
+                           Text="Active Now"
+                           FontFamily="QuicksandSemiBold"
+                           FontSize="12"
+                           TextColor="{StaticResource White}"/>
+                </VerticalStackLayout>
+
+                <Grid Grid.Column="2" VerticalOptions="Start">
+                    <Border WidthRequest="40" HeightRequest="40"
+                            BackgroundColor="{StaticResource White}"
+                            StrokeThickness="0">
+                        <Border.StrokeShape>
+                            <RoundRectangle CornerRadius="8"/>
+                        </Border.StrokeShape>
+                        <Border.Shadow>
+                            <Shadow Brush="{StaticResource CardShadowBrush}" Opacity="0.15" Radius="14" Offset="0,4"/>
+                        </Border.Shadow>
+                        <ImageButton Source="icon_bell.svg"
+                                     WidthRequest="24" HeightRequest="24"
+                                     BackgroundColor="Transparent"
+                                     Clicked="OnBellClicked"/>
+                    </Border>
+
+                    <Border x:Name="BellBadge"
+                            IsVisible="False"
+                            BackgroundColor="{StaticResource StatusRed}"
+                            StrokeThickness="0"
+                            WidthRequest="18" HeightRequest="18"
+                            HorizontalOptions="End" VerticalOptions="Start"
+                            TranslationX="6" TranslationY="-6"
+                            InputTransparent="True">
+                        <Border.StrokeShape>
+                            <RoundRectangle CornerRadius="9"/>
+                        </Border.StrokeShape>
+                        <Label x:Name="BellBadgeLabel"
+                               FontSize="10"
+                               FontFamily="QuicksandSemiBold"
+                               TextColor="{StaticResource White}"
+                               HorizontalOptions="Center" VerticalOptions="Center"/>
+                    </Border>
+                </Grid>
+
+            </Grid>
+        </Grid>
+    </Border>
+</ContentView>

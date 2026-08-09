@@ -48,6 +48,32 @@
     <Color x:Key="SleepPurple">#7C6FDC</Color>
     <Color x:Key="StaleBannerBackground">#FFF7E8</Color>
 
+    <!-- ── M1-09 surface tokens (Figma 101:2805) ──
+         The dashboard is the one screen that floats cards on a tinted ground rather than on
+         white, so its card treatment is elevation + radius rather than the hairline stroke the
+         rest of the app uses. Kept separate from DashboardCard, which eight other screens share. -->
+    <Color x:Key="PageGround">#E8F1F4</Color>
+    <Color x:Key="CardShadow">#014297</Color>
+    <Color x:Key="ProgressTrack">#E5E7EB</Color>
+
+    <!-- Metric row icon tile — Figma rgba(201,225,255,0.41) -->
+    <Color x:Key="MetricTileTint">#69C9E1FF</Color>
+    <!-- Header refresh button — Figma rgba(255,255,255,0.29) -->
+    <Color x:Key="HeaderButtonTint">#4AFFFFFF</Color>
+
+    <!-- Status pills: tint is the status colour at 15%, ink is the colour itself. -->
+    <Color x:Key="PillGreenBackground">#2636C09B</Color>
+    <Color x:Key="PillYellowBackground">#26F0A92E</Color>
+    <Color x:Key="PillOrangeBackground">#26ED7B2F</Color>
+    <Color x:Key="PillRedBackground">#26E53E3E</Color>
+    <Color x:Key="PillNeutralBackground">#26939DAA</Color>
+
+    <!-- Alert icon tiles — Figma rgba(239,68,68,0.14), generalised across the severity set -->
+    <Color x:Key="AlertTileRed">#24E53E3E</Color>
+    <Color x:Key="AlertTileOrange">#24ED7B2F</Color>
+    <Color x:Key="AlertTileYellow">#24F0A92E</Color>
+    <Color x:Key="AlertTileNeutral">#24939DAA</Color>
+
     <!-- ── Device dataset pills (M1-15) ──
          One tint/ink pair per DatasetFamily, so a device card's pills group by the kind of
          reading they carry. The heart pair is deliberately rosier than ErrorRed: a pill sits
@@ -64,6 +90,7 @@
     <Color x:Key="DatasetOtherText">#5C6672</Color>
 
     <!-- ── Solid colour brushes ── -->
+    <SolidColorBrush x:Key="CardShadowBrush" Color="{StaticResource CardShadow}"/>
     <SolidColorBrush x:Key="PrimaryBrush" Color="{StaticResource Primary}"/>
     <SolidColorBrush x:Key="WhiteBrush" Color="{StaticResource White}"/>
     <SolidColorBrush x:Key="BlackBrush" Color="{StaticResource Black}"/>
@@ -127,6 +154,27 @@
     <LinearGradientBrush x:Key="HeroPausedBrush" StartPoint="0,0" EndPoint="1,1">
         <GradientStop Color="#5C6672" Offset="0.0" />
         <GradientStop Color="#7E8794" Offset="1.0" />
+    </LinearGradientBrush>
+
+    <!-- ── Dashboard header band (Figma 101:2872) ──
+         Figma draws this as the brand gradient (#174E86 → #1884DC → #36C09B) on an oversized
+         rect, blurred 100px and masked to the band, so only the slice between 55% and 81% of
+         the ramp is visible and its right edge feathers out to the white base. MAUI has no
+         cheap blur, so the visible slice is baked into the stops below and the feather is a
+         second white wash layer — the two together match the rendered frame within ~3%. -->
+    <LinearGradientBrush x:Key="DashboardHeaderBrush" StartPoint="0,0" EndPoint="0,1">
+        <GradientStop Color="#1D8ED1" Offset="0.0" />
+        <GradientStop Color="#2BABB2" Offset="1.0" />
+    </LinearGradientBrush>
+
+    <LinearGradientBrush x:Key="DashboardHeaderWashBrush" StartPoint="0,0.5" EndPoint="1,0.5">
+        <GradientStop Color="#00FFFFFF" Offset="0.0" />
+        <GradientStop Color="#0FFFFFFF" Offset="0.30" />
+        <GradientStop Color="#1AFFFFFF" Offset="0.50" />
+        <GradientStop Color="#4DFFFFFF" Offset="0.65" />
+        <GradientStop Color="#8CFFFFFF" Offset="0.80" />
+        <GradientStop Color="#C3FFFFFF" Offset="0.92" />
+        <GradientStop Color="#DBFFFFFF" Offset="1.0" />
     </LinearGradientBrush>
 
 </ResourceDictionary>
