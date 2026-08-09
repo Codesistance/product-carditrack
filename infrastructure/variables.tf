@@ -264,12 +264,14 @@ variable "device_pull_params" {
   }
 
   validation {
-    # A zero chunk with a live horizon would leave the backfill enabled but unable to advance.
+    # Mirrors the app's semantics exactly: 0 disables backfill (negative would too, but only by
+    # accident — reject it here), and a live horizon needs a positive chunk or the backfill is
+    # enabled yet unable to advance.
     condition = alltrue([
       for p in var.device_pull_params :
-      p.backfill_days == 0 || p.backfill_chunk_days > 0
+      p.backfill_days >= 0 && (p.backfill_days == 0 || p.backfill_chunk_days > 0)
     ])
-    error_message = "device_pull_params: backfill_chunk_days must be positive when backfill_days is set."
+    error_message = "device_pull_params: backfill_days must be >= 0 (0 disables), and backfill_chunk_days must be positive when backfill_days is set."
   }
 }
 
