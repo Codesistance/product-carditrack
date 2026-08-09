@@ -195,7 +195,7 @@ No retention is enforced in code today (no purge jobs exist). Documented stateme
 | Audit logs | **6 years** (`docs/infrastructure.md`) vs **90 days minimum** (`AuditLog.cs` doc-comment, `docs/technical/user_onboarding_process.md`) | 6 years, aligning with the stated HIPAA posture; correct the 90-day references |
 | Health data (`ActivityLog`) | None (plan tiers cap *visible history* at 90/365 days — a feature limit, not deletion) | Active members: retain while relationship active; post-deletion: 90 days then purge (matches `cardimembers.md`) |
 | Deleted CardiMember | 90 days (`cardimembers.md`) | 90 days, then hard purge incl. baselines, alerts, device connections (cascade currently undefined — see R-A6 note) |
-| Baselines, alerts | None | Same lifecycle as ActivityLog. Note `PatternBaselines` is **append-only** — one row per member per period per daily run (~1,095/member/year), retained so baseline drift stays visible; the future RetentionWorker must prune old rows as well as purge on member deletion |
+| Baselines, alerts | None | Same lifecycle as ActivityLog. Note `PatternBaselines` is **append-only** — one row per member per eligible period per daily run — up to five windows (7/14 provisional + 30/60/90), so ~1,825/member/year at full coverage — retained so baseline drift stays visible; the future RetentionWorker must prune old rows as well as purge on member deletion |
 | Report artifacts | 24h link (docs) vs 1h cache TTL (code) | 24 h; make code match docs |
 | Soft-deleted records | "90 days before purging" (docs; no purge exists) | 90 days, implemented by the future RetentionWorker |
 | OAuth tokens | None beyond provider expiry | Delete on device disconnect and member deletion |

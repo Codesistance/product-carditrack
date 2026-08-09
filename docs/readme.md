@@ -88,7 +88,7 @@ Located in `/apps/` — each application has its own README covering stack, stru
 **Store provisioning** — one-time keys, certificates, and Secret Manager secrets that let CI deliver signed builds to TestFlight and the Google Play internal testing track.
 
 #### [apps/worker/](./apps/worker/readme.md)
-**CardiTrack.Worker Background Service** — the .NET Worker Service hosting **non-AI background jobs** (10-minute wearable data sync with in-path OAuth token refresh, daily orphaned-organization cleanup, weekly baseline calculation and device-sync audit) using cron scheduling via Cronos. The AI ingestion/inference pipeline is designed to run on GCP (Pub/Sub + Cloud Run) — see [llm_design.md](./llm_design.md).
+**CardiTrack.Worker Background Service** — the .NET Worker Service hosting **non-AI background jobs** (10-minute wearable data sync with in-path OAuth token refresh, daily orphaned-organization cleanup and baseline calculation, weekly device-sync audit) using cron scheduling via Cronos. The AI ingestion/inference pipeline is designed to run on GCP (Pub/Sub + Cloud Run) — see [llm_design.md](./llm_design.md).
 
 ---
 

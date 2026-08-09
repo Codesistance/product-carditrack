@@ -471,7 +471,7 @@ public class WearableSyncWorker : CronBackgroundService              // "0 */10 
 // removals logged at Warning (PR #5 safety net)
 public class OrphanedOrganizationCleanupWorker : CronBackgroundService // "0 0 3 * * *"
 
-// Weekly Sunday 02:30 UTC — recalculates 30/60/90-day pattern baselines
+// Daily 02:30 UTC — recalculates 7/14-day provisional and 30/60/90-day pattern baselines
 public class BaselineCalculationWorker : CronBackgroundService       // "0 30 2 * * 0"
 
 // Weekly Sunday 04:00 UTC — re-fetches a random sample of connections over a
@@ -513,7 +513,7 @@ public class DeviceSyncAuditWorker : CronBackgroundService           // "0 0 4 *
 - [ ] **Exchange OAuth code, encrypt and store device tokens** (AES-256-GCM)
 - [ ] **Poll device data every 10 minutes**; refresh OAuth tokens in the sync path
 - [ ] **Clean up orphaned organizations** daily (03:00 UTC)
-- [ ] **Recalculate pattern baselines** weekly (Sunday 02:30 UTC); **audit provider revision windows** weekly (Sunday 04:00 UTC)
+- [ ] **Recalculate pattern baselines** daily (02:30 UTC); **audit provider revision windows** weekly (Sunday 04:00 UTC)
 - [ ] **Write audit-log entries** for annotated health-data endpoints (`AuditLoggingMiddleware` + `AuditHealthDataAccessAttribute`)
 
 ### **System Actions (Planned):**

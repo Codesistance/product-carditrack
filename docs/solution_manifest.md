@@ -159,12 +159,8 @@ With Device Bundle:
 │  - WearableSyncWorker (every 10 min — device data sync,     │
 │    OAuth token refresh inside the sync path)                │
 │  - OrphanedOrganizationCleanupWorker (daily 03:00)          │
-<<<<<<< HEAD
-│  - BaselineCalculationWorker (weekly, Sunday 02:30)         │
-│  - DeviceSyncAuditWorker (weekly, Sunday 04:00)             │
-=======
 │  - BaselineCalculationWorker (daily, 02:30)                 │
->>>>>>> 607bbc2 (Run baseline calculation daily instead of weekly)
+│  - DeviceSyncAuditWorker (weekly, Sunday 04:00)             │
 │  - Planned: trial reminders, data retention/cleanup         │
 └─────────────────────────────────────────────────────────────┘
 
@@ -674,7 +670,7 @@ The Cloud Run pay-per-use model keeps pre-launch costs near zero and scales line
 - ✅ Core backend (.NET 10, EF Core, Cloud SQL PostgreSQL 16)
 - ✅ Fitbit device integration — migration to the **Google Health API is done** (code + docs); Google console registration is pending, and the app is capped at 100 users until restricted-scope verification completes
 - ✅ Database schema & migrations (deployed via the migrator Cloud Run Job)
-- ✅ Worker ingestion: 10-minute wearable sync + daily orphan cleanup + weekly baseline calculation and device-sync audit
+- ✅ Worker ingestion: 10-minute wearable sync + daily orphan cleanup + daily baseline calculation + weekly device-sync audit
 - ✅ AI providers wired in the API: MedGemma (Ollama on Cloud Run) + Gemini 2.0 Flash (chat, insights, reports)
 - ✅ Datadog APM with opt-in metrics (PR #4); atomic onboarding + orphaned-organization cleanup (PR #5); health-data disclosure banner on Web (PR #9 — a Google verification prerequisite; the mobile equivalent is pending)
 

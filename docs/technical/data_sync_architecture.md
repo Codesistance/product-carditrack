@@ -32,7 +32,7 @@ flowchart LR
     K0["CronBackgroundService<br/><i>Cronos 0.13.0 · 6-field UTC</i>"]
     K1["WearableSyncWorker<br/><i>0 */10 * * * *</i>"]
     K2["DeviceSyncAuditWorker<br/><i>0 0 4 * * 0 · 25 × 14 days</i>"]
-    K3["BaselineCalculationWorker<br/><i>0 30 2 * * * · 30/60/90 d</i>"]
+    K3["BaselineCalculationWorker<br/><i>0 30 2 * * * · 7/14/30/60/90 d</i>"]
     K4["OrphanedOrganizationCleanupWorker<br/><i>0 0 3 * * * · MinAge 24 h</i>"]
     K5["OAuthTokenRefreshService<br/><i>5-min expiry buffer</i>"]
     K6["DeviceSyncService<br/><i>keyed DI on DeviceType</i>"]
