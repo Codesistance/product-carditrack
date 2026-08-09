@@ -131,7 +131,7 @@ security lens in [issue-triage](../issue-triage/SKILL.md).
 - Where code belongs, layer and dependency rules → [software-architect](../software-architect/SKILL.md)
 - Product scope and prioritisation → [product-manager](../product-manager/SKILL.md)
 - Regulatory/compliance requirements (GDPR, DPIA, retention) → [docs/compliance/dpia.md](../../../docs/compliance/dpia.md) and [docs/technical/data_protection_architecture.md](../../../docs/technical/data_protection_architecture.md) — I enforce the controls those documents demand; I do not author policy.
-- Diff-scoped scanning of pending changes → the built-in `/security-review` command; this skill is the standing judgement it does not carry.
+- Diff-scoped scanning of pending changes → the built-in `/security-review` command. This skill does not scan diffs; it supplies the standing, project-specific judgement (accepted risks, severity mapping, STRIDE framing) that a diff scan lacks.
 
 ## Reference map
 
