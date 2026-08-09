@@ -29,10 +29,17 @@ locals {
   audit_bucket_name   = "${var.project_id}-${var.project_name}-${local.environment}-audit"
 
   # Read rather than repeated: .model-version is what bakes a tag into the MedGemma image, and
-  # AI__Providers__0__Model below is the name the API then asks Ollama for. As two literals they
+  # AI__Private__Model below is the name the API then asks Ollama for. As two literals they
   # drift the moment one is bumped alone, and every medical call 404s against a model the server
   # never pulled. trimspace matches the `tr -d '[:space:]'` the image build applies to the file.
   medgemma_model = trimspace(file("${path.module}/../src/Infrastructure/MedGemma/.model-version"))
+
+  # Defaults to the secret that already exists, so swapping the public provider is a tfvar change
+  # rather than a destroy-and-recreate of a Secret Manager secret (and the seeding that follows it).
+  public_ai_api_key_secret_id = coalesce(
+    var.public_ai_api_key_secret_id,
+    "${var.project_name}-${local.environment}-gemini-api-key"
+  )
 
   # Per-device-type pull parameters flattened onto the positional DeviceProviders binding the apps
   # already use for provider secrets. Whichever service hosts device pull reads them from here, so
@@ -78,19 +85,35 @@ module "deployments" {
       "ASPNETCORE_ENVIRONMENT"              = title(var.environment)
       "ASPNETCORE_FORWARDEDHEADERS_ENABLED" = "true"
       "GCP_PROJECT_ID"                      = var.project_id
-      "AI__GeneralProvider"                 = "Gemini"
-      "AI__MedicalProvider"                 = "MedGemma"
-      "AI__Providers__0__Name"              = "MedGemma"
-      "AI__Providers__0__Model"             = local.medgemma_model
-      "AI__Providers__0__TimeoutSeconds"    = tostring(var.medgemma_timeout_seconds)
-      "AI__Providers__1__Name"              = "Gemini"
-      "AI__Providers__1__BaseUrl"           = "https://generativelanguage.googleapis.com"
-      "AI__Providers__1__Model"             = "gemini-2.0-flash"
+      "AI__Public__Kind"                    = var.public_ai_kind
+      "AI__Public__Model"                   = var.public_ai_model
+      "AI__Public__TimeoutSeconds"          = tostring(var.public_ai_timeout_seconds)
+      "AI__Public__MaxOutputTokens"         = tostring(var.public_ai_max_output_tokens)
+      "AI__Private__Model"                  = local.medgemma_model
+      "AI__Private__TimeoutSeconds"         = tostring(var.medgemma_timeout_seconds)
       "Apm__Engine"                         = var.apm_engine
       "Apm__MetricsEnabled"                 = tostring(var.apm_metrics_enabled)
       "Apm__TracesSampleRatio"              = tostring(var.traces_sample_ratio.api)
       "Serilog__MinimumLevel__Default"      = var.log_minimum_level.api
     },
+    # Transitional — DELETE once an image carrying the AI__Public/AI__Private settings is
+    # deployed to every environment. Terraform sets env vars and CI sets the image
+    # independently, so an apply that landed first would otherwise strip the settings the
+    # running revision still reads and fail it at startup. The new image ignores these.
+    {
+      "AI__GeneralProvider"              = "Gemini"
+      "AI__MedicalProvider"              = "MedGemma"
+      "AI__Providers__0__Name"           = "MedGemma"
+      "AI__Providers__0__Model"          = local.medgemma_model
+      "AI__Providers__0__TimeoutSeconds" = tostring(var.medgemma_timeout_seconds)
+      "AI__Providers__1__Name"           = "Gemini"
+      "AI__Providers__1__BaseUrl"        = "https://generativelanguage.googleapis.com"
+      "AI__Providers__1__Model"          = "gemini-2.0-flash"
+    },
+    # Omitted unless overridden, so each provider keeps its own documented endpoint.
+    var.public_ai_base_url != null ? {
+      "AI__Public__BaseUrl" = var.public_ai_base_url
+    } : {},
     # Google's web OAuth clients require an https redirect; the API bounces it to the app deep
     # link. Element 0 of DeviceProviders in appsettings.json is the Fitbit (Google Health API)
     # provider. Without a custom domain the appsettings localhost default stays in effect.
@@ -109,9 +132,12 @@ module "deployments" {
       "Health__Token"                        = "${var.project_name}-${local.environment}-health-token"
       "DeviceProviders__0__ClientId"         = "${var.project_name}-${local.environment}-devices-fitbit-client-id"
       "DeviceProviders__0__ClientSecret"     = "${var.project_name}-${local.environment}-devices-fitbit-client-secret"
-      "AI__Providers__0__BaseUrl"            = "${var.project_name}-${local.environment}-medgemma-service-url"
-      "AI__Providers__1__ApiKey"             = "${var.project_name}-${local.environment}-gemini-api-key"
+      "AI__Private__BaseUrl"                 = "${var.project_name}-${local.environment}-medgemma-service-url"
+      "AI__Public__ApiKey"                   = local.public_ai_api_key_secret_id
       "Apm__Data"                            = "${var.project_name}-${local.environment}-apm-data"
+      # Transitional — delete alongside the legacy AI__Providers env vars above.
+      "AI__Providers__0__BaseUrl" = "${var.project_name}-${local.environment}-medgemma-service-url"
+      "AI__Providers__1__ApiKey"  = local.public_ai_api_key_secret_id
     },
     # Both are Terraform-owned and only exist when the instance does. Without them the
     # API keeps the appsettings.json localhost default and every cache write times out.

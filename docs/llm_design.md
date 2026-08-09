@@ -76,13 +76,38 @@ MedGemma runs as the Cloud Run service `carditrack-<env>-medgemma`, provisioned 
 |----------|-------|
 | Platform | Cloud Run (**CPU** — no GPU) |
 | Serving engine | **Ollama** (`ollama/ollama` base image; model baked in at build time) |
-| Model tag | `hf.co/unsloth/medgemma-1.5-4b-it-GGUF:Q4_K_M` — pinned in `src/Infrastructure/MedGemma/.model-version`, and the value `docker-compose.yml` and `AI__Providers__0__Model` must both match |
+| Model tag | `hf.co/unsloth/medgemma-1.5-4b-it-GGUF:Q4_K_M` — pinned in `src/Infrastructure/MedGemma/.model-version`, and the value `docker-compose.yml` and `AI__Private__Model` must both match |
 | Resources | 8 vCPU / 16 Gi, `cpu_idle = false`, startup CPU boost |
 | Scaling | Max **1 instance** (Ollama cannot safely multi-instance) |
 | Ingress | Internal-only (VPC); port 8080 |
 | Enablement | Service is created only when the `medgemma_image` tfvar is non-empty |
 
-Deployment flow: the `deploy-medgemma` job in `.github/workflows/deploy-apps-prod.yml` deploys the image tag, then writes the resulting service URL to the Secret Manager secret `carditrack-<env>-medgemma-service-url`, which the API consumes as **`AI__Providers__0__BaseUrl`**. The API's provider configuration (Terraform-set env vars) selects MedGemma as `AI__MedicalProvider` and Gemini 2.0 Flash (`AI__Providers__1__*`, key from the `gemini-api-key` secret) as `AI__GeneralProvider`.
+Deployment flow: the `deploy-medgemma` job in `.github/workflows/deploy-apps-prod.yml` deploys the image tag, then writes the resulting service URL to the Secret Manager secret `carditrack-<env>-medgemma-service-url`, which the API consumes as **`AI__Private__BaseUrl`**.
+
+---
+
+### Two AI systems: public and private
+
+The API talks to two providers, and the difference between them is a boundary, not a preference.
+
+| | **Private** (`AI:Private`) | **Public** (`AI:Public`) |
+|---|---|---|
+| Used by | Health insights (`HealthInsightService`) | Reports (`ReportGenerationService`), chat (`ChatController`) |
+| Provider | **MedGemma only — fixed in code** | Chosen by `AI__Public__Kind`: `Gemini` or `Anthropic` |
+| Where inference runs | In-project, internal-only Cloud Run | Off-estate, at the provider |
+| Prompt content | Metrics, baselines, derived age and sex, free-text `MedicalNotes` | Metrics and alerts only — members are pseudonymised before the call |
+| Configuration | `Model`, `BaseUrl`, `TimeoutSeconds` | `Kind`, `Model`, `ApiKey`, optional `BaseUrl`, `TimeoutSeconds`, `MaxOutputTokens` |
+
+The private side has no provider selector. `AiServiceExtensions` constructs `MedGemmaClient` unconditionally for the medical slot, so no environment variable can route health data to an off-estate model — which is the control [the DPIA](./compliance/dpia.md) records for A5. Only where MedGemma lives and which weights it serves are configurable.
+
+The public side is deliberately swappable. Every provider implements the same `IExternalAiClient`, and `Kind` selects which one is built at startup; consumers see only `IGenerativeAiService`. Swapping providers is a tfvar change plus seeding the new key into the API-key secret — no rebuild. Config is validated at startup, so a bad `Kind`, a missing model or key, or a malformed URL fails the revision rather than the first caregiver's request.
+
+**Adding a public provider** is two edits and a test: a client implementing `IExternalAiClient` in `ExternalClients/General/`, and a member on `PublicAiProviderKind` wired into the switch in `AiServiceExtensions`. Nothing downstream changes.
+
+| Provider | Transport | Endpoint default | Notes |
+|----------|-----------|------------------|-------|
+| `Gemini` | `HttpClient` (`generateContent`) | `https://generativelanguage.googleapis.com` | Key sent as the `x-goog-api-key` header |
+| `Anthropic` | Official `Anthropic` .NET SDK (Messages API) | `https://api.anthropic.com` | `MaxOutputTokens` is mandatory on this API; the SDK owns its own transport |
 
 > **GPU scaling option (future):** if CPU latency becomes a bottleneck at scale, the same model can be served by vLLM on a single NVIDIA T4 (16 GB, float16 — the 4B model fits with KV-cache headroom), with `--enable-prefix-caching` exploiting the fixed system prompts, autoscaling on HTTP concurrency. This would require HuggingFace weights access (Health AI Developer Foundations terms) and a GPU-capable runtime (e.g. Cloud Run GPU or GKE Autopilot). Provisioning would be added to the existing Terraform — no imperative scripts.
 

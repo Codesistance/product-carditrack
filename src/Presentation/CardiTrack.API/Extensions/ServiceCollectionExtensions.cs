@@ -79,7 +79,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IUnitOfWork, CardiTrack.Infrastructure.Repositories.UnitOfWork>();
 
         // AI services
-        services.AddAiServices(configuration, configLoader);
+        services.AddAiServices(configuration);
 
         // External clients
         services.AddScoped<IOAuthTokenRefreshService, OAuthTokenRefreshService>();

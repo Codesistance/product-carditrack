@@ -83,6 +83,8 @@ bash scripts/set-apm-secrets.sh   <dev|prod>   # apm-data connection JSON (Datad
 
 Remaining operator-seeded secrets (`devices-fitbit-client-id`, `devices-fitbit-client-secret`, `gemini-api-key`, `apm-mobile-data`, and the `carditrack-common-*` store secrets) are set directly with `gcloud secrets versions add`.
 
+`gemini-api-key` holds the key for whichever public AI provider is active — it is consumed as `AI__Public__ApiKey`, not as a Gemini-specific setting. Swapping provider (`public_ai_kind` + `public_ai_model`) means seeding the new provider's key into that same secret. To move to a differently-named secret instead, point `public_ai_api_key_secret_id` at it; leaving the variable unset keeps the existing secret, so no swap forces a destroy-and-recreate.
+
 ## Environment differences
 
 | Setting | Dev | Prod |

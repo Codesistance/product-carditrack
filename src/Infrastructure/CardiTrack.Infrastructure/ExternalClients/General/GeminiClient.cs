@@ -10,12 +10,14 @@ namespace CardiTrack.Infrastructure.ExternalClients.General;
 public class GeminiClient : IExternalAiClient
 {
     private readonly IHttpClientFactory _httpClientFactory;
-    private readonly AiProviderSettings _settings;
+    private readonly PublicAiSettings _settings;
+    private readonly string _httpClientName;
 
-    public GeminiClient(IHttpClientFactory httpClientFactory, AiProviderSettings settings)
+    public GeminiClient(IHttpClientFactory httpClientFactory, PublicAiSettings settings, string httpClientName)
     {
         _httpClientFactory = httpClientFactory;
         _settings = settings;
+        _httpClientName = httpClientName;
     }
 
     public async Task<string> GenerateAsync(string prompt, CancellationToken ct = default)
@@ -25,8 +27,7 @@ public class GeminiClient : IExternalAiClient
 
     public async Task<string> ChatAsync(IReadOnlyList<ChatMessage> history, string userMessage, CancellationToken ct = default)
     {
-        var client = _httpClientFactory.CreateClient("GeminiClient");
-        var endpoint = $"/v1beta/models/{_settings.Model}:generateContent?key={_settings.ApiKey}";
+        var client = _httpClientFactory.CreateClient(_httpClientName);
 
         var contents = history
             .Select(m => new GeminiContent
@@ -41,8 +42,19 @@ public class GeminiClient : IExternalAiClient
             })
             .ToList();
 
-        var request = new GeminiRequest { Contents = contents };
-        var response = await client.PostAsJsonAsync(endpoint, request, ct);
+        var request = new HttpRequestMessage(
+            HttpMethod.Post,
+            $"/v1beta/models/{_settings.Model}:generateContent")
+        {
+            Content = JsonContent.Create(new GeminiRequest { Contents = contents })
+        };
+
+        // Header rather than a query-string key: query strings are the one part of a URL that
+        // routinely lands in proxy and access logs we do not control, and this key is the whole
+        // credential. Google accepts either form.
+        request.Headers.Add("x-goog-api-key", _settings.ApiKey);
+
+        var response = await client.SendAsync(request, ct);
         response.EnsureSuccessStatusCode();
         var result = JsonUtility.Deserialize<GeminiResponse>(await response.Content.ReadAsStringAsync(ct));
         return result.Candidates?.FirstOrDefault()?.Content?.Parts?.FirstOrDefault()?.Text ?? string.Empty;

@@ -273,18 +273,23 @@ no API client or sync service is registered for them yet.
 
 ### AI providers
 
-The API wires two AI roles via `AddAiServices()`:
+`AddAiServices()` wires two AI systems, and only one of them is swappable:
 
-- `AI:GeneralProvider` = **Gemini** (`GeminiClient`, hosted Google Generative Language API;
-  key from the `gemini-api-key` secret as `AI__Providers__1__ApiKey`)
-- `AI:MedicalProvider` = **MedGemma** (`MedGemmaClient`, an Ollama-served model on its own
-  Cloud Run service; base URL from the `medgemma-service-url` secret as
-  `AI__Providers__0__BaseUrl` — locally it defaults to `http://localhost:11434`)
+- **`AI:Public`** — reports and chat. `AI__Public__Kind` picks the provider: `Gemini`
+  (`GeminiClient`, hosted Google Generative Language API) or `Anthropic` (`AnthropicAiClient`,
+  Messages API via the official SDK). The key comes from the `gemini-api-key` secret as
+  `AI__Public__ApiKey`; `AI__Public__BaseUrl` is optional and defaults per kind.
+- **`AI:Private`** — health insights. **Always MedGemma** (`MedGemmaClient`, an Ollama-served
+  model on its own internal-only Cloud Run service). There is no kind here: the provider is
+  fixed in code, so no environment variable can send health data off-estate. Base URL comes
+  from the `medgemma-service-url` secret as `AI__Private__BaseUrl` — locally it defaults to
+  `http://localhost:11434`.
 
 Both resolve as keyed `IExternalAiClient` services ("GeneralProvider" / "MedicalProvider")
 behind `IGenerativeAiService`, `IMedicalAiService`, `IHealthInsightService`, and
-`IReportGenerationService`. A provider name that has no matching entry in `AI:Providers`
-fails startup loudly.
+`IReportGenerationService`. Configuration is validated at startup — an unknown kind, a missing
+model or key, a non-positive timeout, or a URL without an http(s) scheme fails the host with a
+message naming the environment variable to fix.
 
 ### Caching
 

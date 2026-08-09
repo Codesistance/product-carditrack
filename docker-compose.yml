@@ -72,16 +72,21 @@ services:
       # postgres credentials so `docker compose up` works with no extra setup. Deployed
       # environments read the real key from Secret Manager (carditrack-<env>-encryption-key).
       Encryption__Key: "W2iqrS4VgOXDgwZQWCGj716pKcu2nLs1tk5j66oNzBY="
-      AI__GeneralProvider: "Gemini"
-      AI__MedicalProvider: "MedGemma"
-      AI__Providers__0__Name: "MedGemma"
-      AI__Providers__0__BaseUrl: "http://host.docker.internal:11434"
-      AI__Providers__0__Model: "hf.co/unsloth/medgemma-1.5-4b-it-GGUF:Q4_K_M"
-      AI__Providers__0__TimeoutSeconds: "120"
-      AI__Providers__1__Name: "Gemini"
-      AI__Providers__1__BaseUrl: "https://generativelanguage.googleapis.com"
-      AI__Providers__1__Model: "gemini-2.0-flash"
-      AI__Providers__1__ApiKey: ""
+      # Public (off-estate) provider for reports and chat. Swap providers by changing Kind,
+      # Model and ApiKey — Gemini and Anthropic are both supported without a rebuild.
+      AI__Public__Kind: "Gemini"
+      AI__Public__Model: "gemini-2.0-flash"
+      # Placeholder, not blank: the public provider is validated at startup, and a blank key
+      # would stop the API booting for everyone whose local work never touches chat or reports.
+      # Left as-is, chat and reports get a 401 from the provider; insights still run against the
+      # local Ollama below. Replace it with a real key to exercise the public path.
+      AI__Public__ApiKey: "unset-local-placeholder"
+      AI__Public__TimeoutSeconds: "60"
+      # Private provider for medical insights — always MedGemma, in-project. Only its
+      # location and weights are configurable.
+      AI__Private__BaseUrl: "http://host.docker.internal:11434"
+      AI__Private__Model: "hf.co/unsloth/medgemma-1.5-4b-it-GGUF:Q4_K_M"
+      AI__Private__TimeoutSeconds: "120"
     ports:
       - "8080:8080"
     depends_on:
