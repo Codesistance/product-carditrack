@@ -2,7 +2,7 @@
 
 > **Extract — do not edit directly.** This file is extracted from the canonical [user_stories.md](../user_stories.md); make changes there and re-extract. Release sequencing is governed by the [release matrix](../../../../release_matrix.md).
 
-> **Build status (August 7, 2026):** 9 of 17 Figma M1 screens are built (M1-01 through M1-09); M1-10 through M1-17 show "Coming soon" dialogs. Four shipped screens have **no Figma M1 frame — needs design sync**: SignInPage, ForgotPasswordPage, VerifyEmailPage, Onboarding/AccountSetupPage (Stories 1.5–1.8).
+> **Build status (August 9, 2026):** 12 of 17 Figma M1 screens are built (M1-01 through M1-09, plus M1-13 CardiMember Detail, M1-14 Edit CardiMember, M1-15 Device Management); the unbuilt screens are the alert set (M1-10 stub, M1-11/M1-12/M1-16) and M1-17 Health Data Export. Four shipped screens have **no Figma M1 frame — needs design sync**: SignInPage, ForgotPasswordPage, VerifyEmailPage, Onboarding/AccountSetupPage (Stories 1.5–1.8).
 
 Stories mapped to MVP 1 screens (M1-01 through M1-17), plus the four shipped screens without Figma M1 frames.
 
@@ -327,5 +327,5 @@ Stories mapped to MVP 1 screens (M1-01 through M1-17), plus the four shipped scr
 
 ---
 
-**Source:** Extracted from [user_stories.md](../user_stories.md) v1.1 (manually re-synced August 7, 2026)
+**Source:** Extracted from [user_stories.md](../user_stories.md) v1.1 (manually re-synced August 9, 2026)
 **Screens covered:** M1-01 through M1-17, plus SignInPage, ForgotPasswordPage, VerifyEmailPage, and Onboarding/AccountSetupPage (no Figma M1 frames — need design sync)

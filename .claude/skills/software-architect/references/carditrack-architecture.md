@@ -59,7 +59,7 @@ The second condition is what the conformance check probes. `Mobile` and `Mobile.
 
 `Common/` · `Entities/` · `Enums/` · `Extensions/` · `Interfaces/`
 
-Entities: `ActivityLog`, `ActivityLogMerge`, `Alert`, `AuditLog`, `CardiMember`, `Device`, `DeviceActivityLog`, `DeviceConnection`, `Organization`, `PatternBaseline`, `Subscription`, `User`, `UserCardiMember`.
+Entities: `ActivityLog`, `ActivityLogMerge`, `Alert`, `AuditLog`, `CardiMember`, `Device`, `DeviceActivityLog`, `DeviceConnection`, `DeviceTypeSyncProfile`, `Organization`, `PatternBaseline`, `Subscription`, `User`, `UserCardiMember`.
 
 `Interfaces/` contains exactly two entity contracts — `IEntity`, `ISoftDeletable`. It is **not** the general-purpose interface bucket; repository and client abstractions live in `Application`.
 
@@ -118,7 +118,7 @@ MAUI. `Mobile.Core` holds the testable half (referenced by `CardiTrack.UnitTests
 
 `CronBackgroundService.cs` · `WorkerOptions.cs` · `WorkerServiceExtensions.cs` · `Workers/` · `Program.cs` · `Dockerfile`
 
-Existing jobs: `BaselineCalculationWorker`, `OrphanedOrganizationCleanupWorker`, `WearableSyncWorker`.
+Existing jobs: `BaselineCalculationWorker`, `DeviceSyncAuditWorker`, `OrphanedOrganizationCleanupWorker`, `WearableSyncWorker`.
 
 Per [CLAUDE.md](../../../../CLAUDE.md), this project is the **only** permitted home for non-AI background jobs and any DB polling. `CronBackgroundService`, `WorkerOptions`, and `WorkerServiceExtensions` are Worker-local by rule — they are not shared infrastructure and must not be promoted to `Shared` or `Infrastructure` so another host can schedule work. See [docs/apps/worker/readme.md](../../../../docs/apps/worker/readme.md).
 

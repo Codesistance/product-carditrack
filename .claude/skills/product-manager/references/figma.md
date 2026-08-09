@@ -37,11 +37,9 @@ Contains frames **M1-01 … M1-17** — 17 designed screens, 37 designed states.
 
 Source: [mvp1/screens.md](../../../../docs/execution/ui/mobile/mvp1/screens.md) (extract of the canonical [ui_screens_maui_mobile.md](../../../../docs/execution/ui/mobile/ui_screens_maui_mobile.md)).
 
-> **Doc discrepancy — resolved; the correct count is 12.** The prose build-status blocks in `mvp1/screens.md` and the canonical `ui_screens_maui_mobile.md` say **9 of 17 built** (M1-01 … M1-09, with M1-10 … M1-17 as "Coming soon"), contradicting the screen-index table in the same files, which marks M1-13, M1-14 and M1-15 built and totals **12 of 17**.
+> **The correct count is 12**, verified against `src/Presentation/CardiTrack.Mobile` on 2026-08-08: `CardiMemberDetailPage.xaml` (307 lines), `EditCardiMemberPage.xaml` (210) and `DeviceManagementPage.xaml` (142) are all real, substantial pages. `AlertsPage.xaml` is a 13-line placeholder, consistent with M1-10 being a stub.
 >
-> Verified against `src/Presentation/CardiTrack.Mobile` on 2026-08-08: `CardiMemberDetailPage.xaml` (307 lines), `EditCardiMemberPage.xaml` (210) and `DeviceManagementPage.xaml` (142) are all real, substantial pages — **the table is right and the prose is stale**. `AlertsPage.xaml` is a 13-line placeholder, consistent with M1-10 being a stub.
->
-> **Use 12.** The stale prose is a live doc bug in both files and still needs fixing at source (the `mvp1/` copy is an extract, so fix the canonical doc and re-extract, regenerating the PDFs via `convert_to_pdf.py`).
+> The build-status prose in `ui_screens_maui_mobile.md` and the `mvp1/` extracts previously said 9, contradicting their own tables; corrected at source (canonical doc + re-extract + PDF regen via `convert_to_pdf.py`) on 2026-08-09.
 
 Unbuilt frames cluster hard around **alerts and export** (M1-10 stub, M1-11, M1-12, M1-16, M1-17) — which matches the release matrix showing the entire alerting loop as ⬜ Not started. That's the R1 critical path.
 
