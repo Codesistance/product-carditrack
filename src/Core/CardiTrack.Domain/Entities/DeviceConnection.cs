@@ -22,7 +22,14 @@ public class DeviceConnection : BaseEntity, ISoftDeletable
 
     public DateTime? ConnectedDate { get; set; }
     public DateTime? LastSyncDate { get; set; }
-    public int SyncFrequencyMinutes { get; set; } = 30; // Default: every 30 minutes
+    /// <summary>
+    /// How often this connection is pulled. Ten minutes rather than thirty: the wearer's own
+    /// watch-to-cloud sync is the dominant delay a caregiver feels, and polling three times as
+    /// often is what makes the dashboard catch each upload soon after it lands. Affordable
+    /// because a pull now costs one day's snapshot rather than the whole trailing window — see
+    /// <c>DeviceSyncService.PullWindowAsync</c>.
+    /// </summary>
+    public int SyncFrequencyMinutes { get; set; } = 10;
 
     /// <summary>
     /// When this connection should next be pulled. Null means due-ness falls back to

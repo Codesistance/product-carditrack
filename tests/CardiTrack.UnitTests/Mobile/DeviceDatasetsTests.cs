@@ -18,7 +18,9 @@ public class DeviceDatasetsTests
 
         Assert.Equal(
             ["Steps", "Distance", "Active Minutes", "Floors", "Calories",
-             "Heart Rate", "Resting HR", "Sleep", "Sleep Stages"],
+             "Heart Rate", "Resting HR",
+             "Sleep", "Sleep Stages",
+             "SpO2", "VO2 Max", "Breathing Rate", "Temperature"],
             datasets.Select(d => d.Name));
     }
 
@@ -31,8 +33,25 @@ public class DeviceDatasetsTests
             [DatasetFamily.Activity, DatasetFamily.Activity, DatasetFamily.Activity,
              DatasetFamily.Activity, DatasetFamily.Activity,
              DatasetFamily.Heart, DatasetFamily.Heart,
-             DatasetFamily.Sleep, DatasetFamily.Sleep],
+             DatasetFamily.Sleep, DatasetFamily.Sleep,
+             DatasetFamily.Body, DatasetFamily.Body, DatasetFamily.Body, DatasetFamily.Body],
             datasets.Select(d => d.Family));
+    }
+
+    // Issue #82: FitbitApiClient ingests these four under health_metrics_and_measurements, so by
+    // the rule every other pill follows — name what we actually pull — they earn pills too. They
+    // reuse the existing Body family, so the row gains pills but no new visual vocabulary.
+    [Fact]
+    public void For_MetricsScope_NamesTheBodyReadingsTheClientNowIngests()
+    {
+        var datasets = DeviceDatasets.For([MetricsScope]);
+
+        Assert.Equal(
+            ["Heart Rate", "Resting HR", "SpO2", "VO2 Max", "Breathing Rate", "Temperature"],
+            datasets.Select(d => d.Name));
+        Assert.All(
+            datasets.Where(d => d.Name is "SpO2" or "VO2 Max" or "Breathing Rate" or "Temperature"),
+            d => Assert.Equal(DatasetFamily.Body, d.Family));
     }
 
     [Fact]
@@ -132,15 +151,31 @@ public class DeviceDatasetsTests
     }
 
     [Fact]
-    public void GroupedFor_FullFitbitGrant_CollapsesNineDatasetsToThreePills()
+    public void GroupedFor_FullFitbitGrant_CollapsesThirteenDatasetsToFourPills()
     {
         var groups = DeviceDatasets.GroupedFor([ActivityScope, MetricsScope, SleepScope]);
 
         Assert.Equal(
-            [DatasetFamily.Activity, DatasetFamily.Heart, DatasetFamily.Sleep],
+            [DatasetFamily.Activity, DatasetFamily.Heart, DatasetFamily.Sleep, DatasetFamily.Body],
             groups.Select(g => g.Family));
-        Assert.Equal(["Activity", "Heart", "Sleep"], groups.Select(g => g.Label));
-        Assert.Equal([5, 2, 2], groups.Select(g => g.Count));
+        Assert.Equal(["Activity", "Heart", "Sleep", "Body"], groups.Select(g => g.Label));
+        Assert.Equal([5, 2, 2, 4], groups.Select(g => g.Count));
+    }
+
+    // Issue #82 added four body readings to health_metrics_and_measurements. Under the family row
+    // those four cost one pill between them, not four — the guard that the row stays bounded as
+    // the mapping grows. Had Weight also been granted, Body would already exist and they would
+    // cost none.
+    [Fact]
+    public void GroupedFor_FourBodyReadingsAddedByIssue82_CostOnePillBetweenThem()
+    {
+        var withoutBody = DeviceDatasets.GroupedFor([ActivityScope, "heartrate", SleepScope]);
+        var withBody = DeviceDatasets.GroupedFor([ActivityScope, MetricsScope, SleepScope]);
+
+        Assert.Equal(3, withoutBody.Count);
+        Assert.Equal(4, withBody.Count);
+        Assert.Equal(9, withoutBody.Sum(g => g.Datasets.Count));
+        Assert.Equal(13, withBody.Sum(g => g.Datasets.Count));
     }
 
     [Fact]
@@ -177,9 +212,12 @@ public class DeviceDatasetsTests
     [Fact]
     public void GroupedFor_Detail_ListsTheDatasetsBehindThePill()
     {
-        var group = Assert.Single(DeviceDatasets.GroupedFor([MetricsScope]));
+        var groups = DeviceDatasets.GroupedFor([MetricsScope]);
 
-        Assert.Equal("Heart Rate · Resting HR", group.Detail);
+        Assert.Equal("Heart Rate · Resting HR",
+            Assert.Single(groups, g => g.Family == DatasetFamily.Heart).Detail);
+        Assert.Equal("SpO2 · VO2 Max · Breathing Rate · Temperature",
+            Assert.Single(groups, g => g.Family == DatasetFamily.Body).Detail);
     }
 
     [Fact]

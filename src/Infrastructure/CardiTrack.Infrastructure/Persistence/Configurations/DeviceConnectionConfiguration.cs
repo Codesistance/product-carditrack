@@ -53,7 +53,7 @@ public class DeviceConnectionConfiguration : IEntityTypeConfiguration<DeviceConn
 
         builder.Property(d => d.SyncFrequencyMinutes)
             .IsRequired()
-            .HasDefaultValue(30);
+            .HasDefaultValue(10);
 
         builder.Property(d => d.NextPullAt);
 
