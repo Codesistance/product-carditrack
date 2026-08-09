@@ -4,7 +4,7 @@
 
 `CardiTrack.Worker` hosts the platform's **non-AI scheduled background jobs**, driven by cron expressions and the [Cronos](https://github.com/HangfireIO/Cronos) library. Although it is a background service, the project uses the **`Microsoft.NET.Sdk.Web` SDK with `Exe` output** — Cloud Run requires an HTTP listener for startup probes, so the worker binds Kestrel to the `PORT` env var (default 8080) and exposes a minimal `GET /healthz` endpoint alongside its hosted services.
 
-Four workers are registered today:
+The workers registered today:
 
 | Worker | Default cron (UTC) | Purpose |
 |---|---|---|
@@ -12,8 +12,9 @@ Four workers are registered today:
 | `OrphanedOrganizationCleanupWorker` | `0 0 3 * * *` (daily 03:00) | Deletes organizations stranded by a failed onboarding |
 | `BaselineCalculationWorker` | `0 30 2 * * *` (daily 02:30) | Recalculates each member's `PatternBaseline` rows — 7/14-day provisional and 30/60/90-day windows |
 | `DeviceSyncAuditWorker` | `0 0 4 * * 0` (Sunday 04:00) | Re-fetches a small random sample over a 14-day window to measure how far back each provider revises data |
+| `PartitionMaintenanceWorker` | `0 15 * * * *` (hourly) | Pre-creates partitions for the granular time-series tables and drops the ones past retention (granular 90 d, hourly rollups 13 mo) |
 
-OAuth token refresh is **not a separate cron job** — it happens inside the sync path (`DeviceSyncService` calls `IOAuthTokenRefreshService` before hitting the provider API). Trial expiration reminders and data-retention/cleanup jobs are **planned** but not yet implemented.
+OAuth token refresh is **not a separate cron job** — it happens inside the sync path (`DeviceSyncService` calls `IOAuthTokenRefreshService` before hitting the provider API). Trial expiration reminders and the general data-retention job are **planned** but not yet implemented; the granular tables' retention is the exception, live via `PartitionMaintenanceWorker`.
 
 > **Scope note:** the AI ingestion/inference pipeline (webhook aggregation, pre-processing, MedGemma calls, severity routing, digests) is a **planned GCP design** — Pub/Sub + dedicated Cloud Run services per [llm_design.md](../../llm_design.md). Until it ships, the `WearableSyncWorker` polling job below is the **current and only ingestion path**; once the webhook pipeline exists it becomes a backfill/fallback mechanism (see [release_matrix.md](../../release_matrix.md)).
 
@@ -198,6 +199,16 @@ The arithmetic lives in `BaselineCalculator` (`CardiTrack.Application/Services`)
 | Spread | **Sample** standard deviation (n−1) — the dashboard turns σ into the member's normal range, so the population form would narrow that band on every member. |
 | Bedtime / wake time | **Circular** mean over the 24-hour clock; an arithmetic mean of 23:40 and 00:20 is midday. Reported in **UTC** — `CardiMember` carries no timezone. |
 | Weekday profile | Monday-first JSON array of average steps. A weekday with fewer than 2 samples is `null`, not `0` — "no data for Sundays" must not read as "this member does not move on Sundays". |
+
+### PartitionMaintenanceWorker
+
+Keeps the partitioned time-series tables (`GranularMetricHours`, `MetricRollupsHourly` — see the [granular-storage ADR](../../technical/granular_timeseries_storage.md)) alive: PostgreSQL neither creates range partitions on demand nor expires rows, so this job pre-creates partitions ahead of the data and drops the ones wholly past retention.
+
+- Runs **hourly** (`0 15 * * * *`), deliberately: creation is idempotent (`IF NOT EXISTS`) and near-free, and the frequent cadence closes the gap between a fresh deploy and its first partition without teaching `CronBackgroundService` a run-on-startup mode.
+- Pre-creates from **yesterday** through `DaysAhead` (default **7**) days out — a sync straddling UTC midnight can still write into the day that just ended, and a week of headroom survives a multi-day worker outage.
+- Retention is a **partition drop** — instant, no dead tuples to vacuum: granular hours after `GranularRetentionDays` (default **90**), hourly rollups after `RollupRetentionMonths` (default **13**). A partition is dropped only when its whole range is past the cutoff.
+- **Never drops what it did not name**: the drop path parses each child's name against the worker's own naming scheme, so a manually attached partition is left alone regardless of age.
+- Drops log at **Warning** — destroying health data past retention is the one thing this job does that an audit should be able to reconstruct.
 
 ### DeviceSyncAuditWorker
 

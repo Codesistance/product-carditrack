@@ -65,6 +65,7 @@ try
     builder.Services.AddScoped<IDeviceRepository, DeviceRepository>();
     builder.Services.AddScoped<IAlertRepository, AlertRepository>();
     builder.Services.AddScoped<IPatternBaselineRepository, PatternBaselineRepository>();
+    builder.Services.AddScoped<IGranularMetricRepository, GranularMetricRepository>();
     builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
     builder.Services.AddScoped<IUserService, UserService>();
 

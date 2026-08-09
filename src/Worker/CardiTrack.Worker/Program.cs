@@ -68,7 +68,9 @@ builder.Services.AddScoped<IDeviceActivityLogRepository, DeviceActivityLogReposi
 builder.Services.AddScoped<IDeviceRepository, DeviceRepository>();
 builder.Services.AddScoped<IAlertRepository, AlertRepository>();
 builder.Services.AddScoped<IPatternBaselineRepository, PatternBaselineRepository>();
+builder.Services.AddScoped<IGranularMetricRepository, GranularMetricRepository>();
 builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
+builder.Services.AddScoped<ITimeSeriesPartitionService, TimeSeriesPartitionService>();
 
 // Application services
 builder.Services.AddScoped<IActivityLogAggregationService, ActivityLogAggregationService>();
@@ -84,6 +86,11 @@ builder.Services.AddWorker<WearableSyncWorker>(configuration, nameof(WearableSyn
 builder.Services.AddWorker<OrphanedOrganizationCleanupWorker>(configuration, nameof(OrphanedOrganizationCleanupWorker));
 builder.Services.AddWorker<BaselineCalculationWorker>(configuration, nameof(BaselineCalculationWorker));
 builder.Services.AddWorker<DeviceSyncAuditWorker>(configuration, nameof(DeviceSyncAuditWorker));
+builder.Services.AddWorker<PartitionMaintenanceWorker>(configuration, nameof(PartitionMaintenanceWorker));
+
+// Retention and look-ahead share the maintenance worker's config section, like the audit sample.
+builder.Services.Configure<PartitionMaintenanceOptions>(
+    configuration.GetSection($"Workers:{nameof(PartitionMaintenanceWorker)}"));
 
 // Sample size shares the audit worker's config section — AddWorker binds only the cron from it.
 builder.Services.Configure<DeviceSyncAuditOptions>(
