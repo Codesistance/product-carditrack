@@ -801,6 +801,30 @@ public class FitbitApiClientTests
     }
 
     /// <summary>
+    /// Past the cap with pages still outstanding, the read fails rather than returning the prefix it
+    /// has. Average, min and max computed over part of a longer window are not the day's figures,
+    /// and reporting them as such would be wrong silently and indefinitely — the cap is only
+    /// reachable when the request is selecting more than the civil day it asked for.
+    /// </summary>
+    [Fact]
+    public async Task GetAdditionalMetricsAsync_Throws_WhenSampleSeriesExceedsTheDailyCap()
+    {
+        var overCap = Enumerable.Repeat("95.0", 20_000).ToArray();
+        var handler = new RoutedFakeHttpHandler()
+            .MapSequence("/dataTypes/oxygen-saturation/", SpO2Samples("page-2", overCap));
+
+        var (sut, _) = CreateSut(handler);
+
+        var ex = await Assert.ThrowsAsync<FitbitApiException>(
+            () => sut.GetAdditionalMetricsAsync("token", Today));
+        Assert.Contains("selecting more than one day", ex.Message, StringComparison.Ordinal);
+
+        // Not tolerated as "this device has no SpO2": that guard keys on 400/404, and swallowing
+        // this would put the silent wrong answer back.
+        Assert.Equal(0, ex.StatusCode);
+    }
+
+    /// <summary>
     /// A device that publishes only the daily summary still contributes its average. Min and max
     /// stay null: the summary's lowerBound/upperBound pair describes the spread of the day's
     /// distribution, not the lowest and highest readings taken, and putting a distribution bound in

@@ -49,8 +49,9 @@ public class FitbitApiClient : IFitbitApiClient, IDeviceApiClient
 
     /// <summary>
     /// Hard stop on a Sample series, well above the ~1,440 points a once-per-minute sensor can
-    /// produce in a civil day. Reaching it means the filter is selecting more than the requested
-    /// day, which more pages would compound rather than correct.
+    /// produce in a civil day. Reaching it with pages still outstanding means the filter is
+    /// selecting more than the requested day, so the read throws rather than returning a prefix:
+    /// statistics over part of a longer window are not the day's statistics.
     /// </summary>
     private const int SampleSeriesCap = 20_000;
 
@@ -84,6 +85,10 @@ public class FitbitApiClient : IFitbitApiClient, IDeviceApiClient
         // column wants. It stays null rather than 0 on a day the type reports nothing: the
         // multi-device merge coalesces on the first non-null value, so a placeholder 0 from a
         // higher-priority device would beat another device's genuine reading.
+        // Nearest, not truncated: the sub-minute remainder is roughly uniform, so flooring would
+        // under-report by ~30s every single day in the same direction, and this column feeds
+        // baselines and trend detection where a standing bias matters more than a ±30s error that
+        // averages out. Same conversion idiom as SumActiveMinutes below.
         var sedentarySeconds = ReadDecimal(sedentaryTask.Result, "durationSum");
         var sedentaryMinutes = sedentarySeconds.HasValue
             ? (int)decimal.Round(sedentarySeconds.Value / 60m)
@@ -411,9 +416,10 @@ public class FitbitApiClient : IFitbitApiClient, IDeviceApiClient
     /// <para>
     /// Pagination is followed rather than assumed away: the response caps at
     /// <see cref="SamplePageSize"/> points and a silently dropped tail would understate a maximum
-    /// and overstate a minimum. <see cref="SampleSeriesCap"/> bounds the loop — a civil day cannot
-    /// legitimately hold more readings than that, so hitting it means the filter is matching more
-    /// than one day and looping further would not fix it.
+    /// and overstate a minimum. Past <see cref="SampleSeriesCap"/> the read throws instead of
+    /// looping on or returning early — a civil day cannot legitimately hold that many readings, so
+    /// the request is selecting more than one day, and neither more pages nor a truncated series
+    /// would yield the day's figures.
     /// </para>
     /// </remarks>
     private async Task<List<decimal>> SampleSeriesAsync(
@@ -446,8 +452,22 @@ public class FitbitApiClient : IFitbitApiClient, IDeviceApiClient
             }
 
             pageToken = root.Value<string>("nextPageToken");
+
+            // Stopping at the cap and returning what we have would compute the day's average, min
+            // and max over an arbitrary prefix of a longer window and report them as the day's
+            // figures — wrong data, silently, for as long as the cause persists. The cap is only
+            // reachable when the request is selecting more than the civil day it asked for, so this
+            // is a fault to surface, not a limit to absorb.
+            if (!string.IsNullOrEmpty(pageToken) && values.Count >= SampleSeriesCap)
+            {
+                throw new FitbitApiException(
+                    0,
+                    $"Google Health API {dataType} returned more than {SampleSeriesCap} samples for "
+                    + $"{date:yyyy-MM-dd} and still had pages outstanding. A single civil day cannot "
+                    + "hold that many readings, so the request is selecting more than one day.");
+            }
         }
-        while (!string.IsNullOrEmpty(pageToken) && values.Count < SampleSeriesCap);
+        while (!string.IsNullOrEmpty(pageToken));
 
         return values;
     }
