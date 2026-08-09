@@ -433,6 +433,8 @@ Update alert notification preferences for a CardiMember.
 | `medium` | Standard thresholds (>30% deviation) — **current hard-coded behavior** |
 | `high` | Sensitive thresholds (>15% deviation) |
 
+> **Provisional baselines never fire alerts.** The dashboard may colour metrics against a 7- or 14-day *provisional* baseline (`baseline.isProvisional` in [health-data.md](./health-data.md)) so the first weeks are not silent, but deviation alerts threshold only against the **established 30-day** `PatternBaseline` — a statistically thin window would trade the product's <5% false-positive target for early noise, and false alarms erode trust faster than a missed one builds it.
+
 ### Response `200 OK`
 
 Returns updated preferences object (same schema as GET).

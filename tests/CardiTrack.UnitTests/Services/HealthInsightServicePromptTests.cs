@@ -209,6 +209,7 @@ public class HealthInsightServicePromptTests
         var result = await CreateSut().AnalyzeBaselineAsync(_userId, _memberId);
 
         Assert.True(result.IsLearning);
+        Assert.Null(result.BaselinePeriodDays);
         var prompt = CapturedPrompt();
         Assert.Contains("not yet enough history", prompt);
         Assert.Contains("No baseline has been established yet.", prompt);
@@ -238,6 +239,51 @@ public class HealthInsightServicePromptTests
         var result = await CreateSut().AnalyzeBaselineAsync(_userId, _memberId);
 
         Assert.True(result.IsLearning);
+    }
+
+    // ── Provisional framing ─────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task Baseline_UsesTheProvisionalPrompt_WhenOnlyAShortWindowExists()
+    {
+        SetupBaseline(periodDays: 7);
+
+        var result = await CreateSut().AnalyzeBaselineAsync(_userId, _memberId);
+
+        // An early picture exists, so this is neither learning (there is something to compare
+        // against) nor a trend (the window is too short to call anything established).
+        Assert.False(result.IsLearning);
+        Assert.True(result.IsProvisional);
+        Assert.Equal(7, result.BaselinePeriodDays);
+        var prompt = CapturedPrompt();
+        Assert.Contains("baseline is provisional", prompt);
+        Assert.Contains("7-day (provisional) — Steps: 5200±810.5", prompt);
+        Assert.DoesNotContain("not yet enough history", prompt);
+    }
+
+    [Fact]
+    public async Task Baseline_PrefersTheFourteenDayWindow_OverTheSevenDay()
+    {
+        SetupBaseline(periodDays: 7);
+        SetupBaseline(periodDays: 14);
+
+        await CreateSut().AnalyzeBaselineAsync(_userId, _memberId);
+
+        Assert.Contains("14-day (provisional)", CapturedPrompt());
+    }
+
+    [Fact]
+    public async Task Baseline_IgnoresProvisionalWindows_OnceTheEstablishedBaselineExists()
+    {
+        SetupBaseline(periodDays: 30);
+        SetupBaseline(periodDays: 7);
+
+        var result = await CreateSut().AnalyzeBaselineAsync(_userId, _memberId);
+
+        Assert.False(result.IsProvisional);
+        Assert.Equal(30, result.BaselinePeriodDays);
+        Assert.DoesNotContain("provisional", CapturedPrompt());
+        await _baselines.DidNotReceive().GetLatestByCardiMemberAsync(_memberId, 7);
     }
 
     [Fact]

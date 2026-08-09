@@ -43,6 +43,8 @@ Wrapped in the standard `ApiResponse<T>` envelope:
   },
   "baseline": {
     "isLearning": false,
+    "isProvisional": false,
+    "baselinePeriodDays": 30,
     "daysCaptured": 30,
     "daysRequired": 30,
     "percentComplete": 100
@@ -126,7 +128,7 @@ Field notes:
 
 **Deviation thresholds and baseline window** (fixed constants, no per-user sensitivity settings):
 
-- Baselines are computed over a **30-day window** (`daysRequired: 30`); `isLearning` is true until a pattern baseline exists.
+- Baselines come in three states. `isLearning` is true only while **no** baseline exists at all. From about the first week, a **provisional** baseline (7- or 14-day window, longest available preferred) colours the metrics with `isProvisional: true` and `baselinePeriodDays` naming the window — an early impression clients should caveat, and **never a source of alerts**. The established **30-day window** (`daysRequired: 30`) takes over as soon as it exists.
 - Per-metric status: deviation from baseline **≤ 30%** → `green`, **> 30%** → `yellow`, **> 50%** → `orange`. (`red` comes only from alert severity, not metric deviation.)
 - `steps` reports `changePercent: null` and `status: "unknown"` while its value covers **today**. Steps accumulate through the day, so scoring a part-finished day against a whole-day average would report every member as collapsing every morning; the `goal` carries the partial day instead. `restingHeartRate` and `sleep` are daily summary values rather than running totals, so a today reading is a whole reading and stays comparable.
 - The member-level `healthStatus` is the worst unresolved alert severity, else `green` (or `unknown` while learning / no data).
@@ -157,21 +159,35 @@ MedGemma-generated **narrative** analysis of a CardiMember's baseline trends —
     "Sleep duration consistent with baseline"
   ],
   "isLearning": false,
+  "isProvisional": false,
+  "baselinePeriodDays": 30,
   "generatedAt": "2026-08-07T10:00:00Z"
 }
 ```
 
-**`isLearning`** is `true` until the member has a 30-day `PatternBaseline` — the same test the dashboard's `baseline.isLearning` makes. While it is true, the summary describes **what has been observed so far**, not how the member compares to normal, because no normal has been established yet:
+**`isLearning`** is `true` until the member has any `PatternBaseline` — the same test the dashboard's `baseline.isLearning` makes. While it is true, the summary describes **what has been observed so far**, not how the member compares to normal, because no normal has been established yet. When only a provisional (7/14-day) baseline exists, **`isProvisional`** is `true` instead and the summary is phrased as an early impression — tentative comparisons, no alarm on the strength of a short window:
 
 ```json
 {
   "summary": "So far the readings show a settled daily rhythm: activity concentrated in the late morning, and sleep starting at a consistent hour...",
   "keyFindings": ["Nine days of data captured so far"],
-  "isLearning": true
+  "isLearning": true,
+  "isProvisional": false,
+  "baselinePeriodDays": null
 }
 ```
 
-Clients must not label that output as a trend assessment. The prompt behind it is forbidden from calling anything elevated, low, or a deviation.
+```json
+{
+  "summary": "Early signs suggest a steady resting heart rate and consistent sleep — worth revisiting once the full baseline is in.",
+  "keyFindings": ["Resting heart rate steady so far"],
+  "isLearning": false,
+  "isProvisional": true,
+  "baselinePeriodDays": 14
+}
+```
+
+Clients must not label either output as a trend assessment. The learning prompt is forbidden from calling anything elevated, low, or a deviation; the provisional prompt allows tentative comparisons only.
 
 The prompt carries a member context block — age, sex, and caregiver-entered medical notes — because a resting heart rate is not interpretable without them. The member's **name and id are never sent** to the model.
 
