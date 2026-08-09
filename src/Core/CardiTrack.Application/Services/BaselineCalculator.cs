@@ -53,20 +53,25 @@ public static class BaselineCalculator
     /// Any daily logs for the member; entries outside the window are ignored, so the caller can fetch
     /// the longest window once and pass the same list for every period.
     /// </param>
-    /// <param name="today">The last day of the window — passed in rather than read from the clock.</param>
+    /// <param name="windowEnd">
+    /// The last day of the window — passed in rather than read from the clock. Callers pass the
+    /// last <em>complete</em> day: ingestion now stores the day in progress too, and a partial day
+    /// averaged in would drag every member's "normal" down by whatever hour the job happened to
+    /// run at.
+    /// </param>
     public static PatternBaseline? Calculate(
-        Guid cardiMemberId, IReadOnlyList<ActivityLog> logs, int periodDays, DateOnly today)
+        Guid cardiMemberId, IReadOnlyList<ActivityLog> logs, int periodDays, DateOnly windowEnd)
     {
         if (periodDays <= 0)
             throw new ArgumentOutOfRangeException(nameof(periodDays), periodDays, "Period must be positive.");
 
-        var windowStart = today.AddDays(-(periodDays - 1));
+        var windowStart = windowEnd.AddDays(-(periodDays - 1));
 
         // Ingestion upserts per (DeviceConnection, Date), so a member wearing two devices has two rows
         // for the same day. Collapse to the most recently written row per date — the same rule
         // DashboardService applies, so the baseline and the value compared against it agree.
         var daily = logs
-            .Where(l => l.Date >= windowStart && l.Date <= today)
+            .Where(l => l.Date >= windowStart && l.Date <= windowEnd)
             .GroupBy(l => l.Date)
             .ToDictionary(g => g.Key, g => g.OrderByDescending(l => l.UpdatedDate ?? l.CreatedDate).First());
 

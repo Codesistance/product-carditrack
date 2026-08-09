@@ -112,7 +112,7 @@ The Worker polling path writes **only** to Cloud SQL and never publishes to Pub/
 `WearableSyncWorker` → `DeviceSyncService.SyncCardiMemberAsync` → `PullWindowAsync`:
 
 1. **Refresh the token if needed** — `RefreshIfExpiredAsync`, 5-minute expiry buffer. Google access tokens live ~1 h (`TokenLifetimeHours: 1`). Token refresh is *not* a standalone cron job.
-2. **Fetch a trailing window** ending at **yesterday** (providers finalise a day only after midnight), reaching back `SyncLookbackDays` = **3**, iterated **oldest first** so a mid-window failure still leaves the earlier days stored.
+2. **Fetch a trailing window** ending at **today**, reaching back `SyncLookbackDays` = **3** complete days, iterated **oldest first** so a mid-window failure still leaves the earlier days stored. Today is included so the dashboard's Key Metrics move during the day; the trailing days are what cover providers finalising a day only after midnight. Today's numbers are necessarily partial, so the readers that assume a whole day exclude it — `BaselineCalculationWorker` windows to the last complete day, and `DashboardService` suppresses the compare-against-baseline reading for cumulative metrics on a day still in progress.
 3. **Per day, 8 concurrent HTTP calls**:
    - `POST /v4/users/me/dataTypes/{steps|distance|active-minutes|total-calories|floors|heart-rate}/dataPoints:dailyRollUp`
    - `GET /v4/users/me/dataTypes/daily-resting-heart-rate/dataPoints` (a Daily record — no rollup method)

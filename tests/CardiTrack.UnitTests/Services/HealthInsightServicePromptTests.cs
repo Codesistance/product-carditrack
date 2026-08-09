@@ -288,4 +288,27 @@ public class HealthInsightServicePromptTests
             prompts[1][..prompts[1].IndexOf(marker, StringComparison.Ordinal)]);
         Assert.StartsWith("You are a medical AI assistant", prompts[0]);
     }
+
+    // ── The day in progress ─────────────────────────────────────────────────────
+
+    // Ingestion stores today so the dashboard can show live numbers, which puts a part-finished
+    // day at the end of every reading list. Unmarked, a model asked to explain deviations reads
+    // it as a collapse in activity the member is not actually having.
+    [Fact]
+    public async Task Prompt_MarksTodaysReadingAsPartial()
+    {
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        _activityLogs.GetByCardiMemberAndDateRangeAsync(_memberId, Arg.Any<DateOnly>(), Arg.Any<DateOnly>())
+            .Returns(
+            [
+                new ActivityLog { CardiMemberId = _memberId, Date = today.AddDays(-1), Steps = 5100 },
+                new ActivityLog { CardiMemberId = _memberId, Date = today, Steps = 900 },
+            ]);
+
+        await CreateSut().AnalyzeBaselineAsync(_userId, _memberId);
+        var prompt = CapturedPrompt();
+
+        Assert.Contains($"{today}: steps=900, HR=, sleep=min  (today, still in progress", prompt);
+        Assert.DoesNotContain($"{today.AddDays(-1)}: steps=5100, HR=, sleep=min  (today", prompt);
+    }
 }
