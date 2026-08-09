@@ -255,7 +255,9 @@ connect makes a reconnect look like a failed one.
    [Health API probe](../../tools/HealthApiProbe/README.md)
    (`dotnet run --project tools/HealthApiProbe`) against a day the wearer
    genuinely wore the device — it prints each response's field names beside what
-   the client extracts, so the two cases separate. Tracked on issue #38.
+   the client extracts, so the two cases separate. Not currently ticketed: issue
+   #38 was closed once the names were settled, on the basis that a bug ticket
+   gets raised if a live sync turns out to be missing a metric.
 6. **Before public launch**, in `carditrack-devices-prod` only — **not yet
    submitted as of 2026-08-07**: restricted-scope
    verification + CASA assessment — prerequisites checklist in
