@@ -13,9 +13,14 @@ public enum AlertFilter
 }
 
 /// <summary>
-/// Horizontally scrolling chip row (Figma 101:6525). Built in code rather than XAML because
-/// every chip is the same thing five times over, and the selected one swaps its whole fill.
+/// Horizontally scrolling chip row. Built in code rather than XAML because every chip is the
+/// same thing five times over, and the selected one swaps its whole fill and its caret.
 /// </summary>
+/// <remarks>
+/// The chip set is 101:6525's (All · Unread · Critical · Today · This Week), drawn in
+/// 101:6206's style — rounded pill with a trailing caret, gradient fill when selected,
+/// hairline #174E86 outline when not.
+/// </remarks>
 public sealed class FilterChipBar : ContentView
 {
     private static readonly (AlertFilter Filter, string Label)[] Chips =
@@ -27,7 +32,13 @@ public sealed class FilterChipBar : ContentView
         (AlertFilter.ThisWeek, "This Week"),
     ];
 
-    private readonly Dictionary<AlertFilter, (Border Chip, Label Text)> _chips = new();
+    private readonly Dictionary<AlertFilter, (Border Chip, Label Text, Image Caret)> _chips = new();
+
+    /// <summary>
+    /// The same filters the chips offer, in the same order — so the header's filter button can
+    /// present them as a sheet in the states that have no chip row (Figma 101:3840).
+    /// </summary>
+    public static IReadOnlyList<(AlertFilter Filter, string Label)> Options => Chips;
 
     /// <summary>Raised only when the selection actually changes — re-tapping a chip is a no-op.</summary>
     public event EventHandler<AlertFilter>? FilterChanged;
@@ -48,11 +59,24 @@ public sealed class FilterChipBar : ContentView
                 VerticalTextAlignment = TextAlignment.Center,
             };
 
+            var caret = new Image
+            {
+                WidthRequest = 18,
+                HeightRequest = 9,
+                VerticalOptions = LayoutOptions.Center,
+            };
+
             var chip = new Border
             {
-                Padding = new Thickness(20, 9),
+                // Asymmetric by design: the caret needs less breathing room on the right
+                // than the label does on the left.
+                Padding = new Thickness(20, 9, 14, 9),
                 StrokeShape = new RoundRectangle { CornerRadius = 20 },
-                Content = text,
+                Content = new HorizontalStackLayout
+                {
+                    Spacing = 8,
+                    Children = { text, caret },
+                },
                 Shadow = new Shadow
                 {
                     Brush = Resource<Brush>("CardShadowBrush"),
@@ -65,7 +89,7 @@ public sealed class FilterChipBar : ContentView
             var captured = filter;
             chip.GestureRecognizers.Add(new TapGestureRecognizer { Command = new Command(() => Select(captured)) });
 
-            _chips[filter] = (chip, text);
+            _chips[filter] = (chip, text, caret);
             row.Add(chip);
         }
 
@@ -101,7 +125,7 @@ public sealed class FilterChipBar : ContentView
 
     private void Paint()
     {
-        foreach (var (filter, (chip, text)) in _chips)
+        foreach (var (filter, (chip, text, caret)) in _chips)
         {
             var isSelected = filter == Selected;
 
@@ -110,6 +134,8 @@ public sealed class FilterChipBar : ContentView
             chip.Stroke = isSelected ? null : Resource<Color>("PrimaryDark");
             chip.StrokeThickness = isSelected ? 0 : 0.5;
             text.TextColor = Resource<Color>(isSelected ? "White" : "HeadingText");
+            // Two files rather than a tint: MAUI has no colour filter for SVG sources.
+            caret.Source = isSelected ? "icon_caret_down_white.svg" : "icon_caret_down.svg";
         }
     }
 

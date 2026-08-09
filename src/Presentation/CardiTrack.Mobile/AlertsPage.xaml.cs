@@ -217,6 +217,40 @@ public partial class AlertsPage : ContentPage
     private void ApplyArchiveButtonText() =>
         ArchiveButton.Text = _showArchived ? "Back to current alerts" : "View Archived Alerts";
 
+    /// <summary>
+    /// Alerts is a tab root, so there is no stack to pop — the arrow goes where it looks like
+    /// it goes, back to the dashboard, rather than unwinding to wherever the user came from.
+    /// </summary>
+    private async void OnBackTapped(object? sender, TappedEventArgs e) =>
+        await Shell.Current.GoToAsync(AppShell.DashboardRoute);
+
+    /// <summary>
+    /// The header's filter button. It offers the same five filters as the chips, because the
+    /// empty state (101:3840) keeps this button and drops the chip row.
+    /// </summary>
+    private async void OnFilterTapped(object? sender, TappedEventArgs e)
+    {
+        var labels = FilterChipBar.Options.Select(o => o.Label).ToArray();
+        var chosen = await _popups.ChooseAsync("Filter alerts", "Cancel", labels);
+        if (chosen is null)
+            return;
+
+        var filter = FilterChipBar.Options.First(o => o.Label == chosen).Filter;
+
+        // Picking a filter means "show me current alerts like this", so it leaves the archive.
+        if (_showArchived)
+        {
+            _showArchived = false;
+            ApplyArchiveButtonText();
+            Filters.SetSelectedSilently(filter);
+            _lastData = null;
+            await LoadAsync();
+            return;
+        }
+
+        Filters.Select(filter);
+    }
+
     private void OnPullToRefresh(object? sender, EventArgs e) => _ = LoadAsync();
 
     private void OnRefreshClicked(object? sender, EventArgs e) => _ = LoadAsync();
