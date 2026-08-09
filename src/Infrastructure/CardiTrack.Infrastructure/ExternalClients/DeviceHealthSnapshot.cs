@@ -37,4 +37,22 @@ public record DeviceHealthSnapshot(
     int? StressScore = null,
     decimal? BreathingRate = null,
     decimal? Temperature = null
-);
+)
+{
+    /// <summary>
+    /// True when the provider reported anything at all for the day. The history backfill checks
+    /// this before storing: an all-null row would still count as a "data day" to the baseline
+    /// coverage gate and the dashboard's days-captured figure, letting an empty history fake its
+    /// way past both.
+    /// </summary>
+    public bool HasAnyData =>
+        Steps is not null || DistanceKm is not null || ActiveMinutes is not null ||
+        SedentaryMinutes is not null || Floors is not null || CaloriesBurned is not null ||
+        RestingHeartRate is not null || AvgHeartRate is not null || MaxHeartRate is not null ||
+        MinHeartRate is not null || TotalSleepMinutes is not null || SleepEfficiency is not null ||
+        SleepStartTime is not null || SleepEndTime is not null || DeepSleepMinutes is not null ||
+        LightSleepMinutes is not null || RemSleepMinutes is not null || AwakeMinutes is not null ||
+        SpO2Average is not null || SpO2Min is not null || SpO2Max is not null ||
+        VO2Max is not null || StressScore is not null || BreathingRate is not null ||
+        Temperature is not null;
+}

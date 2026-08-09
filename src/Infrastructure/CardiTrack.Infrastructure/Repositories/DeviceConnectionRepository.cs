@@ -175,4 +175,14 @@ public class DeviceConnectionRepository : Repository<DeviceConnection>, IDeviceC
                 .SetProperty(dc => dc.LastSyncDate, syncDate)
                 .SetProperty(dc => dc.ConnectionStatus, ConnectionStatus.Connected));
     }
+
+    public async Task UpdateHistoryBackfilledToAsync(Guid id, DateOnly backfilledTo)
+    {
+        await _dbSet
+            .Where(dc => dc.Id == id
+                         && dc.IsActive
+                         && dc.ConnectionStatus != ConnectionStatus.Disconnected)
+            .ExecuteUpdateAsync(s => s
+                .SetProperty(dc => dc.HistoryBackfilledTo, backfilledTo));
+    }
 }

@@ -61,6 +61,8 @@ public class DeviceConnectionConfiguration : IEntityTypeConfiguration<DeviceConn
             .IsRequired()
             .HasDefaultValue(0);
 
+        builder.Property(d => d.HistoryBackfilledTo);
+
         // JSON field
         builder.Property(d => d.Metadata)
             .HasMaxLength(2000);

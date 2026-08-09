@@ -59,6 +59,23 @@ public class DeviceProviderSettings
     public int SyncLookbackDays { get; set; } = 3;
 
     /// <summary>
+    /// How far back a connection's history is backfilled, in days from today. The backfill walks
+    /// backwards from the routine window to this horizon, one
+    /// <see cref="BackfillChunkDays"/>-sized chunk per pull, so it never competes with the pull a
+    /// caregiver is actually waiting on. 0 disables backfill. Defaults to 90 — the depth most
+    /// Google Health API daily data types serve, and enough to fill the longest baseline window.
+    /// </summary>
+    public int BackfillDays { get; set; } = 90;
+
+    /// <summary>
+    /// Days of history fetched per pull while a connection still has backfilling to do. Sized
+    /// against the per-wearer request ceiling: a day's snapshot is 13 requests, so 7 days is ~91
+    /// requests on top of the routine pull — comfortably inside 300/min while still finishing a
+    /// 90-day horizon in about two hours at a 10-minute cadence.
+    /// </summary>
+    public int BackfillChunkDays { get; set; } = 7;
+
+    /// <summary>
     /// Window used by the periodic audit pull over a sample of connections. Wider than
     /// <see cref="SyncLookbackDays"/> on purpose: a routine sync can only ever observe revisions
     /// inside its own window, so a provider that amends day 5 is invisible until something looks

@@ -278,7 +278,7 @@ Authorization is the **view** tier, not the management tier: refreshing surfaces
 
 **This is not a background job.** It runs inside the request that asked for it, and it reuses the same `IDeviceSyncService` per connection that `WearableSyncWorker` drives, so a manual pull and a scheduled one cannot diverge in what they store. *Scheduled* pulling and all DB polling remain `CardiTrack.Worker`'s alone, per `CLAUDE.md`.
 
-`DeviceSyncService` fetches a trailing window that **ends at today** and reaches back `SyncLookbackDays` complete days, so a manual sync both surfaces today's readings and repairs the days a provider has since revised. Today's figures are partial by nature: the dashboard reports steps for a day in progress against the member's goal rather than against their whole-day average, since a part-finished day compared with a full one reads as a collapse every morning.
+`DeviceSyncService` fetches a trailing window that **ends at today** and reaches back `SyncLookbackDays` complete days, so a manual sync both surfaces today's readings and repairs the days a provider has since revised. A manual sync never extends history further back — the chunked 90-day backfill belongs to the Worker's cadence (`extendHistory: true`), so a caregiver's refresh never waits on last month. Today's figures are partial by nature: the dashboard reports steps for a day in progress against the member's goal rather than against their whole-day average, since a part-finished day compared with a full one reads as a collapse every morning.
 
 ---
 

@@ -68,6 +68,8 @@ device_pull_params = [
   {
     provider                  = "Fitbit"
     sync_lookback_days        = 3
+    backfill_days             = 90 # History fetched behind a new connection, a chunk per pull
+    backfill_chunk_days       = 7  # ~91 requests per pull on top of the routine window
     audit_lookback_days       = 14 # Widest range the Google Health API accepts for HR/AZM/calorie roll-ups
     min_pull_interval_minutes = 10
     max_pull_interval_minutes = 1440
