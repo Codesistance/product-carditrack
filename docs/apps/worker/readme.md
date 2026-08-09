@@ -10,7 +10,7 @@ Four workers are registered today:
 |---|---|---|
 | `WearableSyncWorker` | `0 */10 * * * *` (every 10 min) | Polls due device connections and syncs wearable data |
 | `OrphanedOrganizationCleanupWorker` | `0 0 3 * * *` (daily 03:00) | Deletes organizations stranded by a failed onboarding |
-| `BaselineCalculationWorker` | `0 30 2 * * 0` (Sunday 02:30) | Recalculates each member's 30/60/90-day `PatternBaseline` |
+| `BaselineCalculationWorker` | `0 30 2 * * *` (daily 02:30) | Recalculates each member's `PatternBaseline` rows — 7/14-day provisional and 30/60/90-day windows |
 | `DeviceSyncAuditWorker` | `0 0 4 * * 0` (Sunday 04:00) | Re-fetches a small random sample over a 14-day window to measure how far back each provider revises data |
 
 OAuth token refresh is **not a separate cron job** — it happens inside the sync path (`DeviceSyncService` calls `IOAuthTokenRefreshService` before hitting the provider API). Trial expiration reminders and data-retention/cleanup jobs are **planned** but not yet implemented.
@@ -33,7 +33,7 @@ src/Worker/CardiTrack.Worker/
 ├── Workers/
 │   ├── WearableSyncWorker.cs               # Polls + syncs due device connections
 │   ├── OrphanedOrganizationCleanupWorker.cs # Sweeps orgs with no user/CardiMember
-│   ├── BaselineCalculationWorker.cs        # Recalculates PatternBaseline rows weekly
+│   ├── BaselineCalculationWorker.cs        # Recalculates PatternBaseline rows daily
 │   └── DeviceSyncAuditWorker.cs            # Wide-window re-fetch over a sample, to measure revisions
 ├── CronBackgroundService.cs    # Abstract base — parses cron, loops on schedule
 ├── WorkerOptions.cs            # { CronExpression } options record (default "0 * * * * *")
@@ -178,12 +178,12 @@ Safety net behind the API's atomic `POST /api/Onboarding/setup` endpoint. The le
 
 ### BaselineCalculationWorker
 
-Turns accumulated `ActivityLog` history into `PatternBaseline` rows — the statistical picture of "a normal day" that `DashboardService` colours today's metrics against, and the thing that ends a member's *"getting to know you"* phase (`DashboardService` treats a member with no 30-day baseline as still learning).
+Turns accumulated `ActivityLog` history into `PatternBaseline` rows — the statistical picture of "a normal day" that `DashboardService` colours today's metrics against, and the thing that ends a member's *"getting to know you"* phase (`DashboardService` treats a member with no baseline at all as still learning; a 7/14-day window serves as a **provisional** baseline until the 30-day one exists, and provisional baselines never fire alerts).
 
-- Runs weekly, Sunday 02:30 UTC (`0 30 2 * * 0` by default). Baselines describe habits, so recalculating more often adds load without moving the numbers.
-- Selects **active members with at least one activity log in the last 90 days** (`ICardiMemberRepository.GetActiveIdsWithActivitySinceAsync`), so dormant records are not rescanned every week.
+- Runs daily at 02:30 UTC (`0 30 2 * * *` by default). The coverage gate in `BaselineCalculator` decides when a member has been observed for long enough; the daily cadence means the first baseline lands the morning after eligibility rather than up to a week later.
+- Selects **active members with at least one activity log in the last 90 days** (`ICardiMemberRepository.GetActiveIdsWithActivitySinceAsync`), so dormant records are not rescanned on every run.
 - Windows to the **last complete day**, not today. Ingestion stores the day in progress so the dashboard can show live numbers, and a part-finished day averaged in would drag every member's "normal" down by however far through the day the job happened to run.
-- Fetches each member's logs **once** for the longest period and calculates all three windows (30/60/90) from that one read.
+- Fetches each member's logs **once** for the longest period and calculates every supported window (7/14 provisional, 30/60/90) from that one read.
 - Uses **one DI scope per member**: the read tracks up to 90 rows each, which would accumulate across the whole run on a shared `DbContext`, and a member that fails takes nothing else down with it.
 - **Appends** rather than replacing, so a shift in a member's own normal stays visible in history. Retention for these rows falls under the planned retention job (see [dpia.md](../../compliance/dpia.md) §6.3).
 
@@ -191,8 +191,8 @@ The arithmetic lives in `BaselineCalculator` (`CardiTrack.Application/Services`)
 
 | Rule | Behaviour |
 |---|---|
-| Coverage gate | No baseline at all unless **80% of the window** has data (24 of 30 days). Below that the member stays in the learning state rather than being scored against an average of almost nothing. |
-| Per-metric floor | Each metric needs **7 samples** of its own; ingestion populates metrics unevenly, so a thin metric is left null instead of averaged. |
+| Coverage gate | No baseline for a window unless **80% of it** has data (24 of 30 days; 6 of 7 for the shortest provisional window). Below that the window is skipped rather than scored against an average of almost nothing. |
+| Per-metric floor | Each metric needs **7 samples** of its own (scaled down to the window's coverage bar for windows shorter than 9 days); ingestion populates metrics unevenly, so a thin metric is left null instead of averaged. |
 | Spread | **Sample** standard deviation (n−1) — the dashboard turns σ into the member's normal range, so the population form would narrow that band on every member. |
 | Bedtime / wake time | **Circular** mean over the 24-hour clock; an arithmetic mean of 23:40 and 00:20 is midday. Reported in **UTC** — `CardiMember` carries no timezone. |
 | Weekday profile | Monday-first JSON array of average steps. A weekday with fewer than 2 samples is `null`, not `0` — "no data for Sundays" must not read as "this member does not move on Sundays". |
@@ -282,7 +282,7 @@ Cron schedules bind per worker class name under the `Workers` section, consumed 
       "CronExpression": "0 0 3 * * *"
     },
     "BaselineCalculationWorker": {
-      "CronExpression": "0 30 2 * * 0"
+      "CronExpression": "0 30 2 * * *"
     },
     "DeviceSyncAuditWorker": {
       "CronExpression": "0 0 4 * * 0",

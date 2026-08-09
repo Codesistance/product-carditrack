@@ -6,7 +6,7 @@ CardiTrack supports **two organization types** with distinct onboarding flows:
 1. **Family Accounts**: Individual/family monitoring elderly relatives
 2. **Business Accounts**: Care homes and healthcare facilities with staff management
 
-**Implemented today:** embedded Auth0 email/password auth with a hard email-verification gate, atomic organization + trial subscription + user setup (`POST /api/Onboarding/setup`), CardiMember creation, Fitbit device connection via Google OAuth (PKCE) with 10-minute polling ingestion, and weekly pattern-baseline calculation. Social login, notifications, and billing are planned (marked below).
+**Implemented today:** embedded Auth0 email/password auth with a hard email-verification gate, atomic organization + trial subscription + user setup (`POST /api/Onboarding/setup`), CardiMember creation, Fitbit device connection via Google OAuth (PKCE) with 10-minute polling ingestion, and daily pattern-baseline calculation. Social login, notifications, and billing are planned (marked below).
 
 ---
 
@@ -294,12 +294,12 @@ Unverified apps are capped at 100 connected users — enough for dev and beta, b
 
 ### **STEP 8: BASELINE ESTABLISHMENT**
 
-> **Status: Implemented.** `BaselineCalculationWorker` (`CardiTrack.Worker`) writes `PatternBaselines` weekly using `BaselineCalculator` (`CardiTrack.Application`). Alert generation from these baselines is still planned — see STEP 7.
+> **Status: Implemented.** `BaselineCalculationWorker` (`CardiTrack.Worker`) writes `PatternBaselines` daily using `BaselineCalculator` (`CardiTrack.Application`). Alert generation from these baselines is still planned — see STEP 7.
 
 **Learning period:**
 - **Duration**: 30, 60 and 90-day baselines are written per member
 - **Coverage gate**: a period needs data on **80% of its days** (24 of 30) before any baseline is written. Until the 30-day baseline exists, `DashboardService` reports the member as still learning and the app shows the "getting to know {Name}" state.
-- **Frequency**: recalculated weekly (Sunday 02:30 UTC), appended rather than replaced so baseline drift stays visible
+- **Frequency**: recalculated daily (02:30 UTC), appended rather than replaced so baseline drift stays visible
 
 **Pattern Baseline Calculation:**
 ```csharp
@@ -453,7 +453,7 @@ ActivityLogs (Populated by polling sync)
 ├── Id, CardiMemberId, DeviceConnectionId, DataSource, Date
 └── ~25 nullable metrics: Steps, HeartRate, Sleep stages, SpO2, VO2Max, ...
 
-PatternBaselines (Written weekly by BaselineCalculationWorker)
+PatternBaselines (Written daily by BaselineCalculationWorker)
 Alerts (Planned generation — table exists)
 AuditLogs (Written by AuditLoggingMiddleware on PHI access)
 ```
@@ -471,7 +471,7 @@ public class WearableSyncWorker : CronBackgroundService              // "0 */10 
 // removals logged at Warning (PR #5 safety net)
 public class OrphanedOrganizationCleanupWorker : CronBackgroundService // "0 0 3 * * *"
 
-// Weekly Sunday 02:30 UTC — recalculates 30/60/90-day pattern baselines
+// Daily 02:30 UTC — recalculates 7/14-day provisional and 30/60/90-day pattern baselines
 public class BaselineCalculationWorker : CronBackgroundService       // "0 30 2 * * 0"
 
 // Weekly Sunday 04:00 UTC — re-fetches a random sample of connections over a
@@ -513,7 +513,7 @@ public class DeviceSyncAuditWorker : CronBackgroundService           // "0 0 4 *
 - [ ] **Exchange OAuth code, encrypt and store device tokens** (AES-256-GCM)
 - [ ] **Poll device data every 10 minutes**; refresh OAuth tokens in the sync path
 - [ ] **Clean up orphaned organizations** daily (03:00 UTC)
-- [ ] **Recalculate pattern baselines** weekly (Sunday 02:30 UTC); **audit provider revision windows** weekly (Sunday 04:00 UTC)
+- [ ] **Recalculate pattern baselines** daily (02:30 UTC); **audit provider revision windows** weekly (Sunday 04:00 UTC)
 - [ ] **Write audit-log entries** for annotated health-data endpoints (`AuditLoggingMiddleware` + `AuditHealthDataAccessAttribute`)
 
 ### **System Actions (Planned):**

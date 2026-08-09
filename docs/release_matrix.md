@@ -34,7 +34,7 @@ Legend: wave number = ships in that wave; — = not planned for that surface. **
 | Reports (health report generation) | R1 | R1 | R2 | Complete Care | 🔶 Text-only generation shipped; PDF/CSV/FHIR R4 formats not started |
 | Push notification registration | R1 | R1 | — | — | ⬜ Not started |
 | Health data export — PDF, CSV, FHIR R4 | R1 | R1 | R2 | Complete Care | ⬜ Not started (see reports row for text-only interim) |
-| Baseline learning progress | R1 | R1 | R1 | — | 🔶 Weekly `BaselineCalculationWorker` + mobile learning screen shipped; web not started (web app is still template-stage) |
+| Baseline learning progress | R1 | R1 | R1 | — | 🔶 Daily `BaselineCalculationWorker` + mobile learning screen shipped; web not started (web app is still template-stage) |
 | Monitoring pause / resume | R1 | R1 | R1 | — | 🔶 API + mobile shipped (pause/resume endpoints; paused members excluded from sync scheduling); web not started (template-stage) |
 | **30-day trial (no billing UI)** | R1 | R1 | R1 | — | ✅ Shipped — trial provisions the **Complete Care tier** for 30 days |
 | Region-localized phone input (UK groundwork) | R1 | R1 | R1 | — | ✅ Shipped (PR #8) |

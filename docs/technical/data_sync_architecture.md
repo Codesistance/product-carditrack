@@ -32,7 +32,7 @@ flowchart LR
     K0["CronBackgroundService<br/><i>Cronos 0.13.0 · 6-field UTC</i>"]
     K1["WearableSyncWorker<br/><i>0 */10 * * * *</i>"]
     K2["DeviceSyncAuditWorker<br/><i>0 0 4 * * 0 · 25 × 14 days</i>"]
-    K3["BaselineCalculationWorker<br/><i>0 30 2 * * 0 · 30/60/90 d</i>"]
+    K3["BaselineCalculationWorker<br/><i>0 30 2 * * * · 7/14/30/60/90 d</i>"]
     K4["OrphanedOrganizationCleanupWorker<br/><i>0 0 3 * * * · MinAge 24 h</i>"]
     K5["OAuthTokenRefreshService<br/><i>5-min expiry buffer</i>"]
     K6["DeviceSyncService<br/><i>keyed DI on DeviceType</i>"]
@@ -93,7 +93,7 @@ The Worker polling path writes **only** to Cloud SQL and never publishes to Pub/
 | **Cloud Run** `carditrack-<env>-worker` | `CronBackgroundService` | Cronos 0.13.0, 6-field cron with seconds, UTC; `BackgroundService` | continuous loop, `Task.Delay` to next occurrence |
 | | `WearableSyncWorker` | keyed DI dispatch on `DeviceType` | `0 */10 * * * *` — every 10 min |
 | | `DeviceSyncAuditWorker` | same, sample of 25 | `0 0 4 * * 0` — Sunday 04:00 |
-| | `BaselineCalculationWorker` | `BaselineCalculator` (pure, stateless) | `0 30 2 * * 0` — Sunday 02:30 |
+| | `BaselineCalculationWorker` | `BaselineCalculator` (pure, stateless) | `0 30 2 * * *` — daily 02:30 |
 | | `OrphanedOrganizationCleanupWorker` | EF Core bulk delete | `0 0 3 * * *` — daily 03:00 |
 | | `OAuthTokenRefreshService` | OAuth 2.0 `refresh_token` grant, `IHttpClientFactory` | inline in sync path, 5-min expiry buffer |
 | | `DeviceSyncService`, `FitbitApiClient`, `ActivityLogAggregationService` | `HttpClient`, Newtonsoft parsing, EF Core | per due connection |
@@ -165,7 +165,7 @@ The same query excludes removed and monitoring-paused members — in the query r
 |---|---|---|
 | `WearableSyncWorker` cron | `0 */10 * * * *` | `Workers:WearableSyncWorker:CronExpression` |
 | `OrphanedOrganizationCleanupWorker` cron | `0 0 3 * * *` | `Workers:…:CronExpression` |
-| `BaselineCalculationWorker` cron | `0 30 2 * * 0` | `Workers:…:CronExpression` |
+| `BaselineCalculationWorker` cron | `0 30 2 * * *` | `Workers:…:CronExpression` |
 | `DeviceSyncAuditWorker` cron / sample | `0 0 4 * * 0` / 25 | `Workers:DeviceSyncAuditWorker` |
 | `SyncFrequencyMinutes` | 10 | per `DeviceConnection` row |
 | `sync_lookback_days` | 3 | `device_pull_params` tfvars |
