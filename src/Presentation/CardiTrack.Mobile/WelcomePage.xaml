@@ -6,7 +6,7 @@
              x:Class="CardiTrack.Mobile.WelcomePage"
              Shell.NavBarIsVisible="False"
              NavigationPage.HasNavigationBar="False"
-             BackgroundColor="{StaticResource White}">
+             BackgroundColor="{StaticResource PageGround}">
 
     <ScrollView>
     <Grid RowDefinitions="Auto,Auto,Auto,43,Auto">

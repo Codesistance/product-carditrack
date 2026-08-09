@@ -6,7 +6,7 @@
              Shell.NavBarIsVisible="False"
              Shell.TabBarIsVisible="False"
              NavigationPage.HasNavigationBar="False"
-             BackgroundColor="{StaticResource White}">
+             BackgroundColor="{StaticResource PageGround}">
 
     <ScrollView>
         <Grid RowDefinitions="Auto,*">
@@ -16,7 +16,6 @@
                                    IsBackVisible="False"/>
 
             <Grid Grid.Row="1"
-                  BackgroundColor="{StaticResource White}"
                   Padding="20,28,20,36">
                 <VerticalStackLayout Spacing="0">
 
@@ -46,7 +45,7 @@
                            Margin="0,6,0,0"/>
 
                     <!-- Latest Data preview card -->
-                    <Border Style="{StaticResource DashboardCard}" Margin="0,28,0,0">
+                    <Border Style="{StaticResource ElevatedCard}" Margin="0,28,0,0">
                         <VerticalStackLayout Spacing="0">
                             <Grid ColumnDefinitions="*,Auto">
                                 <Label Text="Latest Data" Style="{StaticResource DashboardSectionTitle}"/>

@@ -48,10 +48,9 @@
     <Color x:Key="SleepPurple">#7C6FDC</Color>
     <Color x:Key="StaleBannerBackground">#FFF7E8</Color>
 
-    <!-- ── M1-09 surface tokens (Figma 101:2805) ──
-         The dashboard is the one screen that floats cards on a tinted ground rather than on
-         white, so its card treatment is elevation + radius rather than the hairline stroke the
-         rest of the app uses. Kept separate from DashboardCard, which eight other screens share. -->
+    <!-- ── Surface tokens (Figma 101:2805) ──
+         Every screen floats its cards on this tinted ground rather than on white, which is why
+         the card treatment is elevation + radius rather than a hairline stroke. -->
     <Color x:Key="PageGround">#E8F1F4</Color>
     <Color x:Key="CardShadow">#014297</Color>
     <Color x:Key="ProgressTrack">#E5E7EB</Color>
@@ -156,25 +155,34 @@
         <GradientStop Color="#7E8794" Offset="1.0" />
     </LinearGradientBrush>
 
-    <!-- ── Dashboard header band (Figma 101:2872) ──
+    <!-- ── Header band (Figma 101:2872) ──
          Figma draws this as the brand gradient (#174E86 → #1884DC → #36C09B) on an oversized
-         rect, blurred 100px and masked to the band, so only the slice between 55% and 81% of
-         the ramp is visible and its right edge feathers out to the white base. MAUI has no
-         cheap blur, so the visible slice is baked into the stops below and the feather is a
-         second white wash layer — the two together match the rendered frame within ~3%. -->
+         rect, blurred 100px and masked to the band, so only a slice of the ramp is visible and
+         its right edge feathers out to the page ground. MAUI has no cheap blur, so the visible
+         slice is baked into the stops below and the feather is the wash layer underneath.
+         Stops are sampled straight off the rendered Figma node, top and bottom of the band.
+         Both brushes are consumed by Controls/HeaderBand, which every header in the app uses. -->
     <LinearGradientBrush x:Key="DashboardHeaderBrush" StartPoint="0,0" EndPoint="0,1">
-        <GradientStop Color="#1D8ED1" Offset="0.0" />
-        <GradientStop Color="#2BABB2" Offset="1.0" />
+        <GradientStop Color="#1E8FC7" Offset="0.0" />
+        <GradientStop Color="#3DADBE" Offset="1.0" />
     </LinearGradientBrush>
 
+    <!-- The feather. Alpha at each stop is solved from the rendered Figma node: sample the
+         band at that fraction of its width, then work out how much white sits over the base
+         ramp. The profile came out the same at the top and bottom of the band, which is why one
+         horizontal brush models it. Note the slight lift at the far left — the blur's own
+         falloff — and the dip to nothing around 30%, where the band is at its most saturated. -->
     <LinearGradientBrush x:Key="DashboardHeaderWashBrush" StartPoint="0,0.5" EndPoint="1,0.5">
-        <GradientStop Color="#00FFFFFF" Offset="0.0" />
-        <GradientStop Color="#0FFFFFFF" Offset="0.30" />
-        <GradientStop Color="#1AFFFFFF" Offset="0.50" />
-        <GradientStop Color="#4DFFFFFF" Offset="0.65" />
-        <GradientStop Color="#8CFFFFFF" Offset="0.80" />
-        <GradientStop Color="#C3FFFFFF" Offset="0.92" />
-        <GradientStop Color="#DBFFFFFF" Offset="1.0" />
+        <GradientStop Color="#1AFFFFFF" Offset="0.0" />
+        <GradientStop Color="#05FFFFFF" Offset="0.18" />
+        <GradientStop Color="#00FFFFFF" Offset="0.30" />
+        <GradientStop Color="#04FFFFFF" Offset="0.41" />
+        <GradientStop Color="#16FFFFFF" Offset="0.52" />
+        <GradientStop Color="#39FFFFFF" Offset="0.64" />
+        <GradientStop Color="#6BFFFFFF" Offset="0.75" />
+        <GradientStop Color="#A7FFFFFF" Offset="0.86" />
+        <GradientStop Color="#C4FFFFFF" Offset="0.93" />
+        <GradientStop Color="#D1FFFFFF" Offset="1.0" />
     </LinearGradientBrush>
 
 </ResourceDictionary>

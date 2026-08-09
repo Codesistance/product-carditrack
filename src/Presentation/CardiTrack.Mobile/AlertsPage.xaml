@@ -5,15 +5,29 @@
              x:Class="CardiTrack.Mobile.AlertsPage"
              Shell.NavBarIsVisible="False"
              Shell.TabBarIsVisible="False"
-             BackgroundColor="{StaticResource White}">
-    <Grid RowDefinitions="*,Auto">
-        <VerticalStackLayout Grid.Row="0" Padding="20,24" Spacing="8">
-            <Label Text="Alerts" Style="{StaticResource Heading2}"/>
-            <Label Text="Alert history (M1-10) is coming soon."
-                   Style="{StaticResource Body2}"
-                   TextColor="{StaticResource BodyText}"/>
-        </VerticalStackLayout>
+             BackgroundColor="{StaticResource PageGround}">
+    <Grid RowDefinitions="Auto,*,Auto">
 
-        <controls:BottomNavBar Grid.Row="1" Tab="Alerts"/>
+        <controls:HeaderBand Grid.Row="0">
+            <Label Text="Alerts"
+                   Style="{StaticResource Heading2}"
+                   TextColor="{StaticResource White}"/>
+        </controls:HeaderBand>
+
+        <!-- Placeholder until M1-10. It still uses the app's card treatment rather than bare
+             text on the ground, so a tab that isn't built yet doesn't read as a broken one. -->
+        <Grid Grid.Row="1" Padding="20,20,20,24" VerticalOptions="Start">
+            <Border Style="{StaticResource ElevatedCard}">
+                <VerticalStackLayout Spacing="6">
+                    <Label Text="Nothing here yet"
+                           Style="{StaticResource Body1SemiBoldDark}"/>
+                    <Label Text="Alert history (M1-10) is coming soon."
+                           Style="{StaticResource Body2}"
+                           TextColor="{StaticResource BodyText}"/>
+                </VerticalStackLayout>
+            </Border>
+        </Grid>
+
+        <controls:BottomNavBar Grid.Row="2" Tab="Alerts"/>
     </Grid>
 </ContentPage>

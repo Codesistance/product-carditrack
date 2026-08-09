@@ -5,33 +5,49 @@
              x:Class="CardiTrack.Mobile.SettingsPage"
              Shell.NavBarIsVisible="False"
              Shell.TabBarIsVisible="False"
-             BackgroundColor="{StaticResource White}">
-    <Grid RowDefinitions="*,Auto">
-        <VerticalStackLayout Grid.Row="0" Padding="20,24" Spacing="12">
-            <Label Text="Settings" Style="{StaticResource Heading2}"/>
+             BackgroundColor="{StaticResource PageGround}">
+    <Grid RowDefinitions="Auto,*,Auto">
 
-            <Border Style="{StaticResource DashboardCard}">
-                <VerticalStackLayout Spacing="2">
-                    <Label x:Name="AccountNameLabel"
-                           Style="{StaticResource Body1SemiBoldDark}"/>
-                    <Label x:Name="AccountEmailLabel"
-                           Style="{StaticResource Body2}"
-                           TextColor="{StaticResource BodyText}"/>
-                </VerticalStackLayout>
-            </Border>
+        <controls:HeaderBand Grid.Row="0">
+            <Label Text="Settings"
+                   Style="{StaticResource Heading2}"
+                   TextColor="{StaticResource White}"/>
+        </controls:HeaderBand>
 
-            <Label Text="More settings (M2-01) are coming soon."
-                   Style="{StaticResource Body2}"
-                   TextColor="{StaticResource BodyText}"/>
+        <ScrollView Grid.Row="1">
+            <VerticalStackLayout Padding="20,20,20,24" Spacing="14">
 
-            <Button x:Name="SignOutBtn"
-                    Text="Sign out"
-                    Style="{StaticResource SecondaryOutlineButton}"
-                    HorizontalOptions="Fill"
-                    Margin="0,12,0,0"
-                    Clicked="OnSignOutClicked"/>
-        </VerticalStackLayout>
+                <Border Style="{StaticResource ElevatedCard}">
+                    <VerticalStackLayout Spacing="2">
+                        <Label x:Name="AccountNameLabel"
+                               Style="{StaticResource Body1SemiBoldDark}"/>
+                        <Label x:Name="AccountEmailLabel"
+                               Style="{StaticResource Body2}"
+                               TextColor="{StaticResource BodyText}"/>
+                    </VerticalStackLayout>
+                </Border>
 
-        <controls:BottomNavBar Grid.Row="1" Tab="Settings"/>
+                <!-- Placeholder until M2-01 — same card treatment as the rest of the app. -->
+                <Border Style="{StaticResource ElevatedCard}">
+                    <VerticalStackLayout Spacing="6">
+                        <Label Text="More on the way"
+                               Style="{StaticResource Body1SemiBoldDark}"/>
+                        <Label Text="More settings (M2-01) are coming soon."
+                               Style="{StaticResource Body2}"
+                               TextColor="{StaticResource BodyText}"/>
+                    </VerticalStackLayout>
+                </Border>
+
+                <Button x:Name="SignOutBtn"
+                        Text="Sign out"
+                        Style="{StaticResource SecondaryOutlineButton}"
+                        HorizontalOptions="Fill"
+                        Margin="0,12,0,0"
+                        Clicked="OnSignOutClicked"/>
+
+            </VerticalStackLayout>
+        </ScrollView>
+
+        <controls:BottomNavBar Grid.Row="2" Tab="Settings"/>
     </Grid>
 </ContentPage>

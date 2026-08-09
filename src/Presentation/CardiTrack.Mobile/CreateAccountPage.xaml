@@ -1,25 +1,20 @@
 <?xml version="1.0" encoding="utf-8" ?>
 <ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:controls="clr-namespace:CardiTrack.Mobile.Controls"
              x:Class="CardiTrack.Mobile.CreateAccountPage"
              Shell.NavBarIsVisible="False"
              NavigationPage.HasNavigationBar="False"
-             BackgroundColor="{StaticResource White}">
+             BackgroundColor="{StaticResource PageGround}">
 
     <ScrollView>
         <Grid RowDefinitions="Auto,*">
 
             <!-- ════════════════════════════════════════
-                 GRADIENT HEADER (≈202px)
+                 GRADIENT HEADER
                  ════════════════════════════════════════ -->
-            <Grid Grid.Row="0" HeightRequest="202" HorizontalOptions="Fill">
-                <Image Source="gradient_auth_header.svg"
-                       Aspect="AspectFill"
-                       HorizontalOptions="Fill"
-                       VerticalOptions="Fill" />
-                <VerticalStackLayout Padding="20,48,20,0"
-                                     Spacing="4"
-                                     VerticalOptions="Start">
+            <controls:HeaderBand Grid.Row="0" ContentPadding="20,48,20,32">
+                <VerticalStackLayout Spacing="4">
                     <Label Text="Create Account"
                            Style="{StaticResource Heading1White}" />
 
@@ -49,13 +44,12 @@
                         </Border>
                     </Grid>
                 </VerticalStackLayout>
-            </Grid>
+            </controls:HeaderBand>
 
             <!-- ════════════════════════════════════════
                  FORM (full-bleed)
                  ════════════════════════════════════════ -->
             <Grid Grid.Row="1"
-                  BackgroundColor="{StaticResource White}"
                   Padding="20,20,20,36">
                 <VerticalStackLayout Spacing="6">
 
