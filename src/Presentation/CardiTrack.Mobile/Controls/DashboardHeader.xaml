@@ -45,6 +45,8 @@
                                  Source="icon_refresh_white.svg"
                                  WidthRequest="24" HeightRequest="24"
                                  BackgroundColor="Transparent"
+                                 SemanticProperties.Description="Check in now"
+                                 SemanticProperties.Hint="Asks the wearable for the latest readings"
                                  Clicked="OnRefreshClicked"/>
                 </Border>
 
@@ -70,9 +72,13 @@
                         <Border.Shadow>
                             <Shadow Brush="{StaticResource CardShadowBrush}" Opacity="0.15" Radius="14" Offset="0,4"/>
                         </Border.Shadow>
-                        <ImageButton Source="icon_bell.svg"
+                        <!-- Description is rewritten by SetUnreadCount: the badge carries the
+                             count visually, so without that a screen reader loses it. -->
+                        <ImageButton x:Name="BellButton"
+                                     Source="icon_bell.svg"
                                      WidthRequest="24" HeightRequest="24"
                                      BackgroundColor="Transparent"
+                                     SemanticProperties.Description="Alerts"
                                      Clicked="OnBellClicked"/>
                     </Border>
 

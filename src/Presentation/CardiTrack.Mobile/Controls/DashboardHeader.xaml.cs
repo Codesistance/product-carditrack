@@ -33,6 +33,15 @@ public partial class DashboardHeader : ContentView
     {
         BellBadge.IsVisible = count > 0;
         BellBadgeLabel.Text = count > 9 ? "9+" : count.ToString();
+
+        // The badge is the only thing that carries the count on screen, so the accessible
+        // name has to say it too or the number is lost to a screen reader.
+        SemanticProperties.SetDescription(BellButton, count switch
+        {
+            <= 0 => "Alerts",
+            1 => "Alerts, 1 unread",
+            _ => $"Alerts, {count} unread",
+        });
     }
 
     private void OnRefreshClicked(object? sender, EventArgs e) =>

@@ -297,6 +297,14 @@
         </Setter>
     </Style>
 
+    <!-- Used by ConnectionSuccessPage's latest-data rows. M1-09's own metric rows moved to
+         Heading3, but this is not dashboard-only — leave it in place. -->
+    <Style x:Key="MetricValue" TargetType="Label">
+        <Setter Property="FontFamily" Value="QuicksandSemiBold"/>
+        <Setter Property="FontSize" Value="20"/>
+        <Setter Property="TextColor" Value="{StaticResource HeadingText}"/>
+    </Style>
+
     <!-- ── M1-09 elevated card (Figma 101:2821 / 101:2854 / 101:2902) ──
          The dashboard floats its cards on PageGround, so they carry elevation instead of
          DashboardCard's hairline. Deliberately a second style rather than a change to

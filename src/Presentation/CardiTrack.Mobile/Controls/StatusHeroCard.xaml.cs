@@ -23,9 +23,10 @@ public partial class StatusHeroCard : ContentView
             : "Not synced yet";
 
         // Initials stay behind the photo rather than being replaced, so a photo that fails to
-        // load falls back to something rather than an empty tile.
-        var hasPhoto = !string.IsNullOrWhiteSpace(data.PhotoUrl);
-        PhotoImage.Source = hasPhoto ? ImageSource.FromUri(new Uri(data.PhotoUrl!)) : null;
+        // load falls back to something rather than an empty tile. PhotoUrl is external data, so
+        // a relative or malformed value must fall back too rather than throw the whole load.
+        var hasPhoto = Uri.TryCreate(data.PhotoUrl, UriKind.Absolute, out var photoUri);
+        PhotoImage.Source = hasPhoto ? ImageSource.FromUri(photoUri!) : null;
         PhotoImage.IsVisible = hasPhoto;
 
         var (colorKey, icon, statusText) = data.HealthStatus switch
