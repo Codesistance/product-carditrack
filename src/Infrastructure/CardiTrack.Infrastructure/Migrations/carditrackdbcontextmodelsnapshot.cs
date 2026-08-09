@@ -826,6 +826,67 @@ namespace CardiTrack.Infrastructure.Migrations
                     b.ToTable("DeviceTypeSyncProfiles", (string)null);
                 });
 
+            modelBuilder.Entity("CardiTrack.Domain.Entities.GranularMetricHour", b =>
+                {
+                    b.Property<Guid>("DeviceConnectionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Metric")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<DateTime>("HourStartUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("CardiMemberId")
+                        .HasColumnType("uuid");
+
+                    b.Property<short>("SampleCount")
+                        .HasColumnType("smallint");
+
+                    b.PrimitiveCollection<float?[]>("Values")
+                        .IsRequired()
+                        .HasColumnType("real[]");
+
+                    b.HasKey("DeviceConnectionId", "Metric", "HourStartUtc");
+
+                    b.HasIndex("CardiMemberId", "HourStartUtc");
+
+                    b.ToTable("GranularMetricHours", (string)null);
+                });
+
+            modelBuilder.Entity("CardiTrack.Domain.Entities.MetricRollupHourly", b =>
+                {
+                    b.Property<Guid>("CardiMemberId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Metric")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<DateTime>("HourStartUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<float>("Avg")
+                        .HasColumnType("real");
+
+                    b.Property<float>("Max")
+                        .HasColumnType("real");
+
+                    b.Property<float>("Min")
+                        .HasColumnType("real");
+
+                    b.Property<short>("SampleCount")
+                        .HasColumnType("smallint");
+
+                    b.Property<float>("Sum")
+                        .HasColumnType("real");
+
+                    b.HasKey("CardiMemberId", "Metric", "HourStartUtc");
+
+                    b.ToTable("MetricRollupsHourly", (string)null);
+                });
+
             modelBuilder.Entity("CardiTrack.Domain.Entities.Organization", b =>
                 {
                     b.Property<Guid>("Id")
