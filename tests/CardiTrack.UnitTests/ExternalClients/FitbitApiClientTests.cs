@@ -1255,10 +1255,8 @@ public class FitbitApiClientTests
         var day = await GranularSut(handler).GetGranularDayAsync("token", Today);
 
         Assert.False(day.HasAnyData);
-        Assert.Empty(day.HeartRate);
-        Assert.Empty(day.Steps);
-        Assert.Empty(day.ActiveZoneMinutes);
-        Assert.Empty(day.SpO2);
+        // The shared instance, as the interface contract promises.
+        Assert.Same(DeviceGranularDay.Empty, day);
     }
 
     // Same rule as everywhere else in this client: a 400 carrying field violations is a bug in a

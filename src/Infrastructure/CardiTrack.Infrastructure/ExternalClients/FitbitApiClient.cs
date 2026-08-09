@@ -329,11 +329,16 @@ public class FitbitApiClient : IFitbitApiClient, IDeviceApiClient
             TimestampedSamplesAsync(accessToken, "oxygen-saturation", "oxygenSaturation", "percentage", date));
         await Task.WhenAll(heartRateTask, stepsTask, activeZoneMinutesTask, spO2Task);
 
-        return new DeviceGranularDay(
+        var day = new DeviceGranularDay(
             heartRateTask.Result,
             stepsTask.Result,
             activeZoneMinutesTask.Result,
             spO2Task.Result);
+
+        // The shared Empty instance, as the interface contract promises — a record's list
+        // properties compare by reference, so distinct "empty" instances would not even be
+        // structurally equal to it.
+        return day.HasAnyData ? day : DeviceGranularDay.Empty;
     }
 
     /// <summary>Empty series, rather than a failed day, for a device without the data type.</summary>
