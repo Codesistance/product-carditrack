@@ -28,6 +28,12 @@ locals {
   log_sink_name       = "${var.project_name}-${local.environment}-audit-sink"
   audit_bucket_name   = "${var.project_id}-${var.project_name}-${local.environment}-audit"
 
+  # Read rather than repeated: .model-version is what bakes a tag into the MedGemma image, and
+  # AI__Providers__0__Model below is the name the API then asks Ollama for. As two literals they
+  # drift the moment one is bumped alone, and every medical call 404s against a model the server
+  # never pulled. trimspace matches the `tr -d '[:space:]'` the image build applies to the file.
+  medgemma_model = trimspace(file("${path.module}/../src/Infrastructure/MedGemma/.model-version"))
+
   # Per-device-type pull parameters flattened onto the positional DeviceProviders binding the apps
   # already use for provider secrets. Whichever service hosts device pull reads them from here, so
   # cadence is retuned per environment in tfvars rather than in appsettings.json.
@@ -75,7 +81,7 @@ module "deployments" {
       "AI__GeneralProvider"                 = "Gemini"
       "AI__MedicalProvider"                 = "MedGemma"
       "AI__Providers__0__Name"              = "MedGemma"
-      "AI__Providers__0__Model"             = "medgemma:4b"
+      "AI__Providers__0__Model"             = local.medgemma_model
       "AI__Providers__0__TimeoutSeconds"    = tostring(var.medgemma_timeout_seconds)
       "AI__Providers__1__Name"              = "Gemini"
       "AI__Providers__1__BaseUrl"           = "https://generativelanguage.googleapis.com"

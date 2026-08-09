@@ -92,7 +92,7 @@ With Device Bundle:
 - .NET Worker Service + Cronos (**non-AI background jobs only**: `WearableSyncWorker` every 30 minutes with in-path OAuth token refresh, `OrphanedOrganizationCleanupWorker` daily at 03:00, `BaselineCalculationWorker` weekly on Sunday at 02:30; trial reminders and retention jobs are planned)
 
 **AI:**
-- MedGemma (`medgemma:4b`) served via **Ollama on Cloud Run** — the Medical provider for health-data interpretation
+- MedGemma 1.5 4B (`hf.co/unsloth/medgemma-1.5-4b-it-GGUF:Q4_K_M`) served via **Ollama on Cloud Run** — the Medical provider for health-data interpretation
 - Gemini 2.0 Flash — the General provider for conversational responses
 - Surfaced through the API's chat, insights, and reports endpoints
 - Target ingestion/inference pipeline on GCP (Pub/Sub + Cloud Run) — see [llm_design.md](./llm_design.md); not yet built
