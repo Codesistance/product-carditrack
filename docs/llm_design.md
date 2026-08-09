@@ -100,6 +100,8 @@ The API talks to two providers, and the difference between them is a boundary, n
 
 The private side has no provider selector. `AiServiceExtensions` constructs `MedGemmaClient` unconditionally for the medical slot, so no environment variable can route health data to an off-estate model — which is the control [the DPIA](./compliance/dpia.md) records for A5. Only where MedGemma lives and which weights it serves are configurable.
 
+Every MedGemma call is fully observable client-side (the Ollama container is stock and carries no instrumentation): `MedGemmaClient` emits a GenAI-semconv span, duration/token metrics and a per-call log line through the `CardiTrack.Ai` source — token counts, durations, model names and error types only, never prompt text or model output, per the same DPIA constraint. Details in the [APM setup runbook](./technical/apm_setup_runbook.md).
+
 The public side is deliberately swappable. Every provider implements the same `IExternalAiClient`, and `Kind` selects which one is built at startup; consumers see only `IGenerativeAiService`. Swapping providers is a tfvar change plus seeding the new key into the API-key secret — no rebuild. Config is validated at startup, so a bad `Kind`, a missing model or key, or a malformed URL fails the revision rather than the first caregiver's request.
 
 **Adding a public provider** is two edits and a test: a client implementing `IExternalAiClient` in `ExternalClients/General/`, and a member on `PublicAiProviderKind` wired into the switch in `AiServiceExtensions`. Nothing downstream changes.

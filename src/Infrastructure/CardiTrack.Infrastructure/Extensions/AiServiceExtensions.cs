@@ -7,6 +7,7 @@ using CardiTrack.Infrastructure.Settings;
 using CardiTrack.Shared;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 
 namespace CardiTrack.Infrastructure.Extensions;
 
@@ -94,7 +95,8 @@ public static class AiServiceExtensions
         // Not a switch, by design — see the remarks on this class.
         services.AddKeyedScoped<IExternalAiClient>("MedicalProvider", (sp, _) =>
             new MedGemmaClient(
-                sp.GetRequiredService<IHttpClientFactory>(), privateSettings, PrivateHttpClientName));
+                sp.GetRequiredService<IHttpClientFactory>(), privateSettings, PrivateHttpClientName,
+                sp.GetRequiredService<ILogger<MedGemmaClient>>()));
 
         services.AddScoped<IGenerativeAiService, GenerativeAiService>();
         services.AddScoped<IMedicalAiService, MedicalAiService>();

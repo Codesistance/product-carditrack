@@ -157,7 +157,7 @@ variable "apm_mobile_engine" {
 }
 
 variable "apm_metrics_enabled" {
-  description = "Export OTel metrics (runtime, ASP.NET Core, HttpClient, Npgsql) from API/Web/Worker to the APM backend. Off by default: metrics bill as custom metrics and stream around the clock"
+  description = "Export OTel metrics (runtime, ASP.NET Core, HttpClient, Npgsql, GenAI) from API/Web/Worker to the APM backend. Off by default: metrics bill as custom metrics and stream around the clock"
   type        = bool
   default     = false
 }
