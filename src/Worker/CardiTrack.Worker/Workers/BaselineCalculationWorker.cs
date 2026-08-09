@@ -28,12 +28,15 @@ public class BaselineCalculationWorker : CronBackgroundService
 
     protected override async Task ExecuteJobAsync(CancellationToken stoppingToken)
     {
-        var today = DateOnly.FromDateTime(DateTime.UtcNow);
-        var windowStart = today.AddDays(-(BaselineCalculator.SupportedPeriods.Max() - 1));
+        // Yesterday, not today: the sync pulls the day in progress so the dashboard can show live
+        // numbers, and a part-finished day must not be averaged into what "normal" means for this
+        // member — it would pull the baseline down by however far through the day the job ran.
+        var windowEnd = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(-1));
+        var windowStart = windowEnd.AddDays(-(BaselineCalculator.SupportedPeriods.Max() - 1));
 
         _logger.LogInformation(
-            "BaselineCalculation triggered at {Time} for the window {WindowStart}..{Today}.",
-            DateTime.UtcNow, windowStart, today);
+            "BaselineCalculation triggered at {Time} for the window {WindowStart}..{WindowEnd}.",
+            DateTime.UtcNow, windowStart, windowEnd);
 
         List<Guid> memberIds;
         using (var scope = _scopeFactory.CreateScope())
@@ -53,7 +56,7 @@ public class BaselineCalculationWorker : CronBackgroundService
 
             try
             {
-                var (memberWritten, memberSkipped) = await CalculateForMemberAsync(memberId, windowStart, today);
+                var (memberWritten, memberSkipped) = await CalculateForMemberAsync(memberId, windowStart, windowEnd);
                 written += memberWritten;
                 skipped += memberSkipped;
             }
@@ -76,21 +79,21 @@ public class BaselineCalculationWorker : CronBackgroundService
     /// else down with it.
     /// </summary>
     private async Task<(int Written, int Skipped)> CalculateForMemberAsync(
-        Guid memberId, DateOnly windowStart, DateOnly today)
+        Guid memberId, DateOnly windowStart, DateOnly windowEnd)
     {
         using var scope = _scopeFactory.CreateScope();
         var unitOfWork = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
 
         // Fetched once for the longest period; BaselineCalculator windows the list itself.
         var logs = (await unitOfWork.ActivityLogs
-            .GetByCardiMemberAndDateRangeAsync(memberId, windowStart, today)).ToList();
+            .GetByCardiMemberAndDateRangeAsync(memberId, windowStart, windowEnd)).ToList();
 
         var written = 0;
         var skipped = 0;
 
         foreach (var periodDays in BaselineCalculator.SupportedPeriods)
         {
-            var baseline = BaselineCalculator.Calculate(memberId, logs, periodDays, today);
+            var baseline = BaselineCalculator.Calculate(memberId, logs, periodDays, windowEnd);
             if (baseline is null)
             {
                 skipped++;

@@ -105,22 +105,43 @@ public class DashboardService : IDashboardService
         };
     }
 
+    /// <summary>
+    /// Builds the three Key Metrics cards from a member's daily history.
+    /// </summary>
+    /// <remarks>
+    /// Each metric is resolved independently, down the days newest-first, rather than all three
+    /// reading a single "latest row". Ingestion stores the day in progress, so today's row appears
+    /// as soon as the provider reports anything at all — and a row carrying steps but not yet a
+    /// resting heart rate would blank the cards that were populated a moment ago if they all had
+    /// to come from the same day. This is the same coalescing rule <see cref="ActivityLogMerge"/>
+    /// applies across a member's devices, applied across days.
+    /// </remarks>
     private static DashboardMetrics BuildMetrics(List<ActivityLog> logs, PatternBaseline? baseline, DateOnly today)
     {
         var byDate = logs
             .GroupBy(l => l.Date)
             .ToDictionary(g => g.Key, g => g.OrderByDescending(l => l.UpdatedDate ?? l.CreatedDate).First());
-        var latest = byDate[byDate.Keys.Max()];
+        var newestFirst = byDate.OrderByDescending(entry => entry.Key).Select(entry => entry.Value).ToList();
 
+        var latestSteps = LatestWith(newestFirst, l => l.Steps);
         var steps = BuildMetric(
-            value: latest.Steps,
+            value: latestSteps?.Steps,
             baselineValue: baseline?.AvgSteps,
             unit: "steps",
-            series: BuildSeries(byDate, today, l => l.Steps));
+            series: BuildSeries(byDate, today, l => l.Steps),
+            // Steps accumulate through the day, so a day still in progress has nothing to compare
+            // against a whole-day average — at breakfast every member alive would read as a
+            // catastrophic drop. The goal bar carries the partial day instead, which is honest
+            // about being partway through by construction.
+            comparable: latestSteps?.Date != today);
         steps.Goal = baseline?.AvgSteps ?? DefaultStepsGoal;
 
+        // Resting heart rate and sleep are daily summary values, not running totals: the provider
+        // either has one for the day or does not. A today reading is a whole reading, so unlike
+        // steps it stays comparable against the baseline.
+        var latestHeartRate = LatestWith(newestFirst, l => l.RestingHeartRate);
         var heartRate = BuildMetric(
-            value: latest.RestingHeartRate,
+            value: latestHeartRate?.RestingHeartRate,
             baselineValue: baseline?.AvgRestingHeartRate,
             unit: "bpm",
             series: BuildSeries(byDate, today, l => l.RestingHeartRate));
@@ -130,12 +151,15 @@ public class DashboardService : IDashboardService
             heartRate.RangeHigh = (int)Math.Round(avgHr + stdHr, MidpointRounding.AwayFromZero);
         }
 
+        var latestSleep = LatestWith(newestFirst, l => l.SleepMinutes);
         var sleep = BuildMetric(
-            value: latest.SleepMinutes is int sm ? Math.Round(sm / 60m, 1) : null,
+            value: latestSleep?.SleepMinutes is int sm ? Math.Round(sm / 60m, 1) : null,
             baselineValue: baseline?.AvgSleepMinutes is int abm ? Math.Round(abm / 60m, 1) : null,
             unit: "hours",
             series: BuildSeries(byDate, today, l => l.SleepMinutes is int m ? Math.Round(m / 60m, 1) : (decimal?)null));
-        sleep.QualityScore = latest.SleepEfficiency switch
+        // Read off the same night as the duration above, so the stars can never describe the
+        // quality of one night next to the length of another.
+        sleep.QualityScore = latestSleep?.SleepEfficiency switch
         {
             null => null,
             >= 90 => 5,
@@ -148,10 +172,22 @@ public class DashboardService : IDashboardService
         return new DashboardMetrics { Steps = steps, RestingHeartRate = heartRate, Sleep = sleep };
     }
 
-    private static DashboardMetric BuildMetric(decimal? value, decimal? baselineValue, string unit, List<MetricPoint> series)
+    /// <summary>The most recent day that actually reported this metric, or null when none did.</summary>
+    private static ActivityLog? LatestWith<T>(IReadOnlyList<ActivityLog> newestFirst, Func<ActivityLog, T?> select)
+        where T : struct =>
+        newestFirst.FirstOrDefault(log => select(log).HasValue);
+
+    /// <param name="comparable">
+    /// False when the reading covers a period that is not over yet, which makes a
+    /// baseline comparison meaningless rather than merely uncertain. Leaves both
+    /// <see cref="DashboardMetric.ChangePercent"/> and the derived status unset, so the client
+    /// falls back to the card's plain presentation instead of colouring a number it cannot judge.
+    /// </param>
+    private static DashboardMetric BuildMetric(
+        decimal? value, decimal? baselineValue, string unit, List<MetricPoint> series, bool comparable = true)
     {
         decimal? changePercent = null;
-        if (value is not null && baselineValue is > 0)
+        if (comparable && value is not null && baselineValue is > 0)
             changePercent = Math.Round((value.Value - baselineValue.Value) / baselineValue.Value * 100m, 1);
 
         return new DashboardMetric

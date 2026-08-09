@@ -190,7 +190,7 @@ public partial class HealthInsightService : IHealthInsightService
               $"Resting HR: {baseline.AvgRestingHeartRate}±{baseline.StdDevHeartRate}, " +
               $"Sleep: {baseline.AvgSleepMinutes} min";
 
-        var recentSummary = DailyLines(recentLogs, take: 3);
+        var recentSummary = DailyLines(recentLogs, take: 3, today);
 
         return $"""
             {AlertInstructions}
@@ -235,7 +235,7 @@ public partial class HealthInsightService : IHealthInsightService
             {string.Join("\n", baselineLines)}
 
             --- Recent activity (last 7 days) ---
-            {DailyLines(recentLogs, take: 7)}
+            {DailyLines(recentLogs, take: 7, today)}
             """;
     }
 
@@ -255,7 +255,7 @@ public partial class HealthInsightService : IHealthInsightService
             No baseline has been established yet.
 
             --- Daily readings ---
-            {DailyLines(recentLogs, take: 14)}
+            {DailyLines(recentLogs, take: 14, today)}
             """;
     }
 
@@ -306,11 +306,21 @@ public partial class HealthInsightService : IHealthInsightService
     [GeneratedRegex(@"[\s\p{Cc}]+")]
     private static partial Regex WhitespaceRuns();
 
-    private static string DailyLines(IEnumerable<ActivityLog> logs, int take)
+    /// <summary>
+    /// The trailing daily readings, oldest first.
+    /// </summary>
+    /// <remarks>
+    /// Ingestion stores the day in progress, so the newest line is a part-finished day whose totals
+    /// are not comparable with the completed days above it. It is labelled rather than dropped: the
+    /// model is being asked to explain deviations, and an unmarked partial day reads as a collapse
+    /// in activity that the member is not actually having.
+    /// </remarks>
+    private static string DailyLines(IEnumerable<ActivityLog> logs, int take, DateOnly today)
     {
         var lines = logs
             .TakeLast(take)
-            .Select(l => $"  {l.Date}: steps={l.Steps}, HR={l.RestingHeartRate}, sleep={l.SleepMinutes}min")
+            .Select(l => $"  {l.Date}: steps={l.Steps}, HR={l.RestingHeartRate}, sleep={l.SleepMinutes}min"
+                         + (l.Date == today ? "  (today, still in progress — totals are partial)" : string.Empty))
             .ToList();
 
         return lines.Count > 0 ? string.Join("\n", lines) : "No recent activity data.";

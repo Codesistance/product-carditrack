@@ -108,7 +108,8 @@ Field notes:
 - The sleep metric key is **`sleep`** (not `sleepHours`); there is **no `activeMinutes` metric**.
 - `photoUrl` is always `null` today (no photo storage exists).
 - `metrics` is **`null`** when the member has no activity logs in the last 30 days.
-- Each metric carries a 7-day `series` of `{date, value}` points (missing days → `value: null`).
+- Each metric resolves **independently**, from the most recent day that actually reported it. Ingestion stores the day in progress, so today's row appears as soon as the provider reports anything at all; a metric it has not filled in yet falls back to the last day that carried one rather than blanking a card that was populated a moment ago. This is the same per-metric coalescing the multi-device merge applies, applied across days.
+- Each metric carries a 7-day `series` of `{date, value}` points ending **today** (missing days → `value: null`).
 - `device.connectionStatus` is the internal enum name (`Connected`, `TokenExpired`, …) — unlike the lowercase statuses in [devices.md](devices.md).
 - `recentAlerts` holds the **5 most recent** active alerts; `unreadAlertCount` counts unresolved, unacknowledged alerts.
 - `goal` on steps defaults to the baseline average (or 10 000 when no baseline); `rangeLow`/`rangeHigh` are heart-rate mean ± one standard deviation; `qualityScore` is a 1–5 sleep-efficiency bucket.
@@ -127,6 +128,7 @@ Field notes:
 
 - Baselines are computed over a **30-day window** (`daysRequired: 30`); `isLearning` is true until a pattern baseline exists.
 - Per-metric status: deviation from baseline **≤ 30%** → `green`, **> 30%** → `yellow`, **> 50%** → `orange`. (`red` comes only from alert severity, not metric deviation.)
+- `steps` reports `changePercent: null` and `status: "unknown"` while its value covers **today**. Steps accumulate through the day, so scoring a part-finished day against a whole-day average would report every member as collapsing every morning; the `goal` carries the partial day instead. `restingHeartRate` and `sleep` are daily summary values rather than running totals, so a today reading is a whole reading and stays comparable.
 - The member-level `healthStatus` is the worst unresolved alert severity, else `green` (or `unknown` while learning / no data).
 
 ### Errors

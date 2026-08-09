@@ -91,21 +91,31 @@ public class DeviceSyncService : IDeviceSyncService
             $"No provider config found for device type '{connection.DeviceType}'.");
 
     /// <summary>
-    /// Fetches a trailing window ending at yesterday, storing each day and re-merging it.
+    /// Fetches a trailing window ending at today, storing each day and re-merging it.
     /// </summary>
     /// <remarks>
-    /// Most wearable providers finalise a day's data only after midnight, so the window ends at
-    /// yesterday. It starts further back so a day missed while the puller was down is picked up on
-    /// a later run instead of being lost for good.
+    /// The window ends at <em>today</em> so the dashboard's Key Metrics move during the day.
+    /// Ending it at yesterday — which is what this did until now — meant the merged
+    /// <c>ActivityLogs</c> row for today never existed, so every reader of "the latest day" was
+    /// serving a completed day no matter how often the caregiver pulled to refresh.
+    /// <para>
+    /// Today's numbers are necessarily partial, and that is the caller's problem to know about,
+    /// not a reason to withhold them: <c>DashboardService</c> suppresses the
+    /// compare-against-baseline reading for a day still in progress, and baselines are calculated
+    /// over completed days only. What providers finalise after midnight is instead covered by the
+    /// trailing days, which reach back <paramref name="lookbackDays"/> complete days — unchanged,
+    /// so a day missed while the puller was down is still picked up on a later run rather than
+    /// being lost for good.
+    /// </para>
     /// </remarks>
     private async Task PullWindowAsync(DeviceConnection connection, string accessToken, int lookbackDays)
     {
-        var yesterday = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(-1));
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
 
         // Oldest first, so a mid-window provider failure still leaves the earlier days stored.
-        for (var offset = lookbackDays - 1; offset >= 0; offset--)
+        for (var offset = lookbackDays; offset >= 0; offset--)
         {
-            var targetDate = yesterday.AddDays(-offset);
+            var targetDate = today.AddDays(-offset);
             var snapshot = await _deviceApi.GetHealthSnapshotAsync(accessToken, targetDate);
 
             var log = new DeviceActivityLog

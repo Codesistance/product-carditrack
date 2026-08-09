@@ -66,22 +66,31 @@ public class DashboardServiceTests
         ]);
     }
 
+    private static DateOnly Today => DateOnly.FromDateTime(DateTime.UtcNow);
+
+    /// <param name="endingDaysAgo">
+    /// Where the newest day sits. 0 means the history runs up to the day in progress, which is
+    /// what ingestion produces now; 1 builds a history of completed days only.
+    /// </param>
     private void SetupActivityLogs(int days, int steps = 5000, int restingHr = 70,
-        int sleepMinutes = 432, int sleepEfficiency = 85)
+        int sleepMinutes = 432, int sleepEfficiency = 85, int endingDaysAgo = 0)
     {
-        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        var newest = Today.AddDays(-endingDaysAgo);
         var logs = Enumerable.Range(0, days).Select(offset => new ActivityLog
         {
             CardiMemberId = _memberId,
-            Date = today.AddDays(-offset),
+            Date = newest.AddDays(-offset),
             Steps = steps,
             RestingHeartRate = restingHr,
             SleepMinutes = sleepMinutes,
             SleepEfficiency = sleepEfficiency,
         }).ToList();
+        SetupActivityLogs(logs);
+    }
+
+    private void SetupActivityLogs(List<ActivityLog> logs) =>
         _activityLogs.GetByCardiMemberAndDateRangeAsync(_memberId, Arg.Any<DateOnly>(), Arg.Any<DateOnly>())
             .Returns(logs);
-    }
 
     // The dashboard's Call and Send Message actions run off the emergency contact, because that
     // is the only phone number M1-04 and M1-14 capture — CardiMember.Phone is null for every
@@ -155,7 +164,10 @@ public class DashboardServiceTests
     [Fact]
     public async Task FullData_ComputesChangePercent_Ranges_AndSeries()
     {
-        SetupActivityLogs(days: 30, steps: 4250, restingHr: 72, sleepMinutes: 432, sleepEfficiency: 85);
+        // Ending yesterday, so the steps reading covers a finished day and is comparable against
+        // a whole-day average. See TodaysSteps_... below for the day still in progress.
+        SetupActivityLogs(days: 30, steps: 4250, restingHr: 72, sleepMinutes: 432, sleepEfficiency: 85,
+            endingDaysAgo: 1);
         _baselines.GetLatestByCardiMemberAsync(_memberId, 30).Returns(new PatternBaseline
         {
             CardiMemberId = _memberId,
@@ -180,8 +192,12 @@ public class DashboardServiceTests
         Assert.Equal(7.2m, metrics.Sleep.Value);
         Assert.Equal(4, metrics.Sleep.QualityScore);
 
+        // The series always runs to today, so the day this member has no row for yet is a gap
+        // rather than a missing point.
         Assert.Equal(7, metrics.Steps.Series.Count);
-        Assert.All(metrics.Steps.Series, p => Assert.Equal(4250m, p.Value));
+        Assert.Equal(Today, metrics.Steps.Series[^1].Date);
+        Assert.Null(metrics.Steps.Series[^1].Value);
+        Assert.All(metrics.Steps.Series.SkipLast(1), p => Assert.Equal(4250m, p.Value));
         Assert.Equal("green", result.HealthStatus);
         Assert.False(result.Baseline.IsLearning);
     }
@@ -189,7 +205,7 @@ public class DashboardServiceTests
     [Fact]
     public async Task LargeDeviation_ColoursMetricOrange()
     {
-        SetupActivityLogs(days: 30, steps: 2000);
+        SetupActivityLogs(days: 30, steps: 2000, endingDaysAgo: 1);
         _baselines.GetLatestByCardiMemberAsync(_memberId, 30).Returns(new PatternBaseline
         {
             CardiMemberId = _memberId,
@@ -201,6 +217,95 @@ public class DashboardServiceTests
 
         Assert.Equal(-60m, result.Metrics!.Steps.ChangePercent);
         Assert.Equal("orange", result.Metrics.Steps.Status);
+    }
+
+    // ── The day in progress (ingestion now stores it) ────────────────────────────────────────
+
+    // The whole point of pulling today: the caregiver's Key Metrics have to move during the day
+    // rather than sitting on a completed day until midnight.
+    [Fact]
+    public async Task TodaysRow_IsWhatTheMetricsReport()
+    {
+        SetupActivityLogs(
+        [
+            new ActivityLog { CardiMemberId = _memberId, Date = Today, Steps = 1200 },
+            new ActivityLog { CardiMemberId = _memberId, Date = Today.AddDays(-1), Steps = 9000 },
+        ]);
+
+        var result = await CreateSut().GetDashboardAsync(_userId, _memberId);
+
+        Assert.Equal(1200m, result.Metrics!.Steps.Value);
+    }
+
+    // Steps accumulate through the day, so scoring a part-finished day against a whole-day
+    // average would report every member alive as collapsing every morning.
+    [Fact]
+    public async Task TodaysSteps_AreNotScoredAgainstTheWholeDayBaseline()
+    {
+        SetupActivityLogs(days: 30, steps: 1200);
+        _baselines.GetLatestByCardiMemberAsync(_memberId, 30).Returns(new PatternBaseline
+        {
+            CardiMemberId = _memberId,
+            PeriodDays = 30,
+            AvgSteps = 5000,
+        });
+
+        var result = await CreateSut().GetDashboardAsync(_userId, _memberId);
+
+        Assert.Equal(1200m, result.Metrics!.Steps.Value);
+        Assert.Null(result.Metrics.Steps.ChangePercent);
+        Assert.Equal("unknown", result.Metrics.Steps.Status);
+        // The goal is what carries a partial day, and it is honest about being partway through.
+        Assert.Equal(5000m, result.Metrics.Steps.Goal);
+    }
+
+    // Resting heart rate is a daily summary the provider either has or does not — not a running
+    // total — so a today reading is a whole reading and stays comparable.
+    [Fact]
+    public async Task TodaysRestingHeartRate_IsStillScoredAgainstTheBaseline()
+    {
+        SetupActivityLogs(days: 30, restingHr: 84);
+        _baselines.GetLatestByCardiMemberAsync(_memberId, 30).Returns(new PatternBaseline
+        {
+            CardiMemberId = _memberId,
+            PeriodDays = 30,
+            AvgRestingHeartRate = 70,
+        });
+
+        var result = await CreateSut().GetDashboardAsync(_userId, _memberId);
+
+        Assert.Equal(84m, result.Metrics!.RestingHeartRate.Value);
+        Assert.Equal(20m, result.Metrics.RestingHeartRate.ChangePercent);
+    }
+
+    // Today's row appears as soon as the provider reports anything, and providers populate
+    // metrics unevenly. Each card falls back to the last day that actually carried its metric
+    // rather than all three blanking because today's row is only partly filled in.
+    [Fact]
+    public async Task MetricsMissingFromTodaysRow_FallBackToTheLastDayThatHadThem()
+    {
+        SetupActivityLogs(
+        [
+            new ActivityLog { CardiMemberId = _memberId, Date = Today, Steps = 1200 },
+            new ActivityLog
+            {
+                CardiMemberId = _memberId,
+                Date = Today.AddDays(-1),
+                Steps = 9000,
+                RestingHeartRate = 68,
+                SleepMinutes = 432,
+                SleepEfficiency = 91,
+            },
+        ]);
+
+        var result = await CreateSut().GetDashboardAsync(_userId, _memberId);
+        var metrics = result.Metrics!;
+
+        Assert.Equal(1200m, metrics.Steps.Value);
+        Assert.Equal(68m, metrics.RestingHeartRate.Value);
+        Assert.Equal(7.2m, metrics.Sleep.Value);
+        // Read off the same night as the duration, never a different one.
+        Assert.Equal(5, metrics.Sleep.QualityScore);
     }
 
     [Fact]

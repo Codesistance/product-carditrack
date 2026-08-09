@@ -165,7 +165,7 @@ public class WearableSyncWorker : CronBackgroundService
 
 Each sync goes through `DeviceSyncService`, which first refreshes the connection's OAuth token via `OAuthTokenRefreshService` when needed — token refresh is part of the sync path, not a standalone job.
 
-It then fetches a **trailing window** of days rather than a single day. Providers finalise a day's data only after midnight, so the window ends at yesterday and reaches back `DeviceProviders:<provider>:SyncLookbackDays` (default **3**). Days are fetched oldest first; each is written to `DeviceActivityLogs` and saved, then that member-day is re-merged into `ActivityLogs`. The raw row is saved before the merge runs because the merge reads every device's *stored* row for the day. A provider failure part-way through still leaves the earlier days stored; `LastSyncDate` is stamped only once the whole window lands, which keeps a partially-synced connection due for retry instead of silently leaving a hole.
+It then fetches a **trailing window** of days rather than a single day. The window ends at **today** — so the dashboard's Key Metrics move during the day rather than sitting on a completed day until midnight — and reaches back `DeviceProviders:<provider>:SyncLookbackDays` (default **3**) complete days, which is what covers providers finalising a day only after midnight. Days are fetched oldest first; each is written to `DeviceActivityLogs` and saved, then that member-day is re-merged into `ActivityLogs`. The raw row is saved before the merge runs because the merge reads every device's *stored* row for the day. A provider failure part-way through still leaves the earlier days stored; `LastSyncDate` is stamped only once the whole window lands, which keeps a partially-synced connection due for retry instead of silently leaving a hole.
 
 ### OrphanedOrganizationCleanupWorker
 
@@ -182,6 +182,7 @@ Turns accumulated `ActivityLog` history into `PatternBaseline` rows — the stat
 
 - Runs weekly, Sunday 02:30 UTC (`0 30 2 * * 0` by default). Baselines describe habits, so recalculating more often adds load without moving the numbers.
 - Selects **active members with at least one activity log in the last 90 days** (`ICardiMemberRepository.GetActiveIdsWithActivitySinceAsync`), so dormant records are not rescanned every week.
+- Windows to the **last complete day**, not today. Ingestion stores the day in progress so the dashboard can show live numbers, and a part-finished day averaged in would drag every member's "normal" down by however far through the day the job happened to run.
 - Fetches each member's logs **once** for the longest period and calculates all three windows (30/60/90) from that one read.
 - Uses **one DI scope per member**: the read tracks up to 90 rows each, which would accumulate across the whole run on a shared `DbContext`, and a member that fails takes nothing else down with it.
 - **Appends** rather than replacing, so a shift in a member's own normal stays visible in history. Retention for these rows falls under the planned retention job (see [dpia.md](../../compliance/dpia.md) §6.3).

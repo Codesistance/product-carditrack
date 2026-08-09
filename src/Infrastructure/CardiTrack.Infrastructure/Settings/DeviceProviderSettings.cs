@@ -38,11 +38,17 @@ public class DeviceProviderSettings
     public int TokenLifetimeHours { get; set; } = 8;
 
     /// <summary>
-    /// How many days back each sync re-fetches, ending at yesterday. Providers finalise a day's
-    /// data some hours after midnight, and a sync that only ever fetched yesterday would leave a
-    /// permanent hole for any day the worker was down. Re-fetching a short trailing window makes
-    /// the job self-healing; the upsert keeps it idempotent.
+    /// How many <em>complete</em> days back each sync re-fetches. The window itself ends at today,
+    /// so a pull covers this many days plus the day in progress.
     /// </summary>
+    /// <remarks>
+    /// Providers finalise a day's data some hours after midnight, and a sync that only ever
+    /// fetched the newest day would leave a permanent hole for any day the worker was down.
+    /// Re-fetching a short trailing window makes the job self-healing; the upsert keeps it
+    /// idempotent. Note the cost: every extra day here is another
+    /// <c>8 × MaxRequestsPerSecond</c>-governed round trip on <em>every</em> pull, against a
+    /// provider quota that is per-app rather than per-user.
+    /// </remarks>
     public int SyncLookbackDays { get; set; } = 3;
 
     /// <summary>
