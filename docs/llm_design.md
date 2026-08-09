@@ -2,7 +2,7 @@
 
 > **STATUS — read this first**
 >
-> - **Built today:** MedGemma (Ollama-served `medgemma:4b` on Cloud Run) as the **Medical** AI provider and **Gemini 2.0 Flash** as the **General** provider, consumed by `GenerativeAiService`, `MedicalAiService`, `HealthInsightService`, and `ReportGenerationService` and surfaced through the API's **chat, insights, and reports** endpoints (`ChatController`, `InsightsController`, `ReportsController`). Insight prompts carry a **member context block** (age, sex, caregiver notes — never name or id) and switch to a **learning-phase variant** until a 30-day baseline exists. Ingestion is **30-minute polling** of the Google Health API by `WearableSyncWorker` in `CardiTrack.Worker`.
+> - **Built today:** MedGemma (Ollama-served `hf.co/unsloth/medgemma-1.5-4b-it-GGUF:Q4_K_M` on Cloud Run, enabled in dev, scale-to-zero) as the **Medical** AI provider and **Gemini 2.0 Flash** as the **General** provider, consumed by `GenerativeAiService`, `MedicalAiService`, `HealthInsightService`, and `ReportGenerationService` and surfaced through the API's **chat, insights, and reports** endpoints (`ChatController`, `InsightsController`, `ReportsController`). Insight prompts carry a **member context block** (age, sex, caregiver notes — never name or id) and switch to a **learning-phase variant** until a 30-day baseline exists. Ingestion is **30-minute polling** of the Google Health API by `WearableSyncWorker` in `CardiTrack.Worker`.
 > - **Target architecture (this document):** the webhook-driven real-time pipeline, SSA-LSTM pre-processing, severity routing, digests, and predictive monitoring described below are the **design** for the GCP pipeline (Pub/Sub + Cloud Run) — they are **not built yet**. Push notification infrastructure (FCM/APNs) does not exist yet either.
 
 ## Overview
@@ -15,8 +15,9 @@ CardiTrack uses MedGemma as its inference model for cardiovascular analysis of w
 
 | Property | Value |
 |----------|-------|
-| Model | `medgemma:4b` (Ollama tag; MedGemma 4B instruction-tuned) |
+| Model | `hf.co/unsloth/medgemma-1.5-4b-it-GGUF:Q4_K_M` (Ollama tag; MedGemma 1.5 4B instruction-tuned) |
 | Parameters | 4B |
+| Quantisation | Q4_K_M — the same tag runs locally, in dev and in prod, so an assessment made in one is meaningful in the others |
 | Type | Multimodal instruction-tuned |
 | Serving | Ollama on Cloud Run (CPU) — see [Infrastructure](#infrastructure) |
 
@@ -30,7 +31,7 @@ MedGemma 4B was chosen over the 27B variant for cost and latency reasons — at 
 
 | Service | Role | Status |
 |---------|------|--------|
-| **Cloud Run — `carditrack-<env>-medgemma`** | MedGemma inference via Ollama (CPU) | **Built** (prod deploy pipeline in place) |
+| **Cloud Run — `carditrack-<env>-medgemma`** | MedGemma inference via Ollama (CPU) | **Built** — enabled in dev; prod leaves `medgemma_image` empty, so the service does not exist there yet |
 | **Cloud Run services/jobs + Cloud Scheduler** | All pipeline logic — webhook receiver, aggregation, SSA-LSTM, predictive batch, digest, push dispatch | Target design |
 | **Cloud Pub/Sub** (`carditrack-prod-realtime`) | Wearable raw event stream buffer | Topic provisioned (prod, `enable_pubsub`); pipeline not built |
 | **Cloud SQL PostgreSQL (existing instance)** | OAuth tokens (encrypted AES-256-GCM in `DeviceConnections`), user profiles, sensitivity settings, family relationships — the transactional system of record (see [infrastructure.md](./infrastructure.md#storage-boundary)); plus **JSONB tables** for AI results (below) | Built (core schema); AI tables not built |
@@ -75,7 +76,7 @@ MedGemma runs as the Cloud Run service `carditrack-<env>-medgemma`, provisioned 
 |----------|-------|
 | Platform | Cloud Run (**CPU** — no GPU) |
 | Serving engine | **Ollama** (`ollama/ollama` base image; model baked in at build time) |
-| Model tag | `medgemma:4b` — pinned in `src/Infrastructure/MedGemma/.model-version` |
+| Model tag | `hf.co/unsloth/medgemma-1.5-4b-it-GGUF:Q4_K_M` — pinned in `src/Infrastructure/MedGemma/.model-version`, and the value `docker-compose.yml` and `AI__Providers__0__Model` must both match |
 | Resources | 8 vCPU / 16 Gi, `cpu_idle = false`, startup CPU boost |
 | Scaling | Max **1 instance** (Ollama cannot safely multi-instance) |
 | Ingress | Internal-only (VPC); port 8080 |

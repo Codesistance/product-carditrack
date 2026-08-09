@@ -67,6 +67,9 @@ module "deployments" {
   # Cloud Run - API
   api_service_name    = local.api_service_name
   api_container_image = var.api_container_image
+  # AI__Providers__0__Model must stay equal to src/Infrastructure/MedGemma/.model-version:
+  # that file is what bakes a tag into the image, and this is the name the API then asks
+  # Ollama for. Disagree and every medical call 404s against a model the server never pulled.
   api_env_vars = merge(
     {
       "ASPNETCORE_ENVIRONMENT"              = title(var.environment)
@@ -75,7 +78,7 @@ module "deployments" {
       "AI__GeneralProvider"                 = "Gemini"
       "AI__MedicalProvider"                 = "MedGemma"
       "AI__Providers__0__Name"              = "MedGemma"
-      "AI__Providers__0__Model"             = "medgemma:4b"
+      "AI__Providers__0__Model"             = "hf.co/unsloth/medgemma-1.5-4b-it-GGUF:Q4_K_M"
       "AI__Providers__0__TimeoutSeconds"    = tostring(var.medgemma_timeout_seconds)
       "AI__Providers__1__Name"              = "Gemini"
       "AI__Providers__1__BaseUrl"           = "https://generativelanguage.googleapis.com"

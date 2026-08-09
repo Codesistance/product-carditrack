@@ -191,7 +191,7 @@ See the [DPIA](docs/compliance/dpia.md) and the [data protection architecture](d
 
 CardiTrack uses a two-provider LLM setup surfaced through the API's chat, insights, and reports endpoints:
 
-- **Medical provider — MedGemma** (`medgemma:4b`) served by **Ollama on Cloud Run** (custom image in `src/Infrastructure/MedGemma/`): health-data interpretation and severity assessment
+- **Medical provider — MedGemma 1.5 4B** (`hf.co/unsloth/medgemma-1.5-4b-it-GGUF:Q4_K_M`) served by **Ollama on Cloud Run** (custom image in `src/Infrastructure/MedGemma/`): health-data interpretation and severity assessment
 - **General provider — Gemini 2.0 Flash**: conversational and general-purpose responses
 
 Health data is currently ingested by the Worker's 30-minute polling sync (`WearableSyncWorker`). A webhook-driven AI ingestion/inference pipeline on GCP (Pub/Sub + Cloud Run) is designed in [docs/llm_design.md](docs/llm_design.md) and lands with the R2 wave.
