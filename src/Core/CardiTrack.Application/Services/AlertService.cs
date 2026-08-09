@@ -48,8 +48,8 @@ public class AlertService : IAlertService
             scope,
             severity,
             status,
-            from,
-            to,
+            ToUtc(from),
+            ToUtc(to),
             Math.Clamp(limit, 1, AlertQuery.MaxLimit),
             Math.Max(offset, 0));
 
@@ -100,20 +100,34 @@ public class AlertService : IAlertService
     }
 
     /// <summary>
-    /// The members named by this page of alerts, keyed by id. Fetched per distinct member rather
-    /// than for the whole viewable set: a page spans a handful of members even when the caregiver
-    /// watches many, so this is the smaller read.
+    /// The date filters as PostgreSQL will accept them. <c>TriggeredDate</c> is a
+    /// <c>timestamp with time zone</c> and the host disables
+    /// <c>Npgsql.EnableLegacyTimestampBehavior</c>, so Npgsql throws on any <see cref="DateTime"/>
+    /// whose <see cref="DateTime.Kind"/> is not UTC — and the mobile "Today"/"This Week" chips
+    /// send local midnight. An unspecified kind is read as UTC, the usual reading of a bare
+    /// timestamp on the wire.
+    /// </summary>
+    private static DateTime? ToUtc(DateTime? value) => value is not { } instant
+        ? null
+        : instant.Kind switch
+        {
+            DateTimeKind.Utc => instant,
+            DateTimeKind.Local => instant.ToUniversalTime(),
+            _ => DateTime.SpecifyKind(instant, DateTimeKind.Utc),
+        };
+
+    /// <summary>
+    /// The members named by this page of alerts, keyed by id — in one read rather than one per
+    /// member, since every id is known up front.
     /// </summary>
     private async Task<Dictionary<Guid, CardiMember>> LoadMembersAsync(IReadOnlyList<Alert> alerts)
     {
-        var members = new Dictionary<Guid, CardiMember>();
-        foreach (var memberId in alerts.Select(a => a.CardiMemberId).Distinct())
-        {
-            var member = await _unitOfWork.CardiMembers.GetByIdAsync(memberId);
-            if (member is not null)
-                members[memberId] = member;
-        }
-        return members;
+        var memberIds = alerts.Select(a => a.CardiMemberId).Distinct().ToList();
+        if (memberIds.Count == 0)
+            return [];
+
+        var members = await _unitOfWork.CardiMembers.FindAsync(m => memberIds.Contains(m.Id));
+        return members.ToDictionary(m => m.Id);
     }
 
     private static AlertSummaryResponse ToSummary(Alert alert, CardiMember? member) => new()

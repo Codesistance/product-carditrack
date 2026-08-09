@@ -1,3 +1,4 @@
+using System.Linq.Expressions;
 using CardiTrack.Application.DTOs.Common;
 using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Services;
@@ -25,7 +26,7 @@ public class AlertServiceTests
         _unitOfWork.Alerts.Returns(_alerts);
 
         SetupLink(canViewHealthData: true);
-        _members.GetByIdAsync(_memberId).Returns(new CardiMember
+        SetupMember(new CardiMember
         {
             Id = _memberId,
             Name = "Margaret Doe",
@@ -41,6 +42,10 @@ public class AlertServiceTests
     // Composed with the real access service, for the same reason DashboardServiceTests is: the
     // link rules being asserted live there, so substituting it away would leave the scoping untested.
     private AlertService CreateSut() => new(_unitOfWork, new CardiMemberAccessService(_unitOfWork));
+
+    private void SetupMember(params CardiMember[] members) =>
+        _members.FindAsync(Arg.Any<Expression<Func<CardiMember, bool>>>())
+            .Returns(members.AsEnumerable());
 
     private void SetupLink(bool canViewHealthData, bool isActive = true)
     {
@@ -126,6 +131,59 @@ public class AlertServiceTests
             Arg.Any<CancellationToken>());
     }
 
+    [Theory]
+    [InlineData(DateTimeKind.Local)]
+    [InlineData(DateTimeKind.Unspecified)]
+    public async Task GetAlerts_NormalisesDateFiltersToUtc(DateTimeKind kind)
+    {
+        // TriggeredDate is a timestamptz and the host disables Npgsql's legacy timestamp
+        // behaviour, so anything but UTC reaching the provider throws — and the mobile
+        // "Today"/"This Week" chips send local midnight.
+        var from = DateTime.SpecifyKind(new DateTime(2026, 8, 9, 0, 0, 0), kind);
+
+        await CreateSut().GetAlertsAsync(_userId, from: from, to: from.AddDays(1));
+
+        await _alerts.Received(1).QueryAsync(
+            Arg.Is<AlertQuery>(q =>
+                q!.From!.Value.Kind == DateTimeKind.Utc && q.To!.Value.Kind == DateTimeKind.Utc),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task GetAlerts_LocalDateFilter_KeepsTheInstantItNamed()
+    {
+        var local = DateTime.SpecifyKind(new DateTime(2026, 8, 9, 0, 0, 0), DateTimeKind.Local);
+
+        await CreateSut().GetAlertsAsync(_userId, from: local);
+
+        await _alerts.Received(1).QueryAsync(
+            Arg.Is<AlertQuery>(q => q!.From == local.ToUniversalTime()),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task GetAlerts_ReadsEveryMemberOnThePageInOneQuery()
+    {
+        var second = Guid.NewGuid();
+        _alerts.QueryAsync(Arg.Any<AlertQuery>(), Arg.Any<CancellationToken>()).Returns(
+        [
+            MakeAlert(),
+            MakeAlert(memberId: second),
+            MakeAlert(),
+        ]);
+        SetupMember(
+            new CardiMember { Id = _memberId, Name = "Margaret Doe", IsActive = true },
+            new CardiMember { Id = second, Name = "Albert Doe", IsActive = true });
+
+        var result = await CreateSut().GetAlertsAsync(_userId);
+
+        Assert.Equal(
+            ["Margaret Doe", "Albert Doe", "Margaret Doe"],
+            result.Alerts.Select(a => a.CardiMemberName));
+        await _members.Received(1).FindAsync(Arg.Any<Expression<Func<CardiMember, bool>>>());
+        await _members.DidNotReceive().GetByIdAsync(Arg.Any<Guid>());
+    }
+
     [Fact]
     public async Task GetAlerts_MapsSeverityTypeAndMemberOntoTheSummary()
     {
@@ -178,7 +236,7 @@ public class AlertServiceTests
     [Fact]
     public async Task GetAlerts_ForAMissingMemberRecord_StillReturnsTheAlert()
     {
-        _members.GetByIdAsync(_memberId).Returns((CardiMember?)null);
+        SetupMember();
         _alerts.QueryAsync(Arg.Any<AlertQuery>(), Arg.Any<CancellationToken>()).Returns([MakeAlert()]);
 
         var result = await CreateSut().GetAlertsAsync(_userId);
