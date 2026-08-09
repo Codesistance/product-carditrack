@@ -50,9 +50,10 @@ public class DeviceProviderSettings
     /// Note the cost: one day's snapshot is <b>13 requests</b> (6 activity roll-ups, 2 heart rate,
     /// 1 sleep, 4 additional metrics), so each day here is another 13 against a ceiling of 300
     /// requests per minute <em>per wearer</em>. That is why these days are re-fetched once a UTC
-    /// day rather than on every pull — see <c>DeviceSyncService.SyncCardiMemberAsync</c>. There is
-    /// no app-side governor enforcing any of this yet: <see cref="MaxRequestsPerSecond"/> and the
-    /// dormancy settings below are read by nothing.
+    /// day rather than on every pull — see <c>DeviceSyncService.SyncCardiMemberAsync</c>. Nothing
+    /// enforces the ceiling at runtime: the interval bounds and dormancy settings below are
+    /// validated at startup but never consulted by the sync pipeline, and
+    /// <see cref="MaxRequestsPerSecond"/> is not read at all.
     /// </para>
     /// </remarks>
     public int SyncLookbackDays { get; set; } = 3;

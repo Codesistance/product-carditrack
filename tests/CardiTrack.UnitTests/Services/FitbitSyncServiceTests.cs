@@ -144,7 +144,9 @@ public class DeviceSyncServiceTests
 
         await CreateSut().SyncCardiMemberAsync(_fitbitConnection);
 
-        await _deviceApi.Received(1).GetHealthSnapshotAsync(Arg.Any<string>(), Today);
+        // The claim is "one day, not the whole window", asserted as a count. Naming the day would
+        // reintroduce a second clock read that disagrees with the service's own across UTC
+        // midnight; which day it is belongs to StoresTodayAsWellAsTheCompletedDays.
         await _deviceApi.Received(1).GetHealthSnapshotAsync(Arg.Any<string>(), Arg.Any<DateOnly>());
     }
 

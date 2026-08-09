@@ -49,17 +49,24 @@ public class DeviceSyncService : IDeviceSyncService
         // caller.
         var accessToken = await _tokenRefresh.RefreshIfExpiredAsync(connection, providerConfig);
 
+        // Read once and passed down, rather than each step asking the clock again. The token
+        // refresh above is network I/O, so a sync that starts just before UTC midnight can reach
+        // the pull on the following day: two independent reads would then decide "no repair pass
+        // needed" against the old day and fetch against the new one, skipping that day's backfill
+        // entirely — and the next pull, now stamped with the new day, would not make it up.
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+
         // The trailing repair days are re-fetched once a UTC day, not on every pull. They exist to
         // catch a provider revising a *finished* day, which happens on the order of hours — paying
         // for them every ten minutes would spend the whole per-user quota re-reading numbers that
         // cannot have moved. Today is pulled every time, which is the part a caregiver sees.
         var needsRepairPass = connection.LastSyncDate is not { } last
-            || DateOnly.FromDateTime(last) != DateOnly.FromDateTime(DateTime.UtcNow);
+            || DateOnly.FromDateTime(last) != today;
         var lookbackDays = needsRepairPass ? Math.Max(1, providerConfig.SyncLookbackDays) : 0;
 
         try
         {
-            await PullWindowAsync(connection, accessToken, lookbackDays);
+            await PullWindowAsync(connection, accessToken, lookbackDays, today);
 
             // Only once the whole window landed — otherwise a partial sync would look complete
             // and the connection would not come due again until the next interval. This also
@@ -87,7 +94,7 @@ public class DeviceSyncService : IDeviceSyncService
         // No LastSyncDate stamp and no SyncError transition: see IDeviceSyncService.AuditSyncAsync.
         // Any revision this turns up still lands in the raw row and is merged, so the audit
         // repairs history as a side effect of measuring it.
-        await PullWindowAsync(connection, accessToken, lookbackDays);
+        await PullWindowAsync(connection, accessToken, lookbackDays, DateOnly.FromDateTime(DateTime.UtcNow));
     }
 
     private DeviceProviderSettings ResolveProviderConfig(DeviceConnection connection) =>
@@ -119,10 +126,9 @@ public class DeviceSyncService : IDeviceSyncService
     /// every ten minutes costs a per-user quota that today's numbers have a better claim on.
     /// </para>
     /// </remarks>
-    private async Task PullWindowAsync(DeviceConnection connection, string accessToken, int lookbackDays)
+    private async Task PullWindowAsync(
+        DeviceConnection connection, string accessToken, int lookbackDays, DateOnly today)
     {
-        var today = DateOnly.FromDateTime(DateTime.UtcNow);
-
         // Oldest first, so a mid-window provider failure still leaves the earlier days stored.
         for (var offset = lookbackDays; offset >= 0; offset--)
         {
