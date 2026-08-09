@@ -57,14 +57,19 @@
                  one tap away, so the card answers "is heart data coming in?" at a glance and
                  "which heart readings?" on demand. -->
             <VerticalStackLayout Spacing="8">
-                <VerticalStackLayout.GestureRecognizers>
-                    <TapGestureRecognizer Tapped="OnSharingTapped"/>
-                </VerticalStackLayout.GestureRecognizers>
 
-                <!-- The disclosure state is announced from the header rather than the section:
-                     a description on the container would collapse the pills into one
-                     accessibility element and swallow their own descriptions. -->
-                <Grid x:Name="SharingHeader" ColumnDefinitions="*,Auto" HeightRequest="16">
+                <!-- The header alone carries the tap: it is also where the disclosure state is
+                     announced, and an accessibility activation is delivered to the focused
+                     element rather than replayed as a touch that bubbles — a gesture on the
+                     container would leave the announced affordance unactivatable. Full card
+                     width and 28 high so the target stays comfortable, and so a tap on a pill or
+                     on the detail text the user is reading does not collapse the panel. The
+                     description stays off the container for the same reason it always did: it
+                     would fold the pills into one accessibility element and swallow theirs. -->
+                <Grid x:Name="SharingHeader" ColumnDefinitions="*,Auto" HeightRequest="28">
+                    <Grid.GestureRecognizers>
+                        <TapGestureRecognizer Tapped="OnSharingTapped"/>
+                    </Grid.GestureRecognizers>
                     <Label Text="SHARING"
                            FontFamily="QuicksandSemiBold"
                            FontSize="9"
