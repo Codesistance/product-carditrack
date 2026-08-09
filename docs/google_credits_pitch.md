@@ -24,7 +24,7 @@ CardiTrack monitors the wearable data elderly users generate every day and appli
 
 **What is built today (August 2026):**
 - **Fitbit integration via the Google Health API** — server-side OAuth and REST client shipped, migrated ahead of the September 2026 legacy-API sunset; the same API covers Pixel Watch
-- **Background ingestion** — our worker service polls the Google Health API on a 30-minute cadence for all monitored users
+- **Background ingestion** — our worker service polls the Google Health API on a 10-minute cadence for all monitored users
 - **AI insights and chat** — MedGemma (Ollama on Cloud Run, internal ingress — health data never leaves the project) and Gemini 2.0 Flash for caregiver Q&A and plain-text health reports
 - **Mobile app (.NET MAUI, iOS + Android)** — onboarding and per-member health dashboard live
 - **Google-mandated health-data disclosure** — already shipped on the web app
@@ -73,7 +73,7 @@ Annual billing carries a 15% discount. The 30-day free trial provisions the Comp
 CardiTrack is cloud-native and infrastructure-as-code from day one (Terraform, Docker, GitHub Actions CI/CD), running entirely on Google Cloud in `europe-west2`. Our current and near-term workloads:
 
 - **Cloud Run services** — API, web app, and self-hosted MedGemma inference (Ollama, internal ingress)
-- **Background worker** — 30-minute polling of the Google Health API for every monitored user (shipped)
+- **Background worker** — 10-minute polling of the Google Health API for every monitored user (shipped)
 - **Cloud SQL (PostgreSQL)** — encrypted health data store with field-level AES-256-GCM for OAuth tokens
 - **Gemini 2.0 Flash** — caregiver chat and health report generation (shipped)
 - **AI pipeline build-out (Q1 2027)** — Pub/Sub event ingestion + Cloud Run: SSA-LSTM pre-processing, MedGemma anomaly scoring, severity routing, daily digests

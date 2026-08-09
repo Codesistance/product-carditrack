@@ -107,7 +107,7 @@ Cross-origin requests are restricted to a configured **origin allow-list** (`Cor
 
 ## Implemented Endpoints (August 2026)
 
-The full implemented surface is 18 endpoints across 8 controllers:
+The full implemented surface is 27 endpoints across 8 controllers:
 
 | Method + Route | Purpose | Doc |
 |----------------|---------|-----|
@@ -118,9 +118,18 @@ The full implemented surface is 18 endpoints across 8 controllers:
 | `POST /api/Onboarding/cardimember` | Create CardiMember | [cardimembers.md](cardimembers.md) |
 | `GET /api/Onboarding/status` | Onboarding progress for current user | — |
 | `GET /api/Onboarding/cardimembers` | List org's CardiMembers | [cardimembers.md](cardimembers.md) |
+| `GET /api/v1/cardimembers/{id}` | Get CardiMember profile | [cardimembers.md](cardimembers.md) |
+| `PUT /api/v1/cardimembers/{id}` | Update CardiMember profile | [cardimembers.md](cardimembers.md) |
+| `DELETE /api/v1/cardimembers/{id}` | Soft-delete CardiMember | [cardimembers.md](cardimembers.md) |
+| `POST /api/v1/cardimembers/{id}/pause` | Pause monitoring (time-bounded) | [cardimembers.md](cardimembers.md) |
+| `DELETE /api/v1/cardimembers/{id}/pause` | Resume monitoring | [cardimembers.md](cardimembers.md) |
 | `GET /api/v1/cardimembers/{id}/dashboard` | Composed per-member dashboard | [health-data.md](health-data.md) |
 | `GET /api/v1/cardimembers/{id}/devices` | List wearable connections | [devices.md](devices.md) |
 | `POST /api/v1/cardimembers/{id}/devices` | Initiate PKCE OAuth connection | [devices.md](devices.md) |
+| `DELETE /api/v1/cardimembers/{id}/devices/{deviceId}` | Disconnect and remove a device | [devices.md](devices.md) |
+| `POST /api/v1/cardimembers/{id}/devices/{deviceId}/primary` | Set the primary device | [devices.md](devices.md) |
+| `POST /api/v1/cardimembers/{id}/devices/sync` | Trigger a manual sync | [devices.md](devices.md) |
+| `POST /api/v1/cardimembers/{id}/devices/{deviceId}/refresh` | Refresh a device connection's tokens | [devices.md](devices.md) |
 | `GET /api/v1/oauth/redirect/{provider}` | Anonymous OAuth bounce (302) | [devices.md](devices.md) |
 | `POST /api/v1/oauth/callback/{provider}` | Complete OAuth, store connection (201) | [devices.md](devices.md) |
 | `POST /api/v1/chat` | AI chat with recent health data as context | — |
@@ -146,8 +155,8 @@ Plus `GET /health` — anonymous liveness probe gated by the `X-Health-Token` he
 | File | Domain | Status | Key User Stories |
 |------|--------|--------|-----------------|
 | [auth.md](auth.md) | Authentication | **Implemented** (Auth0-hosted; one API endpoint) | 1.1, 10.2 |
-| [cardimembers.md](cardimembers.md) | CardiMember Management | **Planned** — onboarding endpoints cover create/list today | 1.2, 7.1, 7.2, 7.3 |
-| [devices.md](devices.md) | Device Management | **Implemented** (connect/list/OAuth); manage endpoints planned | 1.3, 6.2 |
+| [cardimembers.md](cardimembers.md) | CardiMember Management | **Partially implemented** — CRUD + pause/resume shipped; consent, notes, plan-limit enforcement planned | 1.2, 7.1, 7.2, 7.3 |
+| [devices.md](devices.md) | Device Management | **Implemented** (connect/list/OAuth/remove/primary/sync/refresh); get-single-device planned | 1.3, 6.2 |
 | [health-data.md](health-data.md) | Health Data & Dashboard | **Partially implemented** (per-member dashboard, AI baseline) | 2.1, 2.2, 2.3, 5.2, 10.1 |
 | [alerts.md](alerts.md) | Alerts & Notification Preferences | **Planned** — alert AI insight endpoint exists | 3.1, 3.2, 3.3, 11.1–11.3 |
 | [family.md](family.md) | Family Collaboration | **Planned** | 4.1, 4.2, 8.3 |
@@ -171,6 +180,6 @@ Plus `GET /health` — anonymous liveness probe gated by the `X-Health-Token` he
 
 ---
 
-**Document Version:** 2.0
-**Last Updated:** August 7, 2026
+**Document Version:** 2.1
+**Last Updated:** August 9, 2026
 **Owner:** Backend Engineering Team

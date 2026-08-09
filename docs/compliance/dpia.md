@@ -20,7 +20,7 @@
 
 The repository contains two layers that materially disagree:
 
-- **Part A — current state**: what is implemented in `src/` and deployed by `infrastructure/*.tf` (GCP `europe-west2`, Cloud Run, Cloud SQL PostgreSQL, 30-minute polling ingestion, Gemini and self-hosted MedGemma inference).
+- **Part A — current state**: what is implemented in `src/` and deployed by `infrastructure/*.tf` (GCP `europe-west2`, Cloud Run, Cloud SQL PostgreSQL, 10-minute polling ingestion, Gemini and self-hosted MedGemma inference).
 - **Part B — planned state**: what the design documents describe but which is not built (`docs/llm_design.md` AI pipeline, notifications/SMS/push, Stripe billing, consent records, retention workers). GDPR requires a DPIA **before** high-risk processing begins, so Part B is assessed prospectively; the processing in Part B must not launch until its risks are mitigated.
 
 Contradictions between the two layers are catalogued in Appendix A. Where a documented control does not exist in code, this DPIA treats it as **absent**, not as present.
@@ -42,7 +42,7 @@ Assessed against the EDPB (WP248) nine criteria; two or more generally makes a D
 |---|---|---|---|
 | 1 | Evaluation or scoring | **Yes** | Behavioural profiles built automatically from wearable history and scored against (`src/Core/CardiTrack.Application/Services/BaselineCalculator.cs`; `src/Worker/CardiTrack.Worker/Workers/BaselineCalculationWorker.cs`; `src/Core/CardiTrack.Domain/Entities/PatternBaseline.cs`; `src/Core/CardiTrack.Application/Services/DashboardService.cs`). Planned: per-user LSTM risk scores 0–100, illness/fall-risk prediction (`docs/llm_design.md`). |
 | 2 | Automated decision-making with significant effect | **Yes (planned)** | LLM severity classification decides whether family are alerted in real time, incl. SMS fallback — a decision that dispatches a human to check on the wearer (`docs/llm_design.md` severity routing). See risk R-B1. |
-| 3 | Systematic monitoring | **Yes** | Continuous wearable monitoring, 30-minute sync (`src/Worker/CardiTrack.Worker/Workers/WearableSyncWorker.cs`); planned 5-minute windows and inactivity detection (`docs/llm_design.md`). |
+| 3 | Systematic monitoring | **Yes** | Continuous wearable monitoring, 10-minute sync (`src/Worker/CardiTrack.Worker/Workers/WearableSyncWorker.cs`); planned 5-minute windows and inactivity detection (`docs/llm_design.md`). |
 | 4 | Sensitive / special-category data | **Yes** | Health data throughout (Art. 9): heart rate, SpO2, sleep architecture, medical notes (§4.2). |
 | 5 | Large scale | **Prospectively** | Target market framing in `docs/solution_manifest.md`; currently ≤100 test users. |
 | 6 | Matching or combining datasets | **Yes** | Wearable data combined with caregiver-entered medical notes, alerts, and behavioural baselines. |
@@ -96,7 +96,7 @@ Minimisation observations (feed §7): the schema holds fields nothing populates 
 
 | # | Operation | Data | Where |
 |---|---|---|---|
-| A1 | **Wearable ingestion** — 30-min polling of Google Health API (restricted scopes: activity, health metrics, sleep) for the previous day's rollup; upsert into `ActivityLog` | Daily activity, heart rate, sleep per member | `WearableSyncWorker.cs`; `src/Infrastructure/CardiTrack.Infrastructure/Services/DeviceSyncService.cs`; `.../ExternalClients/FitbitApiClient.cs` |
+| A1 | **Wearable ingestion** — 10-min polling of Google Health API (restricted scopes: activity, health metrics, sleep) for the previous day's rollup; upsert into `ActivityLog` | Daily activity, heart rate, sleep per member | `WearableSyncWorker.cs`; `src/Infrastructure/CardiTrack.Infrastructure/Services/DeviceSyncService.cs`; `.../ExternalClients/FitbitApiClient.cs` |
 | A2 | **Device OAuth connect** — PKCE flow; encrypted token storage; deep-link return | OAuth tokens, scopes | `DeviceConnectionService.cs`, `OAuthCodeExchangeService.cs` |
 | A3 | **Dashboard** — health status derivation with 30%/50% deviation thresholds; relationship-checked | ActivityLog, baselines | `DashboardService.cs` |
 | A4 | **AI chat** — member GUID + last 3 days of steps/HR/sleep + free-text user message sent to **Google Gemini** (`generativelanguage.googleapis.com`, `gemini-2.0-flash`) | **H** → external Google API | `src/Presentation/CardiTrack.API/Controllers/ChatController.cs`; `GeminiClient.cs`; `infrastructure/main.tf` |
@@ -340,15 +340,15 @@ The DPIA relies on the implemented layer. These doc claims are **not true of the
 | # | Documented claim | Reality | Doc source |
 |---|---|---|---|
 | A-1 | Azure stack (Azure SQL + TDE, Cosmos, Key Vault, Event Hubs, Notification Hubs); "HIPAA BAA with Microsoft" | GCP: Cloud Run, Cloud SQL **PostgreSQL**, Secret Manager, GCS (`infrastructure/*.tf`) | `docs/infrastructure.md`, `infrastructure/README.md` (stale), `docs/apps/api/readme.md` |
-| A-2 | `MedicalNotes` AES-256-GCM encrypted | Plaintext; `// TODO: Encrypt this` | `docs/infrastructure.md`, `docs/release_matrix.md`, `CardiMember.cs` class comment |
+| A-2 | `MedicalNotes` AES-256-GCM encrypted | ✅ Resolved (Aug 2026): encrypted in `CardiMemberService` (AES-256-GCM at rest) | `docs/infrastructure.md`, `docs/release_matrix.md`, `CardiMemberService.cs` |
 | A-3 | "No local passwords / API never stores passwords" | `User.PasswordHash` is a required column (unused) | `docs/technical/entity_summary.md`, `docs/execution/backend/api/auth.md` |
-| A-4 | "All PHI access is audit-logged", 6-year retention | `AuditLog` never written | `docs/apps/api/readme.md` |
+| A-4 | "All PHI access is audit-logged", 6-year retention | Partially resolved (Aug 2026): `AuditLoggingMiddleware` now writes `AuditLog`; retention remains 30/90 days deployed vs the 6-year policy (see A-12) | `docs/apps/api/readme.md` |
 | A-5 | Consent recorded per metric; "data types without recorded consent are never processed" | No consent entity/endpoint; sync unconditional | `docs/llm_design.md`, `docs/infrastructure.md` |
-| A-6 | Worker hosts token-refresh, baseline, trial, retention jobs | Worker has three jobs (sync, orphaned-org cleanup, baseline calculation); refresh is inline in sync; trial and retention jobs remain absent | `docs/apps/worker/readme.md`, `docs/technical/user_onboarding_process.md` |
-| A-7 | Webhook-driven ingestion | 30-minute polling of daily rollups | `docs/llm_design.md`, `docs/apps/worker/readme.md` (notes polling is interim) |
+| A-6 | Worker hosts token-refresh, baseline, trial, retention jobs | Worker has four jobs (sync, orphaned-org cleanup, baseline calculation, device-sync audit); refresh is inline in sync; trial and retention jobs remain absent | `docs/apps/worker/readme.md`, `docs/technical/user_onboarding_process.md` |
+| A-7 | Webhook-driven ingestion | 10-minute polling of daily rollups | `docs/llm_design.md`, `docs/apps/worker/readme.md` (notes polling is interim) |
 | A-8 | Report links 24h, PDF/CSV/FHIR/HL7, plan-gated | Gemini plain text, 1h Redis TTL, no gate, no ownership check | `docs/execution/backend/api/reports.md` |
 | A-9 | Roles Admin/Staff/Viewer | Code enum: Member/Admin/Staff | `docs/execution/backend/api/family.md` vs `UserRole.cs` |
 | A-10 | "No PHI in logs (entity IDs only)"; "auth tokens never logged" | Email in every log line; OAuth `state`/`code` in request logs | `docs/archive/infrastructure_setup.md`, `docs/technical/user_onboarding_process.md` |
 | A-11 | 90-day (HIPAA) backup retention | 7 automated backups in Terraform | `infrastructure/README.md` vs `cloud_sql.tf` |
-| A-12 | Audit-log retention 6 years | Also stated as "90 days minimum" elsewhere | `docs/infrastructure.md` vs `AuditLog.cs`, `user_onboarding_process.md` |
+| A-12 | Audit-log retention 6 years | Docs standardized (Aug 9, 2026) on **6-year policy** with an explicit interim: deployed infra retains 30 days dev / 90 days prod via tfvars until the retention pipeline lands | `docs/infrastructure.md`, `entity_summary.md`, `user_onboarding_process.md` |
 | A-13 | Auth0 prod tenant US "for HIPAA" | Runbook (authoritative) says UK/EU, undecided | `docs/technical/auth0_integration.md` vs `auth0_setup_runbook.md` |

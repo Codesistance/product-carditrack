@@ -209,7 +209,7 @@ Get the current calculated numeric baseline values (steps, resting heart rate, s
 
 ## POST `/api/v1/cardimembers/{id}/health-data/batch`
 
-> **Planned — not yet implemented.** No Apple Health bridge exists — there is no ingestion endpoint, and server-OAuth data arrives via the Worker's 30-minute provider poll (not webhooks).
+> **Planned — not yet implemented.** No Apple Health bridge exists — there is no ingestion endpoint, and server-OAuth data arrives via the Worker's 10-minute provider poll (not webhooks).
 
 Device-bridge ingestion for **on-device providers** (Apple Health): the mobile app would read HealthKit locally and upload normalized daily samples.
 

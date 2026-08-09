@@ -2,7 +2,7 @@
 
 This document provides an overview of all domain entities in the CardiTrack system. All entities live in **PostgreSQL 16 on GCP Cloud SQL**, the transactional system of record; the planned AI pipeline's outputs are documented separately in [llm_design.md](../llm_design.md). Field-level protection (what is encrypted, and what is planned to be) is covered in [data_protection_architecture.md](./data_protection_architecture.md).
 
-**Implemented today:** 12 entities and 13 enums exist in `CardiTrack.Domain`, mapped by EF Core (7 migrations applied). A further set of feature entities is designed but not yet built — see the "Planned" section below.
+**Implemented today:** 13 entities and 14 enums exist in `CardiTrack.Domain` (plus the `ActivityLogMerge` merge helper in `Entities/`), mapped by EF Core (10 migrations applied). A further set of feature entities is designed but not yet built — see the "Planned" section below.
 
 ## Entity Overview
 
@@ -42,7 +42,8 @@ This document provides an overview of all domain entities in the CardiTrack syst
 - Stores OAuth tokens for connected wearable devices
 - **Device-agnostic design** - supports Fitbit, Apple Watch, Garmin, Samsung, etc.
 - Contains: DeviceType, DeviceName, IsPrimary, ConnectionStatus, AccessToken (encrypted AES-256-GCM), RefreshToken (encrypted), TokenExpiry, Scopes (JSON), ConnectedDate, LastSyncDate, Metadata (JSON)
-- `SyncFrequencyMinutes` — default **30** (drives the polling sync cycle)
+- `SyncFrequencyMinutes` — default **10** (drives the polling sync cycle; reduced from 30 by `ReduceDefaultSyncFrequencyToTenMinutes`)
+- `NextPullAt` — when the connection should next be pulled; null falls back to `LastSyncDate + SyncFrequencyMinutes` until cadence calibration writes a schedule
 - No FK constraints - uses CardiMemberId (Guid)
 
 #### 6. **DeviceActivityLog** *(raw)*
@@ -59,39 +60,45 @@ This document provides an overview of all domain entities in the CardiTrack syst
 - DataSource / DeviceConnectionId record the highest-priority contributing device
 - No FK constraints - uses CardiMemberId and DeviceConnectionId (Guid)
 
-#### 8. **Alert**
+#### 8. **DeviceTypeSyncProfile**
+- Observed sync behaviour per **device type** (one row per `DeviceType`): how long after a day ends its data settles (`SettleLatencyP50/P95Hours`), how far back the provider revises (`RevisionTailP99Hours`), and how often a pull finds anything new (`PollYieldRatio`, `SampleSize`)
+- Derives `RecommendedPullIntervalMinutes` / `RecommendedLookbackDays`, clamped to per-environment configured bounds — a calibration run can never widen its own limits
+- `CalculatedAt` tracks calibration freshness (distinct from `UpdatedDate`)
+- Added by migration `AddSyncCadenceProfileAndPullSchedule`
+
+#### 9. **Alert**
 - AI-generated health alerts (generation is planned; the table exists)
 - AlertType: Inactivity, HeartRate, Sleep, PatternBreak, Trend
 - AlertSeverity: Green, Yellow, Orange, Red (Green = 1, informational)
 - No AlertStatus enum — lifecycle is tracked with `AcknowledgedDate`, `AcknowledgedByUserId`, and a boolean `IsResolved`
 - MetricValues JSON captures the triggering readings
 
-#### 9. **PatternBaseline**
-- AI-learned normal patterns for each CardiMember (calculation job not yet built)
+#### 10. **PatternBaseline**
+- AI-learned normal patterns for each CardiMember, recalculated weekly by `BaselineCalculationWorker` (Sunday 02:30 UTC)
 - Calculated over 30, 60, or 90 day periods
 - Contains: Average steps, heart rate baselines, sleep patterns
 - Includes day-of-week variations (JSON)
 
 ### Business Entities
 
-#### 10. **Subscription**
+#### 11. **Subscription**
 - Trial/subscription state per organization — **no billing integration and no Stripe fields**
 - Contains: Tier (Basic, Complete, Plus), Status, StartDate, EndDate, `TrialEndDate` (30-day trial), BillingCycle, Price, Currency (default USD), PaymentMethod (JSON), Features (JSON)
 - MaxCardiMembers and MaxUsers are **organization-type driven**, not tier driven: Family 5 members / 1 user; Business 50 / 20
 - Unique index on OrganizationId; **FK to Organizations with cascade delete** (the one FK in the schema)
 
-#### 11. **Device** (Catalog)
+#### 12. **Device** (Catalog)
 - Reference data for supported wearable devices
 - Contains: DeviceType, Manufacturer, ModelName, DisplayName, Capabilities (JSON), ApiEndpoint, OAuthConfig (JSON), SortOrder, IconUrl
 - Used for UI display and capability checking; catalog `DisplayName` takes precedence over the enum display name
 
 ### Compliance Entities
 
-#### 12. **AuditLog**
+#### 13. **AuditLog**
 - HIPAA compliance audit trail for PHI access
 - Contains: UserId, CardiMemberId, Action, EntityType, Timestamp, IP address, user agent, request details, DataAccessed/ChangedFields (JSON)
-- **90-day minimum retention** (configured 30 days dev / 90 days prod via tfvars)
-- The table and entity exist, but **nothing writes to it yet** — audit-writing middleware is a planned follow-up
+- **Retention policy is 6 years**; infrastructure currently implements **30 days dev / 90 days prod** (tfvars) — closing that gap is tracked follow-up infra work
+- Written by `AuditLoggingMiddleware` (in `CardiTrack.API`) via `IAuditLogRepository`
 
 ## Planned Entities — not yet implemented
 
@@ -143,7 +150,7 @@ This document provides an overview of all domain entities in the CardiTrack syst
 ### 6. Security & Encryption
 - Device OAuth tokens (AccessToken, RefreshToken) and CardiMember MedicalNotes are encrypted with AES-256-GCM — see [data_protection_architecture.md](./data_protection_architecture.md)
 - Credentials are Auth0-hosted; a legacy `PasswordHash` column remains on Users pending removal
-- Audit logging designed for all PHI access (writes not yet wired)
+- Audit logging for PHI access is wired via `AuditLoggingMiddleware` in the API
 
 ## Entity Relationships
 
@@ -164,11 +171,13 @@ DeviceConnection (1) ──→ (N) ActivityLog
 User (1) ──→ (N) AuditLog
 ```
 
+`DeviceTypeSyncProfile` stands alone — one row per `DeviceType` value, no relationships to other entities.
+
 Planned relationships (when the planned entities land): Organization→FamilyInvitation, User→PushNotificationToken/NotificationPreference/Report, CardiMember→EmergencyContact/ConsentRecord/SharedNote/CardiMemberNote/AlertPreference, Alert→AlertNote/AlertPhoto.
 
 ## Enums
 
-The 13 domain enums:
+The 14 domain enums:
 
 - **OrganizationType**: Family, Business
 - **UserRole**: Member, Admin, Staff (displays "Member" / "Administrator" / "Staff Member")
@@ -178,6 +187,7 @@ The 13 domain enums:
 - **ConnectionStatus**: Connected, Disconnected, TokenExpired, AuthError, SyncError (no Pending)
 - **AlertType**: Inactivity, HeartRate, Sleep, PatternBreak, Trend
 - **AlertSeverity**: Green (1), Yellow, Orange, Red
+- **AlertSensitivity**: Low, Medium, High (default Medium on CardiMember; stored, not yet consumed)
 - **SubscriptionTier**: Basic, Complete, Plus
 - **SubscriptionStatus**: Trial (1), Active, PastDue, Cancelled, Suspended
 - **BillingCycle**: Monthly, Annual
@@ -198,6 +208,7 @@ CardiTrack.Domain/
 │   ├── IEntity.cs
 │   └── ISoftDeletable.cs
 ├── Enums/
+│   ├── AlertSensitivity.cs
 │   ├── AlertSeverity.cs
 │   ├── AlertType.cs
 │   ├── BillingCycle.cs
@@ -213,11 +224,14 @@ CardiTrack.Domain/
 │   └── UserRole.cs
 └── Entities/
     ├── ActivityLog.cs
+    ├── ActivityLogMerge.cs   (static merge helper, not an entity)
     ├── Alert.cs
     ├── AuditLog.cs
     ├── CardiMember.cs
     ├── Device.cs
+    ├── DeviceActivityLog.cs
     ├── DeviceConnection.cs
+    ├── DeviceTypeSyncProfile.cs
     ├── Organization.cs
     ├── PatternBaseline.cs
     ├── Subscription.cs
@@ -225,19 +239,20 @@ CardiTrack.Domain/
     └── UserCardiMember.cs
 ```
 
-EF Core mapping lives in `CardiTrack.Infrastructure/Persistence` (a configuration class per entity; plural table names — Users, CardiMembers, ActivityLogs, PatternBaselines, Alerts, AuditLogs, ...). Six migrations exist: InitialCreate, AddUserLocale, CleanupOrphanedOnboardingOrganizations, AddSubscriptionOrganizationForeignKey, AddUserAuth0UserIdUniqueIndex, AddUserHealthDataDisclosureDismissed.
+EF Core mapping lives in `CardiTrack.Infrastructure/Persistence` (a configuration class per entity; plural table names — Users, CardiMembers, ActivityLogs, PatternBaselines, Alerts, AuditLogs, ...). Ten migrations exist: InitialCreate, AddUserLocale, CleanupOrphanedOnboardingOrganizations, AddSubscriptionOrganizationForeignKey, AddUserAuth0UserIdUniqueIndex, AddUserHealthDataDisclosureDismissed, AddCardiMemberMonitoringPauseAndAlertSensitivity, AddDeviceActivityLogs, AddSyncCadenceProfileAndPullSchedule, ReduceDefaultSyncFrequencyToTenMinutes.
 
 ## Next Steps
 
-1. ~~Create EF Core DbContext and entity configurations~~ — done (`CardiTrackDbContext` + per-entity FluentAPI configurations, 6 migrations)
-2. ~~Set up encryption for device OAuth tokens~~ — done (AES-256-GCM); **MedicalNotes encryption still pending**
+1. ~~Create EF Core DbContext and entity configurations~~ — done (`CardiTrackDbContext` + per-entity FluentAPI configurations, 10 migrations)
+2. ~~Set up encryption for device OAuth tokens and MedicalNotes~~ — done (AES-256-GCM for both)
 3. ~~Implement repositories with Guid-based queries~~ — done (UnitOfWork + repositories)
 4. ~~Add core indexes~~ — done (unique Email, filtered unique Auth0UserId, OrganizationId, status indexes)
-5. Wire audit-logging middleware so AuditLogs actually receives writes
+5. ~~Wire audit-logging middleware so AuditLogs actually receives writes~~ — done (`AuditLoggingMiddleware`)
 6. Remove the legacy `Users.PasswordHash` column
 7. Create migrations for the planned feature entities when their features are scheduled
 8. Persist Report state (currently cache-only, lost on restart)
+9. Extend audit-log retention infrastructure from 30/90 days to the 6-year policy
 
 ---
 
-**Last Updated:** August 7, 2026
+**Last Updated:** August 9, 2026

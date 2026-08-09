@@ -6,7 +6,7 @@ CardiTrack supports **two organization types** with distinct onboarding flows:
 1. **Family Accounts**: Individual/family monitoring elderly relatives
 2. **Business Accounts**: Care homes and healthcare facilities with staff management
 
-**Implemented today:** embedded Auth0 email/password auth with a hard email-verification gate, atomic organization + trial subscription + user setup (`POST /api/Onboarding/setup`), CardiMember creation, Fitbit device connection via Google OAuth (PKCE) with 30-minute polling ingestion, and weekly pattern-baseline calculation. Social login, notifications, and billing are planned (marked below).
+**Implemented today:** embedded Auth0 email/password auth with a hard email-verification gate, atomic organization + trial subscription + user setup (`POST /api/Onboarding/setup`), CardiMember creation, Fitbit device connection via Google OAuth (PKCE) with 10-minute polling ingestion, and weekly pattern-baseline calculation. Social login, notifications, and billing are planned (marked below).
 
 ---
 
@@ -217,7 +217,7 @@ Supports 8+ device types:
    ↓
 7. Save encrypted tokens to database (Cloud SQL PostgreSQL, DeviceConnections)
    ↓
-8. Initial sync runs; thereafter the connection is picked up by the 30-minute
+8. Initial sync runs; thereafter the connection is picked up by the 10-minute
    polling cycle (webhook push ingestion is planned, not built)
    ↓
 9. Notify family: "Fitbit Connected!"
@@ -265,7 +265,7 @@ Unverified apps are capped at 100 connected users — enough for dev and beta, b
 - [ ] Annual assessment by an authorized third-party lab (self-scan not accepted; ~$500–$4,500, 2–6 weeks) → Letter of Assessment submitted to Google, renewed every 12 months
 
 **Data Ingestion & Token Management (implemented today):**
-- **30-minute polling** — `WearableSyncWorker` (in `CardiTrack.Worker`, cron `0 */30 * * * *`) finds connections due for sync and pulls data through the keyed per-provider sync service. There is no webhook ingestion.
+- **10-minute polling** — `WearableSyncWorker` (in `CardiTrack.Worker`, cron `0 */10 * * * *`) finds connections due for sync and pulls data through the keyed per-provider sync service. There is no webhook ingestion.
 - **Token refresh** — happens **inside the sync path**: `OAuthTokenRefreshService` refreshes expiring OAuth tokens as part of each sync. There is no separate token-refresh worker.
 - **Planned**: Google Health API webhook push (notify-then-fetch) feeding the AI pipeline (see [llm_design.md](../llm_design.md)), and a `device_disconnected` alert when a device goes quiet.
 
@@ -365,7 +365,7 @@ Each metric is gated on **7 samples of its own** and left null when thinner — 
 **Data Encryption:**
 - **At Rest**: Cloud SQL for PostgreSQL encryption at rest (Google-managed)
   - Device OAuth tokens: AES-256-GCM application-level encryption (implemented)
-  - Medical notes: application-level encryption **planned** — currently stored unencrypted (tracked follow-up; see [data_protection_architecture.md](./data_protection_architecture.md))
+  - Medical notes: AES-256-GCM application-level encryption (implemented in `CardiMemberService`; see [data_protection_architecture.md](./data_protection_architecture.md))
 - **In Transit**: HTTPS/TLS 1.2+ for all connections
 - **Backups**: automated encrypted Cloud SQL backups
 
@@ -376,7 +376,7 @@ Each metric is gated on **7 samples of its own** and left null when thinner — 
 
 **Audit Trail:**
 ```csharp
-AuditLog Entity (90-day minimum retention; 30 dev / 90 prod via tfvars):
+AuditLog Entity (6-year retention policy; deployed infra currently retains 30 dev / 90 prod via tfvars):
 ├── UserId: Who accessed
 ├── CardiMemberId: Whose data was accessed
 ├── Action: ViewDashboard, ViewAlert, ExportData, etc.
@@ -385,7 +385,7 @@ AuditLog Entity (90-day minimum retention; 30 dev / 90 prod via tfvars):
 ├── UserAgent: Browser/device info
 └── DataAccessed: JSON (specific fields viewed)
 ```
-(The table and entity exist; audit-writing middleware is a planned follow-up — nothing writes to it yet.)
+(Written on PHI access by `AuditLoggingMiddleware` in the API.)
 
 **Business Associate Agreements (BAAs):**
 - ✅ **Auth0**: BAA required before prod go-live ([runbook §1](./auth0_setup_runbook.md))
@@ -455,24 +455,31 @@ ActivityLogs (Populated by polling sync)
 
 PatternBaselines (Written weekly by BaselineCalculationWorker)
 Alerts (Planned generation — table exists)
-AuditLogs (Planned writes — table exists)
+AuditLogs (Written by AuditLoggingMiddleware on PHI access)
 ```
 
 ### **Background Jobs (CardiTrack.Worker — Cronos)**
 
-Non-AI background jobs run in `CardiTrack.Worker` as `CronBackgroundService` subclasses. **Exactly two workers exist today** (6-field cron, Cronos IncludeSeconds, configured in appsettings):
+Non-AI background jobs run in `CardiTrack.Worker` as `CronBackgroundService` subclasses. **Exactly four workers exist today** (6-field cron, Cronos IncludeSeconds, configured in appsettings):
 
 ```csharp
-// Every 30 minutes — polls device connections due for sync; token refresh
+// Every 10 minutes — polls device connections due for sync; token refresh
 // happens inside the sync path (OAuthTokenRefreshService)
-public class WearableSyncWorker : CronBackgroundService              // "0 */30 * * * *"
+public class WearableSyncWorker : CronBackgroundService              // "0 */10 * * * *"
 
 // Daily 03:00 UTC — deletes orphaned organizations (>24h, no users/members);
 // removals logged at Warning (PR #5 safety net)
 public class OrphanedOrganizationCleanupWorker : CronBackgroundService // "0 0 3 * * *"
+
+// Weekly Sunday 02:30 UTC — recalculates 30/60/90-day pattern baselines
+public class BaselineCalculationWorker : CronBackgroundService       // "0 30 2 * * 0"
+
+// Weekly Sunday 04:00 UTC — re-fetches a random sample of connections over a
+// wide window to measure how far back providers revise data (observation only)
+public class DeviceSyncAuditWorker : CronBackgroundService           // "0 0 4 * * 0"
 ```
 
-> **Planned workers (not yet built):** baseline recalculation, trial-expiration reminders, retention/cleanup. The AI pipeline's scheduled jobs (aggregation, predictive batch, digests) belong to the planned GCP ingestion pipeline — see [llm_design.md](../llm_design.md).
+> **Planned workers (not yet built):** trial-expiration reminders, retention/cleanup. The AI pipeline's scheduled jobs (aggregation, predictive batch, digests) belong to the planned GCP ingestion pipeline — see [llm_design.md](../llm_design.md).
 
 ---
 
@@ -504,13 +511,15 @@ public class OrphanedOrganizationCleanupWorker : CronBackgroundService // "0 0 3
 - [ ] **Generate opaque OAuth state + PKCE** (single-use, 15-min TTL) for device connection
 - [ ] **Bounce** Google's redirect into the `carditrack://` deep link
 - [ ] **Exchange OAuth code, encrypt and store device tokens** (AES-256-GCM)
-- [ ] **Poll device data every 30 minutes**; refresh OAuth tokens in the sync path
+- [ ] **Poll device data every 10 minutes**; refresh OAuth tokens in the sync path
 - [ ] **Clean up orphaned organizations** daily (03:00 UTC)
+- [ ] **Recalculate pattern baselines** weekly (Sunday 02:30 UTC); **audit provider revision windows** weekly (Sunday 04:00 UTC)
+- [ ] **Write audit-log entries** for PHI access (`AuditLoggingMiddleware`)
 
 ### **System Actions (Planned):**
 - [ ] Welcome email; device connection invitations; webhook ingestion
-- [ ] Baseline calculation after 30 days; AI anomaly detection
-- [ ] Audit-log writes; trial expiration reminders; trial conversion/suspension
+- [ ] AI anomaly detection
+- [ ] Trial expiration reminders; trial conversion/suspension
 
 ---
 
@@ -527,7 +536,7 @@ public class OrphanedOrganizationCleanupWorker : CronBackgroundService // "0 0 3
 
 **Time to Value:**
 - Account creation → First device connection: <24 hours
-- Device connection → First synced data: <30 minutes (initial sync + 30-minute polling cycle)
+- Device connection → First synced data: <10 minutes (initial sync + 10-minute polling cycle)
 - Trial start → Baseline established: 30 days (planned)
 
 ---
@@ -565,12 +574,12 @@ The CardiTrack user onboarding process is designed to be **secure, compliant, an
 2. **Auth0 integration**: credentials Auth0-hosted, hard email-verification gate
 3. **Security first**: encrypted device tokens, rate limiting, opaque single-use OAuth state with PKCE
 4. **Privacy transparency**: clear explanation of what family sees; Google-format health-data disclosure (web shipped, mobile pending)
-5. **Immediate value**: first device data within one polling cycle (30 minutes)
+5. **Immediate value**: first device data within one polling cycle (10 minutes)
 
 **Authentication today:** email/password via Auth0's embedded password-realm grant, with mandatory email verification. **Planned:** Google/Apple social login (buttons rendered, handlers pending — Phase 9), enterprise SSO, MFA, account linking.
 
 **Critical Path:**
-Create Account (Auth0 signup) → Verify Email (mandatory gate) → Sign In → Atomic Setup (Organization + Trial + User) → CardiMember Setup → Device Connection (Fitbit via Google OAuth + PKCE) → 30-minute polling ingestion → *(planned)* Notifications → Baseline → Paid Conversion
+Create Account (Auth0 signup) → Verify Email (mandatory gate) → Sign In → Atomic Setup (Organization + Trial + User) → CardiMember Setup → Device Connection (Fitbit via Google OAuth + PKCE) → 10-minute polling ingestion → *(planned)* Notifications → Baseline → Paid Conversion
 
 ---
 

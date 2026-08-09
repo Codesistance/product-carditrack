@@ -1,6 +1,6 @@
 # CardiTrack User Stories for UI/UX Design
 
-> **Build status (August 7, 2026):** 9 of 17 Figma M1 screens are built in `CardiTrack.Mobile` (M1-01 through M1-09); M1-10 through M1-17 show "Coming soon" dialogs. Four shipped screens have **no Figma M1 frame — needs design sync**: SignInPage, ForgotPasswordPage, VerifyEmailPage, and Onboarding/AccountSetupPage (see Stories 1.5–1.8). Release waves re-baselined: MVP 1 (R1) → Q4 2026, MVP 2 (R2) → Q1 2027, MVP 3 (R3) → Q2 2027. Release sequencing is governed by the [release matrix](../../../release_matrix.md).
+> **Build status (August 9, 2026):** 12 of 17 Figma M1 screens are built in `CardiTrack.Mobile` (M1-01 through M1-09, plus M1-13 CardiMember Detail, M1-14 Edit CardiMember, M1-15 Device Management); the unbuilt screens are the alert set (M1-10 stub, M1-11/M1-12/M1-16) and M1-17 Health Data Export. Four shipped screens have **no Figma M1 frame — needs design sync**: SignInPage, ForgotPasswordPage, VerifyEmailPage, and Onboarding/AccountSetupPage (see Stories 1.5–1.8). Release waves re-baselined: MVP 1 (R1) → Q4 2026, MVP 2 (R2) → Q1 2027, MVP 3 (R3) → Q2 2027. Release sequencing is governed by the [release matrix](../../../release_matrix.md).
 
 Based on the solution manifest, market analysis, and README, here are comprehensive user stories organized by user persona and platform:
 
@@ -425,7 +425,7 @@ Based on the solution manifest, market analysis, and README, here are comprehens
 - **I want to** see health data update in real-time without refreshing
 - **So that** I have the most current information
 - **Acceptance Criteria:**
-  - Live data updates every 30 minutes (when device syncs)
+  - Live data updates every 10 minutes (when device syncs)
   - Visual indicator when new data arrives ("Just updated")
   - No page refresh required
   - Offline indicator if connection lost

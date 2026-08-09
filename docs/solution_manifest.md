@@ -89,7 +89,7 @@ With Device Bundle:
 - .NET 10 (ASP.NET Core Web API)
 - Entity Framework Core (Npgsql)
 - Cloud SQL PostgreSQL 16 (system of record — identity, organizations, subscriptions, health data, audit)
-- .NET Worker Service + Cronos (**non-AI background jobs only**: `WearableSyncWorker` every 30 minutes with in-path OAuth token refresh, `OrphanedOrganizationCleanupWorker` daily at 03:00, `BaselineCalculationWorker` weekly on Sunday at 02:30; trial reminders and retention jobs are planned)
+- .NET Worker Service + Cronos (**non-AI background jobs only**: `WearableSyncWorker` every 10 minutes with in-path OAuth token refresh, `OrphanedOrganizationCleanupWorker` daily at 03:00, `BaselineCalculationWorker` weekly on Sunday at 02:30, `DeviceSyncAuditWorker` weekly on Sunday at 04:00; trial reminders and retention jobs are planned)
 
 **AI:**
 - MedGemma 1.5 4B (`hf.co/unsloth/medgemma-1.5-4b-it-GGUF:Q4_K_M`) served via **Ollama on Cloud Run** — the Medical provider for health-data interpretation
@@ -156,10 +156,11 @@ With Device Bundle:
                             ↓
 ┌─────────────────────────────────────────────────────────────┐
 │         NON-AI BACKGROUND JOBS (CardiTrack.Worker)          │
-│  - WearableSyncWorker (every 30 min — device data sync,     │
+│  - WearableSyncWorker (every 10 min — device data sync,     │
 │    OAuth token refresh inside the sync path)                │
 │  - OrphanedOrganizationCleanupWorker (daily 03:00)          │
 │  - BaselineCalculationWorker (weekly, Sunday 02:30)         │
+│  - DeviceSyncAuditWorker (weekly, Sunday 04:00)             │
 │  - Planned: trial reminders, data retention/cleanup         │
 └─────────────────────────────────────────────────────────────┘
 
@@ -173,7 +174,7 @@ With Device Bundle:
 └─────────────────────────────────────────────────────────────┘
 ```
 
-> Current ingestion is the Worker's **30-minute polling sync** (`WearableSyncWorker`) against the Google Health API. The webhook-push pipeline above is the target architecture and ships with the AI rollout wave. The Worker Service hosts only non-AI jobs.
+> Current ingestion is the Worker's **10-minute polling sync** (`WearableSyncWorker`) against the Google Health API. The webhook-push pipeline above is the target architecture and ships with the AI rollout wave. The Worker Service hosts only non-AI jobs.
 
 ### Multi-Device Architecture
 
@@ -607,7 +608,7 @@ The Cloud Run pay-per-use model keeps pre-launch costs near zero and scales line
 - **Backup**: User-configurable sensitivity settings
 
 **Risk 3: OAuth Token Management**
-- **Mitigation**: Proactive token refresh inside the 30-minute sync path
+- **Mitigation**: Proactive token refresh inside the 10-minute sync path
 - **Monitoring**: Alert team if refresh rate drops
 
 ### Business Risks
@@ -669,7 +670,7 @@ The Cloud Run pay-per-use model keeps pre-launch costs near zero and scales line
 - ✅ Core backend (.NET 10, EF Core, Cloud SQL PostgreSQL 16)
 - ✅ Fitbit device integration — migration to the **Google Health API is done** (code + docs); Google console registration is pending, and the app is capped at 100 users until restricted-scope verification completes
 - ✅ Database schema & migrations (deployed via the migrator Cloud Run Job)
-- ✅ Worker ingestion: 30-minute wearable sync + daily orphan cleanup
+- ✅ Worker ingestion: 10-minute wearable sync + daily orphan cleanup + weekly baseline calculation and device-sync audit
 - ✅ AI providers wired in the API: MedGemma (Ollama on Cloud Run) + Gemini 2.0 Flash (chat, insights, reports)
 - ✅ Datadog APM with opt-in metrics (PR #4); atomic onboarding + orphaned-organization cleanup (PR #5); health-data disclosure banner on Web (PR #9 — a Google verification prerequisite; the mobile equivalent is pending)
 
