@@ -117,6 +117,9 @@ Detailed summary of all domain entities, their properties, and relationships.
 #### [data_protection_architecture.md](./technical/data_protection_architecture.md)
 HIPAA/GDPR data architecture (ADR): identifier/clinical schema separation, Safe Harbor de-identification pipeline, retention & erasure jobs, audit/consent models, and the subprocessor register.
 
+#### [granular_timeseries_storage.md](./technical/granular_timeseries_storage.md)
+**Granular time-series storage (ADR)** — sub-daily wearable samples stay in the existing Cloud SQL instance as day-partitioned hour-vector tables (no Bigtable/BigQuery); rollup ladder, retention, alternatives, and the triggers that would reopen the decision.
+
 #### [enum_extensions_guide.md](./technical/enum_extensions_guide.md)
 Guide to enum extensions and helper methods used throughout the solution.
 
