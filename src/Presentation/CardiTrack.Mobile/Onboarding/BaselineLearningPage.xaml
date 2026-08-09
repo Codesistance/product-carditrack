@@ -6,7 +6,7 @@
              Shell.NavBarIsVisible="False"
              Shell.TabBarIsVisible="False"
              NavigationPage.HasNavigationBar="False"
-             BackgroundColor="{StaticResource White}">
+             BackgroundColor="{StaticResource PageGround}">
 
     <ScrollView>
         <Grid RowDefinitions="Auto,*">
@@ -19,7 +19,6 @@
                                    IsBackVisible="False"/>
 
             <Grid Grid.Row="1"
-                  BackgroundColor="{StaticResource White}"
                   Padding="20,28,20,36">
                 <VerticalStackLayout Spacing="0">
 
@@ -54,7 +53,7 @@
                     </VerticalStackLayout>
 
                     <!-- Progress card -->
-                    <Border Style="{StaticResource DashboardCard}" Margin="0,22,0,0">
+                    <Border Style="{StaticResource ElevatedCard}" Margin="0,22,0,0">
                         <VerticalStackLayout Spacing="10">
                             <Grid ColumnDefinitions="*,Auto">
                                 <Label x:Name="DayLabel" Text="Day 1 of 30" Style="{StaticResource Body1SemiBoldDark}"/>
@@ -68,7 +67,7 @@
                     </Border>
 
                     <!-- Alerts-while-learning toggle -->
-                    <Border Style="{StaticResource DashboardCard}" Margin="0,14,0,0">
+                    <Border Style="{StaticResource ElevatedCard}" Margin="0,14,0,0">
                         <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
                             <VerticalStackLayout Spacing="6">
                                 <Label Text="Keep me posted while CardiTrack is learning"

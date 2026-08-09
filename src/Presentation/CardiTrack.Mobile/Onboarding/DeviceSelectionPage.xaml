@@ -6,7 +6,7 @@
              Shell.NavBarIsVisible="False"
              Shell.TabBarIsVisible="False"
              NavigationPage.HasNavigationBar="False"
-             BackgroundColor="{StaticResource White}">
+             BackgroundColor="{StaticResource PageGround}">
 
     <ContentPage.Resources>
         <!-- M1-05 device card frames -->
@@ -65,7 +65,6 @@
                                    BackRequested="OnBackRequested"/>
 
             <Grid Grid.Row="1"
-                  BackgroundColor="{StaticResource White}"
                   Padding="20,24,20,36">
                 <VerticalStackLayout Spacing="0">
 

@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentView xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="CardiTrack.Mobile.Controls.HeaderBand"
+             x:Name="Root">
+
+    <!-- The app's one gradient header band (Figma 101:2872). Every screen that carries a
+         header sits on this so the chrome is identical across the app.
+
+         Figma draws the band as the brand gradient (#174E86 → #1884DC → #36C09B) on an
+         oversized rect, blurred 100px and masked to the band, so only a slice of the ramp
+         shows and its right edge feathers out towards the page ground. MAUI has no cheap
+         blur, so the visible slice is baked into HeaderBandBrush and the feather is a
+         second wash layer stacked on top.
+
+         The wash is a plain sibling filling the band, and the padding lives on the content
+         wrapper rather than on the band Border. That ordering matters: the wash used to sit
+         inside the padded Border and claw its way back out with a negative margin, and MAUI
+         honours a negative left/top but not a negative right/bottom — so the wash covered
+         only the top two thirds of the band and ended in a hard horizontal seam (issue #87).
+
+         Radius is on the band's own bottom corners only. The top corners stay square because
+         the band butts against the status bar — rounding them would show page ground in the
+         notch corners. This is a component inside the page, not the page shell, so CLAUDE.md's
+         "no radius on the page shell" rule is not in play. -->
+    <ContentView.ControlTemplate>
+        <ControlTemplate>
+            <Border StrokeThickness="0"
+                    Padding="0"
+                    Background="{StaticResource HeaderBandBrush}">
+                <Border.StrokeShape>
+                    <RoundRectangle CornerRadius="0,0,45,45"/>
+                </Border.StrokeShape>
+                <Border.Shadow>
+                    <Shadow Brush="{StaticResource CardShadowBrush}" Opacity="0.15" Radius="16" Offset="0,11"/>
+                </Border.Shadow>
+
+                <Grid>
+                    <Border Background="{StaticResource HeaderBandWashBrush}"
+                            StrokeThickness="0"
+                            InputTransparent="True">
+                        <Border.StrokeShape>
+                            <RoundRectangle CornerRadius="0,0,45,45"/>
+                        </Border.StrokeShape>
+                    </Border>
+
+                    <ContentPresenter Margin="{TemplateBinding ContentPadding}"/>
+                </Grid>
+            </Border>
+        </ControlTemplate>
+    </ContentView.ControlTemplate>
+
+</ContentView>

@@ -1,72 +1,72 @@
 <?xml version="1.0" encoding="utf-8" ?>
 <ContentView xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:controls="clr-namespace:CardiTrack.Mobile.Controls"
              x:Class="CardiTrack.Mobile.Controls.WizardHeader"
              x:Name="Root">
 
-    <!-- Gradient onboarding header shared by M1-04..M1-08: back button, title,
-         step indicator, and a progress bar sitting on the gradient. -->
-    <Grid HeightRequest="170" HorizontalOptions="Fill">
-        <Image Source="gradient_auth_header.svg"
-               Aspect="AspectFill"
-               HorizontalOptions="Fill"
-               VerticalOptions="Fill" />
+    <!-- Onboarding header shared by M1-04..M1-08: back button, title, step indicator, and a
+         progress bar sitting on the gradient. The gradient itself is HeaderBand's, the same one
+         the dashboard and the auth screens use. Top padding clears the status bar; the band
+         sizes to its content rather than to a fixed height, so a wrapped title can't clip. -->
+    <controls:HeaderBand ContentPadding="20,48,20,24">
+        <Grid RowDefinitions="Auto,Auto" RowSpacing="22">
 
-        <Grid Padding="20,48,20,0"
-              ColumnDefinitions="Auto,*"
-              ColumnSpacing="16"
-              VerticalOptions="Start">
+            <Grid Grid.Row="0"
+                  ColumnDefinitions="Auto,*"
+                  ColumnSpacing="16">
 
-            <Border x:Name="BackButton"
-                    Grid.Column="0"
-                    WidthRequest="40" HeightRequest="40"
-                    BackgroundColor="#33FFFFFF"
+                <Border x:Name="BackButton"
+                        Grid.Column="0"
+                        WidthRequest="40" HeightRequest="40"
+                        BackgroundColor="#33FFFFFF"
+                        StrokeThickness="0"
+                        VerticalOptions="Start"
+                        SemanticProperties.Description="Go back">
+                    <Border.StrokeShape>
+                        <RoundRectangle CornerRadius="20"/>
+                    </Border.StrokeShape>
+                    <Border.GestureRecognizers>
+                        <TapGestureRecognizer Tapped="OnBackTapped"/>
+                    </Border.GestureRecognizers>
+                    <Label Text="&#x2190;"
+                           FontSize="20"
+                           TextColor="{StaticResource White}"
+                           HorizontalOptions="Center"
+                           VerticalOptions="Center"/>
+                </Border>
+
+                <VerticalStackLayout Grid.Column="1" Spacing="4">
+                    <Label Text="{Binding Title, Source={x:Reference Root}}"
+                           Style="{StaticResource Heading1White}" />
+                    <Label Text="{Binding Step, Source={x:Reference Root}}"
+                           Style="{StaticResource Body1SemiBold}" />
+                </VerticalStackLayout>
+            </Grid>
+
+            <!-- Figma M1-04 progress bar: 8px white pill track, gradient pill fill.
+                 Hidden until Progress > 0 (some wizard screens have no progress bar). -->
+            <Border x:Name="StepProgress"
+                    Grid.Row="1"
+                    HeightRequest="8"
+                    BackgroundColor="{StaticResource White}"
                     StrokeThickness="0"
-                    VerticalOptions="Start"
-                    SemanticProperties.Description="Go back">
-                <Border.StrokeShape>
-                    <RoundRectangle CornerRadius="20"/>
-                </Border.StrokeShape>
-                <Border.GestureRecognizers>
-                    <TapGestureRecognizer Tapped="OnBackTapped"/>
-                </Border.GestureRecognizers>
-                <Label Text="&#x2190;"
-                       FontSize="20"
-                       TextColor="{StaticResource White}"
-                       HorizontalOptions="Center"
-                       VerticalOptions="Center"/>
-            </Border>
-
-            <VerticalStackLayout Grid.Column="1" Spacing="4">
-                <Label Text="{Binding Title, Source={x:Reference Root}}"
-                       Style="{StaticResource Heading1White}" />
-                <Label Text="{Binding Step, Source={x:Reference Root}}"
-                       Style="{StaticResource Body1SemiBold}" />
-            </VerticalStackLayout>
-        </Grid>
-
-        <!-- Figma M1-04 progress bar: 8px white pill track, gradient pill fill.
-             Hidden until Progress > 0 (some wizard screens have no progress bar). -->
-        <Border x:Name="StepProgress"
-                HeightRequest="8"
-                BackgroundColor="{StaticResource White}"
-                StrokeThickness="0"
-                Margin="20,0,20,24"
-                VerticalOptions="End"
-                IsVisible="False"
-                SemanticProperties.Description="Wizard progress">
-            <Border.StrokeShape>
-                <RoundRectangle CornerRadius="4"/>
-            </Border.StrokeShape>
-            <Border x:Name="StepProgressFill"
-                    Background="{StaticResource GradientButtonBrush}"
-                    StrokeThickness="0"
-                    HorizontalOptions="Start"
-                    WidthRequest="0">
+                    IsVisible="False"
+                    SemanticProperties.Description="Wizard progress">
                 <Border.StrokeShape>
                     <RoundRectangle CornerRadius="4"/>
                 </Border.StrokeShape>
+                <Border x:Name="StepProgressFill"
+                        Background="{StaticResource GradientButtonBrush}"
+                        StrokeThickness="0"
+                        HorizontalOptions="Start"
+                        WidthRequest="0">
+                    <Border.StrokeShape>
+                        <RoundRectangle CornerRadius="4"/>
+                    </Border.StrokeShape>
+                </Border>
             </Border>
-        </Border>
-    </Grid>
+
+        </Grid>
+    </controls:HeaderBand>
 </ContentView>

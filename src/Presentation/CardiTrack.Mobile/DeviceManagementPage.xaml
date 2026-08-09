@@ -5,19 +5,12 @@
              x:Class="CardiTrack.Mobile.DeviceManagementPage"
              Shell.NavBarIsVisible="False"
              Shell.TabBarIsVisible="False"
-             BackgroundColor="{StaticResource White}">
+             BackgroundColor="{StaticResource PageGround}">
 
     <Grid RowDefinitions="Auto,*,Auto">
 
-        <!-- Flush on all four edges — full-bleed page shell per CLAUDE.md, no page-level
-             rounding even though the Figma frame shows rounded bottom corners. -->
-        <Border Grid.Row="0"
-                StrokeThickness="0"
-                Padding="20,16,20,22">
-            <Border.Background>
-                <StaticResource Key="GradientButtonBrush"/>
-            </Border.Background>
-
+        <!-- The app-wide gradient band (Controls/HeaderBand). -->
+        <controls:HeaderBand Grid.Row="0" ContentPadding="20,16,20,26">
             <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
                 <Border Grid.Column="0"
                         WidthRequest="38" HeightRequest="38"
@@ -53,7 +46,7 @@
                         VerticalOptions="Center"
                         Clicked="OnAddDeviceClicked"/>
             </Grid>
-        </Border>
+        </controls:HeaderBand>
 
         <RefreshView x:Name="Refresher"
                      Grid.Row="1"
@@ -109,7 +102,7 @@
                         <VerticalStackLayout x:Name="DevicesStack" Spacing="14"/>
 
                         <!-- Troubleshooting -->
-                        <Border Style="{StaticResource DashboardCard}">
+                        <Border Style="{StaticResource ElevatedCard}">
                             <VerticalStackLayout Spacing="10">
                                 <Grid ColumnDefinitions="*,Auto">
                                     <Grid.GestureRecognizers>
