@@ -92,7 +92,7 @@ public class MedGemmaClient : IExternalAiClient
         try
         {
             var client = _httpClientFactory.CreateClient(_httpClientName);
-            var response = await send(client, ct);
+            using var response = await send(client, ct);
             if (!response.IsSuccessStatusCode)
             {
                 errorType = ((int)response.StatusCode).ToString();
