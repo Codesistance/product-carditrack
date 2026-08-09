@@ -11,11 +11,13 @@ namespace CardiTrack.Mobile.Core.Devices;
 /// which <c>FitbitApiClient</c> does not fetch, so it gets no pill. The pills say what the card can
 /// show, not what Google would let us ask for.
 /// <para>
-/// SpO2, VO2 max, breathing rate and body temperature are a deliberate gap in the other direction:
-/// the client now ingests all four under <c>health_metrics_and_measurements</c>, but no screen
-/// displays them yet and M1-15's pill row is design-specified, so adding four pills is a design
-/// decision rather than a mapping fix. Until it is taken, this mapping under-reports what the
-/// connection shares — tracked as issue #82, not an oversight.
+/// SpO2, VO2 max, breathing rate and body temperature are named here because
+/// <c>FitbitApiClient</c> now ingests all four under <c>health_metrics_and_measurements</c>, which
+/// is the same test every other pill passes (issue #82). They join the existing <b>Body</b> family
+/// rather than introducing one, so the row gains pills but no new visual vocabulary. Note this is
+/// the M1-15 pill row only: the M1-09 Key Metrics cards still show steps, heart rate and sleep
+/// alone, because each card needs a hand-authored icon and a Figma slot that these four do not
+/// have yet.
 /// </para>
 /// </remarks>
 public static class DeviceDatasets
@@ -29,6 +31,9 @@ public static class DeviceDatasets
     private const string RestingHeartRate = "Resting HR";
     private const string Weight = "Weight";
     private const string Spo2 = "SpO2";
+    private const string Vo2Max = "VO2 Max";
+    private const string BreathingRate = "Breathing Rate";
+    private const string Temperature = "Temperature";
     private const string Sleep = "Sleep";
     private const string SleepStages = "Sleep Stages";
     private const string Profile = "Profile";
@@ -49,6 +54,9 @@ public static class DeviceDatasets
         new(RestingHeartRate, DatasetFamily.Heart),
         new(Weight, DatasetFamily.Body),
         new(Spo2, DatasetFamily.Body),
+        new(Vo2Max, DatasetFamily.Body),
+        new(BreathingRate, DatasetFamily.Body),
+        new(Temperature, DatasetFamily.Body),
         new(Sleep, DatasetFamily.Sleep),
         new(SleepStages, DatasetFamily.Sleep),
         new(Profile, DatasetFamily.Other),
@@ -63,7 +71,8 @@ public static class DeviceDatasets
     {
         // Google Health API (https://www.googleapis.com/auth/googlehealth.<bundle>.readonly)
         ["activity_and_fitness"] = [Steps, Distance, ActiveMinutes, Floors, Calories],
-        ["health_metrics_and_measurements"] = [HeartRate, RestingHeartRate],
+        ["health_metrics_and_measurements"] =
+            [HeartRate, RestingHeartRate, Spo2, Vo2Max, BreathingRate, Temperature],
         ["sleep"] = [Sleep, SleepStages],
 
         // Legacy Fitbit Web API
