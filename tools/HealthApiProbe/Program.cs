@@ -19,8 +19,8 @@ const string BaseUrl = "https://health.googleapis.com";
 
 // Data types read via dataPoints:dailyRollUp, with the union member
 // FitbitApiClient expects on the rollup point (camelCase of the type name).
-// daily-resting-heart-rate is absent by design — it is a Daily record and is
-// probed through list below, the only method it supports.
+// The Daily records are absent by design — they carry no rollup at all and are
+// probed through list below, the only method they support.
 string[] rollupDataTypes =
 [
     "steps",
@@ -29,6 +29,27 @@ string[] rollupDataTypes =
     "total-calories",
     "floors",
     "heart-rate",
+    "sedentary-period",
+];
+
+// Daily records: one point per day, read through list filtered on their own
+// google.type.Date field. The union member is not derivable from the type name in
+// every case, so each is named explicitly — the same pairing FitbitApiClient uses.
+(string DataType, string UnionMember)[] dailyDataTypes =
+[
+    ("daily-resting-heart-rate", "dailyRestingHeartRate"),
+    ("daily-oxygen-saturation", "dailyOxygenSaturation"),
+    ("daily-vo2-max", "dailyVo2Max"),
+    ("daily-respiratory-rate", "dailyRespiratoryRate"),
+    ("daily-sleep-temperature-derivations", "dailySleepTemperatureDerivations"),
+];
+
+// Sample series read through list, for the metrics whose rollup omits an
+// aggregation the client needs — oxygen-saturation has no min/max rollup, so
+// FitbitApiClient derives all three SpO2 figures from the raw samples.
+(string DataType, string UnionMember)[] sampleDataTypes =
+[
+    ("oxygen-saturation", "oxygenSaturation"),
 ];
 
 var showValues = args.Contains("--raw");
@@ -104,19 +125,40 @@ foreach (var dataType in rollupDataTypes)
     await ReportAsync(http, request, token!, showValues);
 }
 
-Console.WriteLine();
-Console.WriteLine("--- daily-resting-heart-rate (dataPoints list) ---");
-Console.WriteLine("    FitbitApiClient expects union member: \"dailyRestingHeartRate\"");
 // A Daily record carries no rollup: dataPoints:dailyRollUp answers INVALID_ARGUMENT
-// naming the type, so it is listed and filtered on its own google.type.Date field. The filter
+// naming the type, so each is listed and filtered on its own google.type.Date field. The filter
 // names the data type in snake_case ({daily_summary_data_type}.date), not the camelCase union
 // member the response is keyed by — that spelling is rejected as INVALID_DATA_POINT_FILTER.
-var restingFilter = Uri.EscapeDataString(
-    $"daily_resting_heart_rate.date >= \"{date:yyyy-MM-dd}\" AND daily_resting_heart_rate.date < \"{date.AddDays(1):yyyy-MM-dd}\"");
-using (var restingRequest = new HttpRequestMessage(
-    HttpMethod.Get, $"/v4/users/me/dataTypes/daily-resting-heart-rate/dataPoints?filter={restingFilter}"))
+foreach (var (dataType, unionMember) in dailyDataTypes)
 {
-    await ReportAsync(http, restingRequest, token!, showValues);
+    Console.WriteLine();
+    Console.WriteLine($"--- {dataType} (dataPoints list) ---");
+    Console.WriteLine($"    FitbitApiClient expects union member: \"{unionMember}\"");
+
+    var member = dataType.Replace('-', '_');
+    var dailyFilter = Uri.EscapeDataString(
+        $"{member}.date >= \"{date:yyyy-MM-dd}\" AND {member}.date < \"{date.AddDays(1):yyyy-MM-dd}\"");
+    using var dailyRequest = new HttpRequestMessage(
+        HttpMethod.Get, $"/v4/users/me/dataTypes/{dataType}/dataPoints?filter={dailyFilter}");
+    await ReportAsync(http, dailyRequest, token!, showValues);
+}
+
+// A Sample type's own filter pattern: {sample_data_type}.sample_time.civil_time — neither the
+// Daily `.date` nor the interval `.interval.civil_start_time`. Civil rather than physical time so a
+// night's readings stay inside the wearer's day instead of splitting across two UTC days.
+foreach (var (dataType, unionMember) in sampleDataTypes)
+{
+    Console.WriteLine();
+    Console.WriteLine($"--- {dataType} (dataPoints list, sample series) ---");
+    Console.WriteLine($"    FitbitApiClient expects union member: \"{unionMember}\"");
+
+    var member = dataType.Replace('-', '_');
+    var sampleFilter = Uri.EscapeDataString(
+        $"{member}.sample_time.civil_time >= \"{date:yyyy-MM-dd}\" AND {member}.sample_time.civil_time < \"{date.AddDays(1):yyyy-MM-dd}\"");
+    using var sampleRequest = new HttpRequestMessage(
+        HttpMethod.Get,
+        $"/v4/users/me/dataTypes/{dataType}/dataPoints?pageSize=10000&filter={sampleFilter}");
+    await ReportAsync(http, sampleRequest, token!, showValues);
 }
 
 Console.WriteLine();
@@ -138,6 +180,8 @@ Console.WriteLine(new string('=', 72));
 Console.WriteLine("FitbitApiClient.GetHealthSnapshotAsync — parsed result");
 Console.WriteLine("A zero/null here for a metric whose shape dump above showed data means the");
 Console.WriteLine("field name in FitbitApiClient is wrong.");
+Console.WriteLine("StressScore is the one exception: v4 has no stress or readiness data type, so it");
+Console.WriteLine("is always null and no shape dump above corresponds to it.");
 Console.WriteLine();
 
 var services = new ServiceCollection();

@@ -11,10 +11,13 @@ namespace CardiTrack.Infrastructure.ExternalClients;
 /// Fitbit-provider client backed by the Google Health API v4 (the legacy Fitbit Web API is
 /// decommissioned September 2026).
 /// <para>
-/// Reads follow the method each data type actually supports. Interval and Sample types
-/// (steps, distance, active-minutes, total-calories, floors, heart-rate) take
-/// `dataPoints:dailyRollUp`; Daily types (daily-resting-heart-rate) support only `list`/`reconcile`
-/// and 400 on a rollup; Session types (sleep) take `list` with a civil-time filter.
+/// Reads follow the method each data type actually supports. Interval types (steps, distance,
+/// active-minutes, total-calories, floors, sedentary-period) and Sample types (heart-rate) take
+/// `dataPoints:dailyRollUp`; Daily types (daily-resting-heart-rate, daily-oxygen-saturation,
+/// daily-vo2-max, daily-respiratory-rate, daily-sleep-temperature-derivations) support only
+/// `list`/`reconcile` and 400 on a rollup; Session types (sleep) take `list` with a civil-time
+/// filter. A Sample type is also listed directly, rather than rolled up, where the rollup omits an
+/// aggregation this client needs — `oxygen-saturation` has no min/max rollup.
 /// </para>
 /// <para>
 /// Every field name below is the one in the v4 reference. Rollup values are named
@@ -37,6 +40,20 @@ public class FitbitApiClient : IFitbitApiClient, IDeviceApiClient
     /// </summary>
     private static readonly string[] ActiveActivityLevels = ["MODERATELY_ACTIVE", "VERY_ACTIVE"];
 
+    /// <summary>
+    /// Points per page when listing a Sample series. The API's own maximum; anything larger is
+    /// truncated to it. A day of SpO2 runs to a few hundred readings, so this is one page in
+    /// practice and the pagination loop exists for the case where it is not.
+    /// </summary>
+    private const int SamplePageSize = 10_000;
+
+    /// <summary>
+    /// Hard stop on a Sample series, well above the ~1,440 points a once-per-minute sensor can
+    /// produce in a civil day. Reaching it means the filter is selecting more than the requested
+    /// day, which more pages would compound rather than correct.
+    /// </summary>
+    private const int SampleSeriesCap = 20_000;
+
     private readonly HttpClient _httpClient;
 
     public FitbitApiClient(IHttpClientFactory httpClientFactory)
@@ -46,13 +63,15 @@ public class FitbitApiClient : IFitbitApiClient, IDeviceApiClient
 
     public async Task<FitbitActivitiesResult> GetActivitiesAsync(string accessToken, DateOnly date)
     {
-        // The five rollups are independent — issue them concurrently.
+        // The six rollups are independent — issue them concurrently.
         var stepsTask = DailyRollupValueAsync(accessToken, "steps", date);
         var distanceTask = DailyRollupValueAsync(accessToken, "distance", date);
         var activeMinutesTask = DailyRollupValueAsync(accessToken, "active-minutes", date);
         var caloriesTask = DailyRollupValueAsync(accessToken, "total-calories", date);
         var floorsTask = DailyRollupValueAsync(accessToken, "floors", date);
-        await Task.WhenAll(stepsTask, distanceTask, activeMinutesTask, caloriesTask, floorsTask);
+        var sedentaryTask = DailyRollupValueAsync(accessToken, "sedentary-period", date);
+        await Task.WhenAll(
+            stepsTask, distanceTask, activeMinutesTask, caloriesTask, floorsTask, sedentaryTask);
 
         var steps = ReadInt(stepsTask.Result, "countSum") ?? 0;
         var distanceMillimeters = ReadDecimal(distanceTask.Result, "millimetersSum") ?? 0;
@@ -60,12 +79,23 @@ public class FitbitApiClient : IFitbitApiClient, IDeviceApiClient
         var calories = ReadInt(caloriesTask.Result, "kcalSum") ?? 0;
         var floors = ReadInt(floorsTask.Result, "countSum") ?? 0;
 
-        // Sedentary minutes are not collected. The `sedentary-period` data type does expose them
-        // (as a `durationSum` in seconds), but nothing consumes them yet — so report null, not 0:
-        // the multi-device merge coalesces on the first non-null value, and a placeholder 0 from a
+        // `sedentary-period` is an Interval type, so it rolls up like the rest, but its only rollup
+        // value is a `durationSum` in **seconds** — the sole rollup here not already in the unit its
+        // column wants. It stays null rather than 0 on a day the type reports nothing: the
+        // multi-device merge coalesces on the first non-null value, so a placeholder 0 from a
         // higher-priority device would beat another device's genuine reading.
+        var sedentarySeconds = ReadDecimal(sedentaryTask.Result, "durationSum");
+        var sedentaryMinutes = sedentarySeconds.HasValue
+            ? (int)decimal.Round(sedentarySeconds.Value / 60m)
+            : (int?)null;
+
         return new FitbitActivitiesResult(
-            steps, decimal.Round(distanceMillimeters / 1_000_000m, 3), activeMinutes, null, floors, calories);
+            steps,
+            decimal.Round(distanceMillimeters / 1_000_000m, 3),
+            activeMinutes,
+            sedentaryMinutes,
+            floors,
+            calories);
     }
 
     public async Task<FitbitHeartRateResult> GetHeartRateAsync(string accessToken, DateOnly date)
@@ -155,16 +185,52 @@ public class FitbitApiClient : IFitbitApiClient, IDeviceApiClient
         return new FitbitSleepResult(totalMinutes, efficiency, startTime, endTime, deep, light, rem, awake);
     }
 
+    public async Task<FitbitAdditionalMetricsResult> GetAdditionalMetricsAsync(
+        string accessToken, DateOnly date)
+    {
+        var spO2Task = GetSpO2Async(accessToken, date);
+        // Each of the three is a Daily record read through `list`, so each is filtered on its own
+        // `date` field rather than rolled up.
+        var vo2MaxTask = OptionalDailyValueAsync(
+            accessToken, "daily-vo2-max", "dailyVo2Max", "vo2Max", date);
+        var breathingRateTask = OptionalDailyValueAsync(
+            accessToken, "daily-respiratory-rate", "dailyRespiratoryRate", "breathsPerMinute", date);
+        // Wrist wearables do not measure core body temperature; what Fitbit and Pixel Watch derive
+        // is this nightly skin figure. `baselineTemperatureCelsius` sits alongside it and is the
+        // more clinically useful half — a nightly reading means little except as a deviation from
+        // the wearer's own baseline — but ActivityLog has one temperature column, so only the
+        // nightly value is kept. Storing the baseline too needs a migration: issue #81.
+        var temperatureTask = OptionalDailyValueAsync(
+            accessToken,
+            "daily-sleep-temperature-derivations",
+            "dailySleepTemperatureDerivations",
+            "nightlyTemperatureCelsius",
+            date);
+        await Task.WhenAll(spO2Task, vo2MaxTask, breathingRateTask, temperatureTask);
+
+        var (spO2Average, spO2Min, spO2Max) = spO2Task.Result;
+
+        return new FitbitAdditionalMetricsResult(
+            spO2Average,
+            spO2Min,
+            spO2Max,
+            vo2MaxTask.Result,
+            breathingRateTask.Result,
+            temperatureTask.Result);
+    }
+
     public async Task<DeviceHealthSnapshot> GetHealthSnapshotAsync(string accessToken, DateOnly date)
     {
         var activitiesTask = GetActivitiesAsync(accessToken, date);
         var heartRateTask = GetHeartRateAsync(accessToken, date);
         var sleepTask = GetSleepAsync(accessToken, date);
-        await Task.WhenAll(activitiesTask, heartRateTask, sleepTask);
+        var additionalTask = GetAdditionalMetricsAsync(accessToken, date);
+        await Task.WhenAll(activitiesTask, heartRateTask, sleepTask, additionalTask);
 
         var activities = activitiesTask.Result;
         var heartRate = heartRateTask.Result;
         var sleep = sleepTask.Result;
+        var additional = additionalTask.Result;
 
         return new DeviceHealthSnapshot(
             activities.Steps,
@@ -184,7 +250,15 @@ public class FitbitApiClient : IFitbitApiClient, IDeviceApiClient
             sleep.DeepSleepMinutes,
             sleep.LightSleepMinutes,
             sleep.RemSleepMinutes,
-            sleep.AwakeMinutes);
+            sleep.AwakeMinutes,
+            // Named from here on: StressScore sits among these positionally but has no source on
+            // this API (see FitbitAdditionalMetricsResult), so it is skipped rather than filled.
+            SpO2Average: additional.SpO2Average,
+            SpO2Min: additional.SpO2Min,
+            SpO2Max: additional.SpO2Max,
+            VO2Max: additional.VO2Max,
+            BreathingRate: additional.BreathingRate,
+            Temperature: additional.Temperature);
     }
 
     /// <summary>
@@ -252,6 +326,130 @@ public class FitbitApiClient : IFitbitApiClient, IDeviceApiClient
 
         var root = await ParseBodyAsync(response, dataType);
         return (root["dataPoints"] as JArray)?.OfType<JObject>().FirstOrDefault()?[unionMember];
+    }
+
+    /// <summary>
+    /// Daily SpO2, as average, minimum and maximum over the wearer's civil day.
+    /// </summary>
+    /// <remarks>
+    /// All three come from the <c>oxygen-saturation</c> **sample** series rather than the
+    /// <c>daily-oxygen-saturation</c> summary, for two reasons. The summary carries no minimum or
+    /// maximum at all: its <c>lowerBoundPercentage</c>/<c>upperBoundPercentage</c> pair arrives
+    /// beside a <c>standardDeviationPercentage</c> and describes the spread of the day's
+    /// distribution, not the lowest reading taken — storing a distribution bound in a column named
+    /// <c>SpO2Min</c> would misreport the one figure a desaturation check would look at. And
+    /// deriving all three from one series keeps them mutually consistent, which mixing a summary
+    /// average with sample extremes would not guarantee.
+    /// <para>
+    /// The summary is still the fallback when the series is empty: a device that publishes only a
+    /// daily average should contribute that average rather than nothing. Minimum and maximum stay
+    /// null in that case — there is no honest value for them.
+    /// </para>
+    /// </remarks>
+    private async Task<(decimal? Average, decimal? Min, decimal? Max)> GetSpO2Async(
+        string accessToken, DateOnly date)
+    {
+        try
+        {
+            var samples = await SampleSeriesAsync(
+                accessToken, "oxygen-saturation", "oxygenSaturation", "percentage", date);
+            if (samples.Count > 0)
+            {
+                return (
+                    decimal.Round(samples.Average(), 1),
+                    decimal.Round(samples.Min(), 1),
+                    decimal.Round(samples.Max(), 1));
+            }
+
+            var daily = await DailyRecordAsync(
+                accessToken, "daily-oxygen-saturation", "dailyOxygenSaturation", date);
+            var average = ReadDecimal(daily, "averagePercentage");
+            return (average.HasValue ? decimal.Round(average.Value, 1) : null, null, null);
+        }
+        catch (FitbitApiException ex) when (IsAbsentDataType(ex))
+        {
+            return (null, null, null);
+        }
+    }
+
+    /// <summary>
+    /// Reads one field off a **Daily** record, returning null when the wearer's device does not
+    /// record that data type at all rather than failing the whole day's snapshot.
+    /// </summary>
+    private async Task<decimal?> OptionalDailyValueAsync(
+        string accessToken, string dataType, string unionMember, string field, DateOnly date)
+    {
+        try
+        {
+            var record = await DailyRecordAsync(accessToken, dataType, unionMember, date);
+            return ReadDecimal(record, field);
+        }
+        catch (FitbitApiException ex) when (IsAbsentDataType(ex))
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Whether a failure means "this wearer has no such data type" rather than "this request was
+    /// wrong". The optional metrics tolerate the former — most Fitbits derive none of them, and
+    /// that is a fact about the device, not an error — but never the latter: a 400 carrying field
+    /// violations is a bug in the URL or filter built here, and swallowing it would turn a
+    /// permanently broken read into a column that merely looks unsupported forever.
+    /// </summary>
+    private static bool IsAbsentDataType(FitbitApiException ex) =>
+        ex.StatusCode is 400 or 404 && !ex.IsMalformedRequest;
+
+    /// <summary>
+    /// Every value of <paramref name="field"/> across a **Sample** data type's points for one civil
+    /// day, following pagination.
+    /// </summary>
+    /// <remarks>
+    /// A sample type is filtered on <c>{data_type}.sample_time.civil_time</c> — civil, matching the
+    /// wearer's local day the way the rollup ranges and the sleep filter do, so a night's readings
+    /// are not split across two UTC days.
+    /// <para>
+    /// Pagination is followed rather than assumed away: the response caps at
+    /// <see cref="SamplePageSize"/> points and a silently dropped tail would understate a maximum
+    /// and overstate a minimum. <see cref="SampleSeriesCap"/> bounds the loop — a civil day cannot
+    /// legitimately hold more readings than that, so hitting it means the filter is matching more
+    /// than one day and looping further would not fix it.
+    /// </para>
+    /// </remarks>
+    private async Task<List<decimal>> SampleSeriesAsync(
+        string accessToken, string dataType, string unionMember, string field, DateOnly date)
+    {
+        var member = ToSnakeCase(dataType);
+        var filter = Uri.EscapeDataString(
+            $"{member}.sample_time.civil_time >= \"{date:yyyy-MM-dd}\" AND {member}.sample_time.civil_time < \"{date.AddDays(1):yyyy-MM-dd}\"");
+
+        var values = new List<decimal>();
+        string? pageToken = null;
+        do
+        {
+            var url =
+                $"/v4/users/me/dataTypes/{dataType}/dataPoints?pageSize={SamplePageSize}&filter={filter}";
+            if (!string.IsNullOrEmpty(pageToken))
+                url += $"&pageToken={Uri.EscapeDataString(pageToken)}";
+
+            using var request = new HttpRequestMessage(HttpMethod.Get, url);
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+
+            using var response = await _httpClient.SendAsync(request);
+            await EnsureSuccessAsync(response);
+
+            var root = await ParseBodyAsync(response, dataType);
+            foreach (var point in (root["dataPoints"] as JArray)?.OfType<JObject>() ?? [])
+            {
+                if (ReadDecimal(point[unionMember], field) is { } value)
+                    values.Add(value);
+            }
+
+            pageToken = root.Value<string>("nextPageToken");
+        }
+        while (!string.IsNullOrEmpty(pageToken) && values.Count < SampleSeriesCap);
+
+        return values;
     }
 
     /// <summary>

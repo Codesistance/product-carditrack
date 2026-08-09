@@ -7,9 +7,16 @@ namespace CardiTrack.Mobile.Core.Devices;
 /// pulls from that device, for the pills on the M1-15 device card.
 /// </summary>
 /// <remarks>
-/// A scope is a permission, not a promise: <c>health_metrics_and_measurements</c> also covers HRV
-/// and SpO2, but <c>FitbitApiClient</c> fetches neither, so neither gets a pill. The pills say what
-/// the card can show, not what Google would let us ask for.
+/// A scope is a permission, not a promise: <c>health_metrics_and_measurements</c> also covers HRV,
+/// which <c>FitbitApiClient</c> does not fetch, so it gets no pill. The pills say what the card can
+/// show, not what Google would let us ask for.
+/// <para>
+/// SpO2, VO2 max, breathing rate and body temperature are a deliberate gap in the other direction:
+/// the client now ingests all four under <c>health_metrics_and_measurements</c>, but no screen
+/// displays them yet and M1-15's pill row is design-specified, so adding four pills is a design
+/// decision rather than a mapping fix. Until it is taken, this mapping under-reports what the
+/// connection shares — tracked as issue #82, not an oversight.
+/// </para>
 /// </remarks>
 public static class DeviceDatasets
 {

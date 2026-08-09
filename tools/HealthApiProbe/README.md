@@ -65,6 +65,19 @@ Two sections:
 The comparison is the point: a metric whose shape dump shows data but whose
 parsed value is `0` means the field name in `FitbitApiClient` is wrong.
 
+Three request shapes are probed, because the filter grammar differs per record
+type and each spelling is rejected outright if used on the wrong one:
+
+| Record type | Data types | Method |
+|---|---|---|
+| Interval / Sample | `steps`, `distance`, `active-minutes`, `total-calories`, `floors`, `heart-rate`, `sedentary-period` | `dataPoints:dailyRollUp` |
+| Daily | `daily-resting-heart-rate`, `daily-oxygen-saturation`, `daily-vo2-max`, `daily-respiratory-rate`, `daily-sleep-temperature-derivations` | `list`, filtered on `{data_type}.date` |
+| Sample series | `oxygen-saturation` | `list`, filtered on `{data_type}.sample_time.civil_time` |
+
+`StressScore` never appears in a shape dump and is always null in the parsed
+result: v4 exposes no stress or readiness data type, so no request can populate
+it. That null is expected, not a field-name bug.
+
 ## Sharing the output
 
 Default output is **shape only** — safe to paste into a PR or issue. Passing
