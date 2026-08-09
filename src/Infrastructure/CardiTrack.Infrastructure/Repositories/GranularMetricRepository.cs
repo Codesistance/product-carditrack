@@ -68,7 +68,9 @@ public class GranularMetricRepository : IGranularMetricRepository
     {
         if (fromUtc >= toUtc)
             throw new ArgumentOutOfRangeException(nameof(toUtc), toUtc, "Window must not be empty.");
-        if (fromUtc.Minute != 0 || fromUtc.Second != 0 || toUtc.Minute != 0 || toUtc.Second != 0)
+        // Tick-level, not Minute/Second: a bound like 10:00:00.500 would pass a field check yet
+        // silently exclude the 10:00 row and skew every offset in the composed window.
+        if (fromUtc.Ticks % TimeSpan.TicksPerHour != 0 || toUtc.Ticks % TimeSpan.TicksPerHour != 0)
             throw new ArgumentException("Window bounds must be whole hours (see IGranularMetricRepository).");
 
         var rows = await _context.GranularMetricHours

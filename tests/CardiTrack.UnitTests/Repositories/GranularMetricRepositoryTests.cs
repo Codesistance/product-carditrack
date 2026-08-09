@@ -120,6 +120,10 @@ public class GranularMetricRepositoryTests(TestDatabaseFixture fixture)
 
         await Assert.ThrowsAsync<ArgumentException>(() =>
             repo.GetWindowAsync(Guid.NewGuid(), RecentHour.AddMinutes(30), RecentHour.AddHours(1)));
+        // Sub-second offsets would pass a Minute/Second field check yet silently exclude the
+        // first hour's row — the guard is tick-level for exactly that reason.
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            repo.GetWindowAsync(Guid.NewGuid(), RecentHour.AddMilliseconds(500), RecentHour.AddHours(1)));
     }
 
     [Fact]
@@ -157,6 +161,21 @@ public class GranularMetricRepositoryTests(TestDatabaseFixture fixture)
 [Collection("DatabaseCollection")]
 public class TimeSeriesPartitionServiceTests(TestDatabaseFixture fixture)
 {
+    // The failure mode of a zero or negative retention is mass deletion of health data, so the
+    // service refuses it outright (the worker independently skips the run on the same check).
+    [Theory]
+    [InlineData(0, 13)]
+    [InlineData(90, 0)]
+    [InlineData(-1, 13)]
+    public async Task DropExpiredPartitionsAsync_RejectsNonPositiveRetention(int days, int months)
+    {
+        using var scope = fixture.CreateScope();
+        var service = scope.ServiceProvider.GetRequiredService<ITimeSeriesPartitionService>();
+
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() =>
+            service.DropExpiredPartitionsAsync(days, months));
+    }
+
     [Fact]
     public async Task EnsureUpcomingPartitionsAsync_IsIdempotent()
     {

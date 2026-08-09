@@ -42,9 +42,21 @@ public class TimeSeriesPartitionService : ITimeSeriesPartitionService
     public async Task DropExpiredPartitionsAsync(
         int granularRetentionDays, int rollupRetentionMonths, CancellationToken ct = default)
     {
+        // A non-positive retention is always a misconfiguration, and the failure mode would be
+        // mass deletion of health data — fail loud instead.
+        if (granularRetentionDays <= 0)
+            throw new ArgumentOutOfRangeException(
+                nameof(granularRetentionDays), granularRetentionDays, "Retention must be positive.");
+        if (rollupRetentionMonths <= 0)
+            throw new ArgumentOutOfRangeException(
+                nameof(rollupRetentionMonths), rollupRetentionMonths, "Retention must be positive.");
+
         var today = DateOnly.FromDateTime(DateTime.UtcNow);
 
-        // A partition is dropped only when its whole range is past the cutoff.
+        // "N days" means N *complete* days behind now, plus the day in progress — and a partition
+        // is dropped only when its whole range is past that cutoff. The conservative boundary is
+        // deliberate: retention here is a floor on availability, and destroying a partition that
+        // still contains in-retention minutes would be the actual off-by-one.
         var granularCutoff = today.AddDays(-granularRetentionDays);
         foreach (var name in await ChildPartitionsAsync(TimeSeriesPartitions.GranularParent, ct))
         {

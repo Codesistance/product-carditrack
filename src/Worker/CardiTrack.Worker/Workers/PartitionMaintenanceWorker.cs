@@ -32,6 +32,19 @@ public class PartitionMaintenanceWorker : CronBackgroundService
     {
         var options = _options.CurrentValue;
 
+        // A bad retention config must not fault the hosted-service loop (an exception escaping
+        // ExecuteJobAsync would), and it especially must not reach the drop path — the service
+        // also rejects it, but by then the worker would be crash-looping. Log and sit the run out.
+        if (options.GranularRetentionDays <= 0 || options.RollupRetentionMonths <= 0 || options.DaysAhead < 0)
+        {
+            _logger.LogError(
+                "PartitionMaintenance skipped: invalid configuration (DaysAhead={DaysAhead}, " +
+                "GranularRetentionDays={GranularDays}, RollupRetentionMonths={RollupMonths}). " +
+                "Retention values must be positive.",
+                options.DaysAhead, options.GranularRetentionDays, options.RollupRetentionMonths);
+            return;
+        }
+
         using var scope = _scopeFactory.CreateScope();
         var partitions = scope.ServiceProvider.GetRequiredService<ITimeSeriesPartitionService>();
 
