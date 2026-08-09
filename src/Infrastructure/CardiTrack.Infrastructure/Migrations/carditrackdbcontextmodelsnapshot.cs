@@ -744,7 +744,7 @@ namespace CardiTrack.Infrastructure.Migrations
                     b.Property<int>("SyncFrequencyMinutes")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("integer")
-                        .HasDefaultValue(30);
+                        .HasDefaultValue(10);
 
                     b.Property<DateTime?>("TokenExpiry")
                         .HasColumnType("timestamp with time zone");

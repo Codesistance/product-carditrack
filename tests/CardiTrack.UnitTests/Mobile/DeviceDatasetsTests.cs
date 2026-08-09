@@ -18,7 +18,9 @@ public class DeviceDatasetsTests
 
         Assert.Equal(
             ["Steps", "Distance", "Active Minutes", "Floors", "Calories",
-             "Heart Rate", "Resting HR", "Sleep", "Sleep Stages"],
+             "Heart Rate", "Resting HR",
+             "SpO2", "VO2 Max", "Breathing Rate", "Temperature",
+             "Sleep", "Sleep Stages"],
             datasets.Select(d => d.Name));
     }
 
@@ -31,8 +33,25 @@ public class DeviceDatasetsTests
             [DatasetFamily.Activity, DatasetFamily.Activity, DatasetFamily.Activity,
              DatasetFamily.Activity, DatasetFamily.Activity,
              DatasetFamily.Heart, DatasetFamily.Heart,
+             DatasetFamily.Body, DatasetFamily.Body, DatasetFamily.Body, DatasetFamily.Body,
              DatasetFamily.Sleep, DatasetFamily.Sleep],
             datasets.Select(d => d.Family));
+    }
+
+    // Issue #82: FitbitApiClient ingests these four under health_metrics_and_measurements, so by
+    // the rule every other pill follows — name what we actually pull — they earn pills too. They
+    // reuse the existing Body family, so the row gains pills but no new visual vocabulary.
+    [Fact]
+    public void For_MetricsScope_NamesTheBodyReadingsTheClientNowIngests()
+    {
+        var datasets = DeviceDatasets.For([MetricsScope]);
+
+        Assert.Equal(
+            ["Heart Rate", "Resting HR", "SpO2", "VO2 Max", "Breathing Rate", "Temperature"],
+            datasets.Select(d => d.Name));
+        Assert.All(
+            datasets.Where(d => d.Name is "SpO2" or "VO2 Max" or "Breathing Rate" or "Temperature"),
+            d => Assert.Equal(DatasetFamily.Body, d.Family));
     }
 
     [Fact]

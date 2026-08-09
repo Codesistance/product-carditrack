@@ -30,7 +30,7 @@ flowchart LR
   subgraph WK["CLOUD RUN · carditrack-env-worker · .NET 10"]
     direction TB
     K0["CronBackgroundService<br/><i>Cronos 0.13.0 · 6-field UTC</i>"]
-    K1["WearableSyncWorker<br/><i>0 */30 * * * *</i>"]
+    K1["WearableSyncWorker<br/><i>0 */10 * * * *</i>"]
     K2["DeviceSyncAuditWorker<br/><i>0 0 4 * * 0 · 25 × 14 days</i>"]
     K3["BaselineCalculationWorker<br/><i>0 30 2 * * 0 · 30/60/90 d</i>"]
     K4["OrphanedOrganizationCleanupWorker<br/><i>0 0 3 * * * · MinAge 24 h</i>"]
@@ -60,7 +60,7 @@ flowchart LR
   MB["<b>MAUI mobile</b><br/>DashboardPage<br/><i>5-min auto-refresh</i><br/><i>2-h stale threshold</i>"]
 
   W -->|"vendor sync"| GH
-  WK -->|"HTTPS · Bearer · 8 calls per day-in-window · every 30 min"| GH
+  WK -->|"HTTPS · Bearer · 13 calls per day-in-window · every 10 min"| GH
   WK -->|"EF Core · Npgsql · upsert + merge"| DB
   DB -->|"GetDueForSyncAsync"| WK
   AP -->|"manual sync · on demand · max 1/min per member"| GH
@@ -91,7 +91,7 @@ The Worker polling path writes **only** to Cloud SQL and never publishes to Pub/
 | Deployment node | Components assigned | Technology | Cadence |
 |---|---|---|---|
 | **Cloud Run** `carditrack-<env>-worker` | `CronBackgroundService` | Cronos 0.13.0, 6-field cron with seconds, UTC; `BackgroundService` | continuous loop, `Task.Delay` to next occurrence |
-| | `WearableSyncWorker` | keyed DI dispatch on `DeviceType` | `0 */30 * * * *` — every 30 min |
+| | `WearableSyncWorker` | keyed DI dispatch on `DeviceType` | `0 */10 * * * *` — every 10 min |
 | | `DeviceSyncAuditWorker` | same, sample of 25 | `0 0 4 * * 0` — Sunday 04:00 |
 | | `BaselineCalculationWorker` | `BaselineCalculator` (pure, stateless) | `0 30 2 * * 0` — Sunday 02:30 |
 | | `OrphanedOrganizationCleanupWorker` | EF Core bulk delete | `0 0 3 * * *` — daily 03:00 |
@@ -101,7 +101,7 @@ The Worker polling path writes **only** to Cloud SQL and never publishes to Pub/
 | | `DashboardService`, `HealthInsightService`, `ReportGenerationService` | EF Core reads over `ActivityLogs` | per request |
 | **Cloud SQL** PostgreSQL 16 | `DeviceConnections`, `DeviceActivityLogs`, `ActivityLogs`, `PatternBaselines`, `DeviceTypeSyncProfiles` | EF Core 10 + Npgsql, `EnableLegacyTimestampBehavior=false`; AES-256-GCM at rest for tokens | write per synced day; read per request |
 | **Memorystore Redis** | manual-sync cooldown key, OAuth state, report cache | `IDistributedCache` | 1 min / 1 h TTLs — **`enable_redis = false` in prod today** |
-| **External** `health.googleapis.com` | Google Health API v4, Google OAuth 2.0 | HTTPS, Bearer tokens | 8 calls per day-in-window per connection |
+| **External** `health.googleapis.com` | Google Health API v4, Google OAuth 2.0 | HTTPS, Bearer tokens | 13 calls per day-in-window per connection |
 | **Client** MAUI mobile | `DashboardPage` | .NET MAUI (iOS/Android) | 5-min auto-refresh window; 2-h stale threshold |
 | **Client** Blazor web | — | .NET 10 Blazor Web App, EF Core direct to Cloud SQL | no data-refresh path yet (template shell) |
 
@@ -112,11 +112,14 @@ The Worker polling path writes **only** to Cloud SQL and never publishes to Pub/
 `WearableSyncWorker` → `DeviceSyncService.SyncCardiMemberAsync` → `PullWindowAsync`:
 
 1. **Refresh the token if needed** — `RefreshIfExpiredAsync`, 5-minute expiry buffer. Google access tokens live ~1 h (`TokenLifetimeHours: 1`). Token refresh is *not* a standalone cron job.
-2. **Fetch a trailing window** ending at **today**, reaching back `SyncLookbackDays` = **3** complete days, iterated **oldest first** so a mid-window failure still leaves the earlier days stored. Today is included so the dashboard's Key Metrics move during the day; the trailing days are what cover providers finalising a day only after midnight. Today's numbers are necessarily partial, so the readers that assume a whole day exclude it — `BaselineCalculationWorker` windows to the last complete day, and `DashboardService` suppresses the compare-against-baseline reading for cumulative metrics on a day still in progress.
-3. **Per day, 8 concurrent HTTP calls**:
-   - `POST /v4/users/me/dataTypes/{steps|distance|active-minutes|total-calories|floors|heart-rate}/dataPoints:dailyRollUp`
+2. **Fetch today**, plus — on the **first pull of each UTC day only** — a trailing window reaching back `SyncLookbackDays` = **3** complete days, iterated **oldest first** so a mid-window failure still leaves the earlier days stored. The trailing days catch a provider revising a *finished* day; re-reading them every 10 minutes would spend the per-wearer quota on numbers that cannot have moved. Whether the repair pass is due is read off `LastSyncDate`'s UTC date, so a connection that missed a day takes the full window on its next pull. Today's numbers are necessarily partial, so the readers that assume a whole day exclude it — `BaselineCalculationWorker` windows to the last complete day, and `DashboardService` suppresses the compare-against-baseline reading for cumulative metrics on a day still in progress.
+3. **Per day, 13 HTTP calls**, issued concurrently in four groups (activity ∥ heart rate ∥ sleep ∥ additional):
+   - **7 roll-ups** — `POST /v4/users/me/dataTypes/{steps|distance|active-minutes|total-calories|floors|sedentary-period|heart-rate}/dataPoints:dailyRollUp`
    - `GET /v4/users/me/dataTypes/daily-resting-heart-rate/dataPoints` (a Daily record — no rollup method)
    - `GET /v4/users/me/dataTypes/sleep/dataPoints?filter=sleep.interval.civil_end_time >= …` (civil time, so it buckets by the wearer's local day like the rollups do)
+   - **4 additional** — `oxygen-saturation` as a sample series, then `daily-vo2-max`, `daily-respiratory-rate` and `daily-sleep-temperature-derivations` as Daily records
+   
+   Peak in-flight is therefore ~12 requests for a single wearer. The Google Health per-user ceiling is 300 requests/minute, which this is comfortably inside on volume, but its QPS reading (5/s standard, 2.5/s for an unverified app) is **not** — see the quota note below.
 4. **Write raw** → `SaveChanges` → **re-merge** → `SaveChanges`. The raw row is saved first because the merge reads every device's *stored* row for that day.
 5. **Stamp `LastSyncDate` only once the whole window lands** — a partial sync stays due for retry instead of silently leaving a hole.
 
@@ -129,7 +132,7 @@ The cron sets how often the worker **looks**. Whether a connection is actually p
 dc.LastSyncDate == null || dc.LastSyncDate.Value.AddMinutes(dc.SyncFrequencyMinutes) <= now
 ```
 
-`SyncFrequencyMinutes` defaults to **30**, so cron and due-ness coincide today — but they are independent knobs. `NextPullAt` and `ConsecutiveEmptyPulls` exist in the schema for cadence calibration; nothing writes them yet, and dormancy backoff is off (`dormancy_threshold_pulls = 0` in both environments).
+`SyncFrequencyMinutes` defaults to **10**, so cron and due-ness coincide today — but they are independent knobs. `NextPullAt` and `ConsecutiveEmptyPulls` exist in the schema for cadence calibration; nothing writes them yet, and dormancy backoff is off (`dormancy_threshold_pulls = 0` in both environments).
 
 The same query excludes removed and monitoring-paused members — in the query rather than the worker, so every caller inherits it. Pausing monitoring has to stop *collection*, not just *display*.
 
@@ -160,14 +163,14 @@ The same query excludes removed and monitoring-paused members — in the query r
 
 | Setting | Value | Where |
 |---|---|---|
-| `WearableSyncWorker` cron | `0 */30 * * * *` | `Workers:WearableSyncWorker:CronExpression` |
+| `WearableSyncWorker` cron | `0 */10 * * * *` | `Workers:WearableSyncWorker:CronExpression` |
 | `OrphanedOrganizationCleanupWorker` cron | `0 0 3 * * *` | `Workers:…:CronExpression` |
 | `BaselineCalculationWorker` cron | `0 30 2 * * 0` | `Workers:…:CronExpression` |
 | `DeviceSyncAuditWorker` cron / sample | `0 0 4 * * 0` / 25 | `Workers:DeviceSyncAuditWorker` |
-| `SyncFrequencyMinutes` | 30 | per `DeviceConnection` row |
+| `SyncFrequencyMinutes` | 10 | per `DeviceConnection` row |
 | `sync_lookback_days` | 3 | `device_pull_params` tfvars |
 | `audit_lookback_days` | 14 | `device_pull_params` tfvars |
-| `min_pull_interval_minutes` | 30 | `device_pull_params` tfvars |
+| `min_pull_interval_minutes` | 10 | `device_pull_params` tfvars |
 | `max_pull_interval_minutes` | 1440 | `device_pull_params` tfvars |
 | `dormancy_threshold_pulls` | 0 (**backoff disabled**) | `device_pull_params` tfvars |
 | OAuth expiry buffer | 5 min | `OAuthTokenRefreshService.ExpiryBuffer` |
@@ -177,6 +180,22 @@ The same query excludes removed and monitoring-paused members — in the query r
 | Mobile stale threshold | 2 h | `DashboardPage.StaleThreshold` |
 | Auth token refresh skew | 30 s | `TokenRefresher.ExpirySkew` |
 | Orphan cleanup `MinAge` | 24 h | `OrphanedOrganizationCleanupWorker.MinAge` |
+
+### Google Health API quota
+
+Published default limits, and what this pipeline actually spends against them:
+
+| Limit | Default | What we spend |
+|---|---|---|
+| Per project, daily | 86.4M requests/day (~1,000 QPS sustained) | ~1,900 requests/connection/day at a 10-minute cadence — ~19M/day at the 10,000-wearer design target, **22%** |
+| Per project, minutely | 120,000 requests/min (~2,000 QPS burst) | `WearableSyncWorker` walks due connections **sequentially**, so a worker instance holds ~12 in flight |
+| **Per user, minutely** | **300 requests/min** (5 QPS standard; **2.5 QPS and 100 users max while unverified**) | 13 on a routine pull, 52 on the day's first pull — comfortable on volume |
+
+Two things to keep in view, neither of which is about how often we poll:
+
+- **The per-user QPS burst is over.** A day's snapshot fires ~12 requests at once for one wearer, against a 5/s standard reading and 2.5/s unverified. Volume is fine; shape is not. Capping the per-wearer fan-out is the fix, not a slower cadence.
+- **Nothing enforces any of this at runtime.** `MinPullIntervalMinutes`, `MaxPullIntervalMinutes`, `DormancyThresholdPulls` and `DormancyBackoffFactor` are validated in `DeviceProviderServiceExtensions.PostConfigure` — so a malformed pair stops the host — but **no code consults them once running**: there is no governor and no dormancy backoff. `MaxRequestsPerSecond` is not read at all, not even validated. `FitbitApiClient` has no `429` handling either: a throttle surfaces as `FitbitApiException`, marks the connection `SyncError` and aborts that pull.
+- **The 100-user unverified cap** binds before any of the above. Restricted-scope verification + CASA is issue #39.
 
 Cadence belongs to the **device type**, not to any one connection — providers differ in how quickly they finalise a day and how hard they rate-limit. The `[min, max]` bounds live in version-controlled infrastructure, so widening them is deliberately a deploy: a miscomputed cadence in a cardiac-monitoring product does not cost throughput, it silently delays alerts. Both `AddFitbitProvider`'s `PostConfigure` and the Terraform variable validate the same rules, so the plan fails before a bad revision deploys *and* the host fails fast if one is set some other way.
 
