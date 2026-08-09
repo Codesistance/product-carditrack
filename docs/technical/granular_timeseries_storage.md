@@ -43,7 +43,7 @@ For calibration: Bigtable's justification zone starts around **10 K+ sustained w
 
 ### Boundaries
 
-- **`IGranularMetricRepository`** in `Application/Interfaces/Repositories` is the only read/write surface. The future GCP aggregator reads through the repository layer exactly as [llm_design.md](../llm_design.md) already prescribes for token reads. This interface is the entire migration surface if storage ever changes.
+- A new **`IGranularMetricRepository`** port (to be introduced in `src/Core/CardiTrack.Application/Interfaces/Repositories`, alongside the existing repository interfaces) is the only read/write surface. The future GCP aggregator reads through the repository layer exactly as [llm_design.md](../llm_design.md) already prescribes for token reads. This interface is the entire migration surface if storage ever changes.
 - **Partition lifecycle and rollup derivation run in `CardiTrack.Worker`** — non-AI DB work, per the binding rule in `CLAUDE.md`. A worker job creates future partitions ahead of need and drops expired ones (PostgreSQL has no TTL; this is the same machinery pattern as other retention jobs).
 - Partition DDL ships as raw SQL inside EF Core migrations; EF maps the tables, the migrations own the partitioning.
 
