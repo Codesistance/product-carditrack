@@ -19,7 +19,7 @@ The CardiTrack API is a RESTful ASP.NET Core 10 Web API that serves as the backe
 - **AutoMapper**: DTO ↔ entity mapping (assembly-scanned profiles)
 - **CORS**: allow-list policy (`AllowSpecificOrigins`) driven by the `Cors:AllowedOrigins` config array
 - **Serilog**: Structured logging (console; APM shipping when the engine is configured)
-- **OpenTelemetry**: Tracing exported to the configured APM backend over OTLP; metrics opt-in (see below)
+- **OpenTelemetry**: Tracing exported to the configured APM backend over OTLP; metrics opt-in (see below). MedGemma calls emit their own GenAI spans/metrics via the `CardiTrack.Ai` source — see the [APM setup runbook](../../technical/apm_setup_runbook.md)
 
 ### APM shipping (`CardiTrack.Observability`)
 

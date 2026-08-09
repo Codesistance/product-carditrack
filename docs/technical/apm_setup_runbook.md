@@ -14,8 +14,8 @@ Until the secret holds real JSON the apps run normally and ship nothing — the 
 placeholder counts as "not configured". Malformed JSON in the secret fails startup loudly.
 
 Quota guardrails are enforced engine-independently: only Warning+ logs ship,
-`/health(z)` is never traced, and metrics (runtime, ASP.NET Core, HttpClient, Npgsql)
-ship only when the `apm_metrics_enabled` tfvar is true (→ `Apm__MetricsEnabled` env var)
+`/health(z)` is never traced, and metrics (runtime, ASP.NET Core, HttpClient, Npgsql,
+GenAI) ship only when the `apm_metrics_enabled` tfvar is true (→ `Apm__MetricsEnabled` env var)
 — they bill as custom metrics, so the switch is off by default. Current per-environment
 values: **dev `apm_metrics_enabled = true`, prod `= false`**.
 
@@ -47,6 +47,33 @@ Trace sampling at 100% is the largest ingest lever after metrics — cut
 only when nothing configures the value at all, stays at `0.2`
 (`ApmOptions.TracesSampleRatio`) so an unconfigured host fails cheap rather than at
 full sampling.
+
+### AI-call telemetry (`CardiTrack.Ai`)
+
+Every MedGemma call the API makes is instrumented client-side (the Ollama container is
+stock and cannot be) through the `CardiTrack.Ai` ActivitySource/Meter pair — defined in
+`AiTelemetry` (CardiTrack.Infrastructure), registered by name in `ApmExtensions`, with
+the shared string in `TelemetryNames` (CardiTrack.Shared).
+
+- **Span** — one `generate_content <model>` client span per call under the request
+  trace (the HttpClient POST nests beneath it), carrying GenAI semantic-convention
+  tags: `gen_ai.operation.name`, `gen_ai.provider.name`, request/response model,
+  `gen_ai.usage.input_tokens` / `output_tokens`, and `error.type` on failure. Subject
+  to the same head-sampling as the rest of the trace.
+- **Metrics** — `gen_ai.client.operation.duration` (seconds, buckets sized for a 300 s
+  timeout and cold starts) and `gen_ai.client.token.usage` (split by
+  `gen_ai.token.type` input/output), behind the same `apm_metrics_enabled` switch as
+  every other meter.
+- **Log line** — one Information completion log per call (model, elapsed ms, token
+  counts, done_reason, Ollama server-side timings, trace id), enabled by the Serilog
+  override `CardiTrack.Infrastructure.ExternalClients.Medical → Information` in the API
+  `appsettings.json`. The APM sink still filters at the service's ship level, so where
+  the root stays `Warning` (prod baseline) completion logs reach Cloud Logging but not
+  Datadog — there the span and metrics carry the same fields. Failures log at Error and
+  ship everywhere.
+- **Privacy (DPIA)** — none of these signals ever carries prompt text or model output:
+  token counts, durations, model names, status codes and JSON error positions only.
+  `MedGemmaClientTests` pins that invariant; keep it green.
 
 ### How each app identifies itself
 

@@ -145,6 +145,7 @@ public class AiServiceExtensionsTests
     private static ServiceProvider Resolve(Dictionary<string, string?> settings)
     {
         var configuration = new ConfigurationBuilder().AddInMemoryCollection(settings).Build();
-        return new ServiceCollection().AddAiServices(configuration).BuildServiceProvider();
+        // AddLogging: MedGemmaClient takes an ILogger from the container.
+        return new ServiceCollection().AddLogging().AddAiServices(configuration).BuildServiceProvider();
     }
 }

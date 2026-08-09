@@ -1,4 +1,5 @@
 using CardiTrack.Shared;
+using CardiTrack.Shared.Telemetry;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -151,7 +152,10 @@ public static class ApmExtensions
                     // Npgsql's built-in ActivitySource: one span per database command,
                     // parented under the request trace (what Npgsql.OpenTelemetry's
                     // AddNpgsql() registers, without pinning another package version).
-                    .AddSource("Npgsql");
+                    .AddSource("Npgsql")
+                    // AI client calls (MedGemma): one GenAI-semconv span per call, defined
+                    // in CardiTrack.Infrastructure's AiTelemetry.
+                    .AddSource(TelemetryNames.AiSource);
                 provider.AddTraceExporter(tracing, options);
             });
 
@@ -164,7 +168,10 @@ public static class ApmExtensions
                     // Built-in .NET runtime meter (GC, JIT, thread pool, exceptions)
                     // and Npgsql's meter (connections, commands) — no extra packages.
                     .AddMeter("System.Runtime")
-                    .AddMeter("Npgsql");
+                    .AddMeter("Npgsql")
+                    // GenAI client metrics (gen_ai.client.operation.duration,
+                    // gen_ai.client.token.usage) from AiTelemetry.
+                    .AddMeter(TelemetryNames.AiSource);
                 provider.AddMetricExporter(metrics, options);
             });
 

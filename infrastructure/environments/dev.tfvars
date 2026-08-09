@@ -41,7 +41,7 @@ storage_class    = "STANDARD"
 apm_engine        = "Datadog"
 apm_mobile_engine = "Datadog"
 
-# OTel metrics (runtime, ASP.NET Core, HttpClient, Npgsql) — bill as custom metrics
+# OTel metrics (runtime, ASP.NET Core, HttpClient, Npgsql, GenAI) — bill as custom metrics
 apm_metrics_enabled = true
 
 # Serilog root level per service — Warning keeps Cloud Logging and APM ingest lean.
