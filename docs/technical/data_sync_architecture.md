@@ -121,8 +121,9 @@ The Worker polling path writes **only** to Cloud SQL and never publishes to Pub/
    
    Peak in-flight is therefore ~12 requests for a single wearer. The Google Health per-user ceiling is 300 requests/minute, which this is comfortably inside on volume, but its QPS reading (5/s standard, 2.5/s for an unverified app) is **not** — see the quota note below.
 4. **Write raw** → `SaveChanges` → **re-merge** → `SaveChanges`. The raw row is saved first because the merge reads every device's *stored* row for that day.
+4b. **Fetch the granular day** (Worker pulls only — `SyncScope.WorkerCadence`): 4 more `list` calls per day (heart-rate and SpO2 as timestamped samples, steps and active-zone-minutes as intervals), bucketed into per-device hour vectors (`GranularDayBucketer` — additive metrics sum within a minute, level metrics take the latest reading) and stored via `GranularIngestionService`, which then recomputes the member's hourly rollups from the **merged** window. Runs after the day's raw row landed, so derived minutes never exist without their daily parent. Backfill days skip this — intraday history depth is unverified (granular ADR open question). Worker-cadence day cost is therefore **17 calls**, still one day-at-a-time against the per-wearer ceiling.
 5. **Stamp `LastSyncDate` only once the whole window lands** — a partial sync stays due for retry instead of silently leaving a hole.
-6. **Backfill one chunk of history** (Worker pulls only — `extendHistory: true`; the manual path skips this so a caregiver's refresh never waits on last month). `DeviceConnection.HistoryBackfilledTo` walks backwards from the routine window towards `backfill_days` (**90**) days ago, `backfill_chunk_days` (**7**) days per pull, newest first, advancing per day so an interrupted chunk resumes. A fresh connection's history is fully fetched after ~13 pulls (~2 h at the 10-minute cadence), which is what lets the 30-day baseline exist on day one for a wearable that has been worn before. Empty days are checked but not stored — an all-null row would read as a "data day" to the baseline coverage gate.
+6. **Backfill one chunk of history** (Worker pulls only — `SyncScope.WorkerCadence`; the manual path skips this so a caregiver's refresh never waits on last month). `DeviceConnection.HistoryBackfilledTo` walks backwards from the routine window towards `backfill_days` (**90**) days ago, `backfill_chunk_days` (**7**) days per pull, newest first, advancing per day so an interrupted chunk resumes. A fresh connection's history is fully fetched after ~13 pulls (~2 h at the 10-minute cadence), which is what lets the 30-day baseline exist on day one for a wearable that has been worn before. Empty days are checked but not stored — an all-null row would read as a "data day" to the baseline coverage gate.
 
 ### Two-level frequency
 
@@ -137,14 +138,17 @@ dc.LastSyncDate == null || dc.LastSyncDate.Value.AddMinutes(dc.SyncFrequencyMinu
 
 The same query excludes removed and monitoring-paused members — in the query rather than the worker, so every caller inherits it. Pausing monitoring has to stop *collection*, not just *display*.
 
-### Two-tier storage
+### Two-tier storage, at two grains
 
 | Table | Grain | Written by |
 |---|---|---|
 | `DeviceActivityLogs` | one row per **device** per day, unique `(DeviceConnectionId, Date)` | `DeviceSyncService`, raw from provider |
 | `ActivityLogs` | one row per **CardiMember** per day, unique `(CardiMemberId, Date)` | `ActivityLogAggregationService.RecomputeAsync` |
+| `GranularMetricHours` | one row per **device** × metric × hour (60-slot minute vector), day-partitioned | `GranularIngestionService`, worker cadence only |
+| `MetricRollupsHourly` | one row per **CardiMember** × metric × hour, month-partitioned | `GranularIngestionService`, recomputed from the merged window |
+| `ActivityLogsWeekly` / `ActivityLogsMonthly` | views over `ActivityLogs` | derived, no writer — the week/month horizons of the rollup ladder |
 
-`ActivityLogMerge` coalesces **each metric independently** by device priority (`IsPrimary` desc → `ConnectedDate` asc → `Id`) and **never sums** — a watch and a ring worn by the same person both count the same steps. It rebuilds from the full raw set every time, so it is idempotent and order-independent. Every reader consumes `ActivityLogs` only.
+`ActivityLogMerge` coalesces **each metric independently** by device priority (`IsPrimary` desc → `ConnectedDate` asc → `Id`) and **never sums** — a watch and a ring worn by the same person both count the same steps. It rebuilds from the full raw set every time, so it is idempotent and order-independent. Every reader consumes `ActivityLogs` only. The granular tier repeats the same raw-then-derived shape at hour grain: per-device vectors merged on read (`GranularSeriesMerge`, same priority rule), member rollups recomputed from the merged result.
 
 > Providers must report a missing metric as `null`, never `0` — the merge coalesces on the first non-null value, so a placeholder `0` from a higher-priority device would beat another device's genuine reading.
 

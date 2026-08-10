@@ -48,7 +48,7 @@ public class WearableSyncWorker : CronBackgroundService
 
             try
             {
-                await syncService.SyncCardiMemberAsync(connection, extendHistory: true);
+                await syncService.SyncCardiMemberAsync(connection, SyncScope.WorkerCadence);
                 successCount++;
                 _logger.LogInformation(
                     "Synced DeviceConnection {Id} (DeviceType={DeviceType}) for CardiMember {CardiMemberId}.",

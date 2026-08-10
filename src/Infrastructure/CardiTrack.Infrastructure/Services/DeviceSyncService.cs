@@ -19,6 +19,7 @@ public class DeviceSyncService : IDeviceSyncService
     private readonly IDeviceConnectionRepository _deviceConnections;
     private readonly IDeviceActivityLogRepository _deviceActivityLogs;
     private readonly IActivityLogAggregationService _aggregation;
+    private readonly IGranularIngestionService _granularIngestion;
     private readonly IUnitOfWork _unitOfWork;
     private readonly List<DeviceProviderSettings> _providers;
 
@@ -28,6 +29,7 @@ public class DeviceSyncService : IDeviceSyncService
         IDeviceConnectionRepository deviceConnections,
         IDeviceActivityLogRepository deviceActivityLogs,
         IActivityLogAggregationService aggregation,
+        IGranularIngestionService granularIngestion,
         IUnitOfWork unitOfWork,
         IOptions<List<DeviceProviderSettings>> providers)
     {
@@ -36,11 +38,12 @@ public class DeviceSyncService : IDeviceSyncService
         _deviceConnections = deviceConnections;
         _deviceActivityLogs = deviceActivityLogs;
         _aggregation = aggregation;
+        _granularIngestion = granularIngestion;
         _unitOfWork = unitOfWork;
         _providers = providers.Value;
     }
 
-    public async Task SyncCardiMemberAsync(DeviceConnection connection, bool extendHistory = false)
+    public async Task SyncCardiMemberAsync(DeviceConnection connection, SyncScope scope = SyncScope.Routine)
     {
         var providerConfig = ResolveProviderConfig(connection);
 
@@ -66,7 +69,9 @@ public class DeviceSyncService : IDeviceSyncService
 
         try
         {
-            await PullWindowAsync(connection, accessToken, lookbackDays, today);
+            await PullWindowAsync(
+                connection, accessToken, lookbackDays, today,
+                includeGranular: scope == SyncScope.WorkerCadence);
 
             // Only once the whole window landed — otherwise a partial sync would look complete
             // and the connection would not come due again until the next interval. This also
@@ -75,10 +80,10 @@ public class DeviceSyncService : IDeviceSyncService
             await _deviceConnections.MarkSyncSucceededAsync(connection.Id, DateTime.UtcNow);
 
             // After the routine window, never instead of it: today's numbers are what a
-            // caregiver is looking at, so history extends only once they have landed. Opt-in
-            // because the manual-sync path shares this method, and a caregiver waiting on a
-            // refresh must not pay for a chunk of last month.
-            if (extendHistory)
+            // caregiver is looking at, so history extends only once they have landed. Scoped to
+            // the worker cadence because the manual-sync path shares this method, and a
+            // caregiver waiting on a refresh must not pay for a chunk of last month.
+            if (scope == SyncScope.WorkerCadence)
                 await BackfillHistoryAsync(connection, accessToken, providerConfig, today);
         }
         catch (Exception ex) when (IsProviderApiException(ex))
@@ -134,7 +139,8 @@ public class DeviceSyncService : IDeviceSyncService
     /// </para>
     /// </remarks>
     private async Task PullWindowAsync(
-        DeviceConnection connection, string accessToken, int lookbackDays, DateOnly today)
+        DeviceConnection connection, string accessToken, int lookbackDays, DateOnly today,
+        bool includeGranular = false)
     {
         // Oldest first, so a mid-window provider failure still leaves the earlier days stored.
         for (var offset = lookbackDays; offset >= 0; offset--)
@@ -142,6 +148,18 @@ public class DeviceSyncService : IDeviceSyncService
             var targetDate = today.AddDays(-offset);
             var snapshot = await _deviceApi.GetHealthSnapshotAsync(accessToken, targetDate);
             await StoreDayAsync(connection, snapshot, targetDate);
+
+            // The granular series ride the same window, day by day, after the daily row landed —
+            // an hour vector for a day whose merged daily row failed to store would be derived
+            // data with no raw parent. Backfill days deliberately skip this: how far back the
+            // provider serves intraday history is unverified (granular ADR open question), so
+            // history stays daily-grain until the probe answers it.
+            if (includeGranular)
+            {
+                var granularDay = await _deviceApi.GetGranularDayAsync(accessToken, targetDate);
+                if (granularDay is { HasAnyData: true })
+                    await _granularIngestion.IngestDayAsync(connection, granularDay);
+            }
         }
     }
 

@@ -18,6 +18,7 @@ public class DeviceSyncServiceTests
     private readonly IDeviceConnectionRepository _deviceConnections = Substitute.For<IDeviceConnectionRepository>();
     private readonly IDeviceActivityLogRepository _deviceActivityLogs = Substitute.For<IDeviceActivityLogRepository>();
     private readonly IActivityLogAggregationService _aggregation = Substitute.For<IActivityLogAggregationService>();
+    private readonly IGranularIngestionService _granularIngestion = Substitute.For<IGranularIngestionService>();
     private readonly IUnitOfWork _unitOfWork = Substitute.For<IUnitOfWork>();
 
     private readonly DeviceConnection _fitbitConnection = new()
@@ -55,7 +56,7 @@ public class DeviceSyncServiceTests
         var options = Options.Create(new List<DeviceProviderSettings> { _fitbitConfig });
         return new DeviceSyncService(
             _tokenRefresh, _deviceApi, _deviceConnections, _deviceActivityLogs,
-            _aggregation, _unitOfWork, options);
+            _aggregation, _granularIngestion, _unitOfWork, options);
     }
 
     private static DeviceHealthSnapshot Snapshot(int steps = 8000) =>
@@ -382,7 +383,7 @@ public class DeviceSyncServiceTests
         SetupSuccessfulTokenRefresh();
         SetupDefaultApiResponse();
 
-        await CreateSut().SyncCardiMemberAsync(_fitbitConnection, extendHistory: true);
+        await CreateSut().SyncCardiMemberAsync(_fitbitConnection, SyncScope.WorkerCadence);
 
         // The routine window plus exactly one chunk — never the whole horizon at once.
         await _deviceApi.Received(WindowDays(LookbackDays) + _fitbitConfig.BackfillChunkDays)
@@ -418,7 +419,7 @@ public class DeviceSyncServiceTests
         SetupSuccessfulTokenRefresh();
         SetupDefaultApiResponse();
 
-        await CreateSut().SyncCardiMemberAsync(_fitbitConnection, extendHistory: true);
+        await CreateSut().SyncCardiMemberAsync(_fitbitConnection, SyncScope.WorkerCadence);
 
         var chunkEnd = Today.AddDays(-(LookbackDays + _fitbitConfig.BackfillChunkDays));
         await _deviceConnections.Received(_fitbitConfig.BackfillChunkDays)
@@ -435,7 +436,7 @@ public class DeviceSyncServiceTests
         SetupSuccessfulTokenRefresh();
         SetupDefaultApiResponse();
 
-        await CreateSut().SyncCardiMemberAsync(_fitbitConnection, extendHistory: true);
+        await CreateSut().SyncCardiMemberAsync(_fitbitConnection, SyncScope.WorkerCadence);
 
         for (var offset = 31; offset <= 30 + _fitbitConfig.BackfillChunkDays; offset++)
         {
@@ -452,7 +453,7 @@ public class DeviceSyncServiceTests
         SetupSuccessfulTokenRefresh();
         SetupDefaultApiResponse();
 
-        await CreateSut().SyncCardiMemberAsync(_fitbitConnection, extendHistory: true);
+        await CreateSut().SyncCardiMemberAsync(_fitbitConnection, SyncScope.WorkerCadence);
 
         // Only days 89 and 90 remain of the horizon, chunk size notwithstanding.
         await _deviceApi.Received(WindowDays(LookbackDays) + 2)
@@ -468,7 +469,7 @@ public class DeviceSyncServiceTests
         SetupSuccessfulTokenRefresh();
         SetupDefaultApiResponse();
 
-        await CreateSut().SyncCardiMemberAsync(_fitbitConnection, extendHistory: true);
+        await CreateSut().SyncCardiMemberAsync(_fitbitConnection, SyncScope.WorkerCadence);
 
         await _deviceApi.Received(WindowDays(LookbackDays))
             .GetHealthSnapshotAsync(Arg.Any<string>(), Arg.Any<DateOnly>());
@@ -483,7 +484,7 @@ public class DeviceSyncServiceTests
         SetupSuccessfulTokenRefresh();
         SetupDefaultApiResponse();
 
-        await CreateSut().SyncCardiMemberAsync(_fitbitConnection, extendHistory: true);
+        await CreateSut().SyncCardiMemberAsync(_fitbitConnection, SyncScope.WorkerCadence);
 
         await _deviceApi.Received(WindowDays(LookbackDays))
             .GetHealthSnapshotAsync(Arg.Any<string>(), Arg.Any<DateOnly>());
@@ -501,7 +502,7 @@ public class DeviceSyncServiceTests
         _deviceApi.GetHealthSnapshotAsync(Arg.Any<string>(), Arg.Any<DateOnly>())
             .Returns(call => call.Arg<DateOnly>() >= routineFloor ? Snapshot() : EmptySnapshot());
 
-        await CreateSut().SyncCardiMemberAsync(_fitbitConnection, extendHistory: true);
+        await CreateSut().SyncCardiMemberAsync(_fitbitConnection, SyncScope.WorkerCadence);
 
         // Only the routine window stored; the empty history days were checked and skipped.
         await _deviceActivityLogs.Received(WindowDays(LookbackDays))
@@ -522,7 +523,7 @@ public class DeviceSyncServiceTests
             .ThrowsAsync(new FitbitApiException(503, "Service Unavailable"));
 
         await Assert.ThrowsAsync<FitbitApiException>(() =>
-            CreateSut().SyncCardiMemberAsync(_fitbitConnection, extendHistory: true));
+            CreateSut().SyncCardiMemberAsync(_fitbitConnection, SyncScope.WorkerCadence));
 
         await _deviceConnections.Received(1)
             .MarkSyncSucceededAsync(_fitbitConnection.Id, Arg.Any<DateTime>());
@@ -530,6 +531,86 @@ public class DeviceSyncServiceTests
         await _deviceConnections.Received(2)
             .UpdateHistoryBackfilledToAsync(_fitbitConnection.Id, Arg.Any<DateOnly>());
         Assert.Equal(Today.AddDays(-(LookbackDays + 2)), _fitbitConnection.HistoryBackfilledTo);
+    }
+
+    // ── Granular series (worker cadence) ────────────────────────────────────────
+    //
+    // Minute-grain series ride the routine window on the worker cadence only: the manual path
+    // must stay fast, and backfill days stay daily-grain until the probe verifies how far back
+    // the provider serves intraday history.
+
+    private static DeviceGranularDay GranularDayWithData() =>
+        new(HeartRate: [new GranularSample(DateTime.UtcNow, 70f)],
+            Steps: [], ActiveZoneMinutes: [], SpO2: []);
+
+    [Fact]
+    public async Task SyncCardiMemberAsync_FetchesGranular_ForEachRoutineWindowDay_OnWorkerCadence()
+    {
+        SetupSuccessfulTokenRefresh();
+        SetupDefaultApiResponse();
+        _deviceApi.GetGranularDayAsync(Arg.Any<string>(), Arg.Any<DateOnly>())
+            .Returns(GranularDayWithData());
+
+        await CreateSut().SyncCardiMemberAsync(_fitbitConnection, SyncScope.WorkerCadence);
+
+        await _deviceApi.Received(WindowDays(LookbackDays))
+            .GetGranularDayAsync(Arg.Any<string>(), Arg.Any<DateOnly>());
+        await _granularIngestion.Received(WindowDays(LookbackDays))
+            .IngestDayAsync(_fitbitConnection, Arg.Any<DeviceGranularDay>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task SyncCardiMemberAsync_NeverTouchesGranular_AtRoutineScope()
+    {
+        SetupSuccessfulTokenRefresh();
+        SetupDefaultApiResponse();
+
+        await CreateSut().SyncCardiMemberAsync(_fitbitConnection);
+
+        await _deviceApi.DidNotReceive().GetGranularDayAsync(Arg.Any<string>(), Arg.Any<DateOnly>());
+    }
+
+    [Fact]
+    public async Task SyncCardiMemberAsync_SkipsIngestion_WhenTheGranularDayIsEmpty()
+    {
+        SetupSuccessfulTokenRefresh();
+        SetupDefaultApiResponse();
+        _deviceApi.GetGranularDayAsync(Arg.Any<string>(), Arg.Any<DateOnly>())
+            .Returns(DeviceGranularDay.Empty);
+
+        await CreateSut().SyncCardiMemberAsync(_fitbitConnection, SyncScope.WorkerCadence);
+
+        await _granularIngestion.DidNotReceive().IngestDayAsync(
+            Arg.Any<DeviceConnection>(), Arg.Any<DeviceGranularDay>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task SyncCardiMemberAsync_DoesNotFetchGranular_ForBackfillDays()
+    {
+        SetupSuccessfulTokenRefresh();
+        SetupDefaultApiResponse();
+        _deviceApi.GetGranularDayAsync(Arg.Any<string>(), Arg.Any<DateOnly>())
+            .Returns(GranularDayWithData());
+
+        await CreateSut().SyncCardiMemberAsync(_fitbitConnection, SyncScope.WorkerCadence);
+
+        // The backfill chunk fetched daily snapshots beyond the routine window…
+        await _deviceApi.Received(WindowDays(LookbackDays) + _fitbitConfig.BackfillChunkDays)
+            .GetHealthSnapshotAsync(Arg.Any<string>(), Arg.Any<DateOnly>());
+        // …but the granular fetch stayed within it.
+        await _deviceApi.Received(WindowDays(LookbackDays))
+            .GetGranularDayAsync(Arg.Any<string>(), Arg.Any<DateOnly>());
+    }
+
+    [Fact]
+    public async Task AuditSyncAsync_NeverTouchesGranular()
+    {
+        SetupSuccessfulTokenRefresh();
+        SetupDefaultApiResponse();
+
+        await CreateSut().AuditSyncAsync(_fitbitConnection);
+
+        await _deviceApi.DidNotReceive().GetGranularDayAsync(Arg.Any<string>(), Arg.Any<DateOnly>());
     }
 
     // ── AuditSyncAsync ───────────────────────────────────────────────────────────
