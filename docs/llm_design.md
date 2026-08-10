@@ -294,7 +294,8 @@ infra) registers our `endpointUri` and an `endpointAuthorization.secret` — the
 (an array, kebab-case — the singular `dataType` the earlier draft of this section implied is
 a 400) plus a required **`subscriptionCreatePolicy`**; with **`AUTOMATIC`**, notification
 eligibility is computed dynamically from user consents, so **no per-wearer Subscription
-calls are ever needed** — the previous step 3 of this runbook is obsolete. Provisioning is:
+calls are ever needed** — an earlier draft of this runbook ended with a create-a-Subscription-per-enrolled-wearer
+step, and that whole approach is obsolete. Provisioning is:
 
 1. Read the generated secret from Secret Manager (`carditrack-<env>-webhook-secret` — the
    Terraform-owned value the receiver compares against).
