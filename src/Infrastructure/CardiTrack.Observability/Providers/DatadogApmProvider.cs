@@ -114,6 +114,31 @@ public sealed class DatadogApmProvider : IApmProvider
         return new ApmShippingStatus(signals, warnings);
     }
 
+    /// <summary>
+    /// Log intake always ships (options are only checked as configured once IngestUrl is
+    /// real), plus trace/metrics intake hosts when those signals are actually live — an
+    /// unset TraceEndpoint or an IngestUrl the metrics URL can't be derived from means that
+    /// host is never opened, so it has nothing to exclude from instrumentation.
+    /// </summary>
+    public IReadOnlyCollection<string> ShippingHosts(ApmOptions options)
+    {
+        var hosts = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            new Uri(LogIntakeUrl(options.Data.IngestUrl!)).Host,
+        };
+
+        var traceEndpoint = options.Data.Extra.GetValueOrDefault(TraceEndpointKey);
+        if (!string.IsNullOrWhiteSpace(traceEndpoint) && Uri.TryCreate(traceEndpoint, UriKind.Absolute, out var traceUri))
+            hosts.Add(traceUri.Host);
+
+        if (options.MetricsEnabled
+            && MetricsIntakeUrl(options) is { } metricsEndpoint
+            && Uri.TryCreate(metricsEndpoint, UriKind.Absolute, out var metricsUri))
+            hosts.Add(metricsUri.Host);
+
+        return hosts;
+    }
+
     /// <summary>Derives the log intake URL from a bare site name; full URLs pass through.</summary>
     public static string LogIntakeUrl(string site)
     {

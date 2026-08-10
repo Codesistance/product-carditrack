@@ -37,6 +37,14 @@ public interface IApmProvider
     /// Only called when options are fully configured.
     /// </summary>
     ApmShippingStatus Describe(ApmOptions options);
+
+    /// <summary>
+    /// Hosts this provider ships telemetry to (log intake and, when configured, trace and
+    /// metrics intake). Used to keep OTel's HttpClient instrumentation from tracing the
+    /// backend's own ingest calls — without this, every log/trace/metric shipment becomes a
+    /// self-referential APM span. Only called when options are fully configured.
+    /// </summary>
+    IReadOnlyCollection<string> ShippingHosts(ApmOptions options);
 }
 
 /// <summary>Startup-log view of a provider's effective shipping state.</summary>

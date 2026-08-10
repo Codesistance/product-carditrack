@@ -131,6 +131,11 @@ public static class ApmExtensions
         foreach (var warning in status.Warnings)
             Log.Warning("APM ({Engine}): {Reason}", provider.Name, warning);
 
+        // The backend's own ingest calls (log/trace/metrics shipping) must not become spans
+        // themselves — otherwise every shipment traces itself, filling APM with self-referential
+        // noise. They still ship fine; they're just invisible to HttpClientInstrumentation.
+        var shippingHosts = provider.ShippingHosts(options);
+
         var telemetry = builder.Services.AddOpenTelemetry()
             // service.version is the release the spans belong to — the deploy's semver tag,
             // not the assembly version (which stays at the SDK default nobody stamps).
@@ -148,7 +153,11 @@ public static class ApmExtensions
                             !context.Request.Path.StartsWithSegments("/health")
                             && !context.Request.Path.StartsWithSegments("/healthz");
                     })
-                    .AddHttpClientInstrumentation()
+                    .AddHttpClientInstrumentation(instrumentation =>
+                    {
+                        instrumentation.FilterHttpRequestMessage = request =>
+                            request.RequestUri is not { } uri || !shippingHosts.Contains(uri.Host);
+                    })
                     // Npgsql's built-in ActivitySource: one span per database command,
                     // parented under the request trace (what Npgsql.OpenTelemetry's
                     // AddNpgsql() registers, without pinning another package version).
