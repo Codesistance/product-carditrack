@@ -8,7 +8,7 @@ ARG MODEL_TAG
 RUN ollama serve & SERVER_PID=$! && \
     sleep 5 && \
     ollama pull ${MODEL_TAG} && \
-    ollama list | grep -qF "${MODEL_TAG}" || \
+    ollama list | awk -v tag="${MODEL_TAG}" 'NR>1 && $1==tag {found=1} END {exit !found}' || \
       { echo "FATAL: '${MODEL_TAG}' was pulled but 'ollama list' does not show it under that exact name — generate/chat calls would 404 against it. Check case and tag format against what Ollama actually registered:" >&2; ollama list >&2; exit 1; } && \
     kill $SERVER_PID
 
