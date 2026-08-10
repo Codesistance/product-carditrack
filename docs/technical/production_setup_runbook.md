@@ -119,24 +119,31 @@ Facts that cost live errors to learn (all from the 2026-08-10 dev attempt):
 - **Quota project** (403 `SERVICE_DISABLED`): user-credential calls must carry
   `-H "x-goog-user-project: carditrack-devices-<env>"`, and the Health API must be enabled on
   that project first: `gcloud services enable health.googleapis.com --project carditrack-devices-<env>`.
-- **Enrollment gate** (bare 403 `The caller does not have permission`): even a **project
-  owner** with the quota project set is refused on both `subscribers` read and create, while
-  the data plane (OAuth user scopes, polling, sync) works fine — the Subscriber/webhook
-  management plane is **enrollment-gated by Google** beyond the data-scope access granted at
-  provisioning. (Diagnostic tell: project-IAM denials come back verbose with the permission
-  name and a Troubleshooter URL; the product gate returns the bare form.) Resolution runs
-  through the Health API console page / an access request or support ticket per project —
-  **file for devices-prod at the same time; this is a lead-time item, likely weeks.**
+- **Project NUMBER, not id, in the URL** (bare 403 `The caller does not have permission`):
+  `/v4/projects/carditrack-devices-<env>/…` is wrong — the webhooks guide requires the
+  **numeric project number** (`gcloud projects describe carditrack-devices-<env> --format
+  "value(projectNumber)"`). This bare 403 briefly masqueraded as an enrollment gate — it is
+  not; there is no enrollment. (Diagnostic tell kept for posterity: real project-IAM denials
+  come back verbose with the permission name and a Troubleshooter URL; the id-for-number
+  mistake returns the bare form.)
+- **Path-qualified `endpointUri`**: register
+  `https://<receiver-service>/webhooks/google-health`, not the service root — the
+  verification probes POST to the registered URI, and the root would 404 them.
+- **Roles exist after all**: the guide names Google Health API Read/Editor/Admin roles for
+  service-account callers (they do not surface in `list-grantable-roles`); a project
+  owner/editor works for a hand-run registration.
 
-4. Once enrolled: check the returned `state`; the endpoint-verification handshake's exact
-   shape is undocumented — the receiver answers `GET → 200` as the assumed contract. If
-   verification fails, capture the request Google sent (receiver logs) and adjust.
+4. The endpoint-verification handshake (documented in the webhooks guide): on create/update
+   Google sends **two POST probes** (User-Agent `Google-Health-API-Webhooks`, body
+   `{"type": "verification"}`) — the authorized one must be answered `200`/`201`, the
+   unauthorized one `401`/`403`, else creation fails with `FAILED_PRECONDITION`. The receiver
+   conforms as of PR #140 (**deploy it before retrying the create** — its earlier `204`
+   acknowledgment fails the first probe). Then check the returned Subscriber's `state`.
 
-- **Dev status:** **blocked on Google-side webhook enrollment** (2026-08-10) — payload
-  validated by the live API; quota project solved; owner-credentialed create then bare-403'd
-  at the product gate. Until enrollment lands, the pipeline runs whole on **10-minute
-  polling** by design — webhooks only shorten latency, so this blocks nothing else in this
-  runbook except step 9's webhook leg.
+- **Dev status:** retry pending (2026-08-10) — schema, quota project, and handshake causes
+  all identified and fixed; awaiting the PR #140 receiver deploy, then the create with the
+  project-number URL. Until then the pipeline runs whole on **10-minute polling** by design —
+  webhooks only shorten latency.
 
 ### 8. HealthApiProbe live-wearer check (human required)
 
