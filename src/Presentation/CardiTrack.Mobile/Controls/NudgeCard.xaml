@@ -1,0 +1,107 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentView xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="CardiTrack.Mobile.Controls.NudgeCard">
+
+    <!-- One row of the notification inbox: what is missing, what supplying it unlocks, and the
+         three things the caregiver can do about it.
+
+         Radius sits on this card, never on the page behind it — pages are full-bleed. The
+         priority rail is a second rounded rect underneath, inset 4px, the same construction
+         AlertListCard uses for its severity rail so the two lists read as one family. -->
+    <Border x:Name="PriorityRail"
+            StrokeThickness="0"
+            Padding="4,0,0,0">
+        <Border.StrokeShape>
+            <RoundRectangle CornerRadius="18"/>
+        </Border.StrokeShape>
+        <Border.Shadow>
+            <Shadow Brush="{StaticResource CardShadowBrush}" Opacity="0.12" Radius="12" Offset="0,3"/>
+        </Border.Shadow>
+
+        <Border BackgroundColor="{StaticResource White}"
+                StrokeThickness="0"
+                Padding="16,14,14,12">
+            <Border.StrokeShape>
+                <RoundRectangle CornerRadius="18"/>
+            </Border.StrokeShape>
+
+            <VerticalStackLayout Spacing="8">
+
+                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
+                    <Label x:Name="TitleLabel"
+                           Grid.Column="0"
+                           Style="{StaticResource Body1SemiBoldDark}"
+                           LineBreakMode="WordWrap"/>
+
+                    <!-- Read-only marker for the rest of the family: visible so everyone knows
+                         it is outstanding, without four people being asked to fix one thing. -->
+                    <Border x:Name="FamilyPill"
+                            Grid.Column="1"
+                            IsVisible="False"
+                            Style="{StaticResource StatusPill}"
+                            BackgroundColor="{StaticResource InputBackground}"
+                            VerticalOptions="Start">
+                        <Label Text="In hand"
+                               Style="{StaticResource StatusPillText}"
+                               TextColor="{StaticResource BodyText}"/>
+                    </Border>
+                </Grid>
+
+                <Label x:Name="BodyLabel"
+                       Style="{StaticResource Body2}"
+                       LineBreakMode="WordWrap"/>
+
+                <!-- The benefit line is the point of the whole surface, so it is set apart
+                     rather than run on from the body. -->
+                <Border BackgroundColor="{StaticResource SelectedOptionBackground}"
+                        StrokeThickness="0"
+                        Padding="12,10">
+                    <Border.StrokeShape>
+                        <RoundRectangle CornerRadius="12"/>
+                    </Border.StrokeShape>
+                    <Label x:Name="BenefitLabel"
+                           Style="{StaticResource Body2Medium}"
+                           TextColor="{StaticResource PrimaryDark}"
+                           LineBreakMode="WordWrap"/>
+                </Border>
+
+                <Grid x:Name="ActionRow"
+                      ColumnDefinitions="*,Auto,Auto"
+                      ColumnSpacing="8"
+                      Margin="0,2,0,0">
+
+                    <Button x:Name="ComplyButton"
+                            Grid.Column="0"
+                            Style="{StaticResource PrimaryGradientButton}"
+                            HeightRequest="40"
+                            FontSize="14"
+                            Clicked="OnComplyClicked"/>
+
+                    <Button x:Name="SnoozeButton"
+                            Grid.Column="1"
+                            Text="Not now"
+                            Style="{StaticResource SecondaryOutlineButton}"
+                            HeightRequest="40"
+                            FontSize="13"
+                            Padding="14,0"
+                            Clicked="OnSnoozeClicked"/>
+
+                    <!-- Hidden entirely for safety rules rather than shown-and-disabled: an
+                         affordance that refuses to work reads as a bug, and these are the two
+                         cases where silence would mean nobody is watching. -->
+                    <Button x:Name="DismissButton"
+                            Grid.Column="2"
+                            Text="✕"
+                            FontFamily="QuicksandSemiBold"
+                            FontSize="15"
+                            TextColor="{StaticResource MutedText}"
+                            BackgroundColor="Transparent"
+                            WidthRequest="40"
+                            HeightRequest="40"
+                            Clicked="OnDismissClicked"/>
+                </Grid>
+            </VerticalStackLayout>
+        </Border>
+    </Border>
+</ContentView>

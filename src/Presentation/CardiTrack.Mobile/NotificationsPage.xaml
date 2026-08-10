@@ -1,0 +1,112 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:controls="clr-namespace:CardiTrack.Mobile.Controls"
+             x:Class="CardiTrack.Mobile.NotificationsPage"
+             Shell.NavBarIsVisible="False"
+             Shell.TabBarIsVisible="False"
+             BackgroundColor="{StaticResource PageGround}">
+
+    <!-- The notification inbox. Full-bleed like every other page: the gradient band runs to the
+         edges and the radius lives on the cards inside. -->
+    <Grid RowDefinitions="Auto,*">
+
+        <controls:HeaderBand Grid.Row="0" ContentPadding="20,16,20,26">
+            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
+                <Border Grid.Column="0"
+                        WidthRequest="38" HeightRequest="38"
+                        StrokeThickness="0"
+                        BackgroundColor="#33FFFFFF"
+                        VerticalOptions="Center">
+                    <Border.StrokeShape>
+                        <RoundRectangle CornerRadius="19"/>
+                    </Border.StrokeShape>
+                    <ImageButton Source="icon_back_white.svg"
+                                 WidthRequest="20" HeightRequest="20"
+                                 BackgroundColor="Transparent"
+                                 Clicked="OnBackClicked"/>
+                </Border>
+
+                <VerticalStackLayout Grid.Column="1" VerticalOptions="Center">
+                    <Label Text="Complete the picture"
+                           Style="{StaticResource Heading3}"
+                           TextColor="{StaticResource White}"/>
+                    <Label x:Name="SubtitleLabel"
+                           Style="{StaticResource Body2}"
+                           TextColor="#CCFFFFFF"/>
+                </VerticalStackLayout>
+            </Grid>
+        </controls:HeaderBand>
+
+        <RefreshView x:Name="Refresher"
+                     Grid.Row="1"
+                     RefreshColor="{StaticResource Primary}"
+                     Refreshing="OnPullToRefresh">
+            <ScrollView>
+                <Grid Padding="20,16,20,28">
+
+                    <VerticalStackLayout x:Name="SkeletonPanel" Spacing="14" IsVisible="False">
+                        <controls:SkeletonView HeightRequest="150"/>
+                        <controls:SkeletonView HeightRequest="150"/>
+                        <controls:SkeletonView HeightRequest="150"/>
+                    </VerticalStackLayout>
+
+                    <VerticalStackLayout x:Name="ContentPanel" Spacing="14" IsVisible="False">
+
+                        <!-- Owned items: the things this caregiver is being asked to do. -->
+                        <VerticalStackLayout x:Name="OwnedList" Spacing="14"/>
+
+                        <!-- Everything else the family is dealing with. Kept visible so nobody
+                             assumes an outstanding gap is nobody's job, but never actionable. -->
+                        <VerticalStackLayout x:Name="FamilySection" Spacing="10" IsVisible="False">
+                            <Label Text="Your family is on these"
+                                   Style="{StaticResource DashboardSectionTitle}"
+                                   Margin="4,10,0,0"/>
+                            <VerticalStackLayout x:Name="FamilyList" Spacing="14"/>
+                        </VerticalStackLayout>
+                    </VerticalStackLayout>
+
+                    <!-- Empty state. "Nothing needed" rather than "no notifications": the absence
+                         is the good outcome here, and should read like one. -->
+                    <Border x:Name="EmptyPanel"
+                            IsVisible="False"
+                            Style="{StaticResource ElevatedCard}"
+                            Margin="0,40,0,0"
+                            Padding="24,32">
+                        <VerticalStackLayout Spacing="10" HorizontalOptions="Center">
+                            <Label Text="✓"
+                                   FontSize="34"
+                                   TextColor="{StaticResource StatusGreen}"
+                                   HorizontalOptions="Center"/>
+                            <Label Text="Nothing needed right now"
+                                   Style="{StaticResource Heading3}"
+                                   HorizontalTextAlignment="Center"/>
+                            <Label Text="CardiTrack has everything it needs to keep watching."
+                                   Style="{StaticResource Body2}"
+                                   HorizontalTextAlignment="Center"/>
+                        </VerticalStackLayout>
+                    </Border>
+
+                    <Border x:Name="ErrorPanel"
+                            IsVisible="False"
+                            Style="{StaticResource ElevatedCard}"
+                            Margin="0,40,0,0"
+                            Padding="24,28">
+                        <VerticalStackLayout Spacing="12" HorizontalOptions="Center">
+                            <Label Text="Couldn't load your list"
+                                   Style="{StaticResource Heading3}"
+                                   HorizontalTextAlignment="Center"/>
+                            <Label x:Name="ErrorDetailLabel"
+                                   Style="{StaticResource Body2}"
+                                   HorizontalTextAlignment="Center"/>
+                            <Button Text="Try again"
+                                    Style="{StaticResource PrimaryGradientButton}"
+                                    HeightRequest="42"
+                                    Clicked="OnRetryClicked"/>
+                        </VerticalStackLayout>
+                    </Border>
+                </Grid>
+            </ScrollView>
+        </RefreshView>
+    </Grid>
+</ContentPage>

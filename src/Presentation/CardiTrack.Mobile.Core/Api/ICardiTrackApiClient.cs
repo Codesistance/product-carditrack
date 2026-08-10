@@ -72,4 +72,45 @@ public interface ICardiTrackApiClient
 
     /// <summary>Asks the API to resend the Auth0 verification email. Anonymous; always succeeds server-side.</summary>
     Task ResendVerificationAsync(string email, CancellationToken ct = default);
+
+    // ---- Data-completeness notifications ----
+
+    /// <summary>The caller's notification inbox, priority-ranked.</summary>
+    Task<NotificationListResponse> GetNotificationsAsync(
+        string? state = null,
+        string? category = null,
+        bool? owned = null,
+        int? limit = null,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Badge count, safety banners and the dashboard card slots in one call — what the dashboard
+    /// and the tab badge both read on appearing.
+    /// </summary>
+    Task<NotificationSummaryResponse> GetNotificationSummaryAsync(CancellationToken ct = default);
+
+    /// <summary>Records that the caller has laid eyes on it. Only the first sighting counts.</summary>
+    Task MarkNotificationSeenAsync(Guid notificationId, CancellationToken ct = default);
+
+    /// <summary>Puts it off. The server clamps the duration to the rule's maximum.</summary>
+    Task<NotificationResponse> SnoozeNotificationAsync(
+        Guid notificationId, TimeSpan? duration = null, CancellationToken ct = default);
+
+    /// <summary>
+    /// Turns it off for good. <paramref name="acknowledgedConsequence"/> is required for
+    /// safety-class rules and the server rejects the call without it.
+    /// </summary>
+    Task DismissNotificationAsync(
+        Guid notificationId, bool acknowledgedConsequence = false, CancellationToken ct = default);
+
+    /// <summary>Everything the caller has silenced.</summary>
+    Task<List<NotificationMuteResponse>> GetNotificationMutesAsync(CancellationToken ct = default);
+
+    Task RemoveNotificationMuteAsync(Guid muteId, CancellationToken ct = default);
+
+    /// <summary>"Show me everything again" — clears every mute the caller holds.</summary>
+    Task ResetNotificationMutesAsync(CancellationToken ct = default);
+
+    /// <summary>Sets the caller's IANA time zone — what the timezone nudge sends the user to do.</summary>
+    Task UpdateTimeZoneAsync(string timeZoneId, CancellationToken ct = default);
 }

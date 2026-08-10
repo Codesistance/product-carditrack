@@ -1,3 +1,5 @@
+using CardiTrack.Application.DTOs.Responses;
+using CardiTrack.Mobile.Core.Api;
 using CardiTrack.Mobile.Core.Auth;
 using CardiTrack.Mobile.Core.Onboarding;
 using CardiTrack.Mobile.Onboarding;
@@ -10,13 +12,19 @@ public partial class SettingsPage : ContentPage
     private readonly IAuthService _authService;
     private readonly IPopupService _popups;
     private readonly CardiMemberDraftStore _drafts;
+    private readonly ICardiTrackApiClient _api;
 
-    public SettingsPage(IAuthService authService, IPopupService popups, CardiMemberDraftStore drafts)
+    public SettingsPage(
+        IAuthService authService,
+        IPopupService popups,
+        CardiMemberDraftStore drafts,
+        ICardiTrackApiClient api)
     {
         InitializeComponent();
         _authService = authService;
         _popups = popups;
         _drafts = drafts;
+        _api = api;
     }
 
     protected override void OnAppearing()
@@ -24,6 +32,147 @@ public partial class SettingsPage : ContentPage
         base.OnAppearing();
         AccountNameLabel.Text = _authService.CurrentUserName ?? "Your account";
         AccountEmailLabel.Text = _authService.CurrentUserEmail ?? string.Empty;
+        _ = LoadMutesAsync();
+    }
+
+    // ------------------------------------------------------------------ silenced reminders
+
+    /// <summary>
+    /// Lists what the user has silenced. The card hides itself when there is nothing muted —
+    /// an empty "Silenced reminders" section would imply a feature they have not used.
+    /// </summary>
+    private async Task LoadMutesAsync()
+    {
+        try
+        {
+            var mutes = await _api.GetNotificationMutesAsync();
+            RenderMutes(mutes);
+        }
+        catch (ApiException)
+        {
+            // Settings must still open if this call fails; the section simply does not appear.
+            MutesCard.IsVisible = false;
+        }
+    }
+
+    private void RenderMutes(List<NotificationMuteResponse> mutes)
+    {
+        MutesList.Clear();
+
+        foreach (var mute in mutes)
+            MutesList.Add(BuildMuteRow(mute));
+
+        MutesSubtitle.Text = mutes.Count == 1
+            ? "1 reminder you've turned off."
+            : $"{mutes.Count} reminders you've turned off.";
+
+        MutesCard.IsVisible = mutes.Count > 0;
+    }
+
+    private View BuildMuteRow(NotificationMuteResponse mute)
+    {
+        var label = new Label
+        {
+            Text = MuteDescription(mute),
+            LineBreakMode = LineBreakMode.WordWrap,
+            VerticalOptions = LayoutOptions.Center
+        };
+        if (Resources.TryGetValue("Body2", out var bodyStyle) && bodyStyle is Style style)
+            label.Style = style;
+
+        var undo = new Button
+        {
+            Text = "Turn back on",
+            FontFamily = "QuicksandSemiBold",
+            FontSize = 13,
+            BackgroundColor = Colors.Transparent,
+            Padding = new Thickness(8, 0),
+            HeightRequest = 36
+        };
+        if (Application.Current?.Resources.TryGetValue("Primary", out var primary) == true
+            && primary is Color colour)
+        {
+            undo.TextColor = colour;
+        }
+
+        undo.Clicked += async (_, _) => await RemoveMuteAsync(mute.Id);
+
+        var grid = new Grid
+        {
+            ColumnDefinitions =
+            [
+                new ColumnDefinition(GridLength.Star),
+                new ColumnDefinition(GridLength.Auto)
+            ],
+            ColumnSpacing = 10
+        };
+        grid.Add(label, 0);
+        grid.Add(undo, 1);
+        return grid;
+    }
+
+    /// <summary>
+    /// Describes a mute in the user's terms. Rule codes are an implementation detail, so an
+    /// unmapped one degrades to its scope rather than leaking <c>DEVICE_STALE_LONG</c> into the UI.
+    /// </summary>
+    private static string MuteDescription(NotificationMuteResponse mute)
+    {
+        var subject = mute.RuleCode switch
+        {
+            "DEVICE_REMOVED" => "Reminders about a missing wearable",
+            "DEVICE_STALE_LONG" => "Reminders when a watch stops syncing",
+            "TIMEZONE_DEFAULT" => "The time zone reminder",
+            "BASELINE_STALLED" => "Reminders about stalled learning",
+            "SLEEP_SCOPE_MISSING" => "Reminders about sleep access",
+            "MEDICAL_NOTES_EMPTY" => "Reminders about health background",
+            "PAUSE_LEFT_LONG" => "Reminders about long pauses",
+            null when mute.Category is not null => $"Everything in {mute.Category}",
+            _ => "A reminder"
+        };
+
+        return mute.CardiMemberName is { Length: > 0 } name
+            ? $"{subject} — {name}"
+            : subject;
+    }
+
+    private async Task RemoveMuteAsync(Guid muteId)
+    {
+        try
+        {
+            await _api.RemoveNotificationMuteAsync(muteId);
+            await LoadMutesAsync();
+        }
+        catch (ApiException ex)
+        {
+            await DisplayAlert("That didn't work", ex.Message, "OK");
+        }
+    }
+
+    private async void OnResetMutesClicked(object? sender, EventArgs e)
+    {
+        var confirmed = await DisplayAlert(
+            "Show everything again?",
+            "Every reminder you've turned off will come back if it still applies.",
+            "Show them",
+            "Cancel");
+
+        if (!confirmed)
+            return;
+
+        ResetMutesBtn.IsEnabled = false;
+        try
+        {
+            await _api.ResetNotificationMutesAsync();
+            await LoadMutesAsync();
+        }
+        catch (ApiException ex)
+        {
+            await DisplayAlert("That didn't work", ex.Message, "OK");
+        }
+        finally
+        {
+            ResetMutesBtn.IsEnabled = true;
+        }
     }
 
     private async void OnSignOutClicked(object? sender, EventArgs e)
