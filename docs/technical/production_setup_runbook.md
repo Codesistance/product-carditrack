@@ -165,16 +165,27 @@ before verification (step 12) locks marketing claims to data we assumed.
 
 With steps 6–7 done: watch a notification arrive (receiver logs → Pub/Sub → aggregator
 execution logs → targeted sync → granular rows → assessor execution → `RealtimeAssessments`
-row). Until step 7 completes, the pipeline runs correctly on **10-minute polling alone** —
-webhooks only make it fresher.
+row).
+
+> **Do not smoke-check via `/healthz` on the public URL**: Google Frontend reserves the
+> exact path `/healthz` on `run.app` domains and answers its own 404 without forwarding —
+> platform behavior, not an outage (verified 2026-08-10: `/Healthz` reaches the container
+> and returns 200 because routing is case-insensitive while GFE's interception is
+> case-sensitive; Cloud Run's internal startup probes bypass GFE and are unaffected). Probe
+> a real route instead — e.g. the receiver answers 405 on `GET /webhooks/google-health`.
+
+Webhooks are the fast path, not a dependency: if the Subscriber ever degrades, the pipeline
+still runs whole on the **10-minute poll** — notifications only make it fresher.
 
 ### 10. Compliance gate: Art. 22 before prod alerting
 
-Per the [DPIA](../compliance/dpia.md) (R-B1): LLM severity routing is automated
-decision-making with significant effect — the **Art. 22 analysis, human-review pathway, and
-documented model validation must exist before prod alerting goes live**. Dev operates under
-the test-user population. This gate blocks step 6's effect, not its apply: flags can be on
-while alerting audiences remain test users.
+Per the [DPIA](../compliance/dpia.md) (R-B1): the
+**[Art. 22 analysis](../compliance/art22_alerting_analysis.md) is drafted** (2026-08-10) —
+safeguards cited, human-review pathway defined (caregiver acknowledgment), validation
+protocol V1–V4 laid out. What still gates prod alerting for real families: **executing V2
+(retrospective benchmark) and V3 (prod shadow period with staff-only audience)** and
+recording results in that document, plus reviewer sign-off. Flags can be on while alerting
+audiences remain test users — V3 is designed exactly for that window.
 
 ### 11. Edge / WAF enablement
 
