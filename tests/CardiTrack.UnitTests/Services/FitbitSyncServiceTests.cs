@@ -557,6 +557,36 @@ public class DeviceSyncServiceTests
             .GetGranularDayAsync(Arg.Any<string>(), Arg.Any<DateOnly>());
         await _granularIngestion.Received(WindowDays(LookbackDays))
             .IngestDayAsync(_fitbitConnection, Arg.Any<DeviceGranularDay>(), Arg.Any<CancellationToken>());
+
+        // Only after the success stamp: granular is enrichment, and running it inside the
+        // success envelope would let a transient granular failure un-succeed daily data.
+        // (InOrder needs the spec's multiplicity to match, so every granular call is listed.)
+        Received.InOrder(() =>
+        {
+            _deviceConnections.MarkSyncSucceededAsync(_fitbitConnection.Id, Arg.Any<DateTime>());
+            for (var i = 0; i < WindowDays(LookbackDays); i++)
+                _deviceApi.GetGranularDayAsync(Arg.Any<string>(), Arg.Any<DateOnly>());
+        });
+    }
+
+    // The recovery mirror of KeepsTheRoutineSuccess_WhenBackfillFails: the daily window landed,
+    // so its success stands whatever the granular fetch does afterwards.
+    [Fact]
+    public async Task SyncCardiMemberAsync_KeepsTheRoutineSuccess_WhenGranularFails()
+    {
+        SetupSuccessfulTokenRefresh();
+        SetupDefaultApiResponse();
+        _deviceApi.GetGranularDayAsync(Arg.Any<string>(), Arg.Any<DateOnly>())
+            .ThrowsAsync(new FitbitApiException(503, "Service Unavailable"));
+
+        await Assert.ThrowsAsync<FitbitApiException>(() =>
+            CreateSut().SyncCardiMemberAsync(_fitbitConnection, SyncScope.WorkerCadence));
+
+        await _deviceConnections.Received(1)
+            .MarkSyncSucceededAsync(_fitbitConnection.Id, Arg.Any<DateTime>());
+        // Granular precedes backfill in the worker-cadence extras, so the chunk never started.
+        await _deviceApi.Received(WindowDays(LookbackDays))
+            .GetHealthSnapshotAsync(Arg.Any<string>(), Arg.Any<DateOnly>());
     }
 
     [Fact]
