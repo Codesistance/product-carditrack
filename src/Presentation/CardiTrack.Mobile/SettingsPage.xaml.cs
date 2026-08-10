@@ -144,17 +144,16 @@ public partial class SettingsPage : ContentPage
         }
         catch (ApiException ex)
         {
-            await DisplayAlert("That didn't work", ex.Message, "OK");
+            await _popups.ShowErrorAsync(ex.Message, "That didn't work");
         }
     }
 
     private async void OnResetMutesClicked(object? sender, EventArgs e)
     {
-        var confirmed = await DisplayAlert(
-            "Show everything again?",
+        var confirmed = await _popups.ConfirmWarningAsync(
             "Every reminder you've turned off will come back if it still applies.",
-            "Show them",
-            "Cancel");
+            "Show everything again?",
+            confirmText: "Show them");
 
         if (!confirmed)
             return;
@@ -167,7 +166,7 @@ public partial class SettingsPage : ContentPage
         }
         catch (ApiException ex)
         {
-            await DisplayAlert("That didn't work", ex.Message, "OK");
+            await _popups.ShowErrorAsync(ex.Message, "That didn't work");
         }
         finally
         {

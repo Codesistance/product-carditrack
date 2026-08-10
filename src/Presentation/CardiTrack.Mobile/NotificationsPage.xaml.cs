@@ -3,6 +3,7 @@ using CardiTrack.Domain.Enums;
 using CardiTrack.Mobile.Controls;
 using CardiTrack.Mobile.Core.Api;
 using CardiTrack.Mobile.Core.Notifications;
+using CardiTrack.Mobile.Services;
 
 namespace CardiTrack.Mobile;
 
@@ -17,6 +18,7 @@ public partial class NotificationsPage : ContentPage
     private static readonly TimeSpan AutoRefreshInterval = TimeSpan.FromMinutes(2);
 
     private readonly ICardiTrackApiClient _api;
+    private readonly IPopupService _popups;
 
     private enum PageState { Loading, Loaded, Empty, Error }
 
@@ -25,10 +27,11 @@ public partial class NotificationsPage : ContentPage
     private DateTime _lastLoadedUtc = DateTime.MinValue;
     private NotificationListResponse? _lastData;
 
-    public NotificationsPage(ICardiTrackApiClient api)
+    public NotificationsPage(ICardiTrackApiClient api, IPopupService popups)
     {
         InitializeComponent();
         _api = api;
+        _popups = popups;
     }
 
     protected override void OnAppearing()
@@ -156,10 +159,9 @@ public partial class NotificationsPage : ContentPage
         {
             // Better to say so than to swallow the tap: a button that does nothing teaches the
             // user the whole surface is decorative.
-            await DisplayAlert(
-                "Not available yet",
+            await _popups.ShowInfoAsync(
                 "That screen isn't built in this version of the app.",
-                "OK");
+                "Not available yet");
             return;
         }
 
@@ -174,18 +176,16 @@ public partial class NotificationsPage : ContentPage
         // just write the default back and leave the nudge standing.
         if (string.Equals(local.Id, "UTC", StringComparison.OrdinalIgnoreCase))
         {
-            await DisplayAlert(
-                "Set your time zone",
+            await _popups.ShowInfoAsync(
                 "This phone is also set to UTC. Set its time zone in system settings, then come back.",
-                "OK");
+                "Set your time zone");
             return;
         }
 
-        var confirmed = await DisplayAlert(
-            "Use this phone's time zone?",
+        var confirmed = await _popups.ConfirmWarningAsync(
             $"We'll set your account to {local.Id}.",
-            "Use it",
-            "Cancel");
+            "Use this phone's time zone?",
+            confirmText: "Use it");
 
         if (!confirmed)
             return;
@@ -211,8 +211,8 @@ public partial class NotificationsPage : ContentPage
         if (options.Length == 0)
             options = [("In 3 days", TimeSpan.FromHours(Math.Min(72, maxHours)))];
 
-        var choice = await DisplayActionSheet(
-            "Remind me…", "Cancel", null, [.. options.Select(o => o.Label)]);
+        var choice = await _popups.ChooseAsync(
+            "Remind me…", "Cancel", [.. options.Select(o => o.Label)]);
 
         var chosen = options.FirstOrDefault(o => o.Label == choice);
         if (chosen.Label is null)
@@ -226,13 +226,13 @@ public partial class NotificationsPage : ContentPage
         // Safety rules never reach here — NudgeCard hides the affordance — but the confirmation
         // is written for them anyway, so a future safety rule cannot be silenced by accident if
         // someone re-enables the button.
-        var confirmed = await DisplayAlert(
-            "Turn this off?",
+        var confirmed = await _popups.ConfirmWarningAsync(
             notification.CanMute
                 ? "You won't be reminded about this again. You can bring it back from Settings."
                 : "Alerts about this will stay off until you turn them back on.",
-            "Turn off",
-            "Keep it");
+            "Turn this off?",
+            confirmText: "Turn off",
+            cancelText: "Keep it");
 
         if (!confirmed)
             return;
@@ -255,7 +255,7 @@ public partial class NotificationsPage : ContentPage
         }
         catch (ApiException ex)
         {
-            await DisplayAlert("That didn't work", ex.Message, "OK");
+            await _popups.ShowErrorAsync(ex.Message, "That didn't work");
         }
     }
 
