@@ -189,6 +189,26 @@ MedGemma-generated **narrative** analysis of a CardiMember's baseline trends —
 
 Clients must not label either output as a trend assessment. The learning prompt is forbidden from calling anything elevated, low, or a deviation; the provisional prompt allows tentative comparisons only.
 
+## GET `/api/v1/insights/members/{id}/digest` — implemented (AI narrative)
+
+The member's **daily family digest**: a plain-language previous-day summary generated each morning (06:00 in the member's anchor timezone) by the pipeline's digest job. Read-only — no model call happens on this path; `?date=YYYY-MM-DD` selects a specific local day, otherwise the most recent digest is returned.
+
+**Priority:** P1 | **Auth Required:** Yes
+
+### Response `200 OK` (wrapped in `ApiResponse<T>`)
+
+```json
+{
+  "cardiMemberId": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+  "localDate": "2026-08-09",
+  "audience": "Family",
+  "text": "Margaret had a settled day yesterday — activity in her usual range and a full night's sleep. Nothing needs your attention.",
+  "generatedAtUtc": "2026-08-10T05:00:12Z"
+}
+```
+
+`404` when no digest has been generated yet — the first days of a new member legitimately are, since digests require a day of data behind them. `localDate` is the member's local calendar day the text describes, so clients render it without timezone arithmetic.
+
 The prompt carries a member context block — age, sex, and caregiver-entered medical notes — because a resting heart rate is not interpretable without them. The member's **name and id are never sent** to the model.
 
 ---

@@ -826,6 +826,31 @@ namespace CardiTrack.Infrastructure.Migrations
                     b.ToTable("DeviceTypeSyncProfiles", (string)null);
                 });
 
+            modelBuilder.Entity("CardiTrack.Domain.Entities.DigestEntry", b =>
+                {
+                    b.Property<Guid>("CardiMemberId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateOnly>("LocalDate")
+                        .HasColumnType("date");
+
+                    b.Property<string>("Audience")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<DateTime>("GeneratedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Text")
+                        .IsRequired()
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)");
+
+                    b.HasKey("CardiMemberId", "LocalDate", "Audience");
+
+                    b.ToTable("DigestEntries", (string)null);
+                });
+
             modelBuilder.Entity("CardiTrack.Domain.Entities.GranularMetricHour", b =>
                 {
                     b.Property<Guid>("DeviceConnectionId")

@@ -24,6 +24,7 @@ public class CardiTrackDbContext : DbContext
     public DbSet<DeviceTypeSyncProfile> DeviceTypeSyncProfiles => Set<DeviceTypeSyncProfile>();
     public DbSet<GranularMetricHour> GranularMetricHours => Set<GranularMetricHour>();
     public DbSet<MetricRollupHourly> MetricRollupsHourly => Set<MetricRollupHourly>();
+    public DbSet<DigestEntry> DigestEntries => Set<DigestEntry>();
 
     // Business & Compliance
     public DbSet<Subscription> Subscriptions => Set<Subscription>();

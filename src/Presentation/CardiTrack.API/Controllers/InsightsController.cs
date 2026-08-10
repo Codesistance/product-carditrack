@@ -13,14 +13,17 @@ namespace CardiTrack.API.Controllers;
 public class InsightsController : BaseApiController
 {
     private readonly IHealthInsightService _insightService;
+    private readonly IDigestQueryService _digests;
 
     public InsightsController(
         IUserContext userContext,
         ILogger<InsightsController> logger,
-        IHealthInsightService insightService)
+        IHealthInsightService insightService,
+        IDigestQueryService digests)
         : base(userContext, logger)
     {
         _insightService = insightService;
+        _digests = digests;
     }
 
     /// <summary>Analyse a specific alert using MedGemma.</summary>
@@ -64,6 +67,35 @@ public class InsightsController : BaseApiController
         {
             var result = await _insightService.AnalyzeBaselineAsync(UserContext.UserId, cardiMemberId, ct);
             return Success(result);
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return Error(ex.Message, StatusCodes.Status404NotFound);
+        }
+    }
+
+    /// <summary>
+    /// The member's daily family digest — the most recent by default, or a specific local date.
+    /// Generated each morning by the pipeline; read-only here, no model call on this path.
+    /// </summary>
+    [HttpGet("members/{cardiMemberId:guid}/digest")]
+    [ProducesResponseType(typeof(ApiResponse<DigestResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<ApiResponse<DigestResponse>>> GetDigest(
+        Guid cardiMemberId, [FromQuery] DateOnly? date, CancellationToken ct)
+    {
+        if (!UserContext.IsAuthenticated || UserContext.UserId == Guid.Empty)
+        {
+            return Error("We couldn't find your account — please sign in again.", StatusCodes.Status403Forbidden);
+        }
+
+        try
+        {
+            var result = await _digests.GetDigestAsync(UserContext.UserId, cardiMemberId, date, ct);
+            return result is null
+                ? Error("No digest has been generated for this member yet.", StatusCodes.Status404NotFound)
+                : Success(result);
         }
         catch (KeyNotFoundException ex)
         {

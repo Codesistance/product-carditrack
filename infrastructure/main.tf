@@ -20,6 +20,7 @@ locals {
   api_service_name    = "${var.project_name}-${local.environment}-api"
   web_service_name    = "${var.project_name}-${local.environment}-web"
   worker_service_name = "${var.project_name}-${local.environment}-worker"
+  pipeline_jobs_name  = "${var.project_name}-${local.environment}-pipeline-jobs"
   cloud_sql_name      = "${var.project_name}-${local.environment}-sql"
   redis_instance_name = "${var.project_name}-${local.environment}-redis"
   cloud_sql_db_name   = "${var.project_name}-${local.environment}-db"
@@ -175,6 +176,28 @@ module "deployments" {
     "Health__Token"                        = "${var.project_name}-${local.environment}-health-token"
     "DeviceProviders__0__ClientId"         = "${var.project_name}-${local.environment}-devices-fitbit-client-id"
     "DeviceProviders__0__ClientSecret"     = "${var.project_name}-${local.environment}-devices-fitbit-client-secret"
+    "Apm__Data"                            = "${var.project_name}-${local.environment}-apm-data"
+  }
+
+  # Cloud Run - Pipeline jobs (AI pipeline; digest generation). Deliberately the narrowest env
+  # set of any host: no Auth0, no device-provider credentials, and no public AI key — the job
+  # holds only what a MedGemma call over Cloud SQL data needs, so it cannot reach anything else.
+  enable_pipeline_jobs          = var.enable_pipeline_jobs
+  pipeline_jobs_name            = local.pipeline_jobs_name
+  pipeline_jobs_container_image = var.pipeline_jobs_container_image
+  pipeline_jobs_env_vars = {
+    "ASPNETCORE_ENVIRONMENT"         = title(var.environment)
+    "GCP_PROJECT_ID"                 = var.project_id
+    "AI__Private__Model"             = local.medgemma_model
+    "AI__Private__TimeoutSeconds"    = tostring(var.medgemma_timeout_seconds)
+    "Apm__Engine"                    = var.apm_engine
+    "Apm__MetricsEnabled"            = tostring(var.apm_metrics_enabled)
+    "Serilog__MinimumLevel__Default" = var.log_minimum_level.worker
+  }
+  pipeline_jobs_secret_env_vars = {
+    "ConnectionStrings__DefaultConnection" = "${var.project_name}-${local.environment}-db-connection-string"
+    "Encryption__Key"                      = "${var.project_name}-${local.environment}-encryption-key"
+    "AI__Private__BaseUrl"                 = "${var.project_name}-${local.environment}-medgemma-service-url"
     "Apm__Data"                            = "${var.project_name}-${local.environment}-apm-data"
   }
 

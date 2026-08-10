@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>CardiTrack.PipelineJobs</RootNamespace>
+    <!-- Overridden by the release pipeline via -p:Version=<semver>; see CardiTrack.API.csproj. -->
+    <Version>0.0.0-local</Version>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Logging — same shape as the Worker. The Web SDK is used for its host plumbing only:
+         this is a Cloud Run *job*, runs to completion, and never starts a listener. -->
+    <PackageReference Include="Serilog.AspNetCore" Version="10.0.0" />
+    <PackageReference Include="Serilog.Enrichers.Environment" Version="3.0.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\Core\CardiTrack.Application\CardiTrack.Application.csproj" />
+    <ProjectReference Include="..\..\Infrastructure\CardiTrack.Infrastructure\CardiTrack.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\Infrastructure\CardiTrack.Observability\CardiTrack.Observability.csproj" />
+    <ProjectReference Include="..\..\Infrastructure\CardiTrack.Shared\CardiTrack.Shared.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -36,11 +36,15 @@ public class TimeSeriesPartitionService : ITimeSeriesPartitionService
         var firstMonth = new DateOnly(firstDay.Year, firstDay.Month, 1);
         var lastMonth = new DateOnly(lastDay.Year, lastDay.Month, 1);
         for (var month = firstMonth; month <= lastMonth; month = month.AddMonths(1))
+        {
             await _context.Database.ExecuteSqlRawAsync(TimeSeriesPartitions.CreateMonthlyPartitionSql(month), ct);
+            await _context.Database.ExecuteSqlRawAsync(TimeSeriesPartitions.CreateDigestPartitionSql(month), ct);
+        }
     }
 
     public async Task DropExpiredPartitionsAsync(
-        int granularRetentionDays, int rollupRetentionMonths, CancellationToken ct = default)
+        int granularRetentionDays, int rollupRetentionMonths, int digestRetentionMonths,
+        CancellationToken ct = default)
     {
         // A non-positive retention is always a misconfiguration, and the failure mode would be
         // mass deletion of health data — fail loud instead.
@@ -50,6 +54,9 @@ public class TimeSeriesPartitionService : ITimeSeriesPartitionService
         if (rollupRetentionMonths <= 0)
             throw new ArgumentOutOfRangeException(
                 nameof(rollupRetentionMonths), rollupRetentionMonths, "Retention must be positive.");
+        if (digestRetentionMonths <= 0)
+            throw new ArgumentOutOfRangeException(
+                nameof(digestRetentionMonths), digestRetentionMonths, "Retention must be positive.");
 
         var today = DateOnly.FromDateTime(DateTime.UtcNow);
 
@@ -72,6 +79,16 @@ public class TimeSeriesPartitionService : ITimeSeriesPartitionService
         {
             if (TimeSeriesPartitions.TryParseMonthlyPartition(name, out var month)
                 && month.AddMonths(1) <= rollupCutoff)
+            {
+                await DropAsync(name, ct);
+            }
+        }
+
+        var digestCutoff = new DateOnly(today.Year, today.Month, 1).AddMonths(-digestRetentionMonths);
+        foreach (var name in await ChildPartitionsAsync(TimeSeriesPartitions.DigestParent, ct))
+        {
+            if (TimeSeriesPartitions.TryParseDigestPartition(name, out var month)
+                && month.AddMonths(1) <= digestCutoff)
             {
                 await DropAsync(name, ct);
             }

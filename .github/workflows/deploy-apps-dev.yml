@@ -27,6 +27,10 @@ on:
         description: 'MedGemma'
         type: boolean
         default: false
+      pipeline:
+        description: 'Pipeline jobs'
+        type: boolean
+        default: true
 
 permissions:
   id-token: write
@@ -54,6 +58,7 @@ jobs:
       worker:         ${{ steps.manual.outputs.worker   || steps.filter.outputs.worker }}
       mobile:         ${{ steps.manual.outputs.mobile   || steps.filter.outputs.mobile }}
       medgemma:       ${{ steps.manual.outputs.medgemma || steps.filter.outputs.medgemma }}
+      pipeline:       ${{ steps.manual.outputs.pipeline || steps.filter.outputs.pipeline }}
       dotnet_version:      ${{ needs.env.outputs.dotnet_version }}
       registry:            ${{ needs.env.outputs.registry }}
       gcp_project_id:      ${{ needs.env.outputs.gcp_project_id }}
@@ -73,6 +78,7 @@ jobs:
           echo "worker=${{ inputs.worker }}"     >> $GITHUB_OUTPUT
           echo "mobile=${{ inputs.mobile }}"     >> $GITHUB_OUTPUT
           echo "medgemma=${{ inputs.medgemma }}" >> $GITHUB_OUTPUT
+          echo "pipeline=${{ inputs.pipeline }}" >> $GITHUB_OUTPUT
       - uses: dorny/paths-filter@v4
         if: github.event_name != 'workflow_dispatch'
         id: filter
@@ -110,6 +116,13 @@ jobs:
               - 'CardiTrack.sln'
             medgemma:
               - 'src/Infrastructure/MedGemma/**'
+            pipeline:
+              - '.github/workflows/deploy-apps-dev.yml'
+              - '.github/workflows/deploy-apps-prod.yml'
+              - 'src/Pipeline/**'
+              - 'src/Core/**'
+              - 'src/Infrastructure/**'
+              - 'CardiTrack.sln'
 
   # ── Compute next semver (main only) ─────────────────────────────────────────
   compute-version:
@@ -1076,6 +1089,37 @@ jobs:
           docker push $IMAGE:$TAG
           echo "image=$IMAGE:$TAG" >> $GITHUB_OUTPUT
 
+  push-pipeline-image:
+    name: Push Pipeline Jobs Image
+    needs:
+      - changes
+      - compute-version
+      - test-unit
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && needs.changes.outputs.pipeline == 'true'
+    runs-on: ubuntu-latest
+    outputs:
+      image: ${{ steps.push.outputs.image }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ needs.changes.outputs.gcp_wif_provider }}
+          service_account: ${{ needs.changes.outputs.gcp_service_account }}
+      - uses: google-github-actions/setup-gcloud@v3
+      - run: gcloud auth configure-docker ${{ needs.changes.outputs.gcp_region }}-docker.pkg.dev --quiet
+      - name: Build and push
+        id: push
+        env:
+          IMAGE: ${{ needs.changes.outputs.registry }}/pipeline-jobs
+          TAG: ${{ needs.compute-version.outputs.version }}
+        run: |
+          docker build -f src/Pipeline/CardiTrack.PipelineJobs/Dockerfile \
+            --build-arg VERSION=${TAG#v} \
+            -t $IMAGE:$TAG \
+            .
+          docker push $IMAGE:$TAG
+          echo "image=$IMAGE:$TAG" >> $GITHUB_OUTPUT
+
   upload-mobile-artifacts:
     name: Upload Mobile Artifacts to GCS
     needs:
@@ -1261,6 +1305,26 @@ jobs:
             --region ${{ needs.changes.outputs.gcp_region }} \
             --project ${{ needs.changes.outputs.gcp_project_id }} \
             --add-cloudsql-instances carditrack-490120:europe-west2:carditrack-dev-sql \
+            --quiet
+
+  deploy-pipeline-dev:
+    name: Deploy Pipeline Jobs → Dev
+    needs: [changes, push-pipeline-image]
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && needs.changes.outputs.pipeline == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ needs.changes.outputs.gcp_wif_provider }}
+          service_account: ${{ needs.changes.outputs.gcp_service_account }}
+      - uses: google-github-actions/setup-gcloud@v3
+      # jobs update, not run deploy: the job resource is Terraform-owned (VPC, Cloud SQL,
+      # secrets) and only its image is CI-owned; Cloud Scheduler drives executions.
+      - run: |
+          gcloud run jobs update carditrack-dev-pipeline-jobs \
+            --image ${{ needs.push-pipeline-image.outputs.image }} \
+            --region ${{ needs.changes.outputs.gcp_region }} \
+            --project ${{ needs.changes.outputs.gcp_project_id }} \
             --quiet
 
   # ── MedGemma ─────────────────────────────────────────────────────────────────

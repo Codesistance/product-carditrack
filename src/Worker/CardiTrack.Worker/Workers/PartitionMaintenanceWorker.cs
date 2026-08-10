@@ -35,13 +35,15 @@ public class PartitionMaintenanceWorker : CronBackgroundService
         // A bad retention config must not fault the hosted-service loop (an exception escaping
         // ExecuteJobAsync would), and it especially must not reach the drop path — the service
         // also rejects it, but by then the worker would be crash-looping. Log and sit the run out.
-        if (options.GranularRetentionDays <= 0 || options.RollupRetentionMonths <= 0 || options.DaysAhead < 0)
+        if (options.GranularRetentionDays <= 0 || options.RollupRetentionMonths <= 0
+            || options.DigestRetentionMonths <= 0 || options.DaysAhead < 0)
         {
             _logger.LogError(
                 "PartitionMaintenance skipped: invalid configuration (DaysAhead={DaysAhead}, " +
-                "GranularRetentionDays={GranularDays}, RollupRetentionMonths={RollupMonths}). " +
-                "Retention values must be positive.",
-                options.DaysAhead, options.GranularRetentionDays, options.RollupRetentionMonths);
+                "GranularRetentionDays={GranularDays}, RollupRetentionMonths={RollupMonths}, " +
+                "DigestRetentionMonths={DigestMonths}). Retention values must be positive.",
+                options.DaysAhead, options.GranularRetentionDays, options.RollupRetentionMonths,
+                options.DigestRetentionMonths);
             return;
         }
 
@@ -50,10 +52,13 @@ public class PartitionMaintenanceWorker : CronBackgroundService
 
         await partitions.EnsureUpcomingPartitionsAsync(options.DaysAhead, stoppingToken);
         await partitions.DropExpiredPartitionsAsync(
-            options.GranularRetentionDays, options.RollupRetentionMonths, stoppingToken);
+            options.GranularRetentionDays, options.RollupRetentionMonths,
+            options.DigestRetentionMonths, stoppingToken);
 
         _logger.LogInformation(
-            "PartitionMaintenance complete. Ahead: {DaysAhead} days; retention: granular {GranularDays} days, rollups {RollupMonths} months.",
-            options.DaysAhead, options.GranularRetentionDays, options.RollupRetentionMonths);
+            "PartitionMaintenance complete. Ahead: {DaysAhead} days; retention: granular {GranularDays} days, " +
+            "rollups {RollupMonths} months, digests {DigestMonths} months.",
+            options.DaysAhead, options.GranularRetentionDays, options.RollupRetentionMonths,
+            options.DigestRetentionMonths);
     }
 }

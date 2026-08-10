@@ -21,6 +21,7 @@ public class UnitOfWork : IUnitOfWork
     public IAlertRepository Alerts { get; }
     public IPatternBaselineRepository PatternBaselines { get; }
     public IGranularMetricRepository GranularMetrics { get; }
+    public IDigestRepository Digests { get; }
 
     public UnitOfWork(
         CardiTrackDbContext context,
@@ -35,7 +36,8 @@ public class UnitOfWork : IUnitOfWork
         IDeviceRepository devices,
         IAlertRepository alerts,
         IPatternBaselineRepository patternBaselines,
-        IGranularMetricRepository granularMetrics)
+        IGranularMetricRepository granularMetrics,
+        IDigestRepository digests)
     {
         _context = context;
         Organizations = organizations;
@@ -50,6 +52,7 @@ public class UnitOfWork : IUnitOfWork
         Alerts = alerts;
         PatternBaselines = patternBaselines;
         GranularMetrics = granularMetrics;
+        Digests = digests;
     }
 
     public async Task<int> SaveChangesAsync()
