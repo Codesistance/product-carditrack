@@ -260,7 +260,7 @@ Likelihood × severity assessed from the **data subject's** perspective. Scale: 
 
 | ID | Risk | Rating | Mitigation |
 |---|---|---|---|
-| R-B1 | LLM severity routing as automated decision with significant effect; false negatives mean a missed cardiac event, false positives erode trust and cause unnecessary interventions | **High** | Art. 22 analysis; human-review queue for Critical; documented model validation incl. per-cohort false-negative rates; "not clinical-grade" caveat resolved before alerting goes live (ties to OI-2) |
+| R-B1 | LLM severity routing as automated decision with significant effect; false negatives mean a missed cardiac event, false positives erode trust and cause unnecessary interventions | **High** | **Analysis drafted 2026-08-10** — [art22_alerting_analysis.md](art22_alerting_analysis.md): safeguards engineered and cited; caregiver acknowledgment is the human-review pathway (clinical tier deliberately absent — `[DECISION REQUIRED]` at sign-off); validation protocol V1–V4 defined, **V2/V3 execution still gates prod alerting** (ties to OI-2) |
 | R-B2 | Profiling of elderly users (fall risk, cognitive-decline signals) | **High** | Transparency in plain language; opt-out per prediction category; confidence gating as designed |
 | R-B3 | Lock-screen health disclosure in push payloads | Medium | Discreet-mode notifications; content minimisation |
 | R-B4 | SMS fallback sends health content over unencrypted SMS via a new processor | Medium | Content minimisation ("check the app"); processor DPA |
