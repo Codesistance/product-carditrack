@@ -40,7 +40,7 @@ MedGemma 4B was chosen over the 27B variant for cost and latency reasons — at 
 | **FCM / APNs** | Push routing for alerts and digests | **Planned — no push infrastructure exists yet** |
 | **Secret Manager** | Google Health API OAuth client secret, `gemini-api-key`, `medgemma-service-url` | Built |
 
-Deliberate decision: AI results live in **PostgreSQL JSONB tables inside the existing Cloud SQL instance** rather than a separate document store — one data plane, one backup story, and family-read scoping can join directly against `UserCardiMembers`.
+Deliberate decision: AI results live **inside the existing Cloud SQL instance** rather than a separate document store — one data plane, one backup story, and family-read scoping can join directly against `UserCardiMembers`. (The original sketch said JSONB; the built tables are **typed and partitioned** — the granular-storage ADR's scale analysis showed typed columns beating JSONB key-bloat at volume.)
 
 ---
 
@@ -117,7 +117,7 @@ The public side is deliberately swappable. Every provider implements the same `I
 
 ---
 
-### AI results: PostgreSQL JSONB tables (target design)
+### AI results: PostgreSQL tables (built as typed + partitioned; the original JSONB sketch below is kept for lineage)
 
 AI outputs are derived data in the **existing Cloud SQL instance** — regenerable, never authoritative. All tables are keyed by `wearer_user_id` for efficient per-user queries, with a JSONB payload column.
 
@@ -190,7 +190,7 @@ SSA-LSTM pre-processor — denoises signal, extracts trend features
   ↓
 MedGemma service (Ollama on Cloud Run, internal VPC)
   ↓
-Cloud SQL JSONB tables (results store)
+Cloud SQL typed partitioned tables (results store)
 ```
 
 ---

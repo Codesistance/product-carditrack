@@ -54,7 +54,7 @@ C4Container
 
   System_Boundary(ct, "CardiTrack") {
     Container(mobile, "Mobile App", ".NET MAUI", "Family's primary surface (M1 screens)")
-    Container(web, "Web App", "ASP.NET MVC", "Browser surface; Auth0 login pending")
+    Container(web, "Web App", "Blazor (Razor Components, interactive server)", "Browser surface; Auth0 login pending")
     Container(api, "API", "ASP.NET Core", "REST backbone: members, alerts, insights, digests, chat, reports")
     Container(worker, "Worker", ".NET background host", "ALL non-AI jobs: 10-min sync, daily baselines, partition retention, inactivity + statistical alerts")
 
