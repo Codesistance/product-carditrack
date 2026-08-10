@@ -32,10 +32,28 @@ public class FitbitApiClientTests
         /// </summary>
         private readonly List<(string Path, string Body)> _sentBodies = [];
 
+        /// <summary>
+        /// When each request arrived, relative to handler construction — for asserting the spacing
+        /// between two specific requests (e.g. pagination pacing) without relying on the total
+        /// wall-clock time of the whole call, which also includes unrelated concurrent work.
+        /// </summary>
+        private readonly List<(string Path, TimeSpan At)> _timestamps = [];
+
+        private readonly Stopwatch _clock = Stopwatch.StartNew();
+
         /// <summary>Snapshot, so a caller cannot enumerate the list while a request is in flight.</summary>
         public IReadOnlyList<HttpRequestMessage> Requests
         {
             get { lock (_recorded) return [.. _requests]; }
+        }
+
+        /// <summary>Arrival times of requests to <paramref name="pathContains"/>, in request order.</summary>
+        public IReadOnlyList<TimeSpan> TimestampsFor(string pathContains)
+        {
+            lock (_recorded)
+                return [.. _timestamps
+                    .Where(t => t.Path.Contains(pathContains, StringComparison.Ordinal))
+                    .Select(t => t.At)];
         }
 
         /// <summary>
@@ -77,6 +95,7 @@ public class FitbitApiClientTests
             lock (_recorded)
             {
                 _requests.Add(request);
+                _timestamps.Add((path, _clock.Elapsed));
                 if (requestBody is not null)
                     _sentBodies.Add((path, requestBody));
             }
@@ -120,6 +139,21 @@ public class FitbitApiClientTests
         // and content, not wall-clock timing, and a real delay would make every multi-page test
         // slow. Tests that specifically exercise pacing pass their own (short) delay.
         return (new FitbitApiClient(factory, pageRequestDelay ?? TimeSpan.Zero), handler);
+    }
+
+    /// <summary>
+    /// A negative delay would otherwise only surface as a <see cref="Task.Delay(TimeSpan)"/>
+    /// exception on a series' second page — deferred, and only for wearers whose data happens to
+    /// paginate. Rejecting it at construction fails fast on the misconfiguration itself.
+    /// </summary>
+    [Fact]
+    public void Constructor_Throws_WhenPageRequestDelayIsNegative()
+    {
+        var factory = Substitute.For<IHttpClientFactory>();
+        factory.CreateClient("FitbitClient").Returns(new HttpClient());
+
+        Assert.Throws<ArgumentOutOfRangeException>(
+            () => new FitbitApiClient(factory, TimeSpan.FromMilliseconds(-1)));
     }
 
     private static DateOnly Today => DateOnly.FromDateTime(DateTime.UtcNow);
@@ -1382,31 +1416,35 @@ public class FitbitApiClientTests
     /// <summary>
     /// A continuous-tracking wearer's heart rate can legitimately run well past the once-a-minute
     /// cadence the daily cap used to assume (see <see cref="GetAdditionalMetricsAsync_Throws_WhenSampleSeriesExceedsTheDailyCap"/>
-    /// for the still-enforced ceiling above it) — three full pages here, comfortably under the raised
-    /// cap, must land as real data rather than tripping the guard meant for a mis-scoped filter.
+    /// for the still-enforced ceiling above it) — two pages here, comfortably past the old 20,000
+    /// cap and comfortably under the raised one, must land as real data rather than tripping the
+    /// guard meant for a mis-scoped filter. Kept to 24,000 points rather than the raised cap's full
+    /// 100,000: enough to prove multi-page continuation past the old ceiling without the extra
+    /// allocation a much larger fixture would cost every test run.
     /// </summary>
     [Fact]
     public async Task GetGranularDayAsync_AcceptsHeartRateSeries_WellPastOnceAMinuteCadence()
     {
-        var highCadence = Enumerable.Repeat("72", 30_000).ToArray();
+        var highCadence = Enumerable.Repeat("72", 12_000).ToArray();
         var handler = new RoutedFakeHttpHandler()
             .MapSequence(
                 "/dataTypes/heart-rate/",
                 SamplePage("heartRate", "beatsPerMinute", "page-2", highCadence),
-                SamplePage("heartRate", "beatsPerMinute", "page-3", highCadence),
                 SamplePage("heartRate", "beatsPerMinute", null, highCadence));
 
         var day = await GranularSut(handler).GetGranularDayAsync("token", new DateOnly(2026, 8, 5));
 
-        Assert.Equal(90_000, day.HeartRate.Count);
+        Assert.Equal(24_000, day.HeartRate.Count);
     }
 
     /// <summary>
     /// Only the second and later page requests wait — the first fires immediately, since most
     /// series are one page and delaying every read would slow every sync for a limit only
-    /// multi-page reads can trip. Asserted on wall-clock elapsed time against a short delay, which
-    /// keeps the test fast while still proving the pacing actually runs (not just that the
-    /// parameter is stored).
+    /// multi-page reads can trip. Asserted on the gap between the two heart-rate requests'
+    /// arrival timestamps specifically, not the call's total wall-clock time: the granular fetch
+    /// also fires steps/AZM/SpO2 concurrently, and on a loaded test runner their unrelated overhead
+    /// could push total elapsed past the pacing threshold even with the delay logic removed,
+    /// passing the test for the wrong reason.
     /// </summary>
     [Fact]
     public async Task GetGranularDayAsync_PacesPageRequests_AfterTheFirst()
@@ -1419,12 +1457,12 @@ public class FitbitApiClientTests
         var pacing = TimeSpan.FromMilliseconds(200);
         var (sut, _) = CreateSut(handler, pacing);
 
-        var stopwatch = Stopwatch.StartNew();
         await ((IDeviceApiClient)sut).GetGranularDayAsync("token", new DateOnly(2026, 8, 5));
-        stopwatch.Stop();
 
-        Assert.True(stopwatch.Elapsed >= pacing,
-            $"Expected the second page to wait at least {pacing}, elapsed {stopwatch.Elapsed}.");
+        var timestamps = handler.TimestampsFor("/dataTypes/heart-rate/");
+        Assert.Equal(2, timestamps.Count);
+        var gap = timestamps[1] - timestamps[0];
+        Assert.True(gap >= pacing, $"Expected the second page to wait at least {pacing}, gap was {gap}.");
     }
 
     private static string SamplePage(

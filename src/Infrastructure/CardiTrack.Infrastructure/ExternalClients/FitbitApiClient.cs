@@ -93,6 +93,10 @@ public class FitbitApiClient : IFitbitApiClient, IDeviceApiClient
 
     public FitbitApiClient(IHttpClientFactory httpClientFactory, TimeSpan? pageRequestDelay = null)
     {
+        if (pageRequestDelay < TimeSpan.Zero)
+            throw new ArgumentOutOfRangeException(
+                nameof(pageRequestDelay), pageRequestDelay, "Page request delay cannot be negative.");
+
         _httpClient = httpClientFactory.CreateClient("FitbitClient");
         _pageRequestDelay = pageRequestDelay ?? PageRequestDelay;
     }
