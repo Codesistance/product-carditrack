@@ -95,7 +95,7 @@ With Device Bundle:
 - MedGemma 1.5 4B (`hf.co/unsloth/medgemma-1.5-4b-it-GGUF:Q4_K_M`) served via **Ollama on Cloud Run** — the Medical provider for health-data interpretation
 - Gemini 2.0 Flash — the General provider for conversational responses
 - Surfaced through the API's chat, insights, and reports endpoints
-- Target ingestion/inference pipeline on GCP (Pub/Sub + Cloud Run) — see [llm_design.md](./llm_design.md); not yet built
+- Ingestion/inference pipeline on GCP (Pub/Sub + Cloud Run) — **live in dev** (webhooks registered, SSA → MedGemma assessment, digests, alert routing); see [llm_design.md](./llm_design.md) and the [C4 architecture](./architecture_c4.md)
 
 **Frontend:**
 - Blazor (web dashboard)
@@ -103,7 +103,7 @@ With Device Bundle:
 - Bootstrap 5 (UI framework)
 
 **Infrastructure:**
-- Google Cloud Platform (Cloud Run, Cloud SQL, Secret Manager, GCS, Pub/Sub prod-only, optional domain-gated Load Balancer/Cloud Armor)
+- Google Cloud Platform (Cloud Run, Cloud SQL, Secret Manager, GCS, Pub/Sub in both environments, optional domain-gated Load Balancer/Cloud Armor)
 - Terraform (Infrastructure as Code — common/dev/prod stacks, GCS backend)
 - Docker (containerization)
 - GitHub Actions (CI/CD)
@@ -559,7 +559,7 @@ All environments run on GCP (project `carditrack-490120`, region `europe-west2`)
 - **Cloud Run** services: `api`, `web`, `worker`, `medgemma` (Ollama, CPU) + a migrator Cloud Run Job for EF migrations — scale-to-zero-friendly, pay-per-use
 - **Cloud SQL PostgreSQL 16**: small shared-core instance in dev, `db-custom-2-7680` in prod
 - **GCS** buckets (builds, data protection keys) and **Secret Manager** (all secrets)
-- **Pub/Sub** (prod-only, reserved for the AI pipeline rollout)
+- **Pub/Sub** (both environments; carries the AI pipeline's registered webhook traffic in dev)
 - Optional domain-gated **Load Balancer + Cloud Armor** (not yet enabled in prod)
 
 The Cloud Run pay-per-use model keeps pre-launch costs near zero and scales linearly with traffic; the dominant fixed costs are the prod Cloud SQL instance and the MedGemma Cloud Run service.
