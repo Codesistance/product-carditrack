@@ -1,6 +1,10 @@
 using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Domain.Enums;
 using CardiTrack.Mobile.Core.Notifications;
+using Microsoft.Maui.Controls.Shapes;
+// CardiTrack.Application (the DTO assembly's root namespace) shadows MAUI's Application in
+// any file importing it, so the control type is aliased rather than qualified at each use.
+using MauiApplication = Microsoft.Maui.Controls.Application;
 
 namespace CardiTrack.Mobile.Controls;
 
@@ -96,13 +100,13 @@ public sealed class NudgeMiniRow : Border
     }
 
     private static Color Resource(string key, Color fallback) =>
-        Application.Current?.Resources.TryGetValue(key, out var value) == true && value is Color colour
+        MauiApplication.Current?.Resources.TryGetValue(key, out var value) == true && value is Color colour
             ? colour
             : fallback;
 
     private static void ApplyStyle(Label label, string key)
     {
-        if (Application.Current?.Resources.TryGetValue(key, out var value) == true && value is Style style)
+        if (MauiApplication.Current?.Resources.TryGetValue(key, out var value) == true && value is Style style)
             label.Style = style;
     }
 }

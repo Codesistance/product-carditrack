@@ -1,6 +1,9 @@
 using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Domain.Enums;
 using CardiTrack.Mobile.Core.Notifications;
+// CardiTrack.Application (the DTO assembly's root namespace) shadows MAUI's Application in
+// any file importing it, so the control type is aliased rather than qualified at each use.
+using MauiApplication = Microsoft.Maui.Controls.Application;
 
 namespace CardiTrack.Mobile.Controls;
 
@@ -58,7 +61,7 @@ public partial class NudgeCard : ContentView
                 _ => "Primary"
             };
 
-        return Application.Current?.Resources.TryGetValue(key, out var value) == true && value is Color colour
+        return MauiApplication.Current?.Resources.TryGetValue(key, out var value) == true && value is Color colour
             ? colour
             : Colors.Gray;
     }

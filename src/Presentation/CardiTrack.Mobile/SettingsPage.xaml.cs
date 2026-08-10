@@ -4,6 +4,9 @@ using CardiTrack.Mobile.Core.Auth;
 using CardiTrack.Mobile.Core.Onboarding;
 using CardiTrack.Mobile.Onboarding;
 using CardiTrack.Mobile.Services;
+// CardiTrack.Application (the DTO assembly's root namespace) shadows MAUI's Application in
+// any file importing it, so the control type is aliased rather than qualified at each use.
+using MauiApplication = Microsoft.Maui.Controls.Application;
 
 namespace CardiTrack.Mobile;
 
@@ -89,7 +92,7 @@ public partial class SettingsPage : ContentPage
             Padding = new Thickness(8, 0),
             HeightRequest = 36
         };
-        if (Application.Current?.Resources.TryGetValue("Primary", out var primary) == true
+        if (MauiApplication.Current?.Resources.TryGetValue("Primary", out var primary) == true
             && primary is Color colour)
         {
             undo.TextColor = colour;
