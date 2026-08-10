@@ -9,7 +9,13 @@ namespace CardiTrack.Application.Interfaces.Repositories;
 /// </summary>
 public interface IRealtimeAssessmentRepository
 {
-    Task UpsertAsync(RealtimeAssessment assessment, CancellationToken ct = default);
+    /// <summary>
+    /// Writes the assessment; true when this call inserted the row, false when it overwrote an
+    /// existing one. The distinction is the concurrency arbiter for severity routing: two
+    /// overlapping passes can assess the same window, but only one of them inserts — and only
+    /// the inserter may raise the alert.
+    /// </summary>
+    Task<bool> UpsertAsync(RealtimeAssessment assessment, CancellationToken ct = default);
 
     /// <summary>Whether an assessment already exists for this exact window — the dedup probe
     /// that keeps an unchanged window from ever reaching the model twice.</summary>

@@ -49,6 +49,8 @@ public class RealtimeAssessmentServiceTests
         SetupWindow(HeartRateMinutes(from: 150, to: 209, bpm: 72));
         _assessments.ExistsAsync(_memberId, Arg.Any<DateTime>(), Arg.Any<CancellationToken>())
             .Returns(false);
+        _assessments.UpsertAsync(Arg.Any<RealtimeAssessment>(), Arg.Any<CancellationToken>())
+            .Returns(true);
         _alerts.GetByCardiMemberAsync(_memberId, activeOnly: true).Returns([]);
         _medicalAi.GenerateAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns("A steady hour, nothing unusual.\nSeverity: low");
@@ -153,6 +155,23 @@ public class RealtimeAssessmentServiceTests
         [
             new Alert { CardiMemberId = _memberId, AlertType = AlertType.HeartRate, IsResolved = false },
         ]);
+
+        var assessed = await CreateSut().AssessDueMembersAsync(UtcNow);
+
+        Assert.Equal(1, assessed);
+        await _alerts.DidNotReceive().AddAsync(Arg.Any<Alert>());
+    }
+
+    // Two overlapping executions can both assess the same window — the Exists probe is not
+    // atomic with the inference — but the upsert reports which one actually inserted, and only
+    // the inserter may alert. The loser must route nothing, or one episode pages twice.
+    [Fact]
+    public async Task WhenAConcurrentPassWonTheInsert_NoSecondAlertIsRaised()
+    {
+        _medicalAi.GenerateAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns("Sharply elevated.\nSeverity: critical");
+        _assessments.UpsertAsync(Arg.Any<RealtimeAssessment>(), Arg.Any<CancellationToken>())
+            .Returns(false);
 
         var assessed = await CreateSut().AssessDueMembersAsync(UtcNow);
 

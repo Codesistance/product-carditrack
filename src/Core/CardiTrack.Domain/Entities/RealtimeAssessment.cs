@@ -28,11 +28,17 @@ public class RealtimeAssessment
 
     /// <summary>
     /// |last observed − trend| / noise RMS: how many "typical jitters" the latest reading sits
-    /// from the denoised trend. The model receives this as its deviation yardstick.
+    /// from the denoised trend. The model receives this as its deviation yardstick. The
+    /// denominator is floored (a near-constant window would otherwise divide by ~zero), so this
+    /// is not always exactly reconstructable from <see cref="HrNoiseRms"/>.
     /// </summary>
     public double HrDeviationScore { get; set; }
 
-    /// <summary>RMS of the SSA noise residual, bpm — what one typical jitter is for this member.</summary>
+    /// <summary>
+    /// RMS of the SSA noise residual, bpm — what one typical jitter is for this member, stored
+    /// as measured (unfloored): a genuinely quiet signal must stay distinguishable from one
+    /// sitting at the deviation floor.
+    /// </summary>
     public double HrNoiseRms { get; set; }
 
     /// <summary>Total steps observed in the window, when any step data was present.</summary>

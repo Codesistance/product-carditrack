@@ -146,13 +146,18 @@ public class RealtimeAssessmentService : IRealtimeAssessmentService
 
         var series = FillGaps(hrWindow);
         var ssa = SsaDecomposition.Decompose(series);
+        // The floored yardstick is what the deviation score is denominated in, so it is also
+        // what the prompt states as the member's typical jitter — the model must see the same
+        // units the score uses. The *stored* HrNoiseRms stays the measured residual: flooring
+        // it in storage would erase the audit distinction between a genuinely quiet signal and
+        // one sitting at the floor.
         var noiseRms = Math.Max(ssa.NoiseRms, NoiseFloorBpm);
         var deviationScore = Math.Abs(series[^1] - ssa.TrendLast) / noiseRms;
 
         var steps = SumIfAny(window.MinuteSeries, GranularMetric.Steps, lastIndex, WindowMinutes);
         var spo2 = MeanIfAny(window.MinuteSeries, GranularMetric.SpO2, lastIndex, WindowMinutes);
 
-        var prompt = BuildPrompt(member, utcNow, ssa.TrendLast, deviationScore, ssa.NoiseRms,
+        var prompt = BuildPrompt(member, utcNow, ssa.TrendLast, deviationScore, noiseRms,
             series[^1], covered, steps, spo2);
         var modelOutput = await _medicalAi.GenerateAsync(prompt, ct);
         var (rawSeverity, severity) = AssessmentSeverityParser.Parse(modelOutput);
@@ -172,7 +177,12 @@ public class RealtimeAssessmentService : IRealtimeAssessmentService
             Severity = severity,
             GeneratedAtUtc = utcNow,
         };
-        await _unitOfWork.RealtimeAssessments.UpsertAsync(assessment, ct);
+        // The upsert doubles as the concurrency arbiter: the Exists probe above is not atomic
+        // with the inference, so two overlapping executions can both reach this line — but only
+        // one of them *inserts*, and only the inserter may route an alert. The losing pass has
+        // merely duplicated an inference the upsert converges; a pre-inference claim row was
+        // rejected because a failed model call would strand the claim and silence the window.
+        var inserted = await _unitOfWork.RealtimeAssessments.UpsertAsync(assessment, ct);
 
         if (severity is null)
         {
@@ -183,7 +193,7 @@ public class RealtimeAssessmentService : IRealtimeAssessmentService
                 "Model output for CardiMember {CardiMemberId} carried no parseable severity line.",
                 memberId);
         }
-        else if (severity >= AlertSeverity.Orange)
+        else if (severity >= AlertSeverity.Orange && inserted)
         {
             await RaiseAlertAsync(assessment, ct);
         }

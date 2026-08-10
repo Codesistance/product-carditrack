@@ -18,9 +18,16 @@ public class RealtimeAssessmentRepository : IRealtimeAssessmentRepository
         _context = context;
     }
 
-    public async Task UpsertAsync(RealtimeAssessment assessment, CancellationToken ct = default)
+    public async Task<bool> UpsertAsync(RealtimeAssessment assessment, CancellationToken ct = default)
     {
-        await _context.Database.ExecuteSqlInterpolatedAsync($"""
+        // Claim-then-update rather than a single DO UPDATE: the caller treats "I inserted" as
+        // an exclusive claim on the window (only the inserter routes an alert), and the claim
+        // must be decided atomically in the statement itself. (`RETURNING (xmax = 0)` would say
+        // the same thing in one statement, but PostgreSQL refuses system columns in RETURNING
+        // on partitioned tables.) A row returned means this call created the row; conflicting
+        // callers fall through to a plain update — the row cannot vanish in between, because
+        // nothing deletes assessments except a partition drop months later.
+        var claimed = await _context.Database.SqlQuery<int>($"""
             INSERT INTO "RealtimeAssessments"
                 ("CardiMemberId", "WindowStartUtc", "WindowEndUtc", "HrTrendLast",
                  "HrDeviationScore", "HrNoiseRms", "StepsSum", "SpO2Mean", "ModelOutput",
@@ -29,19 +36,29 @@ public class RealtimeAssessmentRepository : IRealtimeAssessmentRepository
                     {assessment.HrTrendLast}, {assessment.HrDeviationScore}, {assessment.HrNoiseRms},
                     {assessment.StepsSum}, {assessment.SpO2Mean}, {assessment.ModelOutput},
                     {assessment.RawSeverity}, {assessment.Severity?.ToString()}, {assessment.GeneratedAtUtc})
-            ON CONFLICT ("CardiMemberId", "WindowStartUtc")
-            DO UPDATE SET
-                "WindowEndUtc" = EXCLUDED."WindowEndUtc",
-                "HrTrendLast" = EXCLUDED."HrTrendLast",
-                "HrDeviationScore" = EXCLUDED."HrDeviationScore",
-                "HrNoiseRms" = EXCLUDED."HrNoiseRms",
-                "StepsSum" = EXCLUDED."StepsSum",
-                "SpO2Mean" = EXCLUDED."SpO2Mean",
-                "ModelOutput" = EXCLUDED."ModelOutput",
-                "RawSeverity" = EXCLUDED."RawSeverity",
-                "Severity" = EXCLUDED."Severity",
-                "GeneratedAtUtc" = EXCLUDED."GeneratedAtUtc"
+            ON CONFLICT ("CardiMemberId", "WindowStartUtc") DO NOTHING
+            RETURNING 1 AS "Value"
+            """).ToListAsync(ct);
+
+        if (claimed.Count > 0)
+            return true;
+
+        await _context.Database.ExecuteSqlInterpolatedAsync($"""
+            UPDATE "RealtimeAssessments" SET
+                "WindowEndUtc" = {assessment.WindowEndUtc},
+                "HrTrendLast" = {assessment.HrTrendLast},
+                "HrDeviationScore" = {assessment.HrDeviationScore},
+                "HrNoiseRms" = {assessment.HrNoiseRms},
+                "StepsSum" = {assessment.StepsSum},
+                "SpO2Mean" = {assessment.SpO2Mean},
+                "ModelOutput" = {assessment.ModelOutput},
+                "RawSeverity" = {assessment.RawSeverity},
+                "Severity" = {assessment.Severity?.ToString()},
+                "GeneratedAtUtc" = {assessment.GeneratedAtUtc}
+            WHERE "CardiMemberId" = {assessment.CardiMemberId}
+              AND "WindowStartUtc" = {assessment.WindowStartUtc}
             """, ct);
+        return false;
     }
 
     public async Task<bool> ExistsAsync(

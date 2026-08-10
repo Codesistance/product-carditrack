@@ -48,16 +48,21 @@ public class RealtimeAssessmentRepositoryTests(TestDatabaseFixture fixture)
         GeneratedAtUtc = DateTime.UtcNow,
     };
 
+    // The return value is the concurrency arbiter for severity routing (only the inserter may
+    // alert), so true-then-false is behavior the service depends on — not a nicety.
     [Fact]
-    public async Task UpsertAsync_ReplacesTheEarlierRow_ForTheSameWindow()
+    public async Task UpsertAsync_ReplacesTheEarlierRow_AndReportsInsertVersusUpdate()
     {
         using var scope = fixture.CreateScope();
         await EnsurePartitionsAsync(scope);
         var repo = scope.ServiceProvider.GetRequiredService<IRealtimeAssessmentRepository>();
         var memberId = Guid.NewGuid();
 
-        await repo.UpsertAsync(Assessment(memberId, RecentHour, AlertSeverity.Green, "First pass."));
-        await repo.UpsertAsync(Assessment(memberId, RecentHour, AlertSeverity.Orange, "Second pass."));
+        var first = await repo.UpsertAsync(Assessment(memberId, RecentHour, AlertSeverity.Green, "First pass."));
+        var second = await repo.UpsertAsync(Assessment(memberId, RecentHour, AlertSeverity.Orange, "Second pass."));
+
+        Assert.True(first);
+        Assert.False(second);
 
         var stored = await repo.GetLatestAsync(memberId);
         Assert.NotNull(stored);
