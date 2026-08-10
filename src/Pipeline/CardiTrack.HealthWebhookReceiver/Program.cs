@@ -6,10 +6,14 @@ using Serilog;
 
 // The platform's only public-ingress pipeline surface (docs/llm_design.md
 // `HealthWebhookReceiver`): Google Health API webhook notifications arrive here, are
-// authenticated against the Subscriber's shared secret, acknowledged with 204, and forwarded raw
+// authenticated against the Subscriber's shared secret, acknowledged with 200, and forwarded raw
 // to Pub/Sub. Nothing is parsed and nothing else is reachable from this process — no database,
-// no AI, no business logic. The 5-minute aggregator (a later slice) consumes the topic and
-// re-fetches the actual data (notify-then-fetch), so this payload is never trusted.
+// no AI, no business logic. The 5-minute aggregator consumes the topic and re-fetches the
+// actual data (notify-then-fetch), so this payload is never trusted.
+//
+// The Subscriber's registered endpointUri must be THIS path-qualified URL
+// (https://<service>/webhooks/google-health) — registering the service root sends Google's
+// verification probes into a 404.
 
 var builder = WebApplication.CreateBuilder(args);
 var configuration = builder.Configuration;
@@ -54,12 +58,10 @@ var app = builder.Build();
 
 app.MapGet("/healthz", () => Results.Ok("healthy"));
 
-// Conservative verification answer: the discovery document says the endpoint "will be verified"
-// using the Subscriber secret but does not document the handshake's shape, so a plain GET
-// answers 200. Expect to adjust this on live Subscriber registration — the same "(assumed),
-// pending live check" convention FitbitApiClient used before sandbox access.
-app.MapGet("/webhooks/google-health", () => Results.Ok());
-
+// Verification is POST-based (documented, superseding the earlier assumed-GET contract):
+// Google sends two {"type": "verification"} probes on Subscriber create/update — one with the
+// registered secret expecting 200/201, one unauthorized expecting 401/403 — so the POST
+// handler below serves the handshake and real notifications alike.
 app.MapPost("/webhooks/google-health", async (HttpRequest request, WebhookNotificationHandler handler, CancellationToken ct) =>
 {
     using var reader = new StreamReader(request.Body);

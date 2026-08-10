@@ -50,7 +50,7 @@ Each component is a Cloud Run service (event/HTTP-triggered) or Cloud Run job (C
 
 | Component | Trigger | Cadence | Purpose |
 |-----------|---------|---------|---------|
-| `HealthWebhookReceiver` | HTTP (Cloud Run service) | On event (~333/s peak) | **Built (dev)** — `carditrack-<env>-webhook-receiver`, gated on `enable_webhook_receiver`. Authenticates the Subscriber's shared secret (full `Authorization` header, constant-time), acknowledges with `204`, forwards the **raw, unparsed** payload to Pub/Sub — notify-then-fetch means nothing downstream ever trusts it. Awaiting Subscriber registration against Google (below) |
+| `HealthWebhookReceiver` | HTTP (Cloud Run service) | On event (~333/s peak) | **Built (dev)** — `carditrack-<env>-webhook-receiver`, gated on `enable_webhook_receiver`. Authenticates the Subscriber's shared secret (full `Authorization` header, constant-time), acknowledges with `200` (the status Google's verification handshake demands), forwards the **raw, unparsed** payload to Pub/Sub — notify-then-fetch means nothing downstream ever trusts it, and the one sanctioned peek drops Google's documented `{"type": "verification"}` probe instead of forwarding it. Awaiting Subscriber registration against Google (below) |
 | `WearableAggregator` | Cloud Scheduler | Every 5 min | **First increment built (dev):** `carditrack-<env>-pipeline-jobs-aggregator` drains the realtime subscription, maps each notification's `healthUserId` to its `DeviceConnection` (captured once per connection during sync via `GET /v4/users/me/identity`), and runs the standard targeted sync — same invariants, sooner; `LastSyncDate` stamping makes polling the fallback rather than a duplicate. The SSA → MedGemma → severity chain runs in the separate assessor job below rather than inline — the aggregator moves data, the assessor reads it, and either works without the other |
 | `RealtimeAssessor` | Cloud Scheduler | Every 5 min (offset from the aggregator) | **Built (dev):** `carditrack-<env>-pipeline-jobs-assessor` — for each member with fresh data, SSA over the latest 60-minute heart-rate window (≥45 covered minutes; window keyed by its start, so an unmoved window costs no inference), MedGemma assessment (`CARDITRACK_REALTIME_ASSESSMENT_PROMPT`), result to the partitioned `RealtimeAssessments` table. Works entirely off the granular store, so it functions on polling alone — webhook registration only makes it fresher |
 | `SeverityRouter` | On new result row | On write | **First increment built (dev), inline in the assessor rather than a separate component:** the model's closing `Severity:` line is parsed strictly (critical/high/medium/low → red/orange/yellow/green; an unparseable answer is stored but routes nowhere — the model cannot page a family by mumbling), and red/orange verdicts create `Alert` rows with a one-unresolved-heart-rate-alert-at-a-time cooldown. Immediate push via FCM/APNs still waits on push infrastructure |
@@ -299,13 +299,17 @@ step, and that whole approach is obsolete. Provisioning is:
 
 1. Read the generated secret from Secret Manager (`carditrack-<env>-webhook-secret` — the
    Terraform-owned value the receiver compares against).
-2. Create the Subscriber with the service URL + that secret + one `subscriberConfigs` entry
-   listing the ingestion table's data types, policy `AUTOMATIC`.
+2. Create the Subscriber — URL path uses the **project number, not the id** (id → bare 403),
+   `endpointUri` is the **path-qualified** receiver URL (`https://<service>/webhooks/google-health`
+   — the bare service root would 404 the probes), plus the secret and one `subscriberConfigs`
+   entry listing the ingestion table's data types, policy `AUTOMATIC`.
 
-> The endpoint-verification handshake's exact shape is **not documented** in the discovery
-> document (only that the endpoint "will be verified" using the secret). The receiver answers a
-> plain `GET` with `200` as the conservative contract; expect to adjust on first live
-> registration — the same "(assumed), pending live check" convention `FitbitApiClient` used.
+> The endpoint-verification handshake is documented (webhooks guide, superseding this
+> section's earlier "assumed GET" contract): on create/update Google sends **two POST
+> probes** (User-Agent `Google-Health-API-Webhooks`, body `{"type": "verification"}`) — the
+> one carrying the registered secret must be answered `200`/`201`, the unauthorized one
+> `401`/`403`, else creation fails with `FAILED_PRECONDITION`. The receiver satisfies both
+> sides and drops the probe body rather than forwarding it to the topic.
 
 ### Why not Terra?
 
