@@ -84,6 +84,8 @@ flowchart LR
 
 The Worker polling path writes **only** to Cloud SQL and never publishes to Pub/Sub. The topic carries provider webhook notifications forwarded by `HealthWebhookReceiver`, not `ActivityLogs` egress from the Worker — the Worker stays free of AI-pipeline responsibilities (see [CLAUDE.md](../../CLAUDE.md)).
 
+The aggregator's **first increment is live (dev)**: every 5 minutes the `pipeline-jobs-aggregator` Cloud Run job drains the subscription, maps each notification's `healthUserId` to its `DeviceConnection`, and runs the standard `SyncCardiMemberAsync` at worker-cadence scope — the same pull, triggered by the provider instead of the clock. Acknowledgment means "nothing here still needs a retry": unknown users and unparseable payloads ACK (the poll guarantees nothing is lost), a failed sync leaves its messages for redelivery. SSA/MedGemma consumption of the resulting granular data is the next pipeline slice.
+
 ---
 
 ## Node → component → technology → cadence

@@ -1381,10 +1381,16 @@ jobs:
           workload_identity_provider: ${{ needs.changes.outputs.gcp_wif_provider }}
           service_account: ${{ needs.changes.outputs.gcp_service_account }}
       - uses: google-github-actions/setup-gcloud@v3
-      # jobs update, not run deploy: the job resource is Terraform-owned (VPC, Cloud SQL,
-      # secrets) and only its image is CI-owned; Cloud Scheduler drives executions.
+      # jobs update, not run deploy: the job resources are Terraform-owned (VPC, Cloud SQL,
+      # secrets, args) and only their image is CI-owned; Cloud Scheduler drives executions.
+      # Both jobs share the image and differ by container args.
       - run: |
           gcloud run jobs update carditrack-dev-pipeline-jobs \
+            --image ${{ needs.push-pipeline-image.outputs.image }} \
+            --region ${{ needs.changes.outputs.gcp_region }} \
+            --project ${{ needs.changes.outputs.gcp_project_id }} \
+            --quiet
+          gcloud run jobs update carditrack-dev-pipeline-jobs-aggregator \
             --image ${{ needs.push-pipeline-image.outputs.image }} \
             --region ${{ needs.changes.outputs.gcp_region }} \
             --project ${{ needs.changes.outputs.gcp_project_id }} \

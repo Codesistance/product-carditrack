@@ -663,6 +663,7 @@ resource "google_cloud_run_v2_job" "pipeline_jobs" {
 
       containers {
         image = var.pipeline_jobs_container_image
+        args  = ["--job", "digest"]
 
         dynamic "env" {
           for_each = var.pipeline_jobs_env_vars
@@ -862,4 +863,148 @@ resource "google_cloud_run_v2_service_iam_member" "webhook_receiver_public" {
   location = google_cloud_run_v2_service.webhook_receiver[0].location
   role     = "roles/run.invoker"
   member   = "allUsers"
+}
+
+# ── Pipeline aggregator job (AI pipeline — webhook aggregation) ──────────────────────────────
+# Same image as the digest job, selected via container args: drains the realtime subscription
+# every 5 minutes and runs a targeted sync for each notified wearer. Exists only when both the
+# pipeline and Pub/Sub are enabled — without the topic there is nothing to drain.
+
+variable "pipeline_aggregator_env_vars" {
+  description = "Environment variables for the aggregator job"
+  type        = map(string)
+  default     = {}
+}
+
+variable "pipeline_aggregator_secret_env_vars" {
+  description = "Secret Manager-backed env vars for the aggregator job (key=env var name, value=secret ID)"
+  type        = map(string)
+  default     = {}
+}
+
+variable "pipeline_aggregator_schedule" {
+  description = "Cloud Scheduler cron for the aggregator job — every 5 minutes per the pipeline design"
+  type        = string
+  default     = "*/5 * * * *"
+}
+
+locals {
+  pipeline_aggregator_enabled = var.enable_pipeline_jobs && var.enable_pubsub
+}
+
+resource "google_cloud_run_v2_job" "pipeline_aggregator" {
+  count    = local.pipeline_aggregator_enabled ? 1 : 0
+  name     = "${var.pipeline_jobs_name}-aggregator"
+  location = var.cloud_run_location
+  client   = "terraform"
+
+  template {
+    template {
+      max_retries = 1
+      timeout     = "1800s"
+
+      vpc_access {
+        network_interfaces {
+          network    = google_compute_network.main.id
+          subnetwork = google_compute_subnetwork.main.id
+        }
+        egress = "PRIVATE_RANGES_ONLY"
+      }
+
+      volumes {
+        name = "cloudsql"
+        cloud_sql_instance {
+          instances = [google_sql_database_instance.main.connection_name]
+        }
+      }
+
+      containers {
+        image = var.pipeline_jobs_container_image
+        args  = ["--job", "aggregate"]
+
+        dynamic "env" {
+          for_each = var.pipeline_aggregator_env_vars
+          iterator = item
+          content {
+            name  = item.key
+            value = item.value
+          }
+        }
+
+        dynamic "env" {
+          for_each = var.pipeline_aggregator_secret_env_vars
+          iterator = item
+          content {
+            name = item.key
+            value_source {
+              secret_key_ref {
+                secret  = item.value
+                version = "latest"
+              }
+            }
+          }
+        }
+
+        volume_mounts {
+          name       = "cloudsql"
+          mount_path = "/cloudsql"
+        }
+
+        resources {
+          limits = {
+            cpu    = "1"
+            memory = "512Mi"
+          }
+        }
+      }
+    }
+  }
+
+  lifecycle {
+    ignore_changes = [template[0].template[0].containers[0].image, client, client_version]
+  }
+  depends_on = [
+    google_project_service.run,
+    google_secret_manager_secret_version.db_connection_string,
+  ]
+}
+
+# The jobs run as the default compute service account (like every other Cloud Run resource
+# here except the webhook receiver), so the subscription grant goes to it.
+resource "google_pubsub_subscription_iam_member" "pipeline_aggregator_subscriber" {
+  count        = local.pipeline_aggregator_enabled ? 1 : 0
+  subscription = google_pubsub_subscription.realtime[0].id
+  role         = "roles/pubsub.subscriber"
+  member       = "serviceAccount:${data.google_project.current.number}-compute@developer.gserviceaccount.com"
+}
+
+resource "google_cloud_run_v2_job_iam_member" "pipeline_aggregator_invoker" {
+  count    = local.pipeline_aggregator_enabled ? 1 : 0
+  name     = google_cloud_run_v2_job.pipeline_aggregator[0].name
+  location = google_cloud_run_v2_job.pipeline_aggregator[0].location
+  role     = "roles/run.invoker"
+  member   = "serviceAccount:${google_service_account.pipeline_scheduler[0].email}"
+}
+
+resource "google_cloud_scheduler_job" "pipeline_aggregator_5min" {
+  count            = local.pipeline_aggregator_enabled ? 1 : 0
+  name             = "${var.pipeline_jobs_name}-aggregator-5min"
+  region           = var.cloud_run_location
+  schedule         = var.pipeline_aggregator_schedule
+  time_zone        = "Etc/UTC"
+  attempt_deadline = "320s"
+
+  http_target {
+    http_method = "POST"
+    uri         = "https://run.googleapis.com/v2/projects/${var.project_id}/locations/${var.cloud_run_location}/jobs/${var.pipeline_jobs_name}-aggregator:run"
+
+    oauth_token {
+      service_account_email = google_service_account.pipeline_scheduler[0].email
+    }
+  }
+
+  depends_on = [
+    google_project_service.cloudscheduler,
+    google_cloud_run_v2_job.pipeline_aggregator,
+  ]
 }

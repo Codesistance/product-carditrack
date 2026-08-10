@@ -46,6 +46,15 @@ public class DeviceConnection : BaseEntity, ISoftDeletable
     public int ConsecutiveEmptyPulls { get; set; }
 
     /// <summary>
+    /// The provider's public health-user id — the `users/{user}` segment webhook notifications
+    /// and subscriptions are addressed by. Captured opportunistically on the first sync after
+    /// this column shipped (see <c>DeviceSyncService</c>), so existing connections self-heal;
+    /// null until then, or when the provider exposes none. This is what lets a notification be
+    /// mapped back to a connection without trusting anything else in its payload.
+    /// </summary>
+    public string? HealthUserId { get; set; }
+
+    /// <summary>
     /// Earliest day the history backfill has fetched (or confirmed empty) for this connection;
     /// null until the first backfill chunk runs. The backfill walks this marker backwards from
     /// the routine sync window towards the provider's configured horizon, a chunk per pull, so

@@ -356,6 +356,35 @@ public class FitbitApiClient : IFitbitApiClient, IDeviceApiClient
     }
 
     /// <summary>
+    /// The wearer's public health-user id, from `GET /v4/users/me/identity` (the `Identity`
+    /// resource, verified against the discovery document): `healthUserId` is the `users/{user}`
+    /// segment that keys webhook subscriptions and notifications. Tolerates absence like the
+    /// optional daily metrics — a 404 is a fact about the account, a malformed 400 is a bug here
+    /// and throws.
+    /// </summary>
+    public async Task<string?> GetHealthUserIdAsync(string accessToken)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, "/v4/users/me/identity");
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+
+        using var response = await _httpClient.SendAsync(request);
+        if (!response.IsSuccessStatusCode)
+        {
+            var probe = new FitbitApiException(
+                (int)response.StatusCode,
+                $"Google Health API identity returned {(int)response.StatusCode}.",
+                IsMalformedRequest((int)response.StatusCode, await response.Content.ReadAsStringAsync()));
+            if (IsAbsentDataType(probe))
+                return null;
+            throw probe;
+        }
+
+        var root = await ParseBodyAsync(response, "identity");
+        var healthUserId = root.Value<string>("healthUserId");
+        return string.IsNullOrWhiteSpace(healthUserId) ? null : healthUserId;
+    }
+
+    /// <summary>
     /// POSTs a one-day dailyRollUp for a data type and returns the rollup point's union value
     /// object (e.g. the "heartRate" member for data type "heart-rate"), or null when the day has
     /// no data. The union member is the camelCase form of the kebab-case data type name.

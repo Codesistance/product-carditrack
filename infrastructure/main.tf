@@ -202,6 +202,32 @@ module "deployments" {
     "Apm__Data"                            = "${var.project_name}-${local.environment}-apm-data"
   }
 
+  # The aggregator runs the same targeted sync the Worker does, so it carries the Worker's
+  # device-provider wiring (incl. OAuth client credentials for token refresh) on top of the
+  # pipeline base — plus the subscription it drains. Still no public AI key.
+  pipeline_aggregator_env_vars = merge(
+    {
+      "ASPNETCORE_ENVIRONMENT"         = title(var.environment)
+      "GCP_PROJECT_ID"                 = var.project_id
+      "AI__Private__Model"             = local.medgemma_model
+      "AI__Private__TimeoutSeconds"    = tostring(var.medgemma_timeout_seconds)
+      "Apm__Engine"                    = var.apm_engine
+      "Apm__MetricsEnabled"            = tostring(var.apm_metrics_enabled)
+      "Serilog__MinimumLevel__Default" = var.log_minimum_level.worker
+      "PubSub__ProjectId"              = var.project_id
+      "PubSub__SubscriptionId"         = "${local.pubsub_topic_name}-sub"
+    },
+    local.device_pull_env_vars
+  )
+  pipeline_aggregator_secret_env_vars = {
+    "ConnectionStrings__DefaultConnection" = "${var.project_name}-${local.environment}-db-connection-string"
+    "Encryption__Key"                      = "${var.project_name}-${local.environment}-encryption-key"
+    "AI__Private__BaseUrl"                 = "${var.project_name}-${local.environment}-medgemma-service-url"
+    "Apm__Data"                            = "${var.project_name}-${local.environment}-apm-data"
+    "DeviceProviders__0__ClientId"         = "${var.project_name}-${local.environment}-devices-fitbit-client-id"
+    "DeviceProviders__0__ClientSecret"     = "${var.project_name}-${local.environment}-devices-fitbit-client-secret"
+  }
+
   # Cloud Run - Health webhook receiver (public ingress; secret-authenticated). Console-only
   # logging for now — wiring it into APM shipping is a follow-up, and its Serilog output reaches
   # Cloud Logging regardless.

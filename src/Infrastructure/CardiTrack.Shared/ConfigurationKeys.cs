@@ -75,6 +75,7 @@ public static class ConfigurationKeys
     {
         public const string ProjectId = "PubSub:ProjectId";
         public const string TopicId = "PubSub:TopicId";
+        public const string SubscriptionId = "PubSub:SubscriptionId";
     }
 
     public static class CloudRun

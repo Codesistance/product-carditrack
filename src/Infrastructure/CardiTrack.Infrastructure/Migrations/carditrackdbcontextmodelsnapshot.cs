@@ -710,6 +710,10 @@ namespace CardiTrack.Infrastructure.Migrations
                         .HasMaxLength(50)
                         .HasColumnType("character varying(50)");
 
+                    b.Property<string>("HealthUserId")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
                     b.Property<DateOnly?>("HistoryBackfilledTo")
                         .HasColumnType("date");
 
@@ -762,6 +766,9 @@ namespace CardiTrack.Infrastructure.Migrations
                     b.HasIndex("ConnectionStatus");
 
                     b.HasIndex("DeviceType");
+
+                    b.HasIndex("HealthUserId")
+                        .HasFilter("\"HealthUserId\" IS NOT NULL");
 
                     b.HasIndex("LastSyncDate");
 

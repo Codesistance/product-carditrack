@@ -11,6 +11,9 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- The aggregator job drains the realtime pull subscription. -->
+    <PackageReference Include="Google.Cloud.PubSub.V1" Version="3.24.0" />
+
     <!-- Logging — same shape as the Worker. The Web SDK is used for its host plumbing only:
          this is a Cloud Run *job*, runs to completion, and never starts a listener. -->
     <PackageReference Include="Serilog.AspNetCore" Version="10.0.0" />

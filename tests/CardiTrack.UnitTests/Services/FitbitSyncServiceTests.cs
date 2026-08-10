@@ -643,6 +643,52 @@ public class DeviceSyncServiceTests
         await _deviceApi.DidNotReceive().GetGranularDayAsync(Arg.Any<string>(), Arg.Any<DateOnly>());
     }
 
+    // ── Health-user identity capture ─────────────────────────────────────────────
+    //
+    // The provider's public health-user id maps webhook notifications back to a connection, and
+    // the connect flow predates the column — so sync captures it, once, best-effort.
+
+    [Fact]
+    public async Task SyncCardiMemberAsync_CapturesTheHealthUserId_WhenMissing()
+    {
+        SetupSuccessfulTokenRefresh();
+        SetupDefaultApiResponse();
+        _deviceApi.GetHealthUserIdAsync(Arg.Any<string>()).Returns("abc-123");
+
+        await CreateSut().SyncCardiMemberAsync(_fitbitConnection);
+
+        await _deviceConnections.Received(1).UpdateHealthUserIdAsync(_fitbitConnection.Id, "abc-123");
+        Assert.Equal("abc-123", _fitbitConnection.HealthUserId);
+    }
+
+    [Fact]
+    public async Task SyncCardiMemberAsync_DoesNotAskForTheIdentityAgain_OnceCaptured()
+    {
+        _fitbitConnection.HealthUserId = "abc-123";
+        SetupSuccessfulTokenRefresh();
+        SetupDefaultApiResponse();
+
+        await CreateSut().SyncCardiMemberAsync(_fitbitConnection);
+
+        await _deviceApi.DidNotReceive().GetHealthUserIdAsync(Arg.Any<string>());
+    }
+
+    // Best-effort by design: an account without an id still syncs; it just cannot be addressed
+    // by webhooks yet, and the next pull asks again.
+    [Fact]
+    public async Task SyncCardiMemberAsync_SyncsNormally_WhenNoIdentityIsAvailable()
+    {
+        SetupSuccessfulTokenRefresh();
+        SetupDefaultApiResponse();
+        _deviceApi.GetHealthUserIdAsync(Arg.Any<string>()).Returns((string?)null);
+
+        await CreateSut().SyncCardiMemberAsync(_fitbitConnection);
+
+        await _deviceConnections.DidNotReceive().UpdateHealthUserIdAsync(Arg.Any<Guid>(), Arg.Any<string>());
+        await _deviceApi.Received(WindowDays(LookbackDays))
+            .GetHealthSnapshotAsync(Arg.Any<string>(), Arg.Any<DateOnly>());
+    }
+
     // ── AuditSyncAsync ───────────────────────────────────────────────────────────
     //
     // The audit exists to measure how far back a provider revises data — something a routine sync

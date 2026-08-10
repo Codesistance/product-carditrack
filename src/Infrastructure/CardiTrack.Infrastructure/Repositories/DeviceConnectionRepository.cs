@@ -185,4 +185,34 @@ public class DeviceConnectionRepository : Repository<DeviceConnection>, IDeviceC
             .ExecuteUpdateAsync(s => s
                 .SetProperty(dc => dc.HistoryBackfilledTo, backfilledTo));
     }
+
+    public async Task UpdateHealthUserIdAsync(Guid id, string healthUserId)
+    {
+        await _dbSet
+            .Where(dc => dc.Id == id
+                         && dc.IsActive
+                         && dc.ConnectionStatus != ConnectionStatus.Disconnected)
+            .ExecuteUpdateAsync(s => s
+                .SetProperty(dc => dc.HealthUserId, healthUserId));
+    }
+
+    /// <summary>
+    /// The eligibility filter is deliberately identical to <see cref="GetDueForSyncAsync"/> minus
+    /// due-ness: a webhook notification is an invitation to sync sooner, never a way around the
+    /// paused/removed exclusions — collection a member paused must stay stopped no matter what
+    /// the provider announces.
+    /// </summary>
+    public async Task<IEnumerable<DeviceConnection>> GetSyncableByHealthUserIdAsync(string healthUserId)
+    {
+        var now = DateTime.UtcNow;
+        return await _dbSet
+            .Where(dc => dc.HealthUserId == healthUserId
+                         && dc.IsActive
+                         && SyncableStatuses.Contains(dc.ConnectionStatus))
+            .Join(_context.CardiMembers, dc => dc.CardiMemberId, cm => cm.Id, (dc, cm) => new { dc, cm })
+            .Where(x => x.cm.IsActive
+                        && (x.cm.MonitoringPausedUntil == null || x.cm.MonitoringPausedUntil <= now))
+            .Select(x => x.dc)
+            .ToListAsync();
+    }
 }

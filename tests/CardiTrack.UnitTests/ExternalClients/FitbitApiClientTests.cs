@@ -1302,6 +1302,55 @@ public class FitbitApiClientTests
         Assert.Equal(75f, sample.Value);
     }
 
+    // ── Identity ─────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task GetHealthUserIdAsync_ReadsTheIdentityResource()
+    {
+        var handler = new RoutedFakeHttpHandler()
+            .Map("/users/me/identity",
+                """{ "name": "users/me/identity", "healthUserId": "abc-123", "legacyUserId": "XYZ789" }""");
+
+        var id = await ((IDeviceApiClient)CreateSut(handler).Sut).GetHealthUserIdAsync("token");
+
+        Assert.Equal("abc-123", id);
+    }
+
+    [Fact]
+    public async Task GetHealthUserIdAsync_ToleratesAnAbsentIdentity()
+    {
+        var handler = new RoutedFakeHttpHandler()
+            .Map("/users/me/identity", """{ "error": { "status": "NOT_FOUND" } }""",
+                HttpStatusCode.NotFound);
+
+        var id = await ((IDeviceApiClient)CreateSut(handler).Sut).GetHealthUserIdAsync("token");
+
+        Assert.Null(id);
+    }
+
+    [Fact]
+    public async Task GetHealthUserIdAsync_Throws_WhenTheRequestIsMalformed()
+    {
+        var handler = new RoutedFakeHttpHandler()
+            .Map("/users/me/identity", """
+                {
+                  "error": {
+                    "code": 400,
+                    "details": [
+                      {
+                        "@type": "type.googleapis.com/google.rpc.BadRequest",
+                        "fieldViolations": [ { "field": "name" } ]
+                      }
+                    ]
+                  }
+                }
+                """, HttpStatusCode.BadRequest);
+
+        var ex = await Assert.ThrowsAsync<FitbitApiException>(() =>
+            ((IDeviceApiClient)CreateSut(handler).Sut).GetHealthUserIdAsync("token"));
+        Assert.True(ex.IsMalformedRequest);
+    }
+
     [Fact]
     public async Task GetGranularDayAsync_FollowsPagination()
     {
