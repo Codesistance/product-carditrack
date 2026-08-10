@@ -75,11 +75,13 @@ builder.Services.AddScoped<IAlertRepository, AlertRepository>();
 builder.Services.AddScoped<IPatternBaselineRepository, PatternBaselineRepository>();
 builder.Services.AddScoped<IGranularMetricRepository, GranularMetricRepository>();
 builder.Services.AddScoped<IDigestRepository, DigestRepository>();
+builder.Services.AddScoped<IRealtimeAssessmentRepository, RealtimeAssessmentRepository>();
 builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
 
 // AI — the private (medical) slot only; see the header note
 builder.Services.AddMedicalAiServices(configuration);
 builder.Services.AddScoped<IDigestGenerationService, DigestGenerationService>();
+builder.Services.AddScoped<IRealtimeAssessmentService, RealtimeAssessmentService>();
 
 // Device provider — the aggregator's targeted sync is the same SyncCardiMemberAsync the Worker
 // runs, so this host carries the same provider wiring (incl. the Fitbit OAuth credentials the
@@ -135,8 +137,14 @@ try
                 summary.Unparseable, summary.FailedUsers);
             return 0;
 
+        case "assess":
+            var assessments = scope.ServiceProvider.GetRequiredService<IRealtimeAssessmentService>();
+            var assessed = await assessments.AssessDueMembersAsync(DateTime.UtcNow);
+            Log.Information("PipelineJobs run finished. Assessments written: {Assessed}.", assessed);
+            return 0;
+
         default:
-            Log.Fatal("Unknown job '{Job}'. Known jobs: digest, aggregate.", jobName);
+            Log.Fatal("Unknown job '{Job}'. Known jobs: digest, aggregate, assess.", jobName);
             return 1;
     }
 }

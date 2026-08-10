@@ -17,6 +17,7 @@ public static class TimeSeriesPartitions
     public const string GranularParent = "GranularMetricHours";
     public const string RollupParent = "MetricRollupsHourly";
     public const string DigestParent = "DigestEntries";
+    public const string RealtimeParent = "RealtimeAssessments";
 
     private const string DailySuffixFormat = "yyyyMMdd";
     private const string MonthlySuffixFormat = "yyyyMM";
@@ -29,6 +30,9 @@ public static class TimeSeriesPartitions
 
     public static string DigestPartitionName(DateOnly firstOfMonth) =>
         $"{DigestParent}_y{firstOfMonth.ToString(MonthlySuffixFormat, CultureInfo.InvariantCulture)}";
+
+    public static string RealtimePartitionName(DateOnly day) =>
+        $"{RealtimeParent}_y{day.ToString(DailySuffixFormat, CultureInfo.InvariantCulture)}";
 
     public static string CreateDailyPartitionSql(DateOnly day) =>
         $"""
@@ -51,6 +55,13 @@ public static class TimeSeriesPartitions
         FOR VALUES FROM ('{firstOfMonth:yyyy-MM-dd}') TO ('{firstOfMonth.AddMonths(1):yyyy-MM-dd}');
         """;
 
+    public static string CreateRealtimePartitionSql(DateOnly day) =>
+        $"""
+        CREATE TABLE IF NOT EXISTS "{RealtimePartitionName(day)}"
+        PARTITION OF "{RealtimeParent}"
+        FOR VALUES FROM ('{day:yyyy-MM-dd}') TO ('{day.AddDays(1):yyyy-MM-dd}');
+        """;
+
     public static string DropPartitionSql(string partitionName) =>
         $"""DROP TABLE IF EXISTS "{partitionName}";""";
 
@@ -68,6 +79,10 @@ public static class TimeSeriesPartitions
     /// <summary>The first day of the month a digest partition covers.</summary>
     public static bool TryParseDigestPartition(string partitionName, out DateOnly firstOfMonth) =>
         TryParseMonthSuffix(partitionName, $"{DigestParent}_y", out firstOfMonth);
+
+    /// <summary>The day a daily real-time assessment partition covers.</summary>
+    public static bool TryParseRealtimePartition(string partitionName, out DateOnly day) =>
+        TryParseSuffix(partitionName, $"{RealtimeParent}_y", DailySuffixFormat, out day);
 
     private static bool TryParseMonthSuffix(string partitionName, string prefix, out DateOnly firstOfMonth)
     {

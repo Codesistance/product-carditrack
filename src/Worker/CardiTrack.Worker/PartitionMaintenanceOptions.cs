@@ -25,4 +25,10 @@ public class PartitionMaintenanceOptions
     /// Derived data: regenerable in principle, though the source window ages out first.
     /// </summary>
     public int DigestRetentionMonths { get; set; } = 12;
+
+    /// <summary>
+    /// Days the `RealtimeAssessments` rows are kept — 90, the llm_design retention for
+    /// real-time results, matching the granular source they are derived from.
+    /// </summary>
+    public int RealtimeRetentionDays { get; set; } = 90;
 }

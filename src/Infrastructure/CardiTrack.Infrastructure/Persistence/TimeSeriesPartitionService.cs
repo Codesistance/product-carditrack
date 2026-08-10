@@ -31,7 +31,10 @@ public class TimeSeriesPartitionService : ITimeSeriesPartitionService
         var lastDay = today.AddDays(daysAhead);
 
         for (var day = firstDay; day <= lastDay; day = day.AddDays(1))
+        {
             await _context.Database.ExecuteSqlRawAsync(TimeSeriesPartitions.CreateDailyPartitionSql(day), ct);
+            await _context.Database.ExecuteSqlRawAsync(TimeSeriesPartitions.CreateRealtimePartitionSql(day), ct);
+        }
 
         var firstMonth = new DateOnly(firstDay.Year, firstDay.Month, 1);
         var lastMonth = new DateOnly(lastDay.Year, lastDay.Month, 1);
@@ -43,20 +46,22 @@ public class TimeSeriesPartitionService : ITimeSeriesPartitionService
     }
 
     public async Task DropExpiredPartitionsAsync(
-        int granularRetentionDays, int rollupRetentionMonths, int digestRetentionMonths,
-        CancellationToken ct = default)
+        PartitionRetention retention, CancellationToken ct = default)
     {
         // A non-positive retention is always a misconfiguration, and the failure mode would be
         // mass deletion of health data — fail loud instead.
-        if (granularRetentionDays <= 0)
+        if (retention.GranularDays <= 0)
             throw new ArgumentOutOfRangeException(
-                nameof(granularRetentionDays), granularRetentionDays, "Retention must be positive.");
-        if (rollupRetentionMonths <= 0)
+                nameof(retention), retention.GranularDays, "GranularDays retention must be positive.");
+        if (retention.RollupMonths <= 0)
             throw new ArgumentOutOfRangeException(
-                nameof(rollupRetentionMonths), rollupRetentionMonths, "Retention must be positive.");
-        if (digestRetentionMonths <= 0)
+                nameof(retention), retention.RollupMonths, "RollupMonths retention must be positive.");
+        if (retention.DigestMonths <= 0)
             throw new ArgumentOutOfRangeException(
-                nameof(digestRetentionMonths), digestRetentionMonths, "Retention must be positive.");
+                nameof(retention), retention.DigestMonths, "DigestMonths retention must be positive.");
+        if (retention.RealtimeDays <= 0)
+            throw new ArgumentOutOfRangeException(
+                nameof(retention), retention.RealtimeDays, "RealtimeDays retention must be positive.");
 
         var today = DateOnly.FromDateTime(DateTime.UtcNow);
 
@@ -64,7 +69,7 @@ public class TimeSeriesPartitionService : ITimeSeriesPartitionService
         // is dropped only when its whole range is past that cutoff. The conservative boundary is
         // deliberate: retention here is a floor on availability, and destroying a partition that
         // still contains in-retention minutes would be the actual off-by-one.
-        var granularCutoff = today.AddDays(-granularRetentionDays);
+        var granularCutoff = today.AddDays(-retention.GranularDays);
         foreach (var name in await ChildPartitionsAsync(TimeSeriesPartitions.GranularParent, ct))
         {
             if (TimeSeriesPartitions.TryParseDailyPartition(name, out var day)
@@ -74,7 +79,17 @@ public class TimeSeriesPartitionService : ITimeSeriesPartitionService
             }
         }
 
-        var rollupCutoff = new DateOnly(today.Year, today.Month, 1).AddMonths(-rollupRetentionMonths);
+        var realtimeCutoff = today.AddDays(-retention.RealtimeDays);
+        foreach (var name in await ChildPartitionsAsync(TimeSeriesPartitions.RealtimeParent, ct))
+        {
+            if (TimeSeriesPartitions.TryParseRealtimePartition(name, out var day)
+                && day.AddDays(1) <= realtimeCutoff)
+            {
+                await DropAsync(name, ct);
+            }
+        }
+
+        var rollupCutoff = new DateOnly(today.Year, today.Month, 1).AddMonths(-retention.RollupMonths);
         foreach (var name in await ChildPartitionsAsync(TimeSeriesPartitions.RollupParent, ct))
         {
             if (TimeSeriesPartitions.TryParseMonthlyPartition(name, out var month)
@@ -84,7 +99,7 @@ public class TimeSeriesPartitionService : ITimeSeriesPartitionService
             }
         }
 
-        var digestCutoff = new DateOnly(today.Year, today.Month, 1).AddMonths(-digestRetentionMonths);
+        var digestCutoff = new DateOnly(today.Year, today.Month, 1).AddMonths(-retention.DigestMonths);
         foreach (var name in await ChildPartitionsAsync(TimeSeriesPartitions.DigestParent, ct))
         {
             if (TimeSeriesPartitions.TryParseDigestPartition(name, out var month)

@@ -1,6 +1,27 @@
 namespace CardiTrack.Application.Interfaces.Services;
 
 /// <summary>
+/// How long each partitioned time-series table keeps its data. A record with required named
+/// members rather than a parameter list: two of these are day counts with the same default,
+/// and a positional signature would let them transpose silently — the failure mode being mass
+/// deletion of the wrong table's health data.
+/// </summary>
+public sealed record PartitionRetention
+{
+    /// <summary>Days of minute-grain metrics to keep.</summary>
+    public required int GranularDays { get; init; }
+
+    /// <summary>Months of hourly rollups to keep.</summary>
+    public required int RollupMonths { get; init; }
+
+    /// <summary>Months of daily digests to keep.</summary>
+    public required int DigestMonths { get; init; }
+
+    /// <summary>Days of real-time assessments to keep.</summary>
+    public required int RealtimeDays { get; init; }
+}
+
+/// <summary>
 /// Lifecycle of the partitioned time-series tables. PostgreSQL has no TTL and does not create
 /// range partitions on demand, so something must create them ahead of the data and drop them past
 /// retention — that something is <c>PartitionMaintenanceWorker</c> in <c>CardiTrack.Worker</c>
@@ -15,13 +36,8 @@ public interface ITimeSeriesPartitionService
     Task EnsureUpcomingPartitionsAsync(int daysAhead, CancellationToken ct = default);
 
     /// <summary>
-    /// Drops partitions wholly past retention: granular hours after
-    /// <paramref name="granularRetentionDays"/> days, hourly rollups after
-    /// <paramref name="rollupRetentionMonths"/> months, digests after
-    /// <paramref name="digestRetentionMonths"/> months. Dropping a partition is the retention
-    /// mechanism — instant, and no dead tuples to vacuum.
+    /// Drops partitions wholly past <paramref name="retention"/>. Dropping a partition is the
+    /// retention mechanism — instant, and no dead tuples to vacuum.
     /// </summary>
-    Task DropExpiredPartitionsAsync(
-        int granularRetentionDays, int rollupRetentionMonths, int digestRetentionMonths,
-        CancellationToken ct = default);
+    Task DropExpiredPartitionsAsync(PartitionRetention retention, CancellationToken ct = default);
 }
