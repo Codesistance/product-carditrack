@@ -1,5 +1,6 @@
 using CardiTrack.Application.DTOs.Requests;
 using CardiTrack.Application.DTOs.Responses;
+using CardiTrack.Application.Exceptions;
 using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Domain.Entities;
@@ -17,6 +18,12 @@ public class UserService : IUserService
 
     public async Task<UserResponse> CreateUserAsync(CreateUserRequest request)
     {
+        // The unique index on Email would reject a second identity claiming the same
+        // address anyway, but as an opaque 500 — surface it as a conflict instead.
+        var owner = await _unitOfWork.Users.GetByEmailAsync(request.Email);
+        if (owner is not null && owner.Auth0UserId != request.Auth0UserId)
+            throw new DuplicateEmailException("An account with this email already exists.");
+
         var user = new User
         {
             Auth0UserId = request.Auth0UserId,

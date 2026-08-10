@@ -1,4 +1,5 @@
 using CardiTrack.Application.DTOs.Requests;
+using CardiTrack.Application.Exceptions;
 using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Application.Services;
@@ -144,5 +145,63 @@ public class OnboardingServiceTests
         await CreateSut().SetupAsync(BuildRequest(), "auth0|jane", emailVerified: null);
 
         Assert.False(savedUser!.EmailVerified);
+    }
+
+    [Fact]
+    public async Task Setup_Throws409Conflict_WhenEmailOwnedByDifferentSub_AndTokenVerified()
+    {
+        // A social login the tenant Action failed to link: same email, different sub.
+        _users.GetByEmailAsync("jane@doe.com").Returns(
+            new User { Auth0UserId = "auth0|original", Email = "jane@doe.com" });
+
+        var ex = await Assert.ThrowsAsync<DuplicateEmailException>(() =>
+            CreateSut().SetupAsync(BuildRequest(), "google-oauth2|999", emailVerified: true));
+
+        // A verified token has proven the email, so it gets the linkable guidance.
+        Assert.Contains("different sign-in method", ex.Message);
+        await _organizations.DidNotReceive().AddAsync(Arg.Any<Organization>());
+        await _users.DidNotReceive().AddAsync(Arg.Any<User>());
+        await _unitOfWork.DidNotReceive().SaveChangesAsync();
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(null)]
+    public async Task Setup_Throws409_WithGenericMessage_WhenTokenUnverified(bool? emailVerified)
+    {
+        _users.GetByEmailAsync("jane@doe.com").Returns(
+            new User { Auth0UserId = "auth0|original", Email = "jane@doe.com" });
+
+        var ex = await Assert.ThrowsAsync<DuplicateEmailException>(() =>
+            CreateSut().SetupAsync(BuildRequest(), "google-oauth2|999", emailVerified));
+
+        // An unverified claim on the address learns nothing about the other account.
+        Assert.DoesNotContain("sign-in method", ex.Message);
+    }
+
+    [Fact]
+    public async Task Setup_Proceeds_WhenEmailOwnedBySameSub()
+    {
+        // Defensive: sub lookup missed but the email row carries our own sub — not a conflict.
+        _users.GetByEmailAsync("jane@doe.com").Returns(
+            new User { Auth0UserId = "auth0|jane", Email = "jane@doe.com" });
+
+        await CreateSut().SetupAsync(BuildRequest(), "auth0|jane", emailVerified: true);
+
+        await _unitOfWork.Received(1).SaveChangesAsync();
+    }
+
+    [Fact]
+    public async Task Setup_ConcurrentInsert_EmailRace_ThrowsDuplicateEmail_InsteadOfRethrowing()
+    {
+        // The insert loses a race on the Email unique index (not the sub index): the
+        // re-query by sub still misses, but the email now has a different owner.
+        _users.GetByEmailAsync("jane@doe.com").Returns(
+            _ => (User?)null,
+            _ => new User { Auth0UserId = "auth0|original", Email = "jane@doe.com" });
+        _unitOfWork.SaveChangesAsync().Returns<Task<int>>(_ => throw new InvalidOperationException("unique violation"));
+
+        await Assert.ThrowsAsync<DuplicateEmailException>(() =>
+            CreateSut().SetupAsync(BuildRequest(), "google-oauth2|999", emailVerified: true));
     }
 }

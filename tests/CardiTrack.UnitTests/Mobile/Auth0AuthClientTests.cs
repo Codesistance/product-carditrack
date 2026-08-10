@@ -180,4 +180,85 @@ public class Auth0AuthClientTests
         // audience mismatch while doing nothing; the real fault is the login-time config.
         Assert.DoesNotContain("audience", http.Requests.Single().Body!);
     }
+
+    [Fact]
+    public void BuildAuthorizeUri_ContainsAllParameters()
+    {
+        var (client, _) = CreateSut();
+
+        var uri = client.BuildAuthorizeUri(Auth0Options.GoogleConnection, "chal123", "state456");
+
+        Assert.Equal("tenant.eu.auth0.com", uri.Host);
+        Assert.Equal("/authorize", uri.AbsolutePath);
+        var query = uri.Query;
+        Assert.Contains("response_type=code", query);
+        Assert.Contains("client_id=client123", query);
+        Assert.Contains("connection=google-oauth2", query);
+        Assert.Contains("redirect_uri=carditrack%3A%2F%2Foauth%2Fcallback", query);
+        Assert.Contains("audience=https%3A%2F%2Fapi.carditrack.com", query);
+        Assert.Contains("scope=openid%20profile%20email%20offline_access", query);
+        Assert.Contains("code_challenge=chal123", query);
+        Assert.Contains("code_challenge_method=S256", query);
+        Assert.Contains("state=state456", query);
+    }
+
+    [Fact]
+    public void BuildAuthorizeUri_Throws_WhenNotConfigured()
+    {
+        var (client, _) = CreateSut(new Auth0Options("", "", ""));
+
+        var ex = Assert.Throws<AuthException>(
+            () => client.BuildAuthorizeUri(Auth0Options.GoogleConnection, "c", "s"));
+        Assert.Equal(AuthErrorCode.NotConfigured, ex.Code);
+    }
+
+    [Fact]
+    public async Task ExchangeAuthorizationCode_PostsExpectedForm()
+    {
+        var (client, http) = CreateSut();
+        http.Enqueue(HttpStatusCode.OK, TokenJson);
+
+        var tokens = await client.ExchangeAuthorizationCodeAsync("code789", "verifier000");
+
+        var request = http.Requests.Single();
+        Assert.Equal("/oauth/token", request.Uri!.AbsolutePath);
+        var body = request.Body!;
+        Assert.Contains("grant_type=authorization_code", body);
+        Assert.Contains("client_id=client123", body);
+        Assert.Contains("code=code789", body);
+        Assert.Contains("code_verifier=verifier000", body);
+        Assert.Contains("redirect_uri=carditrack%3A%2F%2Foauth%2Fcallback", body);
+        // Audience and scope were bound at /authorize — the exchange must not repeat them.
+        Assert.DoesNotContain("audience", body);
+        Assert.DoesNotContain("scope", body);
+        Assert.Equal("at", tokens.AccessToken);
+        Assert.Equal("rt", tokens.RefreshToken);
+    }
+
+    [Fact]
+    public async Task ExchangeAuthorizationCode_MapsInvalidGrant_ToExpiredCodeMessage()
+    {
+        var (client, http) = CreateSut();
+        http.Enqueue(HttpStatusCode.Forbidden,
+            """{"error":"invalid_grant","error_description":"Invalid authorization code"}""");
+
+        var ex = await Assert.ThrowsAsync<AuthException>(
+            () => client.ExchangeAuthorizationCodeAsync("stale", "verifier"));
+
+        // invalid_grant here means an expired/consumed code — surfacing "Wrong email or
+        // password." (the password-flow mapping) would be nonsense on a social sign-in.
+        Assert.Equal(AuthErrorCode.Unknown, ex.Code);
+        Assert.DoesNotContain("password", ex.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("try again", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task ExchangeAuthorizationCode_Throws_WhenNotConfigured()
+    {
+        var (client, _) = CreateSut(new Auth0Options("", "", ""));
+
+        var ex = await Assert.ThrowsAsync<AuthException>(
+            () => client.ExchangeAuthorizationCodeAsync("c", "v"));
+        Assert.Equal(AuthErrorCode.NotConfigured, ex.Code);
+    }
 }

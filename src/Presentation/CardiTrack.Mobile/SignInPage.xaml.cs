@@ -1,5 +1,6 @@
 using CardiTrack.Mobile.Core.Api;
 using CardiTrack.Mobile.Core.Auth;
+using CardiTrack.Mobile.Core.Configuration;
 using CardiTrack.Mobile.Services;
 
 namespace CardiTrack.Mobile;
@@ -94,6 +95,59 @@ public partial class SignInPage : ContentPage
             SignInBtn.IsEnabled = true;
             EmailEntry.IsEnabled = true;
             PasswordEntry.IsEnabled = true;
+        }
+    }
+
+    private async void OnGoogleTapped(object? sender, TappedEventArgs e)
+        => await SocialSignInAsync(Auth0Options.GoogleConnection);
+
+    private async void OnAppleTapped(object? sender, TappedEventArgs e)
+        => await SocialSignInAsync(Auth0Options.AppleConnection);
+
+    private bool _socialBusy;
+
+    private async Task SocialSignInAsync(string connection)
+    {
+        // Border gestures have no IsEnabled — an explicit guard stops double-taps
+        // from opening two browser sheets.
+        if (_socialBusy)
+            return;
+        _socialBusy = true;
+        GoogleBtn.Opacity = AppleBtn.Opacity = 0.6;
+        SignInError.IsVisible = false;
+
+        try
+        {
+            await _authService.SignInWithProviderAsync(connection);
+            await _router.RouteAsync(this);
+        }
+        catch (TaskCanceledException)
+        {
+            // Browser sheet dismissed — back to the page, no error banner (Fitbit precedent).
+        }
+        catch (AuthException ex)
+        {
+            ShowError(ex.Code switch
+            {
+                AuthErrorCode.ProviderUnavailable => "That sign-in method isn't available yet. Use your email and password for now.",
+                AuthErrorCode.EmailNotVerified => "Verify your email to continue — check your inbox for the link.",
+                AuthErrorCode.Network => "No connection. Check your internet and try again.",
+                AuthErrorCode.NotConfigured => "Sign-in isn't configured for this build.",
+                _ => "Sign in failed. Please try again.",
+            });
+        }
+        catch (ApiException)
+        {
+            ShowError("Signed in, but we couldn't load your account. Check your connection and try again.");
+        }
+        catch (Exception ex) when (ex is PlatformNotSupportedException or NotImplementedException)
+        {
+            ShowError("Social sign-in uses the system browser and is available on iOS and Android.");
+        }
+        finally
+        {
+            _socialBusy = false;
+            GoogleBtn.Opacity = AppleBtn.Opacity = 1;
         }
     }
 

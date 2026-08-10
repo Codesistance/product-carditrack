@@ -1,4 +1,5 @@
 using CardiTrack.Application.DTOs.Requests;
+using CardiTrack.Application.Exceptions;
 using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Services;
 using CardiTrack.Domain.Entities;
@@ -50,6 +51,19 @@ public class UserServiceTests
 
         Assert.NotNull(added);
         Assert.Equal(expected, added!.EmailVerified);
+    }
+
+    [Fact]
+    public async Task CreateUser_Throws409Conflict_WhenEmailOwnedByDifferentSub()
+    {
+        _users.GetByEmailAsync("carer@example.com").Returns(
+            new User { Auth0UserId = "auth0|someone-else", Email = "carer@example.com" });
+
+        await Assert.ThrowsAsync<DuplicateEmailException>(() =>
+            CreateSut().CreateUserAsync(Request(emailVerified: true)));
+
+        await _users.DidNotReceive().AddAsync(Arg.Any<User>());
+        await _unitOfWork.DidNotReceive().SaveChangesAsync();
     }
 
     [Fact]

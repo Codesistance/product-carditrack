@@ -17,10 +17,10 @@ The shipped authentication flow is **not** the Universal Login redirect — mobi
 - **Claim consumption**: the API's `UserContextMiddleware` reads `https://carditrack.com/email_verified`; the stored `User.EmailVerified` flag is refreshed on every `GET /api/Onboarding/status`.
 - **Resend verification**: `POST /api/v1/auth/resend-verification` (`AllowAnonymous`, rate-limited 5/hour/IP, always answers success to prevent user enumeration). It is backed by a hand-rolled `HttpClient`-based `Auth0ManagementClient` whose only operation is `TrySendVerificationEmailAsync` — client-credentials token (cached until near expiry) + `api/v2/jobs/verification-email`. There is no Auth0.ManagementApi SDK dependency.
 - **Authorization policies**: `RequireAdmin`, `RequireBusinessAccount`, `RequireFamilyAccount` plus a global `FallbackPolicy` (require authenticated user) are registered in `Auth0Extensions`. The three claim-based policies are **inert today** — the tenant does not yet issue `role`/`organization_type` claims (see runbook §13); the API derives identity from the `sub` claim + database lookup.
-- **Social buttons**: Google and Apple buttons render on both `CreateAccountPage` and `SignInPage`, but they are **not wired to any handler yet** — social login is Phase 9 ([oauth_clients.md](./oauth_clients.md)).
+- **Social login (wired 2026-08-10)**: the Google and Apple buttons on `CreateAccountPage` and `SignInPage` launch Auth0 **Universal Login** in the system browser (Authorization Code + PKCE + state, `connection=google-oauth2|apple`), exchange the code at `/oauth/token`, and join the normal post-login routing. Same-email unification is tenant-side: the post-login Action links a first social login into an existing verified database account and re-keys the session so the `sub` stays `auth0|…` (runbook §8); the API backstops unlinked duplicates with a 409 from onboarding (`DuplicateEmailException`). Working end-to-end requires the per-tenant Action + connection enablement; Apple additionally awaits its credentials ([oauth_clients.md](./oauth_clients.md)).
 - **CardiTrack.Web**: has **no auth wiring at all**. The Web/API Regular Web Application client exists so the API's Management API grant and future Blazor login have real credentials.
 
-> **Status: Planned — not yet implemented.** Universal Login for web, social connections (Google/Apple handlers), account linking, MFA, and enterprise SSO (SAML / Azure AD / Okta) are all future work. Microsoft (`windowslive`) and Facebook connections are **not planned for MVP** and have no UI. There are no `/api/auth/check-status` or `/api/auth/sync-user` endpoints, and no legacy Auth0 Rules — the single post-login Action in [runbook §8](./auth0_setup_runbook.md) supersedes the four-rule design that used to live in this document.
+> **Status: Planned — not yet implemented.** Universal Login for web, MFA, and enterprise SSO (SAML / Azure AD / Okta) are future work (social handlers + account linking shipped 2026-08-10, pending per-tenant Action deploy). Microsoft (`windowslive`) and Facebook connections are **not planned for MVP** and have no UI. There are no `/api/auth/check-status` or `/api/auth/sync-user` endpoints, and no legacy Auth0 Rules — the single post-login Action in [runbook §8](./auth0_setup_runbook.md) supersedes the four-rule design that used to live in this document.
 
 ---
 
@@ -54,9 +54,9 @@ The shipped authentication flow is **not** the Universal Login redirect — mobi
 
 `Username-Password-Authentication`, the tenant Default Directory. Sign-ups enabled (the app registers via `/dbconnections/signup`); password policy `Good` or stronger — the policy text surfaces verbatim in the app's weak-password error banner (runbook §5).
 
-### Social — planned (Phase 9)
+### Social — app-side shipped 2026-08-10; tenant work per environment
 
-Google (`google-oauth2`) and Apple (`apple`) only. The app already renders the buttons (both Create Account and Sign In pages); the remaining work is credentials + Auth0 connection config **plus the app-side PKCE invocation** — provisioning steps in [oauth_clients.md](./oauth_clients.md). Note the sign-in Google client is a **different registration** from the Google Health API device-data client.
+Google (`google-oauth2`) and Apple (`apple`) only. The app-side flow (Universal Login, code + PKCE) is wired on both Create Account and Sign In pages; the remaining work is per-tenant — enable the connections for CardiTrack Mobile, deploy the runbook §8 Action (verification short-circuit + account linking), and provision Apple's credentials — provisioning steps in [oauth_clients.md](./oauth_clients.md). Note the sign-in Google client is a **different registration** from the Google Health API device-data client.
 
 ### Enterprise SSO — planned, post-MVP
 

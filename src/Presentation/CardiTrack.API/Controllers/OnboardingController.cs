@@ -51,6 +51,7 @@ public class OnboardingController : BaseApiController
     [HttpPost("setup")]
     [ProducesResponseType(typeof(ApiResponse<OnboardingSetupResponse>), StatusCodes.Status201Created)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status409Conflict)]
     public async Task<ActionResult<ApiResponse<OnboardingSetupResponse>>> Setup(
         [FromBody] OnboardingSetupRequest request)
     {
@@ -102,6 +103,7 @@ public class OnboardingController : BaseApiController
     [HttpPost("user")]
     [ProducesResponseType(typeof(ApiResponse<UserResponse>), StatusCodes.Status201Created)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status409Conflict)]
     public async Task<ActionResult<ApiResponse<UserResponse>>> CreateUser(
         [FromBody] CreateUserRequest request)
     {

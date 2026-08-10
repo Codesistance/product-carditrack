@@ -1,5 +1,6 @@
 using CardiTrack.Application.DTOs.Requests;
 using CardiTrack.Application.DTOs.Responses;
+using CardiTrack.Application.Exceptions;
 using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Domain.Entities;
@@ -36,6 +37,13 @@ public class OnboardingService : IOnboardingService
                 User = MapUser(existingUser)
             };
         }
+
+        // A different Auth0 identity may already own this email — e.g. a social login
+        // that the tenant's account-linking Action didn't link (first registered by
+        // password, Action failed open, or linking skipped). Refuse to fork a second
+        // account for the same person; the unique index on Email would reject the
+        // insert anyway, but as an opaque 500.
+        await ThrowIfEmailOwnedElsewhereAsync(request.User.Email, auth0UserId, emailVerified);
 
         var organization = new Organization
         {
@@ -74,10 +82,14 @@ public class OnboardingService : IOnboardingService
         {
             // Concurrent retries race past the existence check above; the unique index
             // on Auth0UserId makes the loser's insert fail. If the account now exists,
-            // the other request won — return it. Anything else is a real failure.
+            // the other request won — return it. A race on the Email index (a second
+            // identity claiming the same address) is a conflict, not a server fault.
             var concurrentUser = await _unitOfWork.Users.GetByAuth0UserIdAsync(auth0UserId);
             if (concurrentUser is null)
+            {
+                await ThrowIfEmailOwnedElsewhereAsync(request.User.Email, auth0UserId, emailVerified);
                 throw;
+            }
 
             var concurrentOrg = await _unitOfWork.Organizations.GetWithSubscriptionAsync(concurrentUser.OrganizationId);
             return new OnboardingSetupResponse
@@ -95,6 +107,21 @@ public class OnboardingService : IOnboardingService
             Organization = orgWithSubscription is not null ? MapOrganization(orgWithSubscription) : MapOrganization(organization),
             User = MapUser(user)
         };
+    }
+
+    private async Task ThrowIfEmailOwnedElsewhereAsync(string email, string auth0UserId, bool? emailVerified)
+    {
+        var owner = await _unitOfWork.Users.GetByEmailAsync(email);
+        if (owner is null || owner.Auth0UserId == auth0UserId)
+            return;
+
+        // Only a token that has proven this email gets the linkable guidance; an
+        // unverified claim on the address learns nothing about the other account.
+        throw new DuplicateEmailException(emailVerified == true
+            ? "You already have a CardiTrack account with this email under a different sign-in "
+              + "method. Sign in the way you first registered, and your sign-in methods will "
+              + "be linked automatically."
+            : "An account with this email already exists.");
     }
 
     private static OrganizationResponse MapOrganization(Organization organization) => new()

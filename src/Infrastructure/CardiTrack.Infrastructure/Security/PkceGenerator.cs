@@ -5,6 +5,8 @@ namespace CardiTrack.Infrastructure.Security;
 /// <summary>
 /// RFC 7636 PKCE material plus the CSRF state token for OAuth authorization-code flows.
 /// All values are base64url-encoded (no padding) so they are URL-safe as issued.
+/// Server-side twin of Mobile.Core/Auth/Pkce (mobile can't reference Infrastructure) —
+/// keep the two in sync by hand.
 /// </summary>
 public static class PkceGenerator
 {

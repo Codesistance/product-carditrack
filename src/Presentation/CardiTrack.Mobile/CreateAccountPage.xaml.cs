@@ -1,4 +1,6 @@
+using CardiTrack.Mobile.Core.Api;
 using CardiTrack.Mobile.Core.Auth;
+using CardiTrack.Mobile.Core.Configuration;
 using CardiTrack.Mobile.Services;
 
 namespace CardiTrack.Mobile;
@@ -8,6 +10,8 @@ public partial class CreateAccountPage : ContentPage
     private readonly BoxView[] _strengthBars;
     private readonly IAuthService _authService;
     private readonly IPopupService _popups;
+    private readonly PostLoginRouter _router;
+    private bool _socialBusy;
 
     public CreateAccountPage()
     {
@@ -15,7 +19,69 @@ public partial class CreateAccountPage : ContentPage
         _strengthBars = [Str0, Str1, Str2, Str3];
         _authService = ServiceHelper.GetRequiredService<IAuthService>();
         _popups = ServiceHelper.GetRequiredService<IPopupService>();
+        _router = ServiceHelper.GetRequiredService<PostLoginRouter>();
         UpdateCreateButtonState();
+    }
+
+    private async void OnGoogleTapped(object? sender, TappedEventArgs e)
+        => await SocialSignInAsync(Auth0Options.GoogleConnection);
+
+    private async void OnAppleTapped(object? sender, TappedEventArgs e)
+        => await SocialSignInAsync(Auth0Options.AppleConnection);
+
+    // The social buttons deliberately bypass the form and the terms checkbox: for a
+    // provider account, "sign up" and "sign in" are the same operation, and consent is
+    // gathered in the provider's own flow.
+    private async Task SocialSignInAsync(string connection)
+    {
+        // Border gestures have no IsEnabled — an explicit guard stops double-taps
+        // from opening two browser sheets.
+        if (_socialBusy)
+            return;
+        _socialBusy = true;
+        GoogleBtn.Opacity = AppleBtn.Opacity = 0.6;
+        ErrorBanner.IsVisible = false;
+
+        try
+        {
+            await _authService.SignInWithProviderAsync(connection);
+            await _router.RouteAsync(this);
+        }
+        catch (TaskCanceledException)
+        {
+            // Browser sheet dismissed — back to the page, no error banner (Fitbit precedent).
+        }
+        catch (AuthException ex)
+        {
+            var (title, detail) = ex.Code switch
+            {
+                AuthErrorCode.ProviderUnavailable => ("Not available yet",
+                    "That sign-in method isn't available yet. Use your email and password for now."),
+                AuthErrorCode.EmailNotVerified => ("Verify your email",
+                    "Check your inbox for the verification link, then try again."),
+                AuthErrorCode.Network => ("No connection",
+                    "Check your internet connection and try again."),
+                AuthErrorCode.NotConfigured => ("Something went wrong",
+                    "Sign-in isn't configured for this build."),
+                _ => ("Something went wrong", "Sign in failed. Please try again."),
+            };
+            ShowErrorBanner(title, detail);
+        }
+        catch (ApiException)
+        {
+            ShowErrorBanner("Something went wrong",
+                "Signed in, but we couldn't load your account. Check your connection and try again.");
+        }
+        catch (Exception ex) when (ex is PlatformNotSupportedException or NotImplementedException)
+        {
+            ShowErrorBanner("Not available here",
+                "Social sign-in uses the system browser and is available on iOS and Android.");
+        }
+        finally
+        {
+            _socialBusy = false;
+            GoogleBtn.Opacity = AppleBtn.Opacity = 1;
+        }
     }
 
     private void OnPasswordTextChanged(object? sender, TextChangedEventArgs e)

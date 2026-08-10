@@ -61,6 +61,7 @@ public static class MauiProgram
             client.Timeout = TimeSpan.FromSeconds(30);
         }).AddHttpMessageHandler<AuthHttpMessageHandler>();
 
+        builder.Services.AddSingleton<IBrowserAuthenticator, WebBrowserAuthenticator>();
         builder.Services.AddSingleton<IAuthService, AuthService>();
         builder.Services.AddSingleton<IPopupService, PopupService>();
         builder.Services.AddSingleton<PostLoginRouter>();

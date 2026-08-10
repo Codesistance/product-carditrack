@@ -227,7 +227,10 @@
 
                     <!-- Social login buttons -->
                     <Grid ColumnDefinitions="*,12,*">
-                        <Border Grid.Column="0" Style="{StaticResource GoogleButton}">
+                        <Border Grid.Column="0" x:Name="GoogleBtn" Style="{StaticResource GoogleButton}">
+                            <Border.GestureRecognizers>
+                                <TapGestureRecognizer Tapped="OnGoogleTapped"/>
+                            </Border.GestureRecognizers>
                             <HorizontalStackLayout HorizontalOptions="Center"
                                                    VerticalOptions="Center"
                                                    Spacing="8">
@@ -240,7 +243,10 @@
                             </HorizontalStackLayout>
                         </Border>
 
-                        <Border Grid.Column="2" Style="{StaticResource AppleButton}">
+                        <Border Grid.Column="2" x:Name="AppleBtn" Style="{StaticResource AppleButton}">
+                            <Border.GestureRecognizers>
+                                <TapGestureRecognizer Tapped="OnAppleTapped"/>
+                            </Border.GestureRecognizers>
                             <HorizontalStackLayout HorizontalOptions="Center"
                                                    VerticalOptions="Center"
                                                    Spacing="8">

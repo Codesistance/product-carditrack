@@ -9,6 +9,7 @@ public sealed class AuthService : IAuthService
     private readonly IAuth0AuthClient _auth0;
     private readonly ITokenStore _store;
     private readonly ITokenRefresher _refresher;
+    private readonly IBrowserAuthenticator _browser;
     private readonly Auth0Options _options;
     private readonly ILogger<AuthService> _logger;
 
@@ -19,12 +20,14 @@ public sealed class AuthService : IAuthService
         IAuth0AuthClient auth0,
         ITokenStore store,
         ITokenRefresher refresher,
+        IBrowserAuthenticator browser,
         Auth0Options options,
         ILogger<AuthService>? logger = null)
     {
         _auth0 = auth0;
         _store = store;
         _refresher = refresher;
+        _browser = browser;
         _options = options;
         _logger = logger ?? NullLogger<AuthService>.Instance;
     }
@@ -51,6 +54,63 @@ public sealed class AuthService : IAuthService
         // wrong from the very first token, and this is the only place that sees one issued.
         AccessTokenAudience.Warn(_logger, tokens.AccessToken, _options.Audience, "sign-in");
     }
+
+    public async Task SignInWithProviderAsync(string connection, CancellationToken ct = default)
+    {
+        var verifier = Pkce.CreateVerifier();
+        var state = Pkce.CreateState();
+        var authorizeUri = _auth0.BuildAuthorizeUri(connection, Pkce.CreateChallenge(verifier), state);
+
+        // TaskCanceledException (sheet dismissed) and PlatformNotSupportedException
+        // propagate to the caller untouched — the pages handle both (Fitbit precedent).
+        var callback = await _browser.AuthenticateAsync(authorizeUri, new Uri(Auth0Options.CallbackUri), ct);
+
+        // State first — nothing else in the callback is trusted before it.
+        callback.TryGetValue("state", out var returnedState);
+        if (!string.Equals(returnedState, state, StringComparison.Ordinal))
+        {
+            _logger.LogWarning("Social sign-in callback rejected: state mismatch");
+            throw new AuthException(AuthErrorCode.Unknown, "Sign-in failed. Please try again.");
+        }
+
+        if (callback.TryGetValue("error", out var error) && !string.IsNullOrEmpty(error))
+        {
+            callback.TryGetValue("error_description", out var description);
+            var mapped = MapAuthorizeError(error, description);
+            _logger.LogWarning("Social sign-in denied at /authorize: {AuthErrorCode} ({Auth0Error})",
+                mapped.Code, error);
+            throw mapped;
+        }
+
+        if (!callback.TryGetValue("code", out var code) || string.IsNullOrEmpty(code))
+            throw new AuthException(AuthErrorCode.Unknown, "Sign-in failed. Please try again.");
+
+        var tokens = await _auth0.ExchangeAuthorizationCodeAsync(code, verifier, ct);
+        await _store.SaveAsync(tokens);
+        _claims = JwtPayloadReader.ReadClaims(tokens.IdToken);
+        AccessTokenAudience.Warn(_logger, tokens.AccessToken, _options.Audience, "social-sign-in");
+    }
+
+    private static AuthException MapAuthorizeError(string error, string? description) => error switch
+    {
+        // Defensive only: the tenant Action short-circuits the verification deny for
+        // social connections, so this fires only if that Action change isn't deployed.
+        "access_denied" when description is not null
+            && (description.Equals("email_not_verified", StringComparison.OrdinalIgnoreCase)
+                || description.Contains("verify", StringComparison.OrdinalIgnoreCase))
+            => new AuthException(AuthErrorCode.EmailNotVerified,
+                "Verify your email to continue — check your inbox for the link.", error, description),
+        "access_denied"
+            => new AuthException(AuthErrorCode.Unknown, "Sign-in was not completed.", error, description),
+        // The tenant has no such connection, or it isn't enabled for this application
+        // (Apple before its credentials are provisioned). Note: a disabled connection can
+        // also render an Auth0 error page instead of redirecting — the user closing that
+        // page surfaces as TaskCanceledException and is silently absorbed by the caller.
+        "invalid_request" when description?.Contains("connection", StringComparison.OrdinalIgnoreCase) == true
+            => new AuthException(AuthErrorCode.ProviderUnavailable,
+                "This sign-in method isn't available yet.", error, description),
+        _ => new AuthException(AuthErrorCode.Unknown, "Sign-in failed. Please try again.", error, description),
+    };
 
     public Task SignUpAsync(string name, string email, string password, CancellationToken ct = default) =>
         // No auto-login: the tenant denies unverified logins (hard gate), and a

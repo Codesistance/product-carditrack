@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Net;
 using System.Text.Json;
 using CardiTrack.Application.DTOs.Responses;
+using CardiTrack.Application.Exceptions;
 
 namespace CardiTrack.API.Middleware;
 
@@ -43,6 +44,8 @@ public class ExceptionHandlingMiddleware
             // faults — treat it as a 500 and never echo its message to clients.
             // Controllers that use it for domain rules catch it themselves.
             KeyNotFoundException => (HttpStatusCode.NotFound, "We couldn't find what you were looking for."),
+            // Message is authored by the service layer for end users — safe to echo.
+            DuplicateEmailException => (HttpStatusCode.Conflict, exception.Message),
             _ => (HttpStatusCode.InternalServerError, "Something went wrong on our end. Please try again in a moment.")
         };
 
