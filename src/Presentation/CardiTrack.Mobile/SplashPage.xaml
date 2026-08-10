@@ -92,7 +92,10 @@
                        Opacity="0.9"
                        HorizontalTextAlignment="Center" />
 
-                <Button Text="Start Free 30-Day Trial"
+                <!-- This panel is only reached with a live session whose onboarding-status
+                     call failed, so the button re-runs startup rather than starting a trial.
+                     Same wording as every other error panel in the app. -->
+                <Button Text="Try again"
                         Style="{StaticResource SecondaryOutlineButton}"
                         MaximumWidthRequest="332"
                         HorizontalOptions="Center"
