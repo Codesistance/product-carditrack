@@ -59,6 +59,12 @@ public class InactivityDetectionService : IInactivityDetectionService
                 if (await CheckMemberAsync(memberId, utcNow, rules, ct))
                     raised++;
             }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                // Shutdown, not a member failure: swallowing this would log a spurious error
+                // and stumble through one more loop iteration instead of stopping cleanly.
+                throw;
+            }
             catch (Exception ex)
             {
                 // One member's failure must not cost the rest of the fleet this pass; the next
@@ -135,9 +141,12 @@ public class InactivityDetectionService : IInactivityDetectionService
     private async Task<DateTime?> LastGranularMinuteAsync(
         Guid memberId, DateTime utcNow, int thresholdMinutes, CancellationToken ct)
     {
+        // Rounded-up threshold + 1 hour: `utcNow` sits at most an hour before `rangeEnd`, so
+        // this is the tightest whole-hour range that always contains the threshold boundary —
+        // data old enough to fall before it is older than the threshold by construction.
         var rangeEnd = new DateTime(utcNow.Year, utcNow.Month, utcNow.Day, utcNow.Hour, 0, 0, DateTimeKind.Utc)
             .AddHours(1);
-        var rangeStart = rangeEnd.AddHours(-((thresholdMinutes + 59) / 60 + 2));
+        var rangeStart = rangeEnd.AddHours(-((thresholdMinutes + 59) / 60 + 1));
         var window = await _unitOfWork.GranularMetrics.GetWindowAsync(memberId, rangeStart, rangeEnd, ct);
 
         var lastIndex = -1;

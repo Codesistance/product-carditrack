@@ -44,12 +44,12 @@ public class InactivityDetectionServiceTests
         _unitOfWork.GranularMetrics.Returns(_granular);
         _unitOfWork.Alerts.Returns(_alerts);
 
-        // Defaults: one active London-anchored member whose device has been silent for three
-        // hours, with no standing alerts.
+        // Defaults: one active London-anchored member whose device has been silent for two and
+        // a half hours, with no standing alerts.
         _members.GetActiveIdsWithActivitySinceAsync(Arg.Any<DateOnly>()).Returns([_memberId]);
         _members.GetByIdAsync(_memberId).Returns(Member());
         SetupAnchorTimeZone("Europe/London");
-        SetupLastDataAt(UtcNow.AddHours(-3));
+        SetupLastDataAt(UtcNow.AddMinutes(-150));
         _alerts.GetByCardiMemberAsync(_memberId, activeOnly: true).Returns([]);
     }
 
@@ -113,8 +113,8 @@ public class InactivityDetectionServiceTests
             a.CardiMemberId == _memberId
             && a.AlertType == AlertType.Inactivity
             && a.Severity == AlertSeverity.Yellow
-            // Last data 10:40 UTC = 11:40 in London (BST) — the message speaks the member's clock.
-            && a.Message.Contains("since 11:40")
+            // Last data 11:10 UTC = 12:10 in London (BST) — the message speaks the member's clock.
+            && a.Message.Contains("since 12:10")
             && a.MetricValues!.Contains("thresholdMinutes")));
         await _unitOfWork.Received(1).SaveChangesAsync();
     }
@@ -233,6 +233,41 @@ public class InactivityDetectionServiceTests
         Assert.Equal(0, raised);
         await _granular.DidNotReceive().GetWindowAsync(
             Arg.Any<Guid>(), Arg.Any<DateTime>(), Arg.Any<DateTime>(), Arg.Any<CancellationToken>());
+    }
+
+    // Cancellation during a member's check is shutdown, not a member failure — the pass must
+    // stop, not log an error and stumble to the next member.
+    [Fact]
+    public async Task CancellationMidPass_AbortsThePass_InsteadOfBeingSwallowed()
+    {
+        using var cts = new CancellationTokenSource();
+        var otherId = Guid.NewGuid();
+        _members.GetActiveIdsWithActivitySinceAsync(Arg.Any<DateOnly>()).Returns([_memberId, otherId]);
+        _members.GetByIdAsync(_memberId).Returns(_ =>
+        {
+            cts.Cancel();
+            throw new OperationCanceledException(cts.Token);
+        });
+
+        await Assert.ThrowsAsync<OperationCanceledException>(() =>
+            CreateSut().DetectAsync(UtcNow, Rules, cts.Token));
+
+        await _members.DidNotReceive().GetByIdAsync(otherId);
+    }
+
+    // The probe runs per member every 15 minutes — its cost is the fetch span, so the span is
+    // pinned: rounded-up threshold + 1 hour of whole-hour slack, nothing more.
+    [Fact]
+    public async Task TheGranularProbe_FetchesThresholdPlusOneHourOfSlack()
+    {
+        await CreateSut().DetectAsync(UtcNow, Rules);
+
+        // 13:40 UTC, 120-minute threshold → whole-hour range 11:00–14:00 (3 hours).
+        await _granular.Received(1).GetWindowAsync(
+            _memberId,
+            new DateTime(2026, 8, 10, 11, 0, 0, DateTimeKind.Utc),
+            new DateTime(2026, 8, 10, 14, 0, 0, DateTimeKind.Utc),
+            Arg.Any<CancellationToken>());
     }
 
     [Fact]
