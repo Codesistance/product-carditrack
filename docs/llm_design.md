@@ -2,7 +2,7 @@
 
 > **STATUS — read this first**
 >
-> - **Built today:** MedGemma (Ollama-served `hf.co/unsloth/medgemma-1.5-4b-it-GGUF:Q4_K_M` on Cloud Run, enabled in dev, scale-to-zero) as the **Medical** AI provider and **Gemini 2.0 Flash** as the **General** provider, consumed by `GenerativeAiService`, `MedicalAiService`, `HealthInsightService`, and `ReportGenerationService` and surfaced through the API's **chat, insights, and reports** endpoints (`ChatController`, `InsightsController`, `ReportsController`). Insight prompts carry a **member context block** (age, sex, caregiver notes — never name or id) and switch by baseline state: a **learning-phase variant** while no baseline exists at all, a **provisional variant** while only a short-window (7/14-day) baseline does, and the full trend prompt once the 30-day baseline lands. Ingestion is **10-minute polling** of the Google Health API by `WearableSyncWorker` in `CardiTrack.Worker`.
+> - **Built today:** MedGemma (Ollama-served `hf.co/unsloth/medgemma-1.5-4b-it-GGUF:Q4_K_M` on Cloud Run, enabled in dev, scale-to-zero) as the **Medical** AI provider and **Gemini 2.0 Flash** as the **General** provider, consumed by `GenerativeAiService`, `MedicalAiService`, `HealthInsightService`, and `ReportGenerationService` and surfaced through the API's **chat, insights, and reports** endpoints (`ChatController`, `InsightsController`, `ReportsController`). Insight prompts carry a **member context block** (age, sex, caregiver notes — never name or id) and switch by baseline state: a **learning-phase variant** while no baseline exists at all, a **provisional variant** while only a short-window (7/14-day) baseline does, and the full trend prompt once the 30-day baseline lands. The **daily family digest** is the first *background* LLM process: a Cloud Run job (`carditrack-<env>-pipeline-jobs`, hourly Cloud Scheduler, dev only) generates a plain-language previous-day summary per member at 06:00 in their anchor timezone via MedGemma and stores it for `GET /api/v1/insights/members/{id}/digest` — wired through `AddMedicalAiServices`, so the job carries no public-provider key at all. Ingestion is **10-minute polling** of the Google Health API by `WearableSyncWorker` in `CardiTrack.Worker`.
 > - **Target architecture (this document):** the webhook-driven real-time pipeline, SSA-LSTM pre-processing, severity routing, digests, and predictive monitoring described below are the **design** for the GCP pipeline (Pub/Sub + Cloud Run) — they are **not built yet**. Push notification infrastructure (FCM/APNs) does not exist yet either.
 
 ## Overview
@@ -32,7 +32,7 @@ MedGemma 4B was chosen over the 27B variant for cost and latency reasons — at 
 | Service | Role | Status |
 |---------|------|--------|
 | **Cloud Run — `carditrack-<env>-medgemma`** | MedGemma inference via Ollama (CPU) | **Built** — enabled in dev; prod leaves `medgemma_image` empty, so the service does not exist there yet |
-| **Cloud Run services/jobs + Cloud Scheduler** | All pipeline logic — webhook receiver, aggregation, SSA-LSTM, predictive batch, digest, push dispatch | Target design |
+| **Cloud Run services/jobs + Cloud Scheduler** | All pipeline logic — webhook receiver, aggregation, SSA-LSTM, predictive batch, digest, push dispatch | **Digest job built (dev)** — `carditrack-<env>-pipeline-jobs` + hourly Cloud Scheduler, gated on `enable_pipeline_jobs`; the rest is target design |
 | **Cloud Pub/Sub** (`carditrack-prod-realtime`) | Wearable raw event stream buffer | Topic provisioned (prod, `enable_pubsub`); pipeline not built |
 | **Cloud SQL PostgreSQL (existing instance)** | OAuth tokens (encrypted AES-256-GCM in `DeviceConnections`), user profiles, sensitivity settings, family relationships — the transactional system of record (see [infrastructure.md](./infrastructure.md#storage-boundary)); plus **JSONB tables** for AI results (below) | Built (core schema); AI tables not built |
 | **Google Cloud Storage** | Per-user LSTM model files (~50 KB each, ~500 MB at 10 K users) | Target design — no per-user model files exist yet |
@@ -54,7 +54,7 @@ Each component is a Cloud Run service (event/HTTP-triggered) or Cloud Run job (C
 | `SeverityRouter` | On new result row | On write | Reads severity tag; dispatches immediate push via FCM/APNs for Critical/High; queues Medium events for digest |
 | `PredictiveFeatureAggregator` | Cloud Scheduler | Daily 03:00 local | Reads 30–90 day history per user → computes daily feature vectors → runs per-user LSTM → applies confidence gate → writes prediction card |
 | `PredictionCardPush` | Cloud Scheduler | Daily 06:00 local | Reads today's prediction cards → calls MedGemma (`CARDITRACK_PREDICT_PROMPT`) → pushes via FCM/APNs (risk ≥ 40) |
-| `DigestGenerator` | Cloud Scheduler | Daily 08:00 local | Aggregates prior 24 h events per user → calls MedGemma (`CARDITRACK_DIGEST_PROMPT` / `CARDITRACK_FAMILY_PROMPT`) → pushes via FCM/APNs |
+| `DigestGenerator` | Cloud Scheduler | **Built (dev):** hourly scheduler, generating at **06:00 in each member's anchor timezone** (earliest-linked caregiver's `User.TimeZoneId`) | Summarises the previous local day per member → calls MedGemma (`CARDITRACK_FAMILY_DIGEST_PROMPT`) → stores to the partitioned `DigestEntries` table (12-month retention by partition drop), read via `GET /api/v1/insights/members/{id}/digest`. Push delivery waits on FCM/APNs; the wearer-audience variant waits on wearer logins |
 | `InactivityDetector` | Cloud Scheduler | Every 15 min | Checks last event timestamp per user during waking hours (07:00–22:00); pushes rule-based "device check" if > 2 h silence — no MedGemma call |
 | `ModelRetrainer` | Cloud Scheduler (dispatcher) | Weekly (Sunday 02:00) | Triggers a containerized **Python training job** (Cloud Run job, CPU) that pulls 90-day feature history per user → retrains LSTM → exports **ONNX** model file to GCS |
 
@@ -571,7 +571,8 @@ Never mention specific risk score numbers. Never diagnose. Never alarm.
 | `CARDITRACK_LEARNING_PROMPT` | On request, before any baseline | Caregiver | What has been observed so far, before any baseline exists — **built today** |
 | `CARDITRACK_PROVISIONAL_PROMPT` | On request, while only a 7/14-day baseline exists | Caregiver | Early impressions against a provisional baseline, phrased tentatively — **built today** |
 | `CARDITRACK_FAMILY_PROMPT` | On high/critical events | Family members | Plain-language alert |
-| `CARDITRACK_DIGEST_PROMPT` | Daily 08:00 | Wearer | 24h summary + medium events |
+| `CARDITRACK_FAMILY_DIGEST_PROMPT` | Daily, 06:00 local per anchor timezone | Family members | Previous-day summary, plain and reassuring — **built today** (store + API read; push pending) |
+| `CARDITRACK_DIGEST_PROMPT` | Daily 08:00 | Wearer | 24h summary + medium events — waits on wearer logins |
 | `CARDITRACK_PREDICT_PROMPT` | Daily 06:00 | Wearer + family (risk ≥ 40) | Next-day health outlook |
 
 ---

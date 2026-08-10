@@ -102,3 +102,7 @@ additional_labels = {
   owner       = "production_team"
   audit       = "platform"
 }
+
+# AI pipeline job (digest generation): off — prod has no MedGemma service yet (medgemma_image
+# unset). Enable together with the MedGemma deploy.
+enable_pipeline_jobs = false

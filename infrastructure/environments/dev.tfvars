@@ -26,6 +26,10 @@ cloud_run_memory = "512Mi"
 # 512 Mi default with no VPC attachment, and Terraform would then collide with it.
 medgemma_image = "us-docker.pkg.dev/cloudrun/container/hello"
 
+# The AI pipeline's scheduled job (digest generation) — on in dev, where MedGemma runs.
+# Same seed-image mechanics as the medgemma service above.
+enable_pipeline_jobs = true
+
 # Cloud SQL
 cloud_sql_tier                = "db-f1-micro" # Shared-core for dev
 cloud_sql_disk_size_gb        = 10

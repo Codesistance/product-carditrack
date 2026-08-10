@@ -55,6 +55,12 @@ resource "google_project_service" "redis" {
   disable_on_destroy = false
 }
 
+resource "google_project_service" "cloudscheduler" {
+  count              = var.enable_pipeline_jobs ? 1 : 0
+  service            = "cloudscheduler.googleapis.com"
+  disable_on_destroy = false
+}
+
 resource "google_project_service" "compute" {
   service            = "compute.googleapis.com"
   disable_on_destroy = false

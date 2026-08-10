@@ -463,7 +463,7 @@ public class ApmConfigurationTests
     [Fact]
     public void ServiceNames_AreTheAppTypes()
     {
-        Assert.Equal(["api", "web", "worker"], ApmServiceNames.All);
+        Assert.Equal(["api", "web", "worker", "pipeline-jobs"], ApmServiceNames.All);
         Assert.Equal(ApmServiceNames.All.Count, ApmServiceNames.All.Distinct().Count());
     }
 

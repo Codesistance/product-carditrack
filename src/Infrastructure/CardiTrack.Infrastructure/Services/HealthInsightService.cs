@@ -1,4 +1,3 @@
-using System.Text.RegularExpressions;
 using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Interfaces.Services;
@@ -8,7 +7,7 @@ using CardiTrack.Domain.Extensions;
 
 namespace CardiTrack.Infrastructure.Services;
 
-public partial class HealthInsightService : IHealthInsightService
+public class HealthInsightService : IHealthInsightService
 {
     /// <summary>
     /// The 30-day baseline is the one <c>DashboardService</c> uses to decide whether a member is still
@@ -24,13 +23,6 @@ public partial class HealthInsightService : IHealthInsightService
     /// tentative prompt below rather than the trend prompt — an early impression is not a trend.
     /// </summary>
     private static readonly int[] ProvisionalPeriodDays = [14, 7];
-
-    /// <summary>
-    /// Caregiver notes are unbounded free text. A long note would crowd the metrics out of the
-    /// context window and cost inference time on a single CPU-served model, so it is truncated
-    /// visibly rather than silently.
-    /// </summary>
-    private const int MaxNoteLength = 1_000;
 
     // ── Fixed instruction blocks ────────────────────────────────────────────────
     // These lead every prompt and must stay byte-identical between calls: the serving engine can
@@ -237,13 +229,13 @@ public partial class HealthInsightService : IHealthInsightService
               $"Resting HR: {baseline.AvgRestingHeartRate}±{baseline.StdDevHeartRate}, " +
               $"Sleep: {baseline.AvgSleepMinutes} min";
 
-        var recentSummary = DailyLines(recentLogs, take: 3, today);
+        var recentSummary = MedicalPromptBlocks.DailyLines(recentLogs, take: 3, today);
 
         return $"""
             {AlertInstructions}
 
             --- Member ---
-            {BuildMemberContext(member, today)}
+            {MedicalPromptBlocks.MemberContext(member, today)}
 
             --- Alert ---
             Type: {alert.AlertType}
@@ -276,13 +268,13 @@ public partial class HealthInsightService : IHealthInsightService
             {BaselineInstructions}
 
             --- Member ---
-            {BuildMemberContext(member, today)}
+            {MedicalPromptBlocks.MemberContext(member, today)}
 
             --- Baselines ---
             {string.Join("\n", baselineLines)}
 
             --- Recent activity (last 7 days) ---
-            {DailyLines(recentLogs, take: 7, today)}
+            {MedicalPromptBlocks.DailyLines(recentLogs, take: 7, today)}
             """;
     }
 
@@ -296,13 +288,13 @@ public partial class HealthInsightService : IHealthInsightService
             {ProvisionalInstructions}
 
             --- Member ---
-            {BuildMemberContext(member, today)}
+            {MedicalPromptBlocks.MemberContext(member, today)}
 
             --- Provisional baseline ---
             {baseline.PeriodDays}-day (provisional) — Steps: {baseline.AvgSteps}±{baseline.StdDevSteps}, HR: {baseline.AvgRestingHeartRate}±{baseline.StdDevHeartRate}, Sleep: {baseline.AvgSleepMinutes} min{SleepWindow(baseline)}
 
             --- Recent activity (last 7 days) ---
-            {DailyLines(recentLogs, take: 7, today)}
+            {MedicalPromptBlocks.DailyLines(recentLogs, take: 7, today)}
             """;
     }
 
@@ -315,83 +307,20 @@ public partial class HealthInsightService : IHealthInsightService
             {LearningInstructions}
 
             --- Member ---
-            {BuildMemberContext(member, today)}
+            {MedicalPromptBlocks.MemberContext(member, today)}
 
             --- Observation so far ---
             Days with data in the last 14: {daysObserved}
             No baseline has been established yet.
 
             --- Daily readings ---
-            {DailyLines(recentLogs, take: 14, today)}
+            {MedicalPromptBlocks.DailyLines(recentLogs, take: 14, today)}
             """;
     }
 
-    /// <summary>
-    /// Who the member is, as far as the model needs to know: age and sex change how a heart rate or a
-    /// sleep duration should be read, and caregiver notes carry conditions and medication the wearable
-    /// cannot see. Name and id are deliberately absent — they would identify the member to the model
-    /// without changing a word of the clinical interpretation.
-    /// </summary>
-    private static string BuildMemberContext(CardiMember? member, DateOnly today)
-    {
-        if (member is null)
-            return "No member profile available.";
-
-        var lines = new List<string> { $"Age: {member.DateOfBirth.ToAgeInYears(today)}" };
-
-        // Only the two values that carry a clinical reading are passed on; "Other" and
-        // "Prefer not to say" tell the model nothing it can use.
-        if (member.Gender is Gender.Male or Gender.Female)
-            lines.Add($"Sex: {member.Gender}");
-
-        if (!string.IsNullOrWhiteSpace(member.MedicalNotes))
-            lines.Add($"Caregiver-reported context: {Flatten(member.MedicalNotes)}");
-
-        return string.Join("\n", lines);
-    }
-
-    /// <summary>
-    /// Reduces a caregiver note to a single line, then truncates.
-    /// <para>
-    /// The instruction blocks scope their warning to what sits under "Caregiver-reported context",
-    /// and the note is the last line of the member block — so a newline inside it would put the rest
-    /// of the note on an unlabelled top-level line, or let it forge a section delimiter of its own.
-    /// Collapsing whitespace makes the note structurally unable to leave the line it was put on;
-    /// the framing then covers all of it, which is what makes the framing worth anything.
-    /// </para>
-    /// Truncation comes after flattening so the cap applies to what is actually sent.
-    /// </summary>
-    private static string Flatten(string note)
-    {
-        var flattened = WhitespaceRuns().Replace(note, " ").Trim();
-        return flattened.Length > MaxNoteLength
-            ? $"{flattened[..MaxNoteLength]}… (truncated)"
-            : flattened;
-    }
-
-    /// <summary>Any run of whitespace or control characters, including newlines.</summary>
-    [GeneratedRegex(@"[\s\p{Cc}]+")]
-    private static partial Regex WhitespaceRuns();
-
-    /// <summary>
-    /// The trailing daily readings, oldest first.
-    /// </summary>
-    /// <remarks>
-    /// Ingestion stores the day in progress, so the newest line is a part-finished day whose totals
-    /// are not comparable with the completed days above it. It is labelled rather than dropped: the
-    /// model is being asked to explain deviations, and an unmarked partial day reads as a collapse
-    /// in activity that the member is not actually having.
-    /// </remarks>
-    private static string DailyLines(IEnumerable<ActivityLog> logs, int take, DateOnly today)
-    {
-        var lines = logs
-            .TakeLast(take)
-            .Select(l => $"  {l.Date}: steps={l.Steps}, HR={l.RestingHeartRate}, sleep={l.SleepMinutes}min"
-                         + (l.Date == today ? "  (today, still in progress — totals are partial)" : string.Empty))
-            .ToList();
-
-        return lines.Count > 0 ? string.Join("\n", lines) : "No recent activity data.";
-    }
+    // Member context, note flattening, and daily-reading lines live in MedicalPromptBlocks,
+    // shared with the digest pipeline so the minimisation and injection-framing rules cannot
+    // drift between the private model's callers.
 
     /// <summary>
     /// Typical bedtime and wake time, when the baseline has settled on them. Stored in UTC, and said

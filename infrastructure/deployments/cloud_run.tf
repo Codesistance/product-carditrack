@@ -581,3 +581,163 @@ resource "google_cloud_run_v2_service_iam_member" "web_public" {
   role     = "roles/run.invoker"
   member   = "allUsers"
 }
+
+# ── Pipeline jobs (AI pipeline — digest generation) ──────────────────────────────────────────
+# The AI pipeline's scheduled work runs as a Cloud Run *job*, triggered hourly by Cloud
+# Scheduler: each execution generates the digests due in whichever timezones just entered
+# their 06:00 delivery hour, then exits. Gated on enable_pipeline_jobs — the job calls
+# MedGemma, so it only exists in environments where the model is deployed.
+
+variable "enable_pipeline_jobs" {
+  description = "Create the AI pipeline job + its hourly scheduler. Enable only where MedGemma is deployed"
+  type        = bool
+  default     = false
+}
+
+variable "pipeline_jobs_name" {
+  description = "Name of the pipeline jobs Cloud Run job"
+  type        = string
+  default     = ""
+}
+
+variable "pipeline_jobs_container_image" {
+  description = "Bootstrap image seeding the pipeline job's initial create; CI/CD owns it thereafter"
+  type        = string
+  default     = "us-docker.pkg.dev/cloudrun/container/hello"
+}
+
+variable "pipeline_jobs_env_vars" {
+  description = "Environment variables for the pipeline job"
+  type        = map(string)
+  default     = {}
+}
+
+variable "pipeline_jobs_secret_env_vars" {
+  description = "Secret Manager-backed env vars for the pipeline job (key=env var name, value=secret ID)"
+  type        = map(string)
+  default     = {}
+}
+
+variable "pipeline_jobs_schedule" {
+  description = "Cloud Scheduler cron for the pipeline job. Hourly, because digest due-ness is per-timezone: each run serves whichever zones just hit 06:00 local"
+  type        = string
+  default     = "0 * * * *"
+}
+
+resource "google_service_account" "pipeline_scheduler" {
+  count        = var.enable_pipeline_jobs ? 1 : 0
+  account_id   = "pipeline-jobs-scheduler"
+  display_name = "Cloud Scheduler invoker for the CardiTrack pipeline job"
+}
+
+resource "google_cloud_run_v2_job" "pipeline_jobs" {
+  count    = var.enable_pipeline_jobs ? 1 : 0
+  name     = var.pipeline_jobs_name
+  location = var.cloud_run_location
+  client   = "terraform"
+
+  template {
+    template {
+      max_retries = 1
+
+      # A digest pass is ~one CPU-served MedGemma call per due member; the generous timeout
+      # covers a large timezone bucket without the execution being killed mid-generation.
+      timeout = "3600s"
+
+      # In-VPC egress: MedGemma is internal-ingress-only, so the job must originate inside
+      # the network to reach it.
+      vpc_access {
+        network_interfaces {
+          network    = google_compute_network.main.id
+          subnetwork = google_compute_subnetwork.main.id
+        }
+        egress = "PRIVATE_RANGES_ONLY"
+      }
+
+      volumes {
+        name = "cloudsql"
+        cloud_sql_instance {
+          instances = [google_sql_database_instance.main.connection_name]
+        }
+      }
+
+      containers {
+        image = var.pipeline_jobs_container_image
+
+        dynamic "env" {
+          for_each = var.pipeline_jobs_env_vars
+          iterator = item
+          content {
+            name  = item.key
+            value = item.value
+          }
+        }
+
+        dynamic "env" {
+          for_each = var.pipeline_jobs_secret_env_vars
+          iterator = item
+          content {
+            name = item.key
+            value_source {
+              secret_key_ref {
+                secret  = item.value
+                version = "latest"
+              }
+            }
+          }
+        }
+
+        volume_mounts {
+          name       = "cloudsql"
+          mount_path = "/cloudsql"
+        }
+
+        resources {
+          limits = {
+            cpu    = "1"
+            memory = "512Mi"
+          }
+        }
+      }
+    }
+  }
+
+  lifecycle {
+    ignore_changes = [template[0].template[0].containers[0].image, client, client_version]
+  }
+  depends_on = [
+    google_project_service.run,
+    google_secret_manager_secret_version.db_connection_string,
+  ]
+}
+
+resource "google_cloud_run_v2_job_iam_member" "pipeline_scheduler_invoker" {
+  count    = var.enable_pipeline_jobs ? 1 : 0
+  name     = google_cloud_run_v2_job.pipeline_jobs[0].name
+  location = google_cloud_run_v2_job.pipeline_jobs[0].location
+  role     = "roles/run.invoker"
+  member   = "serviceAccount:${google_service_account.pipeline_scheduler[0].email}"
+}
+
+resource "google_cloud_scheduler_job" "pipeline_jobs_hourly" {
+  count            = var.enable_pipeline_jobs ? 1 : 0
+  name             = "${var.pipeline_jobs_name}-hourly"
+  region           = var.cloud_run_location
+  schedule         = var.pipeline_jobs_schedule
+  time_zone        = "Etc/UTC"
+  attempt_deadline = "320s"
+
+  http_target {
+    http_method = "POST"
+    uri         = "https://run.googleapis.com/v2/projects/${var.project_id}/locations/${var.cloud_run_location}/jobs/${var.pipeline_jobs_name}:run"
+
+    oauth_token {
+      service_account_email = google_service_account.pipeline_scheduler[0].email
+    }
+  }
+
+  depends_on = [
+    google_project_service.cloudscheduler,
+    google_cloud_run_v2_job.pipeline_jobs,
+  ]
+}

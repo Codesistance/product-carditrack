@@ -16,7 +16,8 @@ public static class ApmServiceNames
     public const string Api = "api";
     public const string Web = "web";
     public const string Worker = "worker";
+    public const string PipelineJobs = "pipeline-jobs";
 
     /// <summary>Every backend service name, for tests and diagnostics.</summary>
-    public static IReadOnlyList<string> All { get; } = [Api, Web, Worker];
+    public static IReadOnlyList<string> All { get; } = [Api, Web, Worker, PipelineJobs];
 }

@@ -164,16 +164,17 @@ public class TimeSeriesPartitionServiceTests(TestDatabaseFixture fixture)
     // The failure mode of a zero or negative retention is mass deletion of health data, so the
     // service refuses it outright (the worker independently skips the run on the same check).
     [Theory]
-    [InlineData(0, 13)]
-    [InlineData(90, 0)]
-    [InlineData(-1, 13)]
-    public async Task DropExpiredPartitionsAsync_RejectsNonPositiveRetention(int days, int months)
+    [InlineData(0, 13, 12)]
+    [InlineData(90, 0, 12)]
+    [InlineData(90, 13, 0)]
+    [InlineData(-1, 13, 12)]
+    public async Task DropExpiredPartitionsAsync_RejectsNonPositiveRetention(int days, int months, int digestMonths)
     {
         using var scope = fixture.CreateScope();
         var service = scope.ServiceProvider.GetRequiredService<ITimeSeriesPartitionService>();
 
         await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() =>
-            service.DropExpiredPartitionsAsync(days, months));
+            service.DropExpiredPartitionsAsync(days, months, digestMonths));
     }
 
     [Fact]
@@ -214,7 +215,8 @@ public class TimeSeriesPartitionServiceTests(TestDatabaseFixture fixture)
 
         try
         {
-            await service.DropExpiredPartitionsAsync(granularRetentionDays: 90, rollupRetentionMonths: 13);
+            await service.DropExpiredPartitionsAsync(
+                granularRetentionDays: 90, rollupRetentionMonths: 13, digestRetentionMonths: 12);
 
             var survivors = await context.Database
                 .SqlQuery<string>($"""

@@ -17,9 +17,11 @@ public interface ITimeSeriesPartitionService
     /// <summary>
     /// Drops partitions wholly past retention: granular hours after
     /// <paramref name="granularRetentionDays"/> days, hourly rollups after
-    /// <paramref name="rollupRetentionMonths"/> months. Dropping a partition is the retention
+    /// <paramref name="rollupRetentionMonths"/> months, digests after
+    /// <paramref name="digestRetentionMonths"/> months. Dropping a partition is the retention
     /// mechanism — instant, and no dead tuples to vacuum.
     /// </summary>
     Task DropExpiredPartitionsAsync(
-        int granularRetentionDays, int rollupRetentionMonths, CancellationToken ct = default);
+        int granularRetentionDays, int rollupRetentionMonths, int digestRetentionMonths,
+        CancellationToken ct = default);
 }

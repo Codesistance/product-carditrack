@@ -105,6 +105,21 @@ variable "cloud_sql_public_ip_enabled" {
   default     = false
 }
 
+# The AI pipeline's scheduled job (digest generation). Off by default — it calls MedGemma, so
+# it belongs only in environments where the model is deployed (dev today; prod's medgemma_image
+# is empty).
+variable "enable_pipeline_jobs" {
+  description = "Create the AI pipeline Cloud Run job + its hourly Cloud Scheduler trigger. Enable only where MedGemma is deployed"
+  type        = bool
+  default     = false
+}
+
+variable "pipeline_jobs_container_image" {
+  description = "Bootstrap image seeding the pipeline job's initial create; CI/CD owns it thereafter"
+  type        = string
+  default     = "us-docker.pkg.dev/cloudrun/container/hello"
+}
+
 # Bootstrap placeholders — see the container images note above api_container_image.
 variable "migrator_container_image" {
   description = "Bootstrap image seeding the DB migrator Job's initial create; CI/CD owns it thereafter"

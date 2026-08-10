@@ -16,6 +16,7 @@ public static class TimeSeriesPartitions
 {
     public const string GranularParent = "GranularMetricHours";
     public const string RollupParent = "MetricRollupsHourly";
+    public const string DigestParent = "DigestEntries";
 
     private const string DailySuffixFormat = "yyyyMMdd";
     private const string MonthlySuffixFormat = "yyyyMM";
@@ -25,6 +26,9 @@ public static class TimeSeriesPartitions
 
     public static string MonthlyPartitionName(DateOnly firstOfMonth) =>
         $"{RollupParent}_y{firstOfMonth.ToString(MonthlySuffixFormat, CultureInfo.InvariantCulture)}";
+
+    public static string DigestPartitionName(DateOnly firstOfMonth) =>
+        $"{DigestParent}_y{firstOfMonth.ToString(MonthlySuffixFormat, CultureInfo.InvariantCulture)}";
 
     public static string CreateDailyPartitionSql(DateOnly day) =>
         $"""
@@ -40,6 +44,13 @@ public static class TimeSeriesPartitions
         FOR VALUES FROM ('{firstOfMonth:yyyy-MM-dd}') TO ('{firstOfMonth.AddMonths(1):yyyy-MM-dd}');
         """;
 
+    public static string CreateDigestPartitionSql(DateOnly firstOfMonth) =>
+        $"""
+        CREATE TABLE IF NOT EXISTS "{DigestPartitionName(firstOfMonth)}"
+        PARTITION OF "{DigestParent}"
+        FOR VALUES FROM ('{firstOfMonth:yyyy-MM-dd}') TO ('{firstOfMonth.AddMonths(1):yyyy-MM-dd}');
+        """;
+
     public static string DropPartitionSql(string partitionName) =>
         $"""DROP TABLE IF EXISTS "{partitionName}";""";
 
@@ -51,10 +62,16 @@ public static class TimeSeriesPartitions
         TryParseSuffix(partitionName, $"{GranularParent}_y", DailySuffixFormat, out day);
 
     /// <summary>The first day of the month a monthly rollup partition covers.</summary>
-    public static bool TryParseMonthlyPartition(string partitionName, out DateOnly firstOfMonth)
+    public static bool TryParseMonthlyPartition(string partitionName, out DateOnly firstOfMonth) =>
+        TryParseMonthSuffix(partitionName, $"{RollupParent}_y", out firstOfMonth);
+
+    /// <summary>The first day of the month a digest partition covers.</summary>
+    public static bool TryParseDigestPartition(string partitionName, out DateOnly firstOfMonth) =>
+        TryParseMonthSuffix(partitionName, $"{DigestParent}_y", out firstOfMonth);
+
+    private static bool TryParseMonthSuffix(string partitionName, string prefix, out DateOnly firstOfMonth)
     {
         firstOfMonth = default;
-        var prefix = $"{RollupParent}_y";
         if (!partitionName.StartsWith(prefix, StringComparison.Ordinal))
             return false;
 

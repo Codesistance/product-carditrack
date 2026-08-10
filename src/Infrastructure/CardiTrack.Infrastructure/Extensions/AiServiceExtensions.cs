@@ -49,7 +49,6 @@ public static class AiServiceExtensions
         IConfiguration configuration)
     {
         var publicSettings = LoadPublicSettings(configuration);
-        var privateSettings = LoadPrivateSettings(configuration);
 
         // The Anthropic SDK brings its own transport, so only the HttpClient-based kinds get a
         // named client. Registering one unconditionally would leave a configured-but-unused client
@@ -75,12 +74,6 @@ public static class AiServiceExtensions
             });
         }
 
-        services.AddHttpClient(PrivateHttpClientName, client =>
-        {
-            client.BaseAddress = new Uri(privateSettings.BaseUrl);
-            client.Timeout = TimeSpan.FromSeconds(privateSettings.TimeoutSeconds);
-        });
-
         services.AddKeyedScoped<IExternalAiClient>("GeneralProvider", (sp, _) =>
             publicSettings.Kind switch
             {
@@ -92,16 +85,41 @@ public static class AiServiceExtensions
                     $"No client is implemented for public AI provider kind '{publicSettings.Kind}'.")
             });
 
+        services.AddMedicalAiServices(configuration);
+
+        services.AddScoped<IGenerativeAiService, GenerativeAiService>();
+        services.AddScoped<IHealthInsightService, HealthInsightService>();
+        services.AddScoped<IReportGenerationService, ReportGenerationService>();
+
+        return services;
+    }
+
+    /// <summary>
+    /// The private (medical) slot alone — for hosts like the digest pipeline job that call only
+    /// MedGemma. Deliberately narrower than <see cref="AddAiServices"/>: a host wired through this
+    /// method carries no public-provider key and no public client, so it physically cannot send
+    /// health data off-estate — the same A5 boundary the DPIA records, enforced by what is not
+    /// registered.
+    /// </summary>
+    public static IServiceCollection AddMedicalAiServices(
+        this IServiceCollection services,
+        IConfiguration configuration)
+    {
+        var privateSettings = LoadPrivateSettings(configuration);
+
+        services.AddHttpClient(PrivateHttpClientName, client =>
+        {
+            client.BaseAddress = new Uri(privateSettings.BaseUrl);
+            client.Timeout = TimeSpan.FromSeconds(privateSettings.TimeoutSeconds);
+        });
+
         // Not a switch, by design — see the remarks on this class.
         services.AddKeyedScoped<IExternalAiClient>("MedicalProvider", (sp, _) =>
             new MedGemmaClient(
                 sp.GetRequiredService<IHttpClientFactory>(), privateSettings, PrivateHttpClientName,
                 sp.GetRequiredService<ILogger<MedGemmaClient>>()));
 
-        services.AddScoped<IGenerativeAiService, GenerativeAiService>();
         services.AddScoped<IMedicalAiService, MedicalAiService>();
-        services.AddScoped<IHealthInsightService, HealthInsightService>();
-        services.AddScoped<IReportGenerationService, ReportGenerationService>();
 
         return services;
     }
