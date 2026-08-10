@@ -586,6 +586,18 @@ resource "google_cloud_run_v2_service_iam_member" "web_public" {
   member   = "allUsers"
 }
 
+# Allow unauthenticated access, same as api/web above: the real boundary is
+# INGRESS_TRAFFIC_INTERNAL_ONLY on the medgemma service itself, not IAM — none of its callers
+# (api, pipeline_jobs, pipeline_assessor) attach an identity token, so without this every
+# request that reaches the service still 403s once ingress routing lets it through.
+resource "google_cloud_run_v2_service_iam_member" "medgemma_internal" {
+  count    = var.medgemma_image != "" ? 1 : 0
+  name     = google_cloud_run_v2_service.medgemma[0].name
+  location = google_cloud_run_v2_service.medgemma[0].location
+  role     = "roles/run.invoker"
+  member   = "allUsers"
+}
+
 # ── Pipeline jobs (AI pipeline — digest generation) ──────────────────────────────────────────
 # The AI pipeline's scheduled work runs as a Cloud Run *job*, triggered hourly by Cloud
 # Scheduler: each execution generates the digests due in whichever timezones just entered
