@@ -20,15 +20,26 @@ public class CardiMemberRepository : Repository<CardiMember>, ICardiMemberReposi
 
     public async Task<CardiMember?> GetWithRelationshipsAsync(Guid id)
     {
-        return await _dbSet
-            .Include(cm => cm.UserCardiMembers)
-            .FirstOrDefaultAsync(cm => cm.Id == id);
+        // Navigations are unmapped by convention (see CardiMemberConfiguration.Ignore calls),
+        // so relationships load via FK queries rather than Include.
+        var member = await _dbSet.FirstOrDefaultAsync(cm => cm.Id == id);
+        if (member is null)
+        {
+            return null;
+        }
+
+        member.UserCardiMembers = await _context.UserCardiMembers
+            .Where(ucm => ucm.CardiMemberId == id)
+            .ToListAsync();
+
+        return member;
     }
 
     public async Task<IReadOnlyList<Guid>> GetActiveIdsWithActivitySinceAsync(DateOnly since)
     {
         return await _dbSet
-            .Where(cm => cm.IsActive && cm.ActivityLogs.Any(al => al.Date >= since))
+            .Where(cm => cm.IsActive &&
+                _context.ActivityLogs.Any(al => al.CardiMemberId == cm.Id && al.Date >= since))
             .Select(cm => cm.Id)
             .ToListAsync();
     }
