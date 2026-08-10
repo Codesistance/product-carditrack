@@ -156,6 +156,9 @@ public class MedGemmaClientTests
         var error = Assert.Single(logger.Entries, e => e.Level == LogLevel.Error);
         Assert.Contains("500", error.Message);
         Assert.DoesNotContain("upstream error body", error.Message);
+        // The exhausted-retry path logs exactly what the single-attempt path used to: one error,
+        // nothing per attempt. A sustained outage must not triple its own log volume.
+        Assert.DoesNotContain(logger.Entries, e => e.Level == LogLevel.Warning);
     }
 
     /// <summary>
@@ -179,7 +182,9 @@ public class MedGemmaClientTests
         var span = Assert.Single(capture.Stopped);
         Assert.NotEqual(ActivityStatusCode.Error, span.Status);
         Assert.DoesNotContain(logger.Entries, e => e.Level == LogLevel.Error);
-        Assert.Equal(2, logger.Entries.Count(e => e.Level == LogLevel.Warning));
+        // One note that it took retries to succeed — not one per failed attempt.
+        var warning = Assert.Single(logger.Entries, e => e.Level == LogLevel.Warning);
+        Assert.Contains("3", warning.Message);
     }
 
     /// <summary>

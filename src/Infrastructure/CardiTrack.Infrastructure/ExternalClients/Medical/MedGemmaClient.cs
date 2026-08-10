@@ -185,8 +185,11 @@ public class MedGemmaClient : IExternalAiClient
     /// Sends the request, retrying a non-success response up to <see cref="MaxAttempts"/> times
     /// with a short backoff. Only the HTTP outcome is retried — a 200 with an unparseable body
     /// is the model having already answered, not a transport blip, so that path still fails on
-    /// the first attempt. The final attempt's failure is logged and thrown exactly as the single
-    /// attempt used to be, so callers and telemetry see the same shape as before retries existed.
+    /// the first attempt. Nothing is logged per attempt: a sustained outage already produces one
+    /// error per call, and logging every retry too would triple that volume for no diagnostic
+    /// gain. The final attempt's failure is logged and thrown exactly as the single attempt used
+    /// to be; a call that only succeeds after a retry logs one warning noting that, since "it
+    /// took N attempts" is worth knowing even though "it failed" is not, twice over.
     /// </summary>
     private async Task<string> SendWithRetryAsync(
         HttpClient client,
@@ -199,7 +202,16 @@ public class MedGemmaClient : IExternalAiClient
         {
             using var response = await send(client, ct);
             if (response.IsSuccessStatusCode)
+            {
+                if (attempt > 1)
+                {
+                    _logger.LogWarning(
+                        "MedGemma {Operation} succeeded on attempt {Attempt} of {MaxAttempts} "
+                        + "after a transient failure.",
+                        operationName, attempt, MaxAttempts);
+                }
                 return await response.Content.ReadAsStringAsync(ct);
+            }
 
             var statusCode = response.StatusCode;
             if (attempt >= MaxAttempts)
@@ -212,11 +224,7 @@ public class MedGemmaClient : IExternalAiClient
                     inner: null, statusCode: statusCode);
             }
 
-            var delay = TimeSpan.FromSeconds(attempt * 2);
-            _logger.LogWarning(
-                "MedGemma {Operation} attempt {Attempt} failed: HTTP {StatusCode}, retrying in {DelayMs} ms",
-                operationName, attempt, (int)statusCode, delay.TotalMilliseconds);
-            await Task.Delay(delay, _timeProvider, ct);
+            await Task.Delay(TimeSpan.FromSeconds(attempt * 2), _timeProvider, ct);
         }
     }
 
