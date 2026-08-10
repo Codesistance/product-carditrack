@@ -49,4 +49,14 @@ public interface IDeviceConnectionRepository : IRepository<DeviceConnection>
     /// untouched, for the same reason as <see cref="MarkSyncSucceededAsync"/>.
     /// </summary>
     Task UpdateHistoryBackfilledToAsync(Guid id, DateOnly backfilledTo);
+
+    /// <summary>Records the provider's public health-user id, captured during sync.</summary>
+    Task UpdateHealthUserIdAsync(Guid id, string healthUserId);
+
+    /// <summary>
+    /// The syncable connections a webhook notification for this health-user id addresses —
+    /// same active-and-not-paused semantics as <see cref="GetDueForSyncAsync"/>: a notification
+    /// must never resurrect collection for a paused or removed member.
+    /// </summary>
+    Task<IEnumerable<DeviceConnection>> GetSyncableByHealthUserIdAsync(string healthUserId);
 }

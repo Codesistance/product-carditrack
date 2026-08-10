@@ -1,13 +1,18 @@
 using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Interfaces.Security;
 using CardiTrack.Application.Interfaces.Services;
+using CardiTrack.Application.Services;
 using CardiTrack.Infrastructure.Extensions;
+using CardiTrack.Infrastructure.ExternalClients;
 using CardiTrack.Infrastructure.Persistence;
 using CardiTrack.Infrastructure.Repositories;
 using CardiTrack.Infrastructure.Security;
 using CardiTrack.Infrastructure.Services;
+using CardiTrack.Infrastructure.Settings;
 using CardiTrack.Observability;
+using CardiTrack.PipelineJobs.Notifications;
 using CardiTrack.Shared;
+using Google.Cloud.PubSub.V1;
 using Microsoft.EntityFrameworkCore;
 using Serilog;
 
@@ -76,24 +81,64 @@ builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
 builder.Services.AddMedicalAiServices(configuration);
 builder.Services.AddScoped<IDigestGenerationService, DigestGenerationService>();
 
+// Device provider — the aggregator's targeted sync is the same SyncCardiMemberAsync the Worker
+// runs, so this host carries the same provider wiring (incl. the Fitbit OAuth credentials the
+// token refresh needs). Still no public AI key.
+builder.Services.Configure<List<DeviceProviderSettings>>(
+    configuration.GetSection(DeviceProviderSettings.SectionName));
+builder.Services.AddScoped<IOAuthTokenRefreshService, OAuthTokenRefreshService>();
+builder.Services.AddScoped<IActivityLogAggregationService, ActivityLogAggregationService>();
+builder.Services.AddFitbitProvider();
+
+// Realtime subscription — the aggregator's input.
+var subscriptionName = SubscriptionName.FromProjectSubscription(
+    configLoader.GetRequired(ConfigurationKeys.PubSub.ProjectId),
+    configLoader.GetRequired(ConfigurationKeys.PubSub.SubscriptionId));
+builder.Services.AddSingleton(await SubscriberServiceApiClient.CreateAsync());
+builder.Services.AddSingleton<INotificationSource>(sp =>
+    new PubSubNotificationSource(sp.GetRequiredService<SubscriberServiceApiClient>(), subscriptionName));
+builder.Services.AddScoped<INotificationDrainService, NotificationDrainService>();
+
 var app = builder.Build();
+
+// One binary, several jobs: Cloud Run job resources share the image and select via
+// `--job <name>` in their container args. No arg means digest, the first job this host ran.
+var jobArgIndex = Array.IndexOf(args, "--job");
+var jobName = jobArgIndex >= 0 && jobArgIndex + 1 < args.Length ? args[jobArgIndex + 1] : "digest";
 
 // No app.Run(): a job executes one pass and exits, and never listens.
 try
 {
-    Log.Information("PipelineJobs run starting: digest generation.");
+    Log.Information("PipelineJobs run starting: {Job}.", jobName);
 
     using var scope = app.Services.CreateScope();
-    var digests = scope.ServiceProvider.GetRequiredService<IDigestGenerationService>();
-    var generated = await digests.GenerateDueDigestsAsync(DateTime.UtcNow);
+    switch (jobName)
+    {
+        case "digest":
+            var digests = scope.ServiceProvider.GetRequiredService<IDigestGenerationService>();
+            var generated = await digests.GenerateDueDigestsAsync(DateTime.UtcNow);
+            Log.Information("PipelineJobs run finished. Digests generated: {Generated}.", generated);
+            return 0;
 
-    Log.Information("PipelineJobs run finished. Digests generated: {Generated}.", generated);
-    return 0;
+        case "aggregate":
+            var drain = scope.ServiceProvider.GetRequiredService<INotificationDrainService>();
+            var summary = await drain.DrainAsync();
+            Log.Information(
+                "PipelineJobs run finished. Notifications: {Messages}, connections synced: {Synced}, "
+                + "unknown users: {Unknown}, unparseable: {Unparseable}, failed users: {Failed}.",
+                summary.Messages, summary.SyncedConnections, summary.UnknownUsers,
+                summary.Unparseable, summary.FailedUsers);
+            return 0;
+
+        default:
+            Log.Fatal("Unknown job '{Job}'. Known jobs: digest, aggregate.", jobName);
+            return 1;
+    }
 }
 catch (Exception ex)
 {
     // A non-zero exit marks the execution failed in Cloud Run, which is what alerting keys on.
-    Log.Fatal(ex, "PipelineJobs run failed.");
+    Log.Fatal(ex, "PipelineJobs run failed: {Job}.", jobName);
     return 1;
 }
 finally

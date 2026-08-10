@@ -69,6 +69,21 @@ public class DeviceSyncService : IDeviceSyncService
 
         try
         {
+            // One-time identity capture: the provider's public health-user id is what maps a
+            // webhook notification back to this connection, and the OAuth connect flow predates
+            // the column — capturing here self-heals every existing connection on its next pull.
+            // Best-effort by design: a wearer without one still syncs, they just cannot be
+            // addressed by webhooks until the provider exposes it.
+            if (connection.HealthUserId is null)
+            {
+                var healthUserId = await _deviceApi.GetHealthUserIdAsync(accessToken);
+                if (healthUserId is not null)
+                {
+                    await _deviceConnections.UpdateHealthUserIdAsync(connection.Id, healthUserId);
+                    connection.HealthUserId = healthUserId;
+                }
+            }
+
             await PullWindowAsync(connection, accessToken, lookbackDays, today);
 
             // Only once the whole window landed — otherwise a partial sync would look complete

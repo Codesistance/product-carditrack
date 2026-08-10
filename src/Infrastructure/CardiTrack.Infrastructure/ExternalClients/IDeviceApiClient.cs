@@ -13,4 +13,10 @@ public interface IDeviceApiClient
     /// none of the granular metrics returns <see cref="DeviceGranularDay.Empty"/>.
     /// </summary>
     Task<DeviceGranularDay> GetGranularDayAsync(string accessToken, DateOnly date);
+
+    /// <summary>
+    /// The wearer's public health-user id — the `users/{user}` segment webhook notifications and
+    /// subscriptions are addressed by. Null when the provider does not expose one.
+    /// </summary>
+    Task<string?> GetHealthUserIdAsync(string accessToken);
 }

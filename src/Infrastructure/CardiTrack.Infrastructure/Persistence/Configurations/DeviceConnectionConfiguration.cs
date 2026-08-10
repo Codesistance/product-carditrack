@@ -63,6 +63,13 @@ public class DeviceConnectionConfiguration : IEntityTypeConfiguration<DeviceConn
 
         builder.Property(d => d.HistoryBackfilledTo);
 
+        builder.Property(d => d.HealthUserId)
+            .HasMaxLength(100);
+
+        // The webhook aggregator's lookup: notification → connection.
+        builder.HasIndex(d => d.HealthUserId)
+            .HasFilter("\"HealthUserId\" IS NOT NULL");
+
         // JSON field
         builder.Property(d => d.Metadata)
             .HasMaxLength(2000);
