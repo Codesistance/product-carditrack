@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Net;
 using System.Text;
 using System.Text.Json;
@@ -107,13 +108,18 @@ public class FitbitApiClientTests
         }
     }
 
-    private static (IFitbitApiClient Sut, RoutedFakeHttpHandler Handler) CreateSut(RoutedFakeHttpHandler? handler = null)
+    private static (IFitbitApiClient Sut, RoutedFakeHttpHandler Handler) CreateSut(
+        RoutedFakeHttpHandler? handler = null, TimeSpan? pageRequestDelay = null)
     {
         handler ??= new RoutedFakeHttpHandler();
         var httpClient = new HttpClient(handler) { BaseAddress = new Uri("https://health.googleapis.com") };
         var factory = Substitute.For<IHttpClientFactory>();
         factory.CreateClient("FitbitClient").Returns(httpClient);
-        return (new FitbitApiClient(factory), handler);
+        // Zero inter-page delay by default: production paces pagination against the per-user quota
+        // (see FitbitApiClient's PageRequestDelay), but most of these tests assert request count
+        // and content, not wall-clock timing, and a real delay would make every multi-page test
+        // slow. Tests that specifically exercise pacing pass their own (short) delay.
+        return (new FitbitApiClient(factory, pageRequestDelay ?? TimeSpan.Zero), handler);
     }
 
     private static DateOnly Today => DateOnly.FromDateTime(DateTime.UtcNow);
@@ -936,7 +942,7 @@ public class FitbitApiClientTests
     [Fact]
     public async Task GetAdditionalMetricsAsync_Throws_WhenSampleSeriesExceedsTheDailyCap()
     {
-        var overCap = Enumerable.Repeat("95.0", 20_000).ToArray();
+        var overCap = Enumerable.Repeat("95.0", 100_000).ToArray();
         var handler = new RoutedFakeHttpHandler()
             .MapSequence("/dataTypes/oxygen-saturation/", SpO2Samples("page-2", overCap));
 
@@ -1371,5 +1377,62 @@ public class FitbitApiClientTests
 
         Assert.Equal(2, day.HeartRate.Count);
         Assert.Equal(74f, day.HeartRate[1].Value);
+    }
+
+    /// <summary>
+    /// A continuous-tracking wearer's heart rate can legitimately run well past the once-a-minute
+    /// cadence the daily cap used to assume (see <see cref="GetAdditionalMetricsAsync_Throws_WhenSampleSeriesExceedsTheDailyCap"/>
+    /// for the still-enforced ceiling above it) — three full pages here, comfortably under the raised
+    /// cap, must land as real data rather than tripping the guard meant for a mis-scoped filter.
+    /// </summary>
+    [Fact]
+    public async Task GetGranularDayAsync_AcceptsHeartRateSeries_WellPastOnceAMinuteCadence()
+    {
+        var highCadence = Enumerable.Repeat("72", 30_000).ToArray();
+        var handler = new RoutedFakeHttpHandler()
+            .MapSequence(
+                "/dataTypes/heart-rate/",
+                SamplePage("heartRate", "beatsPerMinute", "page-2", highCadence),
+                SamplePage("heartRate", "beatsPerMinute", "page-3", highCadence),
+                SamplePage("heartRate", "beatsPerMinute", null, highCadence));
+
+        var day = await GranularSut(handler).GetGranularDayAsync("token", new DateOnly(2026, 8, 5));
+
+        Assert.Equal(90_000, day.HeartRate.Count);
+    }
+
+    /// <summary>
+    /// Only the second and later page requests wait — the first fires immediately, since most
+    /// series are one page and delaying every read would slow every sync for a limit only
+    /// multi-page reads can trip. Asserted on wall-clock elapsed time against a short delay, which
+    /// keeps the test fast while still proving the pacing actually runs (not just that the
+    /// parameter is stored).
+    /// </summary>
+    [Fact]
+    public async Task GetGranularDayAsync_PacesPageRequests_AfterTheFirst()
+    {
+        var page1 = SamplePage("heartRate", "beatsPerMinute", "page-2", "72");
+        var page2 = SamplePage("heartRate", "beatsPerMinute", null, "74");
+        var handler = new RoutedFakeHttpHandler()
+            .MapSequence("/dataTypes/heart-rate/", page1, page2);
+
+        var pacing = TimeSpan.FromMilliseconds(200);
+        var (sut, _) = CreateSut(handler, pacing);
+
+        var stopwatch = Stopwatch.StartNew();
+        await ((IDeviceApiClient)sut).GetGranularDayAsync("token", new DateOnly(2026, 8, 5));
+        stopwatch.Stop();
+
+        Assert.True(stopwatch.Elapsed >= pacing,
+            $"Expected the second page to wait at least {pacing}, elapsed {stopwatch.Elapsed}.");
+    }
+
+    private static string SamplePage(
+        string unionMember, string valueField, string? nextPageToken, params string[] values)
+    {
+        var points = string.Join(",", values.Select(v =>
+            $$"""{ "{{unionMember}}": { "sampleTime": { "physicalTime": "2026-08-05T00:00:00Z" }, "{{valueField}}": "{{v}}" } }"""));
+        var token = nextPageToken is null ? "" : $$""", "nextPageToken": "{{nextPageToken}}" """;
+        return $$"""{ "dataPoints": [ {{points}} ]{{token}} }""";
     }
 }

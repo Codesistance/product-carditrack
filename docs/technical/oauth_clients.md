@@ -273,6 +273,14 @@ connect makes a reconnect look like a failed one.
    the client extracts, so the two cases separate. Not currently ticketed: issue
    #38 was closed once the names were settled, on the basis that a bug ticket
    gets raised if a live sync turns out to be missing a metric.
+
+   **First live finding, 2026-08-10:** a wearer in continuous heart-rate
+   tracking mode returned more than the granular fetch's 20,000-point cap for a
+   single civil day — not a field-name bug, but the cap's underlying assumption
+   (1-minute cadence, ~1,440 points/day) proven wrong by real device behaviour.
+   Raised to 100,000 with paced pagination; see
+   `FitbitApiClient.SampleSeriesCap` and the quota note in
+   [data_sync_architecture.md](./data_sync_architecture.md).
 6. **Before public launch**, in `carditrack-devices-prod` only — **not yet
    submitted as of 2026-08-07**: restricted-scope
    verification + CASA assessment — prerequisites checklist in
