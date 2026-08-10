@@ -110,17 +110,33 @@ curl -s -X POST "https://health.googleapis.com/v4/projects/carditrack-devices-<e
   }'
 ```
 
-Schema facts that cost a 400 to learn: the field is **`dataTypes`** (array, kebab-case), not
-`dataType`; **`subscriptionCreatePolicy` is required**. `AUTOMATIC` computes notification
-eligibility from user consents dynamically — **no per-wearer Subscription calls are ever
-needed** (the older design's "create a Subscription per enrolled wearer" step is obsolete).
+Facts that cost live errors to learn (all from the 2026-08-10 dev attempt):
 
-4. Check the returned `state`; the endpoint-verification handshake's exact shape is
-   undocumented — the receiver answers `GET → 200` as the assumed contract. If verification
-   fails, capture the request Google sent (receiver logs) and adjust.
+- **Schema** (400s): the field is **`dataTypes`** (array, kebab-case), not `dataType`;
+  **`subscriptionCreatePolicy` is required**. `AUTOMATIC` computes notification eligibility
+  from user consents dynamically — **no per-wearer Subscription calls are ever needed** (the
+  older design's "create a Subscription per enrolled wearer" step is obsolete).
+- **Quota project** (403 `SERVICE_DISABLED`): user-credential calls must carry
+  `-H "x-goog-user-project: carditrack-devices-<env>"`, and the Health API must be enabled on
+  that project first: `gcloud services enable health.googleapis.com --project carditrack-devices-<env>`.
+- **Enrollment gate** (bare 403 `The caller does not have permission`): even a **project
+  owner** with the quota project set is refused on both `subscribers` read and create, while
+  the data plane (OAuth user scopes, polling, sync) works fine — the Subscriber/webhook
+  management plane is **enrollment-gated by Google** beyond the data-scope access granted at
+  provisioning. (Diagnostic tell: project-IAM denials come back verbose with the permission
+  name and a Troubleshooter URL; the product gate returns the bare form.) Resolution runs
+  through the Health API console page / an access request or support ticket per project —
+  **file for devices-prod at the same time; this is a lead-time item, likely weeks.**
 
-- **Dev status:** in progress 2026-08-10 — payload validated by the live API; the create
-  itself awaits a basic role on `carditrack-devices-dev` (or an owner-credentialed run).
+4. Once enrolled: check the returned `state`; the endpoint-verification handshake's exact
+   shape is undocumented — the receiver answers `GET → 200` as the assumed contract. If
+   verification fails, capture the request Google sent (receiver logs) and adjust.
+
+- **Dev status:** **blocked on Google-side webhook enrollment** (2026-08-10) — payload
+  validated by the live API; quota project solved; owner-credentialed create then bare-403'd
+  at the product gate. Until enrollment lands, the pipeline runs whole on **10-minute
+  polling** by design — webhooks only shorten latency, so this blocks nothing else in this
+  runbook except step 9's webhook leg.
 
 ### 8. HealthApiProbe live-wearer check (human required)
 
