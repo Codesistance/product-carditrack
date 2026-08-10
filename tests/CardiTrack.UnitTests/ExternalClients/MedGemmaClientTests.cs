@@ -142,6 +142,9 @@ public class MedGemmaClientTests
         var ex = await Assert.ThrowsAsync<HttpRequestException>(() => client.GenerateAsync(Prompt));
 
         Assert.Equal(HttpStatusCode.InternalServerError, ex.StatusCode);
+        // The handler repeats its last enqueued response, so every retry attempt also sees 500 —
+        // this is the exhausted-retries path, one request per attempt.
+        Assert.Equal(3, handler.Requests.Count);
         var span = Assert.Single(capture.Stopped);
         Assert.Equal(ActivityStatusCode.Error, span.Status);
         Assert.Equal("500", span.GetTagItem("error.type"));
@@ -153,6 +156,35 @@ public class MedGemmaClientTests
         var error = Assert.Single(logger.Entries, e => e.Level == LogLevel.Error);
         Assert.Contains("500", error.Message);
         Assert.DoesNotContain("upstream error body", error.Message);
+        // The exhausted-retry path logs exactly what the single-attempt path used to: one error,
+        // nothing per attempt. A sustained outage must not triple its own log volume.
+        Assert.DoesNotContain(logger.Entries, e => e.Level == LogLevel.Warning);
+    }
+
+    /// <summary>
+    /// The Cloud Run cold-start / IAM-propagation case this retry exists for: a couple of
+    /// platform-level rejections followed by a real answer, all within one logical call.
+    /// </summary>
+    [Fact]
+    public async Task GenerateAsync_RetriesTransientFailures_AndReturnsTheEventualSuccess()
+    {
+        using var capture = new SpanCapture();
+        var handler = new FakeHttpMessageHandler()
+            .Enqueue(HttpStatusCode.NotFound, "")
+            .Enqueue(HttpStatusCode.Forbidden, "")
+            .Enqueue(HttpStatusCode.OK, GeneratePayload);
+        var client = CreateClient(handler, out var logger);
+
+        var result = await client.GenerateAsync(Prompt);
+
+        Assert.Equal(ResponseText, result);
+        Assert.Equal(3, handler.Requests.Count);
+        var span = Assert.Single(capture.Stopped);
+        Assert.NotEqual(ActivityStatusCode.Error, span.Status);
+        Assert.DoesNotContain(logger.Entries, e => e.Level == LogLevel.Error);
+        // One note that it took retries to succeed — not one per failed attempt.
+        var warning = Assert.Single(logger.Entries, e => e.Level == LogLevel.Warning);
+        Assert.Contains("3", warning.Message);
     }
 
     /// <summary>
@@ -255,7 +287,15 @@ public class MedGemmaClientTests
             new HttpClient(handler) { BaseAddress = new Uri("http://localhost:11434") });
         var settings = new PrivateAiSettings { Model = Model, BaseUrl = "http://localhost:11434", TimeoutSeconds = 300 };
         logger = new ListLogger();
-        return new MedGemmaClient(factory, settings, "PrivateAiClient", logger);
+        return new MedGemmaClient(factory, settings, "PrivateAiClient", logger, new InstantRetryTimeProvider());
+    }
+
+    /// <summary>Real <see cref="TimeProvider"/> for everything except the retry backoff, which
+    /// resolves immediately so a test exercising all attempts stays fast.</summary>
+    private sealed class InstantRetryTimeProvider : TimeProvider
+    {
+        public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period) =>
+            base.CreateTimer(callback, state, TimeSpan.Zero, period);
     }
 
     /// <summary>Captures completed activities from the CardiTrack.Ai source only.</summary>
