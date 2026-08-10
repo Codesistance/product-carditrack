@@ -144,32 +144,158 @@ junk-filtered). Before prod:
 - **Branding → Email Templates**: customize *Change Password* (this is the email the
   app's Forgot Password flow triggers) and *Verification Email*.
 
-## 8. Post-login Action (verification gate + claims)
+## 8. Post-login Action (verification gate + claims + social account linking)
 
-The tenant enforces a **hard email-verification gate**: unverified logins are denied, and
-the app routes users to its Verify Email screen. The deny reason MUST be the exact string
-`email_not_verified` — the app maps it to that screen; prose reasons degrade to a generic
-error. The same Action copies `email_verified` into the access token so the API records
-real verification state.
+The tenant's single post-login Action does three things:
+
+1. **Email-verification gate** — unverified logins are denied and the app routes users
+   to its Verify Email screen. The deny reason MUST be the exact string
+   `email_not_verified` — the app maps it to that screen; prose reasons degrade to a
+   generic error. Social logins (`google-oauth2`, `apple`) are exempt: the provider has
+   already verified the address.
+2. **Claims** — copies `email_verified` into the access token so the API records real
+   verification state.
+3. **Account linking (Phase 9)** — on the very first social login whose verified email
+   matches an existing verified database (`auth0|…`) account, links the social identity
+   into that account and re-keys the session so the token's `sub` stays `auth0|…`. The
+   CardiTrack `Users.Auth0UserId` row therefore never changes and the API needs no
+   identity migration.
+
+### 8a. Machine-to-Machine application for the Action
+
+The linking block calls the Management API with its own credentials — per tenant:
+
+1. **Applications → Create Application → Machine to Machine**, name `CardiTrack Actions`.
+   Authorize it for the **Auth0 Management API** with exactly `read:users`, `update:users`.
+2. Deliberately **not** the CardiTrack Web credentials from section 9 — Action secrets
+   are a second storage location, and sharing a secret doubles its rotation blast radius.
+3. These credentials live **only** as Action secrets (below) — never in Secret Manager,
+   never in the repo.
+
+### 8b. Action secrets
+
+On the "CardiTrack post-login" Action (**Actions → Library → CardiTrack post-login →
+Secrets**), add:
+
+| Secret | Value |
+|---|---|
+| `TENANT_DOMAIN` | the **canonical** `*.auth0.com` tenant domain, bare host — it forms the Management API audience, so it must stay the canonical domain even if a custom domain is added later |
+| `MGMT_CLIENT_ID` | `CardiTrack Actions` client id (8a) |
+| `MGMT_CLIENT_SECRET` | `CardiTrack Actions` client secret (8a) |
+
+### 8c. Action source
 
 **Actions → Library → Create Action** ("CardiTrack post-login", Login / Post Login), then
 drag it into **Actions → Triggers → post-login** (it must be the ONLY Action denying
-logins — remove any earlier verification Action):
+logins — remove any earlier verification Action). This runbook is the only home of the
+Action source — edit it here first, then paste into the dashboard:
 
 ```js
 exports.onExecutePostLogin = async (event, api) => {
   const ns = 'https://carditrack.com';
-  api.accessToken.setCustomClaim(`${ns}/email_verified`, event.user.email_verified);
+  const SOCIAL = ['google-oauth2', 'apple'];
+  const isSocial = SOCIAL.includes(event.connection.strategy);
 
-  if (!event.user.email_verified) {
+  // ── 1. Account linking: social identity → existing database primary ──
+  // Runs ONLY on the very first social login (logins_count === 1). After that,
+  // either the identity is already linked (the profile's user_id is auth0|…),
+  // or the social sub may already own CardiTrack data of its own — linking
+  // then would orphan that data. Every case this guard skips is caught by the
+  // API's duplicate-email 409 backstop instead of forking an account.
+  if (isSocial
+      && event.user.email_verified === true
+      && event.stats.logins_count === 1
+      && !event.user.user_id.startsWith('auth0|')) {
+    try {
+      const domain = event.secrets.TENANT_DOMAIN;
+      const token = await getManagementToken(api, event);
+      if (token) {
+        const res = await fetch(
+          `https://${domain}/api/v2/users-by-email?email=${encodeURIComponent(event.user.email.toLowerCase())}`,
+          { headers: { authorization: `Bearer ${token}` } });
+        const candidates = res.ok ? await res.json() : [];
+        // The database account must itself be verified: an unverified password
+        // account is an unproven claim on this email — linking would hand this
+        // social session to whoever typed the address first.
+        const primary = candidates.find(u =>
+          u.user_id !== event.user.user_id
+          && u.user_id.startsWith('auth0|')
+          && u.email_verified === true);
+        if (primary) {
+          const sep = event.user.user_id.indexOf('|');
+          const link = await fetch(
+            `https://${domain}/api/v2/users/${encodeURIComponent(primary.user_id)}/identities`,
+            {
+              method: 'POST',
+              headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+              body: JSON.stringify({
+                provider: event.user.user_id.slice(0, sep),
+                user_id: event.user.user_id.slice(sep + 1),
+              }),
+            });
+          if (link.ok) {
+            // Re-key THIS login's tokens to the database account so the API
+            // sees the auth0|… sub from the very first social session.
+            api.authentication.setPrimaryUser(primary.user_id);
+          } else {
+            console.log(`account-link failed: ${link.status} ${await link.text()}`);
+          }
+        }
+      }
+    } catch (e) {
+      // FAIL-OPEN by design: an unlinked login still proceeds. The API's
+      // duplicate-email 409 prevents a forked account, and the user can retry
+      // later. Denying here would lock every social sign-in out for the whole
+      // duration of any Management API incident.
+      console.log(`account-link error: ${e.message}`);
+    }
+  }
+
+  // ── 2. Verification gate + claims (social identities arrive pre-verified) ──
+  api.accessToken.setCustomClaim(`${ns}/email_verified`, event.user.email_verified);
+  if (!event.user.email_verified && !isSocial) {
     api.access.deny('email_not_verified'); // exact string — the app matches it
   }
 };
+
+async function getManagementToken(api, event) {
+  const cached = api.cache.get('mgmt-token');
+  if (cached) return cached.value;
+  const domain = event.secrets.TENANT_DOMAIN;
+  const res = await fetch(`https://${domain}/oauth/token`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      grant_type: 'client_credentials',
+      client_id: event.secrets.MGMT_CLIENT_ID,
+      client_secret: event.secrets.MGMT_CLIENT_SECRET,
+      audience: `https://${domain}/api/v2/`,
+    }),
+  });
+  if (!res.ok) { console.log(`mgmt token failed: ${res.status}`); return null; }
+  const body = await res.json();
+  api.cache.set('mgmt-token', body.access_token, { ttl: 10 * 60 * 1000 });
+  return body.access_token;
+}
 ```
 
-Note the Action as deployed denies **all** unverified logins — there is no
-short-circuit for social connections, so Phase 9 must **add** one (social identities
-arrive pre-verified) rather than merely confirm it exists.
+### 8d. Linking design notes (decision record)
+
+- **Direction**: the database identity stays primary
+  (`POST /api/v2/users/{auth0|…}/identities` with the social identity in the body), so
+  `Users.Auth0UserId` never changes and the API is untouched.
+- **`setPrimaryUser` is load-bearing** — without it, the *first* social login's tokens
+  still carry the social `sub` and that session forks straight into onboarding.
+- **First-login-only** (`logins_count === 1`) is the standard Auth0 pattern that
+  prevents orphaning app data already keyed to a social `sub`. The reverse case —
+  Google account created first, password account later — is deliberately *not* linked;
+  the API's duplicate-email 409 answers it with "sign in the way you first registered".
+- **Idempotent**: on any later social login of a linked account, `event.user.user_id`
+  is already `auth0|…`, so the linking block skips.
+- **Fail-open**: see the comment in the source. The server-side safety net is the API's
+  409 (`DuplicateEmailException` in `OnboardingService`).
+- **No npm dependency**: raw `fetch` (Actions Node 18+ runtime); Management token cached
+  via `api.cache` for 10 minutes.
 
 The API reads `https://carditrack.com/email_verified` (see `UserContextMiddleware`) at
 user creation and refreshes it on every `GET /api/Onboarding/status`. Role/organization
@@ -296,12 +422,31 @@ curl -s -X POST https://<tenant-domain>/dbconnections/change_password \
 # Always 200 with a plain-text body; the reset email should arrive.
 ```
 
+Social login + account linking (after the section 8 Action is deployed):
+
+- **Connection smoke**: Authentication → Social → Google → *Try Connection* must still
+  succeed after the Action deploy.
+- **Linking proof**: create a **verified** password test user, then sign in in the app
+  with a Google account using the **same email** (its first-ever Google login).
+  Monitoring → Logs must show a successful login, and the session's access token `sub`
+  must be the `auth0|…` id (decode from the app session, or watch the Action's
+  `console.log` in the Realtime Webtask Logs extension). Management API
+  `users-by-email` should then return **one** user with **two** identities.
+- **Gate regression**: an unverified password login must still be denied with the exact
+  reason `email_not_verified`.
+- **409 backstop**: an authenticated `POST /api/Onboarding/setup` whose token email is
+  already owned by a different `sub` (e.g. a social login the Action failed to link)
+  must return **409** with an `ErrorResponse`, not 500.
+
 ## 13. Later (not blocking first sign-in)
 
-- **Social login (Phase 9)**: enable `google-oauth2` + `apple` connections (Google
-  Cloud OAuth credentials / Apple Services ID), attach them to the Native app; the
-  app already renders the buttons on **both** `CreateAccountPage` and `SignInPage`
-  (no tap handlers yet). Scoped step-by-step in
+- **Social login (Phase 9)**: the app-side handlers are **wired** (Universal Login,
+  Authorization Code + PKCE, both `CreateAccountPage` and `SignInPage`), and the
+  section 8 Action carries the verification short-circuit + account linking. Per-tenant
+  work that remains: enable the `google-oauth2` connection for CardiTrack Mobile
+  (Google credentials done 2026-08-07) and provision the `apple` connection (Services
+  ID + .p8 — required before the iOS store release; until then the Apple button
+  degrades to "not available yet"). Scoped step-by-step in
   [oauth_clients.md](./oauth_clients.md) — note the sign-in Google client is a
   **different registration** from the Google Health API device client.
 - **More claims in the section 8 Action** (`https://carditrack.com/role`,

@@ -19,8 +19,9 @@ lifecycles.
 |---|--------|--------|------|---------|---------|--------|
 | 1 | CardiTrack Web (`Auth0__ClientId/Secret`) | Identity | Confidential (Regular Web App) | Auth0 | `auth0-client-id` / `auth0-client-secret` | Created per [runbook §4](./auth0_setup_runbook.md) |
 | 2 | CardiTrack Mobile | Identity | Public (Native, PKCE, no secret) | Auth0 | `auth0-mobile-client-id` | Created per [runbook §3](./auth0_setup_runbook.md) |
-| 3 | Google sign-in (social) | Identity | Web app client **used by Auth0**, not by our code | Google Cloud (`carditrack-signin`) | Stored inside the Auth0 connection | **Provisioned 2026-08-07** — clients created, both tenants' Auth0 connections wired; **app buttons still unwired** (Phase 9, below) |
-| 4 | Apple Sign In (social) | Identity | Services ID + .p8 key **used by Auth0** | Apple Developer | Stored inside the Auth0 connection | Pending (Phase 9, below) |
+| 3 | Google sign-in (social) | Identity | Web app client **used by Auth0**, not by our code | Google Cloud (`carditrack-signin`) | Stored inside the Auth0 connection | **Provisioned 2026-08-07** — clients created, both tenants' Auth0 connections wired; **app buttons wired 2026-08-10** (Universal Login + PKCE) |
+| 4 | Apple Sign In (social) | Identity | Services ID + .p8 key **used by Auth0** | Apple Developer | Stored inside the Auth0 connection | **App button wired 2026-08-10**; credentials pending (Phase 9, below) — button degrades to "not available yet" until then |
+| 7 | CardiTrack Actions | Identity | Confidential (M2M, Management API: `read:users` `update:users`) | Auth0 | **Action secrets only** (never Secret Manager, never the repo) | Pending per tenant — [runbook §8a](./auth0_setup_runbook.md); powers the account-linking Action |
 | 5 | Fitbit provider (Google Health API) | Device data | Confidential Web application | Google Cloud (`carditrack-devices-{env}`) | `devices-fitbit-client-id` / `devices-fitbit-client-secret` | **Provisioned 2026-08-07** — clients created, secrets loaded, API + Worker revisions rolled; field names verified against the v4 discovery document 2026-08-09; **live-wearer population check outstanding** (step 5b below) |
 | 6+ | Garmin / Withings / Oura / Whoop | Device data | Per-vendor | Each vendor's portal | Not yet provisioned (`devices-{provider}-client-{id,secret}`) | Future — config stubs only; **only Fitbit is registered in DI** |
 
@@ -89,15 +90,19 @@ Consequences worth holding onto:
 
 ## Social log-on (Phase 9) — scope
 
-The mobile app already renders **Google** and **Apple** buttons on **both**
-`CreateAccountPage` and `SignInPage`, and the Auth0 Native app already allows
-the `carditrack://oauth/callback` callback and Authorization Code + PKCE grant
-([runbook §3](./auth0_setup_runbook.md)). The buttons are **unwired** — they
-have no tap handlers, and the app-side PKCE invocation is still to build.
-**Google's credentials and Auth0 connection are done as of 2026-08-07**, so for
-Google the only remaining work is **app code**; Apple still needs its
-credentials. Microsoft (`windowslive`) is not planned for MVP and has no button
-in the mobile UI — treat it as deferred until product asks.
+The mobile app renders **Google** and **Apple** buttons on **both**
+`CreateAccountPage` and `SignInPage`, and the Auth0 Native app allows the
+`carditrack://oauth/callback` callback and Authorization Code + PKCE grant
+([runbook §3](./auth0_setup_runbook.md)). **As of 2026-08-10 the buttons are
+wired**: both launch Auth0 Universal Login in the system browser
+(`AuthService.SignInWithProviderAsync` → `connection=google-oauth2|apple`, code
++ PKCE + state, exchange at `/oauth/token`), then join the normal post-login
+routing. **Google's credentials and Auth0 connection are done as of
+2026-08-07**, so Google works as soon as the connection is enabled for
+CardiTrack Mobile and the [runbook §8](./auth0_setup_runbook.md) Action is
+deployed; Apple still needs its credentials — until then its button surfaces
+"not available yet". Microsoft (`windowslive`) is not planned for MVP and has
+no button in the mobile UI — treat it as deferred until product asks.
 
 **What's needed per provider:**
 
@@ -147,17 +152,25 @@ Required by App Store review: an iOS app offering any third-party social login
 
 ### Cross-cutting items (both providers)
 
-- **Email verification**: social identities arrive pre-verified, but the Action
-  deployed per [runbook §8](./auth0_setup_runbook.md) denies **all** unverified
-  logins with no social exception — Phase 9 must **add a short-circuit** for
-  `google-oauth2`/`apple` so social users aren't blocked by the gate.
-- **Account linking**: the same person arriving via password and via Google
-  creates two Auth0 identities with the same email. The API keys users on the
-  `sub` claim, so unlinked duplicates become two CardiTrack users. Decide
-  before launch: enable Auth0 account-linking or accept distinct accounts.
+- **Email verification**: social identities arrive pre-verified; the Action per
+  [runbook §8](./auth0_setup_runbook.md) short-circuits the verification deny
+  for `google-oauth2`/`apple` so social users aren't blocked by the gate.
+- **Account linking — decided 2026-08-10**: linking happens **tenant-side in
+  the post-login Action** ([runbook §8](./auth0_setup_runbook.md)). On the
+  first social login whose verified email matches an existing **verified**
+  database (`auth0|…`) account, the Action links the social identity into that
+  primary and re-keys the session (`setPrimaryUser`), so the token `sub` — and
+  the CardiTrack `Users.Auth0UserId` row — stays the database identity. The
+  Action **fails open**; the API's safety net is a **409** from onboarding
+  (`DuplicateEmailException`) whenever an email is already owned by a different
+  `sub`, so an unlinked login can never fork a second account. The reverse
+  order (social account first, password signup later) is deliberately *not*
+  linked — the 409 message tells the user to sign in the way they first
+  registered.
 - **Per-environment**: everything above is per Auth0 tenant — repeat for dev
-  and prod, and keep prod's Google/Apple credentials out of the repo (they live
-  only in the Auth0 dashboard).
+  and prod (including the `CardiTrack Actions` M2M app + Action secrets), and
+  keep prod's Google/Apple credentials out of the repo (they live only in the
+  Auth0 dashboard).
 
 ---
 
@@ -173,7 +186,9 @@ Fully scripted in the [Auth0 setup runbook](./auth0_setup_runbook.md); summary:
 4. Tenant settings, attack protection, email, post-login Action — §§5–8.
 5. Populate Secret Manager and roll out: `scripts/set-auth0-secrets.sh <env>` — §11.
 6. Social connections (Phase 9) — section above. Google is wired in both
-   tenants as of 2026-08-07; Apple is not.
+   tenants as of 2026-08-07 and the app handlers shipped 2026-08-10; Apple
+   credentials are still pending. Per tenant, also create the
+   `CardiTrack Actions` M2M app and deploy the linking Action — runbook §8.
 
 ## Provisioning steps — device-data client (Google Health API)
 

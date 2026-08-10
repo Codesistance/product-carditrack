@@ -6,7 +6,7 @@ CardiTrack supports **two organization types** with distinct onboarding flows:
 1. **Family Accounts**: Individual/family monitoring elderly relatives
 2. **Business Accounts**: Care homes and healthcare facilities with staff management
 
-**Implemented today:** embedded Auth0 email/password auth with a hard email-verification gate, atomic organization + trial subscription + user setup (`POST /api/Onboarding/setup`), CardiMember creation, Fitbit device connection via Google OAuth (PKCE) with 10-minute polling ingestion, and daily pattern-baseline calculation. Social login, notifications, and billing are planned (marked below).
+**Implemented today:** embedded Auth0 email/password auth with a hard email-verification gate, atomic organization + trial subscription + user setup (`POST /api/Onboarding/setup`), CardiMember creation, Fitbit device connection via Google OAuth (PKCE) with 10-minute polling ingestion, and daily pattern-baseline calculation, plus Google/Apple social login (app-side, 2026-08-10 — per-tenant Auth0 work pending). Notifications and billing are planned (marked below).
 
 ---
 
@@ -21,7 +21,7 @@ CardiTrack supports **two organization types** with distinct onboarding flows:
 3. Password reset uses `POST /dbconnections/change_password` (Forgot Password flow).
 4. The API validates the RS256 JWT on every request; identity is **token-derived on every request** via `UserContextMiddleware` (`sub` claim + database lookup) — there is no server session.
 
-**Social login:** Google and Apple buttons render on both `CreateAccountPage` and `SignInPage`, but they are **not wired to any handler yet** — social login is Phase 9 ([oauth_clients.md](./oauth_clients.md)). Microsoft, Facebook, enterprise SSO (SAML/Azure AD/Okta), MFA, and passwordless are not part of the MVP.
+**Social login (wired 2026-08-10):** the Google and Apple buttons on `CreateAccountPage` and `SignInPage` launch Auth0 Universal Login in the system browser (Authorization Code + PKCE); same-email accounts are unified tenant-side by the post-login Action, with an API 409 backstop ([oauth_clients.md](./oauth_clients.md), runbook §8). Google works once the per-tenant Action/connection work is done; Apple awaits its credentials. Microsoft, Facebook, enterprise SSO (SAML/Azure AD/Okta), MFA, and passwordless are not part of the MVP.
 
 #### **Email Verification Gate (mandatory, between account creation and onboarding)**
 
@@ -576,7 +576,7 @@ The CardiTrack user onboarding process is designed to be **secure, compliant, an
 4. **Privacy transparency**: clear explanation of what family sees; Google-format health-data disclosure (web shipped, mobile pending)
 5. **Immediate value**: first device data within one polling cycle (10 minutes)
 
-**Authentication today:** email/password via Auth0's embedded password-realm grant, with mandatory email verification. **Planned:** Google/Apple social login (buttons rendered, handlers pending — Phase 9), enterprise SSO, MFA, account linking.
+**Authentication today:** email/password via Auth0's embedded password-realm grant, with mandatory email verification; Google/Apple social login via Universal Login + PKCE with tenant-side account linking (app code shipped 2026-08-10; per-tenant Action/connection deploy pending, Apple credentials pending). **Planned:** enterprise SSO, MFA.
 
 **Critical Path:**
 Create Account (Auth0 signup) → Verify Email (mandatory gate) → Sign In → Atomic Setup (Organization + Trial + User) → CardiMember Setup → Device Connection (Fitbit via Google OAuth + PKCE) → 10-minute polling ingestion → *(planned)* Notifications → Baseline → Paid Conversion

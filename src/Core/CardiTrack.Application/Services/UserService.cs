@@ -1,5 +1,6 @@
 using CardiTrack.Application.DTOs.Requests;
 using CardiTrack.Application.DTOs.Responses;
+using CardiTrack.Application.Exceptions;
 using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Domain.Entities;
@@ -17,6 +18,10 @@ public class UserService : IUserService
 
     public async Task<UserResponse> CreateUserAsync(CreateUserRequest request)
     {
+        // The unique index on Email would reject a second identity claiming the same
+        // address anyway, but as an opaque 500 — surface it as a conflict instead.
+        await ThrowIfEmailOwnedElsewhereAsync(request.Email, request.Auth0UserId);
+
         var user = new User
         {
             Auth0UserId = request.Auth0UserId,
@@ -32,7 +37,19 @@ public class UserService : IUserService
         };
 
         await _unitOfWork.Users.AddAsync(user);
-        await _unitOfWork.SaveChangesAsync();
+
+        try
+        {
+            await _unitOfWork.SaveChangesAsync();
+        }
+        catch
+        {
+            // A concurrent request can race past the check above and win the insert;
+            // the unique index on Email then fails this one. Re-check who owns the
+            // email now — a real conflict becomes 409, anything else is a real failure.
+            await ThrowIfEmailOwnedElsewhereAsync(request.Email, request.Auth0UserId);
+            throw;
+        }
 
         return new UserResponse
         {
@@ -45,6 +62,13 @@ public class UserService : IUserService
             IsActive = user.IsActive,
             CreatedDate = user.CreatedDate
         };
+    }
+
+    private async Task ThrowIfEmailOwnedElsewhereAsync(string email, string auth0UserId)
+    {
+        var owner = await _unitOfWork.Users.GetByEmailAsync(email);
+        if (owner is not null && owner.Auth0UserId != auth0UserId)
+            throw new DuplicateEmailException("An account with this email already exists.");
     }
 
     public async Task<User?> GetByAuth0UserIdAsync(string auth0UserId)

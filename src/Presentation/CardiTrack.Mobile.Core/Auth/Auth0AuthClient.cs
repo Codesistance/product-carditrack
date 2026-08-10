@@ -109,6 +109,56 @@ public sealed class Auth0AuthClient : IAuth0AuthClient
         }
     }
 
+    public Uri BuildAuthorizeUri(string connection, string codeChallenge, string state)
+    {
+        EnsureConfigured();
+        var query = new Dictionary<string, string>
+        {
+            ["response_type"] = "code",
+            ["client_id"] = _options.ClientId,
+            ["redirect_uri"] = Auth0Options.CallbackUri,
+            ["connection"] = connection,
+            ["audience"] = _options.Audience,
+            ["scope"] = Scopes,
+            ["code_challenge"] = codeChallenge,
+            ["code_challenge_method"] = "S256",
+            // Verified on return: the carditrack:// scheme is claimable by any installed
+            // app, so an unmatched state means an injected or forged callback.
+            ["state"] = state,
+        };
+        // No nonce: it defends against id_token injection on front-channel delivery, but
+        // the id_token arrives here over the direct TLS /oauth/token call, and the app
+        // reads its claims for display only (JwtPayloadReader validates no signatures).
+        var encoded = string.Join("&", query.Select(p => $"{p.Key}={Uri.EscapeDataString(p.Value)}"));
+        return new Uri($"https://{_options.Domain}/authorize?{encoded}");
+    }
+
+    public async Task<AuthTokens> ExchangeAuthorizationCodeAsync(string code, string codeVerifier, CancellationToken ct = default)
+    {
+        EnsureConfigured();
+        var form = new Dictionary<string, string>
+        {
+            ["grant_type"] = "authorization_code",
+            ["client_id"] = _options.ClientId,
+            ["code"] = code,
+            ["code_verifier"] = codeVerifier,
+            // Must equal the /authorize redirect_uri verbatim; audience and scope were
+            // already bound at /authorize and must not be repeated here.
+            ["redirect_uri"] = Auth0Options.CallbackUri,
+        };
+        try
+        {
+            return await SendTokenRequestAsync("code-exchange", form, ct);
+        }
+        catch (AuthException ex) when (ex.Code == AuthErrorCode.InvalidCredentials)
+        {
+            // invalid_grant on a code exchange means an expired or already-redeemed code —
+            // MapTokenError's "Wrong email or password." is written for the password flow.
+            throw new AuthException(AuthErrorCode.Unknown,
+                "Sign-in took too long — please try again.", ex.Auth0Error, ex.Auth0Description);
+        }
+    }
+
     public async Task<AuthTokens> RefreshAsync(string refreshToken, CancellationToken ct = default)
     {
         EnsureConfigured();

@@ -4,6 +4,11 @@ public interface IAuthService
 {
     Task SignInAsync(string email, string password, CancellationToken ct = default);
 
+    /// <summary>Signs in via Auth0 Universal Login in the system browser (Authorization Code
+    /// + PKCE) for a social connection — Auth0Options.GoogleConnection / AppleConnection.
+    /// Covers both sign-in and sign-up: the provider flow is the same operation.</summary>
+    Task SignInWithProviderAsync(string connection, CancellationToken ct = default);
+
     /// <summary>Creates the Auth0 account only — sign-in is gated on email verification.</summary>
     Task SignUpAsync(string name, string email, string password, CancellationToken ct = default);
 
