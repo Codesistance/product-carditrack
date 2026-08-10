@@ -140,10 +140,15 @@ Facts that cost live errors to learn (all from the 2026-08-10 dev attempt):
    conforms as of PR #140 (**deploy it before retrying the create** — its earlier `204`
    acknowledgment fails the first probe). Then check the returned Subscriber's `state`.
 
-- **Dev status:** retry pending (2026-08-10) — schema, quota project, and handshake causes
-  all identified and fixed; awaiting the PR #140 receiver deploy, then the create with the
-  project-number URL. Until then the pipeline runs whole on **10-minute polling** by design —
-  webhooks only shorten latency.
+- **Dev status: ✅ REGISTERED (2026-08-10)** — Subscriber
+  `projects/192920988822/subscribers/a0dab3ee-c9c4-427a-8d21-c197f91306cd`, created
+  owner-credentialed from Cloud Shell with the command above. Response shape worth knowing for
+  prod: the create returns a **long-running operation wrapper** (`done: true` inline), the
+  Subscriber inside carries **no `state` field** on create, and `endpointAuthorization` echoes
+  only `"secretSet": true` (the secret is never returned). Receiver logs confirmed the
+  documented handshake verbatim: two POSTs from `Google-Health-API-Webhooks` one second apart,
+  answered `200` (authorized) and `401` (unauthorized) — a completed create IS the handshake
+  verdict, since failure would have surfaced as `FAILED_PRECONDITION`.
 
 ### 8. HealthApiProbe live-wearer check (human required)
 
