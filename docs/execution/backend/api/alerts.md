@@ -58,6 +58,8 @@ The implemented `AlertType` enum (integers on the wire) differs from the string 
 | 5 | `Trend` | Multi-week decline trend |
 
 > **First automated producer (AI pipeline, dev):** the real-time assessor writes `HeartRate` alerts — MedGemma's red/orange verdict over the member's latest SSA-denoised hour, with the model's 1–3 sentence assessment as the `message` and the SSA yardsticks in `metricValues`. **Cooldown:** one *unresolved* `HeartRate` alert per member at a time; resolving it re-arms the path. A verdict the parser cannot read never becomes an alert. See [llm_design.md](../../../llm_design.md).
+>
+> **Second automated producer (Worker):** `InactivityDetectionWorker` writes `Inactivity` alerts (always `yellow`, rule-based text, no AI) when a device produces no granular readings for >2 h during the member's local waking hours — the designed `device_disconnected` scenario mapped onto the implemented enum. Same cooldown pattern: one unresolved `Inactivity` alert per member, resolved-to-re-arm; alerts of *different* types never suppress each other.
 
 ### Sensitivity: fixed constants only
 

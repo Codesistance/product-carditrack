@@ -4,11 +4,12 @@
 >
 > - **Built today:** MedGemma (Ollama-served `hf.co/unsloth/medgemma-1.5-4b-it-GGUF:Q4_K_M` on Cloud Run, enabled in dev, scale-to-zero) as the **Medical** AI provider and **Gemini 2.0 Flash** as the **General** provider, consumed by `GenerativeAiService`, `MedicalAiService`, `HealthInsightService`, and `ReportGenerationService` and surfaced through the API's **chat, insights, and reports** endpoints (`ChatController`, `InsightsController`, `ReportsController`). Insight prompts carry a **member context block** (age, sex, caregiver notes — never name or id) and switch by baseline state: a **learning-phase variant** while no baseline exists at all, a **provisional variant** while only a short-window (7/14-day) baseline does, and the full trend prompt once the 30-day baseline lands. The **daily family digest** is the first *background* LLM process: a Cloud Run job (`carditrack-<env>-pipeline-jobs`, hourly Cloud Scheduler, dev only) generates a plain-language previous-day summary per member at 06:00 in their anchor timezone via MedGemma and stores it for `GET /api/v1/insights/members/{id}/digest` — wired through `AddMedicalAiServices`, so the job carries no public-provider key at all. Ingestion is **10-minute polling** of the Google Health API by `WearableSyncWorker` in `CardiTrack.Worker`.
 > - **Real-time path (built, dev):** the webhook receiver and 5-minute aggregator are live (awaiting Subscriber registration), and the **real-time assessment** now runs end to end off the granular store: a 5-minute Cloud Run job (`carditrack-<env>-pipeline-jobs-assessor`) takes each member's latest hour of heart rate, decomposes it with **SSA** (native .NET, `SsaDecomposition` in Application), asks MedGemma for a severity verdict, stores it in the partitioned `RealtimeAssessments` table (90-day retention by partition drop), and routes red/orange verdicts to `Alert` rows — one unresolved heart-rate alert at a time.
-> - **Target architecture (this document):** the LSTM forecast layer, push dispatch, and predictive monitoring described below remain the **design** for the GCP pipeline — not built yet. Push notification infrastructure (FCM/APNs) does not exist yet either.
+> - **Design decisions, 2026-08-10:** the **LSTM is dropped**, not parked. Personalization comes through the context window instead: deterministic .NET computes every number (SSA, baselines, multi-horizon rollups), MedGemma interprets them, and clinical reference ranges are **pinned in a curated table injected into the prompt** — never recalled from model weights, so every assessment's yardstick is auditable. With it go the per-user model files, the Python training job, ONNX, and the calibrated numeric risk scores (0–100 fall-risk etc.) — the predictive path becomes the **trend interpretation** design below. **Wearer-audience features are permanently descoped**: wearers never log in; self-monitoring is not the product.
+> - **Still design-only:** trend interpretation (waits on the R1 statistical engine's baselines), push dispatch (FCM/APNs arrives from a separate workstream; this pipeline only wires dispatch once it lands).
 
 ## Overview
 
-CardiTrack uses MedGemma as its inference model for cardiovascular analysis of wearable data from up to 10,000 wearable devices (Fitbit, Pixel Watch, and other sources connected through the Google Health API). The AI pipeline design runs two parallel paths: a real-time anomaly detection path (5-minute windows, SSA-LSTM pre-processing → MedGemma) and a daily predictive path (per-user LSTM risk model → MedGemma interpretation → family-facing health outlook). All pipeline logic runs on **Cloud Run services and jobs (CPU), scheduled by Cloud Scheduler**, in the same GCP project as the rest of the platform (`carditrack-490120`, `europe-west2`).
+CardiTrack uses MedGemma as its inference model for cardiovascular analysis of wearable data from up to 10,000 wearable devices (Fitbit, Pixel Watch, and other sources connected through the Google Health API). The AI pipeline runs two parallel paths: a real-time anomaly detection path (5-minute windows, SSA pre-processing → MedGemma severity verdict) and a daily interpretive path (computed trend features + pinned reference ranges → MedGemma → family-facing narrative). In both, the division of labour is fixed: **deterministic code computes every number; MedGemma only ever interprets them.** All pipeline logic runs on **Cloud Run services and jobs (CPU), scheduled by Cloud Scheduler**, in the same GCP project as the rest of the platform (`carditrack-490120`, `europe-west2`).
 
 ---
 
@@ -33,10 +34,9 @@ MedGemma 4B was chosen over the 27B variant for cost and latency reasons — at 
 | Service | Role | Status |
 |---------|------|--------|
 | **Cloud Run — `carditrack-<env>-medgemma`** | MedGemma inference via Ollama (CPU) | **Built** — enabled in dev; prod leaves `medgemma_image` empty, so the service does not exist there yet |
-| **Cloud Run services/jobs + Cloud Scheduler** | All pipeline logic — webhook receiver, aggregation, SSA-LSTM, predictive batch, digest, push dispatch | **Digest job built (dev)** — `carditrack-<env>-pipeline-jobs` + hourly Cloud Scheduler, gated on `enable_pipeline_jobs`; the rest is target design |
-| **Cloud Pub/Sub** (`carditrack-<env>-realtime`) | Wearable raw event stream buffer | Topic + pull subscription provisioned in **dev and prod** (`enable_pubsub`); the webhook receiver publishes to it in dev; the aggregator that consumes it is not built |
+| **Cloud Run services/jobs + Cloud Scheduler** | All pipeline logic — webhook receiver, aggregation, SSA pre-processing, assessment, trend interpretation, digest, push dispatch | **Built (dev):** digest + aggregator + assessor jobs (`carditrack-<env>-pipeline-jobs[-aggregator|-assessor]`) and the webhook receiver service, all gated on their enable flags; trend interpretation and push dispatch are target design |
+| **Cloud Pub/Sub** (`carditrack-<env>-realtime`) | Wearable raw event stream buffer | Topic + pull subscription provisioned in **dev and prod** (`enable_pubsub`); the receiver publishes and the aggregator drains it in dev — live traffic awaits Subscriber registration |
 | **Cloud SQL PostgreSQL (existing instance)** | OAuth tokens (encrypted AES-256-GCM in `DeviceConnections`), user profiles, sensitivity settings, family relationships — the transactional system of record (see [infrastructure.md](./infrastructure.md#storage-boundary)); plus **JSONB tables** for AI results (below) | Built (core schema); AI tables not built |
-| **Google Cloud Storage** | Per-user LSTM model files (~50 KB each, ~500 MB at 10 K users) | Target design — no per-user model files exist yet |
 | **FCM / APNs** | Push routing for alerts and digests | **Planned — no push infrastructure exists yet** |
 | **Secret Manager** | Google Health API OAuth client secret, `gemini-api-key`, `medgemma-service-url` | Built |
 
@@ -51,24 +51,22 @@ Each component is a Cloud Run service (event/HTTP-triggered) or Cloud Run job (C
 | Component | Trigger | Cadence | Purpose |
 |-----------|---------|---------|---------|
 | `HealthWebhookReceiver` | HTTP (Cloud Run service) | On event (~333/s peak) | **Built (dev)** — `carditrack-<env>-webhook-receiver`, gated on `enable_webhook_receiver`. Authenticates the Subscriber's shared secret (full `Authorization` header, constant-time), acknowledges with `204`, forwards the **raw, unparsed** payload to Pub/Sub — notify-then-fetch means nothing downstream ever trusts it. Awaiting Subscriber registration against Google (below) |
-| `WearableAggregator` | Cloud Scheduler | Every 5 min | **First increment built (dev):** `carditrack-<env>-pipeline-jobs-aggregator` drains the realtime subscription, maps each notification's `healthUserId` to its `DeviceConnection` (captured once per connection during sync via `GET /v4/users/me/identity`), and runs the standard targeted sync — same invariants, sooner; `LastSyncDate` stamping makes polling the fallback rather than a duplicate. The SSA → MedGemma → severity chain runs in the separate assessor job below rather than inline — the aggregator moves data, the assessor reads it, and either works without the other. **LSTM is parked** until the Python training job exists and members carry ≥30 days of granular history (accumulating since 2026-08-10) |
+| `WearableAggregator` | Cloud Scheduler | Every 5 min | **First increment built (dev):** `carditrack-<env>-pipeline-jobs-aggregator` drains the realtime subscription, maps each notification's `healthUserId` to its `DeviceConnection` (captured once per connection during sync via `GET /v4/users/me/identity`), and runs the standard targeted sync — same invariants, sooner; `LastSyncDate` stamping makes polling the fallback rather than a duplicate. The SSA → MedGemma → severity chain runs in the separate assessor job below rather than inline — the aggregator moves data, the assessor reads it, and either works without the other |
 | `RealtimeAssessor` | Cloud Scheduler | Every 5 min (offset from the aggregator) | **Built (dev):** `carditrack-<env>-pipeline-jobs-assessor` — for each member with fresh data, SSA over the latest 60-minute heart-rate window (≥45 covered minutes; window keyed by its start, so an unmoved window costs no inference), MedGemma assessment (`CARDITRACK_REALTIME_ASSESSMENT_PROMPT`), result to the partitioned `RealtimeAssessments` table. Works entirely off the granular store, so it functions on polling alone — webhook registration only makes it fresher |
 | `SeverityRouter` | On new result row | On write | **First increment built (dev), inline in the assessor rather than a separate component:** the model's closing `Severity:` line is parsed strictly (critical/high/medium/low → red/orange/yellow/green; an unparseable answer is stored but routes nowhere — the model cannot page a family by mumbling), and red/orange verdicts create `Alert` rows with a one-unresolved-heart-rate-alert-at-a-time cooldown. Immediate push via FCM/APNs still waits on push infrastructure |
-| `PredictiveFeatureAggregator` | Cloud Scheduler | Daily 03:00 local | Reads 30–90 day history per user → computes daily feature vectors → runs per-user LSTM → applies confidence gate → writes prediction card |
-| `PredictionCardPush` | Cloud Scheduler | Daily 06:00 local | Reads today's prediction cards → calls MedGemma (`CARDITRACK_PREDICT_PROMPT`) → pushes via FCM/APNs (risk ≥ 40) |
-| `DigestGenerator` | Cloud Scheduler | **Built (dev):** hourly scheduler, generating at **06:00 in each member's anchor timezone** (earliest-linked caregiver's `User.TimeZoneId`) | Summarises the previous local day per member → calls MedGemma (`CARDITRACK_FAMILY_DIGEST_PROMPT`) → stores to the partitioned `DigestEntries` table (12-month retention by partition drop), read via `GET /api/v1/insights/members/{id}/digest`. Push delivery waits on FCM/APNs; the wearer-audience variant waits on wearer logins |
-| `InactivityDetector` | Cloud Scheduler | Every 15 min | Checks last event timestamp per user during waking hours (07:00–22:00); pushes rule-based "device check" if > 2 h silence — no MedGemma call |
-| `ModelRetrainer` | Cloud Scheduler (dispatcher) | Weekly (Sunday 02:00) | Triggers a containerized **Python training job** (Cloud Run job, CPU) that pulls 90-day feature history per user → retrains LSTM → exports **ONNX** model file to GCS |
+| `TrendInterpreter` | Cloud Scheduler | Daily (design) | Replaces the former LSTM predictive path (dropped 2026-08-10): reads the member's multi-horizon rollups + R1 baselines, computes trend features deterministically (moving averages, slopes, deviations — .NET, no ML), injects the **pinned clinical reference-range table**, and asks MedGemma for a family-facing trend narrative feeding digests/insights. No risk scores, no per-user models. Waits on the R1 statistical engine |
+| `DigestGenerator` | Cloud Scheduler | **Built (dev):** hourly scheduler, generating at **06:00 in each member's anchor timezone** (earliest-linked caregiver's `User.TimeZoneId`) | Summarises the previous local day per member → calls MedGemma (`CARDITRACK_FAMILY_DIGEST_PROMPT`) → stores to the partitioned `DigestEntries` table (12-month retention by partition drop), read via `GET /api/v1/insights/members/{id}/digest`. Push delivery waits on FCM/APNs (arriving from a separate workstream); the family audience is the only audience — wearers never log in |
+| `InactivityDetector` | ~~Cloud Scheduler~~ Worker cron | Every 15 min | **Built:** `InactivityDetectionWorker` in `CardiTrack.Worker` — this table originally drew it beside the pipeline, but it makes no AI call, and non-AI background jobs are Worker-exclusive per CLAUDE.md, so placement follows the rule, not the diagram. Silence means **no granular readings** (a sync that returns nothing is exactly the dead-battery case), measured on the member's anchor clock: >2 h without a minute during waking hours (07:00–22:00 local, effectively from 09:00 so the charger never trips the first alert of the day) raises one yellow `Inactivity` alert, suppressed until resolved |
 
-> **Runtime note:** pipeline components run on **.NET**, matching the rest of the platform. LSTM/SSA *inference* uses **ONNX Runtime**; model *training* (TensorFlow) runs only in the separate Python container job above. No mixed-runtime services.
+> **Runtime note:** all pipeline components run on **.NET**, matching the rest of the platform, and every numeric stage (SSA, baselines, trend features) is native, dependency-free .NET. With the LSTM dropped (2026-08-10) there is no ONNX runtime, no TensorFlow, and no Python anywhere in the pipeline — the former `ModelRetrainer` training job is gone with it.
 >
-> **Timeout note:** `WearableAggregator` and `PredictiveFeatureAggregator` are the longest-running components. Cloud Run jobs allow generous task timeouts (up to 24 h), so both are designed to process users in parallel batches and complete comfortably at 10 K users.
+> **Timeout note:** `WearableAggregator` and `TrendInterpreter` are the longest-running components. Cloud Run jobs allow generous task timeouts (up to 24 h), so both are designed to process users in parallel batches and complete comfortably at 10 K users.
 
-> **Ingestion today:** until this pipeline is built, `WearableSyncWorker` in `CardiTrack.Worker` polls the Google Health API on a **10-minute cron**. Each device writes its own raw row to `DeviceActivityLogs` (one per device per day), and those are merged into `ActivityLogs` — one row per CardiMember per day, which is the series every reader and, in time, the SSA-LSTM pre-processor consumes. The merge coalesces each metric independently by device priority and never sums, so multiple wearables fill each other's gaps without double-counting. Each run re-fetches a short **trailing window** ending at today (`SyncLookbackDays`, default 3 complete days behind it) so the day in progress is visible and a day missed during an outage is recovered rather than lost; a connection becomes due on its own `SyncFrequencyMinutes`, with the cron setting only how often the worker looks. The webhook path below replaces polling when it lands.
+> **Ingestion today:** until this pipeline is built, `WearableSyncWorker` in `CardiTrack.Worker` polls the Google Health API on a **10-minute cron**. Each device writes its own raw row to `DeviceActivityLogs` (one per device per day), and those are merged into `ActivityLogs` — one row per CardiMember per day, which is the series every reader consumes. The merge coalesces each metric independently by device priority and never sums, so multiple wearables fill each other's gaps without double-counting. Each run re-fetches a short **trailing window** ending at today (`SyncLookbackDays`, default 3 complete days behind it) so the day in progress is visible and a day missed during an outage is recovered rather than lost; a connection becomes due on its own `SyncFrequencyMinutes`, with the cron setting only how often the worker looks. The webhook path below replaces polling when it lands.
 >
 > Note that this polling path writes **only** to Cloud SQL — it does not publish to Pub/Sub, by design. The topic below carries provider webhook notifications forwarded by `HealthWebhookReceiver`, not `ActivityLogs` egress from the Worker; the Worker stays free of AI-pipeline responsibilities (see `CLAUDE.md`).
 >
-> **Granular substrate (built):** the same worker-cadence pulls now also store minute-grain series — 1-minute heart rate and steps, active-zone minutes, ~5-minute SpO2 — as per-device hour vectors in the partitioned `GranularMetricHours` table, with per-member hourly rollups in `MetricRollupsHourly` and week/month views over the daily rows (see [granular_timeseries_storage.md](./technical/granular_timeseries_storage.md)). The moving-window read the SSA-LSTM pre-processor needs (`IGranularMetricRepository.GetWindowAsync` — merged minute series over an arbitrary UTC hour range) exists today; what remains for the real-time path is the webhook trigger, the 5-minute cadence, and the pipeline components themselves.
+> **Granular substrate (built):** the same worker-cadence pulls now also store minute-grain series — 1-minute heart rate and steps, active-zone minutes, ~5-minute SpO2 — as per-device hour vectors in the partitioned `GranularMetricHours` table, with per-member hourly rollups in `MetricRollupsHourly` and week/month views over the daily rows (see [granular_timeseries_storage.md](./technical/granular_timeseries_storage.md)). The moving-window read the SSA pre-processor needs (`IGranularMetricRepository.GetWindowAsync` — merged minute series over an arbitrary UTC hour range) is what the assessor job consumes today.
 
 ---
 
@@ -126,7 +124,7 @@ AI outputs are derived data in the **existing Cloud SQL instance** — regenerab
 | Table | Key columns | JSONB payload | Retention |
 |-------|-------------|---------------|-----------|
 | `realtime_results` | `wearer_user_id`, `window_start`, `severity` | `medgemma_output`, `anomaly_scores` | **Built as the typed, day-partitioned `RealtimeAssessments` table** (`CardiMemberId`, `WindowStartUtc` PK; SSA features, model output and routed severity as columns — typed rather than JSONB, per the granular-storage ADR) — 90 days by partition drop |
-| `prediction_cards` | `wearer_user_id`, `date` | `risk_scores`, `confidences`, `medgemma_output` | 90 days |
+| `prediction_cards` | ~~`wearer_user_id`, `date`~~ | ~~`risk_scores`, `confidences`, `medgemma_output`~~ | **Descoped 2026-08-10** with the LSTM — trend interpretation writes narrative into digests/insights, not risk-score rows |
 | `trend_aggregates` | `wearer_user_id`, `date` | `resting_hr_7d_ma`, `hrv_7d_ma`, `sleep_score_7d_ma` | 2 years |
 | `digest_log` | `wearer_user_id`, `date`, `audience` | `digest_text` | 1 year |
 
@@ -155,7 +153,7 @@ CardiTrack operates two parallel AI paths with distinct cadences and purposes:
 ┌─────────────────────────────────────────────────────────────┐
 │                    REAL-TIME PATH (5-min)                   │
 │                                                             │
-│  Wearable event → Pub/Sub → Aggregator → SSA-LSTM           │
+│  Wearable event → Pub/Sub → Aggregator → SSA → Assessment   │
 │  → MedGemma (anomaly) → Severity router → Alert / Digest   │
 └─────────────────────────────────────────────────────────────┘
 
@@ -163,7 +161,7 @@ CardiTrack operates two parallel AI paths with distinct cadences and purposes:
 │               PREDICTIVE PATH (daily batch)                 │
 │                                                             │
 │  Cloud SQL (30-90 day history) → Feature aggregator         │
-│  → Risk model (per-user LSTM) → MedGemma (interpretation)  │
+│  → Trend features (computed) → MedGemma (interpretation)   │
 │  → Prediction card → Wearer + Family digest                 │
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -197,20 +195,21 @@ Cloud SQL JSONB tables (results store)
 
 ---
 
-## SSA-LSTM Pre-Processing Layer
+## SSA Pre-Processing Layer
 
-Before each 5-minute aggregated window is sent to MedGemma, raw wearable time-series data passes through a Singular Spectrum Analysis + LSTM pipeline. SSA decomposes each metric into **Trend**, **Oscillation**, and **Noise** components, then the LSTM forecasts the next-window trend value. MedGemma receives the denoised trend values rather than raw averages, improving anomaly sensitivity.
+Before each window is sent to MedGemma, raw wearable time-series data passes through Singular Spectrum Analysis. SSA decomposes each metric into **Trend**, **Oscillation**, and **Noise** components; MedGemma receives the denoised trend values rather than raw averages, improving anomaly sensitivity.
 
-> **Built today:** the SSA half — `SsaDecomposition` in `CardiTrack.Application`, dependency-free .NET (lag-covariance + Jacobi eigen-decomposition; window 30, trend + 2 oscillation components, noise as the residual). Until the LSTM exists, the deviation check compares the **actual latest reading against the SSA trend, in units of the noise RMS** — the member's own jitter as the yardstick — rather than a forecast against the actual; the assessor's stored `HrDeviationScore` is exactly this. The LSTM forecast slot remains open (parked as above), and slots in as a second deviation input without changing the stored shape.
+> **Built:** `SsaDecomposition` in `CardiTrack.Application`, dependency-free .NET (lag-covariance + Jacobi eigen-decomposition; window 30, trend + 2 oscillation components, noise as the residual). The deviation check compares the **actual latest reading against the SSA trend, in units of the noise RMS** — the member's own jitter as the yardstick; the assessor's stored `HrDeviationScore` is exactly this.
+>
+> **The LSTM forecast that used to sit beside SSA was dropped 2026-08-10.** Personalization beyond the SSA window comes from the R1 baselines and rollups fed through the prompt (see Trend Interpretation), not from a trained per-member forecaster — no training pipeline, no per-member model files, no calibrated risk scores.
 
 ### Role in the pipeline
 
 | Stage | Input | Output |
 |-------|-------|--------|
 | SSA decomposition | Raw intraday time-series | Trend + Oscillation components per metric |
-| LSTM forecast | Rolling trend history (look-back ~60 min) | Predicted next-window trend value |
-| Deviation check | Predicted vs. actual trend | Δ anomaly score per metric |
-| MedGemma prompt | Cleaned trend values + anomaly scores | Cardiovascular assessment |
+| Deviation check | Actual latest reading vs. SSA trend | Deviation score in noise-RMS units |
+| MedGemma prompt | Denoised trend + deviation yardsticks | Cardiovascular assessment + severity verdict |
 
 ### Google Health API Data Type → SSA-LSTM Input Mapping
 
@@ -253,12 +252,10 @@ Prefer the **civil** variants throughout. Physical-instant filtering buckets by 
 |-----------|------------------|-----------|
 | `window_size` (L) | `30` | 30-minute lag window captures ~2 cardiac cycles and one activity micro-burst |
 | Number of components | `3` (Trend + 2 Oscillations) | Isolates circadian rhythm + short activity oscillation from noise |
-| LSTM `look_back` | `60` samples (60 min) | Sufficient history to detect slow-onset anomalies (e.g., rising resting HR) |
-| LSTM hidden units | `64` | Balances capacity vs. inference latency on CPU (pre-processor runs on CPU Cloud Run) |
 
 ### Implementation
 
-> **Reference implementation** (Python, for algorithm clarity). The production pre-processor runs in **.NET**: SSA implemented natively, LSTM inference via **ONNX Runtime** on models exported by the Python training job.
+> **Reference implementation** (Python, for algorithm clarity only — nothing Python runs in production). The production pre-processor is `SsaDecomposition`, implemented natively in .NET.
 
 ```python
 # pip install pyts tensorflow pandas numpy
@@ -284,7 +281,7 @@ def preprocess(hr_series: list[float], window_size: int = 30) -> dict:
     }
 ```
 
-> **Deployment note:** The SSA-LSTM pre-processor runs inside the 5-minute aggregator (CPU only — no GPU required). LSTM inference on a 60-sample sequence takes ~5ms, negligible against the window budget.
+> **Deployment note:** SSA runs inside the 5-minute assessor job (CPU only — no GPU required); a 60-sample decomposition is sub-millisecond, negligible against the window budget.
 
 ### Provisioning the webhook subscriber
 
@@ -447,29 +444,22 @@ If there is a concern, describe it simply and recommend they check on their love
 Never diagnose. Never speculate about conditions. Do not include raw numbers unless severity is Critical.
 ```
 
-**Wearer system prompt (daily digest):**
-```
-[CARDITRACK_DIGEST_PROMPT]
-You are summarising the past 24 hours of a user's cardiovascular wearable data.
-Highlight any notable events from today. Describe overnight heart rate and HRV trends.
-Be encouraging where metrics are healthy. Flag concerns clearly but without alarm.
-Suggest one actionable next step if a pattern warrants it (e.g., "consider an earlier bedtime tonight").
-```
-
-> Both digest prompts are fixed per audience type, keeping them cacheable as fixed prefixes, the same as the real-time monitoring prompt.
+> *(A wearer-audience digest prompt — `CARDITRACK_DIGEST_PROMPT` — used to sit here. Descoped 2026-08-10: wearers never log in, so there is no wearer to read it. Family is the only audience.)*
+>
+> Digest prompts are fixed per audience type, keeping them cacheable as fixed prefixes, the same as the real-time monitoring prompt.
 
 ---
 
 ### Inactivity and device-off detection
 
-A family member's greatest fear is silence — not knowing whether no news is good news or a missed alert. The system pushes a **"device check"** notification if:
+A family member's greatest fear is silence — not knowing whether no news is good news or a missed alert. **Built:** `InactivityDetectionWorker` in `CardiTrack.Worker` (rule-based, no MedGemma call — which is also why it lives in the Worker and not this pipeline, per CLAUDE.md) raises a **"device check"** alert when:
 
-- No wearable events received for a wearer for > 2 hours during expected active hours (07:00–22:00 local time)
-- SpO2 or HR data absent from 3+ consecutive 5-minute windows
+- No granular readings for a wearer for > 2 hours during waking hours (07:00–22:00 on the member's anchor clock, effectively from 09:00 so the whole silent window is inside waking hours and a charging watch never trips the first alert of the day)
+- Silence means **no minute-grain readings**, deliberately not "no successful sync": a sync that completes and returns nothing is exactly the dead-battery case this alert exists to catch
 
-The notification reads: *"[Name]'s device hasn't synced in 2 hours. You may want to check in."* — this is rule-based, not MedGemma-generated, to keep latency and cost at zero for the common no-data case.
+The alert reads: *"No readings from the device since HH:mm. It may need charging, or a quick check that it is being worn."* — rule-based, keeping latency and cost at zero for the common no-data case.
 
-> This detector emits the standard **`device_disconnected`** alert (severity `yellow`) defined in [alerts.md](./execution/backend/api/alerts.md), so it appears in the alerts list, respects quiet hours/routing preferences, and follows the normal acknowledgment lifecycle. It is distinct from the `no_morning_activity` (`red`) alert, which fires when the device *is* syncing but no movement is detected past the typical wake time.
+> The detector emits the standard `Inactivity` alert (severity `yellow`) defined in [alerts.md](./execution/backend/api/alerts.md), so it appears in the alerts list and follows the normal acknowledgment lifecycle, with the same cooldown as the assessor's alerts: one unresolved `Inactivity` alert per member, resolved-to-re-arm. (The designed `device_disconnected` string taxonomy maps to the implemented `Inactivity` enum value; the separate `no_morning_activity` red variant — device syncing but no movement past typical wake time — is R1 statistical-engine territory.)
 
 ---
 
@@ -482,108 +472,89 @@ The notification reads: *"[Name]'s device hasn't synced in 2 hours. You may want
 
 ---
 
-## Predictive Monitoring
+## Trend Interpretation (formerly Predictive Monitoring)
 
-Predictive monitoring is CardiTrack's core market differentiator — every competitor reacts to emergencies; CardiTrack warns before they happen. This section defines what is predicted, when, how the AI pipeline produces predictions, and how confidence is managed to keep false positives below 5%.
+Forward-looking awareness is CardiTrack's core market differentiator — every competitor reacts to emergencies; CardiTrack notices trajectories early. **Redesigned 2026-08-10:** the per-user LSTM risk model, its calibrated 0–100 risk scores, and the training/lifecycle machinery below it are dropped. In their place, the same early-warning value comes from three auditable layers:
 
-### What the model predicts
+1. **Deterministic trend features** — moving averages, slopes, and deviations computed in .NET from the multi-horizon rollups and R1 baselines (e.g. "resting HR up 6 bpm over 4 days against the 30-day baseline"). Code computes every number; nothing is estimated by a model.
+2. **Pinned reference ranges** — a curated, versioned table of clinical norms (resting HR by age/sex, sleep-duration ranges, activity guidelines) sourced from named standards and injected into the prompt. The model never recalls benchmarks from its training data, so the yardstick behind every narrative is reviewable.
+3. **MedGemma interpretation** — reads the computed features against the member's own history and the pinned ranges, and writes the family-facing trend narrative ("this trajectory is worth watching") that feeds digests and insights.
 
-Predictions are scoped to the 24–72 hour horizon. Longer horizons have insufficient signal fidelity from consumer wearables; shorter horizons are covered by real-time anomaly detection.
+### What is watched
 
-| Prediction | Input signals | Target users | Horizon |
-|------------|--------------|--------------|---------|
-| **Illness onset** | Rising resting HR + declining HRV + elevated skin temp Δ | All | 24–48 h |
-| **Fatigue / overexertion** | Active zone minutes > personal 7-day average × 1.5, HRV drop | Active elderly | 12–24 h |
-| **Poor sleep forecast** | Elevated evening HR, high step count late in day, low prior-night HRV | All | Tonight |
-| **Elevated fall risk** | Poor overnight sleep quality → daytime cognitive/motor impairment | 70+ users | Same day |
-| **Cardiac trend alert** | 3+ day resting HR rise > 5 bpm or HRV decline > 30% from 30-day baseline | All | 24–72 h |
+The signal patterns worth narrating are unchanged — they are simply *computed as rules* now rather than predicted as scores:
 
-> **What is never predicted:** Specific diagnoses, medication interactions, or acute cardiac events (these require clinical-grade devices and are outside CardiTrack's scope). Outputs are framed as risk indicators, not clinical predictions.
+| Pattern | Deterministic signal | Framing to family |
+|---------|---------------------|-------------------|
+| **Possible illness onset** | Rising resting HR trend + declining HRV vs. baseline | "May be coming down with something — worth a check-in" |
+| **Fatigue / overexertion** | Active zone minutes > personal 7-day average × 1.5 | "A lighter day could help" |
+| **Poor sleep pattern** | Elevated evening HR, late activity, short prior nights | "A settled evening might help tonight's rest" |
+| **Cardiac trend** | 3+ day resting HR rise > 5 bpm or HRV decline > 30% from 30-day baseline | "A trend the family should keep an eye on" |
+
+> **What is never produced:** numeric risk scores or probabilities (an LLM cannot honestly calibrate them, and the dropped LSTM was the only component that could have tried), specific diagnoses, medication interactions, or acute cardiac event predictions. Outputs are qualitative trend observations, not clinical predictions.
 
 ---
 
-### Predictive AI pipeline
+### Trend interpretation pipeline (design)
 
 ```
-Cloud SQL (30–90 day per-user history)
+Cloud SQL (MetricRollupsHourly + horizon views + PatternBaselines)
   ↓
-Daily feature aggregator (Cloud Run job, 03:00 local time)
-  — Computes: resting HR 7d MA, HRV 7d MA, sleep score 7d MA,
-              active minutes 7d MA, skin temp delta (if available),
-              day-of-week seasonality index
+Daily trend-feature computation (TrendInterpreter Cloud Run job, .NET — no ML)
+  — Computes: resting HR 7d MA + slope, sleep 7d MA, active minutes 7d MA,
+              deviations vs. 30/60/90-day baselines, day-of-week seasonality
   ↓
 Cold start check
-  ├── < 30 days data → no prediction (baseline learning mode)
-  └── ≥ 30 days data → risk model inference
+  ├── < 30 days data → no trend narrative (learning mode, as insights today)
+  └── ≥ 30 days data → interpretation
   ↓
-Per-user risk model (LSTM, 64 hidden units, look-back = 30 days)
-  — Outputs: risk score (0–100) per prediction category
-             + predicted next-day values for resting HR, HRV, sleep score
-             + 80% confidence interval per predicted value
+Pinned reference-range table (versioned in the codebase, injected into the prompt)
   ↓
-Confidence gate
-  ├── Confidence < 60% → suppress prediction (insufficient signal)
-  └── Confidence ≥ 60% → pass to MedGemma
+MedGemma (CARDITRACK_TREND_PROMPT) — interprets computed features
+  — Generates the plain-language trend narrative
   ↓
-MedGemma (CARDITRACK_PREDICT_PROMPT) — interprets risk scores
-  — Generates plain-language "prediction card"
-  ↓
-Routing
-  ├── Risk score ≥ 70 → prediction card in wearer's morning push + family digest
-  ├── Risk score 40–69 → prediction card in wearer's morning push only
-  └── Risk score < 40 → silent (stored in trend_aggregates for trend view only)
+Routing: narrative feeds the family digest and the insights API
+  (push dispatch joins when FCM/APNs lands from its workstream)
 ```
-
----
-
-### Per-user model: training and lifecycle
-
-| Phase | Duration | Behaviour |
-|-------|----------|-----------|
-| **Cold start** | Days 1–29 | Real-time anomaly detection only. No predictions. App shows "Learning your patterns — predictions unlock on day 30." |
-| **Bootstrap model** | Day 30 | First prediction model trained using 30-day feature history. Generic population priors used as regularisation. |
-| **Personalized model** | Day 90+ | Model retrained weekly on rolling 90-day window. Day-of-week and seasonal effects modelled explicitly. |
-| **Retraining trigger** | Any time | Major life event flag (user-reported illness, travel, device change) resets the baseline and pauses predictions for 7 days. |
-
-The design stores models per user in **Google Cloud Storage** (one ~50 KB serialised LSTM file per user — ~500 MB at 10,000 users, negligible). Retraining runs as a batch Cloud Run job (CPU only, ~2s per model). **No per-user model files exist yet** — this ships with the predictive path.
 
 ---
 
 ### False positive management
 
-False positives are CardiTrack's primary churn risk (market target: <5% FP rate vs industry 20–30%). The predictive layer applies three controls:
+False positives are CardiTrack's primary churn risk (market target: <5% FP rate vs industry 20–30%). Two controls survive the LSTM's departure unchanged, and one dies with it:
 
-**1. Confidence gate** — predictions with < 60% model confidence are suppressed entirely. A low-confidence window contributes to the trend view but does not push a notification.
+**1. Consecutive signal requirement** — a trend pattern must hold on 2 consecutive daily computations before it is narrated as a concern. A single-day spike is logged but not surfaced.
 
-**2. Consecutive signal requirement** — a risk score must exceed its threshold on 2 consecutive daily runs before a push notification is triggered. A single-day spike is logged but not surfaced.
+**2. User-adjustable sensitivity** — Admins/Staff can set per-member sensitivity to Low / Medium / High (see [alerts.md](./execution/backend/api/alerts.md) alert-preferences), shifting the rule thresholds. Sensitivity will be stored in the planned `AlertPreferences` table in Cloud SQL (not yet implemented).
 
-**3. User-adjustable sensitivity** — Admins/Staff can set per-member sensitivity to Low / Medium / High (see [alerts.md](./execution/backend/api/alerts.md) alert-preferences). This shifts the risk score threshold for pushes (Low = 80+, Medium = 70+ [default], High = 50+). Sensitivity will be stored in the planned `AlertPreferences` table in Cloud SQL (not yet implemented).
+*(The former confidence gate is gone — it gated model confidence, and there is no model to be confident.)*
 
 ---
 
-### MedGemma prompt variant: predictions
+### MedGemma prompt variant: trend narrative
 
-A separate system prompt ensures predictive output is framed as forward-looking guidance, not a current-state alarm.
+A separate system prompt ensures trend output is framed as forward-looking guidance, not a current-state alarm.
 
-**Predictive system prompt:**
+**Trend system prompt (design):**
 ```
-[CARDITRACK_PREDICT_PROMPT]
-You are an AI health assistant generating a next-day health outlook for a user's family caregiver app.
-You have been given risk scores and predicted metric values for the next 24 hours.
-Write a short, plain-language "health outlook" (2–3 sentences max).
-Frame predictions as possibilities, not certainties: "may", "could", "worth watching".
-If risk is low across all categories, lead with reassurance.
-If one category is elevated, mention it gently and suggest one practical action.
-Never mention specific risk score numbers. Never diagnose. Never alarm.
+[CARDITRACK_TREND_PROMPT]
+You are summarising multi-day health trends for a family caregiver app.
+You have been given computed trend features and the clinical reference ranges to read them against.
+Use only the numbers and ranges provided; never supply your own reference values.
+Write a short, plain-language trend note (2–3 sentences max).
+Frame trajectories as possibilities, not certainties: "may", "could", "worth watching".
+If everything is settled, lead with reassurance.
+If one trend is drifting, mention it gently and suggest one practical action.
+Never diagnose. Never alarm.
 ```
 
-**Example output for a high fatigue risk day:**
+**Example output for a fatigue-pattern day:**
 > "Based on recent activity levels, [Name] may feel more tired than usual today — a lighter day could help. Heart rate and sleep patterns look broadly stable. Nothing urgent, but a check-in this afternoon might be welcome."
 
-**Example output for a low-risk day:**
-> "[Name]'s health patterns look settled for today. Resting heart rate and sleep quality have been consistent this week — a good sign."
+**Example output for a settled week:**
+> "[Name]'s health patterns look settled. Resting heart rate and sleep quality have been consistent this week — a good sign."
 
-> Both variants are fixed-prefix prompts, cacheable by the serving engine.
+> Fixed-prefix and cacheable, the same as every other prompt in the registry.
 
 ---
 
@@ -596,8 +567,8 @@ Never mention specific risk score numbers. Never diagnose. Never alarm.
 | `CARDITRACK_PROVISIONAL_PROMPT` | On request, while only a 7/14-day baseline exists | Caregiver | Early impressions against a provisional baseline, phrased tentatively — **built today** |
 | `CARDITRACK_FAMILY_PROMPT` | On high/critical events | Family members | Plain-language alert |
 | `CARDITRACK_FAMILY_DIGEST_PROMPT` | Daily, 06:00 local per anchor timezone | Family members | Previous-day summary, plain and reassuring — **built today** (store + API read; push pending) |
-| `CARDITRACK_DIGEST_PROMPT` | Daily 08:00 | Wearer | 24h summary + medium events — waits on wearer logins |
-| `CARDITRACK_PREDICT_PROMPT` | Daily 06:00 | Wearer + family (risk ≥ 40) | Next-day health outlook |
+| ~~`CARDITRACK_DIGEST_PROMPT`~~ | — | ~~Wearer~~ | **Descoped 2026-08-10** — wearers never log in; self-monitoring is not the product |
+| `CARDITRACK_TREND_PROMPT` | Daily (design) | Family members | Trend narrative over computed features + pinned reference ranges — replaces `CARDITRACK_PREDICT_PROMPT`, which died with the LSTM's risk scores |
 
 ---
 
