@@ -1288,10 +1288,21 @@ jobs:
           HEALTH_TOKEN=$(gcloud secrets versions access latest \
             --secret="$SECRET_ID" \
             --project="$PROJECT")
-          STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
-            -H "X-Health-Token: $HEALTH_TOKEN" \
-            -A "carditrack-healthcheck" \
-            "${{ needs.changes.outputs.api_url_dev }}/health")
+          # Cloud Run marks a revision Ready as soon as its first instance passes the
+          # startup probe, then scales out the rest of min-instances concurrently. A
+          # request landing on one of those still-cold instances right after rollout
+          # fails with a platform-level 500 ("the instance could not start
+          # successfully") even though the app itself never errored. Retry through
+          # that window instead of failing the deploy on a single unlucky request.
+          for attempt in 1 2 3 4 5; do
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+              -H "X-Health-Token: $HEALTH_TOKEN" \
+              -A "carditrack-healthcheck" \
+              "${{ needs.changes.outputs.api_url_dev }}/health")
+            [ "$STATUS" = "200" ] && break
+            echo "Health check attempt $attempt: HTTP $STATUS"
+            sleep 5
+          done
           [ "$STATUS" = "200" ] || (echo "::error::Health check failed: HTTP $STATUS" && exit 1)
 
   deploy-web-dev:
