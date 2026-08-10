@@ -66,18 +66,39 @@ public class FitbitApiClient : IFitbitApiClient, IDeviceApiClient
     private const int SamplePageSize = 10_000;
 
     /// <summary>
-    /// Hard stop on a Sample series, well above the ~1,440 points a once-per-minute sensor can
-    /// produce in a civil day. Reaching it with pages still outstanding means the filter is
-    /// selecting more than the requested day, so the read throws rather than returning a prefix:
-    /// statistics over part of a longer window are not the day's statistics.
+    /// Hard stop on a Sample series. Originally 20,000, sized off an assumed 1-minute heart-rate
+    /// cadence (~1,440 points/day) — a live wearer in continuous heart-rate tracking mode disproved
+    /// that on 2026-08-10, legitimately exceeding 20,000 points for a single civil day. Raised to
+    /// cover even a 1-second cadence (86,400 points/day) with headroom. Reaching it with pages
+    /// still outstanding still means the filter is selecting more than the requested day, so the
+    /// read throws rather than returning a prefix: statistics over part of a longer window are not
+    /// the day's statistics.
     /// </summary>
-    private const int SampleSeriesCap = 20_000;
+    private const int SampleSeriesCap = 100_000;
+
+    /// <summary>
+    /// Minimum spacing between successive page requests within one series read. The Google Health
+    /// API's per-user quota is 300 requests/min (5 QPS) standard, but only 2.5 QPS while the app is
+    /// unverified — and a single wearer's daily snapshot already fires ~12 requests at once, over
+    /// that ceiling on its own (see the quota note in `data_sync_architecture.md`). Raising
+    /// <see cref="SampleSeriesCap"/> lets a high-cadence series page several more times in the same
+    /// pull; pacing those extra requests keeps them from stacking further onto that burst. No delay
+    /// before the first page of a series — most series are one page, and delaying every read would
+    /// slow every sync for a limit only multi-page reads can trip.
+    /// </summary>
+    private static readonly TimeSpan PageRequestDelay = TimeSpan.FromMilliseconds(500);
 
     private readonly HttpClient _httpClient;
+    private readonly TimeSpan _pageRequestDelay;
 
-    public FitbitApiClient(IHttpClientFactory httpClientFactory)
+    public FitbitApiClient(IHttpClientFactory httpClientFactory, TimeSpan? pageRequestDelay = null)
     {
+        if (pageRequestDelay < TimeSpan.Zero)
+            throw new ArgumentOutOfRangeException(
+                nameof(pageRequestDelay), pageRequestDelay, "Page request delay cannot be negative.");
+
         _httpClient = httpClientFactory.CreateClient("FitbitClient");
+        _pageRequestDelay = pageRequestDelay ?? PageRequestDelay;
     }
 
     public async Task<FitbitActivitiesResult> GetActivitiesAsync(string accessToken, DateOnly date)
@@ -604,11 +625,15 @@ public class FitbitApiClient : IFitbitApiClient, IDeviceApiClient
     /// Pagination is followed rather than assumed away: the response caps at
     /// <see cref="SamplePageSize"/> points and a silently dropped tail would understate a maximum
     /// and overstate a minimum. Past <see cref="SampleSeriesCap"/> the read throws instead of
-    /// looping on or returning early — a civil day cannot legitimately hold that many readings
-    /// (a 1-minute cadence yields 1,440), so the request is selecting more than one day, and
-    /// neither more pages nor a truncated series would yield the day's figures. Stopping at the
-    /// cap and returning what we have would report statistics over an arbitrary prefix of a longer
-    /// window as the day's figures — wrong data, silently, for as long as the cause persists.
+    /// looping on or returning early — a civil day cannot legitimately hold that many readings,
+    /// so the request is selecting more than one day, and neither more pages nor a truncated
+    /// series would yield the day's figures. Stopping at the cap and returning what we have would
+    /// report statistics over an arbitrary prefix of a longer window as the day's figures — wrong
+    /// data, silently, for as long as the cause persists.
+    /// </para>
+    /// <para>
+    /// Every page after the first waits <see cref="_pageRequestDelay"/> first — see that field's
+    /// remarks for why a multi-page series paces itself against the per-user quota.
     /// </para>
     /// </remarks>
     private async Task<List<JObject>> ListDataPointsAsync(
@@ -620,6 +645,9 @@ public class FitbitApiClient : IFitbitApiClient, IDeviceApiClient
         string? pageToken = null;
         do
         {
+            if (pageToken is not null)
+                await Task.Delay(_pageRequestDelay);
+
             var url =
                 $"/v4/users/me/dataTypes/{dataType}/dataPoints?pageSize={SamplePageSize}&filter={escapedFilter}";
             if (!string.IsNullOrEmpty(pageToken))
