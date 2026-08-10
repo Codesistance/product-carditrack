@@ -243,7 +243,7 @@ public class InactivityDetectionServiceTests
         using var cts = new CancellationTokenSource();
         var otherId = Guid.NewGuid();
         _members.GetActiveIdsWithActivitySinceAsync(Arg.Any<DateOnly>()).Returns([_memberId, otherId]);
-        _members.GetByIdAsync(_memberId).Returns(_ =>
+        _members.GetByIdAsync(_memberId).Returns<CardiMember?>(_ =>
         {
             cts.Cancel();
             throw new OperationCanceledException(cts.Token);

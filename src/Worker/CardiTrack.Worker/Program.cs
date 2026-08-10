@@ -7,6 +7,7 @@ using CardiTrack.Infrastructure.ExternalClients;
 using CardiTrack.Infrastructure.Persistence;
 using CardiTrack.Infrastructure.Repositories;
 using CardiTrack.Infrastructure.Security;
+using CardiTrack.Infrastructure.Services;
 using CardiTrack.Infrastructure.Settings;
 using CardiTrack.Observability;
 using CardiTrack.Shared;
