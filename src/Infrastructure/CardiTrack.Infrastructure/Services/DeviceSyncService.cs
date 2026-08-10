@@ -19,6 +19,7 @@ public class DeviceSyncService : IDeviceSyncService
     private readonly IDeviceConnectionRepository _deviceConnections;
     private readonly IDeviceActivityLogRepository _deviceActivityLogs;
     private readonly IActivityLogAggregationService _aggregation;
+    private readonly IGranularIngestionService _granularIngestion;
     private readonly IUnitOfWork _unitOfWork;
     private readonly List<DeviceProviderSettings> _providers;
 
@@ -28,6 +29,7 @@ public class DeviceSyncService : IDeviceSyncService
         IDeviceConnectionRepository deviceConnections,
         IDeviceActivityLogRepository deviceActivityLogs,
         IActivityLogAggregationService aggregation,
+        IGranularIngestionService granularIngestion,
         IUnitOfWork unitOfWork,
         IOptions<List<DeviceProviderSettings>> providers)
     {
@@ -36,11 +38,12 @@ public class DeviceSyncService : IDeviceSyncService
         _deviceConnections = deviceConnections;
         _deviceActivityLogs = deviceActivityLogs;
         _aggregation = aggregation;
+        _granularIngestion = granularIngestion;
         _unitOfWork = unitOfWork;
         _providers = providers.Value;
     }
 
-    public async Task SyncCardiMemberAsync(DeviceConnection connection, bool extendHistory = false)
+    public async Task SyncCardiMemberAsync(DeviceConnection connection, SyncScope scope = SyncScope.Routine)
     {
         var providerConfig = ResolveProviderConfig(connection);
 
@@ -74,12 +77,18 @@ public class DeviceSyncService : IDeviceSyncService
             // the provider was doing then, the connection is working now.
             await _deviceConnections.MarkSyncSucceededAsync(connection.Id, DateTime.UtcNow);
 
-            // After the routine window, never instead of it: today's numbers are what a
-            // caregiver is looking at, so history extends only once they have landed. Opt-in
-            // because the manual-sync path shares this method, and a caregiver waiting on a
-            // refresh must not pay for a chunk of last month.
-            if (extendHistory)
+            // The worker-cadence extras run after the routine window succeeded, never inside its
+            // success envelope: both are enrichment, and a transient failure in either must not
+            // un-succeed the daily data that already landed — that would re-fetch the whole
+            // window next pull and could park a working connection in SyncError over a series
+            // the caregiver never sees directly. Scoped to the worker cadence because the
+            // manual-sync path shares this method, and a caregiver waiting on a refresh must not
+            // pay for a chunk of last month or four extra series.
+            if (scope == SyncScope.WorkerCadence)
+            {
+                await IngestGranularWindowAsync(connection, accessToken, lookbackDays, today);
                 await BackfillHistoryAsync(connection, accessToken, providerConfig, today);
+            }
         }
         catch (Exception ex) when (IsProviderApiException(ex))
         {
@@ -142,6 +151,26 @@ public class DeviceSyncService : IDeviceSyncService
             var targetDate = today.AddDays(-offset);
             var snapshot = await _deviceApi.GetHealthSnapshotAsync(accessToken, targetDate);
             await StoreDayAsync(connection, snapshot, targetDate);
+        }
+    }
+
+    /// <summary>
+    /// Fetches and stores the granular (minute-grain) series for the routine window's days.
+    /// Runs only after the whole daily window landed and was marked successful, so an hour
+    /// vector never exists without its daily parent and a granular failure never un-succeeds
+    /// the sync a caregiver depends on. Backfill days deliberately get no granular pass: how
+    /// far back the provider serves intraday history is unverified (granular ADR open
+    /// question), so history stays daily-grain until the probe answers it.
+    /// </summary>
+    private async Task IngestGranularWindowAsync(
+        DeviceConnection connection, string accessToken, int lookbackDays, DateOnly today)
+    {
+        for (var offset = lookbackDays; offset >= 0; offset--)
+        {
+            var targetDate = today.AddDays(-offset);
+            var granularDay = await _deviceApi.GetGranularDayAsync(accessToken, targetDate);
+            if (granularDay is { HasAnyData: true })
+                await _granularIngestion.IngestDayAsync(connection, granularDay);
         }
     }
 

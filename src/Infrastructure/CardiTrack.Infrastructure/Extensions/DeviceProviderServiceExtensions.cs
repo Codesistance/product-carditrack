@@ -77,6 +77,10 @@ public static class DeviceProviderServiceExtensions
 
         services.AddKeyedScoped<IDeviceApiClient, FitbitApiClient>(DeviceType.Fitbit);
 
+        // Provider-neutral, but registered here because only the sync services constructed below
+        // consume it.
+        services.AddScoped<IGranularIngestionService, GranularIngestionService>();
+
         services.AddKeyedScoped<IDeviceSyncService>(
             DeviceType.Fitbit,
             (sp, _) => new DeviceSyncService(
@@ -85,6 +89,7 @@ public static class DeviceProviderServiceExtensions
                 sp.GetRequiredService<IDeviceConnectionRepository>(),
                 sp.GetRequiredService<IDeviceActivityLogRepository>(),
                 sp.GetRequiredService<IActivityLogAggregationService>(),
+                sp.GetRequiredService<IGranularIngestionService>(),
                 sp.GetRequiredService<IUnitOfWork>(),
                 sp.GetRequiredService<IOptions<List<DeviceProviderSettings>>>()));
 
