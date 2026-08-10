@@ -11,6 +11,10 @@ public static class MauiProgram
 {
     public static MauiApp CreateMauiApp()
     {
+        // First statement in the app's managed lifetime: SplashPage measures its minimum
+        // brand hold from here, so anything ahead of it inflates that hold.
+        AppStartup.Mark();
+
         AppConfig.Validate();
 
         var builder = MauiApp.CreateBuilder();

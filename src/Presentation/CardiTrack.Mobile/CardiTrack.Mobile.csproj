@@ -85,8 +85,15 @@
 		     measures ~0 dp, which is already too close to rely on. -->
 		<MauiIcon Include="Resources\AppIcon\appicon.svg" ForegroundFile="Resources\AppIcon\appiconfg.png" Color="#F5F6F8" ForegroundScale="0.58" />
 
-		<!-- Splash Screen (aligned to in-app splash blues) -->
-		<MauiSplashScreen Include="Resources\Splash\splash.png" Color="#174E86" BaseSize="128,128" />
+		<!-- Splash Screen. The asset is deliberately the same white rounded tile SplashPage
+		     draws (88dp tile, 17dp radius, 79x68 logo AspectFit inside — see SplashPage.xaml)
+		     on the same #174E86 that page grounds itself in, so the OS-to-app handover shows
+		     the same mark in the same place and reads as one screen rather than two.
+		     BaseSize matches the tile's 88dp; iOS and Android 11 and below honour it exactly.
+		     Android 12+ draws the splash through the platform SplashScreen API, which sizes
+		     and circle-masks the icon itself, so there the match is colour and shape, not
+		     pixel geometry. -->
+		<MauiSplashScreen Include="Resources\Splash\splash.png" Color="#174E86" BaseSize="88,88" />
 
 		<!-- Images -->
 		<MauiImage Include="Resources\Images\*" />

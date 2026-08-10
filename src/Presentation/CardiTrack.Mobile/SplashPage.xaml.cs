@@ -5,6 +5,17 @@ namespace CardiTrack.Mobile;
 
 public partial class SplashPage : ContentPage
 {
+    /// <summary>
+    /// How long the logo stays on screen before the app moves on, so it doesn't flash away on
+    /// fast paths. Measured from launch, not from this page appearing: the OS splash has been
+    /// showing the same mark since process start, and counting that time from zero again would
+    /// bill the user twice for the same reassurance.
+    /// </summary>
+    private static readonly TimeSpan MinimumBrandHold = TimeSpan.FromMilliseconds(900);
+
+    /// <summary>Cross-fade from the OS splash's flat colour to the gradient.</summary>
+    private const uint BackgroundFadeMs = 250;
+
     private readonly IAuthService _authService;
     private readonly PostLoginRouter _router;
 
@@ -23,20 +34,21 @@ public partial class SplashPage : ContentPage
         if (_scheduledInitialStartup)
             return;
         _scheduledInitialStartup = true;
-        _ = RunStartupAsync();
+        _ = GradientBackground.FadeToAsync(1, BackgroundFadeMs, Easing.CubicOut);
+        _ = RunStartupAsync(MinimumBrandHold - AppStartup.Elapsed);
     }
 
     private async void OnRetryClicked(object? sender, EventArgs e)
     {
         LoadingPanel.IsVisible = true;
         ErrorPanel.IsVisible = false;
-        await RunStartupAsync();
+        // No OS splash precedes a retry, so its hold runs from the tap.
+        await RunStartupAsync(MinimumBrandHold);
     }
 
-    private async Task RunStartupAsync()
+    private async Task RunStartupAsync(TimeSpan minimumHold)
     {
-        // Brief hold so the logo doesn't flash away on fast paths.
-        var minimumSplash = Task.Delay(900);
+        var minimumSplash = minimumHold > TimeSpan.Zero ? Task.Delay(minimumHold) : Task.CompletedTask;
 
         bool hasSession;
         try
