@@ -1,7 +1,12 @@
 # Notification Engine — Reliable Alert Delivery
 
-> **Status: Design.** Nothing in this document is built. There is no push infrastructure in the
-> codebase today: no device-token entity, no APNs/FCM integration, no sender.
+> **Status: Phase 1 shipped; push is still design.**
+> **Built:** the in-app data-completeness engine — `Notification`/`NotificationMute`/`NotificationRunLog`,
+> the pure rule catalogue and reconciler, `DataCompletenessWorker`, the inbox API, and the mobile
+> inbox, dashboard card, safety banners and mute management (§9, §10, §12, §16 Phase 1).
+> **Not built:** everything push. No device-token entity, no APNs/FCM integration, no sender, no
+> delivery outbox — §5, §6 and §7.2's C2/C3/C5 describe a design, not code. Alert generation, which
+> Phase 3 depends on, is tracked as #111.
 
 **Primary objective: CardiTrack reaches the caregiver, whether or not the app is open.** Everything
 else in this document is subordinate to that. The engine carries two kinds of content — health alerts
@@ -856,10 +861,10 @@ and takes the safety alerts down with it.
 
 | Issue | Resolution |
 |---|---|
-| `NotificationPreferencesRequest` DTO is per-CardiMember with a registered validator no endpoint consumes | Reshape to the §12 contract: user-level channels/quiet hours, `UserCardiMember.ReceiveAlerts` staying as the per-member routing switch |
+| `NotificationPreferencesRequest` DTO is per-CardiMember with a registered validator no endpoint consumes | ✅ **Done** — DTO, validator and registration deleted. It described SMS/email channels this engine does not have; the R2 alert-preferences work should introduce the shape it actually needs rather than inherit this one |
 | `UserCardiMember.NotificationPreferences` JSON blob (`{sms,email,push}`), read by nothing | Migrate non-`{}` values into `NotificationPreference`, drop the column. SMS/email keys are discarded — those channels are out of scope by decision |
-| `CardiMember.DateOfBirth` non-nullable `DateOnly` — "missing" indistinguishable from 0001-01-01 | Nullable migration. `DOB_MISSING` was cut (§9), but the schema defect is real independently: today a member with no recorded DOB reads as born in year 1 |
-| `OnboardingStatusResponse.HasNotificationPreferences`, `TotalSteps = 7` | Satisfied by the push-permission grant + preference row created at M1-07 |
+| `CardiMember.DateOfBirth` non-nullable `DateOnly` | **Not a defect — leave it.** `CreateCardiMemberValidator` and `UpdateCardiMemberValidator` both require a date and enforce an 18–120 age range, and both are registered, so the API cannot produce a member without one. With `DOB_MISSING` cut (§9) nothing depends on a nullable column, and making it optional would ripple through age display, the insights prompt and two mobile screens to permit a state the product deliberately forbids. If DOB should become optional, that is a product decision with its own change |
+| `OnboardingStatusResponse.HasNotificationPreferences`, `TotalSteps = 7` | **Still open.** With push deferred to R2 there is no preference row and no permission grant to satisfy this step, so onboarding cannot report complete. Drop the step or repoint it — product call, §17.6 |
 | `AlertSensitivity` stored, consumed by nothing | Still inert here; noted so `NO_ALERT_RECIPIENT` isn't confused with sensitivity tuning |
 | No `device_disconnected` alert type (alerts.md notes the gap) | Covered as Safety nudges `DEVICE_AUTH_BROKEN` / `DEVICE_STALE_LONG` rather than a sixth `AlertType` |
 

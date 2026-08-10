@@ -23,7 +23,6 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IValidator<CreateCardiMemberRequest>, CreateCardiMemberValidator>();
         services.AddScoped<IValidator<UpdateCardiMemberRequest>, UpdateCardiMemberValidator>();
         services.AddScoped<IValidator<PauseMonitoringRequest>, PauseMonitoringValidator>();
-        services.AddScoped<IValidator<NotificationPreferencesRequest>, NotificationPreferencesValidator>();
         services.AddScoped<IValidator<ConnectDeviceRequest>, ConnectDeviceValidator>();
         services.AddScoped<IValidator<OAuthCallbackRequest>, OAuthCallbackValidator>();
         return services;

@@ -32,6 +32,7 @@ Legend: wave number = ships in that wave; — = not planned for that surface. **
 | Statistical alerts (all 5 launch types) + acknowledgment/notes | R1 | R1 | R1 | — | 🔶 **Read path shipped, generation missing.** `AlertsController` serves list / list-by-member / acknowledge and `AlertsPage` (M1-10) is built — but **nothing in the codebase writes an `Alert` row**, so the list is permanently empty. Generation is the gap (#111); notes/photos not started. No push/email/SMS delivery channels built ([notification_engine.md](./technical/notification_engine.md)) |
 | AI insights + chat endpoints (MedGemma via Ollama on Cloud Run; Gemini 2.0 Flash) | R1 | R1 | R1 | — | ✅ Shipped (synchronous endpoints; the R2 event-driven pipeline is separate) |
 | Reports (health report generation) | R1 | R1 | R2 | Complete Care | 🔶 Text-only generation shipped; PDF/CSV/FHIR R4 formats not started |
+| **Data-completeness notifications (in-app)** | R1 | R1 | R3 | — | ✅ **Shipped** — detection worker, 8 rules, inbox + dashboard card + safety banners + mute management. In-app only by decision; web lands with the web dashboard ([notification_engine.md](./technical/notification_engine.md)) |
 | Push notification registration | R1 | R1 | — | — | ⬜ Not started |
 | Health data export — PDF, CSV, FHIR R4 | R1 | R1 | R2 | Complete Care | ⬜ Not started (see reports row for text-only interim) |
 | Baseline learning progress | R1 | R1 | R1 | — | 🔶 Daily `BaselineCalculationWorker` + mobile learning screen shipped; web not started (web app is still template-stage) |
