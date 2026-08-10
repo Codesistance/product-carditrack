@@ -119,6 +119,33 @@ public class NudgeRuleTests
     }
 
     [Fact]
+    public void DeviceStaleLong_DefersToTheFasterDeviceSilenceAlert()
+    {
+        // InactivityDetectionWorker notices a quiet wearable within two hours and raises an alert.
+        // While that stands, saying a slower version of the same thing two days later is noise.
+        var context = new NudgeContextBuilder()
+            .WithConnections(NudgeContextBuilder.Connection(
+                lastSync: NudgeContextBuilder.Now.AddDays(-9)))
+            .WithDeviceSilenceAlert()
+            .Build();
+
+        Assert.False(new DeviceStaleLongRule().Evaluate(context).HasGap);
+    }
+
+    [Fact]
+    public void DeviceStaleLong_StillCoversTheCaseThatWorkerCannotSee()
+    {
+        // A member with no granular series never registers as silent there, so the slow rule is
+        // the only thing that would ever say the watch has gone quiet.
+        var context = new NudgeContextBuilder()
+            .WithConnections(NudgeContextBuilder.Connection(
+                lastSync: NudgeContextBuilder.Now.AddDays(-9)))
+            .Build();
+
+        Assert.True(new DeviceStaleLongRule().Evaluate(context).HasGap);
+    }
+
+    [Fact]
     public void DeviceStaleLong_DefersToTheLouderAuthFailure()
     {
         // A broken grant is why nothing is arriving. Telling the caregiver to charge the watch

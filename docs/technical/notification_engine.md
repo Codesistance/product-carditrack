@@ -1,6 +1,7 @@
 # Notification Engine — Reliable Alert Delivery
 
-> **Status: Phase 1 shipped; push is still design.**
+> **Status: Phase 1 shipped; push is still design.** Alert *generation* — listed below as a
+> dependency — shipped separately in PRs #116 and #118 while this was in flight.
 > **Built:** the in-app data-completeness engine — `Notification`/`NotificationMute`/`NotificationRunLog`,
 > the pure rule catalogue and reconciler, `DataCompletenessWorker`, the inbox API, and the mobile
 > inbox, dashboard card, safety banners and mute management (§9, §10, §12, §16 Phase 1).
@@ -51,7 +52,8 @@ renderer that gets woken, plus a full-sync-on-foreground safety net (§6.4) for 
 ```
         ┌─ CardiTrack.Worker ────────────┐
         │  DataCompletenessWorker  (6am) │  gap detection, non-AI DB polling
-        │  AlertGenerationWorker   (R1)  │  statistical alerts off baselines
+        │  StatisticalAlertWorker  (#118)│  statistical alerts off baselines
+        │  InactivityDetectionWorker     │  device silence, 2h
         │  NotificationDispatchWorker    │  outbox retry + escalation timer
         └──────────────┬─────────────────┘
                        │  enqueue
@@ -928,10 +930,11 @@ No push, no vendor, no BAA, no device lab, no entitlement dependency — it ship
 already exist, which is why it can run alongside the two external R1 clocks (Fitbit sunset, Google
 verification #39) without competing for the same people.
 
-**Phase 2 — Alert generation (R1).** *Not this document's scope*, but it is the dependency that makes
-everything below worth building: five statistical rules over the `PatternBaselines` that
-`BaselineCalculationWorker` already writes daily. Highest-value item in the R1 notification story and
-currently untracked — see #111.
+**Phase 2 — Alert generation (R1).** ✅ **Shipped separately** while this branch was in flight —
+`StatisticalAlertWorker` (PR #118) and `InactivityDetectionWorker` (PR #116). It was the dependency
+that made a delivery spine worth building, and it is now met: the `Alert` table is no longer
+permanently empty. This engine's staleness rule defers to the device-silence alert (§9), which is
+faster and asks the caregiver for the same thing.
 
 **Phase 3 — Push delivery spine (R2).** `PushDeviceToken` + `NotificationDelivery` + FCM HTTP v1 with
 APNs passthrough · device registration + ack endpoints · MAUI push registration, permission flow at

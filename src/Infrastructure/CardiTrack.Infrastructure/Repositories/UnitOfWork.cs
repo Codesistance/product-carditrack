@@ -41,7 +41,7 @@ public class UnitOfWork : IUnitOfWork
         IPatternBaselineRepository patternBaselines,
         IGranularMetricRepository granularMetrics,
         IDigestRepository digests,
-        IRealtimeAssessmentRepository realtimeAssessments)
+        IRealtimeAssessmentRepository realtimeAssessments,
         INotificationRepository notifications,
         INotificationMuteRepository notificationMutes)
     {

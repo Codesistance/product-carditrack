@@ -136,6 +136,20 @@ public class NotificationSnapshotQueries : INotificationSnapshotQueries
             .Distinct()
             .ToListAsync(ct)).ToHashSet();
 
+        // Device-silence alerts, keyed on the rule marker every automated producer stamps into
+        // MetricValues. Same discriminator AlertRuleMarkers reads, matched here rather than
+        // referenced because that helper is Infrastructure-internal to the alert path.
+        var withDeviceSilence = (await _context.Alerts
+            .Where(a => memberIds.Contains(a.CardiMemberId)
+                        && a.IsActive
+                        && !a.IsResolved
+                        && a.AlertType == AlertType.Inactivity
+                        && a.MetricValues != null
+                        && a.MetricValues.Contains("\"rule\":\"device_silence\""))
+            .Select(a => a.CardiMemberId)
+            .Distinct()
+            .ToListAsync(ct)).ToHashSet();
+
         var withRedAlert = (await _context.Alerts
             .Where(a => memberIds.Contains(a.CardiMemberId)
                         && a.IsActive
@@ -213,7 +227,8 @@ public class NotificationSnapshotQueries : INotificationSnapshotQueries
                         DaysCaptured = coverage.GetValueOrDefault(member.Id),
                         LastActivityDate = lastActivity.TryGetValue(member.Id, out var last) ? last : null,
                         HasEstablishedBaseline = withBaseline.Contains(member.Id),
-                        HasUnacknowledgedRedAlert = withRedAlert.Contains(member.Id)
+                        HasUnacknowledgedRedAlert = withRedAlert.Contains(member.Id),
+                        HasOpenDeviceSilenceAlert = withDeviceSilence.Contains(member.Id)
                     },
                     Connections =
                     [

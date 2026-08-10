@@ -28,6 +28,7 @@ public sealed class NudgeContextBuilder
     private DateOnly? _lastActivity = DateOnly.FromDateTime(Now);
     private bool _hasBaseline = true;
     private bool _redAlert;
+    private bool _deviceSilenceAlert;
     private bool _isOwner = true;
     private readonly List<NudgeConnectionSnapshot> _connections = [];
     private readonly List<NudgeMuteSnapshot> _mutes = [];
@@ -61,6 +62,7 @@ public sealed class NudgeContextBuilder
     public NudgeContextBuilder LastActivity(DateOnly? date) { _lastActivity = date; return this; }
     public NudgeContextBuilder NoBaseline() { _hasBaseline = false; return this; }
     public NudgeContextBuilder WithRedAlert() { _redAlert = true; return this; }
+    public NudgeContextBuilder WithDeviceSilenceAlert() { _deviceSilenceAlert = true; return this; }
     public NudgeContextBuilder NotOwner() { _isOwner = false; return this; }
 
     public NudgeContextBuilder NoConnections()
@@ -113,7 +115,8 @@ public sealed class NudgeContextBuilder
                 DaysCaptured = _daysCaptured,
                 LastActivityDate = _lastActivity,
                 HasEstablishedBaseline = _hasBaseline,
-                HasUnacknowledgedRedAlert = _redAlert
+                HasUnacknowledgedRedAlert = _redAlert,
+                HasOpenDeviceSilenceAlert = _deviceSilenceAlert
             }
             : null,
         Connections = _includeMember ? _connections : [],

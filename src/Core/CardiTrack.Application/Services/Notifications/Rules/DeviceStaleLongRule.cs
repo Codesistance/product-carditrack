@@ -7,9 +7,11 @@ namespace CardiTrack.Application.Services.Notifications.Rules;
 /// drawer, or a phone that stopped syncing.
 /// </summary>
 /// <remarks>
-/// Forty-eight hours, not two: the AI pipeline's real-time device check (llm_design.md) owns the
-/// short horizon and pushes at two hours of silence. This is the longer, calmer signal, and the two
-/// are kept apart so a caregiver is not told the same thing twice by two systems.
+/// Forty-eight hours, not two: <c>InactivityDetectionWorker</c> owns the short horizon and raises a
+/// device-silence alert within two hours of a quiet wearable. This is the longer, calmer signal for
+/// the case that worker cannot see — a member with no granular series at all, whose silence never
+/// registers as silence there. Whenever its alert <em>is</em> standing, this rule defers, so a
+/// caregiver is never told the same thing twice by two systems.
 /// </remarks>
 public sealed class DeviceStaleLongRule : INudgeRule
 {
@@ -32,6 +34,11 @@ public sealed class DeviceStaleLongRule : INudgeRule
     public NudgeVerdict Evaluate(NudgeContext context)
     {
         if (context.Member is null)
+            return NudgeVerdict.NoGap;
+
+        // The device-silence alert is faster and louder, and asks for the same thing. While it
+        // stands, this rule has nothing to add.
+        if (context.Member.HasOpenDeviceSilenceAlert)
             return NudgeVerdict.NoGap;
 
         // A broken grant is a different, louder gap. Reporting both would have the caregiver fix

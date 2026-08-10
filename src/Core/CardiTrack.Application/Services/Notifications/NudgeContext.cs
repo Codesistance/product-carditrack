@@ -88,6 +88,14 @@ public sealed record NudgeMemberSnapshot
     /// be asked to tidy a profile.
     /// </summary>
     public required bool HasUnacknowledgedRedAlert { get; init; }
+
+    /// <summary>
+    /// Whether <c>InactivityDetectionWorker</c> already has an unresolved device-silence alert
+    /// open for this member. It notices a quiet wearable within two hours; this engine's own
+    /// staleness rule waits two days, so when the alert is standing the nudge would be a second
+    /// voice saying a slower version of the same thing.
+    /// </summary>
+    public bool HasOpenDeviceSilenceAlert { get; init; }
 }
 
 public sealed record NudgeConnectionSnapshot

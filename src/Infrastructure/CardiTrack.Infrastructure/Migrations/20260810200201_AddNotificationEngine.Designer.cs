@@ -12,7 +12,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace CardiTrack.Infrastructure.Migrations
 {
     [DbContext(typeof(CardiTrackDbContext))]
-    [Migration("20260810093452_AddNotificationEngine")]
+    [Migration("20260810200201_AddNotificationEngine")]
     partial class AddNotificationEngine
     {
         /// <inheritdoc />
@@ -713,6 +713,10 @@ namespace CardiTrack.Infrastructure.Migrations
                         .HasMaxLength(50)
                         .HasColumnType("character varying(50)");
 
+                    b.Property<string>("HealthUserId")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
                     b.Property<DateOnly?>("HistoryBackfilledTo")
                         .HasColumnType("date");
 
@@ -765,6 +769,9 @@ namespace CardiTrack.Infrastructure.Migrations
                     b.HasIndex("ConnectionStatus");
 
                     b.HasIndex("DeviceType");
+
+                    b.HasIndex("HealthUserId")
+                        .HasFilter("\"HealthUserId\" IS NOT NULL");
 
                     b.HasIndex("LastSyncDate");
 
@@ -827,6 +834,31 @@ namespace CardiTrack.Infrastructure.Migrations
                         .IsUnique();
 
                     b.ToTable("DeviceTypeSyncProfiles", (string)null);
+                });
+
+            modelBuilder.Entity("CardiTrack.Domain.Entities.DigestEntry", b =>
+                {
+                    b.Property<Guid>("CardiMemberId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateOnly>("LocalDate")
+                        .HasColumnType("date");
+
+                    b.Property<string>("Audience")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<DateTime>("GeneratedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Text")
+                        .IsRequired()
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)");
+
+                    b.HasKey("CardiMemberId", "LocalDate", "Audience");
+
+                    b.ToTable("DigestEntries", (string)null);
                 });
 
             modelBuilder.Entity("CardiTrack.Domain.Entities.GranularMetricHour", b =>
@@ -1247,6 +1279,53 @@ namespace CardiTrack.Infrastructure.Migrations
                     b.HasIndex("CardiMemberId", "PeriodDays", "CalculatedDate");
 
                     b.ToTable("PatternBaselines", (string)null);
+                });
+
+            modelBuilder.Entity("CardiTrack.Domain.Entities.RealtimeAssessment", b =>
+                {
+                    b.Property<Guid>("CardiMemberId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("WindowStartUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("GeneratedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<double>("HrDeviationScore")
+                        .HasColumnType("double precision");
+
+                    b.Property<double>("HrNoiseRms")
+                        .HasColumnType("double precision");
+
+                    b.Property<double>("HrTrendLast")
+                        .HasColumnType("double precision");
+
+                    b.Property<string>("ModelOutput")
+                        .IsRequired()
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)");
+
+                    b.Property<string>("RawSeverity")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<string>("Severity")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<double?>("SpO2Mean")
+                        .HasColumnType("double precision");
+
+                    b.Property<double?>("StepsSum")
+                        .HasColumnType("double precision");
+
+                    b.Property<DateTime>("WindowEndUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("CardiMemberId", "WindowStartUtc");
+
+                    b.ToTable("RealtimeAssessments", (string)null);
                 });
 
             modelBuilder.Entity("CardiTrack.Domain.Entities.Subscription", b =>
