@@ -373,6 +373,11 @@ public partial class DashboardPage : ContentPage
         _ = Shell.Current.GoToAsync($"{CardiMemberDetailPage.Route}?memberId={data.CardiMemberId}");
     }
 
+    /// <summary>
+    /// The bell is the way in to everything wanting attention. It opens the alerts list, which
+    /// carries completeness items in their own section below the health ones — sectioned, never
+    /// interleaved, so scanning for a health event does not mean wading through housekeeping.
+    /// </summary>
     private async void OnBellClicked(object? sender, EventArgs e) =>
         await Shell.Current.GoToAsync(AppShell.AlertsRoute);
 
@@ -475,6 +480,7 @@ public partial class DashboardPage : ContentPage
         {
             SafetyBannerList.IsVisible = false;
             CompleteThePictureCard.IsVisible = false;
+            Header.SetNudgeIndicator(false);
         }
     }
 
@@ -499,6 +505,7 @@ public partial class DashboardPage : ContentPage
 
         SafetyBannerList.IsVisible = summary.SafetyBanners.Count > 0;
         CompleteThePictureCard.IsVisible = summary.DashboardCards.Count > 0;
+        Header.SetNudgeIndicator(summary.OpenCount > 0);
 
         // The link is only worth offering when there is more behind it than the two on screen.
         CompleteThePictureLink.IsVisible = summary.OpenCount > summary.DashboardCards.Count;

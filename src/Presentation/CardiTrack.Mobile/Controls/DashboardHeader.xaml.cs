@@ -29,6 +29,13 @@ public partial class DashboardHeader : ContentView
     /// </summary>
     public void SetPresence(string presence) => PresenceLabel.Text = presence;
 
+    /// <summary>
+    /// Shows a dot when completeness items are waiting. Deliberately not folded into
+    /// <see cref="SetUnreadCount"/>: the number means health alerts and must keep meaning that,
+    /// or it stops carrying urgency by the time a red alert finally arrives.
+    /// </summary>
+    public void SetNudgeIndicator(bool hasNudges) => NudgeDot.IsVisible = hasNudges;
+
     public void SetUnreadCount(int count)
     {
         BellBadge.IsVisible = count > 0;

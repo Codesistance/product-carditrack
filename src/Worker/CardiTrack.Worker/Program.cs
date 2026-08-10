@@ -74,6 +74,7 @@ builder.Services.AddScoped<IRealtimeAssessmentRepository, RealtimeAssessmentRepo
 builder.Services.AddScoped<INotificationRepository, NotificationRepository>();
 builder.Services.AddScoped<INotificationMuteRepository, NotificationMuteRepository>();
 builder.Services.AddScoped<INotificationSnapshotQueries, NotificationSnapshotQueries>();
+builder.Services.AddScoped<IAlertSnapshotQueries, AlertSnapshotQueries>();
 builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
 builder.Services.AddScoped<ITimeSeriesPartitionService, TimeSeriesPartitionService>();
 
@@ -101,6 +102,7 @@ builder.Services.AddWorker<StatisticalAlertWorker>(configuration, nameof(Statist
 builder.Services.Configure<InactivityDetectionOptions>(
     configuration.GetSection($"Workers:{nameof(InactivityDetectionWorker)}"));
 builder.Services.AddWorker<DataCompletenessWorker>(configuration, nameof(DataCompletenessWorker));
+builder.Services.AddWorker<AlertGenerationWorker>(configuration, nameof(AlertGenerationWorker));
 
 // Retention and look-ahead share the maintenance worker's config section, like the audit sample.
 builder.Services.Configure<PartitionMaintenanceOptions>(

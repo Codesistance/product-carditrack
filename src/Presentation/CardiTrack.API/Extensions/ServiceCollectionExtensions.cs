@@ -83,6 +83,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<INotificationRepository, CardiTrack.Infrastructure.Repositories.NotificationRepository>();
         services.AddScoped<INotificationMuteRepository, CardiTrack.Infrastructure.Repositories.NotificationMuteRepository>();
         services.AddScoped<INotificationSnapshotQueries, CardiTrack.Infrastructure.Repositories.NotificationSnapshotQueries>();
+        services.AddScoped<IAlertSnapshotQueries, CardiTrack.Infrastructure.Repositories.AlertSnapshotQueries>();
 
         // Unit of Work
         services.AddScoped<IUnitOfWork, CardiTrack.Infrastructure.Repositories.UnitOfWork>();
