@@ -6,10 +6,12 @@ namespace CardiTrack.UnitTests.Services;
 
 /// <summary>
 /// Pins the receiver's whole contract: authenticate the shared secret over the full
-/// Authorization header, forward the raw body, 200 — and never acknowledge what was not kept.
-/// The statuses are load-bearing: Google's documented verification handshake requires exactly
-/// 200/201 for its authorized probe and 401/403 for its unauthorized one, or Subscriber
-/// creation fails with FAILED_PRECONDITION.
+/// Authorization header, forward the raw body, 200 — and never acknowledge a notification
+/// that was not kept. The one body that is acknowledged without being kept is Google's
+/// verification probe, which is not a notification: it is dropped by design. The statuses are
+/// load-bearing: Google's documented handshake requires exactly 200/201 for its authorized
+/// probe and 401/403 for its unauthorized one, or Subscriber creation fails with
+/// FAILED_PRECONDITION.
 /// </summary>
 public class WebhookNotificationHandlerTests
 {

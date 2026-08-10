@@ -7,9 +7,11 @@ using Serilog;
 // The platform's only public-ingress pipeline surface (docs/llm_design.md
 // `HealthWebhookReceiver`): Google Health API webhook notifications arrive here, are
 // authenticated against the Subscriber's shared secret, acknowledged with 200, and forwarded raw
-// to Pub/Sub. Nothing is parsed and nothing else is reachable from this process — no database,
-// no AI, no business logic. The 5-minute aggregator consumes the topic and re-fetches the
-// actual data (notify-then-fetch), so this payload is never trusted.
+// to Pub/Sub. Nothing is parsed — with one documented exception: the handler peeks just far
+// enough to recognise Google's {"type": "verification"} handshake probe and drop it instead of
+// forwarding. Nothing else is reachable from this process — no database, no AI, no business
+// logic. The 5-minute aggregator consumes the topic and re-fetches the actual data
+// (notify-then-fetch), so this payload is never trusted.
 //
 // The Subscriber's registered endpointUri must be THIS path-qualified URL
 // (https://<service>/webhooks/google-health) — registering the service root sends Google's

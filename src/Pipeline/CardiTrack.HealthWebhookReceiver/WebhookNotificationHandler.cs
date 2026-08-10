@@ -38,7 +38,9 @@ public sealed class WebhookNotificationHandler
 
     /// <summary>
     /// Returns the status code to answer with: 401 for anything unauthenticated (no detail — an
-    /// unauthenticated caller learns nothing), 200 once the notification is on the stream.
+    /// unauthenticated caller learns nothing), 200 once the body has been handled — for a
+    /// notification that means it is on the stream; for Google's verification probe it means
+    /// recognised and deliberately dropped.
     /// <para>
     /// 200 rather than 204, and exactly 401 on the unauthenticated side, because those are the
     /// answers Google's documented two-step verification handshake requires: an authorized
