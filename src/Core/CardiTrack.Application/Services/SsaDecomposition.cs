@@ -2,7 +2,8 @@ namespace CardiTrack.Application.Services;
 
 /// <summary>
 /// One series split three ways: what persists, what repeats, and what is left.
-/// Reconstruction is exact by construction — Trend + Oscillation + Noise equals the input.
+/// Noise is computed as the residual, so Trend + Oscillation + Noise reconstructs the input to
+/// within floating-point rounding — nothing is invented or lost beyond rounding error.
 /// </summary>
 public sealed record SsaResult(double[] Trend, double[] Oscillation, double[] Noise)
 {
@@ -108,8 +109,9 @@ public static class SsaDecomposition
                 oscillation[t] += component[t];
         }
 
-        // The residual, exactly — never a reconstruction of the remaining components, so
-        // Trend + Oscillation + Noise == input holds to floating-point identity.
+        // The residual — never a reconstruction of the remaining components, so
+        // Trend + Oscillation + Noise recovers the input to within floating-point rounding
+        // (bit-exact identity is not promised: four rounded operations sit in the round trip).
         var noise = new double[n];
         for (var t = 0; t < n; t++)
             noise[t] = series[t] - trend[t] - oscillation[t];

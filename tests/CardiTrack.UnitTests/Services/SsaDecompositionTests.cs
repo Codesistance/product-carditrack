@@ -14,9 +14,10 @@ public class SsaDecompositionTests
     private static double[] Series(Func<int, double> f) =>
         Enumerable.Range(0, N).Select(f).ToArray();
 
-    // The identity every consumer silently relies on: nothing is invented or lost.
+    // The property every consumer silently relies on: nothing is invented or lost beyond
+    // floating-point rounding (hence the precision bound, not bit equality).
     [Fact]
-    public void Reconstruction_IsExact()
+    public void Reconstruction_RecoversTheInput_WithinRounding()
     {
         var series = Series(t => 70 + 0.1 * t + 4 * Math.Sin(2 * Math.PI * t / 8) + ((t * 37) % 11 - 5) * 0.3);
 
