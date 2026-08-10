@@ -4,7 +4,7 @@
 
 Manages push notification device token registration and global notification preferences. Alert-specific preferences (quiet hours, sensitivity, routing) are designed for the [Alerts API](alerts.md) — also entirely planned.
 
-> **Separate from this contract:** the **in-app** data-completeness engine — gap detection, benefit-framed nudges, the comply/snooze/mute model, and its own `/api/v1/notifications/*` inbox endpoints — is designed in [notification_engine.md](../../../technical/notification_engine.md). It delivers **in-app only** and therefore owns none of the push/channel surface below: the device-token endpoints and channel preferences on this page belong to health-alert delivery, alongside the R2 pipeline. That doc also recommends deleting the unwired `NotificationPreferencesRequest` DTO described below rather than reshaping it.
+> **The engine behind these endpoints** — push delivery over FCM/APNs, the delivery outbox, client acknowledgement and cross-recipient escalation, plus data-completeness nudges and the comply/snooze/mute model — is designed in [notification_engine.md](../../../technical/notification_engine.md). It extends this contract with a delivery-ack endpoint, an inbox, and an internal enqueue endpoint for the R2 pipeline, and it resolves the per-CardiMember vs per-user preferences conflict noted below. **Email and SMS are out of scope by decision:** escalation runs across recipients and devices, not vendors, so `receiveSmsAlerts` / `receiveEmailAlerts` in the DTO below are discarded rather than migrated.
 
 **User Stories:** 3.2 (Managing Alert Notifications), 5.1 (Mobile Push Notifications)
 
