@@ -84,7 +84,7 @@ public class DigestGenerationService : IDigestGenerationService
         if (member is null || !member.IsActive || member.IsMonitoringPaused(utcNow))
             return false;
 
-        var timeZone = await AnchorTimeZoneAsync(memberId);
+        var timeZone = await MemberAnchorTimeZone.ResolveAsync(_unitOfWork, memberId);
         var localNow = TimeZoneInfo.ConvertTimeFromUtc(utcNow, timeZone);
         if (localNow.Hour != DeliveryHourLocal)
             return false;
@@ -129,38 +129,4 @@ public class DigestGenerationService : IDigestGenerationService
         return true;
     }
 
-    /// <summary>
-    /// The timezone a member's digest day is anchored to: the earliest-linked active caregiver's
-    /// <c>User.TimeZoneId</c> — deterministic, and the member entity itself carries no timezone.
-    /// Families spread across timezones get one digest on the anchor's clock (a per-reader
-    /// refinement is future work); a member with no resolvable zone anchors to UTC so they are
-    /// never silently skipped.
-    /// </summary>
-    private async Task<TimeZoneInfo> AnchorTimeZoneAsync(Guid memberId)
-    {
-        var links = (await _unitOfWork.UserCardiMembers.GetByCardiMemberIdAsync(memberId))
-            .Where(l => l.IsActive)
-            .OrderBy(l => l.CreatedDate)
-            .ThenBy(l => l.UserId);
-
-        foreach (var link in links)
-        {
-            var user = await _unitOfWork.Users.GetByIdAsync(link.UserId);
-            if (string.IsNullOrWhiteSpace(user?.TimeZoneId))
-                continue;
-
-            try
-            {
-                return TimeZoneInfo.FindSystemTimeZoneById(user.TimeZoneId);
-            }
-            catch (TimeZoneNotFoundException)
-            {
-            }
-            catch (InvalidTimeZoneException)
-            {
-            }
-        }
-
-        return TimeZoneInfo.Utc;
-    }
 }

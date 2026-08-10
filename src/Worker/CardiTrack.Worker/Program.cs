@@ -76,6 +76,7 @@ builder.Services.AddScoped<ITimeSeriesPartitionService, TimeSeriesPartitionServi
 
 // Application services
 builder.Services.AddScoped<IActivityLogAggregationService, ActivityLogAggregationService>();
+builder.Services.AddScoped<IInactivityDetectionService, InactivityDetectionService>();
 
 // External clients
 builder.Services.AddScoped<IOAuthTokenRefreshService, OAuthTokenRefreshService>();
@@ -89,6 +90,11 @@ builder.Services.AddWorker<OrphanedOrganizationCleanupWorker>(configuration, nam
 builder.Services.AddWorker<BaselineCalculationWorker>(configuration, nameof(BaselineCalculationWorker));
 builder.Services.AddWorker<DeviceSyncAuditWorker>(configuration, nameof(DeviceSyncAuditWorker));
 builder.Services.AddWorker<PartitionMaintenanceWorker>(configuration, nameof(PartitionMaintenanceWorker));
+builder.Services.AddWorker<InactivityDetectionWorker>(configuration, nameof(InactivityDetectionWorker));
+
+// Threshold and waking hours share the detection worker's config section, like the audit sample.
+builder.Services.Configure<InactivityDetectionOptions>(
+    configuration.GetSection($"Workers:{nameof(InactivityDetectionWorker)}"));
 
 // Retention and look-ahead share the maintenance worker's config section, like the audit sample.
 builder.Services.Configure<PartitionMaintenanceOptions>(

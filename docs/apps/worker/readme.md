@@ -212,6 +212,16 @@ Keeps the partitioned time-series tables (`GranularMetricHours`, `MetricRollupsH
 - **Never drops what it did not name**: the drop path parses each child's name against the worker's own naming scheme, so a manually attached partition is left alone regardless of age.
 - Drops log at **Warning** — destroying health data past retention is the one thing this job does that an audit should be able to reconstruct.
 
+### InactivityDetectionWorker
+
+The device-silence failsafe (llm_design's `InactivityDetector` — placed here and not in the AI pipeline because it makes no AI call, and non-AI background jobs are Worker-exclusive per CLAUDE.md). Every generated artifact deliberately refuses to speak from silence — the digest skips, the assessor skips — so a dead watch battery would otherwise produce *nothing*; this worker turns that nothing into exactly one yellow `Inactivity` alert.
+
+- Runs **every 15 minutes** (`0 */15 * * * *`).
+- **Silence means no granular readings**, deliberately not "no successful sync" — a sync that completes and returns no new minutes is precisely the dead-battery / watch-on-the-nightstand case this alert exists to catch.
+- Only counts during **waking hours on the member's anchor clock** (07:00–22:00 local via the shared `MemberAnchorTimeZone` resolution, same anchor as the digest). The whole silent window must fit inside waking hours, so alerting effectively starts at `wakingStart + threshold` (09:00 on the defaults) — a watch still on its charger never trips the first alert of the day.
+- Candidates are members with data in the last two days (the same filter as digest/assessment): longer-silent members have aged out *and* already carry their standing alert.
+- **Cooldown**: one unresolved `Inactivity` alert per member; resolving it re-arms the check. Config (`Workers:InactivityDetectionWorker`): `SilenceThresholdMinutes` (default **120**), `WakingStartHour` (**7**), `WakingEndHour` (**22**); invalid values skip the run loudly rather than misfire.
+
 ### DeviceSyncAuditWorker
 
 Measures something `WearableSyncWorker` structurally cannot see. A routine sync only ever looks inside its own trailing window, so with `SyncLookbackDays: 3` a provider that amends day 5 is not merely unmeasured — it is *unmeasurable*, and any picture of "how far back data changes" built from routine syncs alone would be an artefact of our own schedule rather than a fact about the provider.
