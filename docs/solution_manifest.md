@@ -95,7 +95,7 @@ With Device Bundle:
 - MedGemma 1.5 4B (`hf.co/unsloth/medgemma-1.5-4b-it-GGUF:Q4_K_M`) served via **Ollama on Cloud Run** — the Medical provider for health-data interpretation
 - Gemini 2.0 Flash — the General provider for conversational responses
 - Surfaced through the API's chat, insights, and reports endpoints
-- Target ingestion/inference pipeline on GCP (Pub/Sub + Cloud Run) — see [llm_design.md](./llm_design.md); not yet built
+- Ingestion/inference pipeline on GCP (Pub/Sub + Cloud Run) — **live in dev** (webhooks registered, SSA → MedGemma assessment, digests, alert routing); see [llm_design.md](./llm_design.md) and the [C4 architecture](./architecture_c4.md)
 
 **Frontend:**
 - Blazor (web dashboard)

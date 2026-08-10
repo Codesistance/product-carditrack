@@ -10,7 +10,7 @@ Two different things are called "data pull" in CardiTrack, and they are unrelate
 | Driver | `CardiTrack.Worker` cron + per-connection due-ness | User navigation / pull-to-refresh |
 | Cadence | 10 min (worker *looks*), per-connection interval (what *syncs*, default 10 min) | 5-minute auto-refresh window, or on demand |
 
-There is **no push ingestion today**. Webhook subscriptions are R2 — see [release_matrix.md](../release_matrix.md) and [llm_design.md](../llm_design.md).
+Push ingestion is **live in dev** (Subscriber registered 2026-08-10): Google Health webhook notifications trigger targeted syncs within seconds, with the 10-minute poll as the loss-proof fallback — see [release_matrix.md](../release_matrix.md) and [llm_design.md](../llm_design.md).
 
 ---
 

@@ -17,6 +17,12 @@ Welcome to the CardiTrack documentation. This directory contains comprehensive d
 
 **Start here** if you're new to CardiTrack or need a comprehensive overview.
 
+#### [architecture_c4.md](./architecture_c4.md)
+**The C4 architecture — Context, Containers, Components.**
+- The system as actually built and deployed, diagrammed at three C4 levels
+- The two binding placement rules (Worker vs AI pipeline) and the dependency rule
+- Updated in the same PR as any architectural change
+
 #### [release_matrix.md](./release_matrix.md)
 **The canonical release plan.**
 - Single feature × platform × release × plan-gate matrix
