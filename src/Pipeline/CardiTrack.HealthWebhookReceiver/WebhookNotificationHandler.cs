@@ -28,6 +28,7 @@ public sealed class WebhookNotificationHandler
     {
         if (string.IsNullOrWhiteSpace(secret))
             throw new ArgumentException("Webhook secret must be configured.", nameof(secret));
+        ArgumentNullException.ThrowIfNull(publisher);
 
         _secretUtf8 = Encoding.UTF8.GetBytes(secret);
         _publisher = publisher;

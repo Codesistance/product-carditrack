@@ -14,6 +14,7 @@ public sealed class PubSubNotificationPublisher : INotificationPublisher
 
     public PubSubNotificationPublisher(PublisherClient client)
     {
+        ArgumentNullException.ThrowIfNull(client);
         _client = client;
     }
 
@@ -30,6 +31,10 @@ public sealed class PubSubNotificationPublisher : INotificationPublisher
             },
         };
 
-        await _client.PublishAsync(message);
+        // PublisherClient owns batching and exposes no cancellable overload, so cancellation
+        // stops the WAIT, not the publish: an aborted request answers 5xx and Google retries,
+        // while the in-flight publish may still land. That is at-least-once delivery doing its
+        // job — the aggregator has to be idempotent regardless.
+        await _client.PublishAsync(message).WaitAsync(ct);
     }
 }

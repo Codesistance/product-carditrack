@@ -17,18 +17,18 @@ locals {
   )
 
   # Resource naming
-  api_service_name    = "${var.project_name}-${local.environment}-api"
-  web_service_name    = "${var.project_name}-${local.environment}-web"
+  api_service_name      = "${var.project_name}-${local.environment}-api"
+  web_service_name      = "${var.project_name}-${local.environment}-web"
   worker_service_name   = "${var.project_name}-${local.environment}-worker"
   pipeline_jobs_name    = "${var.project_name}-${local.environment}-pipeline-jobs"
   webhook_receiver_name = "${var.project_name}-${local.environment}-webhook-receiver"
-  cloud_sql_name      = "${var.project_name}-${local.environment}-sql"
-  redis_instance_name = "${var.project_name}-${local.environment}-redis"
-  cloud_sql_db_name   = "${var.project_name}-${local.environment}-db"
-  storage_bucket_name = "${var.project_id}-${var.project_name}-${local.environment}"
-  pubsub_topic_name   = "${var.project_name}-${local.environment}-realtime"
-  log_sink_name       = "${var.project_name}-${local.environment}-audit-sink"
-  audit_bucket_name   = "${var.project_id}-${var.project_name}-${local.environment}-audit"
+  cloud_sql_name        = "${var.project_name}-${local.environment}-sql"
+  redis_instance_name   = "${var.project_name}-${local.environment}-redis"
+  cloud_sql_db_name     = "${var.project_name}-${local.environment}-db"
+  storage_bucket_name   = "${var.project_id}-${var.project_name}-${local.environment}"
+  pubsub_topic_name     = "${var.project_name}-${local.environment}-realtime"
+  log_sink_name         = "${var.project_name}-${local.environment}-audit-sink"
+  audit_bucket_name     = "${var.project_id}-${var.project_name}-${local.environment}-audit"
 
   # Read rather than repeated: .model-version is what bakes a tag into the MedGemma image, and
   # AI__Private__Model below is the name the API then asks Ollama for. As two literals they
