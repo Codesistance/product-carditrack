@@ -402,7 +402,7 @@ GCS buckets are versioned (main and dp-keys), providing object-level rollback.
 ### Network Security
 
 - **Private-only database**: Cloud SQL has no public IP; access is via VPC private services peering and the Cloud SQL Auth Proxy socket
-- **VPC egress control**: all Cloud Run services use Direct VPC egress with `PRIVATE_RANGES_ONLY`
+- **VPC egress control**: Direct VPC egress with `PRIVATE_RANGES_ONLY` is the default for Cloud Run services and jobs. Three exceptions use `ALL_TRAFFIC` instead — `api`, the `pipeline_jobs` digest job, and `pipeline_assessor` — because they call MedGemma's internal-ingress-only `*.run.app` URL, which `PRIVATE_RANGES_ONLY` cannot reach (its destination isn't an RFC1918 address, so that traffic would go out the normal internet path instead of the VPC and get rejected as external). Reaching MedGemma also requires the subnet's `private_ip_google_access`; a Cloud NAT (`google_compute_router` / `google_compute_router_nat`) keeps those same three resources' other outbound calls (Auth0, direct-to-Datadog APM shipping) working now that all their egress routes through the VPC
 - **Internal-only services**: Worker and MedGemma are unreachable from the internet
 - **Edge protection**: TLS 1.2+ (MODERN policy), HTTP→HTTPS redirect, and the Cloud Armor WAF — active in dev; prod has no LB/WAF until custom domains are configured (known deferred posture)
 
