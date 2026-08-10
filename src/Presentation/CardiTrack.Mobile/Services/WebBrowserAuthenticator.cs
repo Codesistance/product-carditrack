@@ -10,11 +10,22 @@ public sealed class WebBrowserAuthenticator : IBrowserAuthenticator
     public async Task<IReadOnlyDictionary<string, string>> AuthenticateAsync(
         Uri authorizeUri, Uri callbackUri, CancellationToken ct = default)
     {
-        var result = await WebAuthenticator.Default.AuthenticateAsync(new WebAuthenticatorOptions
+        var authenticateTask = WebAuthenticator.Default.AuthenticateAsync(new WebAuthenticatorOptions
         {
             Url = authorizeUri,
             CallbackUrl = callbackUri,
         });
+
+        // WebAuthenticator has no cancellation overload — it can't be told to close the
+        // browser sheet. Racing the await against the token at least stops this call
+        // from hanging its caller; the in-flight browser session ends when the user
+        // dismisses it or the callback arrives, whichever the token doesn't preempt.
+        var cancellationTask = Task.Delay(Timeout.InfiniteTimeSpan, ct);
+        var completed = await Task.WhenAny(authenticateTask, cancellationTask);
+        if (completed == cancellationTask)
+            ct.ThrowIfCancellationRequested();
+
+        var result = await authenticateTask;
         return new Dictionary<string, string>(result.Properties, StringComparer.Ordinal);
     }
 }

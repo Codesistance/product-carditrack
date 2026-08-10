@@ -148,7 +148,7 @@ public class OnboardingServiceTests
     }
 
     [Fact]
-    public async Task Setup_Throws409Conflict_WhenEmailOwnedByDifferentSub_AndTokenVerified()
+    public async Task Setup_ThrowsDuplicateEmail_WhenEmailOwnedByDifferentSub_AndTokenVerified()
     {
         // A social login the tenant Action failed to link: same email, different sub.
         _users.GetByEmailAsync("jane@doe.com").Returns(
@@ -167,7 +167,7 @@ public class OnboardingServiceTests
     [Theory]
     [InlineData(false)]
     [InlineData(null)]
-    public async Task Setup_Throws409_WithGenericMessage_WhenTokenUnverified(bool? emailVerified)
+    public async Task Setup_ThrowsDuplicateEmail_WithGenericMessage_WhenTokenUnverified(bool? emailVerified)
     {
         _users.GetByEmailAsync("jane@doe.com").Returns(
             new User { Auth0UserId = "auth0|original", Email = "jane@doe.com" });

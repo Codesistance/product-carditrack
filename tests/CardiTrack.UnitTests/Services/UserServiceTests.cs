@@ -54,7 +54,7 @@ public class UserServiceTests
     }
 
     [Fact]
-    public async Task CreateUser_Throws409Conflict_WhenEmailOwnedByDifferentSub()
+    public async Task CreateUser_ThrowsDuplicateEmail_WhenEmailOwnedByDifferentSub()
     {
         _users.GetByEmailAsync("carer@example.com").Returns(
             new User { Auth0UserId = "auth0|someone-else", Email = "carer@example.com" });
@@ -64,6 +64,31 @@ public class UserServiceTests
 
         await _users.DidNotReceive().AddAsync(Arg.Any<User>());
         await _unitOfWork.DidNotReceive().SaveChangesAsync();
+    }
+
+    [Fact]
+    public async Task CreateUser_ConcurrentInsert_EmailRace_ThrowsDuplicateEmail_InsteadOfRethrowing()
+    {
+        // The insert loses a race on the Email unique index: the pre-check missed
+        // (email unowned yet), but by the time SaveChanges runs a concurrent request
+        // has already claimed it under a different sub.
+        _users.GetByEmailAsync("carer@example.com").Returns(
+            _ => (User?)null,
+            _ => new User { Auth0UserId = "auth0|winner", Email = "carer@example.com" });
+        _unitOfWork.SaveChangesAsync().Returns<Task<int>>(_ => throw new InvalidOperationException("unique violation"));
+
+        await Assert.ThrowsAsync<DuplicateEmailException>(() =>
+            CreateSut().CreateUserAsync(Request(emailVerified: true)));
+    }
+
+    [Fact]
+    public async Task CreateUser_Rethrows_WhenSaveFails_AndNoConcurrentOwnerExists()
+    {
+        _users.GetByEmailAsync("carer@example.com").Returns((User?)null);
+        _unitOfWork.SaveChangesAsync().Returns<Task<int>>(_ => throw new InvalidOperationException("db down"));
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            CreateSut().CreateUserAsync(Request(emailVerified: true)));
     }
 
     [Fact]
