@@ -15,6 +15,7 @@ public interface IUnitOfWork : IDisposable
     IPatternBaselineRepository PatternBaselines { get; }
     IGranularMetricRepository GranularMetrics { get; }
     IDigestRepository Digests { get; }
+    IRealtimeAssessmentRepository RealtimeAssessments { get; }
 
     Task<int> SaveChangesAsync();
     Task BeginTransactionAsync();

@@ -25,6 +25,7 @@ public class CardiTrackDbContext : DbContext
     public DbSet<GranularMetricHour> GranularMetricHours => Set<GranularMetricHour>();
     public DbSet<MetricRollupHourly> MetricRollupsHourly => Set<MetricRollupHourly>();
     public DbSet<DigestEntry> DigestEntries => Set<DigestEntry>();
+    public DbSet<RealtimeAssessment> RealtimeAssessments => Set<RealtimeAssessment>();
 
     // Business & Compliance
     public DbSet<Subscription> Subscriptions => Set<Subscription>();

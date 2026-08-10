@@ -84,4 +84,41 @@ public class TimeSeriesPartitionsTests
     {
         Assert.False(TimeSeriesPartitions.TryParseMonthlyPartition(name, out _));
     }
+
+    [Fact]
+    public void CreateRealtimePartitionSql_CoversExactlyOneDay_ClosedOpen()
+    {
+        var sql = TimeSeriesPartitions.CreateRealtimePartitionSql(new DateOnly(2026, 12, 31));
+
+        Assert.Contains("CREATE TABLE IF NOT EXISTS \"RealtimeAssessments_y20261231\"", sql);
+        Assert.Contains("PARTITION OF \"RealtimeAssessments\"", sql);
+        Assert.Contains("FROM ('2026-12-31') TO ('2027-01-01')", sql);
+    }
+
+    [Fact]
+    public void TryParseRealtimePartition_RoundTrips()
+    {
+        var day = new DateOnly(2026, 8, 10);
+
+        Assert.True(TimeSeriesPartitions.TryParseRealtimePartition(
+            TimeSeriesPartitions.RealtimePartitionName(day), out var parsed));
+        Assert.Equal(day, parsed);
+    }
+
+    // The granular and realtime partitions share the daily suffix format; the parsers must
+    // still refuse each other's names, or one table's retention could drop the other's data.
+    [Theory]
+    [InlineData("RealtimeAssessments_default")]
+    [InlineData("RealtimeAssessments_y202608")]
+    [InlineData("GranularMetricHours_y20260810")]
+    public void TryParseRealtimePartition_RejectsForeignNames(string name)
+    {
+        Assert.False(TimeSeriesPartitions.TryParseRealtimePartition(name, out _));
+    }
+
+    [Fact]
+    public void TryParseDailyPartition_RejectsARealtimeName()
+    {
+        Assert.False(TimeSeriesPartitions.TryParseDailyPartition("RealtimeAssessments_y20260810", out _));
+    }
 }

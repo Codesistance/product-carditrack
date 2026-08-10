@@ -69,7 +69,7 @@ flowchart LR
   MB -->|"HTTPS/JSON · 5-min window · pull-to-refresh"| AP
 ```
 
-### R2 — receiver and topic live (dev); aggregation not built
+### R2 — receiver, aggregation and assessment live (dev)
 
 ```mermaid
 flowchart LR
@@ -77,14 +77,17 @@ flowchart LR
   P1["HealthWebhookReceiver<br/>Cloud Run service<br/><i>on event · ~333/s peak</i>"]
   P2["Pub/Sub<br/>carditrack-prod-realtime<br/><i>topic provisioned, prod</i>"]
   P3["WearableAggregator<br/>Cloud Run job<br/><i>every 5 min</i>"]
-  P4["realtime_results<br/><i>Cloud SQL JSONB</i><br/><i>90-day retention</i>"]
+  P5["GranularMetricHours<br/><i>minute-grain store</i>"]
+  P6["RealtimeAssessor<br/>Cloud Run job<br/><i>every 5 min, offset</i>"]
+  P4["RealtimeAssessments<br/><i>Cloud SQL, typed + partitioned</i><br/><i>90-day retention</i>"]
 
-  P0 -->|"notify"| P1 -->|"204 + forward"| P2 --> P3 -->|"SSA-LSTM → MedGemma"| P4
+  P0 -->|"notify"| P1 -->|"204 + forward"| P2 --> P3 -->|"targeted sync"| P5
+  P5 --> P6 -->|"SSA → MedGemma → severity"| P4
 ```
 
 The Worker polling path writes **only** to Cloud SQL and never publishes to Pub/Sub. The topic carries provider webhook notifications forwarded by `HealthWebhookReceiver`, not `ActivityLogs` egress from the Worker — the Worker stays free of AI-pipeline responsibilities (see [CLAUDE.md](../../CLAUDE.md)).
 
-The aggregator's **first increment is live (dev)**: every 5 minutes the `pipeline-jobs-aggregator` Cloud Run job drains the subscription, maps each notification's `healthUserId` to its `DeviceConnection`, and runs the standard `SyncCardiMemberAsync` at worker-cadence scope — the same pull, triggered by the provider instead of the clock. Acknowledgment means "nothing here still needs a retry": unknown users and unparseable payloads ACK (the poll guarantees nothing is lost), a failed sync leaves its messages for redelivery. SSA/MedGemma consumption of the resulting granular data is the next pipeline slice.
+The aggregator's **first increment is live (dev)**: every 5 minutes the `pipeline-jobs-aggregator` Cloud Run job drains the subscription, maps each notification's `healthUserId` to its `DeviceConnection`, and runs the standard `SyncCardiMemberAsync` at worker-cadence scope — the same pull, triggered by the provider instead of the clock. Acknowledgment means "nothing here still needs a retry": unknown users and unparseable payloads ACK (the poll guarantees nothing is lost), a failed sync leaves its messages for redelivery. SSA/MedGemma consumption is live too: the `pipeline-jobs-assessor` job (5 minutes, offset from the aggregator) reads each member's latest hour from the granular store, decomposes it with SSA, asks MedGemma for a severity verdict, and stores the assessment — red/orange verdicts become `HeartRate` alerts. The assessor reads **only the granular store**, so it works identically whether the minutes arrived by webhook-triggered sync or by the routine poll.
 
 ---
 

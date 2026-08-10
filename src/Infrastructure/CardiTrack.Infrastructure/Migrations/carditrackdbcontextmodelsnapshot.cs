@@ -1027,6 +1027,53 @@ namespace CardiTrack.Infrastructure.Migrations
                     b.ToTable("PatternBaselines", (string)null);
                 });
 
+            modelBuilder.Entity("CardiTrack.Domain.Entities.RealtimeAssessment", b =>
+                {
+                    b.Property<Guid>("CardiMemberId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("WindowStartUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("GeneratedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<double>("HrDeviationScore")
+                        .HasColumnType("double precision");
+
+                    b.Property<double>("HrNoiseRms")
+                        .HasColumnType("double precision");
+
+                    b.Property<double>("HrTrendLast")
+                        .HasColumnType("double precision");
+
+                    b.Property<string>("ModelOutput")
+                        .IsRequired()
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)");
+
+                    b.Property<string>("RawSeverity")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<string>("Severity")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<double?>("SpO2Mean")
+                        .HasColumnType("double precision");
+
+                    b.Property<double?>("StepsSum")
+                        .HasColumnType("double precision");
+
+                    b.Property<DateTime>("WindowEndUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("CardiMemberId", "WindowStartUtc");
+
+                    b.ToTable("RealtimeAssessments", (string)null);
+                });
+
             modelBuilder.Entity("CardiTrack.Domain.Entities.Subscription", b =>
                 {
                     b.Property<Guid>("Id")

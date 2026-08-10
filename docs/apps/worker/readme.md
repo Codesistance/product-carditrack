@@ -204,11 +204,11 @@ The arithmetic lives in `BaselineCalculator` (`CardiTrack.Application/Services`)
 
 ### PartitionMaintenanceWorker
 
-Keeps the partitioned time-series tables (`GranularMetricHours`, `MetricRollupsHourly` — see the [granular-storage ADR](../../technical/granular_timeseries_storage.md)) alive: PostgreSQL neither creates range partitions on demand nor expires rows, so this job pre-creates partitions ahead of the data and drops the ones wholly past retention.
+Keeps the partitioned time-series tables (`GranularMetricHours`, `MetricRollupsHourly`, `DigestEntries`, `RealtimeAssessments` — see the [granular-storage ADR](../../technical/granular_timeseries_storage.md)) alive: PostgreSQL neither creates range partitions on demand nor expires rows, so this job pre-creates partitions ahead of the data and drops the ones wholly past retention.
 
 - Runs **hourly** (`0 15 * * * *`), deliberately: creation is idempotent (`IF NOT EXISTS`) and near-free, and the frequent cadence closes the gap between a fresh deploy and its first partition without teaching `CronBackgroundService` a run-on-startup mode.
 - Pre-creates from **yesterday** through `DaysAhead` (default **7**) days out — a sync straddling UTC midnight can still write into the day that just ended, and a week of headroom survives a multi-day worker outage.
-- Retention is a **partition drop** — instant, no dead tuples to vacuum: granular hours after `GranularRetentionDays` (default **90**), hourly rollups after `RollupRetentionMonths` (default **13**). A partition is dropped only when its whole range is past the cutoff.
+- Retention is a **partition drop** — instant, no dead tuples to vacuum: granular hours after `GranularRetentionDays` (default **90**), hourly rollups after `RollupRetentionMonths` (default **13**), digests after `DigestRetentionMonths` (default **12**), real-time assessments after `RealtimeRetentionDays` (default **90**). A partition is dropped only when its whole range is past the cutoff.
 - **Never drops what it did not name**: the drop path parses each child's name against the worker's own naming scheme, so a manually attached partition is left alone regardless of age.
 - Drops log at **Warning** — destroying health data past retention is the one thing this job does that an audit should be able to reconstruct.
 

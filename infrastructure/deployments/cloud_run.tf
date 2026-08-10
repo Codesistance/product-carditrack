@@ -1008,3 +1008,130 @@ resource "google_cloud_scheduler_job" "pipeline_aggregator_5min" {
     google_cloud_run_v2_job.pipeline_aggregator,
   ]
 }
+
+# ── Pipeline assessor job (AI pipeline — real-time assessment) ───────────────────────────────
+# Same image as the digest job, selected via container args: every 5 minutes, SSA over each
+# member's latest hour of heart rate, one MedGemma assessment per moved window, severity routed
+# to alerts. Works entirely off the granular store, so it needs the digest job's exact
+# environment (database + MedGemma + encryption) and reuses those variables — no device
+# credentials and no Pub/Sub. Gated on the pipeline alone: unlike the aggregator it consumes
+# no topic, and it is useful with polling-only ingestion.
+
+variable "pipeline_assessor_schedule" {
+  description = "Cloud Scheduler cron for the assessor job — every 5 minutes, offset from the aggregator so one member's fresh sync tends to land before the next assessment pass"
+  type        = string
+  default     = "2-57/5 * * * *"
+}
+
+resource "google_cloud_run_v2_job" "pipeline_assessor" {
+  count    = var.enable_pipeline_jobs ? 1 : 0
+  name     = "${var.pipeline_jobs_name}-assessor"
+  location = var.cloud_run_location
+  client   = "terraform"
+
+  template {
+    template {
+      max_retries = 1
+
+      # One CPU-served MedGemma call per member whose window moved since the last pass; the
+      # timeout bounds a pathological pass without killing an ordinary busy one.
+      timeout = "1800s"
+
+      # In-VPC egress: MedGemma is internal-ingress-only, so the job must originate inside
+      # the network to reach it.
+      vpc_access {
+        network_interfaces {
+          network    = google_compute_network.main.id
+          subnetwork = google_compute_subnetwork.main.id
+        }
+        egress = "PRIVATE_RANGES_ONLY"
+      }
+
+      volumes {
+        name = "cloudsql"
+        cloud_sql_instance {
+          instances = [google_sql_database_instance.main.connection_name]
+        }
+      }
+
+      containers {
+        image = var.pipeline_jobs_container_image
+        args  = ["--job", "assess"]
+
+        dynamic "env" {
+          for_each = var.pipeline_jobs_env_vars
+          iterator = item
+          content {
+            name  = item.key
+            value = item.value
+          }
+        }
+
+        dynamic "env" {
+          for_each = var.pipeline_jobs_secret_env_vars
+          iterator = item
+          content {
+            name = item.key
+            value_source {
+              secret_key_ref {
+                secret  = item.value
+                version = "latest"
+              }
+            }
+          }
+        }
+
+        volume_mounts {
+          name       = "cloudsql"
+          mount_path = "/cloudsql"
+        }
+
+        resources {
+          limits = {
+            cpu    = "1"
+            memory = "512Mi"
+          }
+        }
+      }
+    }
+  }
+
+  lifecycle {
+    ignore_changes = [template[0].template[0].containers[0].image, client, client_version]
+  }
+  depends_on = [
+    google_project_service.run,
+    google_secret_manager_secret_version.db_connection_string,
+  ]
+}
+
+resource "google_cloud_run_v2_job_iam_member" "pipeline_assessor_invoker" {
+  count    = var.enable_pipeline_jobs ? 1 : 0
+  name     = google_cloud_run_v2_job.pipeline_assessor[0].name
+  location = google_cloud_run_v2_job.pipeline_assessor[0].location
+  role     = "roles/run.invoker"
+  member   = "serviceAccount:${google_service_account.pipeline_scheduler[0].email}"
+}
+
+resource "google_cloud_scheduler_job" "pipeline_assessor_5min" {
+  count            = var.enable_pipeline_jobs ? 1 : 0
+  name             = "${var.pipeline_jobs_name}-assessor-5min"
+  region           = var.cloud_run_location
+  schedule         = var.pipeline_assessor_schedule
+  time_zone        = "Etc/UTC"
+  attempt_deadline = "320s"
+
+  http_target {
+    http_method = "POST"
+    uri         = "https://run.googleapis.com/v2/projects/${var.project_id}/locations/${var.cloud_run_location}/jobs/${var.pipeline_jobs_name}-assessor:run"
+
+    oauth_token {
+      service_account_email = google_service_account.pipeline_scheduler[0].email
+    }
+  }
+
+  depends_on = [
+    google_project_service.cloudscheduler,
+    google_cloud_run_v2_job.pipeline_assessor,
+  ]
+}

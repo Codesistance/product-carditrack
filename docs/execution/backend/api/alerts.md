@@ -57,6 +57,8 @@ The implemented `AlertType` enum (integers on the wire) differs from the string 
 | 4 | `PatternBreak` | Break from established daily pattern |
 | 5 | `Trend` | Multi-week decline trend |
 
+> **First automated producer (AI pipeline, dev):** the real-time assessor writes `HeartRate` alerts — MedGemma's red/orange verdict over the member's latest SSA-denoised hour, with the model's 1–3 sentence assessment as the `message` and the SSA yardsticks in `metricValues`. **Cooldown:** one *unresolved* `HeartRate` alert per member at a time; resolving it re-arms the path. A verdict the parser cannot read never becomes an alert. See [llm_design.md](../../../llm_design.md).
+
 ### Sensitivity: fixed constants only
 
 There are **no sensitivity settings, quiet hours, or channel routing** in the system. The only thresholds that exist are the fixed dashboard-coloring constants (deviation > 30% → yellow, > 50% → orange — the "medium" profile below, hard-coded).

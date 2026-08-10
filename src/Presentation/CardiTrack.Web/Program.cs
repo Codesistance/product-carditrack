@@ -67,6 +67,7 @@ try
     builder.Services.AddScoped<IPatternBaselineRepository, PatternBaselineRepository>();
     builder.Services.AddScoped<IGranularMetricRepository, GranularMetricRepository>();
     builder.Services.AddScoped<IDigestRepository, DigestRepository>();
+    builder.Services.AddScoped<IRealtimeAssessmentRepository, RealtimeAssessmentRepository>();
     builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
     builder.Services.AddScoped<IUserService, UserService>();
 
