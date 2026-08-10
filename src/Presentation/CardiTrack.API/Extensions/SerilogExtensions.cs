@@ -7,17 +7,7 @@ public static class SerilogExtensions
 {
     public static WebApplicationBuilder AddSerilogLogging(this WebApplicationBuilder builder)
     {
-        Log.Logger = new LoggerConfiguration()
-            .ReadFrom.Configuration(builder.Configuration)
-            .Enrich.FromLogContext()
-            .Enrich.WithMachineName()
-            .Enrich.WithEnvironmentName()
-            .Enrich.WithProperty("Application", "CardiTrack.API")
-            .Enrich.WithProperty("Version", DeploymentInfo.Version)
-            .WriteTo.Console(
-                outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] {Message:lj} {Properties:j}{NewLine}{Exception}")
-            .AddApmShipping(builder.Configuration.GetApmOptions(), ApmServiceNames.Api)
-            .CreateLogger();
+        Log.Logger = SerilogBootstrap.CreateLogger(builder.Configuration, "CardiTrack.API", ApmServiceNames.Api);
 
         builder.Host.UseSerilog();
 

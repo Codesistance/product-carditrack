@@ -24,17 +24,7 @@ var configLoader = new ConfigurationLoader(configuration);
 
 // LOGGING — same Serilog shape as CardiTrack.API: console always, plus APM
 // shipping when the Apm engine is configured
-Log.Logger = new LoggerConfiguration()
-    .ReadFrom.Configuration(configuration)
-    .Enrich.FromLogContext()
-    .Enrich.WithMachineName()
-    .Enrich.WithEnvironmentName()
-    .Enrich.WithProperty("Application", "CardiTrack.Worker")
-    .Enrich.WithProperty("Version", DeploymentInfo.Version)
-    .WriteTo.Console(
-        outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] {Message:lj} {Properties:j}{NewLine}{Exception}")
-    .AddApmShipping(configuration.GetApmOptions(), ApmServiceNames.Worker)
-    .CreateLogger();
+Log.Logger = SerilogBootstrap.CreateLogger(configuration, "CardiTrack.Worker", ApmServiceNames.Worker);
 
 builder.Host.UseSerilog();
 

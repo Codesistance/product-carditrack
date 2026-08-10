@@ -33,17 +33,7 @@ var configLoader = new ConfigurationLoader(configuration);
 
 // LOGGING — same Serilog shape as the other hosts: console always, plus APM shipping when
 // the Apm engine is configured
-Log.Logger = new LoggerConfiguration()
-    .ReadFrom.Configuration(configuration)
-    .Enrich.FromLogContext()
-    .Enrich.WithMachineName()
-    .Enrich.WithEnvironmentName()
-    .Enrich.WithProperty("Application", "CardiTrack.PipelineJobs")
-    .Enrich.WithProperty("Version", DeploymentInfo.Version)
-    .WriteTo.Console(
-        outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] {Message:lj} {Properties:j}{NewLine}{Exception}")
-    .AddApmShipping(configuration.GetApmOptions(), ApmServiceNames.PipelineJobs)
-    .CreateLogger();
+Log.Logger = SerilogBootstrap.CreateLogger(configuration, "CardiTrack.PipelineJobs", ApmServiceNames.PipelineJobs);
 
 builder.Host.UseSerilog();
 
