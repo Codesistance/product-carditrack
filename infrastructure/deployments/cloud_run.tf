@@ -348,6 +348,19 @@ resource "google_cloud_run_v2_service" "web" {
           memory = var.cloud_run_memory
         }
       }
+
+      # Explicit, not the GCP default (tcp_socket, 240s timeout, failure_threshold 1 — a single
+      # 4-minute attempt with no retries). That default turned one transient cold-start blip
+      # (five services deploying against the same Cloud SQL instance within seconds of each
+      # other) into an outright deploy failure on 2026-08-10. Same period as medgemma's probe
+      # below, higher failure_threshold: many short retries recover from a blip that a single
+      # long one can't.
+      startup_probe {
+        tcp_socket {}
+        period_seconds    = 10
+        timeout_seconds   = 10
+        failure_threshold = 18
+      }
     }
 
     scaling {
@@ -493,6 +506,20 @@ resource "google_cloud_run_v2_service" "worker" {
           cpu    = var.cloud_run_cpu
           memory = var.cloud_run_memory
         }
+      }
+
+      # Explicit, not the GCP default (tcp_socket, 240s timeout, failure_threshold 1 — a single
+      # 4-minute attempt with no retries). That default turned one transient cold-start blip
+      # (five services deploying against the same Cloud SQL instance within seconds of each
+      # other) into an outright deploy failure on 2026-08-10. http_get against the Worker's own
+      # /healthz (see Program.cs) rather than a bare TCP check, since the Worker exposes one.
+      startup_probe {
+        http_get {
+          path = "/healthz"
+        }
+        period_seconds    = 10
+        timeout_seconds   = 10
+        failure_threshold = 18
       }
     }
 
