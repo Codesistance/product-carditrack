@@ -66,7 +66,7 @@ contest — maps onto controls that exist in code today:
 | Alarm fatigue is bounded | One unresolved alert per remedy (cooldowns); exactly-once severity routing under concurrency; per-day dedup | `AlertRuleMarkers`; assessment upsert claim |
 | Human intervention is structural | The alert lifecycle **is** the human-review pathway: every alert awaits acknowledgment by a named caregiver; resolution is recorded (`AcknowledgedByUserId`, `IsResolved`) and is what re-arms the producer | `Alert` entity; `AlertsController` |
 | Contestability / auditability | Every alert carries its evidence: the `rule` discriminator plus the numbers that fired it in `MetricValues`; assessments store model input features, full output, raw severity word, and routed severity — reconstructable months later | `RealtimeAssessment`; alert producers |
-| Transparency to the reader | Alert text names the observation and the yardstick in plain language; the on-demand insight endpoint explains any alert | alerts.md; `GET /api/v1/insights/alerts/{id}` |
+| Transparency to the reader | Alert text names the observation and the yardstick in plain language; the on-demand insight endpoint explains any alert | alerts.md; `GET /api/v1/insights/alerts/{alertId}` |
 
 **Gap acknowledged:** the DPIA's "human-review queue for Critical" beyond the caregiver (a
 staff/clinical review tier) does not exist and is not planned — CardiTrack is explicitly not
@@ -80,8 +80,8 @@ sign-off.
 Profiling exists (baselines, assessments), so Arts. 13–15 require telling users meaningful
 information about the logic involved. Current state: the in-app alert text explains each
 alert's basis; **a plain-language "how alerting works" section in the privacy policy does not
-exist yet** — /privacy is a placeholder (see web memory/notes). Carried as an open item to
-the privacy-policy work (DPIA M12 neighborhood), not duplicated here.
+exist yet** — the Web app's `/privacy` page is a placeholder. Carried as an open item to
+the privacy-policy work (DPIA mitigation **M12**), not duplicated here.
 
 ## 5. Model validation protocol (to execute before prod alerting)
 

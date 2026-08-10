@@ -172,8 +172,10 @@ row).
 > platform behavior, not an outage (verified 2026-08-10: `/Healthz` reaches the container
 > and returns 200 because routing is case-insensitive while GFE's interception is
 > case-sensitive; Cloud Run's internal startup probes bypass GFE and are unaffected). Probe
-> a real route instead — e.g. the receiver answers 405 on `GET /webhooks/google-health`. Until step 7 completes, the pipeline runs correctly on **10-minute polling alone** —
-webhooks only make it fresher.
+> a real route instead — e.g. the receiver answers 405 on `GET /webhooks/google-health`.
+
+Webhooks are the fast path, not a dependency: if the Subscriber ever degrades, the pipeline
+still runs whole on the **10-minute poll** — notifications only make it fresher.
 
 ### 10. Compliance gate: Art. 22 before prod alerting
 
