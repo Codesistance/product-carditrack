@@ -106,3 +106,7 @@ additional_labels = {
 # AI pipeline job (digest generation): off — prod has no MedGemma service yet (medgemma_image
 # unset). Enable together with the MedGemma deploy.
 enable_pipeline_jobs = false
+
+# Webhook receiver: off - enable together with the AI pipeline rollout (the topic exists, but
+# nothing consumes it in prod and the endpoint is untested against live Google delivery).
+enable_webhook_receiver = false

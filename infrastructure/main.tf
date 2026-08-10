@@ -17,17 +17,18 @@ locals {
   )
 
   # Resource naming
-  api_service_name    = "${var.project_name}-${local.environment}-api"
-  web_service_name    = "${var.project_name}-${local.environment}-web"
-  worker_service_name = "${var.project_name}-${local.environment}-worker"
-  pipeline_jobs_name  = "${var.project_name}-${local.environment}-pipeline-jobs"
-  cloud_sql_name      = "${var.project_name}-${local.environment}-sql"
-  redis_instance_name = "${var.project_name}-${local.environment}-redis"
-  cloud_sql_db_name   = "${var.project_name}-${local.environment}-db"
-  storage_bucket_name = "${var.project_id}-${var.project_name}-${local.environment}"
-  pubsub_topic_name   = "${var.project_name}-${local.environment}-realtime"
-  log_sink_name       = "${var.project_name}-${local.environment}-audit-sink"
-  audit_bucket_name   = "${var.project_id}-${var.project_name}-${local.environment}-audit"
+  api_service_name      = "${var.project_name}-${local.environment}-api"
+  web_service_name      = "${var.project_name}-${local.environment}-web"
+  worker_service_name   = "${var.project_name}-${local.environment}-worker"
+  pipeline_jobs_name    = "${var.project_name}-${local.environment}-pipeline-jobs"
+  webhook_receiver_name = "${var.project_name}-${local.environment}-webhook-receiver"
+  cloud_sql_name        = "${var.project_name}-${local.environment}-sql"
+  redis_instance_name   = "${var.project_name}-${local.environment}-redis"
+  cloud_sql_db_name     = "${var.project_name}-${local.environment}-db"
+  storage_bucket_name   = "${var.project_id}-${var.project_name}-${local.environment}"
+  pubsub_topic_name     = "${var.project_name}-${local.environment}-realtime"
+  log_sink_name         = "${var.project_name}-${local.environment}-audit-sink"
+  audit_bucket_name     = "${var.project_id}-${var.project_name}-${local.environment}-audit"
 
   # Read rather than repeated: .model-version is what bakes a tag into the MedGemma image, and
   # AI__Private__Model below is the name the API then asks Ollama for. As two literals they
@@ -199,6 +200,19 @@ module "deployments" {
     "Encryption__Key"                      = "${var.project_name}-${local.environment}-encryption-key"
     "AI__Private__BaseUrl"                 = "${var.project_name}-${local.environment}-medgemma-service-url"
     "Apm__Data"                            = "${var.project_name}-${local.environment}-apm-data"
+  }
+
+  # Cloud Run - Health webhook receiver (public ingress; secret-authenticated). Console-only
+  # logging for now — wiring it into APM shipping is a follow-up, and its Serilog output reaches
+  # Cloud Logging regardless.
+  enable_webhook_receiver          = var.enable_webhook_receiver
+  webhook_receiver_name            = local.webhook_receiver_name
+  webhook_receiver_container_image = var.webhook_receiver_container_image
+  webhook_receiver_env_vars = {
+    "ASPNETCORE_ENVIRONMENT" = title(var.environment)
+    "GCP_PROJECT_ID"         = var.project_id
+    "PubSub__ProjectId"      = var.project_id
+    "PubSub__TopicId"        = local.pubsub_topic_name
   }
 
   # Cloud Run - Web

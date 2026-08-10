@@ -94,8 +94,13 @@ enable_redis         = true
 redis_tier           = "BASIC"
 redis_memory_size_gb = 1
 
-# Pub/Sub
-enable_pubsub = false # Disabled in dev
+# Pub/Sub — on since the webhook receiver landed: the realtime topic is its publish target.
+enable_pubsub = true
+
+# Google Health webhook receiver (public ingress, secret-authenticated). The Subscriber
+# registration against Google is a separate provisioning step once the service URL exists —
+# see docs/llm_design.md "Provisioning the webhook subscriber".
+enable_webhook_receiver = true
 
 # Platform audit logging (Cloud SQL audit flags + log sink)
 enable_platform_audit_logging = false

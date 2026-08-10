@@ -120,6 +120,20 @@ variable "pipeline_jobs_container_image" {
   default     = "us-docker.pkg.dev/cloudrun/container/hello"
 }
 
+# The Google Health webhook receiver — the pipeline's public-ingress notification endpoint.
+# Requires enable_pubsub (it publishes to the realtime topic).
+variable "enable_webhook_receiver" {
+  description = "Create the webhook receiver Cloud Run service (public ingress, secret-authenticated). Requires enable_pubsub"
+  type        = bool
+  default     = false
+}
+
+variable "webhook_receiver_container_image" {
+  description = "Bootstrap image seeding the webhook receiver's initial create; CI/CD owns it thereafter"
+  type        = string
+  default     = "us-docker.pkg.dev/cloudrun/container/hello"
+}
+
 # Bootstrap placeholders — see the container images note above api_container_image.
 variable "migrator_container_image" {
   description = "Bootstrap image seeding the DB migrator Job's initial create; CI/CD owns it thereafter"

@@ -69,7 +69,7 @@ flowchart LR
   MB -->|"HTTPS/JSON · 5-min window · pull-to-refresh"| AP
 ```
 
-### R2 — designed, not built
+### R2 — receiver and topic live (dev); aggregation not built
 
 ```mermaid
 flowchart LR

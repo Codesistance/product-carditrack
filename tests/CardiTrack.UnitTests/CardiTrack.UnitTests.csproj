@@ -36,6 +36,7 @@
     <ProjectReference Include="..\..\src\Core\CardiTrack.Application\CardiTrack.Application.csproj" />
     <ProjectReference Include="..\..\src\Infrastructure\CardiTrack.Infrastructure\CardiTrack.Infrastructure.csproj" />
     <ProjectReference Include="..\..\src\Infrastructure\CardiTrack.Observability\CardiTrack.Observability.csproj" />
+    <ProjectReference Include="..\..\src\Pipeline\CardiTrack.HealthWebhookReceiver\CardiTrack.HealthWebhookReceiver.csproj" />
     <ProjectReference Include="..\..\src\Presentation\CardiTrack.Mobile.Core\CardiTrack.Mobile.Core.csproj" />
     <ProjectReference Include="..\..\src\Presentation\CardiTrack.Web\CardiTrack.Web.csproj" />
   </ItemGroup>

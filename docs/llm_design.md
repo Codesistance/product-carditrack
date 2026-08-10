@@ -33,7 +33,7 @@ MedGemma 4B was chosen over the 27B variant for cost and latency reasons — at 
 |---------|------|--------|
 | **Cloud Run — `carditrack-<env>-medgemma`** | MedGemma inference via Ollama (CPU) | **Built** — enabled in dev; prod leaves `medgemma_image` empty, so the service does not exist there yet |
 | **Cloud Run services/jobs + Cloud Scheduler** | All pipeline logic — webhook receiver, aggregation, SSA-LSTM, predictive batch, digest, push dispatch | **Digest job built (dev)** — `carditrack-<env>-pipeline-jobs` + hourly Cloud Scheduler, gated on `enable_pipeline_jobs`; the rest is target design |
-| **Cloud Pub/Sub** (`carditrack-prod-realtime`) | Wearable raw event stream buffer | Topic provisioned (prod, `enable_pubsub`); pipeline not built |
+| **Cloud Pub/Sub** (`carditrack-<env>-realtime`) | Wearable raw event stream buffer | Topic + pull subscription provisioned in **dev and prod** (`enable_pubsub`); the webhook receiver publishes to it in dev; the aggregator that consumes it is not built |
 | **Cloud SQL PostgreSQL (existing instance)** | OAuth tokens (encrypted AES-256-GCM in `DeviceConnections`), user profiles, sensitivity settings, family relationships — the transactional system of record (see [infrastructure.md](./infrastructure.md#storage-boundary)); plus **JSONB tables** for AI results (below) | Built (core schema); AI tables not built |
 | **Google Cloud Storage** | Per-user LSTM model files (~50 KB each, ~500 MB at 10 K users) | Target design — no per-user model files exist yet |
 | **FCM / APNs** | Push routing for alerts and digests | **Planned — no push infrastructure exists yet** |
@@ -49,7 +49,7 @@ Each component is a Cloud Run service (event/HTTP-triggered) or Cloud Run job (C
 
 | Component | Trigger | Cadence | Purpose |
 |-----------|---------|---------|---------|
-| `HealthWebhookReceiver` | HTTP (Cloud Run service) | On event (~333/s peak) | Answers the Google Health API webhook verification handshake; acknowledges notifications with `204` and forwards the payload (user, data type, changed interval) to Pub/Sub |
+| `HealthWebhookReceiver` | HTTP (Cloud Run service) | On event (~333/s peak) | **Built (dev)** — `carditrack-<env>-webhook-receiver`, gated on `enable_webhook_receiver`. Authenticates the Subscriber's shared secret (full `Authorization` header, constant-time), acknowledges with `204`, forwards the **raw, unparsed** payload to Pub/Sub — notify-then-fetch means nothing downstream ever trusts it. Awaiting Subscriber registration against Google (below) |
 | `WearableAggregator` | Cloud Scheduler | Every 5 min | Pulls Pub/Sub notifications → fetches changed data from the Google Health API per user/interval → aggregates per-user window → runs SSA-LSTM pre-processor → calls MedGemma → writes result to the `realtime_results` table → routes severity |
 | `SeverityRouter` | On new result row | On write | Reads severity tag; dispatches immediate push via FCM/APNs for Critical/High; queues Medium events for digest |
 | `PredictiveFeatureAggregator` | Cloud Scheduler | Daily 03:00 local | Reads 30–90 day history per user → computes daily feature vectors → runs per-user LSTM → applies confidence gate → writes prediction card |
@@ -281,6 +281,26 @@ def preprocess(hr_series: list[float], window_size: int = 30) -> dict:
 ```
 
 > **Deployment note:** The SSA-LSTM pre-processor runs inside the 5-minute aggregator (CPU only — no GPU required). LSTM inference on a 60-sample sequence takes ~5ms, negligible against the window budget.
+
+### Provisioning the webhook subscriber
+
+The v4 discovery document defines the surface (verified 2026-08-10): a **Subscriber**
+(`POST /v4/projects/{project}/subscribers`) registers our `endpointUri` and an
+`endpointAuthorization.secret` — the **full `Authorization` header value, scheme included** —
+which Google sends back with every notification; per-user **Subscriptions**
+(`projects/{project}/subscribers/{subscriber}/subscriptions`, `user` = the public
+`healthUserId`) choose the data types. Once the receiver service has a URL, provisioning is:
+
+1. Read the generated secret from Secret Manager (`carditrack-<env>-webhook-secret` — the
+   Terraform-owned value the receiver compares against).
+2. Create the Subscriber with the service URL + that secret + `subscriberConfigs` for the data
+   types in the ingestion table above.
+3. Create a Subscription per enrolled wearer (`healthUserId` from the profile endpoint).
+
+> The endpoint-verification handshake's exact shape is **not documented** in the discovery
+> document (only that the endpoint "will be verified" using the secret). The receiver answers a
+> plain `GET` with `200` as the conservative contract; expect to adjust on first live
+> registration — the same "(assumed), pending live check" convention `FitbitApiClient` used.
 
 ### Why not Terra?
 

@@ -31,6 +31,10 @@ on:
         description: 'Pipeline jobs'
         type: boolean
         default: true
+      webhook:
+        description: 'Webhook receiver'
+        type: boolean
+        default: true
 
 permissions:
   id-token: write
@@ -59,6 +63,7 @@ jobs:
       mobile:         ${{ steps.manual.outputs.mobile   || steps.filter.outputs.mobile }}
       medgemma:       ${{ steps.manual.outputs.medgemma || steps.filter.outputs.medgemma }}
       pipeline:       ${{ steps.manual.outputs.pipeline || steps.filter.outputs.pipeline }}
+      webhook:        ${{ steps.manual.outputs.webhook  || steps.filter.outputs.webhook }}
       dotnet_version:      ${{ needs.env.outputs.dotnet_version }}
       registry:            ${{ needs.env.outputs.registry }}
       gcp_project_id:      ${{ needs.env.outputs.gcp_project_id }}
@@ -79,6 +84,7 @@ jobs:
           echo "mobile=${{ inputs.mobile }}"     >> $GITHUB_OUTPUT
           echo "medgemma=${{ inputs.medgemma }}" >> $GITHUB_OUTPUT
           echo "pipeline=${{ inputs.pipeline }}" >> $GITHUB_OUTPUT
+          echo "webhook=${{ inputs.webhook }}"   >> $GITHUB_OUTPUT
       - uses: dorny/paths-filter@v4
         if: github.event_name != 'workflow_dispatch'
         id: filter
@@ -119,9 +125,16 @@ jobs:
             pipeline:
               - '.github/workflows/deploy-apps-dev.yml'
               - '.github/workflows/deploy-apps-prod.yml'
-              - 'src/Pipeline/**'
+              - 'src/Pipeline/CardiTrack.PipelineJobs/**'
               - 'src/Core/**'
               - 'src/Infrastructure/**'
+              - 'CardiTrack.sln'
+            webhook:
+              - '.github/workflows/deploy-apps-dev.yml'
+              - '.github/workflows/deploy-apps-prod.yml'
+              - 'src/Pipeline/CardiTrack.HealthWebhookReceiver/**'
+              - 'src/Infrastructure/CardiTrack.Observability/**'
+              - 'src/Infrastructure/CardiTrack.Shared/**'
               - 'CardiTrack.sln'
 
   # ── Compute next semver (main only) ─────────────────────────────────────────
@@ -1120,6 +1133,37 @@ jobs:
           docker push $IMAGE:$TAG
           echo "image=$IMAGE:$TAG" >> $GITHUB_OUTPUT
 
+  push-webhook-image:
+    name: Push Webhook Receiver Image
+    needs:
+      - changes
+      - compute-version
+      - test-unit
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && needs.changes.outputs.webhook == 'true'
+    runs-on: ubuntu-latest
+    outputs:
+      image: ${{ steps.push.outputs.image }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ needs.changes.outputs.gcp_wif_provider }}
+          service_account: ${{ needs.changes.outputs.gcp_service_account }}
+      - uses: google-github-actions/setup-gcloud@v3
+      - run: gcloud auth configure-docker ${{ needs.changes.outputs.gcp_region }}-docker.pkg.dev --quiet
+      - name: Build and push
+        id: push
+        env:
+          IMAGE: ${{ needs.changes.outputs.registry }}/webhook-receiver
+          TAG: ${{ needs.compute-version.outputs.version }}
+        run: |
+          docker build -f src/Pipeline/CardiTrack.HealthWebhookReceiver/Dockerfile \
+            --build-arg VERSION=${TAG#v} \
+            -t $IMAGE:$TAG \
+            .
+          docker push $IMAGE:$TAG
+          echo "image=$IMAGE:$TAG" >> $GITHUB_OUTPUT
+
   upload-mobile-artifacts:
     name: Upload Mobile Artifacts to GCS
     needs:
@@ -1305,6 +1349,25 @@ jobs:
             --region ${{ needs.changes.outputs.gcp_region }} \
             --project ${{ needs.changes.outputs.gcp_project_id }} \
             --add-cloudsql-instances carditrack-490120:europe-west2:carditrack-dev-sql \
+            --quiet
+
+  deploy-webhook-dev:
+    name: Deploy Webhook Receiver → Dev
+    needs: [changes, push-webhook-image]
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && needs.changes.outputs.webhook == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ needs.changes.outputs.gcp_wif_provider }}
+          service_account: ${{ needs.changes.outputs.gcp_service_account }}
+      - uses: google-github-actions/setup-gcloud@v3
+      # Image only — the service resource (SA, secret, public IAM) is Terraform-owned.
+      - run: |
+          gcloud run deploy carditrack-dev-webhook-receiver \
+            --image ${{ needs.push-webhook-image.outputs.image }} \
+            --region ${{ needs.changes.outputs.gcp_region }} \
+            --project ${{ needs.changes.outputs.gcp_project_id }} \
             --quiet
 
   deploy-pipeline-dev:
