@@ -71,6 +71,9 @@ builder.Services.AddScoped<IPatternBaselineRepository, PatternBaselineRepository
 builder.Services.AddScoped<IGranularMetricRepository, GranularMetricRepository>();
 builder.Services.AddScoped<IDigestRepository, DigestRepository>();
 builder.Services.AddScoped<IRealtimeAssessmentRepository, RealtimeAssessmentRepository>();
+builder.Services.AddScoped<INotificationRepository, NotificationRepository>();
+builder.Services.AddScoped<INotificationMuteRepository, NotificationMuteRepository>();
+builder.Services.AddScoped<INotificationSnapshotQueries, NotificationSnapshotQueries>();
 builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
 builder.Services.AddScoped<ITimeSeriesPartitionService, TimeSeriesPartitionService>();
 
@@ -97,6 +100,7 @@ builder.Services.AddWorker<StatisticalAlertWorker>(configuration, nameof(Statist
 // Threshold and waking hours share the detection worker's config section, like the audit sample.
 builder.Services.Configure<InactivityDetectionOptions>(
     configuration.GetSection($"Workers:{nameof(InactivityDetectionWorker)}"));
+builder.Services.AddWorker<DataCompletenessWorker>(configuration, nameof(DataCompletenessWorker));
 
 // Retention and look-ahead share the maintenance worker's config section, like the audit sample.
 builder.Services.Configure<PartitionMaintenanceOptions>(

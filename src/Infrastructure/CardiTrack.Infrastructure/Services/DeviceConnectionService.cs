@@ -48,6 +48,7 @@ public class DeviceConnectionService : IDeviceConnectionService
     private readonly IOAuthCodeExchangeService _codeExchange;
     private readonly IOAuthTokenRefreshService _tokenRefresh;
     private readonly ICardiMemberAccessService _access;
+    private readonly INotificationGapResolver _gapResolver;
     private readonly List<DeviceProviderSettings> _providerConfigs;
 
     public DeviceConnectionService(
@@ -57,6 +58,7 @@ public class DeviceConnectionService : IDeviceConnectionService
         IOAuthCodeExchangeService codeExchange,
         IOAuthTokenRefreshService tokenRefresh,
         ICardiMemberAccessService access,
+        INotificationGapResolver gapResolver,
         IOptions<List<DeviceProviderSettings>> providerConfigs)
     {
         _unitOfWork = unitOfWork;
@@ -65,6 +67,7 @@ public class DeviceConnectionService : IDeviceConnectionService
         _codeExchange = codeExchange;
         _tokenRefresh = tokenRefresh;
         _access = access;
+        _gapResolver = gapResolver;
         _providerConfigs = providerConfigs.Value;
     }
 
@@ -271,6 +274,10 @@ public class DeviceConnectionService : IDeviceConnectionService
         }
         await _unitOfWork.SaveChangesAsync();
 
+        // A fresh connection closes the device gaps immediately — the caregiver should not land
+        // back on a dashboard still telling them to reconnect.
+        await _gapResolver.ResolveForCardiMemberAsync(connection.CardiMemberId, ct);
+
         return ToDeviceResponse(connection);
     }
 
@@ -303,6 +310,10 @@ public class DeviceConnectionService : IDeviceConnectionService
         }
 
         await _unitOfWork.SaveChangesAsync();
+
+        // Removing the last device is itself a gap worth raising, so re-evaluate rather than
+        // assuming a disconnect only ever closes things.
+        await _gapResolver.ResolveForCardiMemberAsync(cardiMemberId, ct);
     }
 
     public async Task<DeviceResponse> SetPrimaryAsync(

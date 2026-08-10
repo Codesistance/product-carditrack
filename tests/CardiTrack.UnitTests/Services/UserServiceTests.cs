@@ -5,6 +5,8 @@ using CardiTrack.Application.Services;
 using CardiTrack.Domain.Entities;
 using NSubstitute;
 
+using CardiTrack.UnitTests.Notifications;
+
 namespace CardiTrack.UnitTests.Services;
 
 public class UserServiceTests
@@ -27,7 +29,7 @@ public class UserServiceTests
         _deviceConnections.AnyActiveForCardiMembersAsync(Arg.Any<IEnumerable<Guid>>()).Returns(false);
     }
 
-    private UserService CreateSut() => new(_unitOfWork);
+    private UserService CreateSut() => new(_unitOfWork, new NoOpNotificationGapResolver());
 
     private static CreateUserRequest Request(bool? emailVerified) => new()
     {

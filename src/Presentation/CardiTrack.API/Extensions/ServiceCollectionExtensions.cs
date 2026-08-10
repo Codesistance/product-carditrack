@@ -41,6 +41,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<CardiTrack.Application.Interfaces.Services.IAlertService, CardiTrack.Application.Services.AlertService>();
         services.AddScoped<CardiTrack.Application.Interfaces.Services.IActivityLogAggregationService, CardiTrack.Application.Services.ActivityLogAggregationService>();
         services.AddScoped<CardiTrack.Application.Interfaces.Services.IOnboardingService, CardiTrack.Application.Services.OnboardingService>();
+        services.AddScoped<CardiTrack.Application.Interfaces.Services.INotificationService, CardiTrack.Application.Services.Notifications.NotificationService>();
+        services.AddScoped<CardiTrack.Application.Interfaces.Services.INotificationGapResolver, CardiTrack.Application.Services.Notifications.NotificationGapResolver>();
 
         return services;
     }
@@ -79,6 +81,9 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IDigestRepository, CardiTrack.Infrastructure.Repositories.DigestRepository>();
         services.AddScoped<IRealtimeAssessmentRepository, CardiTrack.Infrastructure.Repositories.RealtimeAssessmentRepository>();
         services.AddScoped<IAuditLogRepository, CardiTrack.Infrastructure.Repositories.AuditLogRepository>();
+        services.AddScoped<INotificationRepository, CardiTrack.Infrastructure.Repositories.NotificationRepository>();
+        services.AddScoped<INotificationMuteRepository, CardiTrack.Infrastructure.Repositories.NotificationMuteRepository>();
+        services.AddScoped<INotificationSnapshotQueries, CardiTrack.Infrastructure.Repositories.NotificationSnapshotQueries>();
 
         // Unit of Work
         services.AddScoped<IUnitOfWork, CardiTrack.Infrastructure.Repositories.UnitOfWork>();
