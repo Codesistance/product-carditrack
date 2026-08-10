@@ -13,7 +13,6 @@ using CardiTrack.Observability;
 using CardiTrack.PipelineJobs.Notifications;
 using CardiTrack.Shared;
 using Google.Cloud.PubSub.V1;
-using Microsoft.EntityFrameworkCore;
 using Serilog;
 
 // The AI pipeline's scheduled work, run as a Cloud Run *job*: Cloud Scheduler triggers an

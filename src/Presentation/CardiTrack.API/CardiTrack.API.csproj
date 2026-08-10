@@ -44,8 +44,8 @@
     <PackageReference Include="AutoMapper" Version="16.2.0" />
 
     <!-- API Versioning -->
-    <PackageReference Include="Asp.Versioning.Mvc" Version="10.0.1" />
-    <PackageReference Include="Asp.Versioning.Mvc.ApiExplorer" Version="10.0.1" />
+    <PackageReference Include="Asp.Versioning.Mvc" Version="10.2.1" />
+    <PackageReference Include="Asp.Versioning.Mvc.ApiExplorer" Version="10.2.1" />
 
     <!-- Caching -->
     <PackageReference Include="Microsoft.Extensions.Caching.StackExchangeRedis" Version="10.0.10" />

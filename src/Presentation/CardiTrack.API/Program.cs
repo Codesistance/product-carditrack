@@ -5,7 +5,6 @@ using CardiTrack.Infrastructure.Extensions;
 using CardiTrack.Infrastructure.Persistence;
 using CardiTrack.Observability;
 using CardiTrack.Shared;
-using Microsoft.EntityFrameworkCore;
 using Serilog;
 using Serilog.Events;
 

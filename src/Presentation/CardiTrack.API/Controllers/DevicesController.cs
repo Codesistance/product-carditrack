@@ -1,7 +1,7 @@
 using System.Net.Mime;
 using System.Text;
-using CardiTrack.API.Infrastructure.OAuth;
 using CardiTrack.API.Infrastructure.Auditing;
+using CardiTrack.API.Infrastructure.OAuth;
 using CardiTrack.API.Infrastructure.UserContext;
 using CardiTrack.Application.DTOs.Requests;
 using CardiTrack.Application.DTOs.Responses;

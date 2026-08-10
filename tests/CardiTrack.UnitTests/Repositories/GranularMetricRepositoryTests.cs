@@ -139,7 +139,11 @@ public class GranularMetricRepositoryTests(TestDatabaseFixture fixture)
             CardiMemberId = memberId,
             Metric = GranularMetric.Steps,
             HourStartUtc = hour,
-            Min = avg - 1, Max = avg + 1, Avg = avg, Sum = avg * 60, SampleCount = 60,
+            Min = avg - 1,
+            Max = avg + 1,
+            Avg = avg,
+            Sum = avg * 60,
+            SampleCount = 60,
         };
 
         await repo.UpsertRollupsAsync([Rollup(RecentHour, 50f), Rollup(RecentHour.AddHours(-1), 40f)]);
@@ -178,8 +182,10 @@ public class TimeSeriesPartitionServiceTests(TestDatabaseFixture fixture)
         await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() =>
             service.DropExpiredPartitionsAsync(new PartitionRetention
             {
-                GranularDays = days, RollupMonths = months,
-                DigestMonths = digestMonths, RealtimeDays = realtimeDays,
+                GranularDays = days,
+                RollupMonths = months,
+                DigestMonths = digestMonths,
+                RealtimeDays = realtimeDays,
             }));
     }
 
@@ -223,7 +229,10 @@ public class TimeSeriesPartitionServiceTests(TestDatabaseFixture fixture)
         {
             await service.DropExpiredPartitionsAsync(new PartitionRetention
             {
-                GranularDays = 90, RollupMonths = 13, DigestMonths = 12, RealtimeDays = 90,
+                GranularDays = 90,
+                RollupMonths = 13,
+                DigestMonths = 12,
+                RealtimeDays = 90,
             });
 
             var survivors = await context.Database

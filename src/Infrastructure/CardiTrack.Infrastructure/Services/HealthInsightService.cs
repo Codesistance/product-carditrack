@@ -2,8 +2,6 @@ using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Domain.Entities;
-using CardiTrack.Domain.Enums;
-using CardiTrack.Domain.Extensions;
 
 namespace CardiTrack.Infrastructure.Services;
 

@@ -140,7 +140,8 @@ public class ManualDeviceSyncServiceTests
             .Do(call =>
             {
                 var connection = call.Arg<DeviceConnection>();
-                connection.LastSyncDate = connection.Id == first.Id ? stamp : stamp.AddMinutes(-5);
+                Assert.NotNull(connection);
+                connection!.LastSyncDate = connection.Id == first.Id ? stamp : stamp.AddMinutes(-5);
             });
 
         var result = await CreateSut().SyncMemberAsync(_userId, _memberId);

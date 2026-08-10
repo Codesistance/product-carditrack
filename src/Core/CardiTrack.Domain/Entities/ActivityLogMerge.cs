@@ -1,5 +1,3 @@
-using CardiTrack.Domain.Enums;
-
 namespace CardiTrack.Domain.Entities;
 
 /// <summary>
