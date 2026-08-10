@@ -89,26 +89,30 @@ public class DigestGenerationService : IDigestGenerationService
         if (localNow.Hour != DeliveryHourLocal)
             return false;
 
-        var localDate = DateOnly.FromDateTime(localNow);
-        if (await _unitOfWork.Digests.GetByDateAsync(memberId, localDate, DigestAudience.Family, ct) is not null)
+        // A digest is keyed by the local day it DESCRIBES — yesterday, relative to the 06:00
+        // delivery — matching the entity and API contract (`localDate` is the day the text is
+        // about). Keying on the delivery day instead would make `?date=` reads off-by-one and
+        // deduplication key on the wrong day.
+        var deliveryDate = DateOnly.FromDateTime(localNow);
+        var describedDate = deliveryDate.AddDays(-1);
+        if (await _unitOfWork.Digests.GetByDateAsync(memberId, describedDate, DigestAudience.Family, ct) is not null)
             return false;
 
-        // The digest describes yesterday. Stored dates are the wearer's civil days, which is the
-        // closest grain we hold to the reader's local day.
-        var yesterday = localDate.AddDays(-1);
+        // Stored dates are the wearer's civil days, which is the closest grain we hold to the
+        // reader's local day.
         var logs = (await _unitOfWork.ActivityLogs
-            .GetByCardiMemberAndDateRangeAsync(memberId, yesterday, localDate)).ToList();
-        if (!logs.Any(l => l.Date == yesterday))
+            .GetByCardiMemberAndDateRangeAsync(memberId, describedDate, deliveryDate)).ToList();
+        if (!logs.Any(l => l.Date == describedDate))
             return false;
 
         var prompt = $"""
             {FamilyDigestInstructions}
 
             --- Member ---
-            {MedicalPromptBlocks.MemberContext(member, localDate)}
+            {MedicalPromptBlocks.MemberContext(member, deliveryDate)}
 
             --- Yesterday, and today so far ---
-            {MedicalPromptBlocks.DailyLines(logs, take: 2, localDate)}
+            {MedicalPromptBlocks.DailyLines(logs, take: 2, deliveryDate)}
             """;
 
         var text = await _medicalAi.GenerateAsync(prompt, ct);
@@ -116,7 +120,7 @@ public class DigestGenerationService : IDigestGenerationService
         await _unitOfWork.Digests.UpsertAsync(new DigestEntry
         {
             CardiMemberId = memberId,
-            LocalDate = localDate,
+            LocalDate = describedDate,
             Audience = DigestAudience.Family,
             Text = text,
             GeneratedAtUtc = utcNow,

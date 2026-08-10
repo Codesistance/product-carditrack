@@ -82,7 +82,9 @@ public class DigestGenerationServiceTests
             Arg.Is<DigestEntry>(d =>
                 d.CardiMemberId == _memberId &&
                 d.Audience == DigestAudience.Family &&
-                d.LocalDate == new DateOnly(2026, 8, 10) &&
+                // Keyed by the day the text DESCRIBES (yesterday), not the delivery day —
+                // the API contract's `localDate` is the day the digest is about.
+                d.LocalDate == new DateOnly(2026, 8, 9) &&
                 d.Text.Contains("settled") &&
                 d.GeneratedAtUtc == UtcNow),
             Arg.Any<CancellationToken>());
@@ -116,7 +118,7 @@ public class DigestGenerationServiceTests
     [Fact]
     public async Task Skips_WhenTheLocalDayAlreadyHasADigest()
     {
-        _digests.GetByDateAsync(_memberId, new DateOnly(2026, 8, 10), DigestAudience.Family, Arg.Any<CancellationToken>())
+        _digests.GetByDateAsync(_memberId, new DateOnly(2026, 8, 9), DigestAudience.Family, Arg.Any<CancellationToken>())
             .Returns(new DigestEntry { CardiMemberId = _memberId });
 
         var generated = await CreateSut().GenerateDueDigestsAsync(UtcNow);
