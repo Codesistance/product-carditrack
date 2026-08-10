@@ -13,7 +13,6 @@ using CardiTrack.Observability;
 using CardiTrack.Shared;
 using CardiTrack.Worker;
 using CardiTrack.Worker.Workers;
-using Microsoft.EntityFrameworkCore;
 using Serilog;
 
 // Enforce UTC for all DateTime values read from PostgreSQL timestamptz columns

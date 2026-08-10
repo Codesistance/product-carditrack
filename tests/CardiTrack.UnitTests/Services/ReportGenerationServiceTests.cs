@@ -61,14 +61,14 @@ public class ReportGenerationServiceTests
         ReportFormat format = ReportFormat.Pdf,
         bool includeMetrics = true,
         bool includeAlerts = true) => new()
-    {
-        CardiMemberIds = [_memberId],
-        DateRangeFrom = new DateOnly(2026, 2, 7),
-        DateRangeTo = new DateOnly(2026, 3, 9),
-        Format = format,
-        IncludeMetrics = includeMetrics,
-        IncludeAlerts = includeAlerts
-    };
+        {
+            CardiMemberIds = [_memberId],
+            DateRangeFrom = new DateOnly(2026, 2, 7),
+            DateRangeTo = new DateOnly(2026, 3, 9),
+            Format = format,
+            IncludeMetrics = includeMetrics,
+            IncludeAlerts = includeAlerts
+        };
 
     /// <summary>Generation runs on an unobserved background task; poll until it lands.</summary>
     private async Task<ReportStatusResponse> WaitForTerminalStatusAsync(ReportGenerationService sut, string reportId)

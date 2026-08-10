@@ -29,11 +29,11 @@ public class CardiMemberAccessServiceTests
 
     private static UserCardiMember Link(
         Guid memberId, bool isActive = true, bool canViewHealthData = true) => new()
-    {
-        CardiMemberId = memberId,
-        IsActive = isActive,
-        CanViewHealthData = canViewHealthData,
-    };
+        {
+            CardiMemberId = memberId,
+            IsActive = isActive,
+            CanViewHealthData = canViewHealthData,
+        };
 
     private void SetupLinks(params UserCardiMember[] links)
     {

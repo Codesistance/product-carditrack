@@ -174,7 +174,7 @@ public class HealthInsightServiceAccessTests
 
         Assert.NotNull(result);
         await _medicalAi.Received(1).GenerateAsync(
-            Arg.Is<string>(p => p.Contains("not yet enough history")), Arg.Any<CancellationToken>());
+            Arg.Is<string>(p => p != null && p.Contains("not yet enough history")), Arg.Any<CancellationToken>());
     }
 
     [Fact]

@@ -1,6 +1,6 @@
 using System.Net;
-using System.Text.Json;
 using System.Text;
+using System.Text.Json;
 using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Interfaces.Security;
 using CardiTrack.Domain.Entities;

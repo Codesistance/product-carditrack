@@ -26,27 +26,27 @@ public class RealtimeAssessmentRepositoryTests(TestDatabaseFixture fixture)
     private static RealtimeAssessment Assessment(
         Guid memberId, DateTime windowStartUtc, AlertSeverity? severity = AlertSeverity.Green,
         string output = "A steady hour.") => new()
-    {
-        CardiMemberId = memberId,
-        WindowStartUtc = windowStartUtc,
-        WindowEndUtc = windowStartUtc.AddMinutes(60),
-        HrTrendLast = 71.5,
-        HrDeviationScore = 0.8,
-        HrNoiseRms = 1.2,
-        StepsSum = 340,
-        SpO2Mean = null,
-        ModelOutput = output,
-        RawSeverity = severity switch
         {
-            AlertSeverity.Red => "critical",
-            AlertSeverity.Orange => "high",
-            AlertSeverity.Yellow => "medium",
-            AlertSeverity.Green => "low",
-            _ => null,
-        },
-        Severity = severity,
-        GeneratedAtUtc = DateTime.UtcNow,
-    };
+            CardiMemberId = memberId,
+            WindowStartUtc = windowStartUtc,
+            WindowEndUtc = windowStartUtc.AddMinutes(60),
+            HrTrendLast = 71.5,
+            HrDeviationScore = 0.8,
+            HrNoiseRms = 1.2,
+            StepsSum = 340,
+            SpO2Mean = null,
+            ModelOutput = output,
+            RawSeverity = severity switch
+            {
+                AlertSeverity.Red => "critical",
+                AlertSeverity.Orange => "high",
+                AlertSeverity.Yellow => "medium",
+                AlertSeverity.Green => "low",
+                _ => null,
+            },
+            Severity = severity,
+            GeneratedAtUtc = DateTime.UtcNow,
+        };
 
     // The return value is the concurrency arbiter for severity routing (only the inserter may
     // alert), so true-then-false is behavior the service depends on — not a nicety.

@@ -63,7 +63,10 @@ public partial class BottomNavBar : ContentView
                     Radius = 2f,
                     Offset = new Point(0, 4),
                 }
-                : null;
+                : new Shadow
+                {
+                    Opacity = 0f,
+                };
             label.TextColor = isSelected ? selectedColor : unselectedColor;
         }
     }

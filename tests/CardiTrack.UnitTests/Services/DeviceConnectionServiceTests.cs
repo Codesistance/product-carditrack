@@ -1,12 +1,12 @@
 using CardiTrack.Application.DTOs.Requests;
 using CardiTrack.Application.Exceptions;
 using CardiTrack.Application.Interfaces.Repositories;
+using CardiTrack.Application.Interfaces.Security;
 using CardiTrack.Application.Services;
 using CardiTrack.Domain.Entities;
 using CardiTrack.Domain.Enums;
-using CardiTrack.Infrastructure.ExternalClients;
 using CardiTrack.Infrastructure.Extensions;
-using CardiTrack.Application.Interfaces.Security;
+using CardiTrack.Infrastructure.ExternalClients;
 using CardiTrack.Infrastructure.Security;
 using CardiTrack.Infrastructure.Services;
 using CardiTrack.Infrastructure.Settings;
@@ -512,20 +512,20 @@ public class DeviceConnectionServiceTests
         bool isPrimary = false,
         ConnectionStatus status = ConnectionStatus.Connected,
         DeviceType deviceType = DeviceType.Fitbit) => new()
-    {
-        CardiMemberId = _memberId,
-        DeviceType = deviceType,
-        DeviceName = "Dad's Fitbit",
-        ConnectionStatus = status,
-        IsPrimary = isPrimary,
-        IsActive = true,
-        AccessToken = "enc(access)",
-        RefreshToken = "enc(refresh)",
-        TokenExpiry = DateTime.UtcNow.AddHours(1),
-        LastSyncDate = DateTime.UtcNow.AddMinutes(-10),
-        SyncFrequencyMinutes = 30,
-        Scopes = """["activity","heartrate","sleep"]""",
-    };
+        {
+            CardiMemberId = _memberId,
+            DeviceType = deviceType,
+            DeviceName = "Dad's Fitbit",
+            ConnectionStatus = status,
+            IsPrimary = isPrimary,
+            IsActive = true,
+            AccessToken = "enc(access)",
+            RefreshToken = "enc(refresh)",
+            TokenExpiry = DateTime.UtcNow.AddHours(1),
+            LastSyncDate = DateTime.UtcNow.AddMinutes(-10),
+            SyncFrequencyMinutes = 30,
+            Scopes = """["activity","heartrate","sleep"]""",
+        };
 
     [Fact]
     public async Task GetDevices_ProjectsScopesNextSyncAndTodaysUpdates()
