@@ -25,21 +25,32 @@ public class MedGemmaClient : IExternalAiClient
 {
     private const string ProviderName = "ollama";
 
+    /// <summary>
+    /// Attempts per logical call, including the first. Covers a Cloud Run instance still
+    /// spinning up or an IAM binding still propagating after a redeploy — both resolve within
+    /// seconds. It will not mask a sustained outage: a misconfiguration that fails every
+    /// attempt still surfaces as an error, just a few seconds later than today.
+    /// </summary>
+    private const int MaxAttempts = 3;
+
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly PrivateAiSettings _settings;
     private readonly string _httpClientName;
     private readonly ILogger<MedGemmaClient> _logger;
+    private readonly TimeProvider _timeProvider;
 
     public MedGemmaClient(
         IHttpClientFactory httpClientFactory,
         PrivateAiSettings settings,
         string httpClientName,
-        ILogger<MedGemmaClient> logger)
+        ILogger<MedGemmaClient> logger,
+        TimeProvider? timeProvider = null)
     {
         _httpClientFactory = httpClientFactory;
         _settings = settings;
         _httpClientName = httpClientName;
         _logger = logger;
+        _timeProvider = timeProvider ?? TimeProvider.System;
     }
 
     public Task<string> GenerateAsync(string prompt, CancellationToken ct = default)
@@ -92,19 +103,7 @@ public class MedGemmaClient : IExternalAiClient
         try
         {
             var client = _httpClientFactory.CreateClient(_httpClientName);
-            using var response = await send(client, ct);
-            if (!response.IsSuccessStatusCode)
-            {
-                errorType = ((int)response.StatusCode).ToString();
-                _logger.LogError(
-                    "MedGemma {Operation} failed: HTTP {StatusCode} after {ElapsedMs} ms",
-                    operationName, (int)response.StatusCode, stopwatch.ElapsedMilliseconds);
-                throw new HttpRequestException(
-                    $"MedGemma {operationName} returned HTTP {(int)response.StatusCode}.",
-                    inner: null, statusCode: response.StatusCode);
-            }
-
-            var body = await response.Content.ReadAsStringAsync(ct);
+            var body = await SendWithRetryAsync(client, send, operationName, stopwatch, ct);
             // Lenient parse on purpose: the strict JsonUtility.Deserialize throws a
             // JsonDeserializationException whose message embeds a 1000-char payload preview —
             // for MedGemma that preview is model output derived from health data, so it must
@@ -163,8 +162,12 @@ public class MedGemmaClient : IExternalAiClient
         catch (Exception ex)
         {
             // No AddException/RecordException: exception messages can embed payload fragments,
-            // and the type alone is what dashboards aggregate on.
-            errorType ??= ex.GetType().FullName;
+            // and the type alone is what dashboards aggregate on. A status-carrying failure
+            // (the retry loop exhausted on a non-success response) is tagged by that status,
+            // same as before retries existed; anything else falls back to the exception type.
+            errorType ??= ex is HttpRequestException { StatusCode: { } statusCode }
+                ? ((int)statusCode).ToString()
+                : ex.GetType().FullName;
             activity?.SetStatus(ActivityStatusCode.Error, errorType);
             activity?.SetTag(AiTelemetry.ErrorTypeTag, errorType);
             throw;
@@ -175,6 +178,45 @@ public class MedGemmaClient : IExternalAiClient
             if (errorType is not null)
                 durationTags.Add(AiTelemetry.ErrorTypeTag, errorType);
             AiTelemetry.OperationDuration.Record(stopwatch.Elapsed.TotalSeconds, durationTags);
+        }
+    }
+
+    /// <summary>
+    /// Sends the request, retrying a non-success response up to <see cref="MaxAttempts"/> times
+    /// with a short backoff. Only the HTTP outcome is retried — a 200 with an unparseable body
+    /// is the model having already answered, not a transport blip, so that path still fails on
+    /// the first attempt. The final attempt's failure is logged and thrown exactly as the single
+    /// attempt used to be, so callers and telemetry see the same shape as before retries existed.
+    /// </summary>
+    private async Task<string> SendWithRetryAsync(
+        HttpClient client,
+        Func<HttpClient, CancellationToken, Task<HttpResponseMessage>> send,
+        string operationName,
+        Stopwatch stopwatch,
+        CancellationToken ct)
+    {
+        for (var attempt = 1; ; attempt++)
+        {
+            using var response = await send(client, ct);
+            if (response.IsSuccessStatusCode)
+                return await response.Content.ReadAsStringAsync(ct);
+
+            var statusCode = response.StatusCode;
+            if (attempt >= MaxAttempts)
+            {
+                _logger.LogError(
+                    "MedGemma {Operation} failed: HTTP {StatusCode} after {ElapsedMs} ms ({Attempts} attempt(s))",
+                    operationName, (int)statusCode, stopwatch.ElapsedMilliseconds, attempt);
+                throw new HttpRequestException(
+                    $"MedGemma {operationName} returned HTTP {(int)statusCode}.",
+                    inner: null, statusCode: statusCode);
+            }
+
+            var delay = TimeSpan.FromSeconds(attempt * 2);
+            _logger.LogWarning(
+                "MedGemma {Operation} attempt {Attempt} failed: HTTP {StatusCode}, retrying in {DelayMs} ms",
+                operationName, attempt, (int)statusCode, delay.TotalMilliseconds);
+            await Task.Delay(delay, _timeProvider, ct);
         }
     }
 
