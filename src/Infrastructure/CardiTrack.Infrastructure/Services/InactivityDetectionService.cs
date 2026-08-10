@@ -104,11 +104,17 @@ public class InactivityDetectionService : IInactivityDetectionService
         if (lastDataUtc is not null && lastDataUtc > utcNow.AddMinutes(-rules.SilenceThresholdMinutes))
             return false;
 
-        // Cooldown: one unresolved inactivity alert at a time — a dead device would otherwise
-        // re-page every 15 minutes. Resolving the alert is what re-arms the check.
+        // Cooldown: one unresolved device-silence alert at a time — a dead device would
+        // otherwise re-page every 15 minutes; resolving the alert re-arms the check. Scoped to
+        // this rule, not the whole Inactivity type: the statistical engine's activity-decline
+        // alert shares the type but asks for a different action ("encourage movement", not
+        // "charge the watch"), and the two may legitimately stand together.
         var existing = await _unitOfWork.Alerts.GetByCardiMemberAsync(memberId, activeOnly: true);
-        if (existing.Any(a => a.AlertType == AlertType.Inactivity && !a.IsResolved))
+        if (existing.Any(a => AlertRuleMarkers.Suppresses(
+                a, AlertType.Inactivity, AlertRuleMarkers.DeviceSilenceRule)))
+        {
             return false;
+        }
 
         var silentSince = lastDataUtc is null
             ? "for several hours"
@@ -124,6 +130,7 @@ public class InactivityDetectionService : IInactivityDetectionService
             TriggeredDate = utcNow,
             MetricValues = JsonSerializer.Serialize(new
             {
+                rule = AlertRuleMarkers.DeviceSilenceRule,
                 lastDataUtc,
                 thresholdMinutes = rules.SilenceThresholdMinutes,
             }),
