@@ -352,8 +352,9 @@ resource "google_cloud_run_v2_service" "web" {
       # Explicit, not the GCP default (tcp_socket, 240s timeout, failure_threshold 1 — a single
       # 4-minute attempt with no retries). That default turned one transient cold-start blip
       # (five services deploying against the same Cloud SQL instance within seconds of each
-      # other) into an outright deploy failure on 2026-08-10. Same period/threshold as medgemma's
-      # probe below: many short retries recover from a blip that a single long one can't.
+      # other) into an outright deploy failure on 2026-08-10. Same period as medgemma's probe
+      # below, higher failure_threshold: many short retries recover from a blip that a single
+      # long one can't.
       startup_probe {
         tcp_socket {}
         period_seconds    = 10
