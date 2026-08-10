@@ -461,6 +461,56 @@ public class ApmConfigurationTests
     }
 
     [Fact]
+    public void Datadog_ShippingHosts_LogOnly_YieldsJustTheLogIntakeHost()
+    {
+        var options = new ApmOptions
+        {
+            Engine = "Datadog",
+            Data = new ApmData { IngestUrl = "uk1.datadoghq.com", IngestToken = "key" },
+        };
+
+        var hosts = new DatadogApmProvider().ShippingHosts(options);
+
+        Assert.Equal(["http-intake.logs.uk1.datadoghq.com"], hosts);
+    }
+
+    [Fact]
+    public void Datadog_ShippingHosts_FullyConfigured_IncludesTraceAndMetricsHosts()
+    {
+        var options = new ApmOptions
+        {
+            Engine = "Datadog",
+            MetricsEnabled = true,
+            Data = new ApmData
+            {
+                IngestUrl = "uk1.datadoghq.com",
+                IngestToken = "key",
+                Extra = { [DatadogApmProvider.TraceEndpointKey] = "https://otlp.uk1.datadoghq.com/v1/traces" },
+            },
+        };
+
+        var hosts = new DatadogApmProvider().ShippingHosts(options);
+
+        Assert.Equal(
+            new[] { "http-intake.logs.uk1.datadoghq.com", "otlp.uk1.datadoghq.com" },
+            hosts.OrderBy(h => h, StringComparer.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void BetterStack_ShippingHosts_OneHostCoversEverySignal()
+    {
+        var options = new ApmOptions
+        {
+            Engine = "BetterStack",
+            Data = new ApmData { IngestUrl = "s123.betterstackdata.com", IngestToken = "token" },
+        };
+
+        var hosts = new BetterStackApmProvider().ShippingHosts(options);
+
+        Assert.Equal(["s123.betterstackdata.com"], hosts);
+    }
+
+    [Fact]
     public void ServiceNames_AreTheAppTypes()
     {
         Assert.Equal(["api", "web", "worker", "pipeline-jobs", "webhook-receiver"], ApmServiceNames.All);

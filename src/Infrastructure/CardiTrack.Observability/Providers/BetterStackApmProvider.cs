@@ -46,6 +46,11 @@ public sealed class BetterStackApmProvider : IApmProvider
     public ApmShippingStatus Describe(ApmOptions options) =>
         new(options.MetricsEnabled ? ["logs", "traces", "metrics"] : ["logs", "traces"], []);
 
+    // Logs, traces and metrics all ship to the same ingesting host (only the path differs),
+    // so one host covers every signal.
+    public IReadOnlyCollection<string> ShippingHosts(ApmOptions options) =>
+        [new Uri(NormalizeIngestUrl(options.Data.IngestUrl!)).Host];
+
     /// <summary>Better Stack shows the ingesting host without a scheme; accept both forms.</summary>
     public static string NormalizeIngestUrl(string ingestUrl)
     {
