@@ -182,7 +182,11 @@ resource "google_cloud_run_v2_service" "api" {
         network    = google_compute_network.main.id
         subnetwork = google_compute_subnetwork.main.id
       }
-      egress = "PRIVATE_RANGES_ONLY"
+      # ALL_TRAFFIC, not PRIVATE_RANGES_ONLY: InsightsController calls MedGemma over its
+      # public *.run.app URL. That's not an RFC1918 destination, so PRIVATE_RANGES_ONLY sends
+      # it out the normal internet path instead of the VPC — MedGemma's internal-only ingress
+      # then rejects it as external traffic (404, before the request ever reaches Ollama).
+      egress = "ALL_TRAFFIC"
     }
 
     volumes {
@@ -644,14 +648,17 @@ resource "google_cloud_run_v2_job" "pipeline_jobs" {
       # covers a large timezone bucket without the execution being killed mid-generation.
       timeout = "3600s"
 
-      # In-VPC egress: MedGemma is internal-ingress-only, so the job must originate inside
-      # the network to reach it.
+      # ALL_TRAFFIC, not PRIVATE_RANGES_ONLY: MedGemma's internal-only ingress requires the
+      # request to actually route through the VPC to be recognized as internal. Its URL is a
+      # public *.run.app address, not an RFC1918 one, so PRIVATE_RANGES_ONLY would send calls
+      # to it out the normal internet path instead — MedGemma then rejects them as external
+      # traffic (404, before the request ever reaches Ollama).
       vpc_access {
         network_interfaces {
           network    = google_compute_network.main.id
           subnetwork = google_compute_subnetwork.main.id
         }
-        egress = "PRIVATE_RANGES_ONLY"
+        egress = "ALL_TRAFFIC"
       }
 
       volumes {
@@ -1037,14 +1044,17 @@ resource "google_cloud_run_v2_job" "pipeline_assessor" {
       # timeout bounds a pathological pass without killing an ordinary busy one.
       timeout = "1800s"
 
-      # In-VPC egress: MedGemma is internal-ingress-only, so the job must originate inside
-      # the network to reach it.
+      # ALL_TRAFFIC, not PRIVATE_RANGES_ONLY: MedGemma's internal-only ingress requires the
+      # request to actually route through the VPC to be recognized as internal. Its URL is a
+      # public *.run.app address, not an RFC1918 one, so PRIVATE_RANGES_ONLY would send calls
+      # to it out the normal internet path instead — MedGemma then rejects them as external
+      # traffic (404, before the request ever reaches Ollama).
       vpc_access {
         network_interfaces {
           network    = google_compute_network.main.id
           subnetwork = google_compute_subnetwork.main.id
         }
-        egress = "PRIVATE_RANGES_ONLY"
+        egress = "ALL_TRAFFIC"
       }
 
       volumes {
