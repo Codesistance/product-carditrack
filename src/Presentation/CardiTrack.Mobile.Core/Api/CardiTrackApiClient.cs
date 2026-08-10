@@ -125,6 +125,78 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
         PostAsync<ResendVerificationRequest, bool>(
             "api/v1/auth/resend-verification", new ResendVerificationRequest { Email = email }, ct);
 
+    // ---- Data-completeness notifications ----
+
+    public Task<NotificationListResponse> GetNotificationsAsync(
+        string? state = null,
+        string? category = null,
+        bool? owned = null,
+        int? limit = null,
+        CancellationToken ct = default)
+    {
+        var filters = new List<string>();
+        if (!string.IsNullOrWhiteSpace(state)) filters.Add($"state={Uri.EscapeDataString(state)}");
+        if (!string.IsNullOrWhiteSpace(category)) filters.Add($"category={Uri.EscapeDataString(category)}");
+        if (owned is { } o) filters.Add($"owned={(o ? "true" : "false")}");
+        if (limit is { } l) filters.Add($"limit={l}");
+
+        var path = filters.Count == 0
+            ? "api/v1/notifications"
+            : $"api/v1/notifications?{string.Join("&", filters)}";
+        return GetAsync<NotificationListResponse>(path, ct);
+    }
+
+    public Task<NotificationSummaryResponse> GetNotificationSummaryAsync(CancellationToken ct = default) =>
+        GetAsync<NotificationSummaryResponse>("api/v1/notifications/summary", ct);
+
+    public Task MarkNotificationSeenAsync(Guid notificationId, CancellationToken ct = default) =>
+        SendAsync<object>(HttpMethod.Post, $"api/v1/notifications/{notificationId}/seen", ct);
+
+    public Task<NotificationResponse> SnoozeNotificationAsync(
+        Guid notificationId, TimeSpan? duration = null, CancellationToken ct = default) =>
+        PostAsync<SnoozeNotificationBody, NotificationResponse>(
+            $"api/v1/notifications/{notificationId}/snooze",
+            // Omitted rather than zero: the server falls back to the rule's own default, which is
+            // the right answer when the user taps "not now" without picking a length.
+            new SnoozeNotificationBody { Duration = duration?.ToString("c") },
+            ct);
+
+    public Task DismissNotificationAsync(
+        Guid notificationId, bool acknowledgedConsequence = false, CancellationToken ct = default) =>
+        PostAsync<DismissNotificationBody, object>(
+            $"api/v1/notifications/{notificationId}/dismiss",
+            new DismissNotificationBody { AcknowledgedConsequence = acknowledgedConsequence },
+            ct);
+
+    public Task<List<NotificationMuteResponse>> GetNotificationMutesAsync(CancellationToken ct = default) =>
+        GetAsync<List<NotificationMuteResponse>>("api/v1/notifications/mutes", ct);
+
+    public Task RemoveNotificationMuteAsync(Guid muteId, CancellationToken ct = default) =>
+        SendAsync<object>(HttpMethod.Delete, $"api/v1/notifications/mutes/{muteId}", ct);
+
+    public Task ResetNotificationMutesAsync(CancellationToken ct = default) =>
+        SendAsync<object>(HttpMethod.Post, "api/v1/notifications/mutes/reset", ct);
+
+    public Task UpdateTimeZoneAsync(string timeZoneId, CancellationToken ct = default) =>
+        SendAsync<UpdateTimeZoneBody, object>(
+            HttpMethod.Put, "api/v1/users/me/timezone",
+            new UpdateTimeZoneBody { TimeZoneId = timeZoneId }, ct);
+
+    private sealed class SnoozeNotificationBody
+    {
+        public string? Duration { get; set; }
+    }
+
+    private sealed class DismissNotificationBody
+    {
+        public bool AcknowledgedConsequence { get; set; }
+    }
+
+    private sealed class UpdateTimeZoneBody
+    {
+        public string? TimeZoneId { get; set; }
+    }
+
     private async Task<T> GetAsync<T>(string path, CancellationToken ct)
     {
         HttpResponseMessage response;

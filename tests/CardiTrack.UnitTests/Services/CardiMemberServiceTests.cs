@@ -7,6 +7,8 @@ using CardiTrack.Domain.Entities;
 using CardiTrack.Domain.Enums;
 using NSubstitute;
 
+using CardiTrack.UnitTests.Notifications;
+
 namespace CardiTrack.UnitTests.Services;
 
 public class CardiMemberServiceTests
@@ -45,7 +47,7 @@ public class CardiMemberServiceTests
         });
     }
 
-    private CardiMemberService CreateSut() => new(_unitOfWork, _access, _encryption);
+    private CardiMemberService CreateSut() => new(_unitOfWork, _access, _encryption, new NoOpNotificationGapResolver());
 
     private static CreateCardiMemberRequest BuildRequest() => new()
     {

@@ -16,6 +16,8 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using NSubstitute;
 
+using CardiTrack.UnitTests.Notifications;
+
 namespace CardiTrack.UnitTests.Services;
 
 public class DeviceConnectionServiceTests
@@ -79,6 +81,7 @@ public class DeviceConnectionServiceTests
             _codeExchange,
             _tokenRefresh,
             new CardiMemberAccessService(_unitOfWork),
+            new NoOpNotificationGapResolver(),
             Options.Create(new List<DeviceProviderSettings> { fitbit }));
     }
 

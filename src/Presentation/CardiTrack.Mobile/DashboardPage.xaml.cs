@@ -176,6 +176,11 @@ public partial class DashboardPage : ContentPage
             _lastLoadedUtc = DateTime.UtcNow;
             Apply(data);
             SetState(DashboardState.Loaded);
+
+            // Loaded after the dashboard rather than alongside it: a caregiver opens this screen
+            // to see how their relative is, and housekeeping must never delay that answer or take
+            // it down with it.
+            await LoadNudgesAsync();
         }
         catch (ApiException ex)
         {
@@ -368,6 +373,11 @@ public partial class DashboardPage : ContentPage
         _ = Shell.Current.GoToAsync($"{CardiMemberDetailPage.Route}?memberId={data.CardiMemberId}");
     }
 
+    /// <summary>
+    /// The bell is the way in to everything wanting attention. It opens the alerts list, which
+    /// carries completeness items in their own section below the health ones — sectioned, never
+    /// interleaved, so scanning for a health event does not mean wading through housekeeping.
+    /// </summary>
     private async void OnBellClicked(object? sender, EventArgs e) =>
         await Shell.Current.GoToAsync(AppShell.AlertsRoute);
 
@@ -448,4 +458,62 @@ public partial class DashboardPage : ContentPage
 
     private async void OnViewTrendsClicked(object? sender, EventArgs e) =>
         await _popups.ShowInfoAsync("Trends & history (M2-03) are on the way.", "Coming soon");
+
+    // ------------------------------------------------------------------ data-completeness nudges
+
+    /// <summary>
+    /// Fills the safety banners and the two "Complete the picture" slots.
+    /// </summary>
+    /// <remarks>
+    /// Failures are swallowed on purpose. This is the housekeeping strip on a health screen — if
+    /// the summary call fails, the right outcome is a dashboard without it, not an error dialog
+    /// over the metrics somebody actually came to read.
+    /// </remarks>
+    private async Task LoadNudgesAsync()
+    {
+        try
+        {
+            var summary = await _api.GetNotificationSummaryAsync();
+            RenderNudges(summary);
+        }
+        catch (ApiException)
+        {
+            SafetyBannerList.IsVisible = false;
+            CompleteThePictureCard.IsVisible = false;
+            Header.SetNudgeIndicator(false);
+        }
+    }
+
+    private void RenderNudges(NotificationSummaryResponse summary)
+    {
+        SafetyBannerList.Clear();
+        NudgeList.Clear();
+
+        foreach (var banner in summary.SafetyBanners)
+        {
+            var row = new NudgeMiniRow(banner, asSafetyBanner: true);
+            row.Tapped += OnNudgeTapped;
+            SafetyBannerList.Add(row);
+        }
+
+        foreach (var card in summary.DashboardCards)
+        {
+            var row = new NudgeMiniRow(card);
+            row.Tapped += OnNudgeTapped;
+            NudgeList.Add(row);
+        }
+
+        SafetyBannerList.IsVisible = summary.SafetyBanners.Count > 0;
+        CompleteThePictureCard.IsVisible = summary.DashboardCards.Count > 0;
+        Header.SetNudgeIndicator(summary.OpenCount > 0);
+
+        // The link is only worth offering when there is more behind it than the two on screen.
+        CompleteThePictureLink.IsVisible = summary.OpenCount > summary.DashboardCards.Count;
+    }
+
+    private async void OnNudgeTapped(object? sender, NotificationResponse notification) =>
+        await Shell.Current.GoToAsync(NotificationsPage.Route);
+
+    private async void OnSeeAllNudgesTapped(object? sender, TappedEventArgs e) =>
+        await Shell.Current.GoToAsync(NotificationsPage.Route);
 }

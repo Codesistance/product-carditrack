@@ -26,5 +26,6 @@ public partial class AppShell : Shell
         Routing.RegisterRoute(CardiMemberDetailPage.Route, typeof(CardiMemberDetailPage));
         Routing.RegisterRoute(EditCardiMemberPage.Route, typeof(EditCardiMemberPage));
         Routing.RegisterRoute(DeviceManagementPage.Route, typeof(DeviceManagementPage));
+        Routing.RegisterRoute(NotificationsPage.Route, typeof(NotificationsPage));
     }
 }

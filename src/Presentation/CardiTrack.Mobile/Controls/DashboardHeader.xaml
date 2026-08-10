@@ -77,6 +77,24 @@
                            TextColor="{StaticResource White}"
                            HorizontalOptions="Center" VerticalOptions="Center"/>
                 </Border>
+
+                <!-- Completeness items get a dot, never a number. A caregiver seeing "3" must be
+                     able to trust it means three things about their relative's health, not two of
+                     those and one missing phone number. Sits opposite the badge so both can show
+                     at once without overlapping. -->
+                <Border x:Name="NudgeDot"
+                        IsVisible="False"
+                        BackgroundColor="{StaticResource StatusYellow}"
+                        StrokeThickness="2"
+                        Stroke="{StaticResource White}"
+                        WidthRequest="12" HeightRequest="12"
+                        HorizontalOptions="Start" VerticalOptions="End"
+                        TranslationX="-4" TranslationY="4"
+                        InputTransparent="True">
+                    <Border.StrokeShape>
+                        <RoundRectangle CornerRadius="6"/>
+                    </Border.StrokeShape>
+                </Border>
             </Grid>
 
         </Grid>

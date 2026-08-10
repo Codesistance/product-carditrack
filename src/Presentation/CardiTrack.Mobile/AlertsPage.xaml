@@ -185,6 +185,30 @@
                         <Button x:Name="ArchiveButton"
                                 Style="{StaticResource AuthGradientButton}"
                                 Clicked="OnArchiveClicked"/>
+
+                        <!-- Data-completeness items, in their own section below the health ones.
+                             Sectioned and never interleaved: a caregiver scanning this screen is
+                             looking for something about their relative, and a missing phone
+                             number must not sit in that stream. It lives here rather than on a
+                             screen of its own because the bell is the one place people look for
+                             "what needs me", and a second inbox nobody opens helps nobody. -->
+                        <VerticalStackLayout x:Name="NudgeSection" Spacing="10" IsVisible="False">
+                            <BoxView Style="{StaticResource DividerLine}" Margin="0,4"/>
+                            <Grid ColumnDefinitions="*,Auto">
+                                <Label Grid.Column="0"
+                                       Text="Also needs your attention"
+                                       Style="{StaticResource DashboardSectionTitle}"/>
+                                <Label x:Name="NudgeSeeAllLink"
+                                       Grid.Column="1"
+                                       Text="See all"
+                                       Style="{StaticResource SectionLink}">
+                                    <Label.GestureRecognizers>
+                                        <TapGestureRecognizer Tapped="OnSeeAllNudgesTapped"/>
+                                    </Label.GestureRecognizers>
+                                </Label>
+                            </Grid>
+                            <VerticalStackLayout x:Name="NudgeStack" Spacing="10"/>
+                        </VerticalStackLayout>
                     </VerticalStackLayout>
                 </Grid>
             </ScrollView>

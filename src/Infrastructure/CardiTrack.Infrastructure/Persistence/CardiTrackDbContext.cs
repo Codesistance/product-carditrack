@@ -32,6 +32,11 @@ public class CardiTrackDbContext : DbContext
     public DbSet<Device> Devices => Set<Device>();
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
 
+    // Notifications (data-completeness nudges)
+    public DbSet<Notification> Notifications => Set<Notification>();
+    public DbSet<NotificationMute> NotificationMutes => Set<NotificationMute>();
+    public DbSet<NotificationRunLog> NotificationRunLogs => Set<NotificationRunLog>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);

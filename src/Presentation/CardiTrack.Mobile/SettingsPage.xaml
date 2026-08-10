@@ -27,6 +27,28 @@
                     </VerticalStackLayout>
                 </Border>
 
+                <!-- Notification silences. Every mute the user holds is listed and reversible
+                     here — a silence they cannot find again later is a bug, not a preference. -->
+                <Border x:Name="MutesCard" Style="{StaticResource ElevatedCard}" IsVisible="False">
+                    <VerticalStackLayout Spacing="10">
+                        <Label Text="Silenced reminders"
+                               Style="{StaticResource Body1SemiBoldDark}"/>
+                        <Label x:Name="MutesSubtitle"
+                               Style="{StaticResource Body2}"
+                               TextColor="{StaticResource BodyText}"/>
+
+                        <VerticalStackLayout x:Name="MutesList" Spacing="8"/>
+
+                        <Button x:Name="ResetMutesBtn"
+                                Text="Show me everything again"
+                                Style="{StaticResource SecondaryOutlineButton}"
+                                HeightRequest="42"
+                                HorizontalOptions="Fill"
+                                Margin="0,4,0,0"
+                                Clicked="OnResetMutesClicked"/>
+                    </VerticalStackLayout>
+                </Border>
+
                 <!-- Placeholder until M2-01 — same card treatment as the rest of the app. -->
                 <Border Style="{StaticResource ElevatedCard}">
                     <VerticalStackLayout Spacing="6">

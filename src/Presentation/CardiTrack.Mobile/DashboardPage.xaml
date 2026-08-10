@@ -113,6 +113,35 @@
                     <!-- ── Loaded content ── -->
                     <VerticalStackLayout x:Name="ContentPanel" Spacing="20" IsVisible="False">
 
+                        <!-- Safety notifications: monitoring is degraded and nothing else on this
+                             screen would say so. First in the stack and deliberately unmutable —
+                             with one channel, prominence is the only escalation this engine has,
+                             so it is spent here and nowhere else. -->
+                        <VerticalStackLayout x:Name="SafetyBannerList" Spacing="10" IsVisible="False"/>
+
+                        <!-- "Complete the picture": the top two open nudges. Two, because a third
+                             makes it a list, and a list is not a prompt. -->
+                        <Border x:Name="CompleteThePictureCard"
+                                IsVisible="False"
+                                Style="{StaticResource ElevatedCard}">
+                            <VerticalStackLayout Spacing="12">
+                                <Grid ColumnDefinitions="*,Auto">
+                                    <Label Grid.Column="0"
+                                           Text="Complete the picture"
+                                           Style="{StaticResource DashboardSectionTitle}"/>
+                                    <Label x:Name="CompleteThePictureLink"
+                                           Grid.Column="1"
+                                           Text="See all"
+                                           Style="{StaticResource SectionLink}">
+                                        <Label.GestureRecognizers>
+                                            <TapGestureRecognizer Tapped="OnSeeAllNudgesTapped"/>
+                                        </Label.GestureRecognizers>
+                                    </Label>
+                                </Grid>
+                                <VerticalStackLayout x:Name="NudgeList" Spacing="10"/>
+                            </VerticalStackLayout>
+                        </Border>
+
                         <!-- Monitoring paused (M1-13) — takes precedence over the stale
                              banner, which would otherwise blame a sync that is paused on purpose. -->
                         <Border x:Name="PausedBanner"

@@ -10,10 +10,33 @@ namespace CardiTrack.Application.Services;
 public class UserService : IUserService
 {
     private readonly IUnitOfWork _unitOfWork;
+    private readonly INotificationGapResolver _gapResolver;
 
-    public UserService(IUnitOfWork unitOfWork)
+    public UserService(IUnitOfWork unitOfWork, INotificationGapResolver gapResolver)
     {
         _unitOfWork = unitOfWork;
+        _gapResolver = gapResolver;
+    }
+
+    /// <inheritdoc />
+    public async Task<bool> UpdateTimeZoneAsync(Guid userId, string timeZoneId, CancellationToken ct = default)
+    {
+        // Validated against the platform's database rather than a regex: an id we cannot resolve
+        // would fail later, inside whatever tries to render a local time, far from the cause.
+        if (!TimeZoneInfo.TryFindSystemTimeZoneById(timeZoneId, out _))
+            return false;
+
+        var user = await _unitOfWork.Users.GetByIdAsync(userId);
+        if (user is null || !user.IsActive)
+            throw new KeyNotFoundException("User not found");
+
+        user.TimeZoneId = timeZoneId;
+        user.UpdatedDate = DateTime.UtcNow;
+        _unitOfWork.Users.Update(user);
+        await _unitOfWork.SaveChangesAsync();
+
+        await _gapResolver.ResolveForUserAsync(userId, ct);
+        return true;
     }
 
     public async Task<UserResponse> CreateUserAsync(CreateUserRequest request)

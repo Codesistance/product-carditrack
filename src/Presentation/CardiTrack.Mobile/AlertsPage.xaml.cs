@@ -1,4 +1,5 @@
 using CardiTrack.Application.DTOs.Responses;
+using CardiTrack.Domain.Enums;
 using CardiTrack.Mobile.Controls;
 using CardiTrack.Mobile.Core.Api;
 using CardiTrack.Mobile.Services;
@@ -74,6 +75,10 @@ public partial class AlertsPage : ContentPage
             _lastLoadedUtc = DateTime.UtcNow;
             Render(data);
             SetState(AlertsState.Loaded);
+
+            // After the alerts, and isolated from them: this screen's job is health events, and a
+            // failure fetching housekeeping must never cost the caregiver the list they came for.
+            await LoadNudgeSectionAsync(cts.Token);
         }
         catch (ApiException ex)
         {
@@ -326,4 +331,46 @@ public partial class AlertsPage : ContentPage
             await _popups.ShowWarningAsync(ex.Message, "Couldn't mark it handled");
         }
     }
+
+    // ------------------------------------------------------------------ completeness section
+
+    /// <summary>
+    /// Fills the "Also needs your attention" section — data-completeness items, kept in their own
+    /// block below the health alerts rather than mixed into them.
+    /// </summary>
+    private async Task LoadNudgeSectionAsync(CancellationToken ct)
+    {
+        try
+        {
+            var summary = await _api.GetNotificationSummaryAsync(ct);
+
+            NudgeStack.Clear();
+
+            // Safety items first — they mean monitoring is degraded, which is the closest this
+            // section gets to being about the person.
+            var items = summary.SafetyBanners
+                .Concat(summary.DashboardCards)
+                .ToList();
+
+            foreach (var item in items)
+            {
+                var row = new NudgeMiniRow(item, asSafetyBanner: item.Category == NotificationCategory.Safety);
+                row.Tapped += OnNudgeTapped;
+                NudgeStack.Add(row);
+            }
+
+            NudgeSection.IsVisible = items.Count > 0;
+            NudgeSeeAllLink.IsVisible = summary.OpenCount > items.Count;
+        }
+        catch (ApiException)
+        {
+            NudgeSection.IsVisible = false;
+        }
+    }
+
+    private async void OnNudgeTapped(object? sender, NotificationResponse notification) =>
+        await Shell.Current.GoToAsync(NotificationsPage.Route);
+
+    private async void OnSeeAllNudgesTapped(object? sender, TappedEventArgs e) =>
+        await Shell.Current.GoToAsync(NotificationsPage.Route);
 }

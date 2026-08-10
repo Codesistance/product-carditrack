@@ -16,6 +16,8 @@ public interface IUnitOfWork : IDisposable
     IGranularMetricRepository GranularMetrics { get; }
     IDigestRepository Digests { get; }
     IRealtimeAssessmentRepository RealtimeAssessments { get; }
+    INotificationRepository Notifications { get; }
+    INotificationMuteRepository NotificationMutes { get; }
 
     Task<int> SaveChangesAsync();
     Task BeginTransactionAsync();

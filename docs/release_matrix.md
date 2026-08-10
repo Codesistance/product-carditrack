@@ -29,9 +29,10 @@ Legend: wave number = ships in that wave; — = not planned for that surface. **
 | Fitbit webhook subscriptions (push ingestion) | R2 | R2 | R2 | — | ⬜ Not started — moves to R2 with the AI pipeline (GCP Pub/Sub + Cloud Run); R1 ingestion is 10-minute Worker polling (✅ shipped) |
 | Device management (status, primary, reconnect, remove) | R1 | R1 | R1 | — | 🔶 API + mobile shipped (remove / set-primary / sync / refresh endpoints + device management screen, M1-15); web not started (template-stage) |
 | Dashboard + daily health summary | R1 | R1 | R1 | — | 🔶 Per-member dashboard endpoint + mobile dashboard shipped; web dashboard not started (web app is still template-stage) |
-| Statistical alerts (all 5 launch types) + acknowledgment/notes | R1 | R1 | R1 | — | ⬜ Not started (no alerts CRUD/acknowledgment; no SMS/email/push delivery channels built) |
+| Statistical alerts (all 5 launch types) + acknowledgment/notes | R1 | R1 | R1 | — | 🔶 **Shipped** via `StatisticalAlertWorker` (PR #118) and `InactivityDetectionWorker` (PR #116); `AlertsController` + `AlertsPage` (M1-10) serve them. Notes/photos and the alert-detail screens (M1-11/12/16) not started; no push delivery |
 | AI insights + chat endpoints (MedGemma via Ollama on Cloud Run; Gemini 2.0 Flash) | R1 | R1 | R1 | — | ✅ Shipped (synchronous endpoints; the R2 event-driven pipeline is separate) |
 | Reports (health report generation) | R1 | R1 | R2 | Complete Care | 🔶 Text-only generation shipped; PDF/CSV/FHIR R4 formats not started |
+| **Data-completeness notifications (in-app)** | R1 | R1 | R3 | — | ✅ **Shipped** — detection worker, 8 rules, inbox + dashboard card + safety banners + mute management. In-app only by decision; the staleness rule defers to `InactivityDetectionWorker`'s faster device-silence alert ([notification_engine.md](./technical/notification_engine.md)) |
 | Push notification registration | R1 | R1 | — | — | ⬜ Not started |
 | Health data export — PDF, CSV, FHIR R4 | R1 | R1 | R2 | Complete Care | ⬜ Not started (see reports row for text-only interim) |
 | Baseline learning progress | R1 | R1 | R1 | — | 🔶 Daily `BaselineCalculationWorker` + mobile learning screen shipped; web not started (web app is still template-stage) |

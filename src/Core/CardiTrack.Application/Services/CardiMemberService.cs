@@ -14,15 +14,18 @@ public class CardiMemberService : ICardiMemberService
     private readonly IUnitOfWork _unitOfWork;
     private readonly ICardiMemberAccessService _access;
     private readonly IEncryptionService _encryption;
+    private readonly INotificationGapResolver _gapResolver;
 
     public CardiMemberService(
         IUnitOfWork unitOfWork,
         ICardiMemberAccessService access,
-        IEncryptionService encryption)
+        IEncryptionService encryption,
+        INotificationGapResolver gapResolver)
     {
         _unitOfWork = unitOfWork;
         _access = access;
         _encryption = encryption;
+        _gapResolver = gapResolver;
     }
 
     public async Task<CardiMemberResponse> CreateCardiMemberAsync(
@@ -167,6 +170,12 @@ public class CardiMemberService : ICardiMemberService
         }
 
         await _unitOfWork.SaveChangesAsync();
+
+        // Saving may have closed a gap we are currently nagging about. Resolving here rather than
+        // waiting for the nightly run is what stops a caregiver seeing the card they just actioned
+        // still sitting there when the screen pops.
+        await _gapResolver.ResolveForCardiMemberAsync(cardiMemberId, ct);
+
         return await BuildDetailAsync(requestingUserId, member);
     }
 
@@ -204,6 +213,11 @@ public class CardiMemberService : ICardiMemberService
         }
 
         await _unitOfWork.SaveChangesAsync();
+
+        // Withdrawn rather than resolved: the gaps were not closed, they stopped applying. Counting
+        // a removal as a success would flatter the comply rate the rule review depends on.
+        await _gapResolver.WithdrawForCardiMemberAsync(
+            cardiMemberId, NotificationResolutionReason.ScopeRemoved, ct);
     }
 
     public async Task<MonitoringPauseResponse> PauseMonitoringAsync(
@@ -218,6 +232,11 @@ public class CardiMemberService : ICardiMemberService
         member.UpdatedDate = now;
         _unitOfWork.CardiMembers.Update(member);
         await _unitOfWork.SaveChangesAsync();
+
+        // Nagging about a member someone deliberately paused is the fastest way to teach a
+        // caregiver to ignore the whole surface.
+        await _gapResolver.WithdrawForCardiMemberAsync(
+            cardiMemberId, NotificationResolutionReason.MonitoringPaused, ct);
 
         return PauseStateOf(member, now);
     }
@@ -234,6 +253,9 @@ public class CardiMemberService : ICardiMemberService
         member.UpdatedDate = now;
         _unitOfWork.CardiMembers.Update(member);
         await _unitOfWork.SaveChangesAsync();
+
+        // Anything still outstanding comes straight back rather than waiting for tomorrow's run.
+        await _gapResolver.ResolveForCardiMemberAsync(cardiMemberId, ct);
 
         return PauseStateOf(member, now);
     }
