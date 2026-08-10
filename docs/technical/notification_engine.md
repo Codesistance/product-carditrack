@@ -173,8 +173,10 @@ check.** This is the single most important reachability signal in the design.
   "message": {
     "token": "<device token>",
     "data": {                          // no PHI — the app fetches content after auth
-      "notificationId": "...", "category": "safety",
-      "deepLink": "carditrack://alerts/9b2f5f64", "ackToken": "..."
+      "deliveryId": "...", "category": "safety",
+      "deepLink": "carditrack://alerts/9b2f5f64",
+      "ackToken": "...",               // HMAC, single-use, halts escalation  (§7.2 C3)
+      "fetchToken": "..."              // HMAC, scoped to this delivery       (§7.2 C5)
     },
     "notification": { "title": "CardiTrack", "body": "Urgent — tap to view" },
     "android": {
@@ -205,7 +207,9 @@ check.** This is the single most important reachability signal in the design.
   expire rather than surprise someone at midnight with a morning event. The inbox still has it.
 - **`mutable-content`** — the iOS notification service extension fetches the real title/body over
   authenticated HTTPS and rewrites the notification before display, so rich content reaches the lock
-  screen without ever transiting APNs. This is what makes §7's privacy default cost nothing.
+  screen without ever transiting APNs. This is what makes §7.1's privacy default cost nothing. The
+  extension authenticates with the payload's `fetchToken`, **never the user's access token** — see
+  §7.2 C5, where sharing the token via a keychain access group is rejected.
 - **Silent push** (`content-available`, `apns-push-type: background`) is used only for the daily token
   liveness probe (§6.3). iOS throttles these hard and no alert may depend on one.
 
@@ -236,9 +240,15 @@ Immediate in-process attempt; on `Retryable`, `NotificationDispatchWorker` retri
 orphan-cleanup precedent. `Permanent` (FCM `UNREGISTERED`, APNs `410`) disables the token immediately,
 which arms `PUSH_UNREACHABLE`: **the failure feeds the engine back.**
 
-Outbox rows are claimed `FOR UPDATE SKIP LOCKED` so a scaled-out Worker never double-sends, and every
-row carries a `DedupKey` unique across both producers — the Worker's 48h `DEVICE_STALE_LONG` and the
-pipeline's 2h device-check share `device-silence:{connectionId}:{utcDate}` and cannot both fire.
+Outbox rows are claimed `FOR UPDATE SKIP LOCKED` so a scaled-out Worker never double-sends.
+
+**Dedup keys are namespaced by producer** — `worker:device-silence:{connectionId}:{utcDate}`,
+`pipeline:device-silence:…`. Cross-producer suppression (the Worker's 48h `DEVICE_STALE_LONG` versus
+the pipeline's 2h device-check) is then an **explicit collapse rule evaluated at send time**, not an
+accidental unique-constraint violation. A single shared namespace would let either producer — or
+anyone who reached the enqueue endpoint (§7.2 C4) — pre-claim a key and silently drop the other's
+legitimate alert. Suppressing a safety alert must never be something a `UNIQUE` index does by
+side effect.
 
 ### 6.3 Escalation runs across people, not vendors
 
@@ -249,10 +259,17 @@ and red Health:
 t+0     push every registered device of the primary recipient
 t+120s  no ack  → re-push at highest priority; mark recipient unreachable
 t+300s  no ack  → fan out to all other caregivers with ReceiveAlerts on,
-                  copy flagged "Margaret's primary contact hasn't responded"
+                  copy flagged "Escalated — nobody has acknowledged this yet"
 t+900s  no ack from anyone → mark UNDELIVERED_CRITICAL; page ops; the alert
                   is pinned to every dashboard as an unmissable banner
 ```
+
+**The fan-out copy does not name who failed to respond.** *"Margaret's primary contact hasn't
+responded"* would disclose one caregiver's behaviour — whether they looked at their phone — to
+another, which is a new processing purpose for that person's data under GDPR and needs a lawful basis
+recorded before it ships. The de-identified wording carries identical urgency at zero cost, so it is
+the default. A named variant stays available only behind the family-sharing terms plus a DPIA entry
+(§17.4).
 
 This is strictly better than an email fallback would be: a second human with a working phone beats a
 message in an inbox nobody watches. It also means a single dead phone cannot silence a family.
@@ -275,7 +292,9 @@ is a projection of server state, not a log of received events (§10.2).
 
 ---
 
-## 7. Privacy of what lands on a lock screen
+## 7. Privacy and security controls
+
+### 7.1 What lands on a lock screen
 
 *"Margaret hasn't moved today"* on a lock screen in a shared home is a disclosure, and it is PHI in
 transit through Apple's and Google's infrastructure.
@@ -287,12 +306,153 @@ before it displays. The user sees rich content; APNs and FCM never do.
 
 **Opt-in richness.** A setting — *"Show alert details on the lock screen"* — lets a caregiver who
 values speed over discretion get the full text directly in the payload. Off by default; the choice is
-theirs to make knowingly.
+theirs to make knowingly. The send-time branch on this flag **must fail closed**: a null, unreadable
+or unmigrated preference resolves to content-free, because the failure mode of the opposite default is
+PHI in a third-party transport.
 
 Because the default keeps health data out of the transport, Apple and Google act as conduits rather
 than processors, and no BAA is required for the push path. **Confirm this with counsel before launch**
 — it is the standard reading, not a settled fact, and the opt-in path changes the analysis. Raw metric
 values stay out of push bodies regardless, per llm_design's family-audience rule.
+
+**Accepted risk — metadata still discloses.** A CardiTrack critical-alert sound at 3am tells everyone
+in earshot that a health emergency is occurring, with zero body text. The notification's existence,
+timing and sound are the signal; content-free payloads do not remove it. This is inherent to the
+feature and is accepted, not mitigated — recorded here so §7.1's "no health data" claim is read as
+being about payload contents, not about the disclosure surface as a whole.
+
+### 7.2 Threat model and controls
+
+Reviewed against STRIDE. Five controls are load-bearing; each is a design commitment, not a
+suggestion, and all five are cheaper now than after rows exist.
+
+| | Control | Threat |
+|---|---|---|
+| **C1** | Notification rows carry no direct identifiers | Information Disclosure |
+| **C2** | Push tokens encrypted, bounded, erasable | Information Disclosure / Spoofing |
+| **C3** | Delivery acks authorized by per-delivery HMAC | Denial of Service / Spoofing |
+| **C4** | Enqueue endpoint pins caller identity, not just audience | Spoofing / Elevation of Privilege |
+| **C5** | Notification extension uses a scoped fetch token | Information Disclosure |
+
+**C1 — no names in the clinical plane.** `TemplateData` must never hold a wearer's name. A row
+carrying `{"name":"Margaret"}` next to `CardiMemberId` and a health-derived gap is an
+identifier↔clinical join in plaintext, readable by `app_rw` — exactly what the tier split in
+[data_protection_architecture.md](./data_protection_architecture.md) §2–3 exists to prevent, and a
+second instance of its recorded **[GAP] #1**.
+
+```csharp
+// VULNERABLE — name persisted in the clinical plane
+TemplateData = JsonSerializer.Serialize(new { name = member.Name, n = 4 });
+
+// SECURED — pseudonym + non-identifying counters; name resolved per request at render time
+TemplateData = JsonSerializer.Serialize(new { n = 4 });        // CardiMemberId is already on the row
+var identity = await _identityVault.GetAsync(notification.CardiMemberId, ct);
+return notification.Render(locale, identity.DisplayName);
+```
+
+> **The trap:** encrypting `TemplateData` is the wrong fix. It leaves the name in the clinical plane's
+> key management, makes the column unqueryable, and still hands `app_rw` the ciphertext. Don't store it.
+> Render-time resolution is also the correct call for localization — a name is not a translatable
+> resource, which is why §8 already commits to keys rather than strings.
+
+**C2 — push tokens are Tier 1 data.** They are already classified Tier 1 on arrival by
+[data_protection_architecture.md](./data_protection_architecture.md) §2 and enumerated under HIPAA
+Safe Harbor category 13 (device identifiers) in its §4.2. Storing them in the clear would contradict a
+policy that predates this design. A token is a stable cross-reinstall device identifier, and one
+leaked alongside the FCM credential lets an attacker push to a named caregiver's phone — bypassing Do
+Not Disturb once the Critical Alerts entitlement lands (#106).
+
+```csharp
+// VULNERABLE
+entity.Token = request.PushToken;
+
+// SECURED — the pattern DeviceConnection OAuth tokens already use (IEncryptionService, AES-256-GCM)
+entity.Token            = _encryption.Encrypt(request.PushToken);
+entity.TokenFingerprint = Convert.ToHexString(
+    SHA256.HashData(Encoding.UTF8.GetBytes(request.PushToken)));   // upsert/lookup key
+```
+
+Disabled tokens are **hard-deleted at 30 days**, not soft-retained for 180; `PushDeviceToken` is
+enumerated in the Safe Harbor export exclusion (the transform fails closed only for tables it knows
+about) and in the erasure sweep.
+
+**C3 — the ack endpoint decides whether a red alert escalates.** `POST /notifications/{id}/delivered`
+halts the escalation ladder, which makes it the highest-value forgery target in the system: a
+successful attack silently cancels the alert that says *check on Margaret*, and looks identical to
+success. Two failure modes bracket it —
+
+- Requiring a full user JWT is brittle: iOS background handlers routinely run with an expired access
+  token (1-hour lifetime, validated at **zero clock skew** — `Auth0Extensions.cs:62`). Acks fail,
+  escalation fires spuriously, and the family is woken at 3am for an alert that did arrive.
+- Relaxing it to compensate — the trap — makes a guessable GUID sufficient to suppress an emergency.
+
+The resolution is the pattern already used by the OAuth bounce (`DevicesController.cs:236`):
+`[AllowAnonymous]`, authorized by a single-use token rather than a session.
+
+```csharp
+// VULNERABLE — brittle (expired JWT) or forgeable (GUID alone)
+[HttpPost("{id}/delivered")]
+public async Task<IActionResult> Delivered(Guid id) => Ok(await _svc.MarkDeliveredAsync(id));
+
+// SECURED — per-delivery HMAC, single-use, bound to the device the push was sent to
+[AllowAnonymous]
+[HttpPost("{id}/delivered")]
+public async Task<IActionResult> Delivered(Guid id, [FromBody] AckRequest req)
+{
+    // ackToken = HMAC-SHA256(deliveryId | pushDeviceTokenId | expiresAt), key in Secret Manager
+    if (!_ackTokens.Validate(req.AckToken, id, out var deviceTokenId))
+        return NotFound();                    // non-disclosure, matching the alerts convention
+    return Ok(await _svc.MarkDeliveredAsync(id, deviceTokenId));   // replay is a no-op
+}
+```
+
+Binding to `pushDeviceTokenId` stops a token lifted from device A acking device B's delivery. Add an
+endpoint-specific rule to `IpRateLimiting.GeneralRules` (`appsettings.json:47`) — the global 100/min
+is per-IP and too loose for a forgery target.
+
+**C4 — audience-pinning alone does not secure the enqueue endpoint.** Any GCP principal can mint an
+ID token with an arbitrary `aud`, so validating the audience without the caller's identity leaves an
+unauthenticated ingest path into the alert pipeline: fabricate a red alert, or pre-claim a dedup key
+to suppress a real one (§6.2).
+
+```csharp
+// VULNERABLE — audience alone
+options.TokenValidationParameters = new() { ValidAudience = cfg["Pipeline:Audience"] };
+
+// SECURED — pin the issuer, the audience, and the calling service account
+options.TokenValidationParameters = new()
+{
+    ValidIssuer      = "https://accounts.google.com",
+    ValidAudience    = cfg["Pipeline:Audience"],
+    ValidateLifetime = true
+};
+options.Events = new JwtBearerEvents
+{
+    OnTokenValidated = ctx =>
+    {
+        var email    = ctx.Principal?.FindFirst("email")?.Value;
+        var verified = ctx.Principal?.FindFirst("email_verified")?.Value == "true";
+        if (!verified || !string.Equals(email, cfg["Pipeline:ServiceAccount"], StringComparison.OrdinalIgnoreCase))
+            ctx.Fail("caller is not the pipeline service account");
+        return Task.CompletedTask;
+    }
+};
+```
+
+Defence in depth: put the route behind Cloud Run IAM (`roles/run.invoker` granted only to the pipeline
+service account) so the platform rejects unauthorized callers before app code runs.
+
+**C5 — the notification service extension gets a scoped token, not the user's.** The NSE runs in a
+separate process on every push. Sharing the access token to it through a keychain access group widens
+credential exposure to the most frequently-executed code in the app. It receives `fetchToken` in the
+payload instead — same HMAC construction as C3, scoped to one delivery, useless for any other call.
+
+**Critical Alerts abuse surface.** The entitlement bypasses Do Not Disturb and silent mode, so a
+compromised enqueue path or a bad severity gate could wake every user at 3am — reputational damage,
+App Store review risk, and Apple can revoke the entitlement. Two controls: the `critical` flag is set
+**server-side only**, from an allowlist of `(category, severity)` pairs, never derived from client or
+producer input; and a circuit breaker halts sending and pages if critical enqueues exceed a threshold
+in a window. The breaker is what keeps a C4 failure noisy rather than catastrophic.
 
 ---
 
@@ -305,7 +465,9 @@ Notification                            -- a nudge: one open gap, per target use
 ├── Category enum (Safety|Blocking|Unlock|Account), Priority enum
 ├── Fingerprint string(128) UNIQUE      -- SHA256(RuleCode|UserId|ScopeId|Discriminator)
 ├── TitleKey / BodyKey / BenefitKey     -- localization keys, not baked strings
-├── TemplateData jsonb                  -- {"name":"Margaret","n":4}  (no metric values)
+├── TemplateData jsonb                  -- {"n":4} — counters ONLY. No names, no metric
+│                                          values, no free text. Names resolve at render
+│                                          time from the identity vault (§7.2 C1)
 ├── ActionDeepLink string(256)
 ├── State enum (Open|Snoozed|Resolved|Superseded)
 ├── SnoozedUntil, ResolvedDate, ResolutionReason
@@ -322,11 +484,14 @@ NotificationDelivery                    -- transactional outbox; BOTH producers 
 ├── SentDate, DeliveredDate             -- DeliveredDate = client ack (§6.3)
 └── EscalationStage int, EscalatedFrom Guid?
 
-PushDeviceToken
-├── UserId, DeviceId, Platform (Ios|Android), Token, AppVersion
+PushDeviceToken                         -- Tier 1 data (§7.2 C2)
+├── UserId, DeviceId, Platform (Ios|Android), AppVersion
+├── Token            string             -- ENCRYPTED, AES-256-GCM via IEncryptionService
+├── TokenFingerprint string(64)         -- SHA-256 hex; upsert/lookup key, since the
+│                                          ciphertext is non-deterministic
 ├── OsAuthorizationStatus enum, SafetyChannelEnabled bool   -- §4 reachability
 ├── LastSeenDate, LastAckDate, DisabledDate, DisabledReason
-└── UNIQUE(UserId, DeviceId)
+└── UNIQUE(UserId, DeviceId), UNIQUE(TokenFingerprint)
 
 NotificationPreference                  -- per user
 ├── UserId UNIQUE
@@ -490,13 +655,13 @@ integer enums, `ICardiMemberAccessService` scoping (unreadable member → **404*
 | Endpoint | Purpose |
 |---|---|
 | `POST` / `DELETE /api/v1/notifications/devices` | Token upsert / unregister. Upsert also carries OS authorization status and per-channel enablement (§4) and doubles as the reachability heartbeat |
-| `POST /api/v1/notifications/{id}/delivered` | **Client ack** — posted from the background push handler. Drives the SLO and stops escalation |
+| `POST /api/v1/notifications/{id}/delivered` | **Client ack** — posted from the background push handler. Drives the SLO and stops escalation. `[AllowAnonymous]`, authorized by the payload's single-use `ackToken` rather than a user JWT, and separately rate-limited (§7.2 C3) |
 | `GET /api/v1/notifications` | Inbox. Filters `state`, `category`, `cardiMemberId`, `owned`, `limit` (≤200), `offset` |
 | `GET /api/v1/notifications/summary` | Unseen count, safety banners, top 2 cards. One call on launch and foreground sync |
 | `POST /api/v1/notifications/{id}/seen` · `/snooze` · `/dismiss` | Funnel + the three affordances. Dismiss requires `acknowledgedConsequence` for Safety, else **400** |
 | `GET` / `PUT /api/v1/notifications/preferences` | Quiet hours, muted categories, lock-screen detail |
 | `GET /api/v1/notifications/mutes` · `DELETE /mutes/{id}` · `POST /mutes/reset` | The silence surface |
-| `POST /api/v1/internal/notifications/enqueue` | **Service-to-service only.** Google OIDC ID token from the pipeline's service account, audience-pinned; unreachable with a user JWT |
+| `POST /api/v1/internal/notifications/enqueue` | **Service-to-service only.** Google OIDC ID token validated on issuer, audience **and the calling service account's verified `email`** — audience-pinning alone admits any GCP principal (§7.2 C4). Behind Cloud Run IAM `roles/run.invoker`; unreachable with a user JWT |
 
 All actions idempotent; 404 (never 403) on another user's row, matching the alerts convention.
 
@@ -517,8 +682,21 @@ Five workers exist today; two are added, both `CronBackgroundService` subclasses
 | `DataCompletenessWorker` | `0 0 6 * * *` | Evaluate + reconcile all active orgs, batched, cancellation honoured between batches |
 
 30 seconds is the retry granularity the 60s SLO requires; detection runs at 06:00 UTC, after the 02:30
-baseline recalculation. Retention (resolved rows >180d, delivered outbox >90d) folds into the
-retention/cleanup worker already listed as planned, or `PartitionMaintenanceWorker` if it lands first.
+baseline recalculation.
+
+**Retention** folds into `DataRetentionWorker` ([data_protection_architecture.md](./data_protection_architecture.md) §5.2),
+or `PartitionMaintenanceWorker` if that lands first:
+
+| Rows | Retention | Action |
+|---|---|---|
+| `Notification` — `Resolved`/`Superseded` | 180 days | Hard delete |
+| `NotificationDelivery` — terminal states | 90 days | Hard delete |
+| `PushDeviceToken` — disabled | **30 days** | **Hard delete** — Tier 1 identifiers, not soft-retained (§7.2 C2) |
+| `NotificationMute` | Life of the user | Never purged — a silence the user chose is a preference, not exhaust |
+
+Push tokens and notification rows join the erasure sweep in that document's §6.2, and
+`PushDeviceToken` is enumerated in the Safe Harbor export exclusion — the transform fails closed only
+for tables it knows about.
 
 **Metrics** (Datadog APM is wired — `Apm:Engine`, PR #4):
 
@@ -572,6 +750,20 @@ the safety alerts down with it.
   registration; a token silent 7 days is disabled.
 - **Payload privacy** — assert no PHI field ever reaches the FCM request body with the default setting;
   a golden-payload test that fails loudly if someone interpolates a member name into a push body.
+  A null/unmigrated lock-screen preference must resolve to content-free (§7.1 fail-closed).
+- **Security controls** (§7.2), each with a negative test:
+  - **C1** — persisting a notification with a name in `TemplateData` fails; the rendered API response
+    still carries the name, proving resolution happens at read time.
+  - **C2** — the token column is unreadable without `IEncryptionService`; upsert matches on
+    fingerprint; a disabled token is gone at 30 days, not soft-flagged.
+  - **C3** — an ack with a forged, expired, replayed, or other-device `ackToken` returns 404 **and
+    does not stop escalation**. This is the test that matters most in the suite: it is the one whose
+    absence looks exactly like success.
+  - **C4** — an OIDC token with the right audience but a different service-account `email` is
+    rejected; a pre-claimed dedup key from one producer does not suppress the other's alert.
+  - **C5** — the extension's `fetchToken` cannot be replayed against any other endpoint.
+- **Critical-alert gating** — the `critical` flag cannot be set from client or producer input; the
+  circuit breaker halts sending past the threshold rather than delivering.
 - **Device-lab matrix** — real iOS and Android hardware, app killed / backgrounded / Doze / airplane
   mode, plus at least one aggressive-OEM device. Emulators do not reproduce the failures that matter.
 - **API** — cross-tenant 404; Safety dismiss without acknowledgement 400; every action idempotent.
@@ -611,8 +803,9 @@ inline actions (matrix R4).
    update the DPIA.
 3. **Push-path BAA position** (§7) — legal confirmation that content-free payloads make Apple and
    Google conduits rather than processors, and what the opt-in lock-screen setting changes.
-4. **Escalation fan-out and consent** — telling caregiver B that caregiver A didn't respond discloses
-   something about A. Acceptable in an emergency, but it should be in the family-sharing terms.
+4. **Escalation fan-out and consent** — *resolved for the default path:* the fan-out copy no longer
+   names who failed to respond (§6.3), so no caregiver behaviour is disclosed. Still open only if
+   product wants the **named** variant, which needs the family-sharing terms plus a DPIA entry first.
 5. **Rule catalogue in code or DB?** Proposed: code, with `RuleVersion` for re-arming. DB-driven rules
    allow copy changes without deploys but put untested predicates in production data.
 6. **Web parity** — the web app is template-stage; Phases 1–3 are mobile + API. Browser push (Web Push

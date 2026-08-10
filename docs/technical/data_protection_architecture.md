@@ -67,7 +67,8 @@ Data that identifies a person on its own. HIPAA Safe Harbor categories map here.
 | Device OAuth tokens | `DeviceConnections` (encrypted) | stays; re-keyed to versioned per-subject DEK (§7) |
 | Device labels ("Mom's Fitbit"), consent signatory names | `DeviceConnections.DeviceName`, future `ConsentRecords` | treat as identifier-bearing free text: never exported, never sent to LLMs |
 | IP address, user agent | `AuditLogs` | stays (audit plane; exempt from erasure — §6) |
-| Push tokens (planned), Stripe IDs (planned) | — | Tier 1 on arrival |
+| Push tokens (designed, not built) | `PushDeviceToken.Token` per [notification_engine.md](./notification_engine.md) §8 | **Tier 1 on arrival — encrypt with `IEncryptionService` (the `DeviceConnections` pattern), index on a SHA-256 fingerprint rather than the ciphertext, hard-delete 30 days after the token is disabled.** A push token is a stable cross-reinstall device identifier (Safe Harbor category 13, §4.2) and, paired with a leaked FCM credential, lets an attacker push to a named caregiver's phone |
+| Stripe customer/subscription IDs (planned) | — | Tier 1 on arrival |
 
 ### Tier 2 — Pseudonymized clinical plane
 
@@ -318,6 +319,8 @@ Periods marked ⚖ are engineering **proposals** requiring legal ratification (D
 | Consent records | Postgres compliance | Relationship duration + ⚖ 6 years | Never anonymized (they *are* the proof); hard delete at period end | Defense/accountability (GDPR Art. 5(2), 7(1)) |
 | Erasure ledger | Postgres compliance | ⚖ 6 years | Hard delete | Proof of erasure; stores hashes only (§6) |
 | Generated reports | Cache (`report:*` keys) | 1 hour TTL — **already implemented**, `ReportGenerationService.cs:21` | TTL expiry | Densest PHI artifact outside Postgres |
+| Push tokens (`PushDeviceToken`) | Postgres clinical | **30 days after disable** | **Hard delete** — never soft-retained | Tier 1 device identifier; a disabled token has no operational value and every retained day is exposure ([notification_engine.md](./notification_engine.md) §7.2 C2) |
+| Notifications + delivery outbox | Postgres clinical | ⚖ 180 d resolved / 90 d delivered | Hard delete. Rows hold no names — `TemplateData` is counters only, names resolve from the vault at render time | Keeps the completeness-nudge surface out of the identifier↔clinical join that finding #1 describes |
 | Planned AI pipeline (Cosmos) | Cosmos DB | Per [llm_design.md](../llm_design.md): realtime 90 d, prediction cards 90 d, trends 2 y ⚖, digests 1 y ⚖ — enforce via **container TTL**, not jobs | TTL; erasure = delete by `wearerUserId` partition | |
 | Per-user LSTM models (planned) | Blob | Life of subject | Delete at erasure (model weights are personal data — trained on one person) | |
 | APM/telemetry (Datadog/Better Stack) | SaaS | ⚖ 30 days — configure in-product retention; **stop shipping raw member GUIDs in paths** (scrub processor, §7) | Provider-side expiry | |
@@ -439,8 +442,9 @@ CREATE TABLE compliance.erasure_ledger (
                 token columns. (Provider-side link dies even if we crash here.)
  4. SWEEP       Iterate SubjectDataMap.ByCardiMember (§3.4), batched hard
                 deletes: activity_logs, alerts (+notes/photos+blobs),
-                pattern_baselines, device_connections. Planned: Cosmos delete
-                by wearerUserId partition; delete per-user LSTM blob.
+                pattern_baselines, device_connections, notifications +
+                notification_deliveries scoped to the member. Planned: Cosmos
+                delete by wearerUserId partition; delete per-user LSTM blob.
  5. RELATIONSHIPS  Delete user_cardi_members rows (FK cascade exists), then the
                 clinical cardi_members row.
  6. CRYPTO-SHRED  pii.subject_identities: null dek_wrapped, null
