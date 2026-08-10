@@ -1295,13 +1295,17 @@ jobs:
           # successfully") even though the app itself never errored. Retry through
           # that window instead of failing the deploy on a single unlucky request.
           for attempt in 1 2 3 4 5; do
-            STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+            # `|| echo "000"` keeps a connect/DNS/TLS failure from tripping this
+            # step's `set -e` and aborting before the loop gets to retry — curl's
+            # own non-zero exit would otherwise propagate straight through the
+            # `STATUS=$(...)` assignment.
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 \
               -H "X-Health-Token: $HEALTH_TOKEN" \
               -A "carditrack-healthcheck" \
-              "${{ needs.changes.outputs.api_url_dev }}/health")
+              "${{ needs.changes.outputs.api_url_dev }}/health" || echo "000")
             [ "$STATUS" = "200" ] && break
             echo "Health check attempt $attempt: HTTP $STATUS"
-            sleep 5
+            [ "$attempt" = "5" ] || sleep 5
           done
           [ "$STATUS" = "200" ] || (echo "::error::Health check failed: HTTP $STATUS" && exit 1)
 
