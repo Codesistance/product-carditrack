@@ -45,6 +45,8 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Pipeline", "Pipeline", "{90
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CardiTrack.PipelineJobs", "src\Pipeline\CardiTrack.PipelineJobs\CardiTrack.PipelineJobs.csproj", "{A818A304-3DEA-41E1-AF79-7F87B1139EFA}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CardiTrack.HealthWebhookReceiver", "src\Pipeline\CardiTrack.HealthWebhookReceiver\CardiTrack.HealthWebhookReceiver.csproj", "{0B133ACB-96F8-469A-8BF3-8BEEEBE55831}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -223,6 +225,18 @@ Global
 		{A818A304-3DEA-41E1-AF79-7F87B1139EFA}.Release|x64.Build.0 = Release|Any CPU
 		{A818A304-3DEA-41E1-AF79-7F87B1139EFA}.Release|x86.ActiveCfg = Release|Any CPU
 		{A818A304-3DEA-41E1-AF79-7F87B1139EFA}.Release|x86.Build.0 = Release|Any CPU
+		{0B133ACB-96F8-469A-8BF3-8BEEEBE55831}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{0B133ACB-96F8-469A-8BF3-8BEEEBE55831}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{0B133ACB-96F8-469A-8BF3-8BEEEBE55831}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{0B133ACB-96F8-469A-8BF3-8BEEEBE55831}.Debug|x64.Build.0 = Debug|Any CPU
+		{0B133ACB-96F8-469A-8BF3-8BEEEBE55831}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{0B133ACB-96F8-469A-8BF3-8BEEEBE55831}.Debug|x86.Build.0 = Debug|Any CPU
+		{0B133ACB-96F8-469A-8BF3-8BEEEBE55831}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{0B133ACB-96F8-469A-8BF3-8BEEEBE55831}.Release|Any CPU.Build.0 = Release|Any CPU
+		{0B133ACB-96F8-469A-8BF3-8BEEEBE55831}.Release|x64.ActiveCfg = Release|Any CPU
+		{0B133ACB-96F8-469A-8BF3-8BEEEBE55831}.Release|x64.Build.0 = Release|Any CPU
+		{0B133ACB-96F8-469A-8BF3-8BEEEBE55831}.Release|x86.ActiveCfg = Release|Any CPU
+		{0B133ACB-96F8-469A-8BF3-8BEEEBE55831}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -247,5 +261,6 @@ Global
 		{32DD8CC5-1601-4997-8428-4404FC0E2D42} = {9048EB7F-3875-A59E-E36B-5BD4C6F2A282}
 		{9060CA92-3A34-9796-BFC5-7D41828AC5E6} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 		{A818A304-3DEA-41E1-AF79-7F87B1139EFA} = {9060CA92-3A34-9796-BFC5-7D41828AC5E6}
+		{0B133ACB-96F8-469A-8BF3-8BEEEBE55831} = {9060CA92-3A34-9796-BFC5-7D41828AC5E6}
 	EndGlobalSection
 EndGlobal

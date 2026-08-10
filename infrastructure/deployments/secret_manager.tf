@@ -387,3 +387,30 @@ resource "google_secret_manager_secret_iam_member" "deploy_sa_medgemma_url_manag
   role      = "roles/secretmanager.secretVersionManager"
   member    = "serviceAccount:${var.deploy_service_account}"
 }
+
+# ── Webhook subscriber secret (Terraform-owned value) ────────────────────────
+# The full Authorization header value Google sends with every webhook notification, registered
+# in the Subscriber's endpointAuthorization.secret at provisioning time. Machine-generated and
+# machine-consumed on both ends, so Terraform owns the value outright.
+
+resource "random_password" "webhook_secret" {
+  count   = var.enable_webhook_receiver ? 1 : 0
+  length  = 48
+  special = false # travels in an HTTP header; alphanumeric avoids any escaping ambiguity
+}
+
+resource "google_secret_manager_secret" "webhook_secret" {
+  count     = var.enable_webhook_receiver ? 1 : 0
+  secret_id = "${var.secret_id_prefix}-webhook-secret"
+  replication {
+    auto {}
+  }
+  labels     = var.secret_labels
+  depends_on = [google_project_service.secretmanager]
+}
+
+resource "google_secret_manager_secret_version" "webhook_secret" {
+  count       = var.enable_webhook_receiver ? 1 : 0
+  secret      = google_secret_manager_secret.webhook_secret[0].id
+  secret_data = "Bearer ${random_password.webhook_secret[0].result}"
+}

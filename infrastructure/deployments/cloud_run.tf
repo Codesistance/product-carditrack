@@ -741,3 +741,125 @@ resource "google_cloud_scheduler_job" "pipeline_jobs_hourly" {
     google_cloud_run_v2_job.pipeline_jobs,
   ]
 }
+
+# ── Health webhook receiver (AI pipeline — public ingress) ───────────────────────────────────
+# The platform's only public-ingress pipeline surface: authenticates the Subscriber secret,
+# ACKs 204, forwards the raw notification to the realtime topic. Runs as a dedicated service
+# account holding exactly two grants — read its own secret, publish to the topic — and the
+# container carries no database, AI or business configuration at all.
+
+variable "enable_webhook_receiver" {
+  description = "Create the Google Health webhook receiver service. Requires enable_pubsub"
+  type        = bool
+  default     = false
+}
+
+variable "webhook_receiver_name" {
+  description = "Name of the webhook receiver Cloud Run service"
+  type        = string
+  default     = ""
+}
+
+variable "webhook_receiver_container_image" {
+  description = "Bootstrap image seeding the receiver's initial create; CI/CD owns it thereafter"
+  type        = string
+  default     = "us-docker.pkg.dev/cloudrun/container/hello"
+}
+
+variable "webhook_receiver_env_vars" {
+  description = "Environment variables for the webhook receiver"
+  type        = map(string)
+  default     = {}
+}
+
+resource "google_service_account" "webhook_receiver" {
+  count        = var.enable_webhook_receiver ? 1 : 0
+  account_id   = "webhook-receiver"
+  display_name = "CardiTrack health webhook receiver runtime"
+}
+
+resource "google_secret_manager_secret_iam_member" "webhook_secret_accessor" {
+  count     = var.enable_webhook_receiver ? 1 : 0
+  secret_id = google_secret_manager_secret.webhook_secret[0].id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_service_account.webhook_receiver[0].email}"
+}
+
+resource "google_pubsub_topic_iam_member" "webhook_receiver_publisher" {
+  count  = var.enable_webhook_receiver ? 1 : 0
+  topic  = google_pubsub_topic.realtime[0].name
+  role   = "roles/pubsub.publisher"
+  member = "serviceAccount:${google_service_account.webhook_receiver[0].email}"
+
+  lifecycle {
+    precondition {
+      condition     = var.enable_pubsub
+      error_message = "enable_webhook_receiver requires enable_pubsub — the receiver publishes to the realtime topic."
+    }
+  }
+}
+
+resource "google_cloud_run_v2_service" "webhook_receiver" {
+  count    = var.enable_webhook_receiver ? 1 : 0
+  name     = var.webhook_receiver_name
+  location = var.cloud_run_location
+  ingress  = "INGRESS_TRAFFIC_ALL"
+  client   = "terraform"
+
+  template {
+    service_account = google_service_account.webhook_receiver[0].email
+
+    scaling {
+      min_instance_count = 0
+      max_instance_count = var.cloud_run_max_instances
+    }
+
+    containers {
+      image = var.webhook_receiver_container_image
+
+      dynamic "env" {
+        for_each = var.webhook_receiver_env_vars
+        iterator = item
+        content {
+          name  = item.key
+          value = item.value
+        }
+      }
+
+      env {
+        name = "Webhook__Secret"
+        value_source {
+          secret_key_ref {
+            secret  = google_secret_manager_secret.webhook_secret[0].secret_id
+            version = "latest"
+          }
+        }
+      }
+
+      resources {
+        limits = {
+          cpu    = "1"
+          memory = "512Mi"
+        }
+      }
+    }
+  }
+
+  lifecycle {
+    ignore_changes = [template[0].containers[0].image, client, client_version]
+  }
+  depends_on = [
+    google_project_service.run,
+    google_secret_manager_secret_version.webhook_secret,
+  ]
+}
+
+# Public by design: Google's webhook delivery carries the Subscriber secret, not an OIDC
+# identity, so the service itself is the authentication boundary.
+resource "google_cloud_run_v2_service_iam_member" "webhook_receiver_public" {
+  count    = var.enable_webhook_receiver ? 1 : 0
+  name     = google_cloud_run_v2_service.webhook_receiver[0].name
+  location = google_cloud_run_v2_service.webhook_receiver[0].location
+  role     = "roles/run.invoker"
+  member   = "allUsers"
+}

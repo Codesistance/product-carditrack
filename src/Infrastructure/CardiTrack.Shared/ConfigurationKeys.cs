@@ -61,6 +61,22 @@ public static class ConfigurationKeys
         public const string Token = "Health:Token";
     }
 
+    public static class Webhook
+    {
+        /// <summary>
+        /// The full Authorization header value Google sends with every webhook notification —
+        /// including its scheme — as registered in the Subscriber's endpointAuthorization.secret.
+        /// The receiver compares the whole header against this, constant-time.
+        /// </summary>
+        public const string Secret = "Webhook:Secret";
+    }
+
+    public static class PubSub
+    {
+        public const string ProjectId = "PubSub:ProjectId";
+        public const string TopicId = "PubSub:TopicId";
+    }
+
     public static class CloudRun
     {
         /// <summary>Bare env var injected by Cloud Run (no section) — the port to listen on.</summary>
