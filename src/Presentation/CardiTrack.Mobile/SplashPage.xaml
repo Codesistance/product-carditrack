@@ -4,26 +4,34 @@
              x:Class="CardiTrack.Mobile.SplashPage"
              Shell.NavBarIsVisible="False"
              NavigationPage.HasNavigationBar="False"
-             BackgroundColor="{StaticResource White}">
+             BackgroundColor="{StaticResource GradientDarkBlue}">
 
+    <!-- The page ground is the OS splash's colour on purpose. The OS splash (see
+         MauiSplashScreen in the .csproj) draws the same white rounded tile on the same
+         #174E86, so the first frame this page paints is the frame the OS was already
+         showing; the gradient then fades in over the top rather than replacing it. -->
     <Grid>
         <!-- ── Gradient background (pre-rendered SVG with blurred ellipses) ── -->
-        <Image Source="gradient_splash_bg.svg"
+        <!-- Starts transparent; SplashPage.OnAppearing fades it in. -->
+        <Image x:Name="GradientBackground"
+               Source="gradient_splash_bg.svg"
+               Opacity="0"
                Aspect="AspectFill"
                HorizontalOptions="Fill"
                VerticalOptions="Fill" />
 
         <!-- ── Loading state (default) ── -->
-        <!-- Figma M1-01 A: logo centered (~50%), spinner near bottom (~88%) -->
-        <Grid x:Name="LoadingPanel"
-              RowDefinitions="*,Auto,80"
-              Padding="24,0">
+        <!-- Figma M1-01 A: logo centred (~50%), spinner near bottom (~88%).
+             Absolute positioning rather than layout rows: the spinner and its bottom
+             margin used to eat 112px off the logo's row, landing the logo 56px above
+             centre and jumping it the moment the OS splash — which centres the same
+             tile exactly — handed over. -->
+        <AbsoluteLayout x:Name="LoadingPanel">
 
-            <!-- Centered logo icon -->
-            <Border Grid.Row="0"
+            <!-- Centred logo icon -->
+            <Border AbsoluteLayout.LayoutBounds="0.5,0.5,88,88"
+                    AbsoluteLayout.LayoutFlags="PositionProportional"
                     BackgroundColor="{StaticResource White}"
-                    WidthRequest="88" HeightRequest="88"
-                    HorizontalOptions="Center" VerticalOptions="Center"
                     StrokeThickness="0">
                 <Border.StrokeShape>
                     <RoundRectangle CornerRadius="17"/>
@@ -35,12 +43,11 @@
             </Border>
 
             <!-- Loading spinner near bottom -->
-            <ActivityIndicator Grid.Row="1"
+            <ActivityIndicator AbsoluteLayout.LayoutBounds="0.5,0.88,32,32"
+                               AbsoluteLayout.LayoutFlags="PositionProportional"
                                IsRunning="True"
-                               Color="{StaticResource White}"
-                               HeightRequest="32" WidthRequest="32"
-                               HorizontalOptions="Center" />
-        </Grid>
+                               Color="{StaticResource White}" />
+        </AbsoluteLayout>
 
         <!-- ── Error state (hidden by default) ── -->
         <!-- Figma M1-01 B: logo + wordmark upper-centre (~y454/512),
