@@ -60,7 +60,7 @@ jobs:
     if: github.event_name != 'pull_request' || github.event.label.name == 'automerge'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/github-script@v7
+      - uses: actions/github-script@v8
         env:
           AUTOMERGE_LABEL: automerge
           # Check runs belonging to this job are excluded from the "all checks
