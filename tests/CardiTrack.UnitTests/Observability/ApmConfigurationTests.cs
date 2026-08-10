@@ -510,6 +510,33 @@ public class ApmConfigurationTests
         Assert.Equal(["s123.betterstackdata.com"], hosts);
     }
 
+    /// <summary>
+    /// AddApmTracing's HttpClientInstrumentation filter looks up a request host in
+    /// ShippingHosts through its IReadOnlyCollection&lt;string&gt; return type, exactly as
+    /// below. Enumerable.Contains delegates to ICollection&lt;T&gt;.Contains when the runtime
+    /// object implements it — true for the HashSet Datadog returns — so the set's
+    /// OrdinalIgnoreCase comparer still applies despite the static type hiding it. This
+    /// pins that behavior: switching ShippingHosts to a plain list/array would silently
+    /// make the filter case-sensitive.
+    /// </summary>
+    [Fact]
+    public void Datadog_ShippingHosts_ContainsLookupIsCaseInsensitiveThroughTheInterfaceType()
+    {
+        var options = new ApmOptions
+        {
+            Engine = "Datadog",
+            Data = new ApmData { IngestUrl = "uk1.datadoghq.com", IngestToken = "key" },
+        };
+
+        IReadOnlyCollection<string> hosts = new DatadogApmProvider().ShippingHosts(options);
+
+        // Assert.Contains enumerates and compares directly, sidestepping the ICollection<T>
+        // dispatch this test exists to pin — asserting on the real Contains() call is deliberate.
+#pragma warning disable xUnit2017
+        Assert.True(hosts.Contains("HTTP-INTAKE.LOGS.UK1.DATADOGHQ.COM"));
+#pragma warning restore xUnit2017
+    }
+
     [Fact]
     public void ServiceNames_AreTheAppTypes()
     {
