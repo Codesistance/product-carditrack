@@ -90,21 +90,26 @@ builder.Services.AddScoped<IOAuthTokenRefreshService, OAuthTokenRefreshService>(
 builder.Services.AddScoped<IActivityLogAggregationService, ActivityLogAggregationService>();
 builder.Services.AddFitbitProvider();
 
-// Realtime subscription — the aggregator's input.
-var subscriptionName = SubscriptionName.FromProjectSubscription(
-    configLoader.GetRequired(ConfigurationKeys.PubSub.ProjectId),
-    configLoader.GetRequired(ConfigurationKeys.PubSub.SubscriptionId));
-builder.Services.AddSingleton(await SubscriberServiceApiClient.CreateAsync());
-builder.Services.AddSingleton<INotificationSource>(sp =>
-    new PubSubNotificationSource(sp.GetRequiredService<SubscriberServiceApiClient>(), subscriptionName));
-builder.Services.AddScoped<INotificationDrainService, NotificationDrainService>();
-
-var app = builder.Build();
-
 // One binary, several jobs: Cloud Run job resources share the image and select via
 // `--job <name>` in their container args. No arg means digest, the first job this host ran.
 var jobArgIndex = Array.IndexOf(args, "--job");
 var jobName = jobArgIndex >= 0 && jobArgIndex + 1 < args.Length ? args[jobArgIndex + 1] : "digest";
+
+// Realtime subscription — the aggregator's input, wired only for the aggregator: each job
+// resource carries only its own env vars, and required-config reads execute at startup, so an
+// unconditional read here would crash the digest job over settings it does not have.
+if (jobName == "aggregate")
+{
+    var subscriptionName = SubscriptionName.FromProjectSubscription(
+        configLoader.GetRequired(ConfigurationKeys.PubSub.ProjectId),
+        configLoader.GetRequired(ConfigurationKeys.PubSub.SubscriptionId));
+    builder.Services.AddSingleton(await SubscriberServiceApiClient.CreateAsync());
+    builder.Services.AddSingleton<INotificationSource>(sp =>
+        new PubSubNotificationSource(sp.GetRequiredService<SubscriberServiceApiClient>(), subscriptionName));
+    builder.Services.AddScoped<INotificationDrainService, NotificationDrainService>();
+}
+
+var app = builder.Build();
 
 // No app.Run(): a job executes one pass and exits, and never listens.
 try

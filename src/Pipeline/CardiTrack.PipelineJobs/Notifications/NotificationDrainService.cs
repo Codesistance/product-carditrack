@@ -106,8 +106,13 @@ public sealed class NotificationDrainService : INotificationDrainService
                         var syncService = _services.GetKeyedService<IDeviceSyncService>(connection.DeviceType);
                         if (syncService is null)
                         {
-                            _logger.LogWarning(
-                                "No sync service registered for DeviceType {DeviceType}; skipping DeviceConnection {Id}.",
+                            // A registration gap is a deploy/config error, not a wearer fact —
+                            // hold the messages for redelivery so the retry path survives until
+                            // the fix ships, unlike an unknown user where there is nothing to
+                            // ever retry.
+                            failedUsers.Add(healthUserId);
+                            _logger.LogError(
+                                "No sync service registered for DeviceType {DeviceType}; holding notifications for DeviceConnection {Id}.",
                                 connection.DeviceType, connection.Id);
                             continue;
                         }

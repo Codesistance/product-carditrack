@@ -115,6 +115,28 @@ public class NotificationDrainServiceTests
             Arg.Any<CancellationToken>());
     }
 
+    // A registration gap is a deploy/config error, not a wearer fact: the messages must survive
+    // for redelivery so the retry path resumes once the fix ships.
+    [Fact]
+    public async Task AnUnregisteredDeviceType_HoldsTheMessagesForRedelivery()
+    {
+        var garminConnection = new DeviceConnection
+        {
+            Id = Guid.NewGuid(),
+            CardiMemberId = Guid.NewGuid(),
+            DeviceType = DeviceType.Garmin,
+            HealthUserId = "abc-123",
+        };
+        SetupOneBatch(Notification("ack-1"));
+        _connections.GetSyncableByHealthUserIdAsync("abc-123").Returns([garminConnection]);
+
+        var summary = await CreateSut().DrainAsync();
+
+        Assert.Equal(1, summary.FailedUsers);
+        await _source.Received(1).AcknowledgeAsync(
+            Arg.Is<IReadOnlyList<string>>(ids => ids.Count == 0), Arg.Any<CancellationToken>());
+    }
+
     [Fact]
     public async Task AnEmptySubscription_DrainsToNothing()
     {
