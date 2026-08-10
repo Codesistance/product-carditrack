@@ -78,6 +78,12 @@ a critical alert must not wait for a cron tick — and writes the outbox row fir
 loses nothing. `NotificationDispatchWorker` owns retries, escalation timers and anything the immediate
 attempt failed to deliver.
 
+> **The immediate attempt is awaited within the request or job scope — never `Task.Run`
+> fire-and-forget.** Detached background work in the API would be a scheduled-job-outside-the-Worker
+> violation of the CLAUDE.md rule below, and would be lost on instance shutdown besides. If awaiting
+> ever costs too much request latency, the answer is to let the 30-second dispatch loop take it, not
+> to detach it.
+
 ### Placement (binding rules from `CLAUDE.md`)
 
 - Gap detection and the retry/escalation loop are **non-AI background jobs doing DB polling** →
@@ -90,17 +96,37 @@ attempt failed to deliver.
 
 ```
 CardiTrack.Domain          Notification, NotificationDelivery, PushDeviceToken,
-                           NotificationPreference, NotificationMute + enums
+                           NotificationPreference, NotificationMute, NotificationRunLog
+                           + enums.  Zero packages — persistence-ignorant entities only.
+
 CardiTrack.Application     INudgeRule catalogue (pure), NudgeContext, NudgeReconciler,
-                           NotificationService, DeliveryPlanner, EscalationPolicy
+                           NotificationService, DeliveryPlanner, EscalationPolicy.
+                           Ports:
+                             Interfaces/Clients/INotificationChannel        (§6.2)
+                             Interfaces/Repositories/INotificationRepository
+                             Interfaces/Repositories/INotificationSnapshotQueries
+                             Interfaces/Services/INotificationGapResolver   (§12)
+                           Zero packages — EscalationPolicy takes BCL TimeProvider,
+                           and every rule is pure over NudgeContext, so the whole
+                           catalogue unit-tests with no host and no database.
+
 CardiTrack.Infrastructure  EF configs + migrations, repositories, FcmNotificationChannel,
-                           NotificationSnapshotQueries (set-based)
+                           NotificationSnapshotQueries (set-based SQL) — each implementing
+                           an Application port above.
+
 CardiTrack.Worker          DataCompletenessWorker, NotificationDispatchWorker
+
 CardiTrack.API             /api/v1/notifications/*  (inbox, actions, devices, prefs,
                            delivery acks, internal enqueue)
-CardiTrack.Mobile          Push registration + handlers, inbox screen, dashboard card,
-                           notification settings, permission flow
+
+CardiTrack.Mobile.Core     Notification API client, inbox/settings view models
+                           — the testable half, exercised by CardiTrack.UnitTests
+CardiTrack.Mobile          Push registration + background handlers, OS channel
+                           registration, permission prompt, inbox screen, dashboard card
 ```
+
+Nothing here needs a sixth project, and no Application or Domain type gains a package
+reference — the two invariants that keep the core testable without a host.
 
 ---
 
@@ -346,9 +372,19 @@ TemplateData = JsonSerializer.Serialize(new { name = member.Name, n = 4 });
 
 // SECURED — pseudonym + non-identifying counters; name resolved per request at render time
 TemplateData = JsonSerializer.Serialize(new { n = 4 });        // CardiMemberId is already on the row
-var identity = await _identityVault.GetAsync(notification.CardiMemberId, ct);
-return notification.Render(locale, identity.DisplayName);
+var member = await _cardiMembers.GetByIdAsync(notification.CardiMemberId);   // today
+return notification.Render(locale, member.Name);
 ```
+
+**This control does not wait on the identity vault.** `pii.subject_identities` is net-new in
+[data_protection_architecture.md](./data_protection_architecture.md) §3.2 and not built; names live in
+`CardiMembers` today, reachable through the existing `ICardiMemberRepository`. The load-bearing rule
+is *never persist the name into `TemplateData`* — the read path is an implementation detail that swaps
+to `IIdentityVaultService` in one place when the vault lands. C1 is shippable in Phase 1 as written.
+
+Resolution happens in `NotificationService` (Application) while projecting the response DTO, not in
+the controller — controllers stay thin per the solution's convention, and a Domain entity must not
+reach the API surface.
 
 > **The trap:** encrypting `TemplateData` is the wrong fix. It leaves the name in the clinical plane's
 > key management, makes the column unqueryable, and still hands `app_rw` the ciphertext. Don't store it.
@@ -467,7 +503,7 @@ Notification                            -- a nudge: one open gap, per target use
 ├── TitleKey / BodyKey / BenefitKey     -- localization keys, not baked strings
 ├── TemplateData jsonb                  -- {"n":4} — counters ONLY. No names, no metric
 │                                          values, no free text. Names resolve at render
-│                                          time from the identity vault (§7.2 C1)
+│                                          time in NotificationService (§7.2 C1)
 ├── ActionDeepLink string(256)
 ├── State enum (Open|Snoozed|Resolved|Superseded)
 ├── SnoozedUntil, ResolvedDate, ResolutionReason
@@ -476,6 +512,10 @@ Notification                            -- a nudge: one open gap, per target use
 
 NotificationDelivery                    -- transactional outbox; BOTH producers write here
 ├── Id, SourceType (Alert|Notification), SourceId, UserId
+├── CardiMemberId?                      -- denormalised from the source row at enqueue.
+│                                          SourceId is polymorphic and cannot be joined
+│                                          generically, so without this the ErasureWorker
+│                                          sweep has nothing to filter on
 ├── Category enum, Channel (Push|InApp)
 ├── State (Pending|Sent|Delivered|Suppressed|Failed|DeadLettered|Undelivered)
 ├── PushDeviceTokenId?, DedupKey UNIQUE, CollapseKey, ExpiresAt
@@ -503,6 +543,11 @@ NotificationMute                        -- the "don't ask again" record
 ├── UserId, RuleCode?, Category?, CardiMemberId?
 ├── MutedDate, MutedUntil?              -- null = forever
 └── AcknowledgedConsequence bool        -- true only for Safety-class dismissals
+
+NotificationRunLog                      -- one row per DataCompletenessWorker run (§13)
+├── StartedAt, CompletedAt, LastOrganizationId      -- resume point after a crash
+├── OrgsScanned, Created, Resolved, Suppressed
+└── DurationMs, Error?                  -- a misfiring rule is one query away
 ```
 
 `NotificationDelivery` is polymorphic over `SourceType` rather than FK'd to one table — it is the
@@ -665,9 +710,32 @@ integer enums, `ICardiMemberAccessService` scoping (unreadable member → **404*
 
 All actions idempotent; 404 (never 403) on another user's row, matching the alerts convention.
 
-**Synchronous resolution:** `CardiMemberService`, `DeviceConnectionService` and `UserService` raise a
-domain event on writes that close a gap, so saving an emergency contact clears the card before the
-screen pops. The worker is the backstop, not the only path.
+**Synchronous resolution:** saving an emergency contact clears the card before the screen pops. The
+worker is the backstop, not the only path.
+
+This is a **direct service call, not a domain event.** There is no event infrastructure in the
+solution — no MediatR, no dispatcher — and adding one for this feature would put a single corner of
+the codebase on a pattern nothing else uses, against the standing "Application services, not a
+mediator" convention. The established shape is service-to-service composition through an Application
+port, exactly as `OnboardingService` already injects `ISubscriptionService`:
+
+```csharp
+// Application/Interfaces/Services/INotificationGapResolver.cs
+public interface INotificationGapResolver
+{
+    Task ResolveForCardiMemberAsync(Guid cardiMemberId, CancellationToken ct);
+    Task ResolveForUserAsync(Guid userId, CancellationToken ct);
+}
+
+// CardiMemberService / DeviceConnectionService / UserService — after the write
+await _unitOfWork.SaveChangesAsync();
+await _gapResolver.ResolveForCardiMemberAsync(member.Id, ct);
+```
+
+**Cost, stated:** three services gain a constructor dependency, and resolution becomes an explicit
+call rather than an implicit subscription. That is the right trade at this size — the implicitness is
+precisely what makes an event bus expensive to debug, and the reconciler (§10.2) already guarantees
+correctness if a call site is ever missed.
 
 ---
 
@@ -697,6 +765,20 @@ or `PartitionMaintenanceWorker` if that lands first:
 Push tokens and notification rows join the erasure sweep in that document's §6.2, and
 `PushDeviceToken` is enumerated in the Safe Harbor export exclusion — the transform fails closed only
 for tables it knows about.
+
+**Concurrency & failure.** Reconciliation is idempotent by fingerprint, so a crashed run simply
+repeats. A `NotificationRunLog` row per run (§8) makes a misfiring rule visible in one query and lets
+a run resume from the last completed org.
+
+`CronBackgroundService` has **no distributed lock and no error boundary**
+([data_protection_architecture.md](./data_protection_architecture.md) §1 finding #12), and
+`infrastructure/main.tf` sets `cloud_run_max_instances = 3`. The dispatch worker is safe regardless:
+`FOR UPDATE SKIP LOCKED` claiming means three instances divide the outbox rather than duplicate it —
+the same property that makes horizontal scaling a throughput win instead of a correctness problem.
+`DataCompletenessWorker` is *correct* under triple execution, since fingerprints deduplicate, but it
+would run the full morning evaluation three times for one useful result. It takes a **Postgres
+advisory lock** for the duration of the run — the same mitigation `DataRetentionWorker` needs, for
+the same reason.
 
 **Metrics** (Datadog APM is wired — `Apm:Engine`, PR #4):
 
