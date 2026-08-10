@@ -77,6 +77,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IPatternBaselineRepository, CardiTrack.Infrastructure.Repositories.PatternBaselineRepository>();
         services.AddScoped<IGranularMetricRepository, CardiTrack.Infrastructure.Repositories.GranularMetricRepository>();
         services.AddScoped<IDigestRepository, CardiTrack.Infrastructure.Repositories.DigestRepository>();
+        services.AddScoped<IRealtimeAssessmentRepository, CardiTrack.Infrastructure.Repositories.RealtimeAssessmentRepository>();
         services.AddScoped<IAuditLogRepository, CardiTrack.Infrastructure.Repositories.AuditLogRepository>();
 
         // Unit of Work
