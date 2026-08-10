@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Google.Cloud.PubSub.V1;
 using Google.Protobuf;
 
@@ -30,6 +31,15 @@ public sealed class PubSubNotificationPublisher : INotificationPublisher
                 ["contentType"] = contentType ?? string.Empty,
             },
         };
+
+        // Carries the inbound request's trace context across the async hop so pipeline-jobs can
+        // link its processing span back to this publish — otherwise the webhook-receiver →
+        // pipeline-jobs edge is invisible to Datadog's Service Map. Activity.Id is the W3C
+        // traceparent string under the SDK's default ActivityIdFormat.W3C. Absent when this
+        // runs with no ambient Activity (e.g. no APM engine configured) — the aggregator side
+        // degrades to today's unlinked behavior, not an error.
+        if (Activity.Current is { } activity)
+            message.Attributes["traceparent"] = activity.Id!;
 
         // PublisherClient owns batching and exposes no cancellable overload, so cancellation
         // stops the WAIT, not the publish: an aborted request answers 5xx and Google retries,
