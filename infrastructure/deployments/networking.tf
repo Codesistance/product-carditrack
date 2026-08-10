@@ -30,6 +30,11 @@ resource "google_compute_subnetwork" "main" {
   ip_cidr_range = var.subnet_cidr
   region        = var.region
   network       = google_compute_network.main.id
+
+  # Required for ALL_TRAFFIC-egress callers (api, pipeline_jobs, pipeline_assessor) to reach
+  # MedGemma's internal-ingress-only *.run.app URL: without this, VPC-routed traffic from a
+  # private-IP-only resource has no route to Google's public IPs at all.
+  private_ip_google_access = true
 }
 
 # Reserved IP range for Cloud SQL private services access (VPC peering)
