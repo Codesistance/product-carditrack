@@ -225,6 +225,7 @@ public class RealtimeAssessmentService : IRealtimeAssessmentService
             TriggeredDate = assessment.GeneratedAtUtc,
             MetricValues = JsonSerializer.Serialize(new
             {
+                rule = AlertRuleMarkers.RealtimeHeartRateRule,
                 hrTrendLast = Math.Round(assessment.HrTrendLast, 1),
                 hrDeviationScore = Math.Round(assessment.HrDeviationScore, 2),
                 hrNoiseRms = Math.Round(assessment.HrNoiseRms, 2),

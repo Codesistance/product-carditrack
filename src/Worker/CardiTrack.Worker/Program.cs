@@ -78,6 +78,7 @@ builder.Services.AddScoped<ITimeSeriesPartitionService, TimeSeriesPartitionServi
 // Application services
 builder.Services.AddScoped<IActivityLogAggregationService, ActivityLogAggregationService>();
 builder.Services.AddScoped<IInactivityDetectionService, InactivityDetectionService>();
+builder.Services.AddScoped<IStatisticalAlertService, StatisticalAlertService>();
 
 // External clients
 builder.Services.AddScoped<IOAuthTokenRefreshService, OAuthTokenRefreshService>();
@@ -92,6 +93,7 @@ builder.Services.AddWorker<BaselineCalculationWorker>(configuration, nameof(Base
 builder.Services.AddWorker<DeviceSyncAuditWorker>(configuration, nameof(DeviceSyncAuditWorker));
 builder.Services.AddWorker<PartitionMaintenanceWorker>(configuration, nameof(PartitionMaintenanceWorker));
 builder.Services.AddWorker<InactivityDetectionWorker>(configuration, nameof(InactivityDetectionWorker));
+builder.Services.AddWorker<StatisticalAlertWorker>(configuration, nameof(StatisticalAlertWorker));
 
 // Threshold and waking hours share the detection worker's config section, like the audit sample.
 builder.Services.Configure<InactivityDetectionOptions>(

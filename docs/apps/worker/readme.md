@@ -222,6 +222,15 @@ The device-silence failsafe (llm_design's `InactivityDetector` — placed here a
 - Candidates are members with data in the last two days (the same filter as digest/assessment): longer-silent members have aged out *and* already carry their standing alert.
 - **Cooldown**: one unresolved `Inactivity` alert per member; resolving it re-arms the check. Config (`Workers:InactivityDetectionWorker`): `SilenceThresholdMinutes` (default **120**), `WakingStartHour` (**7**), `WakingEndHour` (**22**); invalid values skip the run loudly rather than misfire.
 
+### StatisticalAlertWorker
+
+The R1 statistical alert engine: five deterministic rules (`docs/execution/backend/api/alerts.md` taxonomy — activity decline, irregular sleep, elevated resting HR, no morning activity, long-term trend) evaluated against each member's **established 30-day baseline** — fetching only that baseline is how "provisional baselines never alert" is enforced. Pure rules in `StatisticalAlertRules` (Application, I/O-free, boundary-tested); orchestration in `StatisticalAlertService`.
+
+- Runs **every 15 minutes**, offset from the inactivity worker (`0 7-59/15 * * * *`) — the cadence exists for the one intraday rule (`no_morning_activity`, red: measured-zero steps past typical wake + 2 h while the device reports); daily-grain rules are held to once per local day by the same-day dedup.
+- Thresholds are the hard-coded **medium** sensitivity profile (>30% deviation; HR margin max(2σ, 5 bpm); trend ≥5%/week × 4 weeks). Low/high profiles wait on the unbuilt `AlertPreferences` table.
+- **Null-vs-zero discipline holds**: a null reading (not measured) never fires anything — most critically in `no_morning_activity`, where an HR-only device's absent steps field must never page a family red.
+- **Cooldowns follow the family's remedy** (`AlertRuleMarkers`): rule-scoped everywhere except `HeartRate`, which is type-scoped across this engine and the AI assessor.
+
 ### DeviceSyncAuditWorker
 
 Measures something `WearableSyncWorker` structurally cannot see. A routine sync only ever looks inside its own trailing window, so with `SyncLookbackDays: 3` a provider that amends day 5 is not merely unmeasured — it is *unmeasurable*, and any picture of "how far back data changes" built from routine syncs alone would be an artefact of our own schedule rather than a fact about the provider.

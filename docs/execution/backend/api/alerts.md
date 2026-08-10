@@ -59,7 +59,9 @@ The implemented `AlertType` enum (integers on the wire) differs from the string 
 
 > **First automated producer (AI pipeline, dev):** the real-time assessor writes `HeartRate` alerts — MedGemma's red/orange verdict over the member's latest SSA-denoised hour, with the model's 1–3 sentence assessment as the `message` and the SSA yardsticks in `metricValues`. **Cooldown:** one *unresolved* `HeartRate` alert per member at a time; resolving it re-arms the path. A verdict the parser cannot read never becomes an alert. See [llm_design.md](../../../llm_design.md).
 >
-> **Second automated producer (Worker):** `InactivityDetectionWorker` writes `Inactivity` alerts (always `yellow`, rule-based text, no AI) when a device produces no granular readings for >2 h during the member's local waking hours — the designed `device_disconnected` scenario mapped onto the implemented enum. Same cooldown pattern: one unresolved `Inactivity` alert per member, resolved-to-re-arm; alerts of *different* types never suppress each other.
+> **Second automated producer (Worker):** `InactivityDetectionWorker` writes `Inactivity` alerts (always `yellow`, rule-based text, no AI) when a device produces no granular readings for >2 h during the member's local waking hours — the designed `device_disconnected` scenario mapped onto the implemented enum, stamped `rule: device_silence`.
+>
+> **Third automated producer (Worker):** `StatisticalAlertWorker` — the R1 statistical engine — evaluates the five-rule taxonomy below every 15 minutes against the **established 30-day baseline only**. Cooldown and dedup semantics are in the note under the taxonomy table.
 
 ### Sensitivity: fixed constants only
 
@@ -129,16 +131,18 @@ List all alerts across all accessible CardiMembers.
 }
 ```
 
-**Alert Types** (design-intent scenarios; the implemented enum is the five-value integer `AlertType` in "Implemented today" above — mappings shown):
+**Alert Types** (the string taxonomy is now the `rule` discriminator each producer stamps into `MetricValues`; the implemented enum is the five-value integer `AlertType` in "Implemented today" above):
 
-| Type | Severity Range | Implemented enum | Description |
-|------|---------------|------------------|-------------|
-| `activity_decline` | yellow | `Inactivity` (1) | Gradual step/activity reduction |
-| `elevated_heart_rate` | orange | `HeartRate` (2) | Resting HR above normal range |
-| `no_morning_activity` | red | `PatternBreak` (4) | No movement detected past typical wake time (device is syncing) |
-| `irregular_sleep` | yellow | `Sleep` (3) | Sleep duration significantly off baseline |
-| `device_disconnected` | yellow | — (no equivalent) | Wearable not syncing (>2h silence during waking hours) |
-| `long_term_trend` | orange | `Trend` (5) | Multi-week decline trend (e.g. steps −5%/week for 4 weeks) — *ships with the AI pipeline, see [release matrix](../../../release_matrix.md)* |
+| Type (`rule`) | Severity | Implemented enum | Status | Description |
+|------|---------------|------------------|--------|-------------|
+| `activity_decline` | yellow | `Inactivity` (1) | **Built** (`StatisticalAlertWorker`) | Yesterday's steps >30% below the established 30-day baseline average |
+| `elevated_heart_rate` | orange | `HeartRate` (2) | **Built** (`StatisticalAlertWorker`) | Yesterday's resting HR above baseline avg + max(2σ, 5 bpm) |
+| `no_morning_activity` | red | `PatternBreak` (4) | **Built** (`StatisticalAlertWorker`) | A **measured zero** steps today past typical wake time + 2 h grace, while the device is reporting — a null steps value (HR-only device) never fires |
+| `irregular_sleep` | yellow | `Sleep` (3) | **Built** (`StatisticalAlertWorker`) | Last night's sleep >30% off baseline average, either direction |
+| `device_silence` | yellow | `Inactivity` (1) | **Built** (`InactivityDetectionWorker`) | No granular readings for >2 h during local waking hours (the scenario the design called `device_disconnected`) |
+| `long_term_trend` | orange | `Trend` (5) | **Built** (`StatisticalAlertWorker`) | Weekly step average declining ≥5%/week for 4 consecutive weeks (each week needs ≥4 measured days) |
+
+> **Cooldown scope follows the family's remedy.** Every producer stamps its `rule` into `MetricValues`, and one *unresolved* alert per rule suppresses that rule (resolving re-arms it) — except `HeartRate`, which is deliberately **type-scoped across producers**: an unresolved heart alert from either the AI assessor (`realtime_hr`) or the statistical rule suppresses the other, because the remedy is the same ("check on them") and two simultaneous heart pages about one person is the noise cooldowns exist to prevent. `Inactivity`'s two rules (`device_silence`, `activity_decline`) ask for different remedies — charge the watch vs. encourage movement — and may stand together. Daily-grain statistical rules additionally dedup per local day: resolving at noon does not re-page at half past from the same readings. **Provisional baselines never fire any statistical rule** — the engine fetches only the established 30-day baseline, so a member without one is silent by construction.
 
 > Severities use the product taxonomy (`yellow`/`orange`/`red`). `green` is a *health status*, not an alert severity — no alert is emitted for normal states. The AI pipeline's internal Critical/High/Medium/Low scale maps to these values — see [llm_design.md](../../../llm_design.md).
 
