@@ -250,10 +250,15 @@ therefore has to be *engineered above* the transport, and *measured*.
 
 | Category | Target |
 |---|---|
-| Safety / red Health | **99% acknowledged by at least one recipient device within 60s** of enqueue |
+| Safety / red Health | **Dispatched to the provider within 30s** of enqueue, and **99% acknowledged by at least one recipient device within 60s** |
 | Escalation trigger | No ack within **120s** |
 | Orange Health | 99% within 5 minutes (quiet hours deferred) |
 | Nudge | Next app open — no delivery target |
+
+The two numbers measure different things and both are needed. **30s dispatch** is
+`solution_manifest.md`'s stated *"alert delivery latency"* KPI and covers what we control; **60s ack**
+covers whether it actually landed, which is what the caregiver experiences. Reporting only the first
+is how a system claims 100% delivery into a void.
 
 Undelivered-critical is a **paged operational event**, not a metric anyone reads next quarter.
 
@@ -289,6 +294,13 @@ t+300s  no ack  → fan out to all other caregivers with ReceiveAlerts on,
 t+900s  no ack from anyone → mark UNDELIVERED_CRITICAL; page ops; the alert
                   is pinned to every dashboard as an unmissable banner
 ```
+
+**In R1 the fan-out stage has no targets on a family account.** `MaxUsers = 1`
+([user_onboarding_process.md](./user_onboarding_process.md) Step 3), so the ladder degrades to
+push → re-push → `UNDELIVERED_CRITICAL` → page ops, with no human fallback. That is worth building
+anyway — the t+900s state is what turns a silent failure into a known one — but the design should not
+be read as delivering redundant human coverage before **R3 family invitations**. Business accounts
+(`MaxUsers = 20`) get the full ladder immediately and are out of MVP scope.
 
 **The fan-out copy does not name who failed to respond.** *"Margaret's primary contact hasn't
 responded"* would disclose one caregiver's behaviour — whether they looked at their phone — to
@@ -568,38 +580,74 @@ priority, and silence policy. `Full` = snooze + mute-forever · `Snooze` = time-
 
 ### Safety — monitoring is degraded or nobody is listening *(pushes)*
 
-| Code | Detection | Copy | Silence |
-|---|---|---|---|
-| `DEVICE_AUTH_BROKEN` | `ConnectionStatus` ∈ {`TokenExpired`, `AuthError`} | "Reconnect to restore monitoring — no data is reaching CardiTrack right now." | Safety |
-| `NO_ALERT_RECIPIENT` | Every active `UserCardiMember` has `ReceiveAlerts = false` | "Nobody is set to receive {Name}'s alerts. Turn one on so a red alert reaches someone." | Safety |
-| `PUSH_UNREACHABLE` | OS permission denied/revoked, safety channel muted, token dead 7d, or `Permanent` send failure | "Alerts can't reach this phone. Turn notifications on so urgent alerts get through." | Safety |
+| Code | Detection | Copy | Silence | Wave |
+|---|---|---|---|---|
+| `DEVICE_AUTH_BROKEN` | `ConnectionStatus` ∈ {`TokenExpired`, `AuthError`} | "Reconnect to restore monitoring — no data is reaching CardiTrack right now." | Safety | **R1** |
+| `PUSH_UNREACHABLE` | OS permission denied/revoked, safety channel muted, token dead 7d, or `Permanent` send failure | "Alerts can't reach this phone. Turn notifications on so urgent alerts get through." | Safety | R2 (with push) |
+| `NO_ALERT_RECIPIENT` | Every active `UserCardiMember` has `ReceiveAlerts = false` | "Nobody is set to receive {Name}'s alerts. Turn one on so a red alert reaches someone." | Safety | **R3** |
+
+> `NO_ALERT_RECIPIENT` is R3, not R1. Family accounts have **`MaxUsers = 1`**
+> ([user_onboarding_process.md](./user_onboarding_process.md) Step 3), so in R1 there is exactly one
+> caregiver per family account and `ReceiveAlerts` defaults true — the rule can only fire if that sole
+> user disables their own alerts. It becomes real with family invitations in R3. Business accounts
+> (`MaxUsers = 20`) are the exception, and are out of MVP scope.
 
 ### Blocking — core value is unavailable *(in-app)*
 
-| Code | Detection | Copy | Priority | Silence |
-|---|---|---|---|---|
-| `NO_DEVICE_CONNECTED` | No active `DeviceConnection`, member ≥24h old | "Connect a wearable to start seeing {Name}'s activity, heart rate and sleep." | Critical | Snooze 7d |
-| `DEVICE_STALE_LONG` | `LastSyncDate` > 48h | "{Name}'s watch hasn't synced in two days. A charge or a phone-app open usually fixes it." | High | Snooze 3d |
-| `TIMEZONE_DEFAULT` | `TimeZoneId = "UTC"` and `Locale` implies otherwise | "Set your time zone so quiet hours and 'no activity yet today' use *your* clock." | High | Snooze 30d |
-| `BASELINE_STALLED` | `daysCaptured` flat 7d, < 80% coverage gate | "{Name} is {n}/30 days into learning. Alerts switch on once the picture is complete." | High | Snooze 14d |
+| Code | Detection | Copy | Priority | Silence | Wave |
+|---|---|---|---|---|---|
+| `DEVICE_REMOVED` | No active `DeviceConnection` for a member that previously had one | "{Name} has no connected wearable. Reconnect one to resume monitoring." | Critical | Snooze 7d | **R1** |
+| `DEVICE_STALE_LONG` | `LastSyncDate` > 48h | "{Name}'s watch hasn't synced in two days. A charge or a phone-app open usually fixes it." | High | Snooze 3d | **R1** |
+| `TIMEZONE_DEFAULT` | `TimeZoneId = "UTC"` and `Locale` implies otherwise | "Set your time zone so 'no activity yet today' and daily summaries use *your* clock." | High | Snooze 30d | **R1** |
+| `BASELINE_STALLED` | `daysCaptured` flat 7d, < 80% coverage gate | "{Name} is {n}/30 days into learning. Alerts switch on once the picture is complete." | High | Snooze 14d | **R1** |
+
+> Renamed from `NO_DEVICE_CONNECTED`, which could not fire as originally written: §10.4 suppresses
+> nudges while `IsOnboardingComplete = false`, and connecting a device *is* onboarding Step 6. The
+> reachable case is a device removed or disconnected later, which is what this now detects.
 
 ### Capability unlocks — "submit this, get that" *(in-app)*
 
-| Code | Detection | Copy | Priority | Silence |
-|---|---|---|---|---|
-| `SLEEP_SCOPE_MISSING` | `Scopes` lacks the sleep bundle | "Grant sleep access to unlock sleep-disruption alerts and the nightly summary." | High | Full |
-| `SLEEP_DATA_SPARSE` | `SleepMinutes` null ≥7 of last 14 days | "Worn overnight 7 nights, CardiTrack can spot sleep changes. {n}/7 so far." | Medium | Full |
-| `EMERGENCY_CONTACT_MISSING` | `EmergencyContactName`/`Phone` null | "Add an emergency contact and red alerts get a one-tap call button." | High | Full |
-| `NO_PRIMARY_CAREGIVER` | No `IsPrimaryCaregiver` among active links | "Name a primary caregiver so urgent alerts have a clear first responder." | Medium | Full |
-| `DOB_MISSING` | `DateOfBirth` = `default` (§14) | "{Name}'s age lets us use age-appropriate heart-rate thresholds." | Medium | Full |
-| `MEDICAL_NOTES_EMPTY` | `MedicalNotes` null/empty | "Conditions and medications make AI insights and the doctor-visit report far more specific. Encrypted at rest, visible only to your family." | Low | Full |
-| `MEMBER_CONTACT_MISSING` | `CardiMember.Phone` null | "Add {Name}'s number to call or text straight from an alert." | Low | Full |
+| Code | Detection | Copy | Priority | Silence | Wave |
+|---|---|---|---|---|---|
+| `SLEEP_SCOPE_MISSING` | `Scopes` lacks the sleep bundle | "Grant sleep access so CardiTrack can track {Name}'s sleep patterns and nightly trends." | High | Full | **R1** |
+| `MEDICAL_NOTES_EMPTY` | `MedicalNotes` null/empty | "Conditions and medications make AI insights and the doctor-visit report far more specific. Encrypted at rest, visible only to your family." | Low | Full | **R1** |
+| `EMERGENCY_CONTACT_MISSING` | `EmergencyContactName`/`Phone` null | "Add an emergency contact so the right person is on file when something looks wrong." | High | Full | R2 |
+| `MEMBER_CONTACT_MISSING` | `CardiMember.Phone` null | "Add {Name}'s number to call or text straight from an alert." | Low | Full | R3 |
+| `NO_PRIMARY_CAREGIVER` | No `IsPrimaryCaregiver` among active links | "Name a primary caregiver so urgent alerts have a clear first responder." | Medium | Full | R3 |
+
+**Copy must not promise what isn't built.** Two rules originally did:
+
+- `SLEEP_SCOPE_MISSING` promised *"unlock sleep-disruption alerts"* — `AlertType.Sleep` has no
+  generator today. Reworded to the tracking and trends that ship now; it can promise alerts once
+  generation lands.
+- `EMERGENCY_CONTACT_MISSING` promised *"a one-tap call button"*, which lives on **M1-12 Alert
+  Detail – Critical — ⬜ not built, no Figma frame**. Reworded, and held to R2 so the full promise
+  ships with the screen that honours it.
+
+A nudge asks a caregiver for effort in exchange for a capability. Naming one we haven't shipped spends
+trust with exactly the user whose cooperation the engine depends on.
+
+**Cut:**
+
+- `DOB_MISSING` — promised *"age-appropriate heart-rate thresholds"*. No such mechanism exists or is
+  designed; the alert rules are z-scores over the member's own baseline. The benefit was fictional, so
+  the rule goes rather than getting reworded. (The nullable-`DateOfBirth` migration in §14 stays — it
+  is a real schema defect either way.)
+- `MONITORING_PAUSE_ENDED` — purely informational, and M1-13 (shipped) already displays pause state.
+  Inbox noise.
+
+**Demoted out of the catalogue:**
+
+- `SLEEP_DATA_SPARSE` — the fix is *"get an elderly person to wear a watch overnight."* The caregiver
+  often cannot control that and the wearer has no login in R1 (§17.3), so no one who sees the nudge
+  can reliably act on it. Low agency means a low comply rate, which means the §13 review gate would
+  retire it within a quarter. Ships as a **progress indicator on the member dashboard** instead —
+  same information, no demand attached.
 
 ### Account & lifecycle *(in-app)*
 
-`MONITORING_PAUSE_ENDED` (informational, Low) · `PAUSE_LEFT_LONG` (paused >14d, Medium, snooze 7d) ·
-`TRIAL_EXPIRING` (7/3/1 days, High, R2) · `CONSENT_NOT_RECORDED` (Safety class, ships with per-metric
-consent).
+`PAUSE_LEFT_LONG` (paused >14d, Medium, snooze 7d, **R1**) · `TRIAL_EXPIRING` (7/3/1 days, High, R2
+with billing) · `CONSENT_NOT_RECORDED` (Safety class, ships with per-metric consent).
 
 **Authoring rules.** Benefit-first, guilt-free — name the capability, never "you failed to". No raw
 metric values. One rule = one gap = one action; if the fix needs two screens, it is two rules. Every
@@ -658,7 +706,8 @@ red alert. Nudges have one owner; emergencies have all hands.
 
 ### 10.4 Suppression
 
-No nudge created when the account is <48h old (except `NO_DEVICE_CONNECTED`, which *is* onboarding),
+No nudge created when the account is <48h old (except `DEVICE_REMOVED`, which is precisely the case
+where a new account has lost its only connection),
 the member is paused, an unacknowledged red `Alert` is open for that member, or onboarding is
 incomplete. Safety-category rules ignore all of these except the pause.
 
@@ -795,8 +844,11 @@ are all silent failures otherwise — the kind you discover from a support ticke
 For the primary objective of this engine, a canary is not optional.
 
 **Anti-nag gate, quarterly:** any nudge rule with comply rate <15% or mute rate >30% over 500+
-impressions is reworked or deleted. A rule people silence trains them to ignore the app — and takes
-the safety alerts down with it.
+impressions goes to **rework — copy, timing, or deep-link target — not automatic deletion.** The
+engine is required scope, so a failing rule is evidence the prompt is wrong, not that the gap stopped
+mattering. Deletion needs a product call, and Safety-class rules are never deleted on metrics alone.
+The reason the gate exists at all is unchanged: a rule people silence trains them to ignore the app,
+and takes the safety alerts down with it.
 
 ---
 
@@ -806,7 +858,7 @@ the safety alerts down with it.
 |---|---|
 | `NotificationPreferencesRequest` DTO is per-CardiMember with a registered validator no endpoint consumes | Reshape to the §12 contract: user-level channels/quiet hours, `UserCardiMember.ReceiveAlerts` staying as the per-member routing switch |
 | `UserCardiMember.NotificationPreferences` JSON blob (`{sms,email,push}`), read by nothing | Migrate non-`{}` values into `NotificationPreference`, drop the column. SMS/email keys are discarded — those channels are out of scope by decision |
-| `CardiMember.DateOfBirth` non-nullable `DateOnly` — "missing" indistinguishable from 0001-01-01 | Nullable migration before `DOB_MISSING` ships, or the rule guesses |
+| `CardiMember.DateOfBirth` non-nullable `DateOnly` — "missing" indistinguishable from 0001-01-01 | Nullable migration. `DOB_MISSING` was cut (§9), but the schema defect is real independently: today a member with no recorded DOB reads as born in year 1 |
 | `OnboardingStatusResponse.HasNotificationPreferences`, `TotalSteps = 7` | Satisfied by the push-permission grant + preference row created at M1-07 |
 | `AlertSensitivity` stored, consumed by nothing | Still inert here; noted so `NO_ALERT_RECIPIENT` isn't confused with sensitivity tuning |
 | No `device_disconnected` alert type (alerts.md notes the gap) | Covered as Safety nudges `DEVICE_AUTH_BROKEN` / `DEVICE_STALE_LONG` rather than a sixth `AlertType` |
@@ -854,44 +906,84 @@ the safety alerts down with it.
 
 ## 16. Delivery phases
 
-**Phase 1 — Delivery spine (R1).** `PushDeviceToken` + `NotificationDelivery` + migrations · FCM HTTP v1
-channel with APNs passthrough · device registration + ack endpoints · MAUI push registration, permission
-flow at M1-07, background handlers, notification channels · `NotificationDispatchWorker` with retry and
-dead-lettering · content-free payloads + iOS service extension · canary + SLO dashboard. **Health alerts
-are the first customer** — this is what makes the R1 alert types actually reach anyone. Apply for the
-Critical Alerts entitlement at the start of this phase; approval latency is the long pole.
+**The nudge engine ships before the push spine, because it is the only notification content that
+exists today.** No code in the solution creates an `Alert` row — `AlertService` reads and
+acknowledges, and *Statistical alerts (all 5 launch types)* is ⬜ in the
+[release matrix](../release_matrix.md). A delivery spine built first would carry nothing but its own
+canary. Data gaps, by contrast, are detectable on every existing account from day one.
 
-**Phase 2 — Escalation and reachability (R1).** Escalation ladder + `UNDELIVERED_CRITICAL` paging ·
-token liveness probe · OS-permission detection · `PUSH_UNREACHABLE` · quiet hours + preferences.
+**Phase 1 — In-app nudge engine (R1, ~1.5pm).** `Notification` + `NotificationMute` +
+`NotificationRunLog` + migrations · `INudgeRule` + reconciler + snapshot queries ·
+`DataCompletenessWorker` (advisory-locked) · inbox, dashboard card, settings screen ·
+`INotificationGapResolver` wired into the three writing services · **six rules**: `DEVICE_AUTH_BROKEN`,
+`DEVICE_REMOVED`, `DEVICE_STALE_LONG`, `TIMEZONE_DEFAULT`, `BASELINE_STALLED`, `SLEEP_SCOPE_MISSING`,
+plus `MEDICAL_NOTES_EMPTY` and `PAUSE_LEFT_LONG` if they come free.
 
-**Phase 3 — Nudge engine (R1).** `Notification` + `NotificationMute` · `INudgeRule` + reconciler +
-snapshot queries · the safety and blocking rules · `DataCompletenessWorker` · inbox, dashboard card,
-settings screen · synchronous domain-event resolution. Nullable-DOB migration lands here.
+No push, no vendor, no BAA, no device lab, no entitlement dependency — it ships against surfaces that
+already exist, which is why it can run alongside the two external R1 clocks (Fitbit sunset, Google
+verification #39) without competing for the same people.
 
-**Phase 4 — Breadth (R1→R2).** Remaining unlock and lifecycle rules · comply-rate review loop ·
-`/internal/enqueue` wired to the pipeline's `SeverityRouter` (R2) · `TRIAL_EXPIRING` with billing ·
-`CONSENT_NOT_RECORDED` with per-metric consent · web inbox parity when the web dashboard lands · push
-inline actions (matrix R4).
+**Phase 2 — Alert generation (R1).** *Not this document's scope*, but it is the dependency that makes
+everything below worth building: five statistical rules over the `PatternBaselines` that
+`BaselineCalculationWorker` already writes daily. Highest-value item in the R1 notification story and
+currently untracked — see #111.
+
+**Phase 3 — Push delivery spine (R2).** `PushDeviceToken` + `NotificationDelivery` + FCM HTTP v1 with
+APNs passthrough · device registration + ack endpoints · MAUI push registration, permission flow at
+M1-07, background handlers, OS notification channels · `NotificationDispatchWorker` · content-free
+payloads + iOS service extension · escalation ladder + `UNDELIVERED_CRITICAL` paging · token liveness ·
+`PUSH_UNREACHABLE` · quiet hours + preferences · canary + SLO dashboard · `/internal/enqueue` wired to
+the pipeline's `SeverityRouter`.
+
+> **Start the Apple Critical Alerts application now regardless (#106).** It is weeks of queue latency
+> at Apple and costs nothing to have in hand early; #107 (APNs key) and #108 (Firebase) stay open for
+> the same reason. Provisioning lead time is the one part of Phase 3 that does not benefit from being
+> deferred.
+
+**Phase 4 — Breadth (R2→R3).** `EMERGENCY_CONTACT_MISSING` with M1-12 · `TRIAL_EXPIRING` with billing ·
+`CONSENT_NOT_RECORDED` with per-metric consent · the three multi-caregiver rules with family
+invitations (R3) · web inbox parity when the web dashboard lands · push inline actions (matrix R4).
+
+**Explicitly out of scope for R1:** push delivery and everything that depends on it, the escalation
+ladder, cross-recipient fan-out, email and SMS (permanently), the multi-caregiver rules, and the web
+inbox.
 
 ---
 
-## 17. Open decisions
+## 17. Decisions
 
-1. **Critical Alerts entitlement** — apply now or ship on Time Sensitive alone? Recommendation: apply
-   immediately. It costs a form and some review latency, and it is the difference between a red alert
-   at 3am waking someone and being swallowed by Do Not Disturb. Design works either way.
-2. **Does the inbox count as PHI access?** It lists member names against health-data gaps.
+### Settled
+
+1. **Alert generation is funded for R1.** This is what keeps the push spine at R2 rather than R3 —
+   there will be something to deliver. Tracked as #111, and it is the highest-value item in the R1
+   notification story.
+2. **The nudge engine is required scope, not a discovery bet.** No comply-rate validation gates it.
+   The §13 review gate therefore sends a failing rule to rework rather than deletion — a rule nobody
+   acts on means the prompt is wrong, not that the gap stopped mattering.
+3. **Wearer-facing nudges are out of scope** — accepted in principle, but no phase picks them up, and
+   this engine does not address them. The consequence is recorded rather than solved:
+   `SLEEP_DATA_SPARSE` had nobody who could reliably act on it, which is why it became a dashboard
+   indicator instead of a nudge (§9).
+4. **Apply for Critical Alerts now** (#106) rather than shipping on Time Sensitive alone. Weeks of
+   queue latency at Apple, nothing to lose by holding it early, and the design flips it on per
+   category when granted.
+5. **Escalation fan-out copy** does not name who failed to respond (§6.3), so no caregiver behaviour
+   is disclosed and no new lawful basis is needed. A named variant would require the family-sharing
+   terms plus a DPIA entry — open only if product wants it.
+
+### Open
+
+6. **Does the inbox count as PHI access?** It lists member names against health-data gaps.
    Recommendation: annotate `GET /api/v1/notifications` with `AuditHealthDataAccessAttribute` and
-   update the DPIA.
-3. **Push-path BAA position** (§7) — legal confirmation that content-free payloads make Apple and
+   update the DPIA. *Owner: engineering + compliance. Blocks nothing; cheap to do in Phase 1.*
+7. **Push-path BAA position** (§7.1) — legal confirmation that content-free payloads make Apple and
    Google conduits rather than processors, and what the opt-in lock-screen setting changes.
-4. **Escalation fan-out and consent** — *resolved for the default path:* the fan-out copy no longer
-   names who failed to respond (§6.3), so no caregiver behaviour is disclosed. Still open only if
-   product wants the **named** variant, which needs the family-sharing terms plus a DPIA entry first.
-5. **Rule catalogue in code or DB?** Proposed: code, with `RuleVersion` for re-arming. DB-driven rules
-   allow copy changes without deploys but put untested predicates in production data.
-6. **Web parity** — the web app is template-stage; Phases 1–3 are mobile + API. Browser push (Web Push
-   /VAPID) is a separate integration, R4 per the matrix.
+   *Owner: legal. Blocks Phase 3, not Phase 1.*
+8. **Rule catalogue in code or DB?** Proposed: code, with `RuleVersion` for re-arming. DB-driven rules
+   allow copy changes without a deploy but put untested predicates in production data. *Owner:
+   engineering. Decide before the catalogue grows past ~10 rules.*
+9. **Web parity** — the web app is template-stage; Phases 1–3 are mobile + API. Browser push (Web
+   Push/VAPID) is a separate integration, R4 per the matrix.
 
 ---
 
