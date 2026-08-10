@@ -285,18 +285,21 @@ def preprocess(hr_series: list[float], window_size: int = 30) -> dict:
 
 ### Provisioning the webhook subscriber
 
-The v4 discovery document defines the surface (verified 2026-08-10): a **Subscriber**
-(`POST /v4/projects/{project}/subscribers`) registers our `endpointUri` and an
-`endpointAuthorization.secret` — the **full `Authorization` header value, scheme included** —
-which Google sends back with every notification; per-user **Subscriptions**
-(`projects/{project}/subscribers/{subscriber}/subscriptions`, `user` = the public
-`healthUserId`) choose the data types. Once the receiver service has a URL, provisioning is:
+The v4 discovery document defines the surface, and the live API has since sharpened it
+(2026-08-10 registration work — full commands in the
+[production setup runbook](./technical/production_setup_runbook.md) §7): a **Subscriber**
+(`POST /v4/projects/carditrack-devices-{env}/subscribers` — the **devices** project, not
+infra) registers our `endpointUri` and an `endpointAuthorization.secret` — the **full
+`Authorization` header value, scheme included**. `subscriberConfigs` takes **`dataTypes`**
+(an array, kebab-case — the singular `dataType` the earlier draft of this section implied is
+a 400) plus a required **`subscriptionCreatePolicy`**; with **`AUTOMATIC`**, notification
+eligibility is computed dynamically from user consents, so **no per-wearer Subscription
+calls are ever needed** — the previous step 3 of this runbook is obsolete. Provisioning is:
 
 1. Read the generated secret from Secret Manager (`carditrack-<env>-webhook-secret` — the
    Terraform-owned value the receiver compares against).
-2. Create the Subscriber with the service URL + that secret + `subscriberConfigs` for the data
-   types in the ingestion table above.
-3. Create a Subscription per enrolled wearer (`healthUserId` from the profile endpoint).
+2. Create the Subscriber with the service URL + that secret + one `subscriberConfigs` entry
+   listing the ingestion table's data types, policy `AUTOMATIC`.
 
 > The endpoint-verification handshake's exact shape is **not documented** in the discovery
 > document (only that the endpoint "will be verified" using the secret). The receiver answers a
