@@ -253,18 +253,56 @@ public class NudgeReconcilerTests
     [Fact]
     public void NewRowsAreRankedSoTheCapDropsTheLeastImportant()
     {
-        // A lost device (Critical) alongside missing medical notes (Low): whatever else changes,
-        // the cap must never be what decides a caregiver hears about the device.
-        var context = new NudgeContextBuilder()
-            .NoConnections()
+        // Four gaps, one slot short: a broken grant (Safety/Critical), a watch silent for nine days
+        // (High), a default time zone (High) and empty medical notes (Low). Which three survive has
+        // to be decided by priority — ranking the survivors afterwards would be too late, since by
+        // then whichever rules happened to evaluate first would already hold the slots.
+        var member = new NudgeContextBuilder()
+            .WithConnections(
+                NudgeContextBuilder.Connection(ConnectionStatus.AuthError),
+                NudgeContextBuilder.Connection(lastSync: Now.AddDays(-9)))
             .NoMedicalNotes()
             .Build();
 
-        var plan = NudgeReconciler.Reconcile([context], []);
+        var account = new NudgeContextBuilder().AccountLevel().TimeZone("UTC").Build();
 
+        var plan = NudgeReconciler.Reconcile([member, account], []);
+
+        Assert.Equal(NudgeReconciler.MaxNewPerUserPerRun, plan.ToInsert.Count);
         Assert.Equal(NotificationPriority.Critical, plan.ToInsert[0].Priority);
-        Assert.Equal(DeviceRemovedRule.Code, plan.ToInsert[0].RuleCode);
+        Assert.Equal(DeviceAuthBrokenRule.Code, plan.ToInsert[0].RuleCode);
+
+        // The Low is the one that waits for tomorrow — not the time zone, which evaluates last.
+        Assert.Contains(plan.ToInsert, n => n.RuleCode == TimezoneDefaultRule.Code);
+        Assert.DoesNotContain(plan.ToInsert, n => n.RuleCode == MedicalNotesEmptyRule.Code);
         Assert.True(plan.ToInsert.SequenceEqual(plan.ToInsert.OrderBy(n => n.Priority)));
+    }
+
+    [Fact]
+    public void TheCapNeverHoldsBackAnUpdateToARowTheUserAlreadyHas()
+    {
+        // The cap limits how much lands on someone in one morning. A row they are already looking
+        // at going stale — a counter frozen at "4/30" — would be the cap making the inbox wrong.
+        var member = new NudgeContextBuilder()
+            .WithConnections(
+                NudgeContextBuilder.Connection(ConnectionStatus.AuthError),
+                NudgeContextBuilder.Connection(lastSync: Now.AddDays(-9)))
+            .NoMedicalNotes()
+            .Build();
+
+        var account = new NudgeContextBuilder().AccountLevel().TimeZone("UTC").Build();
+
+        // Two earlier runs to get past the cap: the first takes three, the second picks up the
+        // straggler. By today all four are stored.
+        var firstRun = NudgeReconciler.Reconcile([member, account], []).ToInsert;
+        var secondRun = NudgeReconciler.Reconcile([member, account], firstRun).ToInsert;
+        List<Notification> stored = [.. firstRun, .. secondRun];
+
+        var plan = NudgeReconciler.Reconcile([member, account], stored);
+
+        Assert.Empty(plan.ToInsert);
+        Assert.Equal(4, plan.ToUpdate.Count);
+        Assert.All(plan.ToUpdate, n => Assert.Equal(Now, n.LastEvaluatedDate));
     }
 
     // ---------------------------------------------------------------- ownership

@@ -226,12 +226,15 @@ public partial class NotificationsPage : ContentPage
         // Safety rules never reach here — NudgeCard hides the affordance — but the confirmation
         // is written for them anyway, so a future safety rule cannot be silenced by accident if
         // someone re-enables the button.
+        // "Reminders", never "alerts" — alerts are the health stream, and a caregiver who thinks
+        // they have just silenced those has been told something untrue about their relative's care.
         var confirmed = await _popups.ConfirmWarningAsync(
             notification.CanMute
                 ? "You won't be reminded about this again. You can bring it back from Settings."
-                : "Alerts about this will stay off until you turn them back on.",
-            "Turn this off?",
-            confirmText: "Turn off",
+                : "We'll stop reminding you, but the gap stays open until you fix it. "
+                  + "You can bring the reminder back from Settings.",
+            "Stop reminding me?",
+            confirmText: "Stop reminding me",
             cancelText: "Keep it");
 
         if (!confirmed)

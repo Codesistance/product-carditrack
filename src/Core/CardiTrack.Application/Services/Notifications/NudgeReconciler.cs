@@ -87,8 +87,9 @@ public static class NudgeReconciler
             }
         }
 
-        // Present now.
-        var created = 0;
+        // Present now, and already stored — refresh in place, uncapped. The cap exists to limit how
+        // much lands on someone in one morning, not to stop existing rows being kept current.
+        var candidates = new List<Notification>();
         foreach (var (fingerprint, (context, rule, verdict)) in desired)
         {
             if (storedByFingerprint.TryGetValue(fingerprint, out var existing))
@@ -98,13 +99,20 @@ public static class NudgeReconciler
                 continue;
             }
 
-            // Ranked so the cap keeps the most important ones rather than whichever hashed first.
-            if (created >= MaxNewPerUserPerRun)
-                continue;
-
-            plan.ToInsert.Add(Build(fingerprint, context, rule, verdict, utcNow));
-            created++;
+            candidates.Add(Build(fingerprint, context, rule, verdict, utcNow));
         }
+
+        // Rank first, then cap. Ordering the survivors afterwards would be too late — whichever
+        // fingerprints happened to enumerate first would already have taken the three slots, so a
+        // Critical could be dropped in favour of a Low and merely sorted correctly among the rest.
+        // Ties break on fingerprint so the same three win on a re-run over the same inputs.
+        candidates.Sort((a, b) =>
+        {
+            var byPriority = a.Priority.CompareTo(b.Priority);
+            return byPriority != 0 ? byPriority : string.CompareOrdinal(a.Fingerprint, b.Fingerprint);
+        });
+
+        plan.ToInsert.AddRange(candidates.Take(MaxNewPerUserPerRun));
 
         // Absent now — the user fixed it, or it stopped applying.
         foreach (var existing in stored)
@@ -121,9 +129,6 @@ public static class NudgeReconciler
             existing.LastEvaluatedDate = utcNow;
             plan.ToUpdate.Add(existing);
         }
-
-        // Highest priority first so MaxNewPerUserPerRun drops the least important, not the unluckiest.
-        plan.ToInsert.Sort((a, b) => a.Priority.CompareTo(b.Priority));
 
         return plan;
     }

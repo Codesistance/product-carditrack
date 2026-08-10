@@ -30,6 +30,8 @@ The in-app inbox and its actions. All responses use the standard `ApiResponse<T>
 
 Every action is idempotent, and a notification belonging to another user returns **404** rather than 403 — the same non-disclosure convention as [alerts.md](alerts.md).
 
+Seen / snooze / dismiss are **owner-only**. A relative's copy of a family notification (`isOwner: false`) is returned by the inbox so the rest of a family can see something is outstanding, but acting on it returns **404** as well: the card hides the buttons, and the API refuses the call regardless of what the client sends.
+
 ### Notification shape
 
 ```json

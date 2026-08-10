@@ -195,14 +195,19 @@ public class NotificationService : INotificationService
     }
 
     /// <summary>
-    /// Loads a notification, or reports it missing when it belongs to someone else. Non-owners are
-    /// refused too: they may see a family item, but acting on it is the owner's job.
+    /// Loads a notification, or reports it missing when it belongs to someone else. A row carried
+    /// for visibility only (<see cref="Notification.IsOwner"/> false) is refused the same way: a
+    /// relative may see a family item, but snoozing and dismissing it is the owner's job, and
+    /// reporting it missing rather than forbidden keeps the two cases indistinguishable to a prober.
     /// </summary>
     private async Task<Notification> RequireOwnAsync(Guid requestingUserId, Guid notificationId)
     {
         var notification = await _unitOfWork.Notifications.GetByIdAsync(notificationId);
 
-        if (notification is null || notification.UserId != requestingUserId || !notification.IsActive)
+        if (notification is null
+            || notification.UserId != requestingUserId
+            || !notification.IsOwner
+            || !notification.IsActive)
             throw new KeyNotFoundException(NotFoundMessage);
 
         return notification;
