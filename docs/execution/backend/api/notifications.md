@@ -4,6 +4,8 @@
 
 Manages push notification device token registration and global notification preferences. Alert-specific preferences (quiet hours, sensitivity, routing) are designed for the [Alerts API](alerts.md) — also entirely planned.
 
+> The engine behind these endpoints — data-completeness detection, benefit-framed nudges, the comply/snooze/mute model, the delivery outbox, and the inbox endpoints that extend this contract — is designed in [notification_engine.md](../../../technical/notification_engine.md). It also resolves the per-CardiMember vs per-user preferences conflict noted below.
+
 **User Stories:** 3.2 (Managing Alert Notifications), 5.1 (Mobile Push Notifications)
 
 ---
