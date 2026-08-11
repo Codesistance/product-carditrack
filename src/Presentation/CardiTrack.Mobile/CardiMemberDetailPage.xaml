@@ -207,6 +207,39 @@
                             </VerticalStackLayout>
                         </Border>
 
+                        <!-- Personal phone (issue #162) — distinct from the emergency contact
+                             above; same graceful-absence treatment. -->
+                        <Border Style="{StaticResource ElevatedCard}">
+                            <VerticalStackLayout Spacing="10">
+                                <Label Text="Phone"
+                                       Style="{StaticResource DashboardSectionTitle}"/>
+                                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+                                    <Label x:Name="PhoneLabel"
+                                           Grid.Column="0"
+                                           Style="{StaticResource Body2}"
+                                           VerticalOptions="Center"/>
+                                    <Border x:Name="PhoneCallButton"
+                                            Grid.Column="1"
+                                            WidthRequest="44" HeightRequest="44"
+                                            StrokeThickness="0"
+                                            BackgroundColor="{StaticResource SelectedOptionBackground}"
+                                            VerticalOptions="Center"
+                                            SemanticProperties.Description="Call"
+                                            SemanticProperties.Hint="Dials this CardiMember's phone number">
+                                        <Border.StrokeShape>
+                                            <RoundRectangle CornerRadius="12"/>
+                                        </Border.StrokeShape>
+                                        <Border.GestureRecognizers>
+                                            <TapGestureRecognizer Tapped="OnCallPhoneTapped"/>
+                                        </Border.GestureRecognizers>
+                                        <Image Source="icon_action_call.svg"
+                                               WidthRequest="20" HeightRequest="20"
+                                               HorizontalOptions="Center" VerticalOptions="Center"/>
+                                    </Border>
+                                </Grid>
+                            </VerticalStackLayout>
+                        </Border>
+
                         <!-- Medical information (collapsible) -->
                         <Border Style="{StaticResource ElevatedCard}">
                             <VerticalStackLayout Spacing="10">

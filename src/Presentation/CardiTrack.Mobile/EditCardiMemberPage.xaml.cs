@@ -54,8 +54,9 @@ public partial class EditCardiMemberPage : ContentPage
         SensitivityPicker.ItemsSource = Sensitivities.Select(s => s.Label).ToList();
         DobPicker.MaximumDate = DateTime.Today;
         DobPicker.MinimumDate = DateTime.Today.AddYears(-120);
-        EmergencyPhoneEntry.Placeholder =
-            PhonePlaceholder.ForRegion(RegionInfo.CurrentRegion.TwoLetterISORegionName);
+        var phonePlaceholder = PhonePlaceholder.ForRegion(RegionInfo.CurrentRegion.TwoLetterISORegionName);
+        EmergencyPhoneEntry.Placeholder = phonePlaceholder;
+        PhoneEntry.Placeholder = phonePlaceholder;
     }
 
     public string MemberId
@@ -102,6 +103,7 @@ public partial class EditCardiMemberPage : ContentPage
         MedicalNotesEditor.Text = member.MedicalNotes;
         EmergencyNameEntry.Text = member.EmergencyContactName;
         EmergencyPhoneEntry.Text = member.EmergencyContactPhone;
+        PhoneEntry.Text = member.Phone;
 
         var relationshipIndex = Array.FindIndex(Relationships, r => r.Value == member.Relationship);
         // A relationship recorded before this picker existed (e.g. Child, Self) has no row —
@@ -153,7 +155,8 @@ public partial class EditCardiMemberPage : ContentPage
             || SelectedSensitivity() != _member.AlertSensitivity
             || NullIfEmpty(MedicalNotesEditor.Text) != NullIfEmpty(_member.MedicalNotes)
             || NullIfEmpty(EmergencyNameEntry.Text) != NullIfEmpty(_member.EmergencyContactName)
-            || NullIfEmpty(EmergencyPhoneEntry.Text) != NullIfEmpty(_member.EmergencyContactPhone);
+            || NullIfEmpty(EmergencyPhoneEntry.Text) != NullIfEmpty(_member.EmergencyContactPhone)
+            || NullIfEmpty(PhoneEntry.Text) != NullIfEmpty(_member.Phone);
     }
 
     private async void OnSaveClicked(object? sender, EventArgs e)
@@ -176,7 +179,7 @@ public partial class EditCardiMemberPage : ContentPage
                 DateOfBirth = DateOnly.FromDateTime(DobPicker.Date ?? DateTime.Today),
                 RelationshipType = SelectedRelationship(),
                 Email = _member.Email,
-                Phone = _member.Phone,
+                Phone = NullIfEmpty(PhoneEntry.Text),
                 EmergencyContactName = NullIfEmpty(EmergencyNameEntry.Text),
                 EmergencyContactPhone = NullIfEmpty(EmergencyPhoneEntry.Text),
                 MedicalNotes = NullIfEmpty(MedicalNotesEditor.Text),
@@ -210,6 +213,7 @@ public partial class EditCardiMemberPage : ContentPage
         DobError.IsVisible = false;
         MedicalNotesError.IsVisible = false;
         EmergencyPhoneError.IsVisible = false;
+        PhoneError.IsVisible = false;
 
         var valid = true;
 
@@ -241,6 +245,14 @@ public partial class EditCardiMemberPage : ContentPage
         {
             EmergencyPhoneError.Text = "Enter a valid phone number, e.g. +15551234567";
             EmergencyPhoneError.IsVisible = true;
+            valid = false;
+        }
+
+        var phone = NullIfEmpty(PhoneEntry.Text);
+        if (phone is not null && !PhonePattern.IsMatch(phone))
+        {
+            PhoneError.Text = "Enter a valid phone number, e.g. +15551234567";
+            PhoneError.IsVisible = true;
             valid = false;
         }
 

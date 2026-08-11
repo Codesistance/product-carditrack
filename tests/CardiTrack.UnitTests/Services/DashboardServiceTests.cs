@@ -174,14 +174,15 @@ public class DashboardServiceTests
         Assert.Null(result.Baseline.BaselinePeriodDays);
     }
 
-    // The dashboard's Call and Send Message actions run off the emergency contact, because that
-    // is the only phone number M1-04 and M1-14 capture — CardiMember.Phone is null for every
-    // member created in the app, so shipping the tiles against it would leave them always dead.
+    // Both numbers are returned side by side: Phone powers the dashboard's plain Call/Message
+    // actions, EmergencyContactPhone powers the separate, visually distinct Emergency Call tile
+    // (issue #162) — the two are never conflated.
     [Fact]
-    public async Task Returns_TheEmergencyContact_NotTheMembersOwnPhone()
+    public async Task ReturnsBoth_TheMembersOwnPhone_AndTheEmergencyContact()
     {
         var result = await CreateSut().GetDashboardAsync(_userId, _memberId);
 
+        Assert.Equal("+441234567890", result.Phone);
         Assert.Equal("+441234567891", result.EmergencyContactPhone);
         Assert.Equal("Lorri Warf", result.EmergencyContactName);
     }

@@ -202,20 +202,25 @@
 
                         <controls:StatusHeroCard x:Name="HeroCard"/>
 
-                        <!-- Quick actions. Call and Send Message dim when the CardiMember has no
-                             phone number (issue #67) — they stay tappable so the tap can explain
-                             why, which is the only affordance a dimmed tile has on touch. -->
-                        <Grid ColumnDefinitions="*,*,*" ColumnSpacing="14">
+                        <!-- Quick actions (issue #162): Call and Message now reach the
+                             CardiMember's own phone directly — "Call Dad" now actually calls Dad.
+                             The Emergency Call tile is visually distinct (tinted, not a plain
+                             white card) precisely because it dials someone else, not the member
+                             the rest of this screen is about. Each dims independently when its
+                             own number is missing (issue #67's dim-not-hide pattern) — they stay
+                             tappable so the tap can explain why, the only affordance a dimmed
+                             tile has on touch. -->
+                        <Grid ColumnDefinitions="*,*,*,*" ColumnSpacing="10">
                             <Border x:Name="CallAction"
                                     Grid.Column="0"
                                     Style="{StaticResource ElevatedCard}"
-                                    Padding="8,16,8,11">
+                                    Padding="6,16,6,11">
                                 <Border.GestureRecognizers>
                                     <TapGestureRecognizer Tapped="OnCallTapped"/>
                                 </Border.GestureRecognizers>
                                 <VerticalStackLayout Spacing="13">
                                     <Image Source="icon_action_call.svg"
-                                           WidthRequest="26" HeightRequest="26"
+                                           WidthRequest="24" HeightRequest="24"
                                            HorizontalOptions="Center"/>
                                     <Label x:Name="CallLabel"
                                            Text="Call"
@@ -223,29 +228,52 @@
                                            LineBreakMode="TailTruncation"/>
                                 </VerticalStackLayout>
                             </Border>
-                            <Border x:Name="MessageAction"
+                            <Border x:Name="EmergencyCallAction"
                                     Grid.Column="1"
+                                    BackgroundColor="{StaticResource AlertTileRed}"
+                                    StrokeThickness="0"
+                                    Padding="6,16,6,11"
+                                    SemanticProperties.Description="Call emergency contact"
+                                    SemanticProperties.Hint="Dials the emergency contact number, not the CardiMember directly">
+                                <Border.StrokeShape>
+                                    <RoundRectangle CornerRadius="20"/>
+                                </Border.StrokeShape>
+                                <Border.GestureRecognizers>
+                                    <TapGestureRecognizer Tapped="OnEmergencyCallTapped"/>
+                                </Border.GestureRecognizers>
+                                <VerticalStackLayout Spacing="13">
+                                    <Image Source="icon_action_call.svg"
+                                           WidthRequest="24" HeightRequest="24"
+                                           HorizontalOptions="Center"/>
+                                    <Label Text="Call"
+                                           Style="{StaticResource QuickActionLabel}"
+                                           TextColor="{StaticResource StatusRed}"
+                                           LineBreakMode="TailTruncation"/>
+                                </VerticalStackLayout>
+                            </Border>
+                            <Border x:Name="MessageAction"
+                                    Grid.Column="2"
                                     Style="{StaticResource ElevatedCard}"
-                                    Padding="8,16,8,11">
+                                    Padding="6,16,6,11">
                                 <Border.GestureRecognizers>
                                     <TapGestureRecognizer Tapped="OnMessageTapped"/>
                                 </Border.GestureRecognizers>
                                 <VerticalStackLayout Spacing="13">
                                     <Image Source="icon_action_sms.svg"
-                                           WidthRequest="26" HeightRequest="26"
+                                           WidthRequest="24" HeightRequest="24"
                                            HorizontalOptions="Center"/>
                                     <Label Text="Message" Style="{StaticResource QuickActionLabel}"/>
                                 </VerticalStackLayout>
                             </Border>
-                            <Border Grid.Column="2"
+                            <Border Grid.Column="3"
                                     Style="{StaticResource ElevatedCard}"
-                                    Padding="8,16,8,11">
+                                    Padding="6,16,6,11">
                                 <Border.GestureRecognizers>
                                     <TapGestureRecognizer Tapped="OnViewDetailsTapped"/>
                                 </Border.GestureRecognizers>
                                 <VerticalStackLayout Spacing="13">
                                     <Image Source="icon_action_details.svg"
-                                           WidthRequest="26" HeightRequest="26"
+                                           WidthRequest="24" HeightRequest="24"
                                            HorizontalOptions="Center"/>
                                     <Label Text="Details" Style="{StaticResource QuickActionLabel}"/>
                                 </VerticalStackLayout>
