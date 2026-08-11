@@ -19,9 +19,9 @@ lifecycles.
 |---|--------|--------|------|---------|---------|--------|
 | 1 | CardiTrack Web (`Auth0__ClientId/Secret`) | Identity | Confidential (Regular Web App) | Auth0 | `auth0-client-id` / `auth0-client-secret` | Created per [runbook §4](./auth0_setup_runbook.md) |
 | 2 | CardiTrack Mobile | Identity | Public (Native, PKCE, no secret) | Auth0 | `auth0-mobile-client-id` | Created per [runbook §3](./auth0_setup_runbook.md) |
-| 3 | Google sign-in (social) | Identity | Web app client **used by Auth0**, not by our code | Google Cloud (`carditrack-signin`) | Stored inside the Auth0 connection | **Provisioned 2026-08-07** — clients created, both tenants' Auth0 connections wired; **app buttons wired 2026-08-10** (Universal Login + PKCE) |
-| 4 | Apple Sign In (social) | Identity | Services ID + .p8 key **used by Auth0** | Apple Developer | Stored inside the Auth0 connection | **App button wired 2026-08-10**; credentials pending (Phase 9, below) — button degrades to "not available yet" until then |
-| 7 | CardiTrack Actions | Identity | Confidential (M2M, Management API: `read:users` `update:users`) | Auth0 | **Action secrets only** (never Secret Manager, never the repo) | Pending per tenant — [runbook §8a](./auth0_setup_runbook.md); powers the account-linking Action |
+| 3 | Google sign-in (social) | Identity | Web app client **used by Auth0**, not by our code | Google Cloud (`carditrack-signin`) | Stored inside the Auth0 connection | **Provisioned 2026-08-07** — clients created, both tenants' Auth0 connections wired; **app buttons wired 2026-08-10** (Universal Login + PKCE); **Applications → CardiTrack Mobile toggle enabled in dev 2026-08-10** — prod toggle still outstanding |
+| 4 | Apple Sign In (social) | Identity | Services ID + .p8 key **used by Auth0** | Apple Developer | Stored inside the Auth0 connection | **Credentials provisioned + Try Connection verified in dev 2026-08-10** (Services ID `com.codesistance.carditrack.mobile.signin`); **Applications → CardiTrack Mobile toggle enabled in dev 2026-08-10** — prod credentials + Try Connection + toggle still outstanding (Phase 9, below) |
+| 7 | CardiTrack Actions | Identity | Confidential (M2M, Management API: `read:users` `update:users`) | Auth0 | **Action secrets only** (never Secret Manager, never the repo) | **Created + Action deployed in dev 2026-08-10** — [runbook §8a](./auth0_setup_runbook.md); powers the account-linking Action; prod still pending |
 | 5 | Fitbit provider (Google Health API) | Device data | Confidential Web application | Google Cloud (`carditrack-devices-{env}`) | `devices-fitbit-client-id` / `devices-fitbit-client-secret` | **Provisioned 2026-08-07** — clients created, secrets loaded, API + Worker revisions rolled; field names verified against the v4 discovery document 2026-08-09; **live-wearer population check outstanding** (step 5b below) |
 | 6+ | Garmin / Withings / Oura / Whoop | Device data | Per-vendor | Each vendor's portal | Not yet provisioned (`devices-{provider}-client-{id,secret}`) | Future — config stubs only; **only Fitbit is registered in DI** |
 
@@ -149,6 +149,13 @@ Required by App Store review: an iOS app offering any third-party social login
    and **Team ID**.
 4. Auth0 → **Authentication → Social → Apple** → enter Services ID, Team ID,
    Key ID, and the .p8 contents → enable for the Mobile app.
+
+**Status 2026-08-10**: Services ID `com.codesistance.carditrack.mobile.signin`
+created and configured with both dev/prod return URLs; connection credentials
+entered, Try Connection verified, and the **Applications → CardiTrack Mobile**
+toggle enabled — all in the dev tenant. Still outstanding: repeating
+credential entry, Try Connection, and the Applications toggle in the prod
+tenant.
 
 ### Cross-cutting items (both providers)
 
