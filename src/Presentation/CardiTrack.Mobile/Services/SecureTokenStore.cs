@@ -31,6 +31,15 @@ public sealed class SecureTokenStore : ITokenStore
     // no rework needed here when that happens.
     private static readonly ActivitySource ActivitySource = new("CardiTrack.Mobile.Auth.SecureTokenStore");
 
+    // What actually happens below on a SecureStorage failure — only true on Windows, where
+    // FallbackGet/FallbackSave persist to Preferences; on Android/iOS they're no-ops, and a log
+    // line claiming otherwise would misdiagnose exactly the platforms this timeout exists for.
+#if WINDOWS
+    private const string FallbackDescription = "using Preferences fallback";
+#else
+    private const string FallbackDescription = "no fallback available on this platform";
+#endif
+
     private readonly ILogger<SecureTokenStore> _logger;
 
     public SecureTokenStore(ILogger<SecureTokenStore>? logger = null)
@@ -71,14 +80,14 @@ public sealed class SecureTokenStore : ITokenStore
             // Louder than the generic fallback below: this is the hang this timeout guard
             // exists to catch, and unlike a normal SecureStorage miss it's worth someone
             // noticing rather than quietly degrading.
-            _logger.LogError(ex, "SecureTokenStore: read timed out; using Preferences fallback");
+            _logger.LogError(ex, "SecureTokenStore: read timed out; {Fallback}", FallbackDescription);
             return FallbackGet();
         }
         catch (Exception ex)
         {
             activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
             activity?.SetTag("carditrack.secure_storage.result", "error");
-            _logger.LogWarning(ex, "SecureTokenStore: read failed; using Preferences fallback");
+            _logger.LogWarning(ex, "SecureTokenStore: read failed; {Fallback}", FallbackDescription);
             return FallbackGet();
         }
     }
@@ -103,14 +112,14 @@ public sealed class SecureTokenStore : ITokenStore
         {
             activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
             activity?.SetTag("carditrack.secure_storage.result", "timeout");
-            _logger.LogError(ex, "SecureTokenStore: write timed out; using Preferences fallback");
+            _logger.LogError(ex, "SecureTokenStore: write timed out; {Fallback}", FallbackDescription);
             FallbackSave(tokens);
         }
         catch (Exception ex)
         {
             activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
             activity?.SetTag("carditrack.secure_storage.result", "error");
-            _logger.LogWarning(ex, "SecureTokenStore: write failed; using Preferences fallback");
+            _logger.LogWarning(ex, "SecureTokenStore: write failed; {Fallback}", FallbackDescription);
             FallbackSave(tokens);
         }
     }
@@ -118,25 +127,16 @@ public sealed class SecureTokenStore : ITokenStore
     /// <summary>
     /// Abandons (doesn't cancel — SecureStorage exposes no way to) the native call on timeout
     /// so the caller can proceed; a late completion is still safely picked up by the app's
-    /// unobserved-task-exception handler if it ever faults.
+    /// unobserved-task-exception handler if it ever faults. <see cref="Task.WaitAsync(TimeSpan)"/>
+    /// throws the <see cref="TimeoutException"/> itself, and unlike a manual
+    /// Task.WhenAny/Task.Delay race doesn't leave a live timer running for the full timeout on
+    /// the (common) fast path where SecureStorage returns immediately.
     /// </summary>
-    private static async Task<string?> GetWithTimeoutAsync(string key)
-    {
-        var task = SecureStorage.Default.GetAsync(key);
-        var finished = await Task.WhenAny(task, Task.Delay(SecureStorageTimeout));
-        if (finished != task)
-            throw new TimeoutException($"SecureStorage read of '{key}' timed out after {SecureStorageTimeout}.");
-        return await task;
-    }
+    private static Task<string?> GetWithTimeoutAsync(string key) =>
+        SecureStorage.Default.GetAsync(key).WaitAsync(SecureStorageTimeout);
 
-    private static async Task SetWithTimeoutAsync(string key, string value)
-    {
-        var task = SecureStorage.Default.SetAsync(key, value);
-        var finished = await Task.WhenAny(task, Task.Delay(SecureStorageTimeout));
-        if (finished != task)
-            throw new TimeoutException($"SecureStorage write of '{key}' timed out after {SecureStorageTimeout}.");
-        await task;
-    }
+    private static Task SetWithTimeoutAsync(string key, string value) =>
+        SecureStorage.Default.SetAsync(key, value).WaitAsync(SecureStorageTimeout);
 
     public Task ClearAsync()
     {
