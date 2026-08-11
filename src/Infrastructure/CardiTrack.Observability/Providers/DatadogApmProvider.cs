@@ -2,58 +2,69 @@ using OpenTelemetry.Exporter;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Trace;
 using Serilog;
-using Serilog.Sinks.Datadog.Logs;
+using Serilog.Sinks.OpenTelemetry;
 
 namespace CardiTrack.Observability.Providers;
 
 /// <summary>
-/// Datadog (agentless): logs via the official Serilog sink to the site's HTTP intake,
-/// traces and metrics via OTLP/HTTP to the org's intake with a dd-api-key header.
+/// Datadog (agentless): logs, traces and metrics all ship via OTLP/HTTP to the org's
+/// per-signal intake with a dd-api-key header — the same pipeline end to end, so
+/// Datadog correlates all three off one shared OTel Resource (service.name,
+/// service.version, deployment.environment) instead of manual tag/attribute matching.
+/// Logs used to ship through Datadog's classic HTTP log intake (a different product
+/// surface with its own reserved-attribute correlation convention), which is why logs
+/// and traces never actually joined up in the UI even once both were shipping.
 /// Data translation: IngestUrl = Datadog site (e.g. datadoghq.eu, uk1.datadoghq.com),
 /// IngestToken = API key, Extra["TraceEndpoint"] = the OTLP traces intake URL
 /// (per-site pattern https://otlp.[site]/v1/traces, but org-entitlement-gated — a 403
-/// means the org needs intake access via support). Without it this provider ships logs
-/// only. The metrics intake URL is derived from the site (https://otlp.[site]/v1/metrics);
-/// Extra["MetricsEndpoint"] overrides it.
+/// means the org needs intake access via support, or the org's "OTLP Ingest" toggle
+/// under Organization Settings -> API Keys). Without it this provider ships logs only.
+/// The logs and metrics intake URLs are derived from the site
+/// (https://otlp.[site]/v1/logs, /v1/metrics); Extra["LogsEndpoint"]/
+/// Extra["MetricsEndpoint"] override them.
 /// </summary>
 public sealed class DatadogApmProvider : IApmProvider
 {
     public const string EngineName = "Datadog";
     public const string TraceEndpointKey = "TraceEndpoint";
+    public const string LogsEndpointKey = "LogsEndpoint";
     public const string MetricsEndpointKey = "MetricsEndpoint";
 
     public string Name => EngineName;
 
+    /// <summary>
+    /// The Resource attributes here must match <see cref="ApmExtensions"/>'s trace/metric
+    /// resource exactly (same service.name/service.version/deployment.environment keys) —
+    /// that shared identity, not the log record's attributes, is what lets Datadog treat
+    /// all three signals as one service and resolve a log's "Related Trace".
+    /// </summary>
     public LoggerConfiguration AddLogShipping(
         LoggerConfiguration loggerConfiguration, ApmOptions options, string serviceName) =>
-        loggerConfiguration.WriteTo.DatadogLogs(
-            apiKey: options.Data.IngestToken!,
-            source: "csharp",
-            service: serviceName,
-            tags: LogTags(),
-            configuration: new DatadogConfiguration(url: LogIntakeUrl(options.Data.IngestUrl!)),
+        loggerConfiguration.WriteTo.Logger(
+            lc => lc.WriteTo.OpenTelemetry(otlp =>
+            {
+                otlp.Endpoint = LogsIntakeUrl(options);
+                otlp.Protocol = OtlpProtocol.HttpProtobuf;
+                otlp.Headers = new Dictionary<string, string> { ["dd-api-key"] = options.Data.IngestToken! };
+                otlp.ResourceAttributes = ResourceAttributes(options, serviceName);
+            }),
             restrictedToMinimumLevel: options.ShipLevel);
 
-    /// <summary>
-    /// The ddtags every log carries. Datadog's reserved tags — the ones behind the Service
-    /// and Version facets, the environment selector, and release comparison — are read from
-    /// the tag list and the sink's own service field, never from log attributes: the
-    /// "Version" property the hosts enrich with shows up as an ordinary attribute and
-    /// leaves the Version facet empty, which is why the release is repeated here as a tag.
-    /// With the sink's service field, these complete the env/service/version triple.
-    ///
-    /// "env" is dropped when the environment is unknown rather than sent as a placeholder:
-    /// an untagged log is findable and obviously unlabelled, whereas an "unknown"
-    /// environment becomes a real value in the selector that nothing can be done about.
-    /// </summary>
-    public static string[] LogTags()
+    private static Dictionary<string, object> ResourceAttributes(ApmOptions options, string serviceName)
     {
-        var tags = new List<string> { $"version:{DeploymentInfo.Version}" };
+        var attributes = new Dictionary<string, object>
+        {
+            ["service.name"] = serviceName,
+            ["service.version"] = DeploymentInfo.Version,
+        };
 
         if (DeploymentInfo.EnvironmentName is { } environmentName)
-            tags.Add($"env:{environmentName}");
+        {
+            attributes["deployment.environment.name"] = environmentName;
+            attributes["deployment.environment"] = environmentName;
+        }
 
-        return [.. tags];
+        return attributes;
     }
 
     public void AddTraceExporter(TracerProviderBuilder tracing, ApmOptions options)
@@ -118,14 +129,17 @@ public sealed class DatadogApmProvider : IApmProvider
     /// Log intake always ships (options are only checked as configured once IngestUrl is
     /// real), plus trace/metrics intake hosts when those signals are actually live — an
     /// unset TraceEndpoint or an IngestUrl the metrics URL can't be derived from means that
-    /// host is never opened, so it has nothing to exclude from instrumentation.
+    /// host is never opened, so it has nothing to exclude from instrumentation. Logs, traces
+    /// and metrics now all resolve to the same otlp.&lt;site&gt; host once every signal is
+    /// live, so this collapses to a single entry in the common case — not a bug, just the
+    /// one-pipeline design paying off.
     /// </summary>
     public IReadOnlyCollection<string> ShippingHosts(ApmOptions options)
     {
-        var hosts = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-        {
-            new Uri(LogIntakeUrl(options.Data.IngestUrl!)).Host,
-        };
+        var hosts = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        if (Uri.TryCreate(LogsIntakeUrl(options), UriKind.Absolute, out var logsUri))
+            hosts.Add(logsUri.Host);
 
         var traceEndpoint = options.Data.Extra.GetValueOrDefault(TraceEndpointKey);
         if (!string.IsNullOrWhiteSpace(traceEndpoint) && Uri.TryCreate(traceEndpoint, UriKind.Absolute, out var traceUri))
@@ -139,16 +153,24 @@ public sealed class DatadogApmProvider : IApmProvider
         return hosts;
     }
 
-    /// <summary>Derives the log intake URL from a bare site name; full URLs pass through.</summary>
-    public static string LogIntakeUrl(string site)
+    /// <summary>
+    /// Logs intake URL: an explicit Extra["LogsEndpoint"] wins; otherwise derived from a
+    /// bare site name per the documented per-site pattern (https://otlp.[site]/v1/logs). A
+    /// full URL passed as IngestUrl is used as-is. Unlike <see cref="MetricsIntakeUrl"/>,
+    /// this never returns null: logs are the one signal this provider always ships once
+    /// <see cref="ApmOptions.IsConfigured"/> is true, so there is no "not derivable, skip
+    /// this signal" case to represent.
+    /// </summary>
+    public static string LogsIntakeUrl(ApmOptions options)
     {
-        var trimmed = site.Trim().TrimEnd('/');
-        if (trimmed.StartsWith("http://", StringComparison.OrdinalIgnoreCase)
-            || trimmed.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
-            return trimmed;
-        return trimmed.StartsWith("http-intake.", StringComparison.OrdinalIgnoreCase)
-            ? $"https://{trimmed}"
-            : $"https://http-intake.logs.{trimmed}";
+        var explicitUrl = options.Data.Extra.GetValueOrDefault(LogsEndpointKey);
+        if (!string.IsNullOrWhiteSpace(explicitUrl))
+            return explicitUrl.Trim();
+
+        var site = options.Data.IngestUrl!.Trim().TrimEnd('/');
+        return site.Contains("://", StringComparison.Ordinal)
+            ? site
+            : $"https://otlp.{site}/v1/logs";
     }
 
     /// <summary>

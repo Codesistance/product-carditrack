@@ -127,12 +127,19 @@ Two things follow from reading that variable:
 3. Traces need the **agentless OTLP intake endpoint**. It follows the per-site pattern
    `https://otlp.<site>/v1/traces` (e.g. UK1 → `https://otlp.uk1.datadoghq.com/v1/traces`,
    EU → `https://otlp.datadoghq.eu/v1/traces`), but access is org-entitlement-gated: if
-   sends return 403 "organization is not allowed", request access via **Help → Support**
-   (or the CSM). The full URL becomes the `TraceEndpoint` field. Skipping it is fine —
-   the apps ship logs only until it's set (and log a startup Warning saying so).
-4. Metrics need no extra field: when `apm_metrics_enabled = true`, the intake URL is
-   derived from the site (`https://otlp.<site>/v1/metrics`); an optional `MetricsEndpoint`
-   field overrides it. The same org entitlement applies.
+   sends return 403 "organization is not allowed", check **Organization Settings → API
+   Keys → OTLP Ingest** first, or request access via **Help → Support** (or the CSM) if
+   that toggle isn't visible. The full URL becomes the `TraceEndpoint` field. Skipping it
+   is fine — the apps ship logs only until it's set (and log a startup Warning saying so).
+4. Logs and metrics need no extra field: the intake URLs are derived from the site
+   (`https://otlp.<site>/v1/logs`, `https://otlp.<site>/v1/metrics`); optional
+   `LogsEndpoint` / `MetricsEndpoint` fields override them (metrics only ships when
+   `apm_metrics_enabled = true`; logs always ship once the engine is configured). Logs
+   go through the **same agentless OTLP intake as traces**, not a separate always-on
+   pipeline — the same org entitlement above applies, and it's *why* logs and traces
+   correlate: sharing one intake means they share one OTel Resource
+   (`service.name`/`service.version`/`deployment.environment`), which is what Datadog
+   joins a log to its trace on.
 
 Datadog `Apm__Data` shape:
 
@@ -191,6 +198,13 @@ for i in $(seq 20); do curl -s -o /dev/null https://api.dev.carditrack.com/api/d
 # env:dev / env:prod separates the environments — mobile already reports the same two
 # values. Logs with no env at all mean neither ASPNETCORE_ENVIRONMENT nor
 # DEPLOY_ENVIRONMENT reached the revision; the startup Warning names both.
+
+# Correlation (the actual point of shipping both): open one of the sampled traces from
+# APM -> Traces and confirm its "Logs" tab shows matching lines for that request — or
+# open a log line from the burst above and confirm "Related Trace" resolves. Logs and
+# traces now ship through the same OTLP intake specifically so this works; if a trace
+# shows zero related logs, check the log's env/service/version facets match the trace's
+# exactly (a mismatch there is the correlation failing, not a missing log).
 # Startup self-report: each service logs its effective APM state at boot — look in
 # Cloud Run logs for "APM configured: engine Datadog shipping logs+traces+metrics ..."
 # (Information) or "APM shipping disabled: ..." / "APM (Datadog): traces will not
@@ -271,11 +285,15 @@ Every log line and every trace carries the release that produced it, so a spike 
 pinned to a deploy without cross-referencing CI:
 
 - **Logs** — the `Version` property, alongside the existing `Application`, `MachineName`
-  and `EnvironmentName` enrichers.
-- **Traces/metrics** — the OTel resource attribute `service.version`, which Datadog reads
-  as its `version` tag (the second half of unified service tagging; `env` is not wired
-  yet). Note that the Serilog side ships `Version` as a plain log attribute — pair it with
-  a Datadog remapper if you want log-side unified tagging too.
+  and `EnvironmentName` enrichers. This is what Better Stack's log sink and the console
+  read; Better Stack isn't OTLP-based, so this flat property is its only version signal.
+- **Traces/metrics, and for Datadog also logs** — the OTel resource attribute
+  `service.version` (Datadog reads it as its `version` tag) plus
+  `deployment.environment`/`deployment.environment.name` (→ `env`). Datadog's log
+  shipping goes through the same OTLP pipeline as its traces/metrics specifically so all
+  three carry this identically — that shared Resource, not the `Version` log property
+  above, is what makes unified service tagging (and log/trace correlation) work for
+  Datadog. No remapper needed.
 
 Nothing to provision: the value is the deploy's semver tag. `compute-version` in
 `deploy-apps-dev.yml` derives it (`v1.2.3`), and that string tags the image as-is. The
