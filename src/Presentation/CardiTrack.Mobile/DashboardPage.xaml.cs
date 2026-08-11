@@ -187,6 +187,11 @@ public partial class DashboardPage : ContentPage
             Apply(data);
             SetState(DashboardState.Loaded);
 
+            // Fire-and-forget, not awaited: the hero card already shows its static per-tier
+            // copy, and a MedGemma call can take a few seconds — nothing about the dashboard
+            // should wait on it, including the pull-to-refresh spinner below.
+            _ = LoadCurrentStatusAsync(data);
+
             // Loaded after the dashboard rather than alongside it: a caregiver opens this screen
             // to see how their relative is, and housekeeping must never delay that answer or take
             // it down with it.
@@ -480,6 +485,31 @@ public partial class DashboardPage : ContentPage
     /// the summary call fails, the right outcome is a dashboard without it, not an error dialog
     /// over the metrics somebody actually came to read.
     /// </remarks>
+    /// <summary>
+    /// A live, empathetic replacement for the hero card's static status line. Best-effort: no
+    /// spinner, no error state — the static copy <see cref="Apply"/> already rendered is a
+    /// complete, correct fallback on its own, so a failed or slow call just leaves it as is.
+    /// </summary>
+    private async Task LoadCurrentStatusAsync(DashboardResponse data)
+    {
+        // Nothing to say yet for either — no real signal to interpret, and the fixed copy for
+        // both is already appropriate.
+        if (data.HealthStatus is "unknown" or "paused")
+            return;
+
+        try
+        {
+            var status = await _api.GetCurrentStatusAsync(data.CardiMemberId);
+            if (status.Message is { } message)
+                HeroCard.ApplyDynamicMessage(message, data.HealthStatus);
+        }
+        catch (ApiException)
+        {
+            // Static per-tier copy stays. Nothing to show the caregiver about this failure —
+            // it isn't actionable and isn't worth interrupting them for.
+        }
+    }
+
     private async Task LoadNudgesAsync()
     {
         try

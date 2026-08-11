@@ -8,6 +8,13 @@ public partial class StatusHeroCard : ContentView
     /// <summary>Raised when the card body is tapped — the dashboard's route into M1-13.</summary>
     public event EventHandler? MemberTapped;
 
+    /// <summary>
+    /// Which tier <see cref="Apply"/> last rendered, so a late-arriving
+    /// <see cref="ApplyDynamicMessage"/> can tell whether it's still describing the status
+    /// actually on screen.
+    /// </summary>
+    private string? _healthStatus;
+
     public StatusHeroCard()
     {
         InitializeComponent();
@@ -43,6 +50,23 @@ public partial class StatusHeroCard : ContentView
         StatusLabel.TextColor = (Color)Microsoft.Maui.Controls.Application.Current!.Resources[colorKey];
         StatusIcon.Source = icon;
         StatusLabel.Text = statusText;
+        _healthStatus = data.HealthStatus;
+    }
+
+    /// <summary>
+    /// Swaps in a live, MedGemma-generated line over the static per-tier copy <see cref="Apply"/>
+    /// already rendered. Ignored if the card has since moved to a different status — a refresh
+    /// landing while the call was still in flight — since the message would describe a tier
+    /// that's no longer showing.
+    /// </summary>
+    public void ApplyDynamicMessage(string message, string forHealthStatus)
+    {
+        if (forHealthStatus != _healthStatus || string.IsNullOrWhiteSpace(message))
+            return;
+
+        StatusLabel.Text = message;
+        StatusLabel.Opacity = 0;
+        _ = StatusLabel.FadeToAsync(1, 150, Easing.CubicOut);
     }
 
     private void OnCardTapped(object? sender, TappedEventArgs e) =>

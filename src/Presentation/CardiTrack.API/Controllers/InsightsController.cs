@@ -75,6 +75,36 @@ public class InsightsController : BaseApiController
     }
 
     /// <summary>
+    /// A short, empathetic line describing a CardiMember's current status — what the Dashboard's
+    /// hero card shows once it resolves, in place of the fixed per-severity-tier copy the client
+    /// renders while this is in flight. Cached per member; see
+    /// <see cref="IHealthInsightService.GetCurrentStatusMessageAsync"/> for the TTL. A null
+    /// <c>message</c> means there's nothing to say yet — the client keeps its existing copy.
+    /// </summary>
+    [HttpGet("members/{cardiMemberId:guid}/status")]
+    [ProducesResponseType(typeof(ApiResponse<CurrentStatusMessageResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<ApiResponse<CurrentStatusMessageResponse>>> GetCurrentStatus(
+        Guid cardiMemberId, CancellationToken ct)
+    {
+        if (!UserContext.IsAuthenticated || UserContext.UserId == Guid.Empty)
+        {
+            return Error("We couldn't find your account — please sign in again.", StatusCodes.Status403Forbidden);
+        }
+
+        try
+        {
+            var result = await _insightService.GetCurrentStatusMessageAsync(UserContext.UserId, cardiMemberId, ct);
+            return Success(result);
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return Error(ex.Message, StatusCodes.Status404NotFound);
+        }
+    }
+
+    /// <summary>
     /// The member's daily family digest — the most recent by default, or a specific local date.
     /// Generated each morning by the pipeline; read-only here, no model call on this path.
     /// </summary>

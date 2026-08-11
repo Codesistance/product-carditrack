@@ -37,6 +37,13 @@ public interface ICardiTrackApiClient
     Task<DashboardResponse> GetDashboardAsync(Guid cardiMemberId, CancellationToken ct = default);
 
     /// <summary>
+    /// A short, empathetic MedGemma-generated line describing a CardiMember's current status —
+    /// fetched after the dashboard's own load so it never blocks first paint. May return a null
+    /// <see cref="CurrentStatusMessageResponse.Message"/> when there's nothing to say yet.
+    /// </summary>
+    Task<CurrentStatusMessageResponse> GetCurrentStatusAsync(Guid cardiMemberId, CancellationToken ct = default);
+
+    /// <summary>
     /// One page of alerts for the Alerts List (M1-10), newest first, across every CardiMember
     /// the signed-in user may read.
     /// </summary>
