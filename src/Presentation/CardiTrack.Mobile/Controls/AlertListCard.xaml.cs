@@ -10,6 +10,7 @@ public partial class AlertListCard : ContentView
 
     public event EventHandler<AlertSummaryResponse>? CallRequested;
     public event EventHandler<AlertSummaryResponse>? AcknowledgeRequested;
+    public event EventHandler<AlertSummaryResponse>? DeleteRequested;
 
     private AlertSummaryResponse? _alert;
     private bool _isExpanded;
@@ -110,5 +111,11 @@ public partial class AlertListCard : ContentView
     {
         if (_alert is { } alert)
             AcknowledgeRequested?.Invoke(this, alert);
+    }
+
+    private void OnDeleteTapped(object? sender, TappedEventArgs e)
+    {
+        if (_alert is { } alert)
+            DeleteRequested?.Invoke(this, alert);
     }
 }

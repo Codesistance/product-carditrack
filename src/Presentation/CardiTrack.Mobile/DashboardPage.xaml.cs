@@ -13,6 +13,7 @@ public partial class DashboardPage : ContentPage
     /// <summary>Also cleared by M1-13 when the remembered member is removed.</summary>
     internal const string PrimaryMemberIdKey = "PrimaryCardiMemberId";
     private const string VerifyEmailDismissedKey = "VerifyEmailNudgeDismissed";
+    private const string DismissedSleepAlertKey = "DismissedSleepAlertId";
     private static readonly TimeSpan StaleThreshold = TimeSpan.FromHours(2);
     private static readonly TimeSpan AutoRefreshInterval = TimeSpan.FromMinutes(5);
     private const double UnavailableActionOpacity = 0.4;
@@ -28,6 +29,7 @@ public partial class DashboardPage : ContentPage
     private bool _wizardActive;
     private DateTime _lastLoadedUtc = DateTime.MinValue;
     private DashboardResponse? _lastData;
+    private Guid? _currentSleepAlertId;
 
     public DashboardPage(ICardiTrackApiClient api, IAuthService authService, IPopupService popups)
     {
@@ -68,6 +70,32 @@ public partial class DashboardPage : ContentPage
         VerifyEmailBanner.IsVisible = false;
     }
 
+    private void OnDismissSleepConcernClicked(object? sender, EventArgs e)
+    {
+        if (_currentSleepAlertId is { } id)
+            Preferences.Default.Set(DismissedSleepAlertKey, id.ToString());
+        SleepConcernBanner.IsVisible = false;
+    }
+
+    private async void OnSleepConcernTapped(object? sender, TappedEventArgs e) =>
+        await Shell.Current.GoToAsync(AppShell.AlertsRoute);
+
+    /// <summary>
+    /// Short, quiet time-of-day line under the caregiver's own name — describes the caregiver's
+    /// local evening, not the CardiMember's, so there's no cross-timezone reading to get wrong.
+    /// Deliberately time-only: no weather/location signal exists anywhere in this app yet, so a
+    /// "based on temperature" version is a separate, later feature, not a copy change here.
+    /// </summary>
+    private static string ContextLineFor(int hour) => hour switch
+    {
+        < 5 => "Hope you're getting some rest",
+        < 8 => "Rise and shine",
+        < 12 => "Hope your morning's off to a good start",
+        < 17 => "Hope your afternoon is going well",
+        < 21 => "Seems like a nice evening",
+        _ => "Winding down for the night",
+    };
+
     private void UpdateGreeting()
     {
         var timeOfDay = DateTime.Now.Hour switch
@@ -77,43 +105,24 @@ public partial class DashboardPage : ContentPage
             _ => "Good Evening",
         };
         var firstName = _authService.CurrentUserName?.Split(' ')[0];
-        Header.SetGreeting(string.IsNullOrWhiteSpace(firstName)
-            ? timeOfDay
-            : $"{timeOfDay}, {firstName}");
+        Header.SetGreeting(
+            string.IsNullOrWhiteSpace(firstName) ? timeOfDay : firstName,
+            ContextLineFor(DateTime.Now.Hour));
     }
 
     /// <summary>
-    /// Encouraging copy for the "actively collecting, on track" learning state, rotated by
-    /// how far into the 30-day window the member is rather than picked at random, so the same
-    /// dashboard load always shows the same line (testable, and no flicker between refreshes).
+    /// Color token for each <see cref="DashboardResponse.DataFreshness"/> tier. An
+    /// unrecognised or empty value falls back to the neutral "unknown" color, not green — an
+    /// unexpected value showing a reassuring color would be worse than showing none.
     /// </summary>
-    private static readonly string[] LearningOnTrackCopy =
-    [
-        "Getting to know {0}'s routine",
-        "Seeing what's normal for {0}",
-        "Working on some recommendations",
-        "Almost there — refining the details",
-    ];
-
-    /// <summary>
-    /// Colors and varies the learning-progress card by how fresh the incoming data actually
-    /// is, using the same <see cref="StaleThreshold"/> the stale banner already applies —
-    /// "day 30 of 30" on its own doesn't say whether today's data ever arrived.
-    /// </summary>
-    private static (string ColorKey, string Copy) LearningStateFor(DashboardResponse data, string firstName)
+    private static string FreshnessColorKey(string tier) => tier switch
     {
-        if (data.LastSyncedAt is not { } synced)
-            return ("StatusRed", $"No data yet — connect {firstName}'s device to get started");
-
-        var elapsed = DateTime.UtcNow - DateTime.SpecifyKind(synced, DateTimeKind.Utc);
-        if (elapsed > StaleThreshold)
-            return ("StatusRed", "No new data yet today — pull down to check in");
-        if (elapsed > TimeSpan.FromTicks(StaleThreshold.Ticks / 2))
-            return ("StatusYellow", "Pulling in today's data…");
-
-        var copyIndex = Math.Min(data.Baseline.DaysCaptured / 10, LearningOnTrackCopy.Length - 1);
-        return ("StatusGreen", string.Format(LearningOnTrackCopy[copyIndex], firstName));
-    }
+        "red" => "StatusRed",
+        "amber" => "StatusYellow",
+        "blue" => "StatusBlue",
+        "green" => "StatusGreen",
+        _ => "StatusUnknown",
+    };
 
     private async void OnPullToRefresh(object? sender, EventArgs e)
     {
@@ -297,15 +306,33 @@ public partial class DashboardPage : ContentPage
         NoDeviceCard.IsVisible = !data.Device.HasActiveConnection;
         NoDeviceLabel.Text = $"Connect {firstName}'s device so CardiTrack can start watching over them";
 
-        // Baseline learning (M1-09e). Suppressed while paused, same rule the stale banner
-        // applies — collection is intentionally stopped, so a freshness-derived color/copy here
-        // would misreport a deliberate pause as a data problem.
-        LearningCard.IsVisible = data.Baseline.IsLearning && data.Device.HasActiveConnection
+        // Data-pipeline freshness (deterministic — see MemberInsightsCalculator). Suppressed
+        // while paused, same rule the stale banner applies — collection is intentionally
+        // stopped, so a freshness reading here would misreport a deliberate pause as a gap.
+        FreshnessBlock.IsVisible = !data.MonitoringPaused;
+        var freshnessColor = (Color)Microsoft.Maui.Controls.Application.Current!.Resources[FreshnessColorKey(data.DataFreshness)];
+        FreshnessLabel.Text = data.DataFreshnessMessage;
+        FreshnessLabel.TextColor = freshnessColor;
+        LastUpdatedFooterLabel.Text = data.LastSyncedAt is { } lastSynced
+            ? $"Updated {RelativeTime.Format(lastSynced)}"
+            : "Not synced yet";
+
+        // Baseline-learning progress only while the window is still running — a permanently
+        // full bar after it completes would say nothing new every day.
+        LearningProgress.IsVisible = data.Baseline.IsLearning && data.Device.HasActiveConnection
             && !data.MonitoringPaused;
-        var (learningColorKey, learningCopy) = LearningStateFor(data, firstName);
-        LearningLabel.Text = learningCopy;
         LearningProgress.Progress = data.Baseline.PercentComplete / 100.0;
-        LearningProgress.ProgressColor = (Color)Microsoft.Maui.Controls.Application.Current!.Resources[learningColorKey];
+        LearningProgress.ProgressColor = freshnessColor;
+
+        // Poor-sleep nudge: points at the real, unacknowledged Sleep alert StatisticalAlertWorker
+        // already raises, rather than a second judgement derived from today's metric alone.
+        var sleepAlert = data.RecentAlerts.FirstOrDefault(a => a.Type == "Sleep" && !a.IsAcknowledged);
+        var dismissedId = Preferences.Default.Get(DismissedSleepAlertKey, string.Empty);
+        _currentSleepAlertId = sleepAlert?.AlertId;
+        SleepConcernBanner.IsVisible = sleepAlert is not null
+            && sleepAlert.AlertId.ToString() != dismissedId;
+        if (SleepConcernBanner.IsVisible)
+            SleepConcernBannerLabel.Text = $"{firstName}'s sleep has looked different than usual lately. Tap to view.";
 
         // Metrics
         if (data.Metrics is { } metrics)
@@ -324,6 +351,10 @@ public partial class DashboardPage : ContentPage
             SpO2Card.IsVisible = metrics.SpO2.Value is not null;
             if (SpO2Card.IsVisible)
                 SpO2Card.ApplySpO2(metrics.SpO2);
+
+            BreathingRateCard.IsVisible = metrics.BreathingRate.Value is not null;
+            if (BreathingRateCard.IsVisible)
+                BreathingRateCard.ApplyBreathingRate(metrics.BreathingRate);
         }
         else
         {

@@ -1,6 +1,7 @@
 using CardiTrack.Application.DTOs.Requests;
 using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Domain.Extensions;
+using CardiTrack.Mobile.Controls;
 using CardiTrack.Mobile.Core.Api;
 using CardiTrack.Mobile.Services;
 
@@ -76,6 +77,11 @@ public partial class CardiMemberDetailPage : ContentPage
             _member = await _api.GetCardiMemberAsync(_memberId);
             Apply(_member);
             SetState(loaded: true);
+
+            // Fire-and-forget, not awaited: Apply already rendered the placeholder summary
+            // copy, and the digest read is a separate round trip that shouldn't hold up the
+            // rest of the screen or the pull-to-refresh spinner.
+            _ = LoadDigestAsync(_memberId);
         }
         catch (ApiException ex)
         {
@@ -120,15 +126,24 @@ public partial class CardiMemberDetailPage : ContentPage
             1 => "1 Device",
             var n => $"{n} Devices",
         };
-        MonitoringSinceLabel.Text = DateTime.SpecifyKind(member.MonitoringSince, DateTimeKind.Utc)
-            .ToLocalTime()
-            .ToString("MMM d, yyyy");
+        LastContactLabel.Text = member.LastSyncedAt is { } lastSynced
+            ? RelativeTime.Format(lastSynced)
+            : "Not synced yet";
 
-        BaselineLabel.Text = member.Baseline.IsLearning
-            ? "Baseline Status: Learning"
-            : "Baseline Status: Established";
-        BaselineDaysLabel.Text = $"{member.Baseline.DaysCaptured}/{member.Baseline.DaysRequired} days";
-        BaselineProgress.Progress = member.Baseline.PercentComplete / 100.0;
+        SummaryAccent.Color = (Color)Microsoft.Maui.Controls.Application.Current!.Resources[
+            member.HealthStatus switch
+            {
+                "green" => "StatusGreen",
+                "yellow" => "StatusYellow",
+                "orange" => "StatusOrange",
+                "red" => "StatusRed",
+                _ => "StatusUnknown",
+            }];
+        // The digest itself loads separately (LoadDigestAsync) — this is just the placeholder
+        // shown until it resolves, and the fallback if there isn't one yet.
+        SummaryLabel.Text = "Getting to know this CardiMember's routine — a daily summary will appear here once there's enough to say.";
+
+        ApplyTrends(member.Metrics);
 
         var hasEmergencyContact = !string.IsNullOrWhiteSpace(member.EmergencyContactName)
             || !string.IsNullOrWhiteSpace(member.EmergencyContactPhone);
@@ -151,6 +166,55 @@ public partial class CardiMemberDetailPage : ContentPage
         // Only a primary caregiver may edit, pause or remove — the API enforces this and
         // would answer 404, so showing the controls would just be a trap.
         EditButton.IsVisible = member.IsPrimaryCaregiver;
+    }
+
+    /// <summary>
+    /// Best-effort, like the dashboard's live status line: no spinner, no error state. The
+    /// placeholder <see cref="Apply"/> already rendered is a complete fallback on its own, so a
+    /// 404 (nothing generated yet) or a failed call just leaves it as is.
+    /// </summary>
+    private async Task LoadDigestAsync(Guid memberId)
+    {
+        try
+        {
+            var digest = await _api.GetDigestAsync(memberId);
+            if (memberId == _memberId)
+                SummaryLabel.Text = digest.Text;
+        }
+        catch (ApiException)
+        {
+            // Placeholder copy stays — see the field's own comment in Apply().
+        }
+    }
+
+    private void ApplyTrends(DashboardMetrics? metrics)
+    {
+        TrendsStack.Clear();
+        if (metrics is null)
+        {
+            TrendsCard.IsVisible = false;
+            return;
+        }
+
+        var rows = new (string Icon, string Name, DashboardMetric Metric, string Format)[]
+        {
+            ("icon_metric_steps.svg", "Activity", metrics.Steps, "{0:N0} steps"),
+            ("icon_metric_heart.svg", "Heart Rate", metrics.RestingHeartRate, "{0:N0} bpm"),
+            ("icon_metric_sleep.svg", "Sleep", metrics.Sleep, "{0:0.#} hours"),
+            ("icon_metric_temperature.svg", "Skin Temp", metrics.Temperature, "{0:0.#}°C"),
+            ("icon_metric_spo2.svg", "Blood Oxygen", metrics.SpO2, "{0:0.#}%"),
+            ("icon_metric_breathing.svg", "Breathing Rate", metrics.BreathingRate, "{0:0.#} brpm"),
+        };
+
+        foreach (var (icon, name, metric, format) in rows)
+        {
+            if (metric.Value is null)
+                continue;
+
+            TrendsStack.Add(new MetricTrendRow(icon, name, string.Format(format, metric.Value.Value), metric));
+        }
+
+        TrendsCard.IsVisible = TrendsStack.Count > 0;
     }
 
     private void SetState(bool loading = false, bool loaded = false, bool error = false)
@@ -209,7 +273,7 @@ public partial class CardiMemberDetailPage : ContentPage
     private async void OnManageDevicesClicked(object? sender, EventArgs e) =>
         await Shell.Current.GoToAsync($"{DeviceManagementPage.Route}?memberId={_memberId}");
 
-    private async void OnViewDashboardClicked(object? sender, EventArgs e) =>
+    private async void OnBackToDashboardTapped(object? sender, TappedEventArgs e) =>
         await Shell.Current.GoToAsync(AppShell.DashboardRoute);
 
     private async void OnViewAlertsClicked(object? sender, EventArgs e) =>

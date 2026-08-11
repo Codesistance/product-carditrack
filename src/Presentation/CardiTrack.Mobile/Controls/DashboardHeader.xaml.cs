@@ -21,7 +21,14 @@ public partial class DashboardHeader : ContentView
         set => RefreshButton.IsEnabled = value;
     }
 
-    public void SetGreeting(string greeting) => GreetingLabel.Text = greeting;
+    /// <param name="name">The caregiver's first name, or a time-of-day greeting when it isn't known.</param>
+    /// <param name="context">A short, quiet time-of-day line under the name — never blank in
+    /// the layout even when there's nothing else to say, so the header's height doesn't jump.</param>
+    public void SetGreeting(string name, string context)
+    {
+        NameLabel.Text = name;
+        ContextLabel.Text = context;
+    }
 
     /// <summary>
     /// Shows a dot when completeness items are waiting. Deliberately not folded into

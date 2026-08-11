@@ -11,33 +11,58 @@
     <ScrollView>
     <Grid RowDefinitions="Auto,Auto,Auto,43,Auto">
 
-        <!-- ── Carousel (Figma mask-group composites, 440×571) ── -->
-        <Border Grid.Row="0"
-                StrokeThickness="0"
-                HeightRequest="571"
-                HorizontalOptions="Fill">
-            <CarouselView x:Name="SlideCarousel"
-                          HeightRequest="571"
-                          ItemsSource="{Binding Source={x:Reference RootPage}, Path=Slides, x:DataType=local:WelcomePage}"
-                          Loop="False"
-                          IsScrollAnimated="True"
-                          HorizontalOptions="Fill"
-                          VerticalOptions="Fill">
-                <CarouselView.ItemTemplate>
-                    <DataTemplate x:DataType="local:WelcomeSlide">
-                        <Image Source="{Binding HeroImage}"
-                               Aspect="AspectFill"
-                               HorizontalOptions="Fill"
-                               VerticalOptions="Fill" />
-                    </DataTemplate>
-                </CarouselView.ItemTemplate>
-            </CarouselView>
-        </Border>
+        <!-- ── Carousel (plain photos; the wave backdrop below is code-drawn, not
+             baked into the images — see OnHeroSizeChanged. This fixes two bugs in the old
+             Figma-mask-composite PNGs: a mismatch between the photo's mask curve and the
+             gradient's own curve left a strip of bare page background showing through near
+             the edges, and the fixed 440×610 export cropped unevenly on non-440dp screens.
+             A single wave curve, recomputed to the real rendered size, can't produce either. ── -->
+        <Grid Grid.Row="0" HeightRequest="571" HorizontalOptions="Fill">
+            <BoxView HorizontalOptions="Fill" VerticalOptions="Fill">
+                <BoxView.Background>
+                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                        <GradientStop Color="#174E86" Offset="0.0"/>
+                        <GradientStop Color="#1884DC" Offset="0.458"/>
+                        <GradientStop Color="#36C09B" Offset="1.0"/>
+                    </LinearGradientBrush>
+                </BoxView.Background>
+            </BoxView>
 
-        <!-- ── Header overlay (logo + sign-up, Figma y55/y68) ── -->
+            <Border x:Name="HeroClipBorder"
+                    StrokeThickness="0"
+                    HeightRequest="571"
+                    HorizontalOptions="Fill"
+                    SizeChanged="OnHeroSizeChanged">
+                <CarouselView x:Name="SlideCarousel"
+                              HeightRequest="571"
+                              ItemsSource="{Binding Source={x:Reference RootPage}, Path=Slides, x:DataType=local:WelcomePage}"
+                              Loop="False"
+                              IsScrollAnimated="True"
+                              HorizontalOptions="Fill"
+                              VerticalOptions="Fill">
+                    <CarouselView.ItemTemplate>
+                        <DataTemplate x:DataType="local:WelcomeSlide">
+                            <Image Source="{Binding HeroImage}"
+                                   Aspect="AspectFill"
+                                   HorizontalOptions="Fill"
+                                   VerticalOptions="Fill" />
+                        </DataTemplate>
+                    </CarouselView.ItemTemplate>
+                </CarouselView>
+            </Border>
+
+            <Path x:Name="HeroWaveStroke"
+                  Stroke="{StaticResource White}"
+                  StrokeThickness="2"
+                  InputTransparent="True"/>
+        </Grid>
+
+        <!-- ── Header overlay (logo + sign-in, Figma y55/y68). The safe-area inset already
+             clears the status bar, so this only needs a small margin below it — the previous
+             48/55dp values stacked on top of that inset and pushed the row too far down. ── -->
         <Grid Grid.Row="0"
-              Padding="{OnPlatform Android='20,48,20,0',
-                                   iOS='20,55,20,0',
+              Padding="{OnPlatform Android='20,16,20,0',
+                                   iOS='20,12,20,0',
                                    WinUI='20,24,20,0',
                                    Default='20,24,20,0'}"
               ColumnDefinitions="Auto,*"
@@ -59,7 +84,7 @@
             </Border>
 
             <Label Grid.Column="1"
-                   Text="Sign up"
+                   Text="Sign in"
                    FontFamily="QuicksandSemiBold"
                    FontSize="16"
                    TextColor="{StaticResource White}"
@@ -67,7 +92,7 @@
                    HorizontalOptions="End"
                    VerticalOptions="Center">
                 <Label.GestureRecognizers>
-                    <TapGestureRecognizer Tapped="OnSignUpTapped" />
+                    <TapGestureRecognizer Tapped="OnSignInTapped" />
                 </Label.GestureRecognizers>
             </Label>
         </Grid>

@@ -99,9 +99,13 @@
 		<MauiImage Include="Resources\Images\*" />
 		<MauiImage Update="Resources\Images\dotnet_bot.png" Resize="True" BaseSize="300,185" />
 		<MauiImage Update="Resources\Images\carditrack_logo.png" BaseSize="88,78" />
-		<MauiImage Update="Resources\Images\welcome_hero_a.png" Resize="True" BaseSize="440,571" />
-		<MauiImage Update="Resources\Images\welcome_hero_b.png" Resize="True" BaseSize="440,571" />
-		<MauiImage Update="Resources\Images\welcome_hero_c.png" Resize="True" BaseSize="440,571" />
+		<!-- No Resize/BaseSize override: these are now plain, un-composited photos (see
+		     WelcomePage's OnHeroSizeChanged) at their own native aspect ratio, rendered with
+		     Aspect="AspectFill" — forcing them through the 440x571 resize bucket risked
+		     distorting a source that's no longer authored to that exact aspect. -->
+		<MauiImage Update="Resources\Images\welcome_hero_a.png" />
+		<MauiImage Update="Resources\Images\welcome_hero_b.png" />
+		<MauiImage Update="Resources\Images\welcome_hero_c.png" />
 		<MauiImage Update="Resources\Images\device_fitbit.png" Resize="True" BaseSize="85,96" />
 		<MauiImage Update="Resources\Images\device_garmin.png" Resize="True" BaseSize="96,96" />
 		<MauiImage Update="Resources\Images\device_apple_watch.png" Resize="True" BaseSize="85,96" />

@@ -71,6 +71,9 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
     public Task<CurrentStatusMessageResponse> GetCurrentStatusAsync(Guid cardiMemberId, CancellationToken ct = default) =>
         GetAsync<CurrentStatusMessageResponse>($"api/v1/insights/members/{cardiMemberId}/status", ct);
 
+    public Task<DigestResponse> GetDigestAsync(Guid cardiMemberId, CancellationToken ct = default) =>
+        GetAsync<DigestResponse>($"api/v1/insights/members/{cardiMemberId}/digest", ct);
+
     public Task<AlertListResponse> GetAlertsAsync(
         string? severity = null,
         string? status = null,
@@ -96,6 +99,9 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
         Guid alertId, CancellationToken ct = default) =>
         SendAsync<AlertAcknowledgementResponse>(
             HttpMethod.Post, $"api/v1/alerts/{alertId}/acknowledge", ct);
+
+    public Task DeleteAlertAsync(Guid alertId, CancellationToken ct = default) =>
+        SendNoContentAsync(HttpMethod.Delete, $"api/v1/alerts/{alertId}", ct);
 
     public Task<DeviceListResponse> GetDevicesAsync(Guid cardiMemberId, CancellationToken ct = default) =>
         GetAsync<DeviceListResponse>($"api/v1/cardimembers/{cardiMemberId}/devices", ct);

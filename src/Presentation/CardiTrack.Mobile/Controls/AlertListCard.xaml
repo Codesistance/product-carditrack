@@ -171,6 +171,23 @@
                         </Grid>
                     </Border>
 
+                    <Border x:Name="DeleteButton"
+                            Grid.Column="3"
+                            HorizontalOptions="End"
+                            WidthRequest="28" HeightRequest="28"
+                            StrokeThickness="0"
+                            BackgroundColor="{StaticResource AlertActionBackground}"
+                            VerticalOptions="Center"
+                            SemanticProperties.Description="Remove this alert">
+                        <Border.StrokeShape>
+                            <RoundRectangle CornerRadius="16"/>
+                        </Border.StrokeShape>
+                        <Border.GestureRecognizers>
+                            <TapGestureRecognizer Tapped="OnDeleteTapped"/>
+                        </Border.GestureRecognizers>
+                        <Image Source="icon_trash.svg" WidthRequest="15" HeightRequest="15"/>
+                    </Border>
+
                     <!-- Wrapped so the tap target is a finger rather than a 20px glyph. -->
                     <Border Grid.Column="4"
                             StrokeThickness="0"

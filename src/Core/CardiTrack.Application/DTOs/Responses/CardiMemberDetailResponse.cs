@@ -42,4 +42,15 @@ public class CardiMemberDetailResponse
     public int ConnectedDeviceCount { get; set; }
 
     public DashboardBaselineState Baseline { get; set; } = new();
+
+    /// <summary>green/yellow/orange/red/unknown — same field and meaning as
+    /// <see cref="DashboardResponse.HealthStatus"/>, computed the same way
+    /// (<see cref="CardiTrack.Application.Services.MemberInsightsCalculator.ComputeHealthStatus"/>).
+    /// Accents the daily summary card by severity.</summary>
+    public string HealthStatus { get; set; } = "unknown";
+
+    /// <summary>Key Metrics with their 7-day series, for this screen's trend sparklines. Null
+    /// when there's no activity history yet, same condition <see cref="DashboardResponse.Metrics"/>
+    /// uses.</summary>
+    public DashboardMetrics? Metrics { get; set; }
 }

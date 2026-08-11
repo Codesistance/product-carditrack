@@ -25,9 +25,6 @@ public partial class StatusHeroCard : ContentView
         var firstName = NameFormatting.FirstName(data.Name);
         NameLabel.Text = $"{data.Name}, {data.Age}";
         InitialsLabel.Text = NameFormatting.Initials(data.Name);
-        LastSyncedLabel.Text = data.LastSyncedAt is { } synced
-            ? $"Updated {RelativeTime.Format(synced)}"
-            : "Not synced yet";
 
         // Initials stay behind the photo rather than being replaced, so a photo that fails to
         // load falls back to something rather than an empty tile. PhotoUrl is external data, so

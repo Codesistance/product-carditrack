@@ -13,27 +13,28 @@
             <TapGestureRecognizer Tapped="OnCardTapped"/>
         </Grid.GestureRecognizers>
 
-            <!-- Photo when the member has one, initials otherwise. Both keep the designed
-                 70x72 box so the text column doesn't shift between the two states. -->
+            <!-- Photo when the member has one, initials otherwise. Both keep the same box so
+                 the text column doesn't shift between the two states. Sized down from the
+                 original 70x72 to leave room for the status line's now-larger line count. -->
             <Border Grid.Column="0"
-                    WidthRequest="70" HeightRequest="72"
+                    WidthRequest="56" HeightRequest="58"
                     StrokeThickness="0"
                     BackgroundColor="{StaticResource SelectedOptionBackground}"
                     VerticalOptions="Start">
                 <Border.StrokeShape>
-                    <RoundRectangle CornerRadius="11"/>
+                    <RoundRectangle CornerRadius="10"/>
                 </Border.StrokeShape>
                 <Grid>
                     <Label x:Name="InitialsLabel"
                            FontFamily="QuicksandSemiBold"
-                           FontSize="24"
+                           FontSize="20"
                            TextColor="{StaticResource Primary}"
                            HorizontalOptions="Center"
                            VerticalOptions="Center"/>
                     <Image x:Name="PhotoImage"
                            IsVisible="False"
                            Aspect="AspectFill"
-                           WidthRequest="70" HeightRequest="72"/>
+                           WidthRequest="56" HeightRequest="58"/>
                 </Grid>
             </Border>
 
@@ -42,21 +43,24 @@
                        Style="{StaticResource Heading2}"
                        LineBreakMode="TailTruncation"/>
 
-                <HorizontalStackLayout Spacing="6">
-                    <Label x:Name="StatusLabel"
-                           FontFamily="QuicksandSemiBold"
-                           FontSize="16"
-                           VerticalTextAlignment="Center"/>
+                <!-- Grid, not a HorizontalStackLayout: the label needs a bounded column width to
+                     wrap within, and the icon stays pinned to the first line's top rather than
+                     re-centering against however many lines the status text wraps to. -->
+                <Grid ColumnDefinitions="Auto,*" ColumnSpacing="6">
                     <Image x:Name="StatusIcon"
+                           Grid.Column="0"
                            Source="icon_status_check.svg"
-                           WidthRequest="19" HeightRequest="19"
-                           VerticalOptions="Center"/>
-                </HorizontalStackLayout>
-
-                <Label x:Name="LastSyncedLabel"
-                       FontFamily="Quicksand"
-                       FontSize="12"
-                       TextColor="{StaticResource BodyText}"/>
+                           WidthRequest="17" HeightRequest="17"
+                           VerticalOptions="Start"
+                           Margin="0,2,0,0"/>
+                    <Label x:Name="StatusLabel"
+                           Grid.Column="1"
+                           FontFamily="QuicksandSemiBold"
+                           FontSize="14"
+                           LineBreakMode="WordWrap"
+                           MaxLines="3"
+                           LineHeight="1.05"/>
+                </Grid>
             </VerticalStackLayout>
         </Grid>
 </ContentView>

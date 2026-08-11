@@ -89,6 +89,30 @@ public class AlertsController : BaseApiController
         }
     }
 
+    /// <summary>Removes an alert from the caregiver's own lists — housekeeping, not a clinical action.</summary>
+    [HttpDelete("alerts/{alertId:guid}")]
+    [AuditHealthDataAccess("DeleteAlert")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> Delete(Guid alertId, CancellationToken ct)
+    {
+        if (!UserContext.IsAuthenticated || UserContext.UserId == Guid.Empty)
+        {
+            return Error("We couldn't find your account — please sign in again.", StatusCodes.Status403Forbidden);
+        }
+
+        try
+        {
+            await _alertService.DeleteAsync(UserContext.UserId, alertId, ct);
+            return NoContent();
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return Error(ex.Message, StatusCodes.Status404NotFound);
+        }
+    }
+
     private async Task<ActionResult<ApiResponse<AlertListResponse>>> ListAsync(
         Guid? cardiMemberId,
         string? severity,
