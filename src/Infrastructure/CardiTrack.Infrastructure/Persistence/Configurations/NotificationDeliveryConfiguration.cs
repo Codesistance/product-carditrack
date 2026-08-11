@@ -66,7 +66,8 @@ public class NotificationDeliveryConfiguration : IEntityTypeConfiguration<Notifi
             .IsRequired()
             .HasConversion<string>()
             .HasMaxLength(50)
-            .HasDefaultValue(CardiTrack.Domain.Enums.EscalationStage.Initial);
+            .HasDefaultValue(CardiTrack.Domain.Enums.EscalationStage.Initial)
+            .HasSentinel(CardiTrack.Domain.Enums.EscalationStage.Initial);
 
         builder.Property(d => d.EscalatedFrom);
 
