@@ -18,6 +18,12 @@ web_custom_domain = "app.dev.carditrack.com"
 cloud_run_cpu    = "1"
 cloud_run_memory = "512Mi"
 
+# Worker specifically needs more headroom than api/web: it ingests granular wearable payloads
+# (up to 100k samples per series, 4 series per device) that the other services never touch.
+# 2026-08-11 OOM incident: a WearableSync run against a high-cadence wearer hit the 512Mi
+# ceiling almost immediately. Matches what prod already runs.
+worker_cloud_run_memory = "1Gi"
+
 # MedGemma — dev runs the real model, not a stand-in, so that an assessment made here means
 # the same thing it will mean in prod. The value below is only the create seed: it gates
 # whether the service exists at all, and deploy-apps-dev.yml re-points the image on every

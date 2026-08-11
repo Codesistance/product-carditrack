@@ -320,7 +320,12 @@ public class FitbitApiClient : IFitbitApiClient, IDeviceApiClient
 
     /// <summary>
     /// The sub-daily series for one civil day: heart rate and SpO2 as timestamped samples, steps
-    /// and active-zone-minutes as intervals stamped at their start. Four list calls, concurrent.
+    /// and active-zone-minutes as intervals stamped at their start. Four list calls, sequential —
+    /// each can independently page up to <see cref="SampleSeriesCap"/> parsed points for a
+    /// high-cadence wearer, and fetching all four concurrently let those buffers stack in memory
+    /// at once (root cause of the 2026-08-11 dev worker OOM). This is a background sync, not a
+    /// latency-sensitive request, so trading concurrency for a bounded memory footprint is a clean
+    /// tradeoff.
     /// </summary>
     /// <remarks>
     /// Field names verified against the v4 discovery document like everything else here:
@@ -339,21 +344,16 @@ public class FitbitApiClient : IFitbitApiClient, IDeviceApiClient
     /// </remarks>
     public async Task<DeviceGranularDay> GetGranularDayAsync(string accessToken, DateOnly date)
     {
-        var heartRateTask = OptionalSeriesAsync(() =>
+        var heartRate = await OptionalSeriesAsync(() =>
             TimestampedSamplesAsync(accessToken, "heart-rate", "heartRate", "beatsPerMinute", date));
-        var stepsTask = OptionalSeriesAsync(() =>
+        var steps = await OptionalSeriesAsync(() =>
             IntervalSamplesAsync(accessToken, "steps", "steps", "count", date));
-        var activeZoneMinutesTask = OptionalSeriesAsync(() =>
+        var activeZoneMinutes = await OptionalSeriesAsync(() =>
             IntervalSamplesAsync(accessToken, "active-zone-minutes", "activeZoneMinutes", "activeZoneMinutes", date));
-        var spO2Task = OptionalSeriesAsync(() =>
+        var spO2 = await OptionalSeriesAsync(() =>
             TimestampedSamplesAsync(accessToken, "oxygen-saturation", "oxygenSaturation", "percentage", date));
-        await Task.WhenAll(heartRateTask, stepsTask, activeZoneMinutesTask, spO2Task);
 
-        var day = new DeviceGranularDay(
-            heartRateTask.Result,
-            stepsTask.Result,
-            activeZoneMinutesTask.Result,
-            spO2Task.Result);
+        var day = new DeviceGranularDay(heartRate, steps, activeZoneMinutes, spO2);
 
         // The shared Empty instance, as the interface contract promises — a record's list
         // properties compare by reference, so distinct "empty" instances would not even be

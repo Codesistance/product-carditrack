@@ -1453,10 +1453,10 @@ public class FitbitApiClientTests
     /// Only the second and later page requests wait — the first fires immediately, since most
     /// series are one page and delaying every read would slow every sync for a limit only
     /// multi-page reads can trip. Asserted on the gap between the two heart-rate requests'
-    /// arrival timestamps specifically, not the call's total wall-clock time: the granular fetch
-    /// also fires steps/AZM/SpO2 concurrently, and on a loaded test runner their unrelated overhead
-    /// could push total elapsed past the pacing threshold even with the delay logic removed,
-    /// passing the test for the wrong reason.
+    /// arrival timestamps specifically, not the call's total wall-clock time: the other three
+    /// series still read after heart-rate in the same call, and on a loaded test runner their
+    /// unrelated overhead could push total elapsed past the pacing threshold even with the delay
+    /// logic removed, passing the test for the wrong reason.
     /// </summary>
     [Fact]
     public async Task GetGranularDayAsync_PacesPageRequests_AfterTheFirst()
