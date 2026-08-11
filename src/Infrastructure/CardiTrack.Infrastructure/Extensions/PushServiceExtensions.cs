@@ -1,6 +1,7 @@
 using CardiTrack.Application.Interfaces.Clients;
 using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Interfaces.Security;
+using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Application.Services.Notifications;
 using CardiTrack.Infrastructure.ExternalClients.Push;
 using CardiTrack.Infrastructure.Repositories;
@@ -64,6 +65,9 @@ public static class PushServiceExtensions
 
         services.AddSingleton<IAckTokenService>(
             _ => new AckTokenService(configLoader.GetRequired(ConfigurationKeys.Notifications.AckTokenKey)));
+
+        // DispatchService's own dependency — belongs here so every AddPushServices caller gets it.
+        services.AddScoped<INotificationGapResolver, NotificationGapResolver>();
 
         services.AddScoped<IDispatchService, DispatchService>();
         services.AddScoped<IAckDeliveryService, AckDeliveryService>();
