@@ -6,16 +6,21 @@ public interface INotificationDeliveryRepository : IRepository<NotificationDeliv
 {
     /// <summary>
     /// Atomically claims up to <paramref name="batchSize"/> due rows via <c>FOR UPDATE SKIP
-    /// LOCKED</c> and marks them <c>Sent</c>-pending (state transition happens inside the same
-    /// statement) so a scaled-out Worker never double-sends — three Cloud Run instances calling
-    /// this concurrently divide the outbox instead of racing over the same rows.
+    /// LOCKED</c>, advancing each row's claim-lease (<c>NextAttemptAt</c>) inside the same
+    /// statement — not a <c>State</c> transition — so a scaled-out Worker never double-sends —
+    /// three Cloud Run instances calling this concurrently divide the outbox instead of racing
+    /// over the same rows.
     /// </summary>
     Task<IReadOnlyList<NotificationDelivery>> ClaimDueAsync(
         int batchSize, DateTime utcNow, CancellationToken ct = default);
 
     Task<NotificationDelivery?> GetByDedupKeyAsync(string dedupKey, CancellationToken ct = default);
 
-    /// <summary>Rows still <c>Sent</c> past their escalation window — the dispatch worker's timer sweep.</summary>
+    /// <summary>
+    /// <c>Sent</c> rows at least <see cref="Services.Notifications.EscalationPolicy.RepushAfter"/> old —
+    /// the earliest any stage can take an action, so this excludes rows too young to matter
+    /// rather than returning every outstanding Sent row on every tick.
+    /// </summary>
     Task<IReadOnlyList<NotificationDelivery>> GetDueForEscalationAsync(
         DateTime utcNow, CancellationToken ct = default);
 

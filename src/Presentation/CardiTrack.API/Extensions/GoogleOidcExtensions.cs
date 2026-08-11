@@ -33,7 +33,10 @@ public static class GoogleOidcExtensions
                 options.TokenValidationParameters = new TokenValidationParameters
                 {
                     ValidateIssuer = true,
-                    ValidIssuer = "https://accounts.google.com",
+                    // Google-issued ID tokens are documented to carry either form of the issuer
+                    // claim depending on issuance path — pinning only the https:// form risks
+                    // spuriously rejecting a legitimate pipeline token.
+                    ValidIssuers = ["https://accounts.google.com", "accounts.google.com"],
                     ValidateAudience = true,
                     ValidAudience = audience,
                     ValidateLifetime = true,

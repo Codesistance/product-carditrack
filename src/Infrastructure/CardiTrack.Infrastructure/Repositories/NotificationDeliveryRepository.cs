@@ -1,4 +1,5 @@
 using CardiTrack.Application.Interfaces.Repositories;
+using CardiTrack.Application.Services.Notifications;
 using CardiTrack.Domain.Entities;
 using CardiTrack.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -65,10 +66,19 @@ public class NotificationDeliveryRepository : Repository<NotificationDelivery>, 
         await _dbSet.FirstOrDefaultAsync(d => d.DedupKey == dedupKey, ct);
 
     public async Task<IReadOnlyList<NotificationDelivery>> GetDueForEscalationAsync(
-        DateTime utcNow, CancellationToken ct = default) =>
-        await _dbSet
-            .Where(d => d.State == Domain.Enums.DeliveryState.Sent && d.SentDate != null)
+        DateTime utcNow, CancellationToken ct = default)
+    {
+        // EscalationPolicy's earliest boundary is RepushAfter (120s) — a row younger than that
+        // can never take an escalation action yet at any stage, so excluding it here keeps this
+        // a bounded index scan instead of every Sent row in the table on every 30s tick.
+        var earliestBoundary = utcNow - EscalationPolicy.RepushAfter;
+
+        return await _dbSet
+            .Where(d => d.State == Domain.Enums.DeliveryState.Sent
+                        && d.SentDate != null
+                        && d.SentDate <= earliestBoundary)
             .ToListAsync(ct);
+    }
 
     public async Task<IReadOnlyList<NotificationDelivery>> GetExpiredAsync(
         DateTime utcNow, CancellationToken ct = default) =>

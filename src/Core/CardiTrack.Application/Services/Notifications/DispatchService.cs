@@ -171,11 +171,14 @@ public class DispatchService : IDispatchService
 
     public async Task RetryClaimedAsync(NotificationDelivery delivery, CancellationToken ct = default)
     {
-        // A row that reached a terminal state (or Sent, awaiting ack/escalation) between being
-        // claimed and being retried has nothing left for this method to do — the claim lease
-        // (see NotificationDeliveryRepository.ClaimDueAsync) just expires unused.
+        // A row that reached a terminal state between being claimed and being retried has
+        // nothing left for this method to do — the claim lease (see
+        // NotificationDeliveryRepository.ClaimDueAsync) just expires unused. Sent is
+        // deliberately NOT terminal here: the escalation sweep calls this method on a Sent row
+        // to perform the 120s repush (EscalationAction.Repush in NotificationDispatchWorker), so
+        // returning early on Sent would silently turn every repush into a no-op.
         if (delivery.State is DeliveryState.Delivered or DeliveryState.DeadLettered
-            or DeliveryState.Undelivered or DeliveryState.Suppressed or DeliveryState.Sent)
+            or DeliveryState.Undelivered or DeliveryState.Suppressed)
             return;
 
         if (RetryBackoffPolicy.IsExhausted(delivery.Attempts))
@@ -219,7 +222,7 @@ public class DispatchService : IDispatchService
     /// </summary>
     private async Task AttemptSendToAllDevicesAsync(NotificationDelivery delivery, Guid userId, CancellationToken ct)
     {
-        var tokens = await _unitOfWork.PushDeviceTokens.GetLiveForUserAsync(userId, ct);
+        var tokens = await _unitOfWork.PushDeviceTokens.GetLiveForUserAsync(userId, delivery.Category, ct);
         if (tokens.Count == 0)
         {
             // Nothing to send to right now — leave it Pending for the dispatch worker's retry
@@ -251,19 +254,30 @@ public class DispatchService : IDispatchService
     private async Task ApplyAsync(
         NotificationDelivery delivery, PushDeviceToken token, SendResult result, CancellationToken ct)
     {
+        var utcNow = _timeProvider.GetUtcNow().UtcDateTime;
+
         switch (result)
         {
             case SendResult.Sent sent:
                 delivery.State = DeliveryState.Sent;
                 delivery.ProviderMessageId = sent.ProviderMessageId;
-                delivery.SentDate = DateTime.UtcNow;
+                // Only the first successful send stamps SentDate — this method also runs the
+                // escalation ladder's 120s repush (RetryClaimedAsync on an already-Sent row), and
+                // the whole ladder's boundary math (EscalationPolicy) is elapsed time *since the
+                // original send*. Overwriting it on every repush would reset that clock and the
+                // 300s/900s stages would never fire.
+                delivery.SentDate ??= utcNow;
                 break;
 
             case SendResult.Retryable retryable:
                 delivery.State = DeliveryState.Failed;
                 delivery.LastError = retryable.Reason;
+                // Compute the delay from the attempt count BEFORE incrementing — Attempts starts
+                // at 0, and RetryBackoffPolicy.NextDelay(0) is the schedule's first (15s) entry.
+                // Incrementing first would skip straight to the second (60s) entry on the very
+                // first failure.
+                delivery.NextAttemptAt = utcNow + (RetryBackoffPolicy.NextDelay(delivery.Attempts) ?? TimeSpan.Zero);
                 delivery.Attempts++;
-                delivery.NextAttemptAt = DateTime.UtcNow + (RetryBackoffPolicy.NextDelay(delivery.Attempts) ?? TimeSpan.Zero);
                 break;
 
             case SendResult.Permanent permanent:

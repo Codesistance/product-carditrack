@@ -1,5 +1,6 @@
 using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Domain.Entities;
+using CardiTrack.Domain.Enums;
 using CardiTrack.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 
@@ -17,9 +18,14 @@ public class PushDeviceTokenRepository : Repository<PushDeviceToken>, IPushDevic
     public async Task<PushDeviceToken?> GetByUserAndDeviceAsync(Guid userId, string deviceId, CancellationToken ct = default) =>
         await _dbSet.FirstOrDefaultAsync(t => t.UserId == userId && t.DeviceId == deviceId, ct);
 
-    public async Task<IReadOnlyList<PushDeviceToken>> GetLiveForUserAsync(Guid userId, CancellationToken ct = default) =>
+    public async Task<IReadOnlyList<PushDeviceToken>> GetLiveForUserAsync(
+        Guid userId, DeliveryCategory category, CancellationToken ct = default) =>
         await _dbSet
-            .Where(t => t.UserId == userId && t.DisabledDate == null)
+            .Where(t => t.UserId == userId
+                        && t.DisabledDate == null
+                        && (t.OsAuthorizationStatus == OsAuthorizationStatus.Granted
+                            || t.OsAuthorizationStatus == OsAuthorizationStatus.Provisional)
+                        && (category != DeliveryCategory.Safety || t.SafetyChannelEnabled))
             .ToListAsync(ct);
 
     public async Task<IReadOnlyList<PushDeviceToken>> GetDueForLivenessProbeAsync(
