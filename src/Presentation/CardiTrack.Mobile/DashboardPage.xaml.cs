@@ -13,6 +13,7 @@ public partial class DashboardPage : ContentPage
     /// <summary>Also cleared by M1-13 when the remembered member is removed.</summary>
     internal const string PrimaryMemberIdKey = "PrimaryCardiMemberId";
     private const string VerifyEmailDismissedKey = "VerifyEmailNudgeDismissed";
+    private const string DismissedSleepAlertKey = "DismissedSleepAlertId";
     private static readonly TimeSpan StaleThreshold = TimeSpan.FromHours(2);
     private static readonly TimeSpan AutoRefreshInterval = TimeSpan.FromMinutes(5);
     private const double UnavailableActionOpacity = 0.4;
@@ -28,6 +29,7 @@ public partial class DashboardPage : ContentPage
     private bool _wizardActive;
     private DateTime _lastLoadedUtc = DateTime.MinValue;
     private DashboardResponse? _lastData;
+    private Guid? _currentSleepAlertId;
 
     public DashboardPage(ICardiTrackApiClient api, IAuthService authService, IPopupService popups)
     {
@@ -67,6 +69,16 @@ public partial class DashboardPage : ContentPage
         Preferences.Default.Set(VerifyEmailDismissedKey, true);
         VerifyEmailBanner.IsVisible = false;
     }
+
+    private void OnDismissSleepConcernClicked(object? sender, EventArgs e)
+    {
+        if (_currentSleepAlertId is { } id)
+            Preferences.Default.Set(DismissedSleepAlertKey, id.ToString());
+        SleepConcernBanner.IsVisible = false;
+    }
+
+    private async void OnSleepConcernTapped(object? sender, TappedEventArgs e) =>
+        await Shell.Current.GoToAsync(AppShell.AlertsRoute);
 
     /// <summary>
     /// Short, quiet time-of-day line under the caregiver's own name — describes the caregiver's
@@ -306,6 +318,16 @@ public partial class DashboardPage : ContentPage
             && !data.MonitoringPaused;
         LearningProgress.Progress = data.Baseline.PercentComplete / 100.0;
         LearningProgress.ProgressColor = freshnessColor;
+
+        // Poor-sleep nudge: points at the real, unacknowledged Sleep alert StatisticalAlertWorker
+        // already raises, rather than a second judgement derived from today's metric alone.
+        var sleepAlert = data.RecentAlerts.FirstOrDefault(a => a.Type == "Sleep" && !a.IsAcknowledged);
+        var dismissedId = Preferences.Default.Get(DismissedSleepAlertKey, string.Empty);
+        _currentSleepAlertId = sleepAlert?.AlertId;
+        SleepConcernBanner.IsVisible = sleepAlert is not null
+            && sleepAlert.AlertId.ToString() != dismissedId;
+        if (SleepConcernBanner.IsVisible)
+            SleepConcernBannerLabel.Text = $"{firstName}'s sleep has looked different than usual lately. Tap to view.";
 
         // Metrics
         if (data.Metrics is { } metrics)

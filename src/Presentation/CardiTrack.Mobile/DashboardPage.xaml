@@ -292,6 +292,43 @@
                                     </Border>
                                 </Grid>
 
+                                <!-- Poor-sleep nudge (issue #188): points at the real Sleep alert
+                                     StatisticalAlertWorker already raises (AlertType.Sleep) rather
+                                     than re-deriving a second, parallel judgement of its own —
+                                     dismissing this is a local/session convenience, not an
+                                     acknowledgement; the alert itself still lives in Alerts until
+                                     acted on there. -->
+                                <Border x:Name="SleepConcernBanner"
+                                        IsVisible="False"
+                                        BackgroundColor="{StaticResource StaleBannerBackground}"
+                                        StrokeThickness="0"
+                                        Padding="14,10">
+                                    <Border.StrokeShape>
+                                        <RoundRectangle CornerRadius="12"/>
+                                    </Border.StrokeShape>
+                                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
+                                        <Label Grid.Column="0"
+                                               x:Name="SleepConcernBannerLabel"
+                                               Style="{StaticResource Body2}"
+                                               TextColor="{StaticResource HeadingText}"
+                                               VerticalOptions="Center">
+                                            <Label.GestureRecognizers>
+                                                <TapGestureRecognizer Tapped="OnSleepConcernTapped"/>
+                                            </Label.GestureRecognizers>
+                                        </Label>
+                                        <Button Grid.Column="1"
+                                                Text="✕"
+                                                FontSize="14"
+                                                TextColor="{StaticResource BodyText}"
+                                                BackgroundColor="Transparent"
+                                                Padding="6,0"
+                                                MinimumWidthRequest="32"
+                                                MinimumHeightRequest="32"
+                                                VerticalOptions="Center"
+                                                Clicked="OnDismissSleepConcernClicked"/>
+                                    </Grid>
+                                </Border>
+
                                 <!-- Key metrics: collapsed by default behind AccordionSection, two
                                      per row instead of full-width so the card has room to stay
                                      compact once more CardiMember cards can stack below it. The
