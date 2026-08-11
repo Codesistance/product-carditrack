@@ -24,6 +24,15 @@ locals {
     "android-keystore-password",        # Password for the upload keystore and key
     "play-service-account-key",         # Google Play service account key (JSON)
   ])
+
+  # Operator-only secrets: not read by any deploy workflow, so carditrack-deploy
+  # gets no accessor grant on these. Loaded and read manually by an operator
+  # (see docs/apps/mobile/store_provisioning.md).
+  operator_only_secrets = toset([
+    "apns-auth-key-p8", # APNs auth key for push notifications (.p8 contents, PEM text)
+    "apns-key-id",      # APNs auth key ID
+    "apple-team-id",    # Apple Developer Team ID
+  ])
 }
 
 resource "google_secret_manager_secret" "store_distribution" {
@@ -52,4 +61,25 @@ resource "google_secret_manager_secret_iam_member" "store_distribution_accessor"
   secret_id = google_secret_manager_secret.store_distribution[each.key].id
   role      = "roles/secretmanager.secretAccessor"
   member    = "serviceAccount:carditrack-deploy@${var.project_id}.iam.gserviceaccount.com"
+}
+
+resource "google_secret_manager_secret" "operator_only" {
+  for_each  = local.operator_only_secrets
+  secret_id = "${var.project_name}-common-${each.key}"
+
+  replication {
+    auto {}
+  }
+
+  depends_on = [google_project_service.common_secretmanager]
+}
+
+resource "google_secret_manager_secret_version" "operator_only" {
+  for_each    = local.operator_only_secrets
+  secret      = google_secret_manager_secret.operator_only[each.key].id
+  secret_data = "REPLACE_ME"
+
+  lifecycle {
+    ignore_changes = [secret_data]
+  }
 }
