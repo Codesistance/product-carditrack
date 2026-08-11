@@ -1,4 +1,5 @@
 using System.Text;
+using System.Text.Json;
 using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Application.Services;
@@ -147,12 +148,16 @@ public class HealthInsightServiceStatusTests
     [Fact]
     public async Task ReturnsTheCachedMessage_WithoutCallingTheModelAgain()
     {
+        var cachedAt = DateTimeOffset.UtcNow.AddMinutes(-1);
+        var cachedJson = JsonSerializer.Serialize(new CachedStatus("Cached line from a minute ago.", cachedAt));
         _cache.GetAsync($"dashboard-status:{_memberId}", Arg.Any<CancellationToken>())
-            .Returns(Encoding.UTF8.GetBytes("Cached line from a minute ago."));
+            .Returns(Encoding.UTF8.GetBytes(cachedJson));
 
         var result = await CreateSut().GetCurrentStatusMessageAsync(_userId, _memberId);
 
         Assert.Equal("Cached line from a minute ago.", result.Message);
+        // The cached generation time, not the moment this call happened to read it.
+        Assert.Equal(cachedAt, result.GeneratedAt);
         await _medicalAi.DidNotReceive().GenerateAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
     }
 
@@ -163,8 +168,30 @@ public class HealthInsightServiceStatusTests
 
         await _cache.Received(1).SetAsync(
             $"dashboard-status:{_memberId}",
-            Arg.Is<byte[]>(b => Encoding.UTF8.GetString(b) == "Margaret seems steady today."),
+            Arg.Is<byte[]>(b => JsonSerializer.Deserialize<CachedStatus>(Encoding.UTF8.GetString(b))!.Message
+                == "Margaret seems steady today."),
             Arg.Is<DistributedCacheEntryOptions>(o => o.AbsoluteExpirationRelativeToNow == TimeSpan.FromMinutes(15)),
             Arg.Any<CancellationToken>());
     }
+
+    // An empty response reads as a transient model hiccup, not a stable "nothing to say" — it
+    // must not be cached, so the next call retries the model instead of being stuck for 15
+    // minutes with a Message the response contract says means something different (null).
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    public async Task BlankModelResponse_IsNeverCached_AndReturnsNullMessage(string blankResponse)
+    {
+        _medicalAi.GenerateAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(blankResponse);
+
+        var result = await CreateSut().GetCurrentStatusMessageAsync(_userId, _memberId);
+
+        Assert.Null(result.Message);
+        await _cache.DidNotReceive().SetAsync(
+            Arg.Any<string>(), Arg.Any<byte[]>(), Arg.Any<DistributedCacheEntryOptions>(), Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>Structurally matches <c>HealthInsightService.CachedStatus</c> — a private nested
+    /// record, so this is a separate type kept in sync by shape, not by reference.</summary>
+    private sealed record CachedStatus(string Message, DateTimeOffset GeneratedAt);
 }

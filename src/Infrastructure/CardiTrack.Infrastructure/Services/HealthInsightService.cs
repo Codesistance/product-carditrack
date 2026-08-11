@@ -1,3 +1,4 @@
+using System.Text.Json;
 using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Interfaces.Services;
@@ -254,15 +255,22 @@ public class HealthInsightService : IHealthInsightService
         };
     }
 
+    /// <summary>Cache payload — carries its own generation time so a cache hit can report when
+    /// the line was actually generated rather than the moment it happened to be read.</summary>
+    private sealed record CachedStatus(string Message, DateTimeOffset GeneratedAt);
+
     public async Task<CurrentStatusMessageResponse> GetCurrentStatusMessageAsync(
         Guid requestingUserId, Guid cardiMemberId, CancellationToken ct = default)
     {
         await _access.RequireViewAccessAsync(requestingUserId, cardiMemberId, ct);
 
         var cacheKey = $"dashboard-status:{cardiMemberId}";
-        var cached = await _cache.GetStringAsync(cacheKey, ct);
-        if (cached is not null)
-            return new CurrentStatusMessageResponse { Message = cached, GeneratedAt = DateTimeOffset.UtcNow };
+        var cachedJson = await _cache.GetStringAsync(cacheKey, ct);
+        if (cachedJson is not null)
+        {
+            var cached = JsonSerializer.Deserialize<CachedStatus>(cachedJson)!;
+            return new CurrentStatusMessageResponse { Message = cached.Message, GeneratedAt = cached.GeneratedAt };
+        }
 
         var unresolvedAlerts = (await _unitOfWork.Alerts.GetByCardiMemberAsync(cardiMemberId, true)).ToList();
         var severity = unresolvedAlerts.Count == 0
@@ -276,11 +284,24 @@ public class HealthInsightService : IHealthInsightService
 
         var prompt = BuildCurrentStatusPrompt(member, severity, unresolvedAlerts, recentLogs, today);
         var message = (await _medicalAi.GenerateAsync(prompt, ct)).Trim();
+        var generatedAt = DateTimeOffset.UtcNow;
 
-        await _cache.SetStringAsync(cacheKey, message,
-            new DistributedCacheEntryOptions { AbsoluteExpirationRelativeToNow = CurrentStatusTtl }, ct);
+        // An empty response reads as a transient model hiccup, not a stable "nothing to say" —
+        // caching it would strand the dashboard with no message for the rest of the TTL window
+        // instead of retrying on the next call. The response contract already treats a null
+        // Message as "nothing to say yet", so an empty string is never returned either.
+        if (!string.IsNullOrWhiteSpace(message))
+        {
+            var toCache = JsonSerializer.Serialize(new CachedStatus(message, generatedAt));
+            await _cache.SetStringAsync(cacheKey, toCache,
+                new DistributedCacheEntryOptions { AbsoluteExpirationRelativeToNow = CurrentStatusTtl }, ct);
+        }
 
-        return new CurrentStatusMessageResponse { Message = message, GeneratedAt = DateTimeOffset.UtcNow };
+        return new CurrentStatusMessageResponse
+        {
+            Message = string.IsNullOrWhiteSpace(message) ? null : message,
+            GeneratedAt = generatedAt,
+        };
     }
 
     private static string BuildCurrentStatusPrompt(

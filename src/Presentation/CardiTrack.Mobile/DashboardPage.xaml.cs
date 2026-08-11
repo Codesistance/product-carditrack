@@ -475,16 +475,6 @@ public partial class DashboardPage : ContentPage
     private async void OnViewTrendsClicked(object? sender, EventArgs e) =>
         await _popups.ShowInfoAsync("Trends & history (M2-03) are on the way.", "Coming soon");
 
-    // ------------------------------------------------------------------ data-completeness nudges
-
-    /// <summary>
-    /// Fills the safety banners and the two "Complete the picture" slots.
-    /// </summary>
-    /// <remarks>
-    /// Failures are swallowed on purpose. This is the housekeeping strip on a health screen — if
-    /// the summary call fails, the right outcome is a dashboard without it, not an error dialog
-    /// over the metrics somebody actually came to read.
-    /// </remarks>
     /// <summary>
     /// A live, empathetic replacement for the hero card's static status line. Best-effort: no
     /// spinner, no error state — the static copy <see cref="Apply"/> already rendered is a
@@ -510,6 +500,16 @@ public partial class DashboardPage : ContentPage
         }
     }
 
+    // ------------------------------------------------------------------ data-completeness nudges
+
+    /// <summary>
+    /// Fills the safety banners and the two "Complete the picture" slots.
+    /// </summary>
+    /// <remarks>
+    /// Failures are swallowed on purpose. This is the housekeeping strip on a health screen — if
+    /// the summary call fails, the right outcome is a dashboard without it, not an error dialog
+    /// over the metrics somebody actually came to read.
+    /// </remarks>
     private async Task LoadNudgesAsync()
     {
         try
