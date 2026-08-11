@@ -49,6 +49,9 @@ for ROLE in \
   roles/redis.admin \
   roles/iam.serviceAccountUser \
   roles/iam.serviceAccountTokenCreator \
+  roles/logging.configWriter \
+  roles/monitoring.alertPolicyEditor \
+  roles/monitoring.notificationChannelEditor \
   roles/compute.loadBalancerAdmin \
   roles/compute.securityAdmin \
   roles/compute.networkAdmin \
