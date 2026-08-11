@@ -1,5 +1,6 @@
 using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Interfaces.Services;
+using CardiTrack.Application.Services.Notifications;
 using CardiTrack.Domain.Entities;
 using CardiTrack.Domain.Enums;
 using CardiTrack.Infrastructure.Services;
@@ -101,7 +102,7 @@ public class InactivityDetectionServiceTests
     }
 
     private InactivityDetectionService CreateSut() =>
-        new(_unitOfWork, NullLogger<InactivityDetectionService>.Instance);
+        new(_unitOfWork, Substitute.For<IDispatchService>(), NullLogger<InactivityDetectionService>.Instance);
 
     [Fact]
     public async Task ASilentDevice_DuringWakingHours_RaisesOneYellowDeviceCheckAlert()

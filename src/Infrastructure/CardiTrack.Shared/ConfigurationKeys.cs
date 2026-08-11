@@ -56,6 +56,30 @@ public static class ConfigurationKeys
         public const string Key = "Encryption:Key";
     }
 
+    public static class Notifications
+    {
+        /// <summary>
+        /// Base64-encoded 256-bit HMAC key signing ack/fetch tokens (notification_engine.md §7.2
+        /// C3/C5). Only ever injected into API and Worker — the AI pipeline never sends push
+        /// directly, so it has no reason to hold this key.
+        /// </summary>
+        public const string AckTokenKey = "Notifications:AckTokenKey";
+    }
+
+    /// <summary>
+    /// The GCP AI pipeline's identity, as seen from the API's internal enqueue endpoint (§7.2 C4).
+    /// Audience-pinning alone admits any GCP principal, so the endpoint also pins the calling
+    /// service account's verified email — both values come from here, not a hardcoded string.
+    /// </summary>
+    public static class Pipeline
+    {
+        /// <summary>The OIDC audience the pipeline's ID token is minted for.</summary>
+        public const string Audience = "Pipeline:Audience";
+
+        /// <summary>The pipeline's service account email — the only caller <see cref="Audience"/> tokens are accepted from.</summary>
+        public const string ServiceAccount = "Pipeline:ServiceAccount";
+    }
+
     public static class Health
     {
         public const string Token = "Health:Token";

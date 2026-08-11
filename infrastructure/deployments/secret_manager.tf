@@ -244,6 +244,52 @@ moved {
   to   = google_secret_manager_secret_iam_member.encryption_key_accessor
 }
 
+# ── Ack token key (Terraform-owned, generated) ────────────────────────────────
+# Base64-encoded 256-bit HMAC-SHA256 key signing the push delivery spine's ack/
+# fetch tokens (Notifications__AckTokenKey — notification_engine.md §7.2 C3/C5).
+# Same generate-not-placeholder reasoning as the encryption key above: a
+# REPLACE_ME value isn't valid base64, so an unseeded environment would fail the
+# moment the first push send tries to issue a token.
+#
+# ignore_changes on the version is load-bearing for a different reason than the
+# encryption key's: there's no data to become permanently unreadable (ack tokens
+# are short-lived), but rotating mid-flight would fail every ack/escalation-halt
+# for whatever was in flight at rotation time. Same mitigation, different cost.
+#
+# Only two IAM grants — API and Worker — not every service this pattern usually
+# reaches. The AI pipeline never sends push directly; it POSTs to the internal
+# enqueue endpoint and the API does the actual send (see PushServiceExtensions.
+# AddPushServices' remarks), so it has no reason to hold this key. Resist
+# "completing the pattern" by adding it everywhere Encryption__Key appears.
+
+resource "random_bytes" "ack_token_key" {
+  length = 32 # 256 bits
+}
+
+resource "google_secret_manager_secret" "ack_token_key" {
+  secret_id = "${var.secret_id_prefix}-ack-token-key"
+  replication {
+    auto {}
+  }
+  labels     = var.secret_labels
+  depends_on = [google_project_service.secretmanager]
+}
+
+resource "google_secret_manager_secret_version" "ack_token_key" {
+  secret      = google_secret_manager_secret.ack_token_key.id
+  secret_data = random_bytes.ack_token_key.base64
+
+  lifecycle {
+    ignore_changes = [secret_data]
+  }
+}
+
+resource "google_secret_manager_secret_iam_member" "ack_token_key_accessor" {
+  secret_id = google_secret_manager_secret.ack_token_key.id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${data.google_project.current.number}-compute@developer.gserviceaccount.com"
+}
+
 # ── Mobile APM engine (Terraform-owned — the mobile monitoring switch) ────────
 # Mirrors the server's Apm__Engine env var: flip apm_mobile_engine in tfvars and
 # apply; CI stamps the value into mobile builds. Not in placeholder_secrets on

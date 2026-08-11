@@ -228,6 +228,22 @@ resource "google_cloud_run_v2_service" "api" {
         }
       }
 
+      # The internal enqueue endpoint's GoogleOidc scheme (notification_engine.md §7.2 C4) pins
+      # both the audience and the calling service account. Set here rather than in var.api_env_vars
+      # because the service account identity comes from data.google_project.current (this module,
+      # outputs.tf), not something root main.tf can compute. The pipeline jobs run as this same
+      # default compute SA (no dedicated identity — see the pipeline_aggregator_subscriber comment
+      # below), so this is also the identity a future SeverityRouter caller would authenticate as.
+      env {
+        name  = "Pipeline__Audience"
+        value = "${var.project_id}-internal-notifications"
+      }
+
+      env {
+        name  = "Pipeline__ServiceAccount"
+        value = "${data.google_project.current.number}-compute@developer.gserviceaccount.com"
+      }
+
       volume_mounts {
         name       = "cloudsql"
         mount_path = "/cloudsql"

@@ -13,9 +13,6 @@ public class UserCardiMember : BaseEntity, ISoftDeletable
     public bool CanViewHealthData { get; set; } = true;
     public bool ReceiveAlerts { get; set; } = true;
 
-    // JSON: { "sms": true, "email": true, "push": false }
-    public string NotificationPreferences { get; set; } = "{}";
-
     public DateTime AssignedDate { get; set; }
     public bool IsActive { get; set; } = true;
 

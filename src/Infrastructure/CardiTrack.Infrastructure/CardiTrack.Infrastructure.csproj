@@ -7,7 +7,14 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- FcmNotificationChannel's payload builder is internal — the privacy invariant (no PHI in
+         the FCM request body) is worth testing directly rather than through the FirebaseAdmin SDK. -->
+    <InternalsVisibleTo Include="CardiTrack.UnitTests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="Anthropic" Version="12.40.0" />
+    <PackageReference Include="FirebaseAdmin" Version="3.1.0" />
     <PackageReference Include="Microsoft.EntityFrameworkCore" Version="10.0.10" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" Version="10.0.10" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.10">

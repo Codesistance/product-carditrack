@@ -1,13 +1,23 @@
 # Notification Engine — Reliable Alert Delivery
 
-> **Status: Phase 1 shipped; push is still design.** Alert *generation* — listed below as a
-> dependency — shipped separately in PRs #116 and #118 while this was in flight.
-> **Built:** the in-app data-completeness engine — `Notification`/`NotificationMute`/`NotificationRunLog`,
-> the pure rule catalogue and reconciler, `DataCompletenessWorker`, the inbox API, and the mobile
-> inbox, dashboard card, safety banners and mute management (§9, §10, §12, §16 Phase 1).
-> **Not built:** everything push. No device-token entity, no APNs/FCM integration, no sender, no
-> delivery outbox — §5, §6 and §7.2's C2/C3/C5 describe a design, not code. Alert generation, which
-> Phase 3 depends on, is tracked as #111.
+> **Status: Phase 1 and Phase 3 shipped; brought forward ahead of R2.** Alert *generation* — listed
+> below as a dependency — shipped separately in PRs #116 and #118. Firebase/FCM provisioning shipped
+> in #173/#176/#177 (issue #108). The push delivery spine itself — originally scoped as R2 but pulled
+> forward for provisioning lead-time reasons — shipped as one PR alongside this status update.
+> **Built:** the in-app data-completeness engine (§9, §10, §12, §16 Phase 1) — `Notification`/
+> `NotificationMute`/`NotificationRunLog`, the pure rule catalogue and reconciler,
+> `DataCompletenessWorker`, the inbox API, mobile inbox/dashboard card/safety banners/mute
+> management — **plus** the full push spine (§2–§8, §12–§13): `NotificationDelivery`/
+> `PushDeviceToken`/`NotificationPreference`, the `FOR UPDATE SKIP LOCKED` outbox claimed by
+> `NotificationDispatchWorker`, `FcmNotificationChannel` (FirebaseAdmin, ADC, no key file), the
+> 120s/300s/900s escalation ladder, HMAC ack/fetch tokens, the internal enqueue endpoint (GoogleOidc
+> scheme), `Plugin.Firebase`-based mobile registration and receipt handling, and `PushCanaryWorker`.
+> **Deliberately deferred, not silently dropped** (see §17 for the full list): the iOS Notification
+> Service Extension's Xcode/App-Extension project itself (its server-side dependency — the
+> content-fetch endpoint — shipped; the extension target needs Mac-based verification this
+> environment doesn't have); the daily active silent-push liveness probe (shipped as a passive
+> "no ack signal in 7 days" disable sweep instead); the `Enqueued` counter and a precise
+> `TimeToAck` histogram (blocked on the Application-layer zero-package boundary).
 
 **Primary objective: CardiTrack reaches the caregiver, whether or not the app is open.** Everything
 else in this document is subordinate to that. The engine carries two kinds of content — health alerts
@@ -936,12 +946,13 @@ that made a delivery spine worth building, and it is now met: the `Alert` table 
 permanently empty. This engine's staleness rule defers to the device-silence alert (§9), which is
 faster and asks the caregiver for the same thing.
 
-**Phase 3 — Push delivery spine (R2).** `PushDeviceToken` + `NotificationDelivery` + FCM HTTP v1 with
-APNs passthrough · device registration + ack endpoints · MAUI push registration, permission flow at
-M1-07, background handlers, OS notification channels · `NotificationDispatchWorker` · content-free
-payloads + iOS service extension · escalation ladder + `UNDELIVERED_CRITICAL` paging · token liveness ·
-`PUSH_UNREACHABLE` · quiet hours + preferences · canary + SLO dashboard · `/internal/enqueue` wired to
-the pipeline's `SeverityRouter`.
+**Phase 3 — Push delivery spine (originally R2, brought forward).** ✅ **Shipped** — `PushDeviceToken` +
+`NotificationDelivery` + FCM HTTP v1 with APNs passthrough · device registration + ack endpoints ·
+MAUI push registration, permission flow at M1-07, background handlers, OS notification channels ·
+`NotificationDispatchWorker` · content-free payloads · escalation ladder + `UNDELIVERED_CRITICAL`
+paging · token liveness (passive sweep — see §17) · `PUSH_UNREACHABLE` · quiet hours + preferences ·
+`PushCanaryWorker` · `/internal/enqueue` (GoogleOidc scheme) wired for the pipeline's future
+`SeverityRouter`. **Deferred:** the iOS notification service extension's Xcode project itself (§17).
 
 > **Start the Apple Critical Alerts application now regardless (#106).** It is weeks of queue latency
 > at Apple and costs nothing to have in hand early; #107 (APNs key) and #108 (Firebase) stay open for
@@ -952,9 +963,10 @@ the pipeline's `SeverityRouter`.
 `CONSENT_NOT_RECORDED` with per-metric consent · the three multi-caregiver rules with family
 invitations (R3) · web inbox parity when the web dashboard lands · push inline actions (matrix R4).
 
-**Explicitly out of scope for R1:** push delivery and everything that depends on it, the escalation
-ladder, cross-recipient fan-out, email and SMS (permanently), the multi-caregiver rules, and the web
-inbox.
+**Explicitly out of scope, still:** email and SMS (permanently), the multi-caregiver rules pending
+family invitations (R3), and the web inbox. Push delivery, the escalation ladder, and cross-recipient
+fan-out (for the current `MaxUsers = 1` account shape) shipped in Phase 3 ahead of the original R2
+placement.
 
 ---
 
@@ -993,7 +1005,39 @@ inbox.
 9. **Web parity** — the web app is template-stage; Phases 1–3 are mobile + API. Browser push (Web
    Push/VAPID) is a separate integration, R4 per the matrix.
 
+### Phase 3 implementation deviations
+
+Decided during the build, not in the original design — recorded here so a later edit doesn't "fix"
+them back to something worse.
+
+10. **iOS Notification Service Extension deferred, not shipped.** §5/§7.1's `mutable-content` rewrite
+    needs a real Xcode App Extension target — a class of project this environment cannot compile,
+    sign, or sanity-check (no Mac). Rather than scaffold one blind and risk a malformed `.csproj`
+    breaking the whole iOS CI build, its real, verifiable dependency shipped instead: the
+    `GET /internal/notifications/{deliveryId}/content` endpoint and `NotificationContentService` the
+    extension would call. The extension project itself is a follow-up with Mac-based verification.
+    Until then, iOS notifications render the content-free teaser rather than the rewritten rich copy.
+11. **Daily silent-push liveness probe simplified to a passive sweep.** §6.3 describes an active
+    `content-available`/`apns-push-type: background` probe sent once a day per device. Shipped
+    instead: `NotificationDispatchWorker` disables any `PushDeviceToken` with no ack in 7 days — the
+    same signal source (`PushDeviceToken.LastAckDate`) but reactive rather than actively solicited.
+    The active probe needs a new `INotificationChannel` method not yet built; tracked as a follow-up,
+    not dropped.
+12. **`Enqueued` counter and a precise `TimeToAck` histogram not wired.** Blocked by the
+    Application-layer zero-package boundary (`CardiTrack.Application` cannot reference
+    `CardiTrack.Infrastructure`'s `PushTelemetry`) and by `IAckDeliveryService.MarkDeliveredAsync` not
+    currently returning elapsed time. Lower priority than the rest of §13's metrics, which are wired.
+13. **`NotificationDispatchWorker` claims via `FOR UPDATE SKIP LOCKED`, not `DataCompletenessWorker`'s
+    advisory lock.** The advisory lock serializes an entire run across instances — correct for a
+    once-daily batch job, wrong for a 30-second loop that needs several Cloud Run instances dividing
+    the outbox in parallel (§13). Proven under real concurrent load in
+    `OutboxConcurrencyTests` (`tests/CardiTrack.IntegrationTests/Notifications/`), not just asserted.
+14. **The HMAC ack-token secret is injected into the API and Worker only, not the pipeline jobs** —
+    unlike `Encryption__Key`, which reaches four hosts. The AI pipeline never sends push directly; it
+    calls `/internal/enqueue` and the API does the actual send, so pipeline jobs have no use for the
+    key. Least-privilege, not an oversight to "complete" later.
+
 ---
 
 **Owner:** Engineering
-**Last Updated:** August 10, 2026
+**Last Updated:** August 11, 2026

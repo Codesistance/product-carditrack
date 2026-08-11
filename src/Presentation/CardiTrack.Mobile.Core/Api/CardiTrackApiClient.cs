@@ -185,6 +185,28 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
             HttpMethod.Put, "api/v1/users/me/timezone",
             new UpdateTimeZoneBody { TimeZoneId = timeZoneId }, ct);
 
+    public Task<PushDeviceTokenResponse> RegisterPushDeviceAsync(
+        RegisterPushDeviceRequest request, CancellationToken ct = default) =>
+        PostAsync<RegisterPushDeviceRequest, PushDeviceTokenResponse>("api/v1/notifications/devices", request, ct);
+
+    public Task UnregisterPushDeviceAsync(string deviceId, CancellationToken ct = default) =>
+        SendAsync<UnregisterPushDeviceRequest, object>(
+            HttpMethod.Delete, "api/v1/notifications/devices",
+            new UnregisterPushDeviceRequest { DeviceId = deviceId }, ct);
+
+    public Task AckDeliveredAsync(Guid deliveryId, string ackToken, CancellationToken ct = default) =>
+        PostAsync<AckDeliveryRequest, object>(
+            $"api/v1/notifications/{deliveryId}/delivered",
+            new AckDeliveryRequest { AckToken = ackToken }, ct);
+
+    public Task<NotificationPreferenceResponse> GetNotificationPreferencesAsync(CancellationToken ct = default) =>
+        GetAsync<NotificationPreferenceResponse>("api/v1/notifications/preferences", ct);
+
+    public Task<NotificationPreferenceResponse> UpdateNotificationPreferencesAsync(
+        UpdateNotificationPreferenceRequest request, CancellationToken ct = default) =>
+        SendAsync<UpdateNotificationPreferenceRequest, NotificationPreferenceResponse>(
+            HttpMethod.Put, "api/v1/notifications/preferences", request, ct);
+
     private sealed class SnoozeNotificationBody
     {
         public string? Duration { get; set; }

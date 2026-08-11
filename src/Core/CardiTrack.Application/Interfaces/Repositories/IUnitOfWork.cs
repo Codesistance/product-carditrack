@@ -18,6 +18,9 @@ public interface IUnitOfWork : IDisposable
     IRealtimeAssessmentRepository RealtimeAssessments { get; }
     INotificationRepository Notifications { get; }
     INotificationMuteRepository NotificationMutes { get; }
+    INotificationDeliveryRepository NotificationDeliveries { get; }
+    IPushDeviceTokenRepository PushDeviceTokens { get; }
+    INotificationPreferenceRepository NotificationPreferences { get; }
 
     Task<int> SaveChangesAsync();
     Task BeginTransactionAsync();

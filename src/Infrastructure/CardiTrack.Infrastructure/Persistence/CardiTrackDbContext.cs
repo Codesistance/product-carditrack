@@ -37,6 +37,11 @@ public class CardiTrackDbContext : DbContext
     public DbSet<NotificationMute> NotificationMutes => Set<NotificationMute>();
     public DbSet<NotificationRunLog> NotificationRunLogs => Set<NotificationRunLog>();
 
+    // Push delivery spine (notification_engine.md Phase 3)
+    public DbSet<NotificationDelivery> NotificationDeliveries => Set<NotificationDelivery>();
+    public DbSet<PushDeviceToken> PushDeviceTokens => Set<PushDeviceToken>();
+    public DbSet<NotificationPreference> NotificationPreferences => Set<NotificationPreference>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);

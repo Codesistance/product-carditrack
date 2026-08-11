@@ -120,4 +120,23 @@ public interface ICardiTrackApiClient
 
     /// <summary>Sets the caller's IANA time zone — what the timezone nudge sends the user to do.</summary>
     Task UpdateTimeZoneAsync(string timeZoneId, CancellationToken ct = default);
+
+    // ---- Push delivery spine (notification_engine.md Phase 3) ----
+
+    /// <summary>Upserts this device's push token — doubles as the reachability heartbeat (§4).</summary>
+    Task<PushDeviceTokenResponse> RegisterPushDeviceAsync(
+        RegisterPushDeviceRequest request, CancellationToken ct = default);
+
+    Task UnregisterPushDeviceAsync(string deviceId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Posted from the background push handler, before any user interaction. Anonymous — no
+    /// bearer token attached, authorized by the payload's <c>ackToken</c> instead (§7.2 C3).
+    /// </summary>
+    Task AckDeliveredAsync(Guid deliveryId, string ackToken, CancellationToken ct = default);
+
+    Task<NotificationPreferenceResponse> GetNotificationPreferencesAsync(CancellationToken ct = default);
+
+    Task<NotificationPreferenceResponse> UpdateNotificationPreferencesAsync(
+        UpdateNotificationPreferenceRequest request, CancellationToken ct = default);
 }

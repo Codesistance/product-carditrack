@@ -1,0 +1,33 @@
+using System.ComponentModel.DataAnnotations;
+
+namespace CardiTrack.Domain.Enums;
+
+/// <summary>
+/// The three-way split that drives delivery behaviour: whether it pushes, whether quiet hours
+/// apply, whether it escalates, whether it may be silenced (notification_engine.md §3).
+/// </summary>
+/// <remarks>
+/// Deliberately distinct from <see cref="NotificationCategory"/>, which sub-categorises
+/// <see cref="Entities.Notification"/> rows only (Safety/Blocking/Unlock/Account, for nudge
+/// silencing rules) and has no meaning for an <see cref="Entities.Alert"/>. A
+/// <see cref="Entities.NotificationDelivery"/> row is polymorphic over both sources, so its
+/// category has to mean something for either one: a Safety-class <see cref="NotificationCategory"/>
+/// notification maps to <see cref="Safety"/>; every <see cref="Entities.Alert"/> maps to
+/// <see cref="Health"/> regardless of <see cref="AlertSeverity"/> (severity drives push-vs-in-app
+/// and quiet-hours override within Health, not the category itself); everything else nudge-shaped
+/// maps to <see cref="Nudge"/>.
+/// </remarks>
+public enum DeliveryCategory
+{
+    /// <summary>Monitoring is down, or nobody is listening. Pushes immediately, overrides quiet hours, escalates.</summary>
+    [Display(Name = "Safety")]
+    Safety = 1,
+
+    /// <summary>A red/orange anomaly in the wearer's data. Red overrides quiet hours and escalates; orange defers and does not.</summary>
+    [Display(Name = "Health")]
+    Health = 2,
+
+    /// <summary>A data gap the user can close. In-app only except the two safety-class nudge rules; never escalates.</summary>
+    [Display(Name = "Nudge")]
+    Nudge = 3
+}

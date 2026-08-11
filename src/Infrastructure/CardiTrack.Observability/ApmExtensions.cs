@@ -169,7 +169,12 @@ public static class ApmExtensions
                     // Realtime notification pipeline: one span per pulled Pub/Sub message,
                     // linked back to the publishing webhook-receiver span. Defined in
                     // CardiTrack.PipelineJobs' PipelineTelemetry.
-                    .AddSource(TelemetryNames.PipelineSource);
+                    .AddSource(TelemetryNames.PipelineSource)
+                    // Push delivery spine: one span per FCM send. Load-bearing, not optional —
+                    // FirebaseAdmin manages its own transport outside IHttpClientFactory, so
+                    // AddHttpClientInstrumentation above never sees these calls. Defined in
+                    // CardiTrack.Infrastructure's PushTelemetry.
+                    .AddSource(TelemetryNames.PushSource);
                 provider.AddTraceExporter(tracing, options);
             });
 
@@ -185,7 +190,11 @@ public static class ApmExtensions
                     .AddMeter("Npgsql")
                     // GenAI client metrics (gen_ai.client.operation.duration,
                     // gen_ai.client.token.usage) from AiTelemetry.
-                    .AddMeter(TelemetryNames.AiSource);
+                    .AddMeter(TelemetryNames.AiSource)
+                    // Push delivery spine counters/histograms (notification.* — enqueued, sent,
+                    // delivered, failed, escalated, undelivered_critical, time_to_ack) from
+                    // PushTelemetry. time_to_ack is the SLO metric (§6.1).
+                    .AddMeter(TelemetryNames.PushSource);
                 provider.AddMetricExporter(metrics, options);
             });
 

@@ -30,6 +30,13 @@
 	</array>
 	<key>XSAppIconAssets</key>
 	<string>Assets.xcassets/appicon.appiconset</string>
+	<!-- Push delivery spine (notification_engine.md Phase 3) — remote-notification background
+	     mode lets a silent (content-available) push wake the app briefly; required alongside
+	     the aps-environment entitlement in Entitlements.plist. -->
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>remote-notification</string>
+	</array>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>

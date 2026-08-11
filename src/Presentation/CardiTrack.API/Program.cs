@@ -37,8 +37,12 @@ try
             b => b.MigrationsAssembly("CardiTrack.Infrastructure")),
         lifetime: ServiceLifetime.Scoped);
 
-    // 2. AUTHENTICATION & AUTHORIZATION - Auth0 JWT
+    // 2. AUTHENTICATION & AUTHORIZATION - Auth0 JWT (default scheme, every endpoint unless
+    // [AllowAnonymous]) plus a second named scheme for the AI pipeline's internal enqueue call
+    // only (notification_engine.md §7.2 C4) — never the default, so the fallback policy below
+    // still applies Auth0 everywhere else.
     builder.Services.AddAuth0Authentication(builder.Configuration);
+    builder.Services.AddGoogleOidcAuthentication(builder.Configuration);
     builder.Services.AddAuth0Authorization();
 
     // 3. CONTROLLERS & VALIDATION

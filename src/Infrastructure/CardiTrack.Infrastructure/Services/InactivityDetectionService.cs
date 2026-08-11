@@ -1,6 +1,7 @@
 using System.Text.Json;
 using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Interfaces.Services;
+using CardiTrack.Application.Services.Notifications;
 using CardiTrack.Domain.Entities;
 using CardiTrack.Domain.Enums;
 using Microsoft.Extensions.Logging;
@@ -22,11 +23,14 @@ namespace CardiTrack.Infrastructure.Services;
 public class InactivityDetectionService : IInactivityDetectionService
 {
     private readonly IUnitOfWork _unitOfWork;
+    private readonly IDispatchService _dispatch;
     private readonly ILogger<InactivityDetectionService> _logger;
 
-    public InactivityDetectionService(IUnitOfWork unitOfWork, ILogger<InactivityDetectionService> logger)
+    public InactivityDetectionService(
+        IUnitOfWork unitOfWork, IDispatchService dispatch, ILogger<InactivityDetectionService> logger)
     {
         _unitOfWork = unitOfWork;
+        _dispatch = dispatch;
         _logger = logger;
     }
 
@@ -119,7 +123,7 @@ public class InactivityDetectionService : IInactivityDetectionService
         var silentSince = lastDataUtc is null
             ? "for several hours"
             : $"since {TimeZoneInfo.ConvertTimeFromUtc(lastDataUtc.Value, timeZone):HH:mm}";
-        await _unitOfWork.Alerts.AddAsync(new Alert
+        var alert = new Alert
         {
             CardiMemberId = memberId,
             AlertType = AlertType.Inactivity,
@@ -134,8 +138,22 @@ public class InactivityDetectionService : IInactivityDetectionService
                 lastDataUtc,
                 thresholdMinutes = rules.SilenceThresholdMinutes,
             }),
-        });
+        };
+        await _unitOfWork.Alerts.AddAsync(alert);
         await _unitOfWork.SaveChangesAsync();
+
+        // Yellow severity routes to in-app + digest only (§3) — DeliveryPlanner enforces that,
+        // not this call site. Still enqueued so every alert flows through the same outbox (§3:
+        // "Both produce NotificationDelivery rows... without merging two domain models").
+        try
+        {
+            await _dispatch.EnqueueForAlertAsync(alert.Id, ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Push dispatch failed for Alert {AlertId}.", alert.Id);
+        }
+
         return true;
     }
 

@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Push delivery spine (notification_engine.md Phase 3, §4). "development" here matches
+	     store_provisioning.md's convention of environment-specific signing; CI's release build
+	     for TestFlight/App Store must override this to "production" — an app signed for
+	     distribution with the development APNs environment is rejected by APNs at send time,
+	     not at build time, so this is easy to miss until a real device test fails silently. -->
+	<key>aps-environment</key>
+	<string>development</string>
+</dict>
+</plist>

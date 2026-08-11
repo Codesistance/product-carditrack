@@ -84,6 +84,11 @@ public static class ServiceCollectionExtensions
         services.AddScoped<INotificationMuteRepository, CardiTrack.Infrastructure.Repositories.NotificationMuteRepository>();
         services.AddScoped<INotificationSnapshotQueries, CardiTrack.Infrastructure.Repositories.NotificationSnapshotQueries>();
 
+        // Push delivery spine (notification_engine.md Phase 3) — the API both issues the
+        // immediate-attempt send (nudge/alert writing paths, and the internal enqueue endpoint)
+        // and validates ack/fetch tokens, so it gets the full stack, not just the repositories.
+        services.AddPushServices(configuration);
+
         // Unit of Work
         services.AddScoped<IUnitOfWork, CardiTrack.Infrastructure.Repositories.UnitOfWork>();
 

@@ -1,4 +1,5 @@
 using CardiTrack.Application.Interfaces.Repositories;
+using CardiTrack.Application.Services.Notifications;
 using CardiTrack.Domain.Entities;
 using CardiTrack.Domain.Enums;
 using CardiTrack.Infrastructure.Services;
@@ -77,7 +78,7 @@ public class StatisticalAlertServiceTests
             .Returns(logs);
 
     private StatisticalAlertService CreateSut() =>
-        new(_unitOfWork, NullLogger<StatisticalAlertService>.Instance);
+        new(_unitOfWork, Substitute.For<IDispatchService>(), NullLogger<StatisticalAlertService>.Instance);
 
     [Fact]
     public async Task ASharpDecline_RaisesOneYellowInactivityAlert_WithItsRuleMarker()

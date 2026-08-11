@@ -72,6 +72,42 @@ public class NudgeRuleTests
         Assert.True(spec.AppliesDuringRedAlert);
     }
 
+    // ---------------------------------------------------------------- PUSH_UNREACHABLE
+
+    [Fact]
+    public void PushUnreachable_FiresOnTheAccountLevelContextWhenNoDeviceIsReachable()
+    {
+        var context = new NudgeContextBuilder().AccountLevel().PushUnreachable().Build();
+
+        var verdict = new PushUnreachableRule().Evaluate(context);
+
+        Assert.True(verdict.HasGap);
+    }
+
+    [Fact]
+    public void PushUnreachable_DoesNotFireWhenAReachableDeviceExists()
+    {
+        var context = new NudgeContextBuilder().AccountLevel().Build();
+        Assert.False(new PushUnreachableRule().Evaluate(context).HasGap);
+    }
+
+    [Fact]
+    public void PushUnreachable_DoesNotFireOnAMemberScopedContext()
+    {
+        // Personal gap (§10.3) — evaluated once per user, not once per watched relative, so it
+        // must stay silent on the per-member context even when unreachable is true.
+        var context = new NudgeContextBuilder().PushUnreachable().Build();
+        Assert.False(new PushUnreachableRule().Evaluate(context).HasGap);
+    }
+
+    [Fact]
+    public void PushUnreachable_IsSafetyClassAndCannotBeMuted()
+    {
+        var spec = new PushUnreachableRule().Spec;
+        Assert.Equal(NotificationCategory.Safety, spec.Category);
+        Assert.False(spec.CanMute);
+    }
+
     // ---------------------------------------------------------------- DEVICE_REMOVED
 
     [Fact]
