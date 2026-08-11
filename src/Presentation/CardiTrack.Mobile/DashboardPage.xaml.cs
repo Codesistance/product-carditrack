@@ -94,6 +94,16 @@ public partial class DashboardPage : ContentPage
         _ => "Active now",
     };
 
+    /// <summary>
+    /// One-line clarifier under <see cref="PresenceFor"/> — "Active now" alone reads as "the
+    /// wearer is currently moving"; this spells out it means monitoring is live and says when
+    /// data last arrived, so it isn't confused with an activity reading.
+    /// </summary>
+    private static string? PresenceDetailFor(DashboardResponse data) =>
+        !data.MonitoringPaused && data.Device.HasActiveConnection && data.LastSyncedAt is { } synced
+            ? $"Synced {RelativeTime.Format(synced)}"
+            : null;
+
     private async void OnPullToRefresh(object? sender, EventArgs e)
     {
         // SyncAndReloadAsync raises this itself when it drives the spinner from a button tap.
@@ -221,6 +231,7 @@ public partial class DashboardPage : ContentPage
 
         Header.SetUnreadCount(data.UnreadAlertCount);
         Header.SetPresence(PresenceFor(data));
+        Header.SetPresenceDetail(PresenceDetailFor(data));
 
         var firstName = NameFormatting.FirstName(data.Name);
         CallLabel.Text = $"Call {firstName}";
