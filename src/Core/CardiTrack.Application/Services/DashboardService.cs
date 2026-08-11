@@ -184,7 +184,48 @@ public class DashboardService : IDashboardService
             _ => 1,
         };
 
-        return new DashboardMetrics { Steps = steps, RestingHeartRate = heartRate, Sleep = sleep };
+        // Temperature carries its own per-day, device-derived baseline (Google Health computes
+        // it, not our BaselineCalculationWorker), so it compares against that rather than
+        // PatternBaseline — meaningful even during the 30-day learning window.
+        var latestTemp = LatestWith(newestFirst, l => l.Temperature);
+        var temperature = BuildMetric(
+            value: latestTemp?.Temperature,
+            baselineValue: latestTemp?.TemperatureBaseline,
+            unit: "°C",
+            series: BuildSeries(byDate, today, l => l.Temperature));
+        // Percent deviation is the wrong comparison unit here — a clinically meaningful ~1°C
+        // shift on a ~33-37°C baseline is only 2-3%, which never crosses the shared 30%/50%
+        // thresholds BuildMetric just applied. Compare against the device's own per-day stddev
+        // (TemperatureVariation) instead, same shape as resting heart rate's RangeLow/RangeHigh.
+        if (latestTemp?.Temperature is { } tempValue
+            && latestTemp.TemperatureBaseline is { } tempBaseline
+            && latestTemp.TemperatureVariation is > 0m and { } tempVariation)
+        {
+            var deviation = Math.Abs(tempValue - tempBaseline) / tempVariation;
+            temperature.Status = deviation switch
+            {
+                <= 1m => "green",
+                <= 2m => "yellow",
+                _ => "orange",
+            };
+        }
+
+        // No baseline concept exists for SpO2 yet — shown as a plain reading, not a trend.
+        var latestSpO2 = LatestWith(newestFirst, l => l.SpO2Average);
+        var spO2 = BuildMetric(
+            value: latestSpO2?.SpO2Average,
+            baselineValue: null,
+            unit: "%",
+            series: BuildSeries(byDate, today, l => l.SpO2Average));
+
+        return new DashboardMetrics
+        {
+            Steps = steps,
+            RestingHeartRate = heartRate,
+            Sleep = sleep,
+            Temperature = temperature,
+            SpO2 = spO2,
+        };
     }
 
     /// <summary>The most recent day that actually reported this metric, or null when none did.</summary>

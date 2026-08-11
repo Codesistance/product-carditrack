@@ -63,6 +63,28 @@ public partial class MetricCard : ContentView
         };
     }
 
+    public void ApplyTemperature(DashboardMetric metric)
+    {
+        MetricIcon.Source = "icon_metric_temperature.svg";
+        NameLabel.Text = "Skin Temp";
+        ValueLabel.Text = metric.Value is { } v ? $"{v:0.#}°C" : "—";
+
+        ApplyStatusPill(metric.Status);
+        CaptionLabel.Text = metric.Baseline is not null ? "vs. own nightly baseline" : "Nightly reading";
+    }
+
+    public void ApplySpO2(DashboardMetric metric)
+    {
+        MetricIcon.Source = "icon_metric_spo2.svg";
+        NameLabel.Text = "Blood Oxygen";
+        ValueLabel.Text = metric.Value is { } v ? $"{v:0.#}%" : "—";
+
+        // No baseline exists for this metric yet, so Status is always "unknown" and the pill
+        // stays hidden — a bare reading, not a trend judgement.
+        ApplyStatusPill(metric.Status);
+        CaptionLabel.Text = "SpO2";
+    }
+
     /// <summary>
     /// Activity's accessory: how today compares with the member's own baseline.
     /// </summary>

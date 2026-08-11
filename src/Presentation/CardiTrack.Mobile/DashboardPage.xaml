@@ -258,6 +258,8 @@
                             <controls:MetricCard x:Name="StepsCard"/>
                             <controls:MetricCard x:Name="HeartRateCard"/>
                             <controls:MetricCard x:Name="SleepCard"/>
+                            <controls:MetricCard x:Name="TemperatureCard" IsVisible="False"/>
+                            <controls:MetricCard x:Name="SpO2Card" IsVisible="False"/>
                         </VerticalStackLayout>
 
                         <!-- Recent alerts -->
