@@ -1,5 +1,3 @@
-using System.ComponentModel;
-
 namespace CardiTrack.Mobile.Controls;
 
 /// <summary>
@@ -7,7 +5,13 @@ namespace CardiTrack.Mobile.Controls;
 /// body. Used to tuck Key Metrics behind a tap so a CardiMember card stays compact once more than
 /// one can appear on the dashboard.
 /// </summary>
-[ContentProperty(nameof(Body))]
+/// <remarks>
+/// Deliberately NOT marked <c>[ContentProperty(nameof(Body))]</c>: that attribute would also
+/// govern this control's own XAML, so loading AccordionSection.xaml would assign its root layout
+/// to <see cref="Body"/> — dereferencing <c>BodyHost</c> before the layout that contains it
+/// exists, which throws. Callers name the property explicitly instead
+/// (<c>&lt;controls:AccordionSection.Body&gt;</c>).
+/// </remarks>
 public partial class AccordionSection : ContentView
 {
     private const uint AnimationLengthMs = 200;
