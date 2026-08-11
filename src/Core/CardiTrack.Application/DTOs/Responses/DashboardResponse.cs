@@ -40,6 +40,15 @@ public class DashboardResponse
     public string? MonitoringPauseReason { get; set; }
 
     public DateTime? LastSyncedAt { get; set; }
+
+    /// <summary>
+    /// Deterministic data-pipeline freshness, independent of <see cref="HealthStatus"/>'s clinical
+    /// severity: red/amber = no sync in 12h/4h, blue = synced but not yet assessed, green = the
+    /// latest sync has been assessed. Drives the CardiMember card's progress-bar caption.
+    /// </summary>
+    public string DataFreshness { get; set; } = "red";
+    public string DataFreshnessMessage { get; set; } = string.Empty;
+
     public int UnreadAlertCount { get; set; }
     public DashboardDeviceState Device { get; set; } = new();
     public DashboardBaselineState Baseline { get; set; } = new();
@@ -94,6 +103,9 @@ public class DashboardMetrics
     /// metric yet, so <see cref="DashboardMetric.Status"/> stays "unknown" — the value is shown
     /// without a trend judgement.</summary>
     public DashboardMetric SpO2 { get; set; } = new();
+
+    /// <summary>Breathing (respiratory) rate. Same no-established-baseline caveat as SpO2.</summary>
+    public DashboardMetric BreathingRate { get; set; } = new();
 }
 
 public class DashboardMetric

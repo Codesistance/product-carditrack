@@ -44,6 +44,9 @@
     <Color x:Key="StatusOrange">#ED7B2F</Color>
     <Color x:Key="StatusRed">#E53E3E</Color>
     <Color x:Key="StatusUnknown">#939DAA</Color>
+    <!-- Data-freshness "blue" tier only — deliberately not part of the green/yellow/orange/red
+         clinical-severity set above, so the two concerns stay visually distinct. -->
+    <Color x:Key="StatusBlue">#1884DC</Color>
     <Color x:Key="SkeletonGray">#E7EBF0</Color>
     <Color x:Key="SleepPurple">#7C6FDC</Color>
     <Color x:Key="StaleBannerBackground">#FFF7E8</Color>

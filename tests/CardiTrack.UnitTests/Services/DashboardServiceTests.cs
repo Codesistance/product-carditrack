@@ -15,6 +15,7 @@ public class DashboardServiceTests
     private readonly IActivityLogRepository _activityLogs = Substitute.For<IActivityLogRepository>();
     private readonly IPatternBaselineRepository _baselines = Substitute.For<IPatternBaselineRepository>();
     private readonly IAlertRepository _alerts = Substitute.For<IAlertRepository>();
+    private readonly IRealtimeAssessmentRepository _realtimeAssessments = Substitute.For<IRealtimeAssessmentRepository>();
 
     private readonly Guid _userId = Guid.NewGuid();
     private readonly Guid _memberId = Guid.NewGuid();
@@ -27,6 +28,7 @@ public class DashboardServiceTests
         _unitOfWork.ActivityLogs.Returns(_activityLogs);
         _unitOfWork.PatternBaselines.Returns(_baselines);
         _unitOfWork.Alerts.Returns(_alerts);
+        _unitOfWork.RealtimeAssessments.Returns(_realtimeAssessments);
 
         // Defaults: linked user, active member, no devices/data/baseline/alerts.
         SetupLink(canViewHealthData: true);
@@ -45,6 +47,8 @@ public class DashboardServiceTests
             .Returns([]);
         _baselines.GetLatestByCardiMemberAsync(_memberId, 30).Returns((PatternBaseline?)null);
         _alerts.GetByCardiMemberAsync(_memberId, true).Returns([]);
+        _realtimeAssessments.GetLatestAsync(_memberId, Arg.Any<CancellationToken>())
+            .Returns((RealtimeAssessment?)null);
     }
 
     // Composed with the real access service rather than a stub: the link rules under test here
