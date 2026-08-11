@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Interfaces.Services;
 
@@ -68,6 +69,14 @@ public sealed class NotificationDrainService : INotificationDrainService
             var idsByMessage = new Dictionary<ReceivedNotification, IReadOnlyCollection<string>>();
             foreach (var message in received)
             {
+                // Linked (not parented) to the publish span: one job execution fans many
+                // publishers' messages into per-user syncs, so there is no single parent to
+                // attach to. This is what makes the webhook-receiver -> pipeline-jobs hop
+                // visible on Datadog's Service Map.
+                using var activity = PipelineTelemetry.Source.StartActivity(
+                    "ProcessNotification", ActivityKind.Consumer, default(ActivityContext),
+                    links: PipelineTelemetry.BuildLinks(message.TraceParent));
+
                 var ids = WebhookNotificationParser.ExtractHealthUserIds(message.Body);
                 if (ids.Count == 0)
                 {

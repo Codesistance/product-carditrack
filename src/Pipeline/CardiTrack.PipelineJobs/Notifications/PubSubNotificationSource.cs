@@ -22,7 +22,10 @@ public sealed class PubSubNotificationSource : INotificationSource
     {
         var response = await _client.PullAsync(_subscription, maxMessages, ct);
         return response.ReceivedMessages
-            .Select(m => new ReceivedNotification(m.AckId, m.Message.Data.ToStringUtf8()))
+            .Select(m => new ReceivedNotification(
+                m.AckId,
+                m.Message.Data.ToStringUtf8(),
+                m.Message.Attributes.GetValueOrDefault("traceparent")))
             .ToList();
     }
 

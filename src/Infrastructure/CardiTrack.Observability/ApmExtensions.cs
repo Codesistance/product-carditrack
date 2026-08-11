@@ -144,7 +144,8 @@ public static class ApmExtensions
             .WithTracing(tracing =>
             {
                 tracing
-                    .SetSampler(new ParentBasedSampler(new TraceIdRatioBasedSampler(options.ClampedSampleRatio)))
+                    .SetSampler(new ParentBasedSampler(
+                        new NoiseFilteringSampler(new TraceIdRatioBasedSampler(options.ClampedSampleRatio))))
                     .AddAspNetCoreInstrumentation(instrumentation =>
                     {
                         instrumentation.RecordException = true;
@@ -164,7 +165,11 @@ public static class ApmExtensions
                     .AddSource("Npgsql")
                     // AI client calls (MedGemma): one GenAI-semconv span per call, defined
                     // in CardiTrack.Infrastructure's AiTelemetry.
-                    .AddSource(TelemetryNames.AiSource);
+                    .AddSource(TelemetryNames.AiSource)
+                    // Realtime notification pipeline: one span per pulled Pub/Sub message,
+                    // linked back to the publishing webhook-receiver span. Defined in
+                    // CardiTrack.PipelineJobs' PipelineTelemetry.
+                    .AddSource(TelemetryNames.PipelineSource);
                 provider.AddTraceExporter(tracing, options);
             });
 

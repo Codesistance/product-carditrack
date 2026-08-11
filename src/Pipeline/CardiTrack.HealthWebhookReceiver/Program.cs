@@ -22,17 +22,8 @@ var configuration = builder.Configuration;
 var configLoader = new ConfigurationLoader(configuration);
 
 // LOGGING — same Serilog shape as the other hosts
-Log.Logger = new LoggerConfiguration()
-    .ReadFrom.Configuration(configuration)
-    .Enrich.FromLogContext()
-    .Enrich.WithMachineName()
-    .Enrich.WithEnvironmentName()
-    .Enrich.WithProperty("Application", "CardiTrack.HealthWebhookReceiver")
-    .Enrich.WithProperty("Version", DeploymentInfo.Version)
-    .WriteTo.Console(
-        outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] {Message:lj} {Properties:j}{NewLine}{Exception}")
-    .AddApmShipping(configuration.GetApmOptions(), ApmServiceNames.WebhookReceiver)
-    .CreateLogger();
+Log.Logger = SerilogBootstrap.CreateLogger(
+    configuration, "CardiTrack.HealthWebhookReceiver", ApmServiceNames.WebhookReceiver);
 
 builder.Host.UseSerilog();
 builder.AddApmTracing(ApmServiceNames.WebhookReceiver);

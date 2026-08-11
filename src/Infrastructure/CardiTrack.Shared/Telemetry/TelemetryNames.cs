@@ -14,4 +14,10 @@ public static class TelemetryNames
     /// both signals: ApmExtensions passes it to AddSource and AddMeter.
     /// </summary>
     public const string AiSource = "CardiTrack.Ai";
+
+    /// <summary>
+    /// ActivitySource name for the realtime notification pipeline (webhook-receiver's publish
+    /// through pipeline-jobs' drain). One name so ApmExtensions can register it for export.
+    /// </summary>
+    public const string PipelineSource = "CardiTrack.Pipeline";
 }
