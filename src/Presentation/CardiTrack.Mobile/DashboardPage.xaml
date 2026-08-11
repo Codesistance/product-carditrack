@@ -196,7 +196,6 @@
                                        Style="{StaticResource Body2Medium}"
                                        TextColor="{StaticResource HeadingText}"/>
                                 <ProgressBar x:Name="LearningProgress"
-                                             ProgressColor="{StaticResource Primary}"
                                              HeightRequest="6"/>
                             </VerticalStackLayout>
                         </Border>
