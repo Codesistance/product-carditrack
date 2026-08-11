@@ -47,8 +47,12 @@ public class DigestGenerationServiceTests
             [
                 new ActivityLog { CardiMemberId = _memberId, Date = call.ArgAt<DateOnly>(1), Steps = 5000, RestingHeartRate = 68 },
             ]);
-        _medicalAi.GenerateAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
-            .Returns("A settled day: steady heart rate and a good night's sleep.");
+        _medicalAi.GenerateStructuredAsync<DigestGenerationService.DigestAiResponse>(
+                Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new DigestGenerationService.DigestAiResponse
+            {
+                Text = "A settled day: steady heart rate and a good night's sleep.",
+            });
     }
 
     private CardiMember Member() => new()
@@ -112,7 +116,8 @@ public class DigestGenerationServiceTests
         var generated = await CreateSut().GenerateDueDigestsAsync(UtcNow);
 
         Assert.Equal(0, generated);
-        await _medicalAi.DidNotReceive().GenerateAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
+        await _medicalAi.DidNotReceive().GenerateStructuredAsync<DigestGenerationService.DigestAiResponse>(
+            Arg.Any<string>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -124,7 +129,8 @@ public class DigestGenerationServiceTests
         var generated = await CreateSut().GenerateDueDigestsAsync(UtcNow);
 
         Assert.Equal(0, generated);
-        await _medicalAi.DidNotReceive().GenerateAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
+        await _medicalAi.DidNotReceive().GenerateStructuredAsync<DigestGenerationService.DigestAiResponse>(
+            Arg.Any<string>(), Arg.Any<CancellationToken>());
     }
 
     // A digest generated from silence would read as "all quiet" when the truth is "not
@@ -138,7 +144,8 @@ public class DigestGenerationServiceTests
         var generated = await CreateSut().GenerateDueDigestsAsync(UtcNow);
 
         Assert.Equal(0, generated);
-        await _medicalAi.DidNotReceive().GenerateAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
+        await _medicalAi.DidNotReceive().GenerateStructuredAsync<DigestGenerationService.DigestAiResponse>(
+            Arg.Any<string>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -151,7 +158,8 @@ public class DigestGenerationServiceTests
         var generated = await CreateSut().GenerateDueDigestsAsync(UtcNow);
 
         Assert.Equal(0, generated);
-        await _medicalAi.DidNotReceive().GenerateAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
+        await _medicalAi.DidNotReceive().GenerateStructuredAsync<DigestGenerationService.DigestAiResponse>(
+            Arg.Any<string>(), Arg.Any<CancellationToken>());
     }
 
     // A member whose anchor user carries an unknown timezone id anchors to UTC rather than being

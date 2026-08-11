@@ -114,6 +114,23 @@ public class AnthropicAiClientTests
         Assert.Equal("user", messages[0].GetProperty("role").GetString());
     }
 
+    private sealed record TestStructuredResponse
+    {
+        public required string Summary { get; init; }
+    }
+
+    // Structured output isn't wired up on the public provider yet — nothing calls it. The
+    // NotSupportedException is a placeholder that must fail loudly, not silently return free text
+    // mis-shaped as T.
+    [Fact]
+    public async Task GenerateStructuredAsync_ThrowsNotSupported()
+    {
+        var handler = new CapturingHandler(Reply("ok"));
+
+        await Assert.ThrowsAsync<NotSupportedException>(
+            () => Client(handler).GenerateStructuredAsync<TestStructuredResponse>("Write a report."));
+    }
+
     private static AnthropicAiClient Client(HttpMessageHandler handler)
     {
         var sdk = new Anthropic.AnthropicClient

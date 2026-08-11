@@ -53,7 +53,9 @@ public class HealthInsightServicePromptTests
             .Returns([]);
         // Learning by default — no baseline for any period.
         _baselines.GetLatestByCardiMemberAsync(_memberId, Arg.Any<int>()).Returns((PatternBaseline?)null);
-        _medicalAi.GenerateAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns("Summary body.");
+        _medicalAi.GenerateStructuredAsync<HealthInsightService.BaselineAiResponse>(
+                Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new HealthInsightService.BaselineAiResponse { Summary = "Summary body.", KeyFindings = [] });
     }
 
     private HealthInsightService CreateSut() =>

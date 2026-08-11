@@ -65,7 +65,16 @@ public class HealthInsightServiceAccessTests
         _activityLogs.GetByCardiMemberAndDateRangeAsync(_memberId, Arg.Any<DateOnly>(), Arg.Any<DateOnly>())
             .Returns([]);
         _baselines.GetLatestByCardiMemberAsync(_memberId, Arg.Any<int>()).Returns((PatternBaseline?)null);
-        _medicalAi.GenerateAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns("Analysis body.");
+        _medicalAi.GenerateStructuredAsync<HealthInsightService.AlertAiResponse>(
+                Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new HealthInsightService.AlertAiResponse
+            {
+                Explanation = "Analysis body.",
+                RecommendedAction = "Monitor and follow up.",
+            });
+        _medicalAi.GenerateStructuredAsync<HealthInsightService.BaselineAiResponse>(
+                Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new HealthInsightService.BaselineAiResponse { Summary = "Analysis body.", KeyFindings = [] });
     }
 
     private HealthInsightService CreateSut() =>
@@ -95,7 +104,8 @@ public class HealthInsightServiceAccessTests
         await Assert.ThrowsAsync<KeyNotFoundException>(() =>
             CreateSut().AnalyzeAlertAsync(_outsiderId, _alertId));
 
-        await _medicalAi.DidNotReceive().GenerateAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
+        await _medicalAi.DidNotReceive().GenerateStructuredAsync<HealthInsightService.AlertAiResponse>(
+            Arg.Any<string>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -175,7 +185,7 @@ public class HealthInsightServiceAccessTests
         var result = await CreateSut().AnalyzeBaselineAsync(_userId, _memberId);
 
         Assert.NotNull(result);
-        await _medicalAi.Received(1).GenerateAsync(
+        await _medicalAi.Received(1).GenerateStructuredAsync<HealthInsightService.BaselineAiResponse>(
             Arg.Is<string>(p => p != null && p.Contains("not yet enough history")), Arg.Any<CancellationToken>());
     }
 
@@ -214,7 +224,8 @@ public class HealthInsightServiceAccessTests
         await Assert.ThrowsAsync<KeyNotFoundException>(() =>
             CreateSut().AnalyzeBaselineAsync(_outsiderId, _memberId));
 
-        await _medicalAi.DidNotReceive().GenerateAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
+        await _medicalAi.DidNotReceive().GenerateStructuredAsync<HealthInsightService.BaselineAiResponse>(
+            Arg.Any<string>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]

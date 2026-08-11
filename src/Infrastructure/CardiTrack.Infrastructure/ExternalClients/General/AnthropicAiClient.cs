@@ -31,6 +31,13 @@ public class AnthropicAiClient : IExternalAiClient
     public Task<string> GenerateAsync(string prompt, CancellationToken ct = default)
         => ChatAsync([], prompt, ct);
 
+    // Anthropic supports tool-forced JSON via a single-tool tool_choice, but nothing on the
+    // public/general provider needs structured output today — only the medical prompts (always
+    // MedGemmaClient) do. Implement for real when a public-provider caller needs it.
+    public Task<T> GenerateStructuredAsync<T>(string prompt, CancellationToken ct = default) where T : class =>
+        throw new NotSupportedException(
+            $"{nameof(AnthropicAiClient)} does not support structured output yet — no caller needs it.");
+
     public async Task<string> ChatAsync(IReadOnlyList<ChatMessage> history, string userMessage, CancellationToken ct = default)
     {
         var messages = history
