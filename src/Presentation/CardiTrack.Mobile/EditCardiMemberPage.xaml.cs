@@ -141,8 +141,13 @@ public partial class EditCardiMemberPage : ContentPage
                 return;
         }
 
-        await Shell.Current.GoToAsync("..");
+        await NavigateBackToDetailAsync();
     }
+
+    // Named rather than "..": this page is also reached via the Notifications inbox, which
+    // pushes it directly with no member detail page underneath it on the stack.
+    private Task NavigateBackToDetailAsync() =>
+        Shell.Current.GoToAsync($"{AppShell.DashboardRoute}/{CardiMemberDetailPage.Route}?memberId={_memberId}");
 
     private bool HasUnsavedChanges()
     {
@@ -187,7 +192,7 @@ public partial class EditCardiMemberPage : ContentPage
             });
 
             // Detail refetches on appearing, so it picks these up without extra plumbing.
-            await Shell.Current.GoToAsync("..");
+            await NavigateBackToDetailAsync();
         }
         catch (ApiException ex) when (!ex.IsSessionExpired)
         {
