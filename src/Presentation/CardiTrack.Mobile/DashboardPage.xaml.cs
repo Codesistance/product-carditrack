@@ -274,6 +274,16 @@ public partial class DashboardPage : ContentPage
             StepsCard.ApplySteps(metrics.Steps);
             HeartRateCard.ApplyHeartRate(metrics.RestingHeartRate);
             SleepCard.ApplySleep(metrics.Sleep);
+
+            // Not every connected device reports these, so the row disappears entirely rather
+            // than showing a permanent "—" for a member whose wearable never will.
+            TemperatureCard.IsVisible = metrics.Temperature.Value is not null;
+            if (TemperatureCard.IsVisible)
+                TemperatureCard.ApplyTemperature(metrics.Temperature);
+
+            SpO2Card.IsVisible = metrics.SpO2.Value is not null;
+            if (SpO2Card.IsVisible)
+                SpO2Card.ApplySpO2(metrics.SpO2);
         }
         else
         {

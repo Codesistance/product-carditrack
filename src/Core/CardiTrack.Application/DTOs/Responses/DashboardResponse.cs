@@ -76,6 +76,19 @@ public class DashboardMetrics
     public DashboardMetric Steps { get; set; } = new();
     public DashboardMetric RestingHeartRate { get; set; } = new();
     public DashboardMetric Sleep { get; set; } = new();
+
+    /// <summary>
+    /// Nightly skin temperature, not core body temperature — wrist wearables don't measure the
+    /// latter. <see cref="DashboardMetric.Baseline"/> is the wearer's own nightly baseline from
+    /// the device (<c>ActivityLog.TemperatureBaseline</c>), not a CardiTrack-computed pattern
+    /// baseline, so this stays meaningful during the 30-day learning window.
+    /// </summary>
+    public DashboardMetric Temperature { get; set; } = new();
+
+    /// <summary>Blood oxygen saturation. No established-baseline comparison exists for this
+    /// metric yet, so <see cref="DashboardMetric.Status"/> stays "unknown" — the value is shown
+    /// without a trend judgement.</summary>
+    public DashboardMetric SpO2 { get; set; } = new();
 }
 
 public class DashboardMetric

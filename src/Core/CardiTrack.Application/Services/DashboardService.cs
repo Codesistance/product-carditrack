@@ -184,7 +184,32 @@ public class DashboardService : IDashboardService
             _ => 1,
         };
 
-        return new DashboardMetrics { Steps = steps, RestingHeartRate = heartRate, Sleep = sleep };
+        // Temperature carries its own per-day, device-derived baseline (Google Health computes
+        // it, not our BaselineCalculationWorker), so it compares against that rather than
+        // PatternBaseline — meaningful even during the 30-day learning window.
+        var latestTemp = LatestWith(newestFirst, l => l.Temperature);
+        var temperature = BuildMetric(
+            value: latestTemp?.Temperature,
+            baselineValue: latestTemp?.TemperatureBaseline,
+            unit: "°C",
+            series: BuildSeries(byDate, today, l => l.Temperature));
+
+        // No baseline concept exists for SpO2 yet — shown as a plain reading, not a trend.
+        var latestSpO2 = LatestWith(newestFirst, l => l.SpO2Average);
+        var spO2 = BuildMetric(
+            value: latestSpO2?.SpO2Average,
+            baselineValue: null,
+            unit: "%",
+            series: BuildSeries(byDate, today, l => l.SpO2Average));
+
+        return new DashboardMetrics
+        {
+            Steps = steps,
+            RestingHeartRate = heartRate,
+            Sleep = sleep,
+            Temperature = temperature,
+            SpO2 = spO2,
+        };
     }
 
     /// <summary>The most recent day that actually reported this metric, or null when none did.</summary>
