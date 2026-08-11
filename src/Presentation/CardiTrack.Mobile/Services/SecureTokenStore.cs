@@ -125,18 +125,20 @@ public sealed class SecureTokenStore : ITokenStore
     }
 
     /// <summary>
-    /// Abandons (doesn't cancel — SecureStorage exposes no way to) the native call on timeout
-    /// so the caller can proceed; a late completion is still safely picked up by the app's
-    /// unobserved-task-exception handler if it ever faults. <see cref="Task.WaitAsync(TimeSpan)"/>
-    /// throws the <see cref="TimeoutException"/> itself, and unlike a manual
-    /// Task.WhenAny/Task.Delay race doesn't leave a live timer running for the full timeout on
-    /// the (common) fast path where SecureStorage returns immediately.
+    /// Runs the SecureStorage call on a thread-pool thread rather than awaiting it directly.
+    /// On Android, SecureStorage.SetAsync/GetAsync can do first-use Keystore/EncryptedSharedPreferences
+    /// work synchronously on the calling thread despite the async signature — awaited straight
+    /// from the UI thread (as sign-in does), that blocks the UI thread itself and Android reports
+    /// an ANR, which a plain <see cref="Task.WaitAsync(TimeSpan)"/> around the returned Task
+    /// cannot help with: the block happens before that Task exists to time out. Task.Run moves
+    /// the call (sync portion included) off the UI thread first, so the timeout below always has
+    /// something to race against and the UI thread never blocks either way.
     /// </summary>
     private static Task<string?> GetWithTimeoutAsync(string key) =>
-        SecureStorage.Default.GetAsync(key).WaitAsync(SecureStorageTimeout);
+        Task.Run(() => SecureStorage.Default.GetAsync(key)).WaitAsync(SecureStorageTimeout);
 
     private static Task SetWithTimeoutAsync(string key, string value) =>
-        SecureStorage.Default.SetAsync(key, value).WaitAsync(SecureStorageTimeout);
+        Task.Run(() => SecureStorage.Default.SetAsync(key, value)).WaitAsync(SecureStorageTimeout);
 
     public Task ClearAsync()
     {
