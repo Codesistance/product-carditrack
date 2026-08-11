@@ -61,6 +61,18 @@ resource "google_project_service" "cloudscheduler" {
   disable_on_destroy = false
 }
 
+resource "google_project_service" "firebase" {
+  count              = var.enable_push_notifications ? 1 : 0
+  service            = "firebase.googleapis.com"
+  disable_on_destroy = false
+}
+
+resource "google_project_service" "fcm" {
+  count              = var.enable_push_notifications ? 1 : 0
+  service            = "fcm.googleapis.com"
+  disable_on_destroy = false
+}
+
 resource "google_project_service" "compute" {
   service            = "compute.googleapis.com"
   disable_on_destroy = false
