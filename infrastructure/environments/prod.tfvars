@@ -95,6 +95,13 @@ enable_pubsub = true
 enable_platform_audit_logging = true
 audit_retention_days          = 90
 
+# Cloud Run OOM alerting (issue #171). Slack stays off until the one-time manual Console
+# OAuth step is done — see infrastructure/deployments/alerting.tf.
+enable_oom_alerting       = true
+alert_notification_emails = ["cloudoperations@codesistance.com"]
+enable_slack_alerts       = false
+alert_slack_channel_id    = ""
+
 # Labels — "audit = platform" mirrors enable_platform_audit_logging; the label deliberately
 # does not claim a certified HIPAA posture (see the variable's rename rationale in variables.tf).
 additional_labels = {

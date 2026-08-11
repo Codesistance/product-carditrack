@@ -367,6 +367,32 @@ variable "audit_retention_days" {
   default     = 90
 }
 
+# Cloud Run OOM Alerting — see infrastructure/deployments/alerting.tf for the manual Slack
+# setup step this depends on.
+variable "enable_oom_alerting" {
+  description = "Create the Cloud Run OOM log-based metric, alert policy, and email notification channels"
+  type        = bool
+  default     = true
+}
+
+variable "alert_notification_emails" {
+  description = "Email addresses notified when a Cloud Run container is OOM-killed"
+  type        = list(string)
+  default     = []
+}
+
+variable "enable_slack_alerts" {
+  description = "Attach the Slack notification channel to the OOM alert policy (requires alert_slack_channel_id, provisioned via a one-time manual GCP Console Slack OAuth step)"
+  type        = bool
+  default     = false
+}
+
+variable "alert_slack_channel_id" {
+  description = "Numeric ID of a Slack notification channel already created via the manual Console OAuth step. Empty disables Slack regardless of enable_slack_alerts"
+  type        = string
+  default     = ""
+}
+
 # Labels
 variable "additional_labels" {
   description = "Additional labels to apply to all resources"
