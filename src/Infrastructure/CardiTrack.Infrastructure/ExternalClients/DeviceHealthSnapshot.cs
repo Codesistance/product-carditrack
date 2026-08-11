@@ -36,7 +36,9 @@ public record DeviceHealthSnapshot(
     decimal? VO2Max = null,
     int? StressScore = null,
     decimal? BreathingRate = null,
-    decimal? Temperature = null
+    decimal? Temperature = null,
+    decimal? TemperatureBaseline = null,
+    decimal? TemperatureVariation = null
 )
 {
     /// <summary>
@@ -54,5 +56,5 @@ public record DeviceHealthSnapshot(
         LightSleepMinutes is not null || RemSleepMinutes is not null || AwakeMinutes is not null ||
         SpO2Average is not null || SpO2Min is not null || SpO2Max is not null ||
         VO2Max is not null || StressScore is not null || BreathingRate is not null ||
-        Temperature is not null;
+        Temperature is not null || TemperatureBaseline is not null || TemperatureVariation is not null;
 }

@@ -58,6 +58,8 @@ public class ActivityLogConfiguration : IEntityTypeConfiguration<ActivityLog>
         builder.Property(a => a.StressScore);
         builder.Property(a => a.BreathingRate).HasColumnType("decimal(5,2)");
         builder.Property(a => a.Temperature).HasColumnType("decimal(5,2)");
+        builder.Property(a => a.TemperatureBaseline).HasColumnType("decimal(5,2)");
+        builder.Property(a => a.TemperatureVariation).HasColumnType("decimal(5,2)");
 
         builder.Property(a => a.CreatedDate)
             .IsRequired()

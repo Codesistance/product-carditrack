@@ -47,5 +47,11 @@ public class DeviceActivityLog : BaseEntity
     public decimal? VO2Max { get; set; }
     public int? StressScore { get; set; } // 0-100
     public decimal? BreathingRate { get; set; } // breaths per minute
-    public decimal? Temperature { get; set; } // in Celsius
+
+    // Nightly skin temperature, not core body temperature — wrist wearables don't measure the
+    // latter. Clinically meaningful only as a deviation from the wearer's own baseline, hence the
+    // two companion columns below rather than this figure alone.
+    public decimal? Temperature { get; set; }
+    public decimal? TemperatureBaseline { get; set; } // the wearer's own nightly baseline
+    public decimal? TemperatureVariation { get; set; } // relative nightly stddev over a 30-day window
 }

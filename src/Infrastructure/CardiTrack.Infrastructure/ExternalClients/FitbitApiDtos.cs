@@ -52,4 +52,6 @@ public record FitbitAdditionalMetricsResult(
     decimal? SpO2Max,
     decimal? VO2Max,
     decimal? BreathingRate,
-    decimal? Temperature);
+    decimal? Temperature,
+    decimal? TemperatureBaseline,
+    decimal? TemperatureVariation);

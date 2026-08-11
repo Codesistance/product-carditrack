@@ -254,19 +254,14 @@ public class FitbitApiClient : IFitbitApiClient, IDeviceApiClient
         var breathingRateTask = OptionalDailyValueAsync(
             accessToken, "daily-respiratory-rate", "dailyRespiratoryRate", "breathsPerMinute", date);
         // Wrist wearables do not measure core body temperature; what Fitbit and Pixel Watch derive
-        // is this nightly skin figure. `baselineTemperatureCelsius` sits alongside it and is the
-        // more clinically useful half — a nightly reading means little except as a deviation from
-        // the wearer's own baseline — but ActivityLog has one temperature column, so only the
-        // nightly value is kept. Storing the baseline too needs a migration: issue #81.
-        var temperatureTask = OptionalDailyValueAsync(
-            accessToken,
-            "daily-sleep-temperature-derivations",
-            "dailySleepTemperatureDerivations",
-            "nightlyTemperatureCelsius",
-            date);
+        // is this nightly skin figure. It is clinically meaningful only as a deviation from the
+        // wearer's own baseline, so the record's baseline and 30-day variation are read alongside
+        // the nightly value in a single fetch rather than three.
+        var temperatureTask = OptionalDailyTemperatureAsync(accessToken, date);
         await Task.WhenAll(spO2Task, vo2MaxTask, breathingRateTask, temperatureTask);
 
         var (spO2Average, spO2Min, spO2Max) = spO2Task.Result;
+        var (nightlyTemperature, temperatureBaseline, temperatureVariation) = temperatureTask.Result;
 
         return new FitbitAdditionalMetricsResult(
             spO2Average,
@@ -274,7 +269,9 @@ public class FitbitApiClient : IFitbitApiClient, IDeviceApiClient
             spO2Max,
             vo2MaxTask.Result,
             breathingRateTask.Result,
-            temperatureTask.Result);
+            nightlyTemperature,
+            temperatureBaseline,
+            temperatureVariation);
     }
 
     public async Task<DeviceHealthSnapshot> GetHealthSnapshotAsync(string accessToken, DateOnly date)
@@ -316,7 +313,9 @@ public class FitbitApiClient : IFitbitApiClient, IDeviceApiClient
             SpO2Max: additional.SpO2Max,
             VO2Max: additional.VO2Max,
             BreathingRate: additional.BreathingRate,
-            Temperature: additional.Temperature);
+            Temperature: additional.Temperature,
+            TemperatureBaseline: additional.TemperatureBaseline,
+            TemperatureVariation: additional.TemperatureVariation);
     }
 
     /// <summary>
@@ -531,6 +530,29 @@ public class FitbitApiClient : IFitbitApiClient, IDeviceApiClient
         catch (FitbitApiException ex) when (IsAbsentDataType(ex))
         {
             return null;
+        }
+    }
+
+    /// <summary>
+    /// Reads the nightly skin-temperature figure, the wearer's own baseline, and the 30-day
+    /// relative variation off one <c>daily-sleep-temperature-derivations</c> record — a single
+    /// fetch, since all three fields live on the same Daily record.
+    /// </summary>
+    private async Task<(decimal? Nightly, decimal? Baseline, decimal? Variation)>
+        OptionalDailyTemperatureAsync(string accessToken, DateOnly date)
+    {
+        try
+        {
+            var record = await DailyRecordAsync(
+                accessToken, "daily-sleep-temperature-derivations", "dailySleepTemperatureDerivations", date);
+            return (
+                ReadDecimal(record, "nightlyTemperatureCelsius"),
+                ReadDecimal(record, "baselineTemperatureCelsius"),
+                ReadDecimal(record, "relativeNightlyStddev30dCelsius"));
+        }
+        catch (FitbitApiException ex) when (IsAbsentDataType(ex))
+        {
+            return (null, null, null);
         }
     }
 

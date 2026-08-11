@@ -56,7 +56,7 @@ This document provides an overview of all domain entities in the CardiTrack syst
 - Normalized daily health data for a CardiMember — **unique on (CardiMemberId, Date)**, one row per member per day
 - Derived from that member's DeviceActivityLog rows by `ActivityLogMerge`; **every reader consumes this table, not the raw one**
 - Merge rule: each metric resolved independently, first non-null wins by device priority (`IsPrimary` desc → `ConnectedDate` asc → `Id`). **Never sums** — two wearables on one body count the same steps. Idempotent, since it always rebuilds from the full raw set
-- **Rich metric surface (~25 nullable metrics)**: Steps, Distance, ActiveMinutes, SedentaryMinutes, Floors, CaloriesBurned; Resting/Avg/Max/Min heart rate; sleep duration, start/end, efficiency, and Deep/Light/REM/Awake stage minutes; SpO2 (avg/min/max), VO2Max, StressScore, BreathingRate, Temperature
+- **Rich metric surface (~27 nullable metrics)**: Steps, Distance, ActiveMinutes, SedentaryMinutes, Floors, CaloriesBurned; Resting/Avg/Max/Min heart rate; sleep duration, start/end, efficiency, and Deep/Light/REM/Awake stage minutes; SpO2 (avg/min/max), VO2Max, StressScore, BreathingRate, Temperature (nightly, plus the wearer's own TemperatureBaseline and TemperatureVariation)
 - DataSource / DeviceConnectionId record the highest-priority contributing device
 - No FK constraints - uses CardiMemberId and DeviceConnectionId (Guid)
 
