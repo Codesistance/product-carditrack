@@ -79,6 +79,7 @@ module "deployments" {
   cloud_run_max_instances = local.is_prod ? 3 : 1
   cloud_run_cpu           = var.cloud_run_cpu
   cloud_run_memory        = var.cloud_run_memory
+  worker_cloud_run_memory = var.worker_cloud_run_memory
   cloud_run_labels        = local.common_labels
 
   # Cloud Run - API

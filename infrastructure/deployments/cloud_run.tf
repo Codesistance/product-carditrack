@@ -111,6 +111,12 @@ variable "cloud_run_memory" {
   default     = "512Mi"
 }
 
+variable "worker_cloud_run_memory" {
+  description = "Memory allocation for the Worker Cloud Run service specifically; falls back to cloud_run_memory when unset."
+  type        = string
+  default     = null
+}
+
 variable "cloud_run_min_instances" {
   description = "Minimum number of Cloud Run instances"
   type        = number
@@ -504,7 +510,7 @@ resource "google_cloud_run_v2_service" "worker" {
       resources {
         limits = {
           cpu    = var.cloud_run_cpu
-          memory = var.cloud_run_memory
+          memory = coalesce(var.worker_cloud_run_memory, var.cloud_run_memory)
         }
       }
 

@@ -46,6 +46,12 @@ variable "cloud_run_memory" {
   default     = "512Mi"
 }
 
+variable "worker_cloud_run_memory" {
+  description = "Memory allocation for the Worker Cloud Run service specifically; falls back to cloud_run_memory when unset. Worker ingests granular wearable payloads that api/web don't, so its ceiling sometimes needs to move independently."
+  type        = string
+  default     = null
+}
+
 # ── Container images ─────────────────────────────────────────────────────────
 # These four (api, web, worker, migrator) are bootstrap placeholders, not the
 # images we run. A Cloud Run resource cannot be created without a pullable image,
