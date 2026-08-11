@@ -30,6 +30,17 @@ public partial class DashboardHeader : ContentView
     public void SetPresence(string presence) => PresenceLabel.Text = presence;
 
     /// <summary>
+    /// A small clarifying line under the presence label — "Active now" on its own reads as
+    /// "the wearer is currently moving"; this spells out that it means "we're actively
+    /// monitoring, last synced X ago" instead. Hidden when there's nothing to add.
+    /// </summary>
+    public void SetPresenceDetail(string? detail)
+    {
+        PresenceDetailLabel.Text = detail;
+        PresenceDetailLabel.IsVisible = !string.IsNullOrEmpty(detail);
+    }
+
+    /// <summary>
     /// Shows a dot when completeness items are waiting. Deliberately not folded into
     /// <see cref="SetUnreadCount"/>: the number means health alerts and must keep meaning that,
     /// or it stops carrying urgency by the time a red alert finally arrives.

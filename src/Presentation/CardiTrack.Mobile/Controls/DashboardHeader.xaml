@@ -38,6 +38,12 @@
                        FontFamily="QuicksandSemiBold"
                        FontSize="12"
                        TextColor="{StaticResource White}"/>
+                <Label x:Name="PresenceDetailLabel"
+                       IsVisible="False"
+                       FontFamily="QuicksandMedium"
+                       FontSize="11"
+                       Opacity="0.8"
+                       TextColor="{StaticResource White}"/>
             </VerticalStackLayout>
 
             <Grid Grid.Column="2" VerticalOptions="Start">
