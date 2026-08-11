@@ -1,6 +1,7 @@
 using CardiTrack.Application.Interfaces.Clients;
 using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Interfaces.Security;
+using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Application.Services.Notifications;
 using CardiTrack.Infrastructure.ExternalClients.Push;
 using CardiTrack.Infrastructure.Repositories;
@@ -64,6 +65,12 @@ public static class PushServiceExtensions
 
         services.AddSingleton<IAckTokenService>(
             _ => new AckTokenService(configLoader.GetRequired(ConfigurationKeys.Notifications.AckTokenKey)));
+
+        // DispatchService's own dependency, not registered by every AddPushServices caller
+        // previously — CardiTrack.Worker got AddPushServices without it and crashed the whole
+        // IHost (BackgroundServiceExceptionBehavior=StopHost) the first time
+        // NotificationDispatchWorker's escalation sweep tried to resolve IDispatchService.
+        services.AddScoped<INotificationGapResolver, NotificationGapResolver>();
 
         services.AddScoped<IDispatchService, DispatchService>();
         services.AddScoped<IAckDeliveryService, AckDeliveryService>();
