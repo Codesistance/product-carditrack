@@ -442,13 +442,47 @@ public class ApmConfigurationTests
     }
 
     [Theory]
-    [InlineData("datadoghq.eu", "https://http-intake.logs.datadoghq.eu")]
-    [InlineData("us5.datadoghq.com", "https://http-intake.logs.us5.datadoghq.com")]
-    [InlineData("http-intake.logs.datadoghq.com", "https://http-intake.logs.datadoghq.com")]
-    [InlineData("https://http-intake.logs.datadoghq.eu/", "https://http-intake.logs.datadoghq.eu")]
-    public void Datadog_LogIntakeUrl_DerivesFromSite(string site, string expected)
+    [InlineData("datadoghq.eu", "https://otlp.datadoghq.eu/v1/logs")]
+    [InlineData("uk1.datadoghq.com", "https://otlp.uk1.datadoghq.com/v1/logs")]
+    [InlineData("us5.datadoghq.com/", "https://otlp.us5.datadoghq.com/v1/logs")]
+    public void Datadog_LogsIntakeUrl_DerivesFromSite(string site, string expected)
     {
-        Assert.Equal(expected, DatadogApmProvider.LogIntakeUrl(site));
+        var options = new ApmOptions { Data = new ApmData { IngestUrl = site } };
+
+        Assert.Equal(expected, DatadogApmProvider.LogsIntakeUrl(options));
+    }
+
+    [Fact]
+    public void Datadog_LogsIntakeUrl_ExplicitEndpointWins()
+    {
+        var options = new ApmOptions
+        {
+            Data = new ApmData
+            {
+                IngestUrl = "datadoghq.eu",
+                Extra = { [DatadogApmProvider.LogsEndpointKey] = "https://otlp.custom.example/v1/logs" },
+            },
+        };
+
+        Assert.Equal("https://otlp.custom.example/v1/logs", DatadogApmProvider.LogsIntakeUrl(options));
+    }
+
+    /// <summary>
+    /// A full URL in IngestUrl is never trusted as the logs endpoint, even when it happens
+    /// to already be correct — the common case in practice is a stale classic log-intake
+    /// URL left over from before logs moved to OTLP, which would otherwise silently receive
+    /// (and drop) OTLP payloads. The explicit LogsEndpoint override exists for exactly this.
+    /// </summary>
+    [Theory]
+    [InlineData("https://otlp.datadoghq.eu/v1/logs")]
+    [InlineData("https://http-intake.logs.datadoghq.eu")]
+    public void Datadog_LogsIntakeUrl_FullIngestUrl_ThrowsRatherThanGuess(string ingestUrl)
+    {
+        var options = new ApmOptions { Data = new ApmData { IngestUrl = ingestUrl } };
+
+        var ex = Assert.Throws<InvalidOperationException>(() => DatadogApmProvider.LogsIntakeUrl(options));
+
+        Assert.Contains(DatadogApmProvider.LogsEndpointKey, ex.Message);
     }
 
     [Theory]
@@ -471,11 +505,16 @@ public class ApmConfigurationTests
 
         var hosts = new DatadogApmProvider().ShippingHosts(options);
 
-        Assert.Equal(["http-intake.logs.uk1.datadoghq.com"], hosts);
+        Assert.Equal(["otlp.uk1.datadoghq.com"], hosts);
     }
 
+    /// <summary>
+    /// Logs, traces and metrics all resolve to the same otlp.&lt;site&gt; host once every
+    /// signal is configured — a deliberate consequence of moving logs onto the same OTLP
+    /// pipeline as traces/metrics, not a regression from the two-host state before it.
+    /// </summary>
     [Fact]
-    public void Datadog_ShippingHosts_FullyConfigured_IncludesTraceAndMetricsHosts()
+    public void Datadog_ShippingHosts_FullyConfigured_CollapsesToOneSharedHost()
     {
         var options = new ApmOptions
         {
@@ -491,9 +530,7 @@ public class ApmConfigurationTests
 
         var hosts = new DatadogApmProvider().ShippingHosts(options);
 
-        Assert.Equal(
-            new[] { "http-intake.logs.uk1.datadoghq.com", "otlp.uk1.datadoghq.com" },
-            hosts.OrderBy(h => h, StringComparer.OrdinalIgnoreCase));
+        Assert.Equal(["otlp.uk1.datadoghq.com"], hosts);
     }
 
     [Fact]
@@ -533,7 +570,7 @@ public class ApmConfigurationTests
         // Assert.Contains enumerates and compares directly, sidestepping the ICollection<T>
         // dispatch this test exists to pin — asserting on the real Contains() call is deliberate.
 #pragma warning disable xUnit2017
-        Assert.True(hosts.Contains("HTTP-INTAKE.LOGS.UK1.DATADOGHQ.COM"));
+        Assert.True(hosts.Contains("OTLP.UK1.DATADOGHQ.COM"));
 #pragma warning restore xUnit2017
     }
 
@@ -556,36 +593,5 @@ public class ApmConfigurationTests
             Assert.DoesNotContain('.', name);
             Assert.DoesNotContain("carditrack", name, StringComparison.OrdinalIgnoreCase);
         }
-    }
-
-    [Fact]
-    public void Datadog_LogTags_TagTheReleaseUnderTheReservedKey()
-    {
-        var versionTags = DatadogApmProvider.LogTags()
-            .Where(tag => tag.StartsWith("version:", StringComparison.Ordinal))
-            .ToList();
-
-        // Lowercase "version" exactly: the Version facet reads Datadog's reserved tag, and
-        // any other spelling shows up as a plain tag the facet never sees.
-        var versionTag = Assert.Single(versionTags);
-        Assert.Equal($"version:{DeploymentInfo.Version}", versionTag);
-        // The test host is stamped 0.0.0-local, so an "unknown" here means resolution broke.
-        Assert.NotEqual($"version:{DeploymentInfo.UnknownVersion}", versionTag);
-    }
-
-    [Fact]
-    public void Datadog_LogTags_TagTheEnvironmentOnlyWhenOneIsKnown()
-    {
-        var environmentTags = DatadogApmProvider.LogTags()
-            .Where(tag => tag.StartsWith("env:", StringComparison.Ordinal))
-            .ToList();
-
-        // Lowercase "env" exactly — the reserved key behind Datadog's environment selector.
-        // Whether one is set depends on the host running the tests, so assert the rule
-        // rather than a value: tagged when known, absent (never a placeholder) when not.
-        if (DeploymentInfo.EnvironmentName is { } environmentName)
-            Assert.Equal($"env:{environmentName}", Assert.Single(environmentTags));
-        else
-            Assert.Empty(environmentTags);
     }
 }
