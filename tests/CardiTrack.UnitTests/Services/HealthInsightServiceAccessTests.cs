@@ -3,6 +3,7 @@ using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Application.Services;
 using CardiTrack.Domain.Entities;
 using CardiTrack.Infrastructure.Services;
+using Microsoft.Extensions.Caching.Distributed;
 using NSubstitute;
 
 namespace CardiTrack.UnitTests.Services;
@@ -20,6 +21,7 @@ public class HealthInsightServiceAccessTests
     private readonly IAlertRepository _alerts = Substitute.For<IAlertRepository>();
     private readonly IActivityLogRepository _activityLogs = Substitute.For<IActivityLogRepository>();
     private readonly IPatternBaselineRepository _baselines = Substitute.For<IPatternBaselineRepository>();
+    private readonly IDistributedCache _cache = Substitute.For<IDistributedCache>();
 
     private readonly Guid _userId = Guid.NewGuid();
     private readonly Guid _outsiderId = Guid.NewGuid();
@@ -67,7 +69,7 @@ public class HealthInsightServiceAccessTests
     }
 
     private HealthInsightService CreateSut() =>
-        new(_medicalAi, _unitOfWork, new CardiMemberAccessService(_unitOfWork));
+        new(_medicalAi, _unitOfWork, new CardiMemberAccessService(_unitOfWork), _cache);
 
     // ── AnalyzeAlertAsync ───────────────────────────────────────────────────────
 

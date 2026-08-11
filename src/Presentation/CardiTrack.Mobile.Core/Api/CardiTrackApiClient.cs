@@ -68,6 +68,9 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
     public Task<DashboardResponse> GetDashboardAsync(Guid cardiMemberId, CancellationToken ct = default) =>
         GetAsync<DashboardResponse>($"api/v1/cardimembers/{cardiMemberId}/dashboard", ct);
 
+    public Task<CurrentStatusMessageResponse> GetCurrentStatusAsync(Guid cardiMemberId, CancellationToken ct = default) =>
+        GetAsync<CurrentStatusMessageResponse>($"api/v1/insights/members/{cardiMemberId}/status", ct);
+
     public Task<AlertListResponse> GetAlertsAsync(
         string? severity = null,
         string? status = null,

@@ -18,4 +18,13 @@ public interface IHealthInsightService
     /// </summary>
     Task<BaselineInsightResponse> AnalyzeBaselineAsync(
         Guid requestingUserId, Guid cardiMemberId, CancellationToken ct = default);
+
+    /// <summary>
+    /// A short, empathetic line describing a CardiMember's current status, for the Dashboard's
+    /// hero card. Cached per member for a few minutes so a dashboard load never pays for a fresh
+    /// model call — see the implementation for the TTL. Throws
+    /// <see cref="KeyNotFoundException"/> when the user may not view that member's health data.
+    /// </summary>
+    Task<CurrentStatusMessageResponse> GetCurrentStatusMessageAsync(
+        Guid requestingUserId, Guid cardiMemberId, CancellationToken ct = default);
 }

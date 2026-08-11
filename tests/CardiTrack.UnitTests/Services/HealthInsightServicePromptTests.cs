@@ -6,6 +6,7 @@ using CardiTrack.Domain.Entities;
 using CardiTrack.Domain.Enums;
 using CardiTrack.Domain.Extensions;
 using CardiTrack.Infrastructure.Services;
+using Microsoft.Extensions.Caching.Distributed;
 using NSubstitute;
 
 namespace CardiTrack.UnitTests.Services;
@@ -23,6 +24,7 @@ public class HealthInsightServicePromptTests
     private readonly ICardiMemberRepository _members = Substitute.For<ICardiMemberRepository>();
     private readonly IActivityLogRepository _activityLogs = Substitute.For<IActivityLogRepository>();
     private readonly IPatternBaselineRepository _baselines = Substitute.For<IPatternBaselineRepository>();
+    private readonly IDistributedCache _cache = Substitute.For<IDistributedCache>();
 
     private readonly Guid _userId = Guid.NewGuid();
     private readonly Guid _memberId = Guid.NewGuid();
@@ -55,7 +57,7 @@ public class HealthInsightServicePromptTests
     }
 
     private HealthInsightService CreateSut() =>
-        new(_medicalAi, _unitOfWork, new CardiMemberAccessService(_unitOfWork));
+        new(_medicalAi, _unitOfWork, new CardiMemberAccessService(_unitOfWork), _cache);
 
     private void SetupMember(
         Gender gender = Gender.Female, string? medicalNotes = null, Guid? id = null)
