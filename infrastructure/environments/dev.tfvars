@@ -120,6 +120,10 @@ alert_notification_emails = ["cloudoperations@codesistance.com"]
 enable_slack_alerts       = false
 alert_slack_channel_id    = ""
 
+# Firebase Cloud Messaging — provisioning ahead of the Phase 3 push send path (#108),
+# so the Firebase apps exist and a real test push can be sent before closing that issue.
+enable_push_notifications = true
+
 # Labels
 additional_labels = {
   cost_center = "development"

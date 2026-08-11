@@ -317,6 +317,15 @@ variable "enable_pubsub" {
   default     = false
 }
 
+# Firebase Cloud Messaging — push notification sending credentials. Provisioning ahead of
+# the Phase 3 send path; see infrastructure/deployments/firebase.tf and
+# docs/technical/notification_engine.md §16.
+variable "enable_push_notifications" {
+  description = "Enable Firebase Cloud Messaging (FCM) for push notification sending"
+  type        = bool
+  default     = false
+}
+
 # Memorystore for Redis (distributed cache: OAuth PKCE state, report cache)
 variable "enable_redis" {
   description = "Provision a Memorystore for Redis instance and bind it to the API. With this off the API has no distributed cache, so device linking fails whenever the OAuth callback lands on a different Cloud Run instance"
