@@ -3,10 +3,14 @@
 <plist version="1.0">
 <dict>
 	<!-- Push delivery spine (notification_engine.md Phase 3, §4). "development" here matches
-	     store_provisioning.md's convention of environment-specific signing; CI's release build
-	     for TestFlight/App Store must override this to "production" — an app signed for
-	     distribution with the development APNs environment is rejected by APNs at send time,
-	     not at build time, so this is easy to miss until a real device test fails silently. -->
+	     store_provisioning.md's convention of environment-specific signing, and is what local
+	     and simulator builds want.
+
+	     Distribution builds must NOT use this file — App Store Connect rejects an upload
+	     carrying aps-environment=development with ITMS-90046, and even if it were accepted,
+	     APNs would refuse the token at send time. Entitlements.Release.plist carries the
+	     "production" value and is wired explicitly by the signed-IPA step in
+	     .github/workflows/deploy-apps-dev.yml. Keep the two in sync when adding capabilities. -->
 	<key>aps-environment</key>
 	<string>development</string>
 </dict>
