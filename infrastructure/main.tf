@@ -17,18 +17,20 @@ locals {
   )
 
   # Resource naming
-  api_service_name      = "${var.project_name}-${local.environment}-api"
-  web_service_name      = "${var.project_name}-${local.environment}-web"
-  worker_service_name   = "${var.project_name}-${local.environment}-worker"
-  pipeline_jobs_name    = "${var.project_name}-${local.environment}-pipeline-jobs"
-  webhook_receiver_name = "${var.project_name}-${local.environment}-webhook-receiver"
-  cloud_sql_name        = "${var.project_name}-${local.environment}-sql"
-  redis_instance_name   = "${var.project_name}-${local.environment}-redis"
-  cloud_sql_db_name     = "${var.project_name}-${local.environment}-db"
-  storage_bucket_name   = "${var.project_id}-${var.project_name}-${local.environment}"
-  pubsub_topic_name     = "${var.project_name}-${local.environment}-realtime"
-  log_sink_name         = "${var.project_name}-${local.environment}-audit-sink"
-  audit_bucket_name     = "${var.project_id}-${var.project_name}-${local.environment}-audit"
+  api_service_name         = "${var.project_name}-${local.environment}-api"
+  web_service_name         = "${var.project_name}-${local.environment}-web"
+  worker_service_name      = "${var.project_name}-${local.environment}-worker"
+  pipeline_jobs_name       = "${var.project_name}-${local.environment}-pipeline-jobs"
+  webhook_receiver_name    = "${var.project_name}-${local.environment}-webhook-receiver"
+  cloud_sql_name           = "${var.project_name}-${local.environment}-sql"
+  redis_instance_name      = "${var.project_name}-${local.environment}-redis"
+  cloud_sql_db_name        = "${var.project_name}-${local.environment}-db"
+  storage_bucket_name      = "${var.project_id}-${var.project_name}-${local.environment}"
+  pubsub_topic_name        = "${var.project_name}-${local.environment}-realtime"
+  log_sink_name            = "${var.project_name}-${local.environment}-audit-sink"
+  audit_bucket_name        = "${var.project_id}-${var.project_name}-${local.environment}-audit"
+  oom_alert_name           = "${var.project_name}-${local.environment}-cloud-run-oom"
+  oom_alert_service_prefix = "${var.project_name}-${local.environment}-"
 
   # Read rather than repeated: .model-version is what bakes a tag into the MedGemma image, and
   # AI__Private__Model below is the name the API then asks Ollama for. As two literals they
@@ -311,6 +313,15 @@ module "deployments" {
   enable_platform_audit_logging = var.enable_platform_audit_logging
   audit_retention_days          = var.audit_retention_days
   monitoring_labels             = local.common_labels
+
+  # Cloud Run OOM alerting
+  enable_oom_alerting       = var.enable_oom_alerting
+  oom_alert_name            = local.oom_alert_name
+  oom_alert_service_prefix  = local.oom_alert_service_prefix
+  alert_notification_emails = var.alert_notification_emails
+  enable_slack_alerts       = var.enable_slack_alerts
+  alert_slack_channel_id    = var.alert_slack_channel_id
+  alerting_labels           = local.common_labels
 
   # MedGemma (Ollama)
   medgemma_service_name  = "${var.project_name}-${local.environment}-medgemma"

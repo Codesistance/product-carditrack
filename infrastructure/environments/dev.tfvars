@@ -112,6 +112,14 @@ enable_webhook_receiver = true
 enable_platform_audit_logging = false
 audit_retention_days          = 30
 
+# Cloud Run OOM alerting (issue #171: carditrack-dev-worker OOM'd 2026-08-11 and went
+# undetected for ~3 hours). Slack stays off until the one-time manual Console OAuth step is
+# done — see infrastructure/deployments/alerting.tf.
+enable_oom_alerting       = true
+alert_notification_emails = ["cloudoperations@codesistance.com"]
+enable_slack_alerts       = false
+alert_slack_channel_id    = ""
+
 # Labels
 additional_labels = {
   cost_center = "development"
