@@ -241,10 +241,25 @@ public partial class DashboardPage : ContentPage
         var isStale = !data.MonitoringPaused
             && data.LastSyncedAt is { } synced
             && DateTime.UtcNow - DateTime.SpecifyKind(synced, DateTimeKind.Utc) > StaleThreshold;
+        var wasStale = StaleBanner.IsVisible;
         StaleBanner.IsVisible = isStale;
         if (isStale)
+        {
             StaleBannerLabel.Text =
                 $"Last update was {RelativeTime.Format(data.LastSyncedAt!.Value)} — pull down to check in";
+
+            // Only fade on the transition into "stale" — re-applying the same state on every
+            // 5-minute auto-refresh would otherwise re-fade a banner that's already visible.
+            if (!wasStale)
+            {
+                StaleBanner.Opacity = 0;
+                _ = StaleBanner.FadeToAsync(1, 180, Easing.CubicOut);
+            }
+        }
+        else
+        {
+            StaleBanner.Opacity = 0;
+        }
 
         // No device (M1-09d)
         NoDeviceCard.IsVisible = !data.Device.HasActiveConnection;
