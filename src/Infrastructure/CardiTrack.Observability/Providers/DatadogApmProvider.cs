@@ -155,11 +155,17 @@ public sealed class DatadogApmProvider : IApmProvider
 
     /// <summary>
     /// Logs intake URL: an explicit Extra["LogsEndpoint"] wins; otherwise derived from a
-    /// bare site name per the documented per-site pattern (https://otlp.[site]/v1/logs). A
-    /// full URL passed as IngestUrl is used as-is. Unlike <see cref="MetricsIntakeUrl"/>,
-    /// this never returns null: logs are the one signal this provider always ships once
-    /// <see cref="ApmOptions.IsConfigured"/> is true, so there is no "not derivable, skip
-    /// this signal" case to represent.
+    /// bare site name per the documented per-site pattern (https://otlp.[site]/v1/logs).
+    /// Unlike <see cref="MetricsIntakeUrl"/>, this never returns null: logs are the one
+    /// signal this provider always ships once <see cref="ApmOptions.IsConfigured"/> is
+    /// true, so there is no "not derivable, skip this signal" case to represent.
+    ///
+    /// A full URL in IngestUrl is deliberately NOT passed through as-is: the most likely
+    /// full URL to find there is the classic log-intake host from before logs moved onto
+    /// OTLP (e.g. https://http-intake.logs.[site]), which would silently receive OTLP
+    /// payloads it can't parse — Serilog.Sinks.OpenTelemetry drops failed batches without
+    /// surfacing an error, so this would fail invisibly rather than loudly. Fail fast at
+    /// startup instead, naming the explicit override.
     /// </summary>
     public static string LogsIntakeUrl(ApmOptions options)
     {
@@ -168,9 +174,14 @@ public sealed class DatadogApmProvider : IApmProvider
             return explicitUrl.Trim();
 
         var site = options.Data.IngestUrl!.Trim().TrimEnd('/');
-        return site.Contains("://", StringComparison.Ordinal)
-            ? site
-            : $"https://otlp.{site}/v1/logs";
+        if (site.Contains("://", StringComparison.Ordinal))
+            throw new InvalidOperationException(
+                $"Apm:Data:IngestUrl is a full URL ('{site}'), not a bare Datadog site — the logs OTLP "
+                + "endpoint can't be safely inferred from it (it may still be the classic log intake host "
+                + $"from before logs moved to OTLP). Set Apm:Data:Extra:{LogsEndpointKey} explicitly to the "
+                + "correct https://otlp.<site>/v1/logs URL, or change IngestUrl back to a bare site name.");
+
+        return $"https://otlp.{site}/v1/logs";
     }
 
     /// <summary>

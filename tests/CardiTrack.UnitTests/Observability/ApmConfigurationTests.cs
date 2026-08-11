@@ -467,15 +467,22 @@ public class ApmConfigurationTests
         Assert.Equal("https://otlp.custom.example/v1/logs", DatadogApmProvider.LogsIntakeUrl(options));
     }
 
-    [Fact]
-    public void Datadog_LogsIntakeUrl_FullIngestUrl_PassesThroughUnchanged()
+    /// <summary>
+    /// A full URL in IngestUrl is never trusted as the logs endpoint, even when it happens
+    /// to already be correct — the common case in practice is a stale classic log-intake
+    /// URL left over from before logs moved to OTLP, which would otherwise silently receive
+    /// (and drop) OTLP payloads. The explicit LogsEndpoint override exists for exactly this.
+    /// </summary>
+    [Theory]
+    [InlineData("https://otlp.datadoghq.eu/v1/logs")]
+    [InlineData("https://http-intake.logs.datadoghq.eu")]
+    public void Datadog_LogsIntakeUrl_FullIngestUrl_ThrowsRatherThanGuess(string ingestUrl)
     {
-        var options = new ApmOptions
-        {
-            Data = new ApmData { IngestUrl = "https://otlp.datadoghq.eu/v1/logs" },
-        };
+        var options = new ApmOptions { Data = new ApmData { IngestUrl = ingestUrl } };
 
-        Assert.Equal("https://otlp.datadoghq.eu/v1/logs", DatadogApmProvider.LogsIntakeUrl(options));
+        var ex = Assert.Throws<InvalidOperationException>(() => DatadogApmProvider.LogsIntakeUrl(options));
+
+        Assert.Contains(DatadogApmProvider.LogsEndpointKey, ex.Message);
     }
 
     [Theory]
