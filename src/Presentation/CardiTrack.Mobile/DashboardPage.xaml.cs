@@ -104,6 +104,39 @@ public partial class DashboardPage : ContentPage
             ? $"Synced {RelativeTime.Format(synced)}"
             : null;
 
+    /// <summary>
+    /// Encouraging copy for the "actively collecting, on track" learning state, rotated by
+    /// how far into the 30-day window the member is rather than picked at random, so the same
+    /// dashboard load always shows the same line (testable, and no flicker between refreshes).
+    /// </summary>
+    private static readonly string[] LearningOnTrackCopy =
+    [
+        "Getting to know {0}'s routine",
+        "Seeing what's normal for {0}",
+        "Working on some recommendations",
+        "Almost there — refining the details",
+    ];
+
+    /// <summary>
+    /// Colors and varies the learning-progress card by how fresh the incoming data actually
+    /// is, using the same <see cref="StaleThreshold"/> the stale banner already applies —
+    /// "day 30 of 30" on its own doesn't say whether today's data ever arrived.
+    /// </summary>
+    private static (string ColorKey, string Copy) LearningStateFor(DashboardResponse data, string firstName)
+    {
+        if (data.LastSyncedAt is not { } synced)
+            return ("StatusRed", $"No data yet — connect {firstName}'s device to get started");
+
+        var elapsed = DateTime.UtcNow - DateTime.SpecifyKind(synced, DateTimeKind.Utc);
+        if (elapsed > StaleThreshold)
+            return ("StatusRed", "No new data yet today — pull down to check in");
+        if (elapsed > TimeSpan.FromTicks(StaleThreshold.Ticks / 2))
+            return ("StatusYellow", "Pulling in today's data…");
+
+        var copyIndex = Math.Min(data.Baseline.DaysCaptured / 10, LearningOnTrackCopy.Length - 1);
+        return ("StatusGreen", string.Format(LearningOnTrackCopy[copyIndex], firstName));
+    }
+
     private async void OnPullToRefresh(object? sender, EventArgs e)
     {
         // SyncAndReloadAsync raises this itself when it drives the spinner from a button tap.
@@ -263,9 +296,10 @@ public partial class DashboardPage : ContentPage
 
         // Baseline learning (M1-09e)
         LearningCard.IsVisible = data.Baseline.IsLearning && data.Device.HasActiveConnection;
-        LearningLabel.Text =
-            $"Learning {firstName}'s routine — day {data.Baseline.DaysCaptured} of {data.Baseline.DaysRequired}";
+        var (learningColorKey, learningCopy) = LearningStateFor(data, firstName);
+        LearningLabel.Text = learningCopy;
         LearningProgress.Progress = data.Baseline.PercentComplete / 100.0;
+        LearningProgress.ProgressColor = (Color)Microsoft.Maui.Controls.Application.Current!.Resources[learningColorKey];
 
         // Metrics
         if (data.Metrics is { } metrics)
