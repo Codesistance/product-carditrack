@@ -204,8 +204,8 @@ gcloud run services describe carditrack-dev-api --region=europe-west2 --project=
 
 ## 5. Mobile app monitoring
 
-The MAUI app ships crashes, sessions, and API request timings via the same generic
-Engine + Data contract as the server, stamped into builds by CI:
+The MAUI app ships logs and traces via the same generic Engine + Data contract as the
+server, stamped into builds by CI:
 
 - `carditrack-<env>-apm-mobile-engine` — **Terraform-owned**: the `apm_mobile_engine`
   tfvar (`"Datadog"` today). Switching mobile engines = flip the tfvar + `terraform apply`.
@@ -213,47 +213,57 @@ Engine + Data contract as the server, stamped into builds by CI:
   details. **Embed-safe identifiers only** (they end up inside the app binary); never put
   runtime secrets here.
 
-For Datadog (RUM; Android/iOS only, Session Replay deliberately disabled — health data
-must not be screen-recorded):
+For Datadog (Android/iOS only; Session Replay deliberately disabled — health data must not
+be screen-recorded):
 
-1. In the same Datadog org: **Digital Experience → Real User Monitoring → Add Application**,
-   name `carditrack-mobile`, platform **Android** (the MAUI SDK reports both platforms into
-   one application). Note the **Application ID** and the generated **Client Token** (both
-   write-only identifiers, safe to embed).
-2. Populate the data secret:
+1. Populate the data secret with a client token from the Datadog org
+   (**Organization Settings → Client Tokens**) — a write-only identifier, safe to embed:
 
 ```bash
-printf '%s' '{"ClientToken":"<pub...>","ApplicationId":"<uuid>","Site":"Uk1","CustomEndpoint":"https://browser-intake-uk1-datadoghq.com"}' \
+printf '%s' '{"ClientToken":"<pub...>","Site":"Eu1"}' \
   | gcloud secrets versions add carditrack-dev-apm-mobile-data --project=carditrack-490120 --data-file=-
 ```
 
-**`CustomEndpoint` is mandatory on UK1.** `Datadog.Maui`'s `DatadogSite` enum names only
-`Us1`, `Us3`, `Us5`, `Eu1`, `Ap1`, `Ap2` and `Us1Fed` — there is no `Uk1` member, even
-though the native Android/iOS SDKs it wraps support the site. `CustomEndpoint` points the
-Logs and RUM features at the UK1 intake host directly
-(`https://browser-intake-uk1-datadoghq.com`, the same base URL dd-sdk-android's own `UK1`
-entry uses). Only one version of `Datadog.Maui` has ever shipped (0.2.0), so this is not
-something a package bump fixes. Note the property is undocumented for RUM — Datadog
-documents `CustomEndpoint` for Logs and Traces only — so treat the first build as the
-verification that it works.
-
-3. The next mobile CI build stamps engine + data in (`-p:ApmEngine=... -p:ApmData=<base64>`);
+2. The next mobile CI build stamps engine + data in (`-p:ApmEngine=... -p:ApmData=<base64>`);
    placeholder data stamps as empty, which disables monitoring entirely — unprovisioned
    environments and local builds ship nothing. A bad engine name or malformed JSON logs
    and skips at app startup (monitoring must never brick the app).
-4. Verify: install the internal-track build, open the app, then Datadog →
-   **RUM → Sessions** (and force a crash in a test build for Error Tracking).
+3. Verify: install the internal-track build, open the app, then Datadog → **Logs**
+   filtered to `service:carditrack-mobile`.
+
+### `Site` must be one the SDK can name — UK1 cannot be reached
+
+**This org is on UK1 (`uk1.datadoghq.com`), and the mobile SDK cannot ship to it.** The
+`DatadogSite` enum in `Datadog.Maui` names only `Us1`, `Us3`, `Us5`, `Eu1`, `Ap1`, `Ap2`
+and `Us1Fed` — and so does the native `dd-sdk-android-core` enum underneath it
+(`us1/us3/us5/eu1/ap1/ap2` plus the gov sites, verified by extracting the 3.10.0 AAR).
+There is no UK1 entry at any layer.
+
+`CustomEndpoint` is **not** a workaround, despite being on the config surface for Logs,
+Traces, RUM and Session Replay: `Datadog.Maui` 0.2.0 never calls the native
+`useCustomEndpoint` for any feature (no such reference exists in the assembly), so every
+feature targets the site-derived intake no matter what is configured. Only 0.2.0 has ever
+been published, so no package bump fixes this.
+
+Consequences, all confirmed on a device (2026-08-11):
+
+- Setting `"Site":"Uk1"` **disables monitoring outright** — an unnameable site is fatal by
+  design, so telemetry is never misdelivered to another region. The reason is logged at
+  startup to the on-device Serilog file, readable from a Release build.
+- RUM was removed for this reason: it only ever returned `404` from the intake, because the
+  app fell back to the `Eu1` intake where the UK1 application ID does not exist.
+- **Datadog crash reporting went with it** (`NativeCrashReportEnabled = false`) — crash
+  reporting is a RUM feature. Play Console → **Quality → Android vitals → Crashes and ANRs**
+  is the source for mobile crashes and ANRs.
+- Any fix that reaches the native `useCustomEndpoint` directly is Android-only (the native
+  bindings ship as `Datadog.Android.*` packages; there is no iOS equivalent here), which the
+  project's Android/iOS parity rule rules out.
 
 Notes: the Datadog SDK raised the Android minimum from API 21 to 23; `Site` defaults to
-`Eu1` when omitted, and a `Site` the enum does not name **disables monitoring** unless a
-`CustomEndpoint` is set alongside it (better nothing than telemetry delivered to the wrong
-region — the app logs the reason at startup to the on-device Serilog file, so it is
-readable from a Release build too); consent is currently `Granted` at first launch — add a settings
-toggle before any store review that requires opt-in analytics consent. RUM sessions are
-**unsampled** (`SessionSampleRate = 100`) — fine at beta scale, revisit before broad
-rollout. The app also sets `FirstPartyHosts` for the API host with Datadog + W3C
-`traceparent` tracing headers, so RUM resource timings correlate with the API's OTel
-traces (RUM→APM correlation).
+`Eu1` when omitted; consent is currently `Granted` at first launch — add a settings toggle
+before any store review that requires opt-in analytics consent. The app sets
+`FirstPartyHosts` for the API host with Datadog + W3C `traceparent` tracing headers, so
+mobile spans join the API's OTel traces.
 
 ## 6. Release version on telemetry
 

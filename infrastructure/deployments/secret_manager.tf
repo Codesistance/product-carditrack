@@ -53,8 +53,9 @@ locals {
     "devices-fitbit-client-secret" = "REPLACE_ME"
     "apm-data"                     = "REPLACE_ME" # APM connection JSON, e.g. {"IngestUrl":"...","IngestToken":"..."} — see scripts/set-apm-secrets.sh
     # Mobile monitoring connection JSON for the engine named by apm-mobile-engine —
-    # embed-safe client identifiers only (Datadog: {"ClientToken":"...","ApplicationId":"...","Site":"Eu1"}),
-    # stamped into builds by CI.
+    # embed-safe client identifiers only (Datadog: {"ClientToken":"...","Site":"Eu1"}),
+    # stamped into builds by CI. Site must be one the SDK can name; UK1 cannot be reached
+    # from mobile at all — see docs/technical/apm_setup_runbook.md §5.
     "apm-mobile-data" = "REPLACE_ME"
   }
 
