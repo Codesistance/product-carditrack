@@ -250,10 +250,17 @@ public partial class DashboardPage : ContentPage
 
             // Only fade on the transition into "stale" — re-applying the same state on every
             // 5-minute auto-refresh would otherwise re-fade a banner that's already visible.
+            // Already-stale still forces full opacity rather than leaving it untouched: a fade
+            // interrupted by the app backgrounding mid-animation would otherwise strand the
+            // banner semi-transparent until it leaves and re-enters the stale state.
             if (!wasStale)
             {
                 StaleBanner.Opacity = 0;
                 _ = StaleBanner.FadeToAsync(1, 180, Easing.CubicOut);
+            }
+            else
+            {
+                StaleBanner.Opacity = 1;
             }
         }
         else
