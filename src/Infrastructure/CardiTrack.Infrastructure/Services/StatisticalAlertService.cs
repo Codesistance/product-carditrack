@@ -1,6 +1,7 @@
 using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Application.Services;
+using CardiTrack.Application.Services.Notifications;
 using CardiTrack.Domain.Entities;
 using Microsoft.Extensions.Logging;
 
@@ -22,11 +23,14 @@ namespace CardiTrack.Infrastructure.Services;
 public class StatisticalAlertService : IStatisticalAlertService
 {
     private readonly IUnitOfWork _unitOfWork;
+    private readonly IDispatchService _dispatch;
     private readonly ILogger<StatisticalAlertService> _logger;
 
-    public StatisticalAlertService(IUnitOfWork unitOfWork, ILogger<StatisticalAlertService> logger)
+    public StatisticalAlertService(
+        IUnitOfWork unitOfWork, IDispatchService dispatch, ILogger<StatisticalAlertService> logger)
     {
         _unitOfWork = unitOfWork;
+        _dispatch = dispatch;
         _logger = logger;
     }
 
@@ -100,7 +104,7 @@ public class StatisticalAlertService : IStatisticalAlertService
 
         var existing = (await _unitOfWork.Alerts.GetByCardiMemberAsync(memberId, activeOnly: true)).ToList();
 
-        var raised = 0;
+        var created = new List<Alert>();
         foreach (var candidate in candidates)
         {
             if (existing.Any(a => AlertRuleMarkers.Suppresses(a, candidate.Type, candidate.Rule)))
@@ -116,7 +120,7 @@ public class StatisticalAlertService : IStatisticalAlertService
             }
 
             ct.ThrowIfCancellationRequested();
-            await _unitOfWork.Alerts.AddAsync(new Alert
+            var alert = new Alert
             {
                 CardiMemberId = memberId,
                 AlertType = candidate.Type,
@@ -125,12 +129,32 @@ public class StatisticalAlertService : IStatisticalAlertService
                 Message = candidate.Message,
                 TriggeredDate = utcNow,
                 MetricValues = candidate.MetricValues,
-            });
-            raised++;
+            };
+            await _unitOfWork.Alerts.AddAsync(alert);
+            created.Add(alert);
         }
 
-        if (raised > 0)
+        if (created.Count > 0)
+        {
             await _unitOfWork.SaveChangesAsync();
-        return raised;
+
+            // Push dispatch (notification_engine.md Phase 3) — the same direct-service-call
+            // pattern INotificationGapResolver already establishes, not a domain event (this
+            // solution has none). One bad dispatch must not cost the batch the alerts it already
+            // persisted; DispatchService's own dedup means a retried call here is harmless.
+            foreach (var alert in created)
+            {
+                try
+                {
+                    await _dispatch.EnqueueForAlertAsync(alert.Id, ct);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Push dispatch failed for Alert {AlertId}.", alert.Id);
+                }
+            }
+        }
+
+        return created.Count;
     }
 }

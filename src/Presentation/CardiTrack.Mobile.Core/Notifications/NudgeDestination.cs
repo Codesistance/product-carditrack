@@ -12,6 +12,12 @@ public enum NudgeDestinationKind
     MemberBaseline,
     Settings,
 
+    /// <summary>A push-originated alert (Safety/Health) — <c>carditrack://alerts/{alertId}</c>, from FcmNotificationChannel's content-free payload.</summary>
+    AlertDetail,
+
+    /// <summary>A push-originated nudge — <c>carditrack://notifications/{notificationId}</c>, for the two safety-class nudge rules that do push.</summary>
+    NotificationDetail,
+
     /// <summary>
     /// The time zone, which the app answers in place from the device's own clock rather than by
     /// navigating anywhere.
@@ -20,7 +26,13 @@ public enum NudgeDestinationKind
 }
 
 /// <summary>A parsed action link: what to open, and for whom.</summary>
-public readonly record struct NudgeDestination(NudgeDestinationKind Kind, Guid? CardiMemberId)
+/// <param name="EntityId">
+/// The alert or notification id for <see cref="NudgeDestinationKind.AlertDetail"/>/
+/// <see cref="NudgeDestinationKind.NotificationDetail"/> — currently routed to the list screen
+/// regardless, since no per-item detail screen has a Figma frame yet (M1-11/12/16). Carried
+/// through as inert data so wiring a future detail screen is a routing change, not a re-parse.
+/// </param>
+public readonly record struct NudgeDestination(NudgeDestinationKind Kind, Guid? CardiMemberId, Guid? EntityId = null)
 {
     public static readonly NudgeDestination Unknown = new(NudgeDestinationKind.Unknown, null);
 }
@@ -80,6 +92,12 @@ public static class NudgeLinkParser
 
             ["cardimembers", var id] when Guid.TryParse(id, out var forDetail)
                 => new(NudgeDestinationKind.MemberDetail, forDetail),
+
+            ["alerts", var id] when Guid.TryParse(id, out var alertId)
+                => new(NudgeDestinationKind.AlertDetail, null, alertId),
+
+            ["notifications", var id] when Guid.TryParse(id, out var notificationId)
+                => new(NudgeDestinationKind.NotificationDetail, null, notificationId),
 
             _ => NudgeDestination.Unknown
         };

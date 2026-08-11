@@ -64,6 +64,7 @@ builder.Services.AddScoped<IRealtimeAssessmentRepository, RealtimeAssessmentRepo
 builder.Services.AddScoped<INotificationRepository, NotificationRepository>();
 builder.Services.AddScoped<INotificationMuteRepository, NotificationMuteRepository>();
 builder.Services.AddScoped<INotificationSnapshotQueries, NotificationSnapshotQueries>();
+builder.Services.AddPushServices(configuration);
 builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
 builder.Services.AddScoped<ITimeSeriesPartitionService, TimeSeriesPartitionService>();
 
@@ -91,6 +92,12 @@ builder.Services.AddWorker<StatisticalAlertWorker>(configuration, nameof(Statist
 builder.Services.Configure<InactivityDetectionOptions>(
     configuration.GetSection($"Workers:{nameof(InactivityDetectionWorker)}"));
 builder.Services.AddWorker<DataCompletenessWorker>(configuration, nameof(DataCompletenessWorker));
+
+// Push delivery spine (notification_engine.md Phase 3)
+builder.Services.AddWorker<NotificationDispatchWorker>(configuration, nameof(NotificationDispatchWorker));
+builder.Services.Configure<PushCanaryOptions>(
+    configuration.GetSection($"Workers:{nameof(PushCanaryWorker)}"));
+builder.Services.AddWorker<PushCanaryWorker>(configuration, nameof(PushCanaryWorker));
 
 // Retention and look-ahead share the maintenance worker's config section, like the audit sample.
 builder.Services.Configure<PartitionMaintenanceOptions>(

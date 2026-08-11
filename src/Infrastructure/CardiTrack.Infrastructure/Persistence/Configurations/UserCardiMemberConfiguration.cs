@@ -35,11 +35,6 @@ public class UserCardiMemberConfiguration : IEntityTypeConfiguration<UserCardiMe
             .IsRequired()
             .HasDefaultValue(true);
 
-        // JSON field
-        builder.Property(uc => uc.NotificationPreferences)
-            .HasMaxLength(1000)
-            .HasDefaultValue("{}");
-
         builder.Property(uc => uc.AssignedDate)
             .IsRequired()
             .HasDefaultValueSql("NOW()");

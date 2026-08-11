@@ -25,6 +25,9 @@ public class UnitOfWork : IUnitOfWork
     public IRealtimeAssessmentRepository RealtimeAssessments { get; }
     public INotificationRepository Notifications { get; }
     public INotificationMuteRepository NotificationMutes { get; }
+    public INotificationDeliveryRepository NotificationDeliveries { get; }
+    public IPushDeviceTokenRepository PushDeviceTokens { get; }
+    public INotificationPreferenceRepository NotificationPreferences { get; }
 
     public UnitOfWork(
         CardiTrackDbContext context,
@@ -43,7 +46,10 @@ public class UnitOfWork : IUnitOfWork
         IDigestRepository digests,
         IRealtimeAssessmentRepository realtimeAssessments,
         INotificationRepository notifications,
-        INotificationMuteRepository notificationMutes)
+        INotificationMuteRepository notificationMutes,
+        INotificationDeliveryRepository notificationDeliveries,
+        IPushDeviceTokenRepository pushDeviceTokens,
+        INotificationPreferenceRepository notificationPreferences)
     {
         _context = context;
         Organizations = organizations;
@@ -62,6 +68,9 @@ public class UnitOfWork : IUnitOfWork
         RealtimeAssessments = realtimeAssessments;
         Notifications = notifications;
         NotificationMutes = notificationMutes;
+        NotificationDeliveries = notificationDeliveries;
+        PushDeviceTokens = pushDeviceTokens;
+        NotificationPreferences = notificationPreferences;
     }
 
     public async Task<int> SaveChangesAsync()

@@ -20,4 +20,12 @@ public static class TelemetryNames
     /// through pipeline-jobs' drain). One name so ApmExtensions can register it for export.
     /// </summary>
     public const string PipelineSource = "CardiTrack.Pipeline";
+
+    /// <summary>
+    /// ActivitySource and Meter name for the push delivery spine (FCM sends, dispatch worker
+    /// batches). FirebaseAdmin manages its own transport outside IHttpClientFactory, so this is
+    /// the only signal an FCM call produces — not optional the way HttpClient auto-instrumentation
+    /// would make it for a normal external call.
+    /// </summary>
+    public const string PushSource = "CardiTrack.Push";
 }

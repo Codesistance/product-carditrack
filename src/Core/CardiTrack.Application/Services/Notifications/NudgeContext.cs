@@ -56,6 +56,14 @@ public sealed record NudgeUserSnapshot
     public required string TimeZoneId { get; init; }
     public required string Locale { get; init; }
     public required DateTime CreatedDate { get; init; }
+
+    /// <summary>
+    /// True if at least one of this user's push device tokens is live, OS-authorized, and has the
+    /// safety channel enabled. Drives <c>PUSH_UNREACHABLE</c> (notification_engine.md §9) — a
+    /// caregiver who silently turned notifications off must not be indistinguishable from one who
+    /// is being reached.
+    /// </summary>
+    public bool HasReachablePushDevice { get; init; } = true;
 }
 
 public sealed record NudgeMemberSnapshot

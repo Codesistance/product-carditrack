@@ -1,6 +1,9 @@
 using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Mobile.Core.Api;
 using CardiTrack.Mobile.Services;
+#if ANDROID || IOS
+using CardiTrack.Mobile.Notifications;
+#endif
 
 namespace CardiTrack.Mobile.Onboarding;
 
@@ -34,6 +37,16 @@ public partial class ConnectionSuccessPage : ContentPage
     {
         base.OnAppearing();
         await LoadPreviewAsync();
+
+        // "Ask at the moment of value, not at launch" (notification_engine.md §4) — the first
+        // device connection just succeeded, which is exactly the point where "CardiTrack can
+        // alert you if something looks wrong, even when the app is closed" means something
+        // concrete. Fire-and-forget: a permission prompt must never block this screen's own
+        // content from finishing its load.
+#if ANDROID || IOS
+        _ = ServiceHelper.GetRequiredService<PushRegistrationCoordinator>()
+            .RequestPermissionAndRegisterAsync();
+#endif
     }
 
     private async Task LoadPreviewAsync()

@@ -2,8 +2,20 @@ using CardiTrack.Mobile.Core.Api;
 using CardiTrack.Mobile.Core.Auth;
 using CardiTrack.Mobile.Core.Configuration;
 using CardiTrack.Mobile.Core.Http;
+using CardiTrack.Mobile.Core.Notifications;
 using CardiTrack.Mobile.Core.Onboarding;
 using CardiTrack.Mobile.Services;
+#if ANDROID || IOS
+using CardiTrack.Mobile.Notifications;
+using Microsoft.Maui.LifecycleEvents;
+using Plugin.Firebase.CloudMessaging;
+#endif
+#if ANDROID
+using Plugin.Firebase.Core.Platforms.Android;
+using AndroidCrossFirebase = Plugin.Firebase.Core.Platforms.Android.CrossFirebase;
+#elif IOS
+using AppleCrossFirebase = Plugin.Firebase.Core.Platforms.iOS.CrossFirebase;
+#endif
 
 namespace CardiTrack.Mobile;
 
@@ -34,6 +46,30 @@ public static class MauiProgram
         // Crash/session monitoring — engine + data stamped by CI; unstamped builds ship nothing.
         MobileApm.Configure(builder);
 
+        // Push delivery spine (notification_engine.md Phase 3). No Windows support — the two
+        // Cloud Run env vars this needs (Notifications__AckTokenKey etc.) are server-side only;
+        // there is nothing platform-specific to configure here on that target, so it is simply
+        // absent from these #if blocks rather than special-cased.
+#if ANDROID || IOS
+        builder.ConfigureLifecycleEvents(events =>
+        {
+#if IOS
+            events.AddiOS(ios => ios.WillFinishLaunching((app, launchOptions) =>
+            {
+                AppleCrossFirebase.Initialize();
+                FirebaseCloudMessagingImplementation.Initialize();
+                return true;
+            }));
+#elif ANDROID
+            events.AddAndroid(android => android.OnCreate((activity, _) =>
+                AndroidCrossFirebase.Initialize(activity, () => Platform.CurrentActivity!)));
+#endif
+        });
+
+        builder.Services.AddSingleton(_ => CrossFirebaseCloudMessaging.Current);
+        builder.Services.AddSingleton<PushRegistrationCoordinator>();
+#endif
+
         var auth0 = new Auth0Options(AppConfig.Auth0Domain, AppConfig.Auth0ClientId, AppConfig.Auth0Audience);
         builder.Services.AddSingleton(auth0);
         builder.Services.AddSingleton(new ApiOptions(AppConfig.ApiBaseUrl));
@@ -62,6 +98,7 @@ public static class MauiProgram
         }).AddHttpMessageHandler<AuthHttpMessageHandler>();
 
         builder.Services.AddSingleton<IBrowserAuthenticator, WebBrowserAuthenticator>();
+        builder.Services.AddSingleton<IPushDeviceRegistrationService, PushDeviceRegistrationService>();
         builder.Services.AddSingleton<IAuthService, AuthService>();
         builder.Services.AddSingleton<IPopupService, PopupService>();
         builder.Services.AddSingleton<PostLoginRouter>();

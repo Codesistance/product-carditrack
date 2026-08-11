@@ -29,11 +29,11 @@ Legend: wave number = ships in that wave; — = not planned for that surface. **
 | Fitbit webhook subscriptions (push ingestion) | R2 | R2 | R2 | — | ⬜ Not started — moves to R2 with the AI pipeline (GCP Pub/Sub + Cloud Run); R1 ingestion is 10-minute Worker polling (✅ shipped) |
 | Device management (status, primary, reconnect, remove) | R1 | R1 | R1 | — | 🔶 API + mobile shipped (remove / set-primary / sync / refresh endpoints + device management screen, M1-15); web not started (template-stage) |
 | Dashboard + daily health summary | R1 | R1 | R1 | — | 🔶 Per-member dashboard endpoint + mobile dashboard shipped; web dashboard not started (web app is still template-stage) |
-| Statistical alerts (all 5 launch types) + acknowledgment/notes | R1 | R1 | R1 | — | 🔶 **Shipped** via `StatisticalAlertWorker` (PR #118) and `InactivityDetectionWorker` (PR #116); `AlertsController` + `AlertsPage` (M1-10) serve them. Notes/photos and the alert-detail screens (M1-11/12/16) not started; no push delivery |
+| Statistical alerts (all 5 launch types) + acknowledgment/notes | R1 | R1 | R1 | — | 🔶 **Shipped** via `StatisticalAlertWorker` (PR #118) and `InactivityDetectionWorker` (PR #116); `AlertsController` + `AlertsPage` (M1-10) serve them, and Red/Orange alerts now push via the delivery spine ([notification_engine.md](./technical/notification_engine.md)). Notes/photos and the alert-detail screens (M1-11/12/16) not started |
 | AI insights + chat endpoints (MedGemma via Ollama on Cloud Run; Gemini 2.0 Flash) | R1 | R1 | R1 | — | ✅ Shipped (synchronous endpoints; the R2 event-driven pipeline is separate) |
 | Reports (health report generation) | R1 | R1 | R2 | Complete Care | 🔶 Text-only generation shipped; PDF/CSV/FHIR R4 formats not started |
 | **Data-completeness notifications (in-app)** | R1 | R1 | R3 | — | ✅ **Shipped** — detection worker, 8 rules, inbox + dashboard card + safety banners + mute management. In-app only by decision; the staleness rule defers to `InactivityDetectionWorker`'s faster device-silence alert ([notification_engine.md](./technical/notification_engine.md)) |
-| Push notification registration | R1 | R1 | — | — | ⬜ Not started |
+| Push notification registration | R1 | R1 | — | — | ✅ **Shipped** — brought forward from its original R2 placement ([notification_engine.md](./technical/notification_engine.md) Phase 3). FCM HTTP v1 relay (APNs passthrough), device tokens, delivery outbox, 120s/300s/900s escalation ladder, quiet hours. iOS notification service extension deferred (needs Mac-based CI verification this environment doesn't have) |
 | Health data export — PDF, CSV, FHIR R4 | R1 | R1 | R2 | Complete Care | ⬜ Not started (see reports row for text-only interim) |
 | Baseline learning progress | R1 | R1 | R1 | — | 🔶 Daily `BaselineCalculationWorker` + mobile learning screen shipped; web not started (web app is still template-stage) |
 | Monitoring pause / resume | R1 | R1 | R1 | — | 🔶 API + mobile shipped (pause/resume endpoints; paused members excluded from sync scheduling); web not started (template-stage) |
@@ -44,7 +44,7 @@ Legend: wave number = ships in that wave; — = not planned for that surface. **
 | **Google restricted-scope verification + annual CASA** | R1→R2 gate | R1→R2 gate | R1→R2 gate | **Blocks >100 connected wearers** | ⬜ Not started — cross-wave external gate: Gate 1 Trust & Safety review + Gate 2 annual CASA ($500–$4,500, 2–6 weeks; combined runway 4–8 weeks). See [user_onboarding_process.md Step 6](./technical/user_onboarding_process.md) and [oauth_clients.md](./technical/oauth_clients.md) |
 | **Legacy Fitbit Web API sunset — September 2026** | external deadline | external deadline | external deadline | — | 🔶 Hard external deadline (~4 weeks away). Code migrated to Google Health API (PR #10); console registration done 2026-08-07; field mappings verified against the v4 discovery document 2026-08-09 (two silent-zero defects found and fixed); **blocking task: live-wearer check that each type is actually populated** |
 | Trend charts (7d/30d/90d/custom) | R2 | R2 | R2 | — | ⬜ Not started |
-| Notification preferences (global + per-member, quiet hours, sensitivity) | R2 | R2 | R2 | — | ⬜ Not started |
+| Notification preferences (global + per-member, quiet hours, sensitivity) | R2 | R2 | R2 | — | 🔶 Global quiet hours + lock-screen detail + per-category mute shipped ahead of schedule alongside the push spine ([notifications.md](./execution/backend/api/notifications.md)); per-member scoping and sensitivity tuning not started |
 | **Subscriptions & billing (Stripe)** | R2 | R2 | R2 | — | ⬜ Not started (no Stripe integration exists yet) |
 | Garmin connection | R2 | R2 | R2 | — | ⬜ Not started |
 | **AI pipeline** (Pub/Sub → SSA-LSTM → MedGemma on Cloud Run; `long_term_trend` alerts; digests) | R2 | R2 | R2 | Advanced alerts: Complete Care | ⬜ Not started (design: [llm_design.md](./llm_design.md); platform decision — see decision log #7) |
@@ -75,6 +75,7 @@ Legend: wave number = ships in that wave; — = not planned for that surface. **
 5. **AI severity taxonomy**: internal Critical/High/Medium/Low maps to user-facing red/orange/yellow/green everywhere ([llm_design.md](./llm_design.md)).
 6. **Polling vs webhooks**: Worker polling **shipped as the R1 ingestion path** (originally 30-minute; default cadence reduced to **10 minutes** on Aug 9, 2026 — migration `ReduceDefaultSyncFrequencyToTenMinutes`) and remains the system of record for ingestion until R2. Webhook push subscriptions move to **R2**, delivered with the AI pipeline. The original R1 row bundled "server OAuth, webhooks" — that bundling is superseded; the matrix now splits them.
 7. **AI pipeline platform**: the pipeline runs on **GCP — Pub/Sub + Cloud Run, with MedGemma served via Ollama on Cloud Run and Gemini 2.0 Flash for chat/reports** — superseding the earlier Azure Functions / Event Hubs design. This matches the deployed Terraform footprint (Cloud Run, Cloud SQL PostgreSQL, Secret Manager, `europe-west2`).
+8. **Push delivery pulled forward from R2 to ship alongside R1 alert generation**: with Firebase/FCM credentials provisioned (#108, PRs #173/#176/#177) and statistical alerts already producing real `Alert` rows (PRs #116/#118), the provisioning lead time that motivated an early start outweighed staying strictly wave-ordered. Quiet-hours/lock-screen preferences (originally R2) shipped with it since they share the same `NotificationPreference` surface. Per-member preference scoping, notification sensitivity tuning, and the AI pipeline's own `long_term_trend` alerts remain R2.
 
 ## Cross-References
 
@@ -88,6 +89,6 @@ Legend: wave number = ships in that wave; — = not planned for that surface. **
 
 ---
 
-**Document Version:** 2.1
-**Last Updated:** August 9, 2026
+**Document Version:** 2.2
+**Last Updated:** August 11, 2026
 **Owner:** Product Lead

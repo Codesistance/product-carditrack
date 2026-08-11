@@ -125,6 +125,10 @@
 		<!-- RUM/crash monitoring wraps the native Android/iOS SDKs — no Windows support -->
 		<PackageReference Include="Datadog.Maui" Version="0.2.0"
 			Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android' Or $([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'ios'" />
+		<!-- FCM HTTP v1, both platforms (notification_engine.md §2) — no Windows support; push
+		     registration/handlers are no-ops on that target (see PushRegistrationService.cs). -->
+		<PackageReference Include="Plugin.Firebase.CloudMessaging" Version="4.0.1"
+			Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android' Or $([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'ios'" />
 	</ItemGroup>
 
 	<ItemGroup>

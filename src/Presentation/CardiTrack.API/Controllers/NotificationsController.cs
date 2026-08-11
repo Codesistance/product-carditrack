@@ -1,7 +1,11 @@
 using CardiTrack.API.Infrastructure.UserContext;
+using CardiTrack.Application.DTOs.Requests;
 using CardiTrack.Application.DTOs.Responses;
+using CardiTrack.Application.Interfaces.Security;
 using CardiTrack.Application.Interfaces.Services;
+using CardiTrack.Application.Services.Notifications;
 using CardiTrack.Domain.Enums;
+using CardiTrack.Infrastructure.Diagnostics;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -24,14 +28,26 @@ public class NotificationsController : BaseApiController
     private const int MaxLimit = 200;
 
     private readonly INotificationService _notifications;
+    private readonly IDeviceTokenService _deviceTokens;
+    private readonly INotificationPreferenceService _preferences;
+    private readonly IAckDeliveryService _ackDelivery;
+    private readonly IAckTokenService _ackTokens;
 
     public NotificationsController(
         IUserContext userContext,
         ILogger<NotificationsController> logger,
-        INotificationService notifications)
+        INotificationService notifications,
+        IDeviceTokenService deviceTokens,
+        INotificationPreferenceService preferences,
+        IAckDeliveryService ackDelivery,
+        IAckTokenService ackTokens)
         : base(userContext, logger)
     {
         _notifications = notifications;
+        _deviceTokens = deviceTokens;
+        _preferences = preferences;
+        _ackDelivery = ackDelivery;
+        _ackTokens = ackTokens;
     }
 
     /// <summary>The caller's inbox, priority-ranked.</summary>
@@ -206,6 +222,123 @@ public class NotificationsController : BaseApiController
 
         var cleared = await _notifications.ResetMutesAsync(userId, ct);
         return Success($"Cleared {cleared} muted item{(cleared == 1 ? "" : "s")}.");
+    }
+
+    /// <summary>
+    /// Upserts a device's push token — doubles as the reachability heartbeat (§4). Registering
+    /// re-evaluates <c>PUSH_UNREACHABLE</c> for the caller immediately, so turning notifications
+    /// back on clears the nudge before the next morning run, the same synchronous-resolution
+    /// pattern the rest of this engine already uses.
+    /// </summary>
+    [HttpPost("devices")]
+    [ProducesResponseType(typeof(ApiResponse<PushDeviceTokenResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status400BadRequest)]
+    public async Task<ActionResult<ApiResponse<PushDeviceTokenResponse>>> RegisterDevice(
+        [FromBody] RegisterPushDeviceRequest request, CancellationToken ct)
+    {
+        if (!TryGetUserId(out var userId, out var denied))
+            return denied!;
+
+        if (string.IsNullOrWhiteSpace(request.DeviceId) || string.IsNullOrWhiteSpace(request.Token))
+            return Error("A device id and token are both required.");
+
+        var token = await _deviceTokens.RegisterAsync(
+            userId, request.DeviceId, request.Platform, request.AppVersion, request.Token,
+            request.OsAuthorizationStatus, request.SafetyChannelEnabled, ct);
+
+        return Success(new PushDeviceTokenResponse
+        {
+            Id = token.Id,
+            DeviceId = token.DeviceId,
+            Platform = token.Platform,
+            OsAuthorizationStatus = token.OsAuthorizationStatus,
+            SafetyChannelEnabled = token.SafetyChannelEnabled,
+            LastSeenDate = token.LastSeenDate
+        });
+    }
+
+    [HttpDelete("devices")]
+    [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status200OK)]
+    public async Task<ActionResult<ApiResponse<object>>> UnregisterDevice(
+        [FromBody] UnregisterPushDeviceRequest request, CancellationToken ct)
+    {
+        if (!TryGetUserId(out var userId, out var denied))
+            return denied!;
+
+        await _deviceTokens.UnregisterAsync(userId, request.DeviceId, ct);
+        return Success("Device unregistered.");
+    }
+
+    /// <summary>
+    /// The client ack — posted from the background push handler, before any user interaction.
+    /// <c>[AllowAnonymous]</c>: a background handler routinely runs with an expired access token
+    /// (1-hour lifetime, zero clock skew — see <c>Auth0Extensions</c>), so a session-based
+    /// check would fire escalation spuriously for an alert that did arrive (§7.2 C3). Authorized
+    /// instead by the payload's single-use <see cref="AckDeliveryRequest.AckToken"/>. 404 on a
+    /// forged, expired, replayed, or other-device token — non-disclosure, matching the alerts
+    /// convention — and critically, a rejected token must never halt escalation.
+    /// </summary>
+    [AllowAnonymous]
+    [HttpPost("{notificationDeliveryId:guid}/delivered")]
+    [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<ApiResponse<object>>> MarkDelivered(
+        Guid notificationDeliveryId, [FromBody] AckDeliveryRequest request, CancellationToken ct)
+    {
+        if (!_ackTokens.ValidateAckToken(request.AckToken, notificationDeliveryId, out var pushDeviceTokenId))
+            return Error("Not found.", StatusCodes.Status404NotFound);
+
+        await _ackDelivery.MarkDeliveredAsync(notificationDeliveryId, pushDeviceTokenId, ct);
+        PushTelemetry.Delivered.Add(1);
+        return Success("Acknowledged.");
+    }
+
+    /// <summary>Quiet hours, lock-screen detail, and muted categories.</summary>
+    [HttpGet("preferences")]
+    [ProducesResponseType(typeof(ApiResponse<NotificationPreferenceResponse>), StatusCodes.Status200OK)]
+    public async Task<ActionResult<ApiResponse<NotificationPreferenceResponse>>> GetPreferences(
+        CancellationToken ct)
+    {
+        if (!TryGetUserId(out var userId, out var denied))
+            return denied!;
+
+        var prefs = await _preferences.GetAsync(userId, ct);
+        return Success(new NotificationPreferenceResponse
+        {
+            QuietHoursStart = prefs.QuietHoursStart,
+            QuietHoursEnd = prefs.QuietHoursEnd,
+            ShowDetailsOnLockScreen = prefs.ShowDetailsOnLockScreen,
+            MutedCategories = System.Text.Json.JsonSerializer.Deserialize<List<string>>(prefs.MutedCategories) ?? []
+        });
+    }
+
+    /// <summary>
+    /// Safety can never be muted for push — stripped server-side rather than trusted from the
+    /// client, matching every other silence-policy enforcement in this engine (§11).
+    /// </summary>
+    [HttpPut("preferences")]
+    [ProducesResponseType(typeof(ApiResponse<NotificationPreferenceResponse>), StatusCodes.Status200OK)]
+    public async Task<ActionResult<ApiResponse<NotificationPreferenceResponse>>> UpdatePreferences(
+        [FromBody] UpdateNotificationPreferenceRequest request, CancellationToken ct)
+    {
+        if (!TryGetUserId(out var userId, out var denied))
+            return denied!;
+
+        var safeMuted = request.MutedCategories
+            .Where(c => !string.Equals(c, nameof(DeliveryCategory.Safety), StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+        var updated = await _preferences.UpdateAsync(
+            userId, request.QuietHoursStart, request.QuietHoursEnd, request.ShowDetailsOnLockScreen,
+            System.Text.Json.JsonSerializer.Serialize(safeMuted), ct);
+
+        return Success(new NotificationPreferenceResponse
+        {
+            QuietHoursStart = updated.QuietHoursStart,
+            QuietHoursEnd = updated.QuietHoursEnd,
+            ShowDetailsOnLockScreen = updated.ShowDetailsOnLockScreen,
+            MutedCategories = safeMuted
+        });
     }
 
     /// <summary>

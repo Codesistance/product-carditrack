@@ -1,11 +1,11 @@
 # Notifications API
 
-> **Status: Partially implemented.** The **in-app data-completeness inbox ships** (see "Implemented today"). Push delivery — device tokens, FCM/APNs, the delivery outbox, acknowledgement and escalation — is designed but **not built**; those endpoints below remain design intent.
+> **Status: Fully implemented.** The **in-app data-completeness inbox** (see "Implemented today") and the **push delivery spine** — device tokens, FCM/APNs relay, the delivery outbox, acknowledgement and escalation — both ship. See [notification_engine.md](../../../technical/notification_engine.md) §17 for the small set of Phase 3 items deliberately deferred (the iOS notification service extension's Xcode project itself, the active daily liveness probe).
 
 Two things share this path prefix, and they are not the same feature:
 
 1. **Data-completeness notifications** — what CardiTrack is missing from an account, what supplying it unlocks, and the caregiver's comply / snooze / mute response. **Shipped, in-app only.**
-2. **Push delivery** for health alerts — device registration, tokens, acknowledgement. **Planned**, alongside alert generation (#111) and the R2 pipeline.
+2. **Push delivery** for health alerts — device registration, tokens, acknowledgement, escalation. **Shipped.**
 
 The engine behind both is designed in [notification_engine.md](../../../technical/notification_engine.md). **Email and SMS are out of scope by decision:** escalation runs across recipients and devices, never vendors.
 
@@ -68,188 +68,128 @@ Two things about this payload are deliberate:
 
 `PUT /api/v1/users/me/timezone` — body `{ "timeZoneId": "Europe/London" }`. Added with the engine because the `TIMEZONE_DEFAULT` notification asks the user to set it and nothing could. Rejects ids the platform does not recognise with **400**.
 
-### Not implemented
+### Superseded
 
-No push infrastructure exists: no device-token entity, no FCM/APNs integration, no sender, no delivery outbox. The `UserCardiMember` link still carries a `NotificationPreferences` JSON column and a `ReceiveAlerts` flag; the flag is read by targeting, the JSON column by nothing. It belongs to health-alert routing (R2) and is deliberately untouched by the in-app engine.
-
-Everything below is the **planned** push contract, kept as design intent.
+The `UserCardiMember` link's old `NotificationPreferences` JSON column and its `weeklyDigest`/per-channel-email/SMS shape are gone — dropped in the `AddPushDeliverySpine` migration along with the rest of the design this section used to describe. This engine has never sent email or SMS and never will (§6 of the engine doc); the actual preference surface is quiet hours and lock-screen detail only, documented below.
 
 ---
 
-## POST `/api/v1/notifications/devices`
+## Push delivery contract
 
-Register a device push notification token for the authenticated user. Called on mobile app launch after the user grants notification permission.
+Everything below is real: GUID ids throughout, enums serialize as integers (matching the rest of this API), and every response uses the standard `ApiResponse<T>` envelope. Full design rationale lives in [notification_engine.md](../../../technical/notification_engine.md) §5–§8, §12.
 
-**Priority:** P0 | **Auth Required:** Yes
+### POST `/api/v1/notifications/devices`
 
-### Request Body
+Registers or upserts a device's FCM token for the authenticated user, and doubles as the reachability heartbeat — call it on launch after the permission prompt, and again on every foreground so `PUSH_UNREACHABLE` clears the moment notifications come back on.
+
+**Auth:** Yes (Auth0)
+
+**Request body:**
 
 ```json
 {
   "deviceId": "device_abc123",
-  "platform": "ios",
-  "pushToken": "apns_token_abc123xyz...",
-  "appVersion": "2.0.1"
-}
-```
-
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `deviceId` | string | Yes | Unique device identifier (stable across app reinstalls) |
-| `platform` | string | Yes | `"ios"` or `"android"` |
-| `pushToken` | string | Yes | APNS (iOS) or FCM (Android) push token |
-| `appVersion` | string | No | Installed app version for diagnostics |
-
-### Response `201 Created`
-
-```json
-{
-  "tokenId": "pnt_xyz789",
-  "deviceId": "device_abc123",
-  "platform": "ios",
-  "registeredAt": "2026-03-09T10:00:00Z"
-}
-```
-
-> If the device is already registered, the push token is updated (upsert behavior) and `200 OK` is returned instead of `201`.
-
-### Response `200 OK` (token updated)
-
-```json
-{
-  "tokenId": "pnt_xyz789",
-  "deviceId": "device_abc123",
-  "platform": "ios",
-  "updatedAt": "2026-03-09T10:00:00Z"
-}
-```
-
----
-
-## DELETE `/api/v1/notifications/devices/{tokenId}`
-
-Unregister a push notification device. Call this on logout or when the user disables push notifications.
-
-**Priority:** P0 | **Auth Required:** Yes
-
-### Path Parameters
-
-| Parameter | Description |
-|-----------|-------------|
-| `tokenId` | Push notification token ID |
-
-### Response `204 No Content`
-
-### Errors
-
-| Code | Status | Description |
-|------|--------|-------------|
-| `TOKEN_NOT_FOUND` | 404 | Token ID not found or does not belong to the user |
-
----
-
-## GET `/api/v1/notifications/preferences`
-
-Get the authenticated user's global notification preferences across all CardiMembers.
-
-**Priority:** P1 | **Auth Required:** Yes
-
-### Response `200 OK`
-
-```json
-{
-  "userId": "usr_01J8K2...",
-  "globalChannels": {
-    "push": true,
-    "email": true,
-    "sms": false
-  },
-  "weeklyDigest": {
-    "enabled": true,
-    "deliveryDay": "monday",
-    "deliveryTime": "08:00",
-    "timezone": "America/New_York"
-  },
-  "registeredDevices": [
-    {
-      "tokenId": "pnt_xyz789",
-      "deviceId": "device_abc123",
-      "platform": "ios",
-      "lastSeenAt": "2026-03-09T10:00:00Z"
-    }
-  ]
-}
-```
-
-> Per-CardiMember alert preferences (quiet hours, sensitivity, routing rules) are designed as `GET /api/v1/cardimembers/{id}/alert-preferences` in [alerts.md](alerts.md) — also planned, not yet implemented.
-
----
-
-## PUT `/api/v1/notifications/preferences`
-
-Update the authenticated user's global notification preferences.
-
-**Priority:** P1 | **Auth Required:** Yes
-
-### Request Body (partial update supported)
-
-```json
-{
-  "globalChannels": {
-    "push": true,
-    "email": false,
-    "sms": true
-  },
-  "weeklyDigest": {
-    "enabled": true,
-    "deliveryDay": "sunday",
-    "deliveryTime": "09:00",
-    "timezone": "America/Chicago"
-  }
+  "platform": 1,
+  "token": "fcm-registration-token...",
+  "appVersion": "2.0.1",
+  "osAuthorizationStatus": 2,
+  "safetyChannelEnabled": true
 }
 ```
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `globalChannels.push` | boolean | Enable/disable push notifications for all alerts |
-| `globalChannels.email` | boolean | Enable/disable email notifications for all alerts |
-| `globalChannels.sms` | boolean | Enable/disable SMS notifications for all alerts |
-| `weeklyDigest.enabled` | boolean | Enable weekly health summary email |
-| `weeklyDigest.deliveryDay` | string | Day of week: `monday`–`sunday` |
-| `weeklyDigest.deliveryTime` | string | Time in `HH:mm` format (24h) |
-| `weeklyDigest.timezone` | string | IANA timezone string |
+| `deviceId` | string | Stable per install, distinct from the token so a token rotation doesn't read as a new device |
+| `platform` | int (`DevicePlatform`) | `1` = iOS, `2` = Android |
+| `token` | string | The raw FCM registration token — never logged, stored encrypted at rest |
+| `appVersion` | string | Diagnostics only |
+| `osAuthorizationStatus` | int (`OsAuthorizationStatus`) | Read from the OS permission API |
+| `safetyChannelEnabled` | bool | Whether the OS-level `carditrack.safety` channel is on; muting it at the OS level arms `PUSH_UNREACHABLE` the same as a revoked permission |
 
-### Response `200 OK`
-
-Returns the updated preferences object (same schema as GET).
-
----
-
-**Push Notification Payload Structure**
-
-Rich push notifications sent by the backend include action buttons to allow caregivers to respond without opening the app.
+**Response `200 OK`:**
 
 ```json
 {
-  "title": "Margaret hasn't moved today",
-  "body": "Typical wake time: 7am. Current time: 11am.",
-  "data": {
-    "type": "alert",
-    "alertId": "alert_xyz_001",
-    "cardiMemberId": "cm_01J8K2...",
-    "severity": "red",
-    "deepLink": "carditrack://alerts/alert_xyz_001"
-  },
-  "actions": [
-    { "id": "call", "title": "Call Now" },
-    { "id": "acknowledge", "title": "Acknowledge" }
-  ],
-  "badge": 3
+  "id": "9b2f5f64-5717-4562-b3fc-2c963f66afa6",
+  "deviceId": "device_abc123",
+  "platform": 1,
+  "osAuthorizationStatus": 2,
+  "safetyChannelEnabled": true,
+  "lastSeenDate": "2026-08-11T10:00:00Z"
 }
 ```
+
+Never carries the token itself in the response — it is Tier 1 data ([data_protection_architecture.md](../../../technical/data_protection_architecture.md) §2), and the client already knows its own token.
+
+### DELETE `/api/v1/notifications/devices`
+
+Unregisters a device — call on logout or when the user disables push in-app.
+
+**Auth:** Yes | **Body:** `{ "deviceId": "device_abc123" }` | **Response:** `200 OK`
+
+### POST `/api/v1/notifications/{notificationDeliveryId}/delivered`
+
+The client's delivery acknowledgement — posted from the background push handler, before any user interaction. Halts the escalation ladder for this delivery.
+
+**Auth:** None — `[AllowAnonymous]`. A background handler routinely runs with an expired Auth0 access token (1-hour lifetime, zero clock skew), so a session check would fire escalation for an alert that did arrive. Authorized instead by the payload's single-use `ackToken` (HMAC-SHA256, embeds and authenticates the device id, expires with the message).
+
+**Body:** `{ "ackToken": "..." }`
+
+**Response:** `200 OK` on a valid token; **`404`** on forged, expired, replayed, or other-device — non-disclosure, matching the [alerts.md](alerts.md) convention. A rejected token never halts escalation; only a valid one does.
+
+### GET `/api/v1/notifications/preferences`
+
+**Auth:** Yes
+
+**Response `200 OK`:**
+
+```json
+{
+  "quietHoursStart": "22:00:00",
+  "quietHoursEnd": "07:00:00",
+  "showDetailsOnLockScreen": false,
+  "mutedCategories": ["Nudge"]
+}
+```
+
+`quietHoursStart`/`End` are nullable — unset means no deferral window. Safety-category pushes always pierce quiet hours regardless.
+
+### PUT `/api/v1/notifications/preferences`
+
+**Auth:** Yes
+
+**Request body:** same shape as the GET response. `showDetailsOnLockScreen` is opt-in richness (§7.1) — a caller that omits it gets `false`, never silently turned on. `mutedCategories` can never include `"Safety"`: the server strips it rather than trusting the client to omit it.
+
+**Response:** `200 OK`, the updated preferences object.
+
+---
+
+## Internal push contract
+
+`api/v1/internal/notifications/*` — service-to-service only, on a second, named JWT Bearer scheme (`GoogleOidc`) entirely separate from Auth0's default. Not under `api/v1/notifications`, and not reachable with a user's access token at all.
+
+### POST `/api/v1/internal/notifications/enqueue`
+
+Called by the AI pipeline's `SeverityRouter` once it has written an `Alert` row — this is the pipeline's transport into the same rules engine every other producer uses, not a copy of it. Recipient resolution, quiet hours, dedup and escalation all happen server-side inside `IDispatchService.EnqueueForAlertAsync`.
+
+**Auth:** `GoogleOidc` scheme — issuer pinned to `https://accounts.google.com`, audience pinned to `Pipeline:Audience`, and the caller's verified `email` claim pinned to `Pipeline:ServiceAccount`. Audience-pinning alone would admit any GCP principal in the project that can mint a token for that audience; the email pin is what actually restricts the caller to the pipeline service account. Defense in depth beyond the OIDC scheme: the route also sits behind Cloud Run IAM (`roles/run.invoker` granted only to the pipeline service account).
+
+**Body:** `{ "alertId": "..." }` — deliberately carries nothing else. Which users get notified is always resolved server-side from `UserCardiMember.ReceiveAlerts`, never trusted from the caller.
+
+**Response:** `200 OK`, `{ "message": "Enqueued N deliveries." }`.
+
+### GET `/api/v1/internal/notifications/{deliveryId}/content`
+
+What the iOS notification service extension (or Android's data-message handler) fetches to rewrite a content-free push before display (§5, §7.1) — the real title/body a push payload deliberately omits.
+
+**Auth:** None — `[AllowAnonymous]`, scoped by the query-string `fetchToken` instead of the controller's OIDC scheme, since this is called by a phone, not the pipeline. Never the user's access token (§7.2 C5), so the extension — a separate process spun up on every push — never holds a credential wider than this one delivery.
+
+**Response `200 OK`:** `{ "title": "...", "body": "..." }`. **`404`** on an invalid/forged/replayed `fetchToken` or an unresolvable delivery.
+
+> **Not shipped:** the extension itself (the Xcode/App Extension project that would call this). Its server-side dependency shipped; the extension needs Mac-based build/sign verification this environment doesn't have — see [notification_engine.md](../../../technical/notification_engine.md) §17. Until it lands, iOS renders the content-free teaser like Android does.
 
 ---
 
 **Related:** [readme.md](readme.md) | [alerts.md](alerts.md) | [User Stories 3.2, 5.1](../../ui/mobile/user_stories.md)
 
-**Last Updated:** August 7, 2026
+**Last Updated:** August 11, 2026

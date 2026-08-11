@@ -164,6 +164,23 @@ public class NotificationSnapshotQueries : INotificationSnapshotQueries
             .Where(m => userIds.Contains(m.UserId))
             .ToListAsync(ct);
 
+        // A user is reachable if any of their tokens is live (not disabled), OS-authorized, has
+        // the safety channel enabled, and has shown a recent liveness signal — either a real
+        // delivery ack, or the foreground registration heartbeat (DeviceTokenService.RegisterAsync
+        // touches LastSeenDate on every foreground). Requiring only LastAckDate would flag a
+        // healthy device that simply hasn't had a real alert to ack in the last week.
+        var livenessFloor = utcNow.AddDays(-7);
+        var reachableUserIds = (await _context.PushDeviceTokens
+            .Where(t => userIds.Contains(t.UserId)
+                        && t.DisabledDate == null
+                        && t.SafetyChannelEnabled
+                        && (t.OsAuthorizationStatus == OsAuthorizationStatus.Granted
+                            || t.OsAuthorizationStatus == OsAuthorizationStatus.Provisional)
+                        && (t.LastAckDate >= livenessFloor || t.LastSeenDate >= livenessFloor))
+            .Select(t => t.UserId)
+            .Distinct()
+            .ToListAsync(ct)).ToHashSet();
+
         var contexts = new List<NudgeContext>();
 
         foreach (var user in users)
@@ -184,7 +201,8 @@ public class NotificationSnapshotQueries : INotificationSnapshotQueries
                 Id = user.Id,
                 TimeZoneId = user.TimeZoneId,
                 Locale = user.Locale,
-                CreatedDate = user.CreatedDate
+                CreatedDate = user.CreatedDate,
+                HasReachablePushDevice = reachableUserIds.Contains(user.Id)
             };
 
             // Account-level rules get their own member-less context, so they are asked once of the

@@ -67,6 +67,9 @@ builder.Services.AddScoped<IDigestRepository, DigestRepository>();
 builder.Services.AddScoped<IRealtimeAssessmentRepository, RealtimeAssessmentRepository>();
 builder.Services.AddScoped<INotificationRepository, NotificationRepository>();
 builder.Services.AddScoped<INotificationMuteRepository, NotificationMuteRepository>();
+// Repositories only, not AddPushServices — the pipeline gets a transport (the internal enqueue
+// endpoint), not a copy of the send stack. See PushServiceExtensions.AddPushServices' remarks.
+builder.Services.AddPushRepositories();
 builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
 
 // AI — the private (medical) slot only; see the header note

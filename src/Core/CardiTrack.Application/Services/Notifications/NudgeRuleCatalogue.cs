@@ -16,6 +16,7 @@ public static class NudgeRuleCatalogue
     [
         // Safety first — these are the ones that mean monitoring is not working.
         new DeviceAuthBrokenRule(),
+        new PushUnreachableRule(),
 
         // Blocking — core value is unavailable until they close.
         new DeviceRemovedRule(),

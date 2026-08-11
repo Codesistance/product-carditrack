@@ -136,12 +136,16 @@ module "deployments" {
       "Auth0__ClientId"                      = "${var.project_name}-${local.environment}-auth0-client-id"
       "Auth0__ClientSecret"                  = "${var.project_name}-${local.environment}-auth0-client-secret"
       "Encryption__Key"                      = "${var.project_name}-${local.environment}-encryption-key"
-      "Health__Token"                        = "${var.project_name}-${local.environment}-health-token"
-      "DeviceProviders__0__ClientId"         = "${var.project_name}-${local.environment}-devices-fitbit-client-id"
-      "DeviceProviders__0__ClientSecret"     = "${var.project_name}-${local.environment}-devices-fitbit-client-secret"
-      "AI__Private__BaseUrl"                 = "${var.project_name}-${local.environment}-medgemma-service-url"
-      "AI__Public__ApiKey"                   = local.public_ai_api_key_secret_id
-      "Apm__Data"                            = "${var.project_name}-${local.environment}-apm-data"
+      # Push delivery spine (notification_engine.md Phase 3) — API issues and validates ack/
+      # fetch tokens (the immediate-attempt send path + the /delivered endpoint), so it needs
+      # this key. Not injected into the pipeline jobs below: they never send push directly.
+      "Notifications__AckTokenKey"       = "${var.project_name}-${local.environment}-ack-token-key"
+      "Health__Token"                    = "${var.project_name}-${local.environment}-health-token"
+      "DeviceProviders__0__ClientId"     = "${var.project_name}-${local.environment}-devices-fitbit-client-id"
+      "DeviceProviders__0__ClientSecret" = "${var.project_name}-${local.environment}-devices-fitbit-client-secret"
+      "AI__Private__BaseUrl"             = "${var.project_name}-${local.environment}-medgemma-service-url"
+      "AI__Public__ApiKey"               = local.public_ai_api_key_secret_id
+      "Apm__Data"                        = "${var.project_name}-${local.environment}-apm-data"
       # Transitional — delete alongside the legacy AI__Providers env vars above.
       "AI__Providers__0__BaseUrl" = "${var.project_name}-${local.environment}-medgemma-service-url"
       "AI__Providers__1__ApiKey"  = local.public_ai_api_key_secret_id
@@ -177,10 +181,12 @@ module "deployments" {
     "Auth0__ClientId"                      = "${var.project_name}-${local.environment}-auth0-client-id"
     "Auth0__ClientSecret"                  = "${var.project_name}-${local.environment}-auth0-client-secret"
     "Encryption__Key"                      = "${var.project_name}-${local.environment}-encryption-key"
-    "Health__Token"                        = "${var.project_name}-${local.environment}-health-token"
-    "DeviceProviders__0__ClientId"         = "${var.project_name}-${local.environment}-devices-fitbit-client-id"
-    "DeviceProviders__0__ClientSecret"     = "${var.project_name}-${local.environment}-devices-fitbit-client-secret"
-    "Apm__Data"                            = "${var.project_name}-${local.environment}-apm-data"
+    # NotificationDispatchWorker retries sends and issues fresh ack/fetch tokens per attempt.
+    "Notifications__AckTokenKey"       = "${var.project_name}-${local.environment}-ack-token-key"
+    "Health__Token"                    = "${var.project_name}-${local.environment}-health-token"
+    "DeviceProviders__0__ClientId"     = "${var.project_name}-${local.environment}-devices-fitbit-client-id"
+    "DeviceProviders__0__ClientSecret" = "${var.project_name}-${local.environment}-devices-fitbit-client-secret"
+    "Apm__Data"                        = "${var.project_name}-${local.environment}-apm-data"
   }
 
   # Cloud Run - Pipeline jobs (AI pipeline; digest generation). Deliberately the narrowest env

@@ -30,6 +30,7 @@ public sealed class NudgeContextBuilder
     private bool _redAlert;
     private bool _deviceSilenceAlert;
     private bool _isOwner = true;
+    private bool _hasReachablePushDevice = true;
     private readonly List<NudgeConnectionSnapshot> _connections = [];
     private readonly List<NudgeMuteSnapshot> _mutes = [];
 
@@ -64,6 +65,7 @@ public sealed class NudgeContextBuilder
     public NudgeContextBuilder WithRedAlert() { _redAlert = true; return this; }
     public NudgeContextBuilder WithDeviceSilenceAlert() { _deviceSilenceAlert = true; return this; }
     public NudgeContextBuilder NotOwner() { _isOwner = false; return this; }
+    public NudgeContextBuilder PushUnreachable() { _hasReachablePushDevice = false; return this; }
 
     public NudgeContextBuilder NoConnections()
     {
@@ -102,7 +104,8 @@ public sealed class NudgeContextBuilder
             Id = _userId,
             TimeZoneId = _timeZoneId,
             Locale = "en-GB",
-            CreatedDate = _userCreated
+            CreatedDate = _userCreated,
+            HasReachablePushDevice = _hasReachablePushDevice
         },
         Member = _includeMember
             ? new NudgeMemberSnapshot
