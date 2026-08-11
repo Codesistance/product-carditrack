@@ -193,6 +193,22 @@ public class DashboardService : IDashboardService
             baselineValue: latestTemp?.TemperatureBaseline,
             unit: "°C",
             series: BuildSeries(byDate, today, l => l.Temperature));
+        // Percent deviation is the wrong comparison unit here — a clinically meaningful ~1°C
+        // shift on a ~33-37°C baseline is only 2-3%, which never crosses the shared 30%/50%
+        // thresholds BuildMetric just applied. Compare against the device's own per-day stddev
+        // (TemperatureVariation) instead, same shape as resting heart rate's RangeLow/RangeHigh.
+        if (latestTemp?.Temperature is { } tempValue
+            && latestTemp.TemperatureBaseline is { } tempBaseline
+            && latestTemp.TemperatureVariation is > 0m and { } tempVariation)
+        {
+            var deviation = Math.Abs(tempValue - tempBaseline) / tempVariation;
+            temperature.Status = deviation switch
+            {
+                <= 1m => "green",
+                <= 2m => "yellow",
+                _ => "orange",
+            };
+        }
 
         // No baseline concept exists for SpO2 yet — shown as a plain reading, not a trend.
         var latestSpO2 = LatestWith(newestFirst, l => l.SpO2Average);

@@ -384,6 +384,55 @@ public class DashboardServiceTests
         Assert.NotNull(result.Metrics.Temperature.ChangePercent);
     }
 
+    // A clinically meaningful skin-temperature shift is a tiny percentage of a ~33-37°C
+    // baseline, so the shared 30%/50% percent thresholds would read every real deviation as
+    // "green". Temperature instead compares against the device's own per-day stddev.
+    [Theory]
+    [InlineData(33.5, 0.2, "green")]  // 0.5 stddev
+    [InlineData(33.5, 0.5, "yellow")] // 1.25 stddev
+    [InlineData(33.5, 1.0, "orange")] // 2.5 stddev
+    public async Task Temperature_ScoresDeviationAgainstItsOwnStdDev_NotPercent(
+        decimal baseline, decimal deltaFromBaseline, string expectedStatus)
+    {
+        SetupActivityLogs(
+        [
+            new ActivityLog
+            {
+                CardiMemberId = _memberId,
+                Date = Today,
+                Temperature = baseline + deltaFromBaseline,
+                TemperatureBaseline = baseline,
+                TemperatureVariation = 0.4m,
+            },
+        ]);
+
+        var result = await CreateSut().GetDashboardAsync(_userId, _memberId);
+
+        Assert.Equal(expectedStatus, result.Metrics!.Temperature.Status);
+    }
+
+    [Fact]
+    public async Task Temperature_FallsBackToPercentThresholds_WhenNoVariationIsReported()
+    {
+        // Some devices/days won't have a variation figure — the percent-based BuildMetric result
+        // stands rather than throwing or leaving Status unset.
+        SetupActivityLogs(
+        [
+            new ActivityLog
+            {
+                CardiMemberId = _memberId,
+                Date = Today,
+                Temperature = 33.8m,
+                TemperatureBaseline = 33.5m,
+                TemperatureVariation = null,
+            },
+        ]);
+
+        var result = await CreateSut().GetDashboardAsync(_userId, _memberId);
+
+        Assert.Equal("green", result.Metrics!.Temperature.Status);
+    }
+
     // No baseline concept exists for SpO2 yet — the value is shown without a trend judgement.
     [Fact]
     public async Task SpO2_HasNoBaselineComparison_StatusStaysUnknown()
