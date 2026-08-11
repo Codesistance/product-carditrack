@@ -237,6 +237,10 @@ public partial class DashboardPage : ContentPage
         CallLabel.Text = $"Call {firstName}";
         ApplyPhoneAvailability(data, firstName);
 
+        SecondaryPhoneAction.IsVisible = !string.IsNullOrWhiteSpace(data.Phone);
+        if (SecondaryPhoneAction.IsVisible)
+            SecondaryPhoneLabel.Text = $"Also call {firstName} directly";
+
         // Paused banner (M1-13)
         PausedBanner.IsVisible = data.MonitoringPaused;
         if (data.MonitoringPaused)
@@ -367,6 +371,20 @@ public partial class DashboardPage : ContentPage
         catch (Exception)
         {
             await _popups.ShowWarningAsync("Messaging isn't supported on this device.");
+        }
+    }
+
+    private async void OnSecondaryPhoneTapped(object? sender, EventArgs e)
+    {
+        if (string.IsNullOrWhiteSpace(_lastData?.Phone))
+            return;
+        try
+        {
+            PhoneDialer.Default.Open(_lastData.Phone);
+        }
+        catch (Exception)
+        {
+            await _popups.ShowWarningAsync("Phone calls aren't supported on this device.");
         }
     }
 

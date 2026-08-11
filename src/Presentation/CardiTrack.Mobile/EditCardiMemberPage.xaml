@@ -180,6 +180,19 @@
                                IsVisible="False"/>
                     </VerticalStackLayout>
 
+                    <VerticalStackLayout Spacing="4">
+                        <Label Text="Phone Number" Style="{StaticResource AuthFieldLabel}"/>
+                        <Border Style="{StaticResource AuthEntryBorder}">
+                            <Entry x:Name="PhoneEntry"
+                                   Style="{StaticResource AuthEntry}"
+                                   Keyboard="Telephone"
+                                   />
+                        </Border>
+                        <Label x:Name="PhoneError"
+                               Style="{StaticResource AuthErrorLabel}"
+                               IsVisible="False"/>
+                    </VerticalStackLayout>
+
                     <Label Text="Monitoring Preferences" Style="{StaticResource DashboardSectionTitle}"/>
 
                     <VerticalStackLayout Spacing="4">

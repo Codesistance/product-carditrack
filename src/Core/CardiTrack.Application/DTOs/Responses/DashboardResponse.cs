@@ -26,6 +26,13 @@ public class DashboardResponse
     /// <summary>Who <see cref="EmergencyContactPhone"/> belongs to, so the UI can say.</summary>
     public string? EmergencyContactName { get; set; }
 
+    /// <summary>
+    /// The CardiMember's own phone, distinct from <see cref="EmergencyContactPhone"/> — captured
+    /// on the Add/Edit CardiMember screens. Null for any member who hasn't been given one, same
+    /// graceful-absence handling as the emergency contact.
+    /// </summary>
+    public string? Phone { get; set; }
+
     public string? PhotoUrl { get; set; }
     /// <summary>green/yellow/orange/red/unknown, or "paused" while monitoring is paused.</summary>
     public string HealthStatus { get; set; } = "unknown";

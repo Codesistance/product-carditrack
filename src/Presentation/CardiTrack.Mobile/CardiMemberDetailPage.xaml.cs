@@ -140,6 +140,10 @@ public partial class CardiMemberDetailPage : ContentPage
             : "Add one so help is one tap away";
         EmergencyCallButton.IsVisible = !string.IsNullOrWhiteSpace(member.EmergencyContactPhone);
 
+        var hasPhone = !string.IsNullOrWhiteSpace(member.Phone);
+        PhoneLabel.Text = hasPhone ? member.Phone : "No phone number yet";
+        PhoneCallButton.IsVisible = hasPhone;
+
         MedicalNotesLabel.Text = string.IsNullOrWhiteSpace(member.MedicalNotes)
             ? "No medical notes yet."
             : member.MedicalNotes;
@@ -168,6 +172,22 @@ public partial class CardiMemberDetailPage : ContentPage
     private async void OnCallEmergencyContactTapped(object? sender, TappedEventArgs e)
     {
         var phone = _member?.EmergencyContactPhone;
+        if (string.IsNullOrWhiteSpace(phone))
+            return;
+
+        try
+        {
+            PhoneDialer.Default.Open(phone);
+        }
+        catch (Exception)
+        {
+            await _popups.ShowWarningAsync("Phone calls aren't supported on this device.");
+        }
+    }
+
+    private async void OnCallPhoneTapped(object? sender, TappedEventArgs e)
+    {
+        var phone = _member?.Phone;
         if (string.IsNullOrWhiteSpace(phone))
             return;
 

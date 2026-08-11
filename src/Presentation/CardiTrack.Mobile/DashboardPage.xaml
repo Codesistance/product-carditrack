@@ -252,6 +252,28 @@
                             </Border>
                         </Grid>
 
+                        <!-- Optional second contact number (issue #162): the CardiMember's own
+                             phone, distinct from the emergency contact used above. Hidden
+                             entirely, not dimmed, when absent — a convenience, not a required
+                             action the way the emergency contact is. -->
+                        <Border x:Name="SecondaryPhoneAction"
+                                IsVisible="False"
+                                Style="{StaticResource ElevatedCard}"
+                                Padding="14,10">
+                            <Border.GestureRecognizers>
+                                <TapGestureRecognizer Tapped="OnSecondaryPhoneTapped"/>
+                            </Border.GestureRecognizers>
+                            <HorizontalStackLayout Spacing="10">
+                                <Image Source="icon_action_call.svg"
+                                       WidthRequest="18" HeightRequest="18"
+                                       VerticalOptions="Center"/>
+                                <Label x:Name="SecondaryPhoneLabel"
+                                       Style="{StaticResource Body2}"
+                                       TextColor="{StaticResource HeadingText}"
+                                       VerticalOptions="Center"/>
+                            </HorizontalStackLayout>
+                        </Border>
+
                         <!-- Key metrics -->
                         <VerticalStackLayout x:Name="MetricsSection" Spacing="11">
                             <Label Text="Key Metrics" Style="{StaticResource Heading2}"/>

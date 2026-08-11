@@ -84,6 +84,7 @@ public class DashboardService : IDashboardService
             Age = member.DateOfBirth.ToAgeInYears(today),
             EmergencyContactPhone = member.EmergencyContactPhone,
             EmergencyContactName = member.EmergencyContactName,
+            Phone = member.Phone,
             PhotoUrl = null,
             // A paused member is not being watched, so no reassuring colour may be shown for
             // them — stale metrics would otherwise keep reading "doing well" indefinitely.
