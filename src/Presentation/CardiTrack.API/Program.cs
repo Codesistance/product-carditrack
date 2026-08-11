@@ -173,5 +173,5 @@ catch (Exception ex)
 }
 finally
 {
-    Log.CloseAndFlush();
+    await ApmExtensions.FlushLogsAsync();
 }

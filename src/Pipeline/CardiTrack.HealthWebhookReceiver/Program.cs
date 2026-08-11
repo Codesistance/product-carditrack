@@ -70,4 +70,11 @@ app.MapPost("/webhooks/google-health", async (HttpRequest request, WebhookNotifi
     return Results.StatusCode(status);
 });
 
-app.Run();
+try
+{
+    app.Run();
+}
+finally
+{
+    await ApmExtensions.FlushLogsAsync();
+}

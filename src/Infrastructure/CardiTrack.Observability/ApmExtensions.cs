@@ -227,6 +227,26 @@ public static class ApmExtensions
     }
 
     /// <summary>
+    /// Every host must call this on exit. <c>Log.Logger</c> is a static field set before
+    /// the DI container exists, so nothing disposes it automatically the way host
+    /// shutdown disposes DI-registered services — skip this and buffered log entries in
+    /// the APM sink's batch are silently dropped on process exit.
+    /// </summary>
+    public static ValueTask FlushLogsAsync() => Log.CloseAndFlushAsync();
+
+    /// <summary>
+    /// Force-flushes the OTel tracer provider. Only needed by hosts that never call
+    /// <c>Run()</c>/<c>RunAsync()</c> — e.g. a Cloud Run *Job* that does one pass and
+    /// exits. A long-running host's graceful shutdown already disposes (and thereby
+    /// flushes) the DI-registered <see cref="TracerProvider"/> as part of disposing the
+    /// host itself; calling this afterward would hit an already-disposed instance. A job
+    /// has nothing that triggers that disposal, so this is the only thing standing
+    /// between a span and being silently dropped on process exit.
+    /// </summary>
+    public static void ForceFlushTraces(this IServiceProvider services) =>
+        services.GetService<TracerProvider>()?.ForceFlush();
+
+    /// <summary>
     /// Says why nothing will ship. An entirely empty Apm section is the intended local
     /// setup and logs as Information; anything half-set is a misconfiguration worth a
     /// Warning naming the missing piece.

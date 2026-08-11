@@ -116,4 +116,11 @@ var app = builder.Build();
 // Health check endpoint required by Cloud Run startup probe
 app.MapGet("/healthz", () => Results.Ok("healthy"));
 
-await app.RunAsync();
+try
+{
+    await app.RunAsync();
+}
+finally
+{
+    await ApmExtensions.FlushLogsAsync();
+}

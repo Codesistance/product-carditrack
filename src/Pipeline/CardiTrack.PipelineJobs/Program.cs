@@ -150,5 +150,6 @@ catch (Exception ex)
 }
 finally
 {
-    await Log.CloseAndFlushAsync();
+    app.Services.ForceFlushTraces();
+    await ApmExtensions.FlushLogsAsync();
 }
