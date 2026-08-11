@@ -28,7 +28,7 @@
 
                 <Label Grid.Column="1"
                        Text="Edit Profile"
-                       Style="{StaticResource Heading2}"
+                       Style="{StaticResource Heading3}"
                        TextColor="{StaticResource White}"
                        VerticalTextAlignment="Center"/>
 

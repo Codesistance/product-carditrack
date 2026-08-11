@@ -15,7 +15,8 @@
         <controls:HeaderBand Grid.Row="0" ContentPadding="20,48,20,32">
             <VerticalStackLayout Spacing="4">
                 <Label Text="Verify your email"
-                       Style="{StaticResource Heading1White}" />
+                       Style="{StaticResource Heading3}"
+                       TextColor="{StaticResource White}" />
                 <Label Text="Open the link we sent, then come back"
                        Style="{StaticResource Body1SemiBold}" />
             </VerticalStackLayout>

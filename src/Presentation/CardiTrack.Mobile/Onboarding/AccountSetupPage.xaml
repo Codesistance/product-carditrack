@@ -16,7 +16,8 @@
             <controls:HeaderBand Grid.Row="0" ContentPadding="20,48,20,32">
                 <VerticalStackLayout Spacing="4">
                     <Label Text="Almost There"
-                           Style="{StaticResource Heading1White}" />
+                           Style="{StaticResource Heading3}"
+                           TextColor="{StaticResource White}" />
                     <Label Text="Tell us how you'll use CardiTrack"
                            Style="{StaticResource Body1SemiBold}" />
                 </VerticalStackLayout>
