@@ -23,9 +23,16 @@ public class PartitionMaintenanceWorker : CronBackgroundService
         IOptionsMonitor<PartitionMaintenanceOptions> options,
         IServiceScopeFactory scopeFactory,
         ILogger<PartitionMaintenanceWorker> logger)
-        : base(
-            workerOptions.Get(nameof(PartitionMaintenanceWorker)).CronExpression,
-            runOnStartup: workerOptions.Get(nameof(PartitionMaintenanceWorker)).RunOnStartup)
+        : this(workerOptions.Get(nameof(PartitionMaintenanceWorker)), options, scopeFactory, logger)
+    {
+    }
+
+    private PartitionMaintenanceWorker(
+        WorkerOptions workerOptions,
+        IOptionsMonitor<PartitionMaintenanceOptions> options,
+        IServiceScopeFactory scopeFactory,
+        ILogger<PartitionMaintenanceWorker> logger)
+        : base(workerOptions.CronExpression, runOnStartup: workerOptions.RunOnStartup, logger: logger)
     {
         _scopeFactory = scopeFactory;
         _options = options;
