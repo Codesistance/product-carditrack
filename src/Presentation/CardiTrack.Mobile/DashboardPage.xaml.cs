@@ -294,8 +294,11 @@ public partial class DashboardPage : ContentPage
         NoDeviceCard.IsVisible = !data.Device.HasActiveConnection;
         NoDeviceLabel.Text = $"Connect {firstName}'s device so CardiTrack can start watching over them";
 
-        // Baseline learning (M1-09e)
-        LearningCard.IsVisible = data.Baseline.IsLearning && data.Device.HasActiveConnection;
+        // Baseline learning (M1-09e). Suppressed while paused, same rule the stale banner
+        // applies — collection is intentionally stopped, so a freshness-derived color/copy here
+        // would misreport a deliberate pause as a data problem.
+        LearningCard.IsVisible = data.Baseline.IsLearning && data.Device.HasActiveConnection
+            && !data.MonitoringPaused;
         var (learningColorKey, learningCopy) = LearningStateFor(data, firstName);
         LearningLabel.Text = learningCopy;
         LearningProgress.Progress = data.Baseline.PercentComplete / 100.0;
