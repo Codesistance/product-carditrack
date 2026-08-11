@@ -38,8 +38,8 @@ public sealed class PubSubNotificationPublisher : INotificationPublisher
         // traceparent string under the SDK's default ActivityIdFormat.W3C. Absent when this
         // runs with no ambient Activity (e.g. no APM engine configured) — the aggregator side
         // degrades to today's unlinked behavior, not an error.
-        if (Activity.Current is { } activity)
-            message.Attributes["traceparent"] = activity.Id!;
+        if (Activity.Current is { Id: { } traceparent })
+            message.Attributes["traceparent"] = traceparent;
 
         // PublisherClient owns batching and exposes no cancellable overload, so cancellation
         // stops the WAIT, not the publish: an aborted request answers 5xx and Google retries,

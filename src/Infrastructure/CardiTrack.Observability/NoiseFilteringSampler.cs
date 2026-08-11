@@ -22,7 +22,11 @@ public sealed class NoiseFilteringSampler : Sampler
 
     private readonly Sampler _inner;
 
-    public NoiseFilteringSampler(Sampler inner) => _inner = inner;
+    public NoiseFilteringSampler(Sampler inner)
+    {
+        ArgumentNullException.ThrowIfNull(inner);
+        _inner = inner;
+    }
 
     public override SamplingResult ShouldSample(in SamplingParameters samplingParameters) =>
         samplingParameters.Name == OrphanNpgsqlTextCommandName
