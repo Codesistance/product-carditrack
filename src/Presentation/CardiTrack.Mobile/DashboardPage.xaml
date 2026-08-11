@@ -232,7 +232,9 @@
                                     Grid.Column="1"
                                     BackgroundColor="{StaticResource AlertTileRed}"
                                     StrokeThickness="0"
-                                    Padding="6,16,6,11">
+                                    Padding="6,16,6,11"
+                                    SemanticProperties.Description="Call emergency contact"
+                                    SemanticProperties.Hint="Dials the emergency contact number, not the CardiMember directly">
                                 <Border.StrokeShape>
                                     <RoundRectangle CornerRadius="20"/>
                                 </Border.StrokeShape>

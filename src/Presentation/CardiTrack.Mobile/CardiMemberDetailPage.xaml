@@ -223,7 +223,9 @@
                                             WidthRequest="44" HeightRequest="44"
                                             StrokeThickness="0"
                                             BackgroundColor="{StaticResource SelectedOptionBackground}"
-                                            VerticalOptions="Center">
+                                            VerticalOptions="Center"
+                                            SemanticProperties.Description="Call"
+                                            SemanticProperties.Hint="Dials this CardiMember's phone number">
                                         <Border.StrokeShape>
                                             <RoundRectangle CornerRadius="12"/>
                                         </Border.StrokeShape>

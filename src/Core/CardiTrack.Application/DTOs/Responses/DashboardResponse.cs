@@ -13,23 +13,21 @@ public class DashboardResponse
     public int Age { get; set; }
 
     /// <summary>
-    /// The number behind the dashboard's Call and Send Message actions (issue #67).
+    /// The number behind the dashboard's dedicated Emergency Call action (issue #67, reworked by
+    /// issue #162 into its own visually distinct tile once <see cref="Phone"/> existed to power
+    /// the plain "Call"/"Message" actions instead).
     /// </summary>
-    /// <remarks>
-    /// Deliberately the emergency contact rather than <c>CardiMember.Phone</c>: the emergency
-    /// contact is the only phone number any screen actually captures (M1-04 / M1-14), so
-    /// <c>Phone</c> is null for every member created in the app and shipping the quick actions
-    /// against it would leave them permanently dead.
-    /// </remarks>
     public string? EmergencyContactPhone { get; set; }
 
     /// <summary>Who <see cref="EmergencyContactPhone"/> belongs to, so the UI can say.</summary>
     public string? EmergencyContactName { get; set; }
 
     /// <summary>
-    /// The CardiMember's own phone, distinct from <see cref="EmergencyContactPhone"/> — captured
-    /// on the Add/Edit CardiMember screens. Null for any member who hasn't been given one, same
-    /// graceful-absence handling as the emergency contact.
+    /// The CardiMember's own phone, distinct from <see cref="EmergencyContactPhone"/> — behind
+    /// the dashboard's "Call" and "Message" actions. Currently only captured on the Edit
+    /// CardiMember screen (M1-14); onboarding (M1-04) does not collect it yet, so this is null
+    /// for any member who hasn't since had it added. Same graceful-absence handling as the
+    /// emergency contact.
     /// </summary>
     public string? Phone { get; set; }
 

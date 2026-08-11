@@ -304,15 +304,15 @@ public partial class DashboardPage : ContentPage
     private void ApplyPhoneAvailability(DashboardResponse data, string firstName)
     {
         var hasPhone = !string.IsNullOrWhiteSpace(data.Phone);
-        var tooltip = hasPhone
-            ? $"Calls {firstName} directly."
-            : NoPhoneMessage(firstName);
+        var noPhoneMessage = NoPhoneMessage(firstName);
 
         CallAction.Opacity = hasPhone ? 1 : UnavailableActionOpacity;
         MessageAction.Opacity = hasPhone ? 1 : UnavailableActionOpacity;
 
-        ToolTipProperties.SetText(CallAction, tooltip);
-        ToolTipProperties.SetText(MessageAction, tooltip);
+        // Distinct verbs per tile — Message doesn't call, so sharing one "Calls..." tooltip
+        // between both would misdescribe it.
+        ToolTipProperties.SetText(CallAction, hasPhone ? $"Calls {firstName} directly." : noPhoneMessage);
+        ToolTipProperties.SetText(MessageAction, hasPhone ? $"Messages {firstName} directly." : noPhoneMessage);
     }
 
     /// <summary>
