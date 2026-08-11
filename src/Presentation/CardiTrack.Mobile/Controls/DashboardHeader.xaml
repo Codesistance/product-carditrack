@@ -28,10 +28,20 @@
                              Clicked="OnRefreshClicked"/>
             </Border>
 
-            <VerticalStackLayout Grid.Column="1" Spacing="4" VerticalOptions="Start">
-                <Label x:Name="GreetingLabel"
-                       Style="{StaticResource Heading2}"
+            <!-- Name leads, bigger than the old single-line "Good Evening, Moses"; the
+                 time-of-day line underneath is a smaller, quieter aside (issue #188). -->
+            <VerticalStackLayout Grid.Column="1" Spacing="2" VerticalOptions="Start">
+                <Label x:Name="NameLabel"
+                       FontFamily="Quicksand"
+                       FontAttributes="Bold"
+                       FontSize="26"
                        TextColor="{StaticResource White}"
+                       LineBreakMode="TailTruncation"/>
+                <Label x:Name="ContextLabel"
+                       FontFamily="Quicksand"
+                       FontSize="14"
+                       TextColor="{StaticResource White}"
+                       Opacity="0.85"
                        LineBreakMode="TailTruncation"/>
             </VerticalStackLayout>
 

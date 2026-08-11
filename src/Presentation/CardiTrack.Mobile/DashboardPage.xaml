@@ -187,26 +187,32 @@
                             </VerticalStackLayout>
                         </Border>
 
-                        <!-- Baseline learning (M1-09e) -->
-                        <Border x:Name="LearningCard"
-                                IsVisible="False"
-                                Style="{StaticResource ElevatedCard}">
-                            <VerticalStackLayout Spacing="8">
-                                <Label x:Name="LearningLabel"
-                                       Style="{StaticResource Body2Medium}"
-                                       TextColor="{StaticResource HeadingText}"/>
-                                <ProgressBar x:Name="LearningProgress"
-                                             HeightRequest="6"/>
-                            </VerticalStackLayout>
-                        </Border>
-
-                        <!-- CardiMember card: hero, quick actions and Key Metrics all in one card
-                             so a second/third CardiMember can be another instance of the same
-                             card, stacked, once multi-member support lands. -->
+                        <!-- CardiMember card: hero, data-freshness/baseline-progress, quick
+                             actions and Key Metrics all in one card so a second/third CardiMember
+                             can be another instance of the same card, stacked, once multi-member
+                             support lands. -->
                         <Border Style="{StaticResource ElevatedCard}" Padding="16,15">
                             <VerticalStackLayout Spacing="16">
 
                                 <controls:StatusHeroCard x:Name="HeroCard"/>
+
+                                <!-- Data-pipeline freshness (deterministic — see
+                                     MemberInsightsCalculator.ComputeDataFreshness), the baseline
+                                     learning progress while it's still running, and "Updated X
+                                     ago" as this block's own footer (issue #188 — it used to sit
+                                     under the CardiMember's name). -->
+                                <VerticalStackLayout x:Name="FreshnessBlock" Spacing="8">
+                                    <Label x:Name="FreshnessLabel"
+                                           Style="{StaticResource Body2Medium}"
+                                           TextColor="{StaticResource HeadingText}"/>
+                                    <ProgressBar x:Name="LearningProgress"
+                                                 IsVisible="False"
+                                                 HeightRequest="6"/>
+                                    <Label x:Name="LastUpdatedFooterLabel"
+                                           FontFamily="Quicksand"
+                                           FontSize="12"
+                                           TextColor="{StaticResource BodyText}"/>
+                                </VerticalStackLayout>
 
                                 <!-- Quick actions (issue #162): Call and Message reach the
                                      CardiMember's own phone directly. SOS is visually distinct
@@ -288,18 +294,29 @@
 
                                 <!-- Key metrics: collapsed by default behind AccordionSection, two
                                      per row instead of full-width so the card has room to stay
-                                     compact once more CardiMember cards can stack below it. -->
+                                     compact once more CardiMember cards can stack below it. The
+                                     tinted Border gives the grid its own surface against the
+                                     white CardiMember card, same tint family as each tile's own
+                                     icon (MetricTileTint) but as a wash, not a repeat of it. -->
                                 <controls:AccordionSection x:Name="MetricsAccordion" HeaderText="Key Metrics">
                                     <controls:AccordionSection.Body>
-                                        <Grid ColumnDefinitions="*,*"
-                                              RowDefinitions="Auto,Auto,Auto"
-                                              ColumnSpacing="10" RowSpacing="10">
-                                            <controls:MetricCard x:Name="StepsCard" Grid.Row="0" Grid.Column="0"/>
-                                            <controls:MetricCard x:Name="HeartRateCard" Grid.Row="0" Grid.Column="1"/>
-                                            <controls:MetricCard x:Name="SleepCard" Grid.Row="1" Grid.Column="0"/>
-                                            <controls:MetricCard x:Name="TemperatureCard" Grid.Row="1" Grid.Column="1" IsVisible="False"/>
-                                            <controls:MetricCard x:Name="SpO2Card" Grid.Row="2" Grid.Column="0" IsVisible="False"/>
-                                        </Grid>
+                                        <Border BackgroundColor="{StaticResource SelectedOptionBackground}"
+                                                StrokeThickness="0"
+                                                Padding="10">
+                                            <Border.StrokeShape>
+                                                <RoundRectangle CornerRadius="16"/>
+                                            </Border.StrokeShape>
+                                            <Grid ColumnDefinitions="*,*"
+                                                  RowDefinitions="Auto,Auto,Auto"
+                                                  ColumnSpacing="10" RowSpacing="10">
+                                                <controls:MetricCard x:Name="StepsCard" Grid.Row="0" Grid.Column="0"/>
+                                                <controls:MetricCard x:Name="HeartRateCard" Grid.Row="0" Grid.Column="1"/>
+                                                <controls:MetricCard x:Name="SleepCard" Grid.Row="1" Grid.Column="0"/>
+                                                <controls:MetricCard x:Name="TemperatureCard" Grid.Row="1" Grid.Column="1" IsVisible="False"/>
+                                                <controls:MetricCard x:Name="SpO2Card" Grid.Row="2" Grid.Column="0" IsVisible="False"/>
+                                                <controls:MetricCard x:Name="BreathingRateCard" Grid.Row="2" Grid.Column="1" IsVisible="False"/>
+                                            </Grid>
+                                        </Border>
                                     </controls:AccordionSection.Body>
                                 </controls:AccordionSection>
 

@@ -85,6 +85,17 @@ public partial class MetricCard : ContentView
         CaptionLabel.Text = "SpO2";
     }
 
+    public void ApplyBreathingRate(DashboardMetric metric)
+    {
+        MetricIcon.Source = "icon_metric_breathing.svg";
+        NameLabel.Text = "Breathing Rate";
+        ValueLabel.Text = metric.Value is { } v ? $"{v:0.#} brpm" : "—";
+
+        // No baseline exists for this metric yet, same as SpO2 — a bare reading, not a trend.
+        ApplyStatusPill(metric.Status);
+        CaptionLabel.Text = "Breaths per minute";
+    }
+
     /// <summary>
     /// Activity's accessory: how today compares with the member's own baseline.
     /// </summary>
