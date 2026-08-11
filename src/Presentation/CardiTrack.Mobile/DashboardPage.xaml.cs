@@ -236,10 +236,7 @@ public partial class DashboardPage : ContentPage
         var firstName = NameFormatting.FirstName(data.Name);
         CallLabel.Text = $"Call {firstName}";
         ApplyPhoneAvailability(data, firstName);
-
-        SecondaryPhoneAction.IsVisible = !string.IsNullOrWhiteSpace(data.Phone);
-        if (SecondaryPhoneAction.IsVisible)
-            SecondaryPhoneLabel.Text = $"Also call {firstName} directly";
+        ApplyEmergencyCallAvailability(data, firstName);
 
         // Paused banner (M1-13)
         PausedBanner.IsVisible = data.MonitoringPaused;
@@ -297,21 +294,18 @@ public partial class DashboardPage : ContentPage
     }
 
     /// <summary>
-    /// Dims Call and Send Message when there is no number to act on (issue #67).
+    /// Dims Call and Send Message when the CardiMember has no phone of their own to act on
+    /// (issue #162 — these reach the member directly now, not the emergency contact).
     /// </summary>
     /// <remarks>
     /// The tiles keep their tap handlers: a dimmed tile on touch has no hover state to explain
     /// itself with, so the tap has to. <c>ToolTipProperties</c> covers long-press and desktop.
-    /// The tooltip names the emergency contact when we have it, because the tile is labelled
-    /// with the CardiMember's name but dials someone else's number.
     /// </remarks>
     private void ApplyPhoneAvailability(DashboardResponse data, string firstName)
     {
-        var hasPhone = !string.IsNullOrWhiteSpace(data.EmergencyContactPhone);
+        var hasPhone = !string.IsNullOrWhiteSpace(data.Phone);
         var tooltip = hasPhone
-            ? string.IsNullOrWhiteSpace(data.EmergencyContactName)
-                ? $"Calls {firstName}'s emergency contact."
-                : $"Calls {data.EmergencyContactName}, {firstName}'s emergency contact."
+            ? $"Calls {firstName} directly."
             : NoPhoneMessage(firstName);
 
         CallAction.Opacity = hasPhone ? 1 : UnavailableActionOpacity;
@@ -322,10 +316,28 @@ public partial class DashboardPage : ContentPage
     }
 
     /// <summary>
-    /// Points at the emergency contact number, which is the one the add and edit forms actually
-    /// capture — so this is advice the reader can act on.
+    /// Dims the Emergency Call tile when there's no emergency contact number (issue #67's
+    /// original dim-not-hide pattern, now on its own tile rather than borrowed by "Call {name}").
     /// </summary>
+    private void ApplyEmergencyCallAvailability(DashboardResponse data, string firstName)
+    {
+        var hasPhone = !string.IsNullOrWhiteSpace(data.EmergencyContactPhone);
+        var tooltip = hasPhone
+            ? string.IsNullOrWhiteSpace(data.EmergencyContactName)
+                ? $"Calls {firstName}'s emergency contact."
+                : $"Calls {data.EmergencyContactName}, {firstName}'s emergency contact."
+            : NoEmergencyContactMessage(firstName);
+
+        EmergencyCallAction.Opacity = hasPhone ? 1 : UnavailableActionOpacity;
+        ToolTipProperties.SetText(EmergencyCallAction, tooltip);
+    }
+
     private static string NoPhoneMessage(string firstName) =>
+        string.IsNullOrWhiteSpace(firstName)
+            ? "Add a phone number for this CardiMember to call or message them from here."
+            : $"Add a phone number for {firstName} to call or message them from here.";
+
+    private static string NoEmergencyContactMessage(string firstName) =>
         string.IsNullOrWhiteSpace(firstName)
             ? "Add an emergency contact number to this CardiMember to call from here."
             : $"Add an emergency contact number for {firstName} to call from here.";
@@ -340,7 +352,7 @@ public partial class DashboardPage : ContentPage
 
     private async void OnCallTapped(object? sender, EventArgs e)
     {
-        if (string.IsNullOrWhiteSpace(_lastData?.EmergencyContactPhone))
+        if (string.IsNullOrWhiteSpace(_lastData?.Phone))
         {
             await _popups.ShowInfoAsync(
                 NoPhoneMessage(NameFormatting.FirstName(_lastData?.Name)), "No number yet");
@@ -348,7 +360,7 @@ public partial class DashboardPage : ContentPage
         }
         try
         {
-            PhoneDialer.Default.Open(_lastData.EmergencyContactPhone);
+            PhoneDialer.Default.Open(_lastData.Phone);
         }
         catch (Exception)
         {
@@ -358,7 +370,7 @@ public partial class DashboardPage : ContentPage
 
     private async void OnMessageTapped(object? sender, EventArgs e)
     {
-        if (string.IsNullOrWhiteSpace(_lastData?.EmergencyContactPhone))
+        if (string.IsNullOrWhiteSpace(_lastData?.Phone))
         {
             await _popups.ShowInfoAsync(
                 NoPhoneMessage(NameFormatting.FirstName(_lastData?.Name)), "No number yet");
@@ -366,7 +378,7 @@ public partial class DashboardPage : ContentPage
         }
         try
         {
-            await Sms.Default.ComposeAsync(new SmsMessage(string.Empty, _lastData.EmergencyContactPhone));
+            await Sms.Default.ComposeAsync(new SmsMessage(string.Empty, _lastData.Phone));
         }
         catch (Exception)
         {
@@ -374,13 +386,17 @@ public partial class DashboardPage : ContentPage
         }
     }
 
-    private async void OnSecondaryPhoneTapped(object? sender, EventArgs e)
+    private async void OnEmergencyCallTapped(object? sender, EventArgs e)
     {
-        if (string.IsNullOrWhiteSpace(_lastData?.Phone))
+        if (string.IsNullOrWhiteSpace(_lastData?.EmergencyContactPhone))
+        {
+            await _popups.ShowInfoAsync(
+                NoEmergencyContactMessage(NameFormatting.FirstName(_lastData?.Name)), "No number yet");
             return;
+        }
         try
         {
-            PhoneDialer.Default.Open(_lastData.Phone);
+            PhoneDialer.Default.Open(_lastData.EmergencyContactPhone);
         }
         catch (Exception)
         {
