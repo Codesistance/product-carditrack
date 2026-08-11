@@ -10,7 +10,7 @@
 
         <controls:HeaderBand Grid.Row="0">
             <Label Text="Settings"
-                   Style="{StaticResource Heading2}"
+                   Style="{StaticResource Heading3}"
                    TextColor="{StaticResource White}"/>
         </controls:HeaderBand>
 

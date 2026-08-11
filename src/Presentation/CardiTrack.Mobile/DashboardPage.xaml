@@ -200,95 +200,107 @@
                             </VerticalStackLayout>
                         </Border>
 
-                        <controls:StatusHeroCard x:Name="HeroCard"/>
+                        <!-- CardiMember card: hero, quick actions and Key Metrics all in one card
+                             so a second/third CardiMember can be another instance of the same
+                             card, stacked, once multi-member support lands. -->
+                        <Border Style="{StaticResource ElevatedCard}" Padding="16,15">
+                            <VerticalStackLayout Spacing="16">
 
-                        <!-- Quick actions (issue #162): Call and Message now reach the
-                             CardiMember's own phone directly — "Call Dad" now actually calls Dad.
-                             The Emergency Call tile is visually distinct (tinted, not a plain
-                             white card) precisely because it dials someone else, not the member
-                             the rest of this screen is about. Each dims independently when its
-                             own number is missing (issue #67's dim-not-hide pattern) — they stay
-                             tappable so the tap can explain why, the only affordance a dimmed
-                             tile has on touch. -->
-                        <Grid ColumnDefinitions="*,*,*,*" ColumnSpacing="10">
-                            <Border x:Name="CallAction"
-                                    Grid.Column="0"
-                                    Style="{StaticResource ElevatedCard}"
-                                    Padding="6,16,6,11">
-                                <Border.GestureRecognizers>
-                                    <TapGestureRecognizer Tapped="OnCallTapped"/>
-                                </Border.GestureRecognizers>
-                                <VerticalStackLayout Spacing="13">
-                                    <Image Source="icon_action_call.svg"
-                                           WidthRequest="24" HeightRequest="24"
-                                           HorizontalOptions="Center"/>
-                                    <Label x:Name="CallLabel"
-                                           Text="Call"
-                                           Style="{StaticResource QuickActionLabel}"
-                                           LineBreakMode="TailTruncation"/>
-                                </VerticalStackLayout>
-                            </Border>
-                            <Border x:Name="EmergencyCallAction"
-                                    Grid.Column="1"
-                                    BackgroundColor="{StaticResource AlertTileRed}"
-                                    StrokeThickness="0"
-                                    Padding="6,16,6,11"
-                                    SemanticProperties.Description="Call emergency contact"
-                                    SemanticProperties.Hint="Dials the emergency contact number, not the CardiMember directly">
-                                <Border.StrokeShape>
-                                    <RoundRectangle CornerRadius="20"/>
-                                </Border.StrokeShape>
-                                <Border.GestureRecognizers>
-                                    <TapGestureRecognizer Tapped="OnEmergencyCallTapped"/>
-                                </Border.GestureRecognizers>
-                                <VerticalStackLayout Spacing="13">
-                                    <Image Source="icon_action_call.svg"
-                                           WidthRequest="24" HeightRequest="24"
-                                           HorizontalOptions="Center"/>
-                                    <Label Text="Call"
-                                           Style="{StaticResource QuickActionLabel}"
-                                           TextColor="{StaticResource StatusRed}"
-                                           LineBreakMode="TailTruncation"/>
-                                </VerticalStackLayout>
-                            </Border>
-                            <Border x:Name="MessageAction"
-                                    Grid.Column="2"
-                                    Style="{StaticResource ElevatedCard}"
-                                    Padding="6,16,6,11">
-                                <Border.GestureRecognizers>
-                                    <TapGestureRecognizer Tapped="OnMessageTapped"/>
-                                </Border.GestureRecognizers>
-                                <VerticalStackLayout Spacing="13">
-                                    <Image Source="icon_action_sms.svg"
-                                           WidthRequest="24" HeightRequest="24"
-                                           HorizontalOptions="Center"/>
-                                    <Label Text="Message" Style="{StaticResource QuickActionLabel}"/>
-                                </VerticalStackLayout>
-                            </Border>
-                            <Border Grid.Column="3"
-                                    Style="{StaticResource ElevatedCard}"
-                                    Padding="6,16,6,11">
-                                <Border.GestureRecognizers>
-                                    <TapGestureRecognizer Tapped="OnViewDetailsTapped"/>
-                                </Border.GestureRecognizers>
-                                <VerticalStackLayout Spacing="13">
-                                    <Image Source="icon_action_details.svg"
-                                           WidthRequest="24" HeightRequest="24"
-                                           HorizontalOptions="Center"/>
-                                    <Label Text="Details" Style="{StaticResource QuickActionLabel}"/>
-                                </VerticalStackLayout>
-                            </Border>
-                        </Grid>
+                                <controls:StatusHeroCard x:Name="HeroCard"/>
 
-                        <!-- Key metrics -->
-                        <VerticalStackLayout x:Name="MetricsSection" Spacing="11">
-                            <Label Text="Key Metrics" Style="{StaticResource Heading2}"/>
-                            <controls:MetricCard x:Name="StepsCard"/>
-                            <controls:MetricCard x:Name="HeartRateCard"/>
-                            <controls:MetricCard x:Name="SleepCard"/>
-                            <controls:MetricCard x:Name="TemperatureCard" IsVisible="False"/>
-                            <controls:MetricCard x:Name="SpO2Card" IsVisible="False"/>
-                        </VerticalStackLayout>
+                                <!-- Quick actions (issue #162): Call and Message reach the
+                                     CardiMember's own phone directly. SOS is visually distinct
+                                     (tinted, not a plain white tile) precisely because it dials
+                                     someone else, not the member this card is about — its label
+                                     dropped the member's name (issue: names vary in length once
+                                     more than one CardiMember can appear). Each tile dims
+                                     independently when its own number is missing (issue #67's
+                                     dim-not-hide pattern) — they stay tappable so the tap can
+                                     explain why, the only affordance a dimmed tile has on touch. -->
+                                <Grid ColumnDefinitions="*,*,*,*" ColumnSpacing="10">
+                                    <Border x:Name="CallAction"
+                                            Grid.Column="0"
+                                            Style="{StaticResource ElevatedCard}"
+                                            Padding="6,16,6,11">
+                                        <Border.GestureRecognizers>
+                                            <TapGestureRecognizer Tapped="OnCallTapped"/>
+                                        </Border.GestureRecognizers>
+                                        <VerticalStackLayout Spacing="13">
+                                            <Image Source="icon_action_call.svg"
+                                                   WidthRequest="24" HeightRequest="24"
+                                                   HorizontalOptions="Center"/>
+                                            <Label Text="Call"
+                                                   Style="{StaticResource QuickActionLabel}"
+                                                   LineBreakMode="TailTruncation"/>
+                                        </VerticalStackLayout>
+                                    </Border>
+                                    <Border x:Name="EmergencyCallAction"
+                                            Grid.Column="1"
+                                            BackgroundColor="{StaticResource AlertTileRed}"
+                                            StrokeThickness="0"
+                                            Padding="6,16,6,11"
+                                            SemanticProperties.Description="SOS: call emergency contact"
+                                            SemanticProperties.Hint="Dials the emergency contact number, not the CardiMember directly">
+                                        <Border.StrokeShape>
+                                            <RoundRectangle CornerRadius="20"/>
+                                        </Border.StrokeShape>
+                                        <Border.GestureRecognizers>
+                                            <TapGestureRecognizer Tapped="OnEmergencyCallTapped"/>
+                                        </Border.GestureRecognizers>
+                                        <VerticalStackLayout Spacing="13">
+                                            <Image Source="icon_action_call.svg"
+                                                   WidthRequest="24" HeightRequest="24"
+                                                   HorizontalOptions="Center"/>
+                                            <Label Text="SOS"
+                                                   Style="{StaticResource QuickActionLabel}"
+                                                   TextColor="{StaticResource StatusRed}"
+                                                   LineBreakMode="TailTruncation"/>
+                                        </VerticalStackLayout>
+                                    </Border>
+                                    <Border x:Name="MessageAction"
+                                            Grid.Column="2"
+                                            Style="{StaticResource ElevatedCard}"
+                                            Padding="6,16,6,11">
+                                        <Border.GestureRecognizers>
+                                            <TapGestureRecognizer Tapped="OnMessageTapped"/>
+                                        </Border.GestureRecognizers>
+                                        <VerticalStackLayout Spacing="13">
+                                            <Image Source="icon_action_sms.svg"
+                                                   WidthRequest="24" HeightRequest="24"
+                                                   HorizontalOptions="Center"/>
+                                            <Label Text="Message" Style="{StaticResource QuickActionLabel}"/>
+                                        </VerticalStackLayout>
+                                    </Border>
+                                    <Border Grid.Column="3"
+                                            Style="{StaticResource ElevatedCard}"
+                                            Padding="6,16,6,11">
+                                        <Border.GestureRecognizers>
+                                            <TapGestureRecognizer Tapped="OnViewDetailsTapped"/>
+                                        </Border.GestureRecognizers>
+                                        <VerticalStackLayout Spacing="13">
+                                            <Image Source="icon_action_details.svg"
+                                                   WidthRequest="24" HeightRequest="24"
+                                                   HorizontalOptions="Center"/>
+                                            <Label Text="Details" Style="{StaticResource QuickActionLabel}"/>
+                                        </VerticalStackLayout>
+                                    </Border>
+                                </Grid>
+
+                                <!-- Key metrics: collapsed by default behind AccordionSection, two
+                                     per row instead of full-width so the card has room to stay
+                                     compact once more CardiMember cards can stack below it. -->
+                                <controls:AccordionSection x:Name="MetricsAccordion" HeaderText="Key Metrics">
+                                    <Grid ColumnDefinitions="*,*" ColumnSpacing="10" RowSpacing="10">
+                                        <controls:MetricCard x:Name="StepsCard" Grid.Row="0" Grid.Column="0"/>
+                                        <controls:MetricCard x:Name="HeartRateCard" Grid.Row="0" Grid.Column="1"/>
+                                        <controls:MetricCard x:Name="SleepCard" Grid.Row="1" Grid.Column="0"/>
+                                        <controls:MetricCard x:Name="TemperatureCard" Grid.Row="1" Grid.Column="1" IsVisible="False"/>
+                                        <controls:MetricCard x:Name="SpO2Card" Grid.Row="2" Grid.Column="0" IsVisible="False"/>
+                                    </Grid>
+                                </controls:AccordionSection>
+
+                            </VerticalStackLayout>
+                        </Border>
 
                         <!-- Recent alerts -->
                         <VerticalStackLayout x:Name="AlertsSection" Spacing="20" IsVisible="False">

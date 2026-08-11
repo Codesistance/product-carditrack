@@ -3,15 +3,15 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              x:Class="CardiTrack.Mobile.Controls.StatusHeroCard">
 
-    <!-- Figma 101:2853. The card is white and the health status is carried by the status line's
-         colour and icon, not by the card's fill — the gradient in this design belongs to the
-         header band. Tapping the card opens M1-13. -->
-    <Border Style="{StaticResource ElevatedCard}" Padding="16,15">
-        <Border.GestureRecognizers>
+    <!-- Figma 101:2853, adapted: chrome now comes from the outer CardiMember card (DashboardPage)
+         so this control only supplies the hero row content, making room for that card to also
+         hold the action row and Key Metrics as multi-CardiMember support lands. The health status
+         is still carried by the status line's colour and icon, not by any card fill. Tapping the
+         row opens M1-13. -->
+    <Grid ColumnDefinitions="Auto,*" ColumnSpacing="16">
+        <Grid.GestureRecognizers>
             <TapGestureRecognizer Tapped="OnCardTapped"/>
-        </Border.GestureRecognizers>
-
-        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="16">
+        </Grid.GestureRecognizers>
 
             <!-- Photo when the member has one, initials otherwise. Both keep the designed
                  70x72 box so the text column doesn't shift between the two states. -->
@@ -59,5 +59,4 @@
                        TextColor="{StaticResource BodyText}"/>
             </VerticalStackLayout>
         </Grid>
-    </Border>
 </ContentView>

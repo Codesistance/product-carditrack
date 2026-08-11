@@ -38,7 +38,8 @@
 
                 <VerticalStackLayout Grid.Column="1" Spacing="4">
                     <Label Text="{Binding Title, Source={x:Reference Root}}"
-                           Style="{StaticResource Heading1White}" />
+                           Style="{StaticResource Heading3}"
+                           TextColor="{StaticResource White}" />
                     <Label Text="{Binding Step, Source={x:Reference Root}}"
                            Style="{StaticResource Body1SemiBold}" />
                 </VerticalStackLayout>

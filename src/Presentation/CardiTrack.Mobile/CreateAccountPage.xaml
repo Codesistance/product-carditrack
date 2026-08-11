@@ -16,7 +16,8 @@
             <controls:HeaderBand Grid.Row="0" ContentPadding="20,48,20,32">
                 <VerticalStackLayout Spacing="4">
                     <Label Text="Create Account"
-                           Style="{StaticResource Heading1White}" />
+                           Style="{StaticResource Heading3}"
+                           TextColor="{StaticResource White}" />
 
                     <Label Text="Step 1 of 4"
                            Style="{StaticResource Body1SemiBold}" />

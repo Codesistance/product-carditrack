@@ -83,28 +83,6 @@ public partial class DashboardPage : ContentPage
     }
 
     /// <summary>
-    /// The header's presence line reports the CardiMember's monitoring state, not the
-    /// caregiver's session. Silence must never read as "Active now", so a paused member or a
-    /// disconnected device says so here rather than being left on the default.
-    /// </summary>
-    private static string PresenceFor(DashboardResponse data) => data switch
-    {
-        { MonitoringPaused: true } => "Monitoring paused",
-        { Device.HasActiveConnection: false } => "No device connected",
-        _ => "Active now",
-    };
-
-    /// <summary>
-    /// One-line clarifier under <see cref="PresenceFor"/> — "Active now" alone reads as "the
-    /// wearer is currently moving"; this spells out it means monitoring is live and says when
-    /// data last arrived, so it isn't confused with an activity reading.
-    /// </summary>
-    private static string? PresenceDetailFor(DashboardResponse data) =>
-        !data.MonitoringPaused && data.Device.HasActiveConnection && data.LastSyncedAt is { } synced
-            ? $"Synced {RelativeTime.Format(synced)}"
-            : null;
-
-    /// <summary>
     /// Encouraging copy for the "actively collecting, on track" learning state, rotated by
     /// how far into the 30-day window the member is rather than picked at random, so the same
     /// dashboard load always shows the same line (testable, and no flicker between refreshes).
@@ -268,11 +246,8 @@ public partial class DashboardPage : ContentPage
         HeroCard.Apply(data);
 
         Header.SetUnreadCount(data.UnreadAlertCount);
-        Header.SetPresence(PresenceFor(data));
-        Header.SetPresenceDetail(PresenceDetailFor(data));
 
         var firstName = NameFormatting.FirstName(data.Name);
-        CallLabel.Text = $"Call {firstName}";
         ApplyPhoneAvailability(data, firstName);
         ApplyEmergencyCallAvailability(data, firstName);
 
@@ -335,7 +310,7 @@ public partial class DashboardPage : ContentPage
         // Metrics
         if (data.Metrics is { } metrics)
         {
-            MetricsSection.IsVisible = true;
+            MetricsAccordion.IsVisible = true;
             StepsCard.ApplySteps(metrics.Steps);
             HeartRateCard.ApplyHeartRate(metrics.RestingHeartRate);
             SleepCard.ApplySleep(metrics.Sleep);
@@ -352,7 +327,7 @@ public partial class DashboardPage : ContentPage
         }
         else
         {
-            MetricsSection.IsVisible = false;
+            MetricsAccordion.IsVisible = false;
         }
 
         // Recent alerts
