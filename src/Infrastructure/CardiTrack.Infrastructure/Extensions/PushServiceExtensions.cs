@@ -66,10 +66,7 @@ public static class PushServiceExtensions
         services.AddSingleton<IAckTokenService>(
             _ => new AckTokenService(configLoader.GetRequired(ConfigurationKeys.Notifications.AckTokenKey)));
 
-        // DispatchService's own dependency, not registered by every AddPushServices caller
-        // previously — CardiTrack.Worker got AddPushServices without it and crashed the whole
-        // IHost (BackgroundServiceExceptionBehavior=StopHost) the first time
-        // NotificationDispatchWorker's escalation sweep tried to resolve IDispatchService.
+        // DispatchService's own dependency — belongs here so every AddPushServices caller gets it.
         services.AddScoped<INotificationGapResolver, NotificationGapResolver>();
 
         services.AddScoped<IDispatchService, DispatchService>();
