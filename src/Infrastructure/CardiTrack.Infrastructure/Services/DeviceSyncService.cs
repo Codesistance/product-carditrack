@@ -280,7 +280,9 @@ public class DeviceSyncService : IDeviceSyncService
             VO2Max = snapshot.VO2Max,
             StressScore = snapshot.StressScore,
             BreathingRate = snapshot.BreathingRate,
-            Temperature = snapshot.Temperature
+            Temperature = snapshot.Temperature,
+            TemperatureBaseline = snapshot.TemperatureBaseline,
+            TemperatureVariation = snapshot.TemperatureVariation
         };
 
         // Save the raw row first — the merge reads every device's stored row for the day,

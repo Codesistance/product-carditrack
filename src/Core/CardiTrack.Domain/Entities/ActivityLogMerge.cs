@@ -68,7 +68,9 @@ public static class ActivityLogMerge
             VO2Max = First(rowsByPriority, r => r.VO2Max),
             StressScore = First(rowsByPriority, r => r.StressScore),
             BreathingRate = First(rowsByPriority, r => r.BreathingRate),
-            Temperature = First(rowsByPriority, r => r.Temperature)
+            Temperature = First(rowsByPriority, r => r.Temperature),
+            TemperatureBaseline = First(rowsByPriority, r => r.TemperatureBaseline),
+            TemperatureVariation = First(rowsByPriority, r => r.TemperatureVariation)
         };
     }
 

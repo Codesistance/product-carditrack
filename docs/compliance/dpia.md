@@ -80,7 +80,7 @@ Special-category (Art. 9 health) data marked **H**; health-revealing-in-context 
 
 | Entity | Fields (summary) | Class |
 |---|---|---|
-| `ActivityLog` | Steps, distance, active/sedentary minutes, floors, calories; resting/avg/max/min heart rate; sleep minutes, start/end, efficiency, deep/light/REM/awake; SpO2 avg/min/max; VO2Max; stress score; breathing rate; body temperature (`src/Core/CardiTrack.Domain/Entities/ActivityLog.cs`) | **H** |
+| `ActivityLog` | Steps, distance, active/sedentary minutes, floors, calories; resting/avg/max/min heart rate; sleep minutes, start/end, efficiency, deep/light/REM/awake; SpO2 avg/min/max; VO2Max; stress score; breathing rate; nightly skin temperature plus the wearer's own baseline and 30-day variation (`src/Core/CardiTrack.Domain/Entities/ActivityLog.cs`) | **H** |
 | `PatternBaseline` | Avg/σ steps and heart rate, sleep averages, **typical bedtime and wake time**, steps-by-day-of-week (`PatternBaseline.cs`) | **H** (behavioural profile) |
 | `Alert` | Type, severity, title, free-text message, metric values JSON, acknowledger (`Alert.cs`) | **H** |
 | `CardiMember` | Name, email, phone, **date of birth (required)**, gender, emergency contact name/phone, **`MedicalNotes`** free text (doc example: "Type 2 diabetes, takes metformin") (`CardiMember.cs`) | **H** (MedicalNotes); *(h)* identity fields — the record's existence signals health monitoring |
@@ -90,7 +90,7 @@ Special-category (Art. 9 health) data marked **H**; health-revealing-in-context 
 | `AuditLog` | User/member IDs, action, **IP address, user agent**, request path, data-accessed JSON (`AuditLog.cs`) — **schema only; never written** (risk R-A2) | Ordinary |
 | `Subscription` | Tier, status, dates, price, `PaymentMethod` JSON (card last4/brand/expiry — schema present, nothing writes it) (`Subscription.cs`) | Ordinary |
 
-Minimisation observations (feed §7): the schema holds fields nothing populates (`StressScore`; `PaymentMethod`; `PasswordHash`) — unused sensitive-data capacity should be justified or removed. `StressScore` is now known to be unfillable from any source CardiTrack reads: Google Health API v4 exposes no stress or readiness data type, and its `mindfulness`/`logged_symptoms` scopes are write-only. SpO2, VO2Max, breathing rate, body temperature and sedentary minutes are populated as of the additional-metrics ingestion change and are no longer unused capacity — they widen the special-category data actually held, which §4.2 and the retention position must reflect.
+Minimisation observations (feed §7): the schema holds fields nothing populates (`StressScore`; `PaymentMethod`; `PasswordHash`) — unused sensitive-data capacity should be justified or removed. `StressScore` is now known to be unfillable from any source CardiTrack reads: Google Health API v4 exposes no stress or readiness data type, and its `mindfulness`/`logged_symptoms` scopes are write-only. SpO2, VO2Max, breathing rate, nightly skin temperature and sedentary minutes are populated as of the additional-metrics ingestion change and are no longer unused capacity — they widen the special-category data actually held, which §4.2 and the retention position must reflect. `TemperatureBaseline`/`TemperatureVariation` (issue #81) are the same category of data as `Temperature` — the wearer's own derived skin-temperature figures — and are covered by the same §4.2/retention update rather than a separate one.
 
 ### 4.2 Processing operations (implemented)
 

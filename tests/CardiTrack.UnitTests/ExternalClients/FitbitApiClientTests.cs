@@ -1043,6 +1043,8 @@ public class FitbitApiClientTests
         Assert.Equal(34.7m, result.VO2Max);
         Assert.Equal(15.4m, result.BreathingRate);
         Assert.Equal(33.8m, result.Temperature);
+        Assert.Equal(33.2m, result.TemperatureBaseline);
+        Assert.Equal(0.4m, result.TemperatureVariation);
     }
 
     /// <summary>
@@ -1097,6 +1099,8 @@ public class FitbitApiClientTests
         Assert.Null(result.VO2Max);
         Assert.Null(result.BreathingRate);
         Assert.Null(result.Temperature);
+        Assert.Null(result.TemperatureBaseline);
+        Assert.Null(result.TemperatureVariation);
     }
 
     /// <summary>
@@ -1146,7 +1150,13 @@ public class FitbitApiClientTests
             .Map("/dataTypes/daily-respiratory-rate/",
                 DailyRecord("dailyRespiratoryRate", """{ "breathsPerMinute": 15.4 }"""))
             .Map("/dataTypes/daily-sleep-temperature-derivations/",
-                DailyRecord("dailySleepTemperatureDerivations", """{ "nightlyTemperatureCelsius": 33.8 }"""))
+                DailyRecord("dailySleepTemperatureDerivations", """
+                {
+                  "nightlyTemperatureCelsius": 33.8,
+                  "baselineTemperatureCelsius": 33.2,
+                  "relativeNightlyStddev30dCelsius": 0.4
+                }
+                """))
             .Map("/dataTypes/sedentary-period/", Rollup("sedentaryPeriod", """{ "durationSum": "28800s" }"""));
 
         var (sut, _) = CreateSut(handler);
@@ -1158,6 +1168,8 @@ public class FitbitApiClientTests
         Assert.Equal(34.7m, snapshot.VO2Max);
         Assert.Equal(15.4m, snapshot.BreathingRate);
         Assert.Equal(33.8m, snapshot.Temperature);
+        Assert.Equal(33.2m, snapshot.TemperatureBaseline);
+        Assert.Equal(0.4m, snapshot.TemperatureVariation);
         Assert.Equal(480, snapshot.SedentaryMinutes);
         Assert.Null(snapshot.StressScore);
     }
