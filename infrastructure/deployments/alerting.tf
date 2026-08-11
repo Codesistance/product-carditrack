@@ -11,6 +11,17 @@ variable "enable_oom_alerting" {
   description = "Create the Cloud Run OOM log-based metric, alert policy, and email notification channels"
   type        = bool
   default     = true
+
+  validation {
+    # An alert policy with nobody attached defeats the point of this file and fails silently —
+    # no error, just an alert that fires into the void. Catch it at plan time instead.
+    condition = (
+      !var.enable_oom_alerting ||
+      length(var.alert_notification_emails) > 0 ||
+      (var.enable_slack_alerts && var.alert_slack_channel_id != "")
+    )
+    error_message = "enable_oom_alerting requires at least one notification channel: set alert_notification_emails, or enable_slack_alerts with a non-empty alert_slack_channel_id."
+  }
 }
 
 variable "oom_alert_name" {
@@ -71,16 +82,20 @@ resource "google_logging_metric" "cloud_run_oom" {
     value_type  = "INT64"
     unit        = "1"
   }
+
+  depends_on = [google_project_service.logging]
 }
 
 resource "google_monitoring_notification_channel" "oom_email" {
-  count        = var.enable_oom_alerting ? length(var.alert_notification_emails) : 0
-  display_name = "${var.oom_alert_name}-email-${count.index}"
+  for_each     = var.enable_oom_alerting ? toset(var.alert_notification_emails) : toset([])
+  display_name = "${var.oom_alert_name}-email-${each.value}"
   type         = "email"
   labels = {
-    email_address = var.alert_notification_emails[count.index]
+    email_address = each.value
   }
   user_labels = var.alerting_labels
+
+  depends_on = [google_project_service.monitoring]
 }
 
 locals {
@@ -117,7 +132,7 @@ resource "google_monitoring_alert_policy" "cloud_run_oom" {
   }
 
   notification_channels = concat(
-    google_monitoring_notification_channel.oom_email[*].id,
+    [for c in google_monitoring_notification_channel.oom_email : c.id],
     local.oom_slack_channel_ids,
   )
 
