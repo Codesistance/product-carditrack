@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Distribution entitlements (TestFlight / App Store). Identical to Entitlements.plist
+	     except aps-environment, which MUST be "production" here: an App Store Connect upload
+	     signed for distribution while carrying "development" is rejected outright with
+	     "ERROR ITMS-90046: Invalid Code Signing Entitlements ... value 'development' for key
+	     'aps-environment' ... is not supported".
+
+	     The SDK auto-detects Platforms/iOS/Entitlements.plist by convention, so this file is
+	     wired explicitly by the signed-IPA step in .github/workflows/deploy-apps-dev.yml via
+	     -p:CodesignEntitlements. Keep the two files in sync when adding any other capability. -->
+	<key>aps-environment</key>
+	<string>production</string>
+</dict>
+</plist>

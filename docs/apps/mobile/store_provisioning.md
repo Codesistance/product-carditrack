@@ -107,6 +107,13 @@ In the Apple developer portal:
    this name (`-p:CodesignProvision`).
 3. Download the `.mobileprovision`, base64 → `carditrack-common-appstore-provisioning-profile`.
 
+> **APNs environment must match the signing identity.** `Platforms/iOS/Entitlements.plist`
+> carries `aps-environment = development` (local and simulator builds); the signed-IPA CI step
+> passes `-p:CodesignEntitlements=Platforms/iOS/Entitlements.Release.plist`, which carries
+> `production`. Uploading a distribution build with `development` fails App Store Connect
+> validation outright — `ERROR ITMS-90046: Invalid Code Signing Entitlements`. Add any new
+> capability to **both** plists.
+
 Sanity-check a downloaded profile (name / app ID / type) before loading:
 
 ```powershell

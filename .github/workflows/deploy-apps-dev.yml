@@ -819,6 +819,7 @@ jobs:
             -p:ArchiveOnBuild=true \
             -p:CodesignKey="Apple Distribution" \
             -p:CodesignProvision="CardiTrack Distribution" \
+            -p:CodesignEntitlements=Platforms/iOS/Entitlements.Release.plist \
             -p:ApplicationDisplayVersion="${DISPLAY_VERSION#v}" \
             -p:ApplicationVersion="$BUILD_NUMBER" \
             -p:ApiBaseUrl=${{ needs.changes.outputs.api_url_dev }} \
