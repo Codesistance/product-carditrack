@@ -52,67 +52,52 @@ public static class MobileApm
     }
 
     /// <summary>
-    /// Datadog RUM: crash reporting + session tracking + API request timing.
-    /// Data: {"ClientToken":"pub...","ApplicationId":"...","Site":"Uk1",
-    /// "CustomEndpoint":"https://browser-intake-uk1-datadoghq.com"} — client token and
-    /// application id are write-only identifiers, safe to embed. CustomEndpoint is
-    /// optional; it is only needed for sites Datadog.Maui cannot name (see below).
-    /// Session Replay is deliberately NOT enabled: health data must not be recorded.
+    /// Datadog logs and traces. Data: {"ClientToken":"pub...","Site":"Eu1"} — the client
+    /// token is a write-only identifier, safe to embed. Session Replay is deliberately NOT
+    /// enabled: health data must not be recorded.
     /// </summary>
+    /// <remarks>
+    /// RUM is deliberately not enabled. It only ever returned 404 from the intake, because
+    /// this org's site (UK1) has no member in Datadog.Maui's DatadogSite enum — nor in the
+    /// dd-sdk-android core enum it wraps, which names only us1/us3/us5/eu1/ap1/ap2 and the
+    /// gov sites. The documented workaround, CustomEndpoint, is inert: Datadog.Maui 0.2.0
+    /// (the only version ever published) never calls the native useCustomEndpoint on any
+    /// feature, so every feature targets the site-derived intake regardless of what is
+    /// configured here. Removing RUM also removes Datadog crash reporting, which is a RUM
+    /// feature — Play Console vitals remains the source for crashes and ANRs.
+    /// </remarks>
     private static void ConfigureDatadog(MauiAppBuilder builder, JObject data)
     {
 #if ANDROID || IOS
         var clientToken = data.Value<string>("ClientToken");
-        var applicationId = data.Value<string>("ApplicationId");
-        if (string.IsNullOrWhiteSpace(clientToken) || string.IsNullOrWhiteSpace(applicationId))
+        if (string.IsNullOrWhiteSpace(clientToken))
         {
-            Log.Warning("MobileApm: Datadog data needs ClientToken and ApplicationId — monitoring disabled.");
+            Log.Warning("MobileApm: Datadog data needs a ClientToken — monitoring disabled.");
             return;
         }
 
-        // Collapse a blank CustomEndpoint to null up front, so every use below reads as
-        // "absent" rather than overriding an intake with an unusable empty string.
-        var customEndpoint = data.Value<string>("CustomEndpoint");
-        if (string.IsNullOrWhiteSpace(customEndpoint))
-            customEndpoint = null;
-
         var siteName = data.Value<string>("Site");
 
-        // Datadog.Maui 0.2.0's DatadogSite enum names only Us1/Us3/Us5/Eu1/Ap1/Ap2/Us1Fed,
-        // while the native SDKs it wraps reach more sites (Uk1 among them). A site the enum
-        // cannot name is addressed instead by pointing the Logs and RUM features at that
-        // site's intake host via CustomEndpoint. Without one we would quietly ship this
-        // app's telemetry to whatever the fallback resolved to — a different org in a
-        // different region — so refuse to start monitoring at all. Omitting Site entirely
-        // keeps the documented Eu1 default. IsDefined is what rejects a numeric Site:
-        // TryParse happily turns "42" into an enum value no member names.
+        // A site the enum cannot name would silently ship this app's telemetry to whatever
+        // the fallback resolved to — a different org in a different region — so refuse to
+        // start monitoring at all rather than misdeliver it. CustomEndpoint used to be the
+        // documented escape hatch here; it is not one (see the remarks above), so an
+        // unnameable site is now simply fatal to monitoring. Omitting Site entirely keeps
+        // the documented Eu1 default. IsDefined is what rejects a numeric Site: TryParse
+        // happily turns "42" into an enum value no member names.
         if (!Enum.TryParse<DatadogSite>(siteName, ignoreCase: true, out var site) || !Enum.IsDefined(site))
         {
-            site = DatadogSite.Eu1;
-
             if (!string.IsNullOrWhiteSpace(siteName))
             {
-                if (customEndpoint is null)
-                {
-                    Log.Warning(
-                        "MobileApm: Datadog site '{Site}' is not one of {KnownSites} and no CustomEndpoint " +
-                        "is set — monitoring disabled rather than shipping telemetry to the wrong site.",
-                        siteName, string.Join(", ", Enum.GetNames<DatadogSite>()));
-                    return;
-                }
-
                 Log.Warning(
-                    "MobileApm: Datadog site '{Site}' has no DatadogSite member — routing logs and RUM " +
-                    "to CustomEndpoint '{CustomEndpoint}'.",
-                    siteName, customEndpoint);
+                    "MobileApm: Datadog site '{Site}' is not one of {KnownSites} — monitoring disabled " +
+                    "rather than shipping telemetry to the wrong site.",
+                    siteName, string.Join(", ", Enum.GetNames<DatadogSite>()));
+                return;
             }
-        }
 
-        // A null config/endpoint on either feature leaves the SDK's own site-derived
-        // intake in place — which is what every site the enum can name wants.
-        var logsConfiguration = customEndpoint is null
-            ? null
-            : new DdLogsConfiguration { CustomEndpoint = customEndpoint };
+            site = DatadogSite.Eu1;
+        }
 
         builder
             .UseDatadog(new DdSdkConfiguration
@@ -122,9 +107,11 @@ public static class MobileApm
                 TrackingConsent = TrackingConsent.Granted,
                 Service = "carditrack-mobile",
                 Site = site,
-                NativeCrashReportEnabled = true,
-                // Marks our API as first-party so RUM resources correlate with the
-                // API's OTel traces (RUM-to-APM), via W3C traceparent headers.
+                // Datadog's own crash reporting rides on RUM, which is not enabled — Play
+                // Console vitals is the source for mobile crashes and ANRs instead.
+                NativeCrashReportEnabled = false,
+                // Marks our API as first-party so mobile spans join the API's OTel traces,
+                // via W3C traceparent headers.
                 FirstPartyHosts =
                 [
                     new FirstPartyHost
@@ -134,13 +121,8 @@ public static class MobileApm
                     },
                 ],
             })
-            .UseDatadogLogs(logsConfiguration)
-            .UseDatadogRum(new DdRumConfiguration
-            {
-                ApplicationId = applicationId,
-                SessionSampleRate = 100.0,
-                CustomEndpoint = customEndpoint,
-            });
+            .UseDatadogLogs()
+            .UseDatadogTrace();
 #endif
     }
 }

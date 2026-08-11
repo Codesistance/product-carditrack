@@ -176,7 +176,7 @@ public sealed class PushRegistrationCoordinator : IDisposable
     private static void RegisterAndroidChannels()
     {
         // Notification channels don't exist before API 26 — SupportedOSPlatformVersion for this
-        // target is 23 (the Datadog RUM SDK's floor), so this guard is load-bearing, not decorative.
+        // target is 23 (the Datadog SDK's floor), so this guard is load-bearing, not decorative.
         if (!OperatingSystem.IsAndroidVersionAtLeast(26))
             return;
 

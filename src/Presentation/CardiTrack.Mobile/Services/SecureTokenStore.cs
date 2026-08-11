@@ -25,10 +25,9 @@ public sealed class SecureTokenStore : ITokenStore
     // caught-exception/fallback path instead of blocking forever.
     private static readonly TimeSpan SecureStorageTimeout = TimeSpan.FromSeconds(5);
 
-    // Standard System.Diagnostics tracing rather than a Datadog-specific call: RUM isn't
-    // provisioned on mobile yet (see MobileApm), so this is a no-op today, but it lights up
-    // for free the moment any OTel-compatible listener (Datadog's or otherwise) is attached —
-    // no rework needed here when that happens.
+    // Standard System.Diagnostics tracing rather than a Datadog-specific call, so this stays
+    // engine-agnostic: it costs nothing while no listener is attached, and lights up for free
+    // once one is (see MobileApm) — no rework needed here when that happens.
     private static readonly ActivitySource ActivitySource = new("CardiTrack.Mobile.Auth.SecureTokenStore");
 
     // What actually happens below on a SecureStorage failure — only true on Windows, where
