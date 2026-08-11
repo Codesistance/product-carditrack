@@ -479,6 +479,13 @@ jobs:
       # Release step, the managed compile finished in 70 s and the remaining
       # ~9 min was the ILLink trimmer and AOT. Debug skips both. Release device
       # builds (build-mobile-ios-device) still run on main before any upload.
+      # -p:CodesignEntitlements= (empty) on both steps below: the SDK auto-detects
+      # Platforms/iOS/Entitlements.plist by convention and wires it as CodesignEntitlements for
+      # any build, which forces real codesigning — this job targets the simulator and has no
+      # signing identity in its keychain, and never needs one. The device/store build
+      # (build-mobile-ios-device, main-only) sets RuntimeIdentifier=ios-arm64 with its own
+      # CodesignKey/CodesignProvision and is unaffected — it's the one that actually needs the
+      # entitlements applied.
       - name: Compile (PR)
         if: github.event_name == 'pull_request'
         run: |
@@ -486,7 +493,8 @@ jobs:
             -f net10.0-ios \
             -c Debug \
             -r iossimulator-arm64 \
-            -p:ArchiveOnBuild=false
+            -p:ArchiveOnBuild=false \
+            -p:CodesignEntitlements=
       - name: Build (Release)
         if: github.event_name != 'pull_request'
         env:
@@ -498,6 +506,7 @@ jobs:
             -c Release \
             -r iossimulator-arm64 \
             -p:ArchiveOnBuild=false \
+            -p:CodesignEntitlements= \
             -p:ApiBaseUrl=${{ needs.changes.outputs.api_url_dev }} \
             -p:Auth0Domain=${{ steps.auth0.outputs.domain }} \
             -p:Auth0ClientId=${{ steps.auth0.outputs.mobile_client_id }} \
