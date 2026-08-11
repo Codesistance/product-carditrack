@@ -3,60 +3,51 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              x:Class="CardiTrack.Mobile.Controls.MetricCard">
 
-    <!-- Figma 101:2807 / 101:2821 / 101:2835. One full-width row per metric: tinted icon tile,
-         name over value, and a right-hand accessory that differs per metric — trend for
-         activity, a status pill for heart rate, a star rating for sleep. -->
-    <Border Style="{StaticResource ElevatedCard}">
-        <VerticalStackLayout Spacing="16">
+    <!-- Figma 101:2807 / 101:2821 / 101:2835, adapted for the half-width Key Metrics grid:
+         Figma's single row (icon | name+value | accessory) doesn't fit two-per-row, so this
+         stacks icon+name, then value, then the accessory underneath instead of beside it. -->
+    <Border Style="{StaticResource ElevatedCard}" Padding="12,14">
+        <VerticalStackLayout Spacing="10">
 
-            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="11">
-
-                <Border Grid.Column="0"
-                        Style="{StaticResource IconTile}"
+            <HorizontalStackLayout Spacing="8">
+                <Border Style="{StaticResource IconTile}"
                         BackgroundColor="{StaticResource MetricTileTint}"
-                        WidthRequest="54" HeightRequest="54">
+                        WidthRequest="36" HeightRequest="36">
                     <Image x:Name="MetricIcon"
-                           WidthRequest="34" HeightRequest="34"/>
+                           WidthRequest="22" HeightRequest="22"/>
+                </Border>
+                <Label x:Name="NameLabel"
+                       Style="{StaticResource MetricRowLabel}"
+                       VerticalOptions="Center"
+                       LineBreakMode="TailTruncation"/>
+            </HorizontalStackLayout>
+
+            <Label x:Name="ValueLabel"
+                   Style="{StaticResource Heading3}"
+                   LineBreakMode="TailTruncation"/>
+
+            <!-- Accessory slot: exactly one of the three is shown at a time. -->
+            <VerticalStackLayout Spacing="3">
+                <Label x:Name="TrendLabel"
+                       IsVisible="False"
+                       FontFamily="QuicksandSemiBold"
+                       FontSize="14"/>
+
+                <Border x:Name="StatusPillBorder"
+                        IsVisible="False"
+                        Style="{StaticResource StatusPill}"
+                        HorizontalOptions="Start">
+                    <Label x:Name="StatusPillLabel"
+                           Style="{StaticResource StatusPillText}"/>
                 </Border>
 
-                <VerticalStackLayout Grid.Column="1" Spacing="4" VerticalOptions="Center">
-                    <Label x:Name="NameLabel"
-                           Style="{StaticResource MetricRowLabel}"
-                           LineBreakMode="TailTruncation"/>
-                    <Label x:Name="ValueLabel"
-                           Style="{StaticResource Heading3}"
-                           LineBreakMode="TailTruncation"/>
-                </VerticalStackLayout>
+                <HorizontalStackLayout x:Name="StarRow"
+                                       IsVisible="False"
+                                       Spacing="3"/>
 
-                <VerticalStackLayout Grid.Column="2"
-                                     Spacing="3"
-                                     HorizontalOptions="End"
-                                     VerticalOptions="Center">
-
-                    <!-- Accessory slot: exactly one of the three is shown at a time. -->
-                    <Label x:Name="TrendLabel"
-                           IsVisible="False"
-                           FontFamily="QuicksandSemiBold"
-                           FontSize="14"
-                           HorizontalTextAlignment="End"/>
-
-                    <Border x:Name="StatusPillBorder"
-                            IsVisible="False"
-                            Style="{StaticResource StatusPill}"
-                            HorizontalOptions="End">
-                        <Label x:Name="StatusPillLabel"
-                               Style="{StaticResource StatusPillText}"/>
-                    </Border>
-
-                    <HorizontalStackLayout x:Name="StarRow"
-                                           IsVisible="False"
-                                           Spacing="3"
-                                           HorizontalOptions="End"/>
-
-                    <Label x:Name="CaptionLabel"
-                           Style="{StaticResource MetricRowCaption}"/>
-                </VerticalStackLayout>
-            </Grid>
+                <Label x:Name="CaptionLabel"
+                       Style="{StaticResource MetricRowCaption}"/>
+            </VerticalStackLayout>
 
             <!-- Progress track. Only activity has a real denominator (the daily step goal), so
                  only activity draws a bar — a bar on heart rate or sleep would need a

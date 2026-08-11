@@ -248,7 +248,6 @@ public partial class DashboardPage : ContentPage
         Header.SetUnreadCount(data.UnreadAlertCount);
 
         var firstName = NameFormatting.FirstName(data.Name);
-        CallLabel.Text = $"Call {firstName}";
         ApplyPhoneAvailability(data, firstName);
         ApplyEmergencyCallAvailability(data, firstName);
 
@@ -311,7 +310,7 @@ public partial class DashboardPage : ContentPage
         // Metrics
         if (data.Metrics is { } metrics)
         {
-            MetricsSection.IsVisible = true;
+            MetricsAccordion.IsVisible = true;
             StepsCard.ApplySteps(metrics.Steps);
             HeartRateCard.ApplyHeartRate(metrics.RestingHeartRate);
             SleepCard.ApplySleep(metrics.Sleep);
@@ -328,7 +327,7 @@ public partial class DashboardPage : ContentPage
         }
         else
         {
-            MetricsSection.IsVisible = false;
+            MetricsAccordion.IsVisible = false;
         }
 
         // Recent alerts
