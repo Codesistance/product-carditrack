@@ -290,13 +290,17 @@
                                      per row instead of full-width so the card has room to stay
                                      compact once more CardiMember cards can stack below it. -->
                                 <controls:AccordionSection x:Name="MetricsAccordion" HeaderText="Key Metrics">
-                                    <Grid ColumnDefinitions="*,*" ColumnSpacing="10" RowSpacing="10">
-                                        <controls:MetricCard x:Name="StepsCard" Grid.Row="0" Grid.Column="0"/>
-                                        <controls:MetricCard x:Name="HeartRateCard" Grid.Row="0" Grid.Column="1"/>
-                                        <controls:MetricCard x:Name="SleepCard" Grid.Row="1" Grid.Column="0"/>
-                                        <controls:MetricCard x:Name="TemperatureCard" Grid.Row="1" Grid.Column="1" IsVisible="False"/>
-                                        <controls:MetricCard x:Name="SpO2Card" Grid.Row="2" Grid.Column="0" IsVisible="False"/>
-                                    </Grid>
+                                    <controls:AccordionSection.Body>
+                                        <Grid ColumnDefinitions="*,*"
+                                              RowDefinitions="Auto,Auto,Auto"
+                                              ColumnSpacing="10" RowSpacing="10">
+                                            <controls:MetricCard x:Name="StepsCard" Grid.Row="0" Grid.Column="0"/>
+                                            <controls:MetricCard x:Name="HeartRateCard" Grid.Row="0" Grid.Column="1"/>
+                                            <controls:MetricCard x:Name="SleepCard" Grid.Row="1" Grid.Column="0"/>
+                                            <controls:MetricCard x:Name="TemperatureCard" Grid.Row="1" Grid.Column="1" IsVisible="False"/>
+                                            <controls:MetricCard x:Name="SpO2Card" Grid.Row="2" Grid.Column="0" IsVisible="False"/>
+                                        </Grid>
+                                    </controls:AccordionSection.Body>
                                 </controls:AccordionSection>
 
                             </VerticalStackLayout>
