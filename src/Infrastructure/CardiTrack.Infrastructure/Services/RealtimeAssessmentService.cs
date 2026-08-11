@@ -187,11 +187,12 @@ public class RealtimeAssessmentService : IRealtimeAssessmentService
 
         if (severity is null)
         {
-            // Fail safe, in both directions: an unparseable verdict is stored for audit but
-            // routes nowhere — the model cannot page a family by mumbling, and the row's null
-            // severity is the visible record that it mumbled.
+            // Fail safe, in both directions: a severity word that did not map to the product
+            // taxonomy is stored for audit (RawSeverity) but routes nowhere — the model cannot
+            // page a family by deviating from the schema's vocabulary, and the row's null
+            // Severity is the visible record that it did.
             _logger.LogWarning(
-                "Model output for CardiMember {CardiMemberId} carried no parseable severity line.",
+                "Model's structured severity field for CardiMember {CardiMemberId} did not map to a known severity word.",
                 memberId);
         }
         else if (severity >= AlertSeverity.Orange && inserted)

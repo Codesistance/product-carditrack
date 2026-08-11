@@ -27,11 +27,24 @@ public class AssessmentSeverityParserTests
     [InlineData("HIGH")]
     [InlineData("High")]
     [InlineData("  high  ")]
-    public void TheWord_SurvivesCaseAndWhitespace(string word)
+    public void TheMatch_IsCaseAndWhitespaceInsensitive(string word)
     {
         var (_, severity) = AssessmentSeverityParser.Map(word);
 
         Assert.Equal(AlertSeverity.Orange, severity);
+    }
+
+    // RawSeverity is the audit trail, so it keeps what the model actually sent (trimmed, not
+    // case-folded) even for a recognised word — only the taxonomy match is case-insensitive.
+    [Theory]
+    [InlineData("HIGH", "HIGH")]
+    [InlineData("High", "High")]
+    [InlineData("  high  ", "high")]
+    public void RawSeverity_PreservesTheOriginalCasing(string word, string expectedRaw)
+    {
+        var (raw, _) = AssessmentSeverityParser.Map(word);
+
+        Assert.Equal(expectedRaw, raw);
     }
 
     // The field is schema-constrained, not free text — the model has nowhere to put a severity

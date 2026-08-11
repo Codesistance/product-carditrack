@@ -16,16 +16,17 @@ public static class AssessmentSeverityParser
 {
     /// <summary>
     /// The verdict from <paramref name="severityWord"/> — MedGemma's structured
-    /// <c>severity</c> field — and its product-taxonomy mapping. Normalises case only; the field
-    /// is schema-constrained, so there is no free text to extract a word out of.
+    /// <c>severity</c> field — and its product-taxonomy mapping. Case is normalised only for the
+    /// taxonomy match; <c>RawSeverity</c> keeps the trimmed original, since it is the audit trail
+    /// read when the word does not map and exact casing may be part of what makes that worth seeing.
     /// </summary>
     public static (string? RawSeverity, AlertSeverity? Severity) Map(string? severityWord)
     {
         if (string.IsNullOrWhiteSpace(severityWord))
             return (null, null);
 
-        var word = severityWord.Trim().ToLowerInvariant();
-        return (word, word switch
+        var trimmed = severityWord.Trim();
+        return (trimmed, trimmed.ToLowerInvariant() switch
         {
             "critical" => AlertSeverity.Red,
             "high" => AlertSeverity.Orange,
