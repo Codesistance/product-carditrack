@@ -306,6 +306,9 @@ module "deployments" {
   enable_pubsub     = var.enable_pubsub
   pubsub_labels     = local.common_labels
 
+  # Firebase Cloud Messaging (push notification sending credentials)
+  enable_push_notifications = var.enable_push_notifications
+
   # Cloud Monitoring & platform audit logging. The audit bucket reads the storage_location
   # passed above, so every bucket in the deployment lands in the same place.
   log_sink_name                 = local.log_sink_name
