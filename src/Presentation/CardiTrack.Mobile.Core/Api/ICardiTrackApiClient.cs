@@ -59,6 +59,9 @@ public interface ICardiTrackApiClient
 
     /// <summary>Marks one alert as handled (M1-10 card action).</summary>
     Task<AlertAcknowledgementResponse> AcknowledgeAlertAsync(Guid alertId, CancellationToken ct = default);
+
+    /// <summary>Removes one alert from the caregiver's own lists (M1-10 card action).</summary>
+    Task DeleteAlertAsync(Guid alertId, CancellationToken ct = default);
     Task<DeviceListResponse> GetDevicesAsync(Guid cardiMemberId, CancellationToken ct = default);
 
     /// <summary>M1-15 device management.</summary>

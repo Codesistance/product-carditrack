@@ -99,6 +99,21 @@ public class AlertService : IAlertService
         };
     }
 
+    public async Task DeleteAsync(Guid requestingUserId, Guid alertId, CancellationToken ct = default)
+    {
+        var alert = await _unitOfWork.Alerts.GetByIdWithCardiMemberAsync(alertId);
+        if (alert is null || !alert.IsActive)
+            throw new KeyNotFoundException("Alert not found");
+
+        // Manage, not view: removing an alert is a more consequential action than reading one,
+        // same bar CardiMemberService.RemoveAsync applies to member removal.
+        await _access.RequireManageAccessAsync(requestingUserId, alert.CardiMemberId, ct);
+
+        alert.IsActive = false;
+        _unitOfWork.Alerts.Update(alert);
+        await _unitOfWork.SaveChangesAsync();
+    }
+
     /// <summary>
     /// The date filters as PostgreSQL will accept them. <c>TriggeredDate</c> is a
     /// <c>timestamp with time zone</c> and the host disables

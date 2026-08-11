@@ -180,6 +180,7 @@ public partial class AlertsPage : ContentPage
                 card.Apply(alert);
                 card.CallRequested += OnCallRequested;
                 card.AcknowledgeRequested += OnAcknowledgeRequested;
+                card.DeleteRequested += OnDeleteRequested;
                 section.Add(card);
             }
 
@@ -329,6 +330,38 @@ public partial class AlertsPage : ContentPage
         {
             card.SetBusy(false);
             await _popups.ShowWarningAsync(ex.Message, "Couldn't mark it handled");
+        }
+    }
+
+    /// <summary>
+    /// Removes an alert entirely — the caregiver's own housekeeping, distinct from
+    /// acknowledging it. Confirmed first since there's no undo, then removed from view directly
+    /// rather than reloaded, same as <see cref="OnAcknowledgeRequested"/>.
+    /// </summary>
+    private async void OnDeleteRequested(object? sender, AlertSummaryResponse alert)
+    {
+        if (sender is not AlertListCard card)
+            return;
+
+        var confirmed = await _popups.ConfirmWarningAsync(
+            "This removes the alert from your list — it can't be undone.",
+            "Remove this alert?", "Remove", "Cancel");
+        if (!confirmed)
+            return;
+
+        try
+        {
+            await _api.DeleteAlertAsync(alert.AlertId);
+            (card.Parent as Layout)?.Remove(card);
+            if (_lastData is not null)
+            {
+                _lastData.Alerts = _lastData.Alerts.Where(a => a.AlertId != alert.AlertId).ToList();
+                _lastData.Total = Math.Max(0, _lastData.Total - 1);
+            }
+        }
+        catch (ApiException ex)
+        {
+            await _popups.ShowWarningAsync(ex.Message, "Couldn't remove it");
         }
     }
 

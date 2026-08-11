@@ -47,7 +47,7 @@ public class AlertServiceTests
         _members.FindAsync(Arg.Any<Expression<Func<CardiMember, bool>>>())
             .Returns(members.AsEnumerable());
 
-    private void SetupLink(bool canViewHealthData, bool isActive = true)
+    private void SetupLink(bool canViewHealthData, bool isActive = true, bool isPrimaryCaregiver = false)
     {
         _links.GetByUserIdAsync(_userId).Returns(
         [
@@ -57,6 +57,7 @@ public class AlertServiceTests
                 CardiMemberId = _memberId,
                 IsActive = isActive,
                 CanViewHealthData = canViewHealthData,
+                IsPrimaryCaregiver = isPrimaryCaregiver,
             },
         ]);
     }
@@ -308,5 +309,55 @@ public class AlertServiceTests
 
         await Assert.ThrowsAsync<KeyNotFoundException>(
             () => CreateSut().AcknowledgeAsync(_userId, alert.Id));
+    }
+
+    [Fact]
+    public async Task Delete_ByThePrimaryCaregiver_SoftDeletesAndSaves()
+    {
+        SetupLink(canViewHealthData: true, isPrimaryCaregiver: true);
+        var alert = MakeAlert();
+        _alerts.GetByIdWithCardiMemberAsync(alert.Id).Returns(alert);
+
+        await CreateSut().DeleteAsync(_userId, alert.Id);
+
+        Assert.False(alert.IsActive);
+        _alerts.Received(1).Update(alert);
+        await _unitOfWork.Received(1).SaveChangesAsync();
+    }
+
+    [Fact]
+    public async Task Delete_ByANonPrimaryCaregiver_ThrowsAndLeavesTheAlertUntouched()
+    {
+        // Default link from SetupLink() in the constructor can view but isn't the primary
+        // caregiver — Delete needs manage access, a higher bar than Acknowledge's view access.
+        var alert = MakeAlert();
+        _alerts.GetByIdWithCardiMemberAsync(alert.Id).Returns(alert);
+
+        await Assert.ThrowsAsync<KeyNotFoundException>(
+            () => CreateSut().DeleteAsync(_userId, alert.Id));
+
+        Assert.True(alert.IsActive);
+        await _unitOfWork.DidNotReceive().SaveChangesAsync();
+    }
+
+    [Fact]
+    public async Task Delete_ForAnUnknownAlert_Throws()
+    {
+        _alerts.GetByIdWithCardiMemberAsync(Arg.Any<Guid>()).Returns((Alert?)null);
+
+        await Assert.ThrowsAsync<KeyNotFoundException>(
+            () => CreateSut().DeleteAsync(_userId, Guid.NewGuid()));
+    }
+
+    [Fact]
+    public async Task Delete_ForAnAlreadySoftDeletedAlert_Throws()
+    {
+        SetupLink(canViewHealthData: true, isPrimaryCaregiver: true);
+        var alert = MakeAlert();
+        alert.IsActive = false;
+        _alerts.GetByIdWithCardiMemberAsync(alert.Id).Returns(alert);
+
+        await Assert.ThrowsAsync<KeyNotFoundException>(
+            () => CreateSut().DeleteAsync(_userId, alert.Id));
     }
 }

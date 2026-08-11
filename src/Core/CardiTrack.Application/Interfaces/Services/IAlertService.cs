@@ -31,4 +31,14 @@ public interface IAlertService
     /// </summary>
     Task<AlertAcknowledgementResponse> AcknowledgeAsync(
         Guid requestingUserId, Guid alertId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Removes an alert from every list it would otherwise appear in — a caregiver's own
+    /// housekeeping, distinct from <see cref="AcknowledgeAsync"/>'s "handled" record. Soft
+    /// delete (<see cref="Domain.Entities.Alert.IsActive"/>), same pattern
+    /// <c>CardiMemberService</c> uses for member removal. Throws
+    /// <see cref="KeyNotFoundException"/> when the alert doesn't exist or belongs to a member
+    /// the user may not manage.
+    /// </summary>
+    Task DeleteAsync(Guid requestingUserId, Guid alertId, CancellationToken ct = default);
 }
