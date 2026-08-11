@@ -52,6 +52,7 @@ for ROLE in \
   roles/logging.configWriter \
   roles/monitoring.alertPolicyEditor \
   roles/monitoring.notificationChannelEditor \
+  roles/firebase.admin \
   roles/compute.loadBalancerAdmin \
   roles/compute.securityAdmin \
   roles/compute.networkAdmin \

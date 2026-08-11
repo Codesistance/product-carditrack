@@ -65,7 +65,7 @@ resource "google_firebase_android_app" "mobile" {
 resource "google_project_iam_member" "fcm_sender" {
   count   = var.enable_push_notifications ? 1 : 0
   project = var.project_id
-  role    = "roles/firebasemessaging.admin"
+  role    = "roles/firebasecloudmessaging.admin"
   member  = "serviceAccount:${data.google_project.current.number}-compute@developer.gserviceaccount.com"
 
   depends_on = [google_project_service.fcm]
