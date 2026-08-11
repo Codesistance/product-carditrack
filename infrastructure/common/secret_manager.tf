@@ -23,6 +23,9 @@ locals {
     "android-keystore",                 # Android upload keystore (.jks, base64, key alias: carditrack)
     "android-keystore-password",        # Password for the upload keystore and key
     "play-service-account-key",         # Google Play service account key (JSON)
+    "apns-auth-key-p8",                 # APNs auth key for push notifications (.p8 contents, PEM text)
+    "apns-key-id",                      # APNs auth key ID
+    "apple-team-id",                    # Apple Developer Team ID
   ])
 }
 
