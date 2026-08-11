@@ -122,6 +122,21 @@ public class GeminiClientTests
             Task.FromResult(new HttpResponseMessage(HttpStatusCode.Forbidden));
     }
 
+    private sealed record TestStructuredResponse
+    {
+        public required string Summary { get; init; }
+    }
+
+    // Structured output isn't wired up on the public provider yet — nothing calls it. The
+    // NotSupportedException is a placeholder that must fail loudly, not silently return free text
+    // mis-shaped as T.
+    [Fact]
+    public async Task GenerateStructuredAsync_ThrowsNotSupported()
+    {
+        await Assert.ThrowsAsync<NotSupportedException>(() =>
+            Client(new CapturingHandler(SuccessBody)).GenerateStructuredAsync<TestStructuredResponse>("anything"));
+    }
+
     private static GeminiClient Client(HttpMessageHandler handler)
     {
         var factory = Substitute.For<IHttpClientFactory>();

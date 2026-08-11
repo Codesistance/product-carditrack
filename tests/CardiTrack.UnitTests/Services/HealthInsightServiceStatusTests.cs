@@ -67,7 +67,9 @@ public class HealthInsightServiceStatusTests
         _alerts.GetByCardiMemberAsync(_memberId, true).Returns([]);
         _activityLogs.GetByCardiMemberAndDateRangeAsync(_memberId, Arg.Any<DateOnly>(), Arg.Any<DateOnly>())
             .Returns([]);
-        _medicalAi.GenerateAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns("Margaret seems steady today.");
+        _medicalAi.GenerateStructuredAsync<HealthInsightService.CurrentStatusAiResponse>(
+                Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new HealthInsightService.CurrentStatusAiResponse { Message = "Margaret seems steady today." });
         // NSubstitute's auto-value for an unconfigured Task<byte[]> is an empty array, not null —
         // without this, every test would read as a cache hit on an empty string.
         _cache.GetAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns((byte[]?)null);
@@ -90,7 +92,8 @@ public class HealthInsightServiceStatusTests
         await Assert.ThrowsAsync<KeyNotFoundException>(() =>
             CreateSut().GetCurrentStatusMessageAsync(_outsiderId, _memberId));
 
-        await _medicalAi.DidNotReceive().GenerateAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
+        await _medicalAi.DidNotReceive().GenerateStructuredAsync<HealthInsightService.CurrentStatusAiResponse>(
+            Arg.Any<string>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -158,7 +161,8 @@ public class HealthInsightServiceStatusTests
         Assert.Equal("Cached line from a minute ago.", result.Message);
         // The cached generation time, not the moment this call happened to read it.
         Assert.Equal(cachedAt, result.GeneratedAt);
-        await _medicalAi.DidNotReceive().GenerateAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
+        await _medicalAi.DidNotReceive().GenerateStructuredAsync<HealthInsightService.CurrentStatusAiResponse>(
+            Arg.Any<string>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -182,7 +186,9 @@ public class HealthInsightServiceStatusTests
     [InlineData("   ")]
     public async Task BlankModelResponse_IsNeverCached_AndReturnsNullMessage(string blankResponse)
     {
-        _medicalAi.GenerateAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(blankResponse);
+        _medicalAi.GenerateStructuredAsync<HealthInsightService.CurrentStatusAiResponse>(
+                Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new HealthInsightService.CurrentStatusAiResponse { Message = blankResponse });
 
         var result = await CreateSut().GetCurrentStatusMessageAsync(_userId, _memberId);
 

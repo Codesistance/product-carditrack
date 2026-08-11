@@ -15,4 +15,7 @@ public class MedicalAiService : IMedicalAiService
 
     public Task<string> GenerateAsync(string prompt, CancellationToken ct = default)
         => _client.GenerateAsync(prompt, ct);
+
+    public Task<T> GenerateStructuredAsync<T>(string prompt, CancellationToken ct = default) where T : class
+        => _client.GenerateStructuredAsync<T>(prompt, ct);
 }

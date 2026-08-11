@@ -8,4 +8,8 @@ namespace CardiTrack.Application.Interfaces.Services;
 public interface IMedicalAiService
 {
     Task<string> GenerateAsync(string prompt, CancellationToken ct = default);
+
+    /// <summary>Forces the reply into the JSON shape of <typeparamref name="T"/> — see
+    /// <see cref="Clients.IExternalAiClient.GenerateStructuredAsync{T}"/>.</summary>
+    Task<T> GenerateStructuredAsync<T>(string prompt, CancellationToken ct = default) where T : class;
 }

@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Diagnostics.Metrics;
 using System.Net;
+using System.Text.Json;
 using CardiTrack.Application.DTOs.Common;
 using CardiTrack.Infrastructure.ExternalClients.Medical;
 using CardiTrack.Infrastructure.Settings;
@@ -278,6 +279,97 @@ public class MedGemmaClientTests
         Assert.Equal("chat", span.GetTagItem("gen_ai.operation.name"));
         Assert.Equal(412, span.GetTagItem("gen_ai.usage.input_tokens"));
         Assert.Equal(128, span.GetTagItem("gen_ai.usage.output_tokens"));
+    }
+
+    // ── GenerateStructuredAsync ─────────────────────────────────────────────────
+
+    private sealed record TestStructuredResponse
+    {
+        public required string Summary { get; init; }
+    }
+
+    /// <summary>Wraps a model reply (itself JSON) inside the Ollama envelope, matching how a real
+    /// structured-output call actually arrives: <c>response</c> is a JSON *string*.</summary>
+    private static string StructuredPayload(string modelReplyJson) =>
+        $$"""
+        {"model":"medgemma-4b","created_at":"2026-08-09T10:00:00Z",
+         "response":{{JsonSerializer.Serialize(modelReplyJson)}},
+         "done":true,"done_reason":"stop","total_duration":45000000000,
+         "prompt_eval_count":412,"eval_count":128}
+        """;
+
+    [Fact]
+    public async Task GenerateStructuredAsync_SetsTheSchemaAsFormat_AndDeserializesTheReply()
+    {
+        var handler = new FakeHttpMessageHandler()
+            .Enqueue(HttpStatusCode.OK, StructuredPayload("""{"summary":"Trends look stable."}"""));
+        var client = CreateClient(handler, out _);
+
+        var result = await client.GenerateStructuredAsync<TestStructuredResponse>(Prompt);
+
+        Assert.Equal("Trends look stable.", result.Summary);
+        var request = Assert.Single(handler.Requests);
+        var body = request.Body!;
+        // The schema goes out twice: as the machine-enforced "format" field, and — per the strict
+        // output instructions — spelled out in the prompt text itself, from the same generated text.
+        Assert.Contains("\"format\":{", body);
+        Assert.Contains("\"summary\":{\"type\":\"string\"}", body);
+        Assert.Contains("Respond with ONLY a single JSON object", body);
+        Assert.Contains(Prompt, body);
+    }
+
+    [Fact]
+    public async Task GenerateStructuredAsync_PostsToApiGenerate_WithoutStreaming()
+    {
+        var handler = new FakeHttpMessageHandler()
+            .Enqueue(HttpStatusCode.OK, StructuredPayload("""{"summary":"Trends look stable."}"""));
+        var client = CreateClient(handler, out _);
+
+        await client.GenerateStructuredAsync<TestStructuredResponse>(Prompt);
+
+        var request = Assert.Single(handler.Requests);
+        Assert.Equal("/api/generate", request.Uri?.AbsolutePath);
+        Assert.Contains("\"stream\":false", request.Body);
+    }
+
+    /// <summary>
+    /// The DPIA invariant applies just as much to structured content as to free text: a malformed
+    /// reply must not leak into a log or exception, even though it now fails at a different layer
+    /// (deserializing the model's JSON into <c>T</c>, not parsing Ollama's envelope).
+    /// </summary>
+    [Fact]
+    public async Task GenerateStructuredAsync_Throws_WithoutLeakingTheReply_WhenItDoesNotMatchTheSchema()
+    {
+        var handler = new FakeHttpMessageHandler()
+            .Enqueue(HttpStatusCode.OK, StructuredPayload("PATIENT-SECRET not valid json"));
+        var client = CreateClient(handler, out var logger);
+
+        var ex = await Assert.ThrowsAsync<HttpRequestException>(
+            () => client.GenerateStructuredAsync<TestStructuredResponse>(Prompt));
+
+        Assert.DoesNotContain("PATIENT-SECRET", ex.Message);
+        Assert.All(logger.Entries, e => Assert.DoesNotContain("PATIENT-SECRET", e.Message));
+        Assert.Contains(logger.Entries, e => e.Level == LogLevel.Error);
+    }
+
+    [Fact]
+    public async Task GenerateStructuredAsync_NeverPutsPromptOrReplyTextOnTheSpan()
+    {
+        using var capture = new SpanCapture();
+        var handler = new FakeHttpMessageHandler()
+            .Enqueue(HttpStatusCode.OK, StructuredPayload("""{"summary":"Trends look stable."}"""));
+        var client = CreateClient(handler, out _);
+
+        await client.GenerateStructuredAsync<TestStructuredResponse>(Prompt);
+
+        var span = Assert.Single(capture.Stopped);
+        Assert.Equal("generate_structured", span.GetTagItem("gen_ai.operation.name"));
+        foreach (var (_, value) in span.TagObjects)
+        {
+            var text = value?.ToString() ?? string.Empty;
+            Assert.DoesNotContain("chest pain", text);
+            Assert.DoesNotContain("Trends look stable.", text);
+        }
     }
 
     private static MedGemmaClient CreateClient(FakeHttpMessageHandler handler, out ListLogger logger)

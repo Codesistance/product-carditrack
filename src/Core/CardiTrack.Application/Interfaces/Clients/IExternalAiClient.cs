@@ -11,4 +11,12 @@ public interface IExternalAiClient
 {
     Task<string> GenerateAsync(string prompt, CancellationToken ct = default);
     Task<string> ChatAsync(IReadOnlyList<ChatMessage> history, string userMessage, CancellationToken ct = default);
+
+    /// <summary>
+    /// Forces the reply into the JSON shape of <typeparamref name="T"/> rather than free text.
+    /// <paramref name="prompt"/> carries only the domain content — the implementation appends its
+    /// own strict output instructions (and the schema itself) derived from <typeparamref name="T"/>,
+    /// so every caller gets the same enforcement without repeating it.
+    /// </summary>
+    Task<T> GenerateStructuredAsync<T>(string prompt, CancellationToken ct = default) where T : class;
 }

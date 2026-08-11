@@ -52,8 +52,13 @@ public class RealtimeAssessmentServiceTests
         _assessments.UpsertAsync(Arg.Any<RealtimeAssessment>(), Arg.Any<CancellationToken>())
             .Returns(true);
         _alerts.GetByCardiMemberAsync(_memberId, activeOnly: true).Returns([]);
-        _medicalAi.GenerateAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
-            .Returns("A steady hour, nothing unusual.\nSeverity: low");
+        _medicalAi.GenerateStructuredAsync<RealtimeAssessmentService.AssessmentAiResponse>(
+                Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new RealtimeAssessmentService.AssessmentAiResponse
+            {
+                Message = "A steady hour, nothing unusual.",
+                Severity = "low",
+            });
     }
 
     private CardiMember Member() => new()
@@ -130,8 +135,13 @@ public class RealtimeAssessmentServiceTests
     [InlineData("high", AlertSeverity.Orange)]
     public async Task ARedOrOrangeVerdict_RaisesAHeartRateAlert(string word, AlertSeverity expected)
     {
-        _medicalAi.GenerateAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
-            .Returns($"Heart rate has risen sharply with no activity.\nSeverity: {word}");
+        _medicalAi.GenerateStructuredAsync<RealtimeAssessmentService.AssessmentAiResponse>(
+                Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new RealtimeAssessmentService.AssessmentAiResponse
+            {
+                Message = "Heart rate has risen sharply with no activity.",
+                Severity = word,
+            });
 
         await CreateSut().AssessDueMembersAsync(UtcNow);
 
@@ -149,8 +159,13 @@ public class RealtimeAssessmentServiceTests
     [Fact]
     public async Task AnUnresolvedHeartRateAlert_SuppressesANewOne_ButTheAssessmentIsStillWritten()
     {
-        _medicalAi.GenerateAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
-            .Returns("Still elevated.\nSeverity: critical");
+        _medicalAi.GenerateStructuredAsync<RealtimeAssessmentService.AssessmentAiResponse>(
+                Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new RealtimeAssessmentService.AssessmentAiResponse
+            {
+                Message = "Still elevated.",
+                Severity = "critical",
+            });
         _alerts.GetByCardiMemberAsync(_memberId, activeOnly: true).Returns(
         [
             new Alert { CardiMemberId = _memberId, AlertType = AlertType.HeartRate, IsResolved = false },
@@ -168,8 +183,13 @@ public class RealtimeAssessmentServiceTests
     [Fact]
     public async Task WhenAConcurrentPassWonTheInsert_NoSecondAlertIsRaised()
     {
-        _medicalAi.GenerateAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
-            .Returns("Sharply elevated.\nSeverity: critical");
+        _medicalAi.GenerateStructuredAsync<RealtimeAssessmentService.AssessmentAiResponse>(
+                Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new RealtimeAssessmentService.AssessmentAiResponse
+            {
+                Message = "Sharply elevated.",
+                Severity = "critical",
+            });
         _assessments.UpsertAsync(Arg.Any<RealtimeAssessment>(), Arg.Any<CancellationToken>())
             .Returns(false);
 
@@ -182,8 +202,13 @@ public class RealtimeAssessmentServiceTests
     [Fact]
     public async Task AResolvedHeartRateAlert_DoesNotSuppress()
     {
-        _medicalAi.GenerateAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
-            .Returns("Elevated again.\nSeverity: critical");
+        _medicalAi.GenerateStructuredAsync<RealtimeAssessmentService.AssessmentAiResponse>(
+                Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new RealtimeAssessmentService.AssessmentAiResponse
+            {
+                Message = "Elevated again.",
+                Severity = "critical",
+            });
         _alerts.GetByCardiMemberAsync(_memberId, activeOnly: true).Returns(
         [
             new Alert { CardiMemberId = _memberId, AlertType = AlertType.HeartRate, IsResolved = true },
@@ -194,19 +219,25 @@ public class RealtimeAssessmentServiceTests
         await _alerts.Received(1).AddAsync(Arg.Any<Alert>());
     }
 
-    // Fail safe in both directions: the model cannot page a family by mumbling, but the mumble
-    // is stored — a null severity in the table is the visible record of it.
+    // Fail safe in both directions: the model cannot page a family by deviating from the schema's
+    // suggested vocabulary, but what it actually said is still stored — a null Severity with a
+    // non-null RawSeverity is the visible record that the mapping, not the storage, rejected it.
     [Fact]
-    public async Task AnUnparseableVerdict_IsStored_ButRoutesNowhere()
+    public async Task AnUnmappableSeverityWord_IsStored_ButRoutesNowhere()
     {
-        _medicalAi.GenerateAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
-            .Returns("Everything considered, the picture defies a simple label.");
+        _medicalAi.GenerateStructuredAsync<RealtimeAssessmentService.AssessmentAiResponse>(
+                Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new RealtimeAssessmentService.AssessmentAiResponse
+            {
+                Message = "Everything considered, the picture defies a simple label.",
+                Severity = "unclear",
+            });
 
         var assessed = await CreateSut().AssessDueMembersAsync(UtcNow);
 
         Assert.Equal(1, assessed);
         await _assessments.Received(1).UpsertAsync(
-            Arg.Is<RealtimeAssessment>(a => a.Severity == null && a.RawSeverity == null),
+            Arg.Is<RealtimeAssessment>(a => a.Severity == null && a.RawSeverity == "unclear"),
             Arg.Any<CancellationToken>());
         await _alerts.DidNotReceive().AddAsync(Arg.Any<Alert>());
     }
@@ -222,7 +253,8 @@ public class RealtimeAssessmentServiceTests
         var assessed = await CreateSut().AssessDueMembersAsync(UtcNow);
 
         Assert.Equal(0, assessed);
-        await _medicalAi.DidNotReceive().GenerateAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
+        await _medicalAi.DidNotReceive().GenerateStructuredAsync<RealtimeAssessmentService.AssessmentAiResponse>(
+            Arg.Any<string>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -234,7 +266,8 @@ public class RealtimeAssessmentServiceTests
         var assessed = await CreateSut().AssessDueMembersAsync(UtcNow);
 
         Assert.Equal(0, assessed);
-        await _medicalAi.DidNotReceive().GenerateAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
+        await _medicalAi.DidNotReceive().GenerateStructuredAsync<RealtimeAssessmentService.AssessmentAiResponse>(
+            Arg.Any<string>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -307,13 +340,14 @@ public class RealtimeAssessmentServiceTests
             steps[i] = 10f;
         SetupWindow(HeartRateMinutes(from: 150, to: 209, bpm: 72), steps);
         string? prompt = null;
-        _medicalAi.GenerateAsync(Arg.Do<string>(p => prompt = p), Arg.Any<CancellationToken>())
-            .Returns("Fine.\nSeverity: low");
+        _medicalAi.GenerateStructuredAsync<RealtimeAssessmentService.AssessmentAiResponse>(
+                Arg.Do<string>(p => prompt = p), Arg.Any<CancellationToken>())
+            .Returns(new RealtimeAssessmentService.AssessmentAiResponse { Message = "Fine.", Severity = "low" });
 
         await CreateSut().AssessDueMembersAsync(UtcNow);
 
         Assert.NotNull(prompt);
-        Assert.Contains("Severity: critical|high|medium|low", prompt);
+        Assert.Contains("exactly one of critical, high, medium, or low", prompt);
         Assert.Contains("Deviation score", prompt);
         Assert.Contains("Steps this hour: 600", prompt);
         Assert.Contains("SpO2 this hour: not measured", prompt);

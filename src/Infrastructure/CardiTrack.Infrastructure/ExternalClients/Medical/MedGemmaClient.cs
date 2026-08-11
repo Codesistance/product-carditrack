@@ -1,6 +1,11 @@
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Net.Http.Json;
+using System.Text.Json;
+using System.Text.Json.Nodes;
+using System.Text.Json.Schema;
 using System.Text.Json.Serialization;
+using System.Text.Json.Serialization.Metadata;
 using CardiTrack.Application.DTOs.Common;
 using CardiTrack.Application.Interfaces.Clients;
 using CardiTrack.Infrastructure.Diagnostics;
@@ -56,10 +61,11 @@ public class MedGemmaClient : IExternalAiClient
     public Task<string> GenerateAsync(string prompt, CancellationToken ct = default)
     {
         var request = new OllamaGenerateRequest { Model = _settings.Model, Prompt = prompt };
-        return SendInstrumentedAsync<OllamaGenerateResponse>(
+        return SendInstrumentedAsync<OllamaGenerateResponse, string>(
             operationName: "generate_content",
             send: (client, token) => client.PostAsJsonAsync("/api/generate", request, token),
             selectContent: response => response.Response,
+            parseContent: content => content,
             ct);
     }
 
@@ -70,11 +76,96 @@ public class MedGemmaClient : IExternalAiClient
             .Append(new OllamaMessage { Role = "user", Content = userMessage })
             .ToList();
         var request = new OllamaChatRequest { Model = _settings.Model, Messages = messages };
-        return SendInstrumentedAsync<OllamaChatResponse>(
+        return SendInstrumentedAsync<OllamaChatResponse, string>(
             operationName: "chat",
             send: (client, token) => client.PostAsJsonAsync("/api/chat", request, token),
             selectContent: response => response.Message?.Content,
+            parseContent: content => content,
             ct);
+    }
+
+    /// <summary>
+    /// The JSON Schema for <typeparamref name="T"/> is the single source of truth for two things
+    /// at once: it is set as Ollama's <c>format</c> field (grammar-constrained decoding — the model
+    /// cannot produce a token sequence outside the shape), and its text is appended to the prompt
+    /// so the model is also told in plain terms what is expected of it. One drifting out of sync
+    /// with the other is not possible because both come from the same generated text.
+    /// </summary>
+    public Task<T> GenerateStructuredAsync<T>(string prompt, CancellationToken ct = default) where T : class
+    {
+        var schemaText = SchemaTextFor<T>();
+        var fullPrompt = $"""
+            {prompt}
+
+            Respond with ONLY a single JSON object that satisfies this JSON Schema — no markdown
+            code fences, no commentary before or after it, no fields beyond what it defines:
+            {schemaText}
+            """;
+        var request = new OllamaGenerateRequest
+        {
+            Model = _settings.Model,
+            Prompt = fullPrompt,
+            Format = JsonNode.Parse(schemaText),
+        };
+        return SendInstrumentedAsync<OllamaGenerateResponse, T>(
+            operationName: "generate_structured",
+            send: (client, token) => client.PostAsJsonAsync("/api/generate", request, token),
+            selectContent: response => response.Response,
+            parseContent: content => DeserializeStructured<T>(content, "generate_structured"),
+            ct);
+    }
+
+    /// <summary>
+    /// One JSON Schema document per response type, generated once via reflection and reused for
+    /// the lifetime of the process — every call site for a given <typeparamref name="T"/> asks for
+    /// the same shape, so there is nothing to invalidate. Cached as text, not as a <see cref="JsonNode"/>:
+    /// a <see cref="JsonNode"/> tree lazily materialises internal state on first access, which is not
+    /// safe to share across concurrent requests, whereas re-parsing an immutable string per call is
+    /// cheap and race-free.
+    /// </summary>
+    private static readonly ConcurrentDictionary<Type, string> StructuredSchemaCache = new();
+
+    /// <summary>
+    /// camelCase, case-insensitive: matches typical JSON API convention, and keeps the schema's
+    /// property names, the prompt's description of them, and this class's own deserialization of
+    /// the model's reply reading from one naming policy throughout. The explicit
+    /// <see cref="DefaultJsonTypeInfoResolver"/> is required by <see cref="JsonSchemaExporter"/> —
+    /// without it, options built from <see cref="JsonSerializerDefaults"/> alone throw at export time.
+    /// </summary>
+    private static readonly JsonSerializerOptions StructuredOutputOptions = new(JsonSerializerDefaults.Web)
+    {
+        TypeInfoResolver = new DefaultJsonTypeInfoResolver(),
+    };
+
+    private static string SchemaTextFor<T>() => StructuredSchemaCache.GetOrAdd(typeof(T), type =>
+        JsonSchemaExporter.GetJsonSchemaAsNode(StructuredOutputOptions, type).ToJsonString(StructuredOutputOptions));
+
+    /// <summary>
+    /// Deserializes the model's structured reply into <typeparamref name="T"/>. Per the DPIA
+    /// invariant this class opens with, a malformed reply must not leak into a log or exception —
+    /// <see cref="JsonException"/>'s <c>Path</c>/<c>LineNumber</c>/<c>BytePositionInLine</c> are
+    /// safe (they describe a location, not content); its <c>Message</c> is not read here for the
+    /// same reason the outer envelope parse below avoids Newtonsoft's.
+    /// </summary>
+    private T DeserializeStructured<T>(string content, string operationName) where T : class
+    {
+        try
+        {
+            return System.Text.Json.JsonSerializer.Deserialize<T>(content, StructuredOutputOptions)
+                ?? throw new System.Text.Json.JsonException("Deserialized structured response was null.");
+        }
+        catch (System.Text.Json.JsonException ex)
+        {
+            _logger.LogError(
+                "MedGemma {Operation} returned structured content that could not be parsed into "
+                + "{Type}: error at '{Path}' (line {Line}, byte {BytePosition}); body length {BodyLength} chars",
+                operationName, typeof(T).Name, ex.Path ?? "$", ex.LineNumber ?? 0, ex.BytePositionInLine ?? 0,
+                content.Length);
+            throw new HttpRequestException(
+                $"MedGemma {operationName} returned structured content that could not be parsed into "
+                + $"{typeof(T).Name} (error at '{ex.Path ?? "$"}', line {ex.LineNumber ?? 0}, "
+                + $"byte {ex.BytePositionInLine ?? 0}).");
+        }
     }
 
     /// <summary>
@@ -84,10 +175,11 @@ public class MedGemmaClient : IExternalAiClient
     /// conventions. All Activity access is null-tolerant — with no APM engine there is no
     /// listener and <see cref="ActivitySource.StartActivity(string, ActivityKind)"/> returns null.
     /// </summary>
-    private async Task<string> SendInstrumentedAsync<TResponse>(
+    private async Task<TResult> SendInstrumentedAsync<TResponse, TResult>(
         string operationName,
         Func<HttpClient, CancellationToken, Task<HttpResponseMessage>> send,
         Func<TResponse, string?> selectContent,
+        Func<string, TResult> parseContent,
         CancellationToken ct)
         where TResponse : OllamaResponseMetadata
     {
@@ -157,7 +249,7 @@ public class MedGemmaClient : IExternalAiClient
                 NsToMs(meta.PromptEvalDurationNs), NsToMs(meta.EvalDurationNs),
                 (activity ?? Activity.Current)?.TraceId.ToString());
 
-            return content ?? string.Empty;
+            return parseContent(content ?? string.Empty);
         }
         catch (Exception ex)
         {
@@ -256,6 +348,9 @@ public class MedGemmaClient : IExternalAiClient
         [JsonPropertyName("model")] public required string Model { get; init; }
         [JsonPropertyName("prompt")] public required string Prompt { get; init; }
         [JsonPropertyName("stream")] public bool Stream { get; init; } = false;
+
+        /// <summary>A JSON Schema — Ollama's grammar-constrained decoding. Null for a free-text call.</summary>
+        [JsonPropertyName("format")] public JsonNode? Format { get; init; }
     }
 
     private record OllamaChatRequest

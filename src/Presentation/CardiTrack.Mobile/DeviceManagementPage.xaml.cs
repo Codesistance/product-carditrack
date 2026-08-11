@@ -152,8 +152,10 @@ public partial class DeviceManagementPage : ContentPage
         HelpChevron.Source = HelpPanel.IsVisible ? "icon_chevron.svg" : "icon_chevron_down.svg";
     }
 
+    // Named rather than "..": this page is also reached via the Notifications inbox, which
+    // pushes it directly with no member detail page underneath it on the stack.
     private async void OnBackClicked(object? sender, EventArgs e) =>
-        await Shell.Current.GoToAsync("..");
+        await Shell.Current.GoToAsync($"{AppShell.DashboardRoute}/{CardiMemberDetailPage.Route}?memberId={_memberId}");
 
     private async void OnAddDeviceClicked(object? sender, EventArgs e)
     {

@@ -160,8 +160,10 @@ public partial class CardiMemberDetailPage : ContentPage
         ErrorPanel.IsVisible = error;
     }
 
+    // Named rather than "..": this page is also reached via the Notifications inbox, where
+    // there is no guarantee the dashboard sits directly underneath on the stack.
     private async void OnBackClicked(object? sender, EventArgs e) =>
-        await Shell.Current.GoToAsync("..");
+        await Shell.Current.GoToAsync(AppShell.DashboardRoute);
 
     private void OnToggleMedicalTapped(object? sender, TappedEventArgs e)
     {
