@@ -110,13 +110,18 @@ public partial class DashboardPage : ContentPage
             ContextLineFor(DateTime.Now.Hour));
     }
 
-    /// <summary>Color token for each <see cref="DashboardResponse.DataFreshness"/> tier.</summary>
+    /// <summary>
+    /// Color token for each <see cref="DashboardResponse.DataFreshness"/> tier. An
+    /// unrecognised or empty value falls back to the neutral "unknown" color, not green — an
+    /// unexpected value showing a reassuring color would be worse than showing none.
+    /// </summary>
     private static string FreshnessColorKey(string tier) => tier switch
     {
         "red" => "StatusRed",
         "amber" => "StatusYellow",
         "blue" => "StatusBlue",
-        _ => "StatusGreen",
+        "green" => "StatusGreen",
+        _ => "StatusUnknown",
     };
 
     private async void OnPullToRefresh(object? sender, EventArgs e)
