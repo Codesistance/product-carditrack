@@ -287,9 +287,13 @@ public class CardiMemberService : ICardiMemberService
             .ToList();
         var baseline = await _unitOfWork.PatternBaselines.GetLatestByCardiMemberAsync(
             member.Id, BaselineProgress.PeriodDays);
+        var unresolvedAlerts = (await _unitOfWork.Alerts.GetByCardiMemberAsync(member.Id, activeOnly: true))
+            .Where(a => !a.IsResolved)
+            .ToList();
 
         var now = DateTime.UtcNow;
         var pause = PauseStateOf(member, now);
+        var metrics = logs.Count == 0 ? null : MemberInsightsCalculator.BuildMetrics(logs, baseline, today);
 
         return new CardiMemberDetailResponse
         {
@@ -314,6 +318,8 @@ public class CardiMemberService : ICardiMemberService
             LastSyncedAt = member.LastSyncDate ?? connections.Max(c => c.LastSyncDate),
             ConnectedDeviceCount = connections.Count,
             Baseline = BaselineProgress.From(logs, baseline),
+            HealthStatus = MemberInsightsCalculator.ComputeHealthStatus(unresolvedAlerts, baseline is null, metrics),
+            Metrics = metrics,
         };
     }
 

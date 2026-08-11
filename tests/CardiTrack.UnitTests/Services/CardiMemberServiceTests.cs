@@ -19,6 +19,7 @@ public class CardiMemberServiceTests
     private readonly IDeviceConnectionRepository _devices = Substitute.For<IDeviceConnectionRepository>();
     private readonly IActivityLogRepository _activityLogs = Substitute.For<IActivityLogRepository>();
     private readonly IPatternBaselineRepository _baselines = Substitute.For<IPatternBaselineRepository>();
+    private readonly IAlertRepository _alerts = Substitute.For<IAlertRepository>();
     private readonly ICardiMemberAccessService _access = Substitute.For<ICardiMemberAccessService>();
     private readonly IEncryptionService _encryption = Substitute.For<IEncryptionService>();
 
@@ -32,6 +33,8 @@ public class CardiMemberServiceTests
         _unitOfWork.DeviceConnections.Returns(_devices);
         _unitOfWork.ActivityLogs.Returns(_activityLogs);
         _unitOfWork.PatternBaselines.Returns(_baselines);
+        _unitOfWork.Alerts.Returns(_alerts);
+        _alerts.GetByCardiMemberAsync(Arg.Any<Guid>(), Arg.Any<bool>()).Returns([]);
 
         // Reversible stand-in for AES so tests can assert that notes are stored encrypted
         // and read back in the clear without pulling in a real key.

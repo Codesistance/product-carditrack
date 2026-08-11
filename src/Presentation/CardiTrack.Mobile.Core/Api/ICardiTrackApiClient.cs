@@ -44,6 +44,13 @@ public interface ICardiTrackApiClient
     Task<CurrentStatusMessageResponse> GetCurrentStatusAsync(Guid cardiMemberId, CancellationToken ct = default);
 
     /// <summary>
+    /// The member's most recent daily family digest (M1-13's summary card). Throws
+    /// <see cref="ApiException"/> with a 404 when none has been generated yet — callers show an
+    /// empty state rather than treating that as a failure.
+    /// </summary>
+    Task<DigestResponse> GetDigestAsync(Guid cardiMemberId, CancellationToken ct = default);
+
+    /// <summary>
     /// One page of alerts for the Alerts List (M1-10), newest first, across every CardiMember
     /// the signed-in user may read.
     /// </summary>
