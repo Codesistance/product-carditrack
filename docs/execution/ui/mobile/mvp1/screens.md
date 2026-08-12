@@ -596,24 +596,28 @@ Each device card:
 
 **Key Metrics (3 cards in a row):**
 
+**Star rating (1-5)** appears on every card that has something to compare against (Activity, Heart Rate, Sleep, Skin Temp): how the reading sits against this member's own normal, at finer resolution than the status colour and never contradicting it. SpO2 and Breathing Rate have no baseline yet, so their star row stays hidden rather than rating a reading against an invented normal. See `qualityScore` in [health-data.md](../../../backend/api/health-data.md).
+
 **Card 1: Activity**
 - Icon: shoe
 - Large value: "4,250 steps"
 - Visual progress bar (current vs. goal)
 - Comparison text: "85% of normal" with trend arrow (up/down)
+- Star rating (1-5) — the shortfall against normal; walking further than usual is not marked down
 - Mini 7-day sparkline chart
 
 **Card 2: Heart Rate**
 - Icon: heart
 - Large value: "72 bpm"
 - Status: "Normal range"
+- Star rating (1-5) — deviation from normal in either direction
 - Range text: "68-75 bpm typical"
 - Mini sparkline
 
 **Card 3: Sleep**
 - Icon: moon
 - Large value: "7.2 hours"
-- Quality label: "Good" (no star rating shipped)
+- Star rating (1-5) — sleep efficiency, or the shortfall in duration when the device reports none
 - Comparison: "Better than average"
 - Mini sparkline
 

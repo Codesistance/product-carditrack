@@ -118,6 +118,13 @@ public class DashboardMetric
     public decimal? Goal { get; set; }
     public int? RangeLow { get; set; }
     public int? RangeHigh { get; set; }
+
+    /// <summary>
+    /// 1-5 star rating of the reading against this member's own normal — sleep efficiency where
+    /// the device reports it, otherwise deviation from the baseline (see
+    /// <c>MemberInsightsCalculator.RateAgainstNormal</c>). Null when there is nothing to rate
+    /// against, which hides the card's star row rather than inventing a normal.
+    /// </summary>
     public int? QualityScore { get; set; }
     public List<MetricPoint> Series { get; set; } = new();
 }

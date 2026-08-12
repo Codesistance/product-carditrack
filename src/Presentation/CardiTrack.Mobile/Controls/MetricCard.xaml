@@ -26,7 +26,9 @@
                    Style="{StaticResource Heading3}"
                    LineBreakMode="TailTruncation"/>
 
-            <!-- Accessory slot: exactly one of the three is shown at a time. -->
+            <!-- Accessory slot. The trend arrow and the status pill are alternatives — a card
+                 shows one or the other — but the star row sits under whichever it got: the pill
+                 names the band, the stars give its resolution, both off the same comparison. -->
             <VerticalStackLayout Spacing="3">
                 <Label x:Name="TrendLabel"
                        IsVisible="False"
