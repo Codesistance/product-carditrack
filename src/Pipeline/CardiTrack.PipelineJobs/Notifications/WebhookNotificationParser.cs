@@ -47,20 +47,44 @@ public static partial class WebhookNotificationParser
     }
 
     /// <summary>
-    /// The body's top-level property names — safe to log (names, never values) and exactly what
-    /// pins the real notification schema on first live traffic.
+    /// The body's shape — safe to log (property names and JSON types, never values) and exactly
+    /// what pins the real notification schema on first live traffic. An object yields its
+    /// top-level property names; an array yields its length plus the distinct shapes of its
+    /// elements (each element's property names if it's an object, its JSON type otherwise), since
+    /// request sizes observed from live Google Health traffic vary in a way a single fixed object
+    /// does not explain — a batched array is the leading suspect.
     /// </summary>
     public static string TopLevelShape(string body)
     {
+        JToken root;
         try
         {
-            return JToken.Parse(body) is JObject obj
-                ? string.Join(",", obj.Properties().Select(p => p.Name))
-                : "(non-object)";
+            root = JToken.Parse(body);
         }
         catch (Newtonsoft.Json.JsonReaderException)
         {
             return "(not json)";
         }
+
+        return root switch
+        {
+            JObject obj => string.Join(",", obj.Properties().Select(p => p.Name)),
+            JArray array => DescribeArray(array),
+            _ => "(non-object)"
+        };
+    }
+
+    private static string DescribeArray(JArray array)
+    {
+        if (array.Count == 0)
+            return "array[0]";
+
+        var elementShapes = array
+            .Select(element => element is JObject obj
+                ? string.Join("+", obj.Properties().Select(p => p.Name))
+                : element.Type.ToString())
+            .Distinct(StringComparer.Ordinal);
+
+        return $"array[{array.Count}]:{string.Join("|", elementShapes)}";
     }
 }
