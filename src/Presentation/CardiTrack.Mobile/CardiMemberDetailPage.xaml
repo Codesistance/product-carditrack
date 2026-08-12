@@ -92,9 +92,10 @@
                         <!-- Profile -->
                         <Border Style="{StaticResource ElevatedCard}">
                             <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="14">
-                                <!-- The dashboard hero's display image box, not a second treatment
-                                     of its own: same control, so this member's photo shows here
-                                     exactly as it does on the dashboard. -->
+                                <!-- This screen's own display image box, lifted into a shared
+                                     control so the dashboard hero can wear it too — and it now
+                                     shows the member's photo when there is one, not just their
+                                     initials. -->
                                 <controls:MemberAvatar x:Name="Avatar"
                                                        Grid.Column="0"
                                                        VerticalOptions="Center"/>

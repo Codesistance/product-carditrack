@@ -7,9 +7,31 @@ public partial class MetricCard : ContentView
     private const int StarCount = 5;
     private const double DimmedStarOpacity = 0.25;
 
+    /// <summary>
+    /// Closes every explanation. CardiTrack is not a diagnostic tool, and a popup that has just
+    /// spent a paragraph describing clinical reference ranges is exactly where that has to be said
+    /// rather than assumed.
+    /// </summary>
+    private const string NotADiagnosis =
+        "CardiTrack watches for changes from someone's own normal. It doesn't diagnose.";
+
+    private string _explanationTitle = string.Empty;
+    private string _explanation = string.Empty;
+
+    /// <summary>
+    /// Raised when the tile's "i" is tapped, carrying the copy to show. The card does not open the
+    /// popup itself: <see cref="Services.IPopupService"/> belongs to the page, and a control that
+    /// reached for it would be a second route into the app's dialogs from inside a grid cell.
+    /// </summary>
+    public event EventHandler<MetricExplanation>? ExplanationRequested;
+
     public MetricCard()
     {
         InitializeComponent();
+
+        // The same swatch the Member Detail trend cards key their charts with, so the dashed rule
+        // is introduced identically on both screens.
+        BaselineLegend.Insert(0, new TrendLegendSwatch(TrendLegendMark.Baseline));
     }
 
     public void ApplySteps(DashboardMetric metric)
@@ -34,6 +56,19 @@ public partial class MetricCard : ContentView
             if (!TrendLabel.IsVisible)
                 CaptionLabel.Text = "Daily activity";
         }
+
+        // No published range: nobody publishes a daily step count, and converting WHO's
+        // activity-in-minutes guidance into steps would be our arithmetic wearing WHO's name.
+        ApplyComparison(
+            metric,
+            "{0:N0}",
+            "steps",
+            "Dashes: their usual day.",
+            "The dashed line is this CardiMember's own usual step count, learned from their own "
+            + "history — it is not a target. The bar above tracks their daily goal, which is a "
+            + "separate thing. No health body publishes a step count to compare anyone against, so "
+            + "this card shows no shaded band. A quieter day than usual is worth noticing, not "
+            + "worrying about.");
     }
 
     public void ApplyHeartRate(DashboardMetric metric)
@@ -44,9 +79,17 @@ public partial class MetricCard : ContentView
 
         ApplyStatusPill(metric.Status);
         ApplyStars(metric.QualityScore);
-        CaptionLabel.Text = metric is { RangeLow: { } low, RangeHigh: { } high }
-            ? $"{low}-{high} bpm typical"
-            : "Resting heart rate";
+        CaptionLabel.Text = "Resting heart rate";
+
+        ApplyComparison(
+            metric,
+            "{0:N0}",
+            "bpm",
+            $"Dashes: their own normal.{Band(metric, "{0:N0}")}",
+            "The dashed line is this CardiMember's own resting heart rate, learned over time. The "
+            + $"shaded band is the typical adult range{Published(metric, "{0:N0}", "bpm")}. Their "
+            + "own normal is the more useful of the two: a resting rate that is steady for them can "
+            + "sit outside the published band and be perfectly ordinary for them.");
     }
 
     public void ApplySleep(DashboardMetric metric)
@@ -63,6 +106,16 @@ public partial class MetricCard : ContentView
             0 => "In line with usual",
             _ => "Last night",
         };
+
+        ApplyComparison(
+            metric,
+            "{0:0.#}",
+            "h",
+            $"Dashes: their usual night.{Band(metric, "{0:0.#}")}",
+            "The dashed line is this CardiMember's own usual night. The shaded band is the nightly "
+            + $"sleep recommended for their age group{Published(metric, "{0:0.#}", "hours")} — the "
+            + "recommendation drops by an hour from age 65, so it is drawn for their age rather "
+            + "than a single adult figure. This measures how long they slept, not how well.");
     }
 
     public void ApplyTemperature(DashboardMetric metric)
@@ -73,7 +126,20 @@ public partial class MetricCard : ContentView
 
         ApplyStatusPill(metric.Status);
         ApplyStars(metric.QualityScore);
-        CaptionLabel.Text = metric.Baseline is not null ? "vs. own nightly baseline" : "Nightly reading";
+        CaptionLabel.Text = "Nightly reading";
+
+        // No published range on purpose: skin temperature is a wearer-relative measurement with no
+        // population normal, which is also why the wording below leads with what it is not.
+        ApplyComparison(
+            metric,
+            "{0:0.#}",
+            "°C",
+            "Dashes: their own nightly normal.",
+            "A wrist wearable measures skin temperature, not core body temperature — this is not a "
+            + "fever reading. The dashed line is the device's own nightly baseline for this "
+            + "CardiMember, and what carries meaning is the distance from it rather than the number "
+            + "itself. There is no published range to shade behind it, because there is no "
+            + "population normal for a measurement this personal.");
     }
 
     public void ApplySpO2(DashboardMetric metric)
@@ -87,6 +153,16 @@ public partial class MetricCard : ContentView
         ApplyStatusPill(metric.Status);
         ApplyStars(metric.QualityScore);
         CaptionLabel.Text = "SpO2";
+
+        ApplyComparison(
+            metric,
+            "{0:0.#}",
+            "%",
+            $"{Band(metric, "{0:0.#}", lead: true)} No personal normal yet.",
+            "The shaded band is the normal blood oxygen range"
+            + $"{Published(metric, "{0:0.#}", "%")}. CardiTrack has not learned a personal normal "
+            + "for blood oxygen, so this card has no dashed line — the reading is shown against the "
+            + "published range alone.");
     }
 
     public void ApplyBreathingRate(DashboardMetric metric)
@@ -99,6 +175,96 @@ public partial class MetricCard : ContentView
         ApplyStatusPill(metric.Status);
         ApplyStars(metric.QualityScore);
         CaptionLabel.Text = "Breaths per minute";
+
+        ApplyComparison(
+            metric,
+            "{0:0.#}",
+            "brpm",
+            $"{Band(metric, "{0:0.#}", lead: true)} No personal normal yet.",
+            "The shaded band is the normal adult breathing rate"
+            + $"{Published(metric, "{0:0.#}", "breaths per minute")}. CardiTrack has not learned a "
+            + "personal normal for breathing rate, so this card has no dashed line.");
+    }
+
+    /// <summary>
+    /// The bottom half of every tile: the gauge, the key naming the dashed rule on it, the footer
+    /// line, and the fuller copy behind the "i".
+    /// </summary>
+    /// <param name="baselineFormat">How the baseline figure is written in the key.</param>
+    /// <param name="unit">The unit that follows it — short, because the key shares a half-width tile.</param>
+    private void ApplyComparison(
+        DashboardMetric metric, string baselineFormat, string unit, string footer, string explanation)
+    {
+        BaselineBlock.IsVisible = Strip.Apply(metric, MetricStatus.Accent(metric.Status));
+
+        // The key names the dashed rule only. The band names itself in the footer, where there is
+        // room to attribute it to whoever publishes it — an unattributed range on a health screen
+        // is a number with nobody standing behind it.
+        BaselineLegend.IsVisible = metric.Baseline is not null;
+        if (metric.Baseline is { } baseline)
+            BaselineKeyLabel.Text = $"Baseline {string.Format(baselineFormat, baseline)} {unit}";
+
+        SemanticProperties.SetDescription(Strip, StripDescription(metric, baselineFormat, unit));
+
+        // Trimmed because the band clause is empty for a metric with no published range, which for
+        // the two cards that lead with it would otherwise open the line with a space.
+        FooterLabel.Text = footer.Trim();
+        _explanationTitle = NameLabel.Text;
+        _explanation = $"{explanation}\n\n{NotADiagnosis}";
+    }
+
+    /// <summary>
+    /// The band as the footer says it — leading space included so a metric with no published range
+    /// contributes nothing rather than a dangling separator.
+    /// </summary>
+    /// <param name="lead">Whether this opens the footer, in which case it drops the leading space.</param>
+    private static string Band(DashboardMetric metric, string format, bool lead = false) =>
+        metric.Reference is { } reference
+            ? $"{(lead ? string.Empty : " ")}Band "
+              + $"{string.Format(format, reference.Low)}–{string.Format(format, reference.High)} "
+              + $"({reference.Source})."
+            : string.Empty;
+
+    /// <summary>The same range as the popup says it, spelled out with its unit and publisher.</summary>
+    private static string Published(DashboardMetric metric, string format, string unit) =>
+        metric.Reference is { } reference
+            ? $" published by {reference.Source} ({string.Format(format, reference.Low)}–"
+              + $"{string.Format(format, reference.High)} {unit})"
+            : string.Empty;
+
+    /// <summary>
+    /// What the gauge says out loud. A <see cref="GraphicsView"/> conveys nothing on its own, so
+    /// without this the one mark that matters most on the tile is invisible to a screen reader.
+    /// </summary>
+    private static string StripDescription(DashboardMetric metric, string format, string unit)
+    {
+        var parts = new List<string>();
+        if (metric.Value is { } value)
+            parts.Add($"{string.Format(format, value)} {unit}");
+        if (metric.Baseline is { } baseline)
+            parts.Add($"their own baseline {string.Format(format, baseline)} {unit}");
+        if (metric.Reference is { } reference)
+            parts.Add($"typical {string.Format(format, reference.Low)} to "
+                      + $"{string.Format(format, reference.High)} {unit} per {reference.Source}");
+
+        return string.Join(", ", parts);
+    }
+
+    /// <summary>
+    /// Guarded rather than hidden until populated. A tile is only ever shown after its metric has
+    /// been applied — the grid sits behind a collapsed accordion inside a panel the dashboard keeps
+    /// hidden until it loads, and a card with no reading is hidden outright — so an unpopulated "i"
+    /// is unreachable today. But that is a fact about the page's wiring, not about this control, and
+    /// the empty popup on the other side of it is a worse thing to leave one wiring change away
+    /// than a tap that does nothing. Keeping the disc visible throughout also spares the footer a
+    /// control that pops into existence a moment after the tile does.
+    /// </summary>
+    private void OnExplainTapped(object? sender, TappedEventArgs e)
+    {
+        if (string.IsNullOrEmpty(_explanation))
+            return;
+
+        ExplanationRequested?.Invoke(this, new MetricExplanation(_explanationTitle, _explanation));
     }
 
     /// <summary>
@@ -192,3 +358,7 @@ public partial class MetricCard : ContentView
         ProgressGrid.ColumnDefinitions[1].Width = new GridLength(1 - filled, GridUnitType.Star);
     }
 }
+
+/// <summary>What a tile's "i" asks the page to show.</summary>
+/// <param name="Title">The metric's name, so the popup says which card it belongs to.</param>
+public sealed record MetricExplanation(string Title, string Message);

@@ -4,29 +4,32 @@
              x:Class="CardiTrack.Mobile.Controls.MemberAvatar">
 
     <!-- The one box a CardiMember is shown in — the dashboard hero and Member Detail both use
-         this, so the same person can't be a photo on one screen and a gradient monogram on the
-         other. Fixed size on purpose: "the same box" is the point, and a per-screen size knob
-         is how two screens drift apart again. -->
-    <Border WidthRequest="60" HeightRequest="60"
+         this, so the same person can't be shown two different ways depending on the screen.
+         Member Detail's treatment is the one both adopt: the gradient tile with white initials,
+         at 64. Fixed size on purpose: "the same box" is the point, and a per-screen size knob is
+         how two screens drift apart again. -->
+    <Border WidthRequest="64" HeightRequest="64"
             StrokeThickness="0"
-            BackgroundColor="{StaticResource SelectedOptionBackground}"
             VerticalOptions="Start">
         <Border.StrokeShape>
             <RoundRectangle CornerRadius="12"/>
         </Border.StrokeShape>
+        <Border.Background>
+            <StaticResource Key="GradientButtonBrush"/>
+        </Border.Background>
         <!-- Initials stay behind the photo rather than being replaced, so a photo that fails to
-             load falls back to something rather than an empty tile. -->
+             load falls back to the gradient monogram rather than an empty tile. -->
         <Grid>
             <Label x:Name="InitialsLabel"
                    FontFamily="QuicksandSemiBold"
-                   FontSize="22"
-                   TextColor="{StaticResource Primary}"
+                   FontSize="24"
+                   TextColor="{StaticResource White}"
                    HorizontalOptions="Center"
                    VerticalOptions="Center"/>
             <Image x:Name="PhotoImage"
                    IsVisible="False"
                    Aspect="AspectFill"
-                   WidthRequest="60" HeightRequest="60"/>
+                   WidthRequest="64" HeightRequest="64"/>
         </Grid>
     </Border>
 </ContentView>
