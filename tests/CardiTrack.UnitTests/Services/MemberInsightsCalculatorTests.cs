@@ -153,7 +153,8 @@ public class MemberInsightsCalculatorTests
     [Fact]
     public void Sleep_without_an_efficiency_falls_back_to_the_length_of_the_night()
     {
-        // 6 hours against a 7.5-hour normal — 20% short, inside the yellow band, so three stars.
+        // 6 hours against a 7.5-hour normal — 20% short. That is still inside the 30% green
+        // threshold, so it costs stars without costing the card its colour: three of five.
         var metrics = Build(
             new ActivityLog { Date = Yesterday, SleepMinutes = 360 },
             new PatternBaseline { AvgSleepMinutes = 450 });

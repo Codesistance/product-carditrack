@@ -120,10 +120,14 @@ public class DashboardMetric
     public int? RangeHigh { get; set; }
 
     /// <summary>
-    /// 1-5 star rating of the reading against this member's own normal — sleep efficiency where
-    /// the device reports it, otherwise deviation from the baseline (see
-    /// <c>MemberInsightsCalculator.RateAgainstNormal</c>). Null when there is nothing to rate
-    /// against, which hides the card's star row rather than inventing a normal.
+    /// 1-5 star rating of the reading against this member's own normal. What "normal" means is
+    /// per metric: sleep uses the device's sleep efficiency, falling back to its duration against
+    /// the sleep baseline only when the device reports no efficiency; temperature uses distance
+    /// from its own nightly baseline in units of that device's nightly variation; steps and
+    /// resting heart rate use percentage deviation from the pattern baseline (steps counting only
+    /// a shortfall). See <c>MemberInsightsCalculator</c> for the bands. Null when there is nothing
+    /// to rate against — SpO2 and breathing rate always, and any metric whose baseline is missing
+    /// — which hides the card's star row rather than inventing a normal.
     /// </summary>
     public int? QualityScore { get; set; }
     public List<MetricPoint> Series { get; set; } = new();

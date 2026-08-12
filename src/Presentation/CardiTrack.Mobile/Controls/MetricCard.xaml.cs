@@ -165,24 +165,29 @@ public partial class MetricCard : ContentView
         if (qualityScore is not { } score)
         {
             StarRow.IsVisible = false;
+            AutomationProperties.SetIsInAccessibleTree(StarRow, false);
             return;
         }
 
         var filled = Math.Clamp(score, 0, StarCount);
         for (var i = 0; i < StarCount; i++)
         {
-            StarRow.Add(new Image
+            var star = new Image
             {
                 Source = "icon_star.svg",
                 WidthRequest = 15,
                 HeightRequest = 15,
                 Opacity = i < filled ? 1 : DimmedStarOpacity,
-            });
+            };
+            // Individually meaningless: the stars differ only by opacity, which no screen reader
+            // conveys, so five identical "image" stops would be walked for one value. The row
+            // below speaks for all of them.
+            AutomationProperties.SetIsInAccessibleTree(star, false);
+            StarRow.Add(star);
         }
 
-        // Opacity carries the rating visually and says nothing to a screen reader, so the row
-        // announces itself as one value instead of five identical stars.
         SemanticProperties.SetDescription(StarRow, $"{NameLabel.Text}: {filled} out of {StarCount}");
+        AutomationProperties.SetIsInAccessibleTree(StarRow, true);
         StarRow.IsVisible = true;
     }
 
