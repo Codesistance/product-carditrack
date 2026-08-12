@@ -46,6 +46,7 @@ public sealed class MetricTrendCard : ContentView
     private readonly Grid _dates;
     private readonly Label _baselineKey = new();
     private readonly Label _referenceKey = new();
+    private readonly TrendLegendSwatch _baselineSwatch = new(TrendLegendMark.Baseline);
     private readonly HorizontalStackLayout _baselineLegend;
     private readonly HorizontalStackLayout _referenceLegend;
     private readonly Grid _legend;
@@ -155,8 +156,8 @@ public sealed class MetricTrendCard : ContentView
         // The chart draws two things that are not readings — this member's baseline and the
         // published range — and neither carries its own label on a plot this size, so the key
         // names them and quotes the numbers behind them.
-        _baselineLegend = BuildLegendEntry(TrendLegendMark.Baseline, _baselineKey);
-        _referenceLegend = BuildLegendEntry(TrendLegendMark.Reference, _referenceKey);
+        _baselineLegend = BuildLegendEntry(_baselineSwatch, _baselineKey);
+        _referenceLegend = BuildLegendEntry(new TrendLegendSwatch(TrendLegendMark.Reference), _referenceKey);
 
         _legend = new Grid
         {
@@ -265,10 +266,17 @@ public sealed class MetricTrendCard : ContentView
         _startDate.Text = points[0].Date.ToString("MMM d");
         _endDate.Text = points[^1].Date.ToString("MMM d");
 
-        // A baseline the scale could not make room for is not drawn — see TrendScale.For — so its
-        // key goes with it rather than pointing at a line that isn't there.
-        _baselineLegend.IsVisible = baseline is { } shown && scale.Contains((double)shown);
-        _baselineKey.Text = _trend.BaselineText ?? string.Empty;
+        // A baseline the scale could not make room for is not drawn — see TrendScale.For — but its
+        // number is the thing most worth knowing in exactly that case: a window sitting that far
+        // from the member's own normal is *why* the rule would not fit. So the key keeps it and
+        // drops the dash that would otherwise point at a rule the caregiver cannot find, saying
+        // plainly where it went.
+        var baselineDrawn = baseline is { } shown && scale.Contains((double)shown);
+        _baselineLegend.IsVisible = _trend.BaselineText is not null;
+        _baselineSwatch.IsVisible = baselineDrawn;
+        _baselineKey.Text = _trend.BaselineText is { } baselineText
+            ? (baselineDrawn ? baselineText : $"{baselineText} (off chart)")
+            : string.Empty;
 
         _referenceLegend.IsVisible = _trend.ReferenceText is not null;
         _referenceKey.Text = _trend.ReferenceText ?? string.Empty;
@@ -293,7 +301,7 @@ public sealed class MetricTrendCard : ContentView
             reference);
     }
 
-    private static HorizontalStackLayout BuildLegendEntry(TrendLegendMark mark, Label key)
+    private static HorizontalStackLayout BuildLegendEntry(TrendLegendSwatch swatch, Label key)
     {
         ApplyStyle(key, "Body2");
         key.FontSize = 11;
@@ -302,7 +310,7 @@ public sealed class MetricTrendCard : ContentView
         key.LineBreakMode = LineBreakMode.TailTruncation;
 
         var entry = new HorizontalStackLayout { Spacing = 6, IsVisible = false };
-        entry.Add(new TrendLegendSwatch(mark));
+        entry.Add(swatch);
         entry.Add(key);
         return entry;
     }
