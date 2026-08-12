@@ -65,10 +65,19 @@ public sealed class TrendChart : GraphicsView
 /// the same two marks at 16×10 for the key that names them.
 /// </summary>
 /// <remarks>
-/// Both are context rather than data, so they are drawn in a neutral ink at the weights below and
-/// never in the metric's status accent — that accent means "how this member is doing", and
-/// spending it on background would leave the eye picking the line out of three things wearing the
-/// same colour.
+/// <para>
+/// Neither is ever drawn in the metric's <em>status</em> accent: that accent means "how this
+/// member is doing", and spending it on background would leave the eye picking the line out of
+/// three things wearing the same colour as the reading moved between bands.
+/// </para>
+/// <para>
+/// The baseline rule is drawn in the metric's own ink instead — the same fixed identity colour as
+/// the line, which never changes with severity. The rule and the readings it judges are one
+/// metric's story, and a neutral grey rule read as a third element the caregiver had to place
+/// before they could use it. Dash pattern, half the stroke weight and
+/// <see cref="BaselineAlpha"/> are what keep the two apart. The reference band stays neutral: it
+/// is published by somebody else and belongs to no metric in particular.
+/// </para>
 /// </remarks>
 internal static class TrendChartInk
 {
@@ -84,7 +93,15 @@ internal static class TrendChartInk
 
     public static Color Reference => MetricStatus.Resource("ChartReferenceBand", Colors.Gray);
 
-    public static Color Baseline =>
+    /// <summary>
+    /// The baseline rule in a metric's own ink. Taken from the caller rather than resolved here so
+    /// the chart and the <see cref="TrendLegendSwatch"/> that names it can never be handed
+    /// different colours.
+    /// </summary>
+    public static Color BaselineIn(Color metricInk) => metricInk.WithAlpha(BaselineAlpha);
+
+    /// <summary>For a swatch drawn before its card has been bound to a metric.</summary>
+    public static Color BaselineFallback =>
         MetricStatus.Resource("ChartBaselineRule", Colors.DarkGray).WithAlpha(BaselineAlpha);
 }
 
@@ -270,9 +287,10 @@ internal sealed class TrendChartDrawable : IDrawable
     }
 
     /// <summary>
-    /// Rules this member's own normal across the window, dashed and in a darker ink than the band
-    /// so the two never read as one another. Skipped when the plot could not make room for it —
-    /// see <see cref="TrendScale.For"/> — where the legend carries the number instead.
+    /// Rules this member's own normal across the window, dashed and in the line's own ink so the
+    /// rule and the readings it judges read as one metric — see <see cref="TrendChartInk"/>.
+    /// Skipped when the plot could not make room for it — see <see cref="TrendScale.For"/> —
+    /// where the legend carries the number instead.
     /// </summary>
     private void DrawBaseline(ICanvas canvas, RectF dirtyRect, TrendScale scale, Func<double, float> y)
     {
@@ -280,7 +298,7 @@ internal sealed class TrendChartDrawable : IDrawable
             return;
 
         var at = y(baseline);
-        canvas.StrokeColor = TrendChartInk.Baseline;
+        canvas.StrokeColor = TrendChartInk.BaselineIn(LineColor);
         canvas.StrokeSize = TrendChartInk.BaselineThickness;
         canvas.StrokeDashPattern = TrendChartInk.BaselineDashes;
         canvas.DrawLine(dirtyRect.Left, at, dirtyRect.Right, at);

@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using CardiTrack.Application.DTOs.Responses;
+using CardiTrack.Mobile.Core.Charts;
 
 namespace CardiTrack.Mobile.Controls;
 
@@ -56,11 +57,16 @@ public sealed class MetricTrend : INotifyPropertyChanged
     /// — SpO2 and breathing rate always, and any metric while the baseline is still learning.
     /// </summary>
     /// <remarks>
+    /// The rule is named rather than labelled "Baseline": the word is the product's, not the
+    /// caregiver's, and <see cref="MetricExplanations.BaselineLabel"/> is the one place that
+    /// decides what to call it, so the key, the footer and the "i" panel never drift apart.
     /// Unitless, like the chart's own min/max labels: the unit is already on the headline reading
     /// a few dp above, and a legend is read as an annotation of the axis it sits under.
     /// </remarks>
     public string? BaselineText =>
-        Metric.Baseline is { } baseline ? $"Baseline {string.Format(AxisFormat, baseline)}" : null;
+        Metric.Baseline is { } baseline
+            ? $"{MetricExplanations.BaselineLabel(Name)}: {string.Format(AxisFormat, baseline)}"
+            : null;
 
     /// <summary>
     /// The legend entry for the published typical-adult range, attributed to whoever publishes it,

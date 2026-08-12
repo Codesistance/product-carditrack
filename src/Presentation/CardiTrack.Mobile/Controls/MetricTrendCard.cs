@@ -262,6 +262,14 @@ public sealed class MetricTrendCard : ContentView
         var baseline = _trend.Metric.Baseline;
         var reference = _trend.Metric.Reference;
 
+        // The metric's own ink, not its status accent: the line says which metric this is, and the
+        // pill above it says how the member is doing. A line that changed colour with severity
+        // would make the reader re-identify the card every time the reading moved between bands.
+        // Resolved once — the chart, its baseline rule and the key that names that rule all wear
+        // it, and looking it up three times is three chances for them to disagree.
+        var ink = MetricStatus.Resource(_trend.InkKey, MetricStatus.Accent(_trend.Metric.Status));
+        _baselineSwatch.Ink = ink;
+
         // The axis labels name the extent the chart actually plots over, which the baseline and
         // the reference band get a say in — so both are read off the one scale rather than the
         // labels quoting the readings while the line is drawn against something wider.
@@ -307,13 +315,10 @@ public sealed class MetricTrendCard : ContentView
             SemanticProperties.SetDescription(
                 this, $"{_trend.Name}, {_trend.ValueText}, last {_trend.Days} days. {comparisons}");
 
-        // The metric's own ink, not its status accent: the line says which metric this is, and the
-        // pill above it says how the member is doing. A line that changed colour with severity
-        // would make the reader re-identify the card every time the reading moved between bands.
         _chart.Render(
             points,
             scale,
-            MetricStatus.Resource(_trend.InkKey, MetricStatus.Accent(_trend.Metric.Status)),
+            ink,
             showMarkers: points.Count <= MarkerWindowLimit,
             baseline,
             reference);
