@@ -101,6 +101,11 @@ public static class MauiProgram
         builder.Services.AddSingleton<IPushDeviceRegistrationService, PushDeviceRegistrationService>();
         builder.Services.AddSingleton<IAuthService, AuthService>();
         builder.Services.AddSingleton<IPopupService, PopupService>();
+
+        // One instance behind both types: App raises the foreground signal on the concrete
+        // class, pages listen through the interface.
+        builder.Services.AddSingleton<AppResumeNotifier>();
+        builder.Services.AddSingleton<IAppResumeNotifier>(sp => sp.GetRequiredService<AppResumeNotifier>());
         builder.Services.AddSingleton<PostLoginRouter>();
 
         // Shell tab pages resolve through DI (constructor injection).

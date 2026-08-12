@@ -36,6 +36,7 @@ public partial class AlertsPage : ContentPage
         _popups = popups;
         Filters.FilterChanged += OnFilterChanged;
         ApplyArchiveButtonText();
+        this.RefreshWhenAppResumes(RefreshOnResumeAsync);
     }
 
     protected override void OnAppearing()
@@ -45,13 +46,28 @@ public partial class AlertsPage : ContentPage
             _ = LoadAsync();
     }
 
+    /// <summary>
+    /// The app returning to the foreground reloads the list, ignoring
+    /// <see cref="AutoRefreshInterval"/>: a caregiver reopening the app on this screen is asking
+    /// what has been raised since they left, and an alert list is the worst thing to serve stale.
+    /// Silent, because they did not ask for this one — a refresh that fails leaves the alerts
+    /// already on screen alone rather than opening a dialog over them.
+    /// </summary>
+    private Task RefreshOnResumeAsync() =>
+        DateTime.UtcNow - _lastLoadedUtc < ResumeRefresh.MinimumGap
+            ? Task.CompletedTask
+            : LoadAsync(silent: true);
+
     /// <param name="force">
     /// Supersedes a request already in flight rather than skipping. Anything the user asked
     /// for by hand — Refresh Now, pull-to-refresh, a different chip — must not be swallowed
     /// because a slow load happens to be running; that is the state the loading card is on
     /// screen for, so its own button would otherwise do nothing.
     /// </param>
-    private async Task LoadAsync(bool force = false)
+    /// <param name="silent">
+    /// Suppresses the "Couldn't refresh" popup for loads the user did not ask for.
+    /// </param>
+    private async Task LoadAsync(bool force = false, bool silent = false)
     {
         if (_isLoading && !force)
             return;
@@ -92,7 +108,7 @@ public partial class AlertsPage : ContentPage
                 ErrorDetailLabel.Text = ex.Message;
                 SetState(AlertsState.Error);
             }
-            else
+            else if (!silent)
             {
                 // Alerts already on screen: a failed refresh must not blank a list someone
                 // may be acting on, so say so and leave it.
