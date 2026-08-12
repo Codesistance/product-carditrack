@@ -178,7 +178,12 @@ public partial class StatusHeroCard : ContentView
             if (metrics.RestingHeartRate.Value is { } bpm)
                 heartRate = $"a resting heart rate of {bpm:N0} bpm";
             if (metrics.Sleep.Value is { } hours)
-                sleep = $"{hours:0.#} hours of sleep last night";
+            {
+                // Pluralized against the rounded display value, not the raw one: 1.04 h renders
+                // as "1", and "1 hours of sleep" reads as a bug.
+                var rounded = hours.ToString("0.#");
+                sleep = $"{rounded} {(rounded == "1" ? "hour" : "hours")} of sleep last night";
+            }
         }
 
         // Today's readings first, joined into one clause: "kept" carries a lone heart rate,
@@ -192,11 +197,12 @@ public partial class StatusHeroCard : ContentView
         };
 
         // Last night's sleep stays in its own clause — two different days, so the sentence
-        // can't imply the sleep was slept today.
+        // can't imply the sleep was slept today. The subject leads every branch, so the
+        // capitalized "This CardiMember" stand-in never lands mid-sentence.
         return (today, sleep) switch
         {
-            (not null, not null) => $"So far today, {who} has {today}, after getting {sleep}.",
-            (not null, null) => $"So far today, {who} has {today}.",
+            (not null, not null) => $"{who} has {today} so far today, after getting {sleep}.",
+            (not null, null) => $"{who} has {today} so far today.",
             (null, not null) => $"{who} got {sleep}, but nothing has come in from today yet.",
             _ => $"{who} hasn't sent any readings through yet.",
         };
