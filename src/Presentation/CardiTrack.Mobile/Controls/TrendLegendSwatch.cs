@@ -59,8 +59,10 @@ internal sealed class TrendLegendSwatchDrawable(TrendLegendMark mark) : IDrawabl
         if (mark == TrendLegendMark.Baseline)
         {
             var middle = dirtyRect.Center.Y;
-            canvas.StrokeColor = Ink is { } ink
-                ? TrendChartInk.BaselineIn(ink)
+            // Named for what it is rather than the shorter "ink": the reference branch below has
+            // its own, and a pattern variable stays in scope past the branch that declared it.
+            canvas.StrokeColor = Ink is { } metricInk
+                ? TrendChartInk.BaselineIn(metricInk)
                 : TrendChartInk.BaselineFallback;
             canvas.StrokeSize = TrendChartInk.BaselineThickness;
             canvas.StrokeDashPattern = TrendChartInk.BaselineDashes;
