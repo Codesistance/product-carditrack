@@ -358,7 +358,7 @@ public class HealthInsightService : IHealthInsightService
             --- Unresolved alerts driving this tier ---
             {alertContext}
 
-            --- Recent activity (last 3 days) ---
+            --- Recent activity (last 3 days, oldest first) ---
             {MedicalPromptBlocks.DailyLines(recentLogs, take: 3, today)}
             """;
     }
@@ -395,7 +395,7 @@ public class HealthInsightService : IHealthInsightService
             --- Baseline ---
             {baselineInfo}
 
-            --- Recent activity (last 3 days) ---
+            --- Recent activity (last 3 days, oldest first) ---
             {recentSummary}
             """;
     }
@@ -420,7 +420,7 @@ public class HealthInsightService : IHealthInsightService
             --- Baselines ---
             {string.Join("\n", baselineLines)}
 
-            --- Recent activity (last 7 days) ---
+            --- Recent activity (last 7 days, oldest first) ---
             {MedicalPromptBlocks.DailyLines(recentLogs, take: 7, today)}
             """;
     }
@@ -440,7 +440,7 @@ public class HealthInsightService : IHealthInsightService
             --- Provisional baseline ---
             {baseline.PeriodDays}-day (provisional) — Steps: {baseline.AvgSteps}±{baseline.StdDevSteps}, HR: {baseline.AvgRestingHeartRate}±{baseline.StdDevHeartRate}, Sleep: {baseline.AvgSleepMinutes} min{SleepWindow(baseline)}
 
-            --- Recent activity (last 7 days) ---
+            --- Recent activity (last 7 days, oldest first) ---
             {MedicalPromptBlocks.DailyLines(recentLogs, take: 7, today)}
             """;
     }

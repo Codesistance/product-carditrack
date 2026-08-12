@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Text.RegularExpressions;
 using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Domain.Entities;
@@ -21,7 +22,7 @@ namespace CardiTrack.Infrastructure.Services;
 /// often the job runs from how many summaries a member accumulates.
 /// </para>
 /// </summary>
-public class DigestGenerationService : IDigestGenerationService
+public partial class DigestGenerationService : IDigestGenerationService
 {
     /// <summary>
     /// <c>CARDITRACK_FAMILY_DIGEST_PROMPT</c> — the family-audience summary, blending the digest
@@ -192,7 +193,7 @@ public class DigestGenerationService : IDigestGenerationService
             --- Member ---
             {MedicalPromptBlocks.MemberContext(member, describedDate)}
 
-            --- Today so far, and yesterday ---
+            --- Recent activity (oldest first; the summary is about today) ---
             {MedicalPromptBlocks.DailyLines(logs, take: 2, describedDate)}
             """;
 
@@ -209,6 +210,14 @@ public class DigestGenerationService : IDigestGenerationService
                 "Discarded the generated summary for CardiMember {CardiMemberId} on {LocalDate}: the "
                 + "model returned empty text or restated its own instructions.",
                 memberId, describedDate);
+            return false;
+        }
+
+        if (OverstatesTodaysSteps(text, logs, describedDate) is { } overstatement)
+        {
+            _logger.LogWarning(
+                "Discarded the generated summary for CardiMember {CardiMemberId} on {LocalDate}: {Reason}.",
+                memberId, describedDate, overstatement);
             return false;
         }
 
@@ -290,6 +299,70 @@ public class DigestGenerationService : IDigestGenerationService
             memberId, describedDate, cleaned.Count, SuggestionCount);
         return null;
     }
+
+    /// <summary>
+    /// Catches a summary crediting the member with more steps today than they have actually taken,
+    /// and returns why — or null when it says nothing of the kind.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Steps within a day only rise, so a figure above the running total is one the member has not
+    /// walked yet. That makes this the rare claim a generated sentence can be checked against
+    /// rather than trusted on: not a judgement about phrasing, an arithmetic impossibility.
+    /// </para>
+    /// <para>
+    /// Scoped to sentences that say "today", because the same figure is perfectly true of another
+    /// day — the failure this exists for was yesterday's real step total attributed to today, not
+    /// an invented number, and a check that ignored which day was named would have let it through
+    /// while rejecting an honest mention of yesterday.
+    /// </para>
+    /// <para>
+    /// The tolerance lets an honest rounding stand: a model told to prefer a phrase to a figure and
+    /// then asked for a figure will round, and "around 3,500" for 3,442 is a fair description
+    /// where "around 3,800" is a different day's number. Deliberately not exhaustive — it reads
+    /// figures written next to the word "steps", so a sentence phrased around them entirely will
+    /// pass. It is a floor under the worst version of this, not a proof of arithmetic.
+    /// </para>
+    /// </remarks>
+    private static string? OverstatesTodaysSteps(
+        string text, IReadOnlyList<ActivityLog> logs, DateOnly describedDate)
+    {
+        if (logs.FirstOrDefault(l => l.Date == describedDate)?.Steps is not { } walkedSoFar)
+            return null;
+
+        var ceiling = walkedSoFar + Math.Max(MinimumStepRounding, walkedSoFar * StepRoundingTolerance / 100);
+
+        foreach (var sentence in text.Split(SentenceEnds, StringSplitOptions.RemoveEmptyEntries))
+        {
+            if (!sentence.Contains("today", StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            foreach (Match match in StepFigures().Matches(sentence))
+            {
+                if (!int.TryParse(match.Groups[1].Value.Replace(",", string.Empty), out var claimed))
+                    continue;
+                if (claimed > ceiling)
+                    return $"it credits {claimed} steps to today, which stands at {walkedSoFar} so far";
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>A figure written as this many steps — "3,800 steps", "around 3800 steps".</summary>
+    [GeneratedRegex(@"(\d[\d,]*)\s+steps", RegexOptions.IgnoreCase)]
+    private static partial Regex StepFigures();
+
+    private static readonly char[] SentenceEnds = ['.', '!', '?', '\n'];
+
+    /// <summary>
+    /// How far above the running total a quoted figure may sit and still be an honest rounding of
+    /// it, as a percentage — with <see cref="MinimumStepRounding"/> as the floor, so an early
+    /// morning's few hundred steps are not held to a tolerance of twenty.
+    /// </summary>
+    private const int StepRoundingTolerance = 2;
+
+    private const int MinimumStepRounding = 50;
 
     /// <summary>See <see cref="InstructionEchoes"/>. Whitespace is flattened first so the check does
     /// not depend on the model having re-wrapped the instructions exactly as they were sent.</summary>

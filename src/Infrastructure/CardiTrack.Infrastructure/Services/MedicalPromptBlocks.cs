@@ -103,22 +103,48 @@ internal static partial class MedicalPromptBlocks
     private static partial Regex WhitespaceRuns();
 
     /// <summary>
-    /// The trailing daily readings, oldest first.
+    /// The trailing daily readings, oldest first, each opening with which day it is.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// Ingestion stores the day in progress, so the newest line is a part-finished day whose totals
     /// are not comparable with the completed days above it. It is labelled rather than dropped: the
     /// model is being asked to explain deviations, and an unmarked partial day reads as a collapse
     /// in activity that the member is not actually having.
+    /// </para>
+    /// <para>
+    /// The label leads the line, and says "Yesterday" rather than only a date. It used to trail it
+    /// as a parenthetical after an ISO date, and a family summary came back attributing yesterday's
+    /// step total to today while taking that same sentence's sleep figure from the correct row —
+    /// two rows of identical shape, told apart only by a date the model had to relate to a "today"
+    /// nobody had named, with the one disambiguating note arriving after the numbers it governed.
+    /// A reader who has to backtrack to find out which day they just read is a reader who
+    /// sometimes will not. The dates stay, in parentheses, because they still carry the weekday
+    /// pattern a week-long window is read for.
+    /// </para>
     /// </remarks>
     internal static string DailyLines(IEnumerable<ActivityLog> logs, int take, DateOnly today)
     {
         var lines = logs
             .TakeLast(take)
-            .Select(l => $"  {l.Date}: steps={l.Steps}, HR={l.RestingHeartRate}, sleep={l.SleepMinutes}min"
-                         + (l.Date == today ? "  (today, still in progress — totals are partial)" : string.Empty))
+            .Select(l =>
+                $"  {DayLabel(l.Date, today)}: "
+                + $"steps={l.Steps}, HR={l.RestingHeartRate}, sleep={l.SleepMinutes}min")
             .ToList();
 
         return lines.Count > 0 ? string.Join("\n", lines) : "No recent activity data.";
     }
+
+    /// <summary>
+    /// Which day a reading belongs to, said before the reading rather than after it. Relative to
+    /// the member's own today, because that is the anchor the model is missing — it cannot know
+    /// what today's date is except by being told.
+    /// </summary>
+    private static string DayLabel(DateOnly date, DateOnly today) =>
+        (today.DayNumber - date.DayNumber) switch
+        {
+            <= 0 => $"Today so far ({date}, still in progress — totals are partial)",
+            1 => $"Yesterday ({date}, complete day)",
+            var days => $"{days} days ago ({date}, complete day)",
+        };
 }

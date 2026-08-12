@@ -270,7 +270,7 @@ public class DigestGenerationServiceTests
         Assert.Contains("Age: 78", prompt);
         // Today's reading line, formatted the way the prompt builder formats dates (DateOnly's
         // default is culture-dependent, so the expectation goes through it too).
-        Assert.Contains($"{Today}: steps=5000", prompt);
+        Assert.Contains($"Today so far ({Today}, still in progress — totals are partial): steps=5000", prompt);
         Assert.DoesNotContain("Margaret", prompt);  // minimisation, same as insights
     }
 
@@ -416,6 +416,159 @@ public class DigestGenerationServiceTests
         Assert.All(echoes, echo => Assert.Contains(
             lines,
             line => line.Contains(echo, StringComparison.OrdinalIgnoreCase)));
+    }
+
+    // ---- Which day a reading belongs to ----
+
+    /// <summary>
+    /// The failure this format exists to prevent: two rows of identical shape, told apart only by
+    /// a date the model has to relate to a "today" nobody named, produced a family summary that
+    /// credited yesterday's step total to today while taking the same sentence's sleep figure from
+    /// the correct row. Each line now opens with which day it is.
+    /// </summary>
+    [Fact]
+    public async Task EveryReadingLineSaysWhichDayItIs_BeforeTheNumbers()
+    {
+        _activityLogs.GetByCardiMemberAndDateRangeAsync(_memberId, Arg.Any<DateOnly>(), Arg.Any<DateOnly>())
+            .Returns(
+            [
+                new ActivityLog
+                {
+                    CardiMemberId = _memberId, Date = Today.AddDays(-1), Steps = 3835,
+                    RestingHeartRate = 62, CreatedDate = DataLandedAt,
+                },
+                new ActivityLog
+                {
+                    CardiMemberId = _memberId, Date = Today, Steps = 3442,
+                    RestingHeartRate = 58, CreatedDate = DataLandedAt,
+                },
+            ]);
+
+        string? prompt = null;
+        await _medicalAi.GenerateStructuredAsync<DigestGenerationService.DigestAiResponse>(
+            Arg.Do<string>(p => prompt = p), Arg.Any<CancellationToken>());
+
+        await CreateSut().GenerateDueDigestsAsync(UtcNow);
+        Assert.NotNull(prompt);
+
+        Assert.Contains($"Yesterday ({Today.AddDays(-1)}, complete day): steps=3835", prompt);
+        Assert.Contains($"Today so far ({Today}, still in progress — totals are partial): steps=3442", prompt);
+
+        // The label leads the line. A note trailing the numbers arrives after the model has read
+        // them, which is how the wrong day's total got attributed in the first place.
+        foreach (var line in prompt.Split('\n').Where(l => l.Contains("steps=")))
+            Assert.Matches(@"^\s*(Today so far|Yesterday|\d+ days ago) \(", line);
+    }
+
+    [Fact]
+    public async Task TheReadingsAreOrderedOldestFirst_AndTheHeaderSaysSo()
+    {
+        string? prompt = null;
+        await _medicalAi.GenerateStructuredAsync<DigestGenerationService.DigestAiResponse>(
+            Arg.Do<string>(p => prompt = p), Arg.Any<CancellationToken>());
+
+        await CreateSut().GenerateDueDigestsAsync(UtcNow);
+
+        // The header used to read "Today so far, and yesterday" over rows running the other way.
+        Assert.Contains("oldest first", prompt);
+    }
+
+    // ---- A summary cannot credit today with steps the member has not walked ----
+
+    private void ReturnsSummary(string summary) =>
+        _medicalAi.GenerateStructuredAsync<DigestGenerationService.DigestAiResponse>(
+                Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new DigestGenerationService.DigestAiResponse
+            {
+                Headline = "A settled night", Summary = summary,
+            });
+
+    /// <summary>
+    /// Steps within a day only rise, so a figure above the running total is one the member has not
+    /// walked yet — the rare claim a generated sentence can be checked against rather than trusted
+    /// on. 5000 is today's total in the default setup.
+    /// </summary>
+    [Fact]
+    public async Task DiscardsTheSummary_WhenItCreditsTodayWithStepsNotYetWalked()
+    {
+        ReturnsSummary("They walked quite a bit today, around 5800 steps. Their heart rate was steady.");
+
+        var generated = await CreateSut().GenerateDueDigestsAsync(UtcNow);
+
+        Assert.Equal(0, generated);
+        await _digests.DidNotReceive().AddAsync(Arg.Any<DigestEntry>(), Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// The summary that prompted all of this, with the readings behind it: yesterday 3,835 steps,
+    /// today 3,442 so far, and a sentence crediting today with "around 3800" — yesterday's total,
+    /// rounded, on the wrong day. The sleep figure in the same breath came off the right row,
+    /// which is what marked it as a row mix-up rather than an invention.
+    /// </summary>
+    [Fact]
+    public async Task DiscardsTheSummary_ThatAttributedYesterdaysStepsToToday()
+    {
+        _activityLogs.GetByCardiMemberAndDateRangeAsync(_memberId, Arg.Any<DateOnly>(), Arg.Any<DateOnly>())
+            .Returns(
+            [
+                new ActivityLog
+                {
+                    CardiMemberId = _memberId, Date = Today.AddDays(-1), Steps = 3835,
+                    SleepMinutes = 412, CreatedDate = DataLandedAt,
+                },
+                new ActivityLog
+                {
+                    CardiMemberId = _memberId, Date = Today, Steps = 3442,
+                    SleepMinutes = 230, CreatedDate = DataLandedAt,
+                },
+            ]);
+        ReturnsSummary(
+            "Your loved one had a good night's sleep last night, getting over 230 minutes in bed. "
+            + "They also walked quite a bit today, around 3800 steps. Their heart rate was steady "
+            + "and low during the day. Overall, things seem settled.");
+
+        var generated = await CreateSut().GenerateDueDigestsAsync(UtcNow);
+
+        Assert.Equal(0, generated);
+        await _digests.DidNotReceive().AddAsync(Arg.Any<DigestEntry>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task AllowsAnHonestRoundingOfTodaysSteps()
+    {
+        // A model told to prefer a phrase to a figure and then asked for one will round. "Around
+        // 5,000" of 5,000 is a fair description; the guard is for a different day's number.
+        ReturnsSummary("They walked around 5000 steps today, much as usual.");
+
+        var generated = await CreateSut().GenerateDueDigestsAsync(UtcNow);
+
+        Assert.Equal(1, generated);
+    }
+
+    /// <summary>
+    /// The failure was a misattribution, not an invention: the figure was real, it belonged to
+    /// another day. A guard that ignored which day a sentence named would reject an honest mention
+    /// of yesterday and still let the misattribution through.
+    /// </summary>
+    [Fact]
+    public async Task LeavesAlone_AFigureAttributedToADayItCouldBelongTo()
+    {
+        ReturnsSummary("Yesterday they managed 8000 steps. Today has been quieter so far.");
+
+        var generated = await CreateSut().GenerateDueDigestsAsync(UtcNow);
+
+        Assert.Equal(1, generated);
+    }
+
+    [Fact]
+    public async Task LeavesAlone_ASummaryThatQuotesNoStepFigureAtAll()
+    {
+        // The point of the tone block: a phrase where a figure would do. Nothing to check.
+        ReturnsSummary("They have been up and about today, much as they usually are.");
+
+        var generated = await CreateSut().GenerateDueDigestsAsync(UtcNow);
+
+        Assert.Equal(1, generated);
     }
 
     // ---- Suggestions: three usable ones or none at all ----
