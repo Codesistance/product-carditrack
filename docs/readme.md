@@ -111,6 +111,9 @@ Operator runbook for configuring the Auth0 tenant per environment (dev, prod) to
 #### [apm_setup_runbook.md](./technical/apm_setup_runbook.md)
 **Observability/APM** — Serilog + OpenTelemetry with a switchable APM engine (`Apm:Engine`; Datadog deployed, console-only when unset locally); token provisioning and setup steps.
 
+#### [claude_cloud_environment_setup.md](./technical/claude_cloud_environment_setup.md)
+**Claude Code cloud environment config** — name, network access/domain allowlist, environment variables, and setup script for the "New cloud environment" dialog, so a fresh cloud session builds, runs, and tests `CardiTrack.Server.slnf` with no manual follow-up.
+
 #### [oauth_clients.md](./technical/oauth_clients.md)
 Inventory of every OAuth client (identity vs device-data), social log-on scope, and provisioning steps for the Auth0 and Google Health API clients.
 

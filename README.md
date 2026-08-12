@@ -101,7 +101,9 @@ package restore, dev certificates, and the initial migration run automatically.
 
 See the [dev container README](.devcontainer/README.md) for the toolchain matrix
 and the opt-in mobile layer. Claude Code cloud sessions provision the same
-toolchain automatically via a `SessionStart` hook.
+toolchain automatically via a `SessionStart` hook. To configure a Claude Code
+**cloud environment** itself (network access, environment variables, setup script),
+see [docs/technical/claude_cloud_environment_setup.md](docs/technical/claude_cloud_environment_setup.md).
 
 Everything except `CardiTrack.Mobile` is covered by the `CardiTrack.Server.slnf`
 solution filter — the MAUI project needs the `maui-android` workload and the
