@@ -4,6 +4,7 @@
 **Scope:** Classification, pseudonymization, Safe Harbor de-identification, retention/deletion, access controls, consent, and subprocessor obligations for all medical/health data in CardiTrack.
 **Relationship to other docs:** [infrastructure.md](../infrastructure.md) describes the deployed PostgreSQL (Cloud SQL) on GCP data model per `infrastructure/` Terraform. This ADR designs against the deployed system and notes where the planned AI pipeline ([llm_design.md](../llm_design.md)) must follow the same rules.
 > **Platform note (Aug 7, 2026):** the AI pipeline design has been re-platformed from Azure to GCP (Pub/Sub + Cloud Run, with pipeline outputs as PostgreSQL JSONB tables — see [llm_design.md](../llm_design.md)). References to Azure services and Cosmos DB collections below describe the superseded design; the retention/TTL, consent, and erasure controls carry over unchanged to their GCP equivalents.
+> **Platform note (Aug 12, 2026):** environmental-context enrichment ([llm_design.md](../llm_design.md)) is CardiTrack's first geolocation-derived data of any kind. It shipped ahead of the general `ConsentRecords` framework §8 designs, gated instead by one narrow, feature-specific, default-`false` flag (`CardiMember.EnvironmentalContextConsentGranted`) enforced at the single call site that can reach location data (`EnvironmentalEnrichmentService`) — a deliberately smaller mechanism than §8's per-metric consent model, not a substitute for it. Raw coordinates are never persisted; only derived temperature/air-quality values are. See the retention matrix (§5.1) and `SubjectDataMap` (§3.4) entries below.
 
 ---
 
@@ -72,7 +73,7 @@ Data that identifies a person on its own. HIPAA Safe Harbor categories map here.
 
 ### Tier 2 — Pseudonymized clinical plane
 
-Health payload keyed only by `CardiMemberId` (a random GUID that carries no identity by itself). This is where `ActivityLogs`, `Alerts`, `PatternBaselines`, `DeviceConnections` (minus label), and the planned Cosmos collections live.
+Health payload keyed only by `CardiMemberId` (a random GUID that carries no identity by itself). This is where `ActivityLogs`, `Alerts`, `PatternBaselines`, `DeviceConnections` (minus label), `EnvironmentalReadings`, and the planned Cosmos collections live.
 
 **Explicitly: Tier 2 is still PHI under HIPAA and still personal data under GDPR** (Art. 4(5) — pseudonymized data with a retained re-linking capability is personal data). The tier split does not shrink compliance scope. It changes the blast radius: a leaked clinical table exposes readings for anonymous GUIDs; a leaked PII vault exposes identities without readings; only a joint compromise plus vault decryption exposes both.
 
@@ -179,6 +180,7 @@ public static class SubjectDataMap
         new(nameof(PatternBaseline),  "pattern_baselines",  "cardi_member_id"),
         new(nameof(DeviceConnection), "device_connections", "cardi_member_id"),
         new(nameof(AuditLog),         "audit_logs",         "cardi_member_id", Erasable: false), // legal hold, §6
+        new(nameof(EnvironmentalReading), "environmental_readings", "cardi_member_id"), // built 2026-08-12; no coordinate columns to erase, only derived values
         // planned: consent_records (Erasable: false), Cosmos collections by partition key
     };
 
@@ -312,6 +314,7 @@ Periods marked ⚖ are engineering **proposals** requiring legal ratification (D
 | Raw daily readings (`ActivityLogs`) | Postgres clinical | ⚖ 25 months rolling | **Hard delete** (batched `ExecuteDelete`), after folding into de-identified monthly aggregates (§4) | 2 years covers YoY trend UX ([infrastructure.md](../infrastructure.md) archival note); raw grain not needed beyond |
 | Minute-grain readings (`GranularMetricHours`) | Postgres clinical | **90 days** — enforced today by `PartitionMaintenanceWorker` | **Partition drop** (daily partitions; instant, no dead tuples) | Substrate for moving-window inference only ([granular ADR](./granular_timeseries_storage.md)); aligned with the AI pipeline's `realtime_results` window |
 | Hourly rollups (`MetricRollupsHourly`) | Postgres clinical | **13 months** — enforced today by `PartitionMaintenanceWorker` | **Partition drop** (monthly partitions) | A year of hour-grain comparisons plus slack ([granular ADR](./granular_timeseries_storage.md)) |
+| Environmental readings (`EnvironmentalReadings`) | Postgres clinical | **90 days** — enforced today by `PartitionMaintenanceWorker` | **Partition drop** (daily partitions) | Derived temperature/AQI only, no coordinates stored; matches the `RealtimeAssessments` window it feeds prompts alongside. Populated only for members with `EnvironmentalContextConsentGranted = true` |
 | Derived baselines (`PatternBaselines`) | Postgres clinical | ⚖ 12 months (keep latest per period regardless) | Hard delete — fully regenerable | Derived data |
 | Alerts + notes/photos | Postgres clinical / GCS | ⚖ 24 months after resolution | **Anonymize-in-place**: null `AcknowledgedBy`/`ResolvedBy`, replace `Title`/`Message`/`MetricValues` with type+severity codes; delete photos (blobs + rows). Row skeleton retained for alert-quality stats | Free text + user refs are the risk; counts are the value |
 | Device connections + OAuth tokens | Postgres clinical | Life of connection; **tokens purged ≤ 24 h after disconnect/consent-withdrawal**, with provider-side revoke (`https://oauth2.googleapis.com/revoke`) | Hard delete of token columns; connection row hard-deleted at member erasure | Live credentials to third-party PHI |
@@ -553,6 +556,7 @@ CREATE INDEX ix_consent_member_time ON compliance.consent_records (cardi_member_
   1. `DeviceSyncService.SyncCardiMemberAsync` skips metric groups without a current grant (activity/HR/sleep map 1:1 to the three Google Health scope families in `appsettings.json:77-81`).
   2. The planned AI pipeline's aggregator applies the same gate per [llm_design.md](../llm_design.md) ("data types without recorded consent are never processed").
   3. Family visibility continues through `CanViewHealthData` — that flag is *authorization* (what a caregiver may see), consent records are *lawful basis* (what CardiTrack may process). Keep them distinct.
+  4. **Built ahead of this framework (2026-08-12):** environmental-context enrichment's `CardiMember.EnvironmentalContextConsentGranted` flag is checked at the top of `EnvironmentalEnrichmentService.EnrichDueSessionsAsync` — its candidate query is the only code path that ever reaches location data, so this one flag is a complete, if narrow, enforcement point rather than a partial one. It predates `ConsentRecords` and does not migrate into it automatically if/when that framework ships; that migration is future work, not implied by this note.
 - **Withdrawal side-effects:** withdrawal of a metric stops sync + processing of that metric immediately; withdrawal of everything triggers the disconnect flow (token revoke) and offers erasure (§6) — withdrawal of consent and erasure are separate GDPR rights and remain separate actions.
 
 ---
@@ -573,6 +577,7 @@ Everywhere data leaves the primary Postgres/VPC boundary, with the paperwork eac
 | **Stripe** (planned) | Payment data only — subscription metadata must never reference health status | No BAA needed if boundary holds (document it) | DPA (standard) | Design rule |
 | **Twilio / Azure Communication Services** (planned SMS fallback) | Alert content to phone numbers | SMS body = PHI ⇒ BAA required; or keep bodies content-free ("Check the CardiTrack app") | DPA + SCCs | Decide content-free vs BAA before shipping |
 | **FCM / APNs** (planned push) | Token + content-free payload (§7.4 rule) | No BAA needed if payloads stay content-free | Disclose in notice | Design rule |
+| **Google Maps Platform** (Weather + Air Quality APIs, built 2026-08-12) | A GPS coordinate + timestamp per consented member's exercise session, for the duration of one outbound lookup only — never logged, never stored, never returned to any caller past the enrichment call | Coordinates are not health data on their own, but pairing them with a cardiac-monitoring context makes the *disclosure itself* worth this row; the API returns only derived weather/AQI values, which are not PHI | Personal data (location) while in flight to the API; DPA status unconfirmed — same Google Cloud umbrella as other Google services but a distinct product, so it does not inherit the Cloud BAA row above | ⚠ **Blocked as used** until the DPA question is resolved — same posture as the Gemini row: the mechanism ships gated (consent flag default `false`, no scope granted yet), but production traffic should not flow before this is closed |
 
 **Process rule:** adding any new external destination for Tier 1/Tier 2 data requires a row in this table *and* a signed BAA/DPA reference **before** the integration merges. Enforce with a PR checklist item; the `SubjectDataMap` architecture test (§3.4) is the analogous in-schema guard.
 

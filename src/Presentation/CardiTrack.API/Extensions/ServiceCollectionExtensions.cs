@@ -78,6 +78,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IGranularMetricRepository, CardiTrack.Infrastructure.Repositories.GranularMetricRepository>();
         services.AddScoped<IDigestRepository, CardiTrack.Infrastructure.Repositories.DigestRepository>();
         services.AddScoped<IRealtimeAssessmentRepository, CardiTrack.Infrastructure.Repositories.RealtimeAssessmentRepository>();
+        services.AddScoped<IEnvironmentalReadingRepository, CardiTrack.Infrastructure.Repositories.EnvironmentalReadingRepository>();
         services.AddScoped<IAuditLogRepository, CardiTrack.Infrastructure.Repositories.AuditLogRepository>();
         services.AddScoped<INotificationRepository, CardiTrack.Infrastructure.Repositories.NotificationRepository>();
         services.AddScoped<INotificationMuteRepository, CardiTrack.Infrastructure.Repositories.NotificationMuteRepository>();

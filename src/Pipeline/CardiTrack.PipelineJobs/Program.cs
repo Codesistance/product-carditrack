@@ -65,6 +65,7 @@ builder.Services.AddScoped<IPatternBaselineRepository, PatternBaselineRepository
 builder.Services.AddScoped<IGranularMetricRepository, GranularMetricRepository>();
 builder.Services.AddScoped<IDigestRepository, DigestRepository>();
 builder.Services.AddScoped<IRealtimeAssessmentRepository, RealtimeAssessmentRepository>();
+builder.Services.AddScoped<IEnvironmentalReadingRepository, EnvironmentalReadingRepository>();
 builder.Services.AddScoped<INotificationRepository, NotificationRepository>();
 builder.Services.AddScoped<INotificationMuteRepository, NotificationMuteRepository>();
 // Repositories only, not AddPushServices — the pipeline gets a transport (the internal enqueue
@@ -105,6 +106,14 @@ if (jobName == "aggregate")
     builder.Services.AddScoped<INotificationDrainService, NotificationDrainService>();
 }
 
+// Environmental enrichment — wired only for its own job, mirroring the aggregator's Pub/Sub
+// wiring above: the Google Maps Platform key and the exercise/GPS device-client methods it
+// drives are registered nowhere else in this process (EnvironmentalServiceExtensions).
+if (jobName == "enrich")
+{
+    builder.Services.AddEnvironmentalContextServices(configuration);
+}
+
 var app = builder.Build();
 
 // No app.Run(): a job executes one pass and exits, and never listens.
@@ -137,8 +146,14 @@ try
             Log.Information("PipelineJobs run finished. Assessments written: {Assessed}.", assessed);
             return 0;
 
+        case "enrich":
+            var enrichment = scope.ServiceProvider.GetRequiredService<IEnvironmentalEnrichmentService>();
+            var enriched = await enrichment.EnrichDueSessionsAsync(DateTime.UtcNow);
+            Log.Information("PipelineJobs run finished. Environmental readings written: {Enriched}.", enriched);
+            return 0;
+
         default:
-            Log.Fatal("Unknown job '{Job}'. Known jobs: digest, aggregate, assess.", jobName);
+            Log.Fatal("Unknown job '{Job}'. Known jobs: digest, aggregate, assess, enrich.", jobName);
             return 1;
     }
 }

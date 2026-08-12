@@ -34,6 +34,7 @@ public class TimeSeriesPartitionService : ITimeSeriesPartitionService
         {
             await _context.Database.ExecuteSqlRawAsync(TimeSeriesPartitions.CreateDailyPartitionSql(day), ct);
             await _context.Database.ExecuteSqlRawAsync(TimeSeriesPartitions.CreateRealtimePartitionSql(day), ct);
+            await _context.Database.ExecuteSqlRawAsync(TimeSeriesPartitions.CreateEnvironmentalPartitionSql(day), ct);
         }
 
         var firstMonth = new DateOnly(firstDay.Year, firstDay.Month, 1);
@@ -62,6 +63,9 @@ public class TimeSeriesPartitionService : ITimeSeriesPartitionService
         if (retention.RealtimeDays <= 0)
             throw new ArgumentOutOfRangeException(
                 nameof(retention), retention.RealtimeDays, "RealtimeDays retention must be positive.");
+        if (retention.EnvironmentalDays <= 0)
+            throw new ArgumentOutOfRangeException(
+                nameof(retention), retention.EnvironmentalDays, "EnvironmentalDays retention must be positive.");
 
         var today = DateOnly.FromDateTime(DateTime.UtcNow);
 
@@ -84,6 +88,16 @@ public class TimeSeriesPartitionService : ITimeSeriesPartitionService
         {
             if (TimeSeriesPartitions.TryParseRealtimePartition(name, out var day)
                 && day.AddDays(1) <= realtimeCutoff)
+            {
+                await DropAsync(name, ct);
+            }
+        }
+
+        var environmentalCutoff = today.AddDays(-retention.EnvironmentalDays);
+        foreach (var name in await ChildPartitionsAsync(TimeSeriesPartitions.EnvironmentalParent, ct))
+        {
+            if (TimeSeriesPartitions.TryParseEnvironmentalPartition(name, out var day)
+                && day.AddDays(1) <= environmentalCutoff)
             {
                 await DropAsync(name, ct);
             }

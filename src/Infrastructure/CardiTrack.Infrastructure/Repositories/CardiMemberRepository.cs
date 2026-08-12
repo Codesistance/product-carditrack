@@ -43,4 +43,12 @@ public class CardiMemberRepository : Repository<CardiMember>, ICardiMemberReposi
             .Select(cm => cm.Id)
             .ToListAsync();
     }
+
+    public async Task<IReadOnlyList<Guid>> GetActiveIdsWithEnvironmentalConsentAsync()
+    {
+        return await _dbSet
+            .Where(cm => cm.IsActive && cm.EnvironmentalContextConsentGranted)
+            .Select(cm => cm.Id)
+            .ToListAsync();
+    }
 }

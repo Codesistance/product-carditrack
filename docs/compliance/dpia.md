@@ -5,10 +5,11 @@
 | Field | Value |
 |---|---|
 | Status | **DRAFT — pending review and sign-off** |
-| Version | 0.3 |
-| Date | 2026-08-07 |
+| Version | 0.4 |
+| Date | 2026-08-12 |
 | Changes since 0.1 | Behavioural-baseline calculation moved from planned to implemented (§2 criterion 1, §4.2 A10, §6.3, Appendix A-6) |
 | Changes since 0.2 | MedGemma insight prompts now carry member context — derived age, sex, and free-text `MedicalNotes` (§4.2 A5, §6.2, new risk R-A14). §13 names a prompt-content change as a review trigger, so this update is required, not optional |
+| Changes since 0.3 | Environmental-context enrichment shipped — CardiTrack's first geolocation-derived data of any kind, gated by a new dedicated consent flag rather than any existing mechanism (§4.2 A16, §4.3, §6.3, new risk R-A15). §13 names "a new processor or model provider is added" as a review trigger; Google Maps Platform is new here, so this update is required |
 | Accountable owner | Moses Arigbede (founder/lead) |
 | Data Protection Officer | **Not appointed — open item OI-1.** Large-scale processing of special-category health data likely makes a DPO mandatory (EU/UK GDPR Art. 37(1)(c)). |
 | Legal regimes assessed | EU GDPR, UK GDPR, US state health-privacy laws (CCPA/CPRA; Washington My Health My Data Act) |
@@ -111,6 +112,7 @@ Minimisation observations (feed §7): the schema holds fields nothing populates 
 | A13 | **Real-time heart-rate assessment** (dev) — 5-minute Cloud Run job decomposing each member's latest hour of minute-grain heart rate (SSA, in-process) and asking **in-project MedGemma** for a severity verdict; the prompt carries age, sex, medical notes and denoised metrics — never name or id. Assessment stored in partitioned `RealtimeAssessments` (90-day retention by partition drop); red/orange verdicts create caregiver `Alert` rows (one unresolved heart-rate alert at a time), an unparseable verdict is stored but never alerts. Same no-public-key wiring as A11, so data cannot leave the estate | **H** (derived assessment of health) → stays in-project | `src/Infrastructure/CardiTrack.Infrastructure/Services/RealtimeAssessmentService.cs`; `src/Core/CardiTrack.Application/Services/AssessmentSeverityParser.cs` |
 | A14 | **Inactivity detection** — 15-minute Worker job checking each recently-active member for >2 h without any minute-grain reading during waking hours on their anchor clock; raises one yellow rule-based `Inactivity` alert (suppressed until resolved). Reads only data already held (A1/A13 substrate), makes no AI call, stores nothing new beyond the alert row | *(h)* derived presence/absence signal from already-held data | `src/Worker/CardiTrack.Worker/Workers/InactivityDetectionWorker.cs`; `src/Infrastructure/CardiTrack.Infrastructure/Services/InactivityDetectionService.cs` |
 | A15 | **Statistical alert evaluation** — 15-minute Worker job applying five deterministic rules (activity decline, irregular sleep, elevated resting HR, no morning activity, long-term trend) to daily readings against the member's established 30-day `PatternBaseline`; provisional baselines never evaluated. Rule-based text, no AI call, no new data stored beyond the alert row | *(h)* derived deviation signals from already-held data (extends A10's profile use) | `src/Worker/CardiTrack.Worker/Workers/StatisticalAlertWorker.cs`; `src/Core/CardiTrack.Application/Services/StatisticalAlertRules.cs` |
+| A16 | **Environmental-context enrichment** (built 2026-08-12; **inert today** — see caveats) — for a GPS-tagged exercise session on a consented member's connection, fetches the session's coordinate from the Google Health API (`exercise` data type + TCX export, needs the not-yet-granted `googlehealth.location.readonly` scope) and calls **Google Maps Platform** (Weather + Air Quality APIs, external, off-estate) with the coordinate and timestamp. Only the returned temperature/AQI values are stored, in the partitioned `EnvironmentalReadings` table; the coordinate itself is discarded after that one call and never logged or persisted. Gated on `CardiMember.EnvironmentalContextConsentGranted` (**default `false`**) — a dedicated, narrower mechanism than the `ConsentRecords` framework §8 of [data_protection_architecture.md](../technical/data_protection_architecture.md) designs, built ahead of it. **Two independent reasons this cannot process real data yet:** the OAuth scope has not been requested from Google, and the consent flag defaults off with no UI to set it true — this row documents the mechanism, not live processing | **First location data of any kind** → external API (Google Maps Platform) | `src/Infrastructure/CardiTrack.Infrastructure/Services/EnvironmentalEnrichmentService.cs`; `src/Infrastructure/CardiTrack.Infrastructure/ExternalClients/Environmental/GoogleEnvironmentalClient.cs`; `src/Pipeline/CardiTrack.PipelineJobs/Program.cs` (`--job enrich`) |
 
 ### 4.3 Recipients and processors (current)
 
@@ -124,6 +126,7 @@ Minimisation observations (feed §7): the schema holds fields nothing populates 
 | Auth0 (Okta) | Identity | Email, name, credentials, login IP | Dev: UK tenant; prod: **undecided UK/EU** (`docs/technical/auth0_setup_runbook.md`) — OI-4 | DPA not documented |
 | Datadog | APM/logs/RUM | Warning+ logs (incl. email — R-A5), traces, mobile sessions | EU site (`datadoghq.eu`) | DPA not documented |
 | Apple / Google Play | Store distribution, TestFlight testers | Tester accounts | Vendor-side | Store agreements |
+| Google Maps Platform | Weather/AQI lookups (A16) | One GPS coordinate + timestamp per lookup, in-flight only — not logged or stored by CardiTrack | **Region unconfirmed** — no region-pinning configuration exists in this client today | **None documented.** Distinct Google product from the Cloud DPA row above; does not inherit it — risk R-A15 |
 
 **US transfer surface today:** the prod audit-log bucket (`US`), unpinned Secret Manager replication, the global Gemini endpoint, and US parent companies of Auth0/Datadog (EU-hosted). `[DECISION REQUIRED — OI-5]`: transfer mechanism (SCCs/UK IDTA + transfer impact assessment) per processor.
 
@@ -204,6 +207,7 @@ No retention is enforced in code today (no purge jobs exist). Documented stateme
 | Report artifacts | 24h link (docs) vs 1h cache TTL (code) | 24 h; make code match docs |
 | Soft-deleted records | "90 days before purging" (docs; no purge exists) | 90 days, implemented by the future RetentionWorker |
 | OAuth tokens | None beyond provider expiry | Delete on device disconnect and member deletion |
+| Environmental readings (`EnvironmentalReadings`, A16) | **Enforced in code today**: 90 days, partition drop (`PartitionMaintenanceWorker`) | Adopt as built — matches the `RealtimeAssessments` retention it was designed alongside |
 | Cloud Logging / Datadog / GCLB logs | None | 30 days operational logs; define Datadog retention explicitly |
 | DB backups | 7 backups (Terraform) vs 90 days (docs) | Decide and align — OI-8 |
 | Planned AI pipeline stores (PostgreSQL JSONB on GCP; formerly Cosmos) | 90d / 90d / 2y / 1y TTLs (`docs/llm_design.md`) | Adopt as designed when built |
@@ -255,6 +259,7 @@ Likelihood × severity assessed from the **data subject's** perspective. Scale: 
 | R-A12 | Third-party data without notice (emergency contacts, invitees) | H | L | **Medium** | M12 |
 | R-A13 | DP key ring unencrypted on GCS — **accepted risk** (antiforgery only; KMS rejected) | L | L | **Accepted** | Compensating controls in §4.4; re-review only if the key ring's use expands beyond antiforgery |
 | R-A14 | **Caregiver free text as model input**: `MedicalNotes` is sent to MedGemma with the metrics (A5). Two failure modes — a stale or mistaken note ("takes metformin" after the drug was stopped) steers an explanation the caregiver reads as authoritative; and the note is untrusted text reaching a medical model, so it can carry instructions rather than facts | M | M | **Medium** | M13 |
+| R-A15 | **First geolocation data + new undocumented subprocessor** (A16): a GPS coordinate is disclosed to Google Maps Platform per enrichment lookup, and no DPA is confirmed for that specific product. Precise location paired with a cardiac-monitoring context is a materially different risk than the health metrics already handled — it reveals where a vulnerable person lives and exercises. Likelihood is Low **only because the feature cannot process real data yet** (no `googlehealth.location.readonly` scope granted; consent flag defaults `false` with no UI to set it) — both gates must be independently defeated before this risk is live, not one | L | H | **Medium** | M14 — confirm the Google Maps Platform DPA/subprocessor terms *before* requesting the OAuth scope or exposing any UI to set `EnvironmentalContextConsentGranted`; re-rate to High if either gate is removed first |
 
 ### Part B — planned state (pre-conditions to build/launch)
 
@@ -296,6 +301,8 @@ Because real test users' data is already flowing (§1.2) while R-A1–R-A7 are o
 | M8 | Mobile analytics consent toggle (default off); pending-consent Datadog init | R-A8 |
 | M12 | Notice text for emergency contacts/invitees in the privacy policy + invitation emails | R-A12 |
 | — | Real privacy policy (incl. Google Limited Use section) derived from this DPIA; mobile disclosure banner (Google requires both surfaces — only Web has it) | §6.4 |
+
+**Gate on environmental-context enrichment specifically (A16):** M14 — confirm the Google Maps Platform DPA/subprocessor terms — must close *before either* of the two things currently keeping R-A15 inert is removed: requesting the `googlehealth.location.readonly` OAuth scope, or shipping any UI/API path that can set `CardiMember.EnvironmentalContextConsentGranted = true`. This is narrower than a full P1 launch gate — the rest of the platform can proceed independently of it.
 
 **P2 — hardening:**
 
