@@ -112,7 +112,7 @@ public static class ConfigurationKeys
     {
         /// <summary>
         /// Bare env var (no section), injected identically into every Cloud Run service by
-        /// <c>infrastructure/main.tf</c>. Passed explicitly into <see cref="FirebaseAdmin.AppOptions"/>
+        /// <c>infrastructure/main.tf</c>. Passed explicitly into <c>FirebaseAdmin.AppOptions</c>
         /// when constructing the push-send <c>FirebaseApp</c> (PushServiceExtensions) — ADC alone
         /// resolves a *credential* via the metadata server on Cloud Run, but the .NET Firebase Admin
         /// SDK does not query the metadata server for the *project ID* itself; left implicit, that
