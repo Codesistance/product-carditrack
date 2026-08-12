@@ -117,6 +117,7 @@ jobs:
               - '.github/workflows/deploy-apps-dev.yml'
               - '.github/workflows/deploy-apps-prod.yml'
               - 'src/Presentation/CardiTrack.Mobile/**'
+              - 'src/Presentation/CardiTrack.Mobile.Core/**'
               - 'src/Core/CardiTrack.Domain/**'
               - 'src/Core/CardiTrack.Application/**'
               - 'CardiTrack.sln'
