@@ -51,11 +51,28 @@ try
 
     // 4. API VERSIONING
     builder.Services.AddApiVersioning(options =>
-    {
-        options.DefaultApiVersion = new Asp.Versioning.ApiVersion(1, 0);
-        options.AssumeDefaultVersionWhenUnspecified = true;
-        options.ReportApiVersions = true;
-    });
+        {
+            options.DefaultApiVersion = new Asp.Versioning.ApiVersion(1, 0);
+            options.AssumeDefaultVersionWhenUnspecified = true;
+            options.ReportApiVersions = true;
+            // Every controller carries its version in a literal route ("api/v1/..."), so the
+            // query string is the only place a version can actually arrive from. The default
+            // reader also probes for a {version:apiVersion} URL segment, which no route here
+            // declares — work done on every request that can never match.
+            options.ApiVersionReader = new Asp.Versioning.QueryStringApiVersionReader();
+        })
+        // Controller-based API: without this the MVC conventions that read versioning metadata
+        // off controllers and actions are never registered.
+        .AddMvc()
+        .AddApiExplorer(options =>
+        {
+            // Resolves to "v1", matching the SwaggerDoc name and the /swagger/v1/swagger.json
+            // endpoint served below. Not cosmetic: the versioned explorer stamps a group name
+            // on every API description and Swashbuckle only includes a description whose group
+            // matches the document being generated, so leaving the format at its default (empty)
+            // publishes a v1 document with no paths in it.
+            options.GroupNameFormat = "'v'VVV";
+        });
 
     // 5. SWAGGER/OPENAPI - With JWT support
     builder.Services.AddSwaggerWithJwtSupport(builder.Configuration);

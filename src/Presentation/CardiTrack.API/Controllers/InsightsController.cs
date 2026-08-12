@@ -149,15 +149,17 @@ public class InsightsController : BaseApiController
     /// history question, where the single-summary endpoint above is asking for a thing that either
     /// exists or does not.
     /// </summary>
-    [HttpGet("members/{cardiMemberId:guid}/digests")]
-    [ProducesResponseType(typeof(ApiResponse<IReadOnlyList<DigestResponse>>), StatusCodes.Status200OK)]
-    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status403Forbidden)]
-    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
+    /// <param name="cardiMemberId">The member whose summaries are being read.</param>
     /// <param name="limit">
     /// Optional, and nullable so the generated contract says so: a bare <c>int</c> is described as
     /// required by the API explorer and by client generators reading it, which would misdescribe an
     /// endpoint that is perfectly happy without one.
     /// </param>
+    /// <param name="ct">Cancels the read when the caller disconnects.</param>
+    [HttpGet("members/{cardiMemberId:guid}/digests")]
+    [ProducesResponseType(typeof(ApiResponse<IReadOnlyList<DigestResponse>>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
     public async Task<ActionResult<ApiResponse<IReadOnlyList<DigestResponse>>>> GetDigestHistory(
         Guid cardiMemberId, [FromQuery] int? limit, CancellationToken ct)
     {
