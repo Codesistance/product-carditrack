@@ -172,6 +172,12 @@ variable "web_custom_domain" {
   default     = ""
 }
 
+variable "webhook_custom_domain" {
+  description = "Custom domain for the health webhook receiver, fronted by the same GCLB + Cloud Armor WAF as api/web (e.g. webhook.carditrack.com)"
+  type        = string
+  default     = ""
+}
+
 variable "storage_class" {
   description = "GCS storage class (STANDARD, NEARLINE, COLDLINE, ARCHIVE)"
   type        = string

@@ -153,6 +153,12 @@ variable "web_custom_domain" {
   default     = ""
 }
 
+variable "webhook_custom_domain" {
+  description = "Custom domain for the health webhook receiver (e.g. webhook.carditrack.com). When set, the receiver is fronted by the same GCLB + Cloud Armor WAF as api/web instead of taking traffic directly."
+  type        = string
+  default     = ""
+}
+
 variable "medgemma_cpu" {
   description = "CPU allocation for the MedGemma Cloud Run service"
   type        = string
@@ -892,7 +898,7 @@ resource "google_cloud_run_v2_service" "webhook_receiver" {
   count    = var.enable_webhook_receiver ? 1 : 0
   name     = var.webhook_receiver_name
   location = var.cloud_run_location
-  ingress  = "INGRESS_TRAFFIC_ALL"
+  ingress  = local.webhook_has_domain ? "INGRESS_TRAFFIC_INTERNAL_LOAD_BALANCER" : "INGRESS_TRAFFIC_ALL"
   client   = "terraform"
 
   template {

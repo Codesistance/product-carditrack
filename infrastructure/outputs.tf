@@ -69,3 +69,8 @@ output "pubsub_topic_id" {
   description = "Cloud Pub/Sub topic ID (if enabled)"
   value       = module.deployments.pubsub_topic_id
 }
+
+output "lb_ip_address" {
+  description = "Global HTTPS LB IP (if any custom domain is configured) — point each configured domain's Cloudflare A record here"
+  value       = module.deployments.lb_ip_address
+}

@@ -14,6 +14,11 @@ db_admin_username = "carditrackadmin"
 api_custom_domain = "api.dev.carditrack.com"
 web_custom_domain = "app.dev.carditrack.com"
 
+# Webhook receiver's own domain, fronted by the same GCLB + Cloud Armor WAF as api/web
+# (see "Health webhook receiver" below and load_balancer.tf). DNS is managed on Cloudflare —
+# after apply, point an A record at the `lb_ip_address` output (same IP api/web already use).
+webhook_custom_domain = "webhook.dev.carditrack.com"
+
 # Cloud Run
 cloud_run_cpu    = "1"
 cloud_run_memory = "512Mi"
@@ -103,9 +108,10 @@ redis_memory_size_gb = 1
 # Pub/Sub — on since the webhook receiver landed: the realtime topic is its publish target.
 enable_pubsub = true
 
-# Google Health webhook receiver (public ingress, secret-authenticated). The Subscriber
-# registration against Google is a separate provisioning step once the service URL exists —
-# see docs/llm_design.md "Provisioning the webhook subscriber".
+# Google Health webhook receiver — reached only via the GCLB/WAF at webhook_custom_domain
+# above (secret-authenticated). The Subscriber registration against Google is a separate
+# provisioning step once the domain resolves and its managed cert is ACTIVE — see
+# docs/llm_design.md "Provisioning the webhook subscriber" and the production setup runbook §7.
 enable_webhook_receiver = true
 
 # Platform audit logging (Cloud SQL audit flags + log sink)
