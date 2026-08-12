@@ -15,8 +15,15 @@
         </Grid.GestureRecognizers>
 
         <!-- Member Detail's display image box, not one of this card's own: the same person must
-             not be a tinted monogram here and a gradient one a tap away. -->
-        <controls:MemberAvatar x:Name="Avatar" Grid.Column="0"/>
+             not be a tinted monogram here and a gradient one a tap away. Stretched, because the
+             three lines beside it are taller than the 64 Member Detail's two need — the box grows
+             to the text block rather than to a number, so its base stays on the base of the last
+             line whatever that line wraps to. -->
+        <controls:MemberAvatar x:Name="Avatar"
+                               Grid.Column="0"
+                               BoxWidth="76"
+                               Stretch="True"
+                               VerticalOptions="Fill"/>
 
         <VerticalStackLayout Grid.Column="1" Spacing="5" VerticalOptions="Center">
             <Label x:Name="NameLabel"

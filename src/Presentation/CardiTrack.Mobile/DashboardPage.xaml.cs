@@ -48,15 +48,6 @@ public partial class DashboardPage : ContentPage
         Header.RefreshRequested += OnRefreshClicked;
         Header.BellTapped += OnBellClicked;
 
-        // The tiles raise their "i" rather than opening a dialog themselves — the popup service is
-        // the page's, and six grid cells each holding their own route into it is six places for the
-        // app's dialogs to diverge.
-        foreach (var card in new[]
-                 { StepsCard, HeartRateCard, SleepCard, TemperatureCard, SpO2Card, BreathingRateCard })
-        {
-            card.ExplanationRequested += OnMetricExplanationRequested;
-        }
-
         this.RefreshWhenAppResumes(RefreshUnattendedAsync);
 
         // A monitoring screen left open has to keep itself current. Until this, every refresh in
@@ -554,14 +545,6 @@ public partial class DashboardPage : ContentPage
         }
     }
 
-    /// <summary>
-    /// The fuller answer to "what am I looking at?" behind a metric tile's "i" — what the dashed
-    /// rule and the shaded band on that tile actually are. Informational, so it takes the plain
-    /// info popup rather than a warning treatment.
-    /// </summary>
-    private async void OnMetricExplanationRequested(object? sender, MetricExplanation explanation) =>
-        await _popups.ShowInfoAsync(explanation.Message, explanation.Title);
-
     private void OnViewDetailsTapped(object? sender, EventArgs e) => OpenMemberDetails();
 
     /// <summary>
@@ -660,25 +643,35 @@ public partial class DashboardPage : ContentPage
     }
 
     /// <summary>
-    /// A live, empathetic replacement for the hero card's static status line. Best-effort: no
-    /// spinner, no error state — the static copy <see cref="Apply"/> already rendered is a
-    /// complete, correct fallback on its own, so a failed or slow call just leaves it as is.
+    /// A live, empathetic replacement for the hero card's static status line. Best-effort: the
+    /// static copy <see cref="Apply"/> already rendered is a complete, correct fallback, and every
+    /// path that does not produce a live line puts it back.
     /// </summary>
     private async Task LoadCurrentStatusAsync(DashboardResponse data)
     {
-        // Nothing to say yet for either — no real signal to interpret, and the fixed copy for
-        // both is already appropriate.
+        // Neither tier calls the model: a paused member has no reading to interpret, and one with
+        // no baseline yet already shows the day's own numbers. Returning here is what keeps them
+        // off the loading line below, which they would otherwise never leave.
         if (data.HealthStatus is "unknown" or "paused")
             return;
+
+        // Say so, rather than showing the per-tier copy as though it were the answer and then
+        // swapping it out under the reader a few seconds later.
+        HeroCard.ShowStatusLoading();
 
         try
         {
             var status = await _api.GetCurrentStatusAsync(data.CardiMemberId);
             if (status.Message is { } message)
                 HeroCard.ApplyDynamicMessage(status.Headline, message, data.HealthStatus);
+            else
+                HeroCard.Apply(data);  // Nothing to say after all — back to the tier's own copy.
         }
         catch (ApiException)
         {
+            // Put the static copy back: the card is showing "Loading", and leaving it there would
+            // turn a failed side-call into a screen that never resolves.
+            HeroCard.Apply(data);
             // Static per-tier copy stays. Nothing to show the caregiver about this failure —
             // it isn't actionable and isn't worth interrupting them for.
         }
