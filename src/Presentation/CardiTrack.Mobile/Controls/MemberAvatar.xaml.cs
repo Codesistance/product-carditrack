@@ -14,38 +14,17 @@ public partial class MemberAvatar : ContentView
         InitializeComponent();
     }
 
-    /// <summary>How wide the box is. Member Detail keeps the default; the dashboard hero widens it
-    /// to stay in proportion with the taller box it stretches to.</summary>
+    /// <summary>How big the square box is. Member Detail keeps the default; the dashboard hero
+    /// sizes it up to sit in proportion with the taller text block beside it.</summary>
     public double BoxWidth
     {
         get => Frame.WidthRequest;
         set
         {
+            // Always square: setting width alone would leave the old height behind it, and the
+            // caller would get an oblong from what reads like a single size knob.
             Frame.WidthRequest = value;
-
-            // The box is square unless it has been told to stretch. Setting width alone would
-            // otherwise leave the old height behind it, and the caller would get an oblong from
-            // what reads like a single size knob.
-            if (!Stretch)
-                Frame.HeightRequest = value;
-        }
-    }
-
-    /// <summary>
-    /// Lets the box grow to whatever height its row gives it, instead of staying square. The
-    /// dashboard hero uses this so the bottom of the picture lands on the bottom of the text
-    /// beside it — measured against the text rather than guessed at, so it stays aligned when a
-    /// longer status line wraps or the caregiver runs a larger system font.
-    /// </summary>
-    public bool Stretch
-    {
-        get => Frame.VerticalOptions == LayoutOptions.Fill;
-        set
-        {
-            Frame.VerticalOptions = value ? LayoutOptions.Fill : LayoutOptions.Start;
-            // -1 is "no request" — without clearing it the 64 above would pin the height and the
-            // Fill would have nothing to fill.
-            Frame.HeightRequest = value ? -1 : BoxWidth;
+            Frame.HeightRequest = value;
         }
     }
 
