@@ -129,7 +129,7 @@ public static class MemberInsightsCalculator
         // usual is the reading being looked for, and like steps a longer one is not marked down.
         sleep.QualityScore = CapAtRecommendedSleep(
             Lower(sleptWell, RateAgainstNormal(sleep.ChangePercent, shortfallOnly: true)),
-            sleep.Value);
+            latestSleep?.SleepMinutes);
 
         // Temperature carries its own per-day, device-derived baseline (Google Health computes
         // it, not our BaselineCalculationWorker), so it compares against that rather than
@@ -256,12 +256,18 @@ public static class MemberInsightsCalculator
     /// applauded either.
     /// </para>
     /// </remarks>
-    private static int? CapAtRecommendedSleep(int? score, decimal? hours)
+    /// <param name="sleepMinutes">
+    /// The night as it was measured, not as the card rounds it. <see cref="DashboardMetric.Value"/>
+    /// carries hours to one decimal place, which is the right resolution to read but the wrong one
+    /// to threshold on: 418 minutes is 6.97 hours and rounds to 7.0, clearing a floor it is three
+    /// minutes short of.
+    /// </param>
+    private static int? CapAtRecommendedSleep(int? score, int? sleepMinutes)
     {
-        if (score is null || hours is not { } slept)
+        if (score is null || sleepMinutes is not { } minutes)
             return score;
 
-        return Math.Min(score.Value, slept switch
+        return Math.Min(score.Value, (minutes / 60m) switch
         {
             >= HealthReferenceRanges.RecommendedSleepFloorHours => QualityScoreMax,
             >= HealthReferenceRanges.RecommendedSleepFloorHours - 1m => 4,

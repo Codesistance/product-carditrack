@@ -18,7 +18,9 @@ public partial class MetricCard : ContentView
         ValueLabel.Text = metric.Value is { } v ? $"{v:N0} steps" : "—";
 
         ApplyTrend(metric, higherIsBetter: true);
-        ApplyStars(metric);
+        // This card carries a trend arrow rather than a pill, so there is nothing on it for the
+        // star row to match and the rating colours itself.
+        ApplyStars(metric, matchPill: false);
 
         if (metric is { Value: { } value, Goal: > 0 })
         {
@@ -41,8 +43,7 @@ public partial class MetricCard : ContentView
         NameLabel.Text = "Heart Rate";
         ValueLabel.Text = metric.Value is { } v ? $"{v:N0} bpm" : "—";
 
-        ApplyStatusPill(metric.Status);
-        ApplyStars(metric);
+        ApplyStars(metric, matchPill: ApplyStatusPill(metric.Status));
         CaptionLabel.Text = metric is { RangeLow: { } low, RangeHigh: { } high }
             ? $"{low}-{high} bpm typical"
             : "Resting heart rate";
@@ -54,7 +55,10 @@ public partial class MetricCard : ContentView
         NameLabel.Text = "Sleep";
         ValueLabel.Text = metric.Value is { } v ? $"{v:0.#} hours" : "—";
 
-        ApplyStars(metric);
+        // The one card whose stars and status answer different questions — the stars read how well
+        // and how long the night was, the status reads its duration against the baseline — so it
+        // shows no pill, and the star row is free to colour itself.
+        ApplyStars(metric, matchPill: false);
         CaptionLabel.Text = metric.ChangePercent switch
         {
             > 0 => "Better than average",
@@ -70,8 +74,7 @@ public partial class MetricCard : ContentView
         NameLabel.Text = "Skin Temp";
         ValueLabel.Text = metric.Value is { } v ? $"{v:0.#}°C" : "—";
 
-        ApplyStatusPill(metric.Status);
-        ApplyStars(metric);
+        ApplyStars(metric, matchPill: ApplyStatusPill(metric.Status));
         CaptionLabel.Text = metric.Baseline is not null ? "vs. own nightly baseline" : "Nightly reading";
     }
 
@@ -83,8 +86,7 @@ public partial class MetricCard : ContentView
 
         // No baseline exists for this metric yet, so Status is always "unknown" and QualityScore
         // always null — pill and stars both stay hidden. A bare reading, not a judgement.
-        ApplyStatusPill(metric.Status);
-        ApplyStars(metric);
+        ApplyStars(metric, matchPill: ApplyStatusPill(metric.Status));
         CaptionLabel.Text = "SpO2";
     }
 
@@ -95,8 +97,7 @@ public partial class MetricCard : ContentView
         ValueLabel.Text = metric.Value is { } v ? $"{v:0.#} brpm" : "—";
 
         // No baseline exists for this metric yet, same as SpO2 — a bare reading, not a trend.
-        ApplyStatusPill(metric.Status);
-        ApplyStars(metric);
+        ApplyStars(metric, matchPill: ApplyStatusPill(metric.Status));
         CaptionLabel.Text = "Breaths per minute";
     }
 
@@ -126,12 +127,16 @@ public partial class MetricCard : ContentView
     /// Heart rate's accessory. The tint, ink and wording come from <see cref="MetricStatus"/>, which
     /// the Member Detail screen's trend cards read too, so one status can never be described two ways.
     /// </summary>
-    private void ApplyStatusPill(string status)
+    /// <returns>
+    /// Whether a pill actually went on the card — which is what decides where the star row below it
+    /// takes its colour from. See <see cref="ApplyStars"/>.
+    /// </returns>
+    private bool ApplyStatusPill(string status)
     {
         if (MetricStatus.Pill(status) is not { } pill)
         {
             StatusPillBorder.IsVisible = false;
-            return;
+            return false;
         }
 
         var resources = Microsoft.Maui.Controls.Application.Current!.Resources;
@@ -139,6 +144,7 @@ public partial class MetricCard : ContentView
         StatusPillLabel.TextColor = (Color)resources[pill.Ink];
         StatusPillLabel.Text = pill.Text;
         StatusPillBorder.IsVisible = true;
+        return true;
     }
 
     /// <summary>
@@ -146,13 +152,19 @@ public partial class MetricCard : ContentView
     /// <see cref="DashboardMetric.QualityScore"/>). Hidden entirely when the metric has no
     /// comparison to make, so an unrated card shows no row rather than an empty one.
     /// </summary>
+    /// <param name="matchPill">
+    /// Whether this card is showing a status pill, from <see cref="ApplyStatusPill"/>. When it is,
+    /// the stars take the pill's colour and nothing else — two accents disagreeing an inch apart on
+    /// one card is worse than either being imprecise. When it is not, they colour themselves from
+    /// the rating; see <see cref="StarInk"/>.
+    /// </param>
     /// <remarks>
-    /// Earned stars are filled in the metric's status colour, the rest left as an outline. The row
-    /// used to be five copies of one grey glyph separated only by opacity, which at 15dp left a
-    /// four-star reading looking much like a one-star one — most visibly on skin temperature,
-    /// where the coloured NORMAL pill sits directly above a row of grey.
+    /// Earned stars are filled in colour, the rest left as an outline. The row used to be five
+    /// copies of one grey glyph separated only by opacity, which at 15dp left a four-star reading
+    /// looking much like a one-star one — most visibly on skin temperature, where the coloured
+    /// NORMAL pill sits directly above a row of grey.
     /// </remarks>
-    private void ApplyStars(DashboardMetric metric)
+    private void ApplyStars(DashboardMetric metric, bool matchPill)
     {
         if (metric.QualityScore is not { } score)
         {
@@ -162,7 +174,7 @@ public partial class MetricCard : ContentView
         }
 
         var filled = Math.Clamp(score, 0, StarCount);
-        StarRow.Render(filled, StarInk(filled));
+        StarRow.Render(filled, matchPill ? MetricStatus.Accent(metric.Status) : StarInk(filled));
 
         // One value, so one accessibility stop: the stars differ only by fill, which no screen
         // reader conveys.
@@ -172,18 +184,17 @@ public partial class MetricCard : ContentView
     }
 
     /// <summary>
-    /// The fill for the earned stars, read off the rating itself on the bands it is built to —
-    /// <c>RateAgainstNormal</c>'s own, 3-5 green, 2 yellow, 1 orange — so the colour of the row can
-    /// never say something other than the number of stars in it.
+    /// The fill for the earned stars on the two cards that show no pill — activity and sleep — read
+    /// off the rating itself on <c>RateAgainstNormal</c>'s own bands: 3-5 green, 2 yellow, 1 orange.
     /// </summary>
     /// <remarks>
-    /// This used to take the metric's status colour instead, on the grounds that the star bands
-    /// nest inside the status thresholds and the two therefore agree. They do for heart rate and
-    /// skin temperature; they do not for the two metrics rated on more than deviation. Sleep is
-    /// rated on how well and how long the night was and capped at the published recommendation,
-    /// while its status reads duration against the baseline alone, so a habitually short sleeper
-    /// can earn two stars beside a NORMAL pill — and painting those two stars green would be the
-    /// card contradicting itself in the one case that matters most.
+    /// Only those two, because only there is the rating the sole thing on the card with a colour.
+    /// This used to be applied by asking whether the status had a pill mapping rather than whether
+    /// this card had put one on screen, which is a different question and got sleep wrong:
+    /// sleep has a status, so it took the status colour, and a habitually short sleeper's two stars
+    /// came out green — the one reading the rating exists to surface, painted as if it were fine.
+    /// Deriving the colour everywhere instead would only move the error to skin temperature, whose
+    /// bands do not nest in its status thresholds (3 stars is 1-1.5σ, which is yellow).
     /// </remarks>
     private static Color StarInk(int filled) =>
         MetricStatus.Accent(filled switch

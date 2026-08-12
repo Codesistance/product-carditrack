@@ -240,6 +240,20 @@ public class MemberInsightsCalculatorTests
     }
 
     [Fact]
+    public void The_cap_reads_the_night_as_measured_not_as_the_card_rounds_it()
+    {
+        // 418 minutes is 6 hours 58, which the card shows as "7 hours" because Value carries one
+        // decimal place. Rounding is the right resolution to read a night at and the wrong one to
+        // threshold it on — reading the cap off Value would clear a floor this night is short of.
+        var metrics = Build(
+            new ActivityLog { Date = Yesterday, SleepMinutes = 418, SleepEfficiency = 95 },
+            new PatternBaseline { AvgSleepMinutes = 418 });
+
+        Assert.Equal(7m, metrics.Sleep.Value);
+        Assert.Equal(4, metrics.Sleep.QualityScore);
+    }
+
+    [Fact]
     public void The_recommendation_lowers_a_sleep_rating_but_never_creates_one()
     {
         // No efficiency and no baseline: nothing of this member's own to rate the night against,
