@@ -129,7 +129,8 @@ public static class MemberInsightsCalculator
         // usual is the reading being looked for, and like steps a longer one is not marked down.
         sleep.QualityScore = CapAtRecommendedSleep(
             Lower(sleptWell, RateAgainstNormal(sleep.ChangePercent, shortfallOnly: true)),
-            latestSleep?.SleepMinutes);
+            latestSleep?.SleepMinutes,
+            ageYears);
 
         // Temperature carries its own per-day, device-derived baseline (Google Health computes
         // it, not our BaselineCalculationWorker), so it compares against that rather than
@@ -233,10 +234,10 @@ public static class MemberInsightsCalculator
     }
 
     /// <summary>
-    /// Holds a sleep rating down to what the length of the night can support, against the floor of
-    /// the published recommendation (<see cref="HealthReferenceRanges.RecommendedSleepFloorHours"/>)
-    /// — one star for each hour short of it, so 4.5 hours cannot be rated above two however well
-    /// those hours were slept.
+    /// Holds a sleep rating down to what the length of the night can support, against the published
+    /// recommended band for a member of this age (<see cref="HealthReferenceRanges.Sleep"/>) — one
+    /// star for each hour outside it, so 4.5 hours cannot be rated above two however well those
+    /// hours were slept, and neither can 12.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -248,12 +249,21 @@ public static class MemberInsightsCalculator
     /// watching for, rated top marks because it keeps happening.
     /// </para>
     /// <para>
+    /// Both ends of the band, because too long is a departure the same way too short is, and the
+    /// member's own normal cannot catch it either: the duration comparison this cap sits on top of
+    /// is <c>shortfallOnly</c>, which reads every overshoot as five stars. That asymmetry is right
+    /// where it is — a member catching up after a bad week has not earned a worse rating for it —
+    /// but it means a night far beyond the recommendation would otherwise go unremarked, and a jump
+    /// from seven hours to twelve is exactly what someone is watching for. Only the published band
+    /// can see it, because "too long" has no meaning except in absolute terms.
+    /// </para>
+    /// <para>
     /// This is the single, deliberate exception to <see cref="MetricReference"/> being
     /// presentational only, and it is written to stay inside that rule's intent: the recommendation
     /// can only ever lower a rating the member's own data already earned — never raise one, and
-    /// never create one where there was nothing to rate. A short night is still reported as a short
-    /// night, not named a disorder — CardiTrack is not a medical device — but it will not be
-    /// applauded either.
+    /// never create one where there was nothing to rate. An unusual night is still reported as an
+    /// unusual night, not named a disorder — CardiTrack is not a medical device — but it will not
+    /// be applauded either.
     /// </para>
     /// </remarks>
     /// <param name="sleepMinutes">
@@ -262,17 +272,30 @@ public static class MemberInsightsCalculator
     /// to threshold on: 418 minutes is 6.97 hours and rounds to 7.0, clearing a floor it is three
     /// minutes short of.
     /// </param>
-    private static int? CapAtRecommendedSleep(int? score, int? sleepMinutes)
+    /// <param name="ageYears">
+    /// Only the ceiling moves with it — the NSF drops from 9 hours to 8 at
+    /// <see cref="HealthReferenceRanges.OlderAdultAge"/>, and publishes the same 7-hour floor either
+    /// side. Read off the same <see cref="HealthReferenceRanges.Sleep"/> the card draws its shaded
+    /// band from, so the rating and the band a caregiver reads it against cannot drift apart.
+    /// </param>
+    private static int? CapAtRecommendedSleep(int? score, int? sleepMinutes, int ageYears)
     {
         if (score is null || sleepMinutes is not { } minutes)
             return score;
 
-        return Math.Min(score.Value, (minutes / 60m) switch
+        var hours = minutes / 60m;
+        var recommended = HealthReferenceRanges.Sleep(ageYears);
+        var hoursOutside =
+            hours < recommended.Low ? recommended.Low - hours
+            : hours > recommended.High ? hours - recommended.High
+            : 0m;
+
+        return Math.Min(score.Value, hoursOutside switch
         {
-            >= HealthReferenceRanges.RecommendedSleepFloorHours => QualityScoreMax,
-            >= HealthReferenceRanges.RecommendedSleepFloorHours - 1m => 4,
-            >= HealthReferenceRanges.RecommendedSleepFloorHours - 2m => 3,
-            >= HealthReferenceRanges.RecommendedSleepFloorHours - 3m => 2,
+            <= 0m => QualityScoreMax,
+            <= 1m => 4,
+            <= 2m => 3,
+            <= 3m => 2,
             _ => 1,
         });
     }

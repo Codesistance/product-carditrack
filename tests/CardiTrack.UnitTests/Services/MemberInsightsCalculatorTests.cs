@@ -240,6 +240,46 @@ public class MemberInsightsCalculatorTests
     }
 
     [Fact]
+    public void A_night_far_longer_than_the_recommendation_is_marked_down_too()
+    {
+        // Twelve hours, slept almost end to end, for a member who normally sleeps seven. Every
+        // member-relative comparison says five: efficiency is a ratio and does not care how long
+        // the night was, and the duration comparison counts only shortfalls, so an overshoot of
+        // any size reads as top marks. Only the published band can see this one.
+        var metrics = Build(
+            new ActivityLog { Date = Yesterday, SleepMinutes = 720, SleepEfficiency = 95 },
+            new PatternBaseline { AvgSleepMinutes = 420 });
+
+        Assert.Equal(1, metrics.Sleep.QualityScore);
+    }
+
+    [Fact]
+    public void Catching_up_on_sleep_is_not_marked_down_for_being_more_than_usual()
+    {
+        // The asymmetry the cap is careful to preserve. Eight hours against a six-hour normal is a
+        // third more sleep than usual, and inside the recommended band for this member's age — a
+        // member catching up after a bad week has not earned a worse rating for it.
+        var metrics = Build(
+            new ActivityLog { Date = Yesterday, SleepMinutes = 480, SleepEfficiency = 95 },
+            new PatternBaseline { AvgSleepMinutes = 360 });
+
+        Assert.Equal(5, metrics.Sleep.QualityScore);
+    }
+
+    [Fact]
+    public void The_ceiling_the_night_is_capped_against_moves_with_the_members_age()
+    {
+        // Nine hours is the top of the NSF's adult band and an hour past the older-adult one, so
+        // the same night rates differently either side of 65 — the one age split among the
+        // published ranges, applied to the rating as well as to the band drawn behind the chart.
+        var log = new ActivityLog { Date = Yesterday, SleepMinutes = 540, SleepEfficiency = 95 };
+        var baseline = new PatternBaseline { AvgSleepMinutes = 540 };
+
+        Assert.Equal(5, Build(log, baseline, ageYears: 64).Sleep.QualityScore);
+        Assert.Equal(4, Build(log, baseline, ageYears: 65).Sleep.QualityScore);
+    }
+
+    [Fact]
     public void The_cap_reads_the_night_as_measured_not_as_the_card_rounds_it()
     {
         // 418 minutes is 6 hours 58, which the card shows as "7 hours" because Value carries one

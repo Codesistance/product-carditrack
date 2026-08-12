@@ -39,7 +39,7 @@ public static class HealthReferenceRanges
     /// <summary>
     /// The floor of the National Sleep Foundation's recommended nightly sleep, in hours. The one
     /// figure of <see cref="Sleep"/> that is the same either side of <see cref="OlderAdultAge"/> —
-    /// only the ceiling moves — which is why the sleep rating can cap on it without an age split.
+    /// only the ceiling moves.
     /// </summary>
     public const decimal RecommendedSleepFloorHours = 7m;
 

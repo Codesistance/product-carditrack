@@ -59,10 +59,14 @@ public partial class MetricCard : ContentView
         // and how long the night was, the status reads its duration against the baseline — so it
         // shows no pill, and the star row is free to colour itself.
         ApplyStars(metric, matchPill: false);
+        // Direction only, no verdict — a longer night is not automatically a better one, and this
+        // caption used to call twelve hours "Better than average" directly under the stars that
+        // now mark it down for exactly that. The rating carries the judgement; this says which way
+        // the night went.
         CaptionLabel.Text = metric.ChangePercent switch
         {
-            > 0 => "Better than average",
-            < 0 => "Less than usual",
+            > 0 => "Longer than usual",
+            < 0 => "Shorter than usual",
             0 => "In line with usual",
             _ => "Last night",
         };

@@ -123,8 +123,9 @@ public class DashboardMetric
     /// <summary>
     /// 1-5 star rating of the reading against this member's own normal. What "normal" means is
     /// per metric: sleep takes the worse of the device's sleep efficiency and the night's duration
-    /// against the sleep baseline, then caps that on the length of the night against the published
-    /// recommendation, so hours slept well cannot rate above hours slept at all; temperature uses
+    /// against the sleep baseline, then caps that on the length of the night against both ends of
+    /// the published recommendation, so hours slept well cannot rate above hours slept at all and a
+    /// night far past the recommendation is not applauded either; temperature uses
     /// distance from its own nightly baseline in units of that device's nightly variation; steps
     /// and resting heart rate use percentage deviation from the pattern baseline (steps counting
     /// only a shortfall). See <c>MemberInsightsCalculator</c> for the bands. Null when there is
