@@ -64,12 +64,28 @@ internal sealed class TrendChartDrawable : IDrawable
 
         DrawGrid(canvas, dirtyRect);
 
-        var known = Points.Where(p => p.Value is not null).Select(p => (float)p.Value!.Value).ToList();
-        if (known.Count < 2)
+        // One pass for the extent, no intermediate collection: Draw runs on every invalidate and
+        // on every resize, so anything allocated here is allocated over and over while the
+        // caregiver scrolls the screen or swipes between cards.
+        var min = float.MaxValue;
+        var max = float.MinValue;
+        var knownCount = 0;
+        foreach (var point in Points)
+        {
+            if (point.Value is not { } reading)
+                continue;
+            var sample = (float)reading;
+            if (sample < min)
+                min = sample;
+            if (sample > max)
+                max = sample;
+            knownCount++;
+        }
+
+        if (knownCount < 2)
             return;
 
-        var min = known.Min();
-        var range = known.Max() - min;
+        var range = max - min;
         var top = dirtyRect.Top + VerticalInset;
         var plotHeight = dirtyRect.Height - VerticalInset * 2;
         var bottom = top + plotHeight;
@@ -84,8 +100,12 @@ internal sealed class TrendChartDrawable : IDrawable
 
         var line = new PathF();
         var area = new PathF();
-        var markers = new List<PointF>();
+        // Only the longer windows skip the per-day markers, and those are exactly the windows with
+        // the most points to collect — so the list is not built at all unless it will be drawn.
+        var markers = ShowMarkers ? new List<PointF>(knownCount) : null;
 
+        var latestMarker = default(PointF);
+        var hasMarker = false;
         var lastKnown = 0f;
         var started = false;
         var lastX = 0f;
@@ -122,7 +142,11 @@ internal sealed class TrendChartDrawable : IDrawable
 
             lastX = x;
             if (value is not null)
-                markers.Add(new PointF(x, y));
+            {
+                latestMarker = new PointF(x, y);
+                hasMarker = true;
+                markers?.Add(latestMarker);
+            }
         }
 
         area.LineTo(lastX, bottom);
@@ -137,7 +161,7 @@ internal sealed class TrendChartDrawable : IDrawable
         canvas.StrokeLineJoin = LineJoin.Round;
         canvas.DrawPath(line);
 
-        if (ShowMarkers)
+        if (markers is not null)
         {
             foreach (var marker in markers)
                 DrawMarker(canvas, marker, MarkerRadius);
@@ -145,8 +169,8 @@ internal sealed class TrendChartDrawable : IDrawable
 
         // The most recent reading is always marked, whatever the window: it is the number the
         // card's headline value quotes, and the caregiver needs to see where it sits.
-        if (markers.Count > 0)
-            DrawMarker(canvas, markers[^1], LatestMarkerRadius);
+        if (hasMarker)
+            DrawMarker(canvas, latestMarker, LatestMarkerRadius);
     }
 
     private void DrawMarker(ICanvas canvas, PointF at, float radius)

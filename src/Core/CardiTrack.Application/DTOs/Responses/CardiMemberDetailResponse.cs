@@ -49,8 +49,9 @@ public class CardiMemberDetailResponse
     /// Accents the daily summary card by severity.</summary>
     public string HealthStatus { get; set; } = "unknown";
 
-    /// <summary>Key Metrics with their 7-day series, for this screen's trend sparklines. Null
-    /// when there's no activity history yet, same condition <see cref="DashboardResponse.Metrics"/>
-    /// uses.</summary>
+    /// <summary>Key Metrics with their daily series, for this screen's trend cards — see
+    /// <see cref="DashboardMetric.Series"/> for how long a series runs and which window a client
+    /// showing fewer days takes. Null when there's no activity history yet, same condition
+    /// <see cref="DashboardResponse.Metrics"/> uses.</summary>
     public DashboardMetrics? Metrics { get; set; }
 }
