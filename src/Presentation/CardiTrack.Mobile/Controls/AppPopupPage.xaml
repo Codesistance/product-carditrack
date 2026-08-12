@@ -50,7 +50,7 @@
 
                 <Label x:Name="MessageLabel"
                        Style="{StaticResource Body2}"
-                       HorizontalTextAlignment="Center"
+                       HorizontalTextAlignment="Justify"
                        LineBreakMode="WordWrap"
                        Margin="0,8,0,0"/>
 
