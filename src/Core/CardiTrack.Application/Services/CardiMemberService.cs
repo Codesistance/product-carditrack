@@ -294,14 +294,15 @@ public class CardiMemberService : ICardiMemberService
 
         var now = DateTime.UtcNow;
         var pause = PauseStateOf(member, now);
-        var metrics = logs.Count == 0 ? null : MemberInsightsCalculator.BuildMetrics(logs, baseline, today);
+        var age = CalculateAge(member.DateOfBirth);
+        var metrics = logs.Count == 0 ? null : MemberInsightsCalculator.BuildMetrics(logs, baseline, today, age);
 
         return new CardiMemberDetailResponse
         {
             Id = member.Id,
             Name = member.Name,
             DateOfBirth = member.DateOfBirth,
-            Age = CalculateAge(member.DateOfBirth),
+            Age = age,
             Gender = member.Gender,
             Email = member.Email,
             Phone = member.Phone,

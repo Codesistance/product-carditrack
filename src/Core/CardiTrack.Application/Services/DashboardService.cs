@@ -64,7 +64,8 @@ public class DashboardService : IDashboardService
 
         var isLearning = baseline is null;
 
-        var metrics = logs.Count == 0 ? null : MemberInsightsCalculator.BuildMetrics(logs, baseline, today);
+        var age = member.DateOfBirth.ToAgeInYears(today);
+        var metrics = logs.Count == 0 ? null : MemberInsightsCalculator.BuildMetrics(logs, baseline, today, age);
         var unresolvedAlerts = activeAlerts.Where(a => !a.IsResolved).ToList();
 
         var now = DateTime.UtcNow;
@@ -79,7 +80,7 @@ public class DashboardService : IDashboardService
         {
             CardiMemberId = member.Id,
             Name = member.Name,
-            Age = member.DateOfBirth.ToAgeInYears(today),
+            Age = age,
             EmergencyContactPhone = member.EmergencyContactPhone,
             EmergencyContactName = member.EmergencyContactName,
             Phone = member.Phone,

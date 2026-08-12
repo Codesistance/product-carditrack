@@ -62,6 +62,14 @@
          Darker than Divider — it has to hold its own against white, not against PageGround. -->
     <Color x:Key="CardOutline">#D7DFE9</Color>
 
+    <!-- ── Key Metric Trends chart annotations (M1-13) ──
+         The two things a reading is drawn against: this member's own baseline, and the published
+         typical-adult range behind it. Neutral on purpose — they are context, not a severity, so
+         they stay out of the status set above; and out of StatusUnknown in particular, which is
+         the accent the line of an unrated metric (SpO2, breathing rate) already wears. -->
+    <Color x:Key="ChartReferenceBand">#5C6672</Color>
+    <Color x:Key="ChartBaselineRule">#343434</Color>
+
     <!-- Metric row icon tile — Figma rgba(201,225,255,0.41) -->
     <Color x:Key="MetricTileTint">#69C9E1FF</Color>
     <!-- Header refresh button — Figma rgba(255,255,255,0.29) -->

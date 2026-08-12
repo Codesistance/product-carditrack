@@ -41,6 +41,27 @@ public sealed class MetricTrend : INotifyPropertyChanged
 
     public DashboardMetric Metric { get; }
 
+    /// <summary>
+    /// The legend entry for this member's own learned normal, or null for a metric that has none
+    /// — SpO2 and breathing rate always, and any metric while the baseline is still learning.
+    /// </summary>
+    /// <remarks>
+    /// Unitless, like the chart's own min/max labels: the unit is already on the headline reading
+    /// a few dp above, and a legend is read as an annotation of the axis it sits under.
+    /// </remarks>
+    public string? BaselineText =>
+        Metric.Baseline is { } baseline ? $"Baseline {string.Format(AxisFormat, baseline)}" : null;
+
+    /// <summary>
+    /// The legend entry for the published typical-adult range, attributed to whoever publishes it,
+    /// or null for a metric no standards body publishes one for.
+    /// </summary>
+    public string? ReferenceText =>
+        Metric.Reference is { } reference
+            ? $"Typical {string.Format(AxisFormat, reference.Low)}–{string.Format(AxisFormat, reference.High)}"
+                + $" ({reference.Source})"
+            : null;
+
     /// <summary>How many days of the series the card shows; one of <see cref="TrendWindowSelector.Windows"/>.</summary>
     public int Days
     {

@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using CardiTrack.Mobile.Core.Charts;
 // CardiTrack.Application shadows MAUI's Application in any file importing it — see NudgeMiniRow.
 using MauiApplication = Microsoft.Maui.Controls.Application;
 
@@ -20,11 +21,11 @@ public sealed class MetricTrendCard : ContentView
     private const double ChartHeight = 72;
 
     /// <summary>
-    /// The row the carousel reserves for a card: its padding, header, chart, date rule and margin,
-    /// plus slack for a caregiver running a larger system font. The carousel clips, so this is a
-    /// floor rather than a fit.
+    /// The row the carousel reserves for a card: its padding, header, chart, date rule, legend and
+    /// margin, plus slack for a caregiver running a larger system font. The carousel clips, so this
+    /// is a floor rather than a fit.
     /// </summary>
-    public const double CardHeight = 206;
+    public const double CardHeight = 240;
 
     /// <summary>Beyond a fortnight, a marker per day crowds the line rather than reading as data.</summary>
     private const int MarkerWindowLimit = 14;
@@ -43,6 +44,12 @@ public sealed class MetricTrendCard : ContentView
     private readonly Label _empty = new();
     private readonly Grid _plot;
     private readonly Grid _dates;
+    private readonly Label _baselineKey = new();
+    private readonly Label _referenceKey = new();
+    private readonly TrendLegendSwatch _baselineSwatch = new(TrendLegendMark.Baseline);
+    private readonly HorizontalStackLayout _baselineLegend;
+    private readonly HorizontalStackLayout _referenceLegend;
+    private readonly Grid _legend;
 
     private MetricTrend? _trend;
 
@@ -146,10 +153,25 @@ public sealed class MetricTrendCard : ContentView
         _dates.Add(_startDate);
         _dates.Add(_endDate, 1);
 
+        // The chart draws two things that are not readings — this member's baseline and the
+        // published range — and neither carries its own label on a plot this size, so the key
+        // names them and quotes the numbers behind them.
+        _baselineLegend = BuildLegendEntry(_baselineSwatch, _baselineKey);
+        _referenceLegend = BuildLegendEntry(new TrendLegendSwatch(TrendLegendMark.Reference), _referenceKey);
+
+        _legend = new Grid
+        {
+            ColumnDefinitions = [new ColumnDefinition(GridLength.Auto), new ColumnDefinition(GridLength.Star)],
+            ColumnSpacing = 14,
+        };
+        _legend.Add(_baselineLegend);
+        _legend.Add(_referenceLegend, 1);
+
         var body = new Grid
         {
             RowDefinitions =
             [
+                new RowDefinition(GridLength.Auto),
                 new RowDefinition(GridLength.Auto),
                 new RowDefinition(GridLength.Auto),
                 new RowDefinition(GridLength.Auto),
@@ -160,6 +182,7 @@ public sealed class MetricTrendCard : ContentView
         body.Add(_plot, 0, 1);
         body.Add(_empty, 0, 1);
         body.Add(_dates, 0, 2);
+        body.Add(_legend, 0, 3);
 
         Content = new Border
         {
@@ -220,19 +243,76 @@ public sealed class MetricTrendCard : ContentView
         var hasChart = values.Count >= 2;
         _plot.IsVisible = hasChart;
         _dates.IsVisible = hasChart;
+        _legend.IsVisible = hasChart;
         _empty.IsVisible = !hasChart;
         if (!hasChart)
             return;
 
-        _max.Text = string.Format(_trend.AxisFormat, values.Max());
-        _min.Text = string.Format(_trend.AxisFormat, values.Min());
+        var baseline = _trend.Metric.Baseline;
+        var reference = _trend.Metric.Reference;
+
+        // The axis labels name the extent the chart actually plots over, which the baseline and
+        // the reference band get a say in — so both are read off the one scale rather than the
+        // labels quoting the readings while the line is drawn against something wider.
+        var scale = TrendScale.For(
+            (double)values.Min(),
+            (double)values.Max(),
+            baseline is { } b ? (double)b : null,
+            reference is not null ? (double)reference.Low : null,
+            reference is not null ? (double)reference.High : null);
+
+        _max.Text = string.Format(_trend.AxisFormat, (decimal)scale.Max);
+        _min.Text = string.Format(_trend.AxisFormat, (decimal)scale.Min);
         _startDate.Text = points[0].Date.ToString("MMM d");
         _endDate.Text = points[^1].Date.ToString("MMM d");
 
+        // A baseline the scale could not make room for is not drawn — see TrendScale.For — but its
+        // number is the thing most worth knowing in exactly that case: a window sitting that far
+        // from the member's own normal is *why* the rule would not fit. So the key keeps it and
+        // drops the dash that would otherwise point at a rule the caregiver cannot find, saying
+        // plainly where it went.
+        var baselineDrawn = baseline is { } shown && scale.Contains((double)shown);
+        _baselineLegend.IsVisible = _trend.BaselineText is not null;
+        _baselineSwatch.IsVisible = baselineDrawn;
+        _baselineKey.Text = _trend.BaselineText is { } baselineText
+            ? (baselineDrawn ? baselineText : $"{baselineText} (off chart)")
+            : string.Empty;
+
+        _referenceLegend.IsVisible = _trend.ReferenceText is not null;
+        _referenceKey.Text = _trend.ReferenceText ?? string.Empty;
+
+        // A hidden entry leaves its column empty rather than absent, and the gap either side of it
+        // would read as an indent on a key that starts with its swatch.
+        _legend.ColumnSpacing = _baselineLegend.IsVisible && _referenceLegend.IsVisible ? 14 : 0;
+
+        // The chart itself is a canvas with nothing for a screen reader to walk, so what it plots
+        // besides the readings has to reach one through the card's own description.
+        var comparisons = string.Join(", ", new[] { _trend.BaselineText, _trend.ReferenceText }.Where(t => t is not null));
+        if (comparisons.Length > 0)
+            SemanticProperties.SetDescription(
+                this, $"{_trend.Name}, {_trend.ValueText}, last {_trend.Days} days. {comparisons}");
+
         _chart.Render(
             points,
+            scale,
             MetricStatus.Accent(_trend.Metric.Status),
-            showMarkers: points.Count <= MarkerWindowLimit);
+            showMarkers: points.Count <= MarkerWindowLimit,
+            baseline,
+            reference);
+    }
+
+    private static HorizontalStackLayout BuildLegendEntry(TrendLegendSwatch swatch, Label key)
+    {
+        ApplyStyle(key, "Body2");
+        key.FontSize = 11;
+        key.TextColor = MetricStatus.Resource("MutedText", Colors.Gray);
+        key.VerticalTextAlignment = TextAlignment.Center;
+        key.LineBreakMode = LineBreakMode.TailTruncation;
+
+        var entry = new HorizontalStackLayout { Spacing = 6, IsVisible = false };
+        entry.Add(swatch);
+        entry.Add(key);
+        return entry;
     }
 
     private static T Resource<T>(string key) =>
