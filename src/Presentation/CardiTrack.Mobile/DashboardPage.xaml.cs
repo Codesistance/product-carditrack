@@ -40,6 +40,16 @@ public partial class DashboardPage : ContentPage
         HeroCard.MemberTapped += (_, _) => OpenMemberDetails();
         Header.RefreshRequested += OnRefreshClicked;
         Header.BellTapped += OnBellClicked;
+
+        // The tiles raise their "i" rather than opening a dialog themselves — the popup service is
+        // the page's, and six grid cells each holding their own route into it is six places for the
+        // app's dialogs to diverge.
+        foreach (var card in new[]
+                 { StepsCard, HeartRateCard, SleepCard, TemperatureCard, SpO2Card, BreathingRateCard })
+        {
+            card.ExplanationRequested += OnMetricExplanationRequested;
+        }
+
         this.RefreshWhenAppResumes(RefreshOnResumeAsync);
     }
 
@@ -531,6 +541,14 @@ public partial class DashboardPage : ContentPage
             await _popups.ShowWarningAsync("Phone calls aren't supported on this device.");
         }
     }
+
+    /// <summary>
+    /// The fuller answer to "what am I looking at?" behind a metric tile's "i" — what the dashed
+    /// rule and the shaded band on that tile actually are. Informational, so it takes the plain
+    /// info popup rather than a warning treatment.
+    /// </summary>
+    private async void OnMetricExplanationRequested(object? sender, MetricExplanation explanation) =>
+        await _popups.ShowInfoAsync(explanation.Message, explanation.Title);
 
     private void OnViewDetailsTapped(object? sender, EventArgs e) => OpenMemberDetails();
 
