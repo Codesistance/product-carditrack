@@ -93,7 +93,7 @@ Verified against the v4 discovery document and live API responses (2026-08-10):
 1. Resolve the receiver URL. Once `webhook_custom_domain` is set (dev, since the WAF cutover
    below), this is the custom domain — `https://webhook.<env>.carditrack.com` — not the
    `*.run.app` URL, which stops being externally reachable once ingress flips to
-   `INTERNAL_LOAD_BALANCER`. Before that, or in an environment with no webhook domain configured:
+   `INGRESS_TRAFFIC_INTERNAL_LOAD_BALANCER`. Before that, or in an environment with no webhook domain configured:
    `gcloud run services describe carditrack-<env>-webhook-receiver --project <INFRA_PROJECT> --region europe-west2 --format "value(status.url)"`
 2. Read the Terraform-generated secret (full `Bearer …` value, scheme included):
    `gcloud secrets versions access latest --secret carditrack-<env>-webhook-secret --project <INFRA_PROJECT>`
@@ -159,7 +159,7 @@ Facts that cost live errors to learn (all from the 2026-08-10 dev attempt):
 
 The receiver now has its own domain (`webhook_custom_domain` → `webhook.dev.carditrack.com`)
 and sits behind the same GCLB + Cloud Armor WAF as api/web (`load_balancer.tf`); ingress
-switches from `INGRESS_TRAFFIC_ALL` to `INTERNAL_LOAD_BALANCER` the moment the domain is set,
+switches from `INGRESS_TRAFFIC_ALL` to `INGRESS_TRAFFIC_INTERNAL_LOAD_BALANCER` the moment the domain is set,
 which makes the old `*.run.app` URL unreachable from outside GCP. This is a one-time, ordered
 cutover, not a Terraform-only change:
 

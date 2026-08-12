@@ -191,7 +191,7 @@ variable "medgemma_min_instances" {
 resource "google_cloud_run_v2_service" "api" {
   name     = var.api_service_name
   location = var.cloud_run_location
-  ingress  = local.has_any_domain ? "INGRESS_TRAFFIC_INTERNAL_LOAD_BALANCER" : "INGRESS_TRAFFIC_ALL"
+  ingress  = local.api_web_has_domain ? "INGRESS_TRAFFIC_INTERNAL_LOAD_BALANCER" : "INGRESS_TRAFFIC_ALL"
   client   = "terraform"
 
   template {
@@ -301,7 +301,7 @@ resource "google_cloud_run_v2_service" "api" {
 resource "google_cloud_run_v2_service" "web" {
   name     = var.web_service_name
   location = var.cloud_run_location
-  ingress  = local.has_any_domain ? "INGRESS_TRAFFIC_INTERNAL_LOAD_BALANCER" : "INGRESS_TRAFFIC_ALL"
+  ingress  = local.api_web_has_domain ? "INGRESS_TRAFFIC_INTERNAL_LOAD_BALANCER" : "INGRESS_TRAFFIC_ALL"
   client   = "terraform"
 
   template {

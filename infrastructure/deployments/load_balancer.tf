@@ -3,12 +3,18 @@
 
 # Locals
 locals {
-  has_any_domain = var.api_custom_domain != "" || var.web_custom_domain != "" || var.webhook_custom_domain != ""
   # Requires enable_webhook_receiver too: a domain alone can't front a Cloud Run service that
   # was never created, and the NEG below dereferences google_cloud_run_v2_service.webhook_receiver[0].
+  # Used (not the raw var) everywhere webhook participates in shared LB state, so a domain set
+  # without the receiver enabled can't allow-list a Host header with no cert/route behind it.
   webhook_has_domain = var.webhook_custom_domain != "" && var.enable_webhook_receiver
+  has_any_domain     = var.api_custom_domain != "" || var.web_custom_domain != "" || local.webhook_has_domain
+  # api/web ingress (cloud_run.tf) gates on this rather than has_any_domain, so that setting
+  # webhook_custom_domain alone can't flip their ingress to INTERNAL_LOAD_BALANCER with no
+  # cert/host_rule registered for them — which would make both totally unreachable.
+  api_web_has_domain = var.api_custom_domain != "" || var.web_custom_domain != ""
   lb_name_prefix     = trimsuffix(var.api_service_name, "-api")
-  configured_domains = compact([var.web_custom_domain, var.api_custom_domain, var.webhook_custom_domain])
+  configured_domains = compact([var.web_custom_domain, var.api_custom_domain, local.webhook_has_domain ? var.webhook_custom_domain : ""])
   domain_expression  = "!(${join(" || ", [for d in local.configured_domains : "request.headers['host'].lower() == '${d}'"])})"
 }
 

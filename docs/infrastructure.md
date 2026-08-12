@@ -176,7 +176,7 @@ carditrack-<env>
     prod only today)
 ```
 
-\* When custom domains are configured, API, Web, and the webhook receiver each switch to `INTERNAL_LOAD_BALANCER` ingress so traffic must pass through the load balancer and WAF; without a domain that service instead uses its Cloud Run default URL with `INGRESS_TRAFFIC_ALL`. Each of the three has its own domain flag (`api_custom_domain`, `web_custom_domain`, `webhook_custom_domain`), so they gate independently. Worker and MedGemma are always `INTERNAL_ONLY`.
+\* When custom domains are configured, API, Web, and the webhook receiver each switch to `INGRESS_TRAFFIC_INTERNAL_LOAD_BALANCER` ingress so traffic must pass through the load balancer and WAF; without a domain that service instead uses its Cloud Run default URL with `INGRESS_TRAFFIC_ALL`. API and Web share one gate (either domain present flips both — see `api_web_has_domain` in `load_balancer.tf`); the webhook receiver gates independently on its own `webhook_custom_domain`, so it can't be silently dragged behind the LB by an api/web-only setup or vice versa. Worker and MedGemma are always `INGRESS_TRAFFIC_INTERNAL_ONLY`.
 
 Service enablement (`run`, `sqladmin`, `storage`, `secretmanager`, `monitoring`, `logging`, `compute`, `servicenetworking`, plus `pubsub` and `redis` when their features are enabled) is managed in `infrastructure/deployments/apis.tf`.
 
