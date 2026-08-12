@@ -108,6 +108,11 @@ Run it by hand with:
 ./.devcontainer/bootstrap.sh
 ```
 
+For the **New cloud environment** dialog itself (name, network access, environment
+variables, setup script) — including why the setup script can't reference anything
+in this repo, since it runs before the checkout exists — see
+[docs/technical/claude_cloud_environment_setup.md](../docs/technical/claude_cloud_environment_setup.md).
+
 ### Network-policy caveats
 
 Some egress policies block hosts this repository's tooling needs. Observed in
