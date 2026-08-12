@@ -21,7 +21,7 @@ public class OrphanedOrganizationCleanupWorker : CronBackgroundService
         IOptionsMonitor<WorkerOptions> options,
         IServiceScopeFactory scopeFactory,
         ILogger<OrphanedOrganizationCleanupWorker> logger)
-        : base(options.Get(nameof(OrphanedOrganizationCleanupWorker)).CronExpression)
+        : base(options.Get(nameof(OrphanedOrganizationCleanupWorker)).CronExpression, logger)
     {
         _scopeFactory = scopeFactory;
         _logger = logger;

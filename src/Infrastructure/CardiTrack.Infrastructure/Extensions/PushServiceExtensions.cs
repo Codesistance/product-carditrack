@@ -9,6 +9,7 @@ using CardiTrack.Infrastructure.Security;
 using CardiTrack.Shared;
 using FirebaseAdmin;
 using FirebaseAdmin.Messaging;
+using Google.Apis.Auth.OAuth2;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -60,10 +61,14 @@ public static class PushServiceExtensions
         // discovery: that only checks GOOGLE_CLOUD_PROJECT/GCLOUD_PROJECT env vars, never the
         // metadata server, so on a cold Cloud Run instance it's a race that fails intermittently —
         // and because Worker's BackgroundServiceExceptionBehavior is StopHost, one failed
-        // resolution here was enough to crash-loop the entire host (incident 2026-08-12).
+        // resolution here was enough to crash-loop the entire host (incident 2026-08-12). Passing
+        // an explicit AppOptions bypasses FirebaseApp.Create()'s own ADC-credential fallback too,
+        // so Credential must be set here as well — leaving it null throws "Credential must be
+        // set" on every boot (same StopHost crash loop, different exception; incident 2026-08-12).
         services.AddSingleton(_ => FirebaseApp.DefaultInstance ?? FirebaseApp.Create(new AppOptions
         {
-            ProjectId = configLoader.GetRequired(ConfigurationKeys.Gcp.ProjectId)
+            ProjectId = configLoader.GetRequired(ConfigurationKeys.Gcp.ProjectId),
+            Credential = GoogleCredential.GetApplicationDefault()
         }));
         services.AddSingleton(sp => FirebaseMessaging.GetMessaging(sp.GetRequiredService<FirebaseApp>()));
 

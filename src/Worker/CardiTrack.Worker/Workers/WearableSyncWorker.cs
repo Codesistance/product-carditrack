@@ -13,7 +13,7 @@ public class WearableSyncWorker : CronBackgroundService
         IOptionsMonitor<WorkerOptions> options,
         IServiceScopeFactory scopeFactory,
         ILogger<WearableSyncWorker> logger)
-        : base(options.Get(nameof(WearableSyncWorker)).CronExpression)
+        : base(options.Get(nameof(WearableSyncWorker)).CronExpression, logger)
     {
         _scopeFactory = scopeFactory;
         _logger = logger;

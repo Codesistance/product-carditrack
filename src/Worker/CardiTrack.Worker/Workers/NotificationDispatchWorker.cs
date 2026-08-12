@@ -42,7 +42,7 @@ public class NotificationDispatchWorker : CronBackgroundService
         IServiceScopeFactory scopeFactory,
         ILogger<NotificationDispatchWorker> logger,
         TimeProvider? timeProvider = null)
-        : base(options.Get(nameof(NotificationDispatchWorker)).CronExpression)
+        : base(options.Get(nameof(NotificationDispatchWorker)).CronExpression, logger)
     {
         _scopeFactory = scopeFactory;
         _logger = logger;

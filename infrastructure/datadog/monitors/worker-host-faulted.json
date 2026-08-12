@@ -1,0 +1,25 @@
+{
+  "name": "[dev] Worker host faulted — BackgroundService stopped the host",
+  "type": "log alert",
+  "query": "logs(\"service:worker \\\"BackgroundService failed\\\"\").index(\"*\").rollup(\"count\").last(\"10m\") >= 1",
+  "message": "## What's happening\n\n`CardiTrack.Worker` logged `BackgroundService failed`, which means an exception escaped a background service's `ExecuteAsync`. The host runs with the default `BackgroundServiceExceptionBehavior=StopHost`, so this stops the **entire worker process**, not just the job that threw. Cloud Run then restarts it, and if the cause is deterministic (a bad DI registration, a missing config value) it fails again immediately — a crash loop.\n\n## Why it matters\n\nEvery non-AI background job lives in this one host. When it dies, all of these stop together:\n\n- push dispatch and escalation sweeps\n- wearable/device sync\n- baseline recalculation\n- partition maintenance and retention\n\nOn 2026-08-12 this exact signature ran unnoticed for roughly six hours across two separate causes, because nothing was watching for it.\n\n## First steps\n\n1. Find the exception: `service:worker \"BackgroundService failed\"` in Logs, then read `@exception.stacktrace` — it names the failing worker and the line.\n2. Check the Cloud Run revision history for `worker`. A crash loop that starts within seconds of a deploy points at that revision.\n3. Note that `CronBackgroundService` already catches exceptions thrown by an individual job's `ExecuteJobAsync`. If this monitor fires, the exception escaped **outside** that guard (constructor, DI resolution, cron parsing) — look there first, not inside the job body.\n\nNOTE: no notification handle is attached yet. Add one (e.g. `@slack-...`) to make this page someone.",
+  "tags": [
+    "service:worker",
+    "env:dev",
+    "app:carditrack",
+    "severity:critical",
+    "managed-by:repo-spec",
+    "spec:infrastructure/datadog/monitors/worker-host-faulted.json"
+  ],
+  "options": {
+    "thresholds": {
+      "critical": 1
+    },
+    "enable_logs_sample": true,
+    "notify_no_data": false,
+    "notify_audit": false,
+    "include_tags": true,
+    "renotify_interval": 60,
+    "escalation_message": "Worker is still faulting. Every background job remains stopped."
+  }
+}

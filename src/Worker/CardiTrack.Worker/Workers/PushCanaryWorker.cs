@@ -44,7 +44,7 @@ public class PushCanaryWorker : CronBackgroundService
         IServiceScopeFactory scopeFactory,
         ILogger<PushCanaryWorker> logger,
         TimeProvider? timeProvider = null)
-        : base(workerOptions.Get(nameof(PushCanaryWorker)).CronExpression)
+        : base(workerOptions.Get(nameof(PushCanaryWorker)).CronExpression, logger)
     {
         _scopeFactory = scopeFactory;
         _canaryUserIds = options.CurrentValue.CanaryUserIds;

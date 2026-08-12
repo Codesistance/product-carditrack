@@ -21,7 +21,7 @@ public class BaselineCalculationWorker : CronBackgroundService
         IOptionsMonitor<WorkerOptions> options,
         IServiceScopeFactory scopeFactory,
         ILogger<BaselineCalculationWorker> logger)
-        : base(options.Get(nameof(BaselineCalculationWorker)).CronExpression)
+        : base(options.Get(nameof(BaselineCalculationWorker)).CronExpression, logger)
     {
         _scopeFactory = scopeFactory;
         _logger = logger;

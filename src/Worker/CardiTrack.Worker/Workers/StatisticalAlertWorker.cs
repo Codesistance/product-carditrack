@@ -19,7 +19,7 @@ public class StatisticalAlertWorker : CronBackgroundService
         IOptionsMonitor<WorkerOptions> workerOptions,
         IServiceScopeFactory scopeFactory,
         ILogger<StatisticalAlertWorker> logger)
-        : base(workerOptions.Get(nameof(StatisticalAlertWorker)).CronExpression)
+        : base(workerOptions.Get(nameof(StatisticalAlertWorker)).CronExpression, logger)
     {
         _scopeFactory = scopeFactory;
         _logger = logger;
