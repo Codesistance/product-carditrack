@@ -147,8 +147,13 @@ public class InsightsController : BaseApiController
     [ProducesResponseType(typeof(ApiResponse<IReadOnlyList<DigestResponse>>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status403Forbidden)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
+    /// <param name="limit">
+    /// Optional, and nullable so the generated contract says so: a bare <c>int</c> is described as
+    /// required by the API explorer and by client generators reading it, which would misdescribe an
+    /// endpoint that is perfectly happy without one.
+    /// </param>
     public async Task<ActionResult<ApiResponse<IReadOnlyList<DigestResponse>>>> GetDigestHistory(
-        Guid cardiMemberId, [FromQuery] int limit, CancellationToken ct)
+        Guid cardiMemberId, [FromQuery] int? limit, CancellationToken ct)
     {
         if (!UserContext.IsAuthenticated || UserContext.UserId == Guid.Empty)
         {
@@ -161,7 +166,7 @@ public class InsightsController : BaseApiController
             // service clamps into range, so there is no value of `limit` that can ask for more
             // than a page.
             var result = await _digests.GetHistoryAsync(
-                UserContext.UserId, cardiMemberId, limit <= 0 ? DefaultHistoryLimit : limit, ct);
+                UserContext.UserId, cardiMemberId, limit is > 0 ? limit.Value : DefaultHistoryLimit, ct);
             return Success(result);
         }
         catch (KeyNotFoundException ex)
