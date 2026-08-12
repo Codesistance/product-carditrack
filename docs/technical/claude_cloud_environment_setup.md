@@ -159,6 +159,47 @@ exit 0
   insight debugging): `docker compose --profile full up ollama medgemma-init` once the
   repo is checked out.
 
+## Mobile (MAUI) coverage
+
+This environment does **not** cover `CardiTrack.Mobile` by default, deliberately —
+matching `.devcontainer/install-toolchain.sh`'s own `INSTALL_MAUI=0` default. The
+`maui-android` workload and Android SDK add several GB and need `dl.google.com`,
+which most restricted network policies exclude, so the default keeps the setup fast
+and scoped to `CardiTrack.Server.slnf`.
+
+**Where Mobile actually gets built:** `.github/workflows/deploy-apps-dev.yml` builds
+`CardiTrack.Mobile.csproj` directly (Android/iOS/Windows, each on its own dedicated
+GitHub-hosted runner) — not through this environment, not through `CardiTrack.sln`.
+GitHub's `ubuntu-latest`/`macos`/`windows` runner images ship with an Android SDK
+preinstalled, so that job needs no `dl.google.com` access at all; it just runs
+`dotnet workload install maui-android` and builds. Those jobs are the authoritative
+check for Mobile — treat a local/cloud MAUI build as faster local feedback, never as
+a substitute for them.
+
+That CI coverage is path-filtered (`needs.changes.outputs.mobile`), gated on changes
+under `src/Presentation/CardiTrack.Mobile/**`, `src/Presentation/CardiTrack.Mobile.Core/**`,
+`src/Core/CardiTrack.Domain/**`, `src/Core/CardiTrack.Application/**`, or
+`CardiTrack.sln`. (An earlier version of this filter omitted `CardiTrack.Mobile.Core/**`
+despite `CardiTrack.Mobile.csproj` referencing it as a project — a PR touching only
+Mobile.Core silently skipped every mobile CI job. Fixed in PR #212; if that filter list
+looks stale again, check it against `CardiTrack.Mobile.csproj`'s `ProjectReference`s.)
+
+**To opt into local Mobile builds anyway** (e.g. debugging a Mobile-only change
+without waiting on CI):
+1. Add `dl.google.com` to the environment's network access (see the Optional table
+   above).
+2. In the Setup script, once the repo exists (i.e. from a Claude Code session, not
+   the pre-checkout setup script itself), run:
+   ```bash
+   INSTALL_MAUI=1 ./.devcontainer/install-toolchain.sh
+   ```
+3. Build with `dotnet build CardiTrack.sln` instead of the server filter, or target
+   the project directly: `dotnet build src/Presentation/CardiTrack.Mobile/CardiTrack.Mobile.csproj -f net10.0-android`.
+
+`install-toolchain.sh` degrades gracefully if `dl.google.com` is still blocked: the
+workload installs and C#/XAML compile far enough to surface language-level warnings,
+even though the final APK/AOT/R8 steps need the full SDK.
+
 ## References
 
 - [.devcontainer/README.md](../../.devcontainer/README.md) — the dev container this
