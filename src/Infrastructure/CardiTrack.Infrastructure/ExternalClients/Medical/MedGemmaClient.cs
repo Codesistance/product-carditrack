@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.ComponentModel;
 using System.Diagnostics;
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -137,8 +138,37 @@ public class MedGemmaClient : IExternalAiClient
         TypeInfoResolver = new DefaultJsonTypeInfoResolver(),
     };
 
+    /// <summary>
+    /// Copies each property's <see cref="DescriptionAttribute"/> into its schema node.
+    /// <see cref="JsonSchemaExporter"/> emits names and types only, so without this the schema
+    /// appended to the prompt states the <em>shape</em> of the reply and nothing about what belongs
+    /// in each field — leaving a bare field name as the sole description of its own contents, which
+    /// a small model will happily satisfy by restating the brief it was just given. Callers that
+    /// decorate nothing export exactly what they exported before.
+    /// </summary>
+    private static readonly JsonSchemaExporterOptions DescribedSchemaOptions = new()
+    {
+        TransformSchemaNode = (context, schema) =>
+        {
+            var description = context.PropertyInfo?.AttributeProvider
+                ?.GetCustomAttributes(typeof(DescriptionAttribute), inherit: true)
+                .OfType<DescriptionAttribute>()
+                .FirstOrDefault()?.Description;
+
+            if (string.IsNullOrWhiteSpace(description))
+                return schema;
+
+            // An unconstrained node is exported as the boolean `true`, not an object; assigning a
+            // property to that would throw, and `{"description": ...}` says the same thing.
+            var node = schema as JsonObject ?? new JsonObject();
+            node["description"] = description;
+            return node;
+        },
+    };
+
     private static string SchemaTextFor<T>() => StructuredSchemaCache.GetOrAdd(typeof(T), type =>
-        JsonSchemaExporter.GetJsonSchemaAsNode(StructuredOutputOptions, type).ToJsonString(StructuredOutputOptions));
+        JsonSchemaExporter.GetJsonSchemaAsNode(StructuredOutputOptions, type, DescribedSchemaOptions)
+            .ToJsonString(StructuredOutputOptions));
 
     /// <summary>
     /// Deserializes the model's structured reply into <typeparamref name="T"/>. Per the DPIA

@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Diagnostics;
 using System.Diagnostics.Metrics;
 using System.Net;
@@ -288,6 +289,12 @@ public class MedGemmaClientTests
         public required string Summary { get; init; }
     }
 
+    private sealed record TestDescribedResponse
+    {
+        [Description("Two sentences on the trend. Not a restatement of these instructions.")]
+        public required string Summary { get; init; }
+    }
+
     /// <summary>Wraps a model reply (itself JSON) inside the Ollama envelope, matching how a real
     /// structured-output call actually arrives: <c>response</c> is a JSON *string*.</summary>
     private static string StructuredPayload(string modelReplyJson) =>
@@ -316,6 +323,38 @@ public class MedGemmaClientTests
         Assert.Contains("\"summary\":{\"type\":\"string\"}", body);
         Assert.Contains("Respond with ONLY a single JSON object", body);
         Assert.Contains(Prompt, body);
+    }
+
+    /// <summary>
+    /// The schema is the only thing in the prompt that names the fields, so a field's description
+    /// has to travel with it — otherwise the model is told a field is called "summary" and left to
+    /// guess what a summary of anything would be, which is how the digest ended up echoing its own
+    /// brief onto the Member Detail screen.
+    /// </summary>
+    [Fact]
+    public async Task GenerateStructuredAsync_CarriesPropertyDescriptionsIntoTheSchema()
+    {
+        var handler = new FakeHttpMessageHandler()
+            .Enqueue(HttpStatusCode.OK, StructuredPayload("""{"summary":"Trends look stable."}"""));
+        var client = CreateClient(handler, out _);
+
+        await client.GenerateStructuredAsync<TestDescribedResponse>(Prompt);
+
+        var body = Assert.Single(handler.Requests).Body!;
+        // Once inside "format" (grammar-constrained decoding) and once in the prompt text.
+        Assert.Equal(2, CountOccurrences(body, "Two sentences on the trend."));
+    }
+
+    private static int CountOccurrences(string haystack, string needle)
+    {
+        var count = 0;
+        for (var i = haystack.IndexOf(needle, StringComparison.Ordinal); i >= 0;
+             i = haystack.IndexOf(needle, i + needle.Length, StringComparison.Ordinal))
+        {
+            count++;
+        }
+
+        return count;
     }
 
     [Fact]
