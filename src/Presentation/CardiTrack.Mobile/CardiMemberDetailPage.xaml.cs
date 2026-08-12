@@ -199,15 +199,6 @@ public partial class CardiMemberDetailPage : ContentPage
             ? RelativeTime.Format(lastSynced)
             : "Not synced yet";
 
-        SummaryAccent.Color = (Color)Microsoft.Maui.Controls.Application.Current!.Resources[
-            member.HealthStatus switch
-            {
-                "green" => "StatusGreen",
-                "yellow" => "StatusYellow",
-                "orange" => "StatusOrange",
-                "red" => "StatusRed",
-                _ => "StatusUnknown",
-            }];
         // The digest loads on its own round trip (LoadDigestAsync) and lands after this method has
         // returned, so writing the placeholder every time meant every refresh — including the
         // silent periodic one — shrank this card back to two lines and then grew it again a moment
@@ -338,19 +329,20 @@ public partial class CardiMemberDetailPage : ContentPage
                 ColumnSpacing = 10,
             };
 
-            // A dot rather than a bullet glyph — same construction as the carousel's indicators
-            // below: a typographic bullet at this size sits on the text baseline instead of beside
-            // the first line of a suggestion that wraps.
+            // The idea emoji rather than a plain dot: each row is a small idea to try, and the
+            // glyph says so before the words do. Sized to the suggestion's own text and pinned
+            // to Start so it sits beside the first line of a suggestion that wraps. Decorative,
+            // so out of the accessibility tree — "light bulb" read before every suggestion is
+            // noise, same call as MetricCard's star row.
             var resources = Microsoft.Maui.Controls.Application.Current!.Resources;
-            row.Add(new BoxView
+            var glyph = new Label
             {
-                WidthRequest = 6,
-                HeightRequest = 6,
-                CornerRadius = 3,
-                Color = (Color)resources["Primary"],
+                Text = "\U0001F4A1",
+                FontSize = 14,
                 VerticalOptions = LayoutOptions.Start,
-                Margin = new Thickness(2, 7, 0, 0),
-            });
+            };
+            AutomationProperties.SetIsInAccessibleTree(glyph, false);
+            row.Add(glyph);
 
             row.Add(
                 new Label
