@@ -647,11 +647,11 @@ resource "google_cloud_run_v2_service_iam_member" "medgemma_internal" {
   member   = "allUsers"
 }
 
-# ── Pipeline jobs (AI pipeline — digest generation) ──────────────────────────────────────────
+# ── Pipeline jobs (AI pipeline — summary generation) ─────────────────────────────────────────
 # The AI pipeline's scheduled work runs as a Cloud Run *job*, triggered hourly by Cloud
-# Scheduler: each execution generates the digests due in whichever timezones just entered
-# their 06:00 delivery hour, then exits. Gated on enable_pipeline_jobs — the job calls
-# MedGemma, so it only exists in environments where the model is deployed.
+# Scheduler: each execution regenerates the summaries of whichever members' data has moved
+# since their last one, then exits. Gated on enable_pipeline_jobs — the job calls MedGemma, so
+# it only exists in environments where the model is deployed.
 
 variable "enable_pipeline_jobs" {
   description = "Create the AI pipeline job + its hourly scheduler. Enable only where MedGemma is deployed"
@@ -684,7 +684,7 @@ variable "pipeline_jobs_secret_env_vars" {
 }
 
 variable "pipeline_jobs_schedule" {
-  description = "Cloud Scheduler cron for the pipeline job. Hourly, because digest due-ness is per-timezone: each run serves whichever zones just hit 06:00 local"
+  description = "Cloud Scheduler cron for the pipeline job. Hourly: this is the cadence at which a member's summary catches up with new readings, and the job skips members whose data has not moved, so an empty pass costs no inference"
   type        = string
   default     = "0 * * * *"
 }

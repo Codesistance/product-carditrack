@@ -24,46 +24,58 @@ public partial class StatusHeroCard : ContentView
     {
         var firstName = NameFormatting.FirstName(data.Name);
         NameLabel.Text = $"{data.Name}, {data.Age}";
-        InitialsLabel.Text = NameFormatting.Initials(data.Name);
+        Avatar.Apply(data.Name, data.PhotoUrl);
 
-        // Initials stay behind the photo rather than being replaced, so a photo that fails to
-        // load falls back to something rather than an empty tile. PhotoUrl is external data, so
-        // a relative or malformed value must fall back too rather than throw the whole load.
-        var hasPhoto = Uri.TryCreate(data.PhotoUrl, UriKind.Absolute, out var photoUri);
-        PhotoImage.Source = hasPhoto ? ImageSource.FromUri(photoUri!) : null;
-        PhotoImage.IsVisible = hasPhoto;
-
-        var (colorKey, icon, statusText) = data.HealthStatus switch
+        // Headline first, sentence second: the headline is the whole state in three or four
+        // words, so a caregiver who reads nothing else has still read the answer.
+        var (colorKey, icon, headline, detail) = data.HealthStatus switch
         {
-            "green" => ("StatusGreen", "icon_status_check.svg", $"{firstName} is doing well"),
-            "yellow" => ("StatusYellow", "icon_status_warning.svg", "Something looks a little different"),
-            "orange" => ("StatusOrange", "icon_status_urgent.svg", "You should check in"),
-            "red" => ("StatusRed", "icon_status_critical.svg", $"Reach out to {firstName} now"),
+            "green" => ("StatusGreen", "icon_status_check.svg", "All steady",
+                $"{firstName} is doing well"),
+            "yellow" => ("StatusYellow", "icon_status_warning.svg", "Something's different",
+                $"{firstName}'s day isn't quite following the usual shape"),
+            "orange" => ("StatusOrange", "icon_status_urgent.svg", "Worth a check-in",
+                $"Today looks off enough that {firstName} is worth a call"),
+            "red" => ("StatusRed", "icon_status_critical.svg", "Reach out now",
+                $"Something needs attention — contact {firstName}"),
             // Paused is not a health reading — never dress it up as one.
-            "paused" => ("StatusUnknown", "icon_status_paused.svg", $"Monitoring is paused for {firstName}"),
-            _ => ("StatusUnknown", "icon_status_check.svg", "Getting to know their routine"),
+            "paused" => ("StatusUnknown", "icon_status_paused.svg", "Monitoring paused",
+                $"We're not collecting data or raising alerts for {firstName}"),
+            _ => ("StatusUnknown", "icon_status_check.svg", "Still learning",
+                $"Getting to know {firstName}'s routine"),
         };
 
-        StatusLabel.TextColor = (Color)Microsoft.Maui.Controls.Application.Current!.Resources[colorKey];
+        var color = (Color)Microsoft.Maui.Controls.Application.Current!.Resources[colorKey];
         StatusIcon.Source = icon;
-        StatusLabel.Text = statusText;
+        StatusHeadlineLabel.TextColor = color;
+        StatusHeadlineLabel.Text = headline;
+        StatusDetailLabel.Text = detail;
         _healthStatus = data.HealthStatus;
     }
 
     /// <summary>
-    /// Swaps in a live, MedGemma-generated line over the static per-tier copy <see cref="Apply"/>
-    /// already rendered. Ignored if the card has since moved to a different status — a refresh
-    /// landing while the call was still in flight — since the message would describe a tier
-    /// that's no longer showing.
+    /// Swaps in the live, MedGemma-generated pair over the static per-tier copy
+    /// <see cref="Apply"/> already rendered. Ignored if the card has since moved to a different
+    /// status — a refresh landing while the call was still in flight — since the message would
+    /// describe a tier that's no longer showing.
     /// </summary>
-    public void ApplyDynamicMessage(string message, string forHealthStatus)
+    /// <param name="headline">
+    /// The punchy note. Optional on its own: a generation that produced a sentence but no usable
+    /// headline keeps the tier's static headline rather than leaving the row headless.
+    /// </param>
+    public void ApplyDynamicMessage(string? headline, string message, string forHealthStatus)
     {
         if (forHealthStatus != _healthStatus || string.IsNullOrWhiteSpace(message))
             return;
 
-        StatusLabel.Text = message;
-        StatusLabel.Opacity = 0;
-        _ = StatusLabel.FadeToAsync(1, 150, Easing.CubicOut);
+        if (!string.IsNullOrWhiteSpace(headline))
+            StatusHeadlineLabel.Text = headline;
+        StatusDetailLabel.Text = message;
+
+        StatusHeadlineLabel.Opacity = 0;
+        StatusDetailLabel.Opacity = 0;
+        _ = StatusHeadlineLabel.FadeToAsync(1, 150, Easing.CubicOut);
+        _ = StatusDetailLabel.FadeToAsync(1, 150, Easing.CubicOut);
     }
 
     private void OnCardTapped(object? sender, TappedEventArgs e) =>

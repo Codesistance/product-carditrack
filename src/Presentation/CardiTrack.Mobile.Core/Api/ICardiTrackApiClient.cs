@@ -37,16 +37,17 @@ public interface ICardiTrackApiClient
     Task<DashboardResponse> GetDashboardAsync(Guid cardiMemberId, CancellationToken ct = default);
 
     /// <summary>
-    /// A short, empathetic MedGemma-generated line describing a CardiMember's current status —
-    /// fetched after the dashboard's own load so it never blocks first paint. May return a null
+    /// A short, empathetic MedGemma-generated read on a CardiMember's current state — a punchy
+    /// <see cref="CurrentStatusMessageResponse.Headline"/> and the sentence under it — fetched
+    /// after the dashboard's own load so it never blocks first paint. May return a null
     /// <see cref="CurrentStatusMessageResponse.Message"/> when there's nothing to say yet.
     /// </summary>
     Task<CurrentStatusMessageResponse> GetCurrentStatusAsync(Guid cardiMemberId, CancellationToken ct = default);
 
     /// <summary>
-    /// The member's most recent daily family digest (M1-13's summary card). Throws
-    /// <see cref="ApiException"/> with a 404 when none has been generated yet — callers show an
-    /// empty state rather than treating that as a failure.
+    /// The member's current family summary (M1-13's summary card), recomputed as their data
+    /// moves. Throws <see cref="ApiException"/> with a 404 when none has been generated yet —
+    /// callers show an empty state rather than treating that as a failure.
     /// </summary>
     Task<DigestResponse> GetDigestAsync(Guid cardiMemberId, CancellationToken ct = default);
 

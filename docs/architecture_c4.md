@@ -108,7 +108,7 @@ C4Component
   }
 
   Container_Boundary(jobsb, "PipelineJobs (one image, --job dispatch)") {
-    Component(digest, "DigestGenerationService", "--job digest, hourly", "06:00 in each member's anchor timezone; describes yesterday; no digest from silence")
+    Component(digest, "DigestGenerationService", "--job digest, hourly", "Recomputes a member's summary once their readings have moved past the last one; describes their local day in progress; every generation kept as history; no summary from silence")
     Component(drain, "NotificationDrainService", "--job aggregate, 5-min", "Pulls batches, hunts users/{id}, maps healthUserId to DeviceConnection, runs the standard targeted sync. Ack = nothing still needs a retry")
     Component(assess, "RealtimeAssessmentService", "--job assess, 5-min offset", "Latest 60-min HR window (>=45 min covered), dedup by (member, windowStart) - an unmoved window costs no inference")
     Component(ssa, "SsaDecomposition", "Application, dependency-free", "Lag-covariance + Jacobi eigen: trend + oscillation + noise residual; deviation in noise-RMS units")

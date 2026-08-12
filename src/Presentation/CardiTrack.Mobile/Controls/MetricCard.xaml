@@ -6,7 +6,9 @@
     <!-- Figma 101:2807 / 101:2821 / 101:2835, adapted for the half-width Key Metrics grid:
          Figma's single row (icon | name+value | accessory) doesn't fit two-per-row, so this
          stacks icon+name, then value, then the accessory underneath instead of beside it. -->
-    <Border Style="{StaticResource ElevatedCard}" Padding="12,14">
+    <!-- Outlined, not elevated: these tiles sit inside the CardiMember card, and a shadow on a
+         surface that is already raised reads as tacky rather than as depth. -->
+    <Border Style="{StaticResource OutlinedCard}" Padding="12,14">
         <VerticalStackLayout Spacing="10">
 
             <HorizontalStackLayout Spacing="8">

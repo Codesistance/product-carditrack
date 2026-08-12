@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8" ?>
 <ContentView xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:controls="clr-namespace:CardiTrack.Mobile.Controls"
              x:Class="CardiTrack.Mobile.Controls.StatusHeroCard">
 
     <!-- Figma 101:2853, adapted: chrome now comes from the outer CardiMember card (DashboardPage)
@@ -13,54 +14,38 @@
             <TapGestureRecognizer Tapped="OnCardTapped"/>
         </Grid.GestureRecognizers>
 
-            <!-- Photo when the member has one, initials otherwise. Both keep the same box so
-                 the text column doesn't shift between the two states. Sized down from the
-                 original 70x72 to leave room for the status line's now-larger line count. -->
-            <Border Grid.Column="0"
-                    WidthRequest="56" HeightRequest="58"
-                    StrokeThickness="0"
-                    BackgroundColor="{StaticResource SelectedOptionBackground}"
-                    VerticalOptions="Start">
-                <Border.StrokeShape>
-                    <RoundRectangle CornerRadius="10"/>
-                </Border.StrokeShape>
-                <Grid>
-                    <Label x:Name="InitialsLabel"
-                           FontFamily="QuicksandSemiBold"
-                           FontSize="20"
-                           TextColor="{StaticResource Primary}"
-                           HorizontalOptions="Center"
-                           VerticalOptions="Center"/>
-                    <Image x:Name="PhotoImage"
-                           IsVisible="False"
-                           Aspect="AspectFill"
-                           WidthRequest="56" HeightRequest="58"/>
-                </Grid>
-            </Border>
+        <controls:MemberAvatar x:Name="Avatar" Grid.Column="0"/>
 
-            <VerticalStackLayout Grid.Column="1" Spacing="6" VerticalOptions="Center">
-                <Label x:Name="NameLabel"
-                       Style="{StaticResource Heading2}"
-                       LineBreakMode="TailTruncation"/>
+        <VerticalStackLayout Grid.Column="1" Spacing="5" VerticalOptions="Center">
+            <Label x:Name="NameLabel"
+                   Style="{StaticResource Heading2}"
+                   LineBreakMode="TailTruncation"/>
 
-                <!-- Grid, not a HorizontalStackLayout: the label needs a bounded column width to
-                     wrap within, and the icon stays pinned to the first line's top rather than
-                     re-centering against however many lines the status text wraps to. -->
-                <Grid ColumnDefinitions="Auto,*" ColumnSpacing="6">
-                    <Image x:Name="StatusIcon"
-                           Grid.Column="0"
-                           Source="icon_status_check.svg"
-                           WidthRequest="17" HeightRequest="17"
-                           VerticalOptions="Start"
-                           Margin="0,2,0,0"/>
-                    <Label x:Name="StatusLabel"
-                           Grid.Column="1"
-                           FontFamily="QuicksandSemiBold"
-                           FontSize="14"
-                           LineBreakMode="WordWrap"
-                           MaxLines="3"
-                           LineHeight="1.05"/>
-                </Grid>
-            </VerticalStackLayout>
-        </Grid>
+            <!-- Two lines, not one: the headline is the note a caregiver reads at a glance —
+                 short enough to land in one beat — and the sentence under it is the context they
+                 read second. Grid, not a stack: the label needs a bounded column width to wrap
+                 within, and the icon stays on the headline's row rather than re-centering
+                 against however many lines the pair wraps to. Neither label overrides LineHeight
+                 — the crammed 1.05 this used to carry made a wrapped line look mispadded. -->
+            <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto"
+                  ColumnSpacing="6" RowSpacing="2">
+                <Image x:Name="StatusIcon"
+                       Grid.Row="0" Grid.Column="0"
+                       Source="icon_status_check.svg"
+                       WidthRequest="17" HeightRequest="17"
+                       VerticalOptions="Center"/>
+                <Label x:Name="StatusHeadlineLabel"
+                       Grid.Row="0" Grid.Column="1"
+                       FontFamily="QuicksandSemiBold"
+                       FontSize="16"
+                       LineBreakMode="TailTruncation"
+                       VerticalOptions="Center"/>
+                <Label x:Name="StatusDetailLabel"
+                       Grid.Row="1" Grid.Column="1"
+                       Style="{StaticResource Body2}"
+                       LineBreakMode="WordWrap"
+                       MaxLines="2"/>
+            </Grid>
+        </VerticalStackLayout>
+    </Grid>
 </ContentView>
