@@ -155,13 +155,14 @@ Field notes:
 | Metric | `reference` | `source` |
 |--------|-------------|----------|
 | `restingHeartRate` | 60–100 bpm | `AHA` — normal adult resting heart rate |
-| `sleep` | 7–9 hours | `NSF` — recommended nightly sleep for adults |
+| `sleep` | 7–9 hours, or **7–8 from age 65** | `NSF` — recommended nightly sleep, adults / older adults |
 | `spO2` | 94–100 % | `WHO` — pulse oximetry guidance (90–93 % hypoxaemia, < 90 % severe) |
 | `breathingRate` | 12–20 brpm | `WHO` — Basic Emergency Care, adult respiratory rate |
 | `steps`, `temperature` | `null` | — |
 
 - **Each range is attributed to the body that publishes it, and only ranges that exist are sent.** WHO publishes the two it is named for here; it publishes no resting heart rate or sleep duration range, so those carry their actual source rather than being re-labelled WHO. `steps` gets none because no standards body publishes a daily step count — WHO's physical activity guidelines are written in minutes of moderate activity per week, and converting those to steps would be our arithmetic under WHO's name. `temperature` gets none because skin temperature is a wearer-relative measurement, already compared against the device's own nightly baseline.
-- General **adult** ranges, not adjusted for age or sex, and **presentational only**: `reference` is never an input to `status`, `qualityScore` or alerting, all of which stay relative to the member's own baseline. CardiTrack is not a medical device, and a reading outside a population range is context for a caregiver, not a finding.
+- **Age:** a CardiMember is validated as 18–120 years old, so every range here is an adult one and no paediatric band (where resting and breathing rates diverge sharply) can apply. Within adulthood only **`sleep`** carries a published age split, and it takes it — the NSF's older-adult band from 65, which most CardiMembers fall in. The other three are published as single adult bands; narrowing them per member would be our own tailoring under the publisher's name. None of the four is published split by sex.
+- **Presentational only:** `reference` is never an input to `status`, `qualityScore` or alerting, all of which stay relative to the member's own baseline. CardiTrack is not a medical device, and a reading outside a population range is context for a caregiver, not a finding.
 
 ### Errors
 

@@ -23,26 +23,49 @@ namespace CardiTrack.Application.Services;
 /// arithmetic wearing WHO's name. Steps keep their goal and baseline, which are this member's own.
 /// </para>
 /// <para>
-/// General adult ranges, not adjusted for age or sex. The bands that shift with age shift little
-/// across the population CardiTrack monitors (the 65+ sleep recommendation is 7–8 hours against
-/// 7–9 for younger adults), and a range drawn as background context does not carry the precision
-/// that per-member tailoring would imply.
+/// A CardiMember is validated as being between 18 and 120 years old, so these are adult ranges
+/// throughout and no paediatric band — where resting heart rate and breathing rate diverge from
+/// the adult figures sharply — can apply. Within that span only sleep has a published age split,
+/// and it takes one (see <see cref="Sleep"/>); the others are published as single adult ranges,
+/// and narrowing them per member would be our own tailoring wearing the publisher's name. None of
+/// the four is published split by sex either.
 /// </para>
 /// </remarks>
 public static class HealthReferenceRanges
 {
-    /// <summary>Normal adult resting heart rate, 60–100 bpm (American Heart Association).</summary>
+    /// <summary>Where the National Sleep Foundation's "older adults" band starts.</summary>
+    public const int OlderAdultAge = 65;
+
+    /// <summary>
+    /// Normal adult resting heart rate, 60–100 bpm (American Heart Association). One band across
+    /// adulthood: an individual's resting heart rate drifts with age and fitness, but the AHA
+    /// publishes no age-split range to draw it against.
+    /// </summary>
     public static MetricReference RestingHeartRate => new() { Low = 60m, High = 100m, Source = "AHA" };
 
-    /// <summary>Recommended nightly sleep for adults, 7–9 hours (National Sleep Foundation).</summary>
-    public static MetricReference Sleep => new() { Low = 7m, High = 9m, Source = "NSF" };
+    /// <summary>
+    /// Recommended nightly sleep (National Sleep Foundation): 7–9 hours for adults, and 7–8 for
+    /// older adults from <see cref="OlderAdultAge"/>. The one published age split among these
+    /// ranges — and the one that matters most here, since most CardiMembers are the wrong side of
+    /// it and would otherwise be drawn an hour of headroom the recommendation does not give them.
+    /// </summary>
+    public static MetricReference Sleep(int ageYears) => new()
+    {
+        Low = 7m,
+        High = ageYears >= OlderAdultAge ? 8m : 9m,
+        Source = "NSF",
+    };
 
     /// <summary>
     /// Normal blood oxygen saturation, 94–100% at sea level (WHO pulse oximetry guidance, which
-    /// puts 90–93% at hypoxaemia and below 90% at severe hypoxaemia).
+    /// puts 90–93% at hypoxaemia and below 90% at severe hypoxaemia). Not age-split: the guidance
+    /// reads the same figures for an adult of any age.
     /// </summary>
     public static MetricReference SpO2 => new() { Low = 94m, High = 100m, Source = "WHO" };
 
-    /// <summary>Normal adult respiratory rate, 12–20 breaths per minute (WHO Basic Emergency Care).</summary>
+    /// <summary>
+    /// Normal adult respiratory rate, 12–20 breaths per minute (WHO Basic Emergency Care). WHO's
+    /// age-dependent thresholds for this one are paediatric, and a CardiMember is an adult.
+    /// </summary>
     public static MetricReference BreathingRate => new() { Low = 12m, High = 20m, Source = "WHO" };
 }

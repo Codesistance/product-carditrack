@@ -76,8 +76,12 @@ public class MemberInsightsCalculatorTests
     // off the same evidence its status colour comes from. The bands nest inside the status
     // thresholds, so a card can never show a green pill next to a one-star rating.
 
-    private static DashboardMetrics Build(ActivityLog log, PatternBaseline? baseline = null) =>
-        MemberInsightsCalculator.BuildMetrics([log], baseline, Today);
+    /// <param name="ageYears">
+    /// 72 by default — the CardiMembers this product is built for are older adults, and one of the
+    /// published reference ranges is split at 65.
+    /// </param>
+    private static DashboardMetrics Build(ActivityLog log, PatternBaseline? baseline = null, int ageYears = 72) =>
+        MemberInsightsCalculator.BuildMetrics([log], baseline, Today, ageYears);
 
     [Fact]
     public void A_reading_on_the_members_own_normal_earns_five_stars()
@@ -224,9 +228,46 @@ public class MemberInsightsCalculatorTests
         });
 
         Assert.Equal((60m, 100m, "AHA"), Range(metrics.RestingHeartRate));
-        Assert.Equal((7m, 9m, "NSF"), Range(metrics.Sleep));
+        Assert.Equal((7m, 8m, "NSF"), Range(metrics.Sleep));
         Assert.Equal((94m, 100m, "WHO"), Range(metrics.SpO2));
         Assert.Equal((12m, 20m, "WHO"), Range(metrics.BreathingRate));
+    }
+
+    [Fact]
+    public void The_sleep_range_takes_the_older_adult_band_from_65()
+    {
+        var log = new ActivityLog { Date = Yesterday, SleepMinutes = 450 };
+
+        // The NSF splits its recommendation at 65: 7–9 hours for adults, 7–8 for older adults.
+        // Most CardiMembers are the wrong side of that line, so drawing them the younger band
+        // would give them an hour of headroom the recommendation does not.
+        Assert.Equal(9m, Build(log, ageYears: 64).Sleep.Reference!.High);
+        Assert.Equal(8m, Build(log, ageYears: 65).Sleep.Reference!.High);
+        Assert.Equal(8m, Build(log, ageYears: 80).Sleep.Reference!.High);
+
+        // The floor is the same either side of it.
+        Assert.Equal(7m, Build(log, ageYears: 64).Sleep.Reference!.Low);
+        Assert.Equal(7m, Build(log, ageYears: 80).Sleep.Reference!.Low);
+    }
+
+    [Fact]
+    public void The_other_published_ranges_are_the_same_at_any_adult_age()
+    {
+        // A CardiMember is validated as 18-120, so these three are published as one adult band
+        // each — narrowing them per member would be our own tailoring under the publisher's name.
+        var log = new ActivityLog
+        {
+            Date = Yesterday,
+            RestingHeartRate = 68,
+            SpO2Average = 96m,
+            BreathingRate = 14.2m,
+        };
+        var young = Build(log, ageYears: 18);
+        var old = Build(log, ageYears: 96);
+
+        Assert.Equal(Range(young.RestingHeartRate), Range(old.RestingHeartRate));
+        Assert.Equal(Range(young.SpO2), Range(old.SpO2));
+        Assert.Equal(Range(young.BreathingRate), Range(old.BreathingRate));
     }
 
     [Fact]

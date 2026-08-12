@@ -41,6 +41,12 @@ public static class MemberInsightsCalculator
     /// <summary>
     /// Builds the Key Metrics cards from a member's daily history.
     /// </summary>
+    /// <param name="ageYears">
+    /// The member's age, for the one published reference range that is split by it — see
+    /// <see cref="HealthReferenceRanges.Sleep"/>. Required rather than optional because both
+    /// callers hold the member's date of birth already, and a default would quietly draw every
+    /// older adult the younger band.
+    /// </param>
     /// <remarks>
     /// Each metric is resolved independently, down the days newest-first, rather than all of them
     /// reading a single "latest row". Ingestion stores the day in progress, so today's row appears
@@ -49,7 +55,8 @@ public static class MemberInsightsCalculator
     /// to come from the same day. This is the same coalescing rule <see cref="ActivityLogMerge"/>
     /// applies across a member's devices, applied across days.
     /// </remarks>
-    public static DashboardMetrics BuildMetrics(List<ActivityLog> logs, PatternBaseline? baseline, DateOnly today)
+    public static DashboardMetrics BuildMetrics(
+        List<ActivityLog> logs, PatternBaseline? baseline, DateOnly today, int ageYears)
     {
         var byDate = logs
             .GroupBy(l => l.Date)
@@ -98,7 +105,9 @@ public static class MemberInsightsCalculator
             baselineValue: baseline?.AvgSleepMinutes is int abm ? Math.Round(abm / 60m, 1) : null,
             unit: "hours",
             series: BuildSeries(byDate, today, l => l.SleepMinutes is int m ? Math.Round(m / 60m, 1) : (decimal?)null),
-            reference: HealthReferenceRanges.Sleep);
+            // The only one of the four published ranges that is split by age; the rest are
+            // published as single adult bands, which is all a CardiMember can be.
+            reference: HealthReferenceRanges.Sleep(ageYears));
         // Read off the same night as the duration above, so the stars can never describe the
         // quality of one night next to the length of another.
         sleep.QualityScore = latestSleep?.SleepEfficiency switch
