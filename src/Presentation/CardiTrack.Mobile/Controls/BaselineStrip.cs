@@ -156,8 +156,12 @@ internal sealed class BaselineStripDrawable : IDrawable
         if (ReferenceLow is not { } low || ReferenceHigh is not { } high)
             return;
 
-        var start = x(low);
-        var end = x(high);
+        // Ordered rather than assumed: the published ranges are ours and are written low-then-high,
+        // but a range that ever arrived inverted would make this a negative-width rectangle, which
+        // renders as nothing or as glitch depending on the backend. Cheaper to order the two ends
+        // than to rely on every future producer of a MetricReference getting them the right way round.
+        var start = Math.Min(x(low), x(high));
+        var end = Math.Max(x(low), x(high));
         var band = new RectF(start, dirtyRect.Top, end - start, dirtyRect.Height);
         var ink = TrendChartInk.Reference;
 

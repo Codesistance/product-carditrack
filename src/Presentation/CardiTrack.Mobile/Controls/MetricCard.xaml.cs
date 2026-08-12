@@ -250,8 +250,22 @@ public partial class MetricCard : ContentView
         return string.Join(", ", parts);
     }
 
-    private void OnExplainTapped(object? sender, TappedEventArgs e) =>
+    /// <summary>
+    /// Guarded rather than hidden until populated. A tile is only ever shown after its metric has
+    /// been applied — the grid sits behind a collapsed accordion inside a panel the dashboard keeps
+    /// hidden until it loads, and a card with no reading is hidden outright — so an unpopulated "i"
+    /// is unreachable today. But that is a fact about the page's wiring, not about this control, and
+    /// the empty popup on the other side of it is a worse thing to leave one wiring change away
+    /// than a tap that does nothing. Keeping the disc visible throughout also spares the footer a
+    /// control that pops into existence a moment after the tile does.
+    /// </summary>
+    private void OnExplainTapped(object? sender, TappedEventArgs e)
+    {
+        if (string.IsNullOrEmpty(_explanation))
+            return;
+
         ExplanationRequested?.Invoke(this, new MetricExplanation(_explanationTitle, _explanation));
+    }
 
     /// <summary>
     /// Activity's accessory: how today compares with the member's own baseline.
