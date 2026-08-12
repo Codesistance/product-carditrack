@@ -25,8 +25,26 @@ public partial class CardiMemberDetailPage : ContentPage
         ("1 week", 168),
     ];
 
+    /// <summary>
+    /// Every metric the trends carousel can show, in the order it swipes: icon, name, the format
+    /// its headline reading takes, and the barer format its chart's own min/max labels take.
+    /// </summary>
+    private static readonly (string Icon, string Name, string Value, string Axis,
+        Func<DashboardMetrics, DashboardMetric> Select)[] TrendCards =
+    [
+        ("icon_metric_steps.svg", "Activity", "{0:N0} steps", "{0:N0}", m => m.Steps),
+        ("icon_metric_heart.svg", "Heart Rate", "{0:N0} bpm", "{0:N0}", m => m.RestingHeartRate),
+        ("icon_metric_sleep.svg", "Sleep", "{0:0.#} hours", "{0:0.#}", m => m.Sleep),
+        ("icon_metric_temperature.svg", "Skin Temp", "{0:0.#}°C", "{0:0.#}", m => m.Temperature),
+        ("icon_metric_spo2.svg", "Blood Oxygen", "{0:0.#}%", "{0:0.#}", m => m.SpO2),
+        ("icon_metric_breathing.svg", "Breathing Rate", "{0:0.#} brpm", "{0:0.#}", m => m.BreathingRate),
+    ];
+
     private readonly ICardiTrackApiClient _api;
     private readonly IPopupService _popups;
+
+    private readonly List<MetricTrend> _trends = [];
+    private readonly List<BoxView> _trendIndicators = [];
 
     private Guid _memberId;
     private bool _isLoading;
@@ -40,6 +58,10 @@ public partial class CardiMemberDetailPage : ContentPage
         _api = api;
         _popups = popups;
         this.RefreshWhenAppResumes(RefreshOnResumeAsync);
+
+        TrendsCarousel.HeightRequest = MetricTrendCard.CardHeight;
+        TrendsCarousel.PositionChanged += OnTrendPositionChanged;
+        TrendWindowPicker.WindowChanged += OnTrendWindowChanged;
     }
 
     public string MemberId
@@ -203,34 +225,82 @@ public partial class CardiMemberDetailPage : ContentPage
         }
     }
 
+    /// <summary>
+    /// Rebuilds the trends carousel, one card per metric this member actually reports. The
+    /// caregiver's chosen window survives a refresh, and so does the card they were looking at —
+    /// pulling to refresh should not shuffle the screen back to the first metric under them.
+    /// </summary>
     private void ApplyTrends(DashboardMetrics? metrics)
     {
-        TrendsStack.Clear();
-        if (metrics is null)
+        var position = TrendsCarousel.Position;
+
+        _trends.Clear();
+        if (metrics is not null)
         {
-            TrendsCard.IsVisible = false;
+            foreach (var (icon, name, value, axis, select) in TrendCards)
+            {
+                var metric = select(metrics);
+                if (metric.Value is null)
+                    continue;
+
+                _trends.Add(new MetricTrend(icon, name, value, axis, metric, TrendWindowPicker.SelectedDays));
+            }
+        }
+
+        // Assigning the same list instance back would not re-run the carousel's own diffing, so
+        // hand it a fresh snapshot; the cards themselves are recycled either way.
+        TrendsCarousel.ItemsSource = _trends.ToList();
+        TrendsSection.IsVisible = _trends.Count > 0;
+        if (_trends.Count == 0)
+        {
+            BuildTrendIndicators(0);
             return;
         }
 
-        var rows = new (string Icon, string Name, DashboardMetric Metric, string Format)[]
-        {
-            ("icon_metric_steps.svg", "Activity", metrics.Steps, "{0:N0} steps"),
-            ("icon_metric_heart.svg", "Heart Rate", metrics.RestingHeartRate, "{0:N0} bpm"),
-            ("icon_metric_sleep.svg", "Sleep", metrics.Sleep, "{0:0.#} hours"),
-            ("icon_metric_temperature.svg", "Skin Temp", metrics.Temperature, "{0:0.#}°C"),
-            ("icon_metric_spo2.svg", "Blood Oxygen", metrics.SpO2, "{0:0.#}%"),
-            ("icon_metric_breathing.svg", "Breathing Rate", metrics.BreathingRate, "{0:0.#} brpm"),
-        };
+        BuildTrendIndicators(_trends.Count);
+        TrendsCarousel.Position = Math.Clamp(position, 0, _trends.Count - 1);
+        // Read back rather than trusting the write: a carousel that has not been laid out yet keeps
+        // the position it had, and the dots must say whatever the carousel actually settled on.
+        PaintTrendIndicators(TrendsCarousel.Position);
+    }
 
-        foreach (var (icon, name, metric, format) in rows)
-        {
-            if (metric.Value is null)
-                continue;
+    private void OnTrendWindowChanged(object? sender, int days)
+    {
+        // The cards redraw themselves off this — see MetricTrend's own remarks on why the window
+        // lives on the item rather than being pushed into each realised card.
+        foreach (var trend in _trends)
+            trend.Days = days;
+    }
 
-            TrendsStack.Add(new MetricTrendRow(icon, name, string.Format(format, metric.Value.Value), metric));
+    private void OnTrendPositionChanged(object? sender, PositionChangedEventArgs e) =>
+        PaintTrendIndicators(e.CurrentPosition);
+
+    private void BuildTrendIndicators(int count)
+    {
+        TrendIndicatorPanel.Clear();
+        _trendIndicators.Clear();
+        // A single metric is not a carousel; dots under it would promise a swipe that goes nowhere.
+        TrendIndicatorPanel.IsVisible = count > 1;
+        if (count <= 1)
+            return;
+
+        for (var i = 0; i < count; i++)
+        {
+            var dot = new BoxView { WidthRequest = 8, HeightRequest = 8, CornerRadius = 4 };
+            _trendIndicators.Add(dot);
+            TrendIndicatorPanel.Add(dot);
         }
+    }
 
-        TrendsCard.IsVisible = TrendsStack.Count > 0;
+    private void PaintTrendIndicators(int position)
+    {
+        var resources = Microsoft.Maui.Controls.Application.Current!.Resources;
+        for (var i = 0; i < _trendIndicators.Count; i++)
+        {
+            // Active pill widens, same treatment as the welcome carousel's indicators.
+            _trendIndicators[i].WidthRequest = i == position ? 24 : 8;
+            _trendIndicators[i].Color = (Color)resources[i == position ? "ActiveIndicator" : "InactiveIndicator"];
+        }
     }
 
     private void SetState(bool loading = false, bool loaded = false, bool error = false)

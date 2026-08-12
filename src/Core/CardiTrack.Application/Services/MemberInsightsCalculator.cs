@@ -18,7 +18,15 @@ public static class MemberInsightsCalculator
     private const decimal YellowDeviationPercent = 30m;
     private const decimal OrangeDeviationPercent = 50m;
 
-    public const int SeriesDays = 7;
+    /// <summary>
+    /// Days of daily history carried in every metric's <see cref="DashboardMetric.Series"/>, sized
+    /// to the widest window the CardiMember Detail screen's trend cards offer (7 / 14 / 30 days) so
+    /// switching between them is a client-side slice rather than another round trip. Both callers
+    /// already read this many days of logs for the baseline progress, so the wider series costs no
+    /// extra query.
+    /// </summary>
+    public const int SeriesDays = 30;
+
     private const decimal DefaultStepsGoal = 10000m;
 
     /// <summary>Stars a Key Metrics card rates a reading out of.</summary>

@@ -2,7 +2,7 @@ namespace CardiTrack.Application.DTOs.Responses;
 
 /// <summary>
 /// Composed payload for the mobile Main Dashboard (M1-09): hero status, key metrics with
-/// 7-day series, recent alerts, and device/baseline state in a single round-trip.
+/// daily series, recent alerts, and device/baseline state in a single round-trip.
 /// Status/severity fields are lowercase strings (green/yellow/orange/red/unknown) per the
 /// REST contract in docs/execution/backend/api.
 /// </summary>
@@ -130,6 +130,13 @@ public class DashboardMetric
     /// — which hides the card's star row rather than inventing a normal.
     /// </summary>
     public int? QualityScore { get; set; }
+
+    /// <summary>
+    /// One point per day, oldest first, always running to today — a day the member reported
+    /// nothing for is a point with a null <see cref="MetricPoint.Value"/>, not a missing point.
+    /// Its length is <c>MemberInsightsCalculator.SeriesDays</c>; clients showing a shorter window
+    /// take the tail.
+    /// </summary>
     public List<MetricPoint> Series { get; set; } = new();
 }
 

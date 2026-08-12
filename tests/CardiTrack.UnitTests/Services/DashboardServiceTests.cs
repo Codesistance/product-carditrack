@@ -284,7 +284,7 @@ public class DashboardServiceTests
 
         // The series always runs to today, so the day this member has no row for yet is a gap
         // rather than a missing point.
-        Assert.Equal(7, metrics.Steps.Series.Count);
+        Assert.Equal(MemberInsightsCalculator.SeriesDays, metrics.Steps.Series.Count);
         Assert.Equal(Today, metrics.Steps.Series[^1].Date);
         Assert.Null(metrics.Steps.Series[^1].Value);
         Assert.All(metrics.Steps.Series.SkipLast(1), p => Assert.Equal(4250m, p.Value));
