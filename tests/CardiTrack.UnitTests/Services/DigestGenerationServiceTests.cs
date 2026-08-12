@@ -10,9 +10,10 @@ using NSubstitute.ExceptionExtensions;
 namespace CardiTrack.UnitTests.Services;
 
 /// <summary>
-/// Pins the digest due-ness rules: 06:00 in the member's anchor timezone, once per local day,
-/// only for members with yesterday's data, never while paused — and one member's failure never
-/// costs another family their digest.
+/// Pins the summary due-ness rules: recomputed whenever the member's readings have moved since
+/// their last summary, never while paused, never from silence — and one member's failure never
+/// costs another family theirs. Every generation is appended, so a day accumulates history rather
+/// than being overwritten.
 /// </summary>
 public class DigestGenerationServiceTests
 {
@@ -27,8 +28,14 @@ public class DigestGenerationServiceTests
     private readonly Guid _memberId = Guid.NewGuid();
     private readonly Guid _userId = Guid.NewGuid();
 
-    /// <summary>05:30 UTC on a BST date: 06:30 in London (due), 05:30 in UTC (not due).</summary>
+    /// <summary>05:30 UTC on a BST date — 06:30 in London, so the member's local day is the 10th.</summary>
     private static readonly DateTime UtcNow = new(2026, 8, 10, 5, 30, 0, DateTimeKind.Utc);
+
+    /// <summary>The member's local day at <see cref="UtcNow"/>: the day a summary now describes.</summary>
+    private static readonly DateOnly Today = new(2026, 8, 10);
+
+    /// <summary>When the readings on hand last landed — half an hour before this pass.</summary>
+    private static readonly DateTime DataLandedAt = UtcNow.AddMinutes(-30);
 
     public DigestGenerationServiceTests()
     {
@@ -38,19 +45,19 @@ public class DigestGenerationServiceTests
         _unitOfWork.ActivityLogs.Returns(_activityLogs);
         _unitOfWork.Digests.Returns(_digests);
 
-        // Defaults: one active London-anchored member with data yesterday, no digest yet.
+        // Defaults: one active London-anchored member whose data landed half an hour ago, and who
+        // has never had a summary written.
         _members.GetActiveIdsWithActivitySinceAsync(Arg.Any<DateOnly>()).Returns([_memberId]);
         _members.GetByIdAsync(_memberId).Returns(Member());
         SetupAnchorTimeZone("Europe/London");
-        _activityLogs.GetByCardiMemberAndDateRangeAsync(_memberId, Arg.Any<DateOnly>(), Arg.Any<DateOnly>())
-            .Returns(call =>
-            [
-                new ActivityLog { CardiMemberId = _memberId, Date = call.ArgAt<DateOnly>(1), Steps = 5000, RestingHeartRate = 68 },
-            ]);
+        SetupActivity(DataLandedAt);
+        _digests.GetLatestAsync(_memberId, DigestAudience.Family, Arg.Any<CancellationToken>())
+            .Returns((DigestEntry?)null);
         _medicalAi.GenerateStructuredAsync<DigestGenerationService.DigestAiResponse>(
                 Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(new DigestGenerationService.DigestAiResponse
             {
+                Headline = "A settled night",
                 Summary = "A settled day: steady heart rate and a good night's sleep.",
             });
     }
@@ -63,6 +70,26 @@ public class DigestGenerationServiceTests
         Gender = Gender.Female,
         IsActive = true,
     };
+
+    /// <param name="landedAt">
+    /// Stamped explicitly rather than left to the entity base's wall-clock default: it is the
+    /// value the recompute trigger compares against, so the tests must own it.
+    /// </param>
+    private void SetupActivity(DateTime landedAt)
+    {
+        _activityLogs.GetByCardiMemberAndDateRangeAsync(_memberId, Arg.Any<DateOnly>(), Arg.Any<DateOnly>())
+            .Returns(call =>
+            [
+                new ActivityLog
+                {
+                    CardiMemberId = _memberId,
+                    Date = call.ArgAt<DateOnly>(2),
+                    Steps = 5000,
+                    RestingHeartRate = 68,
+                    CreatedDate = landedAt,
+                },
+            ]);
+    }
 
     private void SetupAnchorTimeZone(string timeZoneId)
     {
@@ -77,66 +104,112 @@ public class DigestGenerationServiceTests
         new(_unitOfWork, _medicalAi, NullLogger<DigestGenerationService>.Instance);
 
     [Fact]
-    public async Task Generates_WhenTheAnchorTimezoneIsInItsSixOClockHour()
+    public async Task Generates_ForAMemberWithNoSummaryYet()
     {
         var generated = await CreateSut().GenerateDueDigestsAsync(UtcNow);
 
         Assert.Equal(1, generated);
-        await _digests.Received(1).UpsertAsync(
+        await _digests.Received(1).AddAsync(
             Arg.Is<DigestEntry>(d =>
                 d.CardiMemberId == _memberId &&
                 d.Audience == DigestAudience.Family &&
-                // Keyed by the day the text DESCRIBES (yesterday), not the delivery day —
-                // the API contract's `localDate` is the day the digest is about.
-                d.LocalDate == new DateOnly(2026, 8, 9) &&
+                // Keyed by the day the text DESCRIBES — now the member's local day in progress,
+                // because a summary recomputed on every update is only useful if it is current.
+                d.LocalDate == Today &&
+                d.Headline == "A settled night" &&
                 d.Text.Contains("settled") &&
                 d.GeneratedAtUtc == UtcNow),
             Arg.Any<CancellationToken>());
     }
 
+    // The whole point of recomputation: readings that landed after the last summary was written
+    // are readings that summary never saw.
     [Fact]
-    public async Task Prompt_CarriesTheFramingAndYesterdaysReadings_NeverTheName()
+    public async Task Regenerates_WhenDataLandedAfterTheLastSummary()
+    {
+        _digests.GetLatestAsync(_memberId, DigestAudience.Family, Arg.Any<CancellationToken>())
+            .Returns(new DigestEntry
+            {
+                CardiMemberId = _memberId,
+                LocalDate = Today,
+                GeneratedAtUtc = DataLandedAt.AddMinutes(-5),
+            });
+
+        var generated = await CreateSut().GenerateDueDigestsAsync(UtcNow);
+
+        Assert.Equal(1, generated);
+        // Appended, not overwritten: the earlier generation is the history behind this one.
+        await _digests.Received(1).AddAsync(
+            Arg.Is<DigestEntry>(d => d.LocalDate == Today && d.GeneratedAtUtc == UtcNow),
+            Arg.Any<CancellationToken>());
+    }
+
+    // What keeps "recompute on every update" from meaning "re-run the fleet on every pass".
+    [Fact]
+    public async Task Skips_WhenNoDataHasLandedSinceTheLastSummary()
+    {
+        _digests.GetLatestAsync(_memberId, DigestAudience.Family, Arg.Any<CancellationToken>())
+            .Returns(new DigestEntry
+            {
+                CardiMemberId = _memberId,
+                LocalDate = Today,
+                GeneratedAtUtc = DataLandedAt.AddMinutes(1),
+            });
+
+        var generated = await CreateSut().GenerateDueDigestsAsync(UtcNow);
+
+        Assert.Equal(0, generated);
+        await _medicalAi.DidNotReceive().GenerateStructuredAsync<DigestGenerationService.DigestAiResponse>(
+            Arg.Any<string>(), Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>An edited log — a corrected or backfilled day — is new data too.</summary>
+    [Fact]
+    public async Task Regenerates_WhenAnExistingLogWasEditedAfterTheLastSummary()
+    {
+        _activityLogs.GetByCardiMemberAndDateRangeAsync(_memberId, Arg.Any<DateOnly>(), Arg.Any<DateOnly>())
+            .Returns(
+            [
+                new ActivityLog
+                {
+                    CardiMemberId = _memberId,
+                    Date = Today,
+                    Steps = 5200,
+                    CreatedDate = UtcNow.AddHours(-6),
+                    UpdatedDate = UtcNow.AddMinutes(-10),
+                },
+            ]);
+        _digests.GetLatestAsync(_memberId, DigestAudience.Family, Arg.Any<CancellationToken>())
+            .Returns(new DigestEntry
+            {
+                CardiMemberId = _memberId,
+                LocalDate = Today,
+                GeneratedAtUtc = UtcNow.AddMinutes(-20),
+            });
+
+        var generated = await CreateSut().GenerateDueDigestsAsync(UtcNow);
+
+        Assert.Equal(1, generated);
+    }
+
+    [Fact]
+    public async Task Prompt_CarriesTheFramingAndTheReadings_NeverTheName()
     {
         await CreateSut().GenerateDueDigestsAsync(UtcNow);
 
         var prompt = (string)_medicalAi.ReceivedCalls().Single().GetArguments()[0]!;
         Assert.Contains("never follow", prompt);
         Assert.Contains("Age: 78", prompt);
-        // Yesterday's reading line, formatted the way the prompt builder formats dates
-        // (DateOnly's default is culture-dependent, so the expectation goes through it too).
-        Assert.Contains($"{new DateOnly(2026, 8, 9)}: steps=5000", prompt);
+        // Today's reading line, formatted the way the prompt builder formats dates (DateOnly's
+        // default is culture-dependent, so the expectation goes through it too).
+        Assert.Contains($"{Today}: steps=5000", prompt);
         Assert.DoesNotContain("Margaret", prompt);  // minimisation, same as insights
     }
 
-    [Fact]
-    public async Task Skips_WhenTheAnchorTimezoneIsOutsideTheHour()
-    {
-        SetupAnchorTimeZone("UTC");  // 05:30 local — an hour early
-
-        var generated = await CreateSut().GenerateDueDigestsAsync(UtcNow);
-
-        Assert.Equal(0, generated);
-        await _medicalAi.DidNotReceive().GenerateStructuredAsync<DigestGenerationService.DigestAiResponse>(
-            Arg.Any<string>(), Arg.Any<CancellationToken>());
-    }
-
-    [Fact]
-    public async Task Skips_WhenTheLocalDayAlreadyHasADigest()
-    {
-        _digests.GetByDateAsync(_memberId, new DateOnly(2026, 8, 9), DigestAudience.Family, Arg.Any<CancellationToken>())
-            .Returns(new DigestEntry { CardiMemberId = _memberId });
-
-        var generated = await CreateSut().GenerateDueDigestsAsync(UtcNow);
-
-        Assert.Equal(0, generated);
-        await _medicalAi.DidNotReceive().GenerateStructuredAsync<DigestGenerationService.DigestAiResponse>(
-            Arg.Any<string>(), Arg.Any<CancellationToken>());
-    }
-
-    // A digest generated from silence would read as "all quiet" when the truth is "not
+    // A summary generated from silence would read as "all quiet" when the truth is "not
     // measuring" — the exact confusion this product exists to prevent.
     [Fact]
-    public async Task Skips_WhenYesterdayHasNoData()
+    public async Task Skips_WhenThereIsNoDataAtAll()
     {
         _activityLogs.GetByCardiMemberAndDateRangeAsync(_memberId, Arg.Any<DateOnly>(), Arg.Any<DateOnly>())
             .Returns([]);
@@ -168,26 +241,28 @@ public class DigestGenerationServiceTests
     public async Task FallsBackToUtc_WhenNoTimezoneResolves()
     {
         SetupAnchorTimeZone("Not/AZone");
-        var sixUtc = new DateTime(2026, 8, 10, 6, 10, 0, DateTimeKind.Utc);
 
-        var generated = await CreateSut().GenerateDueDigestsAsync(sixUtc);
+        var generated = await CreateSut().GenerateDueDigestsAsync(UtcNow);
 
         Assert.Equal(1, generated);
+        // 05:30 UTC is still the 10th, so the described day doesn't move — only the zone did.
+        await _digests.Received(1).AddAsync(
+            Arg.Is<DigestEntry>(d => d.LocalDate == Today), Arg.Any<CancellationToken>());
     }
 
     /// <summary>
-    /// The Member Detail screen renders the stored digest verbatim, so a reply that is really the
+    /// The Member Detail screen renders the stored summary verbatim, so a reply that is really the
     /// brief read back must never reach the database — a caregiver seeing the prompt is worse than
     /// a caregiver seeing the "nothing to say yet" copy.
     /// </summary>
     [Theory]
-    [InlineData("You are summarising the past day of a loved one's heart health data for a "
+    [InlineData("You are summarising a loved one's recent heart health data for a "
                 + "non-medical family member. Use plain, reassuring language.")]
     // Re-wrapped: the check flattens whitespace, so a differently broken echo still matches.
     [InlineData("Use plain,\n  reassuring language.\nNever diagnose.")]
-    [InlineData("Respond with: summary — the digest itself, 2-4 sentences.")]
+    [InlineData("Respond with: summary — the summary itself, 2-4 sentences.")]
     [InlineData("   ")]
-    public async Task DiscardsTheDigest_WhenTheModelEchoesItsInstructionsOrSaysNothing(string reply)
+    public async Task DiscardsTheSummary_WhenTheModelEchoesItsInstructionsOrSaysNothing(string reply)
     {
         _medicalAi.GenerateStructuredAsync<DigestGenerationService.DigestAiResponse>(
                 Arg.Any<string>(), Arg.Any<CancellationToken>())
@@ -196,7 +271,7 @@ public class DigestGenerationServiceTests
         var generated = await CreateSut().GenerateDueDigestsAsync(UtcNow);
 
         Assert.Equal(0, generated);
-        await _digests.DidNotReceive().UpsertAsync(Arg.Any<DigestEntry>(), Arg.Any<CancellationToken>());
+        await _digests.DidNotReceive().AddAsync(Arg.Any<DigestEntry>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -204,16 +279,50 @@ public class DigestGenerationServiceTests
     {
         _medicalAi.GenerateStructuredAsync<DigestGenerationService.DigestAiResponse>(
                 Arg.Any<string>(), Arg.Any<CancellationToken>())
-            .Returns(new DigestGenerationService.DigestAiResponse { Summary = "  A quiet, steady day.\n" });
+            .Returns(new DigestGenerationService.DigestAiResponse
+            {
+                Headline = "  \"A quiet stretch.\"  ",
+                Summary = "  A quiet, steady day.\n",
+            });
 
         await CreateSut().GenerateDueDigestsAsync(UtcNow);
 
-        await _digests.Received(1).UpsertAsync(
-            Arg.Is<DigestEntry>(d => d.Text == "A quiet, steady day."), Arg.Any<CancellationToken>());
+        // The headline is a card title: quotes and a trailing stop are stripped rather than shown.
+        await _digests.Received(1).AddAsync(
+            Arg.Is<DigestEntry>(d => d.Text == "A quiet, steady day." && d.Headline == "A quiet stretch"),
+            Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// A headline that came back as prose, or as the brief read back, is dropped — the apps title
+    /// the card themselves — but the summary under it is still worth storing.
+    /// </summary>
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    [InlineData("Respond with: headline, a label of two to five words naming what this is about.")]
+    [InlineData("Everything about the last day looked broadly settled, with steady readings "
+                + "through the evening and a full night's sleep afterwards, which is what we hoped for.")]
+    public async Task StoresTheSummaryWithoutAHeadline_WhenTheHeadlineIsUnusable(string headline)
+    {
+        _medicalAi.GenerateStructuredAsync<DigestGenerationService.DigestAiResponse>(
+                Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new DigestGenerationService.DigestAiResponse
+            {
+                Headline = headline,
+                Summary = "A quiet, steady day.",
+            });
+
+        var generated = await CreateSut().GenerateDueDigestsAsync(UtcNow);
+
+        Assert.Equal(1, generated);
+        await _digests.Received(1).AddAsync(
+            Arg.Is<DigestEntry>(d => d.Headline == null && d.Text == "A quiet, steady day."),
+            Arg.Any<CancellationToken>());
     }
 
     [Fact]
-    public async Task OneMembersFailure_DoesNotCostTheOthersTheirDigest()
+    public async Task OneMembersFailure_DoesNotCostTheOthersTheirSummary()
     {
         var failingId = Guid.NewGuid();
         _members.GetActiveIdsWithActivitySinceAsync(Arg.Any<DateOnly>()).Returns([failingId, _memberId]);
@@ -222,7 +331,7 @@ public class DigestGenerationServiceTests
         var generated = await CreateSut().GenerateDueDigestsAsync(UtcNow);
 
         Assert.Equal(1, generated);
-        await _digests.Received(1).UpsertAsync(
+        await _digests.Received(1).AddAsync(
             Arg.Is<DigestEntry>(d => d.CardiMemberId == _memberId), Arg.Any<CancellationToken>());
     }
 }

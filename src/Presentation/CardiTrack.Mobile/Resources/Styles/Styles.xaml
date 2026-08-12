@@ -313,6 +313,21 @@
         </Setter>
     </Style>
 
+    <!-- ── The nested card ──
+         Same geometry as ElevatedCard, hairline instead of a shadow. For tiles that sit inside
+         another card (the dashboard's Key Metrics grid): a shadow only reads as depth against
+         the ground, and stacking one on a surface that is already raised looks like clutter
+         rather than hierarchy. The outline draws the same boundary without the second elevation. -->
+    <Style x:Key="OutlinedCard" TargetType="Border">
+        <Setter Property="BackgroundColor" Value="{StaticResource White}"/>
+        <Setter Property="Stroke" Value="{StaticResource CardOutline}"/>
+        <Setter Property="StrokeThickness" Value="1"/>
+        <Setter Property="Padding" Value="14,14,13,17"/>
+        <Setter Property="StrokeShape">
+            <RoundRectangle CornerRadius="20"/>
+        </Setter>
+    </Style>
+
     <!-- Icon tile that opens a metric row or an alert card. -->
     <Style x:Key="IconTile" TargetType="Border">
         <Setter Property="StrokeThickness" Value="0"/>

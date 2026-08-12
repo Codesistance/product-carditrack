@@ -15,14 +15,21 @@ public class DigestEntryConfiguration : IEntityTypeConfiguration<DigestEntry>
     {
         builder.ToTable("DigestEntries");
 
-        builder.HasKey(d => new { d.CardiMemberId, d.LocalDate, d.Audience });
+        // GeneratedAtUtc is in the key: summaries are recomputed as data lands and every
+        // generation is kept, so a day holds a history rather than one overwritable row.
+        builder.HasKey(d => new { d.CardiMemberId, d.LocalDate, d.Audience, d.GeneratedAtUtc });
 
         builder.Property(d => d.Audience)
             .IsRequired()
             .HasConversion<string>()
             .HasMaxLength(50);
 
-        // Digests are 2–4 sentences by prompt design; the cap is a guard against a runaway
+        // A few words by prompt design. Nullable because entries written before headlines
+        // existed have none, and the apps fall back rather than showing a blank title.
+        builder.Property(d => d.Headline)
+            .HasMaxLength(120);
+
+        // Summaries are 2–4 sentences by prompt design; the cap is a guard against a runaway
         // generation ever being stored, not a format the text is expected to approach.
         builder.Property(d => d.Text)
             .IsRequired()

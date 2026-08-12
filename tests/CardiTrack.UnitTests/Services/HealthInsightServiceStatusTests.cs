@@ -69,7 +69,11 @@ public class HealthInsightServiceStatusTests
             .Returns([]);
         _medicalAi.GenerateStructuredAsync<HealthInsightService.CurrentStatusAiResponse>(
                 Arg.Any<string>(), Arg.Any<CancellationToken>())
-            .Returns(new HealthInsightService.CurrentStatusAiResponse { Message = "Margaret seems steady today." });
+            .Returns(new HealthInsightService.CurrentStatusAiResponse
+            {
+                Headline = "All steady",
+                Message = "Margaret seems steady today.",
+            });
         // NSubstitute's auto-value for an unconfigured Task<byte[]> is an empty array, not null —
         // without this, every test would read as a cache hit on an empty string.
         _cache.GetAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns((byte[]?)null);
@@ -79,10 +83,36 @@ public class HealthInsightServiceStatusTests
         new(_medicalAi, _unitOfWork, new CardiMemberAccessService(_unitOfWork), _cache);
 
     [Fact]
-    public async Task Succeeds_ForALinkedUser_AndReturnsTheModelsMessage()
+    public async Task Succeeds_ForALinkedUser_AndReturnsTheModelsHeadlineAndMessage()
     {
         var result = await CreateSut().GetCurrentStatusMessageAsync(_userId, _memberId);
 
+        Assert.Equal("All steady", result.Headline);
+        Assert.Equal("Margaret seems steady today.", result.Message);
+    }
+
+    /// <summary>
+    /// The headline is the punchy note the hero card leads with, so it is a label, not prose: an
+    /// answer that arrived quoted or full-stopped is cleaned, and one that ran on into a sentence
+    /// is dropped so the dashboard keeps its per-tier headline. The live line survives either way.
+    /// </summary>
+    [Theory]
+    [InlineData("\"Quieter than usual.\"", "Quieter than usual")]
+    [InlineData("   ", null)]
+    [InlineData("Everything about today has looked broadly settled so far, which is reassuring", null)]
+    public async Task HeadlineIsCleanedOrDropped_ButNeverCostsTheMessage(string headline, string? expected)
+    {
+        _medicalAi.GenerateStructuredAsync<HealthInsightService.CurrentStatusAiResponse>(
+                Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new HealthInsightService.CurrentStatusAiResponse
+            {
+                Headline = headline,
+                Message = "Margaret seems steady today.",
+            });
+
+        var result = await CreateSut().GetCurrentStatusMessageAsync(_userId, _memberId);
+
+        Assert.Equal(expected, result.Headline);
         Assert.Equal("Margaret seems steady today.", result.Message);
     }
 
@@ -152,12 +182,14 @@ public class HealthInsightServiceStatusTests
     public async Task ReturnsTheCachedMessage_WithoutCallingTheModelAgain()
     {
         var cachedAt = DateTimeOffset.UtcNow.AddMinutes(-1);
-        var cachedJson = JsonSerializer.Serialize(new CachedStatus("Cached line from a minute ago.", cachedAt));
+        var cachedJson = JsonSerializer.Serialize(
+            new CachedStatus("Steady as ever", "Cached line from a minute ago.", cachedAt));
         _cache.GetAsync($"dashboard-status:{_memberId}", Arg.Any<CancellationToken>())
             .Returns(Encoding.UTF8.GetBytes(cachedJson));
 
         var result = await CreateSut().GetCurrentStatusMessageAsync(_userId, _memberId);
 
+        Assert.Equal("Steady as ever", result.Headline);
         Assert.Equal("Cached line from a minute ago.", result.Message);
         // The cached generation time, not the moment this call happened to read it.
         Assert.Equal(cachedAt, result.GeneratedAt);
@@ -172,8 +204,13 @@ public class HealthInsightServiceStatusTests
 
         await _cache.Received(1).SetAsync(
             $"dashboard-status:{_memberId}",
-            Arg.Is<byte[]>(b => JsonSerializer.Deserialize<CachedStatus>(Encoding.UTF8.GetString(b))!.Message
-                == "Margaret seems steady today."),
+            Arg.Is<byte[]>(b =>
+                JsonSerializer.Deserialize<CachedStatus>(Encoding.UTF8.GetString(b))!.Message
+                    == "Margaret seems steady today."
+                // The headline is cached with the line it belongs to — a cache hit that dropped it
+                // would leave the hero card mismatched for the rest of the TTL.
+                && JsonSerializer.Deserialize<CachedStatus>(Encoding.UTF8.GetString(b))!.Headline
+                    == "All steady"),
             Arg.Is<DistributedCacheEntryOptions>(o => o.AbsoluteExpirationRelativeToNow == TimeSpan.FromMinutes(15)),
             Arg.Any<CancellationToken>());
     }
@@ -199,5 +236,5 @@ public class HealthInsightServiceStatusTests
 
     /// <summary>Structurally matches <c>HealthInsightService.CachedStatus</c> — a private nested
     /// record, so this is a separate type kept in sync by shape, not by reference.</summary>
-    private sealed record CachedStatus(string Message, DateTimeOffset GeneratedAt);
+    private sealed record CachedStatus(string? Headline, string Message, DateTimeOffset GeneratedAt);
 }

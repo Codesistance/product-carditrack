@@ -92,24 +92,12 @@
                         <!-- Profile -->
                         <Border Style="{StaticResource ElevatedCard}">
                             <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="14">
-                                <Border Grid.Column="0"
-                                        WidthRequest="64" HeightRequest="64"
-                                        StrokeThickness="0"
-                                        VerticalOptions="Center">
-                                    <Border.StrokeShape>
-                                        <RoundRectangle CornerRadius="12"/>
-                                    </Border.StrokeShape>
-                                    <Border.Background>
-                                        <StaticResource Key="GradientButtonBrush"/>
-                                    </Border.Background>
-                                    <!-- Initials stand in for a photo: no photo storage exists yet. -->
-                                    <Label x:Name="InitialsLabel"
-                                           FontFamily="QuicksandSemiBold"
-                                           FontSize="24"
-                                           TextColor="{StaticResource White}"
-                                           HorizontalOptions="Center"
-                                           VerticalOptions="Center"/>
-                                </Border>
+                                <!-- The dashboard hero's display image box, not a second treatment
+                                     of its own: same control, so this member's photo shows here
+                                     exactly as it does on the dashboard. -->
+                                <controls:MemberAvatar x:Name="Avatar"
+                                                       Grid.Column="0"
+                                                       VerticalOptions="Center"/>
 
                                 <VerticalStackLayout Grid.Column="1" Spacing="2" VerticalOptions="Center">
                                     <Label x:Name="NameLabel" Style="{StaticResource Heading2}"/>
@@ -185,20 +173,38 @@
                             </VerticalStackLayout>
                         </Border>
 
-                        <!-- Daily summary (issue #188): replaces "Baseline Status: Learning" with
-                             the MedGemma-generated family digest, accented by the same
-                             HealthStatus severity the dashboard uses. Empty until the pipeline has
-                             generated one for this member (dev only today — see
-                             infrastructure/environments/prod.tfvars, enable_pipeline_jobs). -->
+                        <!-- Summary (issue #188): replaces "Baseline Status: Learning" with the
+                             MedGemma-generated family digest, accented by the same HealthStatus
+                             severity the dashboard uses. The title is the digest's own headline
+                             rather than a fixed "Daily Summary" — summaries are recomputed as data
+                             lands, not once a morning, so a standing "Daily" would be a claim about
+                             the cadence that is no longer true, and the headline says what this
+                             summary is about instead of restating which screen it is on. Empty
+                             until the pipeline has generated one for this member (dev only today —
+                             see infrastructure/environments/prod.tfvars, enable_pipeline_jobs). -->
                         <Border x:Name="SummaryCard" Style="{StaticResource ElevatedCard}">
                             <VerticalStackLayout Spacing="10">
-                                <HorizontalStackLayout Spacing="8">
+                                <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
                                     <BoxView x:Name="SummaryAccent"
+                                             Grid.Column="0"
                                              WidthRequest="4" HeightRequest="18"
+                                             VerticalOptions="Start"
+                                             Margin="0,3,0,0"
                                              CornerRadius="2"/>
-                                    <Label Text="Daily Summary"
-                                           Style="{StaticResource DashboardSectionTitle}"/>
-                                </HorizontalStackLayout>
+                                    <VerticalStackLayout Grid.Column="1" Spacing="1">
+                                        <Label x:Name="SummaryTitleLabel"
+                                               Style="{StaticResource DashboardSectionTitle}"
+                                               LineBreakMode="WordWrap"/>
+                                        <!-- "When" belongs next to a summary that is recomputed:
+                                             without it there is no way to tell a minutes-old
+                                             reading from yesterday's. -->
+                                        <Label x:Name="SummaryGeneratedLabel"
+                                               FontFamily="Quicksand"
+                                               FontSize="12"
+                                               TextColor="{StaticResource BodyText}"
+                                               IsVisible="False"/>
+                                    </VerticalStackLayout>
+                                </Grid>
                                 <Label x:Name="SummaryLabel" Style="{StaticResource Body2}"/>
                             </VerticalStackLayout>
                         </Border>

@@ -645,7 +645,7 @@ public partial class DashboardPage : ContentPage
         {
             var status = await _api.GetCurrentStatusAsync(data.CardiMemberId);
             if (status.Message is { } message)
-                HeroCard.ApplyDynamicMessage(message, data.HealthStatus);
+                HeroCard.ApplyDynamicMessage(status.Headline, message, data.HealthStatus);
         }
         catch (ApiException)
         {

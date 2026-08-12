@@ -142,7 +142,7 @@ public partial class CardiMemberDetailPage : ContentPage
 
     private void Apply(CardiMemberDetailResponse member)
     {
-        InitialsLabel.Text = NameFormatting.Initials(member.Name);
+        Avatar.Apply(member.Name, member.PhotoUrl);
         NameLabel.Text = member.Name;
         AgeRelationshipLabel.Text = $"{member.Age} years old • {member.Relationship.GetDisplayName()}";
 
@@ -179,7 +179,9 @@ public partial class CardiMemberDetailPage : ContentPage
             }];
         // The digest itself loads separately (LoadDigestAsync) — this is just the placeholder
         // shown until it resolves, and the fallback if there isn't one yet.
-        SummaryLabel.Text = "Getting to know this CardiMember's routine — a daily summary will appear here once there's enough to say.";
+        SummaryTitleLabel.Text = "Still getting to know them";
+        SummaryGeneratedLabel.IsVisible = false;
+        SummaryLabel.Text = "We'll summarise how this CardiMember is doing here as soon as there's enough data to say something useful.";
 
         ApplyTrends(member.Metrics);
 
@@ -216,8 +218,18 @@ public partial class CardiMemberDetailPage : ContentPage
         try
         {
             var digest = await _api.GetDigestAsync(memberId);
-            if (memberId == _memberId)
-                SummaryLabel.Text = digest.Text;
+            if (memberId != _memberId)
+                return;
+
+            // The headline is generated with the summary and describes this particular one. A
+            // digest stored before headlines existed has none, so the card falls back to naming
+            // what it is rather than rendering a blank title.
+            SummaryTitleLabel.Text = string.IsNullOrWhiteSpace(digest.Headline)
+                ? "Latest Summary"
+                : digest.Headline;
+            SummaryLabel.Text = digest.Text;
+            SummaryGeneratedLabel.Text = $"Updated {RelativeTime.Format(digest.GeneratedAtUtc)}";
+            SummaryGeneratedLabel.IsVisible = true;
         }
         catch (ApiException)
         {

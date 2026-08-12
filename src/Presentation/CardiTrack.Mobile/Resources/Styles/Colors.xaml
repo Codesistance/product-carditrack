@@ -57,6 +57,10 @@
     <Color x:Key="PageGround">#E8F1F4</Color>
     <Color x:Key="CardShadow">#014297</Color>
     <Color x:Key="ProgressTrack">#E5E7EB</Color>
+    <!-- Hairline for cards that sit ON another card rather than on the tinted ground: nested
+         elevation reads as clutter, so those tiles take an outline instead (see OutlinedCard).
+         Darker than Divider — it has to hold its own against white, not against PageGround. -->
+    <Color x:Key="CardOutline">#D7DFE9</Color>
 
     <!-- Metric row icon tile — Figma rgba(201,225,255,0.41) -->
     <Color x:Key="MetricTileTint">#69C9E1FF</Color>
