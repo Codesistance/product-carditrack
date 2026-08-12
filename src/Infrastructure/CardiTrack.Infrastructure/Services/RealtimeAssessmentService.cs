@@ -160,13 +160,21 @@ public class RealtimeAssessmentService : IRealtimeAssessmentService
         var steps = SumIfAny(window.MinuteSeries, GranularMetric.Steps, lastIndex, WindowMinutes);
         var spo2 = MeanIfAny(window.MinuteSeries, GranularMetric.SpO2, lastIndex, WindowMinutes);
 
-        // Only worth mentioning when it is close enough in time to the window being assessed —
-        // a workout from days ago is not context for right now. Best-effort: a member with no
-        // consent, no recent GPS-tagged session, or an enrichment pass that has not run yet
-        // simply gets no line, never a stale or missing one treated as an error.
-        var environmental = await _unitOfWork.EnvironmentalReadings.GetLatestAsync(memberId, ct);
-        if (environmental is not null && windowEnd - environmental.SessionEndUtc > TimeSpan.FromHours(LookbackHours))
-            environmental = null;
+        // Gated on consent before the query, not after: only a consented member can ever have a
+        // row (EnvironmentalEnrichmentService's own candidate filter), so every non-consented
+        // member — the common case, every pass, across the whole fleet — skips the roundtrip
+        // entirely rather than querying and finding nothing. Only worth mentioning when it is
+        // close enough in time to the window being assessed — a workout from days ago is not
+        // context for right now. Best-effort: no recent GPS-tagged session, or an enrichment
+        // pass that has not run yet, simply gets no line, never a stale or missing one treated
+        // as an error.
+        EnvironmentalReading? environmental = null;
+        if (member.EnvironmentalContextConsentGranted)
+        {
+            environmental = await _unitOfWork.EnvironmentalReadings.GetLatestAsync(memberId, ct);
+            if (environmental is not null && windowEnd - environmental.SessionEndUtc > TimeSpan.FromHours(LookbackHours))
+                environmental = null;
+        }
 
         var prompt = BuildPrompt(member, utcNow, ssa.TrendLast, deviationScore, noiseRms,
             series[^1], covered, steps, spo2, environmental);

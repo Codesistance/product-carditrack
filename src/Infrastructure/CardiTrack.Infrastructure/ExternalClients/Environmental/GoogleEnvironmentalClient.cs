@@ -84,10 +84,15 @@ public class GoogleEnvironmentalClient : IEnvironmentalContextClient
                 ? (degrees - 32) * 5.0 / 9.0
                 : degrees;
         }
-        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException
+            or System.Text.Json.JsonException or NotSupportedException)
         {
             // Enrichment is best-effort context, not a required field: a transient failure here
             // must not cost the session's air-quality reading or fail the whole enrich pass.
+            // JsonException/NotSupportedException cover a malformed or non-JSON body (e.g. an
+            // HTML error page from a misrouted request) — ReadFromJsonAsync throws those, and an
+            // uncaught one here would fault this task and take the sibling call down with it via
+            // Task.WhenAll, defeating the "independent calls" guarantee this class documents.
             _logger.LogWarning(ex, "Environmental temperature lookup failed.");
             return null;
         }
@@ -120,8 +125,11 @@ public class GoogleEnvironmentalClient : IEnvironmentalContextClient
             var universal = parsed?.Indexes?.FirstOrDefault(i => i.Code == "uaqi");
             return universal is null ? null : (universal.Aqi, universal.Category);
         }
-        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException
+            or System.Text.Json.JsonException or NotSupportedException)
         {
+            // See TryGetTemperatureAsync's catch clause for why JsonException/NotSupportedException
+            // are included alongside the transport exceptions.
             _logger.LogWarning(ex, "Environmental air-quality lookup failed.");
             return null;
         }
