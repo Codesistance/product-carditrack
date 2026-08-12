@@ -48,11 +48,14 @@
                        HorizontalTextAlignment="Center"
                        Margin="0,16,0,0"/>
 
-                <Label x:Name="MessageLabel"
-                       Style="{StaticResource Body2}"
-                       HorizontalTextAlignment="Justify"
-                       LineBreakMode="WordWrap"
-                       Margin="0,8,0,0"/>
+                <!-- The card grows with the message; the ScrollView only kicks in once
+                     MaximumHeightRequest (set in code-behind) would push it off-screen. -->
+                <ScrollView x:Name="MessageScroll" Margin="0,8,0,0">
+                    <Label x:Name="MessageLabel"
+                           Style="{StaticResource Body2}"
+                           HorizontalTextAlignment="Start"
+                           LineBreakMode="WordWrap"/>
+                </ScrollView>
 
                 <Grid ColumnSpacing="12" Margin="0,24,0,0">
                     <Grid.ColumnDefinitions>

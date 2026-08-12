@@ -11,6 +11,9 @@ namespace CardiTrack.Mobile.Controls;
 /// </summary>
 public partial class AppPopupPage : ContentPage
 {
+    /// <summary>Caps runaway messages (e.g. raw error bodies) so the popup stays readable.</summary>
+    private const int MaxMessageLength = 600;
+
     private readonly TaskCompletionSource<bool> _result = new();
     private readonly bool _isConfirmation;
     private bool _closing;
@@ -36,7 +39,12 @@ public partial class AppPopupPage : ContentPage
         IconLabel.TextColor = accent;
 
         TitleLabel.Text = title;
-        MessageLabel.Text = message;
+        MessageLabel.Text = Truncate(message);
+
+        // Even a capped message can outgrow a small screen at large accessibility
+        // font scales; past this height the message scrolls instead of clipping.
+        var display = DeviceDisplay.Current.MainDisplayInfo;
+        MessageScroll.MaximumHeightRequest = display.Height / display.Density * 0.35;
         ConfirmBtn.Text = confirmText;
         if (_isConfirmation)
         {
@@ -48,6 +56,15 @@ public partial class AppPopupPage : ContentPage
 
     /// <summary>Completes when the popup is dismissed; true unless Cancel/back dismissed it.</summary>
     public Task<bool> Result => _result.Task;
+
+    private static string Truncate(string message)
+    {
+        if (message.Length <= MaxMessageLength)
+            return message;
+
+        var cut = message.LastIndexOf(' ', MaxMessageLength);
+        return message[..(cut > 0 ? cut : MaxMessageLength)].TrimEnd() + "…";
+    }
 
     protected override void OnAppearing()
     {
