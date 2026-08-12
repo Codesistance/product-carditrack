@@ -30,6 +30,15 @@ public class CardiMember : BaseEntity, ISoftDeletable
 
     public AlertSensitivity AlertSensitivity { get; set; } = AlertSensitivity.Medium;
 
+    /// <summary>
+    /// Whether this member's exercise-session GPS location may be used to look up ambient
+    /// temperature and air quality for that session. Default false, and the sole gate: no code
+    /// path fetches exercise/location data or calls the environmental client for a member whose
+    /// flag is not set. Raw coordinates are never persisted regardless — only the derived
+    /// readings this consent unlocks (see docs/technical/data_protection_architecture.md).
+    /// </summary>
+    public bool EnvironmentalContextConsentGranted { get; set; }
+
     /// <summary>Paused state expires on its own — callers must never treat the pause as sticky.</summary>
     public bool IsMonitoringPaused(DateTime utcNow) => MonitoringPausedUntil > utcNow;
 

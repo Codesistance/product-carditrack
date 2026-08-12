@@ -193,4 +193,15 @@ public static class ConfigurationKeys
         /// </summary>
         public const string PrivateSectionName = "AI:Private";
     }
+
+    /// <summary>
+    /// The environmental-context enrichment feature's Google Maps Platform credentials. Read
+    /// only by <c>CardiTrack.PipelineJobs</c>'s <c>enrich</c> job — see
+    /// <c>EnvironmentalServiceExtensions</c>.
+    /// </summary>
+    public static class Environmental
+    {
+        /// Object section: use with IConfiguration.GetSection(), not ConfigurationLoader.Get().
+        public const string SectionName = "Environmental";
+    }
 }

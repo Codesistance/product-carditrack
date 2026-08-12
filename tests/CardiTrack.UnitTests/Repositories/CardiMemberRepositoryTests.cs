@@ -96,6 +96,56 @@ public class CardiMemberRepositoryTests(TestDatabaseFixture fixture)
         Assert.DoesNotContain(member.Id, ids);
     }
 
+    // ── GetActiveIdsWithEnvironmentalConsentAsync ────────────────────────────────
+    // The sole candidate filter the environmental-enrichment pass relies on
+    // (data_protection_architecture.md) — every branch here is a privacy guarantee, not a nicety.
+
+    [Fact]
+    public async Task GetActiveIdsWithEnvironmentalConsentAsync_ReturnsMember_WhoGrantedConsent()
+    {
+        using var scope = fixture.CreateScope();
+        var repo = scope.ServiceProvider.GetRequiredService<ICardiMemberRepository>();
+
+        var org = await TestDataSeeder.SeedOrganizationAsync(scope);
+        var member = await TestDataSeeder.SeedCardiMemberAsync(
+            scope, org.Id, environmentalContextConsentGranted: true);
+
+        var ids = await repo.GetActiveIdsWithEnvironmentalConsentAsync();
+
+        Assert.Contains(member.Id, ids);
+    }
+
+    [Fact]
+    public async Task GetActiveIdsWithEnvironmentalConsentAsync_ExcludesMember_WhoDidNotGrantConsent()
+    {
+        using var scope = fixture.CreateScope();
+        var repo = scope.ServiceProvider.GetRequiredService<ICardiMemberRepository>();
+
+        var org = await TestDataSeeder.SeedOrganizationAsync(scope);
+        // Default is false — the unconsented member is the common case, and this is what makes
+        // that the safe default rather than an opt-out.
+        var member = await TestDataSeeder.SeedCardiMemberAsync(scope, org.Id);
+
+        var ids = await repo.GetActiveIdsWithEnvironmentalConsentAsync();
+
+        Assert.DoesNotContain(member.Id, ids);
+    }
+
+    [Fact]
+    public async Task GetActiveIdsWithEnvironmentalConsentAsync_ExcludesInactiveMember_EvenWithConsent()
+    {
+        using var scope = fixture.CreateScope();
+        var repo = scope.ServiceProvider.GetRequiredService<ICardiMemberRepository>();
+
+        var org = await TestDataSeeder.SeedOrganizationAsync(scope);
+        var member = await TestDataSeeder.SeedCardiMemberAsync(
+            scope, org.Id, isActive: false, environmentalContextConsentGranted: true);
+
+        var ids = await repo.GetActiveIdsWithEnvironmentalConsentAsync();
+
+        Assert.DoesNotContain(member.Id, ids);
+    }
+
     // ── GetWithRelationshipsAsync ────────────────────────────────────────────────
 
     [Fact]

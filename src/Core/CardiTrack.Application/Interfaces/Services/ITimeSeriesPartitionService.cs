@@ -19,6 +19,9 @@ public sealed record PartitionRetention
 
     /// <summary>Days of real-time assessments to keep.</summary>
     public required int RealtimeDays { get; init; }
+
+    /// <summary>Days of environmental readings to keep.</summary>
+    public required int EnvironmentalDays { get; init; }
 }
 
 /// <summary>

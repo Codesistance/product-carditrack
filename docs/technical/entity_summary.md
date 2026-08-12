@@ -2,7 +2,7 @@
 
 This document provides an overview of all domain entities in the CardiTrack system. All entities live in **PostgreSQL 16 on GCP Cloud SQL**, the transactional system of record; the planned AI pipeline's outputs are documented separately in [llm_design.md](../llm_design.md). Field-level protection (what is encrypted, and what is planned to be) is covered in [data_protection_architecture.md](./data_protection_architecture.md).
 
-**Implemented today:** 13 entities and 14 enums exist in `CardiTrack.Domain` (plus the `ActivityLogMerge` merge helper in `Entities/`), mapped by EF Core (10 migrations applied). A further set of feature entities is designed but not yet built — see the "Planned" section below.
+**Implemented today:** 13 entities and 14 enums exist in `CardiTrack.Domain` (plus the `ActivityLogMerge` merge helper in `Entities/`), mapped by EF Core (22 migrations applied as of 2026-08-12 — this count drifts fast and is not re-verified every edit; the pipeline's own output entities, e.g. `RealtimeAssessment`/`DigestEntry`/`EnvironmentalReading`, are additional to this 13 and are documented in [llm_design.md](../llm_design.md) instead). A further set of feature entities is designed but not yet built — see the "Planned" section below.
 
 ## Entity Overview
 
@@ -29,6 +29,7 @@ This document provides an overview of all domain entities in the CardiTrack syst
 - MedicalNotes: **encrypted at rest** (AES-256-GCM, applied in `CardiMemberService`). Column is `text`, not `varchar(2000)` — ciphertext is longer than the 2000-character input limit
 - Monitoring pause: MonitoringPausedUntil (null = monitoring normally) and MonitoringPauseReason. Time-bounded and self-expiring; enforced in `GetDueForSyncAsync`, so a paused member is genuinely not synced
 - AlertSensitivity (Low/Medium/High, default Medium) — **stored but not yet consumed**; alert generation is not built
+- EnvironmentalContextConsentGranted (bool, default `false`) — the sole gate on the environmental-context enrichment pipeline job (temperature/air-quality lookups for GPS-tagged exercise sessions); see [llm_design.md](../llm_design.md) and [data_protection_architecture.md](./data_protection_architecture.md) §8
 - Links to devices, activity logs, alerts, and pattern baselines
 
 #### 4. **UserCardiMember** (Join Table)

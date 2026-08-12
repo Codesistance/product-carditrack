@@ -31,4 +31,10 @@ public class PartitionMaintenanceOptions
     /// real-time results, matching the granular source they are derived from.
     /// </summary>
     public int RealtimeRetentionDays { get; set; } = 90;
+
+    /// <summary>
+    /// Days the `EnvironmentalReadings` rows are kept — 90, matching the real-time assessments
+    /// they sit alongside in severity/trend prompts.
+    /// </summary>
+    public int EnvironmentalRetentionDays { get; set; } = 90;
 }

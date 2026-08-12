@@ -19,4 +19,21 @@ public interface IDeviceApiClient
     /// subscriptions are addressed by. Null when the provider does not expose one.
     /// </summary>
     Task<string?> GetHealthUserIdAsync(string accessToken);
+
+    /// <summary>
+    /// Exercise sessions logged for one civil day, GPS-tagged or not. Requires the
+    /// <c>googlehealth.location.readonly</c> scope alongside <c>activity_and_fitness</c> to see
+    /// <see cref="ExerciseSession.HasGpsTrack"/> at all — callers check the connection's granted
+    /// scopes before calling this, the same as any other optional data type.
+    /// </summary>
+    Task<IReadOnlyList<ExerciseSession>> GetExerciseSessionsAsync(string accessToken, DateOnly date);
+
+    /// <summary>
+    /// One representative GPS fix for a session that <see cref="GetExerciseSessionsAsync"/>
+    /// reported as GPS-tagged — the first track point that carries a position. Null when the
+    /// session's TCX export carries no usable fix (a GPS lock that failed to acquire is not an
+    /// error, just an empty track). Callers use the result for exactly one outbound environmental
+    /// lookup and must never persist it — see docs/technical/data_protection_architecture.md.
+    /// </summary>
+    Task<ExerciseGpsPoint?> GetExerciseGpsPointAsync(string accessToken, string sessionId);
 }

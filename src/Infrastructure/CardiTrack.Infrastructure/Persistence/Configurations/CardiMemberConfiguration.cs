@@ -67,6 +67,13 @@ public class CardiMemberConfiguration : IEntityTypeConfiguration<CardiMember>
             .IsRequired()
             .HasDefaultValue(true);
 
+        // Default false and required: this is the sole gate on the environmental-enrichment
+        // feature (data_protection_architecture.md) — a missing column value must never be read
+        // as consent.
+        builder.Property(c => c.EnvironmentalContextConsentGranted)
+            .IsRequired()
+            .HasDefaultValue(false);
+
         builder.Property(c => c.CreatedDate)
             .IsRequired()
             .HasDefaultValueSql("NOW()");

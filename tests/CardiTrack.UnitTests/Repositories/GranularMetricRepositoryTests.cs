@@ -186,6 +186,7 @@ public class TimeSeriesPartitionServiceTests(TestDatabaseFixture fixture)
                 RollupMonths = months,
                 DigestMonths = digestMonths,
                 RealtimeDays = realtimeDays,
+                EnvironmentalDays = 90,
             }));
     }
 
@@ -233,6 +234,7 @@ public class TimeSeriesPartitionServiceTests(TestDatabaseFixture fixture)
                 RollupMonths = 13,
                 DigestMonths = 12,
                 RealtimeDays = 90,
+                EnvironmentalDays = 90,
             });
 
             var survivors = await context.Database

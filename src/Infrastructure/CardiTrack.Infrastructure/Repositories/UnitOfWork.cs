@@ -23,6 +23,7 @@ public class UnitOfWork : IUnitOfWork
     public IGranularMetricRepository GranularMetrics { get; }
     public IDigestRepository Digests { get; }
     public IRealtimeAssessmentRepository RealtimeAssessments { get; }
+    public IEnvironmentalReadingRepository EnvironmentalReadings { get; }
     public INotificationRepository Notifications { get; }
     public INotificationMuteRepository NotificationMutes { get; }
     public INotificationDeliveryRepository NotificationDeliveries { get; }
@@ -45,6 +46,7 @@ public class UnitOfWork : IUnitOfWork
         IGranularMetricRepository granularMetrics,
         IDigestRepository digests,
         IRealtimeAssessmentRepository realtimeAssessments,
+        IEnvironmentalReadingRepository environmentalReadings,
         INotificationRepository notifications,
         INotificationMuteRepository notificationMutes,
         INotificationDeliveryRepository notificationDeliveries,
@@ -66,6 +68,7 @@ public class UnitOfWork : IUnitOfWork
         GranularMetrics = granularMetrics;
         Digests = digests;
         RealtimeAssessments = realtimeAssessments;
+        EnvironmentalReadings = environmentalReadings;
         Notifications = notifications;
         NotificationMutes = notificationMutes;
         NotificationDeliveries = notificationDeliveries;

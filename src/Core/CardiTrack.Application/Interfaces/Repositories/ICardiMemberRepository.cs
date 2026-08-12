@@ -13,4 +13,12 @@ public interface ICardiMemberRepository : IRepository<CardiMember>
     /// filtered rather than "all active" so dormant records are not rescanned on every run.
     /// </summary>
     Task<IReadOnlyList<Guid>> GetActiveIdsWithActivitySinceAsync(DateOnly since);
+
+    /// <summary>
+    /// Ids of active members who have explicitly granted
+    /// <see cref="Domain.Entities.CardiMember.EnvironmentalContextConsentGranted"/>. The sole
+    /// candidate filter for the environmental-enrichment pass — a member absent from this list
+    /// is never looked at by that pass, full stop.
+    /// </summary>
+    Task<IReadOnlyList<Guid>> GetActiveIdsWithEnvironmentalConsentAsync();
 }

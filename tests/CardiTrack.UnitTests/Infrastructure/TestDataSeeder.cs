@@ -29,7 +29,8 @@ public static class TestDataSeeder
         IServiceScope scope,
         Guid organizationId,
         bool isActive = true,
-        DateTime? monitoringPausedUntil = null)
+        DateTime? monitoringPausedUntil = null,
+        bool environmentalContextConsentGranted = false)
     {
         var repo = scope.ServiceProvider.GetRequiredService<ICardiMemberRepository>();
         var uow = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
@@ -41,7 +42,8 @@ public static class TestDataSeeder
             DateOfBirth = new DateOnly(1955, 6, 15),
             Gender = Gender.Other,
             MonitoringPausedUntil = monitoringPausedUntil,
-            IsActive = isActive
+            IsActive = isActive,
+            EnvironmentalContextConsentGranted = environmentalContextConsentGranted
         };
 
         await repo.AddAsync(member);

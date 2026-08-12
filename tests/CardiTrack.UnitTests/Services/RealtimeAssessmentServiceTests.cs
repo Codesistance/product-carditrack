@@ -20,6 +20,7 @@ public class RealtimeAssessmentServiceTests
     private readonly ICardiMemberRepository _members = Substitute.For<ICardiMemberRepository>();
     private readonly IGranularMetricRepository _granular = Substitute.For<IGranularMetricRepository>();
     private readonly IRealtimeAssessmentRepository _assessments = Substitute.For<IRealtimeAssessmentRepository>();
+    private readonly IEnvironmentalReadingRepository _environmentalReadings = Substitute.For<IEnvironmentalReadingRepository>();
     private readonly IAlertRepository _alerts = Substitute.For<IAlertRepository>();
     private readonly IMedicalAiService _medicalAi = Substitute.For<IMedicalAiService>();
 
@@ -40,6 +41,7 @@ public class RealtimeAssessmentServiceTests
         _unitOfWork.CardiMembers.Returns(_members);
         _unitOfWork.GranularMetrics.Returns(_granular);
         _unitOfWork.RealtimeAssessments.Returns(_assessments);
+        _unitOfWork.EnvironmentalReadings.Returns(_environmentalReadings);
         _unitOfWork.Alerts.Returns(_alerts);
 
         // Defaults: one active member with a full, never-assessed heart-rate hour ending 14:30,
@@ -353,5 +355,45 @@ public class RealtimeAssessmentServiceTests
         Assert.Contains("SpO2 this hour: not measured", prompt);
         Assert.Contains("On beta blockers.", prompt);
         Assert.DoesNotContain("Margaret", prompt);
+    }
+
+    [Fact]
+    public async Task ANonConsentedMember_NeverQueriesEnvironmentalReadings()
+    {
+        // The consent gate applies before the query, not after — every non-consented member
+        // (the common case, every pass) must skip the roundtrip entirely, not query and find
+        // nothing. _members.GetByIdAsync(_memberId) already returns a member with
+        // EnvironmentalContextConsentGranted = false by default (Member()'s default).
+        await CreateSut().AssessDueMembersAsync(UtcNow);
+
+        await _environmentalReadings.DidNotReceiveWithAnyArgs()
+            .GetLatestAsync(default, default);
+    }
+
+    [Fact]
+    public async Task AConsentedMembersRecentReading_ReachesThePrompt()
+    {
+        var consentedMember = Member();
+        consentedMember.EnvironmentalContextConsentGranted = true;
+        _members.GetByIdAsync(_memberId).Returns(consentedMember);
+        _environmentalReadings.GetLatestAsync(_memberId, Arg.Any<CancellationToken>()).Returns(new EnvironmentalReading
+        {
+            CardiMemberId = _memberId,
+            SessionStartUtc = UtcNow.AddHours(-1),
+            SessionEndUtc = UtcNow.AddMinutes(-45),
+            TemperatureCelsius = 31.0,
+            AirQualityCategory = "Moderate",
+            GeneratedAtUtc = UtcNow.AddMinutes(-40),
+        });
+        string? prompt = null;
+        _medicalAi.GenerateStructuredAsync<RealtimeAssessmentService.AssessmentAiResponse>(
+                Arg.Do<string>(p => prompt = p), Arg.Any<CancellationToken>())
+            .Returns(new RealtimeAssessmentService.AssessmentAiResponse { Message = "Fine.", Severity = "low" });
+
+        await CreateSut().AssessDueMembersAsync(UtcNow);
+
+        Assert.NotNull(prompt);
+        Assert.Contains("31°C", prompt);
+        Assert.Contains("air quality Moderate", prompt);
     }
 }

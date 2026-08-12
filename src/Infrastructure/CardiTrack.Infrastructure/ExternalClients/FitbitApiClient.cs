@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Net.Http.Headers;
 using System.Text;
+using System.Xml.Linq;
 using CardiTrack.Shared.Json;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
@@ -402,6 +403,115 @@ public class FitbitApiClient : IFitbitApiClient, IDeviceApiClient
         var root = await ParseBodyAsync(response, "identity");
         var healthUserId = root.Value<string>("healthUserId");
         return string.IsNullOrWhiteSpace(healthUserId) ? null : healthUserId;
+    }
+
+    /// <summary>
+    /// Exercise sessions for one civil day. <c>exercise</c> is a Session type like <c>sleep</c>,
+    /// so it is filtered on its own civil end-time the same way. GPS presence is read from the
+    /// session's <c>hasLocationData</c> flag on the union value.
+    /// </summary>
+    /// <remarks>
+    /// Field names here (<c>hasLocationData</c>, the exercise union member) follow the same
+    /// naming convention every other data type in this client does (kebab-case type →
+    /// camelCase union member), but — unlike the rest of this client — have not yet been
+    /// individually confirmed against a live discovery-document response, because the
+    /// <c>googlehealth.location.readonly</c> scope this data type needs is not provisioned in
+    /// any environment yet (docs/llm_design.md). Re-verify against
+    /// <c>https://health.googleapis.com/$discovery/rest?version=v4</c> once that scope is
+    /// granted and before this path first runs against a live account — the exact failure mode
+    /// this client's own history warns about (silent zeros, not errors) applies here too.
+    /// </remarks>
+    public async Task<IReadOnlyList<ExerciseSession>> GetExerciseSessionsAsync(
+        string accessToken, DateOnly date)
+    {
+        var filter = Uri.EscapeDataString(
+            $"exercise.interval.civil_end_time >= \"{date:yyyy-MM-dd}\" AND exercise.interval.civil_end_time < \"{date.AddDays(1):yyyy-MM-dd}\"");
+        using var request = new HttpRequestMessage(
+            HttpMethod.Get,
+            $"/v4/users/me/dataTypes/exercise/dataPoints?filter={filter}");
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+
+        using var response = await _httpClient.SendAsync(request);
+        await EnsureSuccessAsync(response);
+
+        var root = await ParseBodyAsync(response, "exercise");
+        var points = (root["dataPoints"] as JArray)?.OfType<JObject>() ?? [];
+
+        var sessions = new List<ExerciseSession>();
+        foreach (var point in points)
+        {
+            var exercise = point["exercise"];
+            var sessionId = point.Value<string>("dataPointId");
+            var startTime = ParseInstantUtc(exercise?["interval"]?.Value<string>("startTime"));
+            var endTime = ParseInstantUtc(exercise?["interval"]?.Value<string>("endTime"));
+            var hasGps = exercise?.Value<bool?>("hasLocationData") ?? false;
+
+            if (sessionId is null || !startTime.HasValue || !endTime.HasValue)
+                continue;
+
+            sessions.Add(new ExerciseSession(sessionId, startTime.Value, endTime.Value, hasGps));
+        }
+
+        return sessions;
+    }
+
+    /// <summary>
+    /// The first GPS fix off a session's TCX export
+    /// (<c>dataPoints/{sessionId}:exportExerciseTcx?alt=media</c>, per docs/llm_design.md), or
+    /// null when the file has no track point carrying a position — a GPS lock that never
+    /// acquired is not an error. The raw TCX bytes and every coordinate parsed from them live
+    /// only in this method's locals; nothing here returns more than the single point the caller
+    /// needs for one environmental lookup.
+    /// </summary>
+    public async Task<ExerciseGpsPoint?> GetExerciseGpsPointAsync(string accessToken, string sessionId)
+    {
+        using var request = new HttpRequestMessage(
+            HttpMethod.Get,
+            $"/v4/users/me/dataTypes/exercise/dataPoints/{Uri.EscapeDataString(sessionId)}:exportExerciseTcx?alt=media");
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+
+        using var response = await _httpClient.SendAsync(request);
+        await EnsureSuccessAsync(response);
+
+        var tcx = await response.Content.ReadAsStringAsync();
+        return ParseFirstTrackpoint(tcx);
+    }
+
+    /// <summary>
+    /// TCX is standard Garmin TrainingCenterDatabase XML; matched by local name rather than a
+    /// pinned namespace URI, since the schema version a given export declares is not this
+    /// client's concern — only the element shape is.
+    /// </summary>
+    private static ExerciseGpsPoint? ParseFirstTrackpoint(string tcx)
+    {
+        XDocument document;
+        try
+        {
+            document = XDocument.Parse(tcx);
+        }
+        catch (System.Xml.XmlException)
+        {
+            return null;
+        }
+
+        foreach (var trackpoint in document.Descendants().Where(e => e.Name.LocalName == "Trackpoint"))
+        {
+            var position = trackpoint.Elements().FirstOrDefault(e => e.Name.LocalName == "Position");
+            var latitudeText = position?.Elements()
+                .FirstOrDefault(e => e.Name.LocalName == "LatitudeDegrees")?.Value;
+            var longitudeText = position?.Elements()
+                .FirstOrDefault(e => e.Name.LocalName == "LongitudeDegrees")?.Value;
+            var timeText = trackpoint.Elements().FirstOrDefault(e => e.Name.LocalName == "Time")?.Value;
+
+            if (double.TryParse(latitudeText, NumberStyles.Float, CultureInfo.InvariantCulture, out var latitude)
+                && double.TryParse(longitudeText, NumberStyles.Float, CultureInfo.InvariantCulture, out var longitude)
+                && ParseInstantUtc(timeText) is { } time)
+            {
+                return new ExerciseGpsPoint(latitude, longitude, time);
+            }
+        }
+
+        return null;
     }
 
     /// <summary>
