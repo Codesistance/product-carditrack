@@ -168,10 +168,11 @@ public partial class DeviceManagementPage : ContentPage
         HelpChevron.Source = HelpPanel.IsVisible ? "icon_chevron.svg" : "icon_chevron_down.svg";
     }
 
-    // Named rather than "..": this page is also reached via the Notifications inbox, which
-    // pushes it directly with no member detail page underneath it on the stack.
+    // History first, so arriving from the Notifications inbox returns to the inbox rather than to
+    // a Member Detail page the caregiver was never on. Member Detail stays the floor: it is where
+    // this screen belongs when it was opened with nothing behind it.
     private async void OnBackClicked(object? sender, EventArgs e) =>
-        await Shell.Current.GoToAsync($"{AppShell.DashboardRoute}/{CardiMemberDetailPage.Route}?memberId={_memberId}");
+        await this.GoBackAsync($"{AppShell.DashboardRoute}/{CardiMemberDetailPage.Route}?memberId={_memberId}");
 
     private async void OnAddDeviceClicked(object? sender, EventArgs e)
     {

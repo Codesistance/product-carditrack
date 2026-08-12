@@ -4,8 +4,7 @@ namespace CardiTrack.Mobile.Controls;
 
 public partial class MetricCard : ContentView
 {
-    private const int StarCount = 5;
-    private const double DimmedStarOpacity = 0.25;
+    private const int StarCount = StarRatingView.StarCount;
 
     public MetricCard()
     {
@@ -19,7 +18,7 @@ public partial class MetricCard : ContentView
         ValueLabel.Text = metric.Value is { } v ? $"{v:N0} steps" : "—";
 
         ApplyTrend(metric, higherIsBetter: true);
-        ApplyStars(metric.QualityScore);
+        ApplyStars(metric);
 
         if (metric is { Value: { } value, Goal: > 0 })
         {
@@ -43,7 +42,7 @@ public partial class MetricCard : ContentView
         ValueLabel.Text = metric.Value is { } v ? $"{v:N0} bpm" : "—";
 
         ApplyStatusPill(metric.Status);
-        ApplyStars(metric.QualityScore);
+        ApplyStars(metric);
         CaptionLabel.Text = metric is { RangeLow: { } low, RangeHigh: { } high }
             ? $"{low}-{high} bpm typical"
             : "Resting heart rate";
@@ -55,7 +54,7 @@ public partial class MetricCard : ContentView
         NameLabel.Text = "Sleep";
         ValueLabel.Text = metric.Value is { } v ? $"{v:0.#} hours" : "—";
 
-        ApplyStars(metric.QualityScore);
+        ApplyStars(metric);
         CaptionLabel.Text = metric.ChangePercent switch
         {
             > 0 => "Better than average",
@@ -72,7 +71,7 @@ public partial class MetricCard : ContentView
         ValueLabel.Text = metric.Value is { } v ? $"{v:0.#}°C" : "—";
 
         ApplyStatusPill(metric.Status);
-        ApplyStars(metric.QualityScore);
+        ApplyStars(metric);
         CaptionLabel.Text = metric.Baseline is not null ? "vs. own nightly baseline" : "Nightly reading";
     }
 
@@ -85,7 +84,7 @@ public partial class MetricCard : ContentView
         // No baseline exists for this metric yet, so Status is always "unknown" and QualityScore
         // always null — pill and stars both stay hidden. A bare reading, not a judgement.
         ApplyStatusPill(metric.Status);
-        ApplyStars(metric.QualityScore);
+        ApplyStars(metric);
         CaptionLabel.Text = "SpO2";
     }
 
@@ -97,7 +96,7 @@ public partial class MetricCard : ContentView
 
         // No baseline exists for this metric yet, same as SpO2 — a bare reading, not a trend.
         ApplyStatusPill(metric.Status);
-        ApplyStars(metric.QualityScore);
+        ApplyStars(metric);
         CaptionLabel.Text = "Breaths per minute";
     }
 
@@ -145,14 +144,17 @@ public partial class MetricCard : ContentView
     /// <summary>
     /// Every card's rating of its reading against the member's own normal, out of five (the API's
     /// <see cref="DashboardMetric.QualityScore"/>). Hidden entirely when the metric has no
-    /// comparison to make, so an unrated card shows no row rather than an empty one. Unearned
-    /// stars are dimmed rather than swapped for an outline asset — the icon set is hand-authored
-    /// and has no outline star yet.
+    /// comparison to make, so an unrated card shows no row rather than an empty one.
     /// </summary>
-    private void ApplyStars(int? qualityScore)
+    /// <remarks>
+    /// Earned stars are filled in the metric's status colour, the rest left as an outline. The row
+    /// used to be five copies of one grey glyph separated only by opacity, which at 15dp left a
+    /// four-star reading looking much like a one-star one — most visibly on skin temperature,
+    /// where the coloured NORMAL pill sits directly above a row of grey.
+    /// </remarks>
+    private void ApplyStars(DashboardMetric metric)
     {
-        StarRow.Clear();
-        if (qualityScore is not { } score)
+        if (metric.QualityScore is not { } score)
         {
             StarRow.IsVisible = false;
             AutomationProperties.SetIsInAccessibleTree(StarRow, false);
@@ -160,26 +162,37 @@ public partial class MetricCard : ContentView
         }
 
         var filled = Math.Clamp(score, 0, StarCount);
-        for (var i = 0; i < StarCount; i++)
-        {
-            var star = new Image
-            {
-                Source = "icon_star.svg",
-                WidthRequest = 15,
-                HeightRequest = 15,
-                Opacity = i < filled ? 1 : DimmedStarOpacity,
-            };
-            // Individually meaningless: the stars differ only by opacity, which no screen reader
-            // conveys, so five identical "image" stops would be walked for one value. The row
-            // below speaks for all of them.
-            AutomationProperties.SetIsInAccessibleTree(star, false);
-            StarRow.Add(star);
-        }
+        StarRow.Render(filled, StarInk(metric.Status, filled));
 
+        // One value, so one accessibility stop: the stars differ only by fill, which no screen
+        // reader conveys.
         SemanticProperties.SetDescription(StarRow, $"{NameLabel.Text}: {filled} out of {StarCount}");
         AutomationProperties.SetIsInAccessibleTree(StarRow, true);
         StarRow.IsVisible = true;
     }
+
+    /// <summary>
+    /// The fill for the earned stars. The metric's own status wherever it has one — the pill and
+    /// the stars come off the same comparison (see <c>MemberInsightsCalculator</c>, whose star
+    /// bands nest inside the status thresholds), so they must never be two different colours on
+    /// one card.
+    /// </summary>
+    /// <remarks>
+    /// The fallback covers the one case where a metric is rated but unstatused: sleep, whose stars
+    /// come from the device's sleep efficiency while its status comes from duration against the
+    /// sleep baseline, so a night with efficiency but no baseline rates without colouring. The
+    /// bands are <c>RateAgainstNormal</c>'s own — 3-5 green, 2 yellow, 1 orange — rather than an
+    /// independent scale.
+    /// </remarks>
+    private static Color StarInk(string status, int filled) =>
+        MetricStatus.Pill(status) is not null
+            ? MetricStatus.Accent(status)
+            : MetricStatus.Accent(filled switch
+            {
+                >= 3 => "green",
+                2 => "yellow",
+                _ => "orange",
+            });
 
     /// <summary>
     /// Fills the track proportionally with two star columns, which avoids having to measure the

@@ -17,12 +17,11 @@ public partial class DashboardPage : ContentPage
     private static readonly TimeSpan StaleThreshold = TimeSpan.FromHours(2);
 
     /// <summary>
-    /// How often the dashboard reloads itself while the caregiver is looking at it, and — the
-    /// original meaning — how recent a load has to be for re-entering the tab to skip one. Five
-    /// minutes because the server collects from the wearable every ten: asking more often than the
-    /// data can change spends battery and quota to redraw the same numbers.
+    /// How recent a load has to be for re-entering the tab to skip one. Separate from
+    /// <see cref="PeriodicRefresh.LiveDataInterval"/>, which these two used to share: the tick is
+    /// now short enough that reusing it here would refetch on every tab switch.
     /// </summary>
-    private static readonly TimeSpan AutoRefreshInterval = TimeSpan.FromMinutes(5);
+    private static readonly TimeSpan ReentryFreshness = TimeSpan.FromMinutes(2);
     private const double UnavailableActionOpacity = 0.4;
 
     private readonly ICardiTrackApiClient _api;
@@ -53,7 +52,7 @@ public partial class DashboardPage : ContentPage
         // A monitoring screen left open has to keep itself current. Until this, every refresh in
         // the app was edge-triggered — a caregiver watching the dashboard saw nothing move until
         // they pulled it down themselves.
-        this.RefreshEvery(AutoRefreshInterval, RefreshUnattendedAsync);
+        this.RefreshEvery(PeriodicRefresh.LiveDataInterval, RefreshUnattendedAsync);
     }
 
     protected override void OnAppearing()
@@ -61,7 +60,7 @@ public partial class DashboardPage : ContentPage
         base.OnAppearing();
         UpdateGreeting();
         UpdateVerifyEmailBanner();
-        if (_lastData is null || DateTime.UtcNow - _lastLoadedUtc > AutoRefreshInterval)
+        if (_lastData is null || DateTime.UtcNow - _lastLoadedUtc > ReentryFreshness)
             _ = LoadAsync(force: false);
     }
 
@@ -152,15 +151,16 @@ public partial class DashboardPage : ContentPage
     /// <summary>
     /// The quiet reload behind both unattended paths — the app returning to the foreground, and
     /// the timer ticking while the caregiver watches. Neither honours
-    /// <see cref="AutoRefreshInterval"/> as a gate: for a resume that window would hold back the
-    /// very update they came back to see, and for the timer that window *is* the tick.
+    /// <see cref="ReentryFreshness"/> as a gate: for a resume that window would hold back the
+    /// very update they came back to see, and for the timer that window is longer than the tick.
     /// </summary>
     /// <remarks>
-    /// A read, not a device sync: WearableSyncWorker has been pulling from the wearable every
-    /// ten minutes anyway, so what is missing on screen is the fetch, not the collection. Asking
-    /// the server to check in with the device on every foreground or tick would also earn the
-    /// "too soon since the last check" refusal, and with it a popup for something nobody asked
-    /// for. Only a deliberate pull or the refresh button syncs the device.
+    /// A read, not a device sync: the server has been collecting from the wearable on its own —
+    /// webhook-triggered within seconds, with the Worker's ten-minute poll as the fallback — so
+    /// what is missing on screen is the fetch, not the collection. Asking the server to check in
+    /// with the device on every foreground or tick would also earn the "too soon since the last
+    /// check" refusal, and with it a popup for something nobody asked for. Only a deliberate pull
+    /// or the refresh button syncs the device.
     /// </remarks>
     private Task RefreshUnattendedAsync() =>
         DateTime.UtcNow - _lastLoadedUtc < ResumeRefresh.MinimumGap
@@ -656,16 +656,26 @@ public partial class DashboardPage : ContentPage
             return;
 
         // Say so, rather than showing the per-tier copy as though it were the answer and then
-        // swapping it out under the reader a few seconds later.
-        HeroCard.ShowStatusLoading();
+        // swapping it out under the reader a few seconds later. Skipped when the card is already
+        // showing a live line for this tier: the server caches the message for minutes, so an
+        // unattended tick would blank a perfectly good line to re-fetch the same words.
+        if (!HeroCard.HasLiveStatusFor(data.HealthStatus))
+            HeroCard.ShowStatusLoading();
 
         try
         {
             var status = await _api.GetCurrentStatusAsync(data.CardiMemberId);
             if (status.Message is { } message)
+            {
                 HeroCard.ApplyDynamicMessage(status.Headline, message, data.HealthStatus);
+            }
             else
-                HeroCard.Apply(data);  // Nothing to say after all — back to the tier's own copy.
+            {
+                // Nothing to say after all — back to the tier's own copy, and forget any live
+                // line first so the re-apply doesn't just restore the one we were told is gone.
+                HeroCard.ClearLiveStatus();
+                HeroCard.Apply(data);
+            }
         }
         catch (ApiException)
         {

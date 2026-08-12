@@ -35,9 +35,18 @@
                  read second. Grid, not a stack: the label needs a bounded column width to wrap
                  within, and the icon stays on the headline's row rather than re-centering
                  against however many lines the pair wraps to. Neither label overrides LineHeight
-                 — the crammed 1.05 this used to carry made a wrapped line look mispadded. -->
+                 — the crammed 1.05 this used to carry made a wrapped line look mispadded.
+
+                 The sentence spans both columns rather than sitting in the headline's: only the
+                 headline has a glyph to be indented by, so indenting the sentence too left every
+                 line of the block starting at a different x from the name above it. Both rows
+                 collapse when their labels are hidden, which is what lets the no-baseline tier
+                 below render as the sentence alone. -->
             <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto"
                   ColumnSpacing="6" RowSpacing="2">
+                <!-- Tinted per tier by the asset itself (icon_status_*.svg): these were authored
+                     white for the card's original coloured fill, and stayed invisible — as a bare
+                     17dp indent in front of the status line — once the card went white. -->
                 <Image x:Name="StatusIcon"
                        Grid.Row="0" Grid.Column="0"
                        Source="icon_status_check.svg"
@@ -50,10 +59,10 @@
                        LineBreakMode="TailTruncation"
                        VerticalOptions="Center"/>
                 <Label x:Name="StatusDetailLabel"
-                       Grid.Row="1" Grid.Column="1"
+                       Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2"
                        Style="{StaticResource Body2}"
                        LineBreakMode="WordWrap"
-                       MaxLines="2"/>
+                       MaxLines="3"/>
             </Grid>
         </VerticalStackLayout>
     </Grid>

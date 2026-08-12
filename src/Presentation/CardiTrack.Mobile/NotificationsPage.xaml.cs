@@ -290,5 +290,8 @@ public partial class NotificationsPage : ContentPage
 
     private void OnRetryClicked(object? sender, EventArgs e) => _ = LoadAsync(force: true);
 
-    private async void OnBackClicked(object? sender, EventArgs e) => await Shell.Current.GoToAsync("..");
+    // ".." alone went nowhere when this page was opened with nothing behind it — a notification
+    // tap, or a deep link straight into the inbox. The dashboard is the floor for those.
+    private async void OnBackClicked(object? sender, EventArgs e) =>
+        await this.GoBackAsync(AppShell.DashboardRoute);
 }
