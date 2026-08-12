@@ -31,7 +31,7 @@ public class HealthInsightService : IHealthInsightService
     // for every member (docs/llm_design.md). Member data always goes *after* them.
 
     /// <summary><c>CARDITRACK_ALERT_PROMPT</c> — explains a fired alert to a caregiver.</summary>
-    private const string AlertInstructions = """
+    private const string AlertInstructions = MedicalPromptBlocks.Tone + """
         You are a medical AI assistant analysing a health alert for a non-clinical caregiver.
 
         Respond with:
@@ -45,7 +45,7 @@ public class HealthInsightService : IHealthInsightService
         """;
 
     /// <summary><c>CARDITRACK_BASELINE_PROMPT</c> — trend analysis once a baseline exists.</summary>
-    private const string BaselineInstructions = """
+    private const string BaselineInstructions = MedicalPromptBlocks.Tone + """
         You are a medical AI assistant performing a health trend analysis for a non-clinical caregiver.
 
         Respond with:
@@ -63,7 +63,7 @@ public class HealthInsightService : IHealthInsightService
     /// called unusual yet because there is no normal to compare against, so this asks for a picture
     /// of what has been observed rather than an assessment of deviation.
     /// </summary>
-    private const string LearningInstructions = """
+    private const string LearningInstructions = MedicalPromptBlocks.Tone + """
         You are a medical AI assistant describing what has been observed about a member so far.
         There is not yet enough history to know what is normal for this person, so do not describe
         anything as unusual, elevated, low, or a deviation — there is nothing yet to deviate from.
@@ -84,7 +84,7 @@ public class HealthInsightService : IHealthInsightService
     /// between the learning prompt (no comparisons at all) and the trend prompt (confident
     /// comparisons): tentative comparisons, no alarm on the strength of a short window.
     /// </summary>
-    private const string ProvisionalInstructions = """
+    private const string ProvisionalInstructions = MedicalPromptBlocks.Tone + """
         You are a medical AI assistant giving an early health reading for a non-clinical caregiver.
         The member's baseline is provisional — built from fewer than 30 days of history — so any
         comparison against it is an early impression, not an established pattern. Phrase findings
@@ -107,15 +107,14 @@ public class HealthInsightService : IHealthInsightService
     /// every dashboard view rather than something a caregiver deliberately opened, so it asks for
     /// one short, warm sentence rather than a structured explanation.
     /// </summary>
-    private const string CurrentStatusInstructions = """
+    private const string CurrentStatusInstructions = MedicalPromptBlocks.Tone + """
         You are describing a wearable-monitored family member's current status to their
         caregiver, for the two short lines shown on a dashboard.
 
-        Write about the member in the third person, warm and conversational — like a family
-        member would say it, not a clinical readout. Never use clinical terms (elevated,
-        abnormal, deviation, diagnosis) and never diagnose or suggest a medical cause. Match the
-        tone to the severity given: reassuring for a calm status, gently more attentive as
-        severity increases, without causing alarm.
+        Write about the member in the third person — like a family member would say it, not a
+        clinical readout. Never use clinical terms (elevated, abnormal, deviation, diagnosis) and
+        never suggest a medical cause. Match the tone to the severity given: reassuring for a calm
+        status, gently more attentive as severity increases.
 
         Respond with:
         - headline: two to five words giving the whole picture at a glance. Sentence case, no

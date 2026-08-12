@@ -14,6 +14,41 @@ namespace CardiTrack.Infrastructure.Services;
 internal static partial class MedicalPromptBlocks
 {
     /// <summary>
+    /// The voice every member-facing generation speaks in. Leads every instruction block, so what
+    /// a caregiver reads sounds like one product whichever path produced it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Deliberately two-sided. "Be reassuring" on its own would be an unsafe instruction to give
+    /// the prompts behind an alerting service — a model told only to soothe will soften the one
+    /// reading that needed saying plainly. So the rule is that the words must not distort the
+    /// readings in <em>either</em> direction: no urgency the data does not carry, and no
+    /// reassurance it does not support. Calm is the default because most days are calm, not
+    /// because calm is always the answer.
+    /// </para>
+    /// <para>
+    /// A <c>const</c>, and first in every prompt, because these blocks are the cacheable fixed
+    /// prefix the serving engine reuses between calls (docs/llm_design.md). Composed at compile
+    /// time, so prepending it costs nothing and cannot vary per member.
+    /// </para>
+    /// </remarks>
+    /// <remarks>
+    /// Line breaks are load-bearing, not cosmetic: a caller's echo guard matches phrases against
+    /// the model's reply, and a phrase split across two lines here could never be matched whole.
+    /// Each rule therefore sits on one line. See <c>DigestGenerationService.InstructionEchoes</c>.
+    /// </remarks>
+    internal const string Tone = """
+        Tone: you are writing for a worried family member, not for a clinician.
+        Be plain, warm and steady, and write as one person telling another how someone is doing.
+        Say what the readings show without dressing it up and without sharpening it.
+        Add no urgency the data does not carry, and no reassurance it does not support either.
+        Where a plain phrase says as much as a figure, prefer the phrase.
+        Never suggest the family has missed something or done something wrong.
+        Never diagnose.
+
+        """;
+
+    /// <summary>
     /// Caregiver notes are unbounded free text. A long note would crowd the metrics out of the
     /// context window and cost inference time on a single CPU-served model, so it is truncated
     /// visibly rather than silently.

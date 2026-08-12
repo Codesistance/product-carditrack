@@ -336,7 +336,9 @@ public class HealthInsightServicePromptTests
         Assert.Equal(
             prompts[0][..prompts[0].IndexOf(marker, StringComparison.Ordinal)],
             prompts[1][..prompts[1].IndexOf(marker, StringComparison.Ordinal)]);
-        Assert.StartsWith("You are a medical AI assistant", prompts[0]);
+        // Every prompt opens with the shared tone block, and this one's own brief follows it.
+        Assert.StartsWith(MedicalPromptBlocks.Tone, prompts[0]);
+        Assert.Contains("You are a medical AI assistant", prompts[0]);
     }
 
     // ── The day in progress ─────────────────────────────────────────────────────

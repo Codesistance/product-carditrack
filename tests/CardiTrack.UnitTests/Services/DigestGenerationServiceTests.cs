@@ -1,3 +1,4 @@
+using System.Reflection;
 using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Domain.Entities;
@@ -386,6 +387,35 @@ public class DigestGenerationServiceTests
         await _digests.Received(1).AddAsync(
             Arg.Is<DigestEntry>(d => d.Headline == null && d.Text == "A quiet, steady day."),
             Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// Every phrase the echo guard watches for has to appear in the prompt, wholly inside one of
+    /// its lines — that is the whole basis of the check, and the guard now spans two files since
+    /// the prompt opens with the shared tone block. A phrase that drifted out of the prompt, or a
+    /// prompt line that re-wrapped around one, would leave the guard passing while catching
+    /// nothing: it would still run, still find no match, and still let the model's own brief
+    /// through to a caregiver.
+    /// </summary>
+    [Fact]
+    public async Task EveryPhraseTheEchoGuardWatchesFor_IsOnOneLineOfThePrompt()
+    {
+        string? prompt = null;
+        await _medicalAi.GenerateStructuredAsync<DigestGenerationService.DigestAiResponse>(
+            Arg.Do<string>(p => prompt = p), Arg.Any<CancellationToken>());
+
+        await CreateSut().GenerateDueDigestsAsync(UtcNow);
+        Assert.NotNull(prompt);
+
+        var echoes = (string[])typeof(DigestGenerationService)
+            .GetField("InstructionEchoes", BindingFlags.NonPublic | BindingFlags.Static)!
+            .GetValue(null)!;
+        var lines = prompt.Split('\n').Select(l => l.Trim()).ToList();
+
+        Assert.NotEmpty(echoes);
+        Assert.All(echoes, echo => Assert.Contains(
+            lines,
+            line => line.Contains(echo, StringComparison.OrdinalIgnoreCase)));
     }
 
     // ---- Suggestions: three usable ones or none at all ----
