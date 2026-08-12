@@ -596,7 +596,7 @@ Each device card:
 
 **Key Metrics (3 cards in a row):**
 
-**Star rating (1-5)** appears on every card that has something to compare against (Activity, Heart Rate, Sleep, Skin Temp): how the reading sits against this member's own normal — except sleep, which is also held to the published recommended band for the member's age, because a habitually short sleeper's own normal is the very reading being watched for. The row takes the status pill's colour on cards that show one (Heart Rate, Skin Temp) and colours itself from the star count (3-5 green, 2 yellow, 1 orange) on cards that don't (Activity, Sleep) — never from a status the card isn't showing, which is what would paint a short sleeper's two stars green. SpO2 and Breathing Rate have no baseline yet, so their star row stays hidden rather than rating a reading against an invented normal. See `qualityScore` in [health-data.md](../../../backend/api/health-data.md).
+**Star rating (1-5)** appears on every card that has something to compare against (Activity, Heart Rate, Sleep, Skin Temp): how the reading sits against this member's own normal — except sleep, which is also held to the published recommended band for the member's age, because a habitually short sleeper's own normal is the very reading being watched for. The row takes the status pill's colour on cards whose pill is built from `status` (Heart Rate, Skin Temp) and colours itself from the star count (3-5 green, 2 yellow, 1 orange) elsewhere — Activity, which shows no pill, and Sleep, whose GOOD/FAIR/POOR pill is itself named from those bands — never from a status the card isn't showing, which is what would paint a short sleeper's two stars green. SpO2 and Breathing Rate have no baseline yet, so their star row stays hidden rather than rating a reading against an invented normal. See `qualityScore` in [health-data.md](../../../backend/api/health-data.md).
 
 **Card 1: Activity**
 - Icon: shoe
@@ -617,8 +617,9 @@ Each device card:
 **Card 3: Sleep**
 - Icon: moon
 - Large value: "7.2 hours"
+- Status pill: **GOOD / FAIR / POOR** — one word naming the band of the star rating (3-5 / 2 / 1), in the same pill chrome and status colours as the other cards; hidden when the night is unrated. From the rating, never from `status`: a quality vocabulary rather than NORMAL/UNUSUAL, because a 4.5-hour night is entirely usual for a member who always sleeps 4.5 hours — and still FAIR
 - Star rating (1-5) — the worse of sleep efficiency and the shortfall in duration against baseline (either alone when the other is unavailable), capped on the length of the night against the published band for the member's age — both ends, so neither 4.5 nor 12 hours can rate five stars
-- Comparison: "Longer than usual" / "Shorter than usual" / "In line with usual" — direction only, no verdict; the stars carry the judgement
+- Comparison: "Longer than usual" / "Shorter than usual" / "In line with usual" — direction only, no verdict; the stars and pill carry the judgement
 - Mini sparkline
 
 **Recent Alerts (conditional — only shown if alerts exist):**

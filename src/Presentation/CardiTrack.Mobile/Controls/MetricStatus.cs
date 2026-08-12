@@ -28,6 +28,30 @@ internal static class MetricStatus
         _ => null,
     };
 
+    /// <summary>
+    /// The sleep card's pill: one word naming the band of the night's rating (the API's
+    /// <c>DashboardMetric.QualityScore</c>) — never the metric's status, which for sleep reads
+    /// duration against the baseline alone and is allowed to disagree with the rating (a
+    /// habitually short sleeper's night is normal for them and still not enough sleep). The
+    /// bands are the same ones the star row colours itself by, so the pill and the stars on
+    /// this card agree by construction: 3-5 is GOOD/green, 2 FAIR/yellow, 1 POOR/orange. Null
+    /// when the night is unrated, which hides the pill along with the stars.
+    /// </summary>
+    /// <remarks>
+    /// A quality vocabulary rather than the comparison one above, because the rating is not
+    /// purely member-relative: NORMAL/UNUSUAL describe how a reading sits against the member's
+    /// own baseline, and a 4.5-hour night is entirely usual for someone who always sleeps 4.5
+    /// hours — the pill would be lying. GOOD/FAIR/POOR says only how the night rates, which is
+    /// exactly what the stars beside it say.
+    /// </remarks>
+    public static (string Tint, string Ink, string Text)? SleepQualityPill(int? qualityScore) => qualityScore switch
+    {
+        null => null,
+        >= 3 => ("PillGreenBackground", "StatusGreen", "GOOD"),
+        2 => ("PillYellowBackground", "StatusYellow", "FAIR"),
+        _ => ("PillOrangeBackground", "StatusOrange", "POOR"),
+    };
+
     /// <summary>The colour a trend line or accent takes for this status.</summary>
     public static Color Accent(string status) => Resource(status switch
     {

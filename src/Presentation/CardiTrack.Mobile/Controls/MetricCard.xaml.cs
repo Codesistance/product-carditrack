@@ -56,8 +56,11 @@ public partial class MetricCard : ContentView
         ValueLabel.Text = metric.Value is { } v ? $"{v:0.#} hours" : "—";
 
         // The one card whose stars and status answer different questions — the stars read how well
-        // and how long the night was, the status reads its duration against the baseline — so it
-        // shows no pill, and the star row is free to colour itself.
+        // and how long the night was, the status reads its duration against the baseline — so its
+        // pill names the band of the rating itself rather than the status, and the star row keeps
+        // colouring itself from the same bands: the two accents agree by construction, without
+        // either reading the status that may honestly disagree with both.
+        ShowPill(MetricStatus.SleepQualityPill(metric.QualityScore));
         ApplyStars(metric, matchPill: false);
         // Direction only, no verdict — a longer night is not automatically a better one, and this
         // caption used to call twelve hours "Better than average" directly under the stars that
@@ -138,18 +141,26 @@ public partial class MetricCard : ContentView
     /// Whether a pill actually went on the card — which is what decides where the star row below it
     /// takes its colour from. See <see cref="ApplyStars"/>.
     /// </returns>
-    private bool ApplyStatusPill(string status)
+    private bool ApplyStatusPill(string status) => ShowPill(MetricStatus.Pill(status));
+
+    /// <summary>
+    /// Renders the pill row, or hides it for a reading that earned none. One renderer for both
+    /// pill vocabularies — the status comparison (<see cref="MetricStatus.Pill"/>) and sleep's
+    /// rating band (<see cref="MetricStatus.SleepQualityPill"/>) — so the two can never drift
+    /// in chrome, only in wording.
+    /// </summary>
+    private bool ShowPill((string Tint, string Ink, string Text)? pill)
     {
-        if (MetricStatus.Pill(status) is not { } pill)
+        if (pill is not { } p)
         {
             StatusPillBorder.IsVisible = false;
             return false;
         }
 
         var resources = Microsoft.Maui.Controls.Application.Current!.Resources;
-        StatusPillBorder.BackgroundColor = (Color)resources[pill.Tint];
-        StatusPillLabel.TextColor = (Color)resources[pill.Ink];
-        StatusPillLabel.Text = pill.Text;
+        StatusPillBorder.BackgroundColor = (Color)resources[p.Tint];
+        StatusPillLabel.TextColor = (Color)resources[p.Ink];
+        StatusPillLabel.Text = p.Text;
         StatusPillBorder.IsVisible = true;
         return true;
     }
@@ -160,10 +171,12 @@ public partial class MetricCard : ContentView
     /// comparison to make, so an unrated card shows no row rather than an empty one.
     /// </summary>
     /// <param name="matchPill">
-    /// Whether this card is showing a status pill, from <see cref="ApplyStatusPill"/>. When it is,
-    /// the stars take the pill's colour and nothing else — two accents disagreeing an inch apart on
-    /// one card is worse than either being imprecise. When it is not, they colour themselves from
-    /// the rating; see <see cref="StarInk"/>.
+    /// Whether this card is showing a pill built from the metric's status, from
+    /// <see cref="ApplyStatusPill"/>. When it is, the stars take the pill's colour and nothing
+    /// else — two accents disagreeing an inch apart on one card is worse than either being
+    /// imprecise. When it is not, they colour themselves from the rating (see
+    /// <see cref="StarInk"/>) — including on sleep, whose pill is itself named from the star
+    /// bands, so the accents agree there without either reading the status.
     /// </param>
     /// <remarks>
     /// Earned stars are filled in colour, the rest left as an outline. The row used to be five
@@ -191,8 +204,9 @@ public partial class MetricCard : ContentView
     }
 
     /// <summary>
-    /// The fill for the earned stars on the two cards that show no pill — activity and sleep — read
-    /// off the rating itself on <c>RateAgainstNormal</c>'s own bands: 3-5 green, 2 yellow, 1 orange.
+    /// The fill for the earned stars on the two cards whose accent comes from the rating itself —
+    /// activity, which shows no pill, and sleep, whose pill names these same bands — read off
+    /// <c>RateAgainstNormal</c>'s own scale: 3-5 green, 2 yellow, 1 orange.
     /// </summary>
     /// <remarks>
     /// Only those two, because only there is the rating the sole thing on the card with a colour.
