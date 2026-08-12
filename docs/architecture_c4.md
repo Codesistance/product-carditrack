@@ -60,7 +60,7 @@ C4Container
 
     Container_Boundary(pipe, "AI pipeline (the sanctioned exception to the Worker rule)") {
       Container(rcv, "HealthWebhookReceiver", "Cloud Run service, public", "Authenticates Subscriber secret, drops verification probes, forwards raw to Pub/Sub")
-      Container(jobs, "PipelineJobs", "Cloud Run jobs x3, one image", "--job digest (hourly) | aggregate (5-min) | assess (5-min offset)")
+      Container(jobs, "PipelineJobs", "Cloud Run jobs x3, one image", "--job digest (15-min) | aggregate (5-min) | assess (5-min offset)")
       Container(medgemma, "MedGemma", "Ollama on Cloud Run, CPU, internal-only", "Private medical model, Q4_K_M; scale-to-zero")
     }
 
@@ -108,7 +108,7 @@ C4Component
   }
 
   Container_Boundary(jobsb, "PipelineJobs (one image, --job dispatch)") {
-    Component(digest, "DigestGenerationService", "--job digest, hourly", "Recomputes a member's summary once their readings have moved past the last one; describes their local day in progress; every generation kept as history; no summary from silence")
+    Component(digest, "DigestGenerationService", "--job digest, 15-min", "Recomputes a member's summary once their readings have moved past the last one, and no more often than the 20-min regeneration floor; describes their local day in progress; every generation kept as history; no summary from silence")
     Component(drain, "NotificationDrainService", "--job aggregate, 5-min", "Pulls batches, hunts users/{id}, maps healthUserId to DeviceConnection, runs the standard targeted sync. Ack = nothing still needs a retry")
     Component(assess, "RealtimeAssessmentService", "--job assess, 5-min offset", "Latest 60-min HR window (>=45 min covered), dedup by (member, windowStart) - an unmoved window costs no inference")
     Component(ssa, "SsaDecomposition", "Application, dependency-free", "Lag-covariance + Jacobi eigen: trend + oscillation + noise residual; deviation in noise-RMS units")

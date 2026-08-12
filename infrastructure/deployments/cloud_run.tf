@@ -648,13 +648,13 @@ resource "google_cloud_run_v2_service_iam_member" "medgemma_internal" {
 }
 
 # ── Pipeline jobs (AI pipeline — summary generation) ─────────────────────────────────────────
-# The AI pipeline's scheduled work runs as a Cloud Run *job*, triggered hourly by Cloud
-# Scheduler: each execution regenerates the summaries of whichever members' data has moved
+# The AI pipeline's scheduled work runs as a Cloud Run *job*, triggered every quarter hour by
+# Cloud Scheduler: each execution regenerates the summaries of whichever members' data has moved
 # since their last one, then exits. Gated on enable_pipeline_jobs — the job calls MedGemma, so
 # it only exists in environments where the model is deployed.
 
 variable "enable_pipeline_jobs" {
-  description = "Create the AI pipeline job + its hourly scheduler. Enable only where MedGemma is deployed"
+  description = "Create the AI pipeline job + its scheduler. Enable only where MedGemma is deployed"
   type        = bool
   default     = false
 }
@@ -684,9 +684,9 @@ variable "pipeline_jobs_secret_env_vars" {
 }
 
 variable "pipeline_jobs_schedule" {
-  description = "Cloud Scheduler cron for the pipeline job. Hourly: this is the cadence at which a member's summary catches up with new readings, and the job skips members whose data has not moved, so an empty pass costs no inference"
+  description = "Cloud Scheduler cron for the digest job. Quarter-hourly: this is how quickly a member's summary catches up after new readings, and how quickly a failed pass is retried. The job skips members whose data has not moved, and its own MinimumRegenerationInterval caps how often any one member is regenerated, so this cadence does not multiply inference cost"
   type        = string
-  default     = "0 * * * *"
+  default     = "*/15 * * * *"
 }
 
 resource "google_service_account" "pipeline_scheduler" {
@@ -788,9 +788,9 @@ resource "google_cloud_run_v2_job_iam_member" "pipeline_scheduler_invoker" {
   member   = "serviceAccount:${google_service_account.pipeline_scheduler[0].email}"
 }
 
-resource "google_cloud_scheduler_job" "pipeline_jobs_hourly" {
+resource "google_cloud_scheduler_job" "pipeline_jobs_digest" {
   count            = var.enable_pipeline_jobs ? 1 : 0
-  name             = "${var.pipeline_jobs_name}-hourly"
+  name             = "${var.pipeline_jobs_name}-digest"
   region           = var.cloud_run_location
   schedule         = var.pipeline_jobs_schedule
   time_zone        = "Etc/UTC"
