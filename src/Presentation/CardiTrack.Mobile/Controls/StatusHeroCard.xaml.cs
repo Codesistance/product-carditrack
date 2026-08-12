@@ -157,12 +157,12 @@ public partial class StatusHeroCard : ContentView
     /// is exactly when the readings are all there is to report.
     /// </summary>
     /// <remarks>
-    /// A sentence rather than the bare comma-separated list this used to be. The list was a
-    /// caption under a "Today so far" heading; with that heading gone, this line is the whole of
-    /// what the card has to say, so it names whose day it is and keeps last night's sleep
-    /// distinguishable from today's readings — which a flat list of three numbers did not.
-    /// Deliberately still short: it wraps inside the column beside the display image, and a
-    /// paragraph there would push the card past the fold on a small screen.
+    /// Reads as a sentence about the member, not a caption listing readings — "so far: 3,442
+    /// steps and 70 bpm resting" was telemetry, and this line is the whole of what the card has
+    /// to say. It names whose day it is, keeps last night's sleep distinguishable from today's
+    /// readings, and lands at 20–25 words with all three in — enough to read naturally, short
+    /// enough to wrap inside the column beside the display image without pushing the card past
+    /// the fold on a small screen.
     /// </remarks>
     private static string TodaySoFar(DashboardMetrics? metrics, string firstName)
     {
@@ -170,31 +170,43 @@ public partial class StatusHeroCard : ContentView
         // reads correctly at the start of a sentence.
         var who = string.IsNullOrWhiteSpace(firstName) ? "This CardiMember" : firstName;
 
-        // Today's readings and last night's are two different days — grouped separately so the
-        // sentence can't imply the sleep was slept today.
-        var today = new List<string>(2);
-        string? lastNight = null;
+        string? steps = null, heartRate = null, sleep = null;
         if (metrics is not null)
         {
-            if (metrics.Steps.Value is { } steps)
-                today.Add($"{steps:N0} steps");
-            if (metrics.RestingHeartRate.Value is { } heartRate)
-                today.Add($"{heartRate:N0} bpm resting");
-            if (metrics.Sleep.Value is { } sleep)
-                lastNight = $"{sleep:0.#} h of sleep last night";
+            if (metrics.Steps.Value is { } stepCount)
+                steps = $"taken {stepCount:N0} steps";
+            if (metrics.RestingHeartRate.Value is { } bpm)
+                heartRate = $"a resting heart rate of {bpm:N0} bpm";
+            if (metrics.Sleep.Value is { } hours)
+            {
+                // Pluralized against the rounded display value, not the raw one: 1.04 h renders
+                // as "1", and "1 hours of sleep" reads as a bug.
+                var rounded = hours.ToString("0.#");
+                sleep = $"{rounded} {(rounded == "1" ? "hour" : "hours")} of sleep last night";
+            }
         }
 
-        return (today.Count, lastNight) switch
+        // Today's readings first, joined into one clause: "kept" carries a lone heart rate,
+        // since "has a resting heart rate" reads as a diagnosis rather than today's reading.
+        var today = (steps, heartRate) switch
         {
-            (> 0, not null) => $"{who}'s day so far: {JoinReadings(today)}, after {lastNight}.",
-            (> 0, null) => $"{who}'s day so far: {JoinReadings(today)}.",
-            (0, not null) => $"{who} got {lastNight} — nothing in from today yet.",
+            (not null, not null) => $"{steps} with {heartRate}",
+            (not null, null) => steps,
+            (null, not null) => $"kept {heartRate}",
+            _ => null,
+        };
+
+        // Last night's sleep stays in its own clause — two different days, so the sentence
+        // can't imply the sleep was slept today. The subject leads every branch, so the
+        // capitalized "This CardiMember" stand-in never lands mid-sentence.
+        return (today, sleep) switch
+        {
+            (not null, not null) => $"{who} has {today} so far today, after getting {sleep}.",
+            (not null, null) => $"{who} has {today} so far today.",
+            (null, not null) => $"{who} got {sleep}, but nothing has come in from today yet.",
             _ => $"{who} hasn't sent any readings through yet.",
         };
     }
-
-    /// <summary>"1,729 steps and 70 bpm resting" — two readings at most, so no Oxford comma case.</summary>
-    private static string JoinReadings(List<string> readings) => string.Join(" and ", readings);
 
     /// <summary>
     /// What the card says while the live status line is still being fetched. Only for the tiers

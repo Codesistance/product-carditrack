@@ -15,17 +15,16 @@
         </Grid.GestureRecognizers>
 
         <!-- Member Detail's display image box, not one of this card's own: the same person must
-             not be a tinted monogram here and a gradient one a tap away. Stretched, because the
-             three lines beside it are taller than the 64 Member Detail's two need — the box grows
-             to the text block rather than to a number, so its base stays on the base of the last
-             line whatever that line wraps to. -->
+             not be a tinted monogram here and a gradient one a tap away. A square, like Member
+             Detail's, just sized up for this row — stretching it to the text block's height made
+             it an oblong that read as a different treatment. Both columns bottom-align instead,
+             so the box's base sits on the base of the last line whatever that line wraps to. -->
         <controls:MemberAvatar x:Name="Avatar"
                                Grid.Column="0"
                                BoxWidth="76"
-                               Stretch="True"
-                               VerticalOptions="Fill"/>
+                               VerticalOptions="End"/>
 
-        <VerticalStackLayout Grid.Column="1" Spacing="5" VerticalOptions="Center">
+        <VerticalStackLayout Grid.Column="1" Spacing="5" VerticalOptions="End">
             <Label x:Name="NameLabel"
                    Style="{StaticResource Heading2}"
                    LineBreakMode="TailTruncation"/>

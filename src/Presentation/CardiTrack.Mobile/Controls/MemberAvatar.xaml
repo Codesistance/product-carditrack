@@ -6,8 +6,8 @@
     <!-- The one box a CardiMember is shown in — the dashboard hero and Member Detail both use
          this, so the same person can't be shown two different ways depending on the screen.
          Member Detail's treatment is the one both adopt: the gradient tile with white initials.
-         Size is a knob rather than a constant only because the hero's box has a taller text block
-         beside it to line up with; the treatment itself never varies. -->
+         Always square — size is a knob only because the hero's row is roomier than Member
+         Detail's; the shape and treatment never vary. -->
     <Border x:Name="Frame"
             WidthRequest="64" HeightRequest="64"
             StrokeThickness="0"
