@@ -14,6 +14,8 @@
             <TapGestureRecognizer Tapped="OnCardTapped"/>
         </Grid.GestureRecognizers>
 
+        <!-- Member Detail's display image box, not one of this card's own: the same person must
+             not be a tinted monogram here and a gradient one a tap away. -->
         <controls:MemberAvatar x:Name="Avatar" Grid.Column="0"/>
 
         <VerticalStackLayout Grid.Column="1" Spacing="5" VerticalOptions="Center">
