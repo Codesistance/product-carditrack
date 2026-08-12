@@ -30,8 +30,9 @@ public class CreateCardiMemberValidator : AbstractValidator<CreateCardiMemberReq
             .Matches(@"^\+?[1-9]\d{1,14}$").WithMessage("Invalid emergency contact phone format")
             .When(x => !string.IsNullOrEmpty(x.EmergencyContactPhone));
 
+        // Optional — see UpdateCardiMemberValidator for why 0 is accepted.
         RuleFor(x => x.RelationshipType)
-            .IsInEnum().WithMessage("Invalid relationship type");
+            .Must(r => r == 0 || Enum.IsDefined(r)).WithMessage("Invalid relationship type");
 
         RuleFor(x => x.MedicalNotes)
             .MaximumLength(2000).WithMessage("Medical notes cannot exceed 2000 characters")

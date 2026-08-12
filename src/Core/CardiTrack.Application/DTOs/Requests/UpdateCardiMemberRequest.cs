@@ -17,8 +17,13 @@ public class UpdateCardiMemberRequest
     [Required(ErrorMessage = "Date of birth is required")]
     public DateOnly DateOfBirth { get; set; }
 
-    [Required(ErrorMessage = "Relationship type is required")]
-    public RelationshipType RelationshipType { get; set; }
+    /// <summary>
+    /// Optional. Omitted or unset means "not stated", which is <see cref="RelationshipType.Other"/> —
+    /// the same value the read paths already fall back to when a caregiver has no link recorded.
+    /// Defaulted here rather than left at <c>0</c>, which is not a member of the enum and would
+    /// fail <c>IsInEnum</c> for a caller who simply had nothing to say.
+    /// </summary>
+    public RelationshipType RelationshipType { get; set; } = RelationshipType.Other;
 
     [EmailAddress(ErrorMessage = "Invalid email format")]
     public string? Email { get; set; }

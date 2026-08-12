@@ -123,7 +123,7 @@
                     </VerticalStackLayout>
 
                     <VerticalStackLayout Spacing="4">
-                        <Label Text="Relationship*" Style="{StaticResource AuthFieldLabel}"/>
+                        <Label Text="Relationship" Style="{StaticResource AuthFieldLabel}"/>
                         <Border Style="{StaticResource AuthEntryBorder}">
                             <Picker x:Name="RelationshipPicker"
                                     FontFamily="Quicksand"

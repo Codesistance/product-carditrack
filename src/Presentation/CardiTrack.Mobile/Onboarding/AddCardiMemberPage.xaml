@@ -102,7 +102,7 @@
 
                     <!-- Relationship -->
                     <VerticalStackLayout Spacing="6" Margin="0,16,0,0">
-                        <Label Text="Relationship*" Style="{StaticResource AuthFieldLabel}"/>
+                        <Label Text="Relationship" Style="{StaticResource AuthFieldLabel}"/>
                         <Border Style="{StaticResource AuthEntryBorder}">
                             <Picker x:Name="RelationshipPicker"
                                     Title="Select relationship"
