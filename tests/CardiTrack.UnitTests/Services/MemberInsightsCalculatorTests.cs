@@ -169,9 +169,10 @@ public class MemberInsightsCalculatorTests
     [Fact]
     public void A_short_night_slept_efficiently_is_rated_on_its_length_not_its_efficiency()
     {
-        // The reading this rating exists to catch. 4.5 hours in bed, all but ten minutes of it
-        // asleep: 96% efficiency, which on its own is five stars for a night nowhere near long
-        // enough. Efficiency is a ratio and knows nothing about the length of what it divides.
+        // The reading this rating exists to catch. 4.5 hours asleep at 96% efficiency — the
+        // wearer was barely in bed longer than they slept, so on its own the efficiency is five
+        // stars for a night nowhere near long enough. Efficiency is a ratio and knows nothing
+        // about the length of what it divides.
         var metrics = Build(
             new ActivityLog { Date = Yesterday, SleepMinutes = 270, SleepEfficiency = 96 },
             new PatternBaseline { AvgSleepMinutes = 450 });
@@ -199,8 +200,10 @@ public class MemberInsightsCalculatorTests
     [Fact]
     public void A_long_enough_night_spent_awake_in_bed_is_rated_on_its_efficiency()
     {
-        // The other half of the pair: 7.5 hours in bed, a third of it awake. Long enough by both
-        // the member's own normal and the recommendation, and still not a good night.
+        // The other half of the pair: 7.5 hours of sleep that took a much longer, broken night to
+        // accumulate — 65% efficiency puts the wearer in bed over eleven hours to get them. Long
+        // enough by both the member's own normal and the recommendation, and still not a good
+        // night.
         var metrics = Build(
             new ActivityLog { Date = Yesterday, SleepMinutes = 450, SleepEfficiency = 65 },
             new PatternBaseline { AvgSleepMinutes = 450 });

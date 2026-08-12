@@ -106,7 +106,10 @@ public partial class MetricCard : ContentView
     }
 
     /// <summary>
-    /// Activity's accessory: how today compares with the member's own baseline.
+    /// Activity's accessory: how today compares with the member's own baseline. Its colour bands
+    /// are the status thresholds — the same 30%/50% lines the star bands nest inside — so the
+    /// arrow and the star row beneath it can never accent one reading two ways: a 30-50%
+    /// shortfall is yellow on both, not orange over a yellow two-star row.
     /// </summary>
     private void ApplyTrend(DashboardMetric metric, bool higherIsBetter)
     {
@@ -120,9 +123,9 @@ public partial class MetricCard : ContentView
         var isGood = higherIsBetter ? change >= 0 : change <= 0;
 
         TrendLabel.Text = $"{(change >= 0 ? "↗" : "↘")} {100 + change:0}%";
-        TrendLabel.TextColor = Math.Abs(change) <= 30 || isGood
-            ? (Color)resources["StatusGreen"]
-            : (Color)resources["StatusOrange"];
+        TrendLabel.TextColor = (Color)resources[isGood || Math.Abs(change) <= 30
+            ? "StatusGreen"
+            : Math.Abs(change) <= 50 ? "StatusYellow" : "StatusOrange"];
         TrendLabel.IsVisible = true;
         CaptionLabel.Text = "of normal";
     }

@@ -163,11 +163,12 @@ public class DashboardMetric
 /// context for a caregiver, not a finding.
 /// </para>
 /// <para>
-/// The one exception is the floor of the sleep range, which caps the sleep
+/// The one exception is the sleep range, both ends of which cap the sleep
 /// <see cref="DashboardMetric.QualityScore"/> — see
 /// <c>MemberInsightsCalculator.CapAtRecommendedSleep</c>. It can only lower a rating the member's
 /// own data already earned, because for sleep alone the member's own normal cannot be the whole
-/// of the rating: a habitually short sleeper's baseline says their short nights are fine.
+/// of the rating: a habitually short sleeper's baseline says their short nights are fine, and
+/// no member-relative comparison reads a night as too long at all.
 /// </para>
 /// </remarks>
 public class MetricReference

@@ -127,10 +127,12 @@ public static class MemberInsightsCalculator
         };
         // How much: the length of the night against this member's own normal. A shorter night than
         // usual is the reading being looked for, and like steps a longer one is not marked down.
+        // The cap takes the card's own Reference — the same band the chart draws — so the rating
+        // and the band a caregiver reads it against cannot drift apart.
         sleep.QualityScore = CapAtRecommendedSleep(
             Lower(sleptWell, RateAgainstNormal(sleep.ChangePercent, shortfallOnly: true)),
             latestSleep?.SleepMinutes,
-            ageYears);
+            sleep.Reference);
 
         // Temperature carries its own per-day, device-derived baseline (Google Health computes
         // it, not our BaselineCalculationWorker), so it compares against that rather than
@@ -243,7 +245,7 @@ public static class MemberInsightsCalculator
     /// <para>
     /// Sleep is the one metric where the member's own normal cannot be the whole of the rating.
     /// Both of the comparisons it is otherwise made against are blind to how long the night was:
-    /// efficiency is a ratio, so 4.5 hours in bed and 4.4 of them asleep is 98% and five stars for
+    /// efficiency is a ratio, so 4.4 hours asleep out of 4.5 in bed is 98% and five stars for
     /// a night nowhere near long enough; and a member who habitually sleeps 4.5 hours has a
     /// baseline that says a 4.5-hour night is exactly normal — the very reading a caregiver is
     /// watching for, rated top marks because it keeps happening.
@@ -272,19 +274,20 @@ public static class MemberInsightsCalculator
     /// to threshold on: 418 minutes is 6.97 hours and rounds to 7.0, clearing a floor it is three
     /// minutes short of.
     /// </param>
-    /// <param name="ageYears">
-    /// Only the ceiling moves with it — the NSF drops from 9 hours to 8 at
-    /// <see cref="HealthReferenceRanges.OlderAdultAge"/>, and publishes the same 7-hour floor either
-    /// side. Read off the same <see cref="HealthReferenceRanges.Sleep"/> the card draws its shaded
-    /// band from, so the rating and the band a caregiver reads it against cannot drift apart.
+    /// <param name="recommended">
+    /// The sleep card's own <see cref="DashboardMetric.Reference"/> — the very band the chart
+    /// draws, passed rather than re-derived so the rating and the band a caregiver reads it
+    /// against cannot drift apart by construction. Only the ceiling is age-split: the NSF drops
+    /// from 9 hours to 8 at <see cref="HealthReferenceRanges.OlderAdultAge"/>, and publishes the
+    /// same 7-hour floor either side. Null-tolerant for symmetry with the other guards, though
+    /// the sleep card always carries one.
     /// </param>
-    private static int? CapAtRecommendedSleep(int? score, int? sleepMinutes, int ageYears)
+    private static int? CapAtRecommendedSleep(int? score, int? sleepMinutes, MetricReference? recommended)
     {
-        if (score is null || sleepMinutes is not { } minutes)
+        if (score is null || sleepMinutes is not { } minutes || recommended is null)
             return score;
 
         var hours = minutes / 60m;
-        var recommended = HealthReferenceRanges.Sleep(ageYears);
         var hoursOutside =
             hours < recommended.Low ? recommended.Low - hours
             : hours > recommended.High ? hours - recommended.High
