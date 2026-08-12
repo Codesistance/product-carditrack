@@ -840,6 +840,13 @@ Backed by a single `GET /api/v1/cardimembers/{id}` round trip — see [cardimemb
 - Connected devices: "2 Devices" · Monitoring since: "Jan 1, 2026"
 - Baseline status: "Learning" / "Established" with a `daysCaptured`/`daysRequired` progress bar
 
+**Key Metric Trends (carousel, one swipeable card per metric):**
+- Activity, Heart Rate, Sleep, Skin Temp, Blood Oxygen and Breathing Rate, over a caregiver-chosen **7 / 14 / 30-day** window. The API always sends 30 days of `series`, so switching windows is a client-side slice rather than another round trip.
+- Each chart draws the daily line over **the two things the reading is compared against**: a dashed rule at this member's own learned `baseline`, and a shaded band at the published typical-adult `reference` range (60–100 bpm AHA, 7–9 h NSF, 94–100 % WHO, 12–20 brpm WHO — see [health-data.md](../../../backend/api/health-data.md)). A key under the chart names both and quotes their numbers; steps and skin temp have no published range, so they show the baseline alone.
+- Both are drawn in neutral ink, never the status accent — they are context, not a verdict. The band is **presentational only**: the card's pill and stars still read this member against their own normal, not against the population.
+- The chart's axis makes room for them, but not at any price: where admitting the band or the baseline would flatten the readings into a straight line, the readings keep the scale, the band is drawn clipped to the plot edge and the baseline rule is dropped in favour of its number in the key.
+- Fewer than two readings in the window shows "Not enough readings in this window yet." instead of an empty grid.
+
 **Contact Info Card:**
 - Emergency contact name and phone, with a call button (hidden when no number is stored)
 - Falls back to "No emergency contact yet" rather than rendering an empty card

@@ -205,4 +205,73 @@ public class MemberInsightsCalculatorTests
         // And no baseline at all leaves the rated metrics unrated too, rather than defaulting.
         Assert.Null(metrics.Steps.QualityScore);
     }
+
+    // ── Reference ranges (DashboardMetric.Reference) ────────────────────────────
+    //
+    // The population normal a trend chart draws behind the series, beside this member's own
+    // baseline. Published ranges only, each attributed to whoever publishes it.
+
+    [Fact]
+    public void Metrics_with_a_published_range_carry_it_with_its_source()
+    {
+        var metrics = Build(new ActivityLog
+        {
+            Date = Yesterday,
+            RestingHeartRate = 68,
+            SleepMinutes = 450,
+            SpO2Average = 96m,
+            BreathingRate = 14.2m,
+        });
+
+        Assert.Equal((60m, 100m, "AHA"), Range(metrics.RestingHeartRate));
+        Assert.Equal((7m, 9m, "NSF"), Range(metrics.Sleep));
+        Assert.Equal((94m, 100m, "WHO"), Range(metrics.SpO2));
+        Assert.Equal((12m, 20m, "WHO"), Range(metrics.BreathingRate));
+    }
+
+    [Fact]
+    public void A_reference_range_is_carried_even_where_there_is_no_baseline_to_compare_with()
+    {
+        // SpO2 and breathing rate have no learned baseline, so the published range is the only
+        // comparison their charts can draw — which is exactly why it is worth carrying.
+        var metrics = Build(new ActivityLog { Date = Yesterday, SpO2Average = 96m, BreathingRate = 14.2m });
+
+        Assert.Null(metrics.SpO2.Baseline);
+        Assert.NotNull(metrics.SpO2.Reference);
+        Assert.Null(metrics.BreathingRate.Baseline);
+        Assert.NotNull(metrics.BreathingRate.Reference);
+    }
+
+    [Fact]
+    public void Metrics_with_no_published_range_get_none_invented_for_them()
+    {
+        // No standards body publishes a daily step count, and skin temperature is a
+        // wearer-relative measurement with no population normal at all.
+        var metrics = Build(new ActivityLog
+        {
+            Date = Yesterday,
+            Steps = 5000,
+            Temperature = 36.2m,
+            TemperatureBaseline = 36.0m,
+        });
+
+        Assert.Null(metrics.Steps.Reference);
+        Assert.Null(metrics.Temperature.Reference);
+    }
+
+    [Fact]
+    public void A_reading_outside_the_published_range_is_still_judged_against_the_member()
+    {
+        // 96 bpm is inside 60–100 and 40% above this member's own normal. The status follows the
+        // member, not the population: the range is drawn as context, never read as a verdict.
+        var metrics = Build(
+            new ActivityLog { Date = Yesterday, RestingHeartRate = 96 },
+            new PatternBaseline { AvgRestingHeartRate = 68 });
+
+        Assert.Equal("yellow", metrics.RestingHeartRate.Status);
+        Assert.Equal(60m, metrics.RestingHeartRate.Reference!.Low);
+    }
+
+    private static (decimal Low, decimal High, string Source) Range(DashboardMetric metric) =>
+        (metric.Reference!.Low, metric.Reference.High, metric.Reference.Source);
 }

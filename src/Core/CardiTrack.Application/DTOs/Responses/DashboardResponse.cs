@@ -101,7 +101,8 @@ public class DashboardMetrics
 
     /// <summary>Blood oxygen saturation. No established-baseline comparison exists for this
     /// metric yet, so <see cref="DashboardMetric.Status"/> stays "unknown" — the value is shown
-    /// without a trend judgement.</summary>
+    /// without a trend judgement, against the published range in
+    /// <see cref="DashboardMetric.Reference"/>.</summary>
     public DashboardMetric SpO2 { get; set; } = new();
 
     /// <summary>Breathing (respiratory) rate. Same no-established-baseline caveat as SpO2.</summary>
@@ -138,6 +139,36 @@ public class DashboardMetric
     /// take the tail.
     /// </summary>
     public List<MetricPoint> Series { get; set; } = new();
+
+    /// <summary>
+    /// The published typical-adult range for this metric, for clients to draw behind the series
+    /// alongside <see cref="Baseline"/> — this member's own normal against the wider population's.
+    /// Null for metrics no standards body publishes a range for; see
+    /// <see cref="CardiTrack.Application.Services.HealthReferenceRanges"/>.
+    /// </summary>
+    public MetricReference? Reference { get; set; }
+}
+
+/// <summary>
+/// A published reference range — the population-level counterpart to
+/// <see cref="DashboardMetric.Baseline"/>, which is the member's own learned normal.
+/// </summary>
+/// <remarks>
+/// Presentational only: it is deliberately not an input to <see cref="DashboardMetric.Status"/> or
+/// <see cref="DashboardMetric.QualityScore"/>, both of which stay relative to the member's own
+/// baseline. CardiTrack is not a medical device, and a reading outside a population range is
+/// context for a caregiver, not a finding.
+/// </remarks>
+public class MetricReference
+{
+    public decimal Low { get; set; }
+    public decimal High { get; set; }
+
+    /// <summary>
+    /// Who publishes the range ("WHO", "AHA", …) — shown next to it, because the ranges do not all
+    /// come from one body and attributing them all to WHO would be wrong.
+    /// </summary>
+    public string Source { get; set; } = string.Empty;
 }
 
 public class MetricPoint

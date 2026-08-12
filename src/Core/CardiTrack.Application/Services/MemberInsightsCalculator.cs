@@ -81,7 +81,8 @@ public static class MemberInsightsCalculator
             value: latestHeartRate?.RestingHeartRate,
             baselineValue: baseline?.AvgRestingHeartRate,
             unit: "bpm",
-            series: BuildSeries(byDate, today, l => l.RestingHeartRate));
+            series: BuildSeries(byDate, today, l => l.RestingHeartRate),
+            reference: HealthReferenceRanges.RestingHeartRate);
         if (baseline?.AvgRestingHeartRate is int avgHr && baseline.StdDevHeartRate is decimal stdHr)
         {
             heartRate.RangeLow = (int)Math.Round(avgHr - stdHr, MidpointRounding.AwayFromZero);
@@ -96,7 +97,8 @@ public static class MemberInsightsCalculator
             value: latestSleep?.SleepMinutes is int sm ? Math.Round(sm / 60m, 1) : null,
             baselineValue: baseline?.AvgSleepMinutes is int abm ? Math.Round(abm / 60m, 1) : null,
             unit: "hours",
-            series: BuildSeries(byDate, today, l => l.SleepMinutes is int m ? Math.Round(m / 60m, 1) : (decimal?)null));
+            series: BuildSeries(byDate, today, l => l.SleepMinutes is int m ? Math.Round(m / 60m, 1) : (decimal?)null),
+            reference: HealthReferenceRanges.Sleep);
         // Read off the same night as the duration above, so the stars can never describe the
         // quality of one night next to the length of another.
         sleep.QualityScore = latestSleep?.SleepEfficiency switch
@@ -151,12 +153,16 @@ public static class MemberInsightsCalculator
 
         // No baseline concept exists for SpO2 yet — shown as a plain reading, not a trend, and
         // with no star rating either: there is nothing to rate it against but an invented normal.
+        // The published reference range is the one comparison these two metrics do have, and it is
+        // background for a chart rather than a judgement, so it neither colours the status nor
+        // earns them a rating.
         var latestSpO2 = LatestWith(newestFirst, l => l.SpO2Average);
         var spO2 = BuildMetric(
             value: latestSpO2?.SpO2Average,
             baselineValue: null,
             unit: "%",
-            series: BuildSeries(byDate, today, l => l.SpO2Average));
+            series: BuildSeries(byDate, today, l => l.SpO2Average),
+            reference: HealthReferenceRanges.SpO2);
 
         // Breathing rate has no established-baseline concept yet either, same as SpO2 above.
         var latestBreathing = LatestWith(newestFirst, l => l.BreathingRate);
@@ -164,7 +170,8 @@ public static class MemberInsightsCalculator
             value: latestBreathing?.BreathingRate,
             baselineValue: null,
             unit: "brpm",
-            series: BuildSeries(byDate, today, l => l.BreathingRate));
+            series: BuildSeries(byDate, today, l => l.BreathingRate),
+            reference: HealthReferenceRanges.BreathingRate);
 
         return new DashboardMetrics
         {
@@ -218,8 +225,18 @@ public static class MemberInsightsCalculator
     /// <see cref="DashboardMetric.ChangePercent"/> and the derived status unset, so the client
     /// falls back to the card's plain presentation instead of colouring a number it cannot judge.
     /// </param>
+    /// <param name="reference">
+    /// The published typical-adult range to draw behind the series, or null for a metric no
+    /// standards body publishes one for — see <see cref="HealthReferenceRanges"/>. Presentational
+    /// only: the status below stays relative to this member's own baseline.
+    /// </param>
     private static DashboardMetric BuildMetric(
-        decimal? value, decimal? baselineValue, string unit, List<MetricPoint> series, bool comparable = true)
+        decimal? value,
+        decimal? baselineValue,
+        string unit,
+        List<MetricPoint> series,
+        bool comparable = true,
+        MetricReference? reference = null)
     {
         decimal? changePercent = null;
         if (comparable && value is not null && baselineValue is > 0)
@@ -240,6 +257,7 @@ public static class MemberInsightsCalculator
                     _ => "orange",
                 },
             Series = series,
+            Reference = reference,
         };
     }
 

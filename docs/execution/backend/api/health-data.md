@@ -63,7 +63,8 @@ Wrapped in the standard `ApiResponse<T>` envelope:
       "series": [
         { "date": "2026-08-01", "value": 4800 },
         { "date": "2026-08-07", "value": 2500 }
-      ]
+      ],
+      "reference": null
     },
     "restingHeartRate": {
       "value": 68,
@@ -75,7 +76,8 @@ Wrapped in the standard `ApiResponse<T>` envelope:
       "rangeLow": 61,
       "rangeHigh": 69,
       "qualityScore": 5,
-      "series": [ { "date": "2026-08-07", "value": 68 } ]
+      "series": [ { "date": "2026-08-07", "value": 68 } ],
+      "reference": { "low": 60, "high": 100, "source": "AHA" }
     },
     "sleep": {
       "value": 7.2,
@@ -87,7 +89,8 @@ Wrapped in the standard `ApiResponse<T>` envelope:
       "rangeLow": null,
       "rangeHigh": null,
       "qualityScore": 4,
-      "series": [ { "date": "2026-08-07", "value": 7.2 } ]
+      "series": [ { "date": "2026-08-07", "value": 7.2 } ],
+      "reference": { "low": 7, "high": 9, "source": "NSF" }
     }
   },
   "recentAlerts": [
@@ -115,6 +118,7 @@ Field notes:
 - `device.connectionStatus` is the internal enum name (`Connected`, `TokenExpired`, …) — unlike the lowercase statuses in [devices.md](devices.md).
 - `recentAlerts` holds the **5 most recent** active alerts; `unreadAlertCount` counts unresolved, unacknowledged alerts.
 - `goal` on steps defaults to the baseline average (or 10 000 when no baseline); `rangeLow`/`rangeHigh` are heart-rate mean ± one standard deviation; `qualityScore` is the 1–5 star rating described below.
+- `reference` is the **published typical-adult range** for the metric — the population counterpart to `baseline`, which is this member's own learned normal. Described below.
 
 **Health Status Values** (`healthStatus` and per-metric `status` — lowercase strings):
 
@@ -145,6 +149,19 @@ Field notes:
 
 - The deviation bands (`≤ 5%` → 5, `≤ 15%` → 4, `≤ 30%` → 3, `≤ 50%` → 2, else 1) **nest inside** the status thresholds above, so the rating and the status on a card can never contradict each other: 3–5 stars is `green`, 2 is `yellow`, 1 is `orange`.
 - A `null` score means "not rated", not "rated zero" — clients hide the star row entirely rather than showing five empty stars.
+
+**`reference` — the published typical-adult range** (drawn as a shaded band behind the trend charts, beside the dashed rule at `baseline`):
+
+| Metric | `reference` | `source` |
+|--------|-------------|----------|
+| `restingHeartRate` | 60–100 bpm | `AHA` — normal adult resting heart rate |
+| `sleep` | 7–9 hours | `NSF` — recommended nightly sleep for adults |
+| `spO2` | 94–100 % | `WHO` — pulse oximetry guidance (90–93 % hypoxaemia, < 90 % severe) |
+| `breathingRate` | 12–20 brpm | `WHO` — Basic Emergency Care, adult respiratory rate |
+| `steps`, `temperature` | `null` | — |
+
+- **Each range is attributed to the body that publishes it, and only ranges that exist are sent.** WHO publishes the two it is named for here; it publishes no resting heart rate or sleep duration range, so those carry their actual source rather than being re-labelled WHO. `steps` gets none because no standards body publishes a daily step count — WHO's physical activity guidelines are written in minutes of moderate activity per week, and converting those to steps would be our arithmetic under WHO's name. `temperature` gets none because skin temperature is a wearer-relative measurement, already compared against the device's own nightly baseline.
+- General **adult** ranges, not adjusted for age or sex, and **presentational only**: `reference` is never an input to `status`, `qualityScore` or alerting, all of which stay relative to the member's own baseline. CardiTrack is not a medical device, and a reading outside a population range is context for a caregiver, not a finding.
 
 ### Errors
 
