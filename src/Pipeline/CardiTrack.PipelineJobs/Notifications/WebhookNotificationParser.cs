@@ -79,11 +79,16 @@ public static partial class WebhookNotificationParser
         if (array.Count == 0)
             return "array[0]";
 
+        // Property names are sorted within an element (JSON key order carries no meaning and
+        // isn't guaranteed stable across elements from the same producer) and the distinct
+        // shapes are sorted too, so equivalent shapes collapse to one entry instead of
+        // inflating the list with order-only variants.
         var elementShapes = array
             .Select(element => element is JObject obj
-                ? string.Join("+", obj.Properties().Select(p => p.Name))
+                ? string.Join("+", obj.Properties().Select(p => p.Name).OrderBy(n => n, StringComparer.Ordinal))
                 : element.Type.ToString())
-            .Distinct(StringComparer.Ordinal);
+            .Distinct(StringComparer.Ordinal)
+            .OrderBy(shape => shape, StringComparer.Ordinal);
 
         return $"array[{array.Count}]:{string.Join("|", elementShapes)}";
     }
