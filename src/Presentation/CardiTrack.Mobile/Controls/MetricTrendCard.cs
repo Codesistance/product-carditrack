@@ -95,6 +95,9 @@ public sealed class MetricTrendCard : ContentView
 
     private MetricTrend? _trend;
 
+    /// <summary>Whether this card has already spent its one hint pulse.</summary>
+    private bool _pulsed;
+
     /// <summary>The panel behind the "i", rebuilt whenever the card is bound to a metric.</summary>
     private string _explanation = string.Empty;
 
@@ -305,7 +308,16 @@ public sealed class MetricTrendCard : ContentView
         _legend.IsVisible = hasChart;
         _empty.IsVisible = !hasChart;
         if (!hasChart)
+        {
+            // The carousel recycles cards, and everything below this point is what fills the
+            // footer. Without clearing them, a card that lands on a metric with too few readings
+            // keeps the previous metric's strip and the previous metric's explanation behind
+            // its "i" — the one place on the card where being one metric behind is unreadable
+            // as a mistake rather than a fact.
+            _footer.Text = string.Empty;
+            _explanation = string.Empty;
             return;
+        }
 
         var baseline = _trend.Metric.Baseline;
         var reference = _trend.Metric.Reference;
@@ -370,6 +382,10 @@ public sealed class MetricTrendCard : ContentView
             showMarkers: points.Count <= MarkerWindowLimit,
             baseline,
             reference);
+
+        // There is now something on the card worth explaining. See StartHintPulse on why this is
+        // reached from here as well as from Loaded.
+        StartHintPulse();
     }
 
     /// <summary>
@@ -413,15 +429,28 @@ public sealed class MetricTrendCard : ContentView
     /// Starts the hint, unless this caregiver has already found the "i" for themselves.
     /// </summary>
     /// <remarks>
+    /// <para>
+    /// Called from both <c>Loaded</c> and <see cref="Render"/> because the order of the two is not
+    /// guaranteed: a card realised by the carousel may be loaded before it is bound, and a card
+    /// recycled onto a new metric is bound without being loaded again. Whichever arrives second
+    /// finds <c>_pulsed</c> already set, so a card beats once in its life rather than once per
+    /// swipe or once per window change.
+    /// </para>
+    /// <para>
     /// MAUI surfaces no cross-platform reduce-motion setting, so this cannot honour one without
     /// per-platform code. The mitigations are the ones available here: it is small, it is brief,
     /// it stops after two beats, and it never returns once the panel behind it has been opened.
+    /// </para>
     /// </remarks>
     private void StartHintPulse()
     {
-        if (ExplanationOpened || _trend is null)
+        // Gated on there being an explanation, not merely on the card being bound: a card in its
+        // "not enough readings" state has nothing behind the "i", and drawing the eye to a control
+        // that does nothing is worse than not drawing it at all.
+        if (ExplanationOpened || _pulsed || string.IsNullOrEmpty(_explanation))
             return;
 
+        _pulsed = true;
         var beats = 0;
         var pulse = new Animation
         {
