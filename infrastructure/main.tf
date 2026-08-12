@@ -72,8 +72,9 @@ module "deployments" {
   region     = local.region
 
   # Cloud Run - Custom domains
-  api_custom_domain = var.api_custom_domain
-  web_custom_domain = var.web_custom_domain
+  api_custom_domain     = var.api_custom_domain
+  web_custom_domain     = var.web_custom_domain
+  webhook_custom_domain = var.webhook_custom_domain
 
   # Cloud Run - Shared
   cloud_run_location      = local.region

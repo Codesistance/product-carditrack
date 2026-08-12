@@ -90,7 +90,10 @@ Terraform's state and credentials), and first contact was expected to need itera
 
 Verified against the v4 discovery document and live API responses (2026-08-10):
 
-1. Resolve the receiver URL:
+1. Resolve the receiver URL. Once `webhook_custom_domain` is set (dev, since the WAF cutover
+   below), this is the custom domain — `https://webhook.<env>.carditrack.com` — not the
+   `*.run.app` URL, which stops being externally reachable once ingress flips to
+   `INGRESS_TRAFFIC_INTERNAL_LOAD_BALANCER`. Before that, or in an environment with no webhook domain configured:
    `gcloud run services describe carditrack-<env>-webhook-receiver --project <INFRA_PROJECT> --region europe-west2 --format "value(status.url)"`
 2. Read the Terraform-generated secret (full `Bearer …` value, scheme included):
    `gcloud secrets versions access latest --secret carditrack-<env>-webhook-secret --project <INFRA_PROJECT>`
@@ -151,6 +154,33 @@ Facts that cost live errors to learn (all from the 2026-08-10 dev attempt):
   documented handshake verbatim: two POSTs from `Google-Health-API-Webhooks` one second apart,
   answered `200` (authorized) and `401` (unauthorized) — a completed create IS the handshake
   verdict, since failure would have surfaced as `FAILED_PRECONDITION`.
+
+#### 7a. Dev WAF cutover (webhook receiver joins api/web behind the GCLB)
+
+The receiver now has its own domain (`webhook_custom_domain` → `webhook.dev.carditrack.com`)
+and sits behind the same GCLB + Cloud Armor WAF as api/web (`load_balancer.tf`); ingress
+switches from `INGRESS_TRAFFIC_ALL` to `INGRESS_TRAFFIC_INTERNAL_LOAD_BALANCER` the moment the domain is set,
+which makes the old `*.run.app` URL unreachable from outside GCP. This is a one-time, ordered
+cutover, not a Terraform-only change:
+
+1. `terraform apply` — creates the NEG, backend service, managed cert, and url_map entry, and
+   flips the receiver's ingress.
+2. Fetch the (shared) LB IP: `terraform output lb_ip_address`.
+3. DNS is managed on **Cloudflare**, not Google Cloud DNS — add/update the
+   `webhook.dev.carditrack.com` A record there to that IP (same record shape as the existing
+   `api.dev` / `app.dev` entries).
+4. Wait for the managed cert to go `ACTIVE`: `gcloud compute ssl-certificates describe
+   carditrack-dev-webhook-receiver-cert --project <INFRA_PROJECT> --format
+   "value(managed.status)"`.
+5. Re-run the Subscriber registration in step 7 above against the new
+   `https://webhook.dev.carditrack.com/webhooks/google-health` `endpointUri` — Google re-runs
+   the verification handshake against the new URI, so this is a normal `subscribers.create`
+   (or update), not a special case. The prior `*.run.app`-registered Subscriber stops receiving
+   deliveries once ingress flips, since Google can no longer reach it.
+6. Confirm with step 9's smoke check.
+
+Until step 5 lands, notifications simply degrade to the 10-minute poll (see the closing note
+below) — there is no hard outage window to coordinate.
 
 ### 8. HealthApiProbe live-wearer check (human required)
 

@@ -3,9 +3,18 @@
 
 # Locals
 locals {
-  has_any_domain     = var.api_custom_domain != "" || var.web_custom_domain != ""
+  # Requires enable_webhook_receiver too: a domain alone can't front a Cloud Run service that
+  # was never created, and the NEG below dereferences google_cloud_run_v2_service.webhook_receiver[0].
+  # Used (not the raw var) everywhere webhook participates in shared LB state, so a domain set
+  # without the receiver enabled can't allow-list a Host header with no cert/route behind it.
+  webhook_has_domain = var.webhook_custom_domain != "" && var.enable_webhook_receiver
+  has_any_domain     = var.api_custom_domain != "" || var.web_custom_domain != "" || local.webhook_has_domain
+  # api/web ingress (cloud_run.tf) gates on this rather than has_any_domain, so that setting
+  # webhook_custom_domain alone can't flip their ingress to INTERNAL_LOAD_BALANCER with no
+  # cert/host_rule registered for them — which would make both totally unreachable.
+  api_web_has_domain = var.api_custom_domain != "" || var.web_custom_domain != ""
   lb_name_prefix     = trimsuffix(var.api_service_name, "-api")
-  configured_domains = compact([var.web_custom_domain, var.api_custom_domain])
+  configured_domains = compact([var.web_custom_domain, var.api_custom_domain, local.webhook_has_domain ? var.webhook_custom_domain : ""])
   domain_expression  = "!(${join(" || ", [for d in local.configured_domains : "request.headers['host'].lower() == '${d}'"])})"
 }
 
@@ -32,6 +41,15 @@ resource "google_compute_managed_ssl_certificate" "web" {
   name  = "${var.web_service_name}-cert"
   managed {
     domains = [var.web_custom_domain]
+  }
+  depends_on = [google_project_service.compute]
+}
+
+resource "google_compute_managed_ssl_certificate" "webhook" {
+  count = local.webhook_has_domain ? 1 : 0
+  name  = "${var.webhook_receiver_name}-cert"
+  managed {
+    domains = [var.webhook_custom_domain]
   }
   depends_on = [google_project_service.compute]
 }
@@ -187,6 +205,17 @@ resource "google_compute_region_network_endpoint_group" "web" {
   depends_on = [google_project_service.compute]
 }
 
+resource "google_compute_region_network_endpoint_group" "webhook_receiver" {
+  count                 = local.webhook_has_domain ? 1 : 0
+  name                  = "${var.webhook_receiver_name}-neg"
+  network_endpoint_type = "SERVERLESS"
+  region                = var.cloud_run_location
+  cloud_run {
+    service = google_cloud_run_v2_service.webhook_receiver[0].name
+  }
+  depends_on = [google_project_service.compute]
+}
+
 # ── Backend services ───────────────────────────────────────────────────────────
 # API — no CDN (dynamic responses), WAF enabled
 resource "google_compute_backend_service" "api" {
@@ -247,6 +276,27 @@ resource "google_compute_backend_service" "web" {
   depends_on = [google_project_service.compute]
 }
 
+# Webhook receiver — no CDN (secret-authenticated, single-delivery notifications), WAF enabled
+resource "google_compute_backend_service" "webhook_receiver" {
+  count                 = local.webhook_has_domain ? 1 : 0
+  name                  = "${var.webhook_receiver_name}-backend"
+  load_balancing_scheme = "EXTERNAL_MANAGED"
+  protocol              = "HTTPS"
+  security_policy       = google_compute_security_policy.waf[0].id
+  enable_cdn            = false
+
+  log_config {
+    enable      = true
+    sample_rate = 1.0
+  }
+
+  backend {
+    group = google_compute_region_network_endpoint_group.webhook_receiver[0].id
+  }
+
+  depends_on = [google_project_service.compute]
+}
+
 # ── URL map — route by hostname ────────────────────────────────────────────────
 resource "google_compute_url_map" "main" {
   count           = local.has_any_domain ? 1 : 0
@@ -266,6 +316,22 @@ resource "google_compute_url_map" "main" {
     content {
       name            = "api"
       default_service = google_compute_backend_service.api[0].id
+    }
+  }
+
+  dynamic "host_rule" {
+    for_each = local.webhook_has_domain ? [var.webhook_custom_domain] : []
+    content {
+      hosts        = [host_rule.value]
+      path_matcher = "webhook"
+    }
+  }
+
+  dynamic "path_matcher" {
+    for_each = local.webhook_has_domain ? [var.webhook_custom_domain] : []
+    content {
+      name            = "webhook"
+      default_service = google_compute_backend_service.webhook_receiver[0].id
     }
   }
 }
@@ -305,6 +371,7 @@ resource "google_compute_target_https_proxy" "main" {
   ssl_certificates = concat(
     var.web_custom_domain != "" ? [google_compute_managed_ssl_certificate.web[0].id] : [],
     var.api_custom_domain != "" ? [google_compute_managed_ssl_certificate.api[0].id] : [],
+    local.webhook_has_domain ? [google_compute_managed_ssl_certificate.webhook[0].id] : [],
   )
   ssl_policy = google_compute_ssl_policy.main[0].id
 }
@@ -320,6 +387,6 @@ resource "google_compute_global_forwarding_rule" "https" {
 
 # ── Outputs ────────────────────────────────────────────────────────────────────
 output "lb_ip_address" {
-  description = "Add this as an A record in your DNS for both custom domains"
+  description = "Add this as an A record in your DNS (Cloudflare) for each configured custom domain"
   value       = local.has_any_domain ? google_compute_global_address.lb[0].address : null
 }

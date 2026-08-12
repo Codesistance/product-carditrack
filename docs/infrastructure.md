@@ -176,7 +176,7 @@ carditrack-<env>
     prod only today)
 ```
 
-\* When custom domains are configured, API and Web ingress switches to `INTERNAL_LOAD_BALANCER` so traffic must pass through the load balancer and WAF; without domains they use Cloud Run default URLs with `INGRESS_TRAFFIC_ALL`. Worker and MedGemma are always `INTERNAL_ONLY`.
+\* When custom domains are configured, API, Web, and the webhook receiver each switch to `INGRESS_TRAFFIC_INTERNAL_LOAD_BALANCER` ingress so traffic must pass through the load balancer and WAF; without a domain that service instead uses its Cloud Run default URL with `INGRESS_TRAFFIC_ALL`. API and Web share one gate (either domain present flips both — see `api_web_has_domain` in `load_balancer.tf`); the webhook receiver gates independently on its own `webhook_custom_domain`, so it can't be silently dragged behind the LB by an api/web-only setup or vice versa. Worker and MedGemma are always `INGRESS_TRAFFIC_INTERNAL_ONLY`.
 
 Service enablement (`run`, `sqladmin`, `storage`, `secretmanager`, `monitoring`, `logging`, `compute`, `servicenetworking`, plus `pubsub` and `redis` when their features are enabled) is managed in `infrastructure/deployments/apis.tf`.
 
@@ -184,10 +184,10 @@ Service enablement (`run`, `sqladmin`, `storage`, `secretmanager`, `monitoring`,
 
 The Global External HTTPS Load Balancer, Cloud CDN (Web backend only), Google-managed certificates, TLS 1.2+ MODERN SSL policy, and the Cloud Armor WAF policy are all created **only when at least one custom domain is set** in the environment's tfvars.
 
-- **Dev** has `api.dev.carditrack.com` / `app.dev.carditrack.com` configured → full LB + WAF + CDN stack is active.
+- **Dev** has `api.dev.carditrack.com` / `app.dev.carditrack.com` / `webhook.dev.carditrack.com` configured → full LB + WAF + CDN stack is active, and it fronts all three services (the webhook receiver gets no CDN, same as api — its traffic is single-delivery notifications, not cacheable). DNS for these is managed on **Cloudflare**, not Google Cloud DNS — after an apply that changes the LB, confirm the `lb_ip_address` output still matches the Cloudflare A records.
 - **Prod** has empty domains → **no load balancer and no WAF in prod**; services are reached on their Cloud Run default URLs. This is a known, deferred posture — edge enablement is pending custom domain setup.
 
-Cloud Armor rules (dev, where the WAF exists): block requests not using a configured Host header (prevents direct-IP access), block known scanner user agents (curl, libredtail-http, Go-http-client/1.1, CensysInspect), block sensitive file extensions (`.config`, `.xml`, `.php`, `.env`, `.yaml`, `.toml`, `.cfg`, `.conf`, `.gpg`), block CMS/WordPress scanner paths (`/wp-json`, `/wp-admin`, `/wp-content`, `/wp-includes`), per-IP rate limiting (100 req/min), and the preconfigured OWASP rule sets (XSS, SQLi, RCE, LFI — `v33-stable`).
+Cloud Armor rules (dev, where the WAF exists): block requests not using a configured Host header (prevents direct-IP access), block known scanner user agents (curl, libredtail-http, Go-http-client/1.1, CensysInspect), block sensitive file extensions (`.config`, `.xml`, `.php`, `.env`, `.yaml`, `.toml`, `.cfg`, `.conf`, `.gpg`), block CMS/WordPress scanner paths (`/wp-json`, `/wp-admin`, `/wp-content`, `/wp-includes`), per-IP rate limiting (100 req/min), and the preconfigured OWASP rule sets (XSS, SQLi, RCE, LFI — `v33-stable`). These apply to the webhook receiver's traffic too, including Google's own delivery — the OWASP rule sets evaluate the notification JSON body like any other request.
 
 ### MedGemma service
 
