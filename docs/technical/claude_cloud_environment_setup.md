@@ -99,10 +99,14 @@ this version depends on nothing inside the repo and never hard-fails:
 ```bash
 #!/bin/bash
 # Runs before the repo is checked out, so it cannot reference anything inside it.
-# Only brings up Postgres/Redis for local dev. The .NET/Terraform toolchain still
-# installs via the .claude/settings.json SessionStart hook
-# (.devcontainer/bootstrap.sh), which runs after Claude Code launches and the repo
-# exists — this script must not fail the session, so no `set -e`.
+# Brings up Postgres/Redis for local dev, and pre-installs the JDK MAUI Android
+# tooling needs (a small, repo-independent apt package) so the heavier
+# `INSTALL_MAUI=1 ./.devcontainer/install-toolchain.sh` step — run once the repo
+# exists, since it needs the repo's install-toolchain.sh plus a multi-GB workload
+# + Android SDK pull — has one less thing to do. The .NET/Terraform toolchain
+# itself still installs via the .claude/settings.json SessionStart hook
+# (.devcontainer/bootstrap.sh), which runs after Claude Code launches — this
+# script must not fail the session, so no `set -e`.
 set +e
 
 log() { printf '[setup] %s\n' "$*"; }
@@ -120,41 +124,58 @@ fi
 
 if ! command -v docker >/dev/null 2>&1 || ! docker info >/dev/null 2>&1; then
   log "no usable docker daemon — skipping Postgres/Redis bring-up; run 'docker compose up -d db redis' by hand once the repo is checked out"
-  exit 0
+else
+  # Same images/credentials as the repo's docker-compose.yml, started standalone
+  # since the compose file itself isn't checked out yet at this point.
+  docker start carditrack-db carditrack-redis >/dev/null 2>&1
+  docker inspect carditrack-db >/dev/null 2>&1 || docker run -d --name carditrack-db \
+    -e POSTGRES_DB=carditrack -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=postgres \
+    -p 5432:5432 postgres:17-alpine
+  docker inspect carditrack-redis >/dev/null 2>&1 || docker run -d --name carditrack-redis \
+    -p 6379:6379 redis:7-alpine
+
+  for i in $(seq 1 30); do
+    docker exec carditrack-db pg_isready -U postgres -d carditrack >/dev/null 2>&1 && break
+    sleep 2
+  done
+  log "Postgres + Redis up."
 fi
 
-# Same images/credentials as the repo's docker-compose.yml, started standalone
-# since the compose file itself isn't checked out yet at this point.
-docker start carditrack-db carditrack-redis >/dev/null 2>&1
-docker inspect carditrack-db >/dev/null 2>&1 || docker run -d --name carditrack-db \
-  -e POSTGRES_DB=carditrack -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=postgres \
-  -p 5432:5432 postgres:17-alpine
-docker inspect carditrack-redis >/dev/null 2>&1 || docker run -d --name carditrack-redis \
-  -p 6379:6379 redis:7-alpine
+# Lightweight, repo-independent MAUI prerequisite (~200MB, not the multi-GB
+# workload/SDK). Safe to install unconditionally; skipped if already present.
+if ! java -version >/dev/null 2>&1; then
+  log "installing OpenJDK 21 (MAUI Android prerequisite)"
+  if [ "$(id -u)" -eq 0 ]; then
+    apt-get update -qq && apt-get install -y -qq openjdk-21-jdk-headless
+  else
+    sudo -n apt-get update -qq && sudo -n apt-get install -y -qq openjdk-21-jdk-headless
+  fi
+fi
 
-for i in $(seq 1 30); do
-  docker exec carditrack-db pg_isready -U postgres -d carditrack >/dev/null 2>&1 && break
-  sleep 2
-done
-
-log "Postgres + Redis up. Once Claude Code launches, apply migrations:"
-log "  cd src/Infrastructure/CardiTrack.Infrastructure && dotnet ef database update --startup-project ../../Presentation/CardiTrack.API"
+log "Once Claude Code launches:"
+log "  Migrations: cd src/Infrastructure/CardiTrack.Infrastructure && dotnet ef database update --startup-project ../../Presentation/CardiTrack.API"
+log "  Mobile (MAUI, needs dl.google.com in network access): INSTALL_MAUI=1 ./.devcontainer/install-toolchain.sh"
 exit 0
 ```
 
-- The toolchain (.NET 10 SDK, `dotnet-ef`, Terraform, PostgreSQL client) is *not*
-  installed here — that's the `.claude/settings.json` `SessionStart` hook's job
+- The .NET/Terraform/`dotnet-ef`/PostgreSQL-client toolchain is *not* installed
+  here — that's the `.claude/settings.json` `SessionStart` hook's job
   (`.devcontainer/bootstrap.sh`), which runs once the repo actually exists.
 - Container names (`carditrack-db`, `carditrack-redis`) make the script idempotent
   across re-runs on a warm container — `docker start` on an existing container,
   `docker run` only the first time.
+- The Docker-unavailable branch no longer early-`exit`s — it used to, which also
+  skipped the JDK install and closing log lines below it; now it just skips the
+  DB/Redis bring-up and falls through.
 - EF migrations are deliberately left for after Claude Code launches, once
   `dotnet ef` (installed by the hook) and the repo are both present — run the command
   the script logs at the end, or ask Claude Code to run it.
+- OpenJDK 21 installs unconditionally because it's cheap and repo-independent — it's
+  a real MAUI Android prerequisite either way, so pre-installing it shaves time off
+  the `INSTALL_MAUI=1` step without paying for the actual multi-GB workload/SDK pull
+  on every session. See [Mobile (MAUI) coverage](#mobile-maui-coverage) below.
 - Build/test with `dotnet build CardiTrack.Server.slnf` / `dotnet test
-  CardiTrack.Server.slnf`. That solution filter excludes `CardiTrack.Mobile` (MAUI),
-  which needs the Android SDK from `dl.google.com` — the one real blocker left if you
-  build `CardiTrack.sln` directly instead.
+  CardiTrack.Server.slnf`. That solution filter excludes `CardiTrack.Mobile` (MAUI).
 - MedGemma/Ollama is not started by this script (multi-GB pull, only needed for AI
   insight debugging): `docker compose --profile full up ollama medgemma-init` once the
   repo is checked out.
