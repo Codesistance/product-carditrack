@@ -162,7 +162,7 @@ public partial class MetricCard : ContentView
         }
 
         var filled = Math.Clamp(score, 0, StarCount);
-        StarRow.Render(filled, StarInk(metric.Status, filled));
+        StarRow.Render(filled, StarInk(filled));
 
         // One value, so one accessibility stop: the stars differ only by fill, which no screen
         // reader conveys.
@@ -172,27 +172,26 @@ public partial class MetricCard : ContentView
     }
 
     /// <summary>
-    /// The fill for the earned stars. The metric's own status wherever it has one — the pill and
-    /// the stars come off the same comparison (see <c>MemberInsightsCalculator</c>, whose star
-    /// bands nest inside the status thresholds), so they must never be two different colours on
-    /// one card.
+    /// The fill for the earned stars, read off the rating itself on the bands it is built to —
+    /// <c>RateAgainstNormal</c>'s own, 3-5 green, 2 yellow, 1 orange — so the colour of the row can
+    /// never say something other than the number of stars in it.
     /// </summary>
     /// <remarks>
-    /// The fallback covers the one case where a metric is rated but unstatused: sleep, whose stars
-    /// come from the device's sleep efficiency while its status comes from duration against the
-    /// sleep baseline, so a night with efficiency but no baseline rates without colouring. The
-    /// bands are <c>RateAgainstNormal</c>'s own — 3-5 green, 2 yellow, 1 orange — rather than an
-    /// independent scale.
+    /// This used to take the metric's status colour instead, on the grounds that the star bands
+    /// nest inside the status thresholds and the two therefore agree. They do for heart rate and
+    /// skin temperature; they do not for the two metrics rated on more than deviation. Sleep is
+    /// rated on how well and how long the night was and capped at the published recommendation,
+    /// while its status reads duration against the baseline alone, so a habitually short sleeper
+    /// can earn two stars beside a NORMAL pill — and painting those two stars green would be the
+    /// card contradicting itself in the one case that matters most.
     /// </remarks>
-    private static Color StarInk(string status, int filled) =>
-        MetricStatus.Pill(status) is not null
-            ? MetricStatus.Accent(status)
-            : MetricStatus.Accent(filled switch
-            {
-                >= 3 => "green",
-                2 => "yellow",
-                _ => "orange",
-            });
+    private static Color StarInk(int filled) =>
+        MetricStatus.Accent(filled switch
+        {
+            >= 3 => "green",
+            2 => "yellow",
+            _ => "orange",
+        });
 
     /// <summary>
     /// Fills the track proportionally with two star columns, which avoids having to measure the

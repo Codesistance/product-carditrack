@@ -37,6 +37,13 @@ public static class HealthReferenceRanges
     public const int OlderAdultAge = 65;
 
     /// <summary>
+    /// The floor of the National Sleep Foundation's recommended nightly sleep, in hours. The one
+    /// figure of <see cref="Sleep"/> that is the same either side of <see cref="OlderAdultAge"/> —
+    /// only the ceiling moves — which is why the sleep rating can cap on it without an age split.
+    /// </summary>
+    public const decimal RecommendedSleepFloorHours = 7m;
+
+    /// <summary>
     /// Normal adult resting heart rate, 60–100 bpm (American Heart Association). One band across
     /// adulthood: an individual's resting heart rate drifts with age and fitness, but the AHA
     /// publishes no age-split range to draw it against.
@@ -51,7 +58,7 @@ public static class HealthReferenceRanges
     /// </summary>
     public static MetricReference Sleep(int ageYears) => new()
     {
-        Low = 7m,
+        Low = RecommendedSleepFloorHours,
         High = ageYears >= OlderAdultAge ? 8m : 9m,
         Source = "NSF",
     };
