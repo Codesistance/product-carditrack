@@ -41,8 +41,12 @@ public partial class StatusHeroCard : ContentView
             // Paused is not a health reading — never dress it up as one.
             "paused" => ("StatusUnknown", "icon_status_paused.svg", "Monitoring paused",
                 $"We're not collecting data or raising alerts for {firstName}"),
-            _ => ("StatusUnknown", "icon_status_check.svg", "Still learning",
-                $"Getting to know {firstName}'s routine"),
+            // No baseline yet is not the same as nothing to say. Rather than tell a caregiver for
+            // weeks that we are still getting to know their relative — which reports on us, not on
+            // them — the line reads back the day's actual readings. It is the one tier where the
+            // honest answer is the numbers themselves.
+            _ => ("StatusUnknown", "icon_status_check.svg", "Today so far",
+                TodaySoFar(data.Metrics, firstName)),
         };
 
         var color = (Color)Microsoft.Maui.Controls.Application.Current!.Resources[colorKey];
@@ -76,6 +80,40 @@ public partial class StatusHeroCard : ContentView
         StatusDetailLabel.Opacity = 0;
         _ = StatusHeadlineLabel.FadeToAsync(1, 150, Easing.CubicOut);
         _ = StatusDetailLabel.FadeToAsync(1, 150, Easing.CubicOut);
+    }
+
+    /// <summary>
+    /// The day in one sentence, from the readings the dashboard already has — no model call, no
+    /// baseline needed. Shown while a member has no established normal to be judged against, which
+    /// is exactly when the readings are all there is to report.
+    /// </summary>
+    private static string TodaySoFar(DashboardMetrics? metrics, string firstName)
+    {
+        if (metrics is null)
+            return $"Waiting on {firstName}'s first readings";
+
+        var parts = new List<string>();
+        if (metrics.Steps.Value is { } steps)
+            parts.Add($"{steps:N0} steps");
+        if (metrics.RestingHeartRate.Value is { } heartRate)
+            parts.Add($"{heartRate:N0} bpm resting");
+        if (metrics.Sleep.Value is { } sleep)
+            parts.Add($"{sleep:0.#} h sleep");
+
+        return parts.Count == 0
+            ? $"Waiting on {firstName}'s first readings"
+            : string.Join(", ", parts);
+    }
+
+    /// <summary>
+    /// What the card says while the live status line is still being fetched. Only for the tiers
+    /// that actually make that call — a member with no reading to interpret is not loading
+    /// anything, and would sit on this forever.
+    /// </summary>
+    public void ShowStatusLoading()
+    {
+        StatusHeadlineLabel.Text = "Loading";
+        StatusDetailLabel.Text = "Please wait — checking how they're doing.";
     }
 
     private void OnCardTapped(object? sender, TappedEventArgs e) =>

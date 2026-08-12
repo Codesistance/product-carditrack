@@ -99,6 +99,14 @@ public class StatisticalAlertService : IStatisticalAlertService
             StatisticalAlertRules.NoMorningActivity(baseline, todayLog, localNow),
             StatisticalAlertRules.LongTermTrend(logsByDate, yesterday),
         }.OfType<StatisticalAlertCandidate>().ToList();
+
+        // NOTE: this engine's alerts are not auto-resolved, and so still latch — see
+        // AlertResolution for what that costs. Closing them needs each rule to say whether it was
+        // able to judge at all: every rule here returns null both when it did not trip and when
+        // its inputs were missing (no reading for yesterday, too few days for the trend), and
+        // treating the second as "the episode has passed" would resolve a standing alert on a day
+        // that produced no evidence either way. On a health screen that is the wrong failure —
+        // better a rule that stays latched than one that quietly stands down in the dark.
         if (candidates.Count == 0)
             return 0;
 

@@ -199,8 +199,22 @@ public class RealtimeAssessmentService : IRealtimeAssessmentService
         {
             await RaiseAlertAsync(assessment, ct);
         }
+        else if (inserted)
+        {
+            // A window the model read as ordinary is this member's heart-rate episode ending, and
+            // closing it is what re-arms the cooldown in RaiseAlertAsync. Nothing else resolves an
+            // alert, so without this one anomaly would silence every later one for good.
+            await ResolveHeartRateAlertsAsync(assessment.CardiMemberId, utcNow, ct);
+        }
 
         return true;
+    }
+
+    private async Task ResolveHeartRateAlertsAsync(Guid memberId, DateTime utcNow, CancellationToken ct)
+    {
+        var existing = await _unitOfWork.Alerts.GetByCardiMemberAsync(memberId, activeOnly: true);
+        if (AlertResolution.Resolve(existing, a => a.AlertType == AlertType.HeartRate, utcNow) > 0)
+            await _unitOfWork.SaveChangesAsync();
     }
 
     private async Task RaiseAlertAsync(RealtimeAssessment assessment, CancellationToken ct)

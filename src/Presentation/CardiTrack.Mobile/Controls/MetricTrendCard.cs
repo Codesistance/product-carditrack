@@ -21,11 +21,11 @@ public sealed class MetricTrendCard : ContentView
     private const double ChartHeight = 72;
 
     /// <summary>
-    /// The row the carousel reserves for a card: its padding, header, chart, date rule, legend and
-    /// margin, plus slack for a caregiver running a larger system font. The carousel clips, so this
-    /// is a floor rather than a fit.
+    /// The row the carousel reserves for a card: its padding, header, chart, date rule, legend,
+    /// bottom explanation strip and margin, plus slack for a caregiver running a larger system
+    /// font. The carousel clips, so this is a floor rather than a fit.
     /// </summary>
-    public const double CardHeight = 240;
+    public const double CardHeight = 306;
 
     /// <summary>Beyond a fortnight, a marker per day crowds the line rather than reading as data.</summary>
     private const int MarkerWindowLimit = 14;
@@ -50,8 +50,12 @@ public sealed class MetricTrendCard : ContentView
     private readonly HorizontalStackLayout _baselineLegend;
     private readonly HorizontalStackLayout _referenceLegend;
     private readonly Grid _legend;
+    private readonly Label _footer = new();
 
     private MetricTrend? _trend;
+
+    /// <summary>The panel behind the "i", rebuilt whenever the card is bound to a metric.</summary>
+    private string _explanation = string.Empty;
 
     public MetricTrendCard()
     {
@@ -167,10 +171,16 @@ public sealed class MetricTrendCard : ContentView
         _legend.Add(_baselineLegend);
         _legend.Add(_referenceLegend, 1);
 
+        // The key names the two marks; this says what they mean. Naming is not explaining — that a
+        // member's own normal matters more than the published one, or that a wrist wearable is not
+        // taking anyone's temperature, is the part a non-clinical reader actually needs.
+        var footerBlock = BuildFooter();
+
         var body = new Grid
         {
             RowDefinitions =
             [
+                new RowDefinition(GridLength.Auto),
                 new RowDefinition(GridLength.Auto),
                 new RowDefinition(GridLength.Auto),
                 new RowDefinition(GridLength.Auto),
@@ -183,6 +193,7 @@ public sealed class MetricTrendCard : ContentView
         body.Add(_empty, 0, 1);
         body.Add(_dates, 0, 2);
         body.Add(_legend, 0, 3);
+        body.Add(footerBlock, 0, 4);
 
         Content = new Border
         {
@@ -285,6 +296,10 @@ public sealed class MetricTrendCard : ContentView
         // would read as an indent on a key that starts with its swatch.
         _legend.ColumnSpacing = _baselineLegend.IsVisible && _referenceLegend.IsVisible ? 14 : 0;
 
+        var (footer, explanation) = MetricExplanations.For(_trend.Name, _trend.Metric, _trend.AxisFormat);
+        _footer.Text = footer;
+        _explanation = explanation;
+
         // The chart itself is a canvas with nothing for a screen reader to walk, so what it plots
         // besides the readings has to reach one through the card's own description.
         var comparisons = string.Join(", ", new[] { _trend.BaselineText, _trend.ReferenceText }.Where(t => t is not null));
@@ -292,13 +307,103 @@ public sealed class MetricTrendCard : ContentView
             SemanticProperties.SetDescription(
                 this, $"{_trend.Name}, {_trend.ValueText}, last {_trend.Days} days. {comparisons}");
 
+        // The metric's own ink, not its status accent: the line says which metric this is, and the
+        // pill above it says how the member is doing. A line that changed colour with severity
+        // would make the reader re-identify the card every time the reading moved between bands.
         _chart.Render(
             points,
             scale,
-            MetricStatus.Accent(_trend.Metric.Status),
+            MetricStatus.Resource(_trend.InkKey, MetricStatus.Accent(_trend.Metric.Status)),
             showMarkers: points.Count <= MarkerWindowLimit,
             baseline,
             reference);
+    }
+
+    /// <summary>
+    /// The card's bottom strip: a hairline, the explanation, and the "i" that opens the rest of it.
+    /// </summary>
+    private Grid BuildFooter()
+    {
+        ApplyStyle(_footer, "Body2");
+        _footer.FontSize = 11;
+        _footer.TextColor = MetricStatus.Resource("MutedText", Colors.Gray);
+        _footer.LineBreakMode = LineBreakMode.WordWrap;
+        _footer.VerticalOptions = LayoutOptions.Center;
+        // Justified: this is the one block of prose on the card, and it sits under a chart whose
+        // plot area is a hard rectangle — a ragged edge beside that reads as a misaligned column.
+        _footer.HorizontalTextAlignment = TextAlignment.Justify;
+
+        var disc = new Border
+        {
+            WidthRequest = 22,
+            HeightRequest = 22,
+            StrokeThickness = 0,
+            BackgroundColor = MetricStatus.Resource("SelectedOptionBackground", Colors.LightGray),
+            // Fully qualified: Microsoft.Maui.Controls.Shapes is not among the SDK's implicit
+            // usings, and importing it here would put its Path beside System.IO's.
+            StrokeShape = new Microsoft.Maui.Controls.Shapes.RoundRectangle { CornerRadius = 11 },
+            Content = new Label
+            {
+                Text = "i",
+                FontFamily = "QuicksandSemiBold",
+                FontSize = 13,
+                TextColor = MetricStatus.Resource("Primary", Colors.Blue),
+                HorizontalOptions = LayoutOptions.Center,
+                VerticalOptions = LayoutOptions.Center,
+            },
+        };
+
+        // The gesture sits on the padded wrapper, not the 22dp disc: hit-testing follows visual
+        // bounds, so the padding is what makes this a target an older thumb can actually land on.
+        var button = new Grid
+        {
+            Padding = new Thickness(10, 6, 0, 6),
+            VerticalOptions = LayoutOptions.Center,
+            Children = { disc },
+        };
+        SemanticProperties.SetDescription(button, "What does this mean?");
+        SemanticProperties.SetHint(button, "Explains what this reading is compared against");
+        button.GestureRecognizers.Add(new TapGestureRecognizer { Command = new Command(ShowExplanation) });
+
+        var row = new Grid
+        {
+            ColumnDefinitions = [new ColumnDefinition(GridLength.Star), new ColumnDefinition(GridLength.Auto)],
+            ColumnSpacing = 6,
+        };
+        row.Add(_footer);
+        row.Add(button, 1);
+
+        var block = new Grid
+        {
+            RowDefinitions = [new RowDefinition(GridLength.Auto), new RowDefinition(GridLength.Auto)],
+            RowSpacing = 8,
+        };
+        block.Add(new BoxView { Style = Resource<Style>("DividerLine") });
+        block.Add(row, 0, 1);
+        return block;
+    }
+
+    /// <summary>
+    /// Opens the fuller explanation. This card is realised by a <c>DataTemplate</c> inside the
+    /// carousel, so there is no page to hand an event to the way the hand-built cards do — it
+    /// resolves the popup service the same way <see cref="Services.ResumeRefresh"/> resolves its
+    /// notifier.
+    /// </summary>
+    private async void ShowExplanation()
+    {
+        if (_trend is null || string.IsNullOrEmpty(_explanation))
+            return;
+
+        try
+        {
+            await Services.ServiceHelper.GetRequiredService<Services.IPopupService>()
+                .ShowInfoAsync(_explanation, _trend.Name);
+        }
+        catch (Exception)
+        {
+            // async void, reached from a gesture: an explanation that will not open is not worth
+            // taking the app down for.
+        }
     }
 
     private static HorizontalStackLayout BuildLegendEntry(TrendLegendSwatch swatch, Label key)

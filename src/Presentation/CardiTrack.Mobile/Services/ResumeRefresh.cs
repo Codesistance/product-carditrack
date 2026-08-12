@@ -1,5 +1,3 @@
-using Microsoft.Extensions.Logging;
-
 namespace CardiTrack.Mobile.Services;
 
 /// <summary>
@@ -28,7 +26,7 @@ internal static class ResumeRefresh
 
         async void OnResumed(object? sender, EventArgs e)
         {
-            if (!IsOnScreen(page))
+            if (!ScreenRefresh.IsOnScreen(page))
                 return;
 
             try
@@ -39,7 +37,7 @@ internal static class ResumeRefresh
             {
                 // async void, reached from an event: nothing above this can catch it, and a
                 // refresh nobody asked for must not be the thing that kills the app.
-                LogFailure(ex, page);
+                ScreenRefresh.LogFailure(ex, page, "after the app resumed");
             }
         }
 
@@ -52,33 +50,5 @@ internal static class ResumeRefresh
             notifier.Resumed += OnResumed;
         };
         page.Unloaded += (_, _) => notifier.Resumed -= OnResumed;
-    }
-
-    /// <summary>
-    /// True only for the page actually being looked at. Shell keeps the pages of visited tabs
-    /// alive, so without this one resume would refresh every tab the caregiver has ever opened.
-    /// </summary>
-    private static bool IsOnScreen(Page page) =>
-        page.Window is not null
-        && Shell.Current is { } shell
-        && shell.CurrentPage == page
-        // A modal — a popup, or the connect-device wizard — owns the screen while it is up, and
-        // the wizard's own completion path reloads whatever is underneath. Read from the page's
-        // navigation, which is where PopupService and WizardLauncher push them, and what
-        // App and AppPopupPage already read the modal stack from.
-        && page.Navigation.ModalStack.Count == 0;
-
-    private static void LogFailure(Exception ex, Page page)
-    {
-        try
-        {
-            ServiceHelper.GetRequiredService<ILoggerFactory>()
-                .CreateLogger(typeof(ResumeRefresh))
-                .LogWarning(ex, "Refreshing {Page} after the app resumed failed", page.GetType().Name);
-        }
-        catch
-        {
-            // Nothing left to report it with.
-        }
     }
 }

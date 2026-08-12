@@ -15,6 +15,13 @@ public partial class DashboardPage : ContentPage
     private const string VerifyEmailDismissedKey = "VerifyEmailNudgeDismissed";
     private const string DismissedSleepAlertKey = "DismissedSleepAlertId";
     private static readonly TimeSpan StaleThreshold = TimeSpan.FromHours(2);
+
+    /// <summary>
+    /// How often the dashboard reloads itself while the caregiver is looking at it, and — the
+    /// original meaning — how recent a load has to be for re-entering the tab to skip one. Five
+    /// minutes because the server collects from the wearable every ten: asking more often than the
+    /// data can change spends battery and quota to redraw the same numbers.
+    /// </summary>
     private static readonly TimeSpan AutoRefreshInterval = TimeSpan.FromMinutes(5);
     private const double UnavailableActionOpacity = 0.4;
 
@@ -41,16 +48,12 @@ public partial class DashboardPage : ContentPage
         Header.RefreshRequested += OnRefreshClicked;
         Header.BellTapped += OnBellClicked;
 
-        // The tiles raise their "i" rather than opening a dialog themselves — the popup service is
-        // the page's, and six grid cells each holding their own route into it is six places for the
-        // app's dialogs to diverge.
-        foreach (var card in new[]
-                 { StepsCard, HeartRateCard, SleepCard, TemperatureCard, SpO2Card, BreathingRateCard })
-        {
-            card.ExplanationRequested += OnMetricExplanationRequested;
-        }
+        this.RefreshWhenAppResumes(RefreshUnattendedAsync);
 
-        this.RefreshWhenAppResumes(RefreshOnResumeAsync);
+        // A monitoring screen left open has to keep itself current. Until this, every refresh in
+        // the app was edge-triggered — a caregiver watching the dashboard saw nothing move until
+        // they pulled it down themselves.
+        this.RefreshEvery(AutoRefreshInterval, RefreshUnattendedAsync);
     }
 
     protected override void OnAppearing()
@@ -147,19 +150,19 @@ public partial class DashboardPage : ContentPage
     private void OnRefreshClicked(object? sender, EventArgs e) => _ = SyncAndReloadAsync();
 
     /// <summary>
-    /// The app returning to the foreground reloads the dashboard, ignoring
-    /// <see cref="AutoRefreshInterval"/> — that window exists to stop tab-switching from
-    /// re-fetching, and honouring it here would hold back the very update the caregiver came
-    /// back to see.
+    /// The quiet reload behind both unattended paths — the app returning to the foreground, and
+    /// the timer ticking while the caregiver watches. Neither honours
+    /// <see cref="AutoRefreshInterval"/> as a gate: for a resume that window would hold back the
+    /// very update they came back to see, and for the timer that window *is* the tick.
     /// </summary>
     /// <remarks>
     /// A read, not a device sync: WearableSyncWorker has been pulling from the wearable every
-    /// ten minutes while the app was away, so what is missing on screen is the fetch, not the
-    /// collection. Asking the server to check in with the device on every foreground would also
-    /// earn the "too soon since the last check" refusal, and with it a popup for something
-    /// nobody asked for.
+    /// ten minutes anyway, so what is missing on screen is the fetch, not the collection. Asking
+    /// the server to check in with the device on every foreground or tick would also earn the
+    /// "too soon since the last check" refusal, and with it a popup for something nobody asked
+    /// for. Only a deliberate pull or the refresh button syncs the device.
     /// </remarks>
-    private Task RefreshOnResumeAsync() =>
+    private Task RefreshUnattendedAsync() =>
         DateTime.UtcNow - _lastLoadedUtc < ResumeRefresh.MinimumGap
             ? Task.CompletedTask
             : LoadAsync(force: false);
@@ -542,14 +545,6 @@ public partial class DashboardPage : ContentPage
         }
     }
 
-    /// <summary>
-    /// The fuller answer to "what am I looking at?" behind a metric tile's "i" — what the dashed
-    /// rule and the shaded band on that tile actually are. Informational, so it takes the plain
-    /// info popup rather than a warning treatment.
-    /// </summary>
-    private async void OnMetricExplanationRequested(object? sender, MetricExplanation explanation) =>
-        await _popups.ShowInfoAsync(explanation.Message, explanation.Title);
-
     private void OnViewDetailsTapped(object? sender, EventArgs e) => OpenMemberDetails();
 
     /// <summary>
@@ -648,25 +643,35 @@ public partial class DashboardPage : ContentPage
     }
 
     /// <summary>
-    /// A live, empathetic replacement for the hero card's static status line. Best-effort: no
-    /// spinner, no error state — the static copy <see cref="Apply"/> already rendered is a
-    /// complete, correct fallback on its own, so a failed or slow call just leaves it as is.
+    /// A live, empathetic replacement for the hero card's static status line. Best-effort: the
+    /// static copy <see cref="Apply"/> already rendered is a complete, correct fallback, and every
+    /// path that does not produce a live line puts it back.
     /// </summary>
     private async Task LoadCurrentStatusAsync(DashboardResponse data)
     {
-        // Nothing to say yet for either — no real signal to interpret, and the fixed copy for
-        // both is already appropriate.
+        // Neither tier calls the model: a paused member has no reading to interpret, and one with
+        // no baseline yet already shows the day's own numbers. Returning here is what keeps them
+        // off the loading line below, which they would otherwise never leave.
         if (data.HealthStatus is "unknown" or "paused")
             return;
+
+        // Say so, rather than showing the per-tier copy as though it were the answer and then
+        // swapping it out under the reader a few seconds later.
+        HeroCard.ShowStatusLoading();
 
         try
         {
             var status = await _api.GetCurrentStatusAsync(data.CardiMemberId);
             if (status.Message is { } message)
                 HeroCard.ApplyDynamicMessage(status.Headline, message, data.HealthStatus);
+            else
+                HeroCard.Apply(data);  // Nothing to say after all — back to the tier's own copy.
         }
         catch (ApiException)
         {
+            // Put the static copy back: the card is showing "Loading", and leaving it there would
+            // turn a failed side-call into a screen that never resolves.
+            HeroCard.Apply(data);
             // Static per-tier copy stays. Nothing to show the caregiver about this failure —
             // it isn't actionable and isn't worth interrupting them for.
         }

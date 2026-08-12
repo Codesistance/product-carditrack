@@ -1,7 +1,6 @@
 <?xml version="1.0" encoding="utf-8" ?>
 <ContentView xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
-             xmlns:controls="clr-namespace:CardiTrack.Mobile.Controls"
              x:Class="CardiTrack.Mobile.Controls.MetricCard">
 
     <!-- Figma 101:2807 / 101:2821 / 101:2835, adapted for the half-width Key Metrics grid:
@@ -9,148 +8,75 @@
          stacks icon+name, then value, then the accessory underneath instead of beside it. -->
     <!-- Outlined, not elevated: these tiles sit inside the CardiMember card, and a shadow on a
          surface that is already raised reads as tacky rather than as depth. -->
-    <!-- The floor is for the sparsest tile — one with no pill, no stars and no bar would otherwise
-         collapse to a height where the baseline strip is the only thing with room to breathe. Two
-         tiles in the same grid row already match each other's height without it; this is what stops
-         one *row* from being visibly shorter than the next. -->
-    <Border Style="{StaticResource OutlinedCard}"
-            Padding="12,14"
-            MinimumHeightRequest="220">
+    <Border Style="{StaticResource OutlinedCard}" Padding="12,14">
+        <VerticalStackLayout Spacing="10">
 
-        <!-- Auto/*/Auto so the footer sits on the bottom edge whatever the card above it carries:
-             the explanation is the one part every tile has, and a footer floating at a different
-             height on each tile would read as six different cards rather than one card six times. -->
-        <Grid RowDefinitions="Auto,*,Auto" RowSpacing="10">
-
-            <VerticalStackLayout Grid.Row="0" Spacing="10">
-
-                <HorizontalStackLayout Spacing="8">
-                    <Border Style="{StaticResource IconTile}"
-                            BackgroundColor="{StaticResource MetricTileTint}"
-                            WidthRequest="36" HeightRequest="36">
-                        <Image x:Name="MetricIcon"
-                               WidthRequest="22" HeightRequest="22"/>
-                    </Border>
-                    <Label x:Name="NameLabel"
-                           Style="{StaticResource MetricRowLabel}"
-                           VerticalOptions="Center"
-                           LineBreakMode="TailTruncation"/>
-                </HorizontalStackLayout>
-
-                <Label x:Name="ValueLabel"
-                       Style="{StaticResource Heading3}"
+            <HorizontalStackLayout Spacing="8">
+                <Border Style="{StaticResource IconTile}"
+                        BackgroundColor="{StaticResource MetricTileTint}"
+                        WidthRequest="36" HeightRequest="36">
+                    <Image x:Name="MetricIcon"
+                           WidthRequest="22" HeightRequest="22"/>
+                </Border>
+                <Label x:Name="NameLabel"
+                       Style="{StaticResource MetricRowLabel}"
+                       VerticalOptions="Center"
                        LineBreakMode="TailTruncation"/>
+            </HorizontalStackLayout>
 
-                <!-- Accessory slot. The trend arrow and the status pill are alternatives — a card
-                     shows one or the other — but the star row sits under whichever it got: the pill
-                     names the band, the stars give its resolution, both off the same comparison. -->
-                <VerticalStackLayout Spacing="3">
-                    <Label x:Name="TrendLabel"
-                           IsVisible="False"
-                           FontFamily="QuicksandSemiBold"
-                           FontSize="14"/>
+            <Label x:Name="ValueLabel"
+                   Style="{StaticResource Heading3}"
+                   LineBreakMode="TailTruncation"/>
 
-                    <Border x:Name="StatusPillBorder"
-                            IsVisible="False"
-                            Style="{StaticResource StatusPill}"
-                            HorizontalOptions="Start">
-                        <Label x:Name="StatusPillLabel"
-                               Style="{StaticResource StatusPillText}"/>
-                    </Border>
+            <!-- Accessory slot. The trend arrow and the status pill are alternatives — a card
+                 shows one or the other — but the star row sits under whichever it got: the pill
+                 names the band, the stars give its resolution, both off the same comparison. -->
+            <VerticalStackLayout Spacing="3">
+                <Label x:Name="TrendLabel"
+                       IsVisible="False"
+                       FontFamily="QuicksandSemiBold"
+                       FontSize="14"/>
 
-                    <HorizontalStackLayout x:Name="StarRow"
-                                           IsVisible="False"
-                                           Spacing="3"/>
-
-                    <Label x:Name="CaptionLabel"
-                           Style="{StaticResource MetricRowCaption}"/>
-                </VerticalStackLayout>
-
-                <!-- Progress track. Only activity has a real denominator (the daily step goal), so
-                     only activity draws a bar — a bar on heart rate or sleep would need a
-                     percentage the contract does not carry, and inventing one on a health screen
-                     is exactly the sort of implied reading the product must not make. -->
-                <Border x:Name="ProgressTrackBorder"
+                <Border x:Name="StatusPillBorder"
                         IsVisible="False"
-                        HeightRequest="7"
-                        BackgroundColor="{StaticResource ProgressTrack}"
-                        StrokeThickness="0"
-                        Padding="0">
-                    <Border.StrokeShape>
-                        <RoundRectangle CornerRadius="12"/>
-                    </Border.StrokeShape>
-                    <Grid x:Name="ProgressGrid" ColumnDefinitions="0*,1*">
-                        <Border Grid.Column="0"
-                                Background="{StaticResource GradientButtonBrush}"
-                                StrokeThickness="0">
-                            <Border.StrokeShape>
-                                <RoundRectangle CornerRadius="12"/>
-                            </Border.StrokeShape>
-                        </Border>
-                    </Grid>
+                        Style="{StaticResource StatusPill}"
+                        HorizontalOptions="Start">
+                    <Label x:Name="StatusPillLabel"
+                           Style="{StaticResource StatusPillText}"/>
                 </Border>
 
+                <HorizontalStackLayout x:Name="StarRow"
+                                       IsVisible="False"
+                                       Spacing="3"/>
+
+                <Label x:Name="CaptionLabel"
+                       Style="{StaticResource MetricRowCaption}"/>
             </VerticalStackLayout>
 
-            <!-- Where the reading sits against this member's own baseline and the published range.
-                 Pinned to the bottom of the slack row so it stays adjacent to the footer that
-                 explains it rather than drifting up under a short accessory block. -->
-            <VerticalStackLayout x:Name="BaselineBlock"
-                                 Grid.Row="1"
-                                 Spacing="5"
-                                 VerticalOptions="End">
-                <controls:BaselineStrip x:Name="Strip"/>
-                <HorizontalStackLayout x:Name="BaselineLegend" Spacing="6">
-                    <Label x:Name="BaselineKeyLabel"
-                           Style="{StaticResource MetricRowCaption}"
-                           HorizontalTextAlignment="Start"
-                           LineBreakMode="TailTruncation"/>
-                </HorizontalStackLayout>
-            </VerticalStackLayout>
-
-            <!-- The bottom explainer. A hairline rather than more whitespace: it marks the line
-                 between what this member's numbers are and what they are being read against, which
-                 is the distinction the whole tile turns on. -->
-            <VerticalStackLayout Grid.Row="2" Spacing="8">
-                <BoxView Style="{StaticResource DividerLine}"/>
-                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
-                    <Label x:Name="FooterLabel"
-                           Grid.Column="0"
-                           FontFamily="Quicksand"
-                           FontSize="11"
-                           TextColor="{StaticResource MutedText}"
-                           LineBreakMode="WordWrap"
-                           VerticalOptions="Center"/>
-
-                    <!-- The gesture sits on the padded wrapper, not the 22dp disc: hit-testing
-                         follows visual bounds, so the padding is what makes this a tap target an
-                         older thumb can actually land on. -->
-                    <Grid x:Name="ExplainButton"
-                          Grid.Column="1"
-                          Padding="10,6,0,6"
-                          VerticalOptions="Center"
-                          SemanticProperties.Description="What does this mean?"
-                          SemanticProperties.Hint="Explains what this reading is compared against">
-                        <Grid.GestureRecognizers>
-                            <TapGestureRecognizer Tapped="OnExplainTapped"/>
-                        </Grid.GestureRecognizers>
-                        <Border WidthRequest="22" HeightRequest="22"
-                                StrokeThickness="0"
-                                BackgroundColor="{StaticResource SelectedOptionBackground}">
-                            <Border.StrokeShape>
-                                <RoundRectangle CornerRadius="11"/>
-                            </Border.StrokeShape>
-                            <Label Text="i"
-                                   FontFamily="QuicksandSemiBold"
-                                   FontSize="13"
-                                   TextColor="{StaticResource Primary}"
-                                   HorizontalOptions="Center"
-                                   VerticalOptions="Center"/>
-                        </Border>
-                    </Grid>
+            <!-- Progress track. Only activity has a real denominator (the daily step goal), so
+                 only activity draws a bar — a bar on heart rate or sleep would need a
+                 percentage the contract does not carry, and inventing one on a health screen
+                 is exactly the sort of implied reading the product must not make. -->
+            <Border x:Name="ProgressTrackBorder"
+                    IsVisible="False"
+                    HeightRequest="7"
+                    BackgroundColor="{StaticResource ProgressTrack}"
+                    StrokeThickness="0"
+                    Padding="0">
+                <Border.StrokeShape>
+                    <RoundRectangle CornerRadius="12"/>
+                </Border.StrokeShape>
+                <Grid x:Name="ProgressGrid" ColumnDefinitions="0*,1*">
+                    <Border Grid.Column="0"
+                            Background="{StaticResource GradientButtonBrush}"
+                            StrokeThickness="0">
+                        <Border.StrokeShape>
+                            <RoundRectangle CornerRadius="12"/>
+                        </Border.StrokeShape>
+                    </Border>
                 </Grid>
-            </VerticalStackLayout>
+            </Border>
 
-        </Grid>
+        </VerticalStackLayout>
     </Border>
 </ContentView>

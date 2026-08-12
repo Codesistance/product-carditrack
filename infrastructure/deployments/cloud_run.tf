@@ -117,6 +117,12 @@ variable "worker_cloud_run_memory" {
   default     = null
 }
 
+variable "worker_min_instances" {
+  description = "Warm instances for the Worker. Must be at least 1 in any environment whose scheduled jobs are expected to run — the Worker's crons live in an in-process timer loop, so an instance that is scaled to zero runs no jobs at all. Set to 0 only to deliberately park the Worker."
+  type        = number
+  default     = 1
+}
+
 variable "cloud_run_min_instances" {
   description = "Minimum number of Cloud Run instances"
   type        = number
@@ -523,11 +529,20 @@ resource "google_cloud_run_v2_service" "worker" {
         mount_path = "/cloudsql"
       }
 
+      # cpu_idle = false, unlike every other service here. The Worker is not a request handler:
+      # its whole job is CronBackgroundService's timer loop (wearable sync, baselines, statistical
+      # alerts, inactivity detection, notification dispatch). Cloud Run's default request-based
+      # CPU allocation throttles an instance to near-zero between requests, and nothing ever sends
+      # this service one — so the loop was being starved and the crons simply did not fire. That
+      # is the shared root cause behind alerts never arriving, push never being delivered, and
+      # baselines never being computed: not one of those jobs was running.
       resources {
         limits = {
           cpu    = var.cloud_run_cpu
           memory = coalesce(var.worker_cloud_run_memory, var.cloud_run_memory)
         }
+        cpu_idle          = false
+        startup_cpu_boost = true
       }
 
       # Explicit, not the GCP default (tcp_socket, 240s timeout, failure_threshold 1 — a single
@@ -545,9 +560,14 @@ resource "google_cloud_run_v2_service" "worker" {
       }
     }
 
+    # Deliberately not cloud_run_min_instances, which is 0 outside prod: a scheduled worker with
+    # no warm instance has nowhere to run its schedule, and in dev the instance was being reclaimed
+    # and taking every cron with it. One always-on instance is what makes this a worker rather than
+    # an idle deployment. Max is pinned alongside it — CronBackgroundService holds its schedule in
+    # process with no leader election, so a second instance would run every job a second time.
     scaling {
-      min_instance_count = var.cloud_run_min_instances
-      max_instance_count = var.cloud_run_max_instances
+      min_instance_count = var.worker_min_instances
+      max_instance_count = 1
     }
   }
 

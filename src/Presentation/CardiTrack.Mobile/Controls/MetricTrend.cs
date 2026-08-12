@@ -18,9 +18,11 @@ public sealed class MetricTrend : INotifyPropertyChanged
     private int _days;
 
     public MetricTrend(
-        string iconSource, string name, string valueFormat, string axisFormat, DashboardMetric metric, int days)
+        string iconSource, string inkKey, string name, string valueFormat, string axisFormat,
+        DashboardMetric metric, int days)
     {
         IconSource = iconSource;
+        InkKey = inkKey;
         Name = name;
         AxisFormat = axisFormat;
         Metric = metric;
@@ -31,6 +33,14 @@ public sealed class MetricTrend : INotifyPropertyChanged
     public event PropertyChangedEventHandler? PropertyChanged;
 
     public string IconSource { get; }
+
+    /// <summary>
+    /// Resource key for this metric's own colour — the stroke of the glyph in
+    /// <see cref="IconSource"/>. The chart draws its line in it, so the line and the icon above it
+    /// are one colour rather than two that happen to share a card.
+    /// </summary>
+    public string InkKey { get; }
+
     public string Name { get; }
 
     /// <summary>The latest reading, already formatted with its unit ("72 bpm").</summary>
