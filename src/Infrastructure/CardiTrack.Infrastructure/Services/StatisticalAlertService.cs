@@ -100,25 +100,17 @@ public class StatisticalAlertService : IStatisticalAlertService
             StatisticalAlertRules.LongTermTrend(logsByDate, yesterday),
         }.OfType<StatisticalAlertCandidate>().ToList();
 
-        var existing = (await _unitOfWork.Alerts.GetByCardiMemberAsync(memberId, activeOnly: true)).ToList();
-
-        // A rule that had its say today and did not trip is that rule's episode ending. Closing it
-        // re-arms the cooldown below — nothing else in the system resolves an alert, so without
-        // this each rule would fire once per member and then suppress itself for good. Scoped to
-        // rules this pass actually evaluated: a member whose baseline is missing returns above,
-        // and their standing alerts are left alone rather than closed on no evidence.
-        var firedRules = candidates.Select(c => c.Rule).ToHashSet(StringComparer.Ordinal);
-        var quietRules = StatisticalAlertRules.AllRules.Where(r => !firedRules.Contains(r)).ToList();
-        if (AlertResolution.Resolve(
-                existing,
-                a => quietRules.Any(rule => AlertRuleMarkers.HasRule(a, rule)),
-                DateTime.UtcNow) > 0)
-        {
-            await _unitOfWork.SaveChangesAsync();
-        }
-
+        // NOTE: this engine's alerts are not auto-resolved, and so still latch — see
+        // AlertResolution for what that costs. Closing them needs each rule to say whether it was
+        // able to judge at all: every rule here returns null both when it did not trip and when
+        // its inputs were missing (no reading for yesterday, too few days for the trend), and
+        // treating the second as "the episode has passed" would resolve a standing alert on a day
+        // that produced no evidence either way. On a health screen that is the wrong failure —
+        // better a rule that stays latched than one that quietly stands down in the dark.
         if (candidates.Count == 0)
             return 0;
+
+        var existing = (await _unitOfWork.Alerts.GetByCardiMemberAsync(memberId, activeOnly: true)).ToList();
 
         var created = new List<Alert>();
         foreach (var candidate in candidates)

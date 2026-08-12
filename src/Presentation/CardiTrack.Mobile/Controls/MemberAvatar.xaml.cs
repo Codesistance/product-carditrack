@@ -19,7 +19,16 @@ public partial class MemberAvatar : ContentView
     public double BoxWidth
     {
         get => Frame.WidthRequest;
-        set => Frame.WidthRequest = value;
+        set
+        {
+            Frame.WidthRequest = value;
+
+            // The box is square unless it has been told to stretch. Setting width alone would
+            // otherwise leave the old height behind it, and the caller would get an oblong from
+            // what reads like a single size knob.
+            if (!Stretch)
+                Frame.HeightRequest = value;
+        }
     }
 
     /// <summary>

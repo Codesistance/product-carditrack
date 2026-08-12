@@ -33,20 +33,6 @@ public static class StatisticalAlertRules
     public const string NoMorningActivityRule = "no_morning_activity";
     public const string LongTermTrendRule = "long_term_trend";
 
-    /// <summary>
-    /// Every rule this engine can raise. Kept beside the constants so a new rule added above and
-    /// forgotten here is a one-line omission rather than a silent gap — a rule missing from this
-    /// list would never have its alerts resolved, and would therefore fire once and latch shut.
-    /// </summary>
-    public static readonly IReadOnlyList<string> AllRules =
-    [
-        ActivityDeclineRule,
-        IrregularSleepRule,
-        ElevatedHeartRateRule,
-        NoMorningActivityRule,
-        LongTermTrendRule,
-    ];
-
     /// <summary>Medium sensitivity: a reading more than 30% off its baseline is worth a word.</summary>
     public const double DeviationFraction = 0.30;
 
