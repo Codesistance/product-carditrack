@@ -19,6 +19,7 @@ public partial class MetricCard : ContentView
         ValueLabel.Text = metric.Value is { } v ? $"{v:N0} steps" : "—";
 
         ApplyTrend(metric, higherIsBetter: true);
+        ApplyStars(metric.QualityScore);
 
         if (metric is { Value: { } value, Goal: > 0 })
         {
@@ -42,6 +43,7 @@ public partial class MetricCard : ContentView
         ValueLabel.Text = metric.Value is { } v ? $"{v:N0} bpm" : "—";
 
         ApplyStatusPill(metric.Status);
+        ApplyStars(metric.QualityScore);
         CaptionLabel.Text = metric is { RangeLow: { } low, RangeHigh: { } high }
             ? $"{low}-{high} bpm typical"
             : "Resting heart rate";
@@ -70,6 +72,7 @@ public partial class MetricCard : ContentView
         ValueLabel.Text = metric.Value is { } v ? $"{v:0.#}°C" : "—";
 
         ApplyStatusPill(metric.Status);
+        ApplyStars(metric.QualityScore);
         CaptionLabel.Text = metric.Baseline is not null ? "vs. own nightly baseline" : "Nightly reading";
     }
 
@@ -79,9 +82,10 @@ public partial class MetricCard : ContentView
         NameLabel.Text = "Blood Oxygen";
         ValueLabel.Text = metric.Value is { } v ? $"{v:0.#}%" : "—";
 
-        // No baseline exists for this metric yet, so Status is always "unknown" and the pill
-        // stays hidden — a bare reading, not a trend judgement.
+        // No baseline exists for this metric yet, so Status is always "unknown" and QualityScore
+        // always null — pill and stars both stay hidden. A bare reading, not a judgement.
         ApplyStatusPill(metric.Status);
+        ApplyStars(metric.QualityScore);
         CaptionLabel.Text = "SpO2";
     }
 
@@ -93,6 +97,7 @@ public partial class MetricCard : ContentView
 
         // No baseline exists for this metric yet, same as SpO2 — a bare reading, not a trend.
         ApplyStatusPill(metric.Status);
+        ApplyStars(metric.QualityScore);
         CaptionLabel.Text = "Breaths per minute";
     }
 
@@ -148,8 +153,11 @@ public partial class MetricCard : ContentView
     }
 
     /// <summary>
-    /// Sleep's accessory. Unearned stars are dimmed rather than swapped for an outline asset —
-    /// the icon set is hand-authored and has no outline star yet.
+    /// Every card's rating of its reading against the member's own normal, out of five (the API's
+    /// <see cref="DashboardMetric.QualityScore"/>). Hidden entirely when the metric has no
+    /// comparison to make, so an unrated card shows no row rather than an empty one. Unearned
+    /// stars are dimmed rather than swapped for an outline asset — the icon set is hand-authored
+    /// and has no outline star yet.
     /// </summary>
     private void ApplyStars(int? qualityScore)
     {
@@ -157,20 +165,29 @@ public partial class MetricCard : ContentView
         if (qualityScore is not { } score)
         {
             StarRow.IsVisible = false;
+            AutomationProperties.SetIsInAccessibleTree(StarRow, false);
             return;
         }
 
         var filled = Math.Clamp(score, 0, StarCount);
         for (var i = 0; i < StarCount; i++)
         {
-            StarRow.Add(new Image
+            var star = new Image
             {
                 Source = "icon_star.svg",
                 WidthRequest = 15,
                 HeightRequest = 15,
                 Opacity = i < filled ? 1 : DimmedStarOpacity,
-            });
+            };
+            // Individually meaningless: the stars differ only by opacity, which no screen reader
+            // conveys, so five identical "image" stops would be walked for one value. The row
+            // below speaks for all of them.
+            AutomationProperties.SetIsInAccessibleTree(star, false);
+            StarRow.Add(star);
         }
+
+        SemanticProperties.SetDescription(StarRow, $"{NameLabel.Text}: {filled} out of {StarCount}");
+        AutomationProperties.SetIsInAccessibleTree(StarRow, true);
         StarRow.IsVisible = true;
     }
 

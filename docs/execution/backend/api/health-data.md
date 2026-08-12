@@ -59,7 +59,7 @@ Wrapped in the standard `ApiResponse<T>` envelope:
       "goal": 5000,
       "rangeLow": null,
       "rangeHigh": null,
-      "qualityScore": null,
+      "qualityScore": 2,
       "series": [
         { "date": "2026-08-01", "value": 4800 },
         { "date": "2026-08-07", "value": 2500 }
@@ -74,7 +74,7 @@ Wrapped in the standard `ApiResponse<T>` envelope:
       "goal": null,
       "rangeLow": 61,
       "rangeHigh": 69,
-      "qualityScore": null,
+      "qualityScore": 5,
       "series": [ { "date": "2026-08-07", "value": 68 } ]
     },
     "sleep": {
@@ -114,7 +114,7 @@ Field notes:
 - Each metric carries a 7-day `series` of `{date, value}` points ending **today** (missing days → `value: null`).
 - `device.connectionStatus` is the internal enum name (`Connected`, `TokenExpired`, …) — unlike the lowercase statuses in [devices.md](devices.md).
 - `recentAlerts` holds the **5 most recent** active alerts; `unreadAlertCount` counts unresolved, unacknowledged alerts.
-- `goal` on steps defaults to the baseline average (or 10 000 when no baseline); `rangeLow`/`rangeHigh` are heart-rate mean ± one standard deviation; `qualityScore` is a 1–5 sleep-efficiency bucket.
+- `goal` on steps defaults to the baseline average (or 10 000 when no baseline); `rangeLow`/`rangeHigh` are heart-rate mean ± one standard deviation; `qualityScore` is the 1–5 star rating described below.
 
 **Health Status Values** (`healthStatus` and per-metric `status` — lowercase strings):
 
@@ -132,6 +132,19 @@ Field notes:
 - Per-metric status: deviation from baseline **≤ 30%** → `green`, **> 30%** → `yellow`, **> 50%** → `orange`. (`red` comes only from alert severity, not metric deviation.)
 - `steps` reports `changePercent: null` and `status: "unknown"` while its value covers **today**. Steps accumulate through the day, so scoring a part-finished day against a whole-day average would report every member as collapsing every morning; the `goal` carries the partial day instead. `restingHeartRate` and `sleep` are daily summary values rather than running totals, so a today reading is a whole reading and stays comparable.
 - The member-level `healthStatus` is the worst unresolved alert severity, else `green` (or `unknown` while learning / no data).
+
+**`qualityScore` — the 1–5 star rating** (rendered as the star row on each Key Metrics card):
+
+| Metric | Rated on | `null` when |
+|--------|----------|-------------|
+| `steps` | Shortfall against the baseline average. Beating it is **not** marked down — 5 stars at or above normal | The day is still in progress, or no baseline exists |
+| `restingHeartRate` | Deviation from baseline, **both directions** — unusually low counts as much as unusually high | No baseline exists |
+| `sleep` | Sleep efficiency (≥ 90 → 5, ≥ 80 → 4, ≥ 70 → 3, ≥ 60 → 2, else 1); falls back to the **shortfall in duration** against baseline when the device reports no efficiency | Neither an efficiency nor a sleep baseline exists |
+| `temperature` | Distance from the device's own nightly baseline in units of its nightly variation: ≤ 0.5σ → 5, ≤ 1σ → 4, ≤ 1.5σ → 3, ≤ 2σ → 2, else 1 | The device reports no baseline/variation |
+| `spO2`, `breathingRate` | — always `null` | Always: no baseline concept exists for these yet, and rating them would mean inventing a normal |
+
+- The deviation bands (`≤ 5%` → 5, `≤ 15%` → 4, `≤ 30%` → 3, `≤ 50%` → 2, else 1) **nest inside** the status thresholds above, so the rating and the status on a card can never contradict each other: 3–5 stars is `green`, 2 is `yellow`, 1 is `orange`.
+- A `null` score means "not rated", not "rated zero" — clients hide the star row entirely rather than showing five empty stars.
 
 ### Errors
 

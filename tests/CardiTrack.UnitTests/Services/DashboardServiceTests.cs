@@ -271,10 +271,13 @@ public class DashboardServiceTests
         Assert.Equal(-15m, metrics.Steps.ChangePercent);
         Assert.Equal("green", metrics.Steps.Status);
         Assert.Equal(5000m, metrics.Steps.Goal);
+        // Every rated card carries its star rating out to the client, not just sleep.
+        Assert.Equal(4, metrics.Steps.QualityScore);
 
         Assert.Equal(72m, metrics.RestingHeartRate.Value);
         Assert.Equal(67, metrics.RestingHeartRate.RangeLow);
         Assert.Equal(74, metrics.RestingHeartRate.RangeHigh);
+        Assert.Equal(5, metrics.RestingHeartRate.QualityScore);
 
         Assert.Equal(7.2m, metrics.Sleep.Value);
         Assert.Equal(4, metrics.Sleep.QualityScore);
