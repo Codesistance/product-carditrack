@@ -16,12 +16,6 @@ public partial class DashboardPage : ContentPage
     private const string DismissedSleepAlertKey = "DismissedSleepAlertId";
     private static readonly TimeSpan StaleThreshold = TimeSpan.FromHours(2);
 
-    /// <summary>
-    /// How recent a load has to be for re-entering the tab to skip one. Separate from
-    /// <see cref="PeriodicRefresh.LiveDataInterval"/>, which these two used to share: the tick is
-    /// now short enough that reusing it here would refetch on every tab switch.
-    /// </summary>
-    private static readonly TimeSpan ReentryFreshness = TimeSpan.FromMinutes(2);
     private const double UnavailableActionOpacity = 0.4;
 
     private readonly ICardiTrackApiClient _api;
@@ -60,8 +54,15 @@ public partial class DashboardPage : ContentPage
         base.OnAppearing();
         UpdateGreeting();
         UpdateVerifyEmailBanner();
-        if (_lastData is null || DateTime.UtcNow - _lastLoadedUtc > ReentryFreshness)
-            _ = LoadAsync(force: false);
+
+        // Arriving on the screen is a pull, like the tick and the resume. This used to skip the
+        // load when the last one was under a couple of minutes old, which meant a caregiver who
+        // came here deliberately — the one moment they are certainly asking "how are they now?" —
+        // could be shown a screen up to two minutes stale and no request in flight. The only gate
+        // left is the shared MinimumGap floor, which exists to stop a load that has just run being
+        // repeated: Android raises OnAppearing again on its way back to the foreground, where iOS
+        // does not, so without it a resume would fetch twice on one platform and once on the other.
+        _ = RefreshUnattendedAsync();
     }
 
     // Soft email-verification capture: nudge only, never a gate. Claim comes from the
@@ -149,10 +150,10 @@ public partial class DashboardPage : ContentPage
     private void OnRefreshClicked(object? sender, EventArgs e) => _ = SyncAndReloadAsync();
 
     /// <summary>
-    /// The quiet reload behind both unattended paths — the app returning to the foreground, and
-    /// the timer ticking while the caregiver watches. Neither honours
-    /// <see cref="ReentryFreshness"/> as a gate: for a resume that window would hold back the
-    /// very update they came back to see, and for the timer that window is longer than the tick.
+    /// The quiet reload behind all three unattended paths — arriving on the screen, the app
+    /// returning to the foreground, and the timer ticking while the caregiver watches. All three
+    /// share one floor, <see cref="ResumeRefresh.MinimumGap"/>, and nothing else: any longer
+    /// window would hold back the very update the caregiver came to see.
     /// </summary>
     /// <remarks>
     /// A read, not a device sync: the server has been collecting from the wearable on its own —

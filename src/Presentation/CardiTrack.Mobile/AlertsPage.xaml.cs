@@ -10,13 +10,6 @@ namespace CardiTrack.Mobile;
 public partial class AlertsPage : ContentPage
 {
     /// <summary>
-    /// How recent a load has to be for re-entering the tab to skip one. Not the tick interval —
-    /// that is <see cref="PeriodicRefresh.LiveDataInterval"/>, and reusing it here would refetch
-    /// on every tab switch.
-    /// </summary>
-    private static readonly TimeSpan ReentryFreshness = TimeSpan.FromMinutes(2);
-
-    /// <summary>
     /// Gap above the empty card, matching Figma. Two values because the card sits at the same
     /// y in both frames while the chip row above it is only present in one.
     /// </summary>
@@ -52,16 +45,20 @@ public partial class AlertsPage : ContentPage
     protected override void OnAppearing()
     {
         base.OnAppearing();
-        if (_lastData is null || DateTime.UtcNow - _lastLoadedUtc > ReentryFreshness)
-            _ = LoadAsync();
+
+        // Opening the list is a pull. It used to skip the load for two minutes after the last
+        // one — on the screen whose whole job is telling a caregiver what has been raised.
+        _ = RefreshUnattendedAsync();
     }
 
     /// <summary>
-    /// The app returning to the foreground reloads the list, and so does the timer above, both
-    /// ignoring <see cref="ReentryFreshness"/>: a caregiver reopening the app on this screen is asking
-    /// what has been raised since they left, and an alert list is the worst thing to serve stale.
-    /// Silent, because they did not ask for this one — a refresh that fails leaves the alerts
-    /// already on screen alone rather than opening a dialog over them.
+    /// The quiet reload behind all three unattended paths — arriving on the screen, the app
+    /// returning to the foreground, and the timer above. A caregiver opening this screen is asking
+    /// what has been raised since they last looked, and an alert list is the worst thing to serve
+    /// stale, so the only gate is <see cref="ResumeRefresh.MinimumGap"/>, which just stops a load
+    /// that has already run being repeated. Silent, because they did not ask for this one — a
+    /// refresh that fails leaves the alerts already on screen alone rather than opening a dialog
+    /// over them.
     /// </summary>
     private Task RefreshUnattendedAsync() =>
         DateTime.UtcNow - _lastLoadedUtc < ResumeRefresh.MinimumGap
