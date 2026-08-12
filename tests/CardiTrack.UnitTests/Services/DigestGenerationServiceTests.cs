@@ -388,6 +388,103 @@ public class DigestGenerationServiceTests
             Arg.Any<CancellationToken>());
     }
 
+    // ---- Suggestions: three usable ones or none at all ----
+
+    private void ReturnsSuggestions(params string[] suggestions) =>
+        _medicalAi.GenerateStructuredAsync<DigestGenerationService.DigestAiResponse>(
+                Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new DigestGenerationService.DigestAiResponse
+            {
+                Headline = "A settled night",
+                Summary = "A quiet, steady day.",
+                Suggestions = suggestions,
+            });
+
+    private static bool Suggestions(DigestEntry entry, params string[] expected) =>
+        entry.Suggestions is not null && entry.Suggestions.SequenceEqual(expected);
+
+    [Fact]
+    public async Task StoresThreeSuggestions_Trimmed()
+    {
+        // A model that formatted its own list: the bullets and quotes are the model's, not the
+        // suggestion's, and they would render as literal characters in the app.
+        ReturnsSuggestions("- Ask how they slept", "  \"Suggest a short walk\" ", "• Sit with them a while");
+
+        await CreateSut().GenerateDueDigestsAsync(UtcNow);
+
+        await _digests.Received(1).AddAsync(
+            Arg.Is<DigestEntry>(d => Suggestions(
+                d, "Ask how they slept", "Suggest a short walk", "Sit with them a while")),
+            Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// The section promises three ways to help. Anything short of a full, usable set is dropped so
+    /// the apps hide it, rather than rendering a heading over one bullet.
+    /// </summary>
+    [Fact]
+    public async Task StoresNoSuggestions_WhenFewerThanThreeSurvive()
+    {
+        ReturnsSuggestions("Ask how they slept", "   ", "Respond with: three ways to support them");
+
+        var generated = await CreateSut().GenerateDueDigestsAsync(UtcNow);
+
+        Assert.Equal(1, generated);
+        await _digests.Received(1).AddAsync(
+            Arg.Is<DigestEntry>(d => d.Suggestions == null && d.Text == "A quiet, steady day."),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task StoresNoSuggestions_WhenTheModelReturnedNone()
+    {
+        // The column is nullable precisely so this is representable; an empty list would make the
+        // apps decide what an empty section looks like.
+        ReturnsSuggestions();
+
+        await CreateSut().GenerateDueDigestsAsync(UtcNow);
+
+        await _digests.Received(1).AddAsync(
+            Arg.Is<DigestEntry>(d => d.Suggestions == null), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task DropsTheWholeSet_WhenTheSameSuggestionCameBackTwice()
+    {
+        // Three ways to help that are the same way twice is worse than no section at all.
+        ReturnsSuggestions("Ask how they slept", "ask how they SLEPT", "Sit with them a while");
+
+        await CreateSut().GenerateDueDigestsAsync(UtcNow);
+
+        await _digests.Received(1).AddAsync(
+            Arg.Is<DigestEntry>(d => d.Suggestions == null), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task KeepsOnlyTheFirstThree_WhenTheModelOverruns()
+    {
+        ReturnsSuggestions("One", "Two", "Three", "Four", "Five");
+
+        await CreateSut().GenerateDueDigestsAsync(UtcNow);
+
+        await _digests.Received(1).AddAsync(
+            Arg.Is<DigestEntry>(d => Suggestions(d, "One", "Two", "Three")), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task AsksForSuggestionsThatSupportRatherThanTreat()
+    {
+        string? prompt = null;
+        await _medicalAi.GenerateStructuredAsync<DigestGenerationService.DigestAiResponse>(
+            Arg.Do<string>(p => prompt = p), Arg.Any<CancellationToken>());
+
+        await CreateSut().GenerateDueDigestsAsync(UtcNow);
+
+        Assert.NotNull(prompt);
+        Assert.Contains("Never medical advice", prompt);
+        Assert.Contains("never worded as something the", prompt);
+    }
+
     [Fact]
     public async Task OneMembersFailure_DoesNotCostTheOthersTheirSummary()
     {

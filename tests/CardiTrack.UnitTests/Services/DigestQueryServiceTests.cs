@@ -61,6 +61,51 @@ public class DigestQueryServiceTests
         Assert.Equal("A quiet, steady day.", result.Text);
     }
 
+    [Fact]
+    public async Task GetDigest_CarriesTheSuggestionsGeneratedWithTheSummary()
+    {
+        _digests.GetLatestAsync(_memberId, DigestAudience.Family, Arg.Any<CancellationToken>())
+            .Returns(new DigestEntry
+            {
+                CardiMemberId = _memberId,
+                LocalDate = new DateOnly(2026, 8, 12),
+                Audience = DigestAudience.Family,
+                Text = "A quiet, steady day.",
+                Suggestions = ["Ask how they slept", "Suggest a short walk", "Sit with them a while"],
+                GeneratedAtUtc = new DateTime(2026, 8, 12, 7, 0, 0, DateTimeKind.Utc),
+            });
+
+        var result = await CreateSut().GetDigestAsync(_userId, _memberId, localDate: null);
+
+        Assert.NotNull(result);
+        Assert.Equal(
+            ["Ask how they slept", "Suggest a short walk", "Sit with them a while"], result.Suggestions);
+    }
+
+    /// <summary>
+    /// A summary written before suggestions existed has none, and one whose suggestions did not
+    /// survive validation has none either. Both reach the apps as null so the section is hidden,
+    /// rather than as an empty list they would have to decide how to render.
+    /// </summary>
+    [Fact]
+    public async Task GetDigest_LeavesSuggestionsNull_WhenTheSummaryHasNone()
+    {
+        _digests.GetLatestAsync(_memberId, DigestAudience.Family, Arg.Any<CancellationToken>())
+            .Returns(new DigestEntry
+            {
+                CardiMemberId = _memberId,
+                LocalDate = new DateOnly(2026, 8, 12),
+                Audience = DigestAudience.Family,
+                Text = "A quiet, steady day.",
+                GeneratedAtUtc = new DateTime(2026, 8, 12, 7, 0, 0, DateTimeKind.Utc),
+            });
+
+        var result = await CreateSut().GetDigestAsync(_userId, _memberId, localDate: null);
+
+        Assert.NotNull(result);
+        Assert.Null(result.Suggestions);
+    }
+
     /// <summary>
     /// A day now holds every recomputation, so asking for one names the day and takes the current
     /// summary of it — not whichever row the store happened to return first.

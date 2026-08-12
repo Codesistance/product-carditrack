@@ -35,6 +35,14 @@ public class DigestEntryConfiguration : IEntityTypeConfiguration<DigestEntry>
             .IsRequired()
             .HasMaxLength(4000);
 
+        // A text[] rather than jsonb: this is a short ordered list of plain strings with no shape
+        // of its own, which is exactly what a Postgres array is for, and the provider maps it
+        // without a converter. Nullable because a generation that produced no usable suggestions
+        // stores none — see DigestGenerationService.CleanSuggestions.
+        builder.PrimitiveCollection(d => d.Suggestions)
+            .ElementType()
+            .HasMaxLength(200);
+
         builder.Property(d => d.GeneratedAtUtc)
             .IsRequired();
     }

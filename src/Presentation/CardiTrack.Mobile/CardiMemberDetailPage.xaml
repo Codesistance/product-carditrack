@@ -217,6 +217,22 @@
                             </VerticalStackLayout>
                         </Border>
 
+                        <!-- Suggestions. Generated with the summary above and from the same
+                             readings, so what it proposes follows from what the summary just said
+                             rather than from a fixed list. Hidden outright when this generation
+                             produced none — a section headed "three ways to help" showing one is
+                             worse than no section. Support, never treatment: the register is "ask
+                             how they slept", not dosage. -->
+                        <Border x:Name="SuggestionsCard"
+                                Style="{StaticResource ElevatedCard}"
+                                IsVisible="False">
+                            <VerticalStackLayout Spacing="10">
+                                <Label x:Name="SuggestionsTitleLabel"
+                                       Style="{StaticResource DashboardSectionTitle}"/>
+                                <VerticalStackLayout x:Name="SuggestionsList" Spacing="8"/>
+                            </VerticalStackLayout>
+                        </Border>
+
                         <!-- Key metric trends (issue #188): one swipeable card per metric, over the
                              same daily Series the dashboard's Key Metrics already carry, across a
                              caregiver-chosen 7/14/30-day window. Deliberately not wrapped in a card

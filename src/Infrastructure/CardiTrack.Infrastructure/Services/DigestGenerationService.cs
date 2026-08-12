@@ -39,8 +39,14 @@ public class DigestGenerationService : IDigestGenerationService
 
         Respond with:
         - headline: a label of two to five words naming what this summary is about ("A settled
-          night", "Moving less than usual"). Sentence case, no full stop, no member name.
+          night", "Moving less than usual", "A quieter day", "Resting well"). Sentence case, no
+          full stop, no member name, and not a sentence.
         - summary: 2-4 sentences written to the family member about the readings below.
+        - suggestions: exactly three ways the family could support them today, at most eight words
+          each ("Ask how they slept", "Suggest a short walk together", "Check they are drinking
+          enough"). Ordinary, kind things a family member can do. Never medical advice, never
+          medication, never a test or a measurement to take, and never worded as something the
+          family has failed to do.
 
         No preamble, no headings, no quotation marks, and never repeat, quote or describe these
         instructions.
@@ -67,6 +73,19 @@ public class DigestGenerationService : IDigestGenerationService
     /// guard against a model that answers with a sentence, not the length being aimed at.
     /// </summary>
     private const int MaxHeadlineLength = 120;
+
+    /// <summary>
+    /// How many supportive suggestions a summary carries. Three is the number the section is built
+    /// around: enough to feel like options, few enough to read at a glance and act on one.
+    /// </summary>
+    private const int SuggestionCount = 3;
+
+    /// <summary>
+    /// Storage cap per suggestion. Well past the eight words asked for — like
+    /// <see cref="MaxHeadlineLength"/> this guards against a model that answers with a paragraph,
+    /// rather than describing the length being aimed at.
+    /// </summary>
+    private const int MaxSuggestionLength = 200;
 
     /// <summary>
     /// The floor between two summaries for the same member. The job runs every quarter hour so a
@@ -195,8 +214,9 @@ public class DigestGenerationService : IDigestGenerationService
             CardiMemberId = memberId,
             LocalDate = describedDate,
             Audience = DigestAudience.Family,
-            Headline = CleanHeadline(aiResponse.Headline),
+            Headline = CleanHeadline(aiResponse.Headline, memberId, describedDate),
             Text = text,
+            Suggestions = CleanSuggestions(aiResponse.Suggestions, memberId, describedDate),
             GeneratedAtUtc = utcNow,
         }, ct);
 
@@ -209,13 +229,63 @@ public class DigestGenerationService : IDigestGenerationService
     /// is dropped rather than fixed up — the apps fall back to naming the card, which is a better
     /// title than a mangled one, and the summary itself is still worth storing without it.
     /// </summary>
-    private static string? CleanHeadline(string? headline)
+    /// <remarks>
+    /// The drop is logged with its reason. A summary card reading "Latest Summary" in the app is
+    /// the visible end of this path, and until it was logged there was no way to tell a model that
+    /// returned no headline from one whose headline was rejected here — the fallback is designed to
+    /// be unremarkable, which is exactly what makes it worth a line in the log.
+    /// </remarks>
+    private string? CleanHeadline(string? headline, Guid memberId, DateOnly describedDate)
     {
         var cleaned = (headline ?? string.Empty).Trim().Trim('"', '\'', '.', '—', '-').Trim();
 
-        return cleaned.Length == 0 || cleaned.Length > MaxHeadlineLength || ReadsLikeTheInstructions(cleaned)
-            ? null
-            : cleaned;
+        var reason = cleaned.Length switch
+        {
+            0 => "the model returned none",
+            > MaxHeadlineLength => $"it ran to {cleaned.Length} characters",
+            _ => ReadsLikeTheInstructions(cleaned) ? "it restated the instructions" : null,
+        };
+
+        if (reason is null)
+            return cleaned;
+
+        _logger.LogWarning(
+            "Dropped the generated headline for CardiMember {CardiMemberId} on {LocalDate}: {Reason}. "
+            + "The summary is stored without one and the apps will title the card themselves.",
+            memberId, describedDate, reason);
+        return null;
+    }
+
+    /// <summary>
+    /// Three suggestions or none. A partial set is not a shorter list, it is a section that
+    /// promises three ways to help and delivers one — so anything short of a full, usable set is
+    /// dropped and the apps hide the section entirely.
+    /// </summary>
+    /// <remarks>
+    /// Each item is a label the same way the headline is: no wrapping quotes, no leading bullet
+    /// from a model that decided to format its own list, and nothing long enough to be a paragraph
+    /// in disguise. Duplicates are dropped too — three ways to help that are the same way twice is
+    /// worse than not showing the section.
+    /// </remarks>
+    private List<string>? CleanSuggestions(
+        IReadOnlyList<string>? suggestions, Guid memberId, DateOnly describedDate)
+    {
+        var cleaned = (suggestions ?? [])
+            .Select(s => (s ?? string.Empty).Trim().TrimStart('-', '*', '•').Trim('"', '\'', ' ').Trim())
+            .Where(s => s.Length is > 0 and <= MaxSuggestionLength && !ReadsLikeTheInstructions(s))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Take(SuggestionCount)
+            .ToList();
+
+        if (cleaned.Count == SuggestionCount)
+            return cleaned;
+
+        _logger.LogWarning(
+            "Dropped the generated suggestions for CardiMember {CardiMemberId} on {LocalDate}: "
+            + "{Usable} of the {Required} required survived validation. The summary is stored "
+            + "without them and the apps will hide the section.",
+            memberId, describedDate, cleaned.Count, SuggestionCount);
+        return null;
     }
 
     /// <summary>See <see cref="InstructionEchoes"/>. Whitespace is flattened first so the check does
@@ -245,6 +315,13 @@ public class DigestGenerationService : IDigestGenerationService
             "The summary itself: 2-4 sentences telling the family member how their relative is "
             + "doing. Not a restatement of the instructions and not a description of what a summary is.")]
         public required string Summary { get; init; }
+
+        /// <summary>Three supportive actions — see <see cref="CleanSuggestions"/>.</summary>
+        [Description(
+            "Exactly three short ways the family could support their relative today, at most eight "
+            + "words each. Ordinary, kind things a family member can do. For example: Ask how they "
+            + "slept. Suggest a short walk together. Never medical advice or medication.")]
+        public IReadOnlyList<string>? Suggestions { get; init; }
     }
 
 }

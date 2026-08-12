@@ -214,6 +214,9 @@ public partial class CardiMemberDetailPage : ContentPage
             SummaryTitleLabel.Text = "Still getting to know them";
             SummaryGeneratedLabel.IsVisible = false;
             SummaryLabel.Text = "We'll summarise how this CardiMember is doing here as soon as there's enough data to say something useful.";
+            // Suggestions come from the same generation as the summary, so they are absent for
+            // exactly the members the placeholder is for.
+            SuggestionsCard.IsVisible = false;
         }
 
         ApplyTrends(member.Metrics);
@@ -268,6 +271,8 @@ public partial class CardiMemberDetailPage : ContentPage
             SummaryGeneratedLabel.IsVisible = true;
             _digestRendered = true;
 
+            ApplySuggestions(digest.Suggestions);
+
             if (unchanged)
                 return;
 
@@ -282,6 +287,73 @@ public partial class CardiMemberDetailPage : ContentPage
         {
             // Placeholder copy stays — see the field's own comment in Apply().
         }
+    }
+
+    /// <summary>
+    /// Rebuilds the "how to support them" bullets under the summary, or hides the section when
+    /// this generation produced none.
+    /// </summary>
+    /// <remarks>
+    /// Rebuilt rather than diffed: it is three short labels, and the alternative is keeping a
+    /// second copy of them around to compare against. The heading names the CardiMember, because
+    /// a caregiver may be looking after more than one and "how to support them" on a screen
+    /// reached from a notification should say who.
+    /// </remarks>
+    private void ApplySuggestions(IReadOnlyList<string>? suggestions)
+    {
+        SuggestionsList.Clear();
+
+        // Three or nothing — the API sends a full set or none, and a client that rendered whatever
+        // arrived would put the one-bullet card back that the generator exists to prevent.
+        if (suggestions is not { Count: > 0 })
+        {
+            SuggestionsCard.IsVisible = false;
+            return;
+        }
+
+        SuggestionsTitleLabel.Text = _member is null
+            ? "Ways to help"
+            : $"Ways to help {NameFormatting.FirstName(_member.Name)}";
+
+        foreach (var suggestion in suggestions)
+        {
+            var row = new Grid
+            {
+                ColumnDefinitions =
+                [
+                    new ColumnDefinition(GridLength.Auto),
+                    new ColumnDefinition(GridLength.Star),
+                ],
+                ColumnSpacing = 10,
+            };
+
+            // A dot rather than a bullet glyph — same construction as the carousel's indicators
+            // below: a typographic bullet at this size sits on the text baseline instead of beside
+            // the first line of a suggestion that wraps.
+            var resources = Microsoft.Maui.Controls.Application.Current!.Resources;
+            row.Add(new BoxView
+            {
+                WidthRequest = 6,
+                HeightRequest = 6,
+                CornerRadius = 3,
+                Color = (Color)resources["Primary"],
+                VerticalOptions = LayoutOptions.Start,
+                Margin = new Thickness(2, 7, 0, 0),
+            });
+
+            row.Add(
+                new Label
+                {
+                    Text = suggestion,
+                    Style = (Style)resources["Body2"],
+                    LineBreakMode = LineBreakMode.WordWrap,
+                },
+                1);
+
+            SuggestionsList.Add(row);
+        }
+
+        SuggestionsCard.IsVisible = true;
     }
 
     /// <summary>
