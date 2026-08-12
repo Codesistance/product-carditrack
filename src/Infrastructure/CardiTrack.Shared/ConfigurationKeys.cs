@@ -108,6 +108,20 @@ public static class ConfigurationKeys
         public const string Port = "PORT";
     }
 
+    public static class Gcp
+    {
+        /// <summary>
+        /// Bare env var (no section), injected identically into every Cloud Run service by
+        /// <c>infrastructure/main.tf</c>. Passed explicitly into <see cref="FirebaseAdmin.AppOptions"/>
+        /// when constructing the push-send <c>FirebaseApp</c> (PushServiceExtensions) — ADC alone
+        /// resolves a *credential* via the metadata server on Cloud Run, but the .NET Firebase Admin
+        /// SDK does not query the metadata server for the *project ID* itself; left implicit, that
+        /// resolution is a cold-start race that fails intermittently on a fresh instance and, because
+        /// Worker's BackgroundServiceExceptionBehavior is StopHost, turns into a permanent crash loop.
+        /// </summary>
+        public const string ProjectId = "GCP_PROJECT_ID";
+    }
+
     public static class Deployment
     {
         /// <summary>

@@ -53,10 +53,18 @@ public static class PushServiceExtensions
 
         // Singleton: FirebaseApp owns its own credential/connection state, the same reasoning
         // AiServiceExtensions applies to the Anthropic SDK client — building one per scope would
-        // churn ADC token refreshes for no benefit. FirebaseApp.Create() with no options resolves
-        // ADC from the deployment environment (the Cloud Run default compute SA, already granted
-        // roles/firebasecloudmessaging.admin in #108/PR176) — no service-account key file.
-        services.AddSingleton(_ => FirebaseApp.DefaultInstance ?? FirebaseApp.Create());
+        // churn ADC token refreshes for no benefit. ADC still resolves the *credential* from the
+        // deployment environment (the Cloud Run default compute SA, already granted
+        // roles/firebasecloudmessaging.admin in #108/PR176) — no service-account key file. The
+        // *project ID* is passed explicitly rather than left to FirebaseApp.Create()'s own
+        // discovery: that only checks GOOGLE_CLOUD_PROJECT/GCLOUD_PROJECT env vars, never the
+        // metadata server, so on a cold Cloud Run instance it's a race that fails intermittently —
+        // and because Worker's BackgroundServiceExceptionBehavior is StopHost, one failed
+        // resolution here was enough to crash-loop the entire host (incident 2026-08-12).
+        services.AddSingleton(_ => FirebaseApp.DefaultInstance ?? FirebaseApp.Create(new AppOptions
+        {
+            ProjectId = configLoader.GetRequired(ConfigurationKeys.Gcp.ProjectId)
+        }));
         services.AddSingleton(sp => FirebaseMessaging.GetMessaging(sp.GetRequiredService<FirebaseApp>()));
 
         // INotificationChannel has exactly one implementation with no runtime-selectable axis —
