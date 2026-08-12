@@ -51,7 +51,7 @@ public class DigestGenerationServiceTests
                 Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(new DigestGenerationService.DigestAiResponse
             {
-                Text = "A settled day: steady heart rate and a good night's sleep.",
+                Summary = "A settled day: steady heart rate and a good night's sleep.",
             });
     }
 
@@ -173,6 +173,43 @@ public class DigestGenerationServiceTests
         var generated = await CreateSut().GenerateDueDigestsAsync(sixUtc);
 
         Assert.Equal(1, generated);
+    }
+
+    /// <summary>
+    /// The Member Detail screen renders the stored digest verbatim, so a reply that is really the
+    /// brief read back must never reach the database — a caregiver seeing the prompt is worse than
+    /// a caregiver seeing the "nothing to say yet" copy.
+    /// </summary>
+    [Theory]
+    [InlineData("You are summarising the past day of a loved one's heart health data for a "
+                + "non-medical family member. Use plain, reassuring language.")]
+    // Re-wrapped: the check flattens whitespace, so a differently broken echo still matches.
+    [InlineData("Use plain,\n  reassuring language.\nNever diagnose.")]
+    [InlineData("Respond with: summary — the digest itself, 2-4 sentences.")]
+    [InlineData("   ")]
+    public async Task DiscardsTheDigest_WhenTheModelEchoesItsInstructionsOrSaysNothing(string reply)
+    {
+        _medicalAi.GenerateStructuredAsync<DigestGenerationService.DigestAiResponse>(
+                Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new DigestGenerationService.DigestAiResponse { Summary = reply });
+
+        var generated = await CreateSut().GenerateDueDigestsAsync(UtcNow);
+
+        Assert.Equal(0, generated);
+        await _digests.DidNotReceive().UpsertAsync(Arg.Any<DigestEntry>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task StoresTheModelsSummary_Trimmed()
+    {
+        _medicalAi.GenerateStructuredAsync<DigestGenerationService.DigestAiResponse>(
+                Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new DigestGenerationService.DigestAiResponse { Summary = "  A quiet, steady day.\n" });
+
+        await CreateSut().GenerateDueDigestsAsync(UtcNow);
+
+        await _digests.Received(1).UpsertAsync(
+            Arg.Is<DigestEntry>(d => d.Text == "A quiet, steady day."), Arg.Any<CancellationToken>());
     }
 
     [Fact]
