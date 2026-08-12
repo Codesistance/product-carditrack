@@ -62,9 +62,11 @@ internal static class ResumeRefresh
         page.Window is not null
         && Shell.Current is { } shell
         && shell.CurrentPage == page
-        // A modal — the connect-device wizard — owns the screen while it is up, and its own
-        // completion path reloads whatever is underneath.
-        && shell.Navigation.ModalStack.Count == 0;
+        // A modal — a popup, or the connect-device wizard — owns the screen while it is up, and
+        // the wizard's own completion path reloads whatever is underneath. Read from the page's
+        // navigation, which is where PopupService and WizardLauncher push them, and what
+        // App and AppPopupPage already read the modal stack from.
+        && page.Navigation.ModalStack.Count == 0;
 
     private static void LogFailure(Exception ex, Page page)
     {

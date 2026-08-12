@@ -12,7 +12,7 @@ namespace CardiTrack.Mobile.Services;
 /// </remarks>
 public interface IAppResumeNotifier
 {
-    event EventHandler Resumed;
+    event EventHandler? Resumed;
 }
 
 /// <inheritdoc />
