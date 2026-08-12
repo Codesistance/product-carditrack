@@ -34,12 +34,6 @@ public sealed class FilterChipBar : ContentView
 
     private readonly Dictionary<AlertFilter, (Border Chip, Label Text, Image Caret)> _chips = new();
 
-    /// <summary>
-    /// The same filters the chips offer, in the same order — so the header's filter button can
-    /// present them as a sheet in the states that have no chip row (Figma 101:3840).
-    /// </summary>
-    public static IReadOnlyList<(AlertFilter Filter, string Label)> Options => Chips;
-
     /// <summary>Raised only when the selection actually changes — re-tapping a chip is a no-op.</summary>
     public event EventHandler<AlertFilter>? FilterChanged;
 

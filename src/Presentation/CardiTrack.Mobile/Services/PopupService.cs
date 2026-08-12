@@ -16,6 +16,9 @@ public sealed class PopupService : IPopupService
     public Task<bool> ConfirmWarningAsync(string message, string? title = null, string? confirmText = null, string? cancelText = null) =>
         ShowAsync(PopupSeverity.Warning, title ?? "Are you sure?", message, confirmText ?? "Yes, continue", cancelText ?? "Cancel");
 
+    public Task<bool> ConfirmInfoAsync(string message, string? title = null, string? confirmText = null, string? cancelText = null) =>
+        ShowAsync(PopupSeverity.Info, title ?? "Just so you know", message, confirmText ?? "Yes, continue", cancelText ?? "Not now");
+
     /// <summary>
     /// Uses the platform action sheet rather than <see cref="AppPopupPage"/>: the app-styled
     /// popup is a two-button dialog, and a list of choices needs a list.

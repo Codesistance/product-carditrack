@@ -12,11 +12,12 @@
 
     <Grid RowDefinitions="Auto,Auto,*,Auto">
 
-        <!-- Back arrow, title, filter button — the header as drawn in 101:3840 / 101:6206.
-             The filter button is the only filter affordance in the empty state, which has no
-             chip row, so it opens the same five filters as a sheet. -->
+        <!-- Back arrow and title. Figma's header also carried a filter button; it duplicated the
+             chip row below and is gone, leaving the chips as the single filter affordance. They
+             only disappear when there is nothing to filter (an unfiltered empty list, or the
+             archive), so dropping the button strands no filtered state. -->
         <controls:HeaderBand Grid.Row="0" ContentPadding="20,14,20,26">
-            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
+            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
 
                 <Border Grid.Column="0"
                         WidthRequest="40" HeightRequest="40"
@@ -37,23 +38,6 @@
                        Style="{StaticResource Heading3}"
                        TextColor="{StaticResource White}"
                        VerticalTextAlignment="Center"/>
-
-                <Border Grid.Column="2"
-                        WidthRequest="40" HeightRequest="40"
-                        StrokeThickness="0"
-                        BackgroundColor="{StaticResource White}"
-                        VerticalOptions="Center">
-                    <Border.StrokeShape>
-                        <RoundRectangle CornerRadius="8"/>
-                    </Border.StrokeShape>
-                    <Border.Shadow>
-                        <Shadow Brush="{StaticResource CardShadowBrush}" Opacity="0.15" Radius="14" Offset="0,4"/>
-                    </Border.Shadow>
-                    <Border.GestureRecognizers>
-                        <TapGestureRecognizer Tapped="OnFilterTapped"/>
-                    </Border.GestureRecognizers>
-                    <Image Source="icon_filter.svg" WidthRequest="24" HeightRequest="24"/>
-                </Border>
             </Grid>
         </controls:HeaderBand>
 

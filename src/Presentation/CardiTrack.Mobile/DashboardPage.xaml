@@ -332,28 +332,20 @@
                                 <!-- Key metrics: collapsed by default behind AccordionSection, two
                                      per row instead of full-width so the card has room to stay
                                      compact once more CardiMember cards can stack below it. The
-                                     tinted Border gives the grid its own surface against the
-                                     white CardiMember card, same tint family as each tile's own
-                                     icon (MetricTileTint) but as a wash, not a repeat of it. -->
+                                     tiles sit directly on the CardiMember card — no wash behind
+                                     the grid, so the card carries one surface, not two. -->
                                 <controls:AccordionSection x:Name="MetricsAccordion" HeaderText="Key Metrics">
                                     <controls:AccordionSection.Body>
-                                        <Border BackgroundColor="{StaticResource SelectedOptionBackground}"
-                                                StrokeThickness="0"
-                                                Padding="10">
-                                            <Border.StrokeShape>
-                                                <RoundRectangle CornerRadius="16"/>
-                                            </Border.StrokeShape>
-                                            <Grid ColumnDefinitions="*,*"
-                                                  RowDefinitions="Auto,Auto,Auto"
-                                                  ColumnSpacing="10" RowSpacing="10">
-                                                <controls:MetricCard x:Name="StepsCard" Grid.Row="0" Grid.Column="0"/>
-                                                <controls:MetricCard x:Name="HeartRateCard" Grid.Row="0" Grid.Column="1"/>
-                                                <controls:MetricCard x:Name="SleepCard" Grid.Row="1" Grid.Column="0"/>
-                                                <controls:MetricCard x:Name="TemperatureCard" Grid.Row="1" Grid.Column="1" IsVisible="False"/>
-                                                <controls:MetricCard x:Name="SpO2Card" Grid.Row="2" Grid.Column="0" IsVisible="False"/>
-                                                <controls:MetricCard x:Name="BreathingRateCard" Grid.Row="2" Grid.Column="1" IsVisible="False"/>
-                                            </Grid>
-                                        </Border>
+                                        <Grid ColumnDefinitions="*,*"
+                                              RowDefinitions="Auto,Auto,Auto"
+                                              ColumnSpacing="10" RowSpacing="10">
+                                            <controls:MetricCard x:Name="StepsCard" Grid.Row="0" Grid.Column="0"/>
+                                            <controls:MetricCard x:Name="HeartRateCard" Grid.Row="0" Grid.Column="1"/>
+                                            <controls:MetricCard x:Name="SleepCard" Grid.Row="1" Grid.Column="0"/>
+                                            <controls:MetricCard x:Name="TemperatureCard" Grid.Row="1" Grid.Column="1" IsVisible="False"/>
+                                            <controls:MetricCard x:Name="SpO2Card" Grid.Row="2" Grid.Column="0" IsVisible="False"/>
+                                            <controls:MetricCard x:Name="BreathingRateCard" Grid.Row="2" Grid.Column="1" IsVisible="False"/>
+                                        </Grid>
                                     </controls:AccordionSection.Body>
                                 </controls:AccordionSection>
 
@@ -376,11 +368,6 @@
                                 <HorizontalStackLayout x:Name="AlertsStack" Spacing="11" Padding="0,0,0,6"/>
                             </ScrollView>
                         </VerticalStackLayout>
-
-                        <Button Text="View Trends &amp; History"
-                                Style="{StaticResource AuthGradientButton}"
-                                HorizontalOptions="Fill"
-                                Clicked="OnViewTrendsClicked"/>
 
                     </VerticalStackLayout>
                 </Grid>
