@@ -175,14 +175,15 @@
                         </Border>
 
                         <!-- Summary (issue #188): replaces "Baseline Status: Learning" with the
-                             MedGemma-generated family digest, accented by the same HealthStatus
-                             severity the dashboard uses. The title is the digest's own headline
-                             rather than a fixed "Daily Summary" — summaries are recomputed as data
-                             lands, not once a morning, so a standing "Daily" would be a claim about
-                             the cadence that is no longer true, and the headline says what this
-                             summary is about instead of restating which screen it is on. Empty
-                             until the pipeline has generated one for this member (dev only today —
-                             see infrastructure/environments/prod.tfvars, enable_pipeline_jobs). -->
+                             MedGemma-generated family digest, under the same clipboard icon
+                             treatment the other section headers wear. The title is the digest's own
+                             headline rather than a fixed "Daily Summary" — summaries are recomputed
+                             as data lands, not once a morning, so a standing "Daily" would be a
+                             claim about the cadence that is no longer true, and the headline says
+                             what this summary is about instead of restating which screen it is on.
+                             Empty until the pipeline has generated one for this member (dev only
+                             today — see infrastructure/environments/prod.tfvars,
+                             enable_pipeline_jobs). -->
                         <!-- A floor, not a fit: the placeholder is shorter than the summary that
                              replaces it, and on a first load the swap would otherwise shove the
                              trends below it down the page. Sized to a typical few-sentence
@@ -192,26 +193,30 @@
                                 Style="{StaticResource ElevatedCard}"
                                 MinimumHeightRequest="150">
                             <VerticalStackLayout Spacing="10">
-                                <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
-                                    <BoxView x:Name="SummaryAccent"
-                                             Grid.Column="0"
-                                             WidthRequest="4" HeightRequest="18"
-                                             VerticalOptions="Start"
-                                             Margin="0,3,0,0"
-                                             CornerRadius="2"/>
-                                    <VerticalStackLayout Grid.Column="1" Spacing="1">
-                                        <Label x:Name="SummaryTitleLabel"
-                                               Style="{StaticResource DashboardSectionTitle}"
-                                               LineBreakMode="WordWrap"/>
-                                        <!-- "When" belongs next to a summary that is recomputed:
-                                             without it there is no way to tell a minutes-old
-                                             reading from yesterday's. -->
-                                        <Label x:Name="SummaryGeneratedLabel"
-                                               FontFamily="Quicksand"
-                                               FontSize="12"
-                                               TextColor="{StaticResource BodyText}"
-                                               IsVisible="False"/>
-                                    </VerticalStackLayout>
+                                <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8">
+                                    <Image Grid.Column="0"
+                                           Source="icon_clipboard.svg"
+                                           WidthRequest="20" HeightRequest="20"
+                                           VerticalOptions="Start"
+                                           Margin="0,2,0,0"/>
+                                    <Label x:Name="SummaryTitleLabel"
+                                           Grid.Column="1"
+                                           Style="{StaticResource DashboardSectionTitle}"
+                                           LineBreakMode="WordWrap"/>
+                                    <!-- "When" belongs next to a summary that is recomputed:
+                                         without it there is no way to tell a minutes-old
+                                         reading from yesterday's. It sits on the icon's own
+                                         line rather than under the title, so the header stays
+                                         a single row; pinned to Start so a headline that wraps
+                                         leaves it beside its first line. -->
+                                    <Label x:Name="SummaryGeneratedLabel"
+                                           Grid.Column="2"
+                                           FontFamily="Quicksand"
+                                           FontSize="12"
+                                           TextColor="{StaticResource BodyText}"
+                                           VerticalOptions="Start"
+                                           Margin="0,5,0,0"
+                                           IsVisible="False"/>
                                 </Grid>
                                 <Label x:Name="SummaryLabel" Style="{StaticResource Body2}"/>
                             </VerticalStackLayout>
