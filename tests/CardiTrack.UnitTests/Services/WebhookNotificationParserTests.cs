@@ -47,4 +47,47 @@ public class WebhookNotificationParserTests
         Assert.Equal("user,dataType", shape);
         Assert.DoesNotContain("secret-id", shape);
     }
+
+    [Fact]
+    public void TopLevelShape_DescribesArrayElements_NeverValues()
+    {
+        var shape = WebhookNotificationParser.TopLevelShape("""
+            [
+              { "user": "users/secret-id", "dataType": "heart-rate" },
+              { "user": "users/other-secret", "dataType": "steps" }
+            ]
+            """);
+
+        Assert.Equal("array[2]:dataType+user", shape);
+        Assert.DoesNotContain("secret", shape);
+    }
+
+    // Two objects with the same fields in a different declaration order are the same shape —
+    // JSON key order carries no meaning, so this must collapse to one entry, not two.
+    [Fact]
+    public void TopLevelShape_CollapsesArrayElementShapes_RegardlessOfPropertyOrder()
+    {
+        var shape = WebhookNotificationParser.TopLevelShape("""
+            [
+              { "user": "users/a", "dataType": "heart-rate" },
+              { "dataType": "steps", "user": "users/b" }
+            ]
+            """);
+
+        Assert.Equal("array[2]:dataType+user", shape);
+    }
+
+    [Fact]
+    public void TopLevelShape_DescribesMixedArrayElementShapes()
+    {
+        var shape = WebhookNotificationParser.TopLevelShape("""["a", 1, { "x": 1 }]""");
+
+        Assert.Equal("array[3]:Integer|String|x", shape);
+    }
+
+    [Fact]
+    public void TopLevelShape_ReportsEmptyArray()
+    {
+        Assert.Equal("array[0]", WebhookNotificationParser.TopLevelShape("[]"));
+    }
 }
