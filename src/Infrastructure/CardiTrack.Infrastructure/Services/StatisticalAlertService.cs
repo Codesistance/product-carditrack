@@ -99,10 +99,26 @@ public class StatisticalAlertService : IStatisticalAlertService
             StatisticalAlertRules.NoMorningActivity(baseline, todayLog, localNow),
             StatisticalAlertRules.LongTermTrend(logsByDate, yesterday),
         }.OfType<StatisticalAlertCandidate>().ToList();
-        if (candidates.Count == 0)
-            return 0;
 
         var existing = (await _unitOfWork.Alerts.GetByCardiMemberAsync(memberId, activeOnly: true)).ToList();
+
+        // A rule that had its say today and did not trip is that rule's episode ending. Closing it
+        // re-arms the cooldown below — nothing else in the system resolves an alert, so without
+        // this each rule would fire once per member and then suppress itself for good. Scoped to
+        // rules this pass actually evaluated: a member whose baseline is missing returns above,
+        // and their standing alerts are left alone rather than closed on no evidence.
+        var firedRules = candidates.Select(c => c.Rule).ToHashSet(StringComparer.Ordinal);
+        var quietRules = StatisticalAlertRules.AllRules.Where(r => !firedRules.Contains(r)).ToList();
+        if (AlertResolution.Resolve(
+                existing,
+                a => quietRules.Any(rule => AlertRuleMarkers.HasRule(a, rule)),
+                DateTime.UtcNow) > 0)
+        {
+            await _unitOfWork.SaveChangesAsync();
+        }
+
+        if (candidates.Count == 0)
+            return 0;
 
         var created = new List<Alert>();
         foreach (var candidate in candidates)

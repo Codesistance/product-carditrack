@@ -104,16 +104,32 @@ public class InactivityDetectionService : IInactivityDetectionService
             return false;
         }
 
+        var existing = (await _unitOfWork.Alerts.GetByCardiMemberAsync(memberId, activeOnly: true)).ToList();
         var lastDataUtc = await LastGranularMinuteAsync(memberId, utcNow, rules.SilenceThresholdMinutes, ct);
+
         if (lastDataUtc is not null && lastDataUtc > utcNow.AddMinutes(-rules.SilenceThresholdMinutes))
+        {
+            // The device is reporting again, which is exactly this alert's episode ending. Closing
+            // it here is what re-arms the cooldown below: nothing else in the system resolves an
+            // alert, so without this the first silence a member ever had would suppress every one
+            // after it, for good.
+            if (AlertResolution.Resolve(
+                    existing,
+                    a => AlertRuleMarkers.Suppresses(
+                        a, AlertType.Inactivity, AlertRuleMarkers.DeviceSilenceRule),
+                    utcNow) > 0)
+            {
+                await _unitOfWork.SaveChangesAsync();
+            }
+
             return false;
+        }
 
         // Cooldown: one unresolved device-silence alert at a time — a dead device would
         // otherwise re-page every 15 minutes; resolving the alert re-arms the check. Scoped to
         // this rule, not the whole Inactivity type: the statistical engine's activity-decline
         // alert shares the type but asks for a different action ("encourage movement", not
         // "charge the watch"), and the two may legitimately stand together.
-        var existing = await _unitOfWork.Alerts.GetByCardiMemberAsync(memberId, activeOnly: true);
         if (existing.Any(a => AlertRuleMarkers.Suppresses(
                 a, AlertType.Inactivity, AlertRuleMarkers.DeviceSilenceRule)))
         {

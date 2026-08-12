@@ -17,6 +17,13 @@ public partial class CardiMemberDetailPage : ContentPage
     /// <summary>Shell route; see <see cref="AppShell"/>.</summary>
     public const string Route = "memberdetail";
 
+    /// <summary>
+    /// How often this screen reloads itself while it is being looked at. Matches the dashboard's,
+    /// and for the same reason: the server collects from the wearable every ten minutes, so a
+    /// shorter tick redraws identical numbers on the caregiver's battery.
+    /// </summary>
+    private static readonly TimeSpan AutoRefreshInterval = TimeSpan.FromMinutes(5);
+
     private static readonly (string Label, int Hours)[] PauseDurations =
     [
         ("24 hours", 24),
@@ -26,18 +33,24 @@ public partial class CardiMemberDetailPage : ContentPage
     ];
 
     /// <summary>
-    /// Every metric the trends carousel can show, in the order it swipes: icon, name, the format
-    /// its headline reading takes, and the barer format its chart's own min/max labels take.
+    /// Every metric the trends carousel can show, in the order it swipes: icon, the colour key of
+    /// that icon's own stroke, name, the format its headline reading takes, and the barer format
+    /// its chart's own min/max labels take.
     /// </summary>
-    private static readonly (string Icon, string Name, string Value, string Axis,
+    /// <remarks>
+    /// The ink is paired with the icon here rather than derived inside the card, because this is
+    /// the one place that already knows a metric is the steps one — matching them anywhere else
+    /// would mean a second table of metric identities to keep in step with this one.
+    /// </remarks>
+    private static readonly (string Icon, string Ink, string Name, string Value, string Axis,
         Func<DashboardMetrics, DashboardMetric> Select)[] TrendCards =
     [
-        ("icon_metric_steps.svg", "Activity", "{0:N0} steps", "{0:N0}", m => m.Steps),
-        ("icon_metric_heart.svg", "Heart Rate", "{0:N0} bpm", "{0:N0}", m => m.RestingHeartRate),
-        ("icon_metric_sleep.svg", "Sleep", "{0:0.#} hours", "{0:0.#}", m => m.Sleep),
-        ("icon_metric_temperature.svg", "Skin Temp", "{0:0.#}°C", "{0:0.#}", m => m.Temperature),
-        ("icon_metric_spo2.svg", "Blood Oxygen", "{0:0.#}%", "{0:0.#}", m => m.SpO2),
-        ("icon_metric_breathing.svg", "Breathing Rate", "{0:0.#} brpm", "{0:0.#}", m => m.BreathingRate),
+        ("icon_metric_steps.svg", "MetricStepsInk", "Activity", "{0:N0} steps", "{0:N0}", m => m.Steps),
+        ("icon_metric_heart.svg", "MetricHeartInk", "Heart Rate", "{0:N0} bpm", "{0:N0}", m => m.RestingHeartRate),
+        ("icon_metric_sleep.svg", "MetricSleepInk", "Sleep", "{0:0.#} hours", "{0:0.#}", m => m.Sleep),
+        ("icon_metric_temperature.svg", "MetricTemperatureInk", "Skin Temp", "{0:0.#}°C", "{0:0.#}", m => m.Temperature),
+        ("icon_metric_spo2.svg", "MetricSpO2Ink", "Blood Oxygen", "{0:0.#}%", "{0:0.#}", m => m.SpO2),
+        ("icon_metric_breathing.svg", "MetricBreathingInk", "Breathing Rate", "{0:0.#} brpm", "{0:0.#}", m => m.BreathingRate),
     ];
 
     private readonly ICardiTrackApiClient _api;
@@ -57,7 +70,11 @@ public partial class CardiMemberDetailPage : ContentPage
         InitializeComponent();
         _api = api;
         _popups = popups;
-        this.RefreshWhenAppResumes(RefreshOnResumeAsync);
+        this.RefreshWhenAppResumes(RefreshUnattendedAsync);
+
+        // Same reason as the dashboard: this screen is one CardiMember's current state, and a
+        // caregiver watching it should not have to pull it down to find out that it moved.
+        this.RefreshEvery(AutoRefreshInterval, RefreshUnattendedAsync);
 
         TrendsCarousel.HeightRequest = MetricTrendCard.CardHeight;
         TrendsCarousel.PositionChanged += OnTrendPositionChanged;
@@ -88,11 +105,12 @@ public partial class CardiMemberDetailPage : ContentPage
     private void OnRetryClicked(object? sender, EventArgs e) => _ = LoadAsync();
 
     /// <summary>
-    /// The app returning to the foreground refetches, for the same reason OnAppearing does:
-    /// this screen shows one CardiMember's current state, and the caregiver came back to read it
-    /// now. Silent — an unrequested refresh that fails leaves what is on screen alone.
+    /// The quiet reload behind both unattended paths — the app returning to the foreground, and
+    /// the timer ticking while the caregiver watches — for the same reason OnAppearing refetches:
+    /// this screen shows one CardiMember's current state, and it should be current. Silent: an
+    /// unrequested refresh that fails leaves what is on screen alone.
     /// </summary>
-    private Task RefreshOnResumeAsync() =>
+    private Task RefreshUnattendedAsync() =>
         DateTime.UtcNow - _lastLoadedUtc < ResumeRefresh.MinimumGap
             ? Task.CompletedTask
             : LoadAsync(silent: true);
@@ -249,13 +267,14 @@ public partial class CardiMemberDetailPage : ContentPage
         _trends.Clear();
         if (metrics is not null)
         {
-            foreach (var (icon, name, value, axis, select) in TrendCards)
+            foreach (var (icon, ink, name, value, axis, select) in TrendCards)
             {
                 var metric = select(metrics);
                 if (metric.Value is null)
                     continue;
 
-                _trends.Add(new MetricTrend(icon, name, value, axis, metric, TrendWindowPicker.SelectedDays));
+                _trends.Add(new MetricTrend(
+                    icon, ink, name, value, axis, metric, TrendWindowPicker.SelectedDays));
             }
         }
 

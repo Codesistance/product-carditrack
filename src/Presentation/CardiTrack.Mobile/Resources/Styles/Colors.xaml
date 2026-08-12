@@ -70,6 +70,20 @@
     <Color x:Key="ChartReferenceBand">#5C6672</Color>
     <Color x:Key="ChartBaselineRule">#343434</Color>
 
+    <!-- ── Per-metric ink ──
+         Each one is the stroke colour of that metric's own glyph, lifted out of the SVG so the
+         trend line and the icon above it are the same colour rather than two things that happen to
+         sit on the same card. Identity, not severity: how the member is doing is the pill's job,
+         and a line that changed colour with status would leave the reader relearning which metric
+         they were looking at every time it moved. Skin temperature and blood oxygen share an ink
+         because their glyphs do — they never appear on the same card, so nothing is ambiguous. -->
+    <Color x:Key="MetricStepsInk">#1884DC</Color>
+    <Color x:Key="MetricHeartInk">#E53E3E</Color>
+    <Color x:Key="MetricSleepInk">#7C6FDC</Color>
+    <Color x:Key="MetricTemperatureInk">#1F8A72</Color>
+    <Color x:Key="MetricSpO2Ink">#1F8A72</Color>
+    <Color x:Key="MetricBreathingInk">#3E8AC7</Color>
+
     <!-- Metric row icon tile — Figma rgba(201,225,255,0.41) -->
     <Color x:Key="MetricTileTint">#69C9E1FF</Color>
     <!-- Header refresh button — Figma rgba(255,255,255,0.29) -->

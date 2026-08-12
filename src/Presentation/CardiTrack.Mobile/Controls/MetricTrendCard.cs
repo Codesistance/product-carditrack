@@ -292,10 +292,13 @@ public sealed class MetricTrendCard : ContentView
             SemanticProperties.SetDescription(
                 this, $"{_trend.Name}, {_trend.ValueText}, last {_trend.Days} days. {comparisons}");
 
+        // The metric's own ink, not its status accent: the line says which metric this is, and the
+        // pill above it says how the member is doing. A line that changed colour with severity
+        // would make the reader re-identify the card every time the reading moved between bands.
         _chart.Render(
             points,
             scale,
-            MetricStatus.Accent(_trend.Metric.Status),
+            MetricStatus.Resource(_trend.InkKey, MetricStatus.Accent(_trend.Metric.Status)),
             showMarkers: points.Count <= MarkerWindowLimit,
             baseline,
             reference);

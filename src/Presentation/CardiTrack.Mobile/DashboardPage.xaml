@@ -222,26 +222,14 @@
                                      more than one CardiMember can appear). Each tile dims
                                      independently when its own number is missing (issue #67's
                                      dim-not-hide pattern) — they stay tappable so the tap can
-                                     explain why, the only affordance a dimmed tile has on touch. -->
+                                     explain why, the only affordance a dimmed tile has on touch.
+                                     SOS leads the row: it is the one action with a deadline on it,
+                                     and the first tile is where a thumb lands and where the eye
+                                     starts. The others are reachable in the seconds that emergency
+                                     is not. -->
                                 <Grid ColumnDefinitions="*,*,*,*" ColumnSpacing="10">
-                                    <Border x:Name="CallAction"
-                                            Grid.Column="0"
-                                            Style="{StaticResource ElevatedCard}"
-                                            Padding="6,16,6,11">
-                                        <Border.GestureRecognizers>
-                                            <TapGestureRecognizer Tapped="OnCallTapped"/>
-                                        </Border.GestureRecognizers>
-                                        <VerticalStackLayout Spacing="13">
-                                            <Image Source="icon_action_call.svg"
-                                                   WidthRequest="24" HeightRequest="24"
-                                                   HorizontalOptions="Center"/>
-                                            <Label Text="Call"
-                                                   Style="{StaticResource QuickActionLabel}"
-                                                   LineBreakMode="TailTruncation"/>
-                                        </VerticalStackLayout>
-                                    </Border>
                                     <Border x:Name="EmergencyCallAction"
-                                            Grid.Column="1"
+                                            Grid.Column="0"
                                             BackgroundColor="{StaticResource AlertTileRed}"
                                             StrokeThickness="0"
                                             Padding="6,16,6,11"
@@ -260,6 +248,22 @@
                                             <Label Text="SOS"
                                                    Style="{StaticResource QuickActionLabel}"
                                                    TextColor="{StaticResource StatusRed}"
+                                                   LineBreakMode="TailTruncation"/>
+                                        </VerticalStackLayout>
+                                    </Border>
+                                    <Border x:Name="CallAction"
+                                            Grid.Column="1"
+                                            Style="{StaticResource ElevatedCard}"
+                                            Padding="6,16,6,11">
+                                        <Border.GestureRecognizers>
+                                            <TapGestureRecognizer Tapped="OnCallTapped"/>
+                                        </Border.GestureRecognizers>
+                                        <VerticalStackLayout Spacing="13">
+                                            <Image Source="icon_action_call.svg"
+                                                   WidthRequest="24" HeightRequest="24"
+                                                   HorizontalOptions="Center"/>
+                                            <Label Text="Call"
+                                                   Style="{StaticResource QuickActionLabel}"
                                                    LineBreakMode="TailTruncation"/>
                                         </VerticalStackLayout>
                                     </Border>

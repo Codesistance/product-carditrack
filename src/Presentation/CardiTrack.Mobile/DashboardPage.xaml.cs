@@ -15,6 +15,13 @@ public partial class DashboardPage : ContentPage
     private const string VerifyEmailDismissedKey = "VerifyEmailNudgeDismissed";
     private const string DismissedSleepAlertKey = "DismissedSleepAlertId";
     private static readonly TimeSpan StaleThreshold = TimeSpan.FromHours(2);
+
+    /// <summary>
+    /// How often the dashboard reloads itself while the caregiver is looking at it, and — the
+    /// original meaning — how recent a load has to be for re-entering the tab to skip one. Five
+    /// minutes because the server collects from the wearable every ten: asking more often than the
+    /// data can change spends battery and quota to redraw the same numbers.
+    /// </summary>
     private static readonly TimeSpan AutoRefreshInterval = TimeSpan.FromMinutes(5);
     private const double UnavailableActionOpacity = 0.4;
 
@@ -50,7 +57,12 @@ public partial class DashboardPage : ContentPage
             card.ExplanationRequested += OnMetricExplanationRequested;
         }
 
-        this.RefreshWhenAppResumes(RefreshOnResumeAsync);
+        this.RefreshWhenAppResumes(RefreshUnattendedAsync);
+
+        // A monitoring screen left open has to keep itself current. Until this, every refresh in
+        // the app was edge-triggered — a caregiver watching the dashboard saw nothing move until
+        // they pulled it down themselves.
+        this.RefreshEvery(AutoRefreshInterval, RefreshUnattendedAsync);
     }
 
     protected override void OnAppearing()
@@ -147,19 +159,19 @@ public partial class DashboardPage : ContentPage
     private void OnRefreshClicked(object? sender, EventArgs e) => _ = SyncAndReloadAsync();
 
     /// <summary>
-    /// The app returning to the foreground reloads the dashboard, ignoring
-    /// <see cref="AutoRefreshInterval"/> — that window exists to stop tab-switching from
-    /// re-fetching, and honouring it here would hold back the very update the caregiver came
-    /// back to see.
+    /// The quiet reload behind both unattended paths — the app returning to the foreground, and
+    /// the timer ticking while the caregiver watches. Neither honours
+    /// <see cref="AutoRefreshInterval"/> as a gate: for a resume that window would hold back the
+    /// very update they came back to see, and for the timer that window *is* the tick.
     /// </summary>
     /// <remarks>
     /// A read, not a device sync: WearableSyncWorker has been pulling from the wearable every
-    /// ten minutes while the app was away, so what is missing on screen is the fetch, not the
-    /// collection. Asking the server to check in with the device on every foreground would also
-    /// earn the "too soon since the last check" refusal, and with it a popup for something
-    /// nobody asked for.
+    /// ten minutes anyway, so what is missing on screen is the fetch, not the collection. Asking
+    /// the server to check in with the device on every foreground or tick would also earn the
+    /// "too soon since the last check" refusal, and with it a popup for something nobody asked
+    /// for. Only a deliberate pull or the refresh button syncs the device.
     /// </remarks>
-    private Task RefreshOnResumeAsync() =>
+    private Task RefreshUnattendedAsync() =>
         DateTime.UtcNow - _lastLoadedUtc < ResumeRefresh.MinimumGap
             ? Task.CompletedTask
             : LoadAsync(force: false);
