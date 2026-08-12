@@ -262,8 +262,9 @@ public partial class AlertsPage : ContentPage
     /// <summary>
     /// Same offer the dashboard's call tiles make: ask, then open the profile form so the number
     /// can be added, rather than reporting the gap and leaving the caregiver to find the form.
-    /// The form asks for nothing beyond the number — every field on it arrives pre-filled from
-    /// the saved profile.
+    /// The form arrives pre-filled from the saved profile, so in the ordinary case the number is
+    /// all that is left to type — it still validates the fields the API requires (name, date of
+    /// birth, relationship), which a profile saved before those rules tightened could trip.
     /// </summary>
     private async void OnCallRequested(object? sender, AlertSummaryResponse alert)
     {

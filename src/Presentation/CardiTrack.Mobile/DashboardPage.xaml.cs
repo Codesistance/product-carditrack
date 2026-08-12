@@ -438,8 +438,10 @@ public partial class DashboardPage : ContentPage
     /// The single answer to "there is no number here yet": ask, then open the profile form so the
     /// caregiver can add one. Offering the fix beats reporting the gap — they reached for this
     /// tile to make contact, and a dialog that only explains leaves them to go find the form
-    /// themselves. Declining costs nothing, and the form asks for nothing beyond the number:
-    /// every field on it is already filled from the saved profile.
+    /// themselves. Declining costs nothing, and the form arrives pre-filled from the saved
+    /// profile, so in the ordinary case the number is all that is left to type — it still
+    /// validates the fields the API requires (name, date of birth, relationship), which a
+    /// profile saved before those rules tightened could trip.
     /// </summary>
     private async Task OfferToAddNumberAsync(string prompt)
     {
