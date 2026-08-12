@@ -58,6 +58,12 @@ public partial class CardiMemberDetailPage : ContentPage
     private DateTime _lastLoadedUtc = DateTime.MinValue;
     private CardiMemberDetailResponse? _member;
 
+    /// <summary>
+    /// Whether a generated summary is currently on screen. Guards the placeholder — see
+    /// <see cref="Apply"/>.
+    /// </summary>
+    private bool _digestRendered;
+
     public CardiMemberDetailPage(ICardiTrackApiClient api, IPopupService popups)
     {
         InitializeComponent();
@@ -77,9 +83,15 @@ public partial class CardiMemberDetailPage : ContentPage
 
     public string MemberId
     {
-        set => _memberId = Guid.TryParse(Uri.UnescapeDataString(value ?? string.Empty), out var id)
-            ? id
-            : Guid.Empty;
+        set
+        {
+            _memberId = Guid.TryParse(Uri.UnescapeDataString(value ?? string.Empty), out var id)
+                ? id
+                : Guid.Empty;
+            // Whatever summary is on screen belongs to whoever was on screen before. It must not
+            // be the reason the next CardiMember's placeholder is skipped.
+            _digestRendered = false;
+        }
     }
 
     protected override void OnAppearing()
@@ -189,11 +201,20 @@ public partial class CardiMemberDetailPage : ContentPage
                 "red" => "StatusRed",
                 _ => "StatusUnknown",
             }];
-        // The digest itself loads separately (LoadDigestAsync) — this is just the placeholder
-        // shown until it resolves, and the fallback if there isn't one yet.
-        SummaryTitleLabel.Text = "Still getting to know them";
-        SummaryGeneratedLabel.IsVisible = false;
-        SummaryLabel.Text = "We'll summarise how this CardiMember is doing here as soon as there's enough data to say something useful.";
+        // The digest loads on its own round trip (LoadDigestAsync) and lands after this method has
+        // returned, so writing the placeholder every time meant every refresh — including the
+        // silent periodic one — shrank this card back to two lines and then grew it again a moment
+        // later. That is two layout passes for a summary that has usually not changed at all, and
+        // it shoves Key Metric Trends and everything under it down the page and back twice while
+        // the caregiver is reading them. The placeholder is for a screen that has nothing better
+        // on it; once a summary is up it stays up until there is a new one, which is the same
+        // stance the failed-refresh path above takes.
+        if (!_digestRendered)
+        {
+            SummaryTitleLabel.Text = "Still getting to know them";
+            SummaryGeneratedLabel.IsVisible = false;
+            SummaryLabel.Text = "We'll summarise how this CardiMember is doing here as soon as there's enough data to say something useful.";
+        }
 
         ApplyTrends(member.Metrics);
 
@@ -236,12 +257,26 @@ public partial class CardiMemberDetailPage : ContentPage
             // The headline is generated with the summary and describes this particular one. A
             // digest stored before headlines existed has none, so the card falls back to naming
             // what it is rather than rendering a blank title.
-            SummaryTitleLabel.Text = string.IsNullOrWhiteSpace(digest.Headline)
-                ? "Latest Summary"
-                : digest.Headline;
+            var headline = string.IsNullOrWhiteSpace(digest.Headline) ? "Latest Summary" : digest.Headline;
+            var unchanged = _digestRendered
+                            && SummaryTitleLabel.Text == headline
+                            && SummaryLabel.Text == digest.Text;
+
+            SummaryTitleLabel.Text = headline;
             SummaryLabel.Text = digest.Text;
             SummaryGeneratedLabel.Text = $"Updated {RelativeTime.Format(digest.GeneratedAtUtc)}";
             SummaryGeneratedLabel.IsVisible = true;
+            _digestRendered = true;
+
+            if (unchanged)
+                return;
+
+            // Reads as an update rather than a flicker, and only when the words actually moved —
+            // same treatment as the dashboard's status hero.
+            SummaryTitleLabel.Opacity = 0;
+            SummaryLabel.Opacity = 0;
+            _ = SummaryTitleLabel.FadeToAsync(1, 150, Easing.CubicOut);
+            _ = SummaryLabel.FadeToAsync(1, 150, Easing.CubicOut);
         }
         catch (ApiException)
         {

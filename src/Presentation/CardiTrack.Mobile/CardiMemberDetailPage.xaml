@@ -183,7 +183,14 @@
                              summary is about instead of restating which screen it is on. Empty
                              until the pipeline has generated one for this member (dev only today —
                              see infrastructure/environments/prod.tfvars, enable_pipeline_jobs). -->
-                        <Border x:Name="SummaryCard" Style="{StaticResource ElevatedCard}">
+                        <!-- A floor, not a fit: the placeholder is shorter than the summary that
+                             replaces it, and on a first load the swap would otherwise shove the
+                             trends below it down the page. Sized to a typical few-sentence
+                             summary, so a member who has none yet gets a slightly roomy card
+                             rather than the whole screen moving under the caregiver. -->
+                        <Border x:Name="SummaryCard"
+                                Style="{StaticResource ElevatedCard}"
+                                MinimumHeightRequest="150">
                             <VerticalStackLayout Spacing="10">
                                 <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
                                     <BoxView x:Name="SummaryAccent"
