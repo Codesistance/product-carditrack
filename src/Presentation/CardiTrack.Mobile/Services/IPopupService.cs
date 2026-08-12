@@ -25,6 +25,13 @@ public interface IPopupService
     Task<bool> ConfirmWarningAsync(string message, string? title = null, string? confirmText = null, string? cancelText = null);
 
     /// <summary>
+    /// Info-styled confirmation — an offer rather than a caution, for the "shall I take you
+    /// there?" prompts where nothing is at stake if the user declines. False when cancelled or
+    /// dismissed via back.
+    /// </summary>
+    Task<bool> ConfirmInfoAsync(string message, string? title = null, string? confirmText = null, string? cancelText = null);
+
+    /// <summary>
     /// Asks the user to pick one of several options — used for the M1-13 pause duration.
     /// Returns null when cancelled or dismissed via back.
     /// </summary>

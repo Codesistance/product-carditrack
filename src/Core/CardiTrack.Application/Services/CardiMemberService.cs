@@ -55,7 +55,7 @@ public class CardiMemberService : ICardiMemberService
         {
             UserId = userId,
             CardiMemberId = cardiMember.Id,
-            RelationshipType = request.RelationshipType,
+            RelationshipType = Stated(request.RelationshipType),
             IsPrimaryCaregiver = request.IsPrimaryCaregiver,
             CanViewHealthData = true,
             ReceiveAlerts = true
@@ -73,7 +73,7 @@ public class CardiMemberService : ICardiMemberService
             Gender = cardiMember.Gender,
             Email = cardiMember.Email,
             Phone = cardiMember.Phone,
-            Relationship = request.RelationshipType,
+            Relationship = Stated(request.RelationshipType),
             IsPrimaryCaregiver = request.IsPrimaryCaregiver,
             IsActive = cardiMember.IsActive,
             CreatedDate = cardiMember.CreatedDate
@@ -162,9 +162,10 @@ public class CardiMemberService : ICardiMemberService
         // Relationship lives on the caregiver's own link, not the member — editing it here
         // must not rewrite what other caregivers call this person.
         var link = await FindLinkAsync(requestingUserId, cardiMemberId);
-        if (link is not null && link.RelationshipType != request.RelationshipType)
+        var relationship = Stated(request.RelationshipType);
+        if (link is not null && link.RelationshipType != relationship)
         {
-            link.RelationshipType = request.RelationshipType;
+            link.RelationshipType = relationship;
             link.UpdatedDate = DateTime.UtcNow;
             _unitOfWork.UserCardiMembers.Update(link);
         }
@@ -358,6 +359,15 @@ public class CardiMemberService : ICardiMemberService
             return storedNotes;
         }
     }
+
+    /// <summary>
+    /// Relationship is optional, so an unset or undefined value is stored as
+    /// <see cref="RelationshipType.Other"/> — the same "not stated" value the read paths already
+    /// fall back to when a caregiver has no link at all. Normalised here rather than at the edge
+    /// so nothing can persist a <c>0</c> that later reads back as no valid relationship.
+    /// </summary>
+    private static RelationshipType Stated(RelationshipType relationship) =>
+        Enum.IsDefined(relationship) ? relationship : RelationshipType.Other;
 
     private int CalculateAge(DateOnly dateOfBirth)
     {

@@ -189,10 +189,10 @@ public partial class AddCardiMemberPage : ContentPage
 
     private void OnFormChanged(object? sender, EventArgs e)
     {
+        // Name only. Relationship is optional — an unpicked one is sent as "Other", so gating
+        // Continue on it would make an optional field compulsory in everything but the label.
         var name = NameEntry.Text?.Trim();
-        ContinueBtn.IsEnabled =
-            !string.IsNullOrWhiteSpace(name) && name.Length >= 2 &&
-            RelationshipPicker.SelectedIndex >= 0;
+        ContinueBtn.IsEnabled = !string.IsNullOrWhiteSpace(name) && name.Length >= 2;
     }
 
     private async void OnContinueClicked(object? sender, EventArgs e)
@@ -208,7 +208,7 @@ public partial class AddCardiMemberPage : ContentPage
                 Name = NameEntry.Text!.Trim(),
                 DateOfBirth = DateOnly.FromDateTime(DobPicker.Date ?? DateTime.Today),
                 Gender = Gender.PreferNotToSay,
-                RelationshipType = Relationships[RelationshipPicker.SelectedIndex].Value,
+                RelationshipType = SelectedRelationship(),
                 MedicalNotes = NullIfEmpty(MedicalNotesEditor.Text),
                 EmergencyContactName = NullIfEmpty(EmergencyNameEntry.Text),
                 EmergencyContactPhone = NullIfEmpty(EmergencyPhoneEntry.Text),
@@ -235,6 +235,15 @@ public partial class AddCardiMemberPage : ContentPage
 
     private async void OnSkipTapped(object? sender, EventArgs e) =>
         await _ctx.FinishAsync(this);
+
+    /// <summary>
+    /// Nothing picked means nothing stated, which is <see cref="RelationshipType.Other"/> — the
+    /// same fallback the edit form uses, so the two screens agree about an unanswered picker.
+    /// </summary>
+    private RelationshipType SelectedRelationship() =>
+        RelationshipPicker.SelectedIndex >= 0
+            ? Relationships[RelationshipPicker.SelectedIndex].Value
+            : RelationshipType.Other;
 
     private static string? NullIfEmpty(string? value) =>
         string.IsNullOrWhiteSpace(value) ? null : value.Trim();

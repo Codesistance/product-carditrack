@@ -441,6 +441,37 @@ public partial class DashboardPage : ContentPage
             ? "Add an emergency contact number to this CardiMember to call from here."
             : $"Add an emergency contact number for {firstName} to call from here.";
 
+    // Question forms of the two messages above. The statements are what a tooltip says about a
+    // dimmed tile; these are what the tile asks when it is actually tapped.
+    private static string AddPhonePrompt(string firstName) =>
+        string.IsNullOrWhiteSpace(firstName)
+            ? "Would you like to add a phone number for this CardiMember, so you can call or message them from here?"
+            : $"Would you like to add a phone number for {firstName}, so you can call or message them from here?";
+
+    private static string AddEmergencyContactPrompt(string firstName) =>
+        string.IsNullOrWhiteSpace(firstName)
+            ? "Would you like to add an emergency contact number for this CardiMember, so you can call them from here?"
+            : $"Would you like to add an emergency contact number for {firstName}, so you can call them from here?";
+
+    /// <summary>
+    /// The single answer to "there is no number here yet": ask, then open the profile form so the
+    /// caregiver can add one. Offering the fix beats reporting the gap — they reached for this
+    /// tile to make contact, and a dialog that only explains leaves them to go find the form
+    /// themselves. Declining costs nothing, and the form arrives pre-filled from the saved
+    /// profile, so in the ordinary case the number is all that is left to type — it still
+    /// validates the fields the API requires (name, date of birth, relationship), which a
+    /// profile saved before those rules tightened could trip.
+    /// </summary>
+    private async Task OfferToAddNumberAsync(string prompt)
+    {
+        if (_lastData is not { } data)
+            return;
+
+        var addNow = await _popups.ConfirmInfoAsync(prompt, "No number yet", "Add number", "Not now");
+        if (addNow)
+            await Shell.Current.GoToAsync($"{EditCardiMemberPage.Route}?memberId={data.CardiMemberId}");
+    }
+
     private void SetState(DashboardState state)
     {
         SkeletonPanel.IsVisible = state == DashboardState.Loading;
@@ -453,8 +484,7 @@ public partial class DashboardPage : ContentPage
     {
         if (string.IsNullOrWhiteSpace(_lastData?.Phone))
         {
-            await _popups.ShowInfoAsync(
-                NoPhoneMessage(NameFormatting.FirstName(_lastData?.Name)), "No number yet");
+            await OfferToAddNumberAsync(AddPhonePrompt(NameFormatting.FirstName(_lastData?.Name)));
             return;
         }
         try
@@ -471,8 +501,7 @@ public partial class DashboardPage : ContentPage
     {
         if (string.IsNullOrWhiteSpace(_lastData?.Phone))
         {
-            await _popups.ShowInfoAsync(
-                NoPhoneMessage(NameFormatting.FirstName(_lastData?.Name)), "No number yet");
+            await OfferToAddNumberAsync(AddPhonePrompt(NameFormatting.FirstName(_lastData?.Name)));
             return;
         }
         try
@@ -489,8 +518,8 @@ public partial class DashboardPage : ContentPage
     {
         if (string.IsNullOrWhiteSpace(_lastData?.EmergencyContactPhone))
         {
-            await _popups.ShowInfoAsync(
-                NoEmergencyContactMessage(NameFormatting.FirstName(_lastData?.Name)), "No number yet");
+            await OfferToAddNumberAsync(
+                AddEmergencyContactPrompt(NameFormatting.FirstName(_lastData?.Name)));
             return;
         }
         try
@@ -599,9 +628,6 @@ public partial class DashboardPage : ContentPage
             _wizardActive = false;
         }
     }
-
-    private async void OnViewTrendsClicked(object? sender, EventArgs e) =>
-        await _popups.ShowInfoAsync("Trends & history (M2-03) are on the way.", "Coming soon");
 
     /// <summary>
     /// A live, empathetic replacement for the hero card's static status line. Best-effort: no

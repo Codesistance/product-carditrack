@@ -30,8 +30,11 @@ public class CreateCardiMemberRequest
     [StringLength(2000)]
     public string? MedicalNotes { get; set; }
 
-    [Required(ErrorMessage = "Relationship type is required")]
-    public RelationshipType RelationshipType { get; set; }
+    /// <summary>
+    /// Optional — see <see cref="UpdateCardiMemberRequest.RelationshipType"/>. Not knowing how you
+    /// are related to someone is no reason to be unable to start watching over them.
+    /// </summary>
+    public RelationshipType RelationshipType { get; set; } = RelationshipType.Other;
 
     public bool IsPrimaryCaregiver { get; set; } = true;
 }

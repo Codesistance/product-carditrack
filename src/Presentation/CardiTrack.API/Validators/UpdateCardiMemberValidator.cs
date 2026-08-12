@@ -19,8 +19,12 @@ public class UpdateCardiMemberValidator : AbstractValidator<UpdateCardiMemberReq
             .NotEmpty().WithMessage("Date of birth is required")
             .Must(BeValidAge).WithMessage("CardiMember must be at least 18 years old and not more than 120 years old");
 
+        // Optional. 0 is not a member of the enum — it is what an omitted relationship
+        // deserialises to for a caller that predates the DTO default — and is accepted as
+        // "not stated"; CardiMemberService normalises it to Other before it is stored.
+        // Anything else undefined is still a client bug worth reporting.
         RuleFor(x => x.RelationshipType)
-            .IsInEnum().WithMessage("Invalid relationship type");
+            .Must(r => r == 0 || Enum.IsDefined(r)).WithMessage("Invalid relationship type");
 
         RuleFor(x => x.AlertSensitivity)
             .IsInEnum().WithMessage("Invalid alert sensitivity");

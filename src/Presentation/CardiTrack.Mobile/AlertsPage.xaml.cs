@@ -270,46 +270,30 @@ public partial class AlertsPage : ContentPage
     private async void OnBackTapped(object? sender, TappedEventArgs e) =>
         await Shell.Current.GoToAsync(AppShell.DashboardRoute);
 
-    /// <summary>
-    /// The header's filter button. It offers the same five filters as the chips, because the
-    /// empty state (101:3840) keeps this button and drops the chip row.
-    /// </summary>
-    private async void OnFilterTapped(object? sender, TappedEventArgs e)
-    {
-        var labels = FilterChipBar.Options.Select(o => o.Label).ToArray();
-        var chosen = await _popups.ChooseAsync("Filter alerts", "Cancel", labels);
-        if (chosen is null)
-            return;
-
-        var filter = FilterChipBar.Options.First(o => o.Label == chosen).Filter;
-
-        // Picking a filter means "show me current alerts like this", so it leaves the archive.
-        if (_showArchived)
-        {
-            _showArchived = false;
-            ApplyArchiveButtonText();
-            Filters.SetSelectedSilently(filter);
-            _lastData = null;
-            await LoadAsync(force: true);
-            return;
-        }
-
-        Filters.Select(filter);
-    }
-
     private void OnPullToRefresh(object? sender, EventArgs e) => _ = LoadAsync(force: true);
 
     /// <summary>The error panel's "Try again" and the loading card's "Refresh Now".</summary>
     private void OnRefreshClicked(object? sender, EventArgs e) => _ = LoadAsync(force: true);
 
+    /// <summary>
+    /// Same offer the dashboard's call tiles make: ask, then open the profile form so the number
+    /// can be added, rather than reporting the gap and leaving the caregiver to find the form.
+    /// The form arrives pre-filled from the saved profile, so in the ordinary case the number is
+    /// all that is left to type — it still validates the fields the API requires (name, date of
+    /// birth, relationship), which a profile saved before those rules tightened could trip.
+    /// </summary>
     private async void OnCallRequested(object? sender, AlertSummaryResponse alert)
     {
         if (string.IsNullOrWhiteSpace(alert.EmergencyContactPhone))
         {
-            await _popups.ShowInfoAsync(
-                $"There's no phone number saved for {NameFormatting.FirstName(alert.CardiMemberName)} yet. "
-                + "Add an emergency contact on their profile and you'll be able to call from here.",
-                "No number yet");
+            var firstName = NameFormatting.FirstName(alert.CardiMemberName);
+            var prompt = string.IsNullOrWhiteSpace(firstName)
+                ? "Would you like to add an emergency contact number for this CardiMember, so you can call them from here?"
+                : $"Would you like to add an emergency contact number for {firstName}, so you can call them from here?";
+
+            var addNow = await _popups.ConfirmInfoAsync(prompt, "No number yet", "Add number", "Not now");
+            if (addNow)
+                await Shell.Current.GoToAsync($"{EditCardiMemberPage.Route}?memberId={alert.CardiMemberId}");
             return;
         }
 
