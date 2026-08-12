@@ -124,31 +124,21 @@ public partial class MetricCard : ContentView
     }
 
     /// <summary>
-    /// Heart rate's accessory. The wording is deliberately non-clinical — CardiTrack is not a
-    /// medical device, so the pill reports how the reading compares with this member's own
-    /// baseline rather than naming it high or low.
+    /// Heart rate's accessory. The tint, ink and wording come from <see cref="MetricStatus"/>, which
+    /// the Member Detail screen's trend cards read too, so one status can never be described two ways.
     /// </summary>
     private void ApplyStatusPill(string status)
     {
-        var (tint, ink, text) = status switch
-        {
-            "green" => ("PillGreenBackground", "StatusGreen", "NORMAL"),
-            "yellow" => ("PillYellowBackground", "StatusYellow", "UNUSUAL"),
-            "orange" => ("PillOrangeBackground", "StatusOrange", "CHECK IN"),
-            "red" => ("PillRedBackground", "StatusRed", "URGENT"),
-            _ => (null, null, null),
-        };
-
-        if (tint is null)
+        if (MetricStatus.Pill(status) is not { } pill)
         {
             StatusPillBorder.IsVisible = false;
             return;
         }
 
         var resources = Microsoft.Maui.Controls.Application.Current!.Resources;
-        StatusPillBorder.BackgroundColor = (Color)resources[tint];
-        StatusPillLabel.TextColor = (Color)resources[ink!];
-        StatusPillLabel.Text = text;
+        StatusPillBorder.BackgroundColor = (Color)resources[pill.Tint];
+        StatusPillLabel.TextColor = (Color)resources[pill.Ink];
+        StatusPillLabel.Text = pill.Text;
         StatusPillBorder.IsVisible = true;
     }
 

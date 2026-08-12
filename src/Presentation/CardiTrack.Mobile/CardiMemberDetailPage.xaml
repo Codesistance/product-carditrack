@@ -203,15 +203,38 @@
                             </VerticalStackLayout>
                         </Border>
 
-                        <!-- Key metric trends (issue #188): minimal sparklines, same 7-day
-                             Series the dashboard's Key Metrics already carry. -->
-                        <Border x:Name="TrendsCard" Style="{StaticResource ElevatedCard}" IsVisible="False">
-                            <VerticalStackLayout Spacing="12">
-                                <Label Text="Key Metric Trends"
-                                       Style="{StaticResource DashboardSectionTitle}"/>
-                                <VerticalStackLayout x:Name="TrendsStack" Spacing="14"/>
-                            </VerticalStackLayout>
-                        </Border>
+                        <!-- Key metric trends (issue #188): one swipeable card per metric, over the
+                             same daily Series the dashboard's Key Metrics already carry, across a
+                             caregiver-chosen 7/14/30-day window. Deliberately not wrapped in a card
+                             of its own — the slides are the cards, and nesting them would read as
+                             chrome inside chrome. -->
+                        <VerticalStackLayout x:Name="TrendsSection" Spacing="12" IsVisible="False">
+                            <Label Text="Key Metric Trends"
+                                   Style="{StaticResource DashboardSectionTitle}"/>
+
+                            <controls:TrendWindowSelector x:Name="TrendWindowPicker"/>
+
+                            <!-- Margin cancels the page's own 20dp gutter so a card can slide the
+                                 full width of the screen; the cards carry their own inset. -->
+                            <CarouselView x:Name="TrendsCarousel"
+                                          Margin="-20,0"
+                                          Loop="False"
+                                          IsScrollAnimated="True"
+                                          HorizontalScrollBarVisibility="Never"
+                                          PeekAreaInsets="20,0"
+                                          HorizontalOptions="Fill">
+                                <CarouselView.ItemTemplate>
+                                    <DataTemplate x:DataType="controls:MetricTrend">
+                                        <controls:MetricTrendCard/>
+                                    </DataTemplate>
+                                </CarouselView.ItemTemplate>
+                            </CarouselView>
+
+                            <!-- Pill indicators, same treatment as the welcome carousel's. -->
+                            <HorizontalStackLayout x:Name="TrendIndicatorPanel"
+                                                   HorizontalOptions="Center"
+                                                   Spacing="6"/>
+                        </VerticalStackLayout>
 
                         <!-- Emergency contact -->
                         <Border Style="{StaticResource ElevatedCard}">
