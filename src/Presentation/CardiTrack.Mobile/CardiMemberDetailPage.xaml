@@ -194,11 +194,14 @@
                                 MinimumHeightRequest="150">
                             <VerticalStackLayout Spacing="10">
                                 <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8">
+                                    <!-- Decorative: the title beside it is the header. Out of the
+                                         accessibility tree so focus lands on the words. -->
                                     <Image Grid.Column="0"
                                            Source="icon_clipboard.svg"
                                            WidthRequest="20" HeightRequest="20"
                                            VerticalOptions="Start"
-                                           Margin="0,2,0,0"/>
+                                           Margin="0,2,0,0"
+                                           AutomationProperties.IsInAccessibleTree="False"/>
                                     <Label x:Name="SummaryTitleLabel"
                                            Grid.Column="1"
                                            Style="{StaticResource DashboardSectionTitle}"
@@ -216,6 +219,7 @@
                                            TextColor="{StaticResource BodyText}"
                                            VerticalOptions="Start"
                                            Margin="0,5,0,0"
+                                           LineBreakMode="TailTruncation"
                                            IsVisible="False"/>
                                 </Grid>
                                 <Label x:Name="SummaryLabel" Style="{StaticResource Body2}"/>

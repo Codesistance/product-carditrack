@@ -331,14 +331,18 @@ public partial class CardiMemberDetailPage : ContentPage
 
             // The idea emoji rather than a plain dot: each row is a small idea to try, and the
             // glyph says so before the words do. Sized to the suggestion's own text and pinned
-            // to Start so it sits beside the first line of a suggestion that wraps.
+            // to Start so it sits beside the first line of a suggestion that wraps. Decorative,
+            // so out of the accessibility tree — "light bulb" read before every suggestion is
+            // noise, same call as MetricCard's star row.
             var resources = Microsoft.Maui.Controls.Application.Current!.Resources;
-            row.Add(new Label
+            var glyph = new Label
             {
                 Text = "\U0001F4A1",
                 FontSize = 14,
                 VerticalOptions = LayoutOptions.Start,
-            });
+            };
+            AutomationProperties.SetIsInAccessibleTree(glyph, false);
+            row.Add(glyph);
 
             row.Add(
                 new Label
