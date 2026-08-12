@@ -167,6 +167,148 @@ public class MemberInsightsCalculatorTests
     }
 
     [Fact]
+    public void A_short_night_slept_efficiently_is_rated_on_its_length_not_its_efficiency()
+    {
+        // The reading this rating exists to catch. 4.5 hours asleep at 96% efficiency — the
+        // wearer was barely in bed longer than they slept, so on its own the efficiency is five
+        // stars for a night nowhere near long enough. Efficiency is a ratio and knows nothing
+        // about the length of what it divides.
+        var metrics = Build(
+            new ActivityLog { Date = Yesterday, SleepMinutes = 270, SleepEfficiency = 96 },
+            new PatternBaseline { AvgSleepMinutes = 450 });
+
+        Assert.Equal(2, metrics.Sleep.QualityScore);
+    }
+
+    [Fact]
+    public void A_habitually_short_sleeper_is_still_not_told_their_short_nights_are_five_stars()
+    {
+        // The same 4.5 hours, but for a member whose own normal is 4.5 hours — so every
+        // member-relative comparison the card makes says this night was perfect. It is the one
+        // metric where the member's own normal cannot be the whole of the rating: the baseline
+        // has learned the very thing a caregiver is watching for.
+        var metrics = Build(
+            new ActivityLog { Date = Yesterday, SleepMinutes = 270, SleepEfficiency = 96 },
+            new PatternBaseline { AvgSleepMinutes = 270 });
+
+        Assert.Equal(2, metrics.Sleep.QualityScore);
+        // And the pill still reads the member against themselves, which is why the two are allowed
+        // to differ here: this night was normal *for them*, and it was still not enough sleep.
+        Assert.Equal("green", metrics.Sleep.Status);
+    }
+
+    [Fact]
+    public void A_long_enough_night_spent_awake_in_bed_is_rated_on_its_efficiency()
+    {
+        // The other half of the pair: 7.5 hours of sleep that took a much longer, broken night to
+        // accumulate — 65% efficiency puts the wearer in bed over eleven hours to get them. Long
+        // enough by both the member's own normal and the recommendation, and still not a good
+        // night.
+        var metrics = Build(
+            new ActivityLog { Date = Yesterday, SleepMinutes = 450, SleepEfficiency = 65 },
+            new PatternBaseline { AvgSleepMinutes = 450 });
+
+        Assert.Equal(2, metrics.Sleep.QualityScore);
+    }
+
+    [Fact]
+    public void A_night_short_of_the_members_own_normal_is_marked_down_even_when_it_clears_the_recommendation()
+    {
+        // 7 hours at 95% efficiency — top marks on both the efficiency bands and the published
+        // floor. But this member normally sleeps 9, so the night is 22% short of their own normal
+        // and the card says so. The recommendation is a floor under the rating, never a ceiling
+        // over it.
+        var metrics = Build(
+            new ActivityLog { Date = Yesterday, SleepMinutes = 420, SleepEfficiency = 95 },
+            new PatternBaseline { AvgSleepMinutes = 540 });
+
+        Assert.Equal(3, metrics.Sleep.QualityScore);
+    }
+
+    [Theory]
+    [InlineData(420, 5)]   // 7.0h — at the published floor
+    [InlineData(390, 4)]   // 6.5h
+    [InlineData(330, 3)]   // 5.5h
+    [InlineData(270, 2)]   // 4.5h
+    [InlineData(180, 1)]   // 3.0h
+    public void The_length_of_the_night_caps_the_rating_an_hour_at_a_time(int sleepMinutes, int expected)
+    {
+        // Efficiency and the member's own normal both say five, so the cap is the only thing
+        // moving here: one star for each hour short of the NSF's 7-hour floor.
+        var metrics = Build(
+            new ActivityLog { Date = Yesterday, SleepMinutes = sleepMinutes, SleepEfficiency = 95 },
+            new PatternBaseline { AvgSleepMinutes = sleepMinutes });
+
+        Assert.Equal(expected, metrics.Sleep.QualityScore);
+    }
+
+    [Fact]
+    public void A_night_far_longer_than_the_recommendation_is_marked_down_too()
+    {
+        // Twelve hours, slept almost end to end, for a member who normally sleeps seven. Every
+        // member-relative comparison says five: efficiency is a ratio and does not care how long
+        // the night was, and the duration comparison counts only shortfalls, so an overshoot of
+        // any size reads as top marks. Only the published band can see this one.
+        var metrics = Build(
+            new ActivityLog { Date = Yesterday, SleepMinutes = 720, SleepEfficiency = 95 },
+            new PatternBaseline { AvgSleepMinutes = 420 });
+
+        Assert.Equal(1, metrics.Sleep.QualityScore);
+    }
+
+    [Fact]
+    public void Catching_up_on_sleep_is_not_marked_down_for_being_more_than_usual()
+    {
+        // The asymmetry the cap is careful to preserve. Eight hours against a six-hour normal is a
+        // third more sleep than usual, and inside the recommended band for this member's age — a
+        // member catching up after a bad week has not earned a worse rating for it.
+        var metrics = Build(
+            new ActivityLog { Date = Yesterday, SleepMinutes = 480, SleepEfficiency = 95 },
+            new PatternBaseline { AvgSleepMinutes = 360 });
+
+        Assert.Equal(5, metrics.Sleep.QualityScore);
+    }
+
+    [Fact]
+    public void The_ceiling_the_night_is_capped_against_moves_with_the_members_age()
+    {
+        // Nine hours is the top of the NSF's adult band and an hour past the older-adult one, so
+        // the same night rates differently either side of 65 — the one age split among the
+        // published ranges, applied to the rating as well as to the band drawn behind the chart.
+        var log = new ActivityLog { Date = Yesterday, SleepMinutes = 540, SleepEfficiency = 95 };
+        var baseline = new PatternBaseline { AvgSleepMinutes = 540 };
+
+        Assert.Equal(5, Build(log, baseline, ageYears: 64).Sleep.QualityScore);
+        Assert.Equal(4, Build(log, baseline, ageYears: 65).Sleep.QualityScore);
+    }
+
+    [Fact]
+    public void The_cap_reads_the_night_as_measured_not_as_the_card_rounds_it()
+    {
+        // 418 minutes is 6 hours 58, which the card shows as "7 hours" because Value carries one
+        // decimal place. Rounding is the right resolution to read a night at and the wrong one to
+        // threshold it on — reading the cap off Value would clear a floor this night is short of.
+        var metrics = Build(
+            new ActivityLog { Date = Yesterday, SleepMinutes = 418, SleepEfficiency = 95 },
+            new PatternBaseline { AvgSleepMinutes = 418 });
+
+        Assert.Equal(7m, metrics.Sleep.Value);
+        Assert.Equal(4, metrics.Sleep.QualityScore);
+    }
+
+    [Fact]
+    public void The_recommendation_lowers_a_sleep_rating_but_never_creates_one()
+    {
+        // No efficiency and no baseline: nothing of this member's own to rate the night against,
+        // so it stays unrated rather than being scored on the population recommendation alone.
+        // Rating a lone number against a published range is exactly the reading the product does
+        // not make — the cap only ever holds down a rating the member's own data already earned.
+        var metrics = Build(new ActivityLog { Date = Yesterday, SleepMinutes = 270 });
+
+        Assert.Null(metrics.Sleep.QualityScore);
+    }
+
+    [Fact]
     public void Skin_temperature_is_rated_against_the_devices_own_nightly_variation()
     {
         var settled = Build(new ActivityLog

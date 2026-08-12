@@ -596,7 +596,7 @@ Each device card:
 
 **Key Metrics (3 cards in a row):**
 
-**Star rating (1-5)** appears on every card that has something to compare against (Activity, Heart Rate, Sleep, Skin Temp): how the reading sits against this member's own normal, at finer resolution than the status colour and never contradicting it. SpO2 and Breathing Rate have no baseline yet, so their star row stays hidden rather than rating a reading against an invented normal. See `qualityScore` in [health-data.md](../../../backend/api/health-data.md).
+**Star rating (1-5)** appears on every card that has something to compare against (Activity, Heart Rate, Sleep, Skin Temp): how the reading sits against this member's own normal — except sleep, which is also held to the published recommended band for the member's age, because a habitually short sleeper's own normal is the very reading being watched for. The row takes the status pill's colour on cards whose pill is built from `status` (Heart Rate, Skin Temp) and colours itself from the star count (3-5 green, 2 yellow, 1 orange) elsewhere — Activity, which shows no pill, and Sleep, whose GOOD/FAIR/POOR pill is itself named from those bands — never from a status the card isn't showing, which is what would paint a short sleeper's two stars green. SpO2 and Breathing Rate have no baseline yet, so their star row stays hidden rather than rating a reading against an invented normal. See `qualityScore` in [health-data.md](../../../backend/api/health-data.md).
 
 **Card 1: Activity**
 - Icon: shoe
@@ -617,8 +617,9 @@ Each device card:
 **Card 3: Sleep**
 - Icon: moon
 - Large value: "7.2 hours"
-- Star rating (1-5) — sleep efficiency, or the shortfall in duration when the device reports none
-- Comparison: "Better than average"
+- Status pill: **GOOD / FAIR / POOR** — one word naming the band of the star rating (3-5 / 2 / 1), in the same pill chrome and status colours as the other cards; hidden when the night is unrated. From the rating, never from `status`: a quality vocabulary rather than NORMAL/UNUSUAL, because a 4.5-hour night is entirely usual for a member who always sleeps 4.5 hours — and still FAIR
+- Star rating (1-5) — the worse of sleep efficiency and the shortfall in duration against baseline (either alone when the other is unavailable), capped on the length of the night against the published band for the member's age — both ends, so neither 4.5 nor 12 hours can rate five stars
+- Comparison: "Longer than usual" / "Shorter than usual" / "In line with usual" — direction only, no verdict; the stars and pill carry the judgement
 - Mini sparkline
 
 **Recent Alerts (conditional — only shown if alerts exist):**
@@ -843,7 +844,7 @@ Backed by a single `GET /api/v1/cardimembers/{id}` round trip — see [cardimemb
 **Key Metric Trends (carousel, one swipeable card per metric):**
 - Activity, Heart Rate, Sleep, Skin Temp, Blood Oxygen and Breathing Rate, over a caregiver-chosen **7 / 14 / 30-day** window. The API always sends 30 days of `series`, so switching windows is a client-side slice rather than another round trip.
 - Each chart draws the daily line over **the two things the reading is compared against**: a dashed rule at this member's own learned `baseline`, and a shaded band at the published `reference` range for an adult of this member's age (60–100 bpm AHA, 7–9 h NSF — 7–8 from age 65, 94–100 % WHO, 12–20 brpm WHO — see [health-data.md](../../../backend/api/health-data.md)). A key under the chart names both and quotes their numbers; steps and skin temp have no published range, so they show the baseline alone.
-- Both are drawn in neutral ink, never the status accent — they are context, not a verdict. The band is **presentational only**: the card's pill and stars still read this member against their own normal, not against the population.
+- Both are drawn in neutral ink, never the status accent — they are context, not a verdict. The band is **presentational only**: the card's pill still reads this member against their own normal, not against the population. The one exception is the **sleep band**, which caps the sleep card's stars at both ends — a 4.5-hour night cannot be five stars however efficiently it was slept, nor can a 12-hour one, and a member whose own normal is 4.5 hours is the reason the cap cannot come off. It only ever lowers the rating; see [health-data.md](../../../backend/api/health-data.md).
 - The chart's axis makes room for them, but not at any price: where admitting the band or the baseline would flatten the readings into a straight line, the readings keep the scale and the band is drawn clipped to the plot edge. The baseline rule is dropped instead — a rule pinned to the edge would read as a baseline sitting exactly there — and its key loses the dash and reads "Baseline 9,000 (off chart)". The number stays: a window that far from the member's own normal is why the rule would not fit, which makes it the thing most worth reading.
 - Fewer than two readings in the window shows "Not enough readings in this window yet." instead of an empty grid.
 

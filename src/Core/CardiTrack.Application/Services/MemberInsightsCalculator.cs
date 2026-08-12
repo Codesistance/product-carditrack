@@ -108,21 +108,31 @@ public static class MemberInsightsCalculator
             // The only one of the four published ranges that is split by age; the rest are
             // published as single adult bands, which is all a CardiMember can be.
             reference: HealthReferenceRanges.Sleep(ageYears));
-        // Read off the same night as the duration above, so the stars can never describe the
-        // quality of one night next to the length of another.
-        sleep.QualityScore = latestSleep?.SleepEfficiency switch
+        // A night is rated on both of the things that can be wrong with it, taking the worse:
+        // how well it was slept, and how much of it there was. Read off the same night as the
+        // duration above, so the stars can never describe the quality of one night next to the
+        // length of another.
+        //
+        // How well: sleep efficiency, the share of the time in bed actually spent asleep. Plenty
+        // of wearables report a duration but no efficiency at all, which leaves this half unrated
+        // rather than dropping the rating entirely.
+        var sleptWell = latestSleep?.SleepEfficiency switch
         {
             >= 90 => 5,
             >= 80 => 4,
             >= 70 => 3,
             >= 60 => 2,
             not null => 1,
-            // Plenty of wearables report a duration but no efficiency at all. Rather than drop the
-            // rating for those members entirely, fall back to the length of the night against
-            // their own normal — a shorter night than usual is the reading being looked for either
-            // way, and like steps a longer one is not marked down for it.
-            null => RateAgainstNormal(sleep.ChangePercent, shortfallOnly: true),
+            null => (int?)null,
         };
+        // How much: the length of the night against this member's own normal. A shorter night than
+        // usual is the reading being looked for, and like steps a longer one is not marked down.
+        // The cap takes the card's own Reference — the same band the chart draws — so the rating
+        // and the band a caregiver reads it against cannot drift apart.
+        sleep.QualityScore = CapAtRecommendedSleep(
+            Lower(sleptWell, RateAgainstNormal(sleep.ChangePercent, shortfallOnly: true)),
+            latestSleep?.SleepMinutes,
+            sleep.Reference);
 
         // Temperature carries its own per-day, device-derived baseline (Google Health computes
         // it, not our BaselineCalculationWorker), so it compares against that rather than
@@ -204,7 +214,9 @@ public static class MemberInsightsCalculator
     /// <param name="shortfallOnly">
     /// True for metrics where overshooting the normal is not a departure worth marking down —
     /// steps and sleep duration. Those rate on the shortfall alone, matching the direction the
-    /// dashboard's own trend arrow already reads them in.
+    /// dashboard's own trend arrow already reads them in. Note that for sleep this earns top marks
+    /// for a long-enough night only in this member's terms; <see cref="CapAtRecommendedSleep"/>
+    /// still has to agree the night was long enough at all.
     /// </param>
     private static int? RateAgainstNormal(decimal? changePercent, bool shortfallOnly = false)
     {
@@ -222,6 +234,84 @@ public static class MemberInsightsCalculator
             _ => 1,
         };
     }
+
+    /// <summary>
+    /// Holds a sleep rating down to what the length of the night can support, against the published
+    /// recommended band for a member of this age (<see cref="HealthReferenceRanges.Sleep"/>) — one
+    /// star for each hour outside it, so 4.5 hours cannot be rated above two however well those
+    /// hours were slept, and neither can 12.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Sleep is the one metric where the member's own normal cannot be the whole of the rating.
+    /// Both of the comparisons it is otherwise made against are blind to how long the night was:
+    /// efficiency is a ratio, so 4.4 hours asleep out of 4.5 in bed is 98% and five stars for
+    /// a night nowhere near long enough; and a member who habitually sleeps 4.5 hours has a
+    /// baseline that says a 4.5-hour night is exactly normal — the very reading a caregiver is
+    /// watching for, rated top marks because it keeps happening.
+    /// </para>
+    /// <para>
+    /// Both ends of the band, because too long is a departure the same way too short is, and the
+    /// member's own normal cannot catch it either: the duration comparison this cap sits on top of
+    /// is <c>shortfallOnly</c>, which reads every overshoot as five stars. That asymmetry is right
+    /// where it is — a member catching up after a bad week has not earned a worse rating for it —
+    /// but it means a night far beyond the recommendation would otherwise go unremarked, and a jump
+    /// from seven hours to twelve is exactly what someone is watching for. Only the published band
+    /// can see it, because "too long" has no meaning except in absolute terms.
+    /// </para>
+    /// <para>
+    /// This is the single, deliberate exception to <see cref="MetricReference"/> being
+    /// presentational only, and it is written to stay inside that rule's intent: the recommendation
+    /// can only ever lower a rating the member's own data already earned — never raise one, and
+    /// never create one where there was nothing to rate. An unusual night is still reported as an
+    /// unusual night, not named a disorder — CardiTrack is not a medical device — but it will not
+    /// be applauded either.
+    /// </para>
+    /// </remarks>
+    /// <param name="sleepMinutes">
+    /// The night as it was measured, not as the card rounds it. <see cref="DashboardMetric.Value"/>
+    /// carries hours to one decimal place, which is the right resolution to read but the wrong one
+    /// to threshold on: 418 minutes is 6.97 hours and rounds to 7.0, clearing a floor it is three
+    /// minutes short of.
+    /// </param>
+    /// <param name="recommended">
+    /// The sleep card's own <see cref="DashboardMetric.Reference"/> — the very band the chart
+    /// draws, passed rather than re-derived so the rating and the band a caregiver reads it
+    /// against cannot drift apart by construction. Only the ceiling is age-split: the NSF drops
+    /// from 9 hours to 8 at <see cref="HealthReferenceRanges.OlderAdultAge"/>, and publishes the
+    /// same 7-hour floor either side. Null-tolerant for symmetry with the other guards, though
+    /// the sleep card always carries one.
+    /// </param>
+    private static int? CapAtRecommendedSleep(int? score, int? sleepMinutes, MetricReference? recommended)
+    {
+        if (score is null || sleepMinutes is not { } minutes || recommended is null)
+            return score;
+
+        var hours = minutes / 60m;
+        var hoursOutside =
+            hours < recommended.Low ? recommended.Low - hours
+            : hours > recommended.High ? hours - recommended.High
+            : 0m;
+
+        return Math.Min(score.Value, hoursOutside switch
+        {
+            <= 0m => QualityScoreMax,
+            <= 1m => 4,
+            <= 2m => 3,
+            <= 3m => 2,
+            _ => 1,
+        });
+    }
+
+    /// <summary>
+    /// The worse of two ratings of the same reading, skipping either that could not be made at all
+    /// — so a metric rated on two things falls back to whichever one its data supports, and is
+    /// unrated only when neither could be made.
+    /// </summary>
+    private static int? Lower(int? left, int? right) =>
+        left is null ? right
+        : right is null ? left
+        : Math.Min(left.Value, right.Value);
 
     /// <summary>The most recent day that actually reported this metric, or null when none did.</summary>
     private static ActivityLog? LatestWith<T>(IReadOnlyList<ActivityLog> newestFirst, Func<ActivityLog, T?> select)

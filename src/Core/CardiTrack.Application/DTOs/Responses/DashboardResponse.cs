@@ -122,13 +122,17 @@ public class DashboardMetric
 
     /// <summary>
     /// 1-5 star rating of the reading against this member's own normal. What "normal" means is
-    /// per metric: sleep uses the device's sleep efficiency, falling back to its duration against
-    /// the sleep baseline only when the device reports no efficiency; temperature uses distance
-    /// from its own nightly baseline in units of that device's nightly variation; steps and
-    /// resting heart rate use percentage deviation from the pattern baseline (steps counting only
-    /// a shortfall). See <c>MemberInsightsCalculator</c> for the bands. Null when there is nothing
-    /// to rate against — SpO2 and breathing rate always, and any metric whose baseline is missing
-    /// — which hides the card's star row rather than inventing a normal.
+    /// per metric: sleep takes the worse of the device's sleep efficiency and the night's duration
+    /// against the sleep baseline, then caps that on the length of the night against both ends of
+    /// the published recommendation, so hours slept well cannot rate above hours slept at all and a
+    /// night far past the recommendation is not applauded either; temperature uses
+    /// distance from its own nightly baseline in units of that device's nightly variation; steps
+    /// and resting heart rate use percentage deviation from the pattern baseline (steps counting
+    /// only a shortfall). See <c>MemberInsightsCalculator</c> for the bands. Null when there is
+    /// nothing to rate against — SpO2 and breathing rate always; steps and resting heart rate
+    /// when no baseline exists; and sleep only when the night carries neither an efficiency nor
+    /// a baseline to compare its length with, since either alone can rate it. Null hides the
+    /// card's star row rather than inventing a normal.
     /// </summary>
     public int? QualityScore { get; set; }
 
@@ -154,10 +158,20 @@ public class DashboardMetric
 /// <see cref="DashboardMetric.Baseline"/>, which is the member's own learned normal.
 /// </summary>
 /// <remarks>
+/// <para>
 /// Presentational only: it is deliberately not an input to <see cref="DashboardMetric.Status"/> or
 /// <see cref="DashboardMetric.QualityScore"/>, both of which stay relative to the member's own
 /// baseline. CardiTrack is not a medical device, and a reading outside a population range is
 /// context for a caregiver, not a finding.
+/// </para>
+/// <para>
+/// The one exception is the sleep range, both ends of which cap the sleep
+/// <see cref="DashboardMetric.QualityScore"/> — see
+/// <c>MemberInsightsCalculator.CapAtRecommendedSleep</c>. It can only lower a rating the member's
+/// own data already earned, because for sleep alone the member's own normal cannot be the whole
+/// of the rating: a habitually short sleeper's baseline says their short nights are fine, and
+/// no member-relative comparison reads a night as too long at all.
+/// </para>
 /// </remarks>
 public class MetricReference
 {
