@@ -22,7 +22,16 @@ public partial class App : Microsoft.Maui.Controls.Application
         ServiceHelper.GetRequiredService<ITokenRefresher>().SessionExpired += () =>
             MainThread.BeginInvokeOnMainThread(async () => await ReturnToSignInAsync());
 
-        return new Window(new SplashPage());
+        var window = new Window(new SplashPage());
+
+        // Coming back to the app is the same moment as arriving at a screen: the page in front
+        // of the caregiver reloads itself so the data the workers processed while the app was
+        // away is already there, without a pull-to-refresh. Window-level because MAUI raises
+        // the foreground transition here and nowhere else; the notifier fans it out to pages.
+        var resumes = ServiceHelper.GetRequiredService<AppResumeNotifier>();
+        window.Resumed += (_, _) => resumes.NotifyResumed();
+
+        return window;
     }
 
     private async Task ReturnToSignInAsync()

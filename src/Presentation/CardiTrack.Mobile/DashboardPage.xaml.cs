@@ -40,6 +40,7 @@ public partial class DashboardPage : ContentPage
         HeroCard.MemberTapped += (_, _) => OpenMemberDetails();
         Header.RefreshRequested += OnRefreshClicked;
         Header.BellTapped += OnBellClicked;
+        this.RefreshWhenAppResumes(RefreshOnResumeAsync);
     }
 
     protected override void OnAppearing()
@@ -134,6 +135,24 @@ public partial class DashboardPage : ContentPage
     }
 
     private void OnRefreshClicked(object? sender, EventArgs e) => _ = SyncAndReloadAsync();
+
+    /// <summary>
+    /// The app returning to the foreground reloads the dashboard, ignoring
+    /// <see cref="AutoRefreshInterval"/> — that window exists to stop tab-switching from
+    /// re-fetching, and honouring it here would hold back the very update the caregiver came
+    /// back to see.
+    /// </summary>
+    /// <remarks>
+    /// A read, not a device sync: WearableSyncWorker has been pulling from the wearable every
+    /// ten minutes while the app was away, so what is missing on screen is the fetch, not the
+    /// collection. Asking the server to check in with the device on every foreground would also
+    /// earn the "too soon since the last check" refusal, and with it a popup for something
+    /// nobody asked for.
+    /// </remarks>
+    private Task RefreshOnResumeAsync() =>
+        DateTime.UtcNow - _lastLoadedUtc < ResumeRefresh.MinimumGap
+            ? Task.CompletedTask
+            : LoadAsync(force: false);
 
     /// <summary>
     /// Asks the server to pull from the wearable now, then reloads (issue #67).

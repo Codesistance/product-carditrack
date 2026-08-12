@@ -28,6 +28,7 @@ public partial class DeviceManagementPage : ContentPage
     private bool _isLoading;
     private bool _isBusy;
     private bool _wizardActive;
+    private DateTime _lastLoadedUtc = DateTime.MinValue;
     private CardiMemberDetailResponse? _member;
 
     public DeviceManagementPage(ICardiTrackApiClient api, IPopupService popups)
@@ -35,6 +36,7 @@ public partial class DeviceManagementPage : ContentPage
         InitializeComponent();
         _api = api;
         _popups = popups;
+        this.RefreshWhenAppResumes(RefreshOnResumeAsync);
     }
 
     public string MemberId
@@ -58,7 +60,20 @@ public partial class DeviceManagementPage : ContentPage
 
     private void OnRetryClicked(object? sender, EventArgs e) => _ = LoadAsync();
 
-    private async Task LoadAsync()
+    /// <summary>
+    /// The app returning to the foreground reloads the device list — a connection that dropped
+    /// or a sync that landed while the app was away is exactly what this screen is consulted
+    /// about. Silent: an unrequested refresh that fails leaves the list as it was.
+    /// </summary>
+    private Task RefreshOnResumeAsync() =>
+        DateTime.UtcNow - _lastLoadedUtc < ResumeRefresh.MinimumGap
+            ? Task.CompletedTask
+            : LoadAsync(silent: true);
+
+    /// <param name="silent">
+    /// Suppresses the "Couldn't refresh" popup for loads the user did not ask for.
+    /// </param>
+    private async Task LoadAsync(bool silent = false)
     {
         if (_isLoading)
             return;
@@ -84,6 +99,7 @@ public partial class DeviceManagementPage : ContentPage
                 $"Connect a wearable so CardiTrack can start watching over {NameFormatting.FirstName(_member.Name)}.";
             Render(devices.Devices);
             SetState(loaded: true);
+            _lastLoadedUtc = DateTime.UtcNow;
         }
         catch (ApiException ex)
         {
@@ -92,7 +108,7 @@ public partial class DeviceManagementPage : ContentPage
                 ErrorDetailLabel.Text = ex.Message;
                 SetState(error: true);
             }
-            else if (!ex.IsSessionExpired)
+            else if (!silent && !ex.IsSessionExpired)
             {
                 // An expired session is already taking the user back to sign-in — a popup
                 // here would only land on top of that page explaining nothing.

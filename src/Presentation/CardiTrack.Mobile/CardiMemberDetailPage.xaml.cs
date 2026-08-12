@@ -31,6 +31,7 @@ public partial class CardiMemberDetailPage : ContentPage
     private Guid _memberId;
     private bool _isLoading;
     private bool _isBusy;
+    private DateTime _lastLoadedUtc = DateTime.MinValue;
     private CardiMemberDetailResponse? _member;
 
     public CardiMemberDetailPage(ICardiTrackApiClient api, IPopupService popups)
@@ -38,6 +39,7 @@ public partial class CardiMemberDetailPage : ContentPage
         InitializeComponent();
         _api = api;
         _popups = popups;
+        this.RefreshWhenAppResumes(RefreshOnResumeAsync);
     }
 
     public string MemberId
@@ -63,7 +65,20 @@ public partial class CardiMemberDetailPage : ContentPage
 
     private void OnRetryClicked(object? sender, EventArgs e) => _ = LoadAsync();
 
-    private async Task LoadAsync()
+    /// <summary>
+    /// The app returning to the foreground refetches, for the same reason OnAppearing does:
+    /// this screen shows one CardiMember's current state, and the caregiver came back to read it
+    /// now. Silent — an unrequested refresh that fails leaves what is on screen alone.
+    /// </summary>
+    private Task RefreshOnResumeAsync() =>
+        DateTime.UtcNow - _lastLoadedUtc < ResumeRefresh.MinimumGap
+            ? Task.CompletedTask
+            : LoadAsync(silent: true);
+
+    /// <param name="silent">
+    /// Suppresses the "Couldn't refresh" popup for loads the user did not ask for.
+    /// </param>
+    private async Task LoadAsync(bool silent = false)
     {
         if (_isLoading)
             return;
@@ -75,6 +90,7 @@ public partial class CardiMemberDetailPage : ContentPage
         try
         {
             _member = await _api.GetCardiMemberAsync(_memberId);
+            _lastLoadedUtc = DateTime.UtcNow;
             Apply(_member);
             SetState(loaded: true);
 
@@ -90,7 +106,7 @@ public partial class CardiMemberDetailPage : ContentPage
                 ErrorDetailLabel.Text = ex.Message;
                 SetState(error: true);
             }
-            else
+            else if (!silent)
             {
                 // Something is already on screen; a failed refresh shouldn't blank it.
                 await _popups.ShowWarningAsync(ex.Message, "Couldn't refresh");

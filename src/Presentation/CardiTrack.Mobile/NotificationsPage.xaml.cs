@@ -32,6 +32,7 @@ public partial class NotificationsPage : ContentPage
         InitializeComponent();
         _api = api;
         _popups = popups;
+        this.RefreshWhenAppResumes(RefreshOnResumeAsync);
     }
 
     protected override void OnAppearing()
@@ -40,6 +41,16 @@ public partial class NotificationsPage : ContentPage
         if (_lastData is null || DateTime.UtcNow - _lastLoadedUtc > AutoRefreshInterval)
             _ = LoadAsync();
     }
+
+    /// <summary>
+    /// The app returning to the foreground reloads the inbox, ignoring
+    /// <see cref="AutoRefreshInterval"/> — items resolved elsewhere (or raised by the workers)
+    /// while the app was away should be settled by the time the caregiver looks at the list.
+    /// </summary>
+    private Task RefreshOnResumeAsync() =>
+        DateTime.UtcNow - _lastLoadedUtc < ResumeRefresh.MinimumGap
+            ? Task.CompletedTask
+            : LoadAsync();
 
     private async Task LoadAsync(bool force = false)
     {
