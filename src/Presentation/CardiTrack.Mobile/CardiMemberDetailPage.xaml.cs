@@ -58,6 +58,19 @@ public partial class CardiMemberDetailPage : ContentPage
     private DateTime _lastLoadedUtc = DateTime.MinValue;
     private CardiMemberDetailResponse? _member;
 
+    /// <summary>
+    /// Whether a generated summary is currently on screen. Guards the placeholder — see
+    /// <see cref="Apply"/>.
+    /// </summary>
+    private bool _digestRendered;
+
+    /// <summary>
+    /// How many suggestions the "ways to help" section is built around. The generator writes three
+    /// or none (DigestGenerationService.CleanSuggestions); this is the client holding the same
+    /// line rather than trusting it to.
+    /// </summary>
+    private const int SuggestionCount = 3;
+
     public CardiMemberDetailPage(ICardiTrackApiClient api, IPopupService popups)
     {
         InitializeComponent();
@@ -77,9 +90,15 @@ public partial class CardiMemberDetailPage : ContentPage
 
     public string MemberId
     {
-        set => _memberId = Guid.TryParse(Uri.UnescapeDataString(value ?? string.Empty), out var id)
-            ? id
-            : Guid.Empty;
+        set
+        {
+            _memberId = Guid.TryParse(Uri.UnescapeDataString(value ?? string.Empty), out var id)
+                ? id
+                : Guid.Empty;
+            // Whatever summary is on screen belongs to whoever was on screen before. It must not
+            // be the reason the next CardiMember's placeholder is skipped.
+            _digestRendered = false;
+        }
     }
 
     protected override void OnAppearing()
@@ -189,11 +208,23 @@ public partial class CardiMemberDetailPage : ContentPage
                 "red" => "StatusRed",
                 _ => "StatusUnknown",
             }];
-        // The digest itself loads separately (LoadDigestAsync) — this is just the placeholder
-        // shown until it resolves, and the fallback if there isn't one yet.
-        SummaryTitleLabel.Text = "Still getting to know them";
-        SummaryGeneratedLabel.IsVisible = false;
-        SummaryLabel.Text = "We'll summarise how this CardiMember is doing here as soon as there's enough data to say something useful.";
+        // The digest loads on its own round trip (LoadDigestAsync) and lands after this method has
+        // returned, so writing the placeholder every time meant every refresh — including the
+        // silent periodic one — shrank this card back to two lines and then grew it again a moment
+        // later. That is two layout passes for a summary that has usually not changed at all, and
+        // it shoves Key Metric Trends and everything under it down the page and back twice while
+        // the caregiver is reading them. The placeholder is for a screen that has nothing better
+        // on it; once a summary is up it stays up until there is a new one, which is the same
+        // stance the failed-refresh path above takes.
+        if (!_digestRendered)
+        {
+            SummaryTitleLabel.Text = "Still getting to know them";
+            SummaryGeneratedLabel.IsVisible = false;
+            SummaryLabel.Text = "We'll summarise how this CardiMember is doing here as soon as there's enough data to say something useful.";
+            // Suggestions come from the same generation as the summary, so they are absent for
+            // exactly the members the placeholder is for.
+            SuggestionsCard.IsVisible = false;
+        }
 
         ApplyTrends(member.Metrics);
 
@@ -236,17 +267,104 @@ public partial class CardiMemberDetailPage : ContentPage
             // The headline is generated with the summary and describes this particular one. A
             // digest stored before headlines existed has none, so the card falls back to naming
             // what it is rather than rendering a blank title.
-            SummaryTitleLabel.Text = string.IsNullOrWhiteSpace(digest.Headline)
-                ? "Latest Summary"
-                : digest.Headline;
+            var headline = string.IsNullOrWhiteSpace(digest.Headline) ? "Latest Summary" : digest.Headline;
+            var unchanged = _digestRendered
+                            && SummaryTitleLabel.Text == headline
+                            && SummaryLabel.Text == digest.Text;
+
+            SummaryTitleLabel.Text = headline;
             SummaryLabel.Text = digest.Text;
             SummaryGeneratedLabel.Text = $"Updated {RelativeTime.Format(digest.GeneratedAtUtc)}";
             SummaryGeneratedLabel.IsVisible = true;
+            _digestRendered = true;
+
+            ApplySuggestions(digest.Suggestions);
+
+            if (unchanged)
+                return;
+
+            // Reads as an update rather than a flicker, and only when the words actually moved —
+            // same treatment as the dashboard's status hero.
+            SummaryTitleLabel.Opacity = 0;
+            SummaryLabel.Opacity = 0;
+            _ = SummaryTitleLabel.FadeToAsync(1, 150, Easing.CubicOut);
+            _ = SummaryLabel.FadeToAsync(1, 150, Easing.CubicOut);
         }
         catch (ApiException)
         {
             // Placeholder copy stays — see the field's own comment in Apply().
         }
+    }
+
+    /// <summary>
+    /// Rebuilds the "how to support them" bullets under the summary, or hides the section when
+    /// this generation produced none.
+    /// </summary>
+    /// <remarks>
+    /// Rebuilt rather than diffed: it is three short labels, and the alternative is keeping a
+    /// second copy of them around to compare against. The heading names the CardiMember, because
+    /// a caregiver may be looking after more than one and "how to support them" on a screen
+    /// reached from a notification should say who.
+    /// </remarks>
+    private void ApplySuggestions(IReadOnlyList<string>? suggestions)
+    {
+        SuggestionsList.Clear();
+
+        // Three or nothing, enforced here and not merely assumed. The generator already drops a
+        // partial set, so today this only ever sees three or null — but "the server would never"
+        // is what the heading over one lonely bullet always got explained by, and this screen
+        // outlives any one version of the API that feeds it.
+        if (suggestions is not { Count: >= SuggestionCount })
+        {
+            SuggestionsCard.IsVisible = false;
+            return;
+        }
+
+        SuggestionsTitleLabel.Text = _member is null
+            ? "Ways to help"
+            : $"Ways to help {NameFormatting.FirstName(_member.Name)}";
+
+        // Taking rather than assuming: a later API that sent four would otherwise either hide the
+        // section or grow the card past what the layout was drawn for.
+        foreach (var suggestion in suggestions.Take(SuggestionCount))
+        {
+            var row = new Grid
+            {
+                ColumnDefinitions =
+                [
+                    new ColumnDefinition(GridLength.Auto),
+                    new ColumnDefinition(GridLength.Star),
+                ],
+                ColumnSpacing = 10,
+            };
+
+            // A dot rather than a bullet glyph — same construction as the carousel's indicators
+            // below: a typographic bullet at this size sits on the text baseline instead of beside
+            // the first line of a suggestion that wraps.
+            var resources = Microsoft.Maui.Controls.Application.Current!.Resources;
+            row.Add(new BoxView
+            {
+                WidthRequest = 6,
+                HeightRequest = 6,
+                CornerRadius = 3,
+                Color = (Color)resources["Primary"],
+                VerticalOptions = LayoutOptions.Start,
+                Margin = new Thickness(2, 7, 0, 0),
+            });
+
+            row.Add(
+                new Label
+                {
+                    Text = suggestion,
+                    Style = (Style)resources["Body2"],
+                    LineBreakMode = LineBreakMode.WordWrap,
+                },
+                1);
+
+            SuggestionsList.Add(row);
+        }
+
+        SuggestionsCard.IsVisible = true;
     }
 
     /// <summary>

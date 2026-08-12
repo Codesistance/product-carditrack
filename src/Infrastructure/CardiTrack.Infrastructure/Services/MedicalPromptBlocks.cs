@@ -14,6 +14,41 @@ namespace CardiTrack.Infrastructure.Services;
 internal static partial class MedicalPromptBlocks
 {
     /// <summary>
+    /// The voice every member-facing generation speaks in. Leads every instruction block, so what
+    /// a caregiver reads sounds like one product whichever path produced it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Deliberately two-sided. "Be reassuring" on its own would be an unsafe instruction to give
+    /// the prompts behind an alerting service — a model told only to soothe will soften the one
+    /// reading that needed saying plainly. So the rule is that the words must not distort the
+    /// readings in <em>either</em> direction: no urgency the data does not carry, and no
+    /// reassurance it does not support. Calm is the default because most days are calm, not
+    /// because calm is always the answer.
+    /// </para>
+    /// <para>
+    /// A <c>const</c>, and first in every prompt, because these blocks are the cacheable fixed
+    /// prefix the serving engine reuses between calls (docs/llm_design.md). Composed at compile
+    /// time, so prepending it costs nothing and cannot vary per member.
+    /// </para>
+    /// </remarks>
+    /// <remarks>
+    /// Line breaks are load-bearing, not cosmetic: a caller's echo guard matches phrases against
+    /// the model's reply, and a phrase split across two lines here could never be matched whole.
+    /// Each rule therefore sits on one line. See <c>DigestGenerationService.InstructionEchoes</c>.
+    /// </remarks>
+    internal const string Tone = """
+        Tone: you are writing for a worried family member, not for a clinician.
+        Be plain, warm and steady, and write as one person telling another how someone is doing.
+        Say what the readings show without dressing it up and without sharpening it.
+        Add no urgency the data does not carry, and no reassurance it does not support either.
+        Where a plain phrase says as much as a figure, prefer the phrase.
+        Never suggest the family has missed something or done something wrong.
+        Never diagnose.
+
+        """;
+
+    /// <summary>
     /// Caregiver notes are unbounded free text. A long note would crowd the metrics out of the
     /// context window and cost inference time on a single CPU-served model, so it is truncated
     /// visibly rather than silently.
@@ -68,22 +103,48 @@ internal static partial class MedicalPromptBlocks
     private static partial Regex WhitespaceRuns();
 
     /// <summary>
-    /// The trailing daily readings, oldest first.
+    /// The trailing daily readings, oldest first, each opening with which day it is.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// Ingestion stores the day in progress, so the newest line is a part-finished day whose totals
     /// are not comparable with the completed days above it. It is labelled rather than dropped: the
     /// model is being asked to explain deviations, and an unmarked partial day reads as a collapse
     /// in activity that the member is not actually having.
+    /// </para>
+    /// <para>
+    /// The label leads the line, and says "Yesterday" rather than only a date. It used to trail it
+    /// as a parenthetical after an ISO date, and a family summary came back attributing yesterday's
+    /// step total to today while taking that same sentence's sleep figure from the correct row —
+    /// two rows of identical shape, told apart only by a date the model had to relate to a "today"
+    /// nobody had named, with the one disambiguating note arriving after the numbers it governed.
+    /// A reader who has to backtrack to find out which day they just read is a reader who
+    /// sometimes will not. The dates stay, in parentheses, because they still carry the weekday
+    /// pattern a week-long window is read for.
+    /// </para>
     /// </remarks>
     internal static string DailyLines(IEnumerable<ActivityLog> logs, int take, DateOnly today)
     {
         var lines = logs
             .TakeLast(take)
-            .Select(l => $"  {l.Date}: steps={l.Steps}, HR={l.RestingHeartRate}, sleep={l.SleepMinutes}min"
-                         + (l.Date == today ? "  (today, still in progress — totals are partial)" : string.Empty))
+            .Select(l =>
+                $"  {DayLabel(l.Date, today)}: "
+                + $"steps={l.Steps}, HR={l.RestingHeartRate}, sleep={l.SleepMinutes}min")
             .ToList();
 
         return lines.Count > 0 ? string.Join("\n", lines) : "No recent activity data.";
     }
+
+    /// <summary>
+    /// Which day a reading belongs to, said before the reading rather than after it. Relative to
+    /// the member's own today, because that is the anchor the model is missing — it cannot know
+    /// what today's date is except by being told.
+    /// </summary>
+    private static string DayLabel(DateOnly date, DateOnly today) =>
+        (today.DayNumber - date.DayNumber) switch
+        {
+            <= 0 => $"Today so far ({date}, still in progress — totals are partial)",
+            1 => $"Yesterday ({date}, complete day)",
+            var days => $"{days} days ago ({date}, complete day)",
+        };
 }

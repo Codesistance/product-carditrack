@@ -1,3 +1,4 @@
+using System.Reflection;
 using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Domain.Entities;
@@ -269,7 +270,7 @@ public class DigestGenerationServiceTests
         Assert.Contains("Age: 78", prompt);
         // Today's reading line, formatted the way the prompt builder formats dates (DateOnly's
         // default is culture-dependent, so the expectation goes through it too).
-        Assert.Contains($"{Today}: steps=5000", prompt);
+        Assert.Contains($"Today so far ({Today}, still in progress — totals are partial): steps=5000", prompt);
         Assert.DoesNotContain("Margaret", prompt);  // minimisation, same as insights
     }
 
@@ -386,6 +387,285 @@ public class DigestGenerationServiceTests
         await _digests.Received(1).AddAsync(
             Arg.Is<DigestEntry>(d => d.Headline == null && d.Text == "A quiet, steady day."),
             Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// Every phrase the echo guard watches for has to appear in the prompt, wholly inside one of
+    /// its lines — that is the whole basis of the check, and the guard now spans two files since
+    /// the prompt opens with the shared tone block. A phrase that drifted out of the prompt, or a
+    /// prompt line that re-wrapped around one, would leave the guard passing while catching
+    /// nothing: it would still run, still find no match, and still let the model's own brief
+    /// through to a caregiver.
+    /// </summary>
+    [Fact]
+    public async Task EveryPhraseTheEchoGuardWatchesFor_IsOnOneLineOfThePrompt()
+    {
+        string? prompt = null;
+        await _medicalAi.GenerateStructuredAsync<DigestGenerationService.DigestAiResponse>(
+            Arg.Do<string>(p => prompt = p), Arg.Any<CancellationToken>());
+
+        await CreateSut().GenerateDueDigestsAsync(UtcNow);
+        Assert.NotNull(prompt);
+
+        var echoes = (string[])typeof(DigestGenerationService)
+            .GetField("InstructionEchoes", BindingFlags.NonPublic | BindingFlags.Static)!
+            .GetValue(null)!;
+        var lines = prompt.Split('\n').Select(l => l.Trim()).ToList();
+
+        Assert.NotEmpty(echoes);
+        Assert.All(echoes, echo => Assert.Contains(
+            lines,
+            line => line.Contains(echo, StringComparison.OrdinalIgnoreCase)));
+    }
+
+    // ---- Which day a reading belongs to ----
+
+    /// <summary>
+    /// The failure this format exists to prevent: two rows of identical shape, told apart only by
+    /// a date the model has to relate to a "today" nobody named, produced a family summary that
+    /// credited yesterday's step total to today while taking the same sentence's sleep figure from
+    /// the correct row. Each line now opens with which day it is.
+    /// </summary>
+    [Fact]
+    public async Task EveryReadingLineSaysWhichDayItIs_BeforeTheNumbers()
+    {
+        _activityLogs.GetByCardiMemberAndDateRangeAsync(_memberId, Arg.Any<DateOnly>(), Arg.Any<DateOnly>())
+            .Returns(
+            [
+                new ActivityLog
+                {
+                    CardiMemberId = _memberId, Date = Today.AddDays(-1), Steps = 3835,
+                    RestingHeartRate = 62, CreatedDate = DataLandedAt,
+                },
+                new ActivityLog
+                {
+                    CardiMemberId = _memberId, Date = Today, Steps = 3442,
+                    RestingHeartRate = 58, CreatedDate = DataLandedAt,
+                },
+            ]);
+
+        string? prompt = null;
+        await _medicalAi.GenerateStructuredAsync<DigestGenerationService.DigestAiResponse>(
+            Arg.Do<string>(p => prompt = p), Arg.Any<CancellationToken>());
+
+        await CreateSut().GenerateDueDigestsAsync(UtcNow);
+        Assert.NotNull(prompt);
+
+        Assert.Contains($"Yesterday ({Today.AddDays(-1)}, complete day): steps=3835", prompt);
+        Assert.Contains($"Today so far ({Today}, still in progress — totals are partial): steps=3442", prompt);
+
+        // The label leads the line. A note trailing the numbers arrives after the model has read
+        // them, which is how the wrong day's total got attributed in the first place.
+        foreach (var line in prompt.Split('\n').Where(l => l.Contains("steps=")))
+            Assert.Matches(@"^\s*(Today so far|Yesterday|\d+ days ago) \(", line);
+    }
+
+    [Fact]
+    public async Task TheReadingsAreOrderedOldestFirst_AndTheHeaderSaysSo()
+    {
+        string? prompt = null;
+        await _medicalAi.GenerateStructuredAsync<DigestGenerationService.DigestAiResponse>(
+            Arg.Do<string>(p => prompt = p), Arg.Any<CancellationToken>());
+
+        await CreateSut().GenerateDueDigestsAsync(UtcNow);
+
+        // The header used to read "Today so far, and yesterday" over rows running the other way.
+        Assert.Contains("oldest first", prompt);
+    }
+
+    // ---- A summary cannot credit today with steps the member has not walked ----
+
+    private void ReturnsSummary(string summary) =>
+        _medicalAi.GenerateStructuredAsync<DigestGenerationService.DigestAiResponse>(
+                Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new DigestGenerationService.DigestAiResponse
+            {
+                Headline = "A settled night", Summary = summary,
+            });
+
+    /// <summary>
+    /// Steps within a day only rise, so a figure above the running total is one the member has not
+    /// walked yet — the rare claim a generated sentence can be checked against rather than trusted
+    /// on. 5000 is today's total in the default setup.
+    /// </summary>
+    [Fact]
+    public async Task DiscardsTheSummary_WhenItCreditsTodayWithStepsNotYetWalked()
+    {
+        ReturnsSummary("They walked quite a bit today, around 5800 steps. Their heart rate was steady.");
+
+        var generated = await CreateSut().GenerateDueDigestsAsync(UtcNow);
+
+        Assert.Equal(0, generated);
+        await _digests.DidNotReceive().AddAsync(Arg.Any<DigestEntry>(), Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// The summary that prompted all of this, with the readings behind it: yesterday 3,835 steps,
+    /// today 3,442 so far, and a sentence crediting today with "around 3800" — yesterday's total,
+    /// rounded, on the wrong day. The sleep figure in the same breath came off the right row,
+    /// which is what marked it as a row mix-up rather than an invention.
+    /// </summary>
+    [Fact]
+    public async Task DiscardsTheSummary_ThatAttributedYesterdaysStepsToToday()
+    {
+        _activityLogs.GetByCardiMemberAndDateRangeAsync(_memberId, Arg.Any<DateOnly>(), Arg.Any<DateOnly>())
+            .Returns(
+            [
+                new ActivityLog
+                {
+                    CardiMemberId = _memberId, Date = Today.AddDays(-1), Steps = 3835,
+                    SleepMinutes = 412, CreatedDate = DataLandedAt,
+                },
+                new ActivityLog
+                {
+                    CardiMemberId = _memberId, Date = Today, Steps = 3442,
+                    SleepMinutes = 230, CreatedDate = DataLandedAt,
+                },
+            ]);
+        ReturnsSummary(
+            "Your loved one had a good night's sleep last night, getting over 230 minutes in bed. "
+            + "They also walked quite a bit today, around 3800 steps. Their heart rate was steady "
+            + "and low during the day. Overall, things seem settled.");
+
+        var generated = await CreateSut().GenerateDueDigestsAsync(UtcNow);
+
+        Assert.Equal(0, generated);
+        await _digests.DidNotReceive().AddAsync(Arg.Any<DigestEntry>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task AllowsAnHonestRoundingOfTodaysSteps()
+    {
+        // A model told to prefer a phrase to a figure and then asked for one will round. "Around
+        // 5,000" of 5,000 is a fair description; the guard is for a different day's number.
+        ReturnsSummary("They walked around 5000 steps today, much as usual.");
+
+        var generated = await CreateSut().GenerateDueDigestsAsync(UtcNow);
+
+        Assert.Equal(1, generated);
+    }
+
+    /// <summary>
+    /// The failure was a misattribution, not an invention: the figure was real, it belonged to
+    /// another day. A guard that ignored which day a sentence named would reject an honest mention
+    /// of yesterday and still let the misattribution through.
+    /// </summary>
+    [Fact]
+    public async Task LeavesAlone_AFigureAttributedToADayItCouldBelongTo()
+    {
+        ReturnsSummary("Yesterday they managed 8000 steps. Today has been quieter so far.");
+
+        var generated = await CreateSut().GenerateDueDigestsAsync(UtcNow);
+
+        Assert.Equal(1, generated);
+    }
+
+    [Fact]
+    public async Task LeavesAlone_ASummaryThatQuotesNoStepFigureAtAll()
+    {
+        // The point of the tone block: a phrase where a figure would do. Nothing to check.
+        ReturnsSummary("They have been up and about today, much as they usually are.");
+
+        var generated = await CreateSut().GenerateDueDigestsAsync(UtcNow);
+
+        Assert.Equal(1, generated);
+    }
+
+    // ---- Suggestions: three usable ones or none at all ----
+
+    private void ReturnsSuggestions(params string[] suggestions) =>
+        _medicalAi.GenerateStructuredAsync<DigestGenerationService.DigestAiResponse>(
+                Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new DigestGenerationService.DigestAiResponse
+            {
+                Headline = "A settled night",
+                Summary = "A quiet, steady day.",
+                Suggestions = suggestions,
+            });
+
+    private static bool Suggestions(DigestEntry entry, params string[] expected) =>
+        entry.Suggestions is not null && entry.Suggestions.SequenceEqual(expected);
+
+    [Fact]
+    public async Task StoresThreeSuggestions_Trimmed()
+    {
+        // A model that formatted its own list: the bullets and quotes are the model's, not the
+        // suggestion's, and they would render as literal characters in the app.
+        ReturnsSuggestions("- Ask how they slept", "  \"Suggest a short walk\" ", "• Sit with them a while");
+
+        await CreateSut().GenerateDueDigestsAsync(UtcNow);
+
+        await _digests.Received(1).AddAsync(
+            Arg.Is<DigestEntry>(d => Suggestions(
+                d, "Ask how they slept", "Suggest a short walk", "Sit with them a while")),
+            Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// The section promises three ways to help. Anything short of a full, usable set is dropped so
+    /// the apps hide it, rather than rendering a heading over one bullet.
+    /// </summary>
+    [Fact]
+    public async Task StoresNoSuggestions_WhenFewerThanThreeSurvive()
+    {
+        ReturnsSuggestions("Ask how they slept", "   ", "Respond with: three ways to support them");
+
+        var generated = await CreateSut().GenerateDueDigestsAsync(UtcNow);
+
+        Assert.Equal(1, generated);
+        await _digests.Received(1).AddAsync(
+            Arg.Is<DigestEntry>(d => d.Suggestions == null && d.Text == "A quiet, steady day."),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task StoresNoSuggestions_WhenTheModelReturnedNone()
+    {
+        // The column is nullable precisely so this is representable; an empty list would make the
+        // apps decide what an empty section looks like.
+        ReturnsSuggestions();
+
+        await CreateSut().GenerateDueDigestsAsync(UtcNow);
+
+        await _digests.Received(1).AddAsync(
+            Arg.Is<DigestEntry>(d => d.Suggestions == null), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task DropsTheWholeSet_WhenTheSameSuggestionCameBackTwice()
+    {
+        // Three ways to help that are the same way twice is worse than no section at all.
+        ReturnsSuggestions("Ask how they slept", "ask how they SLEPT", "Sit with them a while");
+
+        await CreateSut().GenerateDueDigestsAsync(UtcNow);
+
+        await _digests.Received(1).AddAsync(
+            Arg.Is<DigestEntry>(d => d.Suggestions == null), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task KeepsOnlyTheFirstThree_WhenTheModelOverruns()
+    {
+        ReturnsSuggestions("One", "Two", "Three", "Four", "Five");
+
+        await CreateSut().GenerateDueDigestsAsync(UtcNow);
+
+        await _digests.Received(1).AddAsync(
+            Arg.Is<DigestEntry>(d => Suggestions(d, "One", "Two", "Three")), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task AsksForSuggestionsThatSupportRatherThanTreat()
+    {
+        string? prompt = null;
+        await _medicalAi.GenerateStructuredAsync<DigestGenerationService.DigestAiResponse>(
+            Arg.Do<string>(p => prompt = p), Arg.Any<CancellationToken>());
+
+        await CreateSut().GenerateDueDigestsAsync(UtcNow);
+
+        Assert.NotNull(prompt);
+        Assert.Contains("Never medical advice", prompt);
+        Assert.Contains("never worded as something the", prompt);
     }
 
     [Fact]

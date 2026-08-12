@@ -183,7 +183,14 @@
                              summary is about instead of restating which screen it is on. Empty
                              until the pipeline has generated one for this member (dev only today —
                              see infrastructure/environments/prod.tfvars, enable_pipeline_jobs). -->
-                        <Border x:Name="SummaryCard" Style="{StaticResource ElevatedCard}">
+                        <!-- A floor, not a fit: the placeholder is shorter than the summary that
+                             replaces it, and on a first load the swap would otherwise shove the
+                             trends below it down the page. Sized to a typical few-sentence
+                             summary, so a member who has none yet gets a slightly roomy card
+                             rather than the whole screen moving under the caregiver. -->
+                        <Border x:Name="SummaryCard"
+                                Style="{StaticResource ElevatedCard}"
+                                MinimumHeightRequest="150">
                             <VerticalStackLayout Spacing="10">
                                 <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
                                     <BoxView x:Name="SummaryAccent"
@@ -207,6 +214,22 @@
                                     </VerticalStackLayout>
                                 </Grid>
                                 <Label x:Name="SummaryLabel" Style="{StaticResource Body2}"/>
+                            </VerticalStackLayout>
+                        </Border>
+
+                        <!-- Suggestions. Generated with the summary above and from the same
+                             readings, so what it proposes follows from what the summary just said
+                             rather than from a fixed list. Hidden outright when this generation
+                             produced none — a section headed "three ways to help" showing one is
+                             worse than no section. Support, never treatment: the register is "ask
+                             how they slept", not dosage. -->
+                        <Border x:Name="SuggestionsCard"
+                                Style="{StaticResource ElevatedCard}"
+                                IsVisible="False">
+                            <VerticalStackLayout Spacing="10">
+                                <Label x:Name="SuggestionsTitleLabel"
+                                       Style="{StaticResource DashboardSectionTitle}"/>
+                                <VerticalStackLayout x:Name="SuggestionsList" Spacing="8"/>
                             </VerticalStackLayout>
                         </Border>
 

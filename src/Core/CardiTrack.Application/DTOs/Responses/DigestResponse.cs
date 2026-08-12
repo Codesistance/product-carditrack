@@ -19,5 +19,13 @@ public class DigestResponse
     public string? Headline { get; init; }
 
     public required string Text { get; init; }
+
+    /// <summary>
+    /// Three short ways the family could support this CardiMember today, generated alongside the
+    /// text. Null when this generation produced none that survived validation — clients hide the
+    /// section rather than rendering a partial set.
+    /// </summary>
+    public IReadOnlyList<string>? Suggestions { get; init; }
+
     public required DateTime GeneratedAtUtc { get; init; }
 }

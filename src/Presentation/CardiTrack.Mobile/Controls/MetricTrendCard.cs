@@ -11,24 +11,56 @@ namespace CardiTrack.Mobile.Controls;
 /// <see cref="MetricTrend"/> and built in code, like the row it replaced.
 /// </summary>
 /// <remarks>
-/// The chart is <see cref="ChartHeight"/> tall and full card width, against the 64×24 sparkline the
-/// old row had room for — the point of giving each metric its own swipeable card is that the shape
-/// of the trend is readable, not just present.
+/// The chart is full card width and takes every dp the rest of the card leaves it — at least
+/// <see cref="MinimumChartHeight"/>, and rather more on most metrics — against the 64×24 sparkline
+/// the old row had room for. The point of giving each metric its own swipeable card is that the
+/// shape of the trend is readable, not just present.
 /// </remarks>
 public sealed class MetricTrendCard : ContentView
 {
-    /// <summary>Three times the 24dp sparkline this card's predecessor drew.</summary>
-    private const double ChartHeight = 72;
+    /// <summary>
+    /// The least plot a card will show. The chart does not have a fixed height — it takes whatever
+    /// its card has left over (see <see cref="CardHeight"/>) — and this is the floor that stops a
+    /// metric with a long footer, both legend entries and a large system font from squeezing the
+    /// line down to a strip.
+    /// </summary>
+    private const double MinimumChartHeight = 96;
 
     /// <summary>
-    /// The row the carousel reserves for a card: its padding, header, chart, date rule, legend,
-    /// bottom explanation strip and margin, plus slack for a caregiver running a larger system
-    /// font. The carousel clips, so this is a floor rather than a fit.
+    /// The row the carousel reserves for every card: padding, header, chart, date rule, legend,
+    /// bottom explanation strip and margin.
     /// </summary>
-    public const double CardHeight = 306;
+    /// <remarks>
+    /// One height for all six metrics, because a carousel whose slides changed height would jolt
+    /// the page on every swipe. The cards do not all need the same room, though — a metric with no
+    /// legend entries and a one-line footer is the better part of 50dp shorter than heart rate's —
+    /// so rather than every card being padded out to the tallest one and the short ones ending in
+    /// dead white space, the chart row is the one that flexes: it absorbs whatever its own card
+    /// leaves over. Activity's plot is therefore taller than heart rate's, and both are fully
+    /// used.
+    /// <para>
+    /// This figure is set so the tallest card still clears <see cref="MinimumChartHeight"/>. It is
+    /// derived rather than measured — worth a look on a device, and on one running a large system
+    /// font, if the carousel ever looks tight.
+    /// </para>
+    /// </remarks>
+    public const double CardHeight = 330;
 
     /// <summary>Beyond a fortnight, a marker per day crowds the line rather than reading as data.</summary>
     private const int MarkerWindowLimit = 14;
+
+    /// <summary>
+    /// The annotation type scale: axis numbers, dates and legend keys. Was 11 — legible to whoever
+    /// laid the card out, and not to a caregiver who is the reason this product has a large-text
+    /// story at all.
+    /// </summary>
+    private const double AnnotationFontSize = 12;
+
+    /// <summary>
+    /// The strip under the chart. A point above the annotations around it: this is the one line on
+    /// the card that has to be read as a sentence rather than glanced at as a label.
+    /// </summary>
+    private const double FooterFontSize = 13;
 
     private readonly Image _icon = new() { WidthRequest = 22, HeightRequest = 22 };
     private readonly Label _name = new();
@@ -36,7 +68,7 @@ public sealed class MetricTrendCard : ContentView
     private readonly Label _value = new();
     private readonly Border _pill;
     private readonly Label _pillText = new();
-    private readonly TrendChart _chart = new() { HeightRequest = ChartHeight };
+    private readonly TrendChart _chart = new();
     private readonly Label _max = new();
     private readonly Label _min = new();
     private readonly Label _startDate = new();
@@ -52,7 +84,19 @@ public sealed class MetricTrendCard : ContentView
     private readonly Grid _legend;
     private readonly Label _footer = new();
 
+    /// <summary>The "i" itself — the thing the hint pulse scales. Assigned by BuildFooter.</summary>
+    private Border _hintDisc = null!;
+
+    /// <summary>
+    /// Large enough to be seen as a control rather than a full stop, at the 44dp effective target
+    /// its padded wrapper already gave it.
+    /// </summary>
+    private const double HintDiscSize = 30;
+
     private MetricTrend? _trend;
+
+    /// <summary>Whether this card has already spent its one hint pulse.</summary>
+    private bool _pulsed;
 
     /// <summary>The panel behind the "i", rebuilt whenever the card is bound to a metric.</summary>
     private string _explanation = string.Empty;
@@ -112,7 +156,7 @@ public sealed class MetricTrendCard : ContentView
         foreach (var axisLabel in new[] { _max, _min })
         {
             ApplyStyle(axisLabel, "Body2");
-            axisLabel.FontSize = 11;
+            axisLabel.FontSize = AnnotationFontSize;
             axisLabel.TextColor = MetricStatus.Resource("MutedText", Colors.Gray);
             axisLabel.HorizontalTextAlignment = TextAlignment.End;
         }
@@ -126,11 +170,12 @@ public sealed class MetricTrendCard : ContentView
         axis.Add(_max);
         axis.Add(_min, 0, 1);
 
+        // No height of its own: the plot fills the one flexible row of the card — see CardHeight.
         _plot = new Grid
         {
             ColumnDefinitions = [new ColumnDefinition(GridLength.Auto), new ColumnDefinition(GridLength.Star)],
             ColumnSpacing = 8,
-            HeightRequest = ChartHeight,
+            MinimumHeightRequest = MinimumChartHeight,
         };
         _plot.Add(axis);
         _plot.Add(_chart, 1);
@@ -140,12 +185,11 @@ public sealed class MetricTrendCard : ContentView
         _empty.HorizontalTextAlignment = TextAlignment.Center;
         _empty.VerticalOptions = LayoutOptions.Center;
         _empty.IsVisible = false;
-        _empty.HeightRequest = ChartHeight;
 
         foreach (var dateLabel in new[] { _startDate, _endDate })
         {
             ApplyStyle(dateLabel, "Body2");
-            dateLabel.FontSize = 11;
+            dateLabel.FontSize = AnnotationFontSize;
             dateLabel.TextColor = MetricStatus.Resource("MutedText", Colors.Gray);
         }
         _endDate.HorizontalTextAlignment = TextAlignment.End;
@@ -176,12 +220,14 @@ public sealed class MetricTrendCard : ContentView
         // taking anyone's temperature, is the part a non-clinical reader actually needs.
         var footerBlock = BuildFooter();
 
+        // The chart's row is the only Star one: everything else on the card is as tall as its own
+        // content, and the plot takes the rest. See CardHeight.
         var body = new Grid
         {
             RowDefinitions =
             [
                 new RowDefinition(GridLength.Auto),
-                new RowDefinition(GridLength.Auto),
+                new RowDefinition(GridLength.Star),
                 new RowDefinition(GridLength.Auto),
                 new RowDefinition(GridLength.Auto),
                 new RowDefinition(GridLength.Auto),
@@ -202,6 +248,11 @@ public sealed class MetricTrendCard : ContentView
             Margin = new Thickness(3, 3, 3, 10),
             Content = body,
         };
+
+        Loaded += (_, _) => StartHintPulse();
+        // Same cleanup as SkeletonView: an animation left running on a torn-down card holds a
+        // reference to it and keeps ticking against nothing.
+        Unloaded += (_, _) => StopHintPulse();
     }
 
     protected override void OnBindingContextChanged()
@@ -257,10 +308,27 @@ public sealed class MetricTrendCard : ContentView
         _legend.IsVisible = hasChart;
         _empty.IsVisible = !hasChart;
         if (!hasChart)
+        {
+            // The carousel recycles cards, and everything below this point is what fills the
+            // footer. Without clearing them, a card that lands on a metric with too few readings
+            // keeps the previous metric's strip and the previous metric's explanation behind
+            // its "i" — the one place on the card where being one metric behind is unreadable
+            // as a mistake rather than a fact.
+            _footer.Text = string.Empty;
+            _explanation = string.Empty;
             return;
+        }
 
         var baseline = _trend.Metric.Baseline;
         var reference = _trend.Metric.Reference;
+
+        // The metric's own ink, not its status accent: the line says which metric this is, and the
+        // pill above it says how the member is doing. A line that changed colour with severity
+        // would make the reader re-identify the card every time the reading moved between bands.
+        // Resolved once — the chart, its baseline rule and the key that names that rule all wear
+        // it, and looking it up three times is three chances for them to disagree.
+        var ink = MetricStatus.Resource(_trend.InkKey, MetricStatus.Accent(_trend.Metric.Status));
+        _baselineSwatch.Ink = ink;
 
         // The axis labels name the extent the chart actually plots over, which the baseline and
         // the reference band get a say in — so both are read off the one scale rather than the
@@ -307,16 +375,102 @@ public sealed class MetricTrendCard : ContentView
             SemanticProperties.SetDescription(
                 this, $"{_trend.Name}, {_trend.ValueText}, last {_trend.Days} days. {comparisons}");
 
-        // The metric's own ink, not its status accent: the line says which metric this is, and the
-        // pill above it says how the member is doing. A line that changed colour with severity
-        // would make the reader re-identify the card every time the reading moved between bands.
         _chart.Render(
             points,
             scale,
-            MetricStatus.Resource(_trend.InkKey, MetricStatus.Accent(_trend.Metric.Status)),
+            ink,
             showMarkers: points.Count <= MarkerWindowLimit,
             baseline,
             reference);
+
+        // There is now something on the card worth explaining. See StartHintPulse on why this is
+        // reached from here as well as from Loaded.
+        StartHintPulse();
+    }
+
+    /// <summary>
+    /// A beat of the "i" hint: enough to catch the eye at the edge of vision, not enough to be a
+    /// thing happening on the screen.
+    /// </summary>
+    private const double PulseScale = 1.12;
+
+    private const uint PulseCycleMs = 1400;
+
+    /// <summary>Two beats and it rests. A hint that keeps going is not a hint.</summary>
+    private const int PulseCycles = 2;
+
+    private const string PulseAnimation = "explanationHint";
+
+    private const string ExplanationOpenedKey = "trend.explanationOpened";
+
+    /// <summary>
+    /// Whether this caregiver has ever opened an explanation, on any card. Once they have, the
+    /// hint has done its job and no card pulses again — this screen is opened by people who are
+    /// worried about someone, and a permanent animation in the corner of it costs more than the
+    /// affordance it advertises.
+    /// </summary>
+    /// <remarks>
+    /// Latched in a static so the six cards the carousel realises cost one preference read
+    /// between them rather than one each.
+    /// </remarks>
+    private static bool? _explanationOpened;
+
+    private static bool ExplanationOpened
+    {
+        get => _explanationOpened ??= Preferences.Default.Get(ExplanationOpenedKey, false);
+        set
+        {
+            _explanationOpened = value;
+            Preferences.Default.Set(ExplanationOpenedKey, value);
+        }
+    }
+
+    /// <summary>
+    /// Starts the hint, unless this caregiver has already found the "i" for themselves.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Called from both <c>Loaded</c> and <see cref="Render"/> because the order of the two is not
+    /// guaranteed: a card realised by the carousel may be loaded before it is bound, and a card
+    /// recycled onto a new metric is bound without being loaded again. Whichever arrives second
+    /// finds <c>_pulsed</c> already set, so a card beats once in its life rather than once per
+    /// swipe or once per window change.
+    /// </para>
+    /// <para>
+    /// MAUI surfaces no cross-platform reduce-motion setting, so this cannot honour one without
+    /// per-platform code. The mitigations are the ones available here: it is small, it is brief,
+    /// it stops after two beats, and it never returns once the panel behind it has been opened.
+    /// </para>
+    /// </remarks>
+    private void StartHintPulse()
+    {
+        // Gated on there being an explanation, not merely on the card being bound: a card in its
+        // "not enough readings" state has nothing behind the "i", and drawing the eye to a control
+        // that does nothing is worse than not drawing it at all.
+        if (ExplanationOpened || _pulsed || string.IsNullOrEmpty(_explanation))
+            return;
+
+        _pulsed = true;
+        var beats = 0;
+        var pulse = new Animation
+        {
+            { 0.0, 0.35, new Animation(v => _hintDisc.Scale = v, 1.0, PulseScale, Easing.CubicInOut) },
+            { 0.35, 0.7, new Animation(v => _hintDisc.Scale = v, PulseScale, 1.0, Easing.CubicInOut) },
+            // 0.7–1.0 is deliberately empty. The rest between beats is what makes this read as a
+            // pulse rather than a throb.
+        };
+
+        pulse.Commit(this, PulseAnimation, length: PulseCycleMs, repeat: () => ++beats < PulseCycles);
+    }
+
+    /// <summary>
+    /// Stops the hint and puts the disc back where it started — the carousel recycles cards, and
+    /// one torn off mid-beat would otherwise be reused at whatever scale it had reached.
+    /// </summary>
+    private void StopHintPulse()
+    {
+        this.AbortAnimation(PulseAnimation);
+        _hintDisc.Scale = 1;
     }
 
     /// <summary>
@@ -325,7 +479,7 @@ public sealed class MetricTrendCard : ContentView
     private Grid BuildFooter()
     {
         ApplyStyle(_footer, "Body2");
-        _footer.FontSize = 11;
+        _footer.FontSize = FooterFontSize;
         _footer.TextColor = MetricStatus.Resource("MutedText", Colors.Gray);
         _footer.LineBreakMode = LineBreakMode.WordWrap;
         _footer.VerticalOptions = LayoutOptions.Center;
@@ -333,33 +487,33 @@ public sealed class MetricTrendCard : ContentView
         // plot area is a hard rectangle — a ragged edge beside that reads as a misaligned column.
         _footer.HorizontalTextAlignment = TextAlignment.Justify;
 
-        var disc = new Border
+        _hintDisc = new Border
         {
-            WidthRequest = 22,
-            HeightRequest = 22,
+            WidthRequest = HintDiscSize,
+            HeightRequest = HintDiscSize,
             StrokeThickness = 0,
             BackgroundColor = MetricStatus.Resource("SelectedOptionBackground", Colors.LightGray),
             // Fully qualified: Microsoft.Maui.Controls.Shapes is not among the SDK's implicit
             // usings, and importing it here would put its Path beside System.IO's.
-            StrokeShape = new Microsoft.Maui.Controls.Shapes.RoundRectangle { CornerRadius = 11 },
+            StrokeShape = new Microsoft.Maui.Controls.Shapes.RoundRectangle { CornerRadius = HintDiscSize / 2 },
             Content = new Label
             {
                 Text = "i",
                 FontFamily = "QuicksandSemiBold",
-                FontSize = 13,
+                FontSize = 16,
                 TextColor = MetricStatus.Resource("Primary", Colors.Blue),
                 HorizontalOptions = LayoutOptions.Center,
                 VerticalOptions = LayoutOptions.Center,
             },
         };
 
-        // The gesture sits on the padded wrapper, not the 22dp disc: hit-testing follows visual
+        // The gesture sits on the padded wrapper, not the disc itself: hit-testing follows visual
         // bounds, so the padding is what makes this a target an older thumb can actually land on.
         var button = new Grid
         {
             Padding = new Thickness(10, 6, 0, 6),
             VerticalOptions = LayoutOptions.Center,
-            Children = { disc },
+            Children = { _hintDisc },
         };
         SemanticProperties.SetDescription(button, "What does this mean?");
         SemanticProperties.SetHint(button, "Explains what this reading is compared against");
@@ -394,6 +548,11 @@ public sealed class MetricTrendCard : ContentView
         if (_trend is null || string.IsNullOrEmpty(_explanation))
             return;
 
+        // Found without being told, or found because the pulse said to — either way the hint is
+        // spent, on this card and every other.
+        ExplanationOpened = true;
+        StopHintPulse();
+
         try
         {
             await Services.ServiceHelper.GetRequiredService<Services.IPopupService>()
@@ -409,7 +568,7 @@ public sealed class MetricTrendCard : ContentView
     private static HorizontalStackLayout BuildLegendEntry(TrendLegendSwatch swatch, Label key)
     {
         ApplyStyle(key, "Body2");
-        key.FontSize = 11;
+        key.FontSize = AnnotationFontSize;
         key.TextColor = MetricStatus.Resource("MutedText", Colors.Gray);
         key.VerticalTextAlignment = TextAlignment.Center;
         key.LineBreakMode = LineBreakMode.TailTruncation;

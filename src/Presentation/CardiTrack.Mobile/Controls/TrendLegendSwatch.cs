@@ -20,17 +20,37 @@ internal sealed class TrendLegendSwatch : GraphicsView
     public const double SwatchWidth = 16;
     public const double SwatchHeight = 10;
 
+    private readonly TrendLegendSwatchDrawable _drawable;
+
     public TrendLegendSwatch(TrendLegendMark mark)
     {
         WidthRequest = SwatchWidth;
         HeightRequest = SwatchHeight;
         VerticalOptions = LayoutOptions.Center;
-        Drawable = new TrendLegendSwatchDrawable(mark);
+        _drawable = new TrendLegendSwatchDrawable(mark);
+        Drawable = _drawable;
+    }
+
+    /// <summary>
+    /// The metric's own ink, for the baseline mark — set from the same value the card hands the
+    /// chart, so the key is drawn in the colour of the rule it names. Ignored by the reference
+    /// mark, which is neutral by design.
+    /// </summary>
+    public Color Ink
+    {
+        set
+        {
+            _drawable.Ink = value;
+            Invalidate();
+        }
     }
 }
 
 internal sealed class TrendLegendSwatchDrawable(TrendLegendMark mark) : IDrawable
 {
+    /// <summary>Null until the card this swatch belongs to has been bound to a metric.</summary>
+    public Color? Ink { get; set; }
+
     public void Draw(ICanvas canvas, RectF dirtyRect)
     {
         if (dirtyRect.Width <= 0 || dirtyRect.Height <= 0)
@@ -39,7 +59,11 @@ internal sealed class TrendLegendSwatchDrawable(TrendLegendMark mark) : IDrawabl
         if (mark == TrendLegendMark.Baseline)
         {
             var middle = dirtyRect.Center.Y;
-            canvas.StrokeColor = TrendChartInk.Baseline;
+            // Named for what it is rather than the shorter "ink": the reference branch below has
+            // its own, and a pattern variable stays in scope past the branch that declared it.
+            canvas.StrokeColor = Ink is { } metricInk
+                ? TrendChartInk.BaselineIn(metricInk)
+                : TrendChartInk.BaselineFallback;
             canvas.StrokeSize = TrendChartInk.BaselineThickness;
             canvas.StrokeDashPattern = TrendChartInk.BaselineDashes;
             canvas.DrawLine(dirtyRect.Left, middle, dirtyRect.Right, middle);

@@ -336,7 +336,9 @@ public class HealthInsightServicePromptTests
         Assert.Equal(
             prompts[0][..prompts[0].IndexOf(marker, StringComparison.Ordinal)],
             prompts[1][..prompts[1].IndexOf(marker, StringComparison.Ordinal)]);
-        Assert.StartsWith("You are a medical AI assistant", prompts[0]);
+        // Every prompt opens with the shared tone block, and this one's own brief follows it.
+        Assert.StartsWith(MedicalPromptBlocks.Tone, prompts[0]);
+        Assert.Contains("You are a medical AI assistant", prompts[0]);
     }
 
     // ── The day in progress ─────────────────────────────────────────────────────
@@ -358,7 +360,10 @@ public class HealthInsightServicePromptTests
         await CreateSut().AnalyzeBaselineAsync(_userId, _memberId);
         var prompt = CapturedPrompt();
 
-        Assert.Contains($"{today}: steps=900, HR=, sleep=min  (today, still in progress", prompt);
-        Assert.DoesNotContain($"{today.AddDays(-1)}: steps=5100, HR=, sleep=min  (today", prompt);
+        // Which day a line is opens the line, ahead of the numbers it governs — a note trailing
+        // them arrives after the model has already read them.
+        Assert.Contains($"Today so far ({today}, still in progress — totals are partial): steps=900", prompt);
+        Assert.Contains($"Yesterday ({today.AddDays(-1)}, complete day): steps=5100", prompt);
+        Assert.DoesNotContain($"Today so far ({today.AddDays(-1)}", prompt);
     }
 }

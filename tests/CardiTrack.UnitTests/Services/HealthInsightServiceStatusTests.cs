@@ -174,7 +174,9 @@ public class HealthInsightServiceStatusTests
 
         var prompt = (string)_medicalAi.ReceivedCalls().Single().GetArguments()[0]!;
         Assert.Contains("Never use clinical terms", prompt);
-        Assert.Contains("never diagnose", prompt);
+        // "Never diagnose" now comes from the shared tone block every prompt opens with, rather
+        // than from this prompt's own wording — same guarantee, one place.
+        Assert.Contains("never diagnose", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("under 12 words", prompt);
     }
 
