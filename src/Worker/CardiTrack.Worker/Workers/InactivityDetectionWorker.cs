@@ -21,7 +21,7 @@ public class InactivityDetectionWorker : CronBackgroundService
         IOptionsMonitor<InactivityDetectionOptions> options,
         IServiceScopeFactory scopeFactory,
         ILogger<InactivityDetectionWorker> logger)
-        : base(workerOptions.Get(nameof(InactivityDetectionWorker)).CronExpression)
+        : base(workerOptions.Get(nameof(InactivityDetectionWorker)).CronExpression, logger)
     {
         _scopeFactory = scopeFactory;
         _options = options;

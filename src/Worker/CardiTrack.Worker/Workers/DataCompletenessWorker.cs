@@ -41,7 +41,7 @@ public class DataCompletenessWorker : CronBackgroundService
         IOptionsMonitor<WorkerOptions> options,
         IServiceScopeFactory scopeFactory,
         ILogger<DataCompletenessWorker> logger)
-        : base(options.Get(nameof(DataCompletenessWorker)).CronExpression)
+        : base(options.Get(nameof(DataCompletenessWorker)).CronExpression, logger)
     {
         _scopeFactory = scopeFactory;
         _logger = logger;

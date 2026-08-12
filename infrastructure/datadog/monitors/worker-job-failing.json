@@ -1,0 +1,25 @@
+{
+  "name": "[dev] Worker job failing repeatedly — ticks caught, host alive",
+  "type": "log alert",
+  "query": "logs(\"service:worker \\\"Scheduled invocation of\\\"\").index(\"*\").rollup(\"count\").last(\"15m\") >= 3",
+  "message": "## What's happening\n\nOne or more `CardiTrack.Worker` jobs threw on their scheduled tick. `CronBackgroundService` caught the exception, logged it, and left the host running — so the process is healthy but that job is **not doing its work**.\n\n## Why it matters\n\nThis is the quiet failure mode. Before the tick guard existed, a throwing job took the whole host down, which was catastrophic but at least obvious. Now the host survives, which means a job can fail silently on every tick indefinitely. This monitor is what replaces the crash as the signal.\n\nDepending on which job it is, the silent damage differs: missed escalations mean an alert never reaches a carer; missed wearable sync means stale readings feeding baselines; missed partition maintenance eventually means write failures.\n\n## First steps\n\n1. `service:worker \"Scheduled invocation of\"` in Logs — the message names the job (`Scheduled invocation of {Job} failed`).\n2. Read `@exception.stacktrace` on the same log line for the cause.\n3. Check whether it is failing *every* tick or intermittently. Every tick usually means config/DI/permissions; intermittent usually means a dependency (Cloud SQL, Fitbit/Google API, FCM) is flaking.\n\nNOTE: threshold is 3 in 15 minutes, which trips quickly for fast-cadence jobs (30s–5m) but takes longer for hourly ones. Tune per-job if that proves too slow.\n\nNOTE: no notification handle is attached yet. Add one (e.g. `@slack-...`) to make this page someone.",
+  "tags": [
+    "service:worker",
+    "env:dev",
+    "app:carditrack",
+    "severity:warning",
+    "managed-by:repo-spec",
+    "spec:infrastructure/datadog/monitors/worker-job-failing.json"
+  ],
+  "options": {
+    "thresholds": {
+      "critical": 3,
+      "warning": 1
+    },
+    "enable_logs_sample": true,
+    "notify_no_data": false,
+    "notify_audit": false,
+    "include_tags": true,
+    "renotify_interval": 120
+  }
+}

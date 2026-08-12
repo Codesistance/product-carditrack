@@ -35,7 +35,7 @@ public class DeviceSyncAuditWorker : CronBackgroundService
         IOptionsMonitor<DeviceSyncAuditOptions> auditOptions,
         IServiceScopeFactory scopeFactory,
         ILogger<DeviceSyncAuditWorker> logger)
-        : base(options.Get(nameof(DeviceSyncAuditWorker)).CronExpression)
+        : base(options.Get(nameof(DeviceSyncAuditWorker)).CronExpression, logger)
     {
         _scopeFactory = scopeFactory;
         _auditOptions = auditOptions;
