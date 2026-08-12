@@ -17,13 +17,6 @@ public partial class CardiMemberDetailPage : ContentPage
     /// <summary>Shell route; see <see cref="AppShell"/>.</summary>
     public const string Route = "memberdetail";
 
-    /// <summary>
-    /// How often this screen reloads itself while it is being looked at. Matches the dashboard's,
-    /// and for the same reason: the server collects from the wearable every ten minutes, so a
-    /// shorter tick redraws identical numbers on the caregiver's battery.
-    /// </summary>
-    private static readonly TimeSpan AutoRefreshInterval = TimeSpan.FromMinutes(5);
-
     private static readonly (string Label, int Hours)[] PauseDurations =
     [
         ("24 hours", 24),
@@ -72,9 +65,10 @@ public partial class CardiMemberDetailPage : ContentPage
         _popups = popups;
         this.RefreshWhenAppResumes(RefreshUnattendedAsync);
 
-        // Same reason as the dashboard: this screen is one CardiMember's current state, and a
-        // caregiver watching it should not have to pull it down to find out that it moved.
-        this.RefreshEvery(AutoRefreshInterval, RefreshUnattendedAsync);
+        // Same reason and the same cadence as the dashboard: this screen is one CardiMember's
+        // current state, and a caregiver watching it should not have to pull it down to find out
+        // that it moved.
+        this.RefreshEvery(PeriodicRefresh.LiveDataInterval, RefreshUnattendedAsync);
 
         TrendsCarousel.HeightRequest = MetricTrendCard.CardHeight;
         TrendsCarousel.PositionChanged += OnTrendPositionChanged;
@@ -341,10 +335,12 @@ public partial class CardiMemberDetailPage : ContentPage
         ErrorPanel.IsVisible = error;
     }
 
-    // Named rather than "..": this page is also reached via the Notifications inbox, where
-    // there is no guarantee the dashboard sits directly underneath on the stack.
+    // Back through the app's own history where there is any — this page is reached from the
+    // dashboard, the Notifications inbox and the alerts list, and the arrow should return to
+    // whichever of them the caregiver actually came from. The dashboard is the floor for the
+    // cases with nothing behind it, such as a notification tap opening the app here.
     private async void OnBackClicked(object? sender, EventArgs e) =>
-        await Shell.Current.GoToAsync(AppShell.DashboardRoute);
+        await this.GoBackAsync(AppShell.DashboardRoute);
 
     private void OnToggleMedicalTapped(object? sender, TappedEventArgs e)
     {

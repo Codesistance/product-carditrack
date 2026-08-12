@@ -144,10 +144,13 @@ public partial class EditCardiMemberPage : ContentPage
         await NavigateBackToDetailAsync();
     }
 
-    // Named rather than "..": this page is also reached via the Notifications inbox, which
-    // pushes it directly with no member detail page underneath it on the stack.
+    // Back to wherever the caregiver opened the form from — the dashboard's "add a number" offer
+    // and the alerts list both push it directly, and returning them to Member Detail instead
+    // would be a screen they never asked for. Every one of those callers refetches on appearing,
+    // so a save lands the same either way. Member Detail is the floor for a push with nothing
+    // behind it.
     private Task NavigateBackToDetailAsync() =>
-        Shell.Current.GoToAsync($"{AppShell.DashboardRoute}/{CardiMemberDetailPage.Route}?memberId={_memberId}");
+        this.GoBackAsync($"{AppShell.DashboardRoute}/{CardiMemberDetailPage.Route}?memberId={_memberId}");
 
     private bool HasUnsavedChanges()
     {

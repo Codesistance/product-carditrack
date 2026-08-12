@@ -21,6 +21,31 @@ namespace CardiTrack.Mobile.Services;
 internal static class PeriodicRefresh
 {
     /// <summary>
+    /// How often a live screen re-reads what the server has already computed.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A read of stored, computed values — <c>GET</c> against the dashboard, member detail and
+    /// alerts endpoints. It never asks the server to go and poll the wearable; that is the manual
+    /// refresh button's job and the Worker's, and a tick that did it would earn the manual-sync
+    /// cooldown's refusal and pop a dialog for something nobody asked for.
+    /// </para>
+    /// <para>
+    /// Thirty seconds, where every screen used to sit between two and five minutes. Those windows
+    /// were set against the Worker's ten-minute polling sync being the only way data arrived, on
+    /// the reasoning that asking more often than the numbers could change spends battery to redraw
+    /// the same screen. That is no longer how data arrives: webhook-triggered syncs land within
+    /// seconds of the provider reporting, and the GCP aggregator and assessor jobs run every five
+    /// minutes offset from each other (see docs/technical/data_sync_architecture.md), so a
+    /// reading, an assessment or an alert can now appear at any moment. A five-minute screen could
+    /// sit on a superseded number for most of that. Thirty seconds rather than ten because this is
+    /// a screen a caregiver leaves open: the cost is paid per minute of watching, and ten seconds
+    /// would triple it to shorten the worst case by twenty.
+    /// </para>
+    /// </remarks>
+    public static readonly TimeSpan LiveDataInterval = TimeSpan.FromSeconds(30);
+
+    /// <summary>
     /// Runs <paramref name="refresh"/> every <paramref name="interval"/> while
     /// <paramref name="page"/> is the screen being looked at. Call it from the page constructor;
     /// the page's own load method keeps deciding what "refresh" means.

@@ -9,8 +9,6 @@ namespace CardiTrack.Mobile;
 /// <summary>M1-10 Alerts List — every alert across the CardiMembers this caregiver watches.</summary>
 public partial class AlertsPage : ContentPage
 {
-    private static readonly TimeSpan AutoRefreshInterval = TimeSpan.FromMinutes(2);
-
     /// <summary>
     /// Gap above the empty card, matching Figma. Two values because the card sits at the same
     /// y in both frames while the chip row above it is only present in one.
@@ -36,24 +34,33 @@ public partial class AlertsPage : ContentPage
         _popups = popups;
         Filters.FilterChanged += OnFilterChanged;
         ApplyArchiveButtonText();
-        this.RefreshWhenAppResumes(RefreshOnResumeAsync);
+        this.RefreshWhenAppResumes(RefreshUnattendedAsync);
+
+        // This screen had no timer at all — it only refreshed on re-entry and on resume, which
+        // left a caregiver watching the alert list as the one person in the app who would not
+        // see an alert arrive. Same tick as the dashboard and member detail.
+        this.RefreshEvery(PeriodicRefresh.LiveDataInterval, RefreshUnattendedAsync);
     }
 
     protected override void OnAppearing()
     {
         base.OnAppearing();
-        if (_lastData is null || DateTime.UtcNow - _lastLoadedUtc > AutoRefreshInterval)
-            _ = LoadAsync();
+
+        // Opening the list is a pull. It used to skip the load for two minutes after the last
+        // one — on the screen whose whole job is telling a caregiver what has been raised.
+        _ = RefreshUnattendedAsync();
     }
 
     /// <summary>
-    /// The app returning to the foreground reloads the list, ignoring
-    /// <see cref="AutoRefreshInterval"/>: a caregiver reopening the app on this screen is asking
-    /// what has been raised since they left, and an alert list is the worst thing to serve stale.
-    /// Silent, because they did not ask for this one — a refresh that fails leaves the alerts
-    /// already on screen alone rather than opening a dialog over them.
+    /// The quiet reload behind all three unattended paths — arriving on the screen, the app
+    /// returning to the foreground, and the timer above. A caregiver opening this screen is asking
+    /// what has been raised since they last looked, and an alert list is the worst thing to serve
+    /// stale, so the only gate is <see cref="ResumeRefresh.MinimumGap"/>, which just stops a load
+    /// that has already run being repeated. Silent, because they did not ask for this one — a
+    /// refresh that fails leaves the alerts already on screen alone rather than opening a dialog
+    /// over them.
     /// </summary>
-    private Task RefreshOnResumeAsync() =>
+    private Task RefreshUnattendedAsync() =>
         DateTime.UtcNow - _lastLoadedUtc < ResumeRefresh.MinimumGap
             ? Task.CompletedTask
             : LoadAsync(silent: true);
@@ -264,11 +271,13 @@ public partial class AlertsPage : ContentPage
         ArchiveButton.Text = _showArchived ? "Back to current alerts" : "View Archived Alerts";
 
     /// <summary>
-    /// Alerts is a tab root, so there is no stack to pop — the arrow goes where it looks like
-    /// it goes, back to the dashboard, rather than unwinding to wherever the user came from.
+    /// Alerts is a tab root, so in the ordinary case there is no stack to pop and the arrow goes
+    /// where it looks like it goes — back to the dashboard. It still asks
+    /// <see cref="BackNavigation"/> first, so that stays true by the rule every other back arrow
+    /// follows rather than by this page hard-coding it.
     /// </summary>
     private async void OnBackTapped(object? sender, TappedEventArgs e) =>
-        await Shell.Current.GoToAsync(AppShell.DashboardRoute);
+        await this.GoBackAsync(AppShell.DashboardRoute);
 
     private void OnPullToRefresh(object? sender, EventArgs e) => _ = LoadAsync(force: true);
 

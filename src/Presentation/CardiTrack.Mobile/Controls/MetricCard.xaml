@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8" ?>
 <ContentView xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:controls="clr-namespace:CardiTrack.Mobile.Controls"
              x:Class="CardiTrack.Mobile.Controls.MetricCard">
 
     <!-- Figma 101:2807 / 101:2821 / 101:2835, adapted for the half-width Key Metrics grid:
@@ -45,9 +46,7 @@
                            Style="{StaticResource StatusPillText}"/>
                 </Border>
 
-                <HorizontalStackLayout x:Name="StarRow"
-                                       IsVisible="False"
-                                       Spacing="3"/>
+                <controls:StarRatingView x:Name="StarRow" IsVisible="False"/>
 
                 <Label x:Name="CaptionLabel"
                        Style="{StaticResource MetricRowCaption}"/>

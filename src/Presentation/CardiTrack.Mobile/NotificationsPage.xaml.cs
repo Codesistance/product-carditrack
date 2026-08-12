@@ -15,8 +15,6 @@ public partial class NotificationsPage : ContentPage
 {
     public const string Route = "notifications";
 
-    private static readonly TimeSpan AutoRefreshInterval = TimeSpan.FromMinutes(2);
-
     private readonly ICardiTrackApiClient _api;
     private readonly IPopupService _popups;
 
@@ -32,22 +30,26 @@ public partial class NotificationsPage : ContentPage
         InitializeComponent();
         _api = api;
         _popups = popups;
-        this.RefreshWhenAppResumes(RefreshOnResumeAsync);
+        this.RefreshWhenAppResumes(RefreshUnattendedAsync);
     }
 
     protected override void OnAppearing()
     {
         base.OnAppearing();
-        if (_lastData is null || DateTime.UtcNow - _lastLoadedUtc > AutoRefreshInterval)
-            _ = LoadAsync();
+
+        // Opening the inbox is a pull. It used to skip the load for two minutes after the last
+        // one, which is long enough to show a caregiver an item they resolved on another screen.
+        _ = RefreshUnattendedAsync();
     }
 
     /// <summary>
-    /// The app returning to the foreground reloads the inbox, ignoring
-    /// <see cref="AutoRefreshInterval"/> — items resolved elsewhere (or raised by the workers)
-    /// while the app was away should be settled by the time the caregiver looks at the list.
+    /// The quiet reload behind both unattended paths — arriving on the screen, and the app
+    /// returning to the foreground. Items resolved elsewhere (or raised by the workers) should be
+    /// settled by the time the caregiver looks at the list, so the only gate is
+    /// <see cref="ResumeRefresh.MinimumGap"/>, which just stops a load that has already run being
+    /// repeated.
     /// </summary>
-    private Task RefreshOnResumeAsync() =>
+    private Task RefreshUnattendedAsync() =>
         DateTime.UtcNow - _lastLoadedUtc < ResumeRefresh.MinimumGap
             ? Task.CompletedTask
             : LoadAsync();
@@ -290,5 +292,8 @@ public partial class NotificationsPage : ContentPage
 
     private void OnRetryClicked(object? sender, EventArgs e) => _ = LoadAsync(force: true);
 
-    private async void OnBackClicked(object? sender, EventArgs e) => await Shell.Current.GoToAsync("..");
+    // ".." alone went nowhere when this page was opened with nothing behind it — a notification
+    // tap, or a deep link straight into the inbox. The dashboard is the floor for those.
+    private async void OnBackClicked(object? sender, EventArgs e) =>
+        await this.GoBackAsync(AppShell.DashboardRoute);
 }
