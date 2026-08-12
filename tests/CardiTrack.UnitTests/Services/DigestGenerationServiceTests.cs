@@ -11,9 +11,9 @@ namespace CardiTrack.UnitTests.Services;
 
 /// <summary>
 /// Pins the summary due-ness rules: recomputed whenever the member's readings have moved since
-/// their last summary, never while paused, never from silence — and one member's failure never
-/// costs another family theirs. Every generation is appended, so a day accumulates history rather
-/// than being overwritten.
+/// their last summary but no more often than the regeneration floor, never while paused, never
+/// from silence — and one member's failure never costs another family theirs. Every generation is
+/// appended, so a day accumulates history rather than being overwritten.
 /// </summary>
 public class DigestGenerationServiceTests
 {
@@ -184,8 +184,75 @@ public class DigestGenerationServiceTests
             {
                 CardiMemberId = _memberId,
                 LocalDate = Today,
+                GeneratedAtUtc = UtcNow.AddMinutes(-45),
+            });
+
+        var generated = await CreateSut().GenerateDueDigestsAsync(UtcNow);
+
+        Assert.Equal(1, generated);
+    }
+
+    /// <summary>
+    /// The cost bound that lets the job run quarter-hourly. A worn device uploads on nearly every
+    /// pass, so "data has moved" alone would mean an inference and a history row every fifteen
+    /// minutes — the floor is what decouples how often the job runs from how many summaries a
+    /// member accumulates.
+    /// </summary>
+    [Fact]
+    public async Task Skips_WhenTheLastSummaryIsTooRecent_EvenThoughNewDataHasLanded()
+    {
+        // Ten minutes old, and readings landed after it: the data gate would happily regenerate.
+        _digests.GetLatestAsync(_memberId, DigestAudience.Family, Arg.Any<CancellationToken>())
+            .Returns(new DigestEntry
+            {
+                CardiMemberId = _memberId,
+                LocalDate = Today,
+                GeneratedAtUtc = UtcNow.AddMinutes(-10),
+            });
+        SetupActivity(UtcNow.AddMinutes(-2));
+
+        var generated = await CreateSut().GenerateDueDigestsAsync(UtcNow);
+
+        Assert.Equal(0, generated);
+        await _medicalAi.DidNotReceive().GenerateStructuredAsync<DigestGenerationService.DigestAiResponse>(
+            Arg.Any<string>(), Arg.Any<CancellationToken>());
+        // Inside the floor the readings are never read either — the skip costs one indexed lookup,
+        // not a date-range scan, which is what makes a mostly-skipping pass cheap.
+        await _activityLogs.DidNotReceive().GetByCardiMemberAndDateRangeAsync(
+            _memberId, Arg.Any<DateOnly>(), Arg.Any<DateOnly>());
+    }
+
+    /// <summary>
+    /// The floor is a minimum age, not a rounding: a summary exactly that old is due again. Pins
+    /// the boundary so the interval can be retuned without the direction of the comparison
+    /// quietly changing with it.
+    /// </summary>
+    [Fact]
+    public async Task Regenerates_WhenTheLastSummaryIsExactlyTheFloorOld()
+    {
+        _digests.GetLatestAsync(_memberId, DigestAudience.Family, Arg.Any<CancellationToken>())
+            .Returns(new DigestEntry
+            {
+                CardiMemberId = _memberId,
+                LocalDate = Today,
                 GeneratedAtUtc = UtcNow.AddMinutes(-20),
             });
+        SetupActivity(UtcNow.AddMinutes(-2));
+
+        var generated = await CreateSut().GenerateDueDigestsAsync(UtcNow);
+
+        Assert.Equal(1, generated);
+    }
+
+    /// <summary>
+    /// The floor bounds regeneration, never the first summary: a member who has been quiet and
+    /// starts uploading again is caught by the very next pass, which is the freshness the
+    /// quarter-hourly cadence was bought for.
+    /// </summary>
+    [Fact]
+    public async Task Generates_ImmediatelyForAMemberWithNoSummaryYet_WhateverTheFloor()
+    {
+        SetupActivity(UtcNow.AddMinutes(-1));
 
         var generated = await CreateSut().GenerateDueDigestsAsync(UtcNow);
 

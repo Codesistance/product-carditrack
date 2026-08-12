@@ -12,8 +12,14 @@ namespace CardiTrack.API.Controllers;
 [Route("api/v1/insights")]
 public class InsightsController : BaseApiController
 {
-    /// <summary>How many summaries a history read returns when the caller doesn't say.</summary>
-    private const int DefaultHistoryLimit = 10;
+    /// <summary>
+    /// How many summaries a history read returns when the caller doesn't say. Sized against how
+    /// densely they are now written: the digest job runs quarter-hourly and its regeneration floor
+    /// admits at most three summaries an hour, so this default still spans most of a day for a
+    /// member whose device uploads continuously — which is what the history is for. Well inside
+    /// <c>DigestQueryService.MaxHistoryLimit</c>, which remains the ceiling a caller can ask for.
+    /// </summary>
+    private const int DefaultHistoryLimit = 24;
 
     private readonly IHealthInsightService _insightService;
     private readonly IDigestQueryService _digests;

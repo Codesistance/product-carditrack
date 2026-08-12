@@ -16,7 +16,9 @@ namespace CardiTrack.Infrastructure.Services;
 /// Every generation is kept (see <see cref="DigestEntry"/>), so recomputation builds a history
 /// rather than overwriting the day. The dedup probe is the member's own last summary: a member
 /// whose device has uploaded nothing new costs no inference, which is what bounds this from
-/// re-running the fleet on every pass.
+/// re-running the fleet on every pass. A worn device uploads on nearly every pass, though, so
+/// <see cref="MinimumRegenerationInterval"/> is the second bound — together they decouple how
+/// often the job runs from how many summaries a member accumulates.
 /// </para>
 /// </summary>
 public class DigestGenerationService : IDigestGenerationService
@@ -65,6 +67,20 @@ public class DigestGenerationService : IDigestGenerationService
     /// guard against a model that answers with a sentence, not the length being aimed at.
     /// </summary>
     private const int MaxHeadlineLength = 120;
+
+    /// <summary>
+    /// The floor between two summaries for the same member. The job runs every quarter hour so a
+    /// member who has been quiet catches up quickly, but a continuously-uploading device produces
+    /// new readings on nearly every pass — and without a floor that would mean an inference and a
+    /// history row every fifteen minutes, for a summary whose wording barely moves.
+    /// <para>
+    /// This bounds cost and keeps the history list legible: at this floor a member writes at most
+    /// three summaries an hour, so the page the apps read still spans most of a day rather than
+    /// the last couple of hours. It is a floor on <em>regeneration</em>, not on freshness — the
+    /// first pass after new data on a member with no recent summary is never delayed by it.
+    /// </para>
+    /// </summary>
+    private static readonly TimeSpan MinimumRegenerationInterval = TimeSpan.FromMinutes(20);
 
     private readonly IUnitOfWork _unitOfWork;
     private readonly IMedicalAiService _medicalAi;
@@ -116,6 +132,13 @@ public class DigestGenerationService : IDigestGenerationService
         if (member is null || !member.IsActive || member.IsMonitoringPaused(utcNow))
             return false;
 
+        // The member's own last summary answers both remaining gates, so it is read before the
+        // readings are: on a quarter-hourly job most members are inside the floor, and those
+        // passes should cost one indexed lookup rather than a date-range scan as well.
+        var previous = await _unitOfWork.Digests.GetLatestAsync(memberId, DigestAudience.Family, ct);
+        if (previous is not null && utcNow - previous.GeneratedAtUtc < MinimumRegenerationInterval)
+            return false;
+
         // A summary is keyed by the local day it DESCRIBES, and it now describes the day in
         // progress rather than yesterday: recomputing on every data update is only worth doing if
         // what comes back is current. The API contract's `localDate` still means the day the text
@@ -138,7 +161,6 @@ public class DigestGenerationService : IDigestGenerationService
         // This is what keeps "recompute on every update" from meaning "re-run the fleet on every
         // pass": no new readings, no inference.
         var dataChangedAtUtc = logs.Max(l => l.UpdatedDate ?? l.CreatedDate);
-        var previous = await _unitOfWork.Digests.GetLatestAsync(memberId, DigestAudience.Family, ct);
         if (previous is not null && dataChangedAtUtc <= previous.GeneratedAtUtc)
             return false;
 
