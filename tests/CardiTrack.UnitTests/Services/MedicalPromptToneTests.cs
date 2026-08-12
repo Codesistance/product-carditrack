@@ -10,39 +10,52 @@ namespace CardiTrack.UnitTests.Services;
 /// </summary>
 public class MedicalPromptToneTests
 {
+    /// <summary>The services that send prompts to the private medical model.</summary>
+    private static readonly Type[] PromptServices =
+    [
+        typeof(DigestGenerationService),
+        typeof(HealthInsightService),
+        typeof(RealtimeAssessmentService),
+    ];
+
     /// <summary>
-    /// Every fixed instruction block in the private-model services. Found by reflection rather than
-    /// listed, so a prompt added tomorrow is held to this without anyone remembering to add it here.
+    /// Every fixed instruction block in those services. Found by reflection rather than listed, so
+    /// a prompt added tomorrow is held to the rules below without anyone remembering to add it
+    /// here — which is also why nothing asserts on how many there are.
     /// </summary>
+    private static List<(string Service, string Field, string Prompt)> AllPrompts() =>
+        PromptServices
+            .SelectMany(type => type
+                .GetFields(BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.DeclaredOnly)
+                .Where(f => f.IsLiteral && f.FieldType == typeof(string))
+                .Where(f => f.Name.EndsWith("Instructions", StringComparison.Ordinal))
+                .Select(f => (type.Name, f.Name, (string)f.GetRawConstantValue()!)))
+            .ToList();
+
     public static TheoryData<string, string> Prompts()
     {
         var data = new TheoryData<string, string>();
-
-        foreach (var type in new[]
-                 {
-                     typeof(DigestGenerationService),
-                     typeof(HealthInsightService),
-                     typeof(RealtimeAssessmentService),
-                 })
-        {
-            var fields = type
-                .GetFields(BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.DeclaredOnly)
-                .Where(f => f.IsLiteral && f.FieldType == typeof(string))
-                .Where(f => f.Name.EndsWith("Instructions", StringComparison.Ordinal));
-
-            foreach (var field in fields)
-                data.Add($"{type.Name}.{field.Name}", (string)field.GetRawConstantValue()!);
-        }
-
+        foreach (var (service, field, prompt) in AllPrompts())
+            data.Add($"{service}.{field}", prompt);
         return data;
     }
 
+    /// <summary>
+    /// Guards the reflection above. A rename that stopped matching "…Instructions" would otherwise
+    /// turn every test below into a silent pass over an empty set — so this asserts each service
+    /// is actually represented, rather than a total that would need editing every time a prompt
+    /// was legitimately added.
+    /// </summary>
     [Fact]
     public void Every_service_contributes_at_least_one_prompt()
     {
-        // Guards the reflection above: a rename that stopped matching "…Instructions" would
-        // otherwise turn every test below into a silent pass over an empty set.
-        Assert.Equal(7, Prompts().Count);
+        var found = AllPrompts().Select(p => p.Service).ToHashSet(StringComparer.Ordinal);
+
+        Assert.All(PromptServices, type => Assert.True(
+            found.Contains(type.Name),
+            $"{type.Name} contributed no '…Instructions' constant — either it stopped sending "
+            + "prompts, or the reflection here has stopped finding them and the tone rules below "
+            + "are no longer checking anything."));
     }
 
     [Theory]

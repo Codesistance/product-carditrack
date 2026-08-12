@@ -64,6 +64,13 @@ public partial class CardiMemberDetailPage : ContentPage
     /// </summary>
     private bool _digestRendered;
 
+    /// <summary>
+    /// How many suggestions the "ways to help" section is built around. The generator writes three
+    /// or none (DigestGenerationService.CleanSuggestions); this is the client holding the same
+    /// line rather than trusting it to.
+    /// </summary>
+    private const int SuggestionCount = 3;
+
     public CardiMemberDetailPage(ICardiTrackApiClient api, IPopupService popups)
     {
         InitializeComponent();
@@ -303,9 +310,11 @@ public partial class CardiMemberDetailPage : ContentPage
     {
         SuggestionsList.Clear();
 
-        // Three or nothing — the API sends a full set or none, and a client that rendered whatever
-        // arrived would put the one-bullet card back that the generator exists to prevent.
-        if (suggestions is not { Count: > 0 })
+        // Three or nothing, enforced here and not merely assumed. The generator already drops a
+        // partial set, so today this only ever sees three or null — but "the server would never"
+        // is what the heading over one lonely bullet always got explained by, and this screen
+        // outlives any one version of the API that feeds it.
+        if (suggestions is not { Count: >= SuggestionCount })
         {
             SuggestionsCard.IsVisible = false;
             return;
@@ -315,7 +324,9 @@ public partial class CardiMemberDetailPage : ContentPage
             ? "Ways to help"
             : $"Ways to help {NameFormatting.FirstName(_member.Name)}";
 
-        foreach (var suggestion in suggestions)
+        // Taking rather than assuming: a later API that sent four would otherwise either hide the
+        // section or grow the card past what the layout was drawn for.
+        foreach (var suggestion in suggestions.Take(SuggestionCount))
         {
             var row = new Grid
             {
