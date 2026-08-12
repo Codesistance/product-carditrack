@@ -129,8 +129,10 @@ public class DashboardMetric
     /// distance from its own nightly baseline in units of that device's nightly variation; steps
     /// and resting heart rate use percentage deviation from the pattern baseline (steps counting
     /// only a shortfall). See <c>MemberInsightsCalculator</c> for the bands. Null when there is
-    /// nothing to rate against — SpO2 and breathing rate always, and any metric whose baseline is
-    /// missing — which hides the card's star row rather than inventing a normal.
+    /// nothing to rate against — SpO2 and breathing rate always; steps and resting heart rate
+    /// when no baseline exists; and sleep only when the night carries neither an efficiency nor
+    /// a baseline to compare its length with, since either alone can rate it. Null hides the
+    /// card's star row rather than inventing a normal.
     /// </summary>
     public int? QualityScore { get; set; }
 
