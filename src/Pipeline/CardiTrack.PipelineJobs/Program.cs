@@ -44,8 +44,10 @@ builder.AddApmTracing(ApmServiceNames.PipelineJobs);
 builder.Services.AddDbContext<CardiTrackDbContext>(options =>
     options.UseCardiTrackNpgsql(configLoader.Get(ConfigurationKeys.ConnectionStrings.DefaultConnection)));
 
-// Encryption — required by the persistence layer's encrypted converters; built eagerly so a
-// missing key stops the job at startup rather than mid-run.
+// Encryption — applied by the services that own each protected field (there are no EF value
+// converters; see docs/technical/data_protection_architecture.md). Built eagerly so a missing
+// key stops the job at startup rather than mid-run, which now includes the digest job's
+// questionnaire writes as well as every read of a caregiver note.
 builder.Services.AddSingleton(configLoader);
 builder.Services.AddSingleton<IEncryptionService>(
     new AesEncryptionService(configLoader.GetRequired(ConfigurationKeys.Encryption.Key)));
@@ -65,6 +67,7 @@ builder.Services.AddScoped<IPatternBaselineRepository, PatternBaselineRepository
 builder.Services.AddScoped<IGranularMetricRepository, GranularMetricRepository>();
 builder.Services.AddScoped<IDigestRepository, DigestRepository>();
 builder.Services.AddScoped<IRealtimeAssessmentRepository, RealtimeAssessmentRepository>();
+builder.Services.AddScoped<IMemberQuestionnaireRepository, MemberQuestionnaireRepository>();
 builder.Services.AddScoped<IEnvironmentalReadingRepository, EnvironmentalReadingRepository>();
 builder.Services.AddScoped<INotificationRepository, NotificationRepository>();
 builder.Services.AddScoped<INotificationMuteRepository, NotificationMuteRepository>();

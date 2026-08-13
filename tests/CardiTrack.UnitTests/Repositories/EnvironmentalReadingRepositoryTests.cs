@@ -22,7 +22,8 @@ public class EnvironmentalReadingRepositoryTests(TestDatabaseFixture fixture)
             .EnsureUpcomingPartitionsAsync(daysAhead: 7);
 
     private static EnvironmentalReading Reading(
-        Guid memberId, DateTime sessionStartUtc, double? temperature = 21.0, int? aqi = 30) => new()
+        Guid memberId, DateTime sessionStartUtc, double? temperature = 21.0, int? aqi = 30,
+        string? condition = "Partly cloudy", int? humidity = 62) => new()
         {
             CardiMemberId = memberId,
             SessionStartUtc = sessionStartUtc,
@@ -31,6 +32,8 @@ public class EnvironmentalReadingRepositoryTests(TestDatabaseFixture fixture)
             TemperatureCelsius = temperature,
             AirQualityIndex = aqi,
             AirQualityCategory = aqi is null ? null : "Good",
+            WeatherCondition = condition,
+            RelativeHumidityPercent = humidity,
             GeneratedAtUtc = DateTime.UtcNow,
         };
 
@@ -51,6 +54,48 @@ public class EnvironmentalReadingRepositoryTests(TestDatabaseFixture fixture)
         var stored = await repo.GetLatestAsync(memberId);
         Assert.NotNull(stored);
         Assert.Equal(24.5, stored.TemperatureCelsius);
+    }
+
+    /// <summary>
+    /// Both upsert paths are raw SQL that names every column by hand, so a field added to the
+    /// entity and forgotten here reaches storage as NULL with no error anywhere — exactly how the
+    /// digest's own Suggestions column was silently dropped once before.
+    /// </summary>
+    [Fact]
+    public async Task UpsertAsync_CarriesTheConditionAndHumidity_OnInsertAndOnOverwrite()
+    {
+        using var scope = fixture.CreateScope();
+        await EnsurePartitionsAsync(scope);
+        var repo = scope.ServiceProvider.GetRequiredService<IEnvironmentalReadingRepository>();
+        var memberId = Guid.NewGuid();
+
+        await repo.UpsertAsync(Reading(memberId, RecentSession, condition: "Light rain", humidity: 81));
+
+        var inserted = await repo.GetLatestAsync(memberId);
+        Assert.Equal("Light rain", inserted!.WeatherCondition);
+        Assert.Equal(81, inserted.RelativeHumidityPercent);
+
+        await repo.UpsertAsync(Reading(memberId, RecentSession, condition: "Clear", humidity: 45));
+
+        var overwritten = await repo.GetLatestAsync(memberId);
+        Assert.Equal("Clear", overwritten!.WeatherCondition);
+        Assert.Equal(45, overwritten.RelativeHumidityPercent);
+    }
+
+    /// <summary>A lookup that came back with only some fields is a partial reading, not a failure.</summary>
+    [Fact]
+    public async Task UpsertAsync_AcceptsAReadingWithNoConditionOrHumidity()
+    {
+        using var scope = fixture.CreateScope();
+        await EnsurePartitionsAsync(scope);
+        var repo = scope.ServiceProvider.GetRequiredService<IEnvironmentalReadingRepository>();
+        var memberId = Guid.NewGuid();
+
+        await repo.UpsertAsync(Reading(memberId, RecentSession, condition: null, humidity: null));
+
+        var stored = await repo.GetLatestAsync(memberId);
+        Assert.Null(stored!.WeatherCondition);
+        Assert.Null(stored.RelativeHumidityPercent);
     }
 
     [Fact]

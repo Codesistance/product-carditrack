@@ -1,0 +1,43 @@
+using CardiTrack.Application.DTOs.Responses;
+
+namespace CardiTrack.Application.Interfaces.Services;
+
+/// <summary>
+/// The family's side of the questionnaire loop: reading what has been asked, answering it, changing
+/// an answer, and removing one.
+/// </summary>
+/// <remarks>
+/// Generation is not here — questions are written by the digest pass in the AI pipeline, which is
+/// where LLM work belongs. This is only what a caregiver does with one afterwards.
+/// </remarks>
+public interface IQuestionnaireService
+{
+    /// <summary>Every question asked about this member, newest first.</summary>
+    Task<IReadOnlyList<QuestionnaireResponse>> GetForMemberAsync(
+        Guid requestingUserId, Guid cardiMemberId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Records an answer. The same call answers a pending question and replaces an existing answer —
+    /// editing is not a different act, and a second endpoint would only be a second thing to keep
+    /// authorised.
+    /// </summary>
+    Task<QuestionnaireResponse> AnswerAsync(
+        Guid requestingUserId, Guid questionnaireId, string answerText, CancellationToken ct = default);
+
+    /// <summary>
+    /// Skips the question without answering it. The record survives, so the same ground is not
+    /// covered again — see <see cref="DeleteAsync"/> for the destructive option.
+    /// </summary>
+    Task<QuestionnaireResponse> DismissAsync(
+        Guid requestingUserId, Guid questionnaireId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Removes the question and its answer outright.
+    /// </summary>
+    /// <remarks>
+    /// A real row delete, not a flag. The answer is something a family member wrote about a person
+    /// who never signed up to this service, so "delete" has to mean gone (GDPR Art. 17) — the rest
+    /// of the platform's soft-delete convention is the wrong instinct here.
+    /// </remarks>
+    Task DeleteAsync(Guid requestingUserId, Guid questionnaireId, CancellationToken ct = default);
+}

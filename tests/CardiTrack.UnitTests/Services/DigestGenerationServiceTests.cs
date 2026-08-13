@@ -26,6 +26,9 @@ public class DigestGenerationServiceTests
     private readonly IActivityLogRepository _activityLogs = Substitute.For<IActivityLogRepository>();
     private readonly IPatternBaselineRepository _baselines = Substitute.For<IPatternBaselineRepository>();
     private readonly IDigestRepository _digests = Substitute.For<IDigestRepository>();
+    private readonly IAlertRepository _alerts = Substitute.For<IAlertRepository>();
+    private readonly IMemberQuestionnaireRepository _questionnaires =
+        Substitute.For<IMemberQuestionnaireRepository>();
     private readonly IMedicalAiService _medicalAi = Substitute.For<IMedicalAiService>();
 
     private readonly Guid _memberId = Guid.NewGuid();
@@ -48,6 +51,8 @@ public class DigestGenerationServiceTests
         _unitOfWork.ActivityLogs.Returns(_activityLogs);
         _unitOfWork.PatternBaselines.Returns(_baselines);
         _unitOfWork.Digests.Returns(_digests);
+        _unitOfWork.Alerts.Returns(_alerts);
+        _unitOfWork.MemberQuestionnaires.Returns(_questionnaires);
 
         // Defaults: one active London-anchored member whose data landed half an hour ago, and who
         // has never had a summary written.
@@ -60,6 +65,12 @@ public class DigestGenerationServiceTests
         // Still learning by default: no established baseline, so the prompt carries no usual
         // pattern — the shape every pre-existing expectation below was written against.
         _baselines.GetLatestByCardiMemberAsync(_memberId, 30).Returns((PatternBaseline?)null);
+        // A calm member by default: no alerts to change state, nothing already asked.
+        _alerts.GetByCardiMemberAsync(_memberId, Arg.Any<bool>()).Returns([]);
+        _questionnaires.GetByCardiMemberAsync(_memberId, Arg.Any<CancellationToken>()).Returns([]);
+        _questionnaires.HasPendingAsync(_memberId, Arg.Any<CancellationToken>()).Returns(false);
+        _questionnaires.GetLatestGeneratedAtAsync(_memberId, Arg.Any<CancellationToken>())
+            .Returns((DateTime?)null);
         _medicalAi.GenerateStructuredAsync<DigestGenerationService.DigestAiResponse>(
                 Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(new DigestGenerationService.DigestAiResponse
@@ -108,7 +119,8 @@ public class DigestGenerationServiceTests
     }
 
     private DigestGenerationService CreateSut() =>
-        new(_unitOfWork, _medicalAi, NullLogger<DigestGenerationService>.Instance);
+        new(_unitOfWork, _medicalAi, PromptContextFactory.Composer(_unitOfWork),
+            PromptContextFactory.Encryption, NullLogger<DigestGenerationService>.Instance);
 
     [Fact]
     public async Task Generates_ForAMemberWithNoSummaryYet()
@@ -857,5 +869,244 @@ public class DigestGenerationServiceTests
         Assert.Equal(1, generated);
         await _digests.Received(1).AddAsync(
             Arg.Is<DigestEntry>(d => d.CardiMemberId == _memberId), Arg.Any<CancellationToken>());
+    }
+
+    // ---- Alert state waives the regeneration gates ----
+
+    /// <summary>
+    /// The floor exists so a summary whose wording barely moves does not cost an inference. An
+    /// alert raised since the last one is the case where the wording does move, and making a
+    /// caregiver wait twenty minutes to read it would be the floor working against its own purpose.
+    /// </summary>
+    [Fact]
+    public async Task RegeneratesInsideTheFloor_WhenAnAlertWasRaisedSinceTheLastSummary()
+    {
+        GivenPreviousSummary(UtcNow.AddMinutes(-5));
+        GivenAlerts(AnAlert(triggeredAt: UtcNow.AddMinutes(-2), resolved: false));
+
+        Assert.Equal(1, await CreateSut().GenerateDueDigestsAsync(UtcNow));
+    }
+
+    /// <summary>
+    /// Resolution counts as much as the alert did. A summary still hedging about an episode that
+    /// has ended reads as a service that has not noticed — the same failure, other direction.
+    /// </summary>
+    [Fact]
+    public async Task RegeneratesInsideTheFloor_WhenAnAlertWasResolvedSinceTheLastSummary()
+    {
+        GivenPreviousSummary(UtcNow.AddMinutes(-5));
+        GivenAlerts(AnAlert(UtcNow.AddHours(-3), resolved: true, updatedAt: UtcNow.AddMinutes(-1)));
+
+        Assert.Equal(1, await CreateSut().GenerateDueDigestsAsync(UtcNow));
+    }
+
+    /// <summary>
+    /// A resolution arriving when no new readings have landed must still be written: the data has
+    /// not moved, but what the summary should say has.
+    /// </summary>
+    [Fact]
+    public async Task RegeneratesOnAlertChange_EvenWhenTheReadingsHaveNotMoved()
+    {
+        GivenPreviousSummary(UtcNow.AddHours(-2));
+        SetupActivity(UtcNow.AddHours(-3));
+        GivenAlerts(AnAlert(UtcNow.AddHours(-4), resolved: true, updatedAt: UtcNow.AddMinutes(-10)));
+
+        Assert.Equal(1, await CreateSut().GenerateDueDigestsAsync(UtcNow));
+    }
+
+    [Fact]
+    public async Task StillSkipsInsideTheFloor_WhenTheAlertPredatesTheLastSummary()
+    {
+        GivenPreviousSummary(UtcNow.AddMinutes(-5));
+        GivenAlerts(AnAlert(UtcNow.AddHours(-6), resolved: false));
+
+        Assert.Equal(0, await CreateSut().GenerateDueDigestsAsync(UtcNow));
+    }
+
+    /// <summary>
+    /// The one gate nothing waives. A summary generated from silence would read as "all quiet" when
+    /// the truth is "not measuring" — the confusion this product exists to prevent.
+    /// </summary>
+    [Fact]
+    public async Task NeverSummarisesSilence_EvenWhenAnAlertJustChanged()
+    {
+        GivenPreviousSummary(UtcNow.AddMinutes(-5));
+        GivenAlerts(AnAlert(UtcNow.AddMinutes(-1), resolved: false));
+        _activityLogs.GetByCardiMemberAndDateRangeAsync(_memberId, Arg.Any<DateOnly>(), Arg.Any<DateOnly>())
+            .Returns([]);
+
+        Assert.Equal(0, await CreateSut().GenerateDueDigestsAsync(UtcNow));
+    }
+
+    [Fact]
+    public async Task ThePrompt_CarriesUnresolvedAlerts_SoTheSummaryCannotContradictThem()
+    {
+        GivenAlerts(AnAlert(UtcNow.AddHours(-2), resolved: false));
+
+        var prompt = await CapturedPrompt();
+
+        Assert.Contains("--- Recent monitoring context ---", prompt);
+        Assert.Contains("Unresolved alert (Orange, HeartRate", prompt);
+    }
+
+    [Fact]
+    public async Task ThePrompt_CarriesNoMonitoringSection_ForACalmMember()
+    {
+        Assert.DoesNotContain("Recent monitoring context ---", await CapturedPrompt());
+    }
+
+    // ---- Questions ----
+
+    [Fact]
+    public async Task StoresTheProposedQuestion_WithWhatPromptedIt()
+    {
+        ReturnsQuestion("Has anything changed at home recently?", "Sleep has been shorter all week.");
+
+        await CreateSut().GenerateDueDigestsAsync(UtcNow);
+
+        await _questionnaires.Received(1).AddAsync(Arg.Is<MemberQuestionnaire>(q =>
+            q.CardiMemberId == _memberId
+            && q.Status == QuestionnaireStatus.Pending
+            && q.TriggerContext == "Sleep has been shorter all week."
+            && q.GeneratedAtUtc == UtcNow));
+        await _unitOfWork.Received().SaveChangesAsync();
+    }
+
+    /// <summary>Stored encrypted, like everything else a family says about a member.</summary>
+    [Fact]
+    public async Task StoresTheQuestionEncrypted()
+    {
+        const string question = "Has anything changed at home recently?";
+        ReturnsQuestion(question);
+
+        await CreateSut().GenerateDueDigestsAsync(UtcNow);
+
+        await _questionnaires.Received(1).AddAsync(Arg.Is<MemberQuestionnaire>(q =>
+            q.QuestionText != question
+            && PromptContextFactory.Encryption.Decrypt(q.QuestionText) == question));
+    }
+
+    [Fact]
+    public async Task AsksNothing_WhenTheModelProposedNothing()
+    {
+        await CreateSut().GenerateDueDigestsAsync(UtcNow);
+
+        await _questionnaires.DidNotReceive().AddAsync(Arg.Any<MemberQuestionnaire>());
+    }
+
+    /// <summary>One open question at a time — a family that has not answered is not asked again.</summary>
+    [Fact]
+    public async Task AsksNothing_WhileAQuestionIsAlreadyWaiting()
+    {
+        ReturnsQuestion("Has anything changed at home recently?");
+        _questionnaires.HasPendingAsync(_memberId, Arg.Any<CancellationToken>()).Returns(true);
+
+        await CreateSut().GenerateDueDigestsAsync(UtcNow);
+
+        await _questionnaires.DidNotReceive().AddAsync(Arg.Any<MemberQuestionnaire>());
+    }
+
+    /// <summary>
+    /// Measured from the asking, not the answering: declining to answer must not read as an
+    /// invitation to ask again tomorrow.
+    /// </summary>
+    [Theory]
+    [InlineData(3, false)]
+    [InlineData(8, true)]
+    public async Task RespectsTheIntervalBetweenQuestions(int daysSinceLastAsked, bool expectStored)
+    {
+        ReturnsQuestion("Has anything changed at home recently?");
+        _questionnaires.GetLatestGeneratedAtAsync(_memberId, Arg.Any<CancellationToken>())
+            .Returns(UtcNow.AddDays(-daysSinceLastAsked));
+
+        await CreateSut().GenerateDueDigestsAsync(UtcNow);
+
+        await _questionnaires.Received(expectStored ? 1 : 0).AddAsync(Arg.Any<MemberQuestionnaire>());
+    }
+
+    /// <summary>A question is a by-product of a summary worth keeping, not of a call being made.</summary>
+    [Fact]
+    public async Task AsksNothing_WhenTheSummaryItselfWasDiscarded()
+    {
+        _medicalAi.GenerateStructuredAsync<DigestGenerationService.DigestAiResponse>(
+                Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new DigestGenerationService.DigestAiResponse
+            {
+                Summary = "You are summarising the readings for a family member.",
+                Question = "Has anything changed at home recently?",
+            });
+
+        await CreateSut().GenerateDueDigestsAsync(UtcNow);
+
+        await _questionnaires.DidNotReceive().AddAsync(Arg.Any<MemberQuestionnaire>());
+    }
+
+    /// <summary>
+    /// CardiTrack is not a medical device, and "have you checked her blood pressure?" is a clinical
+    /// instruction wearing a question mark. The summary is stored either way.
+    /// </summary>
+    [Theory]
+    [InlineData("Have you checked her blood pressure today?")]
+    [InlineData("Has her medication changed recently?")]
+    [InlineData("Could you measure her pulse this evening?")]
+    [InlineData("Has she had any new symptoms?")]
+    [InlineData("Anything changed at home recently")]
+    [InlineData("Most days there is nothing worth asking?")]
+    public async Task DropsAQuestionThatShouldNeverBeAsked(string question)
+    {
+        ReturnsQuestion(question);
+
+        await CreateSut().GenerateDueDigestsAsync(UtcNow);
+
+        await _questionnaires.DidNotReceive().AddAsync(Arg.Any<MemberQuestionnaire>());
+        await _digests.Received(1).AddAsync(Arg.Any<DigestEntry>(), Arg.Any<CancellationToken>());
+    }
+
+    // ---- Arrangement helpers for the sections above ----
+
+    private void GivenPreviousSummary(DateTime generatedAt) =>
+        _digests.GetLatestAsync(_memberId, DigestAudience.Family, Arg.Any<CancellationToken>())
+            .Returns(new DigestEntry
+            {
+                CardiMemberId = _memberId,
+                LocalDate = Today,
+                GeneratedAtUtc = generatedAt,
+            });
+
+    private void GivenAlerts(params Alert[] alerts) =>
+        _alerts.GetByCardiMemberAsync(_memberId, Arg.Any<bool>()).Returns(alerts);
+
+    private Alert AnAlert(DateTime triggeredAt, bool resolved, DateTime? updatedAt = null) => new()
+    {
+        CardiMemberId = _memberId,
+        AlertType = AlertType.HeartRate,
+        Severity = AlertSeverity.Orange,
+        Title = "Heart rate worth checking on",
+        TriggeredDate = triggeredAt,
+        IsResolved = resolved,
+        UpdatedDate = updatedAt,
+    };
+
+    private void ReturnsQuestion(string question, string? rationale = null) =>
+        _medicalAi.GenerateStructuredAsync<DigestGenerationService.DigestAiResponse>(
+                Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new DigestGenerationService.DigestAiResponse
+            {
+                Headline = "A settled night",
+                Summary = "A settled day: steady heart rate and a good night's sleep.",
+                Question = question,
+                QuestionRationale = rationale,
+            });
+
+    private async Task<string> CapturedPrompt()
+    {
+        string? prompt = null;
+        await _medicalAi.GenerateStructuredAsync<DigestGenerationService.DigestAiResponse>(
+            Arg.Do<string>(p => prompt = p), Arg.Any<CancellationToken>());
+
+        await CreateSut().GenerateDueDigestsAsync(UtcNow);
+
+        Assert.NotNull(prompt);
+        return prompt;
     }
 }

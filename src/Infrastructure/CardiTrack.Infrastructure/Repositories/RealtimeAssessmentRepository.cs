@@ -78,4 +78,14 @@ public class RealtimeAssessmentRepository : IRealtimeAssessmentRepository
             .OrderByDescending(a => a.WindowStartUtc)
             .FirstOrDefaultAsync(ct);
     }
+
+    public async Task<IReadOnlyList<RealtimeAssessment>> GetSinceAsync(
+        Guid cardiMemberId, DateTime sinceUtc, CancellationToken ct = default)
+    {
+        return await _context.RealtimeAssessments
+            .AsNoTracking()
+            .Where(a => a.CardiMemberId == cardiMemberId && a.WindowStartUtc >= sinceUtc)
+            .OrderByDescending(a => a.WindowStartUtc)
+            .ToListAsync(ct);
+    }
 }

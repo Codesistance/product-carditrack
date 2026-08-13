@@ -83,7 +83,8 @@ public class HealthInsightServiceStatusTests
     private readonly PrivateAiSettings _aiSettings = new() { CurrentStatusBudgetSeconds = 25 };
 
     private HealthInsightService CreateSut() =>
-        new(_medicalAi, _unitOfWork, new CardiMemberAccessService(_unitOfWork), _cache, _aiSettings);
+        new(_medicalAi, _unitOfWork, new CardiMemberAccessService(_unitOfWork),
+            PromptContextFactory.Composer(_unitOfWork), _cache, _aiSettings);
 
     [Fact]
     public async Task Succeeds_ForALinkedUser_AndReturnsTheModelsHeadlineAndMessage()
@@ -168,6 +169,65 @@ public class HealthInsightServiceStatusTests
         Assert.Contains("orange", prompt);
         Assert.Contains("Steps below baseline", prompt);
         Assert.Contains("Device has not synced", prompt);
+    }
+
+    /// <summary>
+    /// Resolution ends the episode without deactivating the row, so an "active" alert can be one
+    /// the assessor already called over. Reading those as live had the hero line going on sounding
+    /// concerned while the status colour beside it had moved on.
+    /// </summary>
+    [Fact]
+    public async Task ResolvedAlerts_NoLongerDriveTheTier()
+    {
+        _alerts.GetByCardiMemberAsync(_memberId, true).Returns(
+        [
+            new Alert
+            {
+                CardiMemberId = _memberId,
+                AlertType = AlertType.HeartRate,
+                Severity = AlertSeverity.Red,
+                Title = "Heart rate needs urgent attention",
+                IsResolved = true,
+            },
+        ]);
+
+        await CreateSut().GetCurrentStatusMessageAsync(_userId, _memberId);
+
+        var prompt = (string)_medicalAi.ReceivedCalls().Single().GetArguments()[0]!;
+        Assert.Contains("green", prompt);
+        Assert.Contains("No unresolved alerts.", prompt);
+        Assert.DoesNotContain("Heart rate needs urgent attention", prompt);
+    }
+
+    [Fact]
+    public async Task TheTier_ComesFromTheWorstAlertStillUnresolved()
+    {
+        _alerts.GetByCardiMemberAsync(_memberId, true).Returns(
+        [
+            new Alert
+            {
+                CardiMemberId = _memberId,
+                AlertType = AlertType.HeartRate,
+                Severity = AlertSeverity.Red,
+                Title = "Heart rate needs urgent attention",
+                IsResolved = true,
+            },
+            new Alert
+            {
+                CardiMemberId = _memberId,
+                AlertType = AlertType.PatternBreak,
+                Severity = AlertSeverity.Yellow,
+                Title = "Steps below baseline",
+                IsResolved = false,
+            },
+        ]);
+
+        await CreateSut().GetCurrentStatusMessageAsync(_userId, _memberId);
+
+        var prompt = (string)_medicalAi.ReceivedCalls().Single().GetArguments()[0]!;
+        Assert.Contains("yellow", prompt);
+        Assert.Contains("Steps below baseline", prompt);
+        Assert.DoesNotContain("Heart rate needs urgent attention", prompt);
     }
 
     [Fact]

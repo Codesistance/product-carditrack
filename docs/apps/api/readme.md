@@ -280,7 +280,7 @@ no API client or sync service is registered for them yet.
   Messages API via the official SDK). The key comes from the `gemini-api-key` secret as
   `AI__Public__ApiKey`; `AI__Public__BaseUrl` is optional and defaults per kind.
 - **`AI:Private`** — health insights. **Always MedGemma** (`MedGemmaClient`, an Ollama-served
-  model on its own internal-only Cloud Run service). There is no kind here: the provider is
+  model on its own Cloud Run service, reachable only by IAM-authorised callers). There is no kind here: the provider is
   fixed in code, so no environment variable can send health data off-estate. Base URL comes
   from the `medgemma-service-url` secret as `AI__Private__BaseUrl` — locally it defaults to
   `http://localhost:11434`.

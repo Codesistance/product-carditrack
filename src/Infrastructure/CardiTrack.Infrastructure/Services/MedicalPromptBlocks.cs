@@ -61,7 +61,13 @@ internal static partial class MedicalPromptBlocks
     /// wearable cannot see. Name and id are deliberately absent — they would identify the member
     /// to the model without changing a word of the clinical interpretation.
     /// </summary>
-    internal static string MemberContext(CardiMember? member, DateOnly today)
+    /// <param name="revealedNotes">
+    /// The caregiver note in plain text. Passed in rather than read from
+    /// <see cref="CardiMember.MedicalNotes"/>, because that column holds ciphertext — decrypting is
+    /// <see cref="PromptContext.DemographicsContextSource"/>'s job, and taking the note as a
+    /// parameter is what makes it impossible to reach this method with the encrypted value again.
+    /// </param>
+    internal static string MemberContext(CardiMember? member, DateOnly today, string? revealedNotes)
     {
         if (member is null)
             return "No member profile available.";
@@ -73,8 +79,8 @@ internal static partial class MedicalPromptBlocks
         if (member.Gender is Gender.Male or Gender.Female)
             lines.Add($"Sex: {member.Gender}");
 
-        if (!string.IsNullOrWhiteSpace(member.MedicalNotes))
-            lines.Add($"Caregiver-reported context: {Flatten(member.MedicalNotes)}");
+        if (!string.IsNullOrWhiteSpace(revealedNotes))
+            lines.Add($"{PromptContext.DemographicsContextSource.CaregiverContextLabel}: {Flatten(revealedNotes)}");
 
         return string.Join("\n", lines);
     }

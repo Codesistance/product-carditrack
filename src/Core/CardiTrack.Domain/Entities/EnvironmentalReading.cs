@@ -30,5 +30,19 @@ public class EnvironmentalReading
 
     public string? AirQualityCategory { get; set; }
 
+    /// <summary>
+    /// What the weather was doing, in words ("Light rain", "Partly cloudy"). Free text from the
+    /// weather provider — described to the model, never matched against, so a vocabulary change
+    /// upstream cannot break a code path.
+    /// </summary>
+    public string? WeatherCondition { get; set; }
+
+    /// <summary>
+    /// Relative humidity, as a percentage. Stored alongside temperature because the two together
+    /// are what a body actually experiences — 28°C at 80% is a different afternoon from 28°C at 30%,
+    /// and a heart rate knows the difference.
+    /// </summary>
+    public int? RelativeHumidityPercent { get; set; }
+
     public DateTime GeneratedAtUtc { get; set; }
 }

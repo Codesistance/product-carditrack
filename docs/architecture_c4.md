@@ -61,7 +61,7 @@ C4Container
     Container_Boundary(pipe, "AI pipeline (the sanctioned exception to the Worker rule)") {
       Container(rcv, "HealthWebhookReceiver", "Cloud Run service, public", "Authenticates Subscriber secret, drops verification probes, forwards raw to Pub/Sub")
       Container(jobs, "PipelineJobs", "Cloud Run jobs x3, one image", "--job digest (15-min) | aggregate (5-min) | assess (5-min offset)")
-      Container(medgemma, "MedGemma", "Ollama on Cloud Run, CPU, internal-only", "Private medical model, Q4_K_M; scale-to-zero")
+      Container(medgemma, "MedGemma", "Ollama on Cloud Run, CPU, IAM-authorised", "Private medical model, Q4_K_M; scale-to-zero")
     }
 
     ContainerDb(sql, "Cloud SQL PostgreSQL", "Private IP", "System of record + partitioned time-series: GranularMetricHours, MetricRollupsHourly, DigestEntries, RealtimeAssessments")

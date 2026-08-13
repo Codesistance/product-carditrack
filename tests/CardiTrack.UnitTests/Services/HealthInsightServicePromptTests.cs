@@ -60,8 +60,8 @@ public class HealthInsightServicePromptTests
     }
 
     private HealthInsightService CreateSut() =>
-        new(_medicalAi, _unitOfWork, new CardiMemberAccessService(_unitOfWork), _cache,
-            new PrivateAiSettings());
+        new(_medicalAi, _unitOfWork, new CardiMemberAccessService(_unitOfWork),
+            PromptContextFactory.Composer(_unitOfWork), _cache, new PrivateAiSettings());
 
     private void SetupMember(
         Gender gender = Gender.Female, string? medicalNotes = null, Guid? id = null)

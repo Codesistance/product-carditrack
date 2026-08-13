@@ -15,6 +15,11 @@
   <ItemGroup>
     <PackageReference Include="Anthropic" Version="12.40.0" />
     <PackageReference Include="FirebaseAdmin" Version="3.1.0" />
+    <!-- Explicit, though FirebaseAdmin already drags it in transitively: MedGemmaIdentityTokenHandler
+         mints the OIDC token that Cloud Run's IAM check requires, so this is load-bearing for the
+         medical inference path. A transitive reference would let a future FirebaseAdmin bump or
+         removal break MedGemma auth as a side effect. -->
+    <PackageReference Include="Google.Apis.Auth" Version="1.68.0" />
     <PackageReference Include="Microsoft.EntityFrameworkCore" Version="10.0.10" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" Version="10.0.10" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.10">

@@ -917,11 +917,18 @@ namespace CardiTrack.Infrastructure.Migrations
                     b.Property<DateTime>("GeneratedAtUtc")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<int?>("RelativeHumidityPercent")
+                        .HasColumnType("integer");
+
                     b.Property<DateTime>("SessionEndUtc")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<double?>("TemperatureCelsius")
                         .HasColumnType("double precision");
+
+                    b.Property<string>("WeatherCondition")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
 
                     b.HasKey("CardiMemberId", "SessionStartUtc");
 
@@ -955,6 +962,57 @@ namespace CardiTrack.Infrastructure.Migrations
                     b.HasIndex("CardiMemberId", "HourStartUtc");
 
                     b.ToTable("GranularMetricHours", (string)null);
+                });
+
+            modelBuilder.Entity("CardiTrack.Domain.Entities.MemberQuestionnaire", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("AnswerText")
+                        .HasColumnType("text");
+
+                    b.Property<DateTime?>("AnsweredAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("AnsweredByUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("CardiMemberId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedDate")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasDefaultValueSql("NOW()");
+
+                    b.Property<DateTime>("GeneratedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("QuestionText")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<string>("TriggerContext")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<DateTime?>("UpdatedDate")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CardiMemberId", "GeneratedAtUtc");
+
+                    b.HasIndex("CardiMemberId", "Status");
+
+                    b.ToTable("MemberQuestionnaires", (string)null);
                 });
 
             modelBuilder.Entity("CardiTrack.Domain.Entities.MetricRollupHourly", b =>

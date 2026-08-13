@@ -19,7 +19,7 @@
 >
 > **M1-11, M1-12, M1-16 and M1-17 are not built** — their entry points show "Coming soon" dialogs in the shipped app.
 >
-> **Four shipped screens have no Figma M1 frame** and need design sync: SignInPage, ForgotPasswordPage, VerifyEmailPage, and Onboarding/AccountSetupPage. See [Shipped Screens Without Figma M1 Frames](#shipped-screens-without-figma-m1-frames). Per project convention, only screens that exist in the Figma file get M1 IDs — no IDs have been invented for these.
+> **Six shipped surfaces have no Figma M1 frame** and need design sync: SignInPage, ForgotPasswordPage, VerifyEmailPage, Onboarding/AccountSetupPage, and — built from the existing design system by explicit decision rather than by oversight — the QuestionCard on the CardiMember detail page and the Questions & Answers page. See [Shipped Screens Without Figma M1 Frames](#shipped-screens-without-figma-m1-frames). Per project convention, only screens that exist in the Figma file get M1 IDs — no IDs have been invented for these.
 >
 > Unbuilt screens below remain documented as design intent, each marked with a status line.
 
@@ -79,7 +79,7 @@
 
 ### Shipped Screens Without Figma M1 Frames
 
-These four screens ship in the current app but have **no Figma M1 frame — needs design sync**. Per project convention, screens only get M1 IDs once they exist in the Figma file.
+These screens ship in the current app but have **no Figma M1 frame — needs design sync**. Per project convention, screens only get M1 IDs once they exist in the Figma file.
 
 | Screen (code) | Purpose |
 |---------------|---------|
@@ -91,6 +91,14 @@ These four screens ship in the current app but have **no Figma M1 frame — need
 Full specs in [Shipped Screens Without Figma M1 Frames](#shipped-screens-without-figma-m1-frames-1) below.
 
 ---
+
+### QuestionCard (CardiMember detail) and QuestionnairesPage
+**Status:** Built — no Figma M1 frame, needs design sync. Unlike the four above, this was a deliberate decision to build from the existing design system rather than wait on a frame; the frames are still wanted so the file matches the app.
+**Entry:** ← M1-13 CardiMember Detail (the card appears inline when a question is waiting; the "Questions & Answers" row opens the page)
+**Exit:** → M1-13 CardiMember Detail
+
+- **QuestionCard** — `ElevatedCard` anatomy with no severity rail (the rail is the grammar for "something is wrong"; this is an invitation): 💬 glyph + heading, the question, an "Asked because …" rationale block in `SelectedOptionBackground`, an optional-by-design softener line, and an "Answer" gradient button that expands an `AuthEntryBorder` editor in place (200 ms, the pause-drop-down animation) with Save/Cancel. A "✕" skips the question after a soft confirm.
+- **QuestionnairesPage** — standard full-bleed scaffold (HeaderBand, RefreshView, skeleton/error/content panels, BottomNavBar): the pending question at the top, then answered questions newest first, each with an "Answered …" caption and a delete action behind a warning confirm. Empty state when nothing has been answered yet.
 
 ## User Flows
 
@@ -1188,7 +1196,7 @@ This is the most safety-critical screen in the app. Design for urgency and immed
 
 ## Shipped Screens Without Figma M1 Frames
 
-The following four screens exist in the shipped app but have **no Figma M1 frame — needs design sync**. Per project convention, only screens present in the Figma file receive M1 IDs, so no IDs are assigned here.
+The following screens exist in the shipped app but have **no Figma M1 frame — needs design sync**. Per project convention, only screens present in the Figma file receive M1 IDs, so no IDs are assigned here.
 
 ### SignInPage
 **Status:** Built — no Figma M1 frame, needs design sync

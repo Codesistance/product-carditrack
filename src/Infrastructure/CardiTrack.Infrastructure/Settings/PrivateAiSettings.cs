@@ -33,11 +33,26 @@ public class PrivateAiSettings
     /// — the phone has already given up and shown a socket error instead of the static per-tier
     /// copy the response contract provides for exactly this case.
     /// <para>
-    /// 25 s leaves headroom for the surrounding queries and the round trip while still admitting a
-    /// typical generation, which measures 21–26 s against CPU-served MedGemma. That overlap is
-    /// uncomfortably tight, and lowering this is the knob that trades the live line for a snappier
-    /// dashboard — but the real fix is making the model faster, not making the wait shorter.
+    /// 25 s is headroom, not an expectation. A generation measured 21–26 s before the status
+    /// prompt was cut and dev's MedGemma kept warm; both moved the typical call well under this,
+    /// and what is left here is a ceiling for the tail rather than a number the common path
+    /// approaches. Lowering it trades the live line for a snappier dashboard.
     /// </para>
     /// </remarks>
     public int CurrentStatusBudgetSeconds { get; set; } = 25;
+
+    /// <summary>
+    /// Whether to attach a Google-minted OIDC identity token to every MedGemma request, with the
+    /// audience set to <see cref="BaseUrl"/>. Required in dev/prod: the Cloud Run service authorises
+    /// callers by IAM (<c>roles/run.invoker</c>) rather than by network position, and rejects an
+    /// unauthenticated request at the Google front end before it reaches Ollama.
+    /// </summary>
+    /// <remarks>
+    /// Defaults to <c>false</c> so a local Ollama over plain HTTP — docker-compose, tests — needs no
+    /// credential and receives no bearer token. That default fails <em>closed</em> if an environment
+    /// forgets to set it: the call 403s rather than silently downgrading. Startup validation in
+    /// <c>AiServiceExtensions</c> turns that latent 403 into a refusal to boot, because per-member
+    /// inference failures are swallowed and a silent 403 would look like "no assessments due".
+    /// </remarks>
+    public bool UseIdentityToken { get; set; }
 }

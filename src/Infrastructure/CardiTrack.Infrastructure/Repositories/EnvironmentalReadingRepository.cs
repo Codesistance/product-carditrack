@@ -24,10 +24,12 @@ public class EnvironmentalReadingRepository : IEnvironmentalReadingRepository
         var claimed = await _context.Database.SqlQuery<int>($"""
             INSERT INTO "EnvironmentalReadings"
                 ("CardiMemberId", "SessionStartUtc", "SessionEndUtc", "DeviceConnectionId",
-                 "TemperatureCelsius", "AirQualityIndex", "AirQualityCategory", "GeneratedAtUtc")
+                 "TemperatureCelsius", "AirQualityIndex", "AirQualityCategory",
+                 "WeatherCondition", "RelativeHumidityPercent", "GeneratedAtUtc")
             VALUES ({reading.CardiMemberId}, {reading.SessionStartUtc}, {reading.SessionEndUtc},
                     {reading.DeviceConnectionId}, {reading.TemperatureCelsius},
-                    {reading.AirQualityIndex}, {reading.AirQualityCategory}, {reading.GeneratedAtUtc})
+                    {reading.AirQualityIndex}, {reading.AirQualityCategory},
+                    {reading.WeatherCondition}, {reading.RelativeHumidityPercent}, {reading.GeneratedAtUtc})
             ON CONFLICT ("CardiMemberId", "SessionStartUtc") DO NOTHING
             RETURNING 1 AS "Value"
             """).ToListAsync(ct);
@@ -42,6 +44,8 @@ public class EnvironmentalReadingRepository : IEnvironmentalReadingRepository
                 "TemperatureCelsius" = {reading.TemperatureCelsius},
                 "AirQualityIndex" = {reading.AirQualityIndex},
                 "AirQualityCategory" = {reading.AirQualityCategory},
+                "WeatherCondition" = {reading.WeatherCondition},
+                "RelativeHumidityPercent" = {reading.RelativeHumidityPercent},
                 "GeneratedAtUtc" = {reading.GeneratedAtUtc}
             WHERE "CardiMemberId" = {reading.CardiMemberId}
               AND "SessionStartUtc" = {reading.SessionStartUtc}
