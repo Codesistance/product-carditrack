@@ -625,6 +625,11 @@ priority, and silence policy. `Full` = snooze + mute-forever · `Snooze` = time-
 > nudges while `IsOnboardingComplete = false`, and connecting a device *is* onboarding Step 6. The
 > reachable case is a device removed or disconnected later, which is what this now detects.
 
+> `DEVICE_STALE_LONG` carries a `never_synced` copy variant for a connection that is `Connected` but
+> has no `LastSyncDate` at all — "{Name}'s watch hasn't synced yet. No reading has arrived from this
+> watch yet." There is no elapsed-hours figure to report in that case, so the variant's body carries
+> no `{hours}` placeholder rather than one left unfilled.
+
 ### Capability unlocks — "submit this, get that" *(in-app)*
 
 | Code | Detection | Copy | Priority | Silence | Wave |

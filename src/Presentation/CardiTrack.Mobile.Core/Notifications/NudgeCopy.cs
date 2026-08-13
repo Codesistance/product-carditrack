@@ -61,6 +61,13 @@ public static class NudgeCopy
         ["nudge.DEVICE_STALE_LONG.benefit"] =
             "A charge, or opening the watch's own app once, usually gets it flowing again.",
 
+        // A connection can sit at Connected with no LastSyncDate at all — never having synced once
+        // is a different fact than an "{hours} ago" gap, so it carries no {hours} placeholder.
+        ["nudge.DEVICE_STALE_LONG.never_synced.title"] = "{name}'s watch hasn't synced yet",
+        ["nudge.DEVICE_STALE_LONG.never_synced.body"] = "No reading has arrived from this watch yet.",
+        ["nudge.DEVICE_STALE_LONG.never_synced.benefit"] =
+            "A charge, or opening the watch's own app once, usually gets it flowing again.",
+
         ["nudge.TIMEZONE_DEFAULT.title"] = "Set your time zone",
         ["nudge.TIMEZONE_DEFAULT.body"] = "Your account is still on UTC.",
         ["nudge.TIMEZONE_DEFAULT.benefit"] =

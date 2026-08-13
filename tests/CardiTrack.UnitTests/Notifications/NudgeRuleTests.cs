@@ -296,6 +296,23 @@ public class NudgeRuleTests
     }
 
     [Fact]
+    public void DeviceStaleLong_CarriesTheNeverSyncedVariantWhenNoReadingHasEverArrived()
+    {
+        // A connection can sit at Connected with a null LastSyncDate — no {hours} value exists to
+        // substitute, so the copy must switch variant rather than leak the raw placeholder.
+        var context = new NudgeContextBuilder()
+            .WithConnections(NudgeContextBuilder.Connection() with { LastSyncDate = null })
+            .Build();
+
+        var verdict = new DeviceStaleLongRule().Evaluate(context);
+
+        Assert.True(verdict.HasGap);
+        Assert.Equal("never_synced", verdict.Variant);
+        Assert.False(verdict.TemplateData.ContainsKey("hours"),
+            "The never-synced variant's copy carries no {hours} placeholder to fill.");
+    }
+
+    [Fact]
     public void DeviceStaleLong_DefersToTheLouderAuthFailure()
     {
         // A broken grant is why nothing is arriving. Telling the caregiver to charge the watch
