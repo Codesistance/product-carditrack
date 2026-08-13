@@ -428,10 +428,30 @@ resource "google_secret_manager_secret_iam_member" "medgemma_url_accessor" {
   member    = "serviceAccount:${data.google_project.current.number}-compute@developer.gserviceaccount.com"
 }
 
-# Deploy SA needs secretVersionManager to write the URL after each MedGemma deployment
+# Deploy SA needs secretVersionManager to write the URL after each MedGemma deployment.
+# secretVersionManager also carries versions.destroy, which is what lets the deploy workflow
+# prune superseded versions inline instead of letting them accumulate — Secret Manager bills
+# per active version and nothing here reclaims them otherwise (the Terraform-managed version
+# carries ignore_changes, and CI-written versions are not in state at all).
 resource "google_secret_manager_secret_iam_member" "deploy_sa_medgemma_url_manager" {
   secret_id = google_secret_manager_secret.medgemma_service_url.id
   role      = "roles/secretmanager.secretVersionManager"
+  member    = "serviceAccount:${var.deploy_service_account}"
+}
+
+# Read-back for the same workflow's skip-if-unchanged check. secretVersionManager grants
+# versions.add/destroy/list but NOT versions.access, so without this the workflow cannot compare
+# the URL it is about to write against the current value, and would add a byte-identical version
+# on every deploy (a Cloud Run service URL is stable). That churn is what made the retention
+# window useless: two retained versions holding the same string carry no rollback value, whereas
+# two distinct URLs do.
+#
+# Narrow grant, deliberately: this is the one app secret whose value is not a credential — it is
+# a public *.run.app hostname the deploy SA already writes. Do not read this as a precedent for
+# granting the deploy identity accessor on the Auth0 or encryption secrets.
+resource "google_secret_manager_secret_iam_member" "deploy_sa_medgemma_url_accessor" {
+  secret_id = google_secret_manager_secret.medgemma_service_url.id
+  role      = "roles/secretmanager.secretAccessor"
   member    = "serviceAccount:${var.deploy_service_account}"
 }
 

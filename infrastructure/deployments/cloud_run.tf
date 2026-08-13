@@ -159,10 +159,25 @@ variable "webhook_custom_domain" {
   default     = ""
 }
 
+# 4, down from 8. With cpu_idle = false the service is billed for its whole instance lifetime at
+# this allocation, and a large share of that lifetime is cold start — image pull and Ollama model
+# load, which are IO-bound rather than CPU-bound, so the second four vCPU were being paid for
+# without shortening the expensive part much. Halving the allocation halves the per-second rate
+# for every second the instance is alive.
+#
+# Inference itself does get slower. The headroom for that is in the timeouts, not here:
+# medgemma_timeout_seconds is 300s per attempt against an assessor task budget of 1800s
+# (see the job below), and per-member inference failures are swallowed rather than failing the
+# run. If assessment throughput becomes the constraint, raise this back before raising cadence —
+# a bigger instance for a shorter time beats a smaller one woken more often.
+#
+# 4 is the floor while medgemma_memory is 16Gi: Cloud Run requires at least 4 vCPU for more than
+# 8 GiB and caps 4 vCPU at 16 GiB, so this pair sits on both limits at once. Cutting CPU further
+# means cutting memory too, and the model has to fit in memory.
 variable "medgemma_cpu" {
-  description = "CPU allocation for the MedGemma Cloud Run service"
+  description = "CPU allocation for the MedGemma Cloud Run service. Billed for the full instance lifetime (cpu_idle = false), so this is a direct multiplier on MedGemma spend"
   type        = string
-  default     = "8"
+  default     = "4"
 }
 
 variable "medgemma_memory" {
@@ -177,12 +192,28 @@ variable "medgemma_max_instances" {
   default     = 1
 }
 
-# Deliberately not cloud_run_min_instances: at 8 vCPU / 16 Gi with cpu_idle = false a warm
+# Deliberately not cloud_run_min_instances: at 4 vCPU / 16 Gi with cpu_idle = false a warm
 # MedGemma instance is the largest line item on the bill, and prod sets that shared variable
 # to 1. Scaling to zero trades a cold start (image pull + model load) for paying only while
-# an instance is alive — and, less obviously, re-reads the whole prompt on every call, since a
-# dead instance takes its prefix cache with it. Worth paying for where a request waits on the
-# model; the caller decides, and the default here does not.
+# an instance is alive. Worth paying for where a request waits on the model — the Dashboard status
+# line, which dev opts into via its own tfvars; the caller decides, and the default here does not.
+#
+# Be precise about what warming buys, because the obvious guess is wrong. Measured against dev on
+# 2026-08-13, with min_instances = 1 applied: a warm instance still reported `cached n_tokens = 0`
+# on every generation, so the fixed prompt prefix is re-read at ~68 tokens/sec each call whether or
+# not the instance survived. Warming does not make the prompt cheap — only shorter prompts do that.
+#
+# What it does buy is the image pull, the startup probe, and (since OLLAMA_KEEP_ALIVE is set on the
+# container below) the ~59s model load. Without that env var the model unloads on Ollama's
+# 5-minute idle timer and a warm instance still pays the load between most calls, which is the
+# shape this variable had when it was first raised to 1.
+#
+# The trade is not unconditional in the other direction either, which is the trap worth naming: a
+# cold start costs the full allocation for the ~150s the startup probe allows, so N wakes a day
+# cost roughly N x 150s of instance time before any inference happens. Past a few hundred wakes a
+# day that exceeds what a single always-warm instance would have cost, and scaling to zero becomes
+# the more expensive option. At the */5 assessor cadence this variable was on the wrong side of
+# that crossover. Revisit it and the scheduler cadences together, never one alone.
 variable "medgemma_min_instances" {
   description = "Minimum number of MedGemma instances (0 scales to zero between requests)"
   type        = number
@@ -645,6 +676,25 @@ resource "google_cloud_run_v2_service" "medgemma" {
     containers {
       image = var.medgemma_image
 
+      # Keep the model resident for the instance's whole life. Ollama's default unloads it after
+      # 5 minutes idle, which at the scheduler cadences above is between most calls — and a reload
+      # is not cheap: measured in dev on 2026-08-13, 58.6s from `llama_model_loader: loaded meta
+      # data` to `srv llama_server: model loaded`. (Not to be confused with the sub-second
+      # `load_duration` Ollama reports when the model was already resident.)
+      #
+      # That reload is billed like everything else here, because cpu_idle = false means the
+      # instance bills its full allocation whether it is inferring, loading, or idle. So unloading
+      # saves nothing while an instance is alive; it only adds a minute of paid-for latency to the
+      # next caller. On the request path — the Dashboard status line — that minute lands far past
+      # both the 25s generation budget and the mobile client's 30s timeout, so the first call after
+      # any quiet spell returns no live line at all.
+      #
+      # Costs memory, not money: 16Gi is reserved for the instance regardless of what is in it.
+      env {
+        name  = "OLLAMA_KEEP_ALIVE"
+        value = "-1"
+      }
+
       resources {
         limits = {
           cpu    = var.medgemma_cpu
@@ -749,10 +799,21 @@ variable "pipeline_jobs_secret_env_vars" {
   default     = {}
 }
 
+# Half-hourly, matching DigestGenerationService's MinimumRegenerationInterval (20 minutes).
+# The old quarter-hourly value could not produce output any faster than that interval allows,
+# so the extra passes bought nothing.
+#
+# The cadence does not multiply *inference* cost — the job skips members whose data has not
+# moved (DigestGenerationService's dataChangedAtUtc gate). It does multiply *instance* cost,
+# which is the part the previous rationale here missed: any pass that finds even one member to
+# regenerate wakes MedGemma, and a cold start pays a multi-GB image pull plus model load
+# against a startup probe that allows ~150s (see the medgemma service below), all billed at
+# the full CPU allocation. The number of passes per hour is therefore a direct cost lever
+# whatever the per-member gating does.
 variable "pipeline_jobs_schedule" {
-  description = "Cloud Scheduler cron for the digest job. Quarter-hourly: this is how quickly a member's summary catches up after new readings, and how quickly a failed pass is retried. The job skips members whose data has not moved, and its own MinimumRegenerationInterval caps how often any one member is regenerated, so this cadence does not multiply inference cost"
+  description = "Cloud Scheduler cron for the digest job. Half-hourly: matches MinimumRegenerationInterval, so it is as fast as a member's summary can actually catch up, without paying a MedGemma cold start for a pass that cannot produce new output"
   type        = string
-  default     = "*/15 * * * *"
+  default     = "*/30 * * * *"
 }
 
 resource "google_service_account" "pipeline_scheduler" {
@@ -1153,10 +1214,20 @@ resource "google_cloud_scheduler_job" "pipeline_aggregator_5min" {
 # credentials and no Pub/Sub. Gated on the pipeline alone: unlike the aggregator it consumes
 # no topic, and it is useful with polling-only ingestion.
 
+# Twice hourly, not every 5 minutes. RealtimeAssessmentService assesses a 60-minute window and
+# dedups on windowStart (RealtimeAssessments.ExistsAsync), so a given member yields at most one
+# new assessment per hour no matter how often this runs. At the old */5 cadence a pass that had
+# work woke MedGemma — a multi-GB image pull plus model load, billed at the full CPU allocation
+# for the ~150s the startup probe allows — up to twelve times to produce that one assessment.
+#
+# Two passes rather than one: the second is not redundant. A member who crosses the 45-minute
+# coverage floor (MinCoveredMinutes) partway through an hour, or whose first pass failed, gets
+# picked up half an hour sooner instead of waiting for the next hour. Still :02-offset from the
+# aggregator so a fresh sync tends to land before the assessment pass that reads it.
 variable "pipeline_assessor_schedule" {
-  description = "Cloud Scheduler cron for the assessor job — every 5 minutes, offset from the aggregator so one member's fresh sync tends to land before the next assessment pass"
+  description = "Cloud Scheduler cron for the assessor job — twice hourly, offset from the aggregator so one member's fresh sync tends to land before the next assessment pass. The 60-minute assessment window and its windowStart dedup cap output at one assessment per member per hour, so a tighter cadence only buys extra MedGemma cold starts"
   type        = string
-  default     = "2-57/5 * * * *"
+  default     = "2,32 * * * *"
 }
 
 resource "google_cloud_run_v2_job" "pipeline_assessor" {

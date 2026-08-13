@@ -42,7 +42,7 @@ medgemma_image = "us-docker.pkg.dev/cloudrun/container/hello"
 # scaling to zero costs that path twice: a cold start pays the image pull and model load, and a
 # dead instance takes its prefix cache with it, so the fixed instruction block is re-read at
 # ~68 tokens/sec on every call instead of being reused. Set here rather than on the variable's
-# default so prod, which has no MedGemma service yet, does not silently inherit a warm 8 vCPU /
+# default so prod, which has no MedGemma service yet, does not silently inherit a warm 4 vCPU /
 # 16 Gi instance the day it gets one — with cpu_idle = false that bills continuously and is the
 # largest single line item on this estate.
 medgemma_min_instances = 1

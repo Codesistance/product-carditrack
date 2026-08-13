@@ -478,10 +478,14 @@ variable "medgemma_image" {
   default     = ""
 }
 
+# 4, down from 8 — this default is the effective one (main.tf passes it into the deployments
+# module). See the rationale on the module's own medgemma_cpu in deployments/cloud_run.tf:
+# cpu_idle = false bills the full allocation for the whole instance lifetime, much of which is
+# IO-bound cold start, and 4 is the floor while medgemma_memory is 16Gi.
 variable "medgemma_cpu" {
-  description = "CPU allocation for the MedGemma Cloud Run service"
+  description = "CPU allocation for the MedGemma Cloud Run service. Billed for the full instance lifetime (cpu_idle = false), so this is a direct multiplier on MedGemma spend"
   type        = string
-  default     = "8"
+  default     = "4"
 }
 
 variable "medgemma_memory" {
@@ -491,11 +495,17 @@ variable "medgemma_memory" {
 }
 
 # Kept separate from cloud_run_min_instances so prod can keep a warm API/Web/Worker without
-# also paying for a warm 8 vCPU / 16 Gi inference box. The default stays 0: an environment that
+# also paying for a warm 4 vCPU / 16 Gi inference box. The default stays 0: an environment that
 # has not decided to spend that should not start doing so by inheriting it. dev.tfvars opts in,
 # because MedGemma is on a latency-sensitive path there — the Dashboard status line generates
-# inside the caregiver's request — and a warm instance keeps both the model and its prefix cache
-# loaded between calls.
+# inside the caregiver's request. What that buys is narrower than it sounds — see the measured note
+# on this variable in deployments/cloud_run.tf: it saves the image pull, the startup probe and the
+# ~59s model load, but the prompt prefix is re-read on every call either way.
+#
+# Where the default still applies, 0 is not automatically the cheaper option either. A cold start
+# bills the full allocation for the ~150s the startup probe allows, so past a few hundred wakes a
+# day scaling to zero costs more than staying warm, not less. Read this variable together with the
+# scheduler cadences — see the crossover note in deployments/cloud_run.tf.
 variable "medgemma_min_instances" {
   description = "Minimum number of MedGemma instances (0 scales to zero between requests)"
   type        = number

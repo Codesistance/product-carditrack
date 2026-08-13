@@ -91,7 +91,7 @@ Remaining operator-seeded secrets (`devices-fitbit-client-id`, `devices-fitbit-c
 |---------|-----|------|
 | Cloud Run CPU / memory | 1 vCPU / 512 Mi | 2 vCPU / 1 Gi |
 | Cloud Run instances | 0–1 | 1–3 |
-| MedGemma | 8 vCPU / 16 Gi, max 1 instance (service exists only when `medgemma_image` set) | same |
+| MedGemma | 4 vCPU / 16 Gi, max 1 instance (service exists only when `medgemma_image` set) | same |
 | Cloud SQL tier | `db-f1-micro`, 10 GB | `db-custom-2-7680`, 100 GB |
 | Cloud SQL HA | ZONAL | **REGIONAL** |
 | Cloud SQL deletion protection | off | **on** |
