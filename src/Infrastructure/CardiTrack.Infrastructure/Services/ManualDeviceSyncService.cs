@@ -3,6 +3,7 @@ using CardiTrack.Application.Exceptions;
 using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Domain.Entities;
+using CardiTrack.Infrastructure.Extensions;
 using Microsoft.Extensions.Caching.Distributed;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -109,7 +110,7 @@ public class ManualDeviceSyncService : IManualDeviceSyncService
             Provider = connection.DeviceType.ToString().ToLowerInvariant(),
         };
 
-        var syncService = _services.GetKeyedService<IDeviceSyncService>(connection.DeviceType);
+        var syncService = _services.GetDeviceSyncService(connection.DeviceType);
         if (syncService is null)
         {
             _logger.LogWarning(

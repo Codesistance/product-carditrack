@@ -1,5 +1,6 @@
 using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Interfaces.Services;
+using CardiTrack.Infrastructure.Extensions;
 using Microsoft.Extensions.Options;
 
 namespace CardiTrack.Worker.Workers;
@@ -35,12 +36,14 @@ public class WearableSyncWorker : CronBackgroundService
 
         foreach (var connection in connections)
         {
-            var syncService = scope.ServiceProvider.GetKeyedService<IDeviceSyncService>(connection.DeviceType);
+            // Engines are keyed by API, not brand: the configured DeviceTypes list decides which
+            // API a connection's hardware syncs through.
+            var syncService = scope.ServiceProvider.GetDeviceSyncService(connection.DeviceType);
 
             if (syncService is null)
             {
                 _logger.LogWarning(
-                    "No sync service registered for DeviceType {DeviceType}. " +
+                    "No provider config or sync service for DeviceType {DeviceType}. " +
                     "Skipping DeviceConnection {Id}.",
                     connection.DeviceType, connection.Id);
                 continue;

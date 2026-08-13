@@ -11,7 +11,7 @@ public class OAuthCodeExchangeServiceTests
 {
     private readonly DeviceProviderSettings _config = new()
     {
-        Provider = "Fitbit",
+        Provider = "GoogleHealth",
         ClientId = "client_id",
         ClientSecret = "client_secret",
         TokenUrl = "https://api.fitbit.com/oauth2/token",

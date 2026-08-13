@@ -32,7 +32,7 @@ public class EnvironmentalEnrichmentReachTests
         // Declares the device-client contract.
         ["src", "Infrastructure", "CardiTrack.Infrastructure", "ExternalClients", "IDeviceApiClient.cs"],
         // Implements it.
-        ["src", "Infrastructure", "CardiTrack.Infrastructure", "ExternalClients", "FitbitApiClient.cs"],
+        ["src", "Infrastructure", "CardiTrack.Infrastructure", "ExternalClients", "GoogleHealthApiClient.cs"],
         // The only caller.
         ["src", "Infrastructure", "CardiTrack.Infrastructure", "Services", "EnvironmentalEnrichmentService.cs"],
     ];

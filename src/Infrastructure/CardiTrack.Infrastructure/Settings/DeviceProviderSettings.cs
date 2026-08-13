@@ -4,8 +4,19 @@ public class DeviceProviderSettings
 {
     public const string SectionName = "DeviceProviders";
 
-    /// <summary>Matches DeviceType enum name (e.g. "Fitbit", "Garmin").</summary>
+    /// <summary>
+    /// Matches a <see cref="Domain.Enums.HealthApi"/> enum name (e.g. "GoogleHealth",
+    /// "SamsungHealth") — the data-source API this block configures, not a hardware brand.
+    /// </summary>
     public string Provider { get; set; } = string.Empty;
+
+    /// <summary>
+    /// The <see cref="Domain.Enums.DeviceType"/> enum names this API serves (e.g.
+    /// ["Fitbit", "GooglePixelWatch"] for GoogleHealth). This list is the whole brand→API
+    /// mapping: a brand added here connects and syncs through this block's engine with no code
+    /// change. A DeviceType may appear in at most one provider block.
+    /// </summary>
+    public List<string> DeviceTypes { get; set; } = [];
     public string ClientId { get; set; } = string.Empty;
     public string ClientSecret { get; set; } = string.Empty;
     public string AuthorizationUrl { get; set; } = string.Empty;

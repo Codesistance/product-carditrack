@@ -5,14 +5,15 @@ namespace CardiTrack.API.Validators;
 
 public class ConnectDeviceValidator : AbstractValidator<ConnectDeviceRequest>
 {
-    private static readonly string[] ServerOAuthProviders = ["fitbit", "garmin", "samsung_health", "withings"];
+    private static readonly string[] ServerOAuthProviders =
+        ["fitbit", "pixel_watch", "garmin", "samsung_health", "withings"];
 
     public ConnectDeviceValidator()
     {
         RuleFor(x => x.Provider)
             .NotEmpty().WithMessage("Provider is required")
             .Must(p => ServerOAuthProviders.Contains(p, StringComparer.OrdinalIgnoreCase))
-            .WithMessage("Provider must be one of: fitbit, garmin, samsung_health, withings");
+            .WithMessage("Provider must be one of: fitbit, pixel_watch, garmin, samsung_health, withings");
 
         // Two things the bounce endpoint relies on, checked here so a bad value fails fast
         // instead of being cached and only breaking once the provider redirects back:

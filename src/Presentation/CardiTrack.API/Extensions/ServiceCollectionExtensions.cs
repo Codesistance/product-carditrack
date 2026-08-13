@@ -115,7 +115,7 @@ public static class ServiceCollectionExtensions
         });
 
         // Fitbit provider (keyed IDeviceApiClient + keyed IDeviceSyncService)
-        services.AddFitbitProvider();
+        services.AddGoogleHealthProvider();
 
         return services;
     }

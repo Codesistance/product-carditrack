@@ -45,21 +45,37 @@ locals {
     "${var.project_name}-${local.environment}-gemini-api-key"
   )
 
-  # Per-device-type pull parameters flattened onto the positional DeviceProviders binding the apps
-  # already use for provider secrets. Whichever service hosts device pull reads them from here, so
-  # cadence is retuned per environment in tfvars rather than in appsettings.json.
+  # DeviceProviders blocks flattened onto the positional binding the apps already use for provider
+  # secrets. Identity (HealthApi name + the DeviceTypes it serves), endpoints, scopes and cadence
+  # all come from tfvars, so a deployed environment's provider config is set here — appsettings.json
+  # keeps local-dev defaults only. List-valued settings override element-wise by index, so tfvars
+  # lists must be complete, not deltas; optional endpoint fields emit nothing when null, leaving the
+  # appsettings value in effect.
   device_pull_env_vars = merge([
-    for i, p in var.device_pull_params : {
-      "DeviceProviders__${i}__SyncLookbackDays"       = tostring(p.sync_lookback_days)
-      "DeviceProviders__${i}__BackfillDays"           = tostring(p.backfill_days)
-      "DeviceProviders__${i}__BackfillChunkDays"      = tostring(p.backfill_chunk_days)
-      "DeviceProviders__${i}__AuditLookbackDays"      = tostring(p.audit_lookback_days)
-      "DeviceProviders__${i}__MinPullIntervalMinutes" = tostring(p.min_pull_interval_minutes)
-      "DeviceProviders__${i}__MaxPullIntervalMinutes" = tostring(p.max_pull_interval_minutes)
-      "DeviceProviders__${i}__MaxRequestsPerSecond"   = tostring(p.max_requests_per_second)
-      "DeviceProviders__${i}__DormancyThresholdPulls" = tostring(p.dormancy_threshold_pulls)
-      "DeviceProviders__${i}__DormancyBackoffFactor"  = tostring(p.dormancy_backoff_factor)
-    }
+    for i, p in var.device_pull_params : merge(
+      {
+        "DeviceProviders__${i}__Provider"               = p.provider
+        "DeviceProviders__${i}__SyncLookbackDays"       = tostring(p.sync_lookback_days)
+        "DeviceProviders__${i}__BackfillDays"           = tostring(p.backfill_days)
+        "DeviceProviders__${i}__BackfillChunkDays"      = tostring(p.backfill_chunk_days)
+        "DeviceProviders__${i}__AuditLookbackDays"      = tostring(p.audit_lookback_days)
+        "DeviceProviders__${i}__MinPullIntervalMinutes" = tostring(p.min_pull_interval_minutes)
+        "DeviceProviders__${i}__MaxPullIntervalMinutes" = tostring(p.max_pull_interval_minutes)
+        "DeviceProviders__${i}__MaxRequestsPerSecond"   = tostring(p.max_requests_per_second)
+        "DeviceProviders__${i}__DormancyThresholdPulls" = tostring(p.dormancy_threshold_pulls)
+        "DeviceProviders__${i}__DormancyBackoffFactor"  = tostring(p.dormancy_backoff_factor)
+      },
+      { for j, t in p.device_types : "DeviceProviders__${i}__DeviceTypes__${j}" => t },
+      { for j, sc in p.scopes : "DeviceProviders__${i}__Scopes__${j}" => sc },
+      { for k, v in p.additional_authorization_params :
+      "DeviceProviders__${i}__AdditionalAuthorizationParams__${k}" => v },
+      { for k, v in p.first_consent_authorization_params :
+      "DeviceProviders__${i}__FirstConsentAuthorizationParams__${k}" => v },
+      p.authorization_url != null ? { "DeviceProviders__${i}__AuthorizationUrl" = p.authorization_url } : {},
+      p.token_url != null ? { "DeviceProviders__${i}__TokenUrl" = p.token_url } : {},
+      p.api_base_url != null ? { "DeviceProviders__${i}__ApiBaseUrl" = p.api_base_url } : {},
+      p.token_lifetime_hours != null ? { "DeviceProviders__${i}__TokenLifetimeHours" = tostring(p.token_lifetime_hours) } : {}
+    )
   ]...)
 }
 
@@ -122,8 +138,11 @@ module "deployments" {
     var.public_ai_base_url != null ? {
       "AI__Public__BaseUrl" = var.public_ai_base_url
     } : {},
+    # The API runs the OAuth connect flow, so it needs the provider blocks' identity, endpoints
+    # and scopes — not just the pull hosts' cadence numbers.
+    local.device_pull_env_vars,
     # Google's web OAuth clients require an https redirect; the API bounces it to the app deep
-    # link. Element 0 of DeviceProviders in appsettings.json is the Fitbit (Google Health API)
+    # link. Element 0 of DeviceProviders in appsettings.json is the GoogleHealth (Google Health API)
     # provider. Without a custom domain the appsettings localhost default stays in effect.
     var.api_custom_domain != "" ? {
       "DeviceProviders__0__RedirectUri" = "https://${var.api_custom_domain}/api/v1/oauth/redirect/fitbit"

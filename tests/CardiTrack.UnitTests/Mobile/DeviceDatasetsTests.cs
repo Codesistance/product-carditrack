@@ -38,7 +38,7 @@ public class DeviceDatasetsTests
             datasets.Select(d => d.Family));
     }
 
-    // Issue #82: FitbitApiClient ingests these four under health_metrics_and_measurements, so by
+    // Issue #82: GoogleHealthApiClient ingests these four under health_metrics_and_measurements, so by
     // the rule every other pill follows — name what we actually pull — they earn pills too. They
     // reuse the existing Body family, so the row gains pills but no new visual vocabulary.
     [Fact]

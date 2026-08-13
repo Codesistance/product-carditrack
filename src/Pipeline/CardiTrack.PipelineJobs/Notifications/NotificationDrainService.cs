@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Interfaces.Services;
+using CardiTrack.Infrastructure.Extensions;
 
 namespace CardiTrack.PipelineJobs.Notifications;
 
@@ -112,7 +113,7 @@ public sealed class NotificationDrainService : INotificationDrainService
                 {
                     try
                     {
-                        var syncService = _services.GetKeyedService<IDeviceSyncService>(connection.DeviceType);
+                        var syncService = _services.GetDeviceSyncService(connection.DeviceType);
                         if (syncService is null)
                         {
                             // A registration gap is a deploy/config error, not a wearer fact —

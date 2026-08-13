@@ -6,7 +6,7 @@ using CardiTrack.Infrastructure.ExternalClients;
 using Microsoft.Extensions.DependencyInjection;
 
 // Probes the Google Health API with a real access token and reports the JSON
-// *shape* of each response, then runs the real FitbitApiClient over the same
+// *shape* of each response, then runs the real GoogleHealthApiClient over the same
 // account so any field it fails to find shows up as a null.
 //
 // Why this exists: field *names* are settled without a token, against the v4
@@ -19,7 +19,7 @@ using Microsoft.Extensions.DependencyInjection;
 const string BaseUrl = "https://health.googleapis.com";
 
 // Data types read via dataPoints:dailyRollUp, with the union member
-// FitbitApiClient expects on the rollup point (camelCase of the type name).
+// GoogleHealthApiClient expects on the rollup point (camelCase of the type name).
 // The Daily records are absent by design — they carry no rollup at all and are
 // probed through list below, the only method they support.
 string[] rollupDataTypes =
@@ -35,7 +35,7 @@ string[] rollupDataTypes =
 
 // Daily records: one point per day, read through list filtered on their own
 // google.type.Date field. The union member is not derivable from the type name in
-// every case, so each is named explicitly — the same pairing FitbitApiClient uses.
+// every case, so each is named explicitly — the same pairing GoogleHealthApiClient uses.
 (string DataType, string UnionMember)[] dailyDataTypes =
 [
     ("daily-resting-heart-rate", "dailyRestingHeartRate"),
@@ -47,7 +47,7 @@ string[] rollupDataTypes =
 
 // Sample series read through list, for the metrics whose rollup omits an
 // aggregation the client needs — oxygen-saturation has no min/max rollup, so
-// FitbitApiClient derives all three SpO2 figures from the raw samples.
+// GoogleHealthApiClient derives all three SpO2 figures from the raw samples.
 (string DataType, string UnionMember)[] sampleDataTypes =
 [
     ("oxygen-saturation", "oxygenSaturation"),
@@ -104,7 +104,7 @@ foreach (var dataType in rollupDataTypes)
 {
     Console.WriteLine();
     Console.WriteLine($"--- {dataType} (dataPoints:dailyRollUp) ---");
-    Console.WriteLine($"    FitbitApiClient expects union member: \"{ToCamelCase(dataType)}\"");
+    Console.WriteLine($"    GoogleHealthApiClient expects union member: \"{ToCamelCase(dataType)}\"");
 
     // range is a CivilTimeInterval: start/end are CivilDateTime, so the calendar date nests under
     // "date". Omitting "time" means midnight, giving a closed-open single-day range.
@@ -134,7 +134,7 @@ foreach (var (dataType, unionMember) in dailyDataTypes)
 {
     Console.WriteLine();
     Console.WriteLine($"--- {dataType} (dataPoints list) ---");
-    Console.WriteLine($"    FitbitApiClient expects union member: \"{unionMember}\"");
+    Console.WriteLine($"    GoogleHealthApiClient expects union member: \"{unionMember}\"");
 
     var member = dataType.Replace('-', '_');
     var dailyFilter = Uri.EscapeDataString(
@@ -151,7 +151,7 @@ foreach (var (dataType, unionMember) in sampleDataTypes)
 {
     Console.WriteLine();
     Console.WriteLine($"--- {dataType} (dataPoints list, sample series) ---");
-    Console.WriteLine($"    FitbitApiClient expects union member: \"{unionMember}\"");
+    Console.WriteLine($"    GoogleHealthApiClient expects union member: \"{unionMember}\"");
 
     var member = dataType.Replace('-', '_');
     var sampleFilter = Uri.EscapeDataString(
@@ -165,7 +165,7 @@ foreach (var (dataType, unionMember) in sampleDataTypes)
 Console.WriteLine();
 Console.WriteLine("--- sleep (dataPoints list) ---");
 // civil_end_time takes the ISO date literal below; its physical-instant sibling end_time would
-// reject it and demand RFC-3339. Same filter FitbitApiClient sends, so the probe exercises it.
+// reject it and demand RFC-3339. Same filter GoogleHealthApiClient sends, so the probe exercises it.
 var filter = Uri.EscapeDataString(
     $"sleep.interval.civil_end_time >= \"{date:yyyy-MM-dd}\" AND sleep.interval.civil_end_time < \"{date.AddDays(1):yyyy-MM-dd}\"");
 using (var sleepRequest = new HttpRequestMessage(
@@ -178,7 +178,7 @@ using (var sleepRequest = new HttpRequestMessage(
 
 Console.WriteLine();
 Console.WriteLine(new string('=', 72));
-Console.WriteLine("FitbitApiClient.GetHealthSnapshotAsync — parsed result");
+Console.WriteLine("GoogleHealthApiClient.GetHealthSnapshotAsync — parsed result");
 Console.WriteLine("null + data in the shape dump above  = the name/format/enum is wrong.");
 Console.WriteLine("null + empty shape dump              = this device does not record it.");
 Console.WriteLine("0                                    = check the shape dump before trusting it.");
@@ -192,13 +192,13 @@ Console.WriteLine("is always null and no shape dump above corresponds to it.");
 Console.WriteLine();
 
 var services = new ServiceCollection();
-services.AddHttpClient("FitbitClient", c =>
+services.AddHttpClient("GoogleHealthClient", c =>
 {
     c.BaseAddress = new Uri(BaseUrl);
     c.DefaultRequestHeaders.Add("Accept", "application/json");
 });
 using var provider = services.BuildServiceProvider();
-var client = new FitbitApiClient(provider.GetRequiredService<IHttpClientFactory>());
+var client = new GoogleHealthApiClient(provider.GetRequiredService<IHttpClientFactory>());
 
 try
 {
@@ -213,9 +213,9 @@ try
         Console.WriteLine($"  {property.Name,-20} {value ?? "(null)"}{(value is null ? "   <-- null" : "")}");
     }
 }
-catch (FitbitApiException ex)
+catch (GoogleHealthApiException ex)
 {
-    Console.WriteLine($"  FitbitApiException {ex.StatusCode}: {ex.Message}");
+    Console.WriteLine($"  GoogleHealthApiException {ex.StatusCode}: {ex.Message}");
 }
 
 return 0;

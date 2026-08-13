@@ -66,7 +66,23 @@ traces_sample_ratio = {
 # known — it bounds how early fresh data can arrive, and calibration may not go below it.
 device_pull_params = [
   {
-    provider                  = "Fitbit"
+    provider     = "GoogleHealth"
+    device_types = ["Fitbit", "GooglePixelWatch"] # Hardware brands this API serves — the DeviceType→HealthApi mapping
+
+    # Google OAuth + Health API endpoints and read scopes (non-secret; ClientId/Secret stay in
+    # Secret Manager as devices-fitbit-client-*).
+    authorization_url    = "https://accounts.google.com/o/oauth2/v2/auth"
+    token_url            = "https://oauth2.googleapis.com/token"
+    api_base_url         = "https://health.googleapis.com"
+    token_lifetime_hours = 1
+    scopes = [
+      "https://www.googleapis.com/auth/googlehealth.activity_and_fitness.readonly",
+      "https://www.googleapis.com/auth/googlehealth.health_metrics_and_measurements.readonly",
+      "https://www.googleapis.com/auth/googlehealth.sleep.readonly",
+    ]
+    additional_authorization_params    = { access_type = "offline" } # Without it Google issues no refresh token
+    first_consent_authorization_params = { prompt = "consent" }      # First grant only — re-consent is how a refresh token is re-issued
+
     sync_lookback_days        = 3
     backfill_days             = 90 # History fetched behind a new connection, a chunk per pull
     backfill_chunk_days       = 7  # ~91 requests per pull on top of the routine window

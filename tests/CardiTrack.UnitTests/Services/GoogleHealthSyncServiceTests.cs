@@ -41,9 +41,10 @@ public class DeviceSyncServiceTests
     // LookbackDays + 1 days in total.
     private static int WindowDays(int lookbackDays) => lookbackDays + 1;
 
-    private readonly DeviceProviderSettings _fitbitConfig = new()
+    private readonly DeviceProviderSettings _googleHealthConfig = new()
     {
-        Provider = "Fitbit",
+        Provider = "GoogleHealth",
+        DeviceTypes = ["Fitbit", "GooglePixelWatch"],
         ClientId = "test_client",
         ClientSecret = "test_secret",
         TokenUrl = "https://api.fitbit.com/oauth2/token",
@@ -53,7 +54,7 @@ public class DeviceSyncServiceTests
 
     private DeviceSyncService CreateSut()
     {
-        var options = Options.Create(new List<DeviceProviderSettings> { _fitbitConfig });
+        var options = Options.Create(new List<DeviceProviderSettings> { _googleHealthConfig });
         return new DeviceSyncService(
             _tokenRefresh, _deviceApi, _deviceConnections, _deviceActivityLogs,
             _aggregation, _granularIngestion, _unitOfWork, options);
@@ -87,7 +88,7 @@ public class DeviceSyncServiceTests
 
         await CreateSut().SyncCardiMemberAsync(_fitbitConnection);
 
-        await _tokenRefresh.Received(1).RefreshIfExpiredAsync(_fitbitConnection, _fitbitConfig);
+        await _tokenRefresh.Received(1).RefreshIfExpiredAsync(_fitbitConnection, _googleHealthConfig);
         await _deviceApi.Received(WindowDays(LookbackDays))
             .GetHealthSnapshotAsync(Arg.Any<string>(), Arg.Any<DateOnly>());
     }
@@ -186,7 +187,7 @@ public class DeviceSyncServiceTests
     public async Task AuditSyncAsync_StillFetchesItsWholeWindow_WhenSyncedToday()
     {
         _fitbitConnection.LastSyncDate = DateTime.UtcNow;
-        _fitbitConfig.AuditLookbackDays = 5;
+        _googleHealthConfig.AuditLookbackDays = 5;
         SetupSuccessfulTokenRefresh();
         SetupDefaultApiResponse();
 
@@ -214,7 +215,7 @@ public class DeviceSyncServiceTests
     [Fact]
     public async Task SyncCardiMemberAsync_FetchesTodayAndYesterday_WhenLookbackIsOne()
     {
-        _fitbitConfig.SyncLookbackDays = 1;
+        _googleHealthConfig.SyncLookbackDays = 1;
         SetupSuccessfulTokenRefresh();
         SetupDefaultApiResponse();
 
@@ -251,7 +252,7 @@ public class DeviceSyncServiceTests
     {
         // The narrowest window the service allows — yesterday and today — so the asserted order
         // is the whole call sequence.
-        _fitbitConfig.SyncLookbackDays = 1;
+        _googleHealthConfig.SyncLookbackDays = 1;
         SetupSuccessfulTokenRefresh();
         SetupDefaultApiResponse();
 
@@ -304,9 +305,9 @@ public class DeviceSyncServiceTests
     {
         SetupSuccessfulTokenRefresh();
         _deviceApi.GetHealthSnapshotAsync(Arg.Any<string>(), Arg.Any<DateOnly>())
-            .ThrowsAsync(new FitbitApiException(500, "Internal Server Error"));
+            .ThrowsAsync(new GoogleHealthApiException(500, "Internal Server Error"));
 
-        await Assert.ThrowsAsync<FitbitApiException>(() =>
+        await Assert.ThrowsAsync<GoogleHealthApiException>(() =>
             CreateSut().SyncCardiMemberAsync(_fitbitConnection));
 
         await _deviceConnections.Received(1)
@@ -322,9 +323,9 @@ public class DeviceSyncServiceTests
         _deviceApi.GetHealthSnapshotAsync(Arg.Any<string>(), Arg.Any<DateOnly>())
             .Returns(Snapshot());
         _deviceApi.GetHealthSnapshotAsync(Arg.Any<string>(), Today.AddDays(-1))
-            .ThrowsAsync(new FitbitApiException(503, "Service Unavailable"));
+            .ThrowsAsync(new GoogleHealthApiException(503, "Service Unavailable"));
 
-        await Assert.ThrowsAsync<FitbitApiException>(() =>
+        await Assert.ThrowsAsync<GoogleHealthApiException>(() =>
             CreateSut().SyncCardiMemberAsync(_fitbitConnection));
 
         await _deviceConnections.DidNotReceive()
@@ -339,9 +340,9 @@ public class DeviceSyncServiceTests
         _deviceApi.GetHealthSnapshotAsync(Arg.Any<string>(), Arg.Any<DateOnly>())
             .Returns(Snapshot());
         _deviceApi.GetHealthSnapshotAsync(Arg.Any<string>(), Today.AddDays(-1))
-            .ThrowsAsync(new FitbitApiException(503, "Service Unavailable"));
+            .ThrowsAsync(new GoogleHealthApiException(503, "Service Unavailable"));
 
-        await Assert.ThrowsAsync<FitbitApiException>(() =>
+        await Assert.ThrowsAsync<GoogleHealthApiException>(() =>
             CreateSut().SyncCardiMemberAsync(_fitbitConnection));
 
         // The window runs today-LookbackDays..today oldest first, so the days stored before
@@ -386,11 +387,11 @@ public class DeviceSyncServiceTests
         await CreateSut().SyncCardiMemberAsync(_fitbitConnection, SyncScope.WorkerCadence);
 
         // The routine window plus exactly one chunk — never the whole horizon at once.
-        await _deviceApi.Received(WindowDays(LookbackDays) + _fitbitConfig.BackfillChunkDays)
+        await _deviceApi.Received(WindowDays(LookbackDays) + _googleHealthConfig.BackfillChunkDays)
             .GetHealthSnapshotAsync(Arg.Any<string>(), Arg.Any<DateOnly>());
 
         // The chunk starts on the first day the routine window does not reach.
-        for (var offset = LookbackDays + 1; offset <= LookbackDays + _fitbitConfig.BackfillChunkDays; offset++)
+        for (var offset = LookbackDays + 1; offset <= LookbackDays + _googleHealthConfig.BackfillChunkDays; offset++)
         {
             await _deviceApi.Received(1)
                 .GetHealthSnapshotAsync(Arg.Any<string>(), Today.AddDays(-offset));
@@ -421,8 +422,8 @@ public class DeviceSyncServiceTests
 
         await CreateSut().SyncCardiMemberAsync(_fitbitConnection, SyncScope.WorkerCadence);
 
-        var chunkEnd = Today.AddDays(-(LookbackDays + _fitbitConfig.BackfillChunkDays));
-        await _deviceConnections.Received(_fitbitConfig.BackfillChunkDays)
+        var chunkEnd = Today.AddDays(-(LookbackDays + _googleHealthConfig.BackfillChunkDays));
+        await _deviceConnections.Received(_googleHealthConfig.BackfillChunkDays)
             .UpdateHistoryBackfilledToAsync(_fitbitConnection.Id, Arg.Any<DateOnly>());
         await _deviceConnections.Received(1)
             .UpdateHistoryBackfilledToAsync(_fitbitConnection.Id, chunkEnd);
@@ -438,7 +439,7 @@ public class DeviceSyncServiceTests
 
         await CreateSut().SyncCardiMemberAsync(_fitbitConnection, SyncScope.WorkerCadence);
 
-        for (var offset = 31; offset <= 30 + _fitbitConfig.BackfillChunkDays; offset++)
+        for (var offset = 31; offset <= 30 + _googleHealthConfig.BackfillChunkDays; offset++)
         {
             await _deviceApi.Received(1)
                 .GetHealthSnapshotAsync(Arg.Any<string>(), Today.AddDays(-offset));
@@ -448,7 +449,7 @@ public class DeviceSyncServiceTests
     [Fact]
     public async Task SyncCardiMemberAsync_StopsBackfillingAtTheHorizon()
     {
-        _fitbitConfig.BackfillDays = 90;
+        _googleHealthConfig.BackfillDays = 90;
         _fitbitConnection.HistoryBackfilledTo = Today.AddDays(-88);
         SetupSuccessfulTokenRefresh();
         SetupDefaultApiResponse();
@@ -464,7 +465,7 @@ public class DeviceSyncServiceTests
     [Fact]
     public async Task SyncCardiMemberAsync_BackfillsNothing_WhenTheHorizonIsAlreadyReached()
     {
-        _fitbitConfig.BackfillDays = 90;
+        _googleHealthConfig.BackfillDays = 90;
         _fitbitConnection.HistoryBackfilledTo = Today.AddDays(-90);
         SetupSuccessfulTokenRefresh();
         SetupDefaultApiResponse();
@@ -480,7 +481,7 @@ public class DeviceSyncServiceTests
     [Fact]
     public async Task SyncCardiMemberAsync_BackfillsNothing_WhenBackfillIsDisabled()
     {
-        _fitbitConfig.BackfillDays = 0;
+        _googleHealthConfig.BackfillDays = 0;
         SetupSuccessfulTokenRefresh();
         SetupDefaultApiResponse();
 
@@ -507,7 +508,7 @@ public class DeviceSyncServiceTests
         // Only the routine window stored; the empty history days were checked and skipped.
         await _deviceActivityLogs.Received(WindowDays(LookbackDays))
             .UpsertAsync(Arg.Any<DeviceActivityLog>());
-        await _deviceConnections.Received(_fitbitConfig.BackfillChunkDays)
+        await _deviceConnections.Received(_googleHealthConfig.BackfillChunkDays)
             .UpdateHistoryBackfilledToAsync(_fitbitConnection.Id, Arg.Any<DateOnly>());
     }
 
@@ -520,9 +521,9 @@ public class DeviceSyncServiceTests
         _deviceApi.GetHealthSnapshotAsync(Arg.Any<string>(), Arg.Any<DateOnly>())
             .Returns(Snapshot());
         _deviceApi.GetHealthSnapshotAsync(Arg.Any<string>(), Today.AddDays(-(LookbackDays + 3)))
-            .ThrowsAsync(new FitbitApiException(503, "Service Unavailable"));
+            .ThrowsAsync(new GoogleHealthApiException(503, "Service Unavailable"));
 
-        await Assert.ThrowsAsync<FitbitApiException>(() =>
+        await Assert.ThrowsAsync<GoogleHealthApiException>(() =>
             CreateSut().SyncCardiMemberAsync(_fitbitConnection, SyncScope.WorkerCadence));
 
         await _deviceConnections.Received(1)
@@ -577,9 +578,9 @@ public class DeviceSyncServiceTests
         SetupSuccessfulTokenRefresh();
         SetupDefaultApiResponse();
         _deviceApi.GetGranularDayAsync(Arg.Any<string>(), Arg.Any<DateOnly>())
-            .ThrowsAsync(new FitbitApiException(503, "Service Unavailable"));
+            .ThrowsAsync(new GoogleHealthApiException(503, "Service Unavailable"));
 
-        await Assert.ThrowsAsync<FitbitApiException>(() =>
+        await Assert.ThrowsAsync<GoogleHealthApiException>(() =>
             CreateSut().SyncCardiMemberAsync(_fitbitConnection, SyncScope.WorkerCadence));
 
         await _deviceConnections.Received(1)
@@ -625,7 +626,7 @@ public class DeviceSyncServiceTests
         await CreateSut().SyncCardiMemberAsync(_fitbitConnection, SyncScope.WorkerCadence);
 
         // The backfill chunk fetched daily snapshots beyond the routine window…
-        await _deviceApi.Received(WindowDays(LookbackDays) + _fitbitConfig.BackfillChunkDays)
+        await _deviceApi.Received(WindowDays(LookbackDays) + _googleHealthConfig.BackfillChunkDays)
             .GetHealthSnapshotAsync(Arg.Any<string>(), Arg.Any<DateOnly>());
         // …but the granular fetch stayed within it.
         await _deviceApi.Received(WindowDays(LookbackDays))
@@ -698,7 +699,7 @@ public class DeviceSyncServiceTests
     [Fact]
     public async Task AuditSyncAsync_FetchesTheWiderAuditWindow()
     {
-        _fitbitConfig.AuditLookbackDays = 14;
+        _googleHealthConfig.AuditLookbackDays = 14;
         SetupSuccessfulTokenRefresh();
         SetupDefaultApiResponse();
 
@@ -712,7 +713,7 @@ public class DeviceSyncServiceTests
     [Fact]
     public async Task AuditSyncAsync_FallsBackToTheSyncWindow_WhenAuditWindowIsNarrower()
     {
-        _fitbitConfig.AuditLookbackDays = 1;
+        _googleHealthConfig.AuditLookbackDays = 1;
         SetupSuccessfulTokenRefresh();
         SetupDefaultApiResponse();
 
@@ -745,9 +746,9 @@ public class DeviceSyncServiceTests
     {
         SetupSuccessfulTokenRefresh();
         _deviceApi.GetHealthSnapshotAsync(Arg.Any<string>(), Arg.Any<DateOnly>())
-            .ThrowsAsync(new FitbitApiException(500, "Internal Server Error"));
+            .ThrowsAsync(new GoogleHealthApiException(500, "Internal Server Error"));
 
-        await Assert.ThrowsAsync<FitbitApiException>(() =>
+        await Assert.ThrowsAsync<GoogleHealthApiException>(() =>
             CreateSut().AuditSyncAsync(_fitbitConnection));
 
         await _deviceConnections.DidNotReceive()
@@ -759,7 +760,7 @@ public class DeviceSyncServiceTests
     [Fact]
     public async Task AuditSyncAsync_RecomputesTheMergedRow_ForEveryDayFetched()
     {
-        _fitbitConfig.AuditLookbackDays = 5;
+        _googleHealthConfig.AuditLookbackDays = 5;
         SetupSuccessfulTokenRefresh();
         SetupDefaultApiResponse();
 

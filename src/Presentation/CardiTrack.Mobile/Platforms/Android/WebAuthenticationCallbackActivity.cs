@@ -6,7 +6,7 @@ namespace CardiTrack.Mobile.Platforms.Android;
 
 /// <summary>
 /// Receives the carditrack:// deep link when a device provider's OAuth page redirects back,
-/// handing control to WebAuthenticator (see FitbitConnectionPage.CallbackUri).
+/// handing control to WebAuthenticator (see DeviceConnectionPage.CallbackUri).
 /// </summary>
 [Activity(NoHistory = true, LaunchMode = LaunchMode.SingleTop, Exported = true)]
 [IntentFilter(

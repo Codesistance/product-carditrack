@@ -7,7 +7,7 @@ namespace CardiTrack.Infrastructure.ExternalClients;
 /// An explicit zero from the provider (a worn device, no activity) is kept as 0 and is a different
 /// fact entirely.
 /// </summary>
-public record FitbitActivitiesResult(
+public record GoogleHealthActivitiesResult(
     int? Steps,
     decimal? DistanceKm,
     int? ActiveMinutes,
@@ -15,17 +15,18 @@ public record FitbitActivitiesResult(
     int? Floors,
     int? CaloriesBurned);
 
-// Heart rate endpoint: GET /1/user/-/heart/date/{date}/1d.json
-public record FitbitHeartRateResult(
+// Heart rate: Google Health API v4 `heart-rate` Sample type via dataPoints:dailyRollUp, plus the
+// `daily-resting-heart-rate` Daily type via list (see GoogleHealthApiClient for the method table).
+public record GoogleHealthHeartRateResult(
     int? RestingHeartRate,
     int? AvgHeartRate,
     int? MaxHeartRate,
     int? MinHeartRate);
 
-// Sleep endpoint: GET /1/user/-/sleep/date/{date}.json
+// Sleep: Google Health API v4 `sleep` Session type via list with a civil-time filter.
 // TotalSleepMinutes is null when no session was recorded for the day — an unworn or unsynced
-// device, not a sleepless night. See FitbitActivitiesResult for why that distinction is kept.
-public record FitbitSleepResult(
+// device, not a sleepless night. See GoogleHealthActivitiesResult for why that distinction is kept.
+public record GoogleHealthSleepResult(
     int? TotalSleepMinutes,
     int? SleepEfficiency,
     DateTime? SleepStartTime,
@@ -46,7 +47,7 @@ public record FitbitSleepResult(
 /// this API can populate <c>ActivityLog.StressScore</c>. The column is left null rather than filled
 /// with a number CardiTrack invented and then presented beside measured values.
 /// </remarks>
-public record FitbitAdditionalMetricsResult(
+public record GoogleHealthAdditionalMetricsResult(
     decimal? SpO2Average,
     decimal? SpO2Min,
     decimal? SpO2Max,

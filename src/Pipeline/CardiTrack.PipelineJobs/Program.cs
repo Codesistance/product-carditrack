@@ -85,7 +85,7 @@ builder.Services.Configure<List<DeviceProviderSettings>>(
     configuration.GetSection(DeviceProviderSettings.SectionName));
 builder.Services.AddScoped<IOAuthTokenRefreshService, OAuthTokenRefreshService>();
 builder.Services.AddScoped<IActivityLogAggregationService, ActivityLogAggregationService>();
-builder.Services.AddFitbitProvider();
+builder.Services.AddGoogleHealthProvider();
 
 // One binary, several jobs: Cloud Run job resources share the image and select via
 // `--job <name>` in their container args. No arg means digest, the first job this host ran.

@@ -32,13 +32,17 @@ public class DeviceConnectionService : IDeviceConnectionService
     // the request validator so the fail-fast and point-of-use gates can't drift apart.
     private const string AppRedirectScheme = ConnectDeviceRequest.AppRedirectScheme;
 
-    // Route/body provider names per the REST contract. apple_health is on-device-bridge only
+    // Route/body provider names per the REST contract — one wire name per hardware brand
+    // (DeviceType). Which API a brand connects through is the DeviceProviders configuration's
+    // DeviceTypes mapping, so fitbit and pixel_watch both resolve to the GoogleHealth block
+    // without appearing here as anything but brands. apple_health is on-device-bridge only
     // and deliberately absent — it must not enter the server OAuth flow.
     private static readonly Dictionary<string, DeviceType> ProviderNames = new(StringComparer.OrdinalIgnoreCase)
     {
         ["fitbit"] = DeviceType.Fitbit,
+        ["pixel_watch"] = DeviceType.GooglePixelWatch,
         ["garmin"] = DeviceType.Garmin,
-        ["samsung_health"] = DeviceType.Samsung,
+        ["samsung_health"] = DeviceType.GalaxyWatch,
         ["withings"] = DeviceType.Withings,
     };
 
@@ -164,7 +168,11 @@ public class DeviceConnectionService : IDeviceConnectionService
             return null;
 
         JsonUtility.TryDeserialize<OAuthStatePayload>(cached, out var payload, out _);
-        if (payload is null || payload.Provider != deviceType)
+        // API-level match, not brand-level: the provider's registered redirect URI is one fixed
+        // route per API (Google's bounce is .../oauth/redirect/fitbit), so a pixel_watch
+        // initiation legitimately comes back through the fitbit segment. What must agree is the
+        // data-source API the state was minted for.
+        if (payload is null || !SameApi(payload.Provider, deviceType))
             return null;
 
         // The caller appends the callback parameters to whatever comes back, so a fragment is
@@ -183,18 +191,24 @@ public class DeviceConnectionService : IDeviceConnectionService
     public async Task<DeviceResponse> CompleteConnectionAsync(
         Guid requestingUserId, string provider, OAuthCallbackRequest request, CancellationToken ct = default)
     {
-        var (deviceType, config) = ResolveProvider(provider);
+        var (routeDeviceType, _) = ResolveProvider(provider);
 
         var cacheKey = StateKeyPrefix + request.State;
         var cached = await _cache.GetStringAsync(cacheKey, ct);
         OAuthStatePayload? payload = null;
         if (cached is not null)
             JsonUtility.TryDeserialize(cached, out payload, out _);
-        if (payload is null || payload.UserId != requestingUserId || payload.Provider != deviceType)
+        // Same API-level match as the bounce: brands sharing an API share its callback route, so
+        // the state payload — not the route segment — carries which brand was initiated.
+        if (payload is null || payload.UserId != requestingUserId || !SameApi(payload.Provider, routeDeviceType))
         {
             throw new DeviceConnectionException(
                 DeviceConnectionException.InvalidStateToken, "Invalid or expired state token.");
         }
+
+        // The connection's identity is the brand the wearer picked at initiation.
+        var deviceType = payload.Provider;
+        var config = _providerConfigs.ConfigFor(deviceType)!;
 
         // Single-use: a replayed state must fail even if the exchange below does too.
         await _cache.RemoveAsync(cacheKey, ct);
@@ -346,14 +360,13 @@ public class DeviceConnectionService : IDeviceConnectionService
         var connections = (await _unitOfWork.DeviceConnections.GetByCardiMemberIdAsync(cardiMemberId)).ToList();
         var connection = RequireConnection(connections, deviceId);
 
-        var providerName = ProviderNames.FirstOrDefault(kv => kv.Value == connection.DeviceType).Key;
-        if (providerName is null)
+        var config = _providerConfigs.ConfigFor(connection.DeviceType);
+        if (config is null || string.IsNullOrEmpty(config.ClientId))
         {
             throw new DeviceConnectionException(
                 DeviceConnectionException.UnsupportedProvider,
                 $"{connection.DeviceType.GetDisplayName()} connections can't be refreshed from here.");
         }
-        var (_, config) = ResolveProvider(providerName);
 
         try
         {
@@ -433,8 +446,7 @@ public class DeviceConnectionService : IDeviceConnectionService
                 $"'{provider}' is not a supported server-OAuth provider.");
         }
 
-        var config = _providerConfigs.FirstOrDefault(p =>
-            string.Equals(p.Provider, deviceType.ToString(), StringComparison.OrdinalIgnoreCase));
+        var config = _providerConfigs.ConfigFor(deviceType);
         if (config is null || string.IsNullOrEmpty(config.ClientId))
         {
             throw new DeviceConnectionException(
@@ -445,6 +457,13 @@ public class DeviceConnectionService : IDeviceConnectionService
         return (deviceType, config);
     }
 
+    /// <summary>
+    /// Whether two brands sync through the same configured <see cref="HealthApi"/>. False when
+    /// either is unmapped — an unmapped brand shares an API with nothing, itself included.
+    /// </summary>
+    private bool SameApi(DeviceType left, DeviceType right) =>
+        _providerConfigs.ApiFor(left) is { } api && api == _providerConfigs.ApiFor(right);
+
     /// <summary>The provider-side account id stashed on a connection, if one was ever recorded.</summary>
     private static string? ReadProviderUserId(string? metadata) =>
         JsonUtility.TryParse(metadata, out var token, out _)
@@ -452,15 +471,17 @@ public class DeviceConnectionService : IDeviceConnectionService
             : null;
 
     /// <summary>
-    /// Whether this member already has a live connection to the provider carrying a refresh
-    /// token. A disconnected row doesn't count — its token may well have been revoked at the
-    /// provider, and re-consent is how we get a fresh one.
+    /// Whether this member already has a live connection through the same API carrying a refresh
+    /// token. API-level on purpose: consent (and Google's refresh-token issuance) is per OAuth
+    /// client, so a Fitbit connection's token answers for a Pixel Watch initiation too — brand
+    /// only decides display, not the grant. A disconnected row doesn't count — its token may
+    /// well have been revoked at the provider, and re-consent is how we get a fresh one.
     /// </summary>
     private async Task<bool> HasRefreshTokenAsync(Guid cardiMemberId, DeviceType deviceType)
     {
         var connections = await _unitOfWork.DeviceConnections.GetByCardiMemberIdAsync(cardiMemberId);
         return connections.Any(c =>
-            c.DeviceType == deviceType
+            SameApi(c.DeviceType, deviceType)
             && c.IsActive
             && c.ConnectionStatus != ConnectionStatus.Disconnected
             && !string.IsNullOrEmpty(c.RefreshToken));

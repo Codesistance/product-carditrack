@@ -8,11 +8,11 @@ namespace CardiTrack.Mobile.Core.Devices;
 /// </summary>
 /// <remarks>
 /// A scope is a permission, not a promise: <c>health_metrics_and_measurements</c> also covers HRV,
-/// which <c>FitbitApiClient</c> does not fetch, so it gets no pill. The pills say what the card can
+/// which <c>GoogleHealthApiClient</c> does not fetch, so it gets no pill. The pills say what the card can
 /// show, not what Google would let us ask for.
 /// <para>
 /// SpO2, VO2 max, breathing rate and body temperature are named here because
-/// <c>FitbitApiClient</c> now ingests all four under <c>health_metrics_and_measurements</c>, which
+/// <c>GoogleHealthApiClient</c> now ingests all four under <c>health_metrics_and_measurements</c>, which
 /// is the same test every other name passes (issue #82). They join the existing <b>Body</b> family
 /// rather than introducing one, so under M1-15's one-pill-per-family row the four cost a single
 /// pill between them — none at all where <c>Weight</c> already put <b>Body</b> on the card. Note

@@ -249,14 +249,33 @@ variable "traces_sample_ratio" {
 #
 # The list is index-aligned with the DeviceProviders array the apps bind, and the apps read these
 # as DeviceProviders__<i>__* env vars — the same positional contract already used for provider
-# secrets, which is why element 0 must stay the Fitbit (Google Health API) provider.
+# secrets, which is why element 0 must stay the GoogleHealth (Google Health API) provider.
+#
+# Beyond cadence, each entry now carries the provider block's whole non-secret identity — the
+# HealthApi name, the DeviceTypes (hardware brands) it serves, endpoints and scopes — so deployed
+# environments are configured from tfvars, with appsettings.json only a local-dev default
+# underneath (env vars override it per element index and per list index).
 #
 # These bounds are the only guard on a calibrated pull interval: calibration may move a connection
 # within [min, max] but never outside it, so widening the range is deliberately a deploy.
 variable "device_pull_params" {
-  description = "Pull cadence bounds and provider rate ceiling per device type, index-aligned with the DeviceProviders array (DeviceProviders__<i>__*). Element 0 must be Fitbit"
+  description = "DeviceProviders blocks (identity, DeviceType mapping, endpoints, and pull cadence), index-aligned with the DeviceProviders array (DeviceProviders__<i>__*). Element 0 must be the GoogleHealth provider"
   type = list(object({
-    provider                  = string
+    provider     = string       # HealthApi enum name, e.g. "GoogleHealth"
+    device_types = list(string) # DeviceType enum names this API serves, e.g. ["Fitbit", "GooglePixelWatch"]
+
+    # Non-secret OAuth/API endpoints. Null leaves the appsettings value in effect.
+    authorization_url    = optional(string)
+    token_url            = optional(string)
+    api_base_url         = optional(string)
+    scopes               = optional(list(string), [])
+    token_lifetime_hours = optional(number)
+
+    # Extra authorize-URL params (e.g. Google's access_type=offline) and the ones sent only
+    # while no refresh token is banked (prompt=consent).
+    additional_authorization_params    = optional(map(string), {})
+    first_consent_authorization_params = optional(map(string), {})
+
     sync_lookback_days        = optional(number, 3)
     backfill_days             = optional(number, 90)
     backfill_chunk_days       = optional(number, 7)
@@ -267,13 +286,31 @@ variable "device_pull_params" {
     dormancy_threshold_pulls  = optional(number, 0)
     dormancy_backoff_factor   = optional(number, 2.0)
   }))
-  default = [{ provider = "Fitbit" }]
+  default = [{ provider = "GoogleHealth", device_types = ["Fitbit", "GooglePixelWatch"] }]
 
   validation {
-    # Mirrors AddFitbitProvider's startup check. Catching it in the plan beats deploying a
+    # Mirrors AddGoogleHealthProvider's startup check. Catching it in the plan beats deploying a
     # revision that binds Google's credentials to the wrong provider and then crash-loops.
-    condition     = length(var.device_pull_params) > 0 && lower(var.device_pull_params[0].provider) == "fitbit"
-    error_message = "device_pull_params[0] must be the Fitbit provider — the apps bind provider config by index."
+    condition     = length(var.device_pull_params) > 0 && lower(var.device_pull_params[0].provider) == "googlehealth"
+    error_message = "device_pull_params[0] must be the GoogleHealth provider — the apps bind provider config by index."
+  }
+
+  validation {
+    # Mirrors the app's startup check: an API with no device types can never be reached.
+    condition = alltrue([
+      for p in var.device_pull_params : length(p.device_types) > 0
+    ])
+    error_message = "device_pull_params: every entry must list at least one device_type it serves."
+  }
+
+  validation {
+    # Mirrors the app's double-claim check — first-match resolution must not depend on order.
+    condition = length(distinct(flatten([
+      for p in var.device_pull_params : [for t in p.device_types : lower(t)]
+      ]))) == length(flatten([
+      for p in var.device_pull_params : p.device_types
+    ]))
+    error_message = "device_pull_params: a device_type may be served by exactly one provider entry."
   }
 
   validation {

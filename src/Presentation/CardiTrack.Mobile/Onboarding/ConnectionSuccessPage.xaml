@@ -12,7 +12,7 @@
         <Grid RowDefinitions="Auto,*">
 
             <controls:WizardHeader Grid.Row="0"
-                                   Title="Fitbit Connection"
+                                   Title="Device Connection"
                                    IsBackVisible="False"/>
 
             <Grid Grid.Row="1"
@@ -38,7 +38,7 @@
                            HorizontalTextAlignment="Center"
                            Margin="0,20,0,0"/>
                     <Label x:Name="ConnectedLabel"
-                           Text="The Fitbit is now connected"
+                           Text="The device is now connected"
                            Style="{StaticResource Body2}"
                            FontSize="16"
                            HorizontalTextAlignment="Center"

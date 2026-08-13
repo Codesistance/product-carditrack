@@ -6,7 +6,8 @@ using Microsoft.Extensions.Options;
 namespace CardiTrack.UnitTests.Extensions;
 
 /// <summary>
-/// Startup validation of the per-device-type provider config.
+/// Startup validation of the per-API provider config, including the DeviceType→HealthApi mapping
+/// each block declares through its DeviceTypes list.
 /// </summary>
 /// <remarks>
 /// These bounds are the only guard on a calibrated pull interval — calibration may move a
@@ -18,9 +19,9 @@ namespace CardiTrack.UnitTests.Extensions;
 public class DeviceProviderServiceExtensionsTests
 {
     [Fact]
-    public void AddFitbitProvider_Accepts_AWellFormedConfiguration()
+    public void AddGoogleHealthProvider_Accepts_AWellFormedConfiguration()
     {
-        var settings = Fitbit();
+        var settings = GoogleHealth();
 
         var exception = Record.Exception(() => Resolve(settings));
 
@@ -28,20 +29,73 @@ public class DeviceProviderServiceExtensionsTests
     }
 
     [Fact]
-    public void AddFitbitProvider_Throws_WhenFitbitIsNotTheFirstProvider()
+    public void AddGoogleHealthProvider_Throws_WhenGoogleHealthIsNotTheFirstProvider()
     {
-        var garmin = Fitbit();
-        garmin.Provider = "Garmin";
+        var garmin = GoogleHealth();
+        garmin.Provider = "GarminConnect";
+        garmin.DeviceTypes = ["Garmin"];
 
         var ex = Assert.Throws<InvalidOperationException>(() => Resolve(garmin));
 
-        Assert.Contains("DeviceProviders[0] must be the Fitbit provider", ex.Message);
+        Assert.Contains("DeviceProviders[0] must be the GoogleHealth provider", ex.Message);
+    }
+
+    // The Provider name is the engine key — a typo would leave every connection of the block's
+    // device types silently unroutable, so it has to stop the host at startup.
+    [Fact]
+    public void AddGoogleHealthProvider_Throws_WhenTheProviderIsNotAKnownApi()
+    {
+        var first = GoogleHealth();
+        var second = GoogleHealth();
+        second.Provider = "GoogelHealth";
+        second.DeviceTypes = ["Garmin"];
+
+        var ex = Assert.Throws<InvalidOperationException>(() => Resolve(first, second));
+
+        Assert.Contains("must name a HealthApi", ex.Message);
     }
 
     [Fact]
-    public void AddFitbitProvider_Throws_WhenTheIntervalRangeIsInverted()
+    public void AddGoogleHealthProvider_Throws_WhenABlockServesNoDeviceTypes()
     {
-        var settings = Fitbit();
+        var settings = GoogleHealth();
+        settings.DeviceTypes = [];
+
+        var ex = Assert.Throws<InvalidOperationException>(() => Resolve(settings));
+
+        Assert.Contains("DeviceTypes must list at least", ex.Message);
+    }
+
+    [Fact]
+    public void AddGoogleHealthProvider_Throws_WhenADeviceTypeNameIsUnknown()
+    {
+        var settings = GoogleHealth();
+        settings.DeviceTypes = ["Fitbit", "PixelWatch"];
+
+        var ex = Assert.Throws<InvalidOperationException>(() => Resolve(settings));
+
+        Assert.Contains("'PixelWatch' is not a DeviceType", ex.Message);
+    }
+
+    // First-match resolution would make a double claim an ordering accident — whichever block
+    // binds first would silently own the brand's OAuth and sync.
+    [Fact]
+    public void AddGoogleHealthProvider_Throws_WhenTwoBlocksClaimTheSameDeviceType()
+    {
+        var first = GoogleHealth();
+        var second = GoogleHealth();
+        second.Provider = "SamsungHealth";
+        second.DeviceTypes = ["GalaxyWatch", "Fitbit"];
+
+        var ex = Assert.Throws<InvalidOperationException>(() => Resolve(first, second));
+
+        Assert.Contains("claimed by both", ex.Message);
+    }
+
+    [Fact]
+    public void AddGoogleHealthProvider_Throws_WhenTheIntervalRangeIsInverted()
+    {
+        var settings = GoogleHealth();
         settings.MinPullIntervalMinutes = 240;
         settings.MaxPullIntervalMinutes = 60;
 
@@ -53,9 +107,9 @@ public class DeviceProviderServiceExtensionsTests
     [Theory]
     [InlineData(0)]
     [InlineData(-30)]
-    public void AddFitbitProvider_Throws_WhenTheIntervalFloorIsNotPositive(int minutes)
+    public void AddGoogleHealthProvider_Throws_WhenTheIntervalFloorIsNotPositive(int minutes)
     {
-        var settings = Fitbit();
+        var settings = GoogleHealth();
         settings.MinPullIntervalMinutes = minutes;
 
         var ex = Assert.Throws<InvalidOperationException>(() => Resolve(settings));
@@ -66,9 +120,9 @@ public class DeviceProviderServiceExtensionsTests
     // A factor of 1 or less never widens the interval, so backoff would be configured and yet do
     // nothing — the failure mode is silence, which is why it is rejected rather than clamped.
     [Fact]
-    public void AddFitbitProvider_Throws_WhenBackoffIsEnabledButTheFactorCannotWiden()
+    public void AddGoogleHealthProvider_Throws_WhenBackoffIsEnabledButTheFactorCannotWiden()
     {
-        var settings = Fitbit();
+        var settings = GoogleHealth();
         settings.DormancyThresholdPulls = 3;
         settings.DormancyBackoffFactor = 1;
 
@@ -79,9 +133,9 @@ public class DeviceProviderServiceExtensionsTests
 
     // With backoff switched off the factor is unused, so it must not be able to block startup.
     [Fact]
-    public void AddFitbitProvider_IgnoresTheBackoffFactor_WhenBackoffIsDisabled()
+    public void AddGoogleHealthProvider_IgnoresTheBackoffFactor_WhenBackoffIsDisabled()
     {
-        var settings = Fitbit();
+        var settings = GoogleHealth();
         settings.DormancyThresholdPulls = 0;
         settings.DormancyBackoffFactor = 1;
 
@@ -90,9 +144,10 @@ public class DeviceProviderServiceExtensionsTests
         Assert.Null(exception);
     }
 
-    private static DeviceProviderSettings Fitbit() => new()
+    private static DeviceProviderSettings GoogleHealth() => new()
     {
-        Provider = "Fitbit",
+        Provider = "GoogleHealth",
+        DeviceTypes = ["Fitbit", "GooglePixelWatch"],
         ClientId = "test_client",
         ClientSecret = "test_secret",
         TokenUrl = "https://oauth2.googleapis.com/token",
@@ -106,7 +161,7 @@ public class DeviceProviderServiceExtensionsTests
     {
         var services = new ServiceCollection();
         services.Configure<List<DeviceProviderSettings>>(list => list.AddRange(providers));
-        services.AddFitbitProvider();
+        services.AddGoogleHealthProvider();
 
         using var provider = services.BuildServiceProvider();
         return provider.GetRequiredService<IOptions<List<DeviceProviderSettings>>>().Value;

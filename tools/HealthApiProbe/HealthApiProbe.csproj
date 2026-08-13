@@ -15,7 +15,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- Referenced so the probe exercises the real FitbitApiClient, not a copy of it. -->
+    <!-- Referenced so the probe exercises the real GoogleHealthApiClient, not a copy of it. -->
     <ProjectReference Include="..\..\src\Infrastructure\CardiTrack.Infrastructure\CardiTrack.Infrastructure.csproj" />
   </ItemGroup>
 

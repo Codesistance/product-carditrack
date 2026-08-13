@@ -7,7 +7,7 @@ using NSubstitute;
 
 namespace CardiTrack.UnitTests.ExternalClients;
 
-public class FitbitApiClientTests
+public class GoogleHealthApiClientTests
 {
     /// <summary>
     /// The Google Health API client issues one request per data type, so responses are routed by
@@ -127,18 +127,18 @@ public class FitbitApiClientTests
         }
     }
 
-    private static (IFitbitApiClient Sut, RoutedFakeHttpHandler Handler) CreateSut(
+    private static (IGoogleHealthApiClient Sut, RoutedFakeHttpHandler Handler) CreateSut(
         RoutedFakeHttpHandler? handler = null, TimeSpan? pageRequestDelay = null)
     {
         handler ??= new RoutedFakeHttpHandler();
         var httpClient = new HttpClient(handler) { BaseAddress = new Uri("https://health.googleapis.com") };
         var factory = Substitute.For<IHttpClientFactory>();
-        factory.CreateClient("FitbitClient").Returns(httpClient);
+        factory.CreateClient("GoogleHealthClient").Returns(httpClient);
         // Zero inter-page delay by default: production paces pagination against the per-user quota
-        // (see FitbitApiClient's PageRequestDelay), but most of these tests assert request count
+        // (see GoogleHealthApiClient's PageRequestDelay), but most of these tests assert request count
         // and content, not wall-clock timing, and a real delay would make every multi-page test
         // slow. Tests that specifically exercise pacing pass their own (short) delay.
-        return (new FitbitApiClient(factory, pageRequestDelay ?? TimeSpan.Zero), handler);
+        return (new GoogleHealthApiClient(factory, pageRequestDelay ?? TimeSpan.Zero), handler);
     }
 
     /// <summary>
@@ -150,10 +150,10 @@ public class FitbitApiClientTests
     public void Constructor_Throws_WhenPageRequestDelayIsNegative()
     {
         var factory = Substitute.For<IHttpClientFactory>();
-        factory.CreateClient("FitbitClient").Returns(new HttpClient());
+        factory.CreateClient("GoogleHealthClient").Returns(new HttpClient());
 
         Assert.Throws<ArgumentOutOfRangeException>(
-            () => new FitbitApiClient(factory, TimeSpan.FromMilliseconds(-1)));
+            () => new GoogleHealthApiClient(factory, TimeSpan.FromMilliseconds(-1)));
     }
 
     private static DateOnly Today => DateOnly.FromDateTime(DateTime.UtcNow);
@@ -457,7 +457,7 @@ public class FitbitApiClientTests
     }
 
     [Fact]
-    public async Task GetActivitiesAsync_ThrowsFitbitApiException_OnNon2xxResponse()
+    public async Task GetActivitiesAsync_ThrowsGoogleHealthApiException_OnNon2xxResponse()
     {
         var handler = new RoutedFakeHttpHandler()
             .Map("/dataTypes/steps/",
@@ -465,7 +465,7 @@ public class FitbitApiClientTests
 
         var (sut, _) = CreateSut(handler);
 
-        await Assert.ThrowsAsync<FitbitApiException>(() => sut.GetActivitiesAsync("bad_token", Today));
+        await Assert.ThrowsAsync<GoogleHealthApiException>(() => sut.GetActivitiesAsync("bad_token", Today));
     }
 
     // ── Heart Rate ───────────────────────────────────────────────────────────────
@@ -629,19 +629,19 @@ public class FitbitApiClientTests
 
         var (sut, _) = CreateSut(handler);
 
-        var ex = await Assert.ThrowsAsync<FitbitApiException>(() => sut.GetHeartRateAsync("token", Today));
+        var ex = await Assert.ThrowsAsync<GoogleHealthApiException>(() => sut.GetHeartRateAsync("token", Today));
         Assert.True(ex.IsMalformedRequest);
     }
 
     [Fact]
-    public async Task GetHeartRateAsync_ThrowsFitbitApiException_OnNon2xxResponse()
+    public async Task GetHeartRateAsync_ThrowsGoogleHealthApiException_OnNon2xxResponse()
     {
         var handler = new RoutedFakeHttpHandler()
             .Map("/dataTypes/heart-rate/", "{}", HttpStatusCode.InternalServerError);
 
         var (sut, _) = CreateSut(handler);
 
-        await Assert.ThrowsAsync<FitbitApiException>(() => sut.GetHeartRateAsync("token", Today));
+        await Assert.ThrowsAsync<GoogleHealthApiException>(() => sut.GetHeartRateAsync("token", Today));
     }
 
     // ── Sleep ────────────────────────────────────────────────────────────────────
@@ -862,14 +862,14 @@ public class FitbitApiClientTests
     }
 
     [Fact]
-    public async Task GetSleepAsync_ThrowsFitbitApiException_OnNon2xxResponse()
+    public async Task GetSleepAsync_ThrowsGoogleHealthApiException_OnNon2xxResponse()
     {
         var handler = new RoutedFakeHttpHandler()
             .Map("/dataTypes/sleep/", "{}", HttpStatusCode.Unauthorized);
 
         var (sut, _) = CreateSut(handler);
 
-        await Assert.ThrowsAsync<FitbitApiException>(() => sut.GetSleepAsync("bad_token", Today));
+        await Assert.ThrowsAsync<GoogleHealthApiException>(() => sut.GetSleepAsync("bad_token", Today));
     }
 
     // ── Additional metrics ───────────────────────────────────────────────────────
@@ -982,7 +982,7 @@ public class FitbitApiClientTests
 
         var (sut, _) = CreateSut(handler);
 
-        var ex = await Assert.ThrowsAsync<FitbitApiException>(
+        var ex = await Assert.ThrowsAsync<GoogleHealthApiException>(
             () => sut.GetAdditionalMetricsAsync("token", Today));
         Assert.Contains("selecting more than one day", ex.Message, StringComparison.Ordinal);
 
@@ -1129,7 +1129,7 @@ public class FitbitApiClientTests
 
         var (sut, _) = CreateSut(handler);
 
-        var ex = await Assert.ThrowsAsync<FitbitApiException>(
+        var ex = await Assert.ThrowsAsync<GoogleHealthApiException>(
             () => sut.GetAdditionalMetricsAsync("token", Today));
         Assert.True(ex.IsMalformedRequest);
     }
@@ -1332,7 +1332,7 @@ public class FitbitApiClientTests
                 }
                 """, HttpStatusCode.BadRequest);
 
-        var ex = await Assert.ThrowsAsync<FitbitApiException>(
+        var ex = await Assert.ThrowsAsync<GoogleHealthApiException>(
             () => GranularSut(handler).GetGranularDayAsync("token", Today));
         Assert.True(ex.IsMalformedRequest);
     }
@@ -1398,7 +1398,7 @@ public class FitbitApiClientTests
                 }
                 """, HttpStatusCode.BadRequest);
 
-        var ex = await Assert.ThrowsAsync<FitbitApiException>(() =>
+        var ex = await Assert.ThrowsAsync<GoogleHealthApiException>(() =>
             ((IDeviceApiClient)CreateSut(handler).Sut).GetHealthUserIdAsync("token"));
         Assert.True(ex.IsMalformedRequest);
     }

@@ -1,37 +1,45 @@
 using CardiTrack.Application.DTOs.Requests;
 using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Mobile.Core.Api;
+using CardiTrack.Mobile.Core.Devices;
 using CardiTrack.Mobile.Services;
 using Microsoft.Extensions.Logging;
 
 namespace CardiTrack.Mobile.Onboarding;
 
 /// <summary>
-/// M1-06: Fitbit permission explainer + the PKCE OAuth round-trip. The API issues the
-/// authorization URL and state/verifier; the system browser handles Fitbit login and
-/// redirects back to the app's deep link, which is posted to the OAuth callback endpoint.
+/// M1-06: device permission explainer + the PKCE OAuth round-trip, brand-agnostic — the
+/// <see cref="ConnectableDevice"/> passed in supplies the wire name and copy, and every brand on
+/// the same data-source API shares this flow. The API issues the authorization URL and
+/// state/verifier; the system browser handles provider login and redirects back to the app's
+/// deep link, which is posted to the OAuth callback endpoint.
 /// </summary>
-public partial class FitbitConnectionPage : ContentPage
+public partial class DeviceConnectionPage : ContentPage
 {
     public const string CallbackUri = "carditrack://oauth/callback";
-    private const string Provider = "fitbit";
 
     private readonly ICardiTrackApiClient _api;
     private readonly IPopupService _popups;
-    private readonly ILogger<FitbitConnectionPage> _logger;
+    private readonly ILogger<DeviceConnectionPage> _logger;
     private readonly WizardContext _ctx;
     private readonly CardiMemberResponse _member;
+    private readonly ConnectableDevice _device;
 
-    public FitbitConnectionPage(WizardContext ctx)
+    public DeviceConnectionPage(WizardContext ctx, ConnectableDevice device)
     {
         InitializeComponent();
         _api = ServiceHelper.GetRequiredService<ICardiTrackApiClient>();
         _popups = ServiceHelper.GetRequiredService<IPopupService>();
-        _logger = ServiceHelper.GetRequiredService<ILogger<FitbitConnectionPage>>();
+        _logger = ServiceHelper.GetRequiredService<ILogger<DeviceConnectionPage>>();
         _ctx = ctx;
         _member = ctx.RequireMember();
+        _device = device;
+        Header.Title = $"{device.DisplayName} Connection";
+        TitleHeading.Text = $"Connect Your {device.DisplayName}";
+        DeviceLogoText.Text = device.LogoText;
+        AuthorizeBtn.Text = $"Authorize {device.DisplayName}";
         NeedsLabel.Text = $"To look after {_member.Name}, CardiTrack needs:";
-        AuthorizingLabel.Text = $"Connecting to {_member.Name}'s Fitbit...";
+        AuthorizingLabel.Text = $"Connecting to {_member.Name}'s {device.DisplayName}...";
     }
 
     private async void OnAuthorizeClicked(object? sender, EventArgs e)
@@ -44,7 +52,7 @@ public partial class FitbitConnectionPage : ContentPage
         {
             var initiation = await _api.InitiateDeviceConnectionAsync(_member.Id, new ConnectDeviceRequest
             {
-                Provider = Provider,
+                Provider = _device.WireName,
                 RedirectUri = CallbackUri,
             });
 
@@ -82,7 +90,7 @@ public partial class FitbitConnectionPage : ContentPage
                 return;
             }
 
-            var device = await _api.CompleteDeviceConnectionAsync(Provider, new OAuthCallbackRequest
+            var device = await _api.CompleteDeviceConnectionAsync(_device.WireName, new OAuthCallbackRequest
             {
                 Code = code,
                 State = state!,
