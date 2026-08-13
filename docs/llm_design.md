@@ -333,7 +333,35 @@ Google-issued OAuth tokens for device connections are stored **encrypted (AES-25
 
 Each inference request covers a single user's 5-minute aggregated window.
 
-**System prompt** (fixed — a fixed prefix benefits from serving-engine prompt caching):
+> **Prefix caching does not currently happen, and cannot with this model.** The fixed-prefix
+> construction described throughout this section is still how prompts are built — instructions
+> first, byte-identical between calls, member data strictly after — but the serving-engine reuse it
+> was designed to earn is not being realised, and no configuration change will earn it.
+>
+> Measured against dev on 2026-08-13, on a warm instance with the model resident and no other
+> request in between, `llama.cpp` reported on every generation:
+>
+> ```
+> checking checkpoint with [0, 492] against 0...
+> forcing full prompt re-processing due to lack of cache data
+>           (likely due to SWA or hybrid/recurrent memory)
+> erased invalidated context checkpoint (n_swa = 1024)
+> cached n_tokens = 0, memory_seq_rm [0, end)
+> ```
+>
+> The cause is **sliding-window attention**: Gemma 3 declares
+> `gemma3.attention.sliding_window = 1024`, and `llama.cpp` cannot restore a KV checkpoint under
+> SWA, so it discards it and reprocesses from token zero. The machinery runs and works — it finds
+> the common prefix by LCP similarity and stores the state — and then throws it away. It costs
+> ~336 ms per request and ~508 MiB of held state for no benefit.
+>
+> Two consequences worth carrying: **prompt length is the only lever on inference latency** on this
+> model, so trimming a prompt is worth what it looks like it is worth and nothing is waiting to
+> make it cheaper; and the fixed-prefix discipline below should be kept anyway, because it costs
+> nothing and pays off the day the model or the serving engine changes.
+
+**System prompt** (fixed — a fixed prefix benefits from serving-engine prompt caching where the
+model supports it; see the note above — this one does not):
 ```
 [CARDITRACK_SYSTEM_PROMPT]
 You are a medical AI assistant analysing cardiovascular wearable data.

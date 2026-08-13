@@ -198,10 +198,13 @@ variable "medgemma_max_instances" {
 # an instance is alive. Worth paying for where a request waits on the model — the Dashboard status
 # line, which dev opts into via its own tfvars; the caller decides, and the default here does not.
 #
-# Be precise about what warming buys, because the obvious guess is wrong. Measured against dev on
-# 2026-08-13, with min_instances = 1 applied: a warm instance still reported `cached n_tokens = 0`
-# on every generation, so the fixed prompt prefix is re-read at ~68 tokens/sec each call whether or
-# not the instance survived. Warming does not make the prompt cheap — only shorter prompts do that.
+# Be precise about what warming buys, because the obvious guess is wrong. It does not make the
+# prompt cheap, and nothing will: Gemma 3 uses sliding-window attention, llama.cpp will not restore
+# a KV checkpoint under SWA, and so every call reprocesses the whole prompt from token zero however
+# long the instance has been up. Measured against dev on 2026-08-13 with min_instances = 1 applied,
+# on a warm instance with the model resident: `forcing full prompt re-processing due to lack of
+# cache data ... n_swa = 1024`, `cached n_tokens = 0`, on every generation. Shorter prompts are the
+# only lever on inference latency here — see the prefix caching note in docs/llm_design.md.
 #
 # What it does buy is the image pull, the startup probe, and (since OLLAMA_KEEP_ALIVE is set on the
 # container below) the ~59s model load. Without that env var the model unloads on Ollama's

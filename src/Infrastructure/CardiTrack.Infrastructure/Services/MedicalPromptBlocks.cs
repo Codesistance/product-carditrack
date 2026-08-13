@@ -27,9 +27,17 @@ internal static partial class MedicalPromptBlocks
     /// because calm is always the answer.
     /// </para>
     /// <para>
-    /// A <c>const</c>, and first in every prompt, because these blocks are the cacheable fixed
-    /// prefix the serving engine reuses between calls (docs/llm_design.md). Composed at compile
-    /// time, so prepending it costs nothing and cannot vary per member.
+    /// A <c>const</c>, and first in every prompt, because these blocks are the fixed prefix a
+    /// serving engine can reuse between calls (docs/llm_design.md). Composed at compile time, so
+    /// prepending it costs nothing and cannot vary per member.
+    /// <para>
+    /// That reuse is <em>not</em> currently happening and cannot on this model: Gemma 3 uses
+    /// sliding-window attention, and llama.cpp discards the KV checkpoint rather than restore it
+    /// under SWA, so every call reprocesses from token zero (measured 2026-08-13 — see the prefix
+    /// caching note in docs/llm_design.md). Keeping the discipline anyway is deliberate: it costs
+    /// nothing, and it is what makes the reuse available the day the model or the engine changes.
+    /// What it means today is that prompt length is the only lever on inference latency.
+    /// </para>
     /// </para>
     /// </remarks>
     /// <remarks>
