@@ -208,7 +208,7 @@ jobs:
           gcloud storage cp -r \
             gs://${{ needs.env.outputs.gcs_builds_bucket }}/${{ needs.validate-tag.outputs.tag }}/android/** \
             artifacts/android/
-      - uses: google-github-actions/get-secretmanager-secrets@v2
+      - uses: google-github-actions/get-secretmanager-secrets@v3
         id: secrets
         with:
           secrets: |
@@ -276,7 +276,7 @@ jobs:
           workload_identity_provider: ${{ needs.env.outputs.gcp_wif_provider }}
           service_account: ${{ needs.env.outputs.gcp_service_account }}
       - uses: google-github-actions/setup-gcloud@v3
-      - uses: google-github-actions/get-secretmanager-secrets@v2
+      - uses: google-github-actions/get-secretmanager-secrets@v3
         id: secrets
         with:
           secrets: |

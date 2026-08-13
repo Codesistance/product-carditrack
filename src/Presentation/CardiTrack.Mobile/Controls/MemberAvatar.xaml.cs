@@ -18,13 +18,13 @@ public partial class MemberAvatar : ContentView
     /// sizes it up to sit in proportion with the taller text block beside it.</summary>
     public double BoxWidth
     {
-        get => Frame.WidthRequest;
+        get => Box.WidthRequest;
         set
         {
             // Always square: setting width alone would leave the old height behind it, and the
             // caller would get an oblong from what reads like a single size knob.
-            Frame.WidthRequest = value;
-            Frame.HeightRequest = value;
+            Box.WidthRequest = value;
+            Box.HeightRequest = value;
         }
     }
 

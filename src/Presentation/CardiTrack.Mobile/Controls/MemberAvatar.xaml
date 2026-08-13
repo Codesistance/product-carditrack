@@ -8,7 +8,9 @@
          Member Detail's treatment is the one both adopt: the gradient tile with white initials.
          Always square — size is a knob only because the hero's row is roomier than Member
          Detail's; the shape and treatment never vary. -->
-    <Border x:Name="Frame"
+    <!-- Named "Box", not "Frame": a generated field called Frame would hide VisualElement.Frame
+         (the element's bounds), which the compiler flags and anyone reading it would misread. -->
+    <Border x:Name="Box"
             WidthRequest="64" HeightRequest="64"
             StrokeThickness="0"
             VerticalOptions="Start">
