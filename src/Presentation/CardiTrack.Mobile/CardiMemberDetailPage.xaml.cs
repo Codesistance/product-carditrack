@@ -326,19 +326,20 @@ public partial class CardiMemberDetailPage : ContentPage
                     new ColumnDefinition(GridLength.Auto),
                     new ColumnDefinition(GridLength.Star),
                 ],
-                ColumnSpacing = 10,
+                ColumnSpacing = 8,
             };
 
-            // The idea emoji rather than a plain dot: each row is a small idea to try, and the
-            // glyph says so before the words do. Sized to the suggestion's own text and pinned
-            // to Start so it sits beside the first line of a suggestion that wraps. Decorative,
-            // so out of the accessibility tree — "light bulb" read before every suggestion is
-            // noise, same call as MetricCard's star row.
+            // A plain bullet, because the idea glyph now sits on the heading: what each row still
+            // needs is to read as one item of a list rather than a run-on of the line above, and
+            // the dot the tips on Device Management already use does that without competing with
+            // the words. Pinned to Start so it sits beside the first line of a suggestion that
+            // wraps. Decorative, so out of the accessibility tree — a bullet read aloud before
+            // every suggestion is noise, same call as MetricCard's star row.
             var resources = Microsoft.Maui.Controls.Application.Current!.Resources;
             var glyph = new Label
             {
-                Text = "\U0001F4A1",
-                FontSize = 14,
+                Text = "•",
+                Style = (Style)resources["Body2"],
                 VerticalOptions = LayoutOptions.Start,
             };
             AutomationProperties.SetIsInAccessibleTree(glyph, false);

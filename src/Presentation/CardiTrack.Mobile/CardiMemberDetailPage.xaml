@@ -167,9 +167,11 @@
                              enable_pipeline_jobs). -->
                         <!-- A floor, not a fit: the placeholder is shorter than the summary that
                              replaces it, and on a first load the swap would otherwise shove the
-                             trends below it down the page. Sized to a typical few-sentence
-                             summary, so a member who has none yet gets a slightly roomy card
-                             rather than the whole screen moving under the caregiver. -->
+                             trends below it down the page. A member who has none yet gets a
+                             slightly roomy card rather than the whole screen moving under the
+                             caregiver; a generated summary now runs to four to six sentences and
+                             fills this and then some, so the card grows to the words rather than
+                             leaving the floor showing under them. -->
                         <Border x:Name="SummaryCard"
                                 Style="{StaticResource ElevatedCard}"
                                 MinimumHeightRequest="150">
@@ -217,8 +219,26 @@
                                 Style="{StaticResource ElevatedCard}"
                                 IsVisible="False">
                             <VerticalStackLayout Spacing="10">
-                                <Label x:Name="SuggestionsTitleLabel"
-                                       Style="{StaticResource DashboardSectionTitle}"/>
+                                <!-- The idea glyph belongs to the heading, not to every row: it
+                                     says the section is a set of things to try, which is a point
+                                     worth making once. Repeated down the rows it read as three
+                                     separate ideas being announced and crowded the words it was
+                                     meant to introduce. Sits under the same icon-then-title
+                                     treatment as the cards above, pinned to Start so a heading
+                                     that wraps keeps it beside its first line. Decorative, so out
+                                     of the accessibility tree — the heading is the words. -->
+                                <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
+                                    <Label Grid.Column="0"
+                                           Text="&#x1F4A1;"
+                                           FontSize="16"
+                                           VerticalOptions="Start"
+                                           Margin="0,2,0,0"
+                                           AutomationProperties.IsInAccessibleTree="False"/>
+                                    <Label x:Name="SuggestionsTitleLabel"
+                                           Grid.Column="1"
+                                           Style="{StaticResource DashboardSectionTitle}"
+                                           LineBreakMode="WordWrap"/>
+                                </Grid>
                                 <VerticalStackLayout x:Name="SuggestionsList" Spacing="8"/>
                             </VerticalStackLayout>
                         </Border>

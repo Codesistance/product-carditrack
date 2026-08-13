@@ -43,8 +43,10 @@ public partial class DigestGenerationService : IDigestGenerationService
         - headline: a label of two to five words naming what this summary is about ("A settled
           night", "Moving less than usual", "A quieter day", "Resting well"). Sentence case, no
           full stop, no name and no {{NAME}}, and not a sentence.
-        - summary: 2-4 sentences written to the family member about the readings below, naming
+        - summary: 4-6 sentences written to the family member about the readings below, naming
           the person as {{NAME}} rather than calling them "your relative" or "your loved one".
+          Cover sleep, movement and heart rate rather than stopping after the first thing worth
+          saying, and say plainly when a reading is missing instead of padding with reassurance.
         - suggestions: exactly three ways the family could support {{NAME}} today, at most eight
           words each ("Ask how they slept", "Suggest a short walk together", "Make their favourite
           tea"). Ordinary, kind things a family member can do, aimed at comfort rather than
@@ -407,14 +409,21 @@ public partial class DigestGenerationService : IDigestGenerationService
         /// <summary>Named and described rather than left as a bare "text": the description travels
         /// into the JSON Schema the client appends to the prompt, so each field the model is
         /// allowed to emit also states what belongs in it.</summary>
+        /// <remarks>
+        /// These descriptions name the person as <see cref="NamePlaceholder.Token"/>, the same way
+        /// the instructions above do. Reaching for "their relative" here would be the schema asking
+        /// for the one phrasing the prompt rules out — and the schema is the half of the ask the
+        /// model reads last, right beside the field it is about to fill.
+        /// </remarks>
         [Description(
-            "The summary itself: 2-4 sentences telling the family member how their relative is "
-            + "doing. Not a restatement of the instructions and not a description of what a summary is.")]
+            "The summary itself: 4-6 sentences telling the family member how {{NAME}} is doing, "
+            + "naming them as {{NAME}} exactly. Not a restatement of the instructions and not a "
+            + "description of what a summary is.")]
         public required string Summary { get; init; }
 
         /// <summary>Three supportive actions — see <see cref="CleanSuggestions"/>.</summary>
         [Description(
-            "Exactly three short ways the family could support their relative today, at most eight "
+            "Exactly three short ways the family could support {{NAME}} today, at most eight "
             + "words each. Ordinary, kind things a family member can do for their comfort — they "
             + "need not be medical at all. For example: Ask how they slept. Make their favourite "
             + "tea. Never medical advice or medication.")]
