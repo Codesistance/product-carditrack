@@ -718,6 +718,34 @@ resource "google_cloud_run_v2_service" "medgemma" {
         value = "-1"
       }
 
+      # Turn off llama.cpp's host-side prompt cache, which on this model can only ever cost.
+      # Gemma 3 uses sliding-window attention and llama.cpp will not restore a KV checkpoint under
+      # SWA, so every generation reprocesses the prompt from token zero (docs/llm_design.md). The
+      # cache still does all the work of trying: it matches the common prefix by LCP similarity,
+      # saves the state, then discards it. Measured in dev on 2026-08-13, per request:
+      #
+      #   srv  get_availabl: updating prompt cache
+      #   srv   prompt_save:  - saving prompt with length 538, total state size = 71.466 MiB
+      #   srv        update:  - cache state: 2 prompts, 507.974 MiB (limits: 8192.000 MiB, ...)
+      #   srv  get_availabl: prompt cache update took 335.74 ms
+      #   slot   operator(): forcing full prompt re-processing due to lack of cache data
+      #
+      # ~336 ms of every request and ~508 MiB of resident state, for a cache that is never read.
+      # LLAMA_ARG_CACHE_RAM is llama.cpp's env equivalent of --cache-ram (0 disables); Ollama
+      # passes its own environment through to the llama-server it spawns. The 8192 MiB default in
+      # the log above is that flag's, which is what confirms this build honours it.
+      #
+      # Revisit alongside the SWA note: if the model changes or llama.cpp learns to restore SWA
+      # checkpoints, this becomes the wrong setting and the prompt trim stops being the only lever.
+      #
+      # Verify by absence, not by the boot log — llama.cpp still prints "prompt cache is enabled,
+      # size limit: 8192 MiB" even when disabled (ggml-org/llama.cpp#22127). The real signal is
+      # that the `prompt_save` and `prompt cache update took` lines stop appearing per request.
+      env {
+        name  = "LLAMA_ARG_CACHE_RAM"
+        value = "0"
+      }
+
       resources {
         limits = {
           cpu    = var.medgemma_cpu
