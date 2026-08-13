@@ -231,7 +231,13 @@
                                      and the first tile is where a thumb lands and where the eye
                                      starts. The others are reachable in the seconds that emergency
                                      is not. -->
-                                <Grid ColumnDefinitions="*,*,*,*" ColumnSpacing="10">
+                                <!-- Inset from the card's content box by the shadow's own radius.
+                                     The Border above clips its content, and the row was flush with
+                                     that edge — so the outer tiles' shadows were sliced off
+                                     vertically on the left of SOS and the right of Details, which
+                                     read as a rendering fault rather than as depth. The tiles lose
+                                     five points of width each and the row keeps its shadow whole. -->
+                                <Grid ColumnDefinitions="*,*,*,*" ColumnSpacing="10" Margin="10,0">
                                     <Border x:Name="EmergencyCallAction"
                                             Grid.Column="0"
                                             Style="{StaticResource QuickActionTile}"
