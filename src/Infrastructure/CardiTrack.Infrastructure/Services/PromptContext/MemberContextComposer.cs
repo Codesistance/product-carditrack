@@ -124,9 +124,13 @@ public sealed partial class MemberContextComposer
         foreach (var line in body.Split('\n'))
         {
             var trimmed = line.TrimEnd('\r');
-            builder.Append(trimmed.TrimStart().StartsWith("---", StringComparison.Ordinal)
-                ? trimmed.TrimStart().TrimStart('-').TrimStart()
-                : trimmed);
+
+            // Both ends: a delimiter run left at the end of the line would close a section the
+            // model never saw opened, which is the same confusion in the other direction.
+            if (trimmed.TrimStart().StartsWith("---", StringComparison.Ordinal))
+                trimmed = trimmed.Trim().Trim('-').Trim();
+
+            builder.Append(trimmed);
             builder.Append('\n');
         }
 

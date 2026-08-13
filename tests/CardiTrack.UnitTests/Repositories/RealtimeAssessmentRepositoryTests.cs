@@ -120,4 +120,28 @@ public class RealtimeAssessmentRepositoryTests(TestDatabaseFixture fixture)
         Assert.NotNull(latest);
         Assert.Equal("Newer.", latest.ModelOutput);
     }
+
+    /// <summary>
+    /// What the digest reads to learn what the assessor has noticed lately: inclusive at the
+    /// boundary, newest first, nobody else's rows. Spans two days deliberately, so it also covers
+    /// the partition pruning the date filter relies on.
+    /// </summary>
+    [Fact]
+    public async Task GetSinceAsync_ReturnsTheMembersWindowsFromTheBoundary_NewestFirst()
+    {
+        using var scope = fixture.CreateScope();
+        await EnsurePartitionsAsync(scope);
+        var repo = scope.ServiceProvider.GetRequiredService<IRealtimeAssessmentRepository>();
+        var memberId = Guid.NewGuid();
+        var since = RecentHour.AddDays(-1);
+
+        await repo.UpsertAsync(Assessment(memberId, since.AddHours(-1), output: "Before the boundary."));
+        await repo.UpsertAsync(Assessment(memberId, since, output: "On the boundary."));
+        await repo.UpsertAsync(Assessment(memberId, RecentHour, output: "Newest."));
+        await repo.UpsertAsync(Assessment(Guid.NewGuid(), RecentHour, output: "Someone else."));
+
+        var recent = await repo.GetSinceAsync(memberId, since);
+
+        Assert.Equal(["Newest.", "On the boundary."], recent.Select(a => a.ModelOutput));
+    }
 }
