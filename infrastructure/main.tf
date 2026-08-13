@@ -138,6 +138,9 @@ module "deployments" {
     var.public_ai_base_url != null ? {
       "AI__Public__BaseUrl" = var.public_ai_base_url
     } : {},
+    # The API runs the OAuth connect flow, so it needs the provider blocks' identity, endpoints
+    # and scopes — not just the pull hosts' cadence numbers.
+    local.device_pull_env_vars,
     # Google's web OAuth clients require an https redirect; the API bounces it to the app deep
     # link. Element 0 of DeviceProviders in appsettings.json is the GoogleHealth (Google Health API)
     # provider. Without a custom domain the appsettings localhost default stays in effect.
