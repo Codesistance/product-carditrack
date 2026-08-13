@@ -205,7 +205,7 @@
                                            LineBreakMode="TailTruncation"
                                            IsVisible="False"/>
                                 </Grid>
-                                <Label x:Name="SummaryLabel" Style="{StaticResource Body2}"/>
+                                <Label x:Name="SummaryLabel" Style="{StaticResource Body2Dark}"/>
                             </VerticalStackLayout>
                         </Border>
 

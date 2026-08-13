@@ -380,11 +380,13 @@ public partial class CardiMemberDetailPage : ContentPage
             // the words. Pinned to Start so it sits beside the first line of a suggestion that
             // wraps. Decorative, so out of the accessibility tree — a bullet read aloud before
             // every suggestion is noise, same call as MetricCard's star row.
+            // Body2Dark, matching the summary above: these two blocks are what the caregiver came
+            // to read, and Body2's grey left them the palest thing on the screen.
             var resources = Microsoft.Maui.Controls.Application.Current!.Resources;
             var glyph = new Label
             {
                 Text = "•",
-                Style = (Style)resources["Body2"],
+                Style = (Style)resources["Body2Dark"],
                 VerticalOptions = LayoutOptions.Start,
             };
             AutomationProperties.SetIsInAccessibleTree(glyph, false);
@@ -394,7 +396,7 @@ public partial class CardiMemberDetailPage : ContentPage
                 new Label
                 {
                     Text = suggestion,
-                    Style = (Style)resources["Body2"],
+                    Style = (Style)resources["Body2Dark"],
                     LineBreakMode = LineBreakMode.WordWrap,
                 },
                 1);
