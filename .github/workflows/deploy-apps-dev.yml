@@ -414,14 +414,30 @@ jobs:
             apm_mobile_data:${{ needs.changes.outputs.gcp_project_id }}/carditrack-dev-apm-mobile-data
       # A PR only needs to know the code and XAML compile. Release adds the ILLink
       # trimmer, AOT and R8 after compilation has already succeeded — measured at
-      # ~3.4 min of the 4.3 min step — to produce an APK nothing downloads. Debug
-      # skips all of it; main still builds Release below.
+      # ~3.4 min of the 4.3 min step — to produce an APK nothing downloads, so
+      # those three are switched off here; main still publishes in full below.
+      # AndroidLinkTool= (empty) is what turns R8 off: the csproj turns it on for
+      # every Release Android build to emit the mapping.txt Play Console needs,
+      # and neither AndroidLinkMode nor PublishTrimmed overrides it. Only main
+      # uploads a mapping, so only main needs to pay for one.
+      #
+      # Release rather than Debug, though, because XamlC only reports on Release:
+      # the MAUI targets force ValidateOnly for Debug, which downgrades XamlC
+      # diagnostics to nothing. A Debug PR build went green on QuestionCard.xaml's
+      # invalid IsClippedToBounds and every mobile job then failed on the merge to
+      # main. -p:_MauiForceXamlCForDebug=true does not restore it; only the
+      # configuration does. XamlC runs straight after the managed compile and well
+      # before the trimmer, so this catches the same errors main would.
       - name: Compile (PR)
         if: github.event_name == 'pull_request'
         run: |
           dotnet build src/Presentation/CardiTrack.Mobile/CardiTrack.Mobile.csproj \
             -f net10.0-android \
-            -c Debug
+            -c Release \
+            -p:RunAOTCompilation=false \
+            -p:AndroidLinkMode=None \
+            -p:PublishTrimmed=false \
+            -p:AndroidLinkTool=
       - name: Publish (Release)
         if: github.event_name != 'pull_request'
         env:
@@ -480,6 +496,18 @@ jobs:
       # Release step, the managed compile finished in 70 s and the remaining
       # ~9 min was the ILLink trimmer and AOT. Debug skips both. Release device
       # builds (build-mobile-ios-device) still run on main before any upload.
+      #
+      # This one stays Debug even though Debug cannot report XAML errors, because
+      # the Android job above already carries that gate and XamlC is platform
+      # independent — QuestionCard.xaml's invalid IsClippedToBounds failed the
+      # Android, iOS and Windows legs with the identical XC0009. One platform is
+      # enough to catch it, so it should be the cheap one.
+      #
+      # Not worth reproducing here: -c Release needs the trimmer off to stay
+      # quick, iOS rejects PublishTrimmed=false and only takes MtouchLink=None,
+      # and MtouchLink=None then makes the step slower than leaving the trimmer
+      # on — measured at 26 min before it was cancelled, against ~1.5 min for
+      # Debug. Untrimmed simply gives every later phase more assemblies to chew.
       # -p:CodesignEntitlements= (empty) on both steps below: the SDK auto-detects
       # Platforms/iOS/Entitlements.plist by convention and wires it as CodesignEntitlements for
       # any build, which forces real codesigning — this job targets the simulator and has no
