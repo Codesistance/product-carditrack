@@ -54,6 +54,20 @@ public class CardiMemberSexValidatorTests
         Assert.Contains(result.Errors, e => e.PropertyName == nameof(CreateCardiMemberRequest.Gender));
     }
 
+    /// <summary>
+    /// The failure must name the property itself. <c>BaseApiController.ValidationFailed</c> copies
+    /// <c>PropertyName</c> straight into <c>ErrorResponse.Errors[].field</c>, so a rule written over
+    /// <c>Gender.Value</c> would put "Gender.Value" on the wire and a client mapping errors back
+    /// onto its inputs would never find the field it was told about.
+    /// </summary>
+    [Fact]
+    public void Update_NamesTheFieldGender_NotItsUnderlyingValue()
+    {
+        var result = _update.Validate(UpdateRequest((Gender)3));
+
+        Assert.Equal(nameof(UpdateCardiMemberRequest.Gender), result.Errors.Single().PropertyName);
+    }
+
     [Fact]
     public void Create_RejectsAnUnsetSex()
     {
@@ -86,7 +100,7 @@ public class CardiMemberSexValidatorTests
         var result = _update.Validate(UpdateRequest((Gender)3));
 
         Assert.False(result.IsValid);
-        Assert.Contains(result.Errors, e => e.PropertyName.StartsWith("Gender", StringComparison.Ordinal));
+        Assert.Contains(result.Errors, e => e.PropertyName == nameof(UpdateCardiMemberRequest.Gender));
     }
 
     /// <summary>
