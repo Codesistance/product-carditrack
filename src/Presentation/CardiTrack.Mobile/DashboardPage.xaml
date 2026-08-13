@@ -235,7 +235,7 @@
                                     <Border x:Name="EmergencyCallAction"
                                             Grid.Column="0"
                                             Style="{StaticResource QuickActionTile}"
-                                            BackgroundColor="{StaticResource AlertTileRed}"
+                                            BackgroundColor="{StaticResource QuickActionTintRed}"
                                             SemanticProperties.Description="SOS: call emergency contact"
                                             SemanticProperties.Hint="Dials the emergency contact number, not the CardiMember directly">
                                         <Border.GestureRecognizers>

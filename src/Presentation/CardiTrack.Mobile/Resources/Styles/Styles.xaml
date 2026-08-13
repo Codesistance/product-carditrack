@@ -323,7 +323,7 @@
             <RoundRectangle CornerRadius="18"/>
         </Setter>
         <Setter Property="Shadow">
-            <Shadow Brush="{StaticResource CardShadowBrush}" Opacity="0.10" Radius="18" Offset="0,0"/>
+            <Shadow Brush="{StaticResource CardShadowBrush}" Opacity="0.28" Radius="16" Offset="0,0"/>
         </Setter>
     </Style>
 
@@ -393,7 +393,7 @@
 
     <Style x:Key="QuickActionLabel" TargetType="Label">
         <Setter Property="FontFamily" Value="QuicksandMedium"/>
-        <Setter Property="FontSize" Value="14"/>
+        <Setter Property="FontSize" Value="13"/>
         <Setter Property="TextColor" Value="{StaticResource HeadingText}"/>
         <Setter Property="HorizontalTextAlignment" Value="Center"/>
     </Style>
