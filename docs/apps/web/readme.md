@@ -117,7 +117,7 @@ Prerequisites: .NET 10 SDK and a local PostgreSQL 16 with the CardiTrack databas
 
 ### Docker & deployment
 
-A real `Dockerfile` exists (multi-stage: `sdk:10.0` build → `aspnet:10.0-noble-chiseled` runtime, non-root UID 1654, same pattern as the API). The app deploys as a **Cloud Run service** (`carditrack-<env>-web`); Terraform supplies the APM env vars and mounts the data-protection GCS volume.
+A real `Dockerfile` exists (multi-stage: `sdk:10.0` build → `aspnet:10.0-noble-chiseled-extra` runtime, non-root UID 1654, same pattern as the API). The `-extra` variant carries ICU and tzdata, which plain chiseled lacks. The app deploys as a **Cloud Run service** (`carditrack-<env>-web`); Terraform supplies the APM env vars and mounts the data-protection GCS volume.
 
 ### Testing
 

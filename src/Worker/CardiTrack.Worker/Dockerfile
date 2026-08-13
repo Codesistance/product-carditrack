@@ -40,7 +40,10 @@ RUN mkdir -p /app/publish/logs
 # Stage 3: Runtime - Chiseled Ubuntu (Ultra-minimal, non-root, distroless-like)
 # Uses aspnet chiseled (not runtime) — Cloud Run requires an HTTP listener for health probes.
 # CardiTrack.Worker exposes a minimal /healthz endpoint via a hosted HTTP listener.
-FROM mcr.microsoft.com/dotnet/aspnet:10.0-noble-chiseled AS final
+# The "-extra" variant (vs. plain "-chiseled") adds ICU and tzdata — the Worker's OAuth
+# token refresh, baseline recalculation, and trial reminder jobs all reason about member
+# time zones, which needs a real timezone database on top of the plain chiseled base.
+FROM mcr.microsoft.com/dotnet/aspnet:10.0-noble-chiseled-extra AS final
 ARG VERSION=0.0.0-local
 WORKDIR /app
 
@@ -48,7 +51,7 @@ WORKDIR /app
 # - Ultra-minimal (no package manager, no shell, no unnecessary packages)
 # - Non-root by default (runs as user 'app' with UID 1654)
 # - Security-hardened (minimal attack surface)
-# - Small size
+# - Small size ("-extra" adds a few MB for ICU/tzdata)
 
 # Copy published files (including pre-created logs dir) with correct ownership
 COPY --chown=1654:1654 --from=publish /app/publish .

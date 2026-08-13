@@ -38,7 +38,10 @@ RUN dotnet publish "CardiTrack.API.csproj" -c Release -o /app/publish \
 RUN mkdir -p /app/publish/logs
 
 # Stage 3: Runtime - Chiseled Ubuntu (Ultra-minimal, non-root, distroless-like)
-FROM mcr.microsoft.com/dotnet/aspnet:10.0-noble-chiseled AS final
+# The "-extra" variant (vs. plain "-chiseled") adds ICU and tzdata — the plain chiseled
+# base has no timezone database, so TimeZoneInfo.TryFindSystemTimeZoneById fails for every
+# IANA zone at runtime even though it resolves fine under `dotnet test` on a full CI image.
+FROM mcr.microsoft.com/dotnet/aspnet:10.0-noble-chiseled-extra AS final
 ARG VERSION=0.0.0-local
 WORKDIR /app
 
@@ -46,7 +49,7 @@ WORKDIR /app
 # - Ultra-minimal (no package manager, no shell, no unnecessary packages)
 # - Non-root by default (runs as user 'app' with UID 1654)
 # - Security-hardened (minimal attack surface)
-# - Small size (~110MB vs ~220MB for standard aspnet image)
+# - Small size (~110MB vs ~220MB for standard aspnet image; "-extra" adds a few MB for ICU/tzdata)
 
 # Copy published files (including pre-created logs dir) with correct ownership
 COPY --chown=1654:1654 --from=publish /app/publish .

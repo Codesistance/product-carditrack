@@ -416,7 +416,8 @@ The real `Dockerfile` is multi-stage (SDK build → publish → chiseled runtime
 ```dockerfile
 # Runtime — chiseled Ubuntu: minimal, non-root (UID 1654), no shell.
 # aspnet (not runtime) because Cloud Run health probes need /healthz over HTTP.
-FROM mcr.microsoft.com/dotnet/aspnet:10.0-noble-chiseled AS final
+# "-extra" adds ICU and tzdata, needed for the Worker's time-zone-aware jobs.
+FROM mcr.microsoft.com/dotnet/aspnet:10.0-noble-chiseled-extra AS final
 WORKDIR /app
 COPY --chown=1654:1654 --from=publish /app/publish .
 EXPOSE 8080
