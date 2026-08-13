@@ -402,7 +402,7 @@ jobs:
         with:
           workload_identity_provider: ${{ needs.changes.outputs.gcp_wif_provider }}
           service_account: ${{ needs.changes.outputs.gcp_service_account }}
-      - uses: google-github-actions/get-secretmanager-secrets@v2
+      - uses: google-github-actions/get-secretmanager-secrets@v3
         if: github.event_name != 'pull_request'
         id: auth0
         with:
@@ -466,7 +466,7 @@ jobs:
         with:
           workload_identity_provider: ${{ needs.changes.outputs.gcp_wif_provider }}
           service_account: ${{ needs.changes.outputs.gcp_service_account }}
-      - uses: google-github-actions/get-secretmanager-secrets@v2
+      - uses: google-github-actions/get-secretmanager-secrets@v3
         if: github.event_name != 'pull_request'
         id: auth0
         with:
@@ -552,7 +552,7 @@ jobs:
         with:
           workload_identity_provider: ${{ needs.changes.outputs.gcp_wif_provider }}
           service_account: ${{ needs.changes.outputs.gcp_service_account }}
-      - uses: google-github-actions/get-secretmanager-secrets@v2
+      - uses: google-github-actions/get-secretmanager-secrets@v3
         id: auth0
         with:
           secrets: |
@@ -646,7 +646,7 @@ jobs:
             echo "available=true" >> $GITHUB_OUTPUT
           fi
 
-      - uses: google-github-actions/get-secretmanager-secrets@v2
+      - uses: google-github-actions/get-secretmanager-secrets@v3
         if: steps.gate.outputs.available == 'true'
         id: secrets
         with:
@@ -759,7 +759,7 @@ jobs:
             echo "available=true" >> $GITHUB_OUTPUT
           fi
 
-      - uses: google-github-actions/get-secretmanager-secrets@v2
+      - uses: google-github-actions/get-secretmanager-secrets@v3
         if: steps.gate.outputs.available == 'true'
         id: secrets
         with:
@@ -872,7 +872,7 @@ jobs:
             echo "available=true" >> $GITHUB_OUTPUT
           fi
 
-      - uses: google-github-actions/get-secretmanager-secrets@v2
+      - uses: google-github-actions/get-secretmanager-secrets@v3
         if: steps.gate.outputs.available == 'true'
         id: secrets
         with:
@@ -937,7 +937,7 @@ jobs:
             echo "available=true" >> $GITHUB_OUTPUT
           fi
 
-      - uses: google-github-actions/get-secretmanager-secrets@v2
+      - uses: google-github-actions/get-secretmanager-secrets@v3
         if: steps.gate.outputs.available == 'true'
         id: secrets
         with:
