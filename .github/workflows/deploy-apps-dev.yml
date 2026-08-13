@@ -414,14 +414,25 @@ jobs:
             apm_mobile_data:${{ needs.changes.outputs.gcp_project_id }}/carditrack-dev-apm-mobile-data
       # A PR only needs to know the code and XAML compile. Release adds the ILLink
       # trimmer, AOT and R8 after compilation has already succeeded — measured at
-      # ~3.4 min of the 4.3 min step — to produce an APK nothing downloads. Debug
-      # skips all of it; main still builds Release below.
+      # ~3.4 min of the 4.3 min step — to produce an APK nothing downloads, so
+      # those three are switched off here; main still publishes in full below.
+      #
+      # Release rather than Debug, though, because XamlC only reports on Release:
+      # the MAUI targets force ValidateOnly for Debug, which downgrades XamlC
+      # diagnostics to nothing. A Debug PR build went green on QuestionCard.xaml's
+      # invalid IsClippedToBounds and every mobile job then failed on the merge to
+      # main. -p:_MauiForceXamlCForDebug=true does not restore it; only the
+      # configuration does. XamlC runs straight after the managed compile and well
+      # before the trimmer, so this catches the same errors main would.
       - name: Compile (PR)
         if: github.event_name == 'pull_request'
         run: |
           dotnet build src/Presentation/CardiTrack.Mobile/CardiTrack.Mobile.csproj \
             -f net10.0-android \
-            -c Debug
+            -c Release \
+            -p:RunAOTCompilation=false \
+            -p:AndroidLinkMode=None \
+            -p:PublishTrimmed=false
       - name: Publish (Release)
         if: github.event_name != 'pull_request'
         env:
@@ -478,8 +489,10 @@ jobs:
             apm_mobile_data:${{ needs.changes.outputs.gcp_project_id }}/carditrack-dev-apm-mobile-data
       # Same trade as Android, and the reason PR CI took ~10 min: of a 10.5 min
       # Release step, the managed compile finished in 70 s and the remaining
-      # ~9 min was the ILLink trimmer and AOT. Debug skips both. Release device
-      # builds (build-mobile-ios-device) still run on main before any upload.
+      # ~9 min was the ILLink trimmer and AOT, both switched off here. Release
+      # device builds (build-mobile-ios-device) still run on main before any
+      # upload. The configuration stays Release for the XamlC reason given on the
+      # Android job above — Debug reports no XAML errors at all.
       # -p:CodesignEntitlements= (empty) on both steps below: the SDK auto-detects
       # Platforms/iOS/Entitlements.plist by convention and wires it as CodesignEntitlements for
       # any build, which forces real codesigning — this job targets the simulator and has no
@@ -492,10 +505,11 @@ jobs:
         run: |
           dotnet build src/Presentation/CardiTrack.Mobile/CardiTrack.Mobile.csproj \
             -f net10.0-ios \
-            -c Debug \
+            -c Release \
             -r iossimulator-arm64 \
             -p:ArchiveOnBuild=false \
-            -p:CodesignEntitlements=
+            -p:CodesignEntitlements= \
+            -p:PublishTrimmed=false
       - name: Build (Release)
         if: github.event_name != 'pull_request'
         env:
