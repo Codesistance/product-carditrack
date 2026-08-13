@@ -69,19 +69,15 @@ resource "google_storage_bucket" "dataprotection_keys" {
   depends_on = [google_project_service.storage]
 }
 
-# Superseded, kept deliberately for one release. Web now runs as its own identity
-# (google_service_account.web) and reads this bucket through google_storage_bucket_iam_member
-# .web_dpkeys; nothing else mounts the key ring, so this grant is dead the moment web's revision is
-# confirmed on the new account.
+# The Data Protection key ring is read by exactly one identity: google_service_account.web, via
+# google_storage_bucket_iam_member.web_dpkeys in service_accounts.tf. The default compute SA held
+# objectAdmin here until 2026-08-13, back when it was also the runtime identity for web; that grant
+# is removed now that web runs as itself and its revision has been confirmed on the new account.
 #
-# Not removed in the same change that moves the identity, and the reason is the 2026-08-13 apply
-# failure: if the revision update fails on IAM propagation while this grant has already gone, web
-# is left running as the compute SA with no access to its own key ring — antiforgery breaks on a
-# public service. Removing it is a second, separately verifiable apply. Do that once web is healthy
-# on the new identity; leaving it is a lingering read on an unencrypted key ring, so it is worth
-# actually doing rather than forgetting.
-resource "google_storage_bucket_iam_member" "web_dataprotection_keys" {
-  bucket = google_storage_bucket.dataprotection_keys.name
-  role   = "roles/storage.objectAdmin"
-  member = "serviceAccount:${data.google_project.current.number}-compute@developer.gserviceaccount.com"
-}
+# Worth removing rather than leaving: the ring is deliberately unencrypted on GCS (accepted, because
+# it protects antiforgery tokens only), so every additional identity that can read it widens an
+# exception that was justified on the basis of being narrow.
+#
+# Do not re-add a grant here for a workload that merely runs alongside web. If something else ever
+# needs the ring, give it its own binding and think about whether sharing a key ring is what you
+# actually want.
