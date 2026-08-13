@@ -48,8 +48,9 @@ public class RealtimeAssessmentService : IRealtimeAssessmentService
 
     /// <summary>
     /// <c>CARDITRACK_REALTIME_ASSESSMENT_PROMPT</c> — the real-time severity assessment
-    /// (docs/llm_design.md prompt registry). Fixed prefix, cacheable; member data always goes
-    /// after it. The closing severity line is the machine-readable part of the answer — the
+    /// (docs/llm_design.md prompt registry). Fixed prefix, cacheable in principle though not on
+    /// this model; member data always goes after it.
+    /// The closing severity line is the machine-readable part of the answer — the
     /// parser accepts nothing else, so the instruction is explicit about its format.
     /// </summary>
     private const string AssessmentInstructions = MedicalPromptBlocks.Tone + """

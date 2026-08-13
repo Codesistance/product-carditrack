@@ -19,7 +19,7 @@ namespace CardiTrack.Infrastructure.Services.PromptContext;
 /// </para>
 /// <para>
 /// It composes member data only. The instruction block stays with its service and stays first in
-/// the prompt: those blocks are the cacheable fixed prefix the serving engine reuses between calls
+/// the prompt: those blocks are the fixed prefix a serving engine can reuse between calls
 /// (docs/llm_design.md), and a prefix that varied per member would be no prefix at all.
 /// </para>
 /// </remarks>

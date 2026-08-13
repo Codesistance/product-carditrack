@@ -30,8 +30,8 @@ public partial class DigestGenerationService : IDigestGenerationService
 {
     /// <summary>
     /// <c>CARDITRACK_FAMILY_DIGEST_PROMPT</c> — the family-audience summary, blending the digest
-    /// and family framings from docs/llm_design.md. Fixed prefix, cacheable; member data always
-    /// goes after it.
+    /// and family framings from docs/llm_design.md. Fixed prefix, cacheable in principle though not
+    /// on this model; member data always goes after it.
     /// </summary>
     private const string FamilyDigestInstructions = MedicalPromptBlocks.Tone + """
         You are summarising {{NAME}}'s recent heart health data for a non-medical family

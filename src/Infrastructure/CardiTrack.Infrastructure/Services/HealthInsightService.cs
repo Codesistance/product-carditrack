@@ -111,13 +111,15 @@ public class HealthInsightService : IHealthInsightService
     /// </summary>
     /// <remarks>
     /// Kept short on purpose, and shorter than its siblings. This is the only prompt on a request
-    /// path a caregiver is waiting on, and MedGemma processes a prompt at ~68 tokens/sec against
-    /// CPU — so on this endpoint every token of instruction is paid in latency, on nearly every
-    /// call. (The fixed prefix is only reusable while an instance lives, and this service scales
-    /// to zero.) Asking for 19 tokens of output behind 666 tokens of prompt spent ~9.8 s of a
-    /// ~11 s call just reading the question. One example per field is enough when the response
-    /// shape is already grammar-constrained by the JSON schema; three were paying for themselves
-    /// in seconds. <see cref="StatusPromptBudget"/> keeps it that way.
+    /// path a caregiver is waiting on, and MedGemma processes a prompt at a few tens of tokens per
+    /// second against CPU — so on this endpoint every token of instruction is paid in latency, on
+    /// every call without exception. The fixed prefix buys nothing back: Gemma 3's sliding-window
+    /// attention stops llama.cpp restoring a KV checkpoint, so a warm instance with the model
+    /// resident still reprocesses from token zero (docs/llm_design.md). Asking for 19 tokens of
+    /// output behind 666 tokens of prompt spent ~9.8 s of a ~11 s call just reading the question.
+    /// One example per field is enough when the response shape is already grammar-constrained by
+    /// the JSON schema; three were paying for themselves in seconds.
+    /// <see cref="StatusPromptBudget"/> keeps it that way.
     /// </remarks>
     private const string CurrentStatusInstructions = MedicalPromptBlocks.Tone + """
         Describe this person's current status to their caregiver, in two short dashboard lines.
