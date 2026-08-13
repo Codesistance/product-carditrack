@@ -236,6 +236,34 @@ row).
 Webhooks are the fast path, not a dependency: if the Subscriber ever degrades, the pipeline
 still runs whole on the **10-minute poll** — notifications only make it fresher.
 
+- **Dev status (2026-08-13):** delivery ✅, aggregation ❌ **→ fix shipped, awaiting confirmation.**
+  Notifications *are* arriving — the aggregator logs `Notifications: 1` on most 5-minute runs,
+  where earlier in the day it logged `0`. But **every one was dropped**: `unparseable: 1`,
+  `connections synced: 0`, on every run since deployment, so no notification has ever triggered
+  a sync. The parser rejected the live resource-name form
+  (`users/{id}/dataTypes/{type}`) while accepting only a bare `users/{id}`; relaxed 2026-08-13.
+  The poll fallback is exactly why this looked healthy for days — freshness was silently lost,
+  correctness never was.
+
+**How to confirm the fix** (this is what closes step 9), reading the aggregator job's own
+summary line:
+
+```
+resource.labels.job_name="carditrack-dev-pipeline-jobs-aggregator"
+AND "PipelineJobs run finished"
+```
+
+Success is `unparseable: 0` with **either** `connections synced` > 0 (a wearer we hold a
+connection for) **or** `unknown users` > 0 (parsed fine, no matching connection — which still
+proves the parse works). A continued `unparseable` > 0 means the shape is something else again;
+the `top-level shape:` warning now describes three levels rather than one, so the payload can be
+diagnosed from the log without another deploy.
+
+> Reading these logs needs only Cloud Logging access. **Pulling the Pub/Sub message itself does
+> not work** with the `carditrack-investigator` SA — `pubsub.subscriptions.pull` returns
+> `PERMISSION_DENIED`, which is why the parse failure had to be diagnosed from log shape rather
+> than from a payload. Grant `roles/pubsub.subscriber` if direct message inspection is ever wanted.
+
 ### 10. Compliance gate: Art. 22 before prod alerting
 
 Per the [DPIA](../compliance/dpia.md) (R-B1): the
