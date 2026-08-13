@@ -1,8 +1,8 @@
 # CardiTrack — C4 Architecture
 
-> The system as **built and deployed on 2026-08-10** — dev environment, GCP `carditrack-490120`,
-> `europe-west2`. Planned-but-absent elements (push dispatch, trend interpretation, prod
-> MedGemma) are marked *(planned)*; everything else on these diagrams exists and runs.
+> The system as **built and deployed on 2026-08-13** — dev environment, GCP `carditrack-490120`,
+> `europe-west2`. Planned-but-absent elements (trend interpretation, prod MedGemma, the
+> unprovisioned enrich job) are marked *(planned)*; everything else on these diagrams exists and runs.
 > Levels follow the [C4 model](https://c4model.com): Context → Containers → Components.
 > For the manual operations behind this picture see the
 > [production setup runbook](technical/production_setup_runbook.md); for the AI design,
@@ -26,8 +26,8 @@ C4Context
   System_Ext(health, "Google Health API", "Wearable data (Fitbit, Pixel Watch): polling + registered webhook notifications")
   System_Ext(auth0, "Auth0", "Caregiver identity: email + social login")
   System_Ext(gemini, "Gemini 2.0 Flash", "General (non-medical) AI - never receives health data")
-  System_Ext(push, "FCM / APNs (planned)", "Push delivery - arriving from a separate workstream")
-  System_Ext(dd, "Datadog", "APM traces + logs (engine wired; tokens pending)")
+  System_Ext(push, "FCM / APNs", "Push delivery - FCM HTTP v1 with APNs passthrough, escalation ladder, quiet hours")
+  System_Ext(dd, "Datadog", "APM traces + logs over OTLP, deployed (mobile excluded - UK1 unsupported by the MAUI SDK)")
 
   Rel(wearer, health, "Device syncs to")
   Rel(caregiver, carditrack, "Uses", "mobile + web")
@@ -36,7 +36,7 @@ C4Context
   Rel(carditrack, auth0, "Authenticates via")
   Rel(carditrack, gemini, "Non-medical generation only")
   Rel(carditrack, dd, "Ships telemetry to")
-  Rel(carditrack, push, "Will dispatch via")
+  Rel(carditrack, push, "Dispatches alerts via")
 ```
 
 **The one boundary that explains most of the design:** health data goes only to the
@@ -56,15 +56,15 @@ C4Container
     Container(mobile, "Mobile App", ".NET MAUI", "Family's primary surface (M1 screens)")
     Container(web, "Web App", "Blazor (Razor Components, interactive server)", "Browser surface; Auth0 login pending")
     Container(api, "API", "ASP.NET Core", "REST backbone: members, alerts, insights, digests, chat, reports")
-    Container(worker, "Worker", ".NET background host", "ALL non-AI jobs: 10-min sync, daily baselines, partition retention, inactivity + statistical alerts")
+    Container(worker, "Worker", ".NET background host", "ALL non-AI jobs (11 crons): 10-min sync, daily baselines, partition retention, inactivity + statistical alerts, notification dispatch, push canary, device-auth recovery, data completeness")
 
     Container_Boundary(pipe, "AI pipeline (the sanctioned exception to the Worker rule)") {
       Container(rcv, "HealthWebhookReceiver", "Cloud Run service, public", "Authenticates Subscriber secret, drops verification probes, forwards raw to Pub/Sub")
-      Container(jobs, "PipelineJobs", "Cloud Run jobs x3, one image", "--job digest (15-min) | aggregate (5-min) | assess (5-min offset)")
+      Container(jobs, "PipelineJobs", "Cloud Run jobs x3, one image", "--job digest (half-hourly, */30) | aggregate (5-min) | assess (twice hourly, :02/:32); --job enrich exists in the image but has no Cloud Run job or scheduler provisioned yet")
       Container(medgemma, "MedGemma", "Ollama on Cloud Run, CPU, IAM-authorised", "Private medical model, Q4_K_M; scale-to-zero")
     }
 
-    ContainerDb(sql, "Cloud SQL PostgreSQL", "Private IP", "System of record + partitioned time-series: GranularMetricHours, MetricRollupsHourly, DigestEntries, RealtimeAssessments")
+    ContainerDb(sql, "Cloud SQL PostgreSQL", "Private IP", "System of record + partitioned time-series: GranularMetricHours, MetricRollupsHourly, DigestEntries, RealtimeAssessments, EnvironmentalReadings - plus the notification tables (Notifications, NotificationDeliveries, PushDeviceTokens, NotificationPreferences)")
     ContainerQueue(pubsub, "Pub/Sub realtime topic", "Pull subscription", "Raw notification buffer, at-least-once")
   }
 
@@ -108,9 +108,9 @@ C4Component
   }
 
   Container_Boundary(jobsb, "PipelineJobs (one image, --job dispatch)") {
-    Component(digest, "DigestGenerationService", "--job digest, 15-min", "Recomputes a member's summary once their readings have moved past the last one, and no more often than the 20-min regeneration floor; describes their local day in progress; every generation kept as history; no summary from silence")
+    Component(digest, "DigestGenerationService", "--job digest, half-hourly (*/30)", "Recomputes a member's summary once their readings have moved past the last one, and no more often than the 20-min regeneration floor; describes their local day in progress; every generation kept as history; no summary from silence")
     Component(drain, "NotificationDrainService", "--job aggregate, 5-min", "Pulls batches, hunts users/{id}, maps healthUserId to DeviceConnection, runs the standard targeted sync. Ack = nothing still needs a retry")
-    Component(assess, "RealtimeAssessmentService", "--job assess, 5-min offset", "Latest 60-min HR window (>=45 min covered), dedup by (member, windowStart) - an unmoved window costs no inference")
+    Component(assess, "RealtimeAssessmentService", "--job assess, twice hourly (:02/:32)", "Latest 60-min HR window (>=45 min covered), dedup by (member, windowStart) - an unmoved window costs no inference")
     Component(ssa, "SsaDecomposition", "Application, dependency-free", "Lag-covariance + Jacobi eigen: trend + oscillation + noise residual; deviation in noise-RMS units")
     Component(parser, "AssessmentSeverityParser", "Application", "Strict closing 'Severity:' line only; critical/high/medium/low -> red/orange/yellow/green; unparseable NEVER alerts")
     Component(blocks, "MedicalPromptBlocks", "Shared prompt hygiene", "Age/sex/notes - never name or id; injection-framed caregiver notes")
@@ -146,6 +146,10 @@ C4Component
     Component(inact, "InactivityDetectionWorker", "15-min", "Silence = no granular readings >2h in waking hours on the anchor clock; one yellow device-check alert, resolve to re-arm")
     Component(stat, "StatisticalAlertWorker", "15-min offset", "R1 engine: 5 rules vs established 30-day baseline; null is never zero; remedy-scoped cooldowns (HeartRate type-scoped across producers)")
     Component(audit, "DeviceSyncAuditWorker", "weekly", "Sampled sync-integrity audit")
+    Component(authrec, "DeviceAuthRecoveryWorker", "15-min pass", "Retries provider-refused refresh tokens; per-connection widening backoff, so a pass mostly finds nothing due")
+    Component(complete, "DataCompletenessWorker", "daily 06:00", "Diffs what each account supplies vs what CardiTrack needs; idempotent per-user nudge reconciliation under an advisory lock; runs after baselines")
+    Component(dispatch, "NotificationDispatchWorker", "every 30s", "The push spine's pump: claims due outbox rows (FOR UPDATE SKIP LOCKED), retries, runs the escalation ladder, expires past-TTL rows, disables 7-day-silent tokens")
+    Component(canary, "PushCanaryWorker", "15-min", "Sends a real Safety push to configured test devices through the normal outbox; previous run unacked -> LogCritical (silent provider outages surface)")
   }
 
   ContainerDb(sql3, "Cloud SQL", "", "")
@@ -158,6 +162,10 @@ C4Component
   Rel(inact, sql3, "Inactivity alerts (rule: device_silence)")
   Rel(stat, sql3, "Alerts (rules: activity_decline, irregular_sleep, elevated_heart_rate, no_morning_activity, long_term_trend)")
   Rel(audit, sql3, "Audit findings")
+  Rel(authrec, health2, "Refresh-token retries")
+  Rel(complete, sql3, "Notifications + NotificationRunLogs")
+  Rel(dispatch, sql3, "NotificationDeliveries outbox")
+  Rel(canary, sql3, "Canary deliveries via the outbox")
 ```
 
 ## Code level (C4 L4) — the dependency rule

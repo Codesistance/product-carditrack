@@ -19,10 +19,10 @@ The in-app inbox and its actions. All responses use the standard `ApiResponse<T>
 
 | Endpoint | Notes |
 |----------|-------|
-| `GET /api/v1/notifications` | The caller's inbox, priority-ranked. Query params `state`, `category`, `cardiMemberId`, `owned`, `limit` (default 50, max 200), `offset`. Unrecognised `state`/`category` values are rejected with **400** rather than silently ignored |
-| `GET /api/v1/notifications/summary` | Unseen count, safety banners and the two dashboard card slots in one call — what the app reads on launch |
+| `GET /api/v1/notifications` | The caller's inbox, priority-ranked. Query params `state`, `category`, `cardiMemberId`, `owned`, `limit` (default 50, **clamped** into 1–200 rather than rejected), `offset` (floored at 0). Unrecognised `state`/`category` values are still rejected with **400** rather than silently ignored |
+| `GET /api/v1/notifications/summary` | Unseen count, open count, safety banners and the two dashboard card slots in one call — what the app reads on launch |
 | `POST /api/v1/notifications/{id}/seen` | Records first sighting; idempotent, and only the first counts. Drives the comply funnel's denominator |
-| `POST /api/v1/notifications/{id}/snooze` | Body `{ "duration": "7.00:00:00" }`, optional. **Clamped** to the rule's maximum rather than rejected, so a client asking for a month on a safety rule gets 72 hours and a success |
+| `POST /api/v1/notifications/{id}/snooze` | Body `{ "duration": "7.00:00:00" }`, optional. A *valid* duration past the rule's maximum is **clamped** rather than rejected, so a client asking for a month on a safety rule gets 72 hours and a success; an **unparseable or non-positive** duration is a **400** |
 | `POST /api/v1/notifications/{id}/dismiss` | Body `{ "acknowledgedConsequence": bool }`. Writes a mute and resolves the row. Safety-class rules **require** the acknowledgement and return **400** without it |
 | `GET /api/v1/notifications/mutes` | Everything the caller has silenced — the settings screen's list |
 | `DELETE /api/v1/notifications/mutes/{muteId}` | Un-mute one rule; anything still outstanding reappears immediately |
@@ -63,6 +63,8 @@ Two things about this payload are deliberate:
 - **`cardiMemberName` is resolved per request**, never stored on the row. `templateData` carries counters only — a wearer's name persisted beside the health-derived gap describing them would be an identifier-to-clinical join in the clear ([data_protection_architecture.md](../../../technical/data_protection_architecture.md) §2).
 
 `isOwner` is false for relatives who can see an item somebody else is responsible for: visible so the family knows it is outstanding, never actionable, so one missing emergency contact does not nag five people.
+
+**Rule example — `DEVICE_BATTERY_LOW`:** the Safety-class battery rule shows what the full treatment looks like. It gets the Safety envelope — immediate push, critical APNs flag, quiet-hours override, 30-minute TTL, escalation — and fires when a wearable's battery is at **≤ 10%** or the provider reports a `Low`/`Empty` band. It is gated on battery data **fresh within 24 hours** (a stale reading proves nothing about the battery now), and it is suppressed when a broken-grant notification outranks it: a device that cannot sync at all is the bigger problem, and the battery warning would be noise beside it.
 
 ### Related — implemented alongside
 
@@ -192,4 +194,4 @@ What the iOS notification service extension (or Android's data-message handler) 
 
 **Related:** [readme.md](readme.md) | [alerts.md](alerts.md) | [User Stories 3.2, 5.1](../../ui/mobile/user_stories.md)
 
-**Last Updated:** August 11, 2026
+**Last Updated:** August 13, 2026

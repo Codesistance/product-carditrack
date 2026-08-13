@@ -18,14 +18,14 @@ There are no family-member, invitation, shared-note, or audit-log endpoints. The
 | `RelationshipType` | Caregiver's relationship (integer enum) |
 | `IsPrimaryCaregiver` | Primary caregiver flag |
 | `CanViewHealthData` | Gates the dashboard (`GET .../dashboard` requires it) |
-| `ReceiveAlerts` | Intended alert-routing flag (nothing sends alerts yet) |
+| `ReceiveAlerts` | The live recipient-resolution predicate: `IDispatchService.EnqueueForAlertAsync` filters links on `IsActive && ReceiveAlerts` to decide who gets pushed for an alert |
 | `IsActive` | Soft enable/disable of the link |
 
 Links are created automatically when a CardiMember is added during onboarding; there is no API to grant another user access yet.
 
 **Roles:** the implemented `UserRole` enum is `Member` (1), `Admin` (2), `Staff` (3) — **integers on the wire, and there is no `viewer` role**. No endpoint currently enforces role-based restrictions; authorization is member-link based.
 
-**Naming collision warning:** this doc's "activity log" means the HIPAA **audit trail** (an `AuditLog` entity exists but **nothing writes to it** — planned). The codebase's `ActivityLog` entity is something else entirely: **daily health metrics** (steps, heart rate, sleep) synced from wearables.
+**Naming collision warning:** this doc's "activity log" means the HIPAA **audit trail**. The write side of it is live: `AuditLoggingMiddleware` writes an `AuditLog` row (user, member, action, path, method, IP, user-agent, response status) for every endpoint carrying `[AuditHealthDataAccess]` — applied across CardiMembers, Devices, Alerts, Insights, Questionnaires, and Reports. What remains **planned** is the read/query endpoint below. The codebase's `ActivityLog` entity is something else entirely: **daily health metrics** (steps, heart rate, sleep) synced from wearables.
 
 Everything below is the **planned** contract, kept as design intent.
 
@@ -384,4 +384,4 @@ HIPAA-compliant audit log of all access events — who viewed what data and when
 
 **Related:** [readme.md](readme.md) | [alerts.md](alerts.md) | [notifications.md](notifications.md) | [User Stories 4.1, 4.2, 8.3](../../ui/mobile/user_stories.md)
 
-**Last Updated:** August 7, 2026
+**Last Updated:** August 13, 2026

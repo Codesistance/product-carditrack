@@ -24,7 +24,7 @@ What `src/Presentation/CardiTrack.Web` actually contains right now — a stock B
 | `/` | Home ("Hello, world!") | Template leftover — will become W1-01 Landing Page |
 | `/counter` | Counter | Template leftover — to be removed |
 | `/weather` | Weather | Template leftover — to be removed |
-| `/privacy` | Privacy Policy | **Product page (shipped)** — public privacy policy: What we collect / How we use it / Retention and control / Contact (cloudoperations@codesistance.com). Reachable in-app only via the disclosure banner's "Learn more" link |
+| `/privacy` | Privacy Policy | **Product page (shipped — real prose, placeholder policy)** — What we collect / How we use it / Retention and control / Contact (cloudoperations@codesistance.com), but no versioning, effective date, or GDPR/data-subject sections; needs legal review before Auth0 login ships. Reachable in-app only via the disclosure banner's "Learn more" link |
 | `/not-found` | NotFound | Router `NotFoundPage` + `UseStatusCodePagesWithReExecute("/not-found")` |
 | `/Error` | Error | Production exception handler page |
 
@@ -458,11 +458,12 @@ Each device card:
 - Future device cards are visible but non-clickable (greyed out, cursor not-allowed)
 - Entire active card is clickable, highlights on hover/selection
 
-**Supported Devices (MVP 1 — Fitbit only; remaining devices shown as Coming Soon):**
+**Supported Devices (MVP 1 — Fitbit and Google Pixel Watch, both via the Google Health API; remaining devices shown as Coming Soon):**
 
 | Device | Models | MVP Availability |
 |--------|--------|-----------------|
 | Fitbit | Charge, Versa, Sense series | **MVP 1** |
+| Google Pixel Watch | Pixel Watch 1–3 | **MVP 1** |
 | Garmin | Venu, Forerunner, etc. | MVP 2 |
 | Apple Watch | Series 4+ | Coming Soon |
 | Samsung Galaxy Watch | All models | Coming Soon |
@@ -1902,6 +1903,8 @@ Set up the following as **Figma Variables** (not hardcoded values):
 | Spacing | `space/xs` (4), `space/sm` (8), `space/md` (16), `space/lg` (24), `space/xl` (32) |
 | Radius | `radius/card`, `radius/button`, `radius/chip`, `radius/modal` |
 | Shadow | `shadow/card`, `shadow/modal`, `shadow/dropdown` |
+
+> **Binding layout rule (project-wide):** pages are **full-bleed** — edge-to-edge backgrounds and content, safe-area insets for system UI only. Corner radius belongs on **components** (the radius tokens above apply to cards, buttons, chips, modals), never on the page shell — do not wrap a page in a rounded card/sheet or other page-level clipped chrome.
 
 ### Components
 

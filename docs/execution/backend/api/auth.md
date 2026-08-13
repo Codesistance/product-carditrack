@@ -6,20 +6,27 @@ CardiTrack authentication is **Auth0-hosted**. All credential handling (email/pa
 
 ---
 
-## Authentication Flow (Universal Login + PKCE)
+## Authentication Flows
 
-Both web and mobile use the OAuth 2.0 Authorization Code flow with PKCE against Auth0:
+Two flows exist, and both end in the same Auth0-issued tokens — the CardiTrack API never sees a password either way:
+
+**Social sign-in (Google, Apple)** uses the OAuth 2.0 Authorization Code flow with PKCE against Auth0 Universal Login in the system browser:
 
 1. Client redirects to the Auth0 Universal Login page (`https://{tenant}.auth0.com/authorize`) with a PKCE challenge.
-2. User authenticates (email/password, Google, or Apple — all configured in Auth0).
+2. User authenticates with Google or Apple (both configured as Auth0 connections).
 3. Auth0 redirects back to the client (`carditrack://oauth/callback` on mobile) with an authorization code.
 4. Client exchanges the code (plus PKCE verifier) with Auth0 for an **access token**, **ID token**, and **refresh token**.
+
+**Email/password** does not open Universal Login: the mobile app calls Auth0's **Authentication API** directly (password-realm grant — `AuthService.SignInAsync` → `_auth0.LoginAsync`), sending the credentials to Auth0 and receiving the same token set back. The password goes to Auth0 alone.
+
+From there both flows converge:
+
 5. Client calls the CardiTrack API with `Authorization: Bearer <access_token>`.
 6. On first authenticated call, the API provisions the local `Users` row (keyed by `Auth0UserId`) — see [Onboarding](../../../technical/user_onboarding_process.md).
 
 New-user requirements (terms acceptance, organization creation) are enforced during onboarding, not at the Auth0 layer — see the [onboarding process](../../../technical/user_onboarding_process.md).
 
-> There are **no** `POST /auth/register`, `POST /auth/login`, or `POST /auth/social` endpoints. Any doc referencing them is outdated.
+> There are **no** `POST /auth/register`, `POST /auth/login`, or `POST /auth/social` endpoints on the CardiTrack API. Any doc referencing them is outdated. (The mobile client's password auth is against **Auth0's** Authentication API directly — never a CardiTrack endpoint.)
 
 ---
 
@@ -27,7 +34,7 @@ New-user requirements (terms acceptance, organization creation) are enforced dur
 
 | Token | Lifetime | Notes |
 |-------|----------|-------|
-| Access token | **15–60 minutes** | Validated by the API on every request (issuer, audience, expiry, signature) |
+| Access token | **1 hour** | Validated by the API on every request (issuer, audience, expiry, signature) with zero clock skew |
 | Refresh token | **Rotating; 30-day absolute lifetime** | Auth0 refresh token rotation enabled; reuse detection revokes the family |
 | Web session | **~15-minute idle timeout** | Cookie session; silent token renewal while active |
 | Mobile session | Refresh-token backed | Refresh token stored in platform secure storage (Keychain / Keystore), gated by biometrics (below) |
@@ -66,6 +73,13 @@ Onboarding endpoints deliberately **overwrite identity fields in the request bod
 - `locale` — parsed from the `Accept-Language` header (first language tag; default `en-US`)
 
 The `Users.Auth0UserId` column has a **unique filtered index** (excluding empty strings), making onboarding retries idempotent per Auth0 identity.
+
+### Social login and account linking
+
+One email can reach Auth0 through more than one identity (email/password, Google, Apple). At onboarding, `OnboardingService.ThrowIfEmailOwnedElsewhereAsync` checks whether another Auth0 identity already owns the token's email and returns **409** if so. The message depends on the caller's verification state:
+
+- **Verified token:** "You already have a CardiTrack account with this email under a different sign-in method. Sign in the way you first registered, and your sign-in methods will be linked automatically."
+- **Unverified token:** the non-disclosing "An account with this email already exists." — an unverified caller has not proven they own the address, so the response confirms nothing about how it was registered.
 
 ---
 
@@ -133,6 +147,7 @@ Authentication errors surface as standard API errors (see [readme.md](readme.md)
 |--------|-------------|
 | 401 | Missing, expired, or invalid access token (validated with zero clock skew) |
 | 403 | Token valid but no local user row yet (onboarding incomplete), or member-link authorization failed |
+| 409 | Onboarding email already owned by a different Auth0 identity — see "Social login and account linking" above |
 | 429 | Rate limit exceeded (see [readme.md](readme.md)) |
 
 > **Email verification is not enforced by the API.** The verification state from the token is persisted on the user record and echoed in onboarding status, but no API endpoint rejects unverified users — the gate is the **Auth0 post-login Action**, which blocks login until the email is verified. There is no `EMAIL_NOT_VERIFIED` API error.
@@ -141,4 +156,4 @@ Authentication errors surface as standard API errors (see [readme.md](readme.md)
 
 **Related:** [readme.md](readme.md) | [Auth0 Integration](../../../technical/auth0_integration.md) | [User Onboarding](../../../technical/user_onboarding_process.md) | [User Stories 1.1, 10.2](../../ui/mobile/user_stories.md)
 
-**Last Updated:** August 7, 2026
+**Last Updated:** August 13, 2026

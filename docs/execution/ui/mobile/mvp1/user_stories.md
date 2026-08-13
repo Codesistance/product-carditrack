@@ -7,8 +7,8 @@
 Stories mapped to MVP 1 screens (M1-01 through M1-17), plus the four shipped screens without Figma M1 frames.
 
 **Platform Requirements**
-- **Minimum iOS:** 16.0 — covers ~90%+ of active iPhones; required for modern platform APIs and reliable background push delivery
-- **Minimum Android:** 10 (API 29) — covers ~85–90% of active Android devices; required for scoped storage and modern permission model
+- **Minimum iOS:** 17.0 — required for modern platform APIs and reliable background push delivery
+- **Minimum Android:** 12 (API 31) — raised for the Android 12 SplashScreen API, so one splash design matches the OS handover on every supported device
 - **Target iOS:** 18 (latest stable)
 - **Target Android:** 15 / API 35 (latest stable)
 
@@ -33,8 +33,8 @@ Stories mapped to MVP 1 screens (M1-01 through M1-17), plus the four shipped scr
 - **So that** I don't abandon the setup process due to complexity
 - **Acceptance Criteria:**
   - Progressive disclosure (collect basic info first, details later)
-  - Required fields: Name, Date of Birth, Relationship
-  - Optional fields: Photo, medical notes (encrypted), emergency contacts
+  - Required fields: Name, Date of Birth, Sex (Male/Female — the Sex picker is a **deliberate divergence from the Figma comps**; it sets the reference range readings are judged against)
+  - Optional fields: Relationship (falls back to Other), Photo, medical notes (encrypted), emergency contacts
   - Clear privacy messaging ("Your parent will be notified")
   - Visual progress indicator (Step 2 of 4)
   - Emergency-phone placeholder localized by device region (PR #8): US/CA "+1 555 000 0000", GB "+44 7700 900000" — **limitation:** all other regions fall back to the US format, notable given the US + EU target market
@@ -45,7 +45,7 @@ Stories mapped to MVP 1 screens (M1-01 through M1-17), plus the four shipped scr
 - **I want to** connect my parent's wearable device through a guided wizard
 - **So that** I understand what permissions are needed and why
 - **Acceptance Criteria:**
-  - Device selection screen with icons (Fitbit — MVP 1; Apple Watch, Garmin, Samsung — Coming Soon)
+  - Device selection screen with icons (Fitbit and Google Pixel Watch — live in MVP 1, both via the Google Health API; Apple Watch, Garmin, Samsung — Coming Soon)
   - OAuth flow with clear permission explanations
   - "Why we need this" tooltips for each permission
   - Success confirmation with sample data preview
@@ -238,7 +238,7 @@ Stories mapped to MVP 1 screens (M1-01 through M1-17), plus the four shipped scr
 - CTA: "Start Free 30-Day Trial"
 
 ### Step 2: Account Creation (1 minute)
-- Email/password or "Continue with Google/Apple" (social buttons shipped but not yet wired)
+- Email/password or "Continue with Google/Apple" (social buttons wired — Auth0 PKCE authorization-code flow in the system browser on Android/iOS)
 - Checkbox: "I agree to Terms & Privacy Policy" (with links)
 - **No auto-login after creation** — the user must verify their email (VerifyEmailPage, Story 1.7) before entering the app; PostLoginRouter then routes to account-type setup (Story 1.8) or Add CardiMember
 
@@ -249,7 +249,7 @@ Stories mapped to MVP 1 screens (M1-01 through M1-17), plus the four shipped scr
 
 ### Step 4: Device Connection (3 minutes)
 - "What wearable device does [Name] use?"
-- Device icons with brands (Fitbit active; others Coming Soon in MVP 1)
+- Device icons with brands (Fitbit and Google Pixel Watch active; others Coming Soon in MVP 1)
 - Click → OAuth flow → Success
 - "Great! We're syncing [Name]'s data. This may take a few minutes."
 
@@ -278,7 +278,7 @@ Stories mapped to MVP 1 screens (M1-01 through M1-17), plus the four shipped scr
 | 1.1 | First-Time User Registration | P0 | Built (M1-02, M1-03) |
 | 1.2 | Adding First CardiMember | P0 | Built (M1-04) |
 | 1.3 | Device Connection Wizard | P0 | Built (M1-05–M1-08) |
-| 1.4 | CardiMember Profile Management | P0 | Not built (M1-13, M1-14) |
+| 1.4 | CardiMember Profile Management | P0 | Built (M1-13, M1-14) |
 | 1.5 | Sign In | P0 | Built — no Figma M1 frame |
 | 1.6 | Forgot Password | P0 | Built — no Figma M1 frame |
 | 1.7 | Verify Email | P0 | Built — no Figma M1 frame |
@@ -286,13 +286,13 @@ Stories mapped to MVP 1 screens (M1-01 through M1-17), plus the four shipped scr
 | 2.1 | Daily Health Overview | P0 | Built (M1-09) |
 | 3.1 | Receiving Critical Alerts | P0 | Partial — M1-10 alerts list built; detail screens (M1-11, M1-12, M1-16) not built |
 | 6.3 | Health Data Export | P0 | **Not built** (M1-17 — P0 but unbuilt) |
-| 3.3 | Alert Acknowledgment & Notes | P1 | Not built |
-| 6.2 | Device Management | P1 | Not built (M1-15) |
+| 3.3 | Alert Acknowledgment & Notes | P1 | Partial — inline acknowledge shipped on M1-10 (`POST /api/v1/alerts/{id}/acknowledge`); notes await the detail screens (M1-11/M1-12/M1-16) |
+| 6.2 | Device Management | P1 | Built (M1-15) |
 | 11.1 | Gradual Activity Decline | — | Not built (M1-11) |
 | 11.2 | Elevated Resting Heart Rate | — | Not built (M1-16) |
 | 11.3 | No Morning Activity | — | Not built (M1-12) |
 
-> **Telemetry-consent gap (product follow-up):** crash reporting and RUM (PR #4) ship enabled with `TrackingConsent.Granted` hardcoded — consent is granted by default, with no in-app opt-out and no diagnostics screen. **There is no in-app telemetry control in MVP 1.** This is in tension with the consent-first principle (Principle 4) — see Story 7.4 in the canonical [user_stories.md](../user_stories.md).
+> **Telemetry-consent gap (product follow-up):** Datadog telemetry is logs + traces only — RUM was removed in PR #185, and with it Datadog crash reporting (`NativeCrashReportEnabled=false`); crashes/ANRs come from Play Console vitals. `TrackingConsent.Granted` is still hardcoded — consent is granted by default, with no in-app opt-out and no diagnostics screen. **There is no in-app telemetry control in MVP 1.** This is in tension with the consent-first principle (Principle 4) — see Story 7.4 in the canonical [user_stories.md](../user_stories.md).
 
 ---
 

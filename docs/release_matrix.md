@@ -15,9 +15,9 @@ API endpoint priorities (P0–P2 in [/execution/backend/api/](./execution/backen
 
 ## Feature Matrix
 
-Legend: wave number = ships in that wave; — = not planned for that surface. **Status** is as of **August 9, 2026**: ✅ Shipped · 🔶 In progress / partial · ⬜ Not started.
+Legend: wave number = ships in that wave; — = not planned for that surface. **Status** is as of **August 13, 2026**: ✅ Shipped · 🔶 In progress / partial · ⬜ Not started.
 
-| Feature | API | Mobile | Web | Plan gate | Status (Aug 9, 2026) |
+| Feature | API | Mobile | Web | Plan gate | Status (Aug 13, 2026) |
 |---------|-----|--------|-----|-----------|----------------------|
 | Auth0 Universal Login (email + password) | R1 | R1 | R1 | — | ✅ Shipped, incl. email-verification gate |
 | Social sign-in (Google / Apple via Auth0) | R1 | R1 | R1 | — | 🔶 Buttons shipped but unwired (Phase 9; social connection credentials pending) |
@@ -25,11 +25,11 @@ Legend: wave number = ships in that wave; — = not planned for that surface. **
 | CardiMember CRUD + profile | R1 | R1 | R1 | Member limit by tier | 🔶 API + mobile shipped (GET/PUT/DELETE `/api/v1/cardimembers/{id}` + detail/edit screens); web not started (template-stage). Tier member limit not yet enforced |
 | Emergency contacts, medical notes (encrypted) | R1 | R1 | R1 | — | 🔶 API + mobile shipped inside member CRUD (medical notes AES-encrypted at rest); web not started (template-stage) |
 | Consent recording (per-metric) | R1 | R1 | R1 | — | ⬜ Not started |
-| Fitbit connection (Google Health API — server OAuth + REST client) | R1 | R1 | R1 | **100 connected wearers max until Google verification passes** | ✅ Client shipped (PR #10, migrated off legacy Fitbit Web API); 🔶 Google console registration + sandbox verification of "(assumed)" response fields pending |
-| Fitbit webhook subscriptions (push ingestion) | R2 | R2 | R2 | — | ⬜ Not started — moves to R2 with the AI pipeline (GCP Pub/Sub + Cloud Run); R1 ingestion is 10-minute Worker polling (✅ shipped) |
+| Fitbit connection (Google Health API — server OAuth + REST client) | R1 | R1 | R1 | **100 connected wearers max until Google verification passes** | ✅ Client shipped (PR #10, migrated off legacy Fitbit Web API); registration done 2026-08-07; 🔶 live-wearer field verification pending |
+| Fitbit webhook subscriptions (push ingestion) | R2 | R2 | R2 | — | 🔶 **Shipped in dev ahead of R2** — receiver live + Subscriber registered 2026-08-10, feeding Pub/Sub + the aggregator; prod off until the pipeline rollout. 10-minute Worker polling (✅ shipped) remains the guaranteed fallback |
 | Device management (status, primary, reconnect, remove) | R1 | R1 | R1 | — | 🔶 API + mobile shipped (remove / set-primary / sync / refresh endpoints + device management screen, M1-15); web not started (template-stage) |
 | Dashboard + daily health summary | R1 | R1 | R1 | — | 🔶 Per-member dashboard endpoint + mobile dashboard shipped; web dashboard not started (web app is still template-stage) |
-| Statistical alerts (all 5 launch types) + acknowledgment/notes | R1 | R1 | R1 | — | 🔶 **Shipped** via `StatisticalAlertWorker` (PR #118) and `InactivityDetectionWorker` (PR #116); `AlertsController` + `AlertsPage` (M1-10) serve them, and Red/Orange alerts now push via the delivery spine ([notification_engine.md](./technical/notification_engine.md)). Notes/photos and the alert-detail screens (M1-11/12/16) not started |
+| Statistical alerts (all 5 launch types) + acknowledgment/notes | R1 | R1 | R1 | — | 🔶 **Shipped** via `StatisticalAlertWorker` (PR #118) and `InactivityDetectionWorker` (PR #116); `AlertsController` + `AlertsPage` (M1-10) serve them, and Red/Orange alerts now push via the delivery spine ([notification_engine.md](./technical/notification_engine.md)). Notes/photos and the alert-detail screens (M1-11/12/16) not started. *Caveat: `InactivityDetectionWorker` was throwing on every tick until fixed 2026-08-13 — inactivity alerting was silently dead before that date* |
 | AI insights + chat endpoints (MedGemma via Ollama on Cloud Run; Gemini 2.0 Flash) | R1 | R1 | R1 | — | ✅ Shipped (synchronous endpoints; the R2 event-driven pipeline is separate) |
 | Reports (health report generation) | R1 | R1 | R2 | Complete Care | 🔶 Text-only generation shipped; PDF/CSV/FHIR R4 formats not started |
 | **Data-completeness notifications (in-app)** | R1 | R1 | R3 | — | ✅ **Shipped** — detection worker, 8 rules, inbox + dashboard card + safety banners + mute management. In-app only by decision; the staleness rule defers to `InactivityDetectionWorker`'s faster device-silence alert ([notification_engine.md](./technical/notification_engine.md)) |
@@ -48,9 +48,14 @@ Legend: wave number = ships in that wave; — = not planned for that surface. **
 | Notification preferences (global + per-member, quiet hours, sensitivity) | R2 | R2 | R2 | — | 🔶 Global quiet hours + lock-screen detail + per-category mute shipped ahead of schedule alongside the push spine ([notifications.md](./execution/backend/api/notifications.md)); per-member scoping and sensitivity tuning not started |
 | **Subscriptions & billing (Stripe)** | R2 | R2 | R2 | — | ⬜ Not started (no Stripe integration exists yet) |
 | Garmin connection | R2 | R2 | R2 | — | ⬜ Not started |
-| **AI pipeline** (Pub/Sub → SSA-LSTM → MedGemma on Cloud Run; `long_term_trend` alerts; digests) | R2 | R2 | R2 | Advanced alerts: Complete Care | ⬜ Not started (design: [llm_design.md](./llm_design.md); platform decision — see decision log #7) |
+| **AI pipeline** (Pub/Sub → SSA → MedGemma on Cloud Run; `long_term_trend` alerts; digests) | R2 | R2 | R2 | Advanced alerts: Complete Care | 🔶 **Shipped in dev ahead of R2** — digest, aggregator, assessor and webhook receiver all live on Pub/Sub + Cloud Run; prod enablement pending the MedGemma prod deploy. LSTM dropped 2026-08-10 — SSA pre-processing + prompt-injected reference ranges instead ([llm_design.md](./llm_design.md); decision log #7) |
 | Export — HL7 v2 | R2 | R2 | R2 | Complete Care | ⬜ Not started |
-| Predictive monitoring (prediction cards, morning outlook) | R3 | R3 | R3 | Complete Care | ⬜ Not started |
+| Family summaries / digests (half-hourly MedGemma summary + history) | R2 | R2 | R2 | — | 🔶 **Shipped in dev ahead of R2** — append-only `DigestEntries` with history, read via the insights digest endpoints; prod gated with the pipeline |
+| Real-time heart-rate assessment (SSA → MedGemma severity verdict) | R2 | R2 | R2 | — | 🔶 **Shipped in dev ahead of R2** — twice-hourly assessor over the granular store, red/orange verdicts create alerts; prod gated with the pipeline |
+| Family questionnaires (digest-proposed questions + answers) | R2 | R2 | — | — | ✅ Shipped — `MemberQuestionnaires` + questionnaires endpoints, one open question per member |
+| Environmental enrichment (weather/AQI context for GPS exercise sessions) | R3 | R3 | — | — | 🔶 Built but **inert** — code, schema and consent flag shipped; no Cloud Run job or scheduler provisioned, and the `googlehealth.location.readonly` scope not yet requested |
+| Granular minute-grain storage (hour vectors + rollups + retention) | R1 | R1 | R1 | — | ✅ Shipped — `GranularMetricHours`/`MetricRollupsHourly`, partitioned with retention by partition drop |
+| Trend interpretation (family-facing narrative, no risk scores) | R3 | R3 | R3 | Complete Care | ⬜ Not started — replaces predictive monitoring; prediction cards were descoped 2026-08-10 with the LSTM |
 | Family invitations + roles (admin/staff/viewer) | R3 | R3 | R3 | Family-member limit by tier | ⬜ Not started |
 | Shared care notes + @mentions | R3 | R3 | R3 | — | ⬜ Not started |
 | Multi-member comparison views | R3 | R3 | R3 | — | ⬜ Not started |
@@ -74,7 +79,7 @@ Legend: wave number = ships in that wave; — = not planned for that surface. **
 3. **Export plan-gating**: all export formats require **Complete Care** (Basic has no export), consistent with [subscriptions.md](./execution/backend/api/subscriptions.md).
 4. **`long_term_trend` alerts** require the AI pipeline and therefore ship in R2, not R1 — the five R1 alert types are statistical.
 5. **AI severity taxonomy**: internal Critical/High/Medium/Low maps to user-facing red/orange/yellow/green everywhere ([llm_design.md](./llm_design.md)).
-6. **Polling vs webhooks**: Worker polling **shipped as the R1 ingestion path** (originally 30-minute; default cadence reduced to **10 minutes** on Aug 9, 2026 — migration `ReduceDefaultSyncFrequencyToTenMinutes`) and remains the system of record for ingestion until R2. Webhook push subscriptions move to **R2**, delivered with the AI pipeline. The original R1 row bundled "server OAuth, webhooks" — that bundling is superseded; the matrix now splits them.
+6. **Polling vs webhooks**: Worker polling **shipped as the R1 ingestion path** (originally 30-minute; default cadence reduced to **10 minutes** on Aug 9, 2026 — migration `ReduceDefaultSyncFrequencyToTenMinutes`) and remains the system of record for ingestion until R2. Webhook push subscriptions move to **R2**, delivered with the AI pipeline. The original R1 row bundled "server OAuth, webhooks" — that bundling is superseded; the matrix now splits them. **Superseded (2026-08-10): both the webhook path and the AI pipeline shipped in dev ahead of R2; prod remains gated.**
 7. **AI pipeline platform**: the pipeline runs on **GCP — Pub/Sub + Cloud Run, with MedGemma served via Ollama on Cloud Run and Gemini 2.0 Flash for chat/reports** — superseding the earlier Azure Functions / Event Hubs design. This matches the deployed Terraform footprint (Cloud Run, Cloud SQL PostgreSQL, Secret Manager, `europe-west2`).
 8. **Push delivery pulled forward from R2 to ship alongside R1 alert generation**: with Firebase/FCM credentials provisioned (#108, PRs #173/#176/#177) and statistical alerts already producing real `Alert` rows (PRs #116/#118), the provisioning lead time that motivated an early start outweighed staying strictly wave-ordered. Quiet-hours/lock-screen preferences (originally R2) shipped with it since they share the same `NotificationPreference` surface. Per-member preference scoping, notification sensitivity tuning, and the AI pipeline's own `long_term_trend` alerts remain R2.
 
@@ -90,6 +95,6 @@ Legend: wave number = ships in that wave; — = not planned for that surface. **
 
 ---
 
-**Document Version:** 2.2
-**Last Updated:** August 11, 2026
+**Document Version:** 2.3
+**Last Updated:** August 13, 2026
 **Owner:** Product Lead

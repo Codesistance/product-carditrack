@@ -8,9 +8,9 @@ Two different things are called "data pull" in CardiTrack, and they are unrelate
 |---|---|---|
 | Direction | Google Health API → CardiTrack | CardiTrack API → client |
 | Driver | `CardiTrack.Worker` cron + per-connection due-ness | User navigation / pull-to-refresh |
-| Cadence | 10 min (worker *looks*), per-connection interval (what *syncs*, default 10 min) | 5-minute auto-refresh window, or on demand |
+| Cadence | 10 min (worker *looks*), per-connection interval (what *syncs*, default 10 min) | refresh on every app-foreground transition (5-second minimum gap), or pull-to-refresh |
 
-Push ingestion is **live in dev** (Subscriber registered 2026-08-10): Google Health webhook notifications trigger targeted syncs within seconds, with the 10-minute poll as the loss-proof fallback — see [release_matrix.md](../release_matrix.md) and [llm_design.md](../llm_design.md).
+Push ingestion is **live in dev** (Subscriber re-registered against `https://webhook.dev.carditrack.com/webhooks/google-health` after the 2026-08-13 WAF cutover — the receiver now sits behind the load balancer with ingress `INTERNAL_LOAD_BALANCER`): Google Health webhook notifications trigger targeted syncs within seconds, with the 10-minute poll as the loss-proof fallback — see [release_matrix.md](../release_matrix.md) and [llm_design.md](../llm_design.md).
 
 ---
 
@@ -36,7 +36,7 @@ flowchart LR
     K4["OrphanedOrganizationCleanupWorker<br/><i>0 0 3 * * * · MinAge 24 h</i>"]
     K5["OAuthTokenRefreshService<br/><i>5-min expiry buffer</i>"]
     K6["DeviceSyncService<br/><i>keyed DI on DeviceType</i>"]
-    K7["FitbitApiClient"]
+    K7["GoogleHealthApiClient"]
     K8["ActivityLogAggregationService"]
   end
 
@@ -57,7 +57,7 @@ flowchart LR
   end
 
   RD["<b>Memorystore Redis</b><br/>IDistributedCache<br/><i>cooldown 1 min · reports 1 h</i><br/><b>prod: not provisioned</b>"]
-  MB["<b>MAUI mobile</b><br/>DashboardPage<br/><i>5-min auto-refresh</i><br/><i>2-h stale threshold</i>"]
+  MB["<b>MAUI mobile</b><br/>DashboardPage<br/><i>refresh on foreground resume</i><br/><i>2-h stale threshold</i>"]
 
   W -->|"vendor sync"| GH
   WK -->|"HTTPS · Bearer · 13 calls per day-in-window + 1 battery · every 10 min"| GH
@@ -66,7 +66,7 @@ flowchart LR
   AP -->|"manual sync · on demand · max 1/min per member"| GH
   AP -->|"EF Core · Npgsql"| DB
   AP -->|"cooldown key · report cache"| RD
-  MB -->|"HTTPS/JSON · 5-min window · pull-to-refresh"| AP
+  MB -->|"HTTPS/JSON · resume refresh · pull-to-refresh"| AP
 ```
 
 ### R2 — receiver, aggregation and assessment live (dev)
@@ -78,7 +78,7 @@ flowchart LR
   P2["Pub/Sub<br/>carditrack-prod-realtime<br/><i>topic provisioned, prod</i>"]
   P3["WearableAggregator<br/>Cloud Run job<br/><i>every 5 min</i>"]
   P5["GranularMetricHours<br/><i>minute-grain store</i>"]
-  P6["RealtimeAssessor<br/>Cloud Run job<br/><i>every 5 min, offset</i>"]
+  P6["RealtimeAssessor<br/>Cloud Run job<br/><i>twice hourly · :02 / :32</i>"]
   P4["RealtimeAssessments<br/><i>Cloud SQL, typed + partitioned</i><br/><i>90-day retention</i>"]
 
   P0 -->|"notify"| P1 -->|"204 + forward"| P2 --> P3 -->|"targeted sync"| P5
@@ -100,14 +100,21 @@ The aggregator's **first increment is live (dev)**: every 5 minutes the `pipelin
 | | `DeviceSyncAuditWorker` | same, sample of 25 | `0 0 4 * * 0` — Sunday 04:00 |
 | | `BaselineCalculationWorker` | `BaselineCalculator` (pure, stateless) | `0 30 2 * * *` — daily 02:30 |
 | | `OrphanedOrganizationCleanupWorker` | EF Core bulk delete | `0 0 3 * * *` — daily 03:00 |
+| | `PartitionMaintenanceWorker` | partition DDL over the sub-daily/pipeline tables | `0 15 * * * *` — hourly at :15, plus `RunOnStartup` |
+| | `InactivityDetectionWorker` | device-silence `Inactivity` alerts | `0 */15 * * * *` — every 15 min |
+| | `StatisticalAlertWorker` | statistical alert rules over `ActivityLogs` vs baselines | `0 7-59/15 * * * *` — every 15 min, :07 offset |
+| | `DeviceAuthRecoveryWorker` | retries `TokenExpired`/`AuthError` grants, per-connection backoff | `0 3-59/15 * * * *` — every 15 min, :03 offset |
+| | `DataCompletenessWorker` | data-gap detection → notifications | `0 0 6 * * *` — daily 06:00 |
+| | `NotificationDispatchWorker` | push delivery + escalation ladder | `*/30 * * * * *` — every 30 s |
+| | `PushCanaryWorker` | end-to-end push delivery canary | `0 */15 * * * *` — every 15 min |
 | | `OAuthTokenRefreshService` | OAuth 2.0 `refresh_token` grant, `IHttpClientFactory` | inline in sync path, 5-min expiry buffer |
-| | `DeviceSyncService`, `FitbitApiClient`, `ActivityLogAggregationService` | `HttpClient`, Newtonsoft parsing, EF Core | per due connection |
-| **Cloud Run** `carditrack-<env>-api` | `DevicesController`, `ManualDeviceSyncService` | ASP.NET Core; shares `DeviceSyncService`/`FitbitApiClient` from `CardiTrack.Infrastructure` | on demand, 1-min cooldown per member |
+| | `DeviceSyncService`, `GoogleHealthApiClient`, `ActivityLogAggregationService` | `HttpClient`, Newtonsoft parsing, EF Core | per due connection |
+| **Cloud Run** `carditrack-<env>-api` | `DevicesController`, `ManualDeviceSyncService` | ASP.NET Core; shares `DeviceSyncService`/`GoogleHealthApiClient` from `CardiTrack.Infrastructure` | on demand, 1-min cooldown per member |
 | | `DashboardService`, `HealthInsightService`, `ReportGenerationService` | EF Core reads over `ActivityLogs` | per request |
 | **Cloud SQL** PostgreSQL 16 | `DeviceConnections`, `DeviceActivityLogs`, `ActivityLogs`, `PatternBaselines`, `DeviceTypeSyncProfiles` | EF Core 10 + Npgsql, `EnableLegacyTimestampBehavior=false`; AES-256-GCM at rest for tokens | write per synced day; read per request |
 | **Memorystore Redis** | manual-sync cooldown key, OAuth state, report cache | `IDistributedCache` | 1 min / 1 h TTLs — **`enable_redis = false` in prod today** |
 | **External** `health.googleapis.com` | Google Health API v4, Google OAuth 2.0 | HTTPS, Bearer tokens | 13 calls per day-in-window per connection, **plus one `pairedDevices` battery read per pull** — flat, not per day, and skipped entirely without the `settings` scope |
-| **Client** MAUI mobile | `DashboardPage` | .NET MAUI (iOS/Android) | 5-min auto-refresh window; 2-h stale threshold |
+| **Client** MAUI mobile | `DashboardPage` | .NET MAUI (iOS/Android) | refresh on foreground resume (5-s minimum gap) + pull-to-refresh; 2-h stale threshold |
 | **Client** Blazor web | — | .NET 10 Blazor Web App, EF Core direct to Cloud SQL | no data-refresh path yet (template shell) |
 
 ---
@@ -127,7 +134,7 @@ The aggregator's **first increment is live (dev)**: every 5 minutes the `pipelin
    Peak in-flight is therefore ~12 requests for a single wearer. The Google Health per-user ceiling is 300 requests/minute, which this is comfortably inside on volume, but its QPS reading (5/s standard, 2.5/s for an unverified app) is **not** — see the quota note below.
 4. **Write raw** → `SaveChanges` → **re-merge** → `SaveChanges`. The raw row is saved first because the merge reads every device's *stored* row for that day.
 5. **Stamp `LastSyncDate` only once the whole window lands** — a partial sync stays due for retry instead of silently leaving a hole.
-6. **Fetch the granular series for the window's days** (Worker pulls only — `SyncScope.WorkerCadence`, and only *after* the success stamp: granular is enrichment, and a transient failure in it must not un-succeed the daily data that already landed). 4 more `list` calls per day (heart-rate and SpO2 as timestamped samples, steps and active-zone-minutes as intervals), bucketed into per-device hour vectors (`GranularDayBucketer` — additive metrics sum within a minute, level metrics take the latest reading) and stored via `GranularIngestionService`, which then recomputes the member's hourly rollups from the **merged** window. Backfill days skip this — intraday history depth is unverified (granular ADR open question). Worker-cadence day cost is therefore **17 calls**, still one day-at-a-time against the per-wearer ceiling.
+6. **Fetch the granular series for the window's days** (Worker pulls only — `SyncScope.WorkerCadence`, and only *after* the success stamp: granular is enrichment, and a transient failure in it must not un-succeed the daily data that already landed). 4 more `list` calls per day (heart-rate and SpO2 as timestamped samples, steps and active-zone-minutes as intervals) — issued **sequentially, not concurrently**, a deliberate choice to bound paging buffers after the 2026-08-11 worker OOM — bucketed into per-device hour vectors (`GranularDayBucketer` — additive metrics sum within a minute, level metrics take the latest reading) and stored via `GranularIngestionService`, which then recomputes the member's hourly rollups from the **merged** window. Backfill days skip this — intraday history depth is unverified (granular ADR open question). Worker-cadence day cost is therefore **17 calls**, still one day-at-a-time against the per-wearer ceiling.
 7. **Backfill one chunk of history** (Worker pulls only — `SyncScope.WorkerCadence`; the manual path skips this so a caregiver's refresh never waits on last month). `DeviceConnection.HistoryBackfilledTo` walks backwards from the routine window towards `backfill_days` (**90**) days ago, `backfill_chunk_days` (**7**) days per pull, newest first, advancing per day so an interrupted chunk resumes. A fresh connection's history is fully fetched after ~13 pulls (~2 h at the 10-minute cadence), which is what lets the 30-day baseline exist on day one for a wearable that has been worn before. Empty days are checked but not stored — an all-null row would read as a "data day" to the baseline coverage gate.
 
 ### Two-level frequency
@@ -177,6 +184,13 @@ The same query excludes removed and monitoring-paused members — in the query r
 | `OrphanedOrganizationCleanupWorker` cron | `0 0 3 * * *` | `Workers:…:CronExpression` |
 | `BaselineCalculationWorker` cron | `0 30 2 * * *` | `Workers:…:CronExpression` |
 | `DeviceSyncAuditWorker` cron / sample | `0 0 4 * * 0` / 25 | `Workers:DeviceSyncAuditWorker` |
+| `PartitionMaintenanceWorker` cron | `0 15 * * * *` (+ `RunOnStartup`) | `Workers:…:CronExpression` |
+| `InactivityDetectionWorker` cron | `0 */15 * * * *` | `Workers:…:CronExpression` |
+| `StatisticalAlertWorker` cron | `0 7-59/15 * * * *` | `Workers:…:CronExpression` |
+| `DeviceAuthRecoveryWorker` cron | `0 3-59/15 * * * *` | `Workers:…:CronExpression` |
+| `DataCompletenessWorker` cron | `0 0 6 * * *` | `Workers:…:CronExpression` |
+| `NotificationDispatchWorker` cron | `*/30 * * * * *` | `Workers:…:CronExpression` |
+| `PushCanaryWorker` cron | `0 */15 * * * *` | `Workers:…:CronExpression` |
 | `SyncFrequencyMinutes` | 10 | per `DeviceConnection` row |
 | `sync_lookback_days` | 3 | `device_pull_params` tfvars |
 | `backfill_days` / `backfill_chunk_days` | 90 / 7 | `device_pull_params` tfvars |
@@ -187,7 +201,7 @@ The same query excludes removed and monitoring-paused members — in the query r
 | OAuth expiry buffer | 5 min | `OAuthTokenRefreshService.ExpiryBuffer` |
 | Manual-sync cooldown | 1 min | `ManualDeviceSyncService.Cooldown` |
 | Report download TTL | 1 h | `ReportGenerationService.ReportTtl` |
-| Mobile auto-refresh window | 5 min | `DashboardPage.AutoRefreshInterval` |
+| Mobile resume-refresh minimum gap | 5 s | `ResumeRefresh.MinimumGap` |
 | Mobile stale threshold | 2 h | `DashboardPage.StaleThreshold` |
 | Auth token refresh skew | 30 s | `TokenRefresher.ExpirySkew` |
 | Orphan cleanup `MinAge` | 24 h | `OrphanedOrganizationCleanupWorker.MinAge` |
@@ -205,11 +219,11 @@ Published default limits, and what this pipeline actually spends against them:
 Two things to keep in view, neither of which is about how often we poll:
 
 - **The per-user QPS burst is over.** A day's snapshot fires ~12 requests at once for one wearer, against a 5/s standard reading and 2.5/s unverified. Volume is fine; shape is not. Capping the per-wearer fan-out is the fix, not a slower cadence. This is unrelated to and not fixed by the pagination pacing below — it is the wider 12-request daily-snapshot burst, still open.
-- **Nothing enforces any of this at runtime.** `MinPullIntervalMinutes`, `MaxPullIntervalMinutes`, `DormancyThresholdPulls` and `DormancyBackoffFactor` are validated in `DeviceProviderServiceExtensions.PostConfigure` — so a malformed pair stops the host — but **no code consults them once running**: there is no governor and no dormancy backoff. `MaxRequestsPerSecond` is not read at all, not even validated. `FitbitApiClient` has no `429` handling either: a throttle surfaces as `FitbitApiException`, marks the connection `SyncError` and aborts that pull.
-- **Granular pagination is paced, narrowly.** A live continuous-heart-rate wearer (2026-08-10) legitimately paged well past the sample series' old 20,000-point cap, which was sized off a 1-minute cadence assumption the device disproved — see [oauth_clients.md §5(b)](./oauth_clients.md). The cap is now 100,000, and `FitbitApiClient.ListDataPointsAsync` waits `PageRequestDelay` (500ms) before each page after the first, so a series that now runs to several pages doesn't stack fully onto the burst above. Scoped to that one loop — it does not touch the wider 12-request fan-out, which is still unpaced.
+- **Nothing enforces any of this at runtime.** `MinPullIntervalMinutes`, `MaxPullIntervalMinutes`, `DormancyThresholdPulls` and `DormancyBackoffFactor` are validated in `DeviceProviderServiceExtensions.PostConfigure` — so a malformed pair stops the host — but **no code consults them once running**: there is no governor and no dormancy backoff. `MaxRequestsPerSecond` is not read at all, not even validated. `GoogleHealthApiClient` has no `429` handling either: a throttle surfaces as `GoogleHealthApiException`, marks the connection `SyncError` and aborts that pull.
+- **Granular pagination is paced, narrowly.** A live continuous-heart-rate wearer (2026-08-10) legitimately paged well past the sample series' old 20,000-point cap, which was sized off a 1-minute cadence assumption the device disproved — see [oauth_clients.md §5(b)](./oauth_clients.md). The cap is now 100,000, and `GoogleHealthApiClient.ListDataPointsAsync` waits `PageRequestDelay` (500ms) before each page after the first, so a series that now runs to several pages doesn't stack fully onto the burst above. Scoped to that one loop — it does not touch the wider 12-request fan-out, which is still unpaced.
 - **The 100-user unverified cap** binds before any of the above. Restricted-scope verification + CASA is issue #39.
 
-Cadence belongs to the **device type**, not to any one connection — providers differ in how quickly they finalise a day and how hard they rate-limit. The `[min, max]` bounds live in version-controlled infrastructure, so widening them is deliberately a deploy: a miscomputed cadence in a cardiac-monitoring product does not cost throughput, it silently delays alerts. Both `AddFitbitProvider`'s `PostConfigure` and the Terraform variable validate the same rules, so the plan fails before a bad revision deploys *and* the host fails fast if one is set some other way.
+Cadence belongs to the **device type**, not to any one connection — providers differ in how quickly they finalise a day and how hard they rate-limit. The `[min, max]` bounds live in version-controlled infrastructure, so widening them is deliberately a deploy: a miscomputed cadence in a cardiac-monitoring product does not cost throughput, it silently delays alerts. Both `AddGoogleHealthProvider`'s `PostConfigure` and the Terraform variable validate the same rules, so the plan fails before a bad revision deploys *and* the host fails fast if one is set some other way.
 
 ---
 
@@ -218,7 +232,7 @@ Cadence belongs to the **device type**, not to any one connection — providers 
 | Failure | Effect |
 |---|---|
 | Provider API exception mid-sync | `ConnectionStatus.SyncError`, but **still in the sync rotation** — retry rides its own `SyncFrequencyMinutes` |
-| Refresh token rejected (`invalid_grant`, `invalid_token`, `expired_token`, `access_denied`) | `TokenExpired` — out of rotation until re-consent |
+| Refresh token rejected (`invalid_grant`, `invalid_token`, `expired_token`, `access_denied`) | `TokenExpired` — out of the sync rotation, but no longer terminal: `DeviceAuthRecoveryWorker` retries the grant on a widening per-connection backoff (`NextAuthRecoveryAt`/`AuthRecoveryAttempts`); re-consent is needed only for a genuinely revoked grant |
 | Network/DNS failure during refresh | Status untouched — a DNS blip must not retire a working device |
 | `400`/`404` on `daily-resting-heart-rate` | Tolerated, `RestingHeartRate` stays null — unless it is a malformed-request `400`, which propagates |
 | Audit pull failure | Logged at **Warning**; no data and no status affected |
@@ -237,4 +251,4 @@ Cadence belongs to the **device type**, not to any one connection — providers 
 
 ---
 
-**Last Updated:** August 8, 2026
+**Last Updated:** August 13, 2026

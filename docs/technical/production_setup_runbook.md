@@ -12,8 +12,9 @@
 
 ## The order
 
-Steps 1–5 make the platform deployable. Steps 6–9 make the AI pipeline live. Steps 10–12 are
-gates that must clear before prod serves real families.
+Steps 1–5 make the platform deployable. Steps 6–9 make the AI pipeline live — including
+step 7a (the WAF cutover), reachable once step 6 is done and a prerequisite of step 9's smoke
+check. Steps 10–12 are gates that must clear before prod serves real families.
 
 ---
 
@@ -98,8 +99,9 @@ Apple account.
 
 ### 5. MedGemma service
 
-Prod has **no MedGemma**: `medgemma_image` is empty in `prod.tfvars`, and every pipeline
-flag is off because of it. Enabling: build/push the image (CI lane exists), set
+Prod has **no MedGemma**: `medgemma_image` is empty in `prod.tfvars`, and the pipeline-job
+and webhook-receiver flags are off because of it (Pub/Sub itself is already provisioned in
+prod). Enabling: build/push the image (CI lane exists), set
 `medgemma_image` in prod.tfvars, apply. Same `Q4_K_M` tag as dev — an assessment made in one
 environment must mean the same in another, and **no cheaper substitute models** in any
 environment (cost is managed by scale-to-zero, not substitution).
@@ -107,9 +109,10 @@ environment (cost is managed by scale-to-zero, not substitution).
 ### 6. Pipeline enablement flags (Terraform, listed here for ordering)
 
 After steps 2 and 5, flip in `prod.tfvars` and apply:
-`enable_pipeline_jobs`, `enable_pubsub`, `enable_webhook_receiver` — currently all `false`
-with rationale comments. This creates the three pipeline jobs, schedulers, topic/subscription,
-receiver service, and the webhook secret. CI then owns the images.
+`enable_pipeline_jobs` and `enable_webhook_receiver` — currently `false` with rationale
+comments. `enable_pubsub` is **already `true` in prod**, so the topic/subscription exist;
+the apply creates the three pipeline jobs, schedulers, receiver service, and the webhook
+secret. CI then owns the images.
 
 ### 7. Health webhook Subscriber registration (the step this runbook was born from)
 
@@ -130,7 +133,7 @@ Verified against the v4 discovery document and live API responses (2026-08-10):
    health-specific IAM roles exist, so the caller needs a basic role there):
 
 ```
-curl -s -X POST "https://health.googleapis.com/v4/projects/carditrack-devices-<env>/subscribers" \
+curl -s -X POST "https://health.googleapis.com/v4/projects/<PROJECT_NUMBER>/subscribers" \
   -H "Authorization: Bearer $(gcloud auth print-access-token)" -H "Content-Type: application/json" \
   -d '{
     "endpointUri": "<RECEIVER_URL>/",

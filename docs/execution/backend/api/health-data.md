@@ -2,7 +2,9 @@
 
 Provides health metrics, baselines, and dashboard data for caregivers.
 
-**Implementation status:** the **per-member dashboard** below is implemented and is the single health-data read endpoint today (plus the AI narrative baseline under `/api/v1/insights`). The multi-member dashboard, daily summary, trends, numeric baseline, batch ingestion, and export endpoints are **planned — not yet implemented** and marked as such.
+**Implementation status:** the **per-member dashboard** below is implemented, plus **five AI endpoints under `/api/v1/insights`**: `alerts/{alertId}` (see [alerts.md](alerts.md)), `members/{id}/baseline`, `members/{id}/status`, `members/{id}/digest`, and `members/{id}/digests`. The multi-member dashboard, daily summary, trends, numeric baseline, batch ingestion, and export endpoints are **planned — not yet implemented** and marked as such.
+
+> **Beneath these endpoints:** minute-grain granular storage exists (`GranularMetric`: HeartRate, Steps, ActiveZoneMinutes, SpO2 — 90-day granular retention, 13-month rollups) — see [granular_timeseries_storage.md](../../../technical/granular_timeseries_storage.md).
 
 **User Stories:** 2.1 (Daily Health Overview), 2.2 (Multi-Member Dashboard), 2.3 (Trend Charts), 5.2 (Mobile Widget), 6.3 (Health Data Export), 10.1 (Offline Support)
 
@@ -10,7 +12,7 @@ Provides health metrics, baselines, and dashboard data for caregivers.
 
 ## GET `/api/v1/cardimembers/{id}/dashboard` — implemented
 
-Composed dashboard payload for **one CardiMember** (mobile Main Dashboard, M1-09): hero status, key metrics with 7-day series, recent alerts, and device/baseline state in a single round-trip. (There is **no** account-wide `GET /api/v1/dashboard` — the multi-member view is assembled client-side from `GET /api/Onboarding/cardimembers` plus per-member calls.)
+Composed dashboard payload for **one CardiMember** (mobile Main Dashboard, M1-09): hero status, key metrics with 30-day series, recent alerts, and device/baseline state in a single round-trip. (There is **no** account-wide `GET /api/v1/dashboard` — the multi-member view is assembled client-side from `GET /api/Onboarding/cardimembers` plus per-member calls.)
 
 **Priority:** P0 | **Auth Required:** Yes (active `UserCardiMember` link with `CanViewHealthData`)
 
@@ -30,9 +32,16 @@ Wrapped in the standard `ApiResponse<T>` envelope:
   "name": "Margaret Doe",
   "age": 80,
   "phone": "+15551234567",
+  "emergencyContactName": "Jane Doe",
+  "emergencyContactPhone": "+15551234568",
   "photoUrl": null,
   "healthStatus": "yellow",
+  "monitoringPaused": false,
+  "monitoringPausedUntil": null,
+  "monitoringPauseReason": null,
   "lastSyncedAt": "2026-08-07T08:30:00Z",
+  "dataFreshness": "green",
+  "dataFreshnessMessage": "Up to date",
   "unreadAlertCount": 1,
   "device": {
     "hasActiveConnection": true,
@@ -91,6 +100,45 @@ Wrapped in the standard `ApiResponse<T>` envelope:
       "qualityScore": 4,
       "series": [ { "date": "2026-08-07", "value": 7.2 } ],
       "reference": { "low": 7, "high": 9, "source": "NSF" }
+    },
+    "temperature": {
+      "value": -0.2,
+      "baseline": 0.0,
+      "changePercent": null,
+      "unit": "°C",
+      "status": "green",
+      "goal": null,
+      "rangeLow": null,
+      "rangeHigh": null,
+      "qualityScore": 5,
+      "series": [ { "date": "2026-08-07", "value": -0.2 } ],
+      "reference": null
+    },
+    "spO2": {
+      "value": 96,
+      "baseline": null,
+      "changePercent": null,
+      "unit": "%",
+      "status": "unknown",
+      "goal": null,
+      "rangeLow": null,
+      "rangeHigh": null,
+      "qualityScore": null,
+      "series": [ { "date": "2026-08-07", "value": 96 } ],
+      "reference": { "low": 94, "high": 100, "source": "WHO" }
+    },
+    "breathingRate": {
+      "value": 14,
+      "baseline": null,
+      "changePercent": null,
+      "unit": "brpm",
+      "status": "unknown",
+      "goal": null,
+      "rangeLow": null,
+      "rangeHigh": null,
+      "qualityScore": null,
+      "series": [ { "date": "2026-08-07", "value": 14 } ],
+      "reference": { "low": 12, "high": 20, "source": "WHO" }
     }
   },
   "recentAlerts": [
@@ -110,14 +158,15 @@ Wrapped in the standard `ApiResponse<T>` envelope:
 
 Field notes:
 
-- The sleep metric key is **`sleep`** (not `sleepHours`); there is **no `activeMinutes` metric**.
+- There are **six metrics** — `steps`, `restingHeartRate`, `sleep`, `temperature` (nightly *skin* temperature, compared against the device's own nightly baseline), `spO2`, and `breathingRate` — matching the `qualityScore` and `reference` tables below. The sleep key is **`sleep`** (not `sleepHours`); there is **no `activeMinutes` metric**.
 - `photoUrl` is always `null` today (no photo storage exists).
 - `metrics` is **`null`** when the member has no activity logs in the last 30 days.
+- `dataFreshness` is deterministic **data-pipeline** freshness, deliberately independent of `healthStatus`'s clinical severity: `red` = no sync in 12 h, `amber` = no sync in 4 h, `blue` = synced but not yet assessed, `green` = the latest sync has been assessed. `dataFreshnessMessage` is its human-readable caption.
 - Each metric resolves **independently**, from the most recent day that actually reported it. Ingestion stores the day in progress, so today's row appears as soon as the provider reports anything at all; a metric it has not filled in yet falls back to the last day that carried one rather than blanking a card that was populated a moment ago. This is the same per-metric coalescing the multi-device merge applies, applied across days.
-- Each metric carries a 7-day `series` of `{date, value}` points ending **today** (missing days → `value: null`).
+- Each metric carries a **30-day** `series` (`MemberInsightsCalculator.SeriesDays = 30`) of `{date, value}` points ending **today** (missing days → `value: null`). Clients showing a shorter window (7/14 days) take the tail.
 - `device.connectionStatus` is the internal enum name (`Connected`, `TokenExpired`, …) — unlike the lowercase statuses in [devices.md](devices.md).
 - `recentAlerts` holds the **5 most recent** active alerts; `unreadAlertCount` counts unresolved, unacknowledged alerts.
-- `goal` on steps defaults to the baseline average (or 10 000 when no baseline); `rangeLow`/`rangeHigh` are heart-rate mean ± one standard deviation; `qualityScore` is the 1–5 star rating described below.
+- `goal` on steps is the member's **own baseline average** and **`null` until a baseline exists** — there is no 10 000 fallback, because no standards body publishes a daily step count and a round number would be our arithmetic under nobody's authority. Clients draw no progress bar rather than one against an invented target. `rangeLow`/`rangeHigh` are heart-rate mean ± one standard deviation; `qualityScore` is the 1–5 star rating described below.
 - `reference` is the **published typical-adult range** for the metric — the population counterpart to `baseline`, which is this member's own learned normal. Described below.
 
 **Health Status Values** (`healthStatus` and per-metric `status` — lowercase strings):
@@ -129,6 +178,7 @@ Field notes:
 | `orange` | Notable deviation — recommend action |
 | `red` | Critical alert — immediate attention |
 | `unknown` | Insufficient data (baseline still learning) |
+| `paused` | Monitoring is paused — deliberately outside the severity scale, because a paused member has no current health colour |
 
 **Deviation thresholds and baseline window** (fixed constants, no per-user sensitivity settings):
 
@@ -228,7 +278,7 @@ Clients must not label either output as a trend assessment. The learning prompt 
 
 ## GET `/api/v1/insights/members/{id}/digest` — implemented (AI narrative)
 
-The member's **daily family digest**: a plain-language previous-day summary generated each morning (06:00 in the member's anchor timezone) by the pipeline's digest job. Read-only — no model call happens on this path; `?date=YYYY-MM-DD` selects a specific local day, otherwise the most recent digest is returned.
+The member's **family digest**: a plain-language **rolling summary of the local day in progress**, regenerated whenever the member's readings move — with a **20-minute floor** between regenerations, on a **quarter-hourly** scheduler trigger. It is *not* a fixed 06:00 previous-day snapshot: the text a caregiver reads at noon describes the day so far. Read-only — no model call happens on this path; `?date=YYYY-MM-DD` selects a specific local day, otherwise the most recent digest is returned.
 
 **Priority:** P1 | **Auth Required:** Yes
 
@@ -237,16 +287,36 @@ The member's **daily family digest**: a plain-language previous-day summary gene
 ```json
 {
   "cardiMemberId": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
-  "localDate": "2026-08-09",
+  "localDate": "2026-08-10",
   "audience": "Family",
-  "text": "Margaret had a settled day yesterday — activity in her usual range and a full night's sleep. Nothing needs your attention.",
-  "generatedAtUtc": "2026-08-10T05:00:12Z"
+  "headline": "A settled day so far",
+  "text": "Margaret is having a settled day so far — activity in her usual range after a full night's sleep. Nothing needs your attention.",
+  "suggestions": [
+    "A short afternoon walk together would top up her steps.",
+    "She slept well — a good day for a longer call.",
+    "No follow-up needed on yesterday's low activity."
+  ],
+  "generatedAtUtc": "2026-08-10T14:20:12Z"
 }
 ```
+
+`headline` is a few words naming what the summary is about — `null` on digests generated before headlines existed, so clients fall back to their own label. `suggestions` is **exactly three** short ways the family could support the member today, generated alongside the text; it is `null` when a generation produced none that survived validation, and clients hide the section rather than render a partial set.
 
 `404` when no digest has been generated yet — the first days of a new member legitimately are, since digests require a day of data behind them. `localDate` is the member's local calendar day the text describes, so clients render it without timezone arithmetic.
 
 The prompt carries a member context block — age, sex, and caregiver-entered medical notes — because a resting heart rate is not interpretable without them. The member's **name and id are never sent** to the model.
+
+## GET `/api/v1/insights/members/{id}/digests` — implemented
+
+Digest **history**, newest first: the current digest and the regenerations behind it. `?limit=` caps the page (default 24; an omitted or nonsense value takes the default, and the service clamps into range). Returns an **empty list rather than 404** when the member has no digests yet — "no summaries yet" is an ordinary answer to a history question, where the single-digest endpoint above is asking for a thing that either exists or does not.
+
+**Priority:** P1 | **Auth Required:** Yes
+
+## GET `/api/v1/insights/members/{id}/status` — implemented (AI narrative)
+
+A short, empathetic line describing the member's current status — what the dashboard's hero card shows once it resolves, in place of the fixed per-severity-tier copy the client renders while the call is in flight. Cached per member; a `null` message means there is nothing to say yet and the client keeps its existing copy.
+
+**Priority:** P1 | **Auth Required:** Yes
 
 ---
 
@@ -282,7 +352,7 @@ Get the current calculated numeric baseline values (steps, resting heart rate, s
 
 ## POST `/api/v1/cardimembers/{id}/health-data/batch`
 
-> **Planned — not yet implemented.** No Apple Health bridge exists — there is no ingestion endpoint, and server-OAuth data arrives via the Worker's 10-minute provider poll (not webhooks).
+> **Planned — not yet implemented.** No Apple Health bridge exists — there is no ingestion endpoint. Server-OAuth data arrives **notify-then-fetch** via the Google Health webhook (a provider notification triggers a targeted sync), with the Worker's 10-minute poll as the fallback — see [devices.md](devices.md).
 
 Device-bridge ingestion for **on-device providers** (Apple Health): the mobile app would read HealthKit locally and upload normalized daily samples.
 
@@ -302,4 +372,4 @@ Export health data in human-readable (PDF, CSV) and interoperable medical format
 
 **Related:** [readme.md](readme.md) | [alerts.md](alerts.md) | [reports.md](reports.md) | [devices.md](devices.md) | [User Stories 2.1, 2.2, 2.3, 5.2, 10.1](../../ui/mobile/user_stories.md)
 
-**Last Updated:** August 7, 2026
+**Last Updated:** August 13, 2026

@@ -1,6 +1,6 @@
 # Granular Time-Series Storage (ADR)
 
-**Status:** Accepted — 2026-08-09
+**Status:** Accepted — 2026-08-09 · Implemented (status notes updated 2026-08-13)
 **Decision owner:** Architecture
 **Related:** [llm_design.md](../llm_design.md) · [data_sync_architecture.md](./data_sync_architecture.md) · [data_protection_architecture.md](./data_protection_architecture.md) · [infrastructure.md](../infrastructure.md)
 
@@ -10,9 +10,9 @@ Sub-daily wearable samples (1-minute heart rate, steps, active-zone minutes; ~5-
 
 ## 1. Context
 
-Everything CardiTrack stores about a wearer's day today is **one row per member per day** (`ActivityLogs`, merged from per-device `DeviceActivityLogs` — see the [allocation view](./data_sync_architecture.md)). That grain is sufficient for the dashboard and the 30/60/90-day `PatternBaseline`s, and insufficient for everything the [LLM design](../llm_design.md) commits to next:
+Everything CardiTrack stores about a wearer's day today is **one row per member per day** (`ActivityLogs`, merged from per-device `DeviceActivityLogs` — see the [allocation view](./data_sync_architecture.md)). That grain is sufficient for the dashboard and the 7/14/30/60/90-day `PatternBaseline`s, and insufficient for everything the [LLM design](../llm_design.md) commits to next:
 
-- the **real-time path** consumes 1-minute intraday series (SSA decomposition over a 30-minute lag window, LSTM look-back of 60 samples, 5-minute assessment windows);
+- the **real-time path** consumes 1-minute intraday series (SSA decomposition over a 30-minute lag window, 5-minute assessment windows);
 - **moving-window inference** ("assess the last hour, every few minutes") has no substrate — a daily row cannot answer an intra-day question;
 - the agreed product direction is **granular points plus multi-horizon rollups** (hour / day / week / month), with inference running on a moving window over the granular series.
 
@@ -36,15 +36,15 @@ For calibration: Bigtable's justification zone starts around **10 K+ sustained w
 
 | Table | Grain | Written by | Notes |
 |---|---|---|---|
-| `GranularMetricHours` | one row per **member × device × metric × hour**, holding a 60-slot value array + sample count | `WearableSyncWorker` (extended to fetch intraday `list` types) | **Per-device, merged on read** by device priority — mirrors the `DeviceActivityLogs` → `ActivityLogs` precedent without rewriting merged hours on every 10-minute sync. Range-partitioned by day. |
-| `MetricRollupsHourly` | one row per member × metric × hour (min/max/avg/sum), merged across devices | same job, same transaction | The hour horizon of the rollup ladder. |
+| `GranularMetricHours` | one row per **member × device × metric × hour**, holding a 60-slot value array + sample count | `GranularIngestionService` (via `DeviceSyncService.IngestGranularWindowAsync`), reached by two triggers: `WearableSyncWorker`'s routine pull and the webhook-driven aggregator | **Per-device, merged on read** by device priority — mirrors the `DeviceActivityLogs` → `ActivityLogs` precedent without rewriting merged hours on every 10-minute sync. Range-partitioned by day. |
+| `MetricRollupsHourly` | one row per member × metric × hour (min/max/avg/sum), merged across devices | same service — recomputed from the **merged** window after the hour upsert | The hour horizon of the rollup ladder. Idempotent by recomputation, not by a single transaction. |
 | `ActivityLogs` (existing, unchanged) | one row per member × day | existing merge | **Remains the canonical daily rollup.** `BaselineCalculator`, `DashboardService`, and every existing reader keep working untouched. |
-| Week / month horizons | derived from daily | SQL views first | Materialize only if measured slow — not preemptively. |
+| Week / month horizons | derived from daily | SQL views — **shipped** as `ActivityLogsWeekly` / `ActivityLogsMonthly` | Materialize only if measured slow — not preemptively. |
 
 ### Boundaries
 
-- A new **`IGranularMetricRepository`** port (to be introduced in `src/Core/CardiTrack.Application/Interfaces/Repositories`, alongside the existing repository interfaces) is the only read/write surface. The future GCP aggregator reads through the repository layer exactly as [llm_design.md](../llm_design.md) already prescribes for token reads. This interface is the entire migration surface if storage ever changes.
-- **Partition lifecycle and rollup derivation run in `CardiTrack.Worker`** — non-AI DB work, per the binding rule in `CLAUDE.md`. A worker job creates future partitions ahead of need and drops expired ones (PostgreSQL has no TTL; this is the same machinery pattern as other retention jobs).
+- **`IGranularMetricRepository`** — **shipped**, at exactly the proposed path (`src/Core/CardiTrack.Application/Interfaces/Repositories`), with `UpsertHoursAsync`/`UpsertRollupsAsync`/`GetWindowAsync`/`GetRollupsAsync` — is the only read/write surface. The GCP aggregator reads through the repository layer exactly as [llm_design.md](../llm_design.md) already prescribes for token reads. This interface is the entire migration surface if storage ever changes.
+- **Partition lifecycle and rollup derivation run in `CardiTrack.Worker`** — non-AI DB work, per the binding rule in `CLAUDE.md`. **Shipped** as `PartitionMaintenanceWorker`: hourly at :15, creating future partitions ahead of need and dropping expired ones (PostgreSQL has no TTL; the same machinery pattern as other retention jobs), with `RunOnStartup: true` because scale-to-zero left a cold-start window with no partitions (2026-08-11 incident).
 - Partition DDL ships as raw SQL inside EF Core migrations; EF maps the tables, the migrations own the partitioning.
 
 ### Retention
@@ -79,7 +79,7 @@ Precedent: [llm_design.md](../llm_design.md) made the same one-data-plane call f
 - **Zero new Terraform resources.** Only Cloud SQL disk needs watching as wearers grow (a tfvars bump, not a new service).
 - One data plane: the existing backup, DR, encryption, audit, and schema-grant story covers granular PHI on day one.
 - Existing readers untouched — the daily contract (`ActivityLogs`) is preserved, so this ships without touching the dashboard or baseline code paths.
-- The SSA-LSTM substrate exists the moment ingestion lands, unblocking the real-time pipeline design.
+- The SSA substrate exists the moment ingestion lands, unblocking the real-time pipeline design.
 
 **Paid**
 - Partition management is on us (a Worker job + raw DDL in migrations) — Postgres gives no TTL for free.
@@ -108,5 +108,8 @@ Escape hatch: a Bigtable adapter behind `IGranularMetricRepository` — row key 
 | Question | Owner | Unblocks |
 |---|---|---|
 | How far back does the Google Health API serve **intraday** (`list`) history? Daily types go ~90 days; granular depth is unverified. Check with [`tools/HealthApiProbe`](../../tools/HealthApiProbe/README.md) against a live account. | Engineering | Whether backfill-at-connect can seed granular history or only daily. |
-| Is granular AZM worth storing, or is its daily figure enough? (It is an exogenous LSTM input in the design, so default **yes** — drop only if probe data shows it sparse.) | Engineering + product | Final metric set, ~25% of granular volume. |
-| SpO2 arrives at ~5-minute grain — store in 60-slot hours with nulls, or 12-slot hours per metric cadence? (Default: 60-slot with nulls; one shape everywhere.) | Engineering | Schema detail. |
+
+Two questions originally listed here are **settled and built**, and now belong to the decision (§2):
+
+- Granular AZM **is stored** — `GranularMetric.ActiveZoneMinutes` is one of the four granular series (an activity-context feature for the SSA/assessment path).
+- SpO2 is stored in **60-slot hours with nulls** — one shape everywhere, as the default proposed.

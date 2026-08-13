@@ -2,7 +2,7 @@
 
 ## Overview
 
-The CardiTrack Mobile App is a cross-platform **.NET 10 MAUI** application for family members and caregivers. What exists today is the **authentication + onboarding experience and the tabbed app shell**: native Auth0 email/password login with a hard email-verification gate, the M1 onboarding wizard (account setup → add CardiMember → device selection → Fitbit connection → baseline learning), and a Dashboard tab, with Alerts/Family as stubs and a minimal Settings page. **Push notifications are wired up** — see [Push notifications](#push-notifications). HealthKit/Health Connect and offline storage are **planned** — see [Planned](#planned).
+The CardiTrack Mobile App is a cross-platform **.NET 10 MAUI** application for family members and caregivers. What exists today is the **authentication + onboarding experience and the tabbed app shell**: native Auth0 email/password login with a hard email-verification gate, the M1 onboarding wizard (account setup → add CardiMember → device selection → device connection (brand-agnostic) → baseline learning), a Dashboard tab and a real API-backed Alerts tab — only Family remains a stub — plus a minimal Settings page. **Push notifications are wired up** — see [Push notifications](#push-notifications). HealthKit/Health Connect and offline storage are **planned** — see [Planned](#planned).
 
 The app is built **code-behind first (XAML + `.xaml.cs`) — there is no MVVM layer**, no ViewModels folder, and no data-binding framework. Platform-independent logic (API client, Auth0 client, token handling, localization) lives in the separate plain-`net10.0` library **`CardiTrack.Mobile.Core`**, which is what the unit tests target.
 
@@ -15,7 +15,7 @@ The app is built **code-behind first (XAML + `.xaml.cs`) — there is no MVVM la
 - **CardiTrack.Mobile.Core** (`net10.0` class library): `CardiTrackApiClient`, Auth0 auth stack, options, localization — unit-testable without MAUI
 - **Auth0**: native password-realm login (no browser redirect)
 - **SecureStorage** (`SecureTokenStore`): token persistence — there is **no SQLite** in the app
-- **Datadog.Maui** (Android/iOS only): crash reporting + RUM, wired through the `MobileApm` registry
+- **Datadog.Maui** (Android/iOS only): **logs + traces only — no RUM, no Datadog crash reporting** (removed in PR #185; crashes/ANRs come from Play Console vitals), wired through the `MobileApm` registry
 - **Serilog** (`AppLogging`): debug + local-file sinks; logs stay on device (no remote log shipping outside the APM engine). File lines are prefixed with the app version (`v<ApplicationDisplayVersion>`, set from the release tag by the signed CI builds) so a support bundle names the build that wrote it
 
 ## Platform Support
@@ -33,7 +33,7 @@ The app is built **code-behind first (XAML + `.xaml.cs`) — there is no MVVM la
 Platform minimums:
 
 - **iOS**: 17.0
-- **Android**: API 23 (Android 6.0) — raised from 21 because the **Datadog RUM SDK requires 23+**
+- **Android**: API 31 (Android 12) — raised for the **Android 12 SplashScreen API**, so one splash design matches the OS handover on every supported device (the csproj comment explains; 23 was the old Datadog/Firebase floor)
 - **Windows**: 10.0.17763.0, optional dev convenience target (`WindowsPackageType=None` — unpackaged, no MSIX identity; Datadog does not support Windows)
 - **MacCatalyst**: **not targeted** (the `Platforms/MacCatalyst` folder is template residue)
 
@@ -44,41 +44,71 @@ App identity: `com.codesistance.carditrack.mobile`, display name **CardiTrack**.
 ```
 src/Presentation/CardiTrack.Mobile/
 ├── SplashPage / WelcomePage                  # Entry + carousel (WelcomeSlide model)
-├── SignInPage / CreateAccountPage            # Native Auth0 credential forms
+├── SignInPage / CreateAccountPage            # Auth0 credential forms + wired Google/Apple social buttons
 ├── ForgotPasswordPage / VerifyEmailPage      # Reset flow; hard email-verification gate
-├── DashboardPage                             # Main tab — metrics, alerts, empty state
-├── AlertsPage / FamilyPage                   # Tab stubs
-├── SettingsPage                              # Minimal (sign-out, verify-email nudge reset)
+├── DashboardPage                             # Main tab — hero, quick actions, key metrics, nudges
+├── AlertsPage                                # Real M1-10 alerts list (API-backed)
+├── FamilyPage                                # Tab stub (family sharing is MVP 2)
+├── SettingsPage                              # Minimal (account card, silenced reminders, sign-out)
+├── CardiMemberDetailPage                     # M1-13 (routed page)
+├── EditCardiMemberPage                       # M1-14 (routed page)
+├── DeviceManagementPage                      # M1-15 (routed page)
+├── QuestionnairesPage                        # Questions & Answers archive (routed page)
+├── NotificationsPage                         # Data-completeness / nudge inbox (routed page)
 ├── Onboarding/
-│   ├── AccountSetupPage                      # M1-03: org/user creation (atomic setup call)
+│   ├── AccountSetupPage                      # Account-type choice (no Figma frame; atomic setup call)
 │   ├── AddCardiMemberPage                    # M1-04: first CardiMember (skippable)
-│   ├── DeviceSelectionPage
-│   ├── FitbitConnectionPage
-│   ├── ConnectionSuccessPage
-│   └── BaselineLearningPage
-├── Controls/                                 # AlertMiniCard, MetricCard, SkeletonView,
-│                                             # SparklineView, StatusHeroCard, WizardHeader
+│   ├── DeviceSelectionPage                   # M1-05: Fitbit / Pixel Watch selection
+│   ├── DeviceConnectionPage                  # M1-06: brand-agnostic OAuth explainer + round-trip
+│   ├── ConnectionSuccessPage                 # M1-07
+│   └── BaselineLearningPage                  # M1-08
+├── Controls/                                 # 27 shared controls: AccordionSection, AlertListCard,
+│                                             # AlertMiniCard, AlertSkeletonCard, AppChooserPage,
+│                                             # AppPopupPage, BottomNavBar, DashboardHeader, DeviceCard,
+│                                             # FilterChipBar, HeaderBand, MemberAvatar, MetricCard,
+│                                             # MetricStatus, MetricTrend, MetricTrendCard, NudgeCard,
+│                                             # NudgeMiniRow, PopupCard, QuestionCard, SkeletonView,
+│                                             # StarRatingView, StatusHeroCard, TrendChart,
+│                                             # TrendLegendSwatch, TrendWindowSelector, WizardHeader
+├── Notifications/
+│   └── PushRegistrationCoordinator.cs        # FCM token registration + tapped-push routing (Android/iOS)
 ├── Services/
 │   ├── AppLogging.cs                         # Serilog config + unhandled-exception hooks
+│   ├── AppResumeNotifier.cs                  # Fans out Window.Resumed to the refresh plumbing
+│   ├── AppStartup.cs                         # Startup sequencing
+│   ├── BackNavigation.cs                     # Shared back-navigation helper
+│   ├── IPopupService.cs / PopupService.cs    # App-styled popups (AppPopupPage / AppChooserPage)
 │   ├── MobileApm.cs                          # APM engine registry (Datadog)
+│   ├── NameFormatting.cs                     # Display-name helpers
+│   ├── PeriodicRefresh.cs                    # 30 s in-app polling for live screens
 │   ├── PostLoginRouter.cs                    # Root-page routing after login
 │   ├── RelativeTime.cs
+│   ├── ResumeRefresh.cs / ScreenRefresh.cs   # Unattended-refresh plumbing (foreground / visible page)
+│   ├── SecureStorageKeyValueStore.cs         # ISecureKeyValueStore over SecureStorage
 │   ├── SecureTokenStore.cs                   # ITokenStore over SecureStorage
-│   └── ServiceHelper.cs                      # Service locator for non-DI pages
+│   ├── ServiceHelper.cs                      # Service locator for non-DI pages
+│   └── WebBrowserAuthenticator.cs            # System-browser hand-off for social PKCE sign-in
 ├── AppConfig.cs                              # Build-time config from assembly metadata
 ├── WindowNavigation.cs                       # Root-page swaps
-├── AppShell.xaml                             # TabBar-only shell
+├── AppShell.xaml                             # TabBar-only shell + routed-page registration
 ├── Local.props.sample                        # Dev-local config overrides (git-ignored copy)
 ├── MauiProgram.cs
 └── Platforms/ (Android, iOS, Windows, MacCatalyst)
 
 src/Presentation/CardiTrack.Mobile.Core/
 ├── Api/           # ICardiTrackApiClient, CardiTrackApiClient, ApiException
-├── Auth/          # Auth0AuthClient, AuthService, TokenRefresher, JwtPayloadReader,
-│                  # AuthTokens, ITokenStore, AuthErrorCode/AuthException
+├── Auth/          # Auth0AuthClient, AuthService, TokenRefresher, JwtPayloadReader, Pkce,
+│                  # IBrowserAuthenticator, AccessTokenAudience, AuthTokens, ITokenStore,
+│                  # AuthErrorCode/AuthException
+├── Charts/        # TrendScale, MetricExplanations (trend-chart maths + copy)
 ├── Configuration/ # ApiOptions, Auth0Options
-├── Http/          # AuthHttpMessageHandler (bearer attach + refresh)
-└── Localization/  # PhonePlaceholder
+├── Devices/       # ConnectableDevice, DeviceDataset(s) — the brand/data-source catalogue
+├── Http/          # AuthHttpMessageHandler (bearer attach + refresh), ClientHeaders
+├── Localization/  # PhonePlaceholder
+├── Notifications/ # NudgeCopy, NudgeDestination, PushDeviceRegistrationService
+├── Onboarding/    # CardiMemberDraft(Store), FileDraftPhotoStore, PostLoginRouteResolver,
+│                  # PrimaryCardiMember, ISecureKeyValueStore
+└── Questionnaires/# MemberQuestionnaires
 ```
 
 ## Navigation & App Flow
@@ -107,7 +137,7 @@ Splash → Welcome → SignIn / CreateAccount
 - **Dashboard empty state** (recent change): "Add your first CardiMember" now pushes `AddCardiMemberPage` — the real M1-04 wizard page — directly onto the navigation stack, instead of the previous "Coming soon" alert.
 - `AddCardiMemberPage` **Skip** is context-aware: pushed from the dashboard it pops back; as the onboarding root it hands over to a fresh `AppShell`.
 - **Member details** are reachable two ways from the dashboard: tapping the status hero card, or the "View Details" quick action. Both route to `CardiMemberDetailPage` (M1-13), which in turn reaches `EditCardiMemberPage` (M1-14) and `DeviceManagementPage` (M1-15).
-- These three are the app's **first routed (non-tab) pages**: registered with `Routing.RegisterRoute` in `AppShell` and navigated to as `GoToAsync("<route>?memberId=…")`, resolved through DI like the tab pages.
+- The app has **five routed (non-tab) pages** — `CardiMemberDetailPage`, `EditCardiMemberPage`, `DeviceManagementPage`, `QuestionnairesPage` (Questions & Answers, from M1-13), and `NotificationsPage` (the nudge inbox, from the dashboard's "Complete the picture" section): registered with `Routing.RegisterRoute` in `AppShell` and navigated to as `GoToAsync("<route>?memberId=…")`, resolved through DI like the tab pages.
 - **Refresh** (header button, hero-card sync button, and pull-to-refresh) calls `POST .../devices/sync` and *then* reloads, so it pulls from the wearable rather than re-reading what the Worker last stored. The button disables and the `RefreshView` spinner runs for the duration; a refused sync (paused, no device, too soon) is reported afterwards rather than swallowed. The reload happens either way, so a merely stale screen still catches up.
 - **Auto-refresh on foreground**: the app's `Window.Resumed` event is fanned out by `AppResumeNotifier`, and `ResumeRefresh.RefreshWhenAppResumes` (wired in the constructor of Dashboard, Alerts, Notifications, CardiMember Detail and Device Management) reloads whichever of those is the screen on display. So returning to the app already shows what the Workers processed while it was away — pull-to-refresh is no longer the only way to see new data. `OnAppearing` alone would not do: it is a navigation event, raised again on resume by Android but not by iOS. Details:
   - **Read, not sync** — the server collects from the wearable on its own (webhook-triggered within seconds, with `WearableSyncWorker`'s 10-minute poll as the loss-proof fallback), so the gap on screen is the fetch, not the collection; a `devices/sync` on every foreground would also hit the "too soon" refusal and pop a dialog nobody asked for. The explicit Refresh actions still sync.
@@ -134,7 +164,7 @@ Build-time configuration is stamped into the assembly as **MSBuild properties �
 
 All auth logic lives in `CardiTrack.Mobile.Core/Auth`:
 
-- **`Auth0AuthClient`** — native, embedded login using Auth0's **password-realm grant** (`http://auth0.com/oauth/grant-type/password-realm`) against the tenant's DB connection; signup and password reset go through `/dbconnections`. No system browser, no PKCE flow.
+- **`Auth0AuthClient`** — email/password uses native, embedded login via Auth0's **password-realm grant** (`http://auth0.com/oauth/grant-type/password-realm`) against the tenant's DB connection (no browser); signup and password reset go through `/dbconnections`. **Social sign-in (Google/Apple)** uses the **system browser with the PKCE authorization-code flow** (`WebBrowserAuthenticator` + `Pkce`) — Android/iOS only; the Windows target falls back to an error message.
 - **`TokenRefresher`** — `refresh_token` grant; **`JwtPayloadReader`** extracts claims (email, verification state) from access tokens without validation (validation is the API's job).
 - **`AuthHttpMessageHandler`** — DelegatingHandler on the API client: attaches the bearer token and coordinates refresh. The Auth0 client deliberately has **no** auth handler, so login/refresh calls can't recurse through the bearer pipeline.
 - **`SecureTokenStore`** — tokens persist in platform `SecureStorage` (Keychain / Keystore). No database.
@@ -232,7 +262,7 @@ iOS release signing uses `CodesignKey=Apple Distribution` and `CodesignProvision
 
 ### CI/CD Pipeline
 
-Mobile CI lives in `.github/workflows/deploy-apps-dev.yml` (jobs gated by the `mobile` path filter):
+Dev / internal-track mobile CI lives in `.github/workflows/deploy-apps-dev.yml` (jobs gated by the `mobile` path filter); `deploy-apps-prod.yml` also carries mobile references for the production track:
 
 - **Pull requests** — validation builds only: Android (unsigned APK), iOS (simulator), Windows (MSIX). No signing secrets are exposed to PR runs.
 - **Push to `main`** — in addition to the validation builds:
@@ -256,6 +286,8 @@ Signing material and store credentials live in GCP Secret Manager (`carditrack-c
 | `carditrack-common-android-keystore-password` | Keystore and key password |
 | `carditrack-common-play-service-account-key` | Google Play service account key (JSON) |
 
+The common secrets file also defines three **operator-only** secrets (no deploy-workflow accessor grant; loaded and read manually by an operator): `carditrack-common-apns-auth-key-p8` (APNs auth key, .p8 PEM contents), `carditrack-common-apns-key-id`, and `carditrack-common-apple-team-id`.
+
 Until a secret is populated (i.e. still holds the `REPLACE_ME` placeholder), the corresponding signed-build/upload jobs skip with a warning instead of failing, so the pipeline stays green during initial setup.
 
 One-time setup before the first store upload — full step-by-step commands in
@@ -267,12 +299,17 @@ One-time setup before the first store upload — full step-by-step commands in
 
 ## Testing
 
-Unit tests live in `tests/CardiTrack.UnitTests/Mobile/` — **xunit + NSubstitute**, exercising the platform-independent `CardiTrack.Mobile.Core` code:
+Unit tests live in `tests/CardiTrack.UnitTests/Mobile/` — **xunit + NSubstitute**, exercising the platform-independent `CardiTrack.Mobile.Core` code (19 test classes plus the shared `FakeHttpMessageHandler`):
 
 - `Auth0AuthClientTests` — login/signup/reset request shapes and error mapping
+- `AuthServiceTests` / `PkceTests` / `AccessTokenAudienceTests` — the auth service, the social PKCE flow, and token-audience checks
 - `AuthHttpMessageHandlerTests` — bearer attach + refresh behavior (via `FakeHttpMessageHandler`)
-- `CardiTrackApiClientTests` — API client contract
+- `CardiTrackApiClientTests` / `ClientHeadersTests` / `QuestionnaireApiClientTests` — API client contract
 - `JwtPayloadReaderTests` / `TokenRefresherTests`
+- `CardiMemberDraftStoreTests` / `FileDraftPhotoStoreTests` — add-member draft persistence
+- `DeviceDatasetsTests` — device/data-source catalogue
+- `MemberQuestionnairesTests` / `MetricExplanationsTests` / `TrendScaleTests` — questionnaires + trend-chart maths
+- `PostLoginRouteResolverTests` / `PrimaryCardiMemberTests` — post-login routing and primary-member selection
 - `PhonePlaceholderTests` — region placeholder mapping
 
 ```bash
@@ -286,7 +323,7 @@ There are no UI/device automation tests yet.
 None of the following exists in the app today:
 
 - **HealthKit (iOS) / Health Connect (Android)** integration for on-device health data
-- **SQLite offline cache** and sync queue (today the app is online-only; only tokens persist, in SecureStorage)
+- **SQLite offline cache** and sync queue (today the app is online-only; tokens persist in SecureStorage, and the add-member draft — including its photo — persists locally via `CardiMemberDraftStore`/`FileDraftPhotoStore`; there is still no SQLite)
 - **The iOS Notification Service Extension** — the Xcode App Extension target that would replace a content-free push with richer copy on-device. Its server side (the content-fetch endpoint) shipped; the target itself needs Mac-based verification. Push itself is not planned, it is built — see [Push notifications](#push-notifications).
 - **Widgets, Siri shortcuts, app shortcuts**
 - **MVVM refactor** — only if/when page complexity warrants it; the current code-behind approach is deliberate

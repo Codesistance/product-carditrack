@@ -35,7 +35,7 @@ The primary web user checks in from a laptop or desktop at home or work. They wa
 - **Screen:** W1-02
 - **MVP:** 1
 - **Acceptance Criteria:**
-  - Email/password or social login (Google, Apple) — user's choice. _Social login is pending: no Google/Apple OAuth credentials or Auth0 social connections are wired yet_
+  - Email/password or social login (Google, Apple) — user's choice. _Social login is pending on web; the Auth0 Google/Apple connections already back mobile social sign-in_
   - Password strength indicator updates in real-time as user types
   - Inline field validation — errors appear beneath the field, not on submit
   - "Create Account" button is disabled until all fields are valid and terms accepted
@@ -209,7 +209,7 @@ The primary web user checks in from a laptop or desktop at home or work. They wa
   - "Mark as Acknowledged" button is visible on every unread alert detail
   - Acknowledgment records: who acknowledged, timestamp, and optional note
   - Once acknowledged: shows "Acknowledged by [Name], [X] min ago" with note if present
-  - Other family members see the acknowledgment in real-time via SignalR
+  - Other family members see the acknowledgment in real-time via SignalR _(planned — no SignalR hub exists yet)_
   - Alert status flow: New → Acknowledged → Resolved
 
 **Story 3.5: Customising Alert Notification Preferences**
@@ -243,7 +243,7 @@ The primary web user checks in from a laptop or desktop at home or work. They wa
   - Optional personal message field with a helpful placeholder
   - Invitation sent via email with a deep link to accept
   - Pending invitations visible in a separate tab (W3-01) with Resend / Revoke options
-  - New member appears in active list as soon as they accept (live via SignalR)
+  - New member appears in active list as soon as they accept (live via SignalR) _(planned — no SignalR hub exists yet)_
 
 **Story 4.2: Managing Family Member Roles**
 - **As an** account admin
@@ -269,7 +269,7 @@ The primary web user checks in from a laptop or desktop at home or work. They wa
   - @mention dropdown appears when typing "@" — shows family member names
   - Notes can be tagged to a specific CardiMember (or left as general)
   - Photo attachments supported (max 3, drag-and-drop or click-to-browse)
-  - Posted note appears in the feed immediately for all family members via SignalR
+  - Posted note appears in the feed immediately for all family members via SignalR _(planned — no SignalR hub exists yet)_
   - Threaded replies keep conversations in context without cluttering the main feed
   - Author can edit or delete their own note from the three-dot menu
 
@@ -537,9 +537,11 @@ The primary web user checks in from a laptop or desktop at home or work. They wa
 
 ## 👵 Secondary Persona: Elderly CardiMember (Ages 70-85)
 
+> **Descoped (permanent) — product decision 2026-08-10: wearers never log in.** Self-monitoring is not the objective; all wearer-facing auth and screens are permanently descoped. The stories below are retained for the record only.
+
 The elderly CardiMember may occasionally access CardiTrack on a web browser — typically via a link sent by a family member. The experience must be accessible, low-friction, and non-alarming.
 
-**Story 7.3: Understanding What Is Being Shared**
+**Story 7.3: Understanding What Is Being Shared** _(Descoped — permanent; wearers never log in)_
 - **As an** elderly person whose family set up CardiTrack monitoring
 - **I want to** read a clear explanation of what data my family can see
 - **So that** I can give genuine, informed consent to being monitored
@@ -550,7 +552,7 @@ The elderly CardiMember may occasionally access CardiTrack on a web browser — 
   - Option to restrict specific data types (e.g., share activity but not sleep)
   - Short explainer video or animated walkthrough available
 
-**Story 7.4: Viewing My Own Health Data**
+**Story 7.4: Viewing My Own Health Data** _(Descoped — permanent; wearers never log in)_
 - **As an** elderly CardiMember who wants to feel included
 - **I want to** see my own health dashboard if I choose to
 - **So that** I know what my family sees and can add my own context
@@ -647,7 +649,7 @@ Business account features are post-MVP but user stories are defined here for pla
 | Notifications | Browser Push (W4-05) + in-app SignalR banner | Native Push + lock screen |
 | Offline | PWA Service Worker + sync queue (W4-03) | SQLite cache + sync queue |
 | Install | PWA manifest (W4-01) | App Store / Play Store |
-| Navigation | Sidebar + top bar + keyboard shortcuts | Bottom tab bar + flyout |
+| Navigation | Sidebar + top bar + keyboard shortcuts | Bottom tab bar (TabBar-only Shell — no flyout) |
 | Alert triage | Split-pane list + keyboard J/K/E | Swipe left/right on rows |
 | Data entry | Desktop keyboard + drag-and-drop upload | Camera OCR + native pickers |
 | Export | Download / Email / Print (W4-07) | Share sheet / Save to Files |
@@ -703,8 +705,8 @@ Business account features are post-MVP but user stories are defined here for pla
 - [ ] Story 10.6: PWA installation
 
 ### Post-MVP (Future)
-- [ ] Story 7.3: Elderly CardiMember consent screen
-- [ ] Story 7.4: CardiMember self-view
+- [ ] ~~Story 7.3: Elderly CardiMember consent screen~~ _(Descoped — permanent; wearers never log in)_
+- [ ] ~~Story 7.4: CardiMember self-view~~ _(Descoped — permanent; wearers never log in)_
 - [ ] Story 8.1–8.3: Business account / care facility features
 
 ---
@@ -724,7 +726,7 @@ Business account features are post-MVP but user stories are defined here for pla
 | Keyboard & Power Users | 4 | 1 | 0 | 0 | 3 | 0 |
 | Offline & PWA | 2 | 0 | 0 | 0 | 2 | 0 |
 | Print & Export | 1 | 0 | 0 | 0 | 1 | 0 |
-| Elderly CardiMember | 2 | 0 | 0 | 0 | 0 | 2 |
+| Elderly CardiMember _(descoped — wearers never log in)_ | 2 | 0 | 0 | 0 | 0 | 2 |
 | Enterprise (Business) | 3 | 0 | 0 | 0 | 0 | 3 |
 | **TOTAL** | **38** | **13** | **4** | **6** | **8** | **5** |
 

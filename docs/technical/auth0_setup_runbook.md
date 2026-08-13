@@ -67,7 +67,8 @@ Auth0 Dashboard → **Applications → APIs → Create API**:
   - Rotation: ON, Reuse Interval: 0
   - Absolute Lifetime: 2592000 (30 days, per auth.md)
   - Inactivity Lifetime: 1296000 (15 days)
-- **Allowed Callback URLs** (needed for Phase 9 social login; harmless to set now):
+- **Allowed Callback URLs** (**required** — social login shipped 2026-08-10 and sign-in
+  fails without them):
   - `carditrack://oauth/callback`
 - **Allowed Logout URLs**: `carditrack://oauth/callback`
 - **Connections tab**: enable `Username-Password-Authentication` (and later `google-oauth2` / `apple`).
@@ -442,11 +443,13 @@ Social login + account linking (after the section 8 Action is deployed):
 
 - **Social login (Phase 9)**: the app-side handlers are **wired** (Universal Login,
   Authorization Code + PKCE, both `CreateAccountPage` and `SignInPage`), and the
-  section 8 Action carries the verification short-circuit + account linking. Per-tenant
-  work that remains: enable the `google-oauth2` connection for CardiTrack Mobile
-  (Google credentials done 2026-08-07) and provision the `apple` connection (Services
-  ID + .p8 — required before the iOS store release; until then the Apple button
-  degrades to "not available yet"). Scoped step-by-step in
+  section 8 Action carries the verification short-circuit + account linking. The **dev
+  tenant is done**: `google-oauth2` wired 2026-08-07 and `apple` provisioned +
+  Try-Connection-verified 2026-08-10, both connections enabled for CardiTrack Mobile.
+  The remaining per-tenant work is **prod only**: connection credentials for both
+  providers, Try Connection, the Applications toggle, plus the section 8a M2M app and
+  the section 8 Action. The degraded "not available yet" button path is now a
+  prod-tenant-only condition. Scoped step-by-step in
   [oauth_clients.md](./oauth_clients.md) — note the sign-in Google client is a
   **different registration** from the Google Health API device client.
 - **More claims in the section 8 Action** (`https://carditrack.com/role`,

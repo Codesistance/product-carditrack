@@ -4,19 +4,25 @@
 
 `CardiTrack.Worker` hosts the platform's **non-AI scheduled background jobs**, driven by cron expressions and the [Cronos](https://github.com/HangfireIO/Cronos) library. Although it is a background service, the project uses the **`Microsoft.NET.Sdk.Web` SDK with `Exe` output** — Cloud Run requires an HTTP listener for startup probes, so the worker binds Kestrel to the `PORT` env var (default 8080) and exposes a minimal `GET /healthz` endpoint alongside its hosted services.
 
-The workers registered today:
+The 11 workers registered today (crons from `appsettings.json`):
 
 | Worker | Default cron (UTC) | Purpose |
 |---|---|---|
 | `WearableSyncWorker` | `0 */10 * * * *` (every 10 min) | Polls due device connections and syncs wearable data |
 | `OrphanedOrganizationCleanupWorker` | `0 0 3 * * *` (daily 03:00) | Deletes organizations stranded by a failed onboarding |
 | `BaselineCalculationWorker` | `0 30 2 * * *` (daily 02:30) | Recalculates each member's `PatternBaseline` rows — 7/14-day provisional and 30/60/90-day windows |
+| `PartitionMaintenanceWorker` | `0 15 * * * *` (hourly; `RunOnStartup: true`) | Pre-creates partitions for the partitioned time-series tables and drops the ones past retention — granular 90 d, hourly rollups 13 mo, **digests 12 mo, real-time assessments 90 d, environmental readings 90 d** |
 | `DeviceSyncAuditWorker` | `0 0 4 * * 0` (Sunday 04:00) | Re-fetches a small random sample over a 14-day window to measure how far back each provider revises data |
-| `PartitionMaintenanceWorker` | `0 15 * * * *` (hourly) | Pre-creates partitions for the granular time-series tables and drops the ones past retention (granular 90 d, hourly rollups 13 mo) |
+| `InactivityDetectionWorker` | `0 */15 * * * *` (every 15 min) | Device-silence failsafe — one yellow `Inactivity` alert when a member has no granular readings for >2 h in waking hours |
+| `StatisticalAlertWorker` | `0 7-59/15 * * * *` (every 15 min, offset) | R1 statistical alert engine — five deterministic rules vs the established 30-day baseline |
+| `DeviceAuthRecoveryWorker` | `0 3-59/15 * * * *` (every 15 min, offset) | Retries provider-refused refresh tokens on a per-connection widening backoff |
+| `DataCompletenessWorker` | `0 0 6 * * *` (daily 06:00) | Reconciles data-completeness nudges per caregiver against what each account supplies |
+| `NotificationDispatchWorker` | `*/30 * * * * *` (every 30 s) | The push spine's pump — claims due outbox rows, retries, escalates, expires |
+| `PushCanaryWorker` | `0 */15 * * * *` (every 15 min) | Sends a real Safety push to configured test devices and screams if the previous one never acked |
 
-OAuth token refresh is **not a separate cron job** — it happens inside the sync path (`DeviceSyncService` calls `IOAuthTokenRefreshService` before hitting the provider API). Trial expiration reminders and the general data-retention job are **planned** but not yet implemented; the granular tables' retention is the exception, live via `PartitionMaintenanceWorker`.
+OAuth token refresh is **not a separate cron job** — it happens inside the sync path (`DeviceSyncService` calls `IOAuthTokenRefreshService` before hitting the provider API), with `DeviceAuthRecoveryWorker` retrying only the connections the provider has refused. Trial expiration reminders and the general data-retention job are **planned** but not yet implemented; the partitioned tables' retention is the exception, live via `PartitionMaintenanceWorker` — it covers the granular tables **and** `DigestEntries` (12 months), `RealtimeAssessments` (90 days) and `EnvironmentalReadings` (90 days).
 
-> **Scope note:** the AI ingestion/inference pipeline (webhook aggregation, pre-processing, MedGemma calls, severity routing, digests) is a **planned GCP design** — Pub/Sub + dedicated Cloud Run services per [llm_design.md](../../llm_design.md). Until it ships, the `WearableSyncWorker` polling job below is the **current and only ingestion path**; once the webhook pipeline exists it becomes a backfill/fallback mechanism (see [release_matrix.md](../../release_matrix.md)).
+> **Scope note:** the AI ingestion/inference pipeline (webhook aggregation, pre-processing, MedGemma calls, severity routing, digests) is **live in dev** — Pub/Sub + dedicated Cloud Run services per [llm_design.md](../../llm_design.md) (prod gated off). The `WearableSyncWorker` polling job below is the **guaranteed fallback** and runs in every environment; the registered webhook path triggers the same sync sooner, never a duplicate (see [release_matrix.md](../../release_matrix.md)).
 
 ## Technology Stack
 
@@ -32,19 +38,28 @@ OAuth token refresh is **not a separate cron job** — it happens inside the syn
 ```
 src/Worker/CardiTrack.Worker/
 ├── Workers/
-│   ├── WearableSyncWorker.cs               # Polls + syncs due device connections
+│   ├── WearableSyncWorker.cs                # Polls + syncs due device connections
 │   ├── OrphanedOrganizationCleanupWorker.cs # Sweeps orgs with no user/CardiMember
-│   ├── BaselineCalculationWorker.cs        # Recalculates PatternBaseline rows daily
-│   └── DeviceSyncAuditWorker.cs            # Wide-window re-fetch over a sample, to measure revisions
-├── CronBackgroundService.cs    # Abstract base — parses cron, loops on schedule
-├── WorkerOptions.cs            # { CronExpression } options record (default "0 * * * * *")
-├── DeviceSyncAuditOptions.cs   # { SampleSize } for the audit worker
-├── WorkerServiceExtensions.cs  # Generic AddWorker<T> registration helper
-├── Program.cs                  # Host setup, DI registration, /healthz endpoint
-├── Dockerfile                  # Chiseled aspnet runtime image
+│   ├── BaselineCalculationWorker.cs         # Recalculates PatternBaseline rows daily
+│   ├── PartitionMaintenanceWorker.cs        # Creates/drops time-series partitions (retention)
+│   ├── DeviceSyncAuditWorker.cs             # Wide-window re-fetch over a sample, to measure revisions
+│   ├── InactivityDetectionWorker.cs         # Device-silence failsafe (yellow Inactivity alert)
+│   ├── StatisticalAlertWorker.cs            # R1 statistical alert engine (five rules)
+│   ├── DeviceAuthRecoveryWorker.cs          # Retries provider-refused refresh tokens (backoff)
+│   ├── DataCompletenessWorker.cs            # Reconciles data-completeness nudges per caregiver
+│   ├── NotificationDispatchWorker.cs        # Push outbox pump: claim, retry, escalate, expire
+│   └── PushCanaryWorker.cs                  # End-to-end push liveness canary (incl. PushCanaryOptions)
+├── CronBackgroundService.cs       # Abstract base — parses cron, loops on schedule (+ RunOnStartup)
+├── WorkerOptions.cs               # { CronExpression, RunOnStartup } options record
+├── DeviceSyncAuditOptions.cs      # { SampleSize } for the audit worker
+├── InactivityDetectionOptions.cs  # Silence threshold + waking-hours window
+├── PartitionMaintenanceOptions.cs # DaysAhead + the five per-table retention values
+├── WorkerServiceExtensions.cs     # Generic AddWorker<T> registration helper
+├── Program.cs                     # Host setup, DI registration, /healthz endpoint
+├── Dockerfile                     # Chiseled aspnet runtime image
 ├── Properties/launchSettings.json
 ├── appsettings.json
-└── CardiTrack.Worker.csproj    # SDK: Microsoft.NET.Sdk.Web, Cronos 0.13.0
+└── CardiTrack.Worker.csproj       # SDK: Microsoft.NET.Sdk.Web, Cronos 0.13.0
 ```
 
 ## Core Components
@@ -190,7 +205,7 @@ Turns accumulated `ActivityLog` history into `PatternBaseline` rows — the stat
 - Windows to the **last complete day**, not today. Ingestion stores the day in progress so the dashboard can show live numbers, and a part-finished day averaged in would drag every member's "normal" down by however far through the day the job happened to run.
 - Fetches each member's logs **once** for the longest period and calculates every supported window (7/14 provisional, 30/60/90) from that one read.
 - Uses **one DI scope per member**: the read tracks up to 90 rows each, which would accumulate across the whole run on a shared `DbContext`, and a member that fails takes nothing else down with it.
-- **Appends** rather than replacing, so a shift in a member's own normal stays visible in history. Retention for these rows falls under the planned retention job (see [dpia.md](../../compliance/dpia.md) §6.3).
+- **Appends** rather than replacing, so a shift in a member's own normal stays visible in history. Unlike the partitioned tables, **baselines have no retention today** — pruning falls under the planned retention job (see [dpia.md](../../compliance/dpia.md) §6.3).
 
 The arithmetic lives in `BaselineCalculator` (`CardiTrack.Application/Services`) — pure and stateless, so it is unit-tested without a database or a clock. Its rules:
 
@@ -204,11 +219,11 @@ The arithmetic lives in `BaselineCalculator` (`CardiTrack.Application/Services`)
 
 ### PartitionMaintenanceWorker
 
-Keeps the partitioned time-series tables (`GranularMetricHours`, `MetricRollupsHourly`, `DigestEntries`, `RealtimeAssessments` — see the [granular-storage ADR](../../technical/granular_timeseries_storage.md)) alive: PostgreSQL neither creates range partitions on demand nor expires rows, so this job pre-creates partitions ahead of the data and drops the ones wholly past retention.
+Keeps the partitioned time-series tables (`GranularMetricHours`, `MetricRollupsHourly`, `DigestEntries`, `RealtimeAssessments`, `EnvironmentalReadings` — see the [granular-storage ADR](../../technical/granular_timeseries_storage.md)) alive: PostgreSQL neither creates range partitions on demand nor expires rows, so this job pre-creates partitions ahead of the data and drops the ones wholly past retention.
 
-- Runs **hourly** (`0 15 * * * *`), deliberately: creation is idempotent (`IF NOT EXISTS`) and near-free, and the frequent cadence closes the gap between a fresh deploy and its first partition without teaching `CronBackgroundService` a run-on-startup mode.
+- Runs **hourly** (`0 15 * * * *`) and additionally **once at startup** — `CronBackgroundService` now supports a `RunOnStartup` mode (`WorkerOptions.RunOnStartup`, off by default) and this worker opts in (`RunOnStartup: true` in appsettings), so a fresh deploy has its partitions before the first insert rather than waiting for the next hourly tick. Creation is idempotent (`IF NOT EXISTS`) and near-free.
 - Pre-creates from **yesterday** through `DaysAhead` (default **7**) days out — a sync straddling UTC midnight can still write into the day that just ended, and a week of headroom survives a multi-day worker outage.
-- Retention is a **partition drop** — instant, no dead tuples to vacuum: granular hours after `GranularRetentionDays` (default **90**), hourly rollups after `RollupRetentionMonths` (default **13**), digests after `DigestRetentionMonths` (default **12**), real-time assessments after `RealtimeRetentionDays` (default **90**). A partition is dropped only when its whole range is past the cutoff.
+- Retention is a **partition drop** — instant, no dead tuples to vacuum: granular hours after `GranularRetentionDays` (default **90**), hourly rollups after `RollupRetentionMonths` (default **13**), digests after `DigestRetentionMonths` (default **12**), real-time assessments after `RealtimeRetentionDays` (default **90**), environmental readings after `EnvironmentalRetentionDays` (default **90**). A partition is dropped only when its whole range is past the cutoff.
 - **Never drops what it did not name**: the drop path parses each child's name against the worker's own naming scheme, so a manually attached partition is left alone regardless of age.
 - Drops log at **Warning** — destroying health data past retention is the one thing this job does that an audit should be able to reconstruct.
 
@@ -242,22 +257,57 @@ Measures something `WearableSyncWorker` structurally cannot see. A routine sync 
 - It still stores and merges whatever it finds, so a provider's late correction to a member's history is **repaired as a side effect of measuring it**.
 - Failures log at **Warning**, not Error: an audit failure costs measurement precision, not data.
 
+### DeviceAuthRecoveryWorker
+
+Retries the refresh token of device connections the provider has **refused**, so a connection that can come back does so on its own (`DeviceAuthRecoveryService`) rather than waiting for a caregiver to notice and reconnect.
+
+- Runs **every 15 minutes**, offset from the other quarter-hour jobs (`0 3-59/15 * * * *`). Fifteen minutes is the *pass* cadence, not the retry cadence — each connection carries its own **widening backoff** (migration `AddDeviceAuthRecoveryBackoff`), so a pass mostly finds nothing due.
+- Worker-hosted per CLAUDE.md: no AI call is involved, and DB polling belongs here.
+- Logs at Information only when it actually returns connections to service.
+
+### DataCompletenessWorker
+
+Detects the gaps between what CardiTrack needs and what each account has supplied, and reconciles them against what the caregiver has already been told — the engine behind the in-app data-completeness nudges ([notification_engine.md](../../technical/notification_engine.md)).
+
+- Runs **daily at 06:00 UTC** (`0 0 6 * * *`) — after `BaselineCalculationWorker`, so anything it says about learning progress reflects that morning's numbers rather than yesterday's.
+- Takes a **non-blocking Postgres advisory lock** for the run: a second Cloud Run instance that cannot take it skips the run entirely instead of evaluating the whole estate again for one useful result. Reconciliation itself is idempotent by fingerprint, so a crashed run simply repeats.
+- Walks organizations in batches of 50 (cursor-paged), one DI scope — and so one `DbContext` — per organization; one bad organization is logged and skipped, never costing the estate its morning run.
+- Reconciliation is **per caregiver**: each user's stored notifications are diffed against their own contexts (`NudgeReconciler`), so one user's snooze cannot suppress another's notification.
+- Every run writes a `NotificationRunLog` row (organizations scanned, created/resolved/suppressed counts, duration, error) — best-effort, a failed log write is a Warning, not a failed run.
+
+### NotificationDispatchWorker
+
+The push spine's pump ([notification_engine.md](../../technical/notification_engine.md) §6.2, §6.3, §13): claims due `NotificationDeliveries` outbox rows, retries them, runs the escalation ladder, and expires past-TTL rows.
+
+- Runs **every 30 seconds** (`*/30 * * * * *`). Deliberately **no advisory lock** — unlike `DataCompletenessWorker` — because `NotificationDeliveryRepository.ClaimDueAsync`'s `FOR UPDATE SKIP LOCKED` claim (plus its claim-lease `NextAttemptAt` advance) already lets multiple instances divide the outbox in parallel safely.
+- Each tick runs **four isolated phases**, each in its own scope, each catching its own failures: (1) claim + retry due rows (batches of 100, one scope per row); (2) the **escalation sweep** — Safety-category and Red health deliveries that stay unacknowledged are re-pushed, then fanned out to every other caregiver with `ReceiveAlerts`, then marked `UNDELIVERED_CRITICAL` with a `LogCritical`; (3) expiring past-TTL rows to `DeadLettered`; (4) disabling push tokens with **no liveness signal (ack or foreground heartbeat) in 7 days**.
+- The phase isolation is load-bearing, not defensive decoration: a misconfigured `FirebaseApp` once made resolving `IDispatchService` throw on every sweep, and because this host doesn't override `BackgroundServiceExceptionBehavior`, every tick took the whole Worker down — 224 host restarts in two hours (incident 2026-08-12), during which **nothing else the Worker owns ran either**. A push outage should cost pushes, nothing more.
+
+### PushCanaryWorker
+
+Sends a real Safety-category push to a fleet of configured test devices every 15 minutes and checks whether the **previous** run's canary got acked ([notification_engine.md](../../technical/notification_engine.md) §13). Provider outages, expired credentials and a broken APNs certificate are otherwise silent failures — the kind discovered from a support ticket during an actual emergency.
+
+- Runs **every 15 minutes** (`0 */15 * * * *`); the 15-minute ack window matches the escalation ladder's own SLO.
+- Deliberately routed through the **normal outbox** (`IDispatchService.EnqueueAsync`) rather than a bespoke send path — the canary is only meaningful if it exercises the exact same planning, send, and ack code every real Safety alert goes through.
+- The fleet is **configured, not auto-discovered** (`Workers:PushCanaryWorker:CanaryUserIds`); an empty list skips quietly rather than paging on a fleet nobody set up. A previous canary not `Delivered` by the next run logs at **Critical** and increments the `UndeliveredCritical` telemetry counter with a `canary` reason tag.
+
 ### Multi-Provider Dispatch
 
-Providers register keyed services by `DeviceType` enum via extension methods (shared with the API in `CardiTrack.Infrastructure/Extensions/DeviceProviderServiceExtensions.cs`):
+Providers register keyed services per **HealthApi engine** via extension methods (shared with the API in `CardiTrack.Infrastructure/Extensions/DeviceProviderServiceExtensions.cs`); which hardware brands ride an engine is configuration (the block's `DeviceTypes` list), not code:
 
 ```csharp
 // Program.cs
-builder.Services.AddFitbitProvider();
+builder.Services.AddGoogleHealthProvider();
 
-// AddFitbitProvider registers:
-services.AddKeyedScoped<IDeviceApiClient, FitbitApiClient>(DeviceType.Fitbit);
-services.AddKeyedScoped<IDeviceSyncService>(DeviceType.Fitbit, (sp, _) => new DeviceSyncService(...));
+// AddGoogleHealthProvider registers the Google Health API engine — HTTP client, keyed
+// IDeviceApiClient (GoogleHealthApiClient) and keyed IDeviceSyncService, keyed by
+// HealthApi.GoogleHealth — serving every DeviceType in the block's list
+// (Fitbit AND GooglePixelWatch today).
 
-// To add Garmin later: create an equivalent AddGarminProvider()
+// To add a new API later: create an equivalent AddGarminConnectProvider()
 ```
 
-Unknown device types produce a `LogWarning` and are skipped — no crash. `AddFitbitProvider` also enforces the positional-index contract: **`DeviceProviders[0]` must be the Fitbit provider** (deployment injects its secrets as `DeviceProviders__0__*`), and startup throws if the list is reordered.
+Unknown device types produce a `LogWarning` and are skipped — no crash. `AddGoogleHealthProvider` also enforces the positional-index contract: **`DeviceProviders[0]` must be the GoogleHealth provider** (deployment injects its secrets as `DeviceProviders__0__*`), and startup throws if the list is reordered, if a block's `DeviceTypes` is empty or names an unknown type, or if two blocks claim the same device type.
 
 ### Adding a new worker
 
@@ -274,11 +324,18 @@ public static IServiceCollection AddWorker<T>(
     return services;
 }
 
-// Program.cs
+// Program.cs — one line per job, all 11:
 builder.Services.AddWorker<WearableSyncWorker>(configuration, nameof(WearableSyncWorker));
 builder.Services.AddWorker<OrphanedOrganizationCleanupWorker>(configuration, nameof(OrphanedOrganizationCleanupWorker));
 builder.Services.AddWorker<BaselineCalculationWorker>(configuration, nameof(BaselineCalculationWorker));
 builder.Services.AddWorker<DeviceSyncAuditWorker>(configuration, nameof(DeviceSyncAuditWorker));
+builder.Services.AddWorker<PartitionMaintenanceWorker>(configuration, nameof(PartitionMaintenanceWorker));
+builder.Services.AddWorker<InactivityDetectionWorker>(configuration, nameof(InactivityDetectionWorker));
+builder.Services.AddWorker<StatisticalAlertWorker>(configuration, nameof(StatisticalAlertWorker));
+builder.Services.AddWorker<DeviceAuthRecoveryWorker>(configuration, nameof(DeviceAuthRecoveryWorker));
+builder.Services.AddWorker<DataCompletenessWorker>(configuration, nameof(DataCompletenessWorker));
+builder.Services.AddWorker<NotificationDispatchWorker>(configuration, nameof(NotificationDispatchWorker));
+builder.Services.AddWorker<PushCanaryWorker>(configuration, nameof(PushCanaryWorker));
 ```
 
 To add a job: derive from `CronBackgroundService`, take `IOptionsMonitor<WorkerOptions>` in the constructor and pass `options.Get(nameof(YourWorker)).CronExpression` to the base, then call `AddWorker<YourWorker>(configuration, nameof(YourWorker))` and add a `Workers:YourWorker:CronExpression` entry to config. Without a config entry the `WorkerOptions` default (`"0 * * * * *"` — every minute) applies.
@@ -299,13 +356,16 @@ Cron schedules bind per worker class name under the `Workers` section, consumed 
   },
   "DeviceProviders": [
     {
-      "Provider": "Fitbit",
+      "Provider": "GoogleHealth",
+      "DeviceTypes": ["Fitbit", "GooglePixelWatch"],
       "ClientId": "",
       "ClientSecret": "",
       "TokenUrl": "https://oauth2.googleapis.com/token",
       "ApiBaseUrl": "https://health.googleapis.com",
       "TokenLifetimeHours": 1,
-      "SyncLookbackDays": 3
+      "SyncLookbackDays": 3,
+      "BackfillDays": 90,
+      "BackfillChunkDays": 7
     }
   ],
   "Workers": {
@@ -318,9 +378,40 @@ Cron schedules bind per worker class name under the `Workers` section, consumed 
     "BaselineCalculationWorker": {
       "CronExpression": "0 30 2 * * *"
     },
+    "PartitionMaintenanceWorker": {
+      "CronExpression": "0 15 * * * *",
+      "RunOnStartup": true,
+      "DaysAhead": 14,
+      "GranularRetentionDays": 90,
+      "RollupRetentionMonths": 13,
+      "DigestRetentionMonths": 12,
+      "RealtimeRetentionDays": 90
+    },
     "DeviceSyncAuditWorker": {
       "CronExpression": "0 0 4 * * 0",
       "SampleSize": 25
+    },
+    "InactivityDetectionWorker": {
+      "CronExpression": "0 */15 * * * *",
+      "SilenceThresholdMinutes": 120,
+      "WakingStartHour": 7,
+      "WakingEndHour": 22
+    },
+    "StatisticalAlertWorker": {
+      "CronExpression": "0 7-59/15 * * * *"
+    },
+    "DeviceAuthRecoveryWorker": {
+      "CronExpression": "0 3-59/15 * * * *"
+    },
+    "DataCompletenessWorker": {
+      "CronExpression": "0 0 6 * * *"
+    },
+    "NotificationDispatchWorker": {
+      "CronExpression": "*/30 * * * * *"
+    },
+    "PushCanaryWorker": {
+      "CronExpression": "0 */15 * * * *",
+      "CanaryUserIds": []
     }
   },
   "Serilog": {
@@ -332,7 +423,6 @@ Cron schedules bind per worker class name under the `Workers` section, consumed 
   "Apm": {
     "Engine": "",
     "Data": { "IngestUrl": "", "IngestToken": "" },
-    "MinimumLogLevel": "Warning",
     "TracesSampleRatio": 1.0
   }
 }
@@ -342,13 +432,13 @@ Cron schedules bind per worker class name under the `Workers` section, consumed 
 
 ### Per-device-type pull parameters
 
-Cadence belongs to the **device type**, not to any one connection: providers differ in how quickly they finalise a day and how hard they rate-limit. These are set per environment in `infrastructure/environments/*.tfvars` under `device_pull_params`, and reach the app as `DeviceProviders__<i>__*` env vars — the same positional binding already used for provider secrets, which is why element 0 must stay Fitbit.
+Cadence belongs to the **device type**, not to any one connection: providers differ in how quickly they finalise a day and how hard they rate-limit. These are set per environment in `infrastructure/environments/*.tfvars` under `device_pull_params`, and reach the app as `DeviceProviders__<i>__*` env vars — the same positional binding already used for provider secrets, which is why element 0 must stay the GoogleHealth provider.
 
 | Parameter | Default | Purpose |
 |---|---|---|
 | `sync_lookback_days` | 3 | Trailing window each routine sync re-fetches |
 | `audit_lookback_days` | 14 | Window `DeviceSyncAuditWorker` uses; must be ≥ `sync_lookback_days` |
-| `min_pull_interval_minutes` | 30 | Floor on a connection's interval — derived from the provider's rate limit |
+| `min_pull_interval_minutes` | 30 (**both environments deploy 10**) | Floor on a connection's interval — derived from the provider's rate limit; dev and prod tfvars both set 10 to match the 10-minute sync cadence |
 | `max_pull_interval_minutes` | 1440 | Ceiling, so dormancy backoff cannot park a connection indefinitely |
 | `max_requests_per_second` | 0 | Provider-wide ceiling for sizing the pull queue; 0 leaves it unset |
 | `dormancy_threshold_pulls` | 0 | Empty pulls in a row before backoff starts; **0 disables backoff** |
@@ -356,7 +446,7 @@ Cadence belongs to the **device type**, not to any one connection: providers dif
 
 > **The bounds are the guard, and widening them is deliberately a deploy.** Cadence calibration may move a connection's interval anywhere within `[min, max]` but never outside it. A miscomputed cadence in a cardiac-monitoring product does not cost throughput — it silently delays alerts — so the range that constrains it lives in version-controlled infrastructure rather than in a table the calculator can rewrite.
 
-Both `AddFitbitProvider`'s `PostConfigure` and the Terraform variable validate the same rules (positive floor, floor ≤ ceiling, backoff factor > 1 when enabled, audit window ≥ sync window). Duplicated on purpose: the plan fails before a bad revision deploys, and the host fails fast if one is set some other way.
+Both `AddGoogleHealthProvider`'s `PostConfigure` and the Terraform variable validate the same rules (positive floor, floor ≤ ceiling, backoff factor > 1 when enabled, audit window ≥ sync window). Duplicated on purpose: the plan fails before a bad revision deploys, and the host fails fast if one is set some other way.
 
 ### Cron Format
 
@@ -383,11 +473,11 @@ DeviceProviders__0__ClientSecret     = carditrack-<env>-devices-fitbit-client-se
 Apm__Data                            = carditrack-<env>-apm-data
 ```
 
-Plaintext env vars: `ASPNETCORE_ENVIRONMENT`, `GCP_PROJECT_ID`, `Apm__Engine`, `Apm__MetricsEnabled`, `Apm__TracesSampleRatio`, `Serilog__MinimumLevel__Default`, plus the per-device-type pull parameters below. The last two come from the per-service `traces_sample_ratio` / `log_minimum_level` tfvars (`worker` attribute) — `1.0` and `Warning` in both environments.
+Plaintext env vars: `ASPNETCORE_ENVIRONMENT`, `GCP_PROJECT_ID`, `Apm__Engine`, `Apm__MetricsEnabled`, `Apm__TracesSampleRatio`, `Serilog__MinimumLevel__Default`, plus the per-device-type pull parameters below. The last two come from the per-service `traces_sample_ratio` / `log_minimum_level` tfvars (`worker` attribute) — traces `1.0` everywhere; the worker's log level is **`Warning` in prod and `Information` in dev** (dev sets it deliberately).
 
-> **Consequence of the `Warning` baseline:** the per-run `LogInformation` lines below (`triggered`, `complete. Success: n, Failed: n`) are **not emitted** — a healthy run leaves no trace, and only per-member failures (`LogWarning`/`LogError`) surface. Cron is internal to the service (`CronBackgroundService`), so there is no per-run request log to fall back on: to answer "did the job run?" from logs, set `log_minimum_level = { worker = "Information" }` in the environment's tfvars.
+> **Consequence of the prod `Warning` baseline:** in prod the per-run `LogInformation` lines below (`triggered`, `complete. Success: n, Failed: n`) are **not emitted** — a healthy run leaves no trace, and only per-member failures (`LogWarning`/`LogError`) surface. Cron is internal to the service (`CronBackgroundService`), so there is no per-run request log to fall back on. **Dev already runs the worker at `Information`**, so the run summaries are emitted there; to get them in prod, set `log_minimum_level = { worker = "Information" }` in its tfvars.
 
-> **Provider note:** the `Fitbit` provider authenticates against **Google OAuth** and pulls data from the **Google Health API** (`health.googleapis.com`) — the legacy Fitbit Web API is decommissioned September 2026. Google access tokens are short-lived (~1 hour), hence `TokenLifetimeHours: 1`. `FitbitApiClient` reads each data type by the method that type supports: `dataPoints:dailyRollUp` for the Interval and Sample metrics (including `sedentary-period`, whose `durationSum` is a protobuf `Duration` — seconds with a literal `s` suffix, `"28800s"` — converted to minutes), and `dataPoints` list for sleep sessions, for the Daily records `daily-resting-heart-rate`, `daily-vo2-max`, `daily-respiratory-rate` and `daily-sleep-temperature-derivations` (which have no rollup), and for the `oxygen-saturation` sample series. SpO2 is listed rather than rolled up because the rollup union carries no `oxygenSaturation` member at all: average, minimum and maximum are derived from the samples so all three describe one series, and the `daily-oxygen-saturation` summary is used only as a fallback for the average — its `lowerBoundPercentage`/`upperBoundPercentage` describe the day's distribution, not the lowest and highest readings, so they are never stored as min/max. Response field names, wire formats and enum members are checked against the v4 discovery document; whether each is actually populated for a given wearer's device is still pending live-sandbox verification. Note that a metric absent from a day's response is stored as **null, not 0** — an unworn or unsynced device is not a still one, and the merge and baseline both read a 0 as a real measurement.
+> **Provider note:** the `GoogleHealth` provider block authenticates against **Google OAuth** and pulls data from the **Google Health API** (`health.googleapis.com`) for every device type it serves (Fitbit, Google Pixel Watch) — the legacy Fitbit Web API is decommissioned September 2026. Google access tokens are short-lived (~1 hour), hence `TokenLifetimeHours: 1`. `GoogleHealthApiClient` reads each data type by the method that type supports: `dataPoints:dailyRollUp` for the Interval and Sample metrics (including `sedentary-period`, whose `durationSum` is a protobuf `Duration` — seconds with a literal `s` suffix, `"28800s"` — converted to minutes), and `dataPoints` list for sleep sessions, for the Daily records `daily-resting-heart-rate`, `daily-vo2-max`, `daily-respiratory-rate` and `daily-sleep-temperature-derivations` (which have no rollup), and for the `oxygen-saturation` sample series. SpO2 is listed rather than rolled up because the rollup union carries no `oxygenSaturation` member at all: average, minimum and maximum are derived from the samples so all three describe one series, and the `daily-oxygen-saturation` summary is used only as a fallback for the average — its `lowerBoundPercentage`/`upperBoundPercentage` describe the day's distribution, not the lowest and highest readings, so they are never stored as min/max. Response field names, wire formats and enum members are checked against the v4 discovery document; whether each is actually populated for a given wearer's device is still pending live-sandbox verification. Note that a metric absent from a day's response is stored as **null, not 0** — an unworn or unsynced device is not a still one, and the merge and baseline both read a 0 as a real measurement.
 >
 > Some metrics are allowed to fail without failing the sync: a `400`/`404` on `daily-resting-heart-rate`, or on any of the optional metrics (`oxygen-saturation`, `daily-vo2-max`, `daily-respiratory-rate`, `daily-sleep-temperature-derivations`), leaves that column null, since not every device derives them — most Fitbits derive none of the optional four. The exception is a **malformed-request** `400` — one carrying `google.rpc.BadRequest` field violations, which only ever means the request we built is wrong. Those propagate and mark the connection `SyncError`, because resting HR anchors the HR baseline and a silent null there degrades alerting instead of reporting a fault. That guard is what surfaced the `resting-heart-rate` data-type bug, and then the camelCase `filter` member path (`dailyRestingHeartRate.date`, where the grammar wants the snake_case data type `daily_resting_heart_rate.date`), rather than letting either degrade the baseline unnoticed.
 
@@ -401,7 +491,7 @@ cd src/Worker/CardiTrack.Worker
 dotnet run
 ```
 
-The worker starts an HTTP listener (default port 8080, or `PORT` if set) for `/healthz`. Run logging is `Information`, which the `Warning` baseline suppresses — set `Serilog__MinimumLevel__Default=Information` (and `Logging__LogLevel__Default=Information`, already the appsettings value) to see each run:
+The worker starts an HTTP listener (default port 8080, or `PORT` if set) for `/healthz`. Run logging is `Information`, which the local appsettings `Warning` baseline suppresses — set `Serilog__MinimumLevel__Default=Information` (and `Logging__LogLevel__Default=Information`, already the appsettings value) to see each run, as deployed dev already does (prod stays at `Warning` and suppresses these):
 ```
 [06:00:00 INF] WearableSync triggered at 2026-03-12T06:00:00.000Z
 [06:00:04 INF] WearableSync complete. Success: 12, Failed: 0.
@@ -474,4 +564,4 @@ Logging mirrors the API: **Serilog console sink** always, plus `AddApmShipping` 
 
 ---
 
-**Last Updated:** August 8, 2026
+**Last Updated:** August 13, 2026

@@ -1,7 +1,9 @@
 # APM Setup Runbook (Operator)
 
-Connects the deployed API, Web, and Worker to the APM backend (**Datadog** — selected per
-environment by the `apm_engine` tfvar). The apps are already wired. Two env vars per
+Connects the deployed API, Web, Worker, and PipelineJobs to the APM backend (**Datadog**
+— selected per environment by the `apm_engine` tfvar); note PipelineJobs receives the
+same env vars but is a Cloud Run **job**, not a service (rollout note in §3). The apps
+are already wired. Two env vars per
 service carry the **connection**; the volume knobs (`Apm__MetricsEnabled`,
 `Apm__TracesSampleRatio`, `Serilog__MinimumLevel__Default`) are separate and documented
 below:
@@ -13,18 +15,21 @@ below:
 Until the secret holds real JSON the apps run normally and ship nothing — the `REPLACE_ME`
 placeholder counts as "not configured". Malformed JSON in the secret fails startup loudly.
 
-Quota guardrails are enforced engine-independently: only Warning+ logs ship,
-`/health(z)` is never traced, and metrics (runtime, ASP.NET Core, HttpClient, Npgsql,
+Quota guardrails are enforced engine-independently: logs ship at the service's Serilog
+root level (`Warning` by default — dev deliberately runs the API and Worker at
+`Information`), `/health(z)` is never traced, and metrics (runtime, ASP.NET Core, HttpClient, Npgsql,
 GenAI) ship only when the `apm_metrics_enabled` tfvar is true (→ `Apm__MetricsEnabled` env var)
 — they bill as custom metrics, so the switch is off by default. Current per-environment
 values: **dev `apm_metrics_enabled = true`, prod `= false`**.
 
-All three services now carry the **same** volume settings in `appsettings.json` —
-`Serilog:MinimumLevel:Default` and `Apm:MinimumLogLevel` both `Warning`,
-`Apm:TracesSampleRatio` `1.0` (full sampling, DB commands included via Npgsql spans).
-Terraform then sets two of those per service, so one service can be tuned without
-touching the others (both dev and prod tfvars currently list all three services at the
-baseline):
+All services carry the **same** volume settings in `appsettings.json` —
+`Serilog:MinimumLevel:Default` `Warning` and `Apm:TracesSampleRatio` `1.0` (full
+sampling, DB commands included via Npgsql spans). `Apm:MinimumLogLevel` is **not** set
+in any `appsettings.json` — the Datadog sink inherits the Serilog root level unless it
+is explicitly pinned (below). Terraform then sets two of those per service, so one
+service can be tuned without touching the others (prod's tfvars list every service at
+the baseline; dev deliberately runs `api` and `worker` at `Information` for
+wearable-sync/OAuth diagnosis — dev is *not* at baseline):
 
 | tfvar (object, one attribute per service) | env var | baseline |
 | --- | --- | --- |
@@ -34,9 +39,12 @@ baseline):
 Every attribute is optional, so `log_minimum_level = { api = "Debug" }` turns the API up
 and leaves Web and Worker at `Warning`. Two things to know when you do that:
 
-- The APM sink keeps filtering at `Apm:MinimumLogLevel` (`Warning`), so turning a
-  service up floods Cloud Logging only — it does not increase what ships to Datadog.
-  Lower the shipped floor too by setting the `Apm__MinimumLogLevel` env var by hand.
+- The Datadog sink **inherits** the Serilog root level unless `Apm:MinimumLogLevel` is
+  explicitly pinned (`ShipLevel = MinimumLogLevel ?? InheritedLogLevel ?? Warning`), so
+  turning a service up raises what ships to Datadog too, not just Cloud Logging — treat
+  it as an ingest-spend change. `Apm__MinimumLogLevel` is now only for holding the sink
+  **stricter** than the root (e.g. root `Debug` for Cloud Logging while still shipping
+  only `Warning`+).
 - Values *below* `Information` need `Logging__LogLevel__Default` set to match: the
   Microsoft.Extensions.Logging filter runs ahead of Serilog and stays at `Information`
   in the API and Worker `appsettings.json`, so `Debug`/`Verbose` is dropped before
@@ -75,10 +83,21 @@ the shared string in `TelemetryNames` (CardiTrack.Shared).
   token counts, durations, model names, status codes and JSON error positions only.
   `MedGemmaClientTests` pins that invariant; keep it green.
 
+The MedGemma source is not the only custom instrumentation `ApmExtensions` registers:
+the **Npgsql** source contributes the DB command spans, `TelemetryNames.PipelineSource`
+emits one consumer span per pulled Pub/Sub message (span-linked to the publishing
+webhook span), and `TelemetryNames.PushSource` emits one span per FCM send — needed
+because FirebaseAdmin bypasses `IHttpClientFactory`, so no HttpClient span would exist
+otherwise. Push delivery also carries its own `notification.*` meters (including
+`notification.time_to_ack`), behind the same `apm_metrics_enabled` switch.
+
 ### How each app identifies itself
 
-Each host reports as its **app type**, lowercase — `api`, `web`, `worker` (the mobile app
-is separate: `carditrack-mobile`, set in `MobileApm`). That is what the **Service** facet
+Each host reports as its **app type**, lowercase — `api`, `web`, `worker`,
+`pipeline-jobs`, `webhook-receiver` (the mobile app is separate: `carditrack-mobile`,
+set in `MobileApm`). All five hosts call `AddApmTracing`, but note the webhook receiver
+is wired in code only — Terraform gives it no `Apm__Engine`/`Apm__Data` yet, so it runs
+console-only for now. The service name is what the **Service** facet
 filters on in Logs and APM, and both signals use the same string: the log sink's service
 field and the OTel resource's `service.name` come from one constant per host
 (`ApmServiceNames`), because Datadog joins a log to its trace on service — different
@@ -147,6 +166,11 @@ Datadog `Apm__Data` shape:
 {"IngestUrl":"uk1.datadoghq.com","IngestToken":"<api key>","TraceEndpoint":"https://otlp.uk1.datadoghq.com/v1/traces"}
 ```
 
+> **Log status normalisation** is app-side: `DatadogLogStatusEnricher` stamps the
+> lowercase canonical level attribute onto Datadog-bound logs so the **status** facet
+> resolves (`Fatal` maps to `emergency`). The documented fallback is a clone-and-remap
+> log pipeline, kept at `infrastructure/datadog/pipelines/otel-severity-to-status.json`.
+
 <details>
 <summary>Alternative engine: Better Stack source steps</summary>
 
@@ -182,17 +206,25 @@ gcloud run services update carditrack-dev-web --region=europe-west2 --project=ca
   --update-labels=apm-config-rollout=$(date +%s)
 gcloud run services update carditrack-dev-worker --region=europe-west2 --project=carditrack-490120 \
   --update-labels=apm-config-rollout=$(date +%s)
+
+# PipelineJobs is a Cloud Run JOB, not a service — update the job too (or skip it:
+# each scheduled execution resolves the secret fresh at start, so the next run picks
+# it up on its own):
+gcloud run jobs update carditrack-dev-pipeline-jobs --region=europe-west2 --project=carditrack-490120 \
+  --update-labels=apm-config-rollout=$(date +%s)
 ```
 
 ## 4. Verify (before blaming app code)
 
 ```bash
-# Traces: sampled at ~20%, so send a burst; expect a handful in Datadog -> APM -> Traces
+# Traces: fully sampled (traces_sample_ratio 1.0 in both envs), so a single request
+# should appear in Datadog -> APM -> Traces
 # (requires TraceEndpoint in the secret; logs-only setups skip this check)
-for i in $(seq 20); do curl -s -o /dev/null https://api.dev.carditrack.com/api/does-not-exist; done
+curl -s -o /dev/null https://api.dev.carditrack.com/api/does-not-exist
 
-# Logs: check Datadog -> Logs -> Live Tail. A quiet healthy app ships NOTHING
-# (only Warning+) — absence of logs is not a fault.
+# Logs: check Datadog -> Logs -> Live Tail. A quiet healthy app at the Warning root
+# baseline ships NOTHING (dev's API and Worker run at Information, so they chat more)
+# — absence of logs is not a fault.
 # Filter by app with service:api / service:web / service:worker, and confirm the
 # release landed with the Version facet (or "version:<semver>" in the query bar).
 # env:dev / env:prod separates the environments — mobile already reports the same two
@@ -230,20 +262,14 @@ server, stamped into builds by CI:
 For Datadog (Android/iOS only; Session Replay deliberately disabled — health data must not
 be screen-recorded):
 
-1. Populate the data secret with a client token from the Datadog org
-   (**Organization Settings → Client Tokens**) — a write-only identifier, safe to embed:
-
-```bash
-printf '%s' '{"ClientToken":"<pub...>","Site":"Eu1"}' \
-  | gcloud secrets versions add carditrack-dev-apm-mobile-data --project=carditrack-490120 --data-file=-
-```
-
-2. The next mobile CI build stamps engine + data in (`-p:ApmEngine=... -p:ApmData=<base64>`);
-   placeholder data stamps as empty, which disables monitoring entirely — unprovisioned
-   environments and local builds ship nothing. A bad engine name or malformed JSON logs
-   and skips at app startup (monitoring must never brick the app).
-3. Verify: install the internal-track build, open the app, then Datadog → **Logs**
-   filtered to `service:carditrack-mobile`.
+**Do not populate the mobile data secret — mobile monitoring is inert on this org.**
+The org is on UK1, and an unnameable `Site` disables monitoring outright (details
+below), so a client token buys nothing here. Leave `carditrack-<env>-apm-mobile-data`
+at its `REPLACE_ME` placeholder: placeholder data stamps as empty at build time, which
+disables monitoring cleanly (a bad engine name or malformed JSON likewise logs and
+skips at app startup — monitoring must never brick the app). Mobile diagnostics come
+from the **on-device Serilog log files** and **Play Console → Quality → Android
+vitals** instead.
 
 ### `Site` must be one the SDK can name — UK1 cannot be reached
 
@@ -273,7 +299,8 @@ Consequences, all confirmed on a device (2026-08-11):
   bindings ship as `Datadog.Android.*` packages; there is no iOS equivalent here), which the
   project's Android/iOS parity rule rules out.
 
-Notes: the Datadog SDK raised the Android minimum from API 21 to 23; `Site` defaults to
+Notes: the app's Android minimum is API 31 today (raised for the splash-screen API);
+Datadog and Firebase themselves only require API 23. `Site` defaults to
 `Eu1` when omitted; consent is currently `Granted` at first launch — add a settings toggle
 before any store review that requires opt-in analytics consent. The app sets
 `FirstPartyHosts` for the API host with Datadog + W3C `traceparent` tracing headers, so
@@ -330,9 +357,16 @@ from `ApplicationDisplayVersion`, which the signed CI builds set from the releas
   secrets if quota attribution ever matters; today all services share the one secret.
 - Tune volume per service in the environment's tfvars: `traces_sample_ratio` (→
   `Apm__TracesSampleRatio`) and `log_minimum_level` (→ `Serilog__MinimumLevel__Default`);
-  flip `apm_metrics_enabled` to turn metrics on or off. Lowering the *shipped* log floor
-  below `Warning` still needs an `Apm__MinimumLogLevel` env var set by hand — deliberate,
-  so a debugging session cannot quietly raise ingest.
+  flip `apm_metrics_enabled` to turn metrics on or off. Raising `log_minimum_level`
+  raises what ships to Datadog too — the sink inherits the Serilog root level — so
+  treat it as an ingest-spend change; set `Apm__MinimumLogLevel` by hand only to hold
+  the sink **stricter** than the root.
+- One-shot job hosts must flush before exit or every span is dropped silently:
+  `ApmExtensions.ForceFlushTraces` is called by `CardiTrack.PipelineJobs` before
+  `FlushLogsAsync` — any future one-shot host needs the same.
+- Monitors and log pipelines live in `infrastructure/datadog/` — see its README for the
+  applied monitor IDs (uk1: 33845 worker-host-faulted, 33846 worker-job-failing,
+  34150 webhook-notifications-unparseable).
 - Switching backends: implement `IApmProvider`, register it in `ApmProviderRegistry`,
   flip `apm_engine` in the environment's tfvars (`infrastructure/environments/<env>.tfvars`),
   and put the new backend's JSON in the same `apm-data` secret — extra fields beyond

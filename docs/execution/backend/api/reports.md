@@ -2,13 +2,14 @@
 
 Handles async generation and download of health summary reports for doctor visits. Report generation is asynchronous.
 
-**Implementation status:** all three endpoints below are **implemented**, but the current output is an **LLM-generated plain-text report** (MedGemma summarises the member's activity logs and alerts). PDF, CSV, FHIR R4, and HL7 v2 rendering are **planned — not yet implemented**; the `format` field is accepted and echoed but does not change the output.
+**Implementation status:** all three endpoints below are **implemented**, but the current output is an **LLM-generated plain-text report** (the general provider — today Gemini's consumer endpoint — summarises the member's activity logs and alerts). PDF, CSV, FHIR R4, and HL7 v2 rendering are **planned — not yet implemented**; the `format` field is accepted and echoed but does not change the output.
 
 How generation works today:
 
 - Generation is **fire-and-forget in-process** (`Task.Run` inside the API) — there is no durable queue. All report state (status + content) lives in the **distributed cache** with a **1-hour TTL**; an API restart loses in-flight and completed reports.
 - Report IDs are GUIDs in compact **`"N"` format** (32 hex chars, no dashes).
-- **No request validation exists**: no date-range limit, no member-count cap, and **no ownership check on the requested CardiMember IDs** (unknown members are silently skipped when building the report).
+- **Ownership is checked up front**: `ReportGenerationService.GenerateAsync` calls `RequireViewAccessAsync` on every requested CardiMember ID before queueing — any id the caller cannot read fails the **whole request with 404** (indistinguishable from a nonexistent member). What is still missing is business validation: **no date-range limit and no member-count cap** are enforced.
+- **Privacy:** because reports go to the public Gemini endpoint, member names are pseudonymised as "Patient A", "Patient B", … before the model call and swapped back only after the response returns (`ReportGenerationService`). The model never sees a real name.
 
 **User Stories:** 2.3 (Trend Charts & Historical Data — export), 6.3 (Health Data Export), 9.2 (Printable Reports)
 
@@ -19,8 +20,6 @@ How generation works today:
 Queue async generation of a health summary report for one or more CardiMembers. Returns a report ID to poll. (There is no `/generate` suffix.)
 
 **Priority:** P0 | **Auth Required:** Yes
-
-> **Auth drift:** this controller returns **401** (not the 403 used elsewhere) when the JWT is valid but no local user row exists yet.
 
 ### Request Body
 
@@ -45,7 +44,7 @@ Flat shape — date range and section toggles are **top-level fields**, not nest
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `cardiMemberIds` | GUID array | Yes | One or more CardiMember IDs. **No max-5 cap and no ownership validation** |
+| `cardiMemberIds` | GUID array | Yes | One or more CardiMember IDs. Each is ownership-checked (`RequireViewAccessAsync`) — one unreadable id fails the request with **404**. **No max-5 cap** |
 | `dateRangeFrom` | date (`DateOnly`) | Yes | Start date. No range-size validation |
 | `dateRangeTo` | date (`DateOnly`) | Yes | End date |
 | `format` | integer enum | Yes | `ReportFormat`: Pdf=1, Csv=2, FhirR4=3, Hl7V2=4. Accepted but **output is always plain text today** |
@@ -78,6 +77,12 @@ There is **no validator** registered for this request — malformed values fail 
 
 `status` is the integer `ReportStatus` enum: Pending=1, Ready=2, Failed=3, Expired=4.
 
+### Errors
+
+| Status | When |
+|--------|------|
+| 404 | A requested CardiMember ID is unknown **or not readable by the caller** — deliberately indistinguishable |
+
 ---
 
 ## GET `/api/v1/reports/{reportId}`
@@ -86,7 +91,7 @@ Check the status of an in-progress or completed report.
 
 **Priority:** P1 | **Auth Required:** Yes
 
-> **Security note (current behavior, tracked as a follow-up):** this endpoint performs **no ownership check** — any authenticated user who knows a report ID can read its status and, via download, its content. The report ID's 128 bits of randomness is the only protection today.
+> **Owner-scoped:** the cache envelope stamps `OwnerUserId` at generation, and both status and download return **404 for anyone but the requesting user** — indistinguishable from an expired report, so a stolen report ID discloses nothing, not even that the report exists.
 
 ### Response `200 OK` — Ready (wrapped in `ApiResponse<T>`)
 
@@ -135,7 +140,7 @@ Contract notes (verified against `ReportGenerationService`):
 
 | Status | When |
 |--------|------|
-| 404 | Report ID unknown **or past the 1-hour TTL** ("it may have expired") |
+| 404 | Report ID unknown, **past the 1-hour TTL** ("it may have expired"), or owned by another user |
 
 ---
 
@@ -143,7 +148,7 @@ Contract notes (verified against `ReportGenerationService`):
 
 Download the generated report. **The download window is 1 hour** from generation (same TTL as status) — not 24 hours.
 
-**Priority:** P1 | **Auth Required:** Yes (same missing-ownership caveat as the status endpoint)
+**Priority:** P1 | **Auth Required:** Yes (owner-scoped, same as the status endpoint — anyone else gets 404)
 
 ### Response `200 OK`
 
@@ -162,11 +167,11 @@ The body is the LLM-generated report text (structured prose summarising metrics,
 
 | Status | When |
 |--------|------|
-| 404 | Report unknown or expired (1-hour TTL), or content evicted — **410 is never returned** |
+| 404 | Report unknown, expired (1-hour TTL), owned by another user, or content evicted — **410 is never returned** |
 | 409 | Report exists but is not `Ready` yet (still pending, or failed) |
 
 ---
 
 **Related:** [readme.md](readme.md) | [health-data.md](health-data.md) | [User Stories 2.3, 9.2](../../ui/mobile/user_stories.md)
 
-**Last Updated:** August 7, 2026
+**Last Updated:** August 13, 2026

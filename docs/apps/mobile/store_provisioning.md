@@ -2,8 +2,10 @@
 
 One-time setup that enables CI (`.github/workflows/deploy-apps-dev.yml`) to deliver signed mobile
 builds to **TestFlight** (iOS) and the **Google Play internal testing track** (Android). Everything
-lands in GCP Secret Manager as the nine `carditrack-common-*` secrets defined in
-`infrastructure/common/secret_manager.tf` — run *Deploy Infrastructure → Common* first so the
+lands in GCP Secret Manager as the twelve `carditrack-common-*` secrets defined in
+`infrastructure/common/secret_manager.tf` — nine read by CI, plus three **operator-only** APNs
+secrets (`apns-auth-key-p8`, `apns-key-id`, `apple-team-id` — see section F) that no deploy
+workflow reads. Run *Deploy Infrastructure → Common* first so the
 secrets exist (seeded `REPLACE_ME`). Until a secret holds a real value, the corresponding CI jobs
 skip with a warning; nothing fails.
 
@@ -12,8 +14,9 @@ any environment with `keytool`, `openssl`, and `gcloud` works the same way.
 
 > **Related but separate:** signed builds also need the **per-environment mobile APM secrets**
 > (`carditrack-<env>-apm-mobile-engine` / `carditrack-<env>-apm-mobile-data` — defined in the
-> env stacks, *not* `common/`) populated before crash/session monitoring works in the shipped
-> app; unstamped builds run fine but ship no telemetry. See the
+> env stacks, *not* `common/`) populated before mobile **log and trace** shipping works in the
+> shipped app (there is no crash/session monitoring in Datadog — crashes/ANRs come from Play
+> Console vitals); unstamped builds run fine but ship no telemetry. See the
 > [APM setup runbook §5 — Mobile app monitoring](../../technical/apm_setup_runbook.md#5-mobile-app-monitoring).
 
 ## Secret reference
@@ -29,6 +32,12 @@ any environment with `keytool`, `openssl`, and `gcloud` works the same way.
 | `carditrack-common-appstore-connect-issuer-id` | App Store Connect API issuer ID | plain text |
 | `carditrack-common-appstore-connect-api-key-id` | App Store Connect API key ID | plain text |
 | `carditrack-common-appstore-connect-api-private-key` | App Store Connect API `.p8` contents | PEM text (not base64) |
+| `carditrack-common-apns-auth-key-p8` *(operator-only)* | APNs auth key `.p8` contents (section F) | PEM text (not base64) |
+| `carditrack-common-apns-key-id` *(operator-only)* | APNs auth key ID | plain text |
+| `carditrack-common-apple-team-id` *(operator-only)* | Apple Developer Team ID | plain text |
+
+The three *operator-only* secrets are not read by any deploy workflow (no CI accessor grant) —
+they are loaded and read manually by an operator.
 
 Loading pattern (binary payloads are stored as base64 *text* because CI decodes with `base64 --decode`):
 
@@ -189,6 +198,22 @@ $raw = [Text.Encoding]::ASCII.GetString([IO.File]::ReadAllBytes("<profile>.mobil
    **CardiTrack** → grant **Release to testing tracks**. Permissions can take a few minutes to
    propagate; a first 403 from CI shortly after setup usually self-resolves.
 
+## F. APNs auth key (operator-only secrets)
+
+These three secrets are **not read by any deploy workflow** — they carry the APNs credentials an
+operator uses for push-notification delivery.
+
+1. [developer.apple.com/account](https://developer.apple.com/account) → **Certificates,
+   Identifiers & Profiles → Keys** → **+** → name it (label only), enable
+   **Apple Push Notifications service (APNs)** → Continue → Register.
+2. Download the `.p8` — like the App Store Connect key, it is **downloadable exactly once** —
+   and note the **Key ID** shown on the key's page. The **Team ID** is in the portal's
+   Membership details.
+3. Load the three values:
+   - the `.p8` text content → `carditrack-common-apns-auth-key-p8`
+   - the Key ID → `carditrack-common-apns-key-id`
+   - the Team ID → `carditrack-common-apple-team-id`
+
 ## Verification
 
 1. Confirm no placeholders remain:
@@ -196,7 +221,8 @@ $raw = [Text.Encoding]::ASCII.GetString([IO.File]::ReadAllBytes("<profile>.mobil
    ```bash
    for s in android-keystore android-keystore-password play-service-account-key \
             apple-distribution-cert-p12 apple-cert-password appstore-provisioning-profile \
-            appstore-connect-issuer-id appstore-connect-api-key-id appstore-connect-api-private-key; do
+            appstore-connect-issuer-id appstore-connect-api-key-id appstore-connect-api-private-key \
+            apns-auth-key-p8 apns-key-id apple-team-id; do
      v=$(gcloud secrets versions access latest --secret="carditrack-common-$s" --project=carditrack-490120)
      [ "$v" = "REPLACE_ME" ] && echo "NOT SET: $s" || echo "ok: $s"
    done

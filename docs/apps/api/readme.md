@@ -49,15 +49,16 @@ contract — a **single JSON value**. Deployed, the whole config is four env var
   `Datadog`, so an environment that forgets to set `apm_engine` silently flips backend.
 - `Apm__Data` — Secret Manager-backed (secret `carditrack-<env>-apm-data`), holding one JSON
   object; unknown keys land in `Extra` for provider-specific details. Per engine:
-  - Datadog: `{"IngestUrl":"datadoghq.eu","IngestToken":"<api key>","TraceEndpoint":"https://<org otlp intake>"}`
-    (`TraceEndpoint` optional — logs-only without it)
+  - Datadog: `{"IngestUrl":"uk1.datadoghq.com","IngestToken":"<api key>","TraceEndpoint":"https://otlp.uk1.datadoghq.com/v1/traces"}`
+    (`TraceEndpoint` optional — logs-only without it; the org is on the UK1 site)
   - Better Stack: `{"IngestUrl":"s123456.eu-nbg-2.betterstackdata.com","IngestToken":"<source token>"}`
 - `Apm__MetricsEnabled` — plaintext env var from the `apm_metrics_enabled` tfvar
   (**dev `true`, prod `false`** — metrics bill as custom metrics and stream continuously)
 - `Apm__TracesSampleRatio` — plaintext env var from the `traces_sample_ratio` tfvar, which is
   an object with one optional attribute per service (`api`, `web`, `worker`), **`1.0`
   everywhere today**. Its sibling `log_minimum_level` sets `Serilog__MinimumLevel__Default`
-  the same way (**`Warning` everywhere**), so either service can be tuned on its own.
+  the same way — **`Warning` across the board in prod; dev deliberately runs `api` and
+  `worker` at `Information`** (web stays `Warning`) — so either service can be tuned on its own.
 
 The single-value form wins when both are present. Shipping is **disabled until the engine, URL,
 and token are all real values** — `REPLACE_ME` placeholders count as unset. Provisioning:
@@ -79,8 +80,9 @@ Volume control (enforced engine-independently in `ApmExtensions`):
   ASP.NET Core and HttpClient instrumentation meters plus the `System.Runtime` and `Npgsql`
   meters ship over OTLP.
 
-All three services (API, Web, Worker) carry identical values for these — the API's earlier
-`Information` / `1.0` deviation from the others is resolved.
+All three services (API, Web, Worker) share the same mechanism and the same trace ratio;
+log levels differ per environment as noted above (dev turns api and worker up to
+`Information` on purpose).
 
 ### Service naming (`ApmServiceNames`)
 
@@ -132,9 +134,9 @@ environment is visibly missing; an invented `prod` is a false alarm.
 
 ## Project Structure
 
-> **Target structure** — the tree below is the planned layout, not a mirror of the current code. Today's `Controllers/` holds `Alerts`, `Auth`, `Onboarding`, `CardiMembers`, `Dashboard`, `Devices`, `Reports`, `Chat`, and `Insights` controllers (30 endpoints total), all deriving from `BaseApiController`; the `Webhooks/` folder (Google Health API, Garmin, Stripe) arrives with the AI-pipeline rollout ([llm_design.md](../../llm_design.md)).
+> **Target structure** — the tree below is the planned layout, not a mirror of the current code. Today's `Controllers/` holds twelve public controllers — `Alerts`, `Auth`, `Onboarding`, `CardiMembers`, `Dashboard`, `Devices`, `Reports`, `Chat`, `Insights`, `Notifications`, `Questionnaires`, and `Users` — plus the internal `Internal/InternalNotificationsController` (GoogleOidc-authenticated enqueue endpoint), **54 endpoints total**, all deriving from `BaseApiController`. Health-data webhook receipt lives in its own service, `src/Pipeline/CardiTrack.HealthWebhookReceiver` — which references neither Application nor Infrastructure and publishes raw notifications to Pub/Sub — and **will never live in the API** (no business logic in the one container the internet must reach; see [llm_design.md](../../llm_design.md)).
 >
-> **Routing note:** `BaseApiController` carries the route template `api/[controller]` (plus `[ApiController]`, JSON `Produces`, and the standard `ApiResponse<T>`/`ErrorResponse` envelope helpers). Eight of the nine controllers override it with explicit **`/api/v1/*`** routes; only `OnboardingController` still serves **`/api/Onboarding/*`**-style routes. API versioning is registered (default `1.0`, assumed when unspecified); moving Onboarding onto the versioned template is the remaining spec/code alignment task.
+> **Routing note:** `BaseApiController` carries the route template `api/[controller]` (plus `[ApiController]`, JSON `Produces`, and the standard `ApiResponse<T>`/`ErrorResponse` envelope helpers). All controllers except one override it with explicit **`/api/v1/*`** routes; only `OnboardingController` still serves **`/api/Onboarding/*`**-style routes. API versioning is registered (default `1.0`, assumed when unspecified); moving Onboarding onto the versioned template is the remaining spec/code alignment task.
 
 ```
 CardiTrack.API/
@@ -143,21 +145,22 @@ CardiTrack.API/
 │   ├── DashboardController.cs
 │   ├── AlertsController.cs
 │   ├── DevicesController.cs
-│   ├── FamilyController.cs
 │   ├── NotificationsController.cs
-│   ├── SubscriptionsController.cs
+│   ├── QuestionnairesController.cs
 │   ├── ReportsController.cs
-│   └── Webhooks/
-│       ├── HealthWebhookController.cs      # Google Health API webhooks — verifies auth, forwards to Event Hubs
-│       ├── GarminWebhookController.cs
-│       └── StripeWebhookController.cs
+│   ├── UsersController.cs
+│   ├── Internal/
+│   │   └── InternalNotificationsController.cs  # GoogleOidc-authenticated internal enqueue
+│   ├── FamilyController.cs                 # planned — does not exist yet
+│   └── SubscriptionsController.cs          # planned — does not exist yet
 ├── DTOs/
 │   ├── Requests/
 │   └── Responses/
 ├── Middleware/
-│   ├── ErrorHandlingMiddleware.cs
 │   ├── AuditLoggingMiddleware.cs
-│   └── HipaaComplianceMiddleware.cs
+│   ├── ClientVersionMiddleware.cs
+│   ├── ExceptionHandlingMiddleware.cs
+│   └── UserContextMiddleware.cs
 ├── Extensions/
 │   ├── ServiceCollectionExtensions.cs
 │   ├── Auth0Extensions.cs
@@ -227,7 +230,8 @@ X-Rate-Limit-Reset: 2026-08-07T12:01:00.0000000Z
   },
   "DeviceProviders": [
     {
-      "Provider": "Fitbit",
+      "Provider": "GoogleHealth",
+      "DeviceTypes": ["Fitbit", "GooglePixelWatch"],
       "ClientId": "<Google Cloud OAuth client id>",
       "ClientSecret": "<Google Cloud OAuth client secret>",
       "AuthorizationUrl": "https://accounts.google.com/o/oauth2/v2/auth",
@@ -241,36 +245,47 @@ X-Rate-Limit-Reset: 2026-08-07T12:01:00.0000000Z
       ],
       "RedirectUri": "https://api.carditrack.com/api/v1/oauth/redirect/fitbit",
       "AdditionalAuthorizationParams": {
-        "access_type": "offline",
+        "access_type": "offline"
+      },
+      "FirstConsentAuthorizationParams": {
         "prompt": "consent"
       },
       "TokenLifetimeHours": 1
     }
   ],
   "AI": {
-    "GeneralProvider": "Gemini",
-    "MedicalProvider": "MedGemma",
-    "Providers": [
-      { "Name": "MedGemma", "BaseUrl": "http://localhost:11434", "Model": "medgemma", "TimeoutSeconds": 120 },
-      { "Name": "Gemini", "BaseUrl": "https://generativelanguage.googleapis.com", "Model": "gemini-2.0-flash", "ApiKey": "" }
-    ]
+    "Public": {
+      "Kind": "Gemini",
+      "Model": "gemini-2.0-flash",
+      "ApiKey": "unset-local-placeholder",
+      "BaseUrl": "",
+      "TimeoutSeconds": 60,
+      "MaxOutputTokens": 16000
+    },
+    "Private": {
+      "Model": "hf.co/unsloth/medgemma-1.5-4b-it-GGUF:Q4_K_M",
+      "BaseUrl": "http://localhost:11434",
+      "TimeoutSeconds": 300,
+      "UseIdentityToken": false
+    }
   }
 }
 ```
 
 Secrets are supplied via environment variables backed by **GCP Secret Manager** in all deployed environments — never committed. (See `api_secret_env_vars` in `infrastructure/main.tf` for the full env-var → secret mapping.)
 
-> The Fitbit provider runs on the **Google Health API** (Google OAuth endpoints, `googlehealth.*` scope URIs, ~1-hour access tokens). `RedirectUri` is the provider-facing **https bounce endpoint** — Google web OAuth clients cannot redirect to a custom scheme, so `GET /api/v1/oauth/redirect/fitbit` 302s back into the app deep link. `AdditionalAuthorizationParams` carries Google's `access_type=offline` (required for a refresh token) and `prompt=consent`. Client id/secret come from Secret Manager (`devices-fitbit-client-id` / `devices-fitbit-client-secret`). Event ingestion config for the AI pipeline arrives with its rollout ([llm_design.md](../../llm_design.md)).
+> The `GoogleHealth` provider block runs on the **Google Health API** (Google OAuth endpoints, `googlehealth.*` scope URIs, ~1-hour access tokens) and serves every device brand in its `DeviceTypes` list — Fitbit and Google Pixel Watch today. `RedirectUri` is the provider-facing **https bounce endpoint** — Google web OAuth clients cannot redirect to a custom scheme, so `GET /api/v1/oauth/redirect/fitbit` 302s back into the app deep link. `AdditionalAuthorizationParams` carries Google's `access_type=offline` (required for a refresh token); `FirstConsentAuthorizationParams` adds `prompt=consent` on the first connect only. Client id/secret come from Secret Manager (`devices-fitbit-client-id` / `devices-fitbit-client-secret` — historical slug, GoogleHealth block).
 
 ### Device providers — positional-index contract
 
-`DeviceProviders` in appsettings is a JSON **array**, and deployment injects the Fitbit
+`DeviceProviders` in appsettings is a JSON **array**, and deployment injects the Google Health
 credentials positionally (`DeviceProviders__0__ClientId` / `DeviceProviders__0__ClientSecret`
-env vars in `infrastructure/main.tf`). **Element 0 must therefore be the Fitbit provider** —
-`AddFitbitProvider()` post-configures the list and **throws at startup** if the first element
-is anything else, rather than silently binding Google credentials to the wrong provider.
-The `Garmin`, `Withings`, `Oura`, and `Whoop` entries that follow are **config-only stubs**:
-no API client or sync service is registered for them yet.
+env vars in `infrastructure/main.tf`). **Element 0 must therefore be the GoogleHealth provider**
+(serving Fitbit and GooglePixelWatch) — `AddGoogleHealthProvider()` post-configures the list and
+**throws at startup** if the first element is anything else, rather than silently binding Google
+credentials to the wrong provider. The `GarminConnect`, `Withings`, `Oura`, and `Whoop` entries
+that follow are **config-only stubs** in the same shape: no API client or sync service is
+registered for them yet.
 
 ### AI providers
 
@@ -284,7 +299,10 @@ no API client or sync service is registered for them yet.
   model on its own Cloud Run service, reachable only by IAM-authorised callers). There is no kind here: the provider is
   fixed in code, so no environment variable can send health data off-estate. Base URL comes
   from the `medgemma-service-url` secret as `AI__Private__BaseUrl` — locally it defaults to
-  `http://localhost:11434`.
+  `http://localhost:11434`. `AI__Private__UseIdentityToken` (deployed `true`, local `false`)
+  makes the client attach a Google-signed OIDC identity token with the service URL as its
+  audience — this is what authorises calls to the IAM-protected MedGemma Cloud Run service
+  (`MedGemmaIdentityTokenHandler`).
 
 Both resolve as keyed `IExternalAiClient` services ("GeneralProvider" / "MedicalProvider")
 behind `IGenerativeAiService`, `IMedicalAiService`, `IHealthInsightService`, and
@@ -400,4 +418,4 @@ For API support, contact: api-support@carditrack.com
 
 ---
 
-**Last Updated:** August 7, 2026
+**Last Updated:** August 13, 2026
