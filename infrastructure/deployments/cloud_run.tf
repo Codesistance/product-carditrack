@@ -648,10 +648,21 @@ resource "google_cloud_run_v2_service" "worker" {
 #
 # What this gave up: internal-only ingress used to contain an IAM mistake. Now IAM is the only
 # boundary, so re-adding allUsers — or allAuthenticatedUsers, which reads as restrictive but means
-# any Google account anywhere — would expose the model with no network backstop. The control that
-# makes that mistake impossible rather than merely discouraged is the
-# constraints/iam.allowedPolicyMemberDomains org policy (Domain Restricted Sharing); it is not
-# managed here because it is org-level, and it is the one follow-up this change assumes.
+# any Google account anywhere — would expose the model with no network backstop.
+#
+# This comment used to say the control making that impossible was the
+# constraints/iam.allowedPolicyMemberDomains org policy, pending as a follow-up. It is not pending:
+# it cannot exist. There is no organization above this project, and Domain Restricted Sharing
+# allow-lists Cloud Identity customer IDs — with no organization there is no directory to name, so
+# the constraint is meaningless rather than merely unset. VPC Service Controls, the other network
+# backstop worth considering, needs an organization too.
+#
+# So this is an accepted risk, recorded rather than deferred: no platform control prevents the
+# grant. What exists instead is detection — see the MedGemma section of alerting.tf, which fires
+# on the audit-log entry within minutes. Prevention would need either a Cloud Identity organization
+# (which would also unlock VPC-SC and SCC) or, possibly, a project-level IAM deny policy on
+# run.services.setIamPolicy. Do not reinstate the org-policy claim above without checking that an
+# organization now exists.
 resource "google_cloud_run_v2_service" "medgemma" {
   count    = var.medgemma_image != "" ? 1 : 0
   name     = var.medgemma_service_name

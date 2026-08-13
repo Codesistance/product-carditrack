@@ -439,6 +439,16 @@ variable "enable_oom_alerting" {
   default     = true
 }
 
+# MedGemma public-exposure alerting. On by default because it is the only control standing between
+# an accidental allUsers grant and a publicly invocable medical model — this project has no
+# organization, so the org policy that would have prevented it outright cannot exist. Reuses the
+# notification channels above; self-disables where MedGemma is not deployed.
+variable "enable_medgemma_iam_alerting" {
+  description = "Alert when MedGemma's IAM policy is changed to grant allUsers or allAuthenticatedUsers. No-op where medgemma_image is empty"
+  type        = bool
+  default     = true
+}
+
 variable "alert_notification_emails" {
   description = "Email addresses notified when a Cloud Run container is OOM-killed"
   type        = list(string)
