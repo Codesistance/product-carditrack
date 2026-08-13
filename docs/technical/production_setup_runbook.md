@@ -262,7 +262,7 @@ diagnosed from the log without another deploy.
 > Reading these logs needs only Cloud Logging access. **Pulling the Pub/Sub message itself does
 > not work** with the `carditrack-investigator` SA — `pubsub.subscriptions.pull` returns
 > `PERMISSION_DENIED`, which is why the parse failure had to be diagnosed from log shape rather
-> than from a payload. Grant `roles/pubsub.viewer` if direct inspection is ever wanted.
+> than from a payload. Grant `roles/pubsub.subscriber` if direct message inspection is ever wanted.
 
 ### 10. Compliance gate: Art. 22 before prod alerting
 
