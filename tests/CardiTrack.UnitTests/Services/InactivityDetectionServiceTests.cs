@@ -4,7 +4,10 @@ using CardiTrack.Application.Services.Notifications;
 using CardiTrack.Domain.Entities;
 using CardiTrack.Domain.Enums;
 using CardiTrack.Infrastructure.Services;
+using CardiTrack.Infrastructure.Settings;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
 
@@ -107,8 +110,29 @@ public class InactivityDetectionServiceTests
             });
     }
 
+    /// <summary>
+    /// Resolves the sync engine exactly as production does — keyed by the HealthApi the device
+    /// type maps to, through a real container. A substitute <c>IServiceProvider</c> would have
+    /// happily returned the mock for a registration that does not exist, which is precisely the
+    /// mistake that took the worker down: <see cref="IDeviceSyncService"/> is keyed, and asking
+    /// for it unkeyed throws at activation.
+    /// </summary>
+    private IServiceProvider BuildServices() =>
+        new ServiceCollection()
+            .AddSingleton<IOptions<List<DeviceProviderSettings>>>(Options.Create(
+                new List<DeviceProviderSettings>
+                {
+                    new()
+                    {
+                        Provider = nameof(HealthApi.GoogleHealth),
+                        DeviceTypes = [nameof(DeviceType.Fitbit)],
+                    },
+                }))
+            .AddKeyedSingleton(HealthApi.GoogleHealth, _deviceSync)
+            .BuildServiceProvider();
+
     private InactivityDetectionService CreateSut() =>
-        new(_unitOfWork, Substitute.For<IDispatchService>(), _deviceSync,
+        new(_unitOfWork, Substitute.For<IDispatchService>(), BuildServices(),
             NullLogger<InactivityDetectionService>.Instance);
 
     /// <summary>

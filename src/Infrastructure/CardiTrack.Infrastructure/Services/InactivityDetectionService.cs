@@ -4,6 +4,7 @@ using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Application.Services.Notifications;
 using CardiTrack.Domain.Entities;
 using CardiTrack.Domain.Enums;
+using CardiTrack.Infrastructure.Extensions;
 using Microsoft.Extensions.Logging;
 
 namespace CardiTrack.Infrastructure.Services;
@@ -24,18 +25,25 @@ public class InactivityDetectionService : IInactivityDetectionService
 {
     private readonly IUnitOfWork _unitOfWork;
     private readonly IDispatchService _dispatch;
-    private readonly IDeviceSyncService _deviceSync;
+    private readonly IServiceProvider _services;
     private readonly ILogger<InactivityDetectionService> _logger;
 
+    /// <param name="services">
+    /// Resolves the sync engine per connection. <see cref="IDeviceSyncService"/> is registered
+    /// <em>keyed</em> by <see cref="Domain.Enums.HealthApi"/> — which engine serves a connection
+    /// is decided by its device type through configuration — so it cannot be taken as a
+    /// constructor dependency: injecting it directly is what broke this worker on every tick
+    /// after the probe first shipped. <c>GetDeviceSyncService</c> is the one resolution path.
+    /// </param>
     public InactivityDetectionService(
         IUnitOfWork unitOfWork,
         IDispatchService dispatch,
-        IDeviceSyncService deviceSync,
+        IServiceProvider services,
         ILogger<InactivityDetectionService> logger)
     {
         _unitOfWork = unitOfWork;
         _dispatch = dispatch;
-        _deviceSync = deviceSync;
+        _services = services;
         _logger = logger;
     }
 
@@ -118,9 +126,23 @@ public class InactivityDetectionService : IInactivityDetectionService
         foreach (var connection in connections)
         {
             ct.ThrowIfCancellationRequested();
+
+            // Which engine serves this connection is configuration, not code — the same
+            // DeviceType→HealthApi mapping the sync worker resolves through. A device type no
+            // provider block claims cannot be pulled by anyone, so there is nothing to probe with
+            // and the alert below is the honest outcome.
+            if (_services.GetDeviceSyncService(connection.DeviceType) is not { } sync)
+            {
+                _logger.LogWarning(
+                    "No sync engine is registered for {DeviceType}; DeviceConnection "
+                    + "{DeviceConnectionId} cannot be probed before the device-silence alert.",
+                    connection.DeviceType, connection.Id);
+                continue;
+            }
+
             try
             {
-                await _deviceSync.SyncCardiMemberAsync(connection);
+                await sync.SyncCardiMemberAsync(connection);
             }
             catch (Exception ex)
             {
