@@ -63,6 +63,33 @@ Datadog's canonical statuses are lowercase, so `Error` is not `error`. The obser
   (`status:error`) would never fire — the exact failure mode that let the Worker crash-loop for six
   hours unnoticed on 2026-08-12.
 
+### This is a regression from the OTLP migration, not a standing gap
+
+None of this needed configuring before 2026-08-11, which is worth knowing before anyone concludes
+the pipeline is redundant ceremony. Grouping every log by `status` and `source` splits perfectly
+along the ingestion path, with no overlap:
+
+| `source` | statuses seen | |
+|-|-|-|
+| `csharp` (classic intake, to 2026-08-11) | `info` 5,518 · `warn` 408 · `error` 244 · `emergency` 28 | canonical |
+| `otlp_log_ingestion` (OTLP, since) | `Information` 6,656 · `Error` 897 · `Fatal` 871 · `Warning` 205 | verbatim |
+
+The classic intake tagged logs `source:csharp`, which auto-installs Datadog's C# integration
+pipeline, whose status remapper reads a `level` attribute — and the classic intake put the Serilog
+level exactly there. Datadog normalised it for free, `Fatal` included, which is where the
+`Fatal` → `emergency` mapping this pipeline keeps comes from.
+
+PR #190 moved logs onto OTLP so they would finally correlate with traces. That fixed correlation and
+silently cost the status mapping: OTLP logs arrive as `source:otlp_log_ingestion`, which matches no
+pipeline carrying a status remapper, so `severity_text` lands in `status` untouched.
+
+Measured bluntly: `status:error` over 30 days matches the 244 old `csharp` records and **none** of
+the 897 `Error` records from OTLP.
+
+This pipeline is the price of that migration. Reverting to the classic intake would restore the
+status mapping and give the log/trace correlation back up; keeping OTLP and adding one remapper
+keeps both.
+
 ### Why the fix is here and not in the app
 
 The application is already sending correct data: `severity_number` is a valid OTel severity (17 for
