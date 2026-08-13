@@ -175,14 +175,34 @@ resource "google_secret_manager_secret_iam_member" "pipeline_apm_data" {
 # the IAM API call to return, not for the grant to be visible to Cloud Run. So the Cloud Run
 # resources depend on these barriers instead of on the bindings directly.
 #
-# triggers keyed on the service account email: time_sleep only sleeps when it is created, and the
-# wait is only needed when the identity is new. Steady-state applies do not pay it; a fresh
-# environment (prod, where neither account exists yet) does.
+# triggers covers the grant set, not just the identity. Keying on the service account email alone
+# would have been too narrow: time_sleep only sleeps when it is created, so adding a secret grant to
+# an *existing* account and updating the revision in the same apply would sail past the barrier and
+# hit exactly the failure this exists to prevent. Hashing the binding ids fixes that — an id encodes
+# secret + role + member, so any change to the set changes the hash and re-arms the wait.
+#
+# Steady-state applies still pay nothing: unchanged bindings hash the same. Only a fresh environment
+# (prod, where neither account exists yet) or a genuine grant change waits.
 resource "time_sleep" "api_iam_propagation" {
   create_duration = "60s"
 
   triggers = {
     service_account = google_service_account.api.email
+    grants = sha256(jsonencode(sort(concat(
+      [
+        google_project_iam_member.api_cloudsql_client.id,
+        google_secret_manager_secret_iam_member.api_db_conn.id,
+        google_secret_manager_secret_iam_member.api_encryption_key.id,
+        google_secret_manager_secret_iam_member.api_ack_token_key.id,
+        google_secret_manager_secret_iam_member.api_health_token.id,
+        google_secret_manager_secret_iam_member.api_gemini_api_key.id,
+        google_secret_manager_secret_iam_member.api_medgemma_url.id,
+      ],
+      values(google_secret_manager_secret_iam_member.api_app_secrets)[*].id,
+      google_project_iam_member.api_fcm_sender[*].id,
+      google_secret_manager_secret_iam_member.api_redis_connection_string[*].id,
+      google_secret_manager_secret_iam_member.api_redis_ca[*].id,
+    ))))
   }
 
   depends_on = [
@@ -204,8 +224,16 @@ resource "time_sleep" "pipeline_iam_propagation" {
   count           = var.enable_pipeline_jobs ? 1 : 0
   create_duration = "60s"
 
+  # Same grant-set hashing as the api barrier above, and for the same reason.
   triggers = {
     service_account = google_service_account.pipeline[0].email
+    grants = sha256(jsonencode(sort([
+      google_project_iam_member.pipeline_cloudsql_client[0].id,
+      google_secret_manager_secret_iam_member.pipeline_db_conn[0].id,
+      google_secret_manager_secret_iam_member.pipeline_encryption_key[0].id,
+      google_secret_manager_secret_iam_member.pipeline_medgemma_url[0].id,
+      google_secret_manager_secret_iam_member.pipeline_apm_data[0].id,
+    ])))
   }
 
   depends_on = [
