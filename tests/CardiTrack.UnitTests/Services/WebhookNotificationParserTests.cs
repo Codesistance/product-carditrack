@@ -112,8 +112,8 @@ public class WebhookNotificationParserTests
         Assert.DoesNotContain("steps", shape);
     }
 
-    // Depth is bounded so one malformed payload cannot produce a log line long enough to be
-    // truncated — past the limit the keys are still named, their contents are not.
+    // Depth is bounded to keep nesting from exploding the description — past the limit the keys are still
+    // named, their contents are not.
     [Fact]
     public void TopLevelShape_StopsDescendingAtTheDepthLimit()
     {
