@@ -462,10 +462,11 @@ resource "google_cloud_run_v2_service" "web" {
     google_project_service.run,
     google_secret_manager_secret_version.app_secrets,
     google_secret_manager_secret_version.db_connection_string,
-    google_storage_bucket_iam_member.web_dataprotection_keys,
     # Not the web_* IAM members directly: Cloud Run validates the apm-data secret_key_ref and the
     # GCS volume against this service's runtime identity when it creates the revision, and those
-    # grants are eventually consistent. See the barrier's comment in service_accounts.tf.
+    # grants are eventually consistent. See the barrier's comment in service_accounts.tf. The
+    # barrier already covers web_dpkeys, which is why the removed compute-SA grant on the key-ring
+    # bucket is not replaced here by a direct reference.
     time_sleep.web_iam_propagation,
   ]
 }
