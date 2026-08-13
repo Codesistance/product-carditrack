@@ -72,6 +72,7 @@ jobs:
       gcp_service_account: ${{ needs.env.outputs.gcp_service_account }}
       gcs_builds_bucket:   ${{ needs.env.outputs.gcs_builds_bucket }}
       api_url_dev:         ${{ needs.env.outputs.api_url_dev }}
+      web_url_dev:         ${{ needs.env.outputs.web_url_dev }}
     steps:
       - uses: actions/checkout@v6
       - name: Set components for manual run
@@ -1338,10 +1339,14 @@ jobs:
             # step's `set -e` and aborting before the loop gets to retry — curl's
             # own non-zero exit would otherwise propagate straight through the
             # `STATUS=$(...)` assignment.
+            # `|| STATUS=000` outside the substitution, not `|| echo 000` inside it: curl still
+            # writes its -w output on failure, so the inner form concatenates both into "000000".
+            # Harmless here — the 200 test fails either way — but it makes the logged status a
+            # lie, which is the sort of thing that costs an hour during an incident.
             STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 \
               -H "X-Health-Token: $HEALTH_TOKEN" \
               -A "carditrack-healthcheck" \
-              "${{ needs.changes.outputs.api_url_dev }}/health" || echo "000")
+              "${{ needs.changes.outputs.api_url_dev }}/health") || STATUS="000"
             [ "$STATUS" = "200" ] && break
             echo "Health check attempt $attempt: HTTP $STATUS"
             [ "$attempt" = "5" ] || sleep 5
@@ -1397,20 +1402,34 @@ jobs:
         env:
           WEB_URL: ${{ needs.changes.outputs.web_url_dev }}
         run: |
+          # A smoke test with no target passes vacuously or fails confusingly, and either way
+          # tests nothing. This is not hypothetical: the first version of this step shipped with
+          # the changes job not forwarding web_url_dev, so WEB_URL was empty and every attempt
+          # failed against "/" with no host.
+          if [ -z "$WEB_URL" ]; then
+            echo "::error::WEB_URL is empty — the changes job is not forwarding web_url_dev. Nothing was tested."
+            exit 1
+          fi
+
           # Cloud Run marks a revision Ready as soon as its first instance passes the startup
           # probe, then scales out the rest concurrently; a request landing on a still-cold
           # instance can 500 even though the app never errored. Retry through that window rather
           # than failing a good deploy on one unlucky request — same reasoning as the API's.
           for attempt in 1 2 3 4 5; do
+            # The `|| STATUS=000` sits outside the substitution deliberately. Inside it, curl
+            # still writes its -w output on failure, so `$(curl ... || echo 000)` concatenates
+            # both and yields "000000" — which then matches neither the success test nor the
+            # unreachable test below, and the useful diagnostic never prints.
             STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 15 \
               -A "carditrack-healthcheck" \
-              "$WEB_URL/" || echo "000")
+              "$WEB_URL/") || STATUS="000"
             [ "$STATUS" = "200" ] && break
             echo "Web check attempt $attempt: HTTP $STATUS"
             [ "$attempt" = "5" ] || sleep 5
           done
+
           # 000 means curl never got a status: DNS failure, TLS failure or timeout. That is the
-          # case worth naming explicitly, because it is the one that went unseen.
+          # case worth naming explicitly, because it is the one that went unseen for six days.
           if [ "$STATUS" = "000" ]; then
             echo "::error::Web unreachable at $WEB_URL — no HTTP response. Check DNS resolves to the load balancer IP, and that the managed certificate is ACTIVE (gcloud compute ssl-certificates list --global)."
             exit 1
