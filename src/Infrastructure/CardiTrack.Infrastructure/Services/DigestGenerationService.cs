@@ -409,14 +409,21 @@ public partial class DigestGenerationService : IDigestGenerationService
         /// <summary>Named and described rather than left as a bare "text": the description travels
         /// into the JSON Schema the client appends to the prompt, so each field the model is
         /// allowed to emit also states what belongs in it.</summary>
+        /// <remarks>
+        /// These descriptions name the person as <see cref="NamePlaceholder.Token"/>, the same way
+        /// the instructions above do. Reaching for "their relative" here would be the schema asking
+        /// for the one phrasing the prompt rules out — and the schema is the half of the ask the
+        /// model reads last, right beside the field it is about to fill.
+        /// </remarks>
         [Description(
-            "The summary itself: 4-6 sentences telling the family member how their relative is "
-            + "doing. Not a restatement of the instructions and not a description of what a summary is.")]
+            "The summary itself: 4-6 sentences telling the family member how {{NAME}} is doing, "
+            + "naming them as {{NAME}} exactly. Not a restatement of the instructions and not a "
+            + "description of what a summary is.")]
         public required string Summary { get; init; }
 
         /// <summary>Three supportive actions — see <see cref="CleanSuggestions"/>.</summary>
         [Description(
-            "Exactly three short ways the family could support their relative today, at most eight "
+            "Exactly three short ways the family could support {{NAME}} today, at most eight "
             + "words each. Ordinary, kind things a family member can do for their comfort — they "
             + "need not be medical at all. For example: Ask how they slept. Make their favourite "
             + "tea. Never medical advice or medication.")]
