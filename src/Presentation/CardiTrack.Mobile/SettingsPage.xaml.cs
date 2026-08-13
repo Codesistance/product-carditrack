@@ -180,7 +180,7 @@ public partial class SettingsPage : ContentPage
     private async void OnSignOutClicked(object? sender, EventArgs e)
     {
         var confirmed = await _popups.ConfirmWarningAsync(
-            "You'll need to sign back in to keep an eye on your loved ones.",
+            "You'll need to sign back in to keep an eye on things.",
             "Ready to sign out?", confirmText: "Sign out");
         if (!confirmed)
             return;

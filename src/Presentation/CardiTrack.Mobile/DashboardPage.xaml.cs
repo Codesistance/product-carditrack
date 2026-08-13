@@ -445,26 +445,30 @@ public partial class DashboardPage : ContentPage
         ToolTipProperties.SetText(EmergencyCallAction, tooltip);
     }
 
+    // The nameless branch drops the noun rather than substituting one. Every stand-in available
+    // here is either internal vocabulary ("this CardiMember") or a greeting-card relationship
+    // noun ("your loved one"), and the caregiver is looking at one specific person's card either
+    // way — the sentence reads better with nothing in that slot than with the wrong word in it.
     private static string NoPhoneMessage(string firstName) =>
         string.IsNullOrWhiteSpace(firstName)
-            ? "Add a phone number for this CardiMember to call or message them from here."
+            ? "Add a phone number to call or message them from here."
             : $"Add a phone number for {firstName} to call or message them from here.";
 
     private static string NoEmergencyContactMessage(string firstName) =>
         string.IsNullOrWhiteSpace(firstName)
-            ? "Add an emergency contact number to this CardiMember to call from here."
+            ? "Add an emergency contact number to call from here."
             : $"Add an emergency contact number for {firstName} to call from here.";
 
     // Question forms of the two messages above. The statements are what a tooltip says about a
     // dimmed tile; these are what the tile asks when it is actually tapped.
     private static string AddPhonePrompt(string firstName) =>
         string.IsNullOrWhiteSpace(firstName)
-            ? "Would you like to add a phone number for this CardiMember, so you can call or message them from here?"
+            ? "Would you like to add a phone number, so you can call or message them from here?"
             : $"Would you like to add a phone number for {firstName}, so you can call or message them from here?";
 
     private static string AddEmergencyContactPrompt(string firstName) =>
         string.IsNullOrWhiteSpace(firstName)
-            ? "Would you like to add an emergency contact number for this CardiMember, so you can call them from here?"
+            ? "Would you like to add an emergency contact number, so you can call them from here?"
             : $"Would you like to add an emergency contact number for {firstName}, so you can call them from here?";
 
     /// <summary>

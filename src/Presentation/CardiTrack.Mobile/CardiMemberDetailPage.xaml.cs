@@ -211,7 +211,7 @@ public partial class CardiMemberDetailPage : ContentPage
         {
             SummaryTitleLabel.Text = "Still getting to know them";
             SummaryGeneratedLabel.IsVisible = false;
-            SummaryLabel.Text = "We'll summarise how this CardiMember is doing here as soon as there's enough data to say something useful.";
+            SummaryLabel.Text = $"We'll summarise how {NameFormatting.FirstName(member.Name)} is doing here as soon as there's enough data to say something useful.";
             // Suggestions come from the same generation as the summary, so they are absent for
             // exactly the members the placeholder is for.
             SuggestionsCard.IsVisible = false;
@@ -378,7 +378,8 @@ public partial class CardiMemberDetailPage : ContentPage
                     continue;
 
                 _trends.Add(new MetricTrend(
-                    icon, ink, name, value, axis, metric, TrendWindowPicker.SelectedDays));
+                    icon, ink, name, value, axis, metric, TrendWindowPicker.SelectedDays,
+                    NameFormatting.FirstName(_member?.Name)));
             }
         }
 
@@ -496,9 +497,6 @@ public partial class CardiMemberDetailPage : ContentPage
     private async void OnManageDevicesClicked(object? sender, EventArgs e) =>
         await Shell.Current.GoToAsync($"{DeviceManagementPage.Route}?memberId={_memberId}");
 
-    private async void OnBackToDashboardTapped(object? sender, TappedEventArgs e) =>
-        await Shell.Current.GoToAsync(AppShell.DashboardRoute);
-
     private async void OnViewAlertsClicked(object? sender, EventArgs e) =>
         await Shell.Current.GoToAsync(AppShell.AlertsRoute);
 
@@ -510,7 +508,7 @@ public partial class CardiMemberDetailPage : ContentPage
         if (!_member.IsPrimaryCaregiver)
         {
             await _popups.ShowInfoAsync(
-                "Only this CardiMember's primary caregiver can pause monitoring.", "Not your call to make");
+                $"Only {NameFormatting.FirstName(_member.Name)}'s primary caregiver can pause monitoring.", "Not your call to make");
             return;
         }
 
@@ -566,7 +564,7 @@ public partial class CardiMemberDetailPage : ContentPage
         if (!_member.IsPrimaryCaregiver)
         {
             await _popups.ShowInfoAsync(
-                "Only this CardiMember's primary caregiver can remove them.", "Not your call to make");
+                $"Only {NameFormatting.FirstName(_member.Name)}'s primary caregiver can remove them.", "Not your call to make");
             return;
         }
 
@@ -590,7 +588,7 @@ public partial class CardiMemberDetailPage : ContentPage
         }
         catch (ApiException ex) when (!ex.IsSessionExpired)
         {
-            await _popups.ShowErrorAsync(ex.Message, "Couldn't remove this CardiMember");
+            await _popups.ShowErrorAsync(ex.Message, $"Couldn't remove {NameFormatting.FirstName(_member?.Name)}");
         }
         catch (ApiException)
         {

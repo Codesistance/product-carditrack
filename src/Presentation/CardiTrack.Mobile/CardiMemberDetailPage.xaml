@@ -91,7 +91,7 @@
 
                         <!-- Profile -->
                         <Border Style="{StaticResource ElevatedCard}">
-                            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="14">
+                            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="14">
                                 <!-- This screen's own display image box, lifted into a shared
                                      control so the dashboard hero can wear it too — and it now
                                      shows the member's photo when there is one, not just their
@@ -105,25 +105,6 @@
                                     <Label x:Name="AgeRelationshipLabel" Style="{StaticResource Body2}"/>
                                 </VerticalStackLayout>
 
-                                <!-- Small back-link opposite the name (issue #188): a real link to
-                                     the dashboard, not browser back-history — same named-route
-                                     navigation the header arrow uses, not Shell's ".." pop. -->
-                                <Border Grid.Column="2"
-                                        WidthRequest="32" HeightRequest="32"
-                                        StrokeThickness="0"
-                                        BackgroundColor="{StaticResource SelectedOptionBackground}"
-                                        VerticalOptions="Start"
-                                        SemanticProperties.Description="Back to dashboard">
-                                    <Border.StrokeShape>
-                                        <RoundRectangle CornerRadius="16"/>
-                                    </Border.StrokeShape>
-                                    <Border.GestureRecognizers>
-                                        <TapGestureRecognizer Tapped="OnBackToDashboardTapped"/>
-                                    </Border.GestureRecognizers>
-                                    <Image Source="icon_back_dark.svg"
-                                           WidthRequest="16" HeightRequest="16"
-                                           HorizontalOptions="Center" VerticalOptions="Center"/>
-                                </Border>
                             </Grid>
                         </Border>
 
@@ -325,7 +306,7 @@
                                             BackgroundColor="{StaticResource SelectedOptionBackground}"
                                             VerticalOptions="Center"
                                             SemanticProperties.Description="Call"
-                                            SemanticProperties.Hint="Dials this CardiMember's phone number">
+                                            SemanticProperties.Hint="Dials their phone number">
                                         <Border.StrokeShape>
                                             <RoundRectangle CornerRadius="12"/>
                                         </Border.StrokeShape>
@@ -386,7 +367,7 @@
                         <!-- Management / danger zone -->
                         <VerticalStackLayout Spacing="4" Margin="0,10,0,0">
                             <Label Text="Management" Style="{StaticResource DashboardSectionTitle}"/>
-                            <Label Text="Critical settings for this CardiMember"
+                            <Label Text="Critical settings"
                                    Style="{StaticResource Body2}"/>
                         </VerticalStackLayout>
 

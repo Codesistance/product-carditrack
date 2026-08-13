@@ -58,7 +58,7 @@
                                 <Label Text="My Family"
                                        FontFamily="Quicksand" FontAttributes="Bold" FontSize="18"
                                        TextColor="{StaticResource HeadingText}"/>
-                                <Label Text="I'm watching over my parents or loved ones"
+                                <Label Text="I'm looking after a parent or someone close to me"
                                        Style="{StaticResource Body2}"
                                        TextColor="{StaticResource BodyText}"/>
                             </VerticalStackLayout>

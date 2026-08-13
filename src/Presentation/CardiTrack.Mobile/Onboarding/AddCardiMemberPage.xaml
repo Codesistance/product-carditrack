@@ -26,7 +26,7 @@
                     <Label Text="Who would you like to look after?"
                            Style="{StaticResource Heading3}"
                            HorizontalTextAlignment="Center"/>
-                    <Label Text="Tell us about your loved one — we'll take it from there"
+                    <Label Text="Tell us who you're looking after — we'll take it from there"
                            Style="{StaticResource Body2}"
                            HorizontalTextAlignment="Center"
                            Margin="0,6,0,0"/>

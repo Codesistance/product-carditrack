@@ -205,7 +205,7 @@
                                     BackgroundColor="Transparent"
                                     />
                         </Border>
-                        <Label Text="Saved with this CardiMember. Alerting itself isn't live yet, so this won't change what you're notified about today."
+                        <Label Text="Saved with them. Alerting itself isn't live yet, so this won't change what you're notified about today."
                                Style="{StaticResource Body2}"
                                FontSize="12"/>
                     </VerticalStackLayout>

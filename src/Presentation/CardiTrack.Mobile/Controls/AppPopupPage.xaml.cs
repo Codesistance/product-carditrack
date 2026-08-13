@@ -41,30 +41,6 @@ public partial class AppPopupPage : ContentPage
         TitleLabel.Text = title;
         MessageLabel.Text = Truncate(message);
 
-        // Even a capped message can outgrow a small screen at large accessibility
-        // font scales; past this height the message scrolls instead of clipping.
-        var display = DeviceDisplay.Current.MainDisplayInfo;
-        MessageScroll.MaximumHeightRequest = display.Height / display.Density * 0.35;
-
-        // A ScrollView measures its content with an unbounded cross-axis, so without an
-        // explicit width the Label never wraps and instead overflows past the card's edge,
-        // where the Border clips it. Pin the Label to the width the Label is actually
-        // allowed to occupy so WordWrap has something to wrap against.
-        //
-        // That width is the ScrollView's own, not one derived from the Card: a Border insets
-        // its content by StrokeThickness as well as Padding, so Card.Width minus the two
-        // padding edges overshoots the real content box, and Card.Width can also be read
-        // mid-layout, before MaximumWidthRequest has clamped it. Either way the Label is
-        // handed more room than exists and the last few characters of every line disappear
-        // under the card's right edge. The ScrollView is laid out inside all of that, so its
-        // width is the answer already computed — no arithmetic to drift out of step with the
-        // XAML above.
-        MessageScroll.SizeChanged += (_, _) =>
-        {
-            if (MessageScroll.Width > 0)
-                MessageLabel.WidthRequest = MessageScroll.Width;
-        };
-
         ConfirmBtn.Text = confirmText;
         if (_isConfirmation)
         {

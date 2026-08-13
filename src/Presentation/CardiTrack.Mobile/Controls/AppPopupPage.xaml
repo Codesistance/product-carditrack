@@ -48,14 +48,23 @@
                        HorizontalTextAlignment="Center"
                        Margin="0,16,0,0"/>
 
-                <!-- The card grows with the message; the ScrollView only kicks in once
-                     MaximumHeightRequest (set in code-behind) would push it off-screen. -->
-                <ScrollView x:Name="MessageScroll" Margin="0,8,0,0">
-                    <Label x:Name="MessageLabel"
-                           Style="{StaticResource Body2}"
-                           HorizontalTextAlignment="Start"
-                           LineBreakMode="WordWrap"/>
-                </ScrollView>
+                <!-- No ScrollView around this label, deliberately. A ScrollView measures its
+                     content with an unbounded cross-axis, so the Label never learned a width to
+                     wrap against and ran off the card's right edge, where the Border clipped it —
+                     losing the last characters of most lines. Two attempts to hand it a width
+                     (from the Card, then from the ScrollView itself) both still clipped; the
+                     ScrollView was the problem, not the arithmetic. Placed directly in the stack,
+                     the Label is measured against the card's real content width and wraps.
+
+                     What the ScrollView was for was runaway text at large accessibility font
+                     scales. MaxMessageLength already caps the message at 600 characters, which is
+                     what actually keeps the card a sensible height; the scroll was insurance on
+                     top of a bound that was already doing the work. -->
+                <Label x:Name="MessageLabel"
+                       Margin="0,8,0,0"
+                       Style="{StaticResource Body2}"
+                       HorizontalTextAlignment="Start"
+                       LineBreakMode="WordWrap"/>
 
                 <Grid ColumnSpacing="12" Margin="0,24,0,0">
                     <Grid.ColumnDefinitions>

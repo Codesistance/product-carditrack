@@ -35,11 +35,15 @@
                        HorizontalTextAlignment="Center"/>
 
                 <!-- Options are built in code-behind: the count varies with the caller's list
-                     (snooze offers fewer choices under a rule's own ceiling). Scrolls only once
-                     MaximumHeightRequest (set in code-behind) would push the card off-screen. -->
-                <ScrollView x:Name="OptionsScroll" Margin="0,20,0,0">
-                    <VerticalStackLayout x:Name="OptionsHost" Spacing="12"/>
-                </ScrollView>
+                     (snooze offers fewer choices under a rule's own ceiling).
+
+                     No ScrollView, for the reason AppPopupPage's message lost its own: a
+                     ScrollView measures content with an unbounded cross-axis, so the option
+                     buttons ran past the card's right edge and the Border clipped them — and the
+                     overflow dragged the title's tail off with it ("…for how long?" lost its last
+                     word). The lists here are four or five short rows; the card fits them without
+                     scrolling at any font scale the layout survives generally. -->
+                <VerticalStackLayout x:Name="OptionsHost" Spacing="12" Margin="0,20,0,0"/>
 
                 <Button x:Name="CancelBtn"
                         BackgroundColor="Transparent"

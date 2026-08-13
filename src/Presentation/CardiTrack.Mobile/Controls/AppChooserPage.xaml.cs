@@ -41,10 +41,6 @@ public partial class AppChooserPage : ContentPage
             OptionsHost.Add(button);
         }
 
-        // Even a short list outgrows a small screen at large accessibility font scales; past
-        // this height the options scroll instead of pushing the card off-screen.
-        var display = DeviceDisplay.Current.MainDisplayInfo;
-        OptionsScroll.MaximumHeightRequest = display.Height / display.Density * 0.45;
     }
 
     /// <summary>Completes with the chosen label, or null if cancelled or dismissed.</summary>

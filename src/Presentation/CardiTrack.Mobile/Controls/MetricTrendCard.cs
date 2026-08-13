@@ -364,7 +364,7 @@ public sealed class MetricTrendCard : ContentView
         // would read as an indent on a key that starts with its swatch.
         _legend.ColumnSpacing = _baselineLegend.IsVisible && _referenceLegend.IsVisible ? 14 : 0;
 
-        var (footer, explanation) = MetricExplanations.For(_trend.Name, _trend.Metric, _trend.AxisFormat);
+        var (footer, explanation) = MetricExplanations.For(_trend.Name, _trend.Metric, _trend.AxisFormat, _trend.MemberFirstName);
         _footer.Text = footer;
         _explanation = explanation;
 
