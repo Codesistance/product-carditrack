@@ -15,6 +15,19 @@ public enum PopupSeverity
 /// </summary>
 public interface IPopupService
 {
+    /// <summary>
+    /// Whether one of these popups is currently over the app.
+    /// </summary>
+    /// <remarks>
+    /// A popup is a modal page, so pushing one hides the page underneath and closing one raises
+    /// that page's <c>OnAppearing</c> again — indistinguishable, from the page's side, from being
+    /// navigated back to. A screen that reloads itself on arrival reads this to tell the two
+    /// apart: the caregiver who dismisses an explanation has not gone anywhere, and refetching
+    /// under them rebuilds what they were reading. Stays true for the whole of the closing
+    /// handshake, so it is still set when that <c>OnAppearing</c> arrives.
+    /// </remarks>
+    bool IsShowing { get; }
+
     Task ShowInfoAsync(string message, string? title = null, string? buttonText = null);
 
     Task ShowWarningAsync(string message, string? title = null, string? buttonText = null);

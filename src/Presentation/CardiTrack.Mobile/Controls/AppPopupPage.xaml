@@ -16,7 +16,7 @@
                 Padding="24"
                 Margin="32,0"
                 Scale="0.92"
-                MaximumWidthRequest="360"
+                HorizontalOptions="Center"
                 VerticalOptions="Center">
             <Border.StrokeShape>
                 <RoundRectangle CornerRadius="20"/>
@@ -51,15 +51,17 @@
                 <!-- No ScrollView around this label, deliberately. A ScrollView measures its
                      content with an unbounded cross-axis, so the Label never learned a width to
                      wrap against and ran off the card's right edge, where the Border clipped it —
-                     losing the last characters of most lines. Two attempts to hand it a width
-                     (from the Card, then from the ScrollView itself) both still clipped; the
-                     ScrollView was the problem, not the arithmetic. Placed directly in the stack,
-                     the Label is measured against the card's real content width and wraps.
+                     losing the last characters of most lines. Placed directly in the stack, the
+                     Label is measured against the card's real content width and wraps.
 
                      What the ScrollView was for was runaway text at large accessibility font
                      scales. MaxMessageLength already caps the message at 600 characters, which is
                      what actually keeps the card a sensible height; the scroll was insurance on
-                     top of a bound that was already doing the work. -->
+                     top of a bound that was already doing the work.
+
+                     The card's width is set in code (PopupCard.Fit) rather than capped here, and
+                     that is what stops this label losing its last lines — see PopupCard for why a
+                     maximum measured the text at one width and drew it at another. -->
                 <Label x:Name="MessageLabel"
                        Margin="0,8,0,0"
                        Style="{StaticResource Body2}"

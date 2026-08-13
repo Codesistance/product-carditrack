@@ -62,6 +62,16 @@ public partial class AppPopupPage : ContentPage
         return message[..(cut > 0 ? cut : MaxMessageLength)].TrimEnd() + "…";
     }
 
+    /// <summary>
+    /// The card is given a width outright, on every size pass, rather than a maximum — see
+    /// <see cref="PopupCard"/> for what a maximum did to a long message.
+    /// </summary>
+    protected override void OnSizeAllocated(double width, double height)
+    {
+        base.OnSizeAllocated(width, height);
+        PopupCard.Fit(Card, width);
+    }
+
     protected override void OnAppearing()
     {
         base.OnAppearing();

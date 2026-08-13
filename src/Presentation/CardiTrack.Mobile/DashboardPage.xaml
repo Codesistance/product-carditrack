@@ -199,19 +199,23 @@
                                 <!-- Data-pipeline freshness (deterministic — see
                                      MemberInsightsCalculator.ComputeDataFreshness), the baseline
                                      learning progress while it's still running, and "Updated X
-                                     ago" as this block's own footer (issue #188 — it used to sit
-                                     under the CardiMember's name). -->
-                                <VerticalStackLayout x:Name="FreshnessBlock" Spacing="8">
-                                    <Label x:Name="FreshnessLabel"
-                                           Style="{StaticResource Body2Medium}"
-                                           TextColor="{StaticResource HeadingText}"/>
+                                     ago" (issue #188 — it used to sit under the CardiMember's
+                                     name).
+
+                                     One line, not two. The freshness message ("Data updated") and
+                                     the age under it ("Updated 4 minutes ago") were the same fact
+                                     said twice, so the age line is the one that stays — it is the
+                                     specific one — and it carries the freshness in its colour.
+                                     The message itself is not lost: it goes to the label's
+                                     semantic description, so a screen reader still hears the
+                                     state that sighted readers now take from the colour. -->
+                                <VerticalStackLayout x:Name="FreshnessBlock" Spacing="8" Margin="0,-4,0,0">
                                     <ProgressBar x:Name="LearningProgress"
                                                  IsVisible="False"
                                                  HeightRequest="6"/>
                                     <Label x:Name="LastUpdatedFooterLabel"
-                                           FontFamily="Quicksand"
-                                           FontSize="12"
-                                           TextColor="{StaticResource BodyText}"/>
+                                           FontFamily="QuicksandSemiBold"
+                                           FontSize="14"/>
                                 </VerticalStackLayout>
 
                                 <!-- Quick actions (issue #162): Call and Message reach the
@@ -337,16 +341,23 @@
                                      per row instead of full-width so the card has room to stay
                                      compact once more CardiMember cards can stack below it. The
                                      tiles sit directly on the CardiMember card — no wash behind
-                                     the grid, so the card carries one surface, not two. -->
+                                     the grid, so the card carries one surface, not two.
+
+                                     Declared in the order they are read, which is the order
+                                     DashboardPage.LayoutMetricCards packs them in: the pairing
+                                     below is what a member whose device reports everything sees,
+                                     and the slots are reassigned at render time for one whose
+                                     device reports less (skin temperature, SpO2 and breathing
+                                     rate are each optional) so no tile is left beside a gap. -->
                                 <controls:AccordionSection x:Name="MetricsAccordion" HeaderText="Key Metrics">
                                     <controls:AccordionSection.Body>
                                         <Grid ColumnDefinitions="*,*"
                                               RowDefinitions="Auto,Auto,Auto"
                                               ColumnSpacing="10" RowSpacing="10">
                                             <controls:MetricCard x:Name="StepsCard" Grid.Row="0" Grid.Column="0"/>
-                                            <controls:MetricCard x:Name="HeartRateCard" Grid.Row="0" Grid.Column="1"/>
+                                            <controls:MetricCard x:Name="TemperatureCard" Grid.Row="0" Grid.Column="1" IsVisible="False"/>
                                             <controls:MetricCard x:Name="SleepCard" Grid.Row="1" Grid.Column="0"/>
-                                            <controls:MetricCard x:Name="TemperatureCard" Grid.Row="1" Grid.Column="1" IsVisible="False"/>
+                                            <controls:MetricCard x:Name="HeartRateCard" Grid.Row="1" Grid.Column="1"/>
                                             <controls:MetricCard x:Name="SpO2Card" Grid.Row="2" Grid.Column="0" IsVisible="False"/>
                                             <controls:MetricCard x:Name="BreathingRateCard" Grid.Row="2" Grid.Column="1" IsVisible="False"/>
                                         </Grid>
