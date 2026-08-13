@@ -26,6 +26,11 @@ public class EnvironmentalReadingConfiguration : IEntityTypeConfiguration<Enviro
         builder.Property(r => r.AirQualityCategory)
             .HasMaxLength(50);
 
+        // Capped because it is free text from an external service: a provider that starts returning
+        // a sentence should cost a truncated column, not an unbounded one.
+        builder.Property(r => r.WeatherCondition)
+            .HasMaxLength(100);
+
         builder.Property(r => r.GeneratedAtUtc)
             .IsRequired();
     }

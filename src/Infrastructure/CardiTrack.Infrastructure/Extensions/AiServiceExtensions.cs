@@ -3,6 +3,7 @@ using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Infrastructure.ExternalClients.General;
 using CardiTrack.Infrastructure.ExternalClients.Medical;
 using CardiTrack.Infrastructure.Services;
+using CardiTrack.Infrastructure.Services.PromptContext;
 using CardiTrack.Infrastructure.Settings;
 using CardiTrack.Shared;
 using Microsoft.Extensions.Configuration;
@@ -130,6 +131,17 @@ public static class AiServiceExtensions
                 sp.GetRequiredService<ILogger<MedGemmaClient>>()));
 
         services.AddScoped<IMedicalAiService, MedicalAiService>();
+
+        // Member context — the composer and every source that feeds it. Registered here rather
+        // than in each host's composition root deliberately: this method is the one door every
+        // MedGemma-calling host goes through, so a host cannot end up with the composer and a
+        // different set of sources than its neighbour. Adding a context source is one line here
+        // and it reaches every prompt the source declares itself relevant to.
+        services.AddScoped<MemberContextComposer>();
+        services.AddScoped<IMemberContextSource, DemographicsContextSource>();
+        services.AddScoped<IMemberContextSource, EnvironmentalContextSource>();
+        services.AddScoped<IMemberContextSource, MonitoringContextSource>();
+        services.AddScoped<IMemberContextSource, QuestionnaireAnswersContextSource>();
 
         return services;
     }

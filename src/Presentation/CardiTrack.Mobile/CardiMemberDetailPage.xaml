@@ -243,6 +243,13 @@
                             </VerticalStackLayout>
                         </Border>
 
+                        <!-- A question the service is asking the family, when there is one waiting.
+                             Sits with the summary and the suggestions because it comes from the
+                             same reading of the same day — and inline, never as a popup: a
+                             caregiver who opened this page to check on someone should not have to
+                             dismiss something first. -->
+                        <controls:QuestionCard x:Name="PendingQuestionCard" IsVisible="False"/>
+
                         <!-- Key metric trends (issue #188): one swipeable card per metric, over the
                              same daily Series the dashboard's Key Metrics already carry, across a
                              caregiver-chosen 7/14/30-day window. Deliberately not wrapped in a card
@@ -383,6 +390,28 @@
                                     Style="{StaticResource SecondaryOutlineButton}"
                                     Clicked="OnManageDevicesClicked"/>
                         </Grid>
+
+                        <!-- Questions and answers, once any have been asked. A row rather than a
+                             section: the answers are worth keeping and worth editing, but they are
+                             not what a caregiver opens this page to read. -->
+                        <Border x:Name="QuestionsRow"
+                                Style="{StaticResource ElevatedCard}"
+                                Padding="14,4"
+                                IsVisible="False">
+                            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12" HeightRequest="52">
+                                <Grid.GestureRecognizers>
+                                    <TapGestureRecognizer Tapped="OnQuestionsTapped"/>
+                                </Grid.GestureRecognizers>
+                                <Image Grid.Column="0" Source="icon_clipboard.svg"
+                                       WidthRequest="22" HeightRequest="22" VerticalOptions="Center"/>
+                                <Label Grid.Column="1"
+                                       Text="Questions &amp; Answers"
+                                       Style="{StaticResource Body1SemiBoldDark}"
+                                       VerticalTextAlignment="Center"/>
+                                <Image Grid.Column="2" Source="icon_chevron.svg"
+                                       WidthRequest="20" HeightRequest="20" VerticalOptions="Center"/>
+                            </Grid>
+                        </Border>
 
                         <!-- Management / danger zone -->
                         <VerticalStackLayout Spacing="4" Margin="0,10,0,0">

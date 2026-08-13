@@ -51,6 +51,26 @@ public interface ICardiTrackApiClient
     /// </summary>
     Task<DigestResponse> GetDigestAsync(Guid cardiMemberId, CancellationToken ct = default);
 
+    // ---- Questions the service asks the family ----
+
+    /// <summary>
+    /// Every question asked about this member, newest first. At most one is pending at a time, by
+    /// design — the pipeline will not ask a second thing while the first is unanswered.
+    /// </summary>
+    Task<List<QuestionnaireResponse>> GetQuestionnairesAsync(
+        Guid cardiMemberId, CancellationToken ct = default);
+
+    /// <summary>Answers a pending question, or replaces an answer already given.</summary>
+    Task<QuestionnaireResponse> AnswerQuestionnaireAsync(
+        Guid questionnaireId, AnswerQuestionnaireRequest request, CancellationToken ct = default);
+
+    /// <summary>Skips the question. It is never asked again; the record of asking survives.</summary>
+    Task<QuestionnaireResponse> DismissQuestionnaireAsync(
+        Guid questionnaireId, CancellationToken ct = default);
+
+    /// <summary>Removes the question and its answer outright.</summary>
+    Task DeleteQuestionnaireAsync(Guid questionnaireId, CancellationToken ct = default);
+
     /// <summary>
     /// One page of alerts for the Alerts List (M1-10), newest first, across every CardiMember
     /// the signed-in user may read.

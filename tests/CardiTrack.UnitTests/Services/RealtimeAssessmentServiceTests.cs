@@ -105,7 +105,8 @@ public class RealtimeAssessmentServiceTests
     }
 
     private RealtimeAssessmentService CreateSut() =>
-        new(_unitOfWork, _medicalAi, NullLogger<RealtimeAssessmentService>.Instance);
+        new(_unitOfWork, _medicalAi, PromptContextFactory.Composer(_unitOfWork),
+            NullLogger<RealtimeAssessmentService>.Instance);
 
     [Fact]
     public async Task AFullFreshHour_IsAssessed_AndStoredUnderItsWindowStart()

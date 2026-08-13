@@ -3,6 +3,7 @@ using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Domain.Extensions;
 using CardiTrack.Mobile.Controls;
 using CardiTrack.Mobile.Core.Api;
+using CardiTrack.Mobile.Core.Questionnaires;
 using CardiTrack.Mobile.Services;
 
 namespace CardiTrack.Mobile;
@@ -85,6 +86,8 @@ public partial class CardiMemberDetailPage : ContentPage
         _api = api;
         _popups = popups;
         BuildPauseDurations();
+        PendingQuestionCard.AnswerSubmitted += OnQuestionAnswered;
+        PendingQuestionCard.DismissRequested += OnQuestionDismissed;
         this.RefreshWhenAppResumes(RefreshUnattendedAsync);
 
         // Same reason and the same cadence as the dashboard: this screen is one CardiMember's
@@ -107,6 +110,8 @@ public partial class CardiMemberDetailPage : ContentPage
             // Whatever summary is on screen belongs to whoever was on screen before. It must not
             // be the reason the next CardiMember's placeholder is skipped.
             _digestRendered = false;
+            PendingQuestionCard.IsVisible = false;
+            QuestionsRow.IsVisible = false;
         }
     }
 
@@ -160,6 +165,7 @@ public partial class CardiMemberDetailPage : ContentPage
             // copy, and the digest read is a separate round trip that shouldn't hold up the
             // rest of the screen or the pull-to-refresh spinner.
             _ = LoadDigestAsync(_memberId);
+            _ = LoadQuestionnairesAsync(_memberId);
         }
         catch (ApiException ex)
         {
@@ -297,6 +303,120 @@ public partial class CardiMemberDetailPage : ContentPage
         catch (ApiException)
         {
             // Placeholder copy stays — see the field's own comment in Apply().
+        }
+    }
+
+    /// <summary>
+    /// Loads the questions asked about this member: the one still waiting goes on the page, and the
+    /// row through to the rest appears once there is anything behind it.
+    /// </summary>
+    /// <remarks>
+    /// Best-effort in the same way as the summary — a question is an extra, and a failed call
+    /// leaves the page looking exactly as it does for a member with nothing to answer.
+    /// </remarks>
+    private async Task LoadQuestionnairesAsync(Guid memberId)
+    {
+        // A silent refresh must not close an editor someone is typing in. Same courtesy the pause
+        // drop down gets; the cost is one stale card until the next load.
+        if (PendingQuestionCard.IsEditing)
+            return;
+
+        try
+        {
+            var questionnaires = await _api.GetQuestionnairesAsync(memberId);
+            if (memberId != _memberId)
+                return;
+
+            QuestionsRow.IsVisible = questionnaires.Count > 0;
+
+            var pending = MemberQuestionnaires.FirstPending(questionnaires);
+            if (pending is null)
+            {
+                PendingQuestionCard.IsVisible = false;
+                return;
+            }
+
+            var alreadyShowing = PendingQuestionCard.IsVisible
+                                 && PendingQuestionCard.Questionnaire?.Id == pending.Id;
+
+            PendingQuestionCard.Apply(pending, NameFormatting.FirstName(_member?.Name));
+            PendingQuestionCard.IsVisible = true;
+
+            if (alreadyShowing)
+                return;
+
+            // Reads as the question arriving rather than as a flicker — the summary's treatment.
+            PendingQuestionCard.Opacity = 0;
+            _ = PendingQuestionCard.FadeToAsync(1, 150, Easing.CubicOut);
+        }
+        catch (ApiException)
+        {
+            // No card, no row, no error state: the page is complete without either.
+        }
+    }
+
+    private async void OnQuestionAnswered(object? sender, string answer)
+    {
+        if (PendingQuestionCard.Questionnaire is not { } questionnaire || _isBusy)
+            return;
+
+        _isBusy = true;
+        PendingQuestionCard.SetBusy(true);
+        try
+        {
+            await _api.AnswerQuestionnaireAsync(
+                questionnaire.Id, new AnswerQuestionnaireRequest { AnswerText = answer });
+
+            // Straight off the page, with no thank-you popup: the answer is stored and readable
+            // under Questions & Answers, and a caregiver who was doing something else does not
+            // need a dialog to dismiss on the way back to it.
+            PendingQuestionCard.CloseEditor();
+            PendingQuestionCard.IsVisible = false;
+            QuestionsRow.IsVisible = true;
+        }
+        catch (ApiException ex) when (!ex.IsSessionExpired)
+        {
+            // The editor stays open with the text intact, so retrying does not mean retyping.
+            await _popups.ShowWarningAsync(ex.Message, "Couldn't save your answer");
+
+            // Reconciles the case where someone else answered it first: the reload finds nothing
+            // pending and takes the card away.
+            _ = LoadQuestionnairesAsync(_memberId);
+        }
+        finally
+        {
+            _isBusy = false;
+            PendingQuestionCard.SetBusy(false);
+        }
+    }
+
+    private async void OnQuestionDismissed(object? sender, EventArgs e)
+    {
+        if (PendingQuestionCard.Questionnaire is not { } questionnaire || _isBusy)
+            return;
+
+        // Confirmed because it is permanent, but as an offer rather than a caution — skipping a
+        // question is a perfectly ordinary thing to do.
+        var confirmed = await _popups.ConfirmInfoAsync(
+            "We won't ask this one again.", "Skip this question?", "Yes, skip", "Keep it");
+        if (!confirmed)
+            return;
+
+        _isBusy = true;
+        PendingQuestionCard.SetBusy(true);
+        try
+        {
+            await _api.DismissQuestionnaireAsync(questionnaire.Id);
+            PendingQuestionCard.IsVisible = false;
+        }
+        catch (ApiException ex) when (!ex.IsSessionExpired)
+        {
+            await _popups.ShowWarningAsync(ex.Message, "Couldn't skip that question");
+        }
+        finally
+        {
+            _isBusy = false;
+            PendingQuestionCard.SetBusy(false);
         }
     }
 
@@ -510,6 +630,13 @@ public partial class CardiMemberDetailPage : ContentPage
 
     private async void OnManageDevicesClicked(object? sender, EventArgs e) =>
         await Shell.Current.GoToAsync($"{DeviceManagementPage.Route}?memberId={_memberId}");
+
+    private async void OnQuestionsTapped(object? sender, EventArgs e)
+    {
+        var name = Uri.EscapeDataString(NameFormatting.FirstName(_member?.Name) ?? string.Empty);
+        await Shell.Current.GoToAsync(
+            $"{QuestionnairesPage.Route}?memberId={_memberId}&name={name}");
+    }
 
     private async void OnViewAlertsClicked(object? sender, EventArgs e) =>
         await Shell.Current.GoToAsync(AppShell.AlertsRoute);
