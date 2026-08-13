@@ -16,10 +16,15 @@ public static class DeepLinkRouter
     /// <see cref="NudgeDestinationKind.TimeZone"/>, which the inbox answers in place rather than
     /// by navigating.
     /// </summary>
-    public static string? Resolve(string? deepLink)
-    {
-        var destination = NudgeLinkParser.Parse(deepLink);
+    public static string? Resolve(string? deepLink) => Resolve(NudgeLinkParser.Parse(deepLink));
 
+    /// <summary>
+    /// The same route table for a destination that has already been parsed — the push tap path
+    /// arrives holding one (<c>PushRegistrationCoordinator.DestinationTapped</c>), and parsing it
+    /// back into a string only to parse it again would be the second copy of that mapping.
+    /// </summary>
+    public static string? Resolve(NudgeDestination destination)
+    {
         return destination.Kind switch
         {
             NudgeDestinationKind.MemberDevices when destination.CardiMemberId is { } d

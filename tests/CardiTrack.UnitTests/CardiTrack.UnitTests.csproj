@@ -39,6 +39,10 @@
     <ProjectReference Include="..\..\src\Pipeline\CardiTrack.HealthWebhookReceiver\CardiTrack.HealthWebhookReceiver.csproj" />
     <ProjectReference Include="..\..\src\Pipeline\CardiTrack.PipelineJobs\CardiTrack.PipelineJobs.csproj" />
     <ProjectReference Include="..\..\src\Presentation\CardiTrack.Mobile.Core\CardiTrack.Mobile.Core.csproj" />
+    <!-- The Worker hosts the push dispatch outbox, whose failure mode is a whole-host crash loop
+         (incident 2026-08-12) — that isolation is worth a regression test, and this is the first
+         test project to reach into the Worker for one. -->
+    <ProjectReference Include="..\..\src\Worker\CardiTrack.Worker\CardiTrack.Worker.csproj" />
     <ProjectReference Include="..\..\src\Presentation\CardiTrack.Web\CardiTrack.Web.csproj" />
   </ItemGroup>
 
