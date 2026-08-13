@@ -1554,12 +1554,20 @@ jobs:
       - deploy-play-internal
     permissions:
       contents: write
+    # compute-version must have *succeeded*, not merely not-failed. It is gated on api/web/worker/
+    # mobile having changed, so an infrastructure- or docs-only merge to main skips it — and
+    # `contains(needs.*.result, 'success')` was still satisfied by `changes` alone, so this job ran
+    # anyway with an empty version and asked the API to create `refs/tags/`, which is a 422. The
+    # 2026-08-13 #239 merge was the first infra-only merge to reach main and failed exactly there.
+    #
+    # Nothing was mis-deployed when that happened: every deploy job had already succeeded and the
+    # only casualty was the tag. But it fails the whole run, so an infra merge looks broken.
     if: |
       always() &&
       github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
       !contains(needs.*.result, 'failure') &&
       !contains(needs.*.result, 'cancelled') &&
-      contains(needs.*.result, 'success')
+      needs.compute-version.result == 'success'
     runs-on: ubuntu-latest
     steps:
       # Tag via the REST API, not `git push`: receive-pack rejects any ref
