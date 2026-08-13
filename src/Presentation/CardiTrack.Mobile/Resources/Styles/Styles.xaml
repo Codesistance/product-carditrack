@@ -323,7 +323,12 @@
             <RoundRectangle CornerRadius="18"/>
         </Setter>
         <Setter Property="Shadow">
-            <Shadow Brush="{StaticResource CardShadowBrush}" Opacity="0.28" Radius="16" Offset="0,0"/>
+            <!-- A small offset, not none. A zero-offset shadow sits directly behind the tile and
+                 only its blur escapes the edges, which on Android amounts to nothing you can see:
+                 the row read as painted-on rather than pressable. Three points down and a soft
+                 radius keeps it a glow rather than a hard drop, while giving the eye the edge it
+                 needs to read the tile as raised. -->
+            <Shadow Brush="{StaticResource CardShadowBrush}" Opacity="0.30" Radius="10" Offset="0,3"/>
         </Setter>
     </Style>
 

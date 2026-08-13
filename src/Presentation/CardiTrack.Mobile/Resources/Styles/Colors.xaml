@@ -104,12 +104,16 @@
          Filled at 24% rather than the 14% the alert tiles use: a wash that light reads as a
          highlighted region, and these have to read as things to press. The glow on
          QuickActionTile does the rest of that work. -->
-    <Color x:Key="QuickActionTint">#3D1884DC</Color>
+    <!-- Opaque, not a translucent wash. Android casts a view's shadow from its outline and all but
+         drops it for a see-through fill, so the glow these tiles are supposed to sit in simply did
+         not render while they were alpha tints. These are the same two colours flattened onto the
+         white card they sit on — identical to the eye, and they cast. -->
+    <Color x:Key="QuickActionTint">#C8E2F7</Color>
 
     <!-- The SOS tile at the same weight, so one tile is not visibly fainter than the three beside
          it. Its own colour rather than AlertTileRed, which the alert cards elsewhere are drawn at
          and should not be dragged along by a dashboard decision. -->
-    <Color x:Key="QuickActionTintRed">#3DE53E3E</Color>
+    <Color x:Key="QuickActionTintRed">#F9D1D1</Color>
 
     <Color x:Key="AlertTileRed">#24E53E3E</Color>
     <Color x:Key="AlertTileOrange">#24ED7B2F</Color>
