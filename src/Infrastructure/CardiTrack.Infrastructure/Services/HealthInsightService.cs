@@ -118,12 +118,12 @@ public class HealthInsightService : IHealthInsightService
     /// <see cref="StatusPromptBudget"/> keeps it that way.
     /// </remarks>
     private const string CurrentStatusInstructions = MedicalPromptBlocks.Tone + """
-        Describe this person's current status to their caregiver, in two short dashboard lines.
+        Describe this person's current status to their caregiver.
 
-        Third person, naming them {{NAME}} — write {{NAME}} exactly as it appears; it stands in for
-        their real name and is replaced before anyone reads this. Never use clinical terms
-        (elevated, abnormal, deviation, diagnosis) and never suggest a medical cause. Match the
-        tone to the severity given, gently more attentive as it rises.
+        Third person, naming them {{NAME}} exactly as written; it stands in for their real
+        name. Never use clinical terms (elevated, abnormal, deviation, diagnosis) and never
+        suggest a medical cause. Match the tone to the severity given, gently more attentive
+        as it rises.
 
         Respond with:
         - headline: two to five words, sentence case, no full stop, no name. E.g. All steady
@@ -145,7 +145,7 @@ public class HealthInsightService : IHealthInsightService
     /// latency on this path in a way it is not on the digest or assess jobs, and the test that
     /// pins this is the only thing that will notice.
     /// </remarks>
-    internal const int StatusPromptBudget = 1_400;
+    internal const int StatusPromptBudget = 1_050;
 
     /// <summary>Exposed for the budget test — the instructions themselves stay private.</summary>
     internal static int CurrentStatusInstructionsLength => CurrentStatusInstructions.Length;
