@@ -30,6 +30,11 @@ public class NudgeCopyTests
                 .WithConnections(NudgeContextBuilder.Connection(
                     lastSync: NudgeContextBuilder.Now.AddDays(-9), scopes: "activity_and_fitness"))
                 .Build(),
+            // The never-synced variant: a connection can sit at Connected with no LastSyncDate at
+            // all, and that copy carries no {hours} — nothing to substitute it with.
+            new NudgeContextBuilder()
+                .WithConnections(NudgeContextBuilder.Connection() with { LastSyncDate = null })
+                .Build(),
             new NudgeContextBuilder()
                 .NoBaseline().DaysCaptured(4)
                 .LastActivity(DateOnly.FromDateTime(NudgeContextBuilder.Now).AddDays(-20))

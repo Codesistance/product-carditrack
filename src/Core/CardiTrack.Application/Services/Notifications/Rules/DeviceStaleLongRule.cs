@@ -55,14 +55,24 @@ public sealed class DeviceStaleLongRule : INudgeRule
         if (mostRecent is null || context.UtcNow - mostRecent >= StaleAfter)
         {
             var stalest = connected.OrderBy(c => c.LastSyncDate ?? DateTime.MinValue).First();
-            var hours = mostRecent is null ? (int?)null : (int)(context.UtcNow - mostRecent.Value).TotalHours;
+
+            // A connection can be Connected with no LastSyncDate at all — never having synced once
+            // is a different fact than an "{hours} ago" gap, and gets its own variant rather than a
+            // template with nothing to fill it.
+            if (mostRecent is null)
+            {
+                return NudgeVerdict.Gap(
+                    deepLink: $"carditrack://cardimembers/{context.Member.Id}/devices",
+                    discriminator: stalest.Id.ToString("N"),
+                    variant: "never_synced");
+            }
+
+            var hours = (int)(context.UtcNow - mostRecent.Value).TotalHours;
 
             return NudgeVerdict.Gap(
                 deepLink: $"carditrack://cardimembers/{context.Member.Id}/devices",
                 discriminator: stalest.Id.ToString("N"),
-                templateData: hours is null
-                    ? new Dictionary<string, object>()
-                    : new Dictionary<string, object> { ["hours"] = hours.Value });
+                templateData: new Dictionary<string, object> { ["hours"] = hours });
         }
 
         return NudgeVerdict.NoGap;
