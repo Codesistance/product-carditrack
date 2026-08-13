@@ -65,7 +65,11 @@ internal sealed class MedGemmaIdentityTokenHandler : DelegatingHandler
                     var credential = await GoogleCredential.GetApplicationDefaultAsync(ct);
                     _oidcToken = await credential.GetOidcTokenAsync(
                         OidcTokenOptions.FromTargetAudience(_audience), ct);
-                    _logger.LogInformation(
+                    // Debug, not Information: IHttpClientFactory rotates pooled handlers on its
+                    // default lifetime, so a new instance mints a fresh provider periodically for
+                    // the life of the process. At Information this would be recurring noise in
+                    // Cloud Logging for a line that only matters when diagnosing a 403.
+                    _logger.LogDebug(
                         "MedGemma identity tokens will be minted for audience {Audience}.", _audience);
                 }
             }
