@@ -23,11 +23,12 @@ mechanical — the JSON maps field-for-field.
 | `monitors/worker-job-failing.json` | 33846 | uk1 | A single job is throwing on its scheduled tick; the host survives but that job is doing nothing |
 | `monitors/webhook-notifications-unparseable.json` | 34150 | uk1 | Webhook notifications are arriving but the aggregator cannot read a user id out of them, so the real-time path silently does nothing |
 
-Both were created on 2026-08-12 after an incident in which the Worker crash-looped for roughly
-six hours across two separate root causes with no alert firing, because the org had no
-application-level monitors at all — only Datadog's stock host pack.
+The two Worker monitors (`worker-host-faulted`, `worker-job-failing`) were created on 2026-08-12
+after an incident in which the Worker crash-looped for roughly six hours across two separate root
+causes with no alert firing, because the org had no application-level monitors at all — only
+Datadog's stock host pack.
 
-The two are complementary, and the split matters. `worker-host-faulted` catches the loud failure
+Those two are complementary, and the split matters. `worker-host-faulted` catches the loud failure
 (process death). `worker-job-failing` catches the quiet one, which only became possible once
 `CronBackgroundService` started catching exceptions from scheduled ticks: the host now survives a
 throwing job, so without this second monitor a job could fail on every tick indefinitely and
@@ -232,8 +233,17 @@ Two things the POST does not verify:
   templates and one still contains the literal placeholder `@your-team-handle`. This is the single
   biggest gap in the alerting setup: `webhook-notifications-unparseable` went to **Alert within
   minutes of creation** — correctly, the bug was live — and told nobody.
-- All three are scoped `env:dev`, which is the only environment currently shipping telemetry to
-  this org. Prod needs its own copies once it ships logs.
+- **Only `webhook-notifications-unparseable` actually restricts itself to dev.** A monitor's tags
+  organise it in the UI; they do **not** scope what its query evaluates. All three carry
+  `env:dev` as a tag, but only that one carries `env:dev` in the query, so it is the only one that
+  will keep ignoring prod traffic once prod ships logs — the other two will silently start
+  evaluating prod under a `dev` label. Harmless today, since dev is the only environment shipping
+  telemetry to this org, and worth fixing before that stops being true. Adding the filter is safe
+  but must be verified rather than assumed: confirm the tag actually matches
+  (`service:<name> env:dev` should return the same count as `service:<name>`) before relying on
+  it, because a filter matching nothing turns a monitor off in a way that looks identical to
+  everything being healthy.
+- Prod needs its own copies of all three once it ships logs.
 - **No monitor covers "parses fine, syncs nothing."** If every notification resolved to a
   `healthUserId` that matches no `DeviceConnection`, `unparseable` would be 0 and the real-time
   path would still be doing nothing. That state is legitimate in small doses (a wearer disconnected
