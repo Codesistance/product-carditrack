@@ -132,6 +132,10 @@ public static class AiServiceExtensions
 
         services.AddScoped<IMedicalAiService, MedicalAiService>();
 
+        // Also resolvable on its own: HealthInsightService needs the request-path budget, and this
+        // is the same instance the client above was handed rather than a second read of config.
+        services.AddSingleton(privateSettings);
+
         // Member context — the composer and every source that feeds it. Registered here rather
         // than in each host's composition root deliberately: this method is the one door every
         // MedGemma-calling host goes through, so a host cannot end up with the composer and a
