@@ -41,7 +41,10 @@ public sealed class DatadogApmProvider : IApmProvider
     public LoggerConfiguration AddLogShipping(
         LoggerConfiguration loggerConfiguration, ApmOptions options, string serviceName) =>
         loggerConfiguration.WriteTo.Logger(
-            lc => lc.WriteTo.OpenTelemetry(otlp =>
+            // The enricher rides this sub-logger, not the root: "level" is a Datadog intake
+            // contract (see DatadogLogStatusEnricher), so the console and other engines
+            // never carry it.
+            lc => lc.Enrich.With(new DatadogLogStatusEnricher()).WriteTo.OpenTelemetry(otlp =>
             {
                 otlp.Endpoint = LogsIntakeUrl(options);
                 otlp.Protocol = OtlpProtocol.HttpProtobuf;

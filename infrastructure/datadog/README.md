@@ -36,7 +36,18 @@ nobody would know.
 
 | Spec | Pipeline ID | Site | Purpose |
 |-|-|-|-|
-| `pipelines/otel-severity-to-status.json` | _not yet applied_ | uk1 | Give every log a canonical Datadog status, so severity is queryable |
+| `pipelines/otel-severity-to-status.json` | _fallback — apply only if the app-side enricher fails verification_ | uk1 | Give every log a canonical Datadog status, so severity is queryable |
+
+> **The primary fix is in code, not here.** `DatadogLogStatusEnricher`
+> (`src/Infrastructure/CardiTrack.Observability/Providers/`) stamps a canonical lowercase `level`
+> attribute on every shipped log, which Datadog's intake reads in preference to `severity_text`
+> (the attribute check comes first in DataDog/opentelemetry-mapping-go's
+> `pkg/otlp/logs/transform.go`, whose comment says the list mirrors the backend). Code wins over
+> console config here: it is versioned, tested, needs no manual step per org, and covers prod
+> automatically the day it ships logs. That precedence is exercised but not *documented* for the
+> direct intake, so the enricher must be verified once against dev after deploy — if a fresh log
+> arrives with `status:error` (lowercase), the enricher works and this pipeline spec stays
+> unapplied. If it arrives as `Error`, apply this pipeline as below and record the ID.
 
 ### Why this exists
 
@@ -90,13 +101,16 @@ This pipeline is the price of that migration. Reverting to the classic intake wo
 status mapping and give the log/trace correlation back up; keeping OTLP and adding one remapper
 keeps both.
 
-### Why the fix is here and not in the app
+### The app-side route, and why the sink itself can't do it
 
-The application is already sending correct data: `severity_number` is a valid OTel severity (17 for
-ERROR). `Serilog.Sinks.OpenTelemetry` exposes no hook for the severity text it writes —
+`Serilog.Sinks.OpenTelemetry` exposes no hook for the severity text it writes —
 `OpenTelemetrySinkOptions` offers only `FormatProvider`, `RestrictedToMinimumLevel`, `LevelSwitch`
-and `OnBeginSuppressInstrumentation` — so this cannot be corrected at the sink without replacing it.
-Normalising on ingest also fixes every service at once and needs no redeploy.
+and `OnBeginSuppressInstrumentation`. But the intake's attribute precedence
+(`status`/`severity`/`level`/`syslog.severity` before `severity_text`) means an ordinary Serilog
+*enricher* can supply the status as a log-record attribute without touching the sink — which is
+what `DatadogLogStatusEnricher` does, scoped inside `DatadogApmProvider.AddLogShipping` so the
+`level` attribute never reaches the console or another engine. This pipeline remains the
+ingest-side equivalent should that precedence ever prove not to hold on the direct intake.
 
 There is no stock alternative to reach for first. The
 [integration pipeline library](https://docs.datadoghq.com/logs/log_configuration/pipelines/#integration-pipeline-library)
