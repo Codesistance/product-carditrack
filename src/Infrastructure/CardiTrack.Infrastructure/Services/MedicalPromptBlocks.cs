@@ -46,11 +46,9 @@ internal static partial class MedicalPromptBlocks
     /// Each rule therefore sits on one line. See <c>DigestGenerationService.InstructionEchoes</c>.
     /// </remarks>
     internal const string Tone = """
-        Tone: you are writing for a worried family member, not for a clinician.
-        Be plain, warm and steady, and write as one person telling another how someone is doing.
-        Say what the readings show without dressing it up and without sharpening it.
-        Add no urgency the data does not carry, and no reassurance it does not support either.
-        Where a plain phrase says as much as a figure, prefer the phrase.
+        Tone: you are writing for a worried family member, not a clinician.
+        Be plain, warm and steady, and say what the readings show.
+        Add no urgency the data does not carry, and no reassurance it does not support.
         Never suggest the family has missed something or done something wrong.
         Never diagnose.
 
