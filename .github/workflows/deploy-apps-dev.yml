@@ -1380,6 +1380,42 @@ jobs:
             --region ${{ needs.changes.outputs.gcp_region }} \
             --project ${{ needs.changes.outputs.gcp_project_id }} \
             --quiet
+      # Deliberately against the public domain, not the *.run.app URL. Web's ingress is
+      # INGRESS_TRAFFIC_INTERNAL_LOAD_BALANCER whenever web_custom_domain is set, so the domain is
+      # the only way in — and it is the whole path that broke: app.dev's DNS record was lost, its
+      # managed certificate stopped renewing, and it expired on 2026-08-07. Nobody noticed for six
+      # days, because this step did not exist and the deploy ended at `gcloud run deploy`, which
+      # reports success as long as the revision starts.
+      #
+      # So this checks DNS, the certificate, Cloud Armor, the load balancer and the container in
+      # one request. curl fails the step on a TLS error too (exit 35 was the symptom for those six
+      # days), which a status-code-only check would have missed entirely.
+      #
+      # The user agent matters: Cloud Armor rejects curl's default with a 403. carditrack-healthcheck
+      # is the same agent the API smoke test uses.
+      - name: Smoke test
+        env:
+          WEB_URL: ${{ needs.changes.outputs.web_url_dev }}
+        run: |
+          # Cloud Run marks a revision Ready as soon as its first instance passes the startup
+          # probe, then scales out the rest concurrently; a request landing on a still-cold
+          # instance can 500 even though the app never errored. Retry through that window rather
+          # than failing a good deploy on one unlucky request — same reasoning as the API's.
+          for attempt in 1 2 3 4 5; do
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 15 \
+              -A "carditrack-healthcheck" \
+              "$WEB_URL/" || echo "000")
+            [ "$STATUS" = "200" ] && break
+            echo "Web check attempt $attempt: HTTP $STATUS"
+            [ "$attempt" = "5" ] || sleep 5
+          done
+          # 000 means curl never got a status: DNS failure, TLS failure or timeout. That is the
+          # case worth naming explicitly, because it is the one that went unseen.
+          if [ "$STATUS" = "000" ]; then
+            echo "::error::Web unreachable at $WEB_URL — no HTTP response. Check DNS resolves to the load balancer IP, and that the managed certificate is ACTIVE (gcloud compute ssl-certificates list --global)."
+            exit 1
+          fi
+          [ "$STATUS" = "200" ] || (echo "::error::Web check failed: HTTP $STATUS" && exit 1)
 
   deploy-worker-dev:
     name: Deploy Worker → Dev

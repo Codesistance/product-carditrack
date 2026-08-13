@@ -443,6 +443,21 @@ variable "enable_oom_alerting" {
 # an accidental allUsers grant and a publicly invocable medical model — this project has no
 # organization, so the org policy that would have prevented it outright cannot exist. Reuses the
 # notification channels above; self-disables where MedGemma is not deployed.
+# Continuous watch on the public domains' TLS certificates. On by default: a managed certificate
+# that stops renewing gives no signal at all until it expires, and app.dev.carditrack.com proved
+# that gap is real — it lapsed on 2026-08-07 and went unnoticed for six days.
+variable "enable_cert_expiry_alerting" {
+  description = "Create uptime checks for the configured public domains and alert when a TLS certificate nears expiry"
+  type        = bool
+  default     = true
+}
+
+variable "cert_expiry_alert_days" {
+  description = "Fire when a public domain's TLS certificate has fewer than this many days left. Keep below Google's ~30-day managed-certificate renewal window so a certificate mid-renewal does not alert"
+  type        = number
+  default     = 20
+}
+
 variable "enable_medgemma_iam_alerting" {
   description = "Alert when MedGemma's IAM policy is changed to grant allUsers or allAuthenticatedUsers. No-op where medgemma_image is empty"
   type        = bool
