@@ -39,7 +39,8 @@ public static class ClientHeaderValues
     }
 
     /// <summary>
-    /// ASCII alphanumerics plus the four punctuation marks semver uses. Notably excluded:
+    /// ASCII alphanumerics, the three punctuation marks semver uses ('.', '+', '-'), and '_'
+    /// for the ad-hoc version schemes that reach for it. Notably excluded:
     /// whitespace and control characters (which could forge a second log line), and every
     /// non-ASCII character (which could otherwise smuggle homoglyphs past a log reader).
     /// </summary>
