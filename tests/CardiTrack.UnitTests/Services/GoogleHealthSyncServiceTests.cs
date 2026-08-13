@@ -772,4 +772,110 @@ public class DeviceSyncServiceTests
                 .RecomputeAsync(_fitbitConnection.CardiMemberId, Today.AddDays(-offset));
         }
     }
+
+    // ---------------------------------------------------------------- battery capture
+
+    private const string SettingsScope =
+        """["activity_and_fitness","health_metrics_and_measurements","sleep","settings"]""";
+
+    private static PairedDeviceInfo Paired(
+        int? level, string? status = null, string deviceType = "TRACKER") =>
+        new(deviceType, level, status, "Charge 6", DateTime.UtcNow);
+
+    [Fact]
+    public async Task SyncCardiMemberAsync_StoresTheBatteryReading()
+    {
+        SetupSuccessfulTokenRefresh();
+        SetupDefaultApiResponse();
+        _fitbitConnection.Scopes = SettingsScope;
+        _deviceApi.GetPairedDevicesAsync(Arg.Any<string>())
+            .Returns([Paired(8, "Low")]);
+
+        await CreateSut().SyncCardiMemberAsync(_fitbitConnection);
+
+        await _deviceConnections.Received(1)
+            .UpdateBatteryAsync(_fitbitConnection.Id, 8, "Low", Arg.Any<DateTime>());
+    }
+
+    [Fact]
+    public async Task SyncCardiMemberAsync_DoesNotCallTheDeviceRegistry_WithoutTheSettingsScope()
+    {
+        // The common case for every wearer connected before the scope shipped. Asking anyway would
+        // buy a guaranteed 403 on every connection, every ten minutes, forever.
+        SetupSuccessfulTokenRefresh();
+        SetupDefaultApiResponse();
+        _fitbitConnection.Scopes = """["activity_and_fitness","sleep"]""";
+
+        await CreateSut().SyncCardiMemberAsync(_fitbitConnection);
+
+        await _deviceApi.DidNotReceive().GetPairedDevicesAsync(Arg.Any<string>());
+        await _deviceConnections.DidNotReceive()
+            .UpdateBatteryAsync(Arg.Any<Guid>(), Arg.Any<int?>(), Arg.Any<string>(), Arg.Any<DateTime>());
+    }
+
+    [Fact]
+    public async Task SyncCardiMemberAsync_ReportsTheLowestBattery_AcrossSeveralPairedDevices()
+    {
+        // A caregiver needs to know something is about to stop reporting; taking the first or the
+        // average would hide exactly that.
+        SetupSuccessfulTokenRefresh();
+        SetupDefaultApiResponse();
+        _fitbitConnection.Scopes = SettingsScope;
+        _deviceApi.GetPairedDevicesAsync(Arg.Any<string>())
+            .Returns([Paired(70, "High"), Paired(6, "Low"), Paired(45, "Medium")]);
+
+        await CreateSut().SyncCardiMemberAsync(_fitbitConnection);
+
+        await _deviceConnections.Received(1)
+            .UpdateBatteryAsync(_fitbitConnection.Id, 6, "Low", Arg.Any<DateTime>());
+    }
+
+    [Fact]
+    public async Task SyncCardiMemberAsync_IgnoresAScalesMissingBattery()
+    {
+        SetupSuccessfulTokenRefresh();
+        SetupDefaultApiResponse();
+        _fitbitConnection.Scopes = SettingsScope;
+        _deviceApi.GetPairedDevicesAsync(Arg.Any<string>())
+            .Returns([Paired(null, null, "SCALE"), Paired(55, "Medium")]);
+
+        await CreateSut().SyncCardiMemberAsync(_fitbitConnection);
+
+        await _deviceConnections.Received(1)
+            .UpdateBatteryAsync(_fitbitConnection.Id, 55, "Medium", Arg.Any<DateTime>());
+    }
+
+    [Fact]
+    public async Task SyncCardiMemberAsync_SucceedsWhenTheBatteryReadFails()
+    {
+        // Battery is a convenience reading about hardware. Losing it must never cost the member
+        // their health data, nor park a working connection in SyncError.
+        SetupSuccessfulTokenRefresh();
+        SetupDefaultApiResponse();
+        _fitbitConnection.Scopes = SettingsScope;
+        _deviceApi.GetPairedDevicesAsync(Arg.Any<string>())
+            .ThrowsAsync(new GoogleHealthApiException(500, "Internal Server Error"));
+
+        await CreateSut().SyncCardiMemberAsync(_fitbitConnection);
+
+        await _deviceConnections.Received(1)
+            .MarkSyncSucceededAsync(_fitbitConnection.Id, Arg.Any<DateTime>());
+        await _deviceConnections.DidNotReceive()
+            .UpdateStatusAsync(_fitbitConnection.Id, ConnectionStatus.SyncError);
+    }
+
+    [Fact]
+    public async Task SyncCardiMemberAsync_WritesNoBattery_WhenNoDeviceReportsOne()
+    {
+        SetupSuccessfulTokenRefresh();
+        SetupDefaultApiResponse();
+        _fitbitConnection.Scopes = SettingsScope;
+        _deviceApi.GetPairedDevicesAsync(Arg.Any<string>())
+            .Returns([Paired(null, null)]);
+
+        await CreateSut().SyncCardiMemberAsync(_fitbitConnection);
+
+        await _deviceConnections.DidNotReceive()
+            .UpdateBatteryAsync(Arg.Any<Guid>(), Arg.Any<int?>(), Arg.Any<string>(), Arg.Any<DateTime>());
+    }
 }

@@ -407,6 +407,59 @@ public class GoogleHealthApiClient : IGoogleHealthApiClient, IDeviceApiClient
     }
 
     /// <summary>
+    /// The wearables paired to this account, from <c>GET /v4/users/me/pairedDevices</c> — the
+    /// provider's own device registry, which is where battery level and status live. Verified
+    /// against the v4 discovery document: <c>PairedDevice.batteryLevel</c> is an `int32` and
+    /// <c>batteryStatus</c> a string banded <c>High | Medium | Low | Empty</c>.
+    /// </summary>
+    /// <remarks>
+    /// Returns empty rather than throwing when the read is not permitted. Unlike every other call
+    /// in this client, this one needs <c>googlehealth.settings.readonly</c>, which connections
+    /// authorised before that scope shipped do not carry — so a 403 here is the expected steady
+    /// state for existing wearers, not a fault, and must never park a working connection in
+    /// SyncError over telemetry the caregiver reads as a nicety. The same tolerance applied to a
+    /// health metric would be wrong, which is why this does not reuse
+    /// <see cref="IsAbsentDataType"/>: that helper deliberately treats a malformed 400 as a bug,
+    /// and this adds 403 on top for the unscoped case alone.
+    /// <para>
+    /// Callers should still check the connection's granted scopes before calling, the same as
+    /// <see cref="GetExerciseSessionsAsync"/> does for the location scope; this tolerance is the
+    /// backstop for the window where a stored scope list and the token's real grant disagree.
+    /// </para>
+    /// </remarks>
+    public async Task<IReadOnlyList<PairedDeviceInfo>> GetPairedDevicesAsync(string accessToken)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, "/v4/users/me/pairedDevices");
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+
+        using var response = await _httpClient.SendAsync(request);
+        if (!response.IsSuccessStatusCode)
+        {
+            var probe = new GoogleHealthApiException(
+                (int)response.StatusCode,
+                $"Google Health API pairedDevices returned {(int)response.StatusCode}.",
+                IsMalformedRequest((int)response.StatusCode, await response.Content.ReadAsStringAsync()));
+
+            // 403: the scope was never granted. 400/404: the account exposes no device registry.
+            if (probe.StatusCode == 403 || IsAbsentDataType(probe))
+                return [];
+            throw probe;
+        }
+
+        var root = await ParseBodyAsync(response, "pairedDevices");
+        var devices = (root["pairedDevices"] as JArray)?.OfType<JObject>() ?? [];
+
+        return devices
+            .Select(device => new PairedDeviceInfo(
+                DeviceType: device.Value<string>("deviceType"),
+                BatteryLevel: ReadInt(device, "batteryLevel"),
+                BatteryStatus: device.Value<string>("batteryStatus"),
+                DeviceVersion: device.Value<string>("deviceVersion"),
+                LastSyncTimeUtc: ParseInstantUtc(device.Value<string>("lastSyncTime"))))
+            .ToList();
+    }
+
+    /// <summary>
     /// Exercise sessions for one civil day. <c>exercise</c> is a Session type like <c>sleep</c>,
     /// so it is filtered on its own civil end-time the same way. GPS presence is read from the
     /// session's <c>hasLocationData</c> flag on the union value.

@@ -110,6 +110,9 @@ device_pull_params = [
       "https://www.googleapis.com/auth/googlehealth.activity_and_fitness.readonly",
       "https://www.googleapis.com/auth/googlehealth.health_metrics_and_measurements.readonly",
       "https://www.googleapis.com/auth/googlehealth.sleep.readonly",
+      # Paired-device telemetry (battery level/status). Optional: a connection granted before this
+      # scope shipped keeps syncing and simply reports no battery until the wearer reconnects.
+      "https://www.googleapis.com/auth/googlehealth.settings.readonly",
     ]
     additional_authorization_params    = { access_type = "offline" } # Without it Google issues no refresh token
     first_consent_authorization_params = { prompt = "consent" }      # First grant only — re-consent is how a refresh token is re-issued

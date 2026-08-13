@@ -70,6 +70,16 @@ public class DeviceConnectionConfiguration : IEntityTypeConfiguration<DeviceConn
         builder.HasIndex(d => d.HealthUserId)
             .HasFilter("\"HealthUserId\" IS NOT NULL");
 
+        builder.Property(d => d.BatteryLevel);
+
+        // High | Medium | Low | Empty, per the v4 discovery document's PairedDevice.batteryStatus.
+        // Left a free string rather than a mapped enum: it is the provider's vocabulary, not ours,
+        // and an unrecognised band must land in the column for diagnosis rather than throw a sync.
+        builder.Property(d => d.BatteryStatus)
+            .HasMaxLength(20);
+
+        builder.Property(d => d.BatteryUpdatedAt);
+
         // JSON field
         builder.Property(d => d.Metadata)
             .HasMaxLength(2000);

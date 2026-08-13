@@ -1,9 +1,11 @@
 using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Interfaces.Services;
+using CardiTrack.Application.Services.Notifications;
 using CardiTrack.Domain.Entities;
 using CardiTrack.Domain.Enums;
 using CardiTrack.Infrastructure.ExternalClients;
 using CardiTrack.Infrastructure.Settings;
+using CardiTrack.Shared.Json;
 using Microsoft.Extensions.Options;
 
 namespace CardiTrack.Infrastructure.Services;
@@ -85,6 +87,8 @@ public class DeviceSyncService : IDeviceSyncService
                 }
             }
 
+            await CaptureBatteryAsync(connection, accessToken);
+
             await PullWindowAsync(connection, accessToken, lookbackDays, today);
 
             // Only once the whole window landed — otherwise a partial sync would look complete
@@ -128,6 +132,66 @@ public class DeviceSyncService : IDeviceSyncService
         // repairs history as a side effect of measuring it.
         await PullWindowAsync(connection, accessToken, lookbackDays, DateOnly.FromDateTime(DateTime.UtcNow));
     }
+
+    /// <summary>
+    /// Reads the wearable's battery from the provider's device registry and stores the last-known
+    /// value on the connection. One request, on every pull including a caregiver's manual refresh:
+    /// the whole point of the reading is that it is current when someone looks at it, and unlike
+    /// the granular series or the history backfill it does not scale with the window.
+    /// </summary>
+    /// <remarks>
+    /// Best-effort in the strongest sense — this method never throws. Battery is a convenience
+    /// reading about hardware, and no failure to obtain it may cost the member their health data
+    /// or park a working connection in <see cref="ConnectionStatus.SyncError"/>. It sits before
+    /// <see cref="PullWindowAsync"/> only so a caregiver opening the device list mid-sync sees a
+    /// fresh battery alongside a window still landing; the ordering carries no dependency.
+    /// <para>
+    /// Skipped outright when the connection never granted the settings scope, so the common case
+    /// for a pre-existing wearer costs no request at all rather than a guaranteed 403 every ten
+    /// minutes. The client tolerates that 403 anyway, for the window where this stored scope list
+    /// and the token's real grant disagree.
+    /// </para>
+    /// </remarks>
+    private async Task CaptureBatteryAsync(DeviceConnection connection, string accessToken)
+    {
+        if (!DeviceScopes.GrantsSettings(ParseScopes(connection.Scopes)))
+            return;
+
+        IReadOnlyList<PairedDeviceInfo> pairedDevices;
+        try
+        {
+            pairedDevices = await _deviceApi.GetPairedDevicesAsync(accessToken);
+        }
+        catch (Exception ex) when (IsProviderApiException(ex))
+        {
+            return;
+        }
+
+        // The provider reports every wearable on the account, and CardiTrack's connection does not
+        // name which one it is. The lowest battery among the battery-powered ones is the reading
+        // that matters: a caregiver needs to know something is about to stop reporting, and
+        // averaging or taking the first would hide exactly that.
+        var lowest = pairedDevices
+            .Where(d => d.IsBatteryPowered && (d.BatteryLevel is not null || d.BatteryStatus is not null))
+            .OrderBy(d => d.BatteryLevel ?? int.MaxValue)
+            .FirstOrDefault();
+
+        if (lowest is null)
+            return;
+
+        await _deviceConnections.UpdateBatteryAsync(
+            connection.Id, lowest.BatteryLevel, lowest.BatteryStatus, DateTime.UtcNow);
+
+        connection.BatteryLevel = lowest.BatteryLevel;
+        connection.BatteryStatus = lowest.BatteryStatus;
+        connection.BatteryUpdatedAt = DateTime.UtcNow;
+    }
+
+    /// <summary>Scopes are stored as a JSON array; a malformed value must not break a sync.</summary>
+    private static List<string> ParseScopes(string? scopes) =>
+        JsonUtility.TryDeserialize<List<string>>(scopes ?? "[]", out var parsed, out _) && parsed is not null
+            ? parsed
+            : [];
 
     private DeviceProviderSettings ResolveProviderConfig(DeviceConnection connection) =>
         _providers.ConfigFor(connection.DeviceType)

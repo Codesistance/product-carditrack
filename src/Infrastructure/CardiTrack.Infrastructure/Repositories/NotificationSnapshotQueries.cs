@@ -108,6 +108,9 @@ public class NotificationSnapshotQueries : INotificationSnapshotQueries
                 c.ConnectionStatus,
                 c.LastSyncDate,
                 c.Scopes,
+                c.BatteryLevel,
+                c.BatteryStatus,
+                c.BatteryUpdatedAt,
                 c.IsActive
             })
             .ToListAsync(ct);
@@ -258,7 +261,10 @@ public class NotificationSnapshotQueries : INotificationSnapshotQueries
                                 DeviceType = c.DeviceType,
                                 Status = c.ConnectionStatus,
                                 LastSyncDate = c.LastSyncDate,
-                                Scopes = ParseScopes(c.Scopes)
+                                Scopes = ParseScopes(c.Scopes),
+                                BatteryLevel = c.BatteryLevel,
+                                BatteryStatus = c.BatteryStatus,
+                                BatteryUpdatedAt = c.BatteryUpdatedAt
                             })
                     ]
                 });

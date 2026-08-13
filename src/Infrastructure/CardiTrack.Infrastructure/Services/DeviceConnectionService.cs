@@ -5,6 +5,7 @@ using CardiTrack.Application.Exceptions;
 using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Interfaces.Security;
 using CardiTrack.Application.Interfaces.Services;
+using CardiTrack.Application.Services;
 using CardiTrack.Domain.Entities;
 using CardiTrack.Domain.Enums;
 using CardiTrack.Domain.Extensions;
@@ -516,6 +517,16 @@ public class DeviceConnectionService : IDeviceConnectionService
             ? last.AddMinutes(connection.SyncFrequencyMinutes)
             : null,
         TodayUpdateCount = todayUpdateCount,
+        // A reading only leaves the API while it is still current. Suppressing both fields
+        // together — rather than sending a percentage with a timestamp and leaving each client to
+        // decide — keeps one definition of "too old to show" on the server, where it can be
+        // changed without shipping a mobile release.
+        BatteryLevel = DeviceBattery.IsFresh(connection.BatteryUpdatedAt, DateTime.UtcNow)
+            ? connection.BatteryLevel
+            : null,
+        BatteryStatus = DeviceBattery.IsFresh(connection.BatteryUpdatedAt, DateTime.UtcNow)
+            ? connection.BatteryStatus
+            : null,
     };
 
     /// <summary>Scopes are stored as a JSON array; a malformed value must not break the screen.</summary>

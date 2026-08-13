@@ -234,7 +234,13 @@ connect makes a reconnect look like a failed one.
    matching the public homepage. **Data Access →** add the restricted scopes
    `googlehealth.activity_and_fitness.readonly`,
    `googlehealth.health_metrics_and_measurements.readonly`,
-   `googlehealth.sleep.readonly`. **Audience →** add **test users** (dev/beta
+   `googlehealth.sleep.readonly`, `googlehealth.settings.readonly`.
+   **`settings.readonly` was added after the first three** (it backs the
+   paired-device battery reading, `PairedDevice.batteryLevel`): an existing
+   project needs it added here before any wearer can grant it, and **wearers who
+   connected earlier keep their original three-scope grant until they reconnect**,
+   reporting no battery in the meantime. That degradation is by design and never
+   fails a sync. **Audience →** add **test users** (dev/beta
    wearers' Google accounts) and leave the project in **Testing**: only listed
    accounts can connect, max 100. Dev stays in Testing permanently; prod leaves
    it only via step 6.

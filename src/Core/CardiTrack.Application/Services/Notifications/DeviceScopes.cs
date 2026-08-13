@@ -19,6 +19,12 @@ public static class DeviceScopes
     public const string ActivityAndFitness = "activity_and_fitness";
     public const string HealthMetrics = "health_metrics_and_measurements";
 
+    /// <summary>
+    /// Paired-device telemetry — battery level and status. Added after the three read bundles, so
+    /// every connection authorised before it shipped lacks it until the wearer reconnects.
+    /// </summary>
+    public const string Settings = "settings";
+
     public static string Normalise(string? scope)
     {
         if (string.IsNullOrWhiteSpace(scope))
@@ -49,4 +55,12 @@ public static class DeviceScopes
     /// </summary>
     public static bool GrantsSleep(IEnumerable<string> scopes) =>
         scopes.Any(s => Normalise(s) == Sleep);
+
+    /// <summary>
+    /// Whether the granted set covers paired-device telemetry. False for every connection made
+    /// before <see cref="Settings"/> was added to the requested scopes — which is why a missing
+    /// battery reading is never treated as a fault.
+    /// </summary>
+    public static bool GrantsSettings(IEnumerable<string> scopes) =>
+        scopes.Any(s => Normalise(s) == Settings);
 }

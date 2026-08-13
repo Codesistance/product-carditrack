@@ -1403,6 +1403,114 @@ public class GoogleHealthApiClientTests
         Assert.True(ex.IsMalformedRequest);
     }
 
+    // ── Paired devices (battery) ─────────────────────────────────────────────────
+
+    [Fact]
+    public async Task GetPairedDevicesAsync_ReadsBatteryOffThePairedDeviceResource()
+    {
+        var handler = new RoutedFakeHttpHandler()
+            .Map("/users/me/pairedDevices", """
+                {
+                  "pairedDevices": [
+                    {
+                      "name": "users/1234567890/pairedDevices/123",
+                      "deviceType": "TRACKER",
+                      "batteryLevel": 8,
+                      "batteryStatus": "Low",
+                      "deviceVersion": "Charge 6",
+                      "lastSyncTime": "2026-08-13T09:30:00Z"
+                    }
+                  ]
+                }
+                """);
+
+        var devices = await ((IDeviceApiClient)CreateSut(handler).Sut).GetPairedDevicesAsync("token");
+
+        var device = Assert.Single(devices);
+        Assert.Equal("TRACKER", device.DeviceType);
+        Assert.Equal(8, device.BatteryLevel);
+        Assert.Equal("Low", device.BatteryStatus);
+        Assert.Equal("Charge 6", device.DeviceVersion);
+        Assert.Equal(new DateTime(2026, 8, 13, 9, 30, 0, DateTimeKind.Utc), device.LastSyncTimeUtc);
+        Assert.True(device.IsBatteryPowered);
+    }
+
+    [Fact]
+    public async Task GetPairedDevicesAsync_ReturnsEmpty_WhenTheSettingsScopeWasNeverGranted()
+    {
+        // The steady state for every connection authorised before the settings scope shipped. A
+        // throw here would park a working connection in SyncError over telemetry, every ten
+        // minutes, for a wearer whose health data is arriving perfectly well.
+        var handler = new RoutedFakeHttpHandler()
+            .Map("/users/me/pairedDevices",
+                """{ "error": { "code": 403, "status": "PERMISSION_DENIED" } }""",
+                HttpStatusCode.Forbidden);
+
+        var devices = await ((IDeviceApiClient)CreateSut(handler).Sut).GetPairedDevicesAsync("token");
+
+        Assert.Empty(devices);
+    }
+
+    [Fact]
+    public async Task GetPairedDevicesAsync_ToleratesAnAccountWithNoDeviceRegistry()
+    {
+        var handler = new RoutedFakeHttpHandler()
+            .Map("/users/me/pairedDevices", """{ "error": { "status": "NOT_FOUND" } }""",
+                HttpStatusCode.NotFound);
+
+        Assert.Empty(await ((IDeviceApiClient)CreateSut(handler).Sut).GetPairedDevicesAsync("token"));
+    }
+
+    [Fact]
+    public async Task GetPairedDevicesAsync_Throws_WhenTheRequestIsMalformed()
+    {
+        // The tolerance above is for "not permitted" and "nothing there", never for a bug in the
+        // URL built here — that must not present as a device which merely reports no battery.
+        var handler = new RoutedFakeHttpHandler()
+            .Map("/users/me/pairedDevices", """
+                {
+                  "error": {
+                    "code": 400,
+                    "details": [
+                      {
+                        "@type": "type.googleapis.com/google.rpc.BadRequest",
+                        "fieldViolations": [ { "field": "parent" } ]
+                      }
+                    ]
+                  }
+                }
+                """, HttpStatusCode.BadRequest);
+
+        var ex = await Assert.ThrowsAsync<GoogleHealthApiException>(() =>
+            ((IDeviceApiClient)CreateSut(handler).Sut).GetPairedDevicesAsync("token"));
+        Assert.True(ex.IsMalformedRequest);
+    }
+
+    [Fact]
+    public async Task GetPairedDevicesAsync_TreatsAScaleAsCarryingNoBattery()
+    {
+        var handler = new RoutedFakeHttpHandler()
+            .Map("/users/me/pairedDevices", """
+                {
+                  "pairedDevices": [
+                    { "deviceType": "SCALE", "deviceVersion": "Aria Air" }
+                  ]
+                }
+                """);
+
+        var devices = await ((IDeviceApiClient)CreateSut(handler).Sut).GetPairedDevicesAsync("token");
+
+        Assert.False(Assert.Single(devices).IsBatteryPowered);
+    }
+
+    [Fact]
+    public async Task GetPairedDevicesAsync_ReturnsEmpty_WhenTheAccountHasNoPairedDevices()
+    {
+        var handler = new RoutedFakeHttpHandler().Map("/users/me/pairedDevices", "{ }");
+
+        Assert.Empty(await ((IDeviceApiClient)CreateSut(handler).Sut).GetPairedDevicesAsync("token"));
+    }
+
     [Fact]
     public async Task GetGranularDayAsync_FollowsPagination()
     {

@@ -937,7 +937,7 @@ Saves via `PUT /api/v1/cardimembers/{id}` — a full replacement, so clearing a 
 
 **Stats row:**
 - Last sync · Next sync (derived from last sync + the connection's interval) · Today's data ("4 updates")
-- ~~Battery: "75%"~~ — **not shipped.** No battery level is stored on `DeviceConnection` or fetched from any provider, so the tile has no source. Three tiles instead of four.
+- Battery ("72%", or the provider's band when it reports no percentage) — **shipped**, sourced from the Health API's `pairedDevices` resource. The tile and its grid column collapse whenever the server sends no reading, which is the normal case for any connection made before the `settings` scope was added, for a scale, and for a reading older than 24 hours. Four tiles when there is a battery to show, three when there is not. Red at or below 10%, the same threshold `DEVICE_BATTERY_LOW` fires at, so the tile never disagrees with a notification the caregiver has already had.
 - ~~View Sync History~~ — no sync-history endpoint exists
 
 **Troubleshooting (bottom, collapsible):** "Having trouble?" with reconnect guidance. Wording avoids Bluetooth — these are cloud OAuth connections, not paired peripherals.
