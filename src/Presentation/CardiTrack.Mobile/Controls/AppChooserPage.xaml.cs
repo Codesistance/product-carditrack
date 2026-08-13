@@ -32,6 +32,11 @@ public partial class AppChooserPage : ContentPage
                 Text = option,
                 Style = (Style)App.Current!.Resources["SecondaryOutlineButton"],
                 FontSize = 16,
+                // The shared style is sized for a page's primary CTA (52pt). A choice in a list
+                // of four is not that, and at 52 the stack ate the card: shorter rows keep the
+                // whole list on screen. Radius follows the height so the pill stays a pill.
+                HeightRequest = 44,
+                CornerRadius = 22,
                 Padding = new Thickness(12, 0)
             };
             // The label is the identity the caller matches on when this returns, so it is what

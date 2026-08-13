@@ -32,19 +32,23 @@
                        TextColor="{StaticResource White}"
                        VerticalTextAlignment="Center"/>
 
-                <Button Grid.Column="2"
-                        Text="+ Add Device"
-                        FontFamily="QuicksandSemiBold"
-                        FontSize="13"
-                        TextColor="{StaticResource White}"
-                        BackgroundColor="Transparent"
-                        BorderColor="{StaticResource White}"
-                        BorderWidth="1"
-                        CornerRadius="18"
-                        HeightRequest="36"
-                        Padding="14,0"
-                        VerticalOptions="Center"
-                        Clicked="OnAddDeviceClicked"/>
+                <!-- Icon-only, in the same white rounded square the other detail headers give
+                     their single action (CardiMemberDetailPage's edit pencil) — the pill this
+                     replaced was the one header action wearing a label. -->
+                <Border Grid.Column="2"
+                        WidthRequest="40" HeightRequest="40"
+                        StrokeThickness="0"
+                        BackgroundColor="{StaticResource White}"
+                        VerticalOptions="Center">
+                    <Border.StrokeShape>
+                        <RoundRectangle CornerRadius="12"/>
+                    </Border.StrokeShape>
+                    <ImageButton Source="icon_plus.svg"
+                                 WidthRequest="20" HeightRequest="20"
+                                 BackgroundColor="Transparent"
+                                 SemanticProperties.Description="Add device"
+                                 Clicked="OnAddDeviceClicked"/>
+                </Border>
             </Grid>
         </controls:HeaderBand>
 
