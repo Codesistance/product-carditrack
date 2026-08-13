@@ -669,7 +669,8 @@ public class DigestGenerationServiceTests
                 Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(new DigestGenerationService.DigestAiResponse
             {
-                Headline = "A settled night", Summary = summary,
+                Headline = "A settled night",
+                Summary = summary,
             });
 
     /// <summary>

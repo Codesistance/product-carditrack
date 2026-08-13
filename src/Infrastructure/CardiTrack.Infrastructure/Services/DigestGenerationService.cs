@@ -373,7 +373,7 @@ public partial class DigestGenerationService : IDigestGenerationService
             LocalDate = describedDate,
             Audience = DigestAudience.Family,
             Headline = NamePlaceholder.Resolve(CleanHeadline(aiResponse.Headline, memberId, describedDate), name),
-            Text = NamePlaceholder.Resolve(text, name),
+            Text = NamePlaceholder.Resolve(text, name)!,
             Suggestions = CleanSuggestions(aiResponse.Suggestions, memberId, describedDate)
                 ?.Select(s => NamePlaceholder.Resolve(s, name)!).ToList(),
             GeneratedAtUtc = utcNow,

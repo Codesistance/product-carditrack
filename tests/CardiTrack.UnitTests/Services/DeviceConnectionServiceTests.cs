@@ -10,13 +10,12 @@ using CardiTrack.Infrastructure.ExternalClients;
 using CardiTrack.Infrastructure.Security;
 using CardiTrack.Infrastructure.Services;
 using CardiTrack.Infrastructure.Settings;
+using CardiTrack.UnitTests.Notifications;
 using Microsoft.Extensions.Caching.Distributed;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using NSubstitute;
-
-using CardiTrack.UnitTests.Notifications;
 
 namespace CardiTrack.UnitTests.Services;
 

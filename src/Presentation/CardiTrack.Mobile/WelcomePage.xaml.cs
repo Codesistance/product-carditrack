@@ -40,14 +40,18 @@ public partial class WelcomePage : ContentPage
         var clipFigure = new PathFigure { StartPoint = P(236.116, 580.084), IsClosed = true };
         clipFigure.Segments.Add(new BezierSegment
         {
-            Point1 = P(149.765, 556.151), Point2 = P(42.7257, 590.056), Point3 = P(0, 610)
+            Point1 = P(149.765, 556.151),
+            Point2 = P(42.7257, 590.056),
+            Point3 = P(0, 610)
         });
         clipFigure.Segments.Add(new LineSegment { Point = P(0, 0) });
         clipFigure.Segments.Add(new LineSegment { Point = P(440, 0) });
         clipFigure.Segments.Add(new LineSegment { Point = P(440, 580.084) });
         clipFigure.Segments.Add(new BezierSegment
         {
-            Point1 = P(400.273, 596.866), Point2 = P(344.055, 610), Point3 = P(236.116, 580.084)
+            Point1 = P(400.273, 596.866),
+            Point2 = P(344.055, 610),
+            Point3 = P(236.116, 580.084)
         });
         var clipGeometry = new PathGeometry();
         clipGeometry.Figures.Add(clipFigure);
@@ -58,11 +62,15 @@ public partial class WelcomePage : ContentPage
         var strokeFigure = new PathFigure { StartPoint = P(440, 580.084), IsClosed = false };
         strokeFigure.Segments.Add(new BezierSegment
         {
-            Point1 = P(400.273, 596.866), Point2 = P(344.055, 610), Point3 = P(236.116, 580.084)
+            Point1 = P(400.273, 596.866),
+            Point2 = P(344.055, 610),
+            Point3 = P(236.116, 580.084)
         });
         strokeFigure.Segments.Add(new BezierSegment
         {
-            Point1 = P(149.765, 556.151), Point2 = P(42.7257, 590.056), Point3 = P(0, 610)
+            Point1 = P(149.765, 556.151),
+            Point2 = P(42.7257, 590.056),
+            Point3 = P(0, 610)
         });
         var strokeGeometry = new PathGeometry();
         strokeGeometry.Figures.Add(strokeFigure);

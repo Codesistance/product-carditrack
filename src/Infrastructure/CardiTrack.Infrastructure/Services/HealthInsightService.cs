@@ -3,7 +3,6 @@ using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Domain.Entities;
-using CardiTrack.Domain.Enums;
 using CardiTrack.Infrastructure.Services.PromptContext;
 using CardiTrack.Infrastructure.Settings;
 using Microsoft.Extensions.Caching.Distributed;

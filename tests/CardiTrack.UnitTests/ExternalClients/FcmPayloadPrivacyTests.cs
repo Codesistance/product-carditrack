@@ -85,14 +85,14 @@ public class FcmPayloadPrivacyTests
     }
 
     [Fact]
-    public void TokenField_CarriesTheDecryptedRegistrationToken_NeverTheStoredCiphertext()
+    public void FidField_CarriesTheDecryptedRegistrationToken_NeverTheStoredCiphertext()
     {
         var deviceToken = Token();
 
         var message = CreateSut().BuildMessage(Delivery(), deviceToken);
 
-        Assert.Equal(DecryptedToken, message.Token);
-        Assert.NotEqual(deviceToken.Token, message.Token);
+        Assert.Equal(DecryptedToken, message.Fid);
+        Assert.NotEqual(deviceToken.Token, message.Fid);
     }
 
     [Theory]

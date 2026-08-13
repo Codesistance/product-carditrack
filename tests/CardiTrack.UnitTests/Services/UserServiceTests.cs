@@ -3,9 +3,8 @@ using CardiTrack.Application.Exceptions;
 using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Services;
 using CardiTrack.Domain.Entities;
-using NSubstitute;
-
 using CardiTrack.UnitTests.Notifications;
+using NSubstitute;
 
 namespace CardiTrack.UnitTests.Services;
 

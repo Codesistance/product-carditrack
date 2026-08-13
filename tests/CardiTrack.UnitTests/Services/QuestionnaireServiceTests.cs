@@ -41,15 +41,15 @@ public class QuestionnaireServiceTests
 
     private MemberQuestionnaire Questionnaire(
         QuestionnaireStatus status = QuestionnaireStatus.Pending, string? answer = null) => new()
-    {
-        Id = _questionnaireId,
-        CardiMemberId = _memberId,
-        QuestionText = PromptContextFactory.Encryption.Encrypt("Has anything changed at home recently?"),
-        AnswerText = answer is null ? null : PromptContextFactory.Encryption.Encrypt(answer),
-        TriggerContext = "Sleep has been shorter all week.",
-        Status = status,
-        GeneratedAtUtc = new DateTime(2026, 8, 12, 9, 0, 0, DateTimeKind.Utc),
-    };
+        {
+            Id = _questionnaireId,
+            CardiMemberId = _memberId,
+            QuestionText = PromptContextFactory.Encryption.Encrypt("Has anything changed at home recently?"),
+            AnswerText = answer is null ? null : PromptContextFactory.Encryption.Encrypt(answer),
+            TriggerContext = "Sleep has been shorter all week.",
+            Status = status,
+            GeneratedAtUtc = new DateTime(2026, 8, 12, 9, 0, 0, DateTimeKind.Utc),
+        };
 
     [Fact]
     public async Task Listing_DecryptsTheQuestionAndTheAnswer()

@@ -102,8 +102,10 @@ public static class StatisticalAlertRules
             + $"{average / 60.0:F1} — one night is rarely a worry, but it may be worth mentioning.",
             Serialize(new
             {
-                rule = IrregularSleepRule, night = lastNight.Date.ToString("O"),
-                sleepMinutes = sleep, baselineAvgSleepMinutes = average,
+                rule = IrregularSleepRule,
+                night = lastNight.Date.ToString("O"),
+                sleepMinutes = sleep,
+                baselineAvgSleepMinutes = average,
             }),
             NightOf: lastNight.Date);
     }
@@ -127,8 +129,10 @@ public static class StatisticalAlertRules
             + $"{average} bpm. Worth checking in today.",
             Serialize(new
             {
-                rule = ElevatedHeartRateRule, restingHeartRate = restingHr,
-                baselineAvgRestingHeartRate = average, marginBpm = Math.Round(margin, 1),
+                rule = ElevatedHeartRateRule,
+                restingHeartRate = restingHr,
+                baselineAvgRestingHeartRate = average,
+                marginBpm = Math.Round(margin, 1),
             }));
     }
 

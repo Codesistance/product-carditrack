@@ -2,7 +2,6 @@ using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Application.Services.Notifications;
 using CardiTrack.Domain.Enums;
 using CardiTrack.Mobile.Core.Notifications;
-using Xunit;
 
 namespace CardiTrack.UnitTests.Notifications;
 

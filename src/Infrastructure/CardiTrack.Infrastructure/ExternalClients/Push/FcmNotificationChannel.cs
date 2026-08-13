@@ -161,7 +161,7 @@ public class FcmNotificationChannel : INotificationChannel
         {
             // The FCM SDK needs the raw registration token — decrypted here, at the one call site
             // that actually sends, rather than carried in plaintext any earlier in the pipeline.
-            Token = _encryption.Decrypt(token.Token),
+            Fid = _encryption.Decrypt(token.Token),
             Data = new Dictionary<string, string>
             {
                 ["deliveryId"] = delivery.Id.ToString(),

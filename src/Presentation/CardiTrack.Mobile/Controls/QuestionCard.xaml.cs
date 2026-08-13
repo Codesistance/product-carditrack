@@ -1,6 +1,5 @@
 using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Mobile.Core.Questionnaires;
-using CardiTrack.Mobile.Services;
 
 namespace CardiTrack.Mobile.Controls;
 

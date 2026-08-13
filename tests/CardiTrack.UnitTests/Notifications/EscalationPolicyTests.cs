@@ -1,6 +1,5 @@
 using CardiTrack.Application.Services.Notifications;
 using CardiTrack.Domain.Enums;
-using Xunit;
 
 namespace CardiTrack.UnitTests.Notifications;
 

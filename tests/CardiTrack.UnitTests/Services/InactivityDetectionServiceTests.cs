@@ -408,7 +408,9 @@ public class InactivityDetectionServiceTests
     {
         var rules = new InactivityDetectionRules
         {
-            SilenceThresholdMinutes = threshold, WakingStartHour = start, WakingEndHour = end,
+            SilenceThresholdMinutes = threshold,
+            WakingStartHour = start,
+            WakingEndHour = end,
         };
 
         await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() =>

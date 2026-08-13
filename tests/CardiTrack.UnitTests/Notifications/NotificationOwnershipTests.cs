@@ -4,7 +4,6 @@ using CardiTrack.Application.Services.Notifications.Rules;
 using CardiTrack.Domain.Entities;
 using CardiTrack.Domain.Enums;
 using NSubstitute;
-using Xunit;
 
 namespace CardiTrack.UnitTests.Notifications;
 

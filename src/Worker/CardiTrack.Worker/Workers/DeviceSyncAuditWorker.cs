@@ -1,5 +1,4 @@
 using CardiTrack.Application.Interfaces.Repositories;
-using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Domain.Entities;
 using CardiTrack.Infrastructure.Extensions;
 using Microsoft.Extensions.Options;

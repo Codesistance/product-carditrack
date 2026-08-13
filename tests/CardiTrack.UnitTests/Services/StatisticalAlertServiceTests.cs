@@ -114,7 +114,11 @@ public class StatisticalAlertServiceTests
         // Decline + short sleep + elevated resting HR, all in yesterday's log.
         SetupLogs(new ActivityLog
         {
-            CardiMemberId = _memberId, Date = Yesterday, Steps = 1000, SleepMinutes = 200, RestingHeartRate = 80,
+            CardiMemberId = _memberId,
+            Date = Yesterday,
+            Steps = 1000,
+            SleepMinutes = 200,
+            RestingHeartRate = 80,
         });
 
         var raised = await CreateSut().EvaluateAsync(UtcNow);
@@ -185,7 +189,10 @@ public class StatisticalAlertServiceTests
     {
         SetupLogs(new ActivityLog
         {
-            CardiMemberId = _memberId, Date = Yesterday, Steps = 6000, RestingHeartRate = 80,
+            CardiMemberId = _memberId,
+            Date = Yesterday,
+            Steps = 6000,
+            RestingHeartRate = 80,
         });
         _alerts.GetByCardiMemberAsync(_memberId, activeOnly: true).Returns(
         [

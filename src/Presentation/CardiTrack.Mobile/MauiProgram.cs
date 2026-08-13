@@ -1,3 +1,4 @@
+using System.Net.Http.Headers;
 using CardiTrack.Mobile.Core.Api;
 using CardiTrack.Mobile.Core.Auth;
 using CardiTrack.Mobile.Core.Configuration;
@@ -6,7 +7,6 @@ using CardiTrack.Mobile.Core.Notifications;
 using CardiTrack.Mobile.Core.Onboarding;
 using CardiTrack.Mobile.Services;
 using CardiTrack.Shared.Http;
-using System.Net.Http.Headers;
 #if ANDROID || IOS
 using CardiTrack.Mobile.Notifications;
 using Microsoft.Maui.LifecycleEvents;

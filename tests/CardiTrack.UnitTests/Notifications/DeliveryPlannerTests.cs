@@ -1,6 +1,5 @@
 using CardiTrack.Application.Services.Notifications;
 using CardiTrack.Domain.Enums;
-using Xunit;
 
 namespace CardiTrack.UnitTests.Notifications;
 
@@ -18,15 +17,15 @@ public class DeliveryPlannerTests
         AlertSeverity? severity = null,
         bool withinQuietHours = false,
         DateTime? quietHoursEnd = null) => new()
-    {
-        UtcNow = UtcNow,
-        Category = category,
-        Severity = severity,
-        DedupKey = "test:key",
-        CollapseKey = null,
-        IsWithinQuietHours = withinQuietHours,
-        QuietHoursEndUtc = quietHoursEnd
-    };
+        {
+            UtcNow = UtcNow,
+            Category = category,
+            Severity = severity,
+            DedupKey = "test:key",
+            CollapseKey = null,
+            IsWithinQuietHours = withinQuietHours,
+            QuietHoursEndUtc = quietHoursEnd
+        };
 
     [Fact]
     public void Safety_AlwaysPushesAndOverridesQuietHours()

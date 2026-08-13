@@ -5,9 +5,8 @@ using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Application.Services;
 using CardiTrack.Domain.Entities;
 using CardiTrack.Domain.Enums;
-using NSubstitute;
-
 using CardiTrack.UnitTests.Notifications;
+using NSubstitute;
 
 namespace CardiTrack.UnitTests.Services;
 
