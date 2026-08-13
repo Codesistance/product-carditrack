@@ -99,13 +99,42 @@ curl -sS -X POST "$BASE/api/v1/logs/config/pipelines" \
 Record the returned `id` in the table above. Updating later is
 `PUT /api/v1/logs/config/pipelines/<id>` with the same body.
 
-Two things to check after applying, neither of which the POST itself verifies:
+### How this sits alongside the org's existing pipelines
+
+The org has two, both `is_read_only: true` (Pipeline Library integrations, which cannot be edited —
+only cloned or disabled), verified 2026-08-13:
+
+| # | Name | Filter | Writes `status`? |
+|-|-|-|-|
+| 1 | `C#` | `source:csharp` | **Yes** — a `status-remapper` on `level`/`Level`/`@l` |
+| 2 | `OTEL Serverless Log Enrichment` | `source:otlp_log_ingestion` | No — its two category processors target `origin` |
+
+That table *is* the root cause. Datadog's stock .NET pipeline would have set the status correctly,
+but it only matches `source:csharp`; logs arriving over OTLP are tagged `source:otlp_log_ingestion`
+and never reach it. The pipeline that does match them writes only `origin`. So nothing sets `status`
+for these logs, and the field keeps whatever the OTLP intake copied in verbatim.
+
+This new pipeline shares filter #2's exact query, which is safe: logs are **not** routed to a single
+pipeline. Per Datadog's docs, "each log that comes through the pipelines is tested against every
+pipeline filter. If it matches a filter, then all the processors are applied sequentially before
+moving to the next pipeline." A log therefore passes through the OTEL enrichment pipeline *and* this
+one. Placing this one after it is correct and loses no enrichment — and cloning the read-only
+pipeline to bolt these processors on would have been the wrong move, duplicating twelve enrichment
+processors this change has no business owning.
+
+Position relative to pipeline #2 is in any case not load-bearing: this pipeline reads the raw OTLP
+severity fields, which that pipeline never touches.
+
+### After applying
+
+Two things the POST does not verify:
 
 - **It only affects logs ingested from then on.** Existing logs keep their current status, so
-  confirm against fresh traffic, not history.
-- **Pipeline order matters.** Verify in Logs → Pipelines that nothing ahead of this one also writes
-  `status`, and that this pipeline's filter (`source:otlp_log_ingestion`) is actually matching —
-  a pipeline that matches nothing looks identical to one that is working.
+  confirm against fresh traffic, not history — and dev can be quiet for hours at a stretch, so
+  generate a request rather than waiting.
+- **Confirm the filter is actually matching.** In Logs → Pipelines, a pipeline matching nothing
+  looks identical to one that is working. The canonical `Error`/`Warn`/`Info` values in the status
+  facet should start taking the counts that currently sit on `Error`/`Warning`/`Information`.
 
 ## Outstanding
 
