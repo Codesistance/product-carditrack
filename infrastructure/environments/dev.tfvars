@@ -126,6 +126,21 @@ device_pull_params = [
   }
 ]
 
+# Cloud NAT — retired. Phase 2 of the MedGemma IAM change (#238), applied here only because
+# phase 1 has landed and been verified in dev: every Cloud Run service and job now runs
+# PRIVATE_RANGES_ONLY egress, with no ALL_TRAFFIC declaration left anywhere, so nothing routes
+# through the gateway and it bills a fixed hourly rate for an idle resource.
+#
+# Checked before flipping: no Auth0, Datadog or Google Health IP allowlist anywhere in the repo or
+# docs pins our egress address — the only static IP is the inbound load balancer's. Direct Cloud
+# Run egress uses Google's shared pool, so that check is what makes this safe. NAT egress logs go
+# away with the gateway; nothing consumed them.
+#
+# Prod deliberately keeps this true until its own phase 1 applies and is verified — flipping it
+# there now would collapse both phases into one apply, which is the exact ordering hazard the
+# two-phase split exists to avoid (Terraform will not order a destroy against unrelated updates).
+enable_cloud_nat = false
+
 # Memorystore for Redis — standalone instance is enough for dev
 enable_redis         = true
 redis_tier           = "BASIC"
