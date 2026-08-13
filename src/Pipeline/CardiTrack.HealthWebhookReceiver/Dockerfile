@@ -28,7 +28,9 @@ RUN mkdir -p /app/publish/logs
 
 # Stage 3: Runtime — chiseled Ubuntu, same base as the other services. This is the platform's
 # only public-ingress pipeline surface, so the minimal image matters more here than anywhere.
-FROM mcr.microsoft.com/dotnet/aspnet:10.0-noble-chiseled AS final
+# "-extra" (ICU + tzdata) kept consistent with the other runtime images even though this
+# service itself never resolves a time zone.
+FROM mcr.microsoft.com/dotnet/aspnet:10.0-noble-chiseled-extra AS final
 ARG VERSION=0.0.0-local
 WORKDIR /app
 
