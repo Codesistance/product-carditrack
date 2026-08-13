@@ -236,7 +236,8 @@ X-Rate-Limit-Reset: 2026-08-07T12:01:00.0000000Z
       "Scopes": [
         "https://www.googleapis.com/auth/googlehealth.activity_and_fitness.readonly",
         "https://www.googleapis.com/auth/googlehealth.health_metrics_and_measurements.readonly",
-        "https://www.googleapis.com/auth/googlehealth.sleep.readonly"
+        "https://www.googleapis.com/auth/googlehealth.sleep.readonly",
+        "https://www.googleapis.com/auth/googlehealth.settings.readonly"
       ],
       "RedirectUri": "https://api.carditrack.com/api/v1/oauth/redirect/fitbit",
       "AdditionalAuthorizationParams": {

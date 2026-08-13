@@ -63,6 +63,40 @@ public class DeviceConnection : BaseEntity, ISoftDeletable
     /// </summary>
     public DateOnly? HistoryBackfilledTo { get; set; }
 
+    /// <summary>
+    /// Last reported battery percentage for the paired wearable (0–100), or null when the
+    /// provider has never reported one — a connection granted before the
+    /// <c>googlehealth.settings.readonly</c> scope shipped, a device type that carries no battery
+    /// (a scale), or a provider that exposes none at all.
+    /// </summary>
+    /// <remarks>
+    /// Deliberately a column rather than a key in <see cref="Metadata"/>: the reconnect path in
+    /// <c>DeviceConnectionService</c> rewrites that JSON blob wholesale, so a battery reading
+    /// parked there would be silently erased every time a wearer re-authorised.
+    /// <para>
+    /// Last-known-value only. Battery is volatile telemetry a caregiver reads as "right now", and
+    /// nothing in the product asks what it was last Tuesday, so there is no history table behind
+    /// this — each sync overwrites. <see cref="BatteryUpdatedAt"/> is what stops a stale reading
+    /// from being presented as current.
+    /// </para>
+    /// </remarks>
+    public int? BatteryLevel { get; set; }
+
+    /// <summary>
+    /// The provider's coarse battery band — <c>High</c>, <c>Medium</c>, <c>Low</c> or
+    /// <c>Empty</c>. Stored alongside <see cref="BatteryLevel"/> rather than derived from it
+    /// because the provider bands against its own device-specific thresholds, and a percentage is
+    /// not always populated even when a band is.
+    /// </summary>
+    public string? BatteryStatus { get; set; }
+
+    /// <summary>
+    /// When the battery reading above was captured. A reading with no timestamp cannot be aged,
+    /// and an aged-out one must not drive a low-battery warning: a watch that reported 8% four
+    /// days ago has almost certainly been charged since.
+    /// </summary>
+    public DateTime? BatteryUpdatedAt { get; set; }
+
     // JSON: { "model": "Charge 6", "version": "1.0", "firmwareVersion": "2.3.1" }
     public string? Metadata { get; set; }
 

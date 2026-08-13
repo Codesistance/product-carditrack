@@ -196,6 +196,7 @@ Supports 8+ device types:
      scope=https://www.googleapis.com/auth/googlehealth.health_metrics_and_measurements.readonly
            https://www.googleapis.com/auth/googlehealth.activity_and_fitness.readonly
            https://www.googleapis.com/auth/googlehealth.sleep.readonly
+           https://www.googleapis.com/auth/googlehealth.settings.readonly
      (full scope URIs, space-delimited and URL-encoded in the real request)
      state={opaque server-cached token}
      code_challenge={S256 challenge}&code_challenge_method=S256
@@ -243,6 +244,7 @@ Google Health API scope bundles requested (full form `https://www.googleapis.com
 - `activity_and_fitness.readonly`: Steps, distance, active minutes
 - `health_metrics_and_measurements.readonly`: Heart rate (incl. intraday), HRV, SpO2
 - `sleep.readonly`: Duration, efficiency, sleep stages
+- `settings.readonly`: Paired-device telemetry — battery level and status, hardware version. Device data, not health data: it is what lets a caregiver be warned before a flat watch stops collecting. Added after the three above, so connections predating it report no battery until the wearer reconnects
 - `ecg.readonly` / `irn.readonly` (later phase): ECG readings, irregular rhythm notifications
 
 > All Google Health API scopes are **Restricted** — production access requires Google's privacy & security review; pre-verification, only enrolled test users can connect.

@@ -93,8 +93,16 @@
                 <VerticalStackLayout x:Name="SharingDetail" Spacing="4" IsVisible="False"/>
             </VerticalStackLayout>
 
-            <!-- Stats. Battery is absent by design — no provider battery level is stored. -->
-            <Grid ColumnDefinitions="*,*,*" ColumnSpacing="8">
+            <!-- Stats. The battery column collapses to zero width when the provider reports no
+                 reading — a hidden child does not release its column, so the width is driven from
+                 code-behind rather than by IsVisible alone. -->
+            <Grid ColumnSpacing="8">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition x:Name="BatteryColumn" Width="0"/>
+                </Grid.ColumnDefinitions>
                 <Border Grid.Column="0" StrokeThickness="0" Padding="10,8"
                         BackgroundColor="{StaticResource SelectedOptionBackground}">
                     <Border.StrokeShape>
@@ -126,6 +134,18 @@
                         <Label Text="TODAY'S DATA" FontFamily="QuicksandSemiBold" FontSize="9"
                                TextColor="{StaticResource MutedText}"/>
                         <Label x:Name="TodayValue" Style="{StaticResource Body2Medium}" FontSize="12"/>
+                    </VerticalStackLayout>
+                </Border>
+                <Border x:Name="BatteryTile" Grid.Column="3" StrokeThickness="0" Padding="10,8"
+                        IsVisible="False"
+                        BackgroundColor="{StaticResource SelectedOptionBackground}">
+                    <Border.StrokeShape>
+                        <RoundRectangle CornerRadius="10"/>
+                    </Border.StrokeShape>
+                    <VerticalStackLayout Spacing="2">
+                        <Label Text="BATTERY" FontFamily="QuicksandSemiBold" FontSize="9"
+                               TextColor="{StaticResource MutedText}"/>
+                        <Label x:Name="BatteryValue" Style="{StaticResource Body2Medium}" FontSize="12"/>
                     </VerticalStackLayout>
                 </Border>
             </Grid>

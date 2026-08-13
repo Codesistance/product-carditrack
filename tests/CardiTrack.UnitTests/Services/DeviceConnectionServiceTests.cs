@@ -631,6 +631,51 @@ public class DeviceConnectionServiceTests
     }
 
     [Fact]
+    public async Task GetDevices_ProjectsAFreshBatteryReading()
+    {
+        var connection = SeedConnection();
+        connection.BatteryLevel = 8;
+        connection.BatteryStatus = "Low";
+        connection.BatteryUpdatedAt = DateTime.UtcNow.AddMinutes(-10);
+        _unitOfWork.DeviceConnections.GetByCardiMemberIdAsync(_memberId).Returns([connection]);
+
+        var device = (await CreateSut().GetDevicesAsync(_userId, _memberId)).Devices.Single();
+
+        Assert.Equal(8, device.BatteryLevel);
+        Assert.Equal("Low", device.BatteryStatus);
+    }
+
+    [Fact]
+    public async Task GetDevices_WithholdsABatteryReadingTooOldToBeCurrent()
+    {
+        // Connections are pulled every ten minutes, so a day-old reading means syncing stopped —
+        // at which point the number describes a battery that has almost certainly been charged
+        // since, and the screen's own stale-sync signalling is the honest thing to show instead.
+        var connection = SeedConnection();
+        connection.BatteryLevel = 8;
+        connection.BatteryStatus = "Low";
+        connection.BatteryUpdatedAt = DateTime.UtcNow.AddHours(-25);
+        _unitOfWork.DeviceConnections.GetByCardiMemberIdAsync(_memberId).Returns([connection]);
+
+        var device = (await CreateSut().GetDevicesAsync(_userId, _memberId)).Devices.Single();
+
+        Assert.Null(device.BatteryLevel);
+        Assert.Null(device.BatteryStatus);
+    }
+
+    [Fact]
+    public async Task GetDevices_ReportsNoBattery_ForAConnectionThatNeverCapturedOne()
+    {
+        var connection = SeedConnection();
+        _unitOfWork.DeviceConnections.GetByCardiMemberIdAsync(_memberId).Returns([connection]);
+
+        var device = (await CreateSut().GetDevicesAsync(_userId, _memberId)).Devices.Single();
+
+        Assert.Null(device.BatteryLevel);
+        Assert.Null(device.BatteryStatus);
+    }
+
+    [Fact]
     public async Task GetDevices_ToleratesMalformedScopes()
     {
         var connection = SeedConnection();

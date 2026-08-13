@@ -73,6 +73,9 @@ public partial class NudgeCard : ContentView
     private static string ComplyVerb(string ruleCode) => ruleCode switch
     {
         "DEVICE_AUTH_BROKEN" => "Reconnect",
+        // Not "Charge" — the app cannot charge anything, and the only thing tapping does is open
+        // the device list so the caregiver can see which wearable it is.
+        "DEVICE_BATTERY_LOW" => "View device",
         "DEVICE_REMOVED" => "Connect a device",
         "DEVICE_STALE_LONG" => "View device",
         "TIMEZONE_DEFAULT" => "Set time zone",

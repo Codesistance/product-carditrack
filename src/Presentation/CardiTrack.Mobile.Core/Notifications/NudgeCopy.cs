@@ -36,6 +36,20 @@ public static class NudgeCopy
             "Permission to read {name}'s health data was withdrawn, so nothing is being collected.",
         ["nudge.DEVICE_AUTH_BROKEN.revoked.benefit"] = "Reconnect to restore monitoring.",
 
+        ["nudge.DEVICE_BATTERY_LOW.low.title"] = "{name}'s watch is almost out of battery",
+        ["nudge.DEVICE_BATTERY_LOW.low.body"] = "It's down to {percent}%, and will stop collecting when it runs out.",
+        ["nudge.DEVICE_BATTERY_LOW.low.benefit"] = "Charging it now keeps monitoring unbroken.",
+
+        // Band-only devices report "Low" with no percentage, so this variant carries no {percent}
+        // placeholder rather than one that would reach the caregiver unsubstituted.
+        ["nudge.DEVICE_BATTERY_LOW.low_unknown.title"] = "{name}'s watch is almost out of battery",
+        ["nudge.DEVICE_BATTERY_LOW.low_unknown.body"] = "It will stop collecting when it runs out.",
+        ["nudge.DEVICE_BATTERY_LOW.low_unknown.benefit"] = "Charging it now keeps monitoring unbroken.",
+
+        ["nudge.DEVICE_BATTERY_LOW.empty.title"] = "{name}'s watch has run out of battery",
+        ["nudge.DEVICE_BATTERY_LOW.empty.body"] = "It's stopped collecting, so nothing new is reaching CardiTrack.",
+        ["nudge.DEVICE_BATTERY_LOW.empty.benefit"] = "Charging it restores monitoring.",
+
         // ---- Blocking: core value is unavailable ----
         ["nudge.DEVICE_REMOVED.title"] = "{name} has no connected wearable",
         ["nudge.DEVICE_REMOVED.body"] = "Nothing is being collected for {name} at the moment.",

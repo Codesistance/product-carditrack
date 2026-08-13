@@ -48,13 +48,21 @@ Wrapped in the standard `ApiResponse<T>` envelope; `deviceId` is a raw GUID (no 
       "tokenExpiresAt": "2026-08-07T09:30:00Z",
       "scopes": ["activity", "heartrate", "sleep"],
       "nextSyncAt": "2026-08-07T09:00:00Z",
-      "todayUpdateCount": 4
+      "todayUpdateCount": 4,
+      "batteryLevel": 72,
+      "batteryStatus": "High"
     }
   ]
 }
 ```
 
-`scopes`, `nextSyncAt` and `todayUpdateCount` back the M1-15 device cards. All three are derived, not stored: scopes are parsed from the connection's scope JSON (a malformed value yields `[]` rather than an error), `nextSyncAt` is `lastSyncedAt + syncFrequencyMinutes` and is therefore an estimate rather than a scheduled job time, and `todayUpdateCount` counts today's activity records attributed to that connection. There is **no battery level** — no provider battery data is stored or fetched.
+`scopes`, `nextSyncAt` and `todayUpdateCount` back the M1-15 device cards. All three are derived, not stored: scopes are parsed from the connection's scope JSON (a malformed value yields `[]` rather than an error), `nextSyncAt` is `lastSyncedAt + syncFrequencyMinutes` and is therefore an estimate rather than a scheduled job time, and `todayUpdateCount` counts today's activity records attributed to that connection.
+
+`batteryLevel` (0–100) and `batteryStatus` (`High` | `Medium` | `Low` | `Empty`) are **both nullable and frequently absent**, and clients must render the tile only when one is present. They come from the Google Health API's `PairedDevice` resource (`GET /v4/users/me/pairedDevices`), captured on each sync and stored on the connection as a last-known value with no history behind it. They are null when:
+
+- the connection never granted `googlehealth.settings.readonly` — the scope was added after the original three, so **every connection made before it reports no battery until the wearer reconnects**;
+- the hardware carries no battery worth reporting (a scale);
+- the last reading is older than 24 hours, in which case the server withholds it rather than present a stale percentage as current. Where several wearables are paired to one account, the **lowest** battery among them is the one reported — the point of the field is to warn that collection is about to stop.
 
 **Device Status Values** (mapped from the internal `ConnectionStatus` enum):
 
@@ -336,7 +344,7 @@ Historical data synced via this device is retained. A CardiMember **may have zer
 
 | Brand (`DeviceType`) | `provider` Value | Data-source API (`HealthApi`) | Integration Mode | Status | Scopes / Permissions |
 |----------------------|-----------------|-------------------------------|------------------|--------|----------------------|
-| Fitbit (`Fitbit`) | `fitbit` | `GoogleHealth` | `server_oauth` | **Implemented** | Google Health API scope bundles: `activity_and_fitness.readonly`, `health_metrics_and_measurements.readonly`, `sleep.readonly` |
+| Fitbit (`Fitbit`) | `fitbit` | `GoogleHealth` | `server_oauth` | **Implemented** | Google Health API scope bundles: `activity_and_fitness.readonly`, `health_metrics_and_measurements.readonly`, `sleep.readonly`, `settings.readonly` (battery; added later, so pre-existing connections lack it) |
 | Google Pixel Watch (`GooglePixelWatch`) | `pixel_watch` | `GoogleHealth` | `server_oauth` | **Implemented** (same engine as `fitbit`) | Same Google Health API bundles as `fitbit` |
 | Apple Watch (`AppleWatch`) | `apple_health` | `AppleHealth` | `on_device_bridge` | Planned | `HKQuantityTypeStepCount`, `HKQuantityTypeHeartRate`, `HKCategoryTypeAsleepCore` |
 | Garmin (`Garmin`) | `garmin` | `GarminConnect` | `server_oauth` | Config-only stub | `activities`, `heart_rate`, `sleep` |

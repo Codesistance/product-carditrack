@@ -54,6 +54,17 @@ public interface IDeviceConnectionRepository : IRepository<DeviceConnection>
     Task UpdateHealthUserIdAsync(Guid id, string healthUserId);
 
     /// <summary>
+    /// Records the wearable's last-known battery reading, captured during sync. Last value wins —
+    /// battery is volatile telemetry with no history behind it, so each write overwrites rather
+    /// than appends. Leaves a connection disconnected mid-pull untouched, for the same reason as
+    /// <see cref="MarkSyncSucceededAsync"/>.
+    /// </summary>
+    /// <param name="level">Percentage 0–100, or null when the provider reported only a band.</param>
+    /// <param name="status">The provider's band — High, Medium, Low or Empty.</param>
+    /// <param name="readAtUtc">When the reading was captured, so staleness can be judged later.</param>
+    Task UpdateBatteryAsync(Guid id, int? level, string? status, DateTime readAtUtc);
+
+    /// <summary>
     /// The syncable connections a webhook notification for this health-user id addresses —
     /// same active-and-not-paused semantics as <see cref="GetDueForSyncAsync"/>: a notification
     /// must never resurrect collection for a paused or removed member.

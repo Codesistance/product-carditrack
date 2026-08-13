@@ -29,6 +29,35 @@ Four projects exist because Google's consent-screen verification is per-project
 - **Prod:** `carditrack-devices-prod` needs the consent screen completed and — before
   exceeding 100 users — Google **restricted-scope verification / CASA assessment** (step 12).
 
+#### 1b. Consent-screen scope: `googlehealth.settings.readonly` (console-only)
+
+Added to the requested scopes 2026-08-13 (PR #262) to read wearable battery from
+`GET /v4/users/me/pairedDevices` (`PairedDevice.batteryLevel` / `batteryStatus`). Terraform
+carries it in `dev.tfvars` / `prod.tfvars`, but **Terraform cannot add a scope to a consent
+screen** — it must be added by hand in each devices project, or every authorization request
+naming it is rejected and no wearer can grant it.
+
+**Google Auth Platform → Data Access → Add or remove scopes** in `carditrack-devices-dev`
+and `carditrack-devices-prod`, alongside the three existing read bundles:
+
+```
+https://www.googleapis.com/auth/googlehealth.settings.readonly
+```
+
+Two ordering points:
+
+- **Add it in prod before the step 12 submission.** A scope added after verification starts
+  means a second review — this is why it went into `prod.tfvars` now rather than later.
+- **Existing wearers are unaffected and stay that way.** Their refresh tokens carry the
+  original three-scope grant, so they report no battery until they reconnect. Handled as a
+  normal state end to end (the sync skips the call without the scope; the client returns
+  empty on the 403) — it never fails a sync and needs no coordinated migration.
+
+- **Dev status:** ⚠️ **outstanding** — code and Terraform merged, console scope not yet
+  added. Until it is, `pairedDevices` is never called and every device reports no battery.
+  Verify by connecting a fresh test wearer and confirming a `batteryLevel` on
+  `GET /api/v1/cardimembers/{id}/devices`.
+
 ### 2. Deployer IAM bootstrap (console/gcloud, NOT Terraform-managed)
 
 The CI deployer service account needs roles that Terraform applies themselves require —
@@ -228,6 +257,14 @@ deferral 2026-08-06); WAF rules currently exercise dev only. Enable with the dom
 security assessment) to exceed the 100-user unverified cap. Prerequisites: privacy policy
 URL, demo video, justification per scope — and step 8's evidence that claimed data types are
 real. Timeline: weeks; start early.
+
+**Four scopes to justify, not three** — confirm step 1b landed in prod before submitting, or
+`settings.readonly` needs its own later review. Its justification is a different shape from
+the other three: it reads **device telemetry, not health data** (battery level and status,
+hardware version), and the user-facing feature it ties to is the battery tile on the device
+screen plus the `DEVICE_BATTERY_LOW` safety notification — warning a caregiver *before*
+monitoring stops rather than after. The demo video should show the tile and that notification,
+since Google requires each scope tied to a visible feature.
 
 ---
 

@@ -1,4 +1,5 @@
 using CardiTrack.Application.DTOs.Responses;
+using CardiTrack.Application.Services;
 using CardiTrack.Mobile.Core.Devices;
 using CardiTrack.Mobile.Services;
 using Microsoft.Maui.Controls.Shapes;
@@ -64,6 +65,8 @@ public partial class DeviceCard : ContentView
                 var n => $"{n} updates",
             };
 
+            ApplyBattery(device);
+
             PrimaryStar.IsVisible = device.IsPrimary;
             PrimarySwitch.IsToggled = device.IsPrimary;
             // Turning the only primary off would leave the member without one; promotion
@@ -74,6 +77,40 @@ public partial class DeviceCard : ContentView
         {
             _applying = false;
         }
+    }
+
+    /// <summary>
+    /// Shows the battery tile, but only when the server sent a reading. It withholds one whenever
+    /// the connection never granted the settings scope, the hardware has no battery, or the last
+    /// reading has aged out — so "no battery field" means "nothing trustworthy to say", and an
+    /// empty or guessed tile is never drawn in its place.
+    /// </summary>
+    /// <remarks>
+    /// A hidden child does not release its grid column, so the column width is collapsed alongside
+    /// it; otherwise the three remaining tiles would sit in three quarters of the row with a gap
+    /// where the fourth belongs.
+    /// </remarks>
+    private void ApplyBattery(DeviceResponse device)
+    {
+        var text = device.BatteryLevel is { } level
+            ? $"{level}%"
+            : device.BatteryStatus;
+
+        var hasReading = !string.IsNullOrWhiteSpace(text);
+
+        BatteryTile.IsVisible = hasReading;
+        BatteryColumn.Width = hasReading ? GridLength.Star : new GridLength(0);
+
+        if (!hasReading)
+            return;
+
+        BatteryValue.Text = text;
+
+        // Red at the same threshold DEVICE_BATTERY_LOW fires at, so the tile and the notification
+        // a caregiver may already have received agree about what counts as low.
+        BatteryValue.TextColor = DeviceBattery.IsLow(device.BatteryLevel, device.BatteryStatus)
+            ? Color.FromArgb("#C42F2F")
+            : Color.FromArgb("#1E8C6E");
     }
 
     /// <summary>Disables the actions while a request for this card is in flight.</summary>

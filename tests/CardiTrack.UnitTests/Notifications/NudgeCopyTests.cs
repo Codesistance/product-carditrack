@@ -34,6 +34,17 @@ public class NudgeCopyTests
             new NudgeContextBuilder()
                 .NoBaseline().DaysCaptured(4)
                 .LastActivity(DateOnly.FromDateTime(NudgeContextBuilder.Now).AddDays(-20))
+                .Build(),
+            // All three battery variants. The band-only one is the reason they are three: its copy
+            // must carry no {percent}, since the rule has no percentage to substitute.
+            new NudgeContextBuilder()
+                .WithConnections(NudgeContextBuilder.BatteryConnection(7))
+                .Build(),
+            new NudgeContextBuilder()
+                .WithConnections(NudgeContextBuilder.BatteryConnection(null, status: "Low"))
+                .Build(),
+            new NudgeContextBuilder()
+                .WithConnections(NudgeContextBuilder.BatteryConnection(null, status: "Empty"))
                 .Build()
         };
 

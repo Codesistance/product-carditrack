@@ -115,6 +115,22 @@ public sealed record NudgeConnectionSnapshot
 
     /// <summary>Granted scopes, already normalised to bundle names (<c>sleep</c>, <c>activity</c>).</summary>
     public IReadOnlyList<string> Scopes { get; init; } = [];
+
+    /// <summary>
+    /// Last reported battery percentage (0–100), or null when none was ever captured. Device
+    /// telemetry, not health data — it says something about the hardware, not the wearer, which is
+    /// why it is allowed into a context that deliberately carries no direct identifiers.
+    /// </summary>
+    public int? BatteryLevel { get; init; }
+
+    /// <summary>The provider's battery band — <c>High</c>, <c>Medium</c>, <c>Low</c>, <c>Empty</c>.</summary>
+    public string? BatteryStatus { get; init; }
+
+    /// <summary>
+    /// When the battery reading was captured. Rules must age it themselves: a percentage with no
+    /// timestamp cannot be distinguished from one taken four days and one charge ago.
+    /// </summary>
+    public DateTime? BatteryUpdatedAt { get; init; }
 }
 
 public sealed record NudgeMuteSnapshot

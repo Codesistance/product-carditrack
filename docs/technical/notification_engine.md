@@ -600,6 +600,7 @@ priority, and silence policy. `Full` = snooze + mute-forever · `Snooze` = time-
 | Code | Detection | Copy | Silence | Wave |
 |---|---|---|---|---|
 | `DEVICE_AUTH_BROKEN` | `ConnectionStatus` ∈ {`TokenExpired`, `AuthError`} | "Reconnect to restore monitoring — no data is reaching CardiTrack right now." | Safety | **R1** |
+| `DEVICE_BATTERY_LOW` | `BatteryLevel ≤ 10` or `BatteryStatus` ∈ {`Low`, `Empty`}, reading < 24h old, no broken grant outstanding | "{Name}'s watch is almost out of battery — charging it now keeps monitoring unbroken." | Safety | **R1** |
 | `PUSH_UNREACHABLE` | OS permission denied/revoked, safety channel muted, token dead 7d, or `Permanent` send failure | "Alerts can't reach this phone. Turn notifications on so urgent alerts get through." | Safety | R2 (with push) |
 | `NO_ALERT_RECIPIENT` | Every active `UserCardiMember` has `ReceiveAlerts = false` | "Nobody is set to receive {Name}'s alerts. Turn one on so a red alert reaches someone." | Safety | **R3** |
 
@@ -738,7 +739,8 @@ incomplete. Safety-category rules ignore all of these except the pause.
 | **Snooze** | `SnoozedUntil = now + rule default` (3–30d); user picks 1d / 1w / 1m | Automatic |
 | **Dismiss** | Writes `NotificationMute`, resolves the row | Only if `RuleVersion` increases |
 
-**Safety-class rules cannot be muted.** `DEVICE_AUTH_BROKEN`, `NO_ALERT_RECIPIENT`, `PUSH_UNREACHABLE`
+**Safety-class rules cannot be muted.** `DEVICE_AUTH_BROKEN`, `DEVICE_BATTERY_LOW`,
+`NO_ALERT_RECIPIENT`, `PUSH_UNREACHABLE`
 and `CONSENT_NOT_RECORDED` are where silence means an unmonitored person or an unlawful basis for
 processing. Max 72h snooze; the dismiss action instead opens a consequence confirmation ("Alerts for
 Margaret will stay off until you turn them back on"), recording `AcknowledgedConsequence` and an
@@ -878,7 +880,7 @@ and takes the safety alerts down with it.
 | `CardiMember.DateOfBirth` non-nullable `DateOnly` | **Not a defect — leave it.** `CreateCardiMemberValidator` and `UpdateCardiMemberValidator` both require a date and enforce an 18–120 age range, and both are registered, so the API cannot produce a member without one. With `DOB_MISSING` cut (§9) nothing depends on a nullable column, and making it optional would ripple through age display, the insights prompt and two mobile screens to permit a state the product deliberately forbids. If DOB should become optional, that is a product decision with its own change |
 | `OnboardingStatusResponse.HasNotificationPreferences`, `TotalSteps = 7` | **Still open.** With push deferred to R2 there is no preference row and no permission grant to satisfy this step, so onboarding cannot report complete. Drop the step or repoint it — product call, §17.6 |
 | `AlertSensitivity` stored, consumed by nothing | Still inert here; noted so `NO_ALERT_RECIPIENT` isn't confused with sensitivity tuning |
-| No `device_disconnected` alert type (alerts.md notes the gap) | Covered as Safety nudges `DEVICE_AUTH_BROKEN` / `DEVICE_STALE_LONG` rather than a sixth `AlertType` |
+| No `device_disconnected` alert type (alerts.md notes the gap) | Covered as Safety nudges `DEVICE_AUTH_BROKEN` / `DEVICE_STALE_LONG` / `DEVICE_BATTERY_LOW` rather than a sixth `AlertType`. A flat battery is a fact about hardware, not about the wearer — the `Alert` history stays clinical, and the Safety category already delivers harder than a red `Alert` does (immediate push, critical flag, quiet-hours override, escalation) |
 
 ---
 

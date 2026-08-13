@@ -21,6 +21,16 @@ public interface IDeviceApiClient
     Task<string?> GetHealthUserIdAsync(string accessToken);
 
     /// <summary>
+    /// The wearables paired to the member's provider account — device telemetry (battery level and
+    /// status, hardware version), not health data. Requires the
+    /// <c>googlehealth.settings.readonly</c> scope; implementations return an empty list rather
+    /// than throwing when it was never granted, since a connection authorised before that scope
+    /// shipped is a normal state and not a sync failure. Empty for providers that expose no device
+    /// registry at all.
+    /// </summary>
+    Task<IReadOnlyList<PairedDeviceInfo>> GetPairedDevicesAsync(string accessToken);
+
+    /// <summary>
     /// Exercise sessions logged for one civil day, GPS-tagged or not. Requires the
     /// <c>googlehealth.location.readonly</c> scope alongside <c>activity_and_fitness</c> to see
     /// <see cref="ExerciseSession.HasGpsTrack"/> at all — callers check the connection's granted

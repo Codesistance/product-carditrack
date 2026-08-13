@@ -53,6 +53,29 @@ public sealed class NudgeContextBuilder
                 : ["activity_and_fitness", "health_metrics_and_measurements", "sleep"]
         };
 
+    /// <summary>
+    /// A connection carrying a battery reading. Separate from <see cref="Connection"/> because
+    /// that one's trailing <c>params</c> leaves no room for optional arguments, and because the
+    /// healthy default must keep reporting no battery at all — the state every connection made
+    /// before the settings scope shipped is in.
+    /// </summary>
+    public static NudgeConnectionSnapshot BatteryConnection(
+        int? level,
+        string? status = null,
+        DateTime? readAt = null,
+        ConnectionStatus connectionStatus = ConnectionStatus.Connected,
+        Guid? id = null) => new()
+        {
+            Id = id ?? Guid.Parse("33333333-3333-3333-3333-333333333333"),
+            DeviceType = DeviceType.Fitbit,
+            Status = connectionStatus,
+            LastSyncDate = Now.AddHours(-1),
+            Scopes = ["activity_and_fitness", "health_metrics_and_measurements", "sleep", "settings"],
+            BatteryLevel = level,
+            BatteryStatus = status,
+            BatteryUpdatedAt = readAt ?? Now.AddMinutes(-10)
+        };
+
     public NudgeContextBuilder AccountLevel() { _includeMember = false; return this; }
     public NudgeContextBuilder TimeZone(string id) { _timeZoneId = id; return this; }
     public NudgeContextBuilder UserCreated(DateTime at) { _userCreated = at; return this; }

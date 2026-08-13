@@ -125,6 +125,121 @@ public class NudgeRuleTests
         Assert.False(new DeviceRemovedRule().Evaluate(context).HasGap);
     }
 
+    // ---------------------------------------------------------------- DEVICE_BATTERY_LOW
+
+    [Theory]
+    [InlineData(11, false)]  // just above the threshold
+    [InlineData(10, true)]   // the threshold itself fires
+    [InlineData(3, true)]
+    public void DeviceBatteryLow_FiresAtTheThresholdAndNotAbove(int level, bool expected)
+    {
+        var context = new NudgeContextBuilder()
+            .WithConnections(NudgeContextBuilder.BatteryConnection(level))
+            .Build();
+
+        Assert.Equal(expected, new DeviceBatteryLowRule().Evaluate(context).HasGap);
+    }
+
+    [Theory]
+    [InlineData("Empty", "empty")]
+    [InlineData("Low", "low_unknown")]
+    public void DeviceBatteryLow_FiresOnABandWhenNoPercentageIsReported(string status, string variant)
+    {
+        // batteryLevel and batteryStatus are independently optional on the provider's schema, so a
+        // band with no number has to stand on its own.
+        var context = new NudgeContextBuilder()
+            .WithConnections(NudgeContextBuilder.BatteryConnection(level: null, status: status))
+            .Build();
+
+        var verdict = new DeviceBatteryLowRule().Evaluate(context);
+
+        Assert.True(verdict.HasGap);
+        Assert.Equal(variant, verdict.Variant);
+        Assert.False(verdict.TemplateData.ContainsKey("percent"),
+            "A variant with no {percent} placeholder must not carry one, and vice versa.");
+    }
+
+    [Fact]
+    public void DeviceBatteryLow_CarriesThePercentageWhenItIsKnown()
+    {
+        var context = new NudgeContextBuilder()
+            .WithConnections(NudgeContextBuilder.BatteryConnection(8))
+            .Build();
+
+        var verdict = new DeviceBatteryLowRule().Evaluate(context);
+
+        Assert.Equal("low", verdict.Variant);
+        Assert.Equal(8, Assert.Contains("percent", verdict.TemplateData));
+    }
+
+    [Fact]
+    public void DeviceBatteryLow_PrefersEmptyOverAPercentage()
+    {
+        // A device reporting Empty has already stopped, whatever its last number said.
+        var context = new NudgeContextBuilder()
+            .WithConnections(NudgeContextBuilder.BatteryConnection(4, status: "Empty"))
+            .Build();
+
+        Assert.Equal("empty", new DeviceBatteryLowRule().Evaluate(context).Variant);
+    }
+
+    [Theory]
+    [InlineData(23, false)]  // inside the freshness window
+    [InlineData(25, true)]   // aged out
+    public void DeviceBatteryLow_IgnoresAReadingTooOldToMeanAnything(int hoursAgo, bool silent)
+    {
+        // Past the window the device stopped syncing, which DEVICE_STALE_LONG and the
+        // device-silence alert own — and the percentage predates whatever charge came after.
+        var context = new NudgeContextBuilder()
+            .WithConnections(NudgeContextBuilder.BatteryConnection(
+                5, readAt: NudgeContextBuilder.Now.AddHours(-hoursAgo)))
+            .Build();
+
+        Assert.Equal(silent, !new DeviceBatteryLowRule().Evaluate(context).HasGap);
+    }
+
+    [Fact]
+    public void DeviceBatteryLow_DefersToABrokenGrant()
+    {
+        // Told both, a caregiver would charge a watch whose real problem is a lost grant.
+        var context = new NudgeContextBuilder()
+            .WithConnections(
+                NudgeContextBuilder.BatteryConnection(4),
+                NudgeContextBuilder.Connection(ConnectionStatus.AuthError))
+            .Build();
+
+        Assert.False(new DeviceBatteryLowRule().Evaluate(context).HasGap);
+    }
+
+    [Fact]
+    public void DeviceBatteryLow_ReportsTheWorstDeviceWhenSeveralAreLow()
+    {
+        var worst = Guid.Parse("55555555-5555-5555-5555-555555555555");
+        var context = new NudgeContextBuilder()
+            .WithConnections(
+                NudgeContextBuilder.BatteryConnection(9),
+                NudgeContextBuilder.BatteryConnection(2, id: worst))
+            .Build();
+
+        var verdict = new DeviceBatteryLowRule().Evaluate(context);
+
+        Assert.Equal(worst.ToString("N"), verdict.Discriminator);
+    }
+
+    [Fact]
+    public void DeviceBatteryLow_IsSafetyClassSoItCannotBeMutedAndSurvivesARedAlert()
+    {
+        // The delivery guarantees this rule relies on all hang off the Safety category — losing it
+        // would silently demote a flat watch to an in-app row nobody sees.
+        var spec = new DeviceBatteryLowRule().Spec;
+
+        Assert.Equal(NotificationCategory.Safety, spec.Category);
+        Assert.Equal(NotificationPriority.Critical, spec.Priority);
+        Assert.False(spec.CanMute);
+        Assert.True(spec.AppliesDuringRedAlert);
+        Assert.True(DeliveryPlanner.AllowsCritical(DeliveryCategory.Safety, severity: null));
+    }
+
     // ---------------------------------------------------------------- DEVICE_STALE_LONG
 
     [Theory]
