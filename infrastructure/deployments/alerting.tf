@@ -67,6 +67,51 @@ variable "alerting_labels" {
   default     = {}
 }
 
+# ── MedGemma public-exposure alerting ─────────────────────────────────────────
+#
+# PR #238 moved MedGemma's authorisation from network position (internal-only ingress) to IAM, and
+# said in as many words that the control making an accidental allUsers grant *impossible* rather
+# than merely discouraged was the constraints/iam.allowedPolicyMemberDomains org policy.
+#
+# That control does not exist and cannot be created. This GCP project has no organization, and
+# Domain Restricted Sharing allow-lists Cloud Identity customer IDs — with no organization there is
+# no directory to name, so the constraint is meaningless rather than merely unset. VPC Service
+# Controls and the org tiers of Security Command Center are unavailable for the same reason. That
+# is a standing accepted risk, not a pending task: nothing at the platform level can stop someone
+# adding allUsers back to the medical model, so the residual control is noticing quickly.
+#
+# Hence detection. Cloud Run Admin Activity audit logs are written by default and cannot be
+# disabled, so this needs no Data Access logging and adds no ingest cost.
+#
+# Two limits worth stating rather than implying coverage this does not have:
+#   - It watches the *service's own* IAM policy. Granting roles/run.invoker to allUsers at the
+#     project level would achieve the same exposure and would not match this filter.
+#   - It is detective, not preventive. The grant takes effect immediately; the alert follows.
+#
+# An IAM deny policy on run.services.setIamPolicy may be able to make this preventive even without
+# an organization — deny policies attach to projects too. Unverified on both counts (org-less
+# projects, and whether that permission is supported), so it is a lead, not a plan.
+variable "enable_medgemma_iam_alerting" {
+  description = "Create the log-based metric and alert policy that fire when MedGemma's IAM policy is changed to grant allUsers or allAuthenticatedUsers. Only meaningful where MedGemma is deployed"
+  type        = bool
+  default     = true
+
+  validation {
+    # Same trap as enable_oom_alerting: a policy with no channel fires into the void.
+    condition = (
+      !var.enable_medgemma_iam_alerting ||
+      length(var.alert_notification_emails) > 0 ||
+      (var.enable_slack_alerts && var.alert_slack_channel_id != "")
+    )
+    error_message = "enable_medgemma_iam_alerting requires at least one notification channel: set alert_notification_emails, or enable_slack_alerts with a non-empty alert_slack_channel_id."
+  }
+}
+
+variable "medgemma_iam_alert_name" {
+  description = "Name for the MedGemma IAM log-based metric and alert policy, environment-qualified (dev and prod share one GCP project, so this must be unique per environment)"
+  type        = string
+}
+
 # Resources
 
 resource "google_logging_metric" "cloud_run_oom" {
@@ -138,6 +183,115 @@ resource "google_monitoring_alert_policy" "cloud_run_oom" {
 
   documentation {
     content   = "A Cloud Run container was OOM-killed. Left unaddressed, this silently kills any cron loop the process was running until the next redeploy replaces the instance (see incident: github.com/Codesistance/product-carditrack/issues/171). Check Cloud Logging for the affected service/revision and Cloud Monitoring's container memory metrics around the event time."
+    mime_type = "text/markdown"
+  }
+
+  user_labels = var.alerting_labels
+
+  depends_on = [google_project_service.monitoring]
+}
+
+# ── MedGemma public-exposure resources ────────────────────────────────────────
+
+locals {
+  # Gated on the service existing as well as the flag: prod leaves medgemma_image empty, and an
+  # alert watching a service that was never created is noise in the console and a lie in the docs.
+  medgemma_iam_alerting = var.enable_medgemma_iam_alerting && var.medgemma_image != ""
+}
+
+resource "google_logging_metric" "medgemma_public_iam" {
+  count = local.medgemma_iam_alerting ? 1 : 0
+  name  = var.medgemma_iam_alert_name
+
+  # Matched on the audit log's own fields rather than resource.type, which differs between the v1
+  # and v2 Cloud Run surfaces. methodName is regex-matched for the same reason: the Console, gcloud
+  # and Terraform do not agree on which version they call.
+  #
+  # allAuthenticatedUsers is listed separately and deliberately — it does not contain "allUsers" as
+  # a substring, so a single term would miss the more insidious of the two. It reads as restrictive
+  # and means any Google account anywhere.
+  #
+  # Not filtered on severity: a successful SetIamPolicy is an INFO-level audit record, so adding a
+  # severity term would silently match nothing.
+  #
+  # `:` (has), not `=`. members is a repeated field nested in a Struct payload, and the has-operator
+  # is the one with predictable behaviour across repeated elements — an equality test that quietly
+  # matches nothing is the worst outcome for a detection control, since it looks identical to "no
+  # incident". Substring matching is safe here precisely because allAuthenticatedUsers does not
+  # contain allUsers.
+  #
+  # Both request and response are checked. The request is what was asked for, the response what the
+  # policy became; either alone would depend on which the Cloud Run surface populates, and this
+  # filter has no second chance to be right — it only ever runs when something has already gone
+  # wrong.
+  filter = <<-EOT
+    logName="projects/${var.project_id}/logs/cloudaudit.googleapis.com%2Factivity"
+    AND protoPayload.serviceName="run.googleapis.com"
+    AND protoPayload.methodName=~"SetIamPolicy"
+    AND protoPayload.resourceName=~"${var.medgemma_service_name}$"
+    AND (
+      protoPayload.request.policy.bindings.members:"allUsers"
+      OR protoPayload.request.policy.bindings.members:"allAuthenticatedUsers"
+      OR protoPayload.response.bindings.members:"allUsers"
+      OR protoPayload.response.bindings.members:"allAuthenticatedUsers"
+    )
+  EOT
+
+  metric_descriptor {
+    metric_kind = "DELTA"
+    value_type  = "INT64"
+    unit        = "1"
+  }
+
+  depends_on = [google_project_service.logging]
+}
+
+resource "google_monitoring_alert_policy" "medgemma_public_iam" {
+  count        = local.medgemma_iam_alerting ? 1 : 0
+  display_name = var.medgemma_iam_alert_name
+  combiner     = "OR"
+
+  conditions {
+    display_name = "MedGemma IAM policy granted public access"
+    condition_threshold {
+      filter          = "metric.type=\"logging.googleapis.com/user/${google_logging_metric.medgemma_public_iam[0].name}\""
+      comparison      = "COMPARISON_GT"
+      threshold_value = 0
+      # First occurrence, no debounce. One grant is the whole event — waiting for it to repeat
+      # would mean waiting for a second mistake.
+      duration = "0s"
+
+      aggregations {
+        alignment_period   = "300s"
+        per_series_aligner = "ALIGN_COUNT"
+      }
+    }
+  }
+
+  # Reuses the OOM channels rather than creating duplicates for the same addresses. The resource
+  # name is historical — it predates this alert, and renaming it would churn state for nothing.
+  notification_channels = concat(
+    [for c in google_monitoring_notification_channel.oom_email : c.id],
+    local.oom_slack_channel_ids,
+  )
+
+  documentation {
+    content   = <<-EOT
+      **MedGemma's IAM policy now grants `allUsers` or `allAuthenticatedUsers`.**
+
+      Since PR #238 the medical inference service is `INGRESS_TRAFFIC_ALL` and authorised purely by
+      `roles/run.invoker` on two named identities. Internal-only ingress used to contain this
+      mistake; it no longer does, and this project has no organization, so Domain Restricted Sharing
+      cannot prevent it either. IAM is the only boundary, and it has just been opened.
+
+      Anyone on the internet can now run inference against the model. MedGemma holds no data at rest
+      — prompts carry age, sex, notes and readings but never name or id — so this is theft of
+      inference capability plus whatever an attacker chooses to submit, not a read path into stored
+      wearer data. It is also an uncapped bill against a warm instance.
+
+      Remove the binding, then find out how it was added. If it came from the Console, that is the
+      real finding: IAM here is Terraform-owned, and the next apply would have reverted it silently.
+    EOT
     mime_type = "text/markdown"
   }
 
