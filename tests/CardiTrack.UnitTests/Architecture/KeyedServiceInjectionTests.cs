@@ -34,9 +34,6 @@ public class KeyedServiceInjectionTests
     /// </summary>
     private static readonly Type[] KeyedOnlyServices = [typeof(IDeviceSyncService)];
 
-    /// <summary>The registration site itself, which legitimately names the type in a factory.</summary>
-    private static readonly string[] AllowedDeclaringTypeNames = ["DeviceProviderServiceExtensions"];
-
     [Fact]
     public void NoConstructorTakesAKeyedOnlyServiceDirectly()
     {
@@ -48,8 +45,10 @@ public class KeyedServiceInjectionTests
 
         var offenders = assemblies
             .SelectMany(assembly => assembly.GetTypes())
+            // Static registration classes compile as abstract sealed, so the extension methods
+            // that legitimately name a keyed service in a factory are already out of scope here —
+            // and only constructor parameters are read, which a factory lambda is not.
             .Where(type => type.IsClass && !type.IsAbstract)
-            .Where(type => !AllowedDeclaringTypeNames.Contains(type.Name))
             .SelectMany(type => type.GetConstructors()
                 .SelectMany(constructor => constructor.GetParameters()
                     .Where(parameter => KeyedOnlyServices.Contains(parameter.ParameterType))
