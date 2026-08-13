@@ -1565,14 +1565,23 @@ jobs:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.WORKFLOW_TAG_TOKEN || secrets.GITHUB_TOKEN }}
+      # GITHUB_TOKEN can never carry the `workflows` permission (it's not a
+      # grantable scope for GitHub-App-issued tokens via `permissions:`), and
+      # GitHub blocks *any* new ref — branch or tag — whose target commit
+      # touches .github/workflows/*, regardless of push transport. Every
+      # commit that touches this file will hit that wall, so this step needs
+      # a credential that actually has the `workflows` scope: a
+      # repo-scoped fine-grained PAT (Contents: Read & write, Workflows:
+      # Read & write) stored as the WORKFLOW_TAG_TOKEN secret. Falls back to
+      # GITHUB_TOKEN (today's behavior) until that secret exists.
       - name: Push tag
         env:
           TAG: ${{ needs.compute-version.outputs.version }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PUSH_TOKEN: ${{ secrets.WORKFLOW_TAG_TOKEN || secrets.GITHUB_TOKEN }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git tag $TAG
-          git push https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git $TAG
+          git push https://x-access-token:${PUSH_TOKEN}@github.com/${{ github.repository }}.git $TAG
           echo "### Tagged: \`$TAG\`" >> $GITHUB_STEP_SUMMARY
