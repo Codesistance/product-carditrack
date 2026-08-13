@@ -74,6 +74,23 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
     public Task<DigestResponse> GetDigestAsync(Guid cardiMemberId, CancellationToken ct = default) =>
         GetAsync<DigestResponse>($"api/v1/insights/members/{cardiMemberId}/digest", ct);
 
+    public Task<List<QuestionnaireResponse>> GetQuestionnairesAsync(
+        Guid cardiMemberId, CancellationToken ct = default) =>
+        GetAsync<List<QuestionnaireResponse>>($"api/v1/cardimembers/{cardiMemberId}/questionnaires", ct);
+
+    public Task<QuestionnaireResponse> AnswerQuestionnaireAsync(
+        Guid questionnaireId, AnswerQuestionnaireRequest request, CancellationToken ct = default) =>
+        SendAsync<AnswerQuestionnaireRequest, QuestionnaireResponse>(
+            HttpMethod.Put, $"api/v1/questionnaires/{questionnaireId}/answer", request, ct);
+
+    public Task<QuestionnaireResponse> DismissQuestionnaireAsync(
+        Guid questionnaireId, CancellationToken ct = default) =>
+        SendAsync<QuestionnaireResponse>(
+            HttpMethod.Put, $"api/v1/questionnaires/{questionnaireId}/dismiss", ct);
+
+    public Task DeleteQuestionnaireAsync(Guid questionnaireId, CancellationToken ct = default) =>
+        SendNoContentAsync(HttpMethod.Delete, $"api/v1/questionnaires/{questionnaireId}", ct);
+
     public Task<AlertListResponse> GetAlertsAsync(
         string? severity = null,
         string? status = null,

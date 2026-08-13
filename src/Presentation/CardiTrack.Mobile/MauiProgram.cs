@@ -121,6 +121,7 @@ public static class MauiProgram
         builder.Services.AddTransient<CardiMemberDetailPage>();
         builder.Services.AddTransient<EditCardiMemberPage>();
         builder.Services.AddTransient<DeviceManagementPage>();
+        builder.Services.AddTransient<QuestionnairesPage>();
         builder.Services.AddTransient<NotificationsPage>();
 
         var app = builder.Build();

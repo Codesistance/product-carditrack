@@ -123,9 +123,14 @@ public class RealtimeAssessmentRepositoryTests(TestDatabaseFixture fixture)
 
     /// <summary>
     /// What the digest reads to learn what the assessor has noticed lately: inclusive at the
-    /// boundary, newest first, nobody else's rows. Spans two days deliberately, so it also covers
-    /// the partition pruning the date filter relies on.
+    /// boundary, newest first, nobody else's rows.
     /// </summary>
+    /// <remarks>
+    /// The windows straddle midnight, so the read crosses a partition — the date filter is on the
+    /// partition column, and a query that pruned wrongly would come back short here. Kept within
+    /// the days the partition service has created: a row outside them is rejected by Postgres
+    /// before any of this is exercised.
+    /// </remarks>
     [Fact]
     public async Task GetSinceAsync_ReturnsTheMembersWindowsFromTheBoundary_NewestFirst()
     {
@@ -133,12 +138,12 @@ public class RealtimeAssessmentRepositoryTests(TestDatabaseFixture fixture)
         await EnsurePartitionsAsync(scope);
         var repo = scope.ServiceProvider.GetRequiredService<IRealtimeAssessmentRepository>();
         var memberId = Guid.NewGuid();
-        var since = RecentHour.AddDays(-1);
+        var since = RecentHour;
 
         await repo.UpsertAsync(Assessment(memberId, since.AddHours(-1), output: "Before the boundary."));
         await repo.UpsertAsync(Assessment(memberId, since, output: "On the boundary."));
-        await repo.UpsertAsync(Assessment(memberId, RecentHour, output: "Newest."));
-        await repo.UpsertAsync(Assessment(Guid.NewGuid(), RecentHour, output: "Someone else."));
+        await repo.UpsertAsync(Assessment(memberId, since.AddHours(3), output: "Newest."));
+        await repo.UpsertAsync(Assessment(Guid.NewGuid(), since.AddHours(3), output: "Someone else."));
 
         var recent = await repo.GetSinceAsync(memberId, since);
 
