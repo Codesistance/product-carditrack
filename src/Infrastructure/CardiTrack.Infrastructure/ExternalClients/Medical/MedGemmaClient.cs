@@ -98,8 +98,7 @@ public class MedGemmaClient : IExternalAiClient
         var fullPrompt = $"""
             {prompt}
 
-            Respond with ONLY a single JSON object that satisfies this JSON Schema — no markdown
-            code fences, no commentary before or after it, no fields beyond what it defines:
+            Respond with ONLY a single JSON object that satisfies this JSON Schema, with no fields beyond what it defines:
             {schemaText}
             """;
         var request = new OllamaGenerateRequest

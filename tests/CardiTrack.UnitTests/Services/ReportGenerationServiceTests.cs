@@ -471,8 +471,8 @@ public class ReportGenerationServiceTests
 
         // Was "## Patient: Margaret Doe" — the name is now withheld from the provider.
         Assert.Contains("## Patient A", prompt);
-        Assert.Contains("Report format: Csv", prompt);
-        Assert.Contains($"Period: {new DateOnly(2026, 2, 7)} to {new DateOnly(2026, 3, 9)}", prompt);
+        Assert.Contains("writing a Csv health report", prompt);
+        Assert.Contains($"covering {new DateOnly(2026, 2, 7)} to {new DateOnly(2026, 3, 9)}.", prompt);
     }
 
     [Fact]

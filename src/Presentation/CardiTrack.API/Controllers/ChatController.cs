@@ -88,8 +88,8 @@ public class ChatController : BaseApiController
         return new ChatMessage
         {
             Role = ChatRole.User,
-            Content = $"[System context] Recent health data for the patient (last 3 days): {summary}. " +
-                      "You are a helpful health assistant. Answer questions about this patient's health data accurately and concisely."
+            Content = $"[System context] Patient's health data, last 3 days: {summary}. " +
+                      "You are a helpful health assistant; answer questions about this data accurately and concisely."
         };
     }
 }
