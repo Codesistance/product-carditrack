@@ -349,6 +349,42 @@ public class CardiMemberServiceTests
     }
 
     [Fact]
+    public async Task Update_RecordsSex_WhenTheFormSuppliedOne()
+    {
+        // The correction path for the members created while M1-04 still hardcoded the value.
+        var member = SeedMember();
+        member.Gender = Gender.PreferNotToSay;
+
+        await CreateSut().UpdateAsync(_userId, member.Id, new UpdateCardiMemberRequest
+        {
+            Name = member.Name,
+            DateOfBirth = member.DateOfBirth,
+            Gender = Gender.Male,
+        });
+
+        Assert.Equal(Gender.Male, member.Gender);
+    }
+
+    [Fact]
+    public async Task Update_LeavesSexAlone_WhenTheFormDidNotSendOne()
+    {
+        // The whole reason this one field is nullable on an otherwise full-replacement request.
+        // A client without the picker — an older build, or any caller editing a phone number —
+        // must not silently undo a stated sex and take the reference range with it.
+        var member = SeedMember();
+        member.Gender = Gender.Female;
+
+        await CreateSut().UpdateAsync(_userId, member.Id, new UpdateCardiMemberRequest
+        {
+            Name = member.Name,
+            DateOfBirth = member.DateOfBirth,
+            Gender = null,
+        });
+
+        Assert.Equal(Gender.Female, member.Gender);
+    }
+
+    [Fact]
     public async Task Update_RequiresManageAccess()
     {
         var member = SeedMember();

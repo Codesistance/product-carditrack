@@ -18,6 +18,19 @@ public class UpdateCardiMemberRequest
     public DateOnly DateOfBirth { get; set; }
 
     /// <summary>
+    /// Optional, unlike on create. Omitted or unset means "leave the stored value alone" — which is
+    /// what makes this field the correction path for the members who predate the onboarding form
+    /// asking for sex, without forcing a client that does not yet show the picker to guess.
+    /// </summary>
+    /// <remarks>
+    /// The one field on this otherwise full-replacement form that is not a replacement. A client
+    /// sending the M1-14 form without a sex picker would otherwise deserialise <c>0</c> here and
+    /// overwrite a stated sex with nothing — a silent clinical regression on every unrelated edit,
+    /// since sex is what the prompt layer reads to pick a reference range and a pronoun.
+    /// </remarks>
+    public Gender? Gender { get; set; }
+
+    /// <summary>
     /// Optional. Omitted or unset means "not stated", which is <see cref="RelationshipType.Other"/> —
     /// the same value the read paths already fall back to when a caregiver has no link recorded.
     /// Defaulted here rather than left at <c>0</c>, which is not a member of the enum and would

@@ -33,7 +33,8 @@ public class HealthInsightService : IHealthInsightService
     // for every member (docs/llm_design.md). Member data always goes *after* them.
 
     /// <summary><c>CARDITRACK_ALERT_PROMPT</c> — explains a fired alert to a caregiver.</summary>
-    private const string AlertInstructions = MedicalPromptBlocks.Tone + """
+    private const string AlertInstructions =
+        MedicalPromptBlocks.Tone + MedicalPromptBlocks.Pronouns + """
         You are a medical AI assistant analysing a health alert for a non-clinical caregiver.
 
         Respond with:
@@ -47,7 +48,8 @@ public class HealthInsightService : IHealthInsightService
         """;
 
     /// <summary><c>CARDITRACK_BASELINE_PROMPT</c> — trend analysis once a baseline exists.</summary>
-    private const string BaselineInstructions = MedicalPromptBlocks.Tone + """
+    private const string BaselineInstructions =
+        MedicalPromptBlocks.Tone + MedicalPromptBlocks.Pronouns + """
         You are a medical AI assistant performing a health trend analysis for a non-clinical caregiver.
 
         Respond with:
@@ -65,7 +67,8 @@ public class HealthInsightService : IHealthInsightService
     /// called unusual yet because there is no normal to compare against, so this asks for a picture
     /// of what has been observed rather than an assessment of deviation.
     /// </summary>
-    private const string LearningInstructions = MedicalPromptBlocks.Tone + """
+    private const string LearningInstructions =
+        MedicalPromptBlocks.Tone + MedicalPromptBlocks.Pronouns + """
         You are a medical AI assistant describing what has been observed about a member so far.
         There is not yet enough history to know what is normal for this person, so do not describe
         anything as unusual, elevated, low, or a deviation — there is nothing yet to deviate from.
@@ -86,7 +89,8 @@ public class HealthInsightService : IHealthInsightService
     /// between the learning prompt (no comparisons at all) and the trend prompt (confident
     /// comparisons): tentative comparisons, no alarm on the strength of a short window.
     /// </summary>
-    private const string ProvisionalInstructions = MedicalPromptBlocks.Tone + """
+    private const string ProvisionalInstructions =
+        MedicalPromptBlocks.Tone + MedicalPromptBlocks.Pronouns + """
         You are a medical AI assistant giving an early health reading for a non-clinical caregiver.
         The member's baseline is provisional — built from fewer than 30 days of history — so any
         comparison against it is an early impression, not an established pattern. Phrase findings

@@ -122,6 +122,22 @@
                                IsVisible="False"/>
                     </VerticalStackLayout>
 
+                    <!-- Sex. Left unselected for a member recorded before the add form asked,
+                         so the empty picker reads as the open question it is. -->
+                    <VerticalStackLayout Spacing="4">
+                        <Label Text="Sex" Style="{StaticResource AuthFieldLabel}"/>
+                        <Border Style="{StaticResource AuthEntryBorder}">
+                            <Picker x:Name="SexPicker"
+                                    Title="Not recorded"
+                                    FontFamily="Quicksand"
+                                    FontSize="14"
+                                    TextColor="{StaticResource HeadingText}"
+                                    BackgroundColor="Transparent"
+                                    SemanticProperties.Hint="Used to read heart rate and sleep against the right range"
+                                    />
+                        </Border>
+                    </VerticalStackLayout>
+
                     <VerticalStackLayout Spacing="4">
                         <Label Text="Relationship" Style="{StaticResource AuthFieldLabel}"/>
                         <Border Style="{StaticResource AuthEntryBorder}">

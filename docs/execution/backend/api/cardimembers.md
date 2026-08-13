@@ -39,7 +39,7 @@ Returns **200** with a plain list of the organization's CardiMembers — **no so
 ```
 
 - `id` is a **raw GUID** — no `cm_` prefix.
-- `gender` and `relationship` are **integer enums** (`Gender`: Male=1, Female=2, Other=3, PreferNotToSay=4; `RelationshipType`: Self=1, Parent=2, Spouse=3, Grandparent=4, Sibling=5, Child=6, Other=99).
+- `gender` and `relationship` are **integer enums** (`Gender`: Male=1, Female=2, PreferNotToSay=4; `RelationshipType`: Self=1, Parent=2, Spouse=3, Grandparent=4, Sibling=5, Child=6, Other=99). **3 is retired** — it was `Other`, and is now rejected by both validators; the members holding it were migrated to `PreferNotToSay` by the `RetireOtherGender` migration. The mobile form offers only Male and Female; `PreferNotToSay` remains readable because it is the stored value for every member created before M1-04 asked.
 - The **list** response deliberately carries no `medicalNotes` or emergency contact. Those are PHI and are served only by the single-member GET below, so a "which members do I have?" call never broadcasts them.
 
 ### GET `/api/v1/cardimembers/{id}`
@@ -81,7 +81,9 @@ Full detail for one CardiMember — the payload behind mobile M1-13. Requires **
 
 Saves the M1-14 edit form. Requires **manage** access (as above, plus `IsPrimaryCaregiver`). A **full replacement**, not a patch: omitting a field clears it. Returns the updated detail object, **400** with field errors, or **404**.
 
-Body: `name`, `dateOfBirth`, `relationshipType`, `email`, `phone`, `emergencyContactName`, `emergencyContactPhone`, `medicalNotes`, `alertSensitivity`. `relationshipType` updates the caller's own link only, so it cannot rewrite what other caregivers call this person.
+Body: `name`, `dateOfBirth`, `gender`, `relationshipType`, `email`, `phone`, `emergencyContactName`, `emergencyContactPhone`, `medicalNotes`, `alertSensitivity`. `relationshipType` updates the caller's own link only, so it cannot rewrite what other caregivers call this person.
+
+`gender` is the **one exception to full replacement**: it is nullable, and omitting it leaves the stored value alone rather than clearing it. This is what lets a caller that does not render the sex picker — an older build, or any edit to a phone number — save the form without silently discarding a stated sex and the reference range the prompt layer reads from it. Sending an explicit `0` is a client bug and is rejected; to say "not recorded", send `4`.
 
 ### DELETE `/api/v1/cardimembers/{id}`
 

@@ -10,6 +10,15 @@ public sealed class CardiMemberDraft
     public string? Name { get; set; }
     public DateTime? DateOfBirth { get; set; }
     public int RelationshipIndex { get; set; } = -1;
+
+    /// <summary>
+    /// Index into the add form's sex picker, or <c>-1</c> for unpicked. An index rather than a
+    /// <c>Gender</c> for the same reason as <see cref="RelationshipIndex"/>: what is being
+    /// restored is the state of a control, and a draft written before the picker existed
+    /// deserialises to the unpicked sentinel rather than to a sex nobody chose.
+    /// </summary>
+    public int SexIndex { get; set; } = -1;
+
     public bool DetailsExpanded { get; set; }
     public string? MedicalNotes { get; set; }
     public string? EmergencyContactName { get; set; }
@@ -25,6 +34,7 @@ public sealed class CardiMemberDraft
         !string.IsNullOrWhiteSpace(Name)
         || DateOfBirth is not null
         || RelationshipIndex >= 0
+        || SexIndex >= 0
         || !string.IsNullOrWhiteSpace(MedicalNotes)
         || !string.IsNullOrWhiteSpace(EmergencyContactName)
         || !string.IsNullOrWhiteSpace(EmergencyContactPhone)

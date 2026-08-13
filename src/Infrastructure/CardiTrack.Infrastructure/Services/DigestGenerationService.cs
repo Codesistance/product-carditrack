@@ -33,7 +33,8 @@ public partial class DigestGenerationService : IDigestGenerationService
     /// and family framings from docs/llm_design.md. Fixed prefix, cacheable in principle though not
     /// on this model; member data always goes after it.
     /// </summary>
-    private const string FamilyDigestInstructions = MedicalPromptBlocks.Tone + """
+    private const string FamilyDigestInstructions =
+        MedicalPromptBlocks.Tone + MedicalPromptBlocks.Pronouns + """
         You are summarising {{NAME}}'s recent heart health data for a non-medical family
         member. Write {{NAME}} exactly as it appears wherever you would name the person; it
         stands in for their real name, which you are not given. Avoid clinical jargon. Describe
@@ -55,7 +56,8 @@ public partial class DigestGenerationService : IDigestGenerationService
           night", "Moving less than usual", "A quieter day", "Resting well"). Sentence case, no
           full stop, no name and no {{NAME}}, and not a sentence.
         - summary: 4-6 sentences written to the family member about the readings below, naming
-          the person as {{NAME}} rather than calling them "your relative" or "your loved one".
+          the person as {{NAME}} the first time and by pronoun after that, and never calling
+          them "your relative" or "your loved one".
           Cover sleep, movement and heart rate rather than stopping after the first thing worth
           saying, and say plainly when a reading is missing instead of padding with reassurance.
         - suggestions: exactly three ways the family could support {{NAME}} today, at most ten

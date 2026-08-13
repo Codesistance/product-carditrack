@@ -26,6 +26,17 @@ public class UpdateCardiMemberValidator : AbstractValidator<UpdateCardiMemberReq
         RuleFor(x => x.RelationshipType)
             .Must(r => r == 0 || Enum.IsDefined(r)).WithMessage("Invalid relationship type");
 
+        // Null is "leave it alone" and never reaches the entity, so it passes. A supplied value
+        // must be defined, which rejects the retired Other = 3: a client still offering it is a
+        // client that needs updating, not data worth storing.
+        //
+        // The null check lives in the predicate rather than in a When() over x.Gender.Value.
+        // Ruling on .Value names the property "Gender.Value" in the failure, and BaseApiController
+        // copies PropertyName straight into ErrorResponse.Errors[].field — so a client mapping
+        // errors back onto inputs would look for "Gender" and never find it.
+        RuleFor(x => x.Gender)
+            .Must(g => !g.HasValue || Enum.IsDefined(g.Value)).WithMessage("Invalid gender value");
+
         RuleFor(x => x.AlertSensitivity)
             .IsInEnum().WithMessage("Invalid alert sensitivity");
 

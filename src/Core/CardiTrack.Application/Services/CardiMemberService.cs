@@ -156,6 +156,12 @@ public class CardiMemberService : ICardiMemberService
         member.EmergencyContactPhone = request.EmergencyContactPhone;
         member.MedicalNotes = Protect(request.MedicalNotes);
         member.AlertSensitivity = request.AlertSensitivity;
+
+        // Only when supplied — see UpdateCardiMemberRequest.Gender. A client that does not show
+        // the picker must be able to save the rest of the form without clearing a stated sex.
+        if (request.Gender.HasValue)
+            member.Gender = request.Gender.Value;
+
         member.UpdatedDate = DateTime.UtcNow;
         _unitOfWork.CardiMembers.Update(member);
 
