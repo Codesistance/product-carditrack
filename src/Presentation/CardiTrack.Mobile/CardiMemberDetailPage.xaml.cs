@@ -71,11 +71,20 @@ public partial class CardiMemberDetailPage : ContentPage
     /// </summary>
     private const int SuggestionCount = 3;
 
+    /// <summary>Open/close timing of the pause-duration drop down, matching AccordionSection.</summary>
+    private const uint PauseDropdownMs = 200;
+
+    private const string PauseDropdownAnimation = "pauseDropdown";
+
+    private bool _pauseDurationsOpen;
+    private bool _pauseDurationsAnimating;
+
     public CardiMemberDetailPage(ICardiTrackApiClient api, IPopupService popups)
     {
         InitializeComponent();
         _api = api;
         _popups = popups;
+        BuildPauseDurations();
         this.RefreshWhenAppResumes(RefreshUnattendedAsync);
 
         // Same reason and the same cadence as the dashboard: this screen is one CardiMember's
@@ -188,6 +197,10 @@ public partial class CardiMemberDetailPage : ContentPage
                 : $"Monitoring is paused until {until} — {member.MonitoringPauseReason}";
         }
         PauseRowLabel.Text = member.MonitoringPaused ? "Resume Monitoring" : "Pause Monitoring";
+        // Only on the paused branch: Apply also runs on the periodic refresh, and closing a drop
+        // down the caregiver is reading mid-refresh would be the refresh taking the choice away.
+        if (member.MonitoringPaused)
+            ResetPauseDurations();
 
         DeviceCountLabel.Text = member.ConnectedDeviceCount switch
         {
@@ -500,6 +513,12 @@ public partial class CardiMemberDetailPage : ContentPage
     private async void OnViewAlertsClicked(object? sender, EventArgs e) =>
         await Shell.Current.GoToAsync(AppShell.AlertsRoute);
 
+    /// <summary>
+    /// The row does one of two things depending on where monitoring stands: while it is live the
+    /// row is the drop down's header and only opens or closes the durations, and the pause itself
+    /// happens in <see cref="OnPauseDurationTapped"/>. While it is paused there is nothing to
+    /// choose, so the row resumes directly.
+    /// </summary>
     private async void OnPauseMonitoringTapped(object? sender, TappedEventArgs e)
     {
         if (_member is null || _isBusy)
@@ -512,27 +531,85 @@ public partial class CardiMemberDetailPage : ContentPage
             return;
         }
 
+        if (!_member.MonitoringPaused)
+        {
+            TogglePauseDurations();
+            return;
+        }
+
         _isBusy = true;
         try
         {
-            if (_member.MonitoringPaused)
+            _member = null;
+            await _api.ResumeMonitoringAsync(_memberId);
+            await LoadAsync();
+        }
+        catch (ApiException ex) when (!ex.IsSessionExpired)
+        {
+            await _popups.ShowErrorAsync(ex.Message, "Couldn't change monitoring");
+            await LoadAsync();
+        }
+        catch (ApiException)
+        {
+            // Session gone — the app is already on its way back to sign-in.
+        }
+        finally
+        {
+            _isBusy = false;
+        }
+    }
+
+    /// <summary>
+    /// Builds the drop down's rows once, from the same <see cref="PauseDurations"/> table the
+    /// confirmation text reads, so a duration cannot be offered under one label and applied as
+    /// another.
+    /// </summary>
+    private void BuildPauseDurations()
+    {
+        foreach (var (label, hours) in PauseDurations)
+        {
+            PauseDurationsHost.Add(new BoxView { Style = (Style)App.Current!.Resources["DividerLine"] });
+
+            var row = new Grid
             {
-                _member = null;
-                await _api.ResumeMonitoringAsync(_memberId);
-                await LoadAsync();
-                return;
-            }
+                HeightRequest = 44,
+                // Clears the header row's pause icon, so a duration hangs under the label that
+                // offered it rather than under the icon.
+                Padding = new Thickness(34, 0, 0, 0),
+            };
+            row.Add(new Label
+            {
+                Text = label,
+                Style = (Style)App.Current!.Resources["Body2Medium"],
+                TextColor = (Color)App.Current!.Resources["Primary"],
+                VerticalTextAlignment = TextAlignment.Center,
+            });
+            // The label and its hours travel together into the handler: nothing downstream has to
+            // match one back to the other.
+            row.GestureRecognizers.Add(new TapGestureRecognizer
+            {
+                Command = new Command(() => OnPauseDurationTapped(label, hours)),
+            });
+            PauseDurationsHost.Add(row);
+        }
+    }
 
-            var choice = await _popups.ChooseAsync(
-                "Pause monitoring for how long?", "Cancel", PauseDurations.Select(d => d.Label).ToArray());
-            if (choice is null)
-                return;
+    private async void OnPauseDurationTapped(string label, int hours)
+    {
+        if (_member is null || _isBusy)
+            return;
 
-            var hours = PauseDurations.First(d => d.Label == choice).Hours;
+        // Closes before the confirmation opens — the choice has been made, and leaving the list
+        // hanging open behind the popup reads as though it hasn't.
+        CollapsePauseDurations();
+
+        _isBusy = true;
+        try
+        {
             var firstName = NameFormatting.FirstName(_member.Name);
             var confirmed = await _popups.ConfirmWarningAsync(
                 $"We'll stop collecting {firstName}'s health data and won't raise alerts until then.",
-                $"Pause for {choice}?",
+                $"Pause for {label}?",
                 "Yes, pause");
             if (!confirmed)
                 return;
@@ -554,6 +631,66 @@ public partial class CardiMemberDetailPage : ContentPage
         {
             _isBusy = false;
         }
+    }
+
+    private void TogglePauseDurations()
+    {
+        if (_pauseDurationsAnimating)
+            return;
+
+        if (_pauseDurationsOpen)
+            CollapsePauseDurations();
+        else
+            ExpandPauseDurations();
+    }
+
+    private void ExpandPauseDurations()
+    {
+        _pauseDurationsAnimating = true;
+        _pauseDurationsOpen = true;
+
+        var width = PauseRowLayout.Width > 0 ? PauseRowLayout.Width : Width;
+        var targetHeight = PauseDurationsHost.Measure(width, double.PositiveInfinity).Height;
+
+        this.AbortAnimation(PauseDropdownAnimation);
+        new Animation(v => PauseDurationsClip.HeightRequest = v, PauseDurationsClip.Height, targetHeight)
+            .Commit(this, PauseDropdownAnimation, 16, PauseDropdownMs, Easing.CubicOut, (_, _) =>
+            {
+                _pauseDurationsAnimating = false;
+                // This row sits near the bottom of a long page, so the list it just opened can
+                // land below the fold. MakeVisible scrolls only when that actually happened.
+                _ = DetailScroller.ScrollToAsync(PauseRowLayout, ScrollToPosition.MakeVisible, animated: true);
+            });
+
+        // The row's chevron points right when closed; a quarter turn points it at what opened.
+        _ = PauseRowChevron.RotateToAsync(90, PauseDropdownMs, Easing.CubicOut);
+    }
+
+    private void CollapsePauseDurations()
+    {
+        _pauseDurationsAnimating = true;
+        _pauseDurationsOpen = false;
+
+        this.AbortAnimation(PauseDropdownAnimation);
+        new Animation(v => PauseDurationsClip.HeightRequest = v, PauseDurationsClip.Height, 0)
+            .Commit(this, PauseDropdownAnimation, 16, PauseDropdownMs, Easing.CubicIn,
+                (_, _) => _pauseDurationsAnimating = false);
+
+        _ = PauseRowChevron.RotateToAsync(0, PauseDropdownMs, Easing.CubicIn);
+    }
+
+    /// <summary>
+    /// Shuts the drop down without animating, for the one case that isn't a tap: the row has
+    /// become "Resume Monitoring", and a list of durations under it would offer a choice that no
+    /// longer exists.
+    /// </summary>
+    private void ResetPauseDurations()
+    {
+        this.AbortAnimation(PauseDropdownAnimation);
+        _pauseDurationsAnimating = false;
+        _pauseDurationsOpen = false;
+        PauseDurationsClip.HeightRequest = 0;
+        PauseRowChevron.Rotation = 0;
     }
 
     private async void OnRemoveMemberTapped(object? sender, TappedEventArgs e)

@@ -58,7 +58,7 @@
                      Grid.Row="1"
                      RefreshColor="{StaticResource Primary}"
                      Refreshing="OnPullToRefresh">
-            <ScrollView>
+            <ScrollView x:Name="DetailScroller">
                 <Grid Padding="20,16,20,28">
 
                     <!-- ── Loading ── -->
@@ -372,20 +372,43 @@
                         </VerticalStackLayout>
 
                         <Border Style="{StaticResource ElevatedCard}" Padding="14,4">
-                            <Border.GestureRecognizers>
-                                <TapGestureRecognizer Tapped="OnPauseMonitoringTapped"/>
-                            </Border.GestureRecognizers>
-                            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12" HeightRequest="52">
-                                <Image Grid.Column="0" Source="icon_pause.svg"
-                                       WidthRequest="22" HeightRequest="22" VerticalOptions="Center"/>
-                                <Label x:Name="PauseRowLabel"
-                                       Grid.Column="1"
-                                       Text="Pause Monitoring"
-                                       Style="{StaticResource Body1SemiBoldDark}"
-                                       VerticalTextAlignment="Center"/>
-                                <Image Grid.Column="2" Source="icon_chevron.svg"
-                                       WidthRequest="20" HeightRequest="20" VerticalOptions="Center"/>
-                            </Grid>
+                            <VerticalStackLayout x:Name="PauseRowLayout">
+                                <!-- The recognizer sits on the header row, not the card, so taps
+                                     on a duration below reach their own row instead of
+                                     re-toggling the drop down. -->
+                                <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12" HeightRequest="52">
+                                    <Grid.GestureRecognizers>
+                                        <TapGestureRecognizer Tapped="OnPauseMonitoringTapped"/>
+                                    </Grid.GestureRecognizers>
+                                    <Image Grid.Column="0" Source="icon_pause.svg"
+                                           WidthRequest="22" HeightRequest="22" VerticalOptions="Center"/>
+                                    <Label x:Name="PauseRowLabel"
+                                           Grid.Column="1"
+                                           Text="Pause Monitoring"
+                                           Style="{StaticResource Body1SemiBoldDark}"
+                                           VerticalTextAlignment="Center"/>
+                                    <Image x:Name="PauseRowChevron"
+                                           Grid.Column="2" Source="icon_chevron.svg"
+                                           WidthRequest="20" HeightRequest="20" VerticalOptions="Center"/>
+                                </Grid>
+
+                                <!-- Duration drop down. The durations used to arrive as a modal
+                                     list of buttons; they now open in place under the row that
+                                     asks for them. Rows are built in code-behind from the same
+                                     PauseDurations table the confirm step reads, and the open
+                                     /close animation is AccordionSection's — a clipping Border
+                                     grown to the measured height, since a plain layout wouldn't
+                                     clip its content mid-slide. -->
+                                <Border x:Name="PauseDurationsClip"
+                                        StrokeThickness="0"
+                                        BackgroundColor="Transparent"
+                                        Padding="0"
+                                        HeightRequest="0">
+                                    <VerticalStackLayout x:Name="PauseDurationsHost"
+                                                         Padding="0,0,0,10"
+                                                         VerticalOptions="Start"/>
+                                </Border>
+                            </VerticalStackLayout>
                         </Border>
 
                         <Border Style="{StaticResource ElevatedCard}" Padding="14,4">
