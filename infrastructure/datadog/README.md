@@ -21,6 +21,7 @@ mechanical — the JSON maps field-for-field.
 |-|-|-|-|
 | `monitors/worker-host-faulted.json` | 33845 | uk1 | Worker process died — an exception escaped a `BackgroundService`, and `StopHost` took the whole host with it |
 | `monitors/worker-job-failing.json` | 33846 | uk1 | A single job is throwing on its scheduled tick; the host survives but that job is doing nothing |
+| `monitors/webhook-notifications-unparseable.json` | 34150 | uk1 | Webhook notifications are arriving but the aggregator cannot read a user id out of them, so the real-time path silently does nothing |
 
 Both were created on 2026-08-12 after an incident in which the Worker crash-looped for roughly
 six hours across two separate root causes with no alert firing, because the org had no
@@ -31,6 +32,25 @@ The two are complementary, and the split matters. `worker-host-faulted` catches 
 `CronBackgroundService` started catching exceptions from scheduled ticks: the host now survives a
 throwing job, so without this second monitor a job could fail on every tick indefinitely and
 nobody would know.
+
+`webhook-notifications-unparseable` (added 2026-08-13) is the quietest failure of the three, and
+the only one where **nothing is broken by any conventional measure**. The aggregator succeeds, exits
+0, logs no error, and moves no error rate; it simply throws every notification away because it
+cannot find a user id in it. The 10-minute poll covers for it completely, so the sole symptom is
+data arriving later than intended. It ran that way from the webhook receiver going live until
+2026-08-13 — every notification dropped, for days — and was found by hand while working an
+unrelated runbook step.
+
+Two design notes worth keeping if it is ever rewritten:
+
+- **It counts an attribute, not a status.** The drop is logged at warning and the summary that
+  counts it at info, deliberately: an unreadable payload is a fact about the payload, and the
+  aggregator is poison-tolerant by design because the poll guarantees no data is lost. No
+  error-rate or `status:error` monitor can ever see this — it has to come off `@Unparseable`.
+- **`@Unparseable:>0` is self-normalising, so no ratio is needed.** The attribute is only non-zero
+  on a run that actually received traffic, so a quiet night cannot fire it. Alerting at 3
+  occurrences in 30 minutes (the job runs every 5) means sustained failure rather than one stray
+  message.
 
 ## Log pipelines
 
@@ -206,12 +226,19 @@ Two things the POST does not verify:
 
 ## Outstanding
 
-- **No notification handle is attached to either monitor.** They evaluate and show state in
-  Datadog, but they will not page, email or post to Slack until a recipient is added to the
+- **No notification handle is attached to any of the three monitors.** They evaluate and show state
+  in Datadog, but they will not page, email or post to Slack until a recipient is added to the
   `message` field. The org's existing monitors are unhelpful as a reference here — they are stock
-  templates and one still contains the literal placeholder `@your-team-handle`.
-- Both are scoped `env:dev`, which is the only environment currently shipping telemetry to this
-  org. Prod needs its own copies once it ships logs.
+  templates and one still contains the literal placeholder `@your-team-handle`. This is the single
+  biggest gap in the alerting setup: `webhook-notifications-unparseable` went to **Alert within
+  minutes of creation** — correctly, the bug was live — and told nobody.
+- All three are scoped `env:dev`, which is the only environment currently shipping telemetry to
+  this org. Prod needs its own copies once it ships logs.
+- **No monitor covers "parses fine, syncs nothing."** If every notification resolved to a
+  `healthUserId` that matches no `DeviceConnection`, `unparseable` would be 0 and the real-time
+  path would still be doing nothing. That state is legitimate in small doses (a wearer disconnected
+  mid-flight), so it needs a ratio against `@Messages` rather than a flat count — deliberately left
+  out here rather than shipped with a threshold nobody has evidence for.
 
 ## Applying a change
 
