@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Reflection;
 using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Interfaces.Services;
@@ -563,6 +564,42 @@ public class DigestGenerationServiceTests
             "Last night's sleep, 3.6 hours, was well short of the usual 7.0 — a poor night, "
             + "worth saying plainly.",
             prompt);
+    }
+
+    /// <summary>
+    /// The prompt is model input and a cacheable fixed-prefix construction, so no number in it
+    /// may vary with the host's ambient culture — no locale is pinned in any of the service
+    /// Dockerfiles, and under a European one the grouped step figure "6,000" renders as "6.000",
+    /// which a model can read as six.
+    /// </summary>
+    [Fact]
+    public async Task Prompt_FormatsEveryFigureInvariantly_WhateverTheHostCulture()
+    {
+        var original = CultureInfo.CurrentCulture;
+        CultureInfo.CurrentCulture = new CultureInfo("de-DE");
+        try
+        {
+            _baselines.GetLatestByCardiMemberAsync(_memberId, 30).Returns(EstablishedBaseline());
+            _activityLogs.GetByCardiMemberAndDateRangeAsync(_memberId, Arg.Any<DateOnly>(), Arg.Any<DateOnly>())
+                .Returns(
+                [
+                    new ActivityLog
+                    {
+                        CardiMemberId = _memberId, Date = Today, Steps = 900,
+                        SleepMinutes = 216, CreatedDate = DataLandedAt,
+                    },
+                ]);
+
+            var prompt = await CapturePromptAsync();
+
+            Assert.Contains("about 6,000 steps a day", prompt);
+            Assert.Contains("about 7.0 hours of sleep a night", prompt);
+            Assert.Contains("Last night's sleep, 3.6 hours, was well short of the usual 7.0", prompt);
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = original;
+        }
     }
 
     // A night inside the ordinary band earns no note: the note is for the reading that must not

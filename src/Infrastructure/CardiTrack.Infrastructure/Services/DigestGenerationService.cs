@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Globalization;
 using System.Text.RegularExpressions;
 using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Interfaces.Services;
@@ -293,11 +294,11 @@ public partial class DigestGenerationService : IDigestGenerationService
 
         var usuals = new List<string>();
         if (baseline.AvgSteps is { } steps)
-            usuals.Add($"about {steps:N0} steps a day");
+            usuals.Add(string.Create(CultureInfo.InvariantCulture, $"about {steps:N0} steps a day"));
         if (baseline.AvgRestingHeartRate is { } restingHr)
-            usuals.Add($"a resting heart rate around {restingHr} bpm");
+            usuals.Add(string.Create(CultureInfo.InvariantCulture, $"a resting heart rate around {restingHr} bpm"));
         if (baseline.AvgSleepMinutes is { } sleepMinutes)
-            usuals.Add($"about {sleepMinutes / 60.0:F1} hours of sleep a night");
+            usuals.Add($"about {Hours(sleepMinutes)} hours of sleep a night");
         if (usuals.Count == 0)
             return string.Empty;
 
@@ -334,11 +335,25 @@ public partial class DigestGenerationService : IDigestGenerationService
             return null;
 
         return lastNight < average
-            ? $"Last night's sleep, {lastNight / 60.0:F1} hours, was well short of the usual "
-              + $"{average / 60.0:F1} — a poor night, worth saying plainly."
-            : $"Last night's sleep, {lastNight / 60.0:F1} hours, was well past the usual "
-              + $"{average / 60.0:F1} — noticeably more than usual.";
+            ? $"Last night's sleep, {Hours(lastNight)} hours, was well short of the usual "
+              + $"{Hours(average)} — a poor night, worth saying plainly."
+            : $"Last night's sleep, {Hours(lastNight)} hours, was well past the usual "
+              + $"{Hours(average)} — noticeably more than usual.";
     }
+
+    /// <summary>
+    /// Minutes as hours to one decimal, always in the invariant culture.
+    /// </summary>
+    /// <remarks>
+    /// The prompt is model input and a cacheable fixed-prefix construction (docs/llm_design.md),
+    /// so nothing in it may vary with the host's ambient culture: no locale is pinned in any of
+    /// the service Dockerfiles, and a European one would render "7.0" as "7,0" — and, worse for
+    /// the grouped step figure beside it, "6,000" as "6.000", which a model can read as six. The
+    /// numbers a caregiver eventually sees are the model's prose, but the yardstick it reasons
+    /// from has to mean the same thing on every host.
+    /// </remarks>
+    private static string Hours(int minutes) =>
+        (minutes / 60.0).ToString("F1", CultureInfo.InvariantCulture);
 
     /// <summary>
     /// The headline is a label, not prose: a trailing full stop, wrapping quotes or an answer that
