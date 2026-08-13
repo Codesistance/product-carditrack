@@ -1,0 +1,47 @@
+{
+  "name": "CardiTrack OTLP — severity to log status",
+  "is_enabled": true,
+  "filter": {
+    "query": "source:otlp_log_ingestion"
+  },
+  "processors": [
+    {
+      "type": "category-processor",
+      "name": "Map OTel severity to a canonical Datadog status value",
+      "is_enabled": true,
+      "target": "otel_status",
+      "categories": [
+        {
+          "name": "trace",
+          "filter": { "query": "@otel.severity_text:Verbose OR @otel.severity_number:[1 TO 4]" }
+        },
+        {
+          "name": "debug",
+          "filter": { "query": "@otel.severity_text:Debug OR @otel.severity_number:[5 TO 8]" }
+        },
+        {
+          "name": "info",
+          "filter": { "query": "@otel.severity_text:Information OR @otel.severity_number:[9 TO 12]" }
+        },
+        {
+          "name": "warn",
+          "filter": { "query": "@otel.severity_text:Warning OR @otel.severity_number:[13 TO 16]" }
+        },
+        {
+          "name": "error",
+          "filter": { "query": "@otel.severity_text:Error OR @otel.severity_number:[17 TO 20]" }
+        },
+        {
+          "name": "critical",
+          "filter": { "query": "@otel.severity_text:Fatal OR @otel.severity_number:[21 TO 24]" }
+        }
+      ]
+    },
+    {
+      "type": "status-remapper",
+      "name": "Adopt the mapped value as the log status",
+      "is_enabled": true,
+      "sources": ["otel_status"]
+    }
+  ]
+}

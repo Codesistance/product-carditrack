@@ -1,7 +1,8 @@
-# Datadog monitors
+# Datadog monitors and log pipelines
 
-Monitor definitions for CardiTrack, kept in version control so alerting is reviewable and
-reproducible rather than living only as clicked-together state in the Datadog UI.
+Monitor and log-pipeline definitions for CardiTrack, kept in version control so alerting and log
+processing are reviewable and reproducible rather than living only as clicked-together state in the
+Datadog UI.
 
 ## Why JSON and not Terraform
 
@@ -30,6 +31,81 @@ The two are complementary, and the split matters. `worker-host-faulted` catches 
 `CronBackgroundService` started catching exceptions from scheduled ticks: the host now survives a
 throwing job, so without this second monitor a job could fail on every tick indefinitely and
 nobody would know.
+
+## Log pipelines
+
+| Spec | Pipeline ID | Site | Purpose |
+|-|-|-|-|
+| `pipelines/otel-severity-to-status.json` | _not yet applied_ | uk1 | Give every log a canonical Datadog status, so severity is queryable |
+
+### Why this exists
+
+Logs reach this org over OTLP, and Datadog copies OTLP `severity_text` into the reserved `status`
+field **verbatim**. Serilog writes level names in its own casing, so every log arrives with a status
+Datadog does not recognise:
+
+```
+status               = "Error"        <- reserved status, taken verbatim
+otel.severity_text   = "Error"
+otel.severity_number = 17             <- correct OTel ERROR
+```
+
+Datadog's canonical statuses are lowercase, so `Error` is not `error`. The observable damage:
+
+- `status:error` matches **nothing** — silently. It returns an empty result set that reads exactly
+  like "the service is healthy". Confirmed 2026-08-13 with all status values selected: the raw
+  `Information`/`Error`/`Warning` entries held 555/19/6 while Datadog's own `Error`/`Warn`/`Info`
+  sat at 0.
+- Severity colouring and severity filtering in Log Explorer do not work.
+- Error Tracking cannot group anything, because it keys on a recognised error status.
+- Both monitors above had to be written against **message text** rather than severity. That works,
+  but it means every new monitor has to know this, and one written the obvious way
+  (`status:error`) would never fire — the exact failure mode that let the Worker crash-loop for six
+  hours unnoticed on 2026-08-12.
+
+### Why the fix is here and not in the app
+
+The application is already sending correct data: `severity_number` is a valid OTel severity (17 for
+ERROR). `Serilog.Sinks.OpenTelemetry` exposes no hook for the severity text it writes —
+`OpenTelemetrySinkOptions` offers only `FormatProvider`, `RestrictedToMinimumLevel`, `LevelSwitch`
+and `OnBeginSuppressInstrumentation` — so this cannot be corrected at the sink without replacing it.
+Normalising on ingest also fixes every service at once and needs no redeploy.
+
+The pipeline maps `severity_number` **and** `severity_text` into a canonical value, then adopts it
+as the status. Either half is sufficient on its own; both are matched so a log missing one still
+maps. Remapping `severity_text` alone would not have been enough — Datadog's status remapper
+recognises `Error` and `Warning` but not `Information`, `Fatal` or `Verbose`, which would have left
+the largest group (Information) still broken.
+
+| Serilog level | OTel severity_number | Datadog status |
+|-|-|-|
+| Verbose | 1–4 | trace |
+| Debug | 5–8 | debug |
+| Information | 9–12 | info |
+| Warning | 13–16 | warn |
+| Error | 17–20 | error |
+| Fatal | 21–24 | critical |
+
+### Applying it
+
+```bash
+BASE="https://api.${DD_SITE:-datadoghq.com}"
+curl -sS -X POST "$BASE/api/v1/logs/config/pipelines" \
+  -H "DD-API-KEY: $DD_API_KEY" -H "DD-APPLICATION-KEY: $DD_APP_KEY" \
+  -H "Content-Type: application/json" \
+  -d @infrastructure/datadog/pipelines/otel-severity-to-status.json
+```
+
+Record the returned `id` in the table above. Updating later is
+`PUT /api/v1/logs/config/pipelines/<id>` with the same body.
+
+Two things to check after applying, neither of which the POST itself verifies:
+
+- **It only affects logs ingested from then on.** Existing logs keep their current status, so
+  confirm against fresh traffic, not history.
+- **Pipeline order matters.** Verify in Logs → Pipelines that nothing ahead of this one also writes
+  `status`, and that this pipeline's filter (`source:otlp_log_ingestion`) is actually matching —
+  a pipeline that matches nothing looks identical to one that is working.
 
 ## Outstanding
 
