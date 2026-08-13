@@ -180,7 +180,9 @@ variable "medgemma_max_instances" {
 # Deliberately not cloud_run_min_instances: at 8 vCPU / 16 Gi with cpu_idle = false a warm
 # MedGemma instance is the largest line item on the bill, and prod sets that shared variable
 # to 1. Scaling to zero trades a cold start (image pull + model load) for paying only while
-# an instance is alive.
+# an instance is alive — and, less obviously, re-reads the whole prompt on every call, since a
+# dead instance takes its prefix cache with it. Worth paying for where a request waits on the
+# model; the caller decides, and the default here does not.
 variable "medgemma_min_instances" {
   description = "Minimum number of MedGemma instances (0 scales to zero between requests)"
   type        = number

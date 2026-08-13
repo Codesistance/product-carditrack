@@ -6,6 +6,7 @@ using CardiTrack.Domain.Entities;
 using CardiTrack.Domain.Enums;
 using CardiTrack.Domain.Extensions;
 using CardiTrack.Infrastructure.Services;
+using CardiTrack.Infrastructure.Settings;
 using Microsoft.Extensions.Caching.Distributed;
 using NSubstitute;
 
@@ -60,7 +61,7 @@ public class HealthInsightServicePromptTests
 
     private HealthInsightService CreateSut() =>
         new(_medicalAi, _unitOfWork, new CardiMemberAccessService(_unitOfWork),
-            PromptContextFactory.Composer(_unitOfWork), _cache);
+            PromptContextFactory.Composer(_unitOfWork), _cache, new PrivateAiSettings());
 
     private void SetupMember(
         Gender gender = Gender.Female, string? medicalNotes = null, Guid? id = null)

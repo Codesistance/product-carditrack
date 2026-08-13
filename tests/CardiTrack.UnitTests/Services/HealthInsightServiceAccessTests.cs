@@ -3,6 +3,7 @@ using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Application.Services;
 using CardiTrack.Domain.Entities;
 using CardiTrack.Infrastructure.Services;
+using CardiTrack.Infrastructure.Settings;
 using Microsoft.Extensions.Caching.Distributed;
 using NSubstitute;
 
@@ -79,7 +80,7 @@ public class HealthInsightServiceAccessTests
 
     private HealthInsightService CreateSut() =>
         new(_medicalAi, _unitOfWork, new CardiMemberAccessService(_unitOfWork),
-            PromptContextFactory.Composer(_unitOfWork), _cache);
+            PromptContextFactory.Composer(_unitOfWork), _cache, new PrivateAiSettings());
 
     // ── AnalyzeAlertAsync ───────────────────────────────────────────────────────
 

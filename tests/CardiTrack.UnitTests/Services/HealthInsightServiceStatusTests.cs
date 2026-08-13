@@ -6,6 +6,7 @@ using CardiTrack.Application.Services;
 using CardiTrack.Domain.Entities;
 using CardiTrack.Domain.Enums;
 using CardiTrack.Infrastructure.Services;
+using CardiTrack.Infrastructure.Settings;
 using Microsoft.Extensions.Caching.Distributed;
 using NSubstitute;
 
@@ -79,9 +80,11 @@ public class HealthInsightServiceStatusTests
         _cache.GetAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns((byte[]?)null);
     }
 
+    private readonly PrivateAiSettings _aiSettings = new() { CurrentStatusBudgetSeconds = 25 };
+
     private HealthInsightService CreateSut() =>
         new(_medicalAi, _unitOfWork, new CardiMemberAccessService(_unitOfWork),
-            PromptContextFactory.Composer(_unitOfWork), _cache);
+            PromptContextFactory.Composer(_unitOfWork), _cache, _aiSettings);
 
     [Fact]
     public async Task Succeeds_ForALinkedUser_AndReturnsTheModelsHeadlineAndMessage()
@@ -292,8 +295,182 @@ public class HealthInsightServiceStatusTests
         var result = await CreateSut().GetCurrentStatusMessageAsync(_userId, _memberId);
 
         Assert.Null(result.Message);
+        // The status key specifically — the in-flight claim is written under its own key and is
+        // not a cached message.
         await _cache.DidNotReceive().SetAsync(
-            Arg.Any<string>(), Arg.Any<byte[]>(), Arg.Any<DistributedCacheEntryOptions>(), Arg.Any<CancellationToken>());
+            $"dashboard-status:{_memberId}", Arg.Any<byte[]>(),
+            Arg.Any<DistributedCacheEntryOptions>(), Arg.Any<CancellationToken>());
+    }
+
+    // ── Prompt size ─────────────────────────────────────────────────────────────
+    //
+    // MedGemma reads a prompt at ~68 tokens/sec on CPU, so on this endpoint — the only model call
+    // a caregiver waits on — instruction length is latency, paid on nearly every call because the
+    // service scales to zero and a dead instance takes its prefix cache with it.
+
+    [Fact]
+    public async Task TheRenderedPrompt_StaysWorthWaitingFor()
+    {
+        await CreateSut().GetCurrentStatusMessageAsync(_userId, _memberId);
+
+        var prompt = (string)_medicalAi.ReceivedCalls().Single().GetArguments()[0]!;
+
+        // Not the instruction budget — this is the whole thing for a typical member, and it is
+        // here to catch growth arriving through the data half (extra sections, chattier labels)
+        // rather than through the instructions the budget below guards.
+        Assert.True(prompt.Length < 2_000,
+            $"The status prompt renders to {prompt.Length} characters; every one is read back at "
+            + "~68 tokens/sec while a caregiver waits.");
+    }
+
+    [Fact]
+    public void TheFixedInstructions_StayWithinTheirBudget()
+    {
+        // A const, so this is a compile-time fact tested at runtime — which is the point: it fails
+        // the moment someone adds a clarification, not the next time anyone profiles the endpoint.
+        Assert.True(
+            HealthInsightService.CurrentStatusInstructionsLength <= HealthInsightService.StatusPromptBudget,
+            $"The status instructions are {HealthInsightService.CurrentStatusInstructionsLength} "
+            + $"characters against a budget of {HealthInsightService.StatusPromptBudget}.");
+    }
+
+    // ── Not spending a model call ───────────────────────────────────────────────
+    //
+    // MedGemma is CPU-served and a generation measures 21–26 s, so every path that can decline to
+    // start one matters more here than on the endpoints a caregiver deliberately opened. All of
+    // them answer with the contract's "nothing to say yet" (a null Message), which the dashboard
+    // already handles by keeping its static per-tier copy.
+
+    private const string PendingKey = "dashboard-status-pending:";
+
+    [Fact]
+    public async Task PausedMember_IsNeverGeneratedFor()
+    {
+        _members.GetByIdAsync(_memberId).Returns(new CardiMember
+        {
+            Id = _memberId,
+            Name = "Margaret Doe",
+            IsActive = true,
+            MonitoringPausedUntil = DateTime.UtcNow.AddHours(4),
+        });
+
+        var result = await CreateSut().GetCurrentStatusMessageAsync(_userId, _memberId);
+
+        Assert.Null(result.Message);
+        await _medicalAi.DidNotReceive().GenerateStructuredAsync<HealthInsightService.CurrentStatusAiResponse>(
+            Arg.Any<string>(), Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>A pause that has elapsed is not a pause — the member is being watched again.</summary>
+    [Fact]
+    public async Task ExpiredPause_StillGenerates()
+    {
+        _members.GetByIdAsync(_memberId).Returns(new CardiMember
+        {
+            Id = _memberId,
+            Name = "Margaret Doe",
+            IsActive = true,
+            MonitoringPausedUntil = DateTime.UtcNow.AddHours(-1),
+        });
+
+        var result = await CreateSut().GetCurrentStatusMessageAsync(_userId, _memberId);
+
+        Assert.Equal("Margaret seems steady today.", result.Message);
+    }
+
+    [Fact]
+    public async Task InactiveMember_IsNeverGeneratedFor()
+    {
+        _members.GetByIdAsync(_memberId).Returns(new CardiMember
+        {
+            Id = _memberId,
+            Name = "Margaret Doe",
+            IsActive = false,
+        });
+
+        var result = await CreateSut().GetCurrentStatusMessageAsync(_userId, _memberId);
+
+        Assert.Null(result.Message);
+        await _medicalAi.DidNotReceive().GenerateStructuredAsync<HealthInsightService.CurrentStatusAiResponse>(
+            Arg.Any<string>(), Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// The cache is only written once the model answers, so without a claim every dashboard that
+    /// opens during those tens of seconds starts its own generation.
+    /// </summary>
+    [Fact]
+    public async Task GenerationAlreadyInFlight_DoesNotStartASecondOne()
+    {
+        _cache.GetAsync($"{PendingKey}{_memberId}", Arg.Any<CancellationToken>())
+            .Returns(Encoding.UTF8.GetBytes("1"));
+
+        var result = await CreateSut().GetCurrentStatusMessageAsync(_userId, _memberId);
+
+        Assert.Null(result.Message);
+        await _medicalAi.DidNotReceive().GenerateStructuredAsync<HealthInsightService.CurrentStatusAiResponse>(
+            Arg.Any<string>(), Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>The claim expires with the budget, so a generation that dies mid-flight blocks the
+    /// next attempt for that long and no longer.</summary>
+    [Fact]
+    public async Task ClaimsTheSlot_ForTheLengthOfTheBudget()
+    {
+        await CreateSut().GetCurrentStatusMessageAsync(_userId, _memberId);
+
+        await _cache.Received(1).SetAsync(
+            $"{PendingKey}{_memberId}",
+            Arg.Any<byte[]>(),
+            Arg.Is<DistributedCacheEntryOptions>(o =>
+                o.AbsoluteExpirationRelativeToNow == TimeSpan.FromSeconds(25)),
+            Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// The mobile client abandons the call at 30 s. Overrunning the budget must therefore produce
+    /// an answer, not an exception that the phone never waits around to receive.
+    /// </summary>
+    [Fact]
+    public async Task GenerationOverrunningTheBudget_AnswersWithoutALine()
+    {
+        _aiSettings.CurrentStatusBudgetSeconds = 1;
+        _medicalAi.GenerateStructuredAsync<HealthInsightService.CurrentStatusAiResponse>(
+                Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(async call =>
+            {
+                await Task.Delay(Timeout.Infinite, call.Arg<CancellationToken>());
+                return new HealthInsightService.CurrentStatusAiResponse { Message = string.Empty };
+            });
+
+        var result = await CreateSut().GetCurrentStatusMessageAsync(_userId, _memberId);
+
+        Assert.Null(result.Message);
+        Assert.Null(result.Headline);
+        // Nothing cached, so the next dashboard load tries again rather than being stuck with the
+        // overrun for the TTL window.
+        await _cache.DidNotReceive().SetAsync(
+            $"dashboard-status:{_memberId}", Arg.Any<byte[]>(),
+            Arg.Any<DistributedCacheEntryOptions>(), Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>A caller who hung up is not the same as a budget overrun, and must not be
+    /// swallowed into a normal-looking answer.</summary>
+    [Fact]
+    public async Task CallerCancelling_StillPropagates()
+    {
+        using var caller = new CancellationTokenSource();
+        _medicalAi.GenerateStructuredAsync<HealthInsightService.CurrentStatusAiResponse>(
+                Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(async call =>
+            {
+                await caller.CancelAsync();
+                await Task.Delay(Timeout.Infinite, call.Arg<CancellationToken>());
+                return new HealthInsightService.CurrentStatusAiResponse { Message = string.Empty };
+            });
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            CreateSut().GetCurrentStatusMessageAsync(_userId, _memberId, caller.Token));
     }
 
     /// <summary>Structurally matches <c>HealthInsightService.CachedStatus</c> — a private nested

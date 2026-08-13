@@ -415,4 +415,140 @@ public class CardiTrackApiClientTests
         Assert.Equal("acknowledged", result.Status);
         Assert.Equal(2, result.UnreadCount);
     }
+
+    // ── Message-only command envelopes ──────────────────────────────────────────
+    //
+    // Commands that hand nothing back return `{ success, message, timestamp }` with no `data`
+    // — BaseApiController.Success(string). The client used to run these through the envelope
+    // reader, which rejects a null `data`, so a 200 surfaced to the user as "The server
+    // returned an empty response." while the command had in fact succeeded.
+
+    private const string MessageOnlyEnvelope = """
+        {"success":true,"message":"Time zone updated.","timestamp":"2026-08-13T10:03:12Z"}
+        """;
+
+    private static readonly Guid NotificationId = Guid.Parse("8f9619ff-8b86-d011-b42d-00c04fc964ff");
+
+    [Fact]
+    public async Task UpdateTimeZone_AcceptsMessageOnlyEnvelope()
+    {
+        var (client, http) = CreateSut();
+        http.Enqueue(HttpStatusCode.OK, MessageOnlyEnvelope);
+
+        await client.UpdateTimeZoneAsync("Europe/London");
+
+        var request = http.Requests.Single();
+        Assert.Equal(HttpMethod.Put, request.Method);
+        Assert.Equal("/api/v1/users/me/timezone", request.Uri!.AbsolutePath);
+        Assert.Contains("Europe/London", request.Body);
+    }
+
+    [Fact]
+    public async Task MarkNotificationSeen_AcceptsMessageOnlyEnvelope()
+    {
+        var (client, http) = CreateSut();
+        http.Enqueue(HttpStatusCode.OK, MessageOnlyEnvelope);
+
+        await client.MarkNotificationSeenAsync(NotificationId);
+
+        var request = http.Requests.Single();
+        Assert.Equal(HttpMethod.Post, request.Method);
+        Assert.Equal($"/api/v1/notifications/{NotificationId}/seen", request.Uri!.AbsolutePath);
+    }
+
+    [Fact]
+    public async Task DismissNotification_AcceptsMessageOnlyEnvelope_AndSendsAcknowledgement()
+    {
+        var (client, http) = CreateSut();
+        http.Enqueue(HttpStatusCode.OK, MessageOnlyEnvelope);
+
+        await client.DismissNotificationAsync(NotificationId, acknowledgedConsequence: true);
+
+        var request = http.Requests.Single();
+        Assert.Equal(HttpMethod.Post, request.Method);
+        Assert.Equal($"/api/v1/notifications/{NotificationId}/dismiss", request.Uri!.AbsolutePath);
+        Assert.Contains("true", request.Body);
+    }
+
+    [Fact]
+    public async Task RemoveNotificationMute_AcceptsMessageOnlyEnvelope()
+    {
+        var (client, http) = CreateSut();
+        http.Enqueue(HttpStatusCode.OK, MessageOnlyEnvelope);
+
+        await client.RemoveNotificationMuteAsync(NotificationId);
+
+        var request = http.Requests.Single();
+        Assert.Equal(HttpMethod.Delete, request.Method);
+        Assert.Equal($"/api/v1/notifications/mutes/{NotificationId}", request.Uri!.AbsolutePath);
+    }
+
+    [Fact]
+    public async Task ResetNotificationMutes_AcceptsMessageOnlyEnvelope()
+    {
+        var (client, http) = CreateSut();
+        http.Enqueue(HttpStatusCode.OK, MessageOnlyEnvelope);
+
+        await client.ResetNotificationMutesAsync();
+
+        var request = http.Requests.Single();
+        Assert.Equal(HttpMethod.Post, request.Method);
+        Assert.Equal("/api/v1/notifications/mutes/reset", request.Uri!.AbsolutePath);
+    }
+
+    [Fact]
+    public async Task UnregisterPushDevice_AcceptsMessageOnlyEnvelope_AndSendsDeviceId()
+    {
+        var (client, http) = CreateSut();
+        http.Enqueue(HttpStatusCode.OK, MessageOnlyEnvelope);
+
+        await client.UnregisterPushDeviceAsync("device-42");
+
+        var request = http.Requests.Single();
+        Assert.Equal(HttpMethod.Delete, request.Method);
+        Assert.Equal("/api/v1/notifications/devices", request.Uri!.AbsolutePath);
+        Assert.Contains("device-42", request.Body);
+    }
+
+    [Fact]
+    public async Task AckDelivered_AcceptsMessageOnlyEnvelope_AndSendsAckToken()
+    {
+        // The background push handler's ack. Throwing on a successful ack reads as a failed
+        // delivery and would fire escalation for an alert that did arrive.
+        var (client, http) = CreateSut();
+        http.Enqueue(HttpStatusCode.OK, MessageOnlyEnvelope);
+
+        await client.AckDeliveredAsync(NotificationId, "ack-token-abc");
+
+        var request = http.Requests.Single();
+        Assert.Equal(HttpMethod.Post, request.Method);
+        Assert.Equal($"/api/v1/notifications/{NotificationId}/delivered", request.Uri!.AbsolutePath);
+        Assert.Contains("ack-token-abc", request.Body);
+    }
+
+    [Fact]
+    public async Task MessageOnlyCommand_StillThrows_OnNonSuccessStatus()
+    {
+        var (client, http) = CreateSut();
+        http.Enqueue(HttpStatusCode.BadRequest, """
+            {"success":false,"message":"'Mars/Olympus' isn't a time zone we recognise.",
+             "timestamp":"2026-08-13T10:03:12Z"}
+            """);
+
+        var ex = await Assert.ThrowsAsync<ApiException>(() => client.UpdateTimeZoneAsync("Mars/Olympus"));
+
+        Assert.Equal(HttpStatusCode.BadRequest, ex.StatusCode);
+        Assert.Equal("'Mars/Olympus' isn't a time zone we recognise.", ex.Message);
+    }
+
+    [Fact]
+    public async Task MessageOnlyCommand_StillFlagsSessionExpiry()
+    {
+        var (client, http) = CreateSut();
+        http.Enqueue(HttpStatusCode.Unauthorized, "");
+
+        var ex = await Assert.ThrowsAsync<ApiException>(() => client.ResetNotificationMutesAsync());
+
+        Assert.True(ex.IsSessionExpired);
+    }
 }
