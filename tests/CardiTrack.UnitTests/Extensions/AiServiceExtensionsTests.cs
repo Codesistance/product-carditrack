@@ -129,6 +129,56 @@ public class AiServiceExtensionsTests
         Assert.Contains("AI__Private__BaseUrl", ex.Message);
     }
 
+    // MedGemma authorises callers by IAM, so a Cloud Run BaseUrl without an identity token 403s on
+    // every call. Digest and assessment code swallow per-member inference failures, so that 403
+    // would read as "nothing was due" rather than an error — the misconfiguration has to be caught
+    // at startup or it is invisible.
+    [Theory]
+    [InlineData("https://carditrack-dev-medgemma-abcdef.a.run.app")]
+    [InlineData("https://carditrack-dev-medgemma-abcdef.a.RUN.APP")]
+    public void AddAiServices_Throws_WhenACloudRunBaseUrlHasNoIdentityToken(string baseUrl)
+    {
+        var config = Config();
+        config["AI:Private:BaseUrl"] = baseUrl;
+        config["AI:Private:UseIdentityToken"] = "false";
+
+        var ex = Assert.Throws<InvalidOperationException>(() => Resolve(config));
+
+        Assert.Contains("AI__Private__UseIdentityToken", ex.Message);
+    }
+
+    [Fact]
+    public void AddAiServices_Succeeds_WhenACloudRunBaseUrlHasAnIdentityToken()
+    {
+        var config = Config();
+        config["AI:Private:BaseUrl"] = "https://carditrack-dev-medgemma-abcdef.a.run.app";
+        config["AI:Private:UseIdentityToken"] = "true";
+
+        // Registration only — the handler mints a token lazily on first send, so nothing here
+        // reaches the metadata server.
+        Assert.NotNull(Resolve(config).GetRequiredService<IHttpClientFactory>());
+    }
+
+    // The reverse mistake: a bearer credential must never go out over plaintext.
+    [Fact]
+    public void AddAiServices_Throws_WhenAnIdentityTokenIsUsedOverPlainHttp()
+    {
+        var config = Config();
+        config["AI:Private:BaseUrl"] = "http://localhost:11434";
+        config["AI:Private:UseIdentityToken"] = "true";
+
+        var ex = Assert.Throws<InvalidOperationException>(() => Resolve(config));
+
+        Assert.Contains("AI__Private__UseIdentityToken", ex.Message);
+    }
+
+    // The local default has to stay workable, or every developer turns the check off.
+    [Fact]
+    public void AddAiServices_Succeeds_ForALocalEndpointWithNoIdentityToken()
+    {
+        Assert.NotNull(Resolve(Config()).GetRequiredService<IHttpClientFactory>());
+    }
+
     private static Dictionary<string, string?> Config() => new()
     {
         ["AI:Public:Kind"] = "Gemini",

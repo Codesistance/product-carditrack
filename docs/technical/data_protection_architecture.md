@@ -482,7 +482,7 @@ User (caregiver) erasure follows the same pattern via `SubjectDataMap.ByUser`: d
 
 | Layer | Today | Target |
 |-------|-------|--------|
-| In transit | TLS 1.2+ at GCLB (`load_balancer.tf:39-44`), Cloud SQL `ENCRYPTED_ONLY`, internal-only MedGemma | Keep; add `UseHsts()` to the API (currently Web only) |
+| In transit | TLS 1.2+ at GCLB (`load_balancer.tf:39-44`), Cloud SQL `ENCRYPTED_ONLY`, MedGemma over HTTPS with an IAM-authorised OIDC token per call | Keep; add `UseHsts()` to the API (currently Web only) |
 | At rest (platform) | Cloud SQL/GCS default encryption | Keep |
 | At rest (field) | AES-256-GCM, single static key, tokens only; format `nonce‖tag‖ct` (`AesEncryptionService.cs:63-67`) | **v2 envelope format: `keyId‖nonce‖tag‖ct`.** Decrypt routes on `keyId` (legacy blobs = implicit `v1`); rotation = new key version + lazy re-encrypt on write. Vault payloads use per-subject DEKs wrapped by **Cloud KMS** (net-new Terraform: key ring + KEK + IAM binding to the identity service account only) |
 | Immediate fix | ✅ **Done** — `MedicalNotes` is encrypted (closes §1.2), applied in `CardiMemberService` rather than as an EF value converter so pre-existing plaintext rows stay readable | Move to a value converter when a second reader of the column appears, and fold it into the v2 envelope format above |

@@ -99,7 +99,7 @@ The API talks to two providers, and the difference between them is a boundary, n
 |---|---|---|
 | Used by | Health insights (`HealthInsightService`) | Reports (`ReportGenerationService`), chat (`ChatController`) |
 | Provider | **MedGemma only — fixed in code** | Chosen by `AI__Public__Kind`: `Gemini` or `Anthropic` |
-| Where inference runs | In-project, internal-only Cloud Run | Off-estate, at the provider |
+| Where inference runs | In-project Cloud Run, IAM-authorised invokers | Off-estate, at the provider |
 | Prompt content | Metrics, baselines, derived age and sex, free-text `MedicalNotes` | Metrics and alerts only — members are pseudonymised before the call |
 | Configuration | `Model`, `BaseUrl`, `TimeoutSeconds` | `Kind`, `Model`, `ApiKey`, optional `BaseUrl`, `TimeoutSeconds`, `MaxOutputTokens` |
 
