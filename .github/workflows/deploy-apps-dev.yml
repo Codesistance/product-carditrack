@@ -1554,7 +1554,6 @@ jobs:
       - deploy-play-internal
     permissions:
       contents: write
-      workflows: write
     if: |
       always() &&
       github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
@@ -1563,17 +1562,17 @@ jobs:
       contains(needs.*.result, 'success')
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
-        with:
-          fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
-      - name: Push tag
+      # Tag via the REST API, not `git push`: receive-pack rejects any ref
+      # update whose commit touches .github/workflows/* unless the credential
+      # has the `workflows` scope — which GITHUB_TOKEN can never be granted.
+      # The create-ref endpoint skips that check because it uploads nothing:
+      # it just names a commit that already exists on main. No checkout needed.
+      - name: Create tag
         env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ needs.compute-version.outputs.version }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git tag $TAG
-          git push https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git $TAG
+          gh api "repos/${{ github.repository }}/git/refs" \
+            -f ref="refs/tags/${TAG}" \
+            -f sha="${{ github.sha }}"
           echo "### Tagged: \`$TAG\`" >> $GITHUB_STEP_SUMMARY
