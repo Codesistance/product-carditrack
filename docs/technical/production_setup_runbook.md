@@ -68,13 +68,25 @@ gcloud projects add-iam-policy-binding <PROJECT> --member "serviceAccount:<DEPLO
 gcloud projects add-iam-policy-binding <PROJECT> --member "serviceAccount:<DEPLOYER_SA>" --role roles/iam.serviceAccountUser
 gcloud projects add-iam-policy-binding <PROJECT> --member "serviceAccount:<DEPLOYER_SA>" --role roles/cloudscheduler.admin
 gcloud projects add-iam-policy-binding <PROJECT> --member "serviceAccount:<DEPLOYER_SA>" --role roles/pubsub.admin
+gcloud projects add-iam-policy-binding <PROJECT> --member "serviceAccount:<DEPLOYER_SA>" --role roles/monitoring.uptimeCheckConfigEditor
 ```
 
-- **Dev status:** granted manually 2026-08-10 for
+- **Dev status:** the first four granted manually 2026-08-10 for
   `carditrack-deploy@carditrack-490120.iam.gserviceaccount.com` after applies failed with
-  `iam.serviceAccounts.create` denials.
-- **Prod:** the prod project's deployer needs the **same four roles** before flipping any
+  `iam.serviceAccounts.create` denials. `monitoring.uptimeCheckConfigEditor` added 2026-08-13
+  after the same thing happened again, this time with
+  `monitoring.uptimeCheckConfigs.create` denied.
+- **Prod:** the prod project's deployer needs the **same five roles** before flipping any
   pipeline flag (step 6).
+
+> **Why this one is worth grabbing before prod rather than after:** the failing apply is only
+> half a failure. The deployer already holds `monitoring.alertPolicies.create`, so the
+> cert-expiry **alert policy is created successfully** and only the uptime checks it reads from
+> are rejected. The result is an alert that exists, looks configured in the console, and can
+> never fire, because nothing is producing the metric it watches. A monitoring control that is
+> silently inert is worse than one that is obviously absent — it answers "are we covered?" with
+> a confident yes. Re-run the infra apply after granting, and confirm the uptime checks exist
+> rather than trusting the alert policy's presence.
 
 ### 3. Secrets that Terraform cannot generate
 
