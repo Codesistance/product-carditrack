@@ -301,6 +301,11 @@ resource "google_cloud_run_v2_service" "api" {
     google_secret_manager_secret_version.redis_ca,
     google_secret_manager_secret_iam_member.redis_connection_string_accessor,
     google_secret_manager_secret_iam_member.redis_ca_accessor,
+    # Not the api_* IAM members directly: Cloud Run validates secret_key_ref against this
+    # service's runtime identity when it creates the revision, and those grants are eventually
+    # consistent. See the barrier's comment in service_accounts.tf — this is the dependency that
+    # actually prevents the "Permission denied on secret ... for Revision service account" failure.
+    time_sleep.api_iam_propagation,
   ]
 }
 
@@ -836,6 +841,8 @@ resource "google_cloud_run_v2_job" "pipeline_jobs" {
   depends_on = [
     google_project_service.run,
     google_secret_manager_secret_version.db_connection_string,
+    # See the barrier's comment in service_accounts.tf.
+    time_sleep.pipeline_iam_propagation,
   ]
 }
 
@@ -1232,6 +1239,8 @@ resource "google_cloud_run_v2_job" "pipeline_assessor" {
   depends_on = [
     google_project_service.run,
     google_secret_manager_secret_version.db_connection_string,
+    # See the barrier's comment in service_accounts.tf.
+    time_sleep.pipeline_iam_propagation,
   ]
 }
 

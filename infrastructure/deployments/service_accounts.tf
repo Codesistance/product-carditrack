@@ -163,3 +163,56 @@ resource "google_secret_manager_secret_iam_member" "pipeline_apm_data" {
   role      = "roles/secretmanager.secretAccessor"
   member    = "serviceAccount:${google_service_account.pipeline[0].email}"
 }
+
+# ── IAM propagation barrier ───────────────────────────────────────────────────
+# Cloud Run validates every secret_key_ref against the revision's service account at the moment
+# it creates the revision, and Secret Manager IAM is eventually consistent. Ordering alone is not
+# enough: the 2026-08-13 dev apply created these bindings at 10:52:32-41 and Cloud Run still
+# rejected the api revision at 10:52:53 with "Permission denied on secret ... for Revision service
+# account carditrack-dev-api@". Ten bindings that Terraform had already created, ~12s earlier.
+#
+# depends_on would have made the ordering explicit but would not have helped — Terraform waits for
+# the IAM API call to return, not for the grant to be visible to Cloud Run. So the Cloud Run
+# resources depend on these barriers instead of on the bindings directly.
+#
+# triggers keyed on the service account email: time_sleep only sleeps when it is created, and the
+# wait is only needed when the identity is new. Steady-state applies do not pay it; a fresh
+# environment (prod, where neither account exists yet) does.
+resource "time_sleep" "api_iam_propagation" {
+  create_duration = "60s"
+
+  triggers = {
+    service_account = google_service_account.api.email
+  }
+
+  depends_on = [
+    google_project_iam_member.api_cloudsql_client,
+    google_project_iam_member.api_fcm_sender,
+    google_secret_manager_secret_iam_member.api_db_conn,
+    google_secret_manager_secret_iam_member.api_app_secrets,
+    google_secret_manager_secret_iam_member.api_encryption_key,
+    google_secret_manager_secret_iam_member.api_ack_token_key,
+    google_secret_manager_secret_iam_member.api_health_token,
+    google_secret_manager_secret_iam_member.api_gemini_api_key,
+    google_secret_manager_secret_iam_member.api_medgemma_url,
+    google_secret_manager_secret_iam_member.api_redis_connection_string,
+    google_secret_manager_secret_iam_member.api_redis_ca,
+  ]
+}
+
+resource "time_sleep" "pipeline_iam_propagation" {
+  count           = var.enable_pipeline_jobs ? 1 : 0
+  create_duration = "60s"
+
+  triggers = {
+    service_account = google_service_account.pipeline[0].email
+  }
+
+  depends_on = [
+    google_project_iam_member.pipeline_cloudsql_client,
+    google_secret_manager_secret_iam_member.pipeline_db_conn,
+    google_secret_manager_secret_iam_member.pipeline_encryption_key,
+    google_secret_manager_secret_iam_member.pipeline_medgemma_url,
+    google_secret_manager_secret_iam_member.pipeline_apm_data,
+  ]
+}
