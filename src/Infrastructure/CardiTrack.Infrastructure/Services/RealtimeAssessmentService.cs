@@ -58,8 +58,8 @@ public class RealtimeAssessmentService : IRealtimeAssessmentService
         You are assessing one hour of a heart patient's wearable data for a monitoring service.
         In the data, trend is the denoised underlying heart rate, and the deviation score says
         how many typical jitters the latest reading sits from it; scores under 3 are ordinary
-        variation. An elevated heart rate during steps is exercise, not an anomaly, and heat or
-        poor air quality during a recent exercise session explain one the same way. Never diagnose.
+        variation. An elevated heart rate during steps is exercise, not an anomaly; heat or poor air
+        quality during a recent exercise session explains an elevated rate the same way. Never diagnose.
 
         Respond with:
         - message: 1-3 plain sentences a caregiver can act on.
