@@ -71,20 +71,40 @@ ERROR). `Serilog.Sinks.OpenTelemetry` exposes no hook for the severity text it w
 and `OnBeginSuppressInstrumentation` — so this cannot be corrected at the sink without replacing it.
 Normalising on ingest also fixes every service at once and needs no redeploy.
 
-The pipeline maps `severity_number` **and** `severity_text` into a canonical value, then adopts it
-as the status. Either half is sufficient on its own; both are matched so a log missing one still
-maps. Remapping `severity_text` alone would not have been enough — Datadog's status remapper
-recognises `Error` and `Warning` but not `Information`, `Fatal` or `Verbose`, which would have left
-the largest group (Information) still broken.
+There is no stock alternative to reach for first. The
+[integration pipeline library](https://docs.datadoghq.com/logs/log_configuration/pipelines/#integration-pipeline-library)
+auto-installs a pipeline on first receipt of a matching `source`, and `source:otlp_log_ingestion`
+has been arriving for months having installed exactly one — "OTEL Serverless Log Enrichment", which
+carries no severity handling. If a library pipeline covered this, it would already be here.
+"Preprocessing for JSON logs" cannot help either: it runs only on JSON, and these arrive as OTLP
+protobuf (`otel_source:protobuf_endpoint`).
 
-| Serilog level | OTel severity_number | Datadog status |
+### One processor, not six
+
+The whole job is a single
+[status remapper](https://docs.datadoghq.com/logs/log_configuration/processors/log_status_remapper/),
+because that processor already normalises case-insensitively **by prefix** — `err*` → error,
+`w*` → warning, `i*` → info, `d*`/`t*`/`v*` → debug, `f*` → emerg. Serilog's level names all fall
+out correctly on their own, with no mapping table to maintain:
+
+| Serilog level | severity_text | Datadog status |
 |-|-|-|
-| Verbose | 1–4 | trace |
-| Debug | 5–8 | debug |
-| Information | 9–12 | info |
-| Warning | 13–16 | warn |
-| Error | 17–20 | error |
-| Fatal | 21–24 | critical |
+| Verbose | `Verbose` | debug |
+| Debug | `Debug` | debug |
+| Information | `Information` | info |
+| Warning | `Warning` | warning |
+| Error | `Error` | error |
+| Fatal | `Fatal` | emergency |
+
+`Fatal` landing on `emergency` rather than `critical` is the one judgement call, and it is left as
+is: Serilog logs `Fatal` when the process is dying, which is what Datadog's top severity is for. A
+category processor ahead of the remapper could force `critical` instead, at the cost of a second
+processor to keep correct.
+
+**Do not source `otel.severity_number`.** It is the more "correct-looking" field and it is a trap:
+the remapper's numeric rule interprets integers as *syslog* severities 0–7, so OTel's 9 (INFO),
+13 (WARN) and 17 (ERROR) all fall through its "everything else maps to info" case — every error
+would be silently relabelled as info, which is worse than the current state because it looks fixed.
 
 ### Applying it
 
@@ -123,7 +143,12 @@ pipeline to bolt these processors on would have been the wrong move, duplicating
 processors this change has no business owning.
 
 Position relative to pipeline #2 is in any case not load-bearing: this pipeline reads the raw OTLP
-severity fields, which that pipeline never touches.
+severity field, which that pipeline never touches.
+
+One rule to remember if more pipelines are added later: **only the first status remapper a log meets
+applies**, across all matching pipelines. There is no conflict today — #1 is scoped to
+`source:csharp` and #2 has no status remapper — but a future pipeline placed above this one with its
+own status remapper would silently win.
 
 ### After applying
 
