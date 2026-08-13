@@ -261,16 +261,13 @@ public class ReportGenerationService : IReportGenerationService
         }
 
         var text = $"""
-            You are a medical AI assistant generating a health report.
-            Report format: {request.Format}
-            Period: {request.DateRangeFrom} to {request.DateRangeTo}
+            You are a medical AI assistant writing a {request.Format} health report for a non-clinical caregiver,
+            covering {request.DateRangeFrom} to {request.DateRangeTo}.
 
             {string.Join("\n\n", sections)}
 
-            Generate a clear, structured health report summarising the above data.
-            Include trend observations and any patterns worth noting.
-            Refer to each person by the exact label given above.
-            Keep the language appropriate for a non-clinical caregiver.
+            Summarise the data above in a clear, structured report: note trends and any patterns
+            worth flagging, and refer to each person by the exact label given above.
             """;
 
         return new ReportPrompt(text, pseudonyms);

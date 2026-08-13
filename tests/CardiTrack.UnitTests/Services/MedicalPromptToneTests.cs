@@ -103,7 +103,7 @@ public class MedicalPromptToneTests
             .ToList();
 
         Assert.All(lines, line => Assert.EndsWith(".", line));
-        Assert.Equal(7, lines.Count);
+        Assert.Equal(5, lines.Count);
     }
 
     /// <summary>The one prompt the pronoun rule is deliberately kept out of.</summary>
