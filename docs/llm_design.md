@@ -353,7 +353,12 @@ Each inference request covers a single user's 5-minute aggregated window.
 > `gemma3.attention.sliding_window = 1024`, and `llama.cpp` cannot restore a KV checkpoint under
 > SWA, so it discards it and reprocesses from token zero. The machinery runs and works — it finds
 > the common prefix by LCP similarity and stores the state — and then throws it away. It costs
-> ~336 ms per request and ~508 MiB of held state for no benefit.
+> ~336 ms per request and ~508 MiB of held state for no benefit. That overhead is now switched off:
+> the MedGemma container sets `LLAMA_ARG_CACHE_RAM=0` (llama.cpp's env equivalent of
+> `--cache-ram`, where `0` disables), which stops the cache doing work whose result SWA guarantees
+> will be thrown away. **That setting is paired with this finding** — if the model changes, or
+> llama.cpp learns to restore SWA checkpoints, it becomes the wrong setting and should come off
+> before anyone concludes caching still does not work here.
 >
 > Two consequences worth carrying: **prompt length is the only lever on inference latency** on this
 > model, so trimming a prompt is worth what it looks like it is worth and nothing is waiting to
