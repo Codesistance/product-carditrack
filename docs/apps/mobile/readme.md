@@ -2,7 +2,7 @@
 
 ## Overview
 
-The CardiTrack Mobile App is a cross-platform **.NET 10 MAUI** application for family members and caregivers. What exists today is the **authentication + onboarding experience and the tabbed app shell**: native Auth0 email/password login with a hard email-verification gate, the M1 onboarding wizard (account setup → add CardiMember → device selection → Fitbit connection → baseline learning), and a Dashboard tab, with Alerts/Family as stubs and a minimal Settings page. HealthKit/Health Connect, offline storage, and push notifications are **planned** — see [Planned](#planned).
+The CardiTrack Mobile App is a cross-platform **.NET 10 MAUI** application for family members and caregivers. What exists today is the **authentication + onboarding experience and the tabbed app shell**: native Auth0 email/password login with a hard email-verification gate, the M1 onboarding wizard (account setup → add CardiMember → device selection → Fitbit connection → baseline learning), and a Dashboard tab, with Alerts/Family as stubs and a minimal Settings page. **Push notifications are wired up** — see [Push notifications](#push-notifications). HealthKit/Health Connect and offline storage are **planned** — see [Planned](#planned).
 
 The app is built **code-behind first (XAML + `.xaml.cs`) — there is no MVVM layer**, no ViewModels folder, and no data-binding framework. Platform-independent logic (API client, Auth0 client, token handling, localization) lives in the separate plain-`net10.0` library **`CardiTrack.Mobile.Core`**, which is what the unit tests target.
 
@@ -171,6 +171,17 @@ Wearable (Fitbit / Google Health API) OAuth returns to the app via the **`cardit
 - **Consent (follow-up)**: `TrackingConsent` is currently set to `Granted` at first launch, and there is no in-app opt-out. This is the current state of the code, flagged for follow-up, not a settled privacy posture.
 - **Provisioning**: the `apm_mobile_engine` tfvar plus the per-environment secrets `carditrack-<env>-apm-mobile-engine` / `carditrack-<env>-apm-mobile-data` (env stacks, not `common/`) feed CI's `-p:ApmEngine`/`-p:ApmData` stamping — see the [APM setup runbook](../../technical/apm_setup_runbook.md).
 
+## Push notifications
+
+The device half of the push spine (`docs/technical/notification_engine.md` Phase 3). **`Plugin.Firebase.CloudMessaging`**, referenced on **Android/iOS only** — the type does not exist on the Windows target, so `Notifications/PushRegistrationCoordinator.cs` is wrapped in `#if ANDROID || IOS` in its entirety.
+
+- **Registration**: the coordinator retrieves the FCM token and registers it with `POST api/v1/notifications/devices`, keyed by a self-minted device GUID held in `ISecureKeyValueStore` (never a hardware id). It runs after the first device connection succeeds (§4's "moment of value") and again on **every foreground** (`AppShell.WirePush`), which doubles as the reachability heartbeat the server ages tokens against.
+- **Permission**: Android's `POST_NOTIFICATIONS` is requested explicitly and the **real** grant status is reported, along with whether the Safety channel is actually enabled. Both were hardcoded to "granted" until PR #246, which meant `PUSH_UNREACHABLE` — the signal for *nobody is listening* — could never arm on Android. iOS keeps the plugin's own `UNUserNotificationCenter` prompt.
+- **Channels** (Android): `carditrack.safety` at IMPORTANCE_HIGH (wakes the device from Doze), `carditrack.health` at Default, `carditrack.nudges` at Low, created at construction so the OS settings screen mirrors our own categories.
+- **Receipt**: the background handler acks with `POST api/v1/notifications/{deliveryId}/delivered` **before any user interaction** — a missed ack is what the escalation ladder keys off, so it must not wait for a tap. Tapping parses the payload's deep link through `NudgeLinkParser` and navigates.
+- **Payloads are content-free** ("CardiTrack" / "Urgent — tap to view"): no health data crosses APNs or FCM. The iOS Notification Service Extension that would rewrite them into richer copy on-device is **deferred** (§17), so iOS shows the teaser as sent.
+- **Firebase config**: `Platforms/Android/google-services.json` and `Platforms/iOS/GoogleService-Info.plist`, wired as `GoogleServicesJson` / `BundleResource` items in the csproj. They were missing from the build until 2026-08-13 — the frameworks shipped without them, `GetTokenAsync()` threw *"Default FirebaseApp is not initialized"* on every launch, and no device ever registered. If push silently stops working, check those items first.
+
 ## Localization
 
 PR #8 added region-localized **emergency-phone placeholders** (`CardiTrack.Mobile.Core/Localization/PhonePlaceholder.cs`): US/CA `+1 555 000 0000`, GB `+44 7700 900000` (Ofcom drama range), any other region falls back to the US format. The placeholder is resolved once at page construction from `RegionInfo.CurrentRegion` (e.g. `AddCardiMemberPage`'s emergency-contact field).
@@ -276,13 +287,14 @@ None of the following exists in the app today:
 
 - **HealthKit (iOS) / Health Connect (Android)** integration for on-device health data
 - **SQLite offline cache** and sync queue (today the app is online-only; only tokens persist, in SecureStorage)
-- **Push notifications** (FCM / APNS) with alert deep-linking
+- **The iOS Notification Service Extension** — the Xcode App Extension target that would replace a content-free push with richer copy on-device. Its server side (the content-fetch endpoint) shipped; the target itself needs Mac-based verification. Push itself is not planned, it is built — see [Push notifications](#push-notifications).
 - **Widgets, Siri shortcuts, app shortcuts**
 - **MVVM refactor** — only if/when page complexity warrants it; the current code-behind approach is deliberate
 
 ## Related Documentation
 
 - [Store provisioning (signing, TestFlight, Play Console)](./store_provisioning.md)
+- [Notification engine](../../technical/notification_engine.md) — the push spine this app is the device half of
 - [Web Dashboard Documentation](../web/readme.md)
 - [API Documentation](../api/readme.md)
 - [Infrastructure Guide](../../infrastructure.md)
