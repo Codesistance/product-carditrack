@@ -68,8 +68,7 @@ public static partial class WebhookNotificationParser
     /// <summary>
     /// How deep <see cref="TopLevelShape"/> descends. Three levels reaches the leaf of an
     /// `array → element → property → value` payload, which is the shape live traffic actually
-    /// takes; deeper would risk a log line long enough to be truncated, which costs more than
-    /// the extra level buys.
+    /// takes; deeper increases the chance of producing a very long log line.
     /// </summary>
     private const int MaxShapeDepth = 3;
 
