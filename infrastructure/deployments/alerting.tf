@@ -149,8 +149,12 @@ variable "enable_cert_expiry_alerting" {
   }
 }
 
+# The metric's unit is days, not seconds — Google's own examples use thresholds of 30/14/7. Worth
+# stating because the value looks bare in the alert filter and "surely that's seconds" is the
+# obvious wrong guess; reading it as seconds would make this fire twenty seconds before expiry,
+# which is to say never usefully, and silently.
 variable "cert_expiry_alert_days" {
-  description = "Fire when a public domain's TLS certificate has fewer than this many days left. Should stay below Google's ~30-day managed-certificate renewal window so a certificate mid-renewal does not alert"
+  description = "Fire when a public domain's TLS certificate has fewer than this many days left. The metric is denominated in days. Keep below Google's ~30-day managed-certificate renewal window so a certificate mid-renewal does not alert"
   type        = number
   default     = 20
 }
@@ -200,7 +204,15 @@ locals {
   # file's header calls out, reached without tripping either validation because the email list was
   # still populated. The OOM policy itself remains count-gated on its own flag, so nothing about
   # OOM alerting changes — only whether the shared channels exist.
-  alert_channels_enabled = var.enable_oom_alerting || local.medgemma_iam_alerting
+  # Every policy that borrows these channels has to appear in this expression. That is easy to
+  # forget — the cert-expiry policy was added reusing them and this line was not extended, which
+  # would have left it notifying nobody in exactly the configuration where it mattered. If you add
+  # a fourth alert here, add it below too.
+  alert_channels_enabled = (
+    var.enable_oom_alerting ||
+    local.medgemma_iam_alerting ||
+    length(local.cert_expiry_domains) > 0
+  )
 
   oom_slack_channel_ids = (
     local.alert_channels_enabled && var.enable_slack_alerts && var.alert_slack_channel_id != ""
