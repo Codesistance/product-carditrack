@@ -249,12 +249,12 @@ variable "traces_sample_ratio" {
 #
 # The list is index-aligned with the DeviceProviders array the apps bind, and the apps read these
 # as DeviceProviders__<i>__* env vars — the same positional contract already used for provider
-# secrets, which is why element 0 must stay the Fitbit (Google Health API) provider.
+# secrets, which is why element 0 must stay the GoogleHealth (Google Health API) provider.
 #
 # These bounds are the only guard on a calibrated pull interval: calibration may move a connection
 # within [min, max] but never outside it, so widening the range is deliberately a deploy.
 variable "device_pull_params" {
-  description = "Pull cadence bounds and provider rate ceiling per device type, index-aligned with the DeviceProviders array (DeviceProviders__<i>__*). Element 0 must be Fitbit"
+  description = "Pull cadence bounds and provider rate ceiling per device type, index-aligned with the DeviceProviders array (DeviceProviders__<i>__*). Element 0 must be the GoogleHealth provider"
   type = list(object({
     provider                  = string
     sync_lookback_days        = optional(number, 3)

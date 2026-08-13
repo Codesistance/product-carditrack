@@ -334,17 +334,20 @@ Historical data synced via this device is retained. A CardiMember **may have zer
 
 **Supported Providers:**
 
-| Provider | `provider` Value | Integration Mode | Status | Scopes / Permissions |
-|----------|-----------------|------------------|--------|----------------------|
-| Fitbit / Pixel Watch | `fitbit` | `server_oauth` | **Implemented** | Google Health API scope bundles: `activity_and_fitness.readonly`, `health_metrics_and_measurements.readonly`, `sleep.readonly` |
-| Apple Health | `apple_health` | `on_device_bridge` | Planned | `HKQuantityTypeStepCount`, `HKQuantityTypeHeartRate`, `HKCategoryTypeAsleepCore` |
-| Garmin | `garmin` | `server_oauth` | Config-only stub | `activities`, `heart_rate`, `sleep` |
-| Samsung Health | `samsung_health` | `server_oauth` | Config-only stub | `steps`, `heart_rate`, `sleep` |
-| Withings | `withings` | `server_oauth` | Config-only stub | `user.metrics` |
+| Brand (`DeviceType`) | `provider` Value | Data-source API (`HealthApi`) | Integration Mode | Status | Scopes / Permissions |
+|----------------------|-----------------|-------------------------------|------------------|--------|----------------------|
+| Fitbit (`Fitbit`) | `fitbit` | `GoogleHealth` | `server_oauth` | **Implemented** | Google Health API scope bundles: `activity_and_fitness.readonly`, `health_metrics_and_measurements.readonly`, `sleep.readonly` |
+| Google Pixel Watch (`GooglePixelWatch`) | `pixel_watch` | `GoogleHealth` | `server_oauth` | **Implemented** (same engine as `fitbit`) | Same Google Health API bundles as `fitbit` |
+| Apple Watch (`AppleWatch`) | `apple_health` | `AppleHealth` | `on_device_bridge` | Planned | `HKQuantityTypeStepCount`, `HKQuantityTypeHeartRate`, `HKCategoryTypeAsleepCore` |
+| Garmin (`Garmin`) | `garmin` | `GarminConnect` | `server_oauth` | Config-only stub | `activities`, `heart_rate`, `sleep` |
+| Samsung Galaxy Watch (`GalaxyWatch`) | `samsung_health` | `SamsungHealth` | `server_oauth` | Config-only stub | `steps`, `heart_rate`, `sleep` |
+| Withings (`Withings`) | `withings` | `Withings` | `server_oauth` | Config-only stub | `user.metrics` |
 
-> **Config-only stubs:** `garmin`, `samsung_health`, and `withings` are accepted by request validation, but their configuration holds placeholder ClientIds and no provider client is registered in DI — a connect attempt fails with **400** ("not configured for connections"). Only Fitbit is wired end-to-end. See the [OAuth client inventory](../../../technical/oauth_clients.md) for provisioning state.
+> **Brand vs API:** a `provider` value names the **hardware brand** the wearer picked; which data-source API it connects through is the `DeviceProviders` configuration's `DeviceTypes` mapping (e.g. the `GoogleHealth` block lists `["Fitbit", "GooglePixelWatch"]`). Brands on the same API share one OAuth client, one engine, and one registered bounce redirect — a `pixel_watch` authorization returns through the `/oauth/redirect/fitbit` segment, and the callback validates state at the **API level** while the connection keeps the brand from initiation.
 
-> The `fitbit` provider authorizes via **Google OAuth 2.0** and syncs through the **Google Health API** (`health.googleapis.com`), which covers Fitbit devices, Pixel Watch, and connected third-party sources — the legacy Fitbit Web API is decommissioned September 2026.
+> **Config-only stubs:** `garmin`, `samsung_health`, and `withings` are accepted by request validation, but no provider block claims their DeviceTypes (and no engine is registered in DI) — a connect attempt fails with **400** ("not configured for connections"). Only the GoogleHealth engine is wired end-to-end. See the [OAuth client inventory](../../../technical/oauth_clients.md) for provisioning state.
+
+> The `fitbit` and `pixel_watch` providers authorize via **Google OAuth 2.0** and sync through the **Google Health API** (`health.googleapis.com`), which covers Fitbit devices, Pixel Watch, and connected third-party sources — the legacy Fitbit Web API is decommissioned September 2026.
 
 > **Integration modes:**
 > - **`server_oauth`** — CardiTrack's backend holds OAuth tokens (AES-encrypted at rest) and **polls** the provider's cloud API on a 10-minute Worker cron — there is no webhook ingestion.

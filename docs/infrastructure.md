@@ -229,7 +229,7 @@ Subsequent `terraform apply` runs never revert operator-set values. The applicat
 | `auth0-mobile-client-id` | Operator (same script) | Stamped into mobile builds by CI |
 | `encryption-key` | Terraform (`random_bytes`, 32 bytes base64) | `Encryption__Key` — never rotate; see [Key Management](#key-management) |
 | `health-token` | Terraform (`random_password`, 40 chars) | `Health__Token` — `/health` requires the `X-Health-Token` header; CI reads it for smoke tests |
-| `devices-fitbit-client-id`, `devices-fitbit-client-secret` | Operator | `DeviceProviders__0__ClientId/ClientSecret` (Google Health API OAuth client). Further providers follow `devices-{provider}-client-{id,secret}` |
+| `devices-fitbit-client-id`, `devices-fitbit-client-secret` | Operator | `DeviceProviders__0__ClientId/ClientSecret` (Google Health API OAuth client — the block is named `GoogleHealth` in appsettings and serves every DeviceType in its `DeviceTypes` list; the secret names keep the historical `fitbit` slug). Further APIs follow `devices-{provider}-client-{id,secret}` |
 | `redis-connection-string` | Terraform (composed from the Memorystore instance) | `ConnectionStrings__Redis` — only when `enable_redis` |
 | `redis-ca` | Terraform (the instance's CA bundle) | `Redis__CaCertificate` — only when `enable_redis` |
 | `gemini-api-key` | Operator | `AI__Public__ApiKey` |

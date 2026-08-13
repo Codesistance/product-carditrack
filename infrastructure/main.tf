@@ -123,7 +123,7 @@ module "deployments" {
       "AI__Public__BaseUrl" = var.public_ai_base_url
     } : {},
     # Google's web OAuth clients require an https redirect; the API bounces it to the app deep
-    # link. Element 0 of DeviceProviders in appsettings.json is the Fitbit (Google Health API)
+    # link. Element 0 of DeviceProviders in appsettings.json is the GoogleHealth (Google Health API)
     # provider. Without a custom domain the appsettings localhost default stays in effect.
     var.api_custom_domain != "" ? {
       "DeviceProviders__0__RedirectUri" = "https://${var.api_custom_domain}/api/v1/oauth/redirect/fitbit"
