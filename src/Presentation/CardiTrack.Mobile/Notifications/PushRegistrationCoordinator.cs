@@ -85,11 +85,8 @@ public sealed class PushRegistrationCoordinator : IDisposable
                 platform: DeterminePlatform(),
                 appVersion: CurrentAppVersion(),
                 token: token,
-                // Plugin.Firebase's CheckIfValidAsync doesn't return a status — it raises Error
-                // when the OS denies the request (OnError below). Reaching here without that
-                // event having fired is the closest signal to "granted" this abstraction exposes.
-                osAuthorizationStatus: OsAuthorizationStatus.Granted,
-                safetyChannelEnabled: true,
+                osAuthorizationStatus: await AuthorizationStatusAsync(),
+                safetyChannelEnabled: SafetyChannelEnabled(),
                 ct);
         }
         catch (Exception ex)
@@ -183,6 +180,80 @@ public sealed class PushRegistrationCoordinator : IDisposable
             return "unknown";
 
         return version.Length <= MaxStoredAppVersionLength ? version : version[..MaxStoredAppVersionLength];
+    }
+
+    /// <summary>
+    /// What the OS actually says about this app's permission to notify — the value
+    /// <c>PUSH_UNREACHABLE</c> is armed from, server-side.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This used to report <see cref="OsAuthorizationStatus.Granted"/> unconditionally, on the
+    /// reasoning that Plugin.Firebase raises <c>Error</c> on a denial and reaching this line meant
+    /// it had not. That is not the same claim: the plugin's own request is not the OS grant, a
+    /// caregiver can revoke notifications in Settings long after the app last asked, and every
+    /// registration afterwards would still have said "granted". The server believed every Android
+    /// device was reachable, so the one gap the safety net exists to catch — nobody is listening —
+    /// was the gap it could not see.
+    /// </para>
+    /// <para>
+    /// Android is asked directly, including the runtime request the app never explicitly made:
+    /// POST_NOTIFICATIONS has been a prompted permission since API 33 and the manifest entry alone
+    /// grants nothing. iOS keeps the plugin's flow, which owns the UNUserNotificationCenter prompt
+    /// there — but no longer keeps the assumption: a token in hand is reported as granted, and the
+    /// denial path returns without registering at all (a denied iOS device has no token to send).
+    /// </para>
+    /// </remarks>
+    private static async Task<OsAuthorizationStatus> AuthorizationStatusAsync()
+    {
+#if ANDROID
+        var status = await Permissions.CheckStatusAsync<Permissions.PostNotifications>();
+        if (status != PermissionStatus.Granted)
+            status = await Permissions.RequestAsync<Permissions.PostNotifications>();
+
+        return status switch
+        {
+            PermissionStatus.Granted => OsAuthorizationStatus.Granted,
+            PermissionStatus.Unknown => OsAuthorizationStatus.NotDetermined,
+            _ => OsAuthorizationStatus.Denied,
+        };
+#else
+        // iOS: the prompt is the plugin's, and GetTokenAsync returning a token above is APNs
+        // having issued one, which it does not do for an app the user has refused.
+        return await Task.FromResult(OsAuthorizationStatus.Granted);
+#endif
+    }
+
+    /// <summary>
+    /// Whether a Safety push would actually surface on this device — the channel exists, is not
+    /// muted to <c>IMPORTANCE_NONE</c>, and notifications are not switched off app-wide.
+    /// </summary>
+    /// <remarks>
+    /// Also previously hardcoded true. Android lets a user silence one channel and leave the rest,
+    /// which is exactly the state worth knowing about here: the app is registered, the token is
+    /// live, pushes are accepted — and the safety-class alerts, the only ones that matter at 3am,
+    /// land silently in a drawer nobody opens.
+    /// </remarks>
+    private static bool SafetyChannelEnabled()
+    {
+#if ANDROID
+        var context = global::Android.App.Application.Context;
+        var manager = (global::Android.App.NotificationManager?)context.GetSystemService(
+            global::Android.Content.Context.NotificationService);
+        if (manager is null)
+            return false;
+
+        if (!manager.AreNotificationsEnabled())
+            return false;
+
+        var channel = manager.GetNotificationChannel(SafetyChannelId);
+        // A channel this app creates at construction, so absent means the OS has not caught up
+        // rather than that the user silenced anything — not a claim of "disabled".
+        return channel is null || channel.Importance != global::Android.App.NotificationImportance.None;
+#else
+        // iOS has no per-channel equivalent; authorization is the whole answer there.
+        return true;
+#endif
     }
 
     private static DevicePlatform DeterminePlatform() =>

@@ -198,7 +198,13 @@ module "deployments" {
     },
     # The Worker hosts device pull and the audit pull today, so it is where the cadence
     # parameters land.
-    local.device_pull_env_vars
+    local.device_pull_env_vars,
+    # The push canary's fleet, written as ASP.NET Core's indexed-array env convention so
+    # PushCanaryOptions.CanaryUserIds binds without a config file per environment. An empty list
+    # emits no keys at all, which leaves the worker on appsettings' empty default and the canary
+    # asleep — the same state as before this was wired.
+    { for index, id in var.push_canary_user_ids :
+    "Workers__PushCanaryWorker__CanaryUserIds__${index}" => id }
   )
   worker_secret_env_vars = {
     "ConnectionStrings__DefaultConnection" = "${var.project_name}-${local.environment}-db-connection-string"

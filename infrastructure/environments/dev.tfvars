@@ -174,6 +174,13 @@ alert_slack_channel_id    = ""
 # so the Firebase apps exist and a real test push can be sent before closing that issue.
 enable_push_notifications = true
 
+# The push canary's fleet (notification_engine.md §13). Devices registered against these user ids
+# get a real Safety push every fifteen minutes, and the worker pages when the previous one went
+# unacked. Dev is where this belongs: the registration path has been live since 13 Aug 2026 and no
+# push has ever actually been sent through it, so until this list has an entry the FCM -> handset
+# hop is entirely unproven. Test accounts only — see the variable's own note.
+push_canary_user_ids = []
+
 # Labels
 additional_labels = {
   cost_center = "development"
