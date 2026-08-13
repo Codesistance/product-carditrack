@@ -22,8 +22,12 @@
 # separately; web is the identity worth splitting next, not the API.
 
 locals {
-  api_sa      = "serviceAccount:${google_service_account.api.email}"
-  pipeline_sa = "serviceAccount:${google_service_account.pipeline.email}"
+  # No equivalent local for the pipeline identity on purpose. That resource is counted on
+  # enable_pipeline_jobs, so its attributes must be read as google_service_account.pipeline[0],
+  # and a local holding that index would be evaluated even in environments where the count is
+  # zero (prod today). Every consumer of it is itself gated on the same variable, so the indexed
+  # reference is only ever reached where the instance exists — safe inline, unsafe hoisted.
+  api_sa = "serviceAccount:${google_service_account.api.email}"
 
   # Secrets the API reads at instance start via secret_key_ref. Cloud Run resolves those
   # references with the *runtime* service account, so a missing grant here surfaces as a
