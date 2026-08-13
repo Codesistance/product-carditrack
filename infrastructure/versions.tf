@@ -14,5 +14,12 @@ terraform {
       source  = "hashicorp/random"
       version = "~> 3.6"
     }
+    # Used for one thing only: waiting out Secret Manager IAM propagation before Cloud Run
+    # validates a revision's secret references against a newly created service account. See
+    # the time_sleep resources in deployments/service_accounts.tf.
+    time = {
+      source  = "hashicorp/time"
+      version = "~> 0.11"
+    }
   }
 }
