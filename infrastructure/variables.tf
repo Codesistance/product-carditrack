@@ -370,6 +370,17 @@ variable "enable_push_notifications" {
 }
 
 # Memorystore for Redis (distributed cache: OAuth PKCE state, report cache)
+# Phase 2 of the MedGemma IAM change. Every service now runs PRIVATE_RANGES_ONLY egress, so nothing
+# routes through Cloud NAT and it is a fixed ~£24/month charge for an idle gateway. Kept true by
+# default so the identity/egress migration applies with the gateway still in place; flip to false in
+# an environment's tfvars as a second, separately-verifiable apply. Read the note in
+# deployments/networking.tf first — in particular the egress-IP allowlist check.
+variable "enable_cloud_nat" {
+  description = "Provision Cloud NAT and its router. Needed only while some service uses ALL_TRAFFIC egress; set false to retire the gateway once the PRIVATE_RANGES_ONLY migration is verified"
+  type        = bool
+  default     = true
+}
+
 variable "enable_redis" {
   description = "Provision a Memorystore for Redis instance and bind it to the API. With this off the API has no distributed cache, so device linking fails whenever the OAuth callback lands on a different Cloud Run instance"
   type        = bool

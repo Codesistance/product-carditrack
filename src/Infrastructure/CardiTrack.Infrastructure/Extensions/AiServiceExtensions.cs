@@ -107,11 +107,21 @@ public static class AiServiceExtensions
     {
         var privateSettings = LoadPrivateSettings(configuration);
 
-        services.AddHttpClient(PrivateHttpClientName, client =>
+        var privateClient = services.AddHttpClient(PrivateHttpClientName, client =>
         {
             client.BaseAddress = new Uri(privateSettings.BaseUrl);
             client.Timeout = TimeSpan.FromSeconds(privateSettings.TimeoutSeconds);
         });
+
+        // Added only when the flag is on, rather than registering a handler that decides per request:
+        // a local Ollama then has no auth code in its pipeline at all, and the deployed shape has no
+        // branch that could silently skip the credential.
+        if (privateSettings.UseIdentityToken)
+        {
+            privateClient.AddHttpMessageHandler(sp => new MedGemmaIdentityTokenHandler(
+                privateSettings.BaseUrl,
+                sp.GetRequiredService<ILogger<MedGemmaIdentityTokenHandler>>()));
+        }
 
         // Not a switch, by design — see the remarks on this class.
         services.AddKeyedScoped<IExternalAiClient>("MedicalProvider", (sp, _) =>
@@ -165,7 +175,54 @@ public static class AiServiceExtensions
         RequirePositive(settings.TimeoutSeconds, ConfigurationKeys.AI.PrivateSectionName, nameof(PrivateAiSettings.TimeoutSeconds));
         RequireAbsoluteUrl(settings.BaseUrl, ConfigurationKeys.AI.PrivateSectionName, nameof(PrivateAiSettings.BaseUrl));
 
+        RequireCoherentIdentityTokenMode(settings);
+
         return settings;
+    }
+
+    /// <summary>
+    /// Fails the host at startup when the identity-token mode does not match where MedGemma lives.
+    /// </summary>
+    /// <remarks>
+    /// Both directions matter, and neither is theoretical.
+    /// <list type="bullet">
+    /// <item>
+    /// A Cloud Run <c>BaseUrl</c> with the flag off means every call gets a 403 from the Google front
+    /// end. <c>RealtimeAssessmentService</c> and <c>DigestGenerationService</c> swallow per-member
+    /// inference failures, so that 403 would not fail a job — it would read as "nothing was due", and
+    /// assessments would simply stop being produced. One missed environment variable, silent for as
+    /// long as nobody checks. Refusing to boot converts it into an obvious failed revision.
+    /// </item>
+    /// <item>
+    /// The flag on with a plaintext <c>BaseUrl</c> would put a bearer credential on the wire in
+    /// clear text.
+    /// </item>
+    /// </list>
+    /// </remarks>
+    private static void RequireCoherentIdentityTokenMode(PrivateAiSettings settings)
+    {
+        var baseUri = new Uri(settings.BaseUrl);
+        var isCloudRun = baseUri.Host.EndsWith(".run.app", StringComparison.OrdinalIgnoreCase);
+
+        if (isCloudRun && !settings.UseIdentityToken)
+        {
+            throw new InvalidOperationException(
+                Message(ConfigurationKeys.AI.PrivateSectionName, nameof(PrivateAiSettings.UseIdentityToken),
+                    $"is false, but {ConfigurationKeys.AI.PrivateSectionName}:{nameof(PrivateAiSettings.BaseUrl)} "
+                    + $"points at the Cloud Run host '{baseUri.Host}', which authorises callers by IAM. "
+                    + "Every MedGemma call would return 403 before reaching the model, and because "
+                    + "per-member inference failures are swallowed, digests and assessments would stop "
+                    + "silently rather than erroring. Set AI__Private__UseIdentityToken=true."));
+        }
+
+        if (settings.UseIdentityToken && !baseUri.Scheme.Equals(Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException(
+                Message(ConfigurationKeys.AI.PrivateSectionName, nameof(PrivateAiSettings.UseIdentityToken),
+                    $"is true, but {ConfigurationKeys.AI.PrivateSectionName}:{nameof(PrivateAiSettings.BaseUrl)} "
+                    + $"uses scheme '{baseUri.Scheme}'. That would transmit a bearer identity token in "
+                    + "clear text. Use https, or turn the flag off for a local endpoint."));
+        }
     }
 
     /// <summary>

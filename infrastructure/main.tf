@@ -115,10 +115,15 @@ module "deployments" {
       "AI__Public__MaxOutputTokens"         = tostring(var.public_ai_max_output_tokens)
       "AI__Private__Model"                  = local.medgemma_model
       "AI__Private__TimeoutSeconds"         = tostring(var.medgemma_timeout_seconds)
-      "Apm__Engine"                         = var.apm_engine
-      "Apm__MetricsEnabled"                 = tostring(var.apm_metrics_enabled)
-      "Apm__TracesSampleRatio"              = tostring(var.traces_sample_ratio.api)
-      "Serilog__MinimumLevel__Default"      = var.log_minimum_level.api
+      # MedGemma authorises callers by IAM, so every request needs an OIDC token. Set for every host
+      # that receives AI__Private__BaseUrl, including the aggregator, which carries the config
+      # without calling the model — AiServiceExtensions refuses to start a host whose BaseUrl is a
+      # Cloud Run URL while this is false, and that check runs wherever the settings are bound.
+      "AI__Private__UseIdentityToken"  = "true"
+      "Apm__Engine"                    = var.apm_engine
+      "Apm__MetricsEnabled"            = tostring(var.apm_metrics_enabled)
+      "Apm__TracesSampleRatio"         = tostring(var.traces_sample_ratio.api)
+      "Serilog__MinimumLevel__Default" = var.log_minimum_level.api
     },
     # Transitional — DELETE once an image carrying the AI__Public/AI__Private settings is
     # deployed to every environment. Terraform sets env vars and CI sets the image
@@ -220,6 +225,7 @@ module "deployments" {
     "GCP_PROJECT_ID"                 = var.project_id
     "AI__Private__Model"             = local.medgemma_model
     "AI__Private__TimeoutSeconds"    = tostring(var.medgemma_timeout_seconds)
+    "AI__Private__UseIdentityToken"  = "true"
     "Apm__Engine"                    = var.apm_engine
     "Apm__MetricsEnabled"            = tostring(var.apm_metrics_enabled)
     "Serilog__MinimumLevel__Default" = var.log_minimum_level.worker
@@ -240,6 +246,7 @@ module "deployments" {
       "GCP_PROJECT_ID"                 = var.project_id
       "AI__Private__Model"             = local.medgemma_model
       "AI__Private__TimeoutSeconds"    = tostring(var.medgemma_timeout_seconds)
+      "AI__Private__UseIdentityToken"  = "true"
       "Apm__Engine"                    = var.apm_engine
       "Apm__MetricsEnabled"            = tostring(var.apm_metrics_enabled)
       "Serilog__MinimumLevel__Default" = var.log_minimum_level.worker
@@ -285,9 +292,10 @@ module "deployments" {
   }
 
   # Networking
-  vpc_name    = "${var.project_name}-${local.environment}-vpc"
-  subnet_name = "${var.project_name}-${local.environment}-subnet"
-  subnet_cidr = var.subnet_cidr
+  vpc_name         = "${var.project_name}-${local.environment}-vpc"
+  subnet_name      = "${var.project_name}-${local.environment}-subnet"
+  subnet_cidr      = var.subnet_cidr
+  enable_cloud_nat = var.enable_cloud_nat
 
   # Cloud SQL (PostgreSQL)
   cloud_sql_instance_name       = local.cloud_sql_name

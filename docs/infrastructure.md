@@ -150,7 +150,7 @@ carditrack-<env>
 │   ├── carditrack-<env>-api        (public*, Cloud SQL socket, VPC egress)
 │   ├── carditrack-<env>-web        (public*, gen2, GCS dp-keys volume)
 │   ├── carditrack-<env>-worker     (internal-only — non-AI background jobs)
-│   └── carditrack-<env>-medgemma   (internal-only, optional — Ollama-served MedGemma;
+│   └── carditrack-<env>-medgemma   (IAM-authorised invokers only, optional — Ollama-served MedGemma;
 │                                    created only when medgemma_image is non-empty)
 ├── Cloud Run job
 │   └── carditrack-<env>-api-migrator  (EF Core migrations, run per deploy by CI)
@@ -402,8 +402,10 @@ GCS buckets are versioned (main and dp-keys), providing object-level rollback.
 ### Network Security
 
 - **Private-only database**: Cloud SQL has no public IP; access is via VPC private services peering and the Cloud SQL Auth Proxy socket
-- **VPC egress control**: Direct VPC egress with `PRIVATE_RANGES_ONLY` is the default for Cloud Run services and jobs. Three exceptions use `ALL_TRAFFIC` instead — `api`, the `pipeline_jobs` digest job, and `pipeline_assessor` — because they call MedGemma's internal-ingress-only `*.run.app` URL, which `PRIVATE_RANGES_ONLY` cannot reach (its destination isn't an RFC1918 address, so that traffic would go out the normal internet path instead of the VPC and get rejected as external). Reaching MedGemma also requires the subnet's `private_ip_google_access`; a Cloud NAT (`google_compute_router` / `google_compute_router_nat`) keeps those same three resources' other outbound calls (Auth0, direct-to-Datadog APM shipping) working now that all their egress routes through the VPC
-- **Internal-only services**: Worker and MedGemma are unreachable from the internet
+- **VPC egress control**: Direct VPC egress with `PRIVATE_RANGES_ONLY` on every Cloud Run service and job, with no exceptions. `api`, the `pipeline_jobs` digest job and `pipeline_assessor` previously used `ALL_TRAFFIC` so their calls to MedGemma's internal-ingress `*.run.app` URL would leave through the VPC; MedGemma now authorises callers by IAM instead, so those calls take the ordinary internet path carrying an OIDC token. The subnet keeps `private_ip_google_access` — no longer for MedGemma, but because the Cloud SQL Auth Proxy needs it against a private-IP-only instance
+- **Cloud NAT**: gated by `enable_cloud_nat`. It existed only to give the three `ALL_TRAFFIC` services a route to the internet (Auth0, direct-to-Datadog APM) once all their egress was forced through the VPC. With every service on `PRIVATE_RANGES_ONLY` nothing traverses it, so it is a fixed ~£24/month idle gateway. Removal is deliberately a second apply — see the note in `deployments/networking.tf`, including the check that nothing downstream pins our egress IP, since direct Cloud Run egress uses Google's shared pool
+- **MedGemma authorisation**: `INGRESS_TRAFFIC_ALL` plus `roles/run.invoker` granted to two named runtime identities (`<env>-api`, `<env>-pipeline`) — not `allUsers`, and not the shared default compute SA. Callers attach a Google-signed OIDC token whose audience is the service URL (`MedGemmaIdentityTokenHandler`). Cloud Run rejects an unauthenticated request at the Google front end before dispatching to a container, so a publicly routable endpoint cannot be made to cold-start by internet scanning. The trade: internal-only ingress used to contain an IAM mistake, and IAM is now the only boundary — the `constraints/iam.allowedPolicyMemberDomains` org policy is what makes an accidental `allUsers`/`allAuthenticatedUsers` grant impossible, and it is assumed rather than managed here
+- **Internal-only services**: Worker is unreachable from the internet
 - **Edge protection**: TLS 1.2+ (MODERN policy), HTTP→HTTPS redirect, and the Cloud Armor WAF — active in dev; prod has no LB/WAF until custom domains are configured (known deferred posture)
 
 ### Access Control

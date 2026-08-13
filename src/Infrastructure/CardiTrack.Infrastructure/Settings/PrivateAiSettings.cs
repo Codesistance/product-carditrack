@@ -21,4 +21,19 @@ public class PrivateAiSettings
 
     /// <summary>Generous by default — CPU inference on a 4B model is measured in tens of seconds.</summary>
     public int TimeoutSeconds { get; set; } = 300;
+
+    /// <summary>
+    /// Whether to attach a Google-minted OIDC identity token to every MedGemma request, with the
+    /// audience set to <see cref="BaseUrl"/>. Required in dev/prod: the Cloud Run service authorises
+    /// callers by IAM (<c>roles/run.invoker</c>) rather than by network position, and rejects an
+    /// unauthenticated request at the Google front end before it reaches Ollama.
+    /// </summary>
+    /// <remarks>
+    /// Defaults to <c>false</c> so a local Ollama over plain HTTP — docker-compose, tests — needs no
+    /// credential and receives no bearer token. That default fails <em>closed</em> if an environment
+    /// forgets to set it: the call 403s rather than silently downgrading. Startup validation in
+    /// <c>AiServiceExtensions</c> turns that latent 403 into a refusal to boot, because per-member
+    /// inference failures are swallowed and a silent 403 would look like "no assessments due".
+    /// </remarks>
+    public bool UseIdentityToken { get; set; }
 }

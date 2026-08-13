@@ -195,16 +195,22 @@ resource "google_cloud_run_v2_service" "api" {
   client   = "terraform"
 
   template {
+    service_account = google_service_account.api.email
+
     vpc_access {
       network_interfaces {
         network    = google_compute_network.main.id
         subnetwork = google_compute_subnetwork.main.id
       }
-      # ALL_TRAFFIC, not PRIVATE_RANGES_ONLY: InsightsController calls MedGemma over its
-      # public *.run.app URL. That's not an RFC1918 destination, so PRIVATE_RANGES_ONLY sends
-      # it out the normal internet path instead of the VPC — MedGemma's internal-only ingress
-      # then rejects it as external traffic (404, before the request ever reaches Ollama).
-      egress = "ALL_TRAFFIC"
+      # PRIVATE_RANGES_ONLY. This was ALL_TRAFFIC so that InsightsController's calls to MedGemma's
+      # public *.run.app URL would leave via the VPC and satisfy its internal-only ingress. MedGemma
+      # now authorises by IAM instead, so that round trip is unnecessary: the call goes out the
+      # normal internet path with an OIDC token attached and is authorised on arrival.
+      #
+      # What still needs the VPC is RFC1918 only — the Cloud SQL private IP (dev has no public IP at
+      # all) and Memorystore. Auth0 and Datadog go direct, which is what allows Cloud NAT to be
+      # retired; see the enable_cloud_nat note in networking.tf.
+      egress = "PRIVATE_RANGES_ONLY"
     }
 
     volumes {
@@ -589,13 +595,30 @@ resource "google_cloud_run_v2_service" "worker" {
 }
 
 # ── MedGemma (Ollama) ─────────────────────────────────────────────────────────
-# Internal-only: API reaches it via private VPC. URL written to Secret Manager
-# by CI/CD after each deployment; not exposed publicly.
+# Authorised by IAM, not by network position. URL written to Secret Manager by CI/CD after each
+# deployment.
+#
+# This was INGRESS_TRAFFIC_INTERNAL_ONLY with an allUsers invoker, which made the *route* the only
+# control: no caller authenticated, so anything that could reach the VPC could run inference. The
+# swap to INGRESS_TRAFFIC_ALL plus a named-identity invoker binding means callers now present a
+# Google-signed OIDC token (MedGemmaIdentityTokenHandler) whose audience is this service's URL.
+#
+# Routable does not mean reachable. Cloud Run enforces run.invoker at the Google front end, so an
+# unauthenticated request is rejected before it is dispatched to a container — it cannot trigger a
+# cold start, and with cpu_idle = false a cold start is the expensive thing here. Internet
+# scanning therefore costs nothing.
+#
+# What this gave up: internal-only ingress used to contain an IAM mistake. Now IAM is the only
+# boundary, so re-adding allUsers — or allAuthenticatedUsers, which reads as restrictive but means
+# any Google account anywhere — would expose the model with no network backstop. The control that
+# makes that mistake impossible rather than merely discouraged is the
+# constraints/iam.allowedPolicyMemberDomains org policy (Domain Restricted Sharing); it is not
+# managed here because it is org-level, and it is the one follow-up this change assumes.
 resource "google_cloud_run_v2_service" "medgemma" {
   count    = var.medgemma_image != "" ? 1 : 0
   name     = var.medgemma_service_name
   location = var.cloud_run_location
-  ingress  = "INGRESS_TRAFFIC_INTERNAL_ONLY"
+  ingress  = "INGRESS_TRAFFIC_ALL"
   client   = "terraform"
 
   template {
@@ -661,16 +684,26 @@ resource "google_cloud_run_v2_service_iam_member" "web_public" {
   member   = "allUsers"
 }
 
-# Allow unauthenticated access, same as api/web above: the real boundary is
-# INGRESS_TRAFFIC_INTERNAL_ONLY on the medgemma service itself, not IAM — none of its callers
-# (api, pipeline_jobs, pipeline_assessor) attach an identity token, so without this every
-# request that reaches the service still 403s once ingress routing lets it through.
-resource "google_cloud_run_v2_service_iam_member" "medgemma_internal" {
+# MedGemma invokers — the named identities that replaced allUsers. Exactly the callers that have a
+# MedGemma code path: the API (InsightsController) and the digest/assessor jobs. Deliberately not
+# the aggregator: it carries AI__Private__* env because it shares the pipeline image, but no code
+# path in it constructs the client (NotificationDrainService only drains Pub/Sub and runs syncs).
+# Deliberately not the default compute SA either — web, worker and the migrator run as that
+# identity and none of them call MedGemma. See service_accounts.tf.
+resource "google_cloud_run_v2_service_iam_member" "medgemma_api_invoker" {
   count    = var.medgemma_image != "" ? 1 : 0
   name     = google_cloud_run_v2_service.medgemma[0].name
   location = google_cloud_run_v2_service.medgemma[0].location
   role     = "roles/run.invoker"
-  member   = "allUsers"
+  member   = local.api_sa
+}
+
+resource "google_cloud_run_v2_service_iam_member" "medgemma_pipeline_invoker" {
+  count    = var.medgemma_image != "" && var.enable_pipeline_jobs ? 1 : 0
+  name     = google_cloud_run_v2_service.medgemma[0].name
+  location = google_cloud_run_v2_service.medgemma[0].location
+  role     = "roles/run.invoker"
+  member   = "serviceAccount:${google_service_account.pipeline[0].email}"
 }
 
 # ── Pipeline jobs (AI pipeline — summary generation) ─────────────────────────────────────────
@@ -735,17 +768,17 @@ resource "google_cloud_run_v2_job" "pipeline_jobs" {
       # covers a large timezone bucket without the execution being killed mid-generation.
       timeout = "3600s"
 
-      # ALL_TRAFFIC, not PRIVATE_RANGES_ONLY: MedGemma's internal-only ingress requires the
-      # request to actually route through the VPC to be recognized as internal. Its URL is a
-      # public *.run.app address, not an RFC1918 one, so PRIVATE_RANGES_ONLY would send calls
-      # to it out the normal internet path instead — MedGemma then rejects them as external
-      # traffic (404, before the request ever reaches Ollama).
+      service_account = google_service_account.pipeline[0].email
+
+      # PRIVATE_RANGES_ONLY: MedGemma authorises by IAM now, so its calls no longer need to leave
+      # via the VPC to be recognised as internal — they carry an OIDC token instead. Only the Cloud
+      # SQL private IP still needs the VPC. See the api service above and networking.tf.
       vpc_access {
         network_interfaces {
           network    = google_compute_network.main.id
           subnetwork = google_compute_subnetwork.main.id
         }
-        egress = "ALL_TRAFFIC"
+        egress = "PRIVATE_RANGES_ONLY"
       }
 
       volumes {
@@ -1131,17 +1164,17 @@ resource "google_cloud_run_v2_job" "pipeline_assessor" {
       # timeout bounds a pathological pass without killing an ordinary busy one.
       timeout = "1800s"
 
-      # ALL_TRAFFIC, not PRIVATE_RANGES_ONLY: MedGemma's internal-only ingress requires the
-      # request to actually route through the VPC to be recognized as internal. Its URL is a
-      # public *.run.app address, not an RFC1918 one, so PRIVATE_RANGES_ONLY would send calls
-      # to it out the normal internet path instead — MedGemma then rejects them as external
-      # traffic (404, before the request ever reaches Ollama).
+      service_account = google_service_account.pipeline[0].email
+
+      # PRIVATE_RANGES_ONLY: MedGemma authorises by IAM now, so its calls no longer need to leave
+      # via the VPC to be recognised as internal — they carry an OIDC token instead. Only the Cloud
+      # SQL private IP still needs the VPC. See the api service above and networking.tf.
       vpc_access {
         network_interfaces {
           network    = google_compute_network.main.id
           subnetwork = google_compute_subnetwork.main.id
         }
-        egress = "ALL_TRAFFIC"
+        egress = "PRIVATE_RANGES_ONLY"
       }
 
       volumes {
