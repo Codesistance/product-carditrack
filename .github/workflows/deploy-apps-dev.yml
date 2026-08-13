@@ -493,6 +493,9 @@ jobs:
       # device builds (build-mobile-ios-device) still run on main before any
       # upload. The configuration stays Release for the XamlC reason given on the
       # Android job above — Debug reports no XAML errors at all.
+      # MtouchLink=None, not PublishTrimmed=false: the iOS SDK hard-errors on
+      # PublishTrimmed=false ("iOS projects must build with PublishTrimmed=true")
+      # and names MtouchLink as the supported way to turn the trimmer off.
       # -p:CodesignEntitlements= (empty) on both steps below: the SDK auto-detects
       # Platforms/iOS/Entitlements.plist by convention and wires it as CodesignEntitlements for
       # any build, which forces real codesigning — this job targets the simulator and has no
@@ -509,7 +512,7 @@ jobs:
             -r iossimulator-arm64 \
             -p:ArchiveOnBuild=false \
             -p:CodesignEntitlements= \
-            -p:PublishTrimmed=false
+            -p:MtouchLink=None
       - name: Build (Release)
         if: github.event_name != 'pull_request'
         env:
