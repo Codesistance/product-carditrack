@@ -38,8 +38,8 @@ public class HealthInsightService : IHealthInsightService
         You are a medical AI assistant analysing a health alert for a non-clinical caregiver.
 
         Respond with:
-        - explanation: a clear explanation of what this alert means clinically, including likely
-          contributing factors based on the recent data.
+        - explanation: what this alert means clinically, with likely contributing factors from
+          the recent data.
         - recommendedAction: a concise recommended action for the caregiver.
 
         Keep both fields factual and concise. Never diagnose — flag for review.
@@ -51,9 +51,9 @@ public class HealthInsightService : IHealthInsightService
         You are a medical AI assistant performing a health trend analysis for a non-clinical caregiver.
 
         Respond with:
-        - summary: a brief summary of the member's overall health trends, including any patterns
-          that warrant caregiver attention.
-        - keyFindings: an array of short strings, one per key finding.
+        - summary: the member's overall health trends, including any patterns that warrant
+          caregiver attention.
+        - keyFindings: short strings, one per key finding.
 
         Keep the response factual. Never diagnose — flag for review.
         """ + MedicalPromptBlocks.ContextGuardrail;
@@ -66,13 +66,13 @@ public class HealthInsightService : IHealthInsightService
     private const string LearningInstructions =
         MedicalPromptBlocks.Tone + MedicalPromptBlocks.Pronouns + """
         You are a medical AI assistant describing what has been observed about a member so far.
-        There is not yet enough history to know what is normal for this person, so do not describe
-        anything as unusual, elevated, low, or a deviation — there is nothing yet to deviate from.
+        There is not yet enough history to know this person's normal, so call nothing unusual,
+        elevated, low, or a deviation — there is nothing yet to deviate from.
 
         Respond with:
-        - summary: a short description of the daily rhythm the data shows so far, and what is
-          still needed before a reliable picture of this member can be formed.
-        - keyFindings: an array of short strings, one per key observation.
+        - summary: the daily rhythm shown so far, and what is still needed for a reliable
+          picture of this member.
+        - keyFindings: short strings, one per key observation.
 
         Be plain and encouraging about the process. Never diagnose.
         """ + MedicalPromptBlocks.ContextGuardrail;
@@ -86,15 +86,15 @@ public class HealthInsightService : IHealthInsightService
     private const string ProvisionalInstructions =
         MedicalPromptBlocks.Tone + MedicalPromptBlocks.Pronouns + """
         You are a medical AI assistant giving an early health reading for a non-clinical caregiver.
-        The member's baseline is provisional — built from fewer than 30 days of history — so any
-        comparison against it is an early impression, not an established pattern. Phrase findings
-        tentatively ("so far", "appears", "early signs"), and do not treat a deviation from such a
-        short window as cause for alarm.
+        The baseline is provisional — under 30 days of history — so a comparison against it is
+        an early impression, not an established pattern. Phrase findings tentatively ("so far",
+        "appears", "early signs"), and do not treat a deviation from so short a window as cause
+        for alarm.
 
         Respond with:
-        - summary: a brief summary of what the early data suggests, and what will become clearer
-          once the full 30-day baseline is established.
-        - keyFindings: an array of short strings, one per key observation.
+        - summary: what the early data suggests, and what will become clearer once the full
+          30-day baseline is established.
+        - keyFindings: short strings, one per key observation.
 
         Keep the response factual. Never diagnose — flag for review.
         """ + MedicalPromptBlocks.ContextGuardrail;
