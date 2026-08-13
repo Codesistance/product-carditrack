@@ -4,6 +4,7 @@ using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Domain.Entities;
 using CardiTrack.Domain.Enums;
+using CardiTrack.Infrastructure.Settings;
 using Microsoft.Extensions.Caching.Distributed;
 
 namespace CardiTrack.Infrastructure.Services;
@@ -150,17 +151,20 @@ public class HealthInsightService : IHealthInsightService
     private readonly IUnitOfWork _unitOfWork;
     private readonly ICardiMemberAccessService _access;
     private readonly IDistributedCache _cache;
+    private readonly PrivateAiSettings _aiSettings;
 
     public HealthInsightService(
         IMedicalAiService medicalAi,
         IUnitOfWork unitOfWork,
         ICardiMemberAccessService access,
-        IDistributedCache cache)
+        IDistributedCache cache,
+        PrivateAiSettings aiSettings)
     {
         _medicalAi = medicalAi;
         _unitOfWork = unitOfWork;
         _access = access;
         _cache = cache;
+        _aiSettings = aiSettings;
     }
 
     public async Task<AlertInsightResponse> AnalyzeAlertAsync(
@@ -283,6 +287,11 @@ public class HealthInsightService : IHealthInsightService
         return cleaned.Length is 0 or > MaxStatusHeadlineLength ? null : cleaned;
     }
 
+    /// <summary>"Nothing to say yet" — the contract's own way of saying it, so every path that
+    /// declines to generate answers in the shape the dashboard already handles.</summary>
+    private static CurrentStatusMessageResponse NoStatusMessage() =>
+        new() { Headline = null, Message = null, GeneratedAt = DateTimeOffset.UtcNow };
+
     public async Task<CurrentStatusMessageResponse> GetCurrentStatusMessageAsync(
         Guid requestingUserId, Guid cardiMemberId, CancellationToken ct = default)
     {
@@ -301,12 +310,59 @@ public class HealthInsightService : IHealthInsightService
             };
         }
 
+        // The same guard the three background generators use before spending a model call
+        // (StatisticalAlertService, RealtimeAssessmentService, InactivityDetectionService). It was
+        // missing here, so the one surface that fires on every dashboard load was also the one
+        // that would generate for a member nobody is watching. The mobile client skips these tiers
+        // itself, which is why this never showed up in practice — but the endpoint is reachable
+        // directly, and a client-side skip is not a server-side rule.
+        var member = await _unitOfWork.CardiMembers.GetByIdAsync(cardiMemberId);
+        if (member is null || !member.IsActive || member.IsMonitoringPaused(DateTime.UtcNow))
+            return NoStatusMessage();
+
+        // Claims the member's generation slot. The get-then-set is not atomic — IDistributedCache
+        // exposes no set-if-absent — so this is a fan-out damper, not a mutex, the same trade
+        // ManualDeviceSyncService documents. What it stops is the case that actually happens: a
+        // cold cache and several dashboards opening at once, each of which would otherwise start
+        // its own tens-of-seconds generation because the cache is only written at the end. A
+        // caller that loses the slot answers "nothing to say yet" straight away rather than
+        // queueing behind a generation whose result it would not wait for anyway.
+        var claimKey = $"dashboard-status-pending:{cardiMemberId}";
+        if (await _cache.GetStringAsync(claimKey, ct) is not null)
+            return NoStatusMessage();
+
+        var budget = TimeSpan.FromSeconds(_aiSettings.CurrentStatusBudgetSeconds);
+        await _cache.SetStringAsync(claimKey, "1",
+            new DistributedCacheEntryOptions { AbsoluteExpirationRelativeToNow = budget }, ct);
+
+        // The budget covers the whole generation, not just the model call, because what it
+        // promises is a response — the caller's own token still cancels this, it only ever
+        // tightens the deadline.
+        using var budgeted = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        budgeted.CancelAfter(budget);
+
+        try
+        {
+            return await GenerateCurrentStatusAsync(member, cardiMemberId, cacheKey, budgeted.Token);
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            // Ours expired, not the caller's. Answering without a line beats holding the phone
+            // past its own 30 s timeout, where it gets a socket error instead of the static
+            // per-tier copy this response shape exists to fall back to. Nothing is cached, so the
+            // next load tries again — and the claim above expires with the budget.
+            return NoStatusMessage();
+        }
+    }
+
+    private async Task<CurrentStatusMessageResponse> GenerateCurrentStatusAsync(
+        CardiMember member, Guid cardiMemberId, string cacheKey, CancellationToken ct)
+    {
         var unresolvedAlerts = (await _unitOfWork.Alerts.GetByCardiMemberAsync(cardiMemberId, true)).ToList();
         var severity = unresolvedAlerts.Count == 0
             ? "green"
             : unresolvedAlerts.Max(a => a.Severity).ToString().ToLowerInvariant();
 
-        var member = await _unitOfWork.CardiMembers.GetByIdAsync(cardiMemberId);
         var today = DateOnly.FromDateTime(DateTime.UtcNow);
         var recentLogs = await _unitOfWork.ActivityLogs
             .GetByCardiMemberAndDateRangeAsync(cardiMemberId, today.AddDays(-2), today);
@@ -319,7 +375,7 @@ public class HealthInsightService : IHealthInsightService
         // caregiver long after the call that produced them. An unresolvable placeholder falls
         // through to the empty-message path below, which the response contract already treats as
         // "nothing to say yet" — the dashboard keeps its per-tier headline and says nothing false.
-        var name = NamePlaceholder.FirstName(member?.Name);
+        var name = NamePlaceholder.FirstName(member.Name);
         var message = NamePlaceholder.Resolve(aiResponse.Message.Trim(), name) ?? string.Empty;
         if (NamePlaceholder.IsPresentIn(message))
             message = string.Empty;
