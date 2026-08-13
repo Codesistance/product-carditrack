@@ -349,6 +349,10 @@ resource "google_cloud_run_v2_service" "web" {
   client   = "terraform"
 
   template {
+    # Its own identity, not the shared compute SA — see service_accounts.tf. This service is the
+    # public one, and the compute SA it used to run as can read the device-token encryption key.
+    service_account = google_service_account.web.email
+
     vpc_access {
       network_interfaces {
         network    = google_compute_network.main.id
@@ -456,6 +460,10 @@ resource "google_cloud_run_v2_service" "web" {
     google_secret_manager_secret_version.app_secrets,
     google_secret_manager_secret_version.db_connection_string,
     google_storage_bucket_iam_member.web_dataprotection_keys,
+    # Not the web_* IAM members directly: Cloud Run validates the apm-data secret_key_ref and the
+    # GCS volume against this service's runtime identity when it creates the revision, and those
+    # grants are eventually consistent. See the barrier's comment in service_accounts.tf.
+    time_sleep.web_iam_propagation,
   ]
 }
 

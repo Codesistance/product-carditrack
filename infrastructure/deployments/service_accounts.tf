@@ -21,6 +21,76 @@
 # also running the public-facing web service is unchanged by this file and is tracked
 # separately; web is the identity worth splitting next, not the API.
 
+# ── Web runtime identity ──────────────────────────────────────────────────────
+# The security review behind #238 rated this the highest-value split remaining, above the API's.
+# The default compute SA holds secretAccessor on encryption-key — the AES-GCM key protecting device
+# OAuth tokens — plus ack-token-key, auth0-client-secret, db-connection-string and
+# firebasecloudmessaging.admin. It also ran the *public-facing* web service. An SSRF or RCE in web
+# reached the metadata server and minted tokens that read the field-level encryption key: the
+# shortest path from an internet-exposed surface to wearer device credentials on this estate.
+#
+# Web turns out to need almost nothing, which is what makes this worth doing rather than merely
+# worth wanting. Its whole grant set is three entries — one secret, one bucket, one project role —
+# against a compute SA carrying roughly a dozen. It reads no database secret at all
+# (web_secret_env_vars is apm-data alone, main.tf).
+#
+# It also narrows the DP key ring. That ring is deliberately unencrypted on GCS, accepted because it
+# protects antiforgery tokens only; until now every compute-SA workload could read it, and after
+# this only web can.
+#
+# Additive, like the api/pipeline split before it: no existing compute SA binding is removed here.
+# The compute SA's grant on the DP bucket becomes dead once web is verified on this identity — see
+# the note on it in cloud_storage.tf — and removing it is a separate, verifiable apply rather than
+# something bundled into the change that moves the identity.
+resource "google_service_account" "web" {
+  account_id   = "${var.secret_id_prefix}-web"
+  display_name = "CardiTrack Web (${var.secret_id_prefix})"
+  description  = "Runtime identity for the Web Cloud Run service. Deliberately holds no database, Auth0 or encryption-key access."
+}
+
+resource "google_project_iam_member" "web_cloudsql_client" {
+  project = var.project_id
+  role    = "roles/cloudsql.client"
+  member  = local.web_sa
+}
+
+# Its only secret env var.
+resource "google_secret_manager_secret_iam_member" "web_apm_data" {
+  secret_id = google_secret_manager_secret.app_secrets["apm-data"].id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = local.web_sa
+}
+
+# The Data Protection key ring, mounted as a GCS volume. Cloud Run resolves volume access with the
+# runtime service account, so this is what keeps antiforgery working once web stops being compute.
+resource "google_storage_bucket_iam_member" "web_dpkeys" {
+  bucket = google_storage_bucket.dataprotection_keys.name
+  role   = "roles/storage.objectAdmin"
+  member = local.web_sa
+}
+
+# Same barrier as the api and pipeline identities, for the same reason: Cloud Run validates the
+# apm-data secret_key_ref against this account when it creates the revision, and Secret Manager IAM
+# is eventually consistent. Without it this apply fails exactly as the 2026-08-13 one did.
+resource "time_sleep" "web_iam_propagation" {
+  create_duration = "60s"
+
+  triggers = {
+    service_account = google_service_account.web.email
+    grants = sha256(jsonencode(sort([
+      google_project_iam_member.web_cloudsql_client.id,
+      google_secret_manager_secret_iam_member.web_apm_data.id,
+      google_storage_bucket_iam_member.web_dpkeys.id,
+    ])))
+  }
+
+  depends_on = [
+    google_project_iam_member.web_cloudsql_client,
+    google_secret_manager_secret_iam_member.web_apm_data,
+    google_storage_bucket_iam_member.web_dpkeys,
+  ]
+}
+
 locals {
   # No equivalent local for the pipeline identity on purpose. That resource is counted on
   # enable_pipeline_jobs, so its attributes must be read as google_service_account.pipeline[0],
@@ -28,6 +98,7 @@ locals {
   # zero (prod today). Every consumer of it is itself gated on the same variable, so the indexed
   # reference is only ever reached where the instance exists — safe inline, unsafe hoisted.
   api_sa = "serviceAccount:${google_service_account.api.email}"
+  web_sa = "serviceAccount:${google_service_account.web.email}"
 
   # Secrets the API reads at instance start via secret_key_ref. Cloud Run resolves those
   # references with the *runtime* service account, so a missing grant here surfaces as a
