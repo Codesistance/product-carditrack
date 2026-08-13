@@ -765,7 +765,7 @@ public partial class DigestGenerationService : IDigestGenerationService
         /// <summary>The card title this summary is shown under — see
         /// <see cref="CleanHeadline"/> for what happens to one that arrives as a sentence.</summary>
         [Description(
-            "A short label, not a sentence. For example: A settled night. Moving less than usual.")]
+            "A short label, not a sentence.")]
         public string? Headline { get; init; }
 
         /// <summary>Named and described rather than left as a bare "text": the description travels
