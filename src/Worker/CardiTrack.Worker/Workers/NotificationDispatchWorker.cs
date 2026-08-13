@@ -53,10 +53,43 @@ public class NotificationDispatchWorker : CronBackgroundService
     {
         var utcNow = _timeProvider.GetUtcNow().UtcDateTime;
 
-        await RetryClaimedRowsAsync(utcNow, stoppingToken);
-        await RunEscalationSweepAsync(utcNow, stoppingToken);
-        await ExpirePastTtlRowsAsync(utcNow, stoppingToken);
-        await DisableUnreachableTokensAsync(utcNow, stoppingToken);
+        // Each phase is isolated, for the same reason CronBackgroundService guards its
+        // run-on-startup invocation: this host does not override BackgroundServiceExceptionBehavior,
+        // so anything escaping a tick stops the entire Worker — wearable sync, baselines, partition
+        // maintenance and all. That is not theoretical. A misconfigured FirebaseApp made resolving
+        // IDispatchService throw on every sweep, and because it throws at *resolution* it lands
+        // here rather than in the per-row try/catch below: 224 whole-host restarts in two hours
+        // (incident 2026-08-12), during which nothing else the Worker owns ran either.
+        //
+        // A push outage should cost pushes, nothing more. The phases are independent by
+        // construction — each opens its own scope and commits its own work — so a failed one
+        // genuinely leaves the others able to run, and every row it would have touched is still
+        // due on the next 30-second tick.
+        await RunPhaseAsync(nameof(RetryClaimedRowsAsync), () => RetryClaimedRowsAsync(utcNow, stoppingToken), stoppingToken);
+        await RunPhaseAsync(nameof(RunEscalationSweepAsync), () => RunEscalationSweepAsync(utcNow, stoppingToken), stoppingToken);
+        await RunPhaseAsync(nameof(ExpirePastTtlRowsAsync), () => ExpirePastTtlRowsAsync(utcNow, stoppingToken), stoppingToken);
+        await RunPhaseAsync(nameof(DisableUnreachableTokensAsync), () => DisableUnreachableTokensAsync(utcNow, stoppingToken), stoppingToken);
+    }
+
+    /// <summary>
+    /// Runs one phase, logging rather than propagating anything it throws. Cancellation is
+    /// deliberately let through — a stopping host is not a phase failure, and swallowing it would
+    /// make shutdown wait out the rest of the tick.
+    /// </summary>
+    private async Task RunPhaseAsync(string phase, Func<Task> run, CancellationToken ct)
+    {
+        try
+        {
+            await run();
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "NotificationDispatch phase {Phase} failed; the next tick retries it.", phase);
+        }
     }
 
     private async Task RetryClaimedRowsAsync(DateTime utcNow, CancellationToken ct)
