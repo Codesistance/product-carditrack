@@ -498,8 +498,9 @@ variable "medgemma_memory" {
 # also paying for a warm 4 vCPU / 16 Gi inference box. The default stays 0: an environment that
 # has not decided to spend that should not start doing so by inheriting it. dev.tfvars opts in,
 # because MedGemma is on a latency-sensitive path there — the Dashboard status line generates
-# inside the caregiver's request — and a warm instance keeps both the model and its prefix cache
-# loaded between calls.
+# inside the caregiver's request. What that buys is narrower than it sounds — see the measured note
+# on this variable in deployments/cloud_run.tf: the prompt prefix is re-read either way, and the
+# model still unloads on the Ollama idle timer.
 #
 # Where the default still applies, 0 is not automatically the cheaper option either. A cold start
 # bills the full allocation for the ~150s the startup probe allows, so past a few hundred wakes a

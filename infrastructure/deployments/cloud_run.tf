@@ -195,9 +195,16 @@ variable "medgemma_max_instances" {
 # Deliberately not cloud_run_min_instances: at 4 vCPU / 16 Gi with cpu_idle = false a warm
 # MedGemma instance is the largest line item on the bill, and prod sets that shared variable
 # to 1. Scaling to zero trades a cold start (image pull + model load) for paying only while
-# an instance is alive — and, less obviously, re-reads the whole prompt on every call, since a
-# dead instance takes its prefix cache with it. Worth paying for where a request waits on the
-# model; the caller decides, and the default here does not.
+# an instance is alive. Worth paying for where a request waits on the model — the Dashboard status
+# line, which dev opts into via its own tfvars; the caller decides, and the default here does not.
+#
+# Be precise about what warming buys, because the obvious guess is wrong. Measured against dev on
+# 2026-08-13, with min_instances = 1 applied: a warm instance still reported `cached n_tokens = 0`
+# on every generation, so the fixed prompt prefix is re-read at ~68 tokens/sec each call whether or
+# not the instance survived. Ollama also unloads the model after OLLAMA_KEEP_ALIVE (default 5
+# minutes) idle even while the instance lives, so at the cadences above the model is reloaded
+# between most calls anyway. Warming avoids the image pull and the startup probe; it does not
+# currently avoid either of those. Setting OLLAMA_KEEP_ALIVE would close the second half.
 #
 # The trade is not unconditional in the other direction either, which is the trap worth naming: a
 # cold start costs the full allocation for the ~150s the startup probe allows, so N wakes a day

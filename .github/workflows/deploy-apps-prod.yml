@@ -284,13 +284,25 @@ jobs:
           # state. Destroy is irreversible, but safe for anything past the newest — nothing pins a
           # version number, every binding resolves "latest". Cleanup failure must not fail the
           # deploy, so each destroy degrades to a warning.
-          gcloud secrets versions list $SECRET_ID \
-            --project $PROJECT \
-            --filter='state=ENABLED' \
-            --sort-by=~createTime \
-            --format='value(name.basename())' \
+          #
+          # The listing is captured rather than piped straight into the loop. Piped, a failure here
+          # is invisible: the step runs under bash -e without pipefail, so the pipeline takes the
+          # exit status of the while loop, which succeeds happily over the empty input a failed
+          # list produces. The deploy would carry on — correctly — but silently, and this step's
+          # whole job is to stop versions accumulating unnoticed.
+          if ! SUPERSEDED=$(gcloud secrets versions list $SECRET_ID \
+                --project $PROJECT \
+                --filter='state=ENABLED' \
+                --sort-by=~createTime \
+                --format='value(name.basename())'); then
+            echo "::warning::Could not list versions of $SECRET_ID; skipping prune this run."
+            SUPERSEDED=""
+          fi
+
+          echo "$SUPERSEDED" \
             | tail -n +"$((KEEP_VERSIONS + 1))" \
             | while read -r VERSION; do
+                [ -n "$VERSION" ] || continue
                 echo "Destroying superseded version $VERSION of $SECRET_ID."
                 gcloud secrets versions destroy "$VERSION" \
                   --secret=$SECRET_ID \
