@@ -4,9 +4,14 @@ using CardiTrack.Domain.Enums;
 
 namespace CardiTrack.Application.Services;
 
-/// <summary>One rule's verdict: everything the orchestrator needs to write the alert.</summary>
+/// <summary>One rule's verdict: everything the orchestrator needs to write the alert.
+/// <see cref="NightOf"/> is set by rules that judge one specific night (the civil day the
+/// night ended on) rather than the firing day's data — the orchestrator dedups those per
+/// night, because late-arriving data can put the same night in front of the rule on two
+/// calendar days.</summary>
 public sealed record StatisticalAlertCandidate(
-    string Rule, AlertType Type, AlertSeverity Severity, string Title, string Message, string MetricValues);
+    string Rule, AlertType Type, AlertSeverity Severity, string Title, string Message, string MetricValues,
+    DateOnly? NightOf = null);
 
 /// <summary>
 /// The R1 statistical alert rules (docs/execution/backend/api/alerts.md taxonomy) — pure
@@ -72,10 +77,17 @@ public static class StatisticalAlertRules
             Serialize(new { rule = ActivityDeclineRule, steps, baselineAvgSteps = average }));
     }
 
-    /// <summary>Last night's sleep more than 30% off the baseline average, in either direction.</summary>
-    public static StatisticalAlertCandidate? IrregularSleep(PatternBaseline baseline, ActivityLog? yesterday)
+    /// <summary>
+    /// The most recent night's sleep more than 30% off the baseline average, in either direction.
+    /// Sleep sessions are attributed to the civil day they <b>ended</b> on, so last night lives on
+    /// <em>today's</em> log — the same row the dashboard's sleep card rates — and the orchestrator
+    /// passes the freshest log that carries a sleep reading. The candidate names the night it
+    /// judged (<see cref="StatisticalAlertCandidate.NightOf"/>) so one night alerts at most once
+    /// however late its data arrived.
+    /// </summary>
+    public static StatisticalAlertCandidate? IrregularSleep(PatternBaseline baseline, ActivityLog? lastNight)
     {
-        if (baseline.AvgSleepMinutes is not > 0 || yesterday?.SleepMinutes is not { } sleep)
+        if (baseline.AvgSleepMinutes is not > 0 || lastNight?.SleepMinutes is not { } sleep)
             return null;
 
         var average = baseline.AvgSleepMinutes.Value;
@@ -88,7 +100,12 @@ public static class StatisticalAlertRules
             "Sleep was well off the usual",
             $"Around {sleep / 60.0:F1} hours of sleep, noticeably {direction} than the usual "
             + $"{average / 60.0:F1} — one night is rarely a worry, but it may be worth mentioning.",
-            Serialize(new { rule = IrregularSleepRule, sleepMinutes = sleep, baselineAvgSleepMinutes = average }));
+            Serialize(new
+            {
+                rule = IrregularSleepRule, night = lastNight.Date.ToString("O"),
+                sleepMinutes = sleep, baselineAvgSleepMinutes = average,
+            }),
+            NightOf: lastNight.Date);
     }
 
     /// <summary>Yesterday's resting heart rate above baseline average + max(2σ, 5 bpm).</summary>

@@ -122,6 +122,14 @@ internal static partial class MedicalPromptBlocks
     /// sometimes will not. The dates stay, in parentheses, because they still carry the weekday
     /// pattern a week-long window is read for.
     /// </para>
+    /// <para>
+    /// The sleep key says which night it is, on every row. Sleep sessions are attributed to the
+    /// civil day they <em>ended</em> on, so a row's sleep figure is the night that finished that
+    /// morning — meaning last night lives on <em>today's</em> row, and today's label says so
+    /// outright: a summary once called a member's poor night good because the model, told today's
+    /// totals were partial, distrusted today's complete sleep figure and read yesterday's row —
+    /// the night before last — as "last night".
+    /// </para>
     /// </remarks>
     internal static string DailyLines(IEnumerable<ActivityLog> logs, int take, DateOnly today)
     {
@@ -129,7 +137,7 @@ internal static partial class MedicalPromptBlocks
             .TakeLast(take)
             .Select(l =>
                 $"  {DayLabel(l.Date, today)}: "
-                + $"steps={l.Steps}, HR={l.RestingHeartRate}, sleep={l.SleepMinutes}min")
+                + $"steps={l.Steps}, HR={l.RestingHeartRate}, sleep(night ending that morning)={l.SleepMinutes}min")
             .ToList();
 
         return lines.Count > 0 ? string.Join("\n", lines) : "No recent activity data.";
@@ -138,12 +146,14 @@ internal static partial class MedicalPromptBlocks
     /// <summary>
     /// Which day a reading belongs to, said before the reading rather than after it. Relative to
     /// the member's own today, because that is the anchor the model is missing — it cannot know
-    /// what today's date is except by being told.
+    /// what today's date is except by being told. Today's label scopes "partial" to the activity
+    /// totals only, because its sleep figure — last night's — is already a whole reading.
     /// </summary>
     private static string DayLabel(DateOnly date, DateOnly today) =>
         (today.DayNumber - date.DayNumber) switch
         {
-            <= 0 => $"Today so far ({date}, still in progress — totals are partial)",
+            <= 0 => $"Today so far ({date}, still in progress — activity totals are partial; "
+                    + "the sleep figure is last night's and complete)",
             1 => $"Yesterday ({date}, complete day)",
             var days => $"{days} days ago ({date}, complete day)",
         };
