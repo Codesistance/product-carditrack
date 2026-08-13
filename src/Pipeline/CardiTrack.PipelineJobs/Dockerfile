@@ -37,7 +37,9 @@ RUN mkdir -p /app/publish/logs
 
 # Stage 3: Runtime — chiseled Ubuntu, same base as the Worker. A Cloud Run *job* runs to
 # completion with no listener and no health probe, so no port is exposed.
-FROM mcr.microsoft.com/dotnet/aspnet:10.0-noble-chiseled AS final
+# The "-extra" variant adds ICU and tzdata — daily digest generation reasons about each
+# member's IANA time zone, which needs a real timezone database on top of plain chiseled.
+FROM mcr.microsoft.com/dotnet/aspnet:10.0-noble-chiseled-extra AS final
 ARG VERSION=0.0.0-local
 WORKDIR /app
 
