@@ -114,6 +114,47 @@ variable "enable_medgemma_iam_alerting" {
   }
 }
 
+# ── Public certificate expiry alerting ────────────────────────────────────────
+#
+# app.dev.carditrack.com's managed certificate expired on 2026-08-07 and stayed dead for six days.
+# A Google-managed certificate renews only while its domain still validates; app.dev's DNS record
+# was lost some time after issuance, renewal failed quietly, and nothing anywhere noticed. It
+# surfaced because someone probed the domain by hand while checking something else.
+#
+# The deploy-time smoke tests catch this only when a deploy happens to run, and only for the
+# service being deployed. A certificate dies on its own schedule — api.dev's runs to 2026-10-01 and
+# webhook.dev's to its own date — so the check has to be continuous and cover every domain, not
+# just whichever one someone last shipped.
+#
+# Uptime checks are the mechanism because their SSL metric is what is actually wanted:
+# time_until_ssl_cert_expires is reported off the TLS handshake, so it keeps reporting even when
+# Cloud Armor rejects the request body — which it does for unfamiliar user agents. An HTTP-level
+# check would conflate "certificate is fine but the WAF said 403" with "certificate is dying".
+#
+# Twenty days is chosen against the renewal window, not plucked: Google renews a managed
+# certificate roughly a month before expiry, so anything still under twenty days has already failed
+# to renew at least once. Earlier would alert on healthy certificates mid-renewal.
+variable "enable_cert_expiry_alerting" {
+  description = "Create uptime checks for the configured public domains and alert when a TLS certificate is close to expiry. Catches a managed certificate that has silently stopped renewing"
+  type        = bool
+  default     = true
+
+  validation {
+    condition = (
+      !var.enable_cert_expiry_alerting ||
+      length(var.alert_notification_emails) > 0 ||
+      (var.enable_slack_alerts && var.alert_slack_channel_id != "")
+    )
+    error_message = "enable_cert_expiry_alerting requires at least one notification channel: set alert_notification_emails, or enable_slack_alerts with a non-empty alert_slack_channel_id."
+  }
+}
+
+variable "cert_expiry_alert_days" {
+  description = "Fire when a public domain's TLS certificate has fewer than this many days left. Should stay below Google's ~30-day managed-certificate renewal window so a certificate mid-renewal does not alert"
+  type        = number
+  default     = 20
+}
+
 variable "medgemma_iam_alert_name" {
   description = "Name for the MedGemma IAM alert policy, environment-qualified (dev and prod share one GCP project, so this must be unique per environment)"
   type        = string
@@ -306,6 +347,111 @@ resource "google_monitoring_alert_policy" "medgemma_public_iam" {
 
       Remove the binding, then find out how it was added. If it came from the Console, that is the
       real finding: IAM here is Terraform-owned, and the next apply would have reverted it silently.
+    EOT
+    mime_type = "text/markdown"
+  }
+
+  user_labels = var.alerting_labels
+
+  depends_on = [google_project_service.monitoring]
+}
+
+# ── Public certificate expiry resources ───────────────────────────────────────
+
+locals {
+  # Reuses load_balancer.tf's list, so a domain added there is watched here automatically rather
+  # than needing to be remembered in two places — a domain nobody was looking at is what started
+  # all this.
+  cert_expiry_domains = var.enable_cert_expiry_alerting ? toset(local.configured_domains) : toset([])
+}
+
+resource "google_monitoring_uptime_check_config" "public_domain" {
+  for_each = local.cert_expiry_domains
+
+  display_name = "${local.lb_name_prefix}-${replace(each.value, ".", "-")}"
+  timeout      = "10s"
+  period       = "300s"
+
+  http_check {
+    path         = "/"
+    port         = 443
+    use_ssl      = true
+    validate_ssl = true
+  }
+
+  monitored_resource {
+    type = "uptime_url"
+    labels = {
+      project_id = var.project_id
+      host       = each.value
+    }
+  }
+
+  depends_on = [google_project_service.monitoring]
+}
+
+resource "google_monitoring_alert_policy" "cert_expiry" {
+  count        = length(local.cert_expiry_domains) > 0 ? 1 : 0
+  display_name = "${local.lb_name_prefix}-tls-cert-expiry"
+  combiner     = "OR"
+
+  conditions {
+    display_name = "TLS certificate expiring on a public domain"
+    condition_threshold {
+      # resource.type is mandatory on a metric-threshold filter — omitting it is rejected outright
+      # by the API, which is how the MedGemma alert first failed. uptime_url is the resource type
+      # uptime checks report against.
+      filter = join(" AND ", [
+        "metric.type=\"monitoring.googleapis.com/uptime_check/time_until_ssl_cert_expires\"",
+        "resource.type=\"uptime_url\"",
+      ])
+      comparison      = "COMPARISON_LT"
+      threshold_value = var.cert_expiry_alert_days
+
+      # An hour of confirmation before firing. The metric moves in days, so there is nothing to be
+      # gained from reacting to a single scrape, and one checker region briefly failing a handshake
+      # should not page anyone.
+      duration = "3600s"
+
+      aggregations {
+        alignment_period = "3600s"
+        # MIN across checker regions: if any region sees an expiring certificate, that is the
+        # answer worth having. Averaging would let healthy regions mask a bad one.
+        per_series_aligner   = "ALIGN_MIN"
+        cross_series_reducer = "REDUCE_MIN"
+        group_by_fields      = ["resource.label.host"]
+      }
+    }
+  }
+
+  notification_channels = concat(
+    [for c in google_monitoring_notification_channel.oom_email : c.id],
+    local.oom_slack_channel_ids,
+  )
+
+  documentation {
+    content   = <<-EOT
+      **A public domain's TLS certificate is close to expiry.**
+
+      Google renews a managed certificate roughly a month out, so a certificate under
+      ${var.cert_expiry_alert_days} days has already failed to renew at least once. Renewal fails
+      when the domain stops validating — almost always because its DNS record no longer resolves to
+      the load balancer IP.
+
+      Check, in this order:
+
+      1. `gcloud compute ssl-certificates list --global` — look for `PROVISIONING` with a
+         `FAILED_NOT_VISIBLE` domain status.
+      2. That the domain resolves to the load balancer address, and that the DNS record is
+         **DNS-only** rather than proxied. A proxied record resolves to the provider's IP, and
+         validation then never sees the load balancer.
+
+      Fixing DNS does not un-expire a certificate that has already lapsed. Once the record is
+      correct, force a reissue by bumping the generation suffix on the certificate resource
+      (`web_cert_generation` in load_balancer.tf), which recreates it create-before-destroy.
+
+      This alert exists because app.dev.carditrack.com expired on 2026-08-07 and nobody knew for
+      six days.
     EOT
     mime_type = "text/markdown"
   }
