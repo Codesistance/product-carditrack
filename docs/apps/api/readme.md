@@ -379,10 +379,10 @@ dotnet test
 
 ## Deployment
 
-The API ships as two container images (both multi-stage, `mcr.microsoft.com/dotnet/aspnet:10.0-noble-chiseled-extra` runtime, non-root UID 1654 — the `-extra` variant carries ICU and tzdata, which the plain chiseled base lacks):
+The API ships as two container images, both multi-stage but on different runtime bases:
 
-- **`Dockerfile`** — the API service itself, deployed to **Cloud Run** (binds the base image's `ASPNETCORE_HTTP_PORTS=8080`).
-- **`Dockerfile.migrate`** — an EF Core **migrator image** (`dotnet ef database update` entrypoint) deployed as a **Cloud Run Job**; it runs against the private Cloud SQL instance via the Auth Proxy socket and exits after applying pending migrations.
+- **`Dockerfile`** — the API service itself, deployed to **Cloud Run** (binds the base image's `ASPNETCORE_HTTP_PORTS=8080`). Runtime is `mcr.microsoft.com/dotnet/aspnet:10.0-noble-chiseled-extra`, non-root UID 1654 — the `-extra` variant carries ICU and tzdata, which the plain chiseled base lacks.
+- **`Dockerfile.migrate`** — an EF Core **migrator image** (`dotnet ef database update` entrypoint) deployed as a **Cloud Run Job**; it runs against the private Cloud SQL instance via the Auth Proxy socket and exits after applying pending migrations. It builds and runs directly from `mcr.microsoft.com/dotnet/sdk:10.0` (needs `dotnet ef` installed at runtime), not a chiseled image.
 
 See the [Infrastructure Guide](../../infrastructure.md) for the full deployment pipeline.
 
