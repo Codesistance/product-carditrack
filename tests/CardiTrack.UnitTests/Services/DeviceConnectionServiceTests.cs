@@ -559,12 +559,12 @@ public class DeviceConnectionServiceTests
     }
 
     [Fact]
-    public void AddGoogleHealthProvider_FailsFast_WhenFitbitIsNotFirstProvider()
+    public void AddGoogleHealthProvider_FailsFast_WhenGoogleHealthIsNotFirstProvider()
     {
         var services = new ServiceCollection();
         services.AddGoogleHealthProvider();
         services.Configure<List<DeviceProviderSettings>>(list =>
-            list.Add(new DeviceProviderSettings { Provider = "Garmin" }));
+            list.Add(new DeviceProviderSettings { Provider = "GarminConnect", DeviceTypes = ["Garmin"] }));
 
         using var sp = services.BuildServiceProvider();
 

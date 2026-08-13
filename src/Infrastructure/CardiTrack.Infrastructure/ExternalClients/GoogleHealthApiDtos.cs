@@ -15,14 +15,15 @@ public record GoogleHealthActivitiesResult(
     int? Floors,
     int? CaloriesBurned);
 
-// Heart rate endpoint: GET /1/user/-/heart/date/{date}/1d.json
+// Heart rate: Google Health API v4 `heart-rate` Sample type via dataPoints:dailyRollUp, plus the
+// `daily-resting-heart-rate` Daily type via list (see GoogleHealthApiClient for the method table).
 public record GoogleHealthHeartRateResult(
     int? RestingHeartRate,
     int? AvgHeartRate,
     int? MaxHeartRate,
     int? MinHeartRate);
 
-// Sleep endpoint: GET /1/user/-/sleep/date/{date}.json
+// Sleep: Google Health API v4 `sleep` Session type via list with a civil-time filter.
 // TotalSleepMinutes is null when no session was recorded for the day — an unworn or unsynced
 // device, not a sleepless night. See GoogleHealthActivitiesResult for why that distinction is kept.
 public record GoogleHealthSleepResult(
