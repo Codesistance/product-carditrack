@@ -1322,8 +1322,23 @@ jobs:
 
   deploy-web-dev:
     name: Deploy Web → Dev
-    needs: [changes, push-web-image]
-    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && needs.changes.outputs.web == 'true'
+    # Waits on run-db-migrations like every service that opens the database (Web wires the
+    # DbContext too): schema-dependent code must never boot ahead of its schema. The #209
+    # deploy proved the race is real — the Worker's startup pass hit a table 18 seconds
+    # before the migrator created it. Migrations may legitimately be SKIPPED here (a change
+    # that touches no src/Infrastructure path cannot contain a migration, but flips e.g.
+    # web without api) — hence success-or-skipped rather than plain job ordering.
+    # !cancelled() is what makes GitHub evaluate this condition at all when a needed job
+    # was skipped; it also removes the implicit success() on the other needs, so the image
+    # push is re-checked explicitly.
+    needs: [changes, push-web-image, run-db-migrations]
+    if: >-
+      !cancelled()
+      && github.ref == 'refs/heads/main'
+      && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+      && needs.changes.outputs.web == 'true'
+      && needs.push-web-image.result == 'success'
+      && (needs.run-db-migrations.result == 'success' || needs.run-db-migrations.result == 'skipped')
     runs-on: ubuntu-latest
     steps:
       - uses: google-github-actions/auth@v3
@@ -1340,8 +1355,17 @@ jobs:
 
   deploy-worker-dev:
     name: Deploy Worker → Dev
-    needs: [changes, push-worker-image]
-    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && needs.changes.outputs.worker == 'true'
+    # Same schema-before-code gate as deploy-web-dev — see the comment there. The Worker
+    # is the service that actually lost this race on the #209 deploy (42P01 from
+    # PartitionMaintenanceWorker's run-on-startup pass).
+    needs: [changes, push-worker-image, run-db-migrations]
+    if: >-
+      !cancelled()
+      && github.ref == 'refs/heads/main'
+      && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+      && needs.changes.outputs.worker == 'true'
+      && needs.push-worker-image.result == 'success'
+      && (needs.run-db-migrations.result == 'success' || needs.run-db-migrations.result == 'skipped')
     runs-on: ubuntu-latest
     steps:
       - uses: google-github-actions/auth@v3
@@ -1398,8 +1422,17 @@ jobs:
 
   deploy-pipeline-dev:
     name: Deploy Pipeline Jobs → Dev
-    needs: [changes, push-pipeline-image]
-    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && needs.changes.outputs.pipeline == 'true'
+    # Same schema-before-code gate as deploy-web-dev — see the comment there. PipelineJobs
+    # queries through the same EF model (its #209-window errors were the EF retry wrapper
+    # around the same missing table).
+    needs: [changes, push-pipeline-image, run-db-migrations]
+    if: >-
+      !cancelled()
+      && github.ref == 'refs/heads/main'
+      && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+      && needs.changes.outputs.pipeline == 'true'
+      && needs.push-pipeline-image.result == 'success'
+      && (needs.run-db-migrations.result == 'success' || needs.run-db-migrations.result == 'skipped')
     runs-on: ubuntu-latest
     steps:
       - uses: google-github-actions/auth@v3

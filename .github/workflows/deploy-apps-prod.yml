@@ -145,7 +145,10 @@ jobs:
   # ── Web ──────────────────────────────────────────────────────────────────────
   deploy-web:
     name: Deploy Web → Prod
-    needs: [env, validate-tag]
+    # Schema before code: Web opens the database too, so it waits for the migrator the
+    # same way the API does. Prod jobs are unconditional on a validated tag, so a plain
+    # needs edge is enough here — no skipped-migration case to allow for.
+    needs: [env, validate-tag, run-db-migrations-prod]
     runs-on: ubuntu-latest
 
     steps:
@@ -170,7 +173,9 @@ jobs:
   # ── Worker ───────────────────────────────────────────────────────────────────
   deploy-worker:
     name: Deploy Worker → Prod
-    needs: [env, validate-tag]
+    # Schema before code — same edge as deploy-web; the Worker is the heaviest DB user
+    # and the one that actually lost this race on the dev #209 deploy.
+    needs: [env, validate-tag, run-db-migrations-prod]
     runs-on: ubuntu-latest
 
     steps:
