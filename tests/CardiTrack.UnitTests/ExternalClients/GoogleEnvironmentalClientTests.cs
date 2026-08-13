@@ -141,4 +141,39 @@ public class GoogleEnvironmentalClientTests
         Assert.Null(context.TemperatureCelsius);
         Assert.Equal(42, context.AirQualityIndex);
     }
+
+    /// <summary>
+    /// A timeout and a shutdown both arrive as <see cref="TaskCanceledException"/>, and they are
+    /// not the same thing. The timeout is a lookup that failed and is swallowed like any other;
+    /// a signalled token is the host stopping the job, and swallowing that would turn a prompt
+    /// shutdown into a full pass over every remaining member, each logging a warning on the way out.
+    /// </summary>
+    [Fact]
+    public async Task ATimeout_IsSwallowedLikeAnyOtherFailedLookup()
+    {
+        var context = await Client(new CancellingHandler(new CancellationTokenSource().Token))
+            .GetContextAsync(51.5, -0.12, DateTime.UtcNow);
+
+        Assert.Null(context.TemperatureCelsius);
+        Assert.Null(context.AirQualityIndex);
+    }
+
+    [Fact]
+    public async Task ASignalledToken_StopsTheLookupRatherThanBeingLoggedAndIgnored()
+    {
+        using var cts = new CancellationTokenSource();
+        await cts.CancelAsync();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            Client(new CancellingHandler(cts.Token))
+                .GetContextAsync(51.5, -0.12, DateTime.UtcNow, cts.Token));
+    }
+
+    /// <summary>Throws the exception an HttpClient raises for both a timeout and a cancellation.</summary>
+    private sealed class CancellingHandler(CancellationToken token) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request, CancellationToken cancellationToken) =>
+            throw new TaskCanceledException("timed out", null, token);
+    }
 }

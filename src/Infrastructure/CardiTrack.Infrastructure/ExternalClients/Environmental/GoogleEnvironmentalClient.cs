@@ -106,7 +106,8 @@ public class GoogleEnvironmentalClient : IEnvironmentalContextClient
 
             return new WeatherReading(celsius, condition, body.RelativeHumidity);
         }
-        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException
+        catch (Exception ex) when (!ct.IsCancellationRequested
+            && ex is HttpRequestException or TaskCanceledException
             or System.Text.Json.JsonException or NotSupportedException)
         {
             // Enrichment is best-effort context, not a required field: a transient failure here
@@ -115,6 +116,12 @@ public class GoogleEnvironmentalClient : IEnvironmentalContextClient
             // HTML error page from a misrouted request) — ReadFromJsonAsync throws those, and an
             // uncaught one here would fault this task and take the sibling call down with it via
             // Task.WhenAll, defeating the "independent calls" guarantee this class documents.
+            //
+            // The token check separates the two things TaskCanceledException means here. An
+            // HttpClient timeout raises it with the token unsignalled, and that is a lookup that
+            // failed — swallowed, like any other. A signalled token is the host shutting the job
+            // down, and swallowing that would turn a prompt shutdown into a full pass over every
+            // remaining member, each one logging a warning on its way out.
             _logger.LogWarning(ex, "Environmental weather lookup failed.");
             return null;
         }
@@ -150,11 +157,13 @@ public class GoogleEnvironmentalClient : IEnvironmentalContextClient
             var universal = parsed?.Indexes?.FirstOrDefault(i => i.Code == "uaqi");
             return universal is null ? null : (universal.Aqi, universal.Category);
         }
-        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException
+        catch (Exception ex) when (!ct.IsCancellationRequested
+            && ex is HttpRequestException or TaskCanceledException
             or System.Text.Json.JsonException or NotSupportedException)
         {
-            // See TryGetTemperatureAsync's catch clause for why JsonException/NotSupportedException
-            // are included alongside the transport exceptions.
+            // See TryGetWeatherAsync's catch clause for why JsonException/NotSupportedException are
+            // included alongside the transport exceptions, and why a signalled token is let through
+            // rather than swallowed with the timeouts.
             _logger.LogWarning(ex, "Environmental air-quality lookup failed.");
             return null;
         }
