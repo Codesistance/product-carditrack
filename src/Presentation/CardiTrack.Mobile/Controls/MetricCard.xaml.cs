@@ -6,6 +6,22 @@ public partial class MetricCard : ContentView
 {
     private const int StarCount = StarRatingView.StarCount;
 
+    /// <summary>
+    /// Smallest difference a one-decimal caption can state. Anything under it would print as
+    /// "0°C", which is a way of saying "no change" that looks like a measurement.
+    /// </summary>
+    private const decimal CaptionResolution = 0.05m;
+
+    /// <summary>
+    /// The ends of the skin-temperature track (see <see cref="ApplyTemperatureTrack"/>). Wide
+    /// enough to hold what a wrist wearable reads through a cold room or a warm bed, tight enough
+    /// that a degree of movement is a visible step rather than a twitch.
+    /// </summary>
+    private const decimal SkinTempAxisLow = 30m;
+
+    /// <inheritdoc cref="SkinTempAxisLow"/>
+    private const decimal SkinTempAxisHigh = 40m;
+
     public MetricCard()
     {
         InitializeComponent();
@@ -25,13 +41,22 @@ public partial class MetricCard : ContentView
         if (metric is { Value: { } value, Goal: > 0 })
         {
             ProgressTrackBorder.IsVisible = true;
+            MarkerGrid.IsVisible = false;
+            ProgressFill.Background = (Brush)Microsoft.Maui.Controls.Application.Current!.Resources["GradientButtonBrush"];
             SetProgress((double)(value / metric.Goal!.Value));
+            // "Usual", not "Goal". The figure is this member's own average day, which nobody set
+            // as a target — and the Member Detail screen's own explainer says of this same number
+            // that it "is not a target", so calling it a goal here had the two screens
+            // contradicting each other about what the bar is measuring.
             if (!TrendLabel.IsVisible)
-                CaptionLabel.Text = $"Goal {metric.Goal:N0}";
+                CaptionLabel.Text = $"Usual {metric.Goal:N0}";
         }
         else
         {
+            // No bar for a member whose usual day is not known yet, rather than one drawn against
+            // a made-up round number. See MemberInsightsCalculator, which no longer supplies one.
             ProgressTrackBorder.IsVisible = false;
+            MarkerGrid.IsVisible = false;
             if (!TrendLabel.IsVisible)
                 CaptionLabel.Text = "Daily activity";
         }
@@ -82,7 +107,119 @@ public partial class MetricCard : ContentView
         ValueLabel.Text = metric.Value is { } v ? $"{v:0.#}°C" : "—";
 
         ApplyStars(metric, matchPill: ApplyStatusPill(metric.Status));
-        CaptionLabel.Text = metric.Baseline is not null ? "vs. own nightly baseline" : "Nightly reading";
+        CaptionLabel.Text = TemperatureComparison(metric);
+        ApplyTemperatureTrack(metric);
+    }
+
+    /// <summary>
+    /// The bar under skin temperature: filled to the previous reading, marked at today's.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Activity's bar fills against a goal; this one has no goal to fill against, so it fills
+    /// against the last reading instead and puts today's on top of it as a tick. What it shows is
+    /// therefore a movement, not an achievement: how far today sits from the night before, and
+    /// which side of it. The two together answer the question the number alone cannot — 34°C is
+    /// meaningless in isolation, "a little above where it was last night" is not.
+    /// </para>
+    /// <para>
+    /// The axis is fixed at <see cref="SkinTempAxisLow"/>–<see cref="SkinTempAxisHigh"/>°C rather
+    /// than scaled to the readings in hand, so the same movement is always the same width: a
+    /// tenth of a degree stays a hair, a degree is a visible step. A scale drawn from this
+    /// member's own spread would stretch to fill the track whatever it contained, which makes a
+    /// steady wearer's quarter-degree wobble look exactly like another's full degree.
+    /// </para>
+    /// <para>
+    /// The bounds are a skin range, not a body-temperature one. A wrist wearable does not measure
+    /// core temperature (see <see cref="TemperatureComparison"/>), and running the axis up to a
+    /// fever — or to the highest core temperature anyone has survived — would put every real
+    /// reading in the left third of a track whose right half no wrist sensor can reach. Readings
+    /// outside the axis clamp to its ends; the caption still states the true distance.
+    /// </para>
+    /// <para>
+    /// Drawn only when there is a previous reading to fill to. A device's first night gets no bar
+    /// rather than one marking today against nothing.
+    /// </para>
+    /// </remarks>
+    private void ApplyTemperatureTrack(DashboardMetric metric)
+    {
+        if (metric.Value is not { } today || PreviousReading(metric) is not { } previous)
+        {
+            ProgressTrackBorder.IsVisible = false;
+            MarkerGrid.IsVisible = false;
+            return;
+        }
+
+        const decimal floor = SkinTempAxisLow;
+        const decimal scale = SkinTempAxisHigh - SkinTempAxisLow;
+
+        ProgressTrackBorder.IsVisible = true;
+        // Its own colour, not activity's gradient: the same chrome filled to two different kinds
+        // of thing (a goal there, a previous reading here) should not look identical.
+        ProgressFill.Background = new SolidColorBrush(
+            (Color)Microsoft.Maui.Controls.Application.Current!.Resources["MetricTemperatureInk"]);
+        SetProgress((double)((previous - floor) / scale));
+        SetMarker((double)((today - floor) / scale));
+
+        // The bar carries no text, and a screen reader has nothing to take from a fill width.
+        SemanticProperties.SetDescription(
+            ProgressTrackBorder, $"Today {today:0.#}°C, last reading {previous:0.#}°C");
+    }
+
+    /// <summary>
+    /// What tonight's skin temperature is being read against, spelled out as the distance from it:
+    /// "0.4°C above usual" rather than "vs. own nightly baseline", which named the comparison
+    /// without ever making it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The comparison is against this wearer's own nightly normal — the baseline the device itself
+    /// reports — because there is no other honest one to draw. No standards body publishes a
+    /// typical skin temperature to read 34°C against (see <c>HealthReferenceRanges</c>: a wrist
+    /// wearable measures skin, not core, and the number moves with the room as much as with the
+    /// wearer), so a "normal range" on this card would be our own figure wearing a publisher's
+    /// authority.
+    /// </para>
+    /// <para>
+    /// A device that has not sent a baseline still leaves one comparison available — the reading
+    /// before this one — and the card makes it: which way the number moved is something a
+    /// caregiver can read, where a bare 34°C is not. It is stated as a direction, not a verdict:
+    /// the movement between two nights carries no judgement about either.
+    /// </para>
+    /// </remarks>
+    private static string TemperatureComparison(DashboardMetric metric)
+    {
+        if (metric.Value is not { } value)
+            return "Nightly reading";
+
+        if (metric.Baseline is { } baseline)
+        {
+            var fromBaseline = value - baseline;
+            // Below the resolution the caption itself prints — anything that would render as
+            // "0°C above usual" is a night in line with their usual, and should say that instead.
+            return Math.Abs(fromBaseline) < CaptionResolution
+                ? "In line with usual"
+                : $"{Math.Abs(fromBaseline):0.#}°C {(fromBaseline > 0 ? "above" : "below")} usual";
+        }
+
+        if (PreviousReading(metric) is not { } previous)
+            return "Nightly reading";
+
+        var change = value - previous;
+        return Math.Abs(change) < CaptionResolution
+            ? "Same as last reading"
+            : $"{Math.Abs(change):0.#}°C {(change > 0 ? "up" : "down")} on last reading";
+    }
+
+    /// <summary>
+    /// The reading before the latest one, skipping the days this member reported nothing for —
+    /// the series carries a point per day whether or not it has a value, so "the day before" and
+    /// "the reading before" are not the same question.
+    /// </summary>
+    private static decimal? PreviousReading(DashboardMetric metric)
+    {
+        var readings = metric.Series.Where(point => point.Value is not null).ToList();
+        return readings.Count >= 2 ? readings[^2].Value : null;
     }
 
     public void ApplySpO2(DashboardMetric metric)
@@ -234,5 +371,17 @@ public partial class MetricCard : ContentView
         var filled = Math.Clamp(fraction, 0, 1);
         ProgressGrid.ColumnDefinitions[0].Width = new GridLength(filled, GridUnitType.Star);
         ProgressGrid.ColumnDefinitions[1].Width = new GridLength(1 - filled, GridUnitType.Star);
+    }
+
+    /// <summary>
+    /// Places the tick at <paramref name="fraction"/> along the track, the same way
+    /// <see cref="SetProgress"/> fills it — two star columns either side of an auto-width mark.
+    /// </summary>
+    private void SetMarker(double fraction)
+    {
+        var at = Math.Clamp(fraction, 0, 1);
+        MarkerGrid.ColumnDefinitions[0].Width = new GridLength(at, GridUnitType.Star);
+        MarkerGrid.ColumnDefinitions[2].Width = new GridLength(1 - at, GridUnitType.Star);
+        MarkerGrid.IsVisible = true;
     }
 }

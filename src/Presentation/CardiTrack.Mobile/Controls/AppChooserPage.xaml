@@ -19,7 +19,7 @@
                 Padding="24"
                 Margin="32,0"
                 Scale="0.92"
-                MaximumWidthRequest="360"
+                HorizontalOptions="Center"
                 VerticalOptions="Center">
             <Border.StrokeShape>
                 <RoundRectangle CornerRadius="20"/>
@@ -42,7 +42,9 @@
                      buttons ran past the card's right edge and the Border clipped them — and the
                      overflow dragged the title's tail off with it ("…for how long?" lost its last
                      word). The lists here are four or five short rows; the card fits them without
-                     scrolling at any font scale the layout survives generally. -->
+                     scrolling at any font scale the layout survives generally.
+
+                     The card's width comes from PopupCard.Fit, the same as the popup's. -->
                 <VerticalStackLayout x:Name="OptionsHost" Spacing="12" Margin="0,20,0,0"/>
 
                 <Button x:Name="CancelBtn"

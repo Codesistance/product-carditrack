@@ -52,10 +52,12 @@
                        Style="{StaticResource MetricRowCaption}"/>
             </VerticalStackLayout>
 
-            <!-- Progress track. Only activity has a real denominator (the daily step goal), so
-                 only activity draws a bar — a bar on heart rate or sleep would need a
-                 percentage the contract does not carry, and inventing one on a health screen
-                 is exactly the sort of implied reading the product must not make. -->
+            <!-- Progress track. Activity has a real denominator (the daily step goal) and fills
+                 against it; skin temperature has no denominator but does have a previous
+                 reading, so it fills to that and marks today against it (see ApplyTemperature).
+                 Heart rate and sleep draw no bar at all — a bar there would need a percentage
+                 the contract does not carry, and inventing one on a health screen is exactly the
+                 sort of implied reading the product must not make. -->
             <Border x:Name="ProgressTrackBorder"
                     IsVisible="False"
                     HeightRequest="7"
@@ -65,14 +67,26 @@
                 <Border.StrokeShape>
                     <RoundRectangle CornerRadius="12"/>
                 </Border.StrokeShape>
-                <Grid x:Name="ProgressGrid" ColumnDefinitions="0*,1*">
-                    <Border Grid.Column="0"
-                            Background="{StaticResource GradientButtonBrush}"
-                            StrokeThickness="0">
-                        <Border.StrokeShape>
-                            <RoundRectangle CornerRadius="12"/>
-                        </Border.StrokeShape>
-                    </Border>
+                <Grid>
+                    <Grid x:Name="ProgressGrid" ColumnDefinitions="0*,1*">
+                        <Border x:Name="ProgressFill"
+                                Grid.Column="0"
+                                Background="{StaticResource GradientButtonBrush}"
+                                StrokeThickness="0">
+                            <Border.StrokeShape>
+                                <RoundRectangle CornerRadius="12"/>
+                            </Border.StrokeShape>
+                        </Border>
+                    </Grid>
+
+                    <!-- Today's mark, laid over the fill. Positioned by the same two-star-column
+                         trick the fill uses, so neither has to measure the track. -->
+                    <Grid x:Name="MarkerGrid" ColumnDefinitions="0*,Auto,1*" IsVisible="False">
+                        <BoxView x:Name="MarkerTick"
+                                 Grid.Column="1"
+                                 WidthRequest="3"
+                                 Color="{StaticResource HeadingText}"/>
+                    </Grid>
                 </Grid>
             </Border>
 

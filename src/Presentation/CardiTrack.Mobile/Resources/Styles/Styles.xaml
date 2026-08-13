@@ -161,6 +161,15 @@
         <Setter Property="TextColor" Value="{StaticResource BodyText}"/>
     </Style>
 
+    <!-- Body copy a reader came for rather than copy that annotates something else: the generated
+         summary and the ways to help under it. Same face and size as Body2 in the heading ink —
+         Body2's grey is right for a caption beside a number, but it made the two paragraphs that
+         are the point of the screen the palest thing on it. Not Body2Medium: that darkens by
+         changing the weight too, which reads as emphasis rather than as ordinary prose. -->
+    <Style x:Key="Body2Dark" TargetType="Label" BasedOn="{StaticResource Body2}">
+        <Setter Property="TextColor" Value="{StaticResource HeadingText}"/>
+    </Style>
+
     <Style x:Key="BodySubtitle" TargetType="Label">
         <Setter Property="FontFamily" Value="Quicksand"/>
         <Setter Property="FontSize" Value="18"/>

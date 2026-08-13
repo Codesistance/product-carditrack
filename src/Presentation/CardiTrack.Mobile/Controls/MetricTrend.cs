@@ -16,7 +16,10 @@ namespace CardiTrack.Mobile.Controls;
 /// </remarks>
 public sealed class MetricTrend : INotifyPropertyChanged
 {
+    private readonly string _valueFormat;
+
     private int _days;
+    private DashboardMetric _metric;
 
     public MetricTrend(
         string iconSource, string inkKey, string name, string valueFormat, string axisFormat,
@@ -26,9 +29,10 @@ public sealed class MetricTrend : INotifyPropertyChanged
         InkKey = inkKey;
         Name = name;
         AxisFormat = axisFormat;
-        Metric = metric;
         MemberFirstName = memberFirstName;
-        ValueText = metric.Value is { } value ? string.Format(valueFormat, value) : "—";
+        _valueFormat = valueFormat;
+        _metric = metric;
+        ValueText = Format(metric);
         _days = days;
     }
 
@@ -46,12 +50,36 @@ public sealed class MetricTrend : INotifyPropertyChanged
     public string Name { get; }
 
     /// <summary>The latest reading, already formatted with its unit ("72 bpm").</summary>
-    public string ValueText { get; }
+    public string ValueText { get; private set; }
 
     /// <summary>Format for the chart's own min/max labels — the same number without its unit.</summary>
     public string AxisFormat { get; }
 
-    public DashboardMetric Metric { get; }
+    /// <summary>
+    /// This metric's current readings. Settable for the same reason <see cref="Days"/> is: a
+    /// refresh that brings new numbers for the metrics already on screen retunes the items the
+    /// carousel is holding, and the realised cards redraw in place. Replacing the carousel's
+    /// <c>ItemsSource</c> instead would snap it back to the first metric, which on this screen
+    /// means a caregiver reading the sleep chart is put back on activity by a background tick.
+    /// </summary>
+    /// <remarks>
+    /// Raised as an all-properties change (the empty property name every binder reads as "re-read
+    /// everything") rather than as <c>Metric</c> alone, because half this class is derived from it
+    /// — <see cref="ValueText"/>, <see cref="BaselineText"/>, <see cref="ReferenceText"/> and
+    /// <see cref="Window"/> all move when it does, and a binding on any of them would otherwise
+    /// never hear about it. Naming the four separately would be the same information at the cost
+    /// of four extra <c>Render</c> passes per card per refresh, each of which redraws a chart.
+    /// </remarks>
+    public DashboardMetric Metric
+    {
+        get => _metric;
+        set
+        {
+            _metric = value;
+            ValueText = Format(value);
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(string.Empty));
+        }
+    }
 
     /// <summary>Who the chart is about — lets the explainer copy name them instead of a label.</summary>
     public string? MemberFirstName { get; }
@@ -100,6 +128,9 @@ public sealed class MetricTrend : INotifyPropertyChanged
     /// widest window, so narrowing is a slice rather than another round trip; a member whose series
     /// is shorter than the window asked for simply shows everything it has.
     /// </summary>
+    private string Format(DashboardMetric metric) =>
+        metric.Value is { } value ? string.Format(_valueFormat, value) : "—";
+
     public IReadOnlyList<MetricPoint> Window =>
         Metric.Series.Count <= _days
             ? Metric.Series

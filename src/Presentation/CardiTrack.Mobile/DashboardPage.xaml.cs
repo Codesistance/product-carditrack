@@ -18,6 +18,9 @@ public partial class DashboardPage : ContentPage
 
     private const double UnavailableActionOpacity = 0.4;
 
+    /// <summary>Columns in the Key Metrics grid; see <see cref="LayoutMetricCards"/>.</summary>
+    private const int MetricsPerRow = 2;
+
     private readonly ICardiTrackApiClient _api;
     private readonly IAuthService _authService;
     private readonly IPopupService _popups;
@@ -344,11 +347,14 @@ public partial class DashboardPage : ContentPage
         // stopped, so a freshness reading here would misreport a deliberate pause as a gap.
         FreshnessBlock.IsVisible = !data.MonitoringPaused;
         var freshnessColor = (Color)Microsoft.Maui.Controls.Application.Current!.Resources[FreshnessColorKey(data.DataFreshness)];
-        FreshnessLabel.Text = data.DataFreshnessMessage;
-        FreshnessLabel.TextColor = freshnessColor;
         LastUpdatedFooterLabel.Text = data.LastSyncedAt is { } lastSynced
             ? $"Updated {RelativeTime.Format(lastSynced)}"
             : "Not synced yet";
+        // The age line carries the freshness state now that the message above it is gone: colour
+        // for the eye, the message itself for a screen reader, which cannot read a colour.
+        LastUpdatedFooterLabel.TextColor = freshnessColor;
+        SemanticProperties.SetDescription(
+            LastUpdatedFooterLabel, $"{data.DataFreshnessMessage}. {LastUpdatedFooterLabel.Text}");
 
         // Baseline-learning progress only while the window is still running — a permanently
         // full bar after it completes would say nothing new every day.
@@ -388,6 +394,8 @@ public partial class DashboardPage : ContentPage
             BreathingRateCard.IsVisible = metrics.BreathingRate.Value is not null;
             if (BreathingRateCard.IsVisible)
                 BreathingRateCard.ApplyBreathingRate(metrics.BreathingRate);
+
+            LayoutMetricCards();
         }
         else
         {
@@ -403,6 +411,34 @@ public partial class DashboardPage : ContentPage
             card.Apply(alert);
             card.AlertTapped += OnAlertTapped;
             AlertsStack.Add(card);
+        }
+    }
+
+    /// <summary>
+    /// Packs the Key Metrics tiles two to a row in reading order, skipping the ones this
+    /// member's wearable doesn't report.
+    /// </summary>
+    /// <remarks>
+    /// The order leads with the night — resting heart rate beside sleep — then the day, skin
+    /// temperature beside activity, and closes with the two readings a device reports without any
+    /// comparison to make. Positions are assigned here rather than pinned in XAML because three of
+    /// the six tiles are optional — skin temperature, SpO2 and breathing rate each depend on what
+    /// the device sends — and a fixed slot for an absent tile leaves its partner sitting alone
+    /// beside a half-row of nothing, which reads as a bug rather than as an absence. Packing keeps
+    /// the grid solid whatever the device reports; the declared pairing is what a member whose
+    /// device reports everything sees.
+    /// </remarks>
+    private void LayoutMetricCards()
+    {
+        var slot = 0;
+        foreach (var card in new[] { HeartRateCard, SleepCard, TemperatureCard, StepsCard, SpO2Card, BreathingRateCard })
+        {
+            if (!card.IsVisible)
+                continue;
+
+            Grid.SetRow(card, slot / MetricsPerRow);
+            Grid.SetColumn(card, slot % MetricsPerRow);
+            slot++;
         }
     }
 

@@ -51,6 +51,13 @@ public partial class AppChooserPage : ContentPage
     /// <summary>Completes with the chosen label, or null if cancelled or dismissed.</summary>
     public Task<string?> Result => _result.Task;
 
+    /// <summary>Same width rule as the popup this shares its shell with; see <see cref="PopupCard"/>.</summary>
+    protected override void OnSizeAllocated(double width, double height)
+    {
+        base.OnSizeAllocated(width, height);
+        PopupCard.Fit(Card, width);
+    }
+
     protected override void OnAppearing()
     {
         base.OnAppearing();

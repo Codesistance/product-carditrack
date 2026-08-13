@@ -27,8 +27,6 @@ public static class MemberInsightsCalculator
     /// </summary>
     public const int SeriesDays = 30;
 
-    private const decimal DefaultStepsGoal = 10000m;
-
     /// <summary>Stars a Key Metrics card rates a reading out of.</summary>
     public const int QualityScoreMax = 5;
 
@@ -71,10 +69,15 @@ public static class MemberInsightsCalculator
             series: BuildSeries(byDate, today, l => l.Steps),
             // Steps accumulate through the day, so a day still in progress has nothing to compare
             // against a whole-day average — at breakfast every member alive would read as a
-            // catastrophic drop. The goal bar carries the partial day instead, which is honest
-            // about being partway through by construction.
+            // catastrophic drop. The bar carries the partial day instead, which is honest about
+            // being partway through by construction.
             comparable: latestSteps?.Date != today);
-        steps.Goal = baseline?.AvgSteps ?? DefaultStepsGoal;
+        // This member's own usual day and nothing else. It used to fall back to a flat 10,000 for
+        // a member with no baseline yet, which is a pedometer brand's name from 1965 rather than
+        // anybody's guidance — the same invention HealthReferenceRanges refuses to make for steps,
+        // made here instead. A member still being learned now gets no denominator at all, and the
+        // clients draw no bar rather than one measuring them against a marketing figure.
+        steps.Goal = baseline?.AvgSteps;
         // Direction counts here: a member who walked half again as far as usual has not earned a
         // worse rating for it, so only a shortfall costs stars. Null for a day still in progress
         // for the same reason ChangePercent is — the goal bar carries the partial day instead.

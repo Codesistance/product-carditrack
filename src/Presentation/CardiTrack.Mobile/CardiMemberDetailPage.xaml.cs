@@ -80,6 +80,12 @@ public partial class CardiMemberDetailPage : ContentPage
     private bool _pauseDurationsOpen;
     private bool _pauseDurationsAnimating;
 
+    /// <summary>
+    /// Whether the last thing to take the screen from this page was one of our own popups — see
+    /// <see cref="OnDisappearing"/>.
+    /// </summary>
+    private bool _returningFromPopup;
+
     public CardiMemberDetailPage(ICardiTrackApiClient api, IPopupService popups)
     {
         InitializeComponent();
@@ -118,9 +124,35 @@ public partial class CardiMemberDetailPage : ContentPage
     protected override void OnAppearing()
     {
         base.OnAppearing();
-        // Always refetch: coming back from the edit screen or device management, the cached
-        // copy is exactly the thing that just changed.
+
+        // A popup of ours closing raises this too — it is a modal page, so dismissing it hands
+        // the screen back exactly as being navigated to does. That is not an arrival: the
+        // caregiver never left, and refetching under them re-runs Apply, which hands the trends
+        // carousel a new ItemsSource and snaps it (and the scroll under it) back — the screen
+        // visibly jumping the moment an explanation is dismissed. Nothing can have changed
+        // server-side while a modal held the screen anyway, and the periodic tick is still
+        // running underneath.
+        if (_popups.IsShowing || _returningFromPopup)
+        {
+            _returningFromPopup = false;
+            return;
+        }
+
+        // Otherwise always refetch: coming back from the edit screen or device management, the
+        // cached copy is exactly the thing that just changed.
         _ = LoadAsync();
+    }
+
+    /// <summary>
+    /// Records that this page was covered rather than left, for the <c>OnAppearing</c> that
+    /// follows. Both signals are kept because the platforms disagree on when the page underneath
+    /// is raised relative to the modal leaving the stack: on the path where it is raised late,
+    /// <see cref="IPopupService.IsShowing"/> has already been released and this is what remains.
+    /// </summary>
+    protected override void OnDisappearing()
+    {
+        base.OnDisappearing();
+        _returningFromPopup = _popups.IsShowing;
     }
 
     private async void OnPullToRefresh(object? sender, EventArgs e)
@@ -468,11 +500,13 @@ public partial class CardiMemberDetailPage : ContentPage
             // the words. Pinned to Start so it sits beside the first line of a suggestion that
             // wraps. Decorative, so out of the accessibility tree — a bullet read aloud before
             // every suggestion is noise, same call as MetricCard's star row.
+            // Body2Dark, matching the summary above: these two blocks are what the caregiver came
+            // to read, and Body2's grey left them the palest thing on the screen.
             var resources = Microsoft.Maui.Controls.Application.Current!.Resources;
             var glyph = new Label
             {
                 Text = "•",
-                Style = (Style)resources["Body2"],
+                Style = (Style)resources["Body2Dark"],
                 VerticalOptions = LayoutOptions.Start,
             };
             AutomationProperties.SetIsInAccessibleTree(glyph, false);
@@ -482,7 +516,7 @@ public partial class CardiMemberDetailPage : ContentPage
                 new Label
                 {
                     Text = suggestion,
-                    Style = (Style)resources["Body2"],
+                    Style = (Style)resources["Body2Dark"],
                     LineBreakMode = LineBreakMode.WordWrap,
                 },
                 1);
@@ -501,20 +535,36 @@ public partial class CardiMemberDetailPage : ContentPage
     private void ApplyTrends(DashboardMetrics? metrics)
     {
         var position = TrendsCarousel.Position;
+        var firstName = NameFormatting.FirstName(_member?.Name);
+
+        var reported = TrendCards
+            .Where(card => metrics is not null && card.Select(metrics).Value is not null)
+            .ToList();
+
+        // The usual refresh brings new numbers for exactly the metrics already on screen, and
+        // those go into the items the carousel is already holding: the realised cards redraw
+        // themselves off the change (MetricTrendCard subscribes to it), and the carousel is left
+        // alone. Handing it a new ItemsSource re-realises every card and re-measures the page
+        // around it, which is a visible jolt on a screen someone is mid-read of — and the reason
+        // a background tick used to move it under them. Rebuilding is for a genuine change of
+        // shape: a device that has started reporting a metric it did not before, or a member
+        // whose name the copy on the cards is written around.
+        if (reported.Count > 0
+            && reported.Count == _trends.Count
+            && reported.Zip(_trends).All(pair => pair.First.Name == pair.Second.Name)
+            && _trends[0].MemberFirstName == firstName)
+        {
+            foreach (var (card, trend) in reported.Zip(_trends))
+                trend.Metric = card.Select(metrics!);
+            return;
+        }
 
         _trends.Clear();
-        if (metrics is not null)
+        foreach (var (icon, ink, name, value, axis, select) in reported)
         {
-            foreach (var (icon, ink, name, value, axis, select) in TrendCards)
-            {
-                var metric = select(metrics);
-                if (metric.Value is null)
-                    continue;
-
-                _trends.Add(new MetricTrend(
-                    icon, ink, name, value, axis, metric, TrendWindowPicker.SelectedDays,
-                    NameFormatting.FirstName(_member?.Name)));
-            }
+            _trends.Add(new MetricTrend(
+                icon, ink, name, value, axis, select(metrics!), TrendWindowPicker.SelectedDays,
+                firstName));
         }
 
         // Assigning the same list instance back would not re-run the carousel's own diffing, so
