@@ -369,25 +369,6 @@ variable "enable_push_notifications" {
   default     = false
 }
 
-# The push canary's fleet (notification_engine.md §13). PushCanaryWorker sends a real Safety push
-# to these users every 15 minutes and pages when the previous one went unacked, which is the only
-# standing proof that the FCM -> handset hop still works: nothing else exercises it until a real
-# alert fires, and a family whose alerts silently stop arriving is the failure this product cannot
-# have. Empty by default, and it must stay a deliberate list of test accounts — a canary that
-# auto-discovered real users would buzz families every quarter hour with content nobody asked for.
-variable "push_canary_user_ids" {
-  description = "CardiTrack user ids (not Auth0 ids) whose devices receive the 15-minute push canary. Test accounts only; empty leaves the canary asleep"
-  type        = list(string)
-  default     = []
-
-  validation {
-    # A wrong-shaped id would bind to an empty Guid list and skip silently, which looks exactly
-    # like the canary being switched off on purpose.
-    condition     = alltrue([for id in var.push_canary_user_ids : can(regex("^[0-9a-fA-F]{8}-([0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$", id))])
-    error_message = "Each push_canary_user_ids entry must be a GUID (CardiTrack's own user id, not the Auth0 subject)."
-  }
-}
-
 # Networking
 # Phase 2 of the MedGemma IAM change. Every service now runs PRIVATE_RANGES_ONLY egress, so nothing
 # routes through Cloud NAT and it is a fixed ~£24/month charge for an idle gateway. Kept true by
