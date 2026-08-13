@@ -416,6 +416,10 @@ jobs:
       # trimmer, AOT and R8 after compilation has already succeeded — measured at
       # ~3.4 min of the 4.3 min step — to produce an APK nothing downloads, so
       # those three are switched off here; main still publishes in full below.
+      # AndroidLinkTool= (empty) is what turns R8 off: the csproj turns it on for
+      # every Release Android build to emit the mapping.txt Play Console needs,
+      # and neither AndroidLinkMode nor PublishTrimmed overrides it. Only main
+      # uploads a mapping, so only main needs to pay for one.
       #
       # Release rather than Debug, though, because XamlC only reports on Release:
       # the MAUI targets force ValidateOnly for Debug, which downgrades XamlC
@@ -432,7 +436,8 @@ jobs:
             -c Release \
             -p:RunAOTCompilation=false \
             -p:AndroidLinkMode=None \
-            -p:PublishTrimmed=false
+            -p:PublishTrimmed=false \
+            -p:AndroidLinkTool=
       - name: Publish (Release)
         if: github.event_name != 'pull_request'
         env:
@@ -489,10 +494,12 @@ jobs:
             apm_mobile_data:${{ needs.changes.outputs.gcp_project_id }}/carditrack-dev-apm-mobile-data
       # Same trade as Android, and the reason PR CI took ~10 min: of a 10.5 min
       # Release step, the managed compile finished in 70 s and the remaining
-      # ~9 min was the ILLink trimmer and AOT, both switched off here. Release
-      # device builds (build-mobile-ios-device) still run on main before any
-      # upload. The configuration stays Release for the XamlC reason given on the
-      # Android job above — Debug reports no XAML errors at all.
+      # ~9 min was the ILLink trimmer and AOT. MtouchLink=None below turns the
+      # trimmer off; the AOT compiler is not reached at all for a simulator RID,
+      # which is why no AOT property is passed here. Release device builds
+      # (build-mobile-ios-device) still run on main before any upload. The
+      # configuration stays Release for the XamlC reason given on the Android job
+      # above — Debug reports no XAML errors at all.
       # MtouchLink=None, not PublishTrimmed=false: the iOS SDK hard-errors on
       # PublishTrimmed=false ("iOS projects must build with PublishTrimmed=true")
       # and names MtouchLink as the supported way to turn the trimmer off.
