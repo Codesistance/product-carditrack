@@ -231,23 +231,25 @@
                                      and the first tile is where a thumb lands and where the eye
                                      starts. The others are reachable in the seconds that emergency
                                      is not. -->
-                                <Grid ColumnDefinitions="*,*,*,*" ColumnSpacing="10">
+                                <!-- Inset from the card's content box by the shadow's own radius.
+                                     The Border above clips its content, and the row was flush with
+                                     that edge — so the outer tiles' shadows were sliced off
+                                     vertically on the left of SOS and the right of Details, which
+                                     read as a rendering fault rather than as depth. The tiles lose
+                                     five points of width each and the row keeps its shadow whole. -->
+                                <Grid ColumnDefinitions="*,*,*,*" ColumnSpacing="10" Margin="10,0">
                                     <Border x:Name="EmergencyCallAction"
                                             Grid.Column="0"
-                                            BackgroundColor="{StaticResource AlertTileRed}"
-                                            StrokeThickness="0"
-                                            Padding="6,16,6,11"
+                                            Style="{StaticResource QuickActionTile}"
+                                            BackgroundColor="{StaticResource QuickActionTintRed}"
                                             SemanticProperties.Description="SOS: call emergency contact"
                                             SemanticProperties.Hint="Dials the emergency contact number, not the CardiMember directly">
-                                        <Border.StrokeShape>
-                                            <RoundRectangle CornerRadius="20"/>
-                                        </Border.StrokeShape>
                                         <Border.GestureRecognizers>
                                             <TapGestureRecognizer Tapped="OnEmergencyCallTapped"/>
                                         </Border.GestureRecognizers>
-                                        <VerticalStackLayout Spacing="13">
+                                        <VerticalStackLayout Spacing="10">
                                             <Image Source="icon_action_call.svg"
-                                                   WidthRequest="24" HeightRequest="24"
+                                                   WidthRequest="22" HeightRequest="22"
                                                    HorizontalOptions="Center"/>
                                             <Label Text="SOS"
                                                    Style="{StaticResource QuickActionLabel}"
@@ -257,14 +259,14 @@
                                     </Border>
                                     <Border x:Name="CallAction"
                                             Grid.Column="1"
-                                            Style="{StaticResource ElevatedCard}"
-                                            Padding="6,16,6,11">
+                                            Style="{StaticResource QuickActionTile}"
+                                            BackgroundColor="{StaticResource QuickActionTint}">
                                         <Border.GestureRecognizers>
                                             <TapGestureRecognizer Tapped="OnCallTapped"/>
                                         </Border.GestureRecognizers>
-                                        <VerticalStackLayout Spacing="13">
+                                        <VerticalStackLayout Spacing="10">
                                             <Image Source="icon_action_call.svg"
-                                                   WidthRequest="24" HeightRequest="24"
+                                                   WidthRequest="22" HeightRequest="22"
                                                    HorizontalOptions="Center"/>
                                             <Label Text="Call"
                                                    Style="{StaticResource QuickActionLabel}"
@@ -273,27 +275,27 @@
                                     </Border>
                                     <Border x:Name="MessageAction"
                                             Grid.Column="2"
-                                            Style="{StaticResource ElevatedCard}"
-                                            Padding="6,16,6,11">
+                                            Style="{StaticResource QuickActionTile}"
+                                            BackgroundColor="{StaticResource QuickActionTint}">
                                         <Border.GestureRecognizers>
                                             <TapGestureRecognizer Tapped="OnMessageTapped"/>
                                         </Border.GestureRecognizers>
-                                        <VerticalStackLayout Spacing="13">
+                                        <VerticalStackLayout Spacing="10">
                                             <Image Source="icon_action_sms.svg"
-                                                   WidthRequest="24" HeightRequest="24"
+                                                   WidthRequest="22" HeightRequest="22"
                                                    HorizontalOptions="Center"/>
                                             <Label Text="Message" Style="{StaticResource QuickActionLabel}"/>
                                         </VerticalStackLayout>
                                     </Border>
                                     <Border Grid.Column="3"
-                                            Style="{StaticResource ElevatedCard}"
-                                            Padding="6,16,6,11">
+                                            Style="{StaticResource QuickActionTile}"
+                                            BackgroundColor="{StaticResource QuickActionTint}">
                                         <Border.GestureRecognizers>
                                             <TapGestureRecognizer Tapped="OnViewDetailsTapped"/>
                                         </Border.GestureRecognizers>
-                                        <VerticalStackLayout Spacing="13">
+                                        <VerticalStackLayout Spacing="10">
                                             <Image Source="icon_action_details.svg"
-                                                   WidthRequest="24" HeightRequest="24"
+                                                   WidthRequest="22" HeightRequest="22"
                                                    HorizontalOptions="Center"/>
                                             <Label Text="Details" Style="{StaticResource QuickActionLabel}"/>
                                         </VerticalStackLayout>

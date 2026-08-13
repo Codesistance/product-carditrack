@@ -310,6 +310,28 @@
          Cards float on PageGround everywhere now, so they carry elevation rather than the
          hairline the old DashboardCard used — a hairline all but vanishes against the tinted
          ground. One card style, so a card reads the same on every screen. -->
+    <!-- Dashboard quick actions. Flat tint rather than a white card (see QuickActionTint), and a
+         glow rather than a drop shadow: no offset, a wider radius and a third of the opacity, so
+         the tile sits in a soft halo instead of appearing lifted off the card it is painted on.
+         Tighter than a card, too — these are four controls in a row, not four surfaces, and the
+         row reads better when they do not each claim a card's worth of height. Each tile brings
+         its own BackgroundColor; only the emergency action wears red. -->
+    <Style x:Key="QuickActionTile" TargetType="Border">
+        <Setter Property="StrokeThickness" Value="0"/>
+        <Setter Property="Padding" Value="6,12,6,9"/>
+        <Setter Property="StrokeShape">
+            <RoundRectangle CornerRadius="18"/>
+        </Setter>
+        <Setter Property="Shadow">
+            <!-- A small offset, not none. A zero-offset shadow sits directly behind the tile and
+                 only its blur escapes the edges, which on Android amounts to nothing you can see:
+                 the row read as painted-on rather than pressable. Three points down and a soft
+                 radius keeps it a glow rather than a hard drop, while giving the eye the edge it
+                 needs to read the tile as raised. -->
+            <Shadow Brush="{StaticResource CardShadowBrush}" Opacity="0.30" Radius="10" Offset="0,3"/>
+        </Setter>
+    </Style>
+
     <Style x:Key="ElevatedCard" TargetType="Border">
         <Setter Property="BackgroundColor" Value="{StaticResource White}"/>
         <Setter Property="StrokeThickness" Value="0"/>
@@ -376,7 +398,7 @@
 
     <Style x:Key="QuickActionLabel" TargetType="Label">
         <Setter Property="FontFamily" Value="QuicksandMedium"/>
-        <Setter Property="FontSize" Value="14"/>
+        <Setter Property="FontSize" Value="13"/>
         <Setter Property="TextColor" Value="{StaticResource HeadingText}"/>
         <Setter Property="HorizontalTextAlignment" Value="Center"/>
     </Style>
