@@ -1,0 +1,15 @@
+{
+  "name": "CardiTrack OTLP — severity to log status",
+  "is_enabled": true,
+  "filter": {
+    "query": "source:otlp_log_ingestion"
+  },
+  "processors": [
+    {
+      "type": "status-remapper",
+      "name": "Adopt the OTel severity text as the official log status",
+      "is_enabled": true,
+      "sources": ["otel.severity_text"]
+    }
+  ]
+}
