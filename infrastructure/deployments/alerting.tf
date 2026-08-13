@@ -98,8 +98,15 @@ variable "enable_medgemma_iam_alerting" {
 
   validation {
     # Same trap as enable_oom_alerting: a policy with no channel fires into the void.
+    #
+    # Short-circuits on an empty medgemma_image so the check matches the resource gating below.
+    # Without that, an environment with no MedGemma — prod today — could fail to plan over a
+    # missing channel for an alert that would never have been created. Reachable in practice only
+    # by turning enable_oom_alerting off (its identical validation fires first otherwise), which is
+    # exactly the narrow case where a spurious failure would be most confusing.
     condition = (
       !var.enable_medgemma_iam_alerting ||
+      var.medgemma_image == "" ||
       length(var.alert_notification_emails) > 0 ||
       (var.enable_slack_alerts && var.alert_slack_channel_id != "")
     )
@@ -132,7 +139,7 @@ resource "google_logging_metric" "cloud_run_oom" {
 }
 
 resource "google_monitoring_notification_channel" "oom_email" {
-  for_each     = var.enable_oom_alerting ? toset(var.alert_notification_emails) : toset([])
+  for_each     = local.alert_channels_enabled ? toset(var.alert_notification_emails) : toset([])
   display_name = "${var.oom_alert_name}-email-${each.value}"
   type         = "email"
   labels = {
@@ -146,8 +153,16 @@ resource "google_monitoring_notification_channel" "oom_email" {
 locals {
   # google_monitoring_notification_channel.id is already the full "projects/.../notificationChannels/..."
   # resource name; the Slack channel is referenced the same way even though Terraform doesn't manage it.
+  # Both alert policies draw on these channels, so they have to exist if *either* is enabled.
+  # Gating them on enable_oom_alerting alone meant that turning OOM alerting off silently stripped
+  # the MedGemma policy's channels: an alert policy with nobody attached, which is the failure this
+  # file's header calls out, reached without tripping either validation because the email list was
+  # still populated. The OOM policy itself remains count-gated on its own flag, so nothing about
+  # OOM alerting changes — only whether the shared channels exist.
+  alert_channels_enabled = var.enable_oom_alerting || local.medgemma_iam_alerting
+
   oom_slack_channel_ids = (
-    var.enable_oom_alerting && var.enable_slack_alerts && var.alert_slack_channel_id != ""
+    local.alert_channels_enabled && var.enable_slack_alerts && var.alert_slack_channel_id != ""
     ? ["projects/${var.project_id}/notificationChannels/${var.alert_slack_channel_id}"]
     : []
   )
@@ -270,6 +285,8 @@ resource "google_monitoring_alert_policy" "medgemma_public_iam" {
 
   # Reuses the OOM channels rather than creating duplicates for the same addresses. The resource
   # name is historical — it predates this alert, and renaming it would churn state for nothing.
+  # Their creation is gated on local.alert_channels_enabled, not on enable_oom_alerting, precisely
+  # so this policy cannot end up with an empty channel list.
   notification_channels = concat(
     [for c in google_monitoring_notification_channel.oom_email : c.id],
     local.oom_slack_channel_ids,
