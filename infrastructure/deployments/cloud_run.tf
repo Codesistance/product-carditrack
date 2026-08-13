@@ -201,10 +201,12 @@ variable "medgemma_max_instances" {
 # Be precise about what warming buys, because the obvious guess is wrong. Measured against dev on
 # 2026-08-13, with min_instances = 1 applied: a warm instance still reported `cached n_tokens = 0`
 # on every generation, so the fixed prompt prefix is re-read at ~68 tokens/sec each call whether or
-# not the instance survived. Ollama also unloads the model after OLLAMA_KEEP_ALIVE (default 5
-# minutes) idle even while the instance lives, so at the cadences above the model is reloaded
-# between most calls anyway. Warming avoids the image pull and the startup probe; it does not
-# currently avoid either of those. Setting OLLAMA_KEEP_ALIVE would close the second half.
+# not the instance survived. Warming does not make the prompt cheap — only shorter prompts do that.
+#
+# What it does buy is the image pull, the startup probe, and (since OLLAMA_KEEP_ALIVE is set on the
+# container below) the ~59s model load. Without that env var the model unloads on Ollama's
+# 5-minute idle timer and a warm instance still pays the load between most calls, which is the
+# shape this variable had when it was first raised to 1.
 #
 # The trade is not unconditional in the other direction either, which is the trap worth naming: a
 # cold start costs the full allocation for the ~150s the startup probe allows, so N wakes a day
@@ -673,6 +675,25 @@ resource "google_cloud_run_v2_service" "medgemma" {
 
     containers {
       image = var.medgemma_image
+
+      # Keep the model resident for the instance's whole life. Ollama's default unloads it after
+      # 5 minutes idle, which at the scheduler cadences above is between most calls — and a reload
+      # is not cheap: measured in dev on 2026-08-13, 58.6s from `llama_model_loader: loaded meta
+      # data` to `srv llama_server: model loaded`. (Not to be confused with the sub-second
+      # `load_duration` Ollama reports when the model was already resident.)
+      #
+      # That reload is billed like everything else here, because cpu_idle = false means the
+      # instance bills its full allocation whether it is inferring, loading, or idle. So unloading
+      # saves nothing while an instance is alive; it only adds a minute of paid-for latency to the
+      # next caller. On the request path — the Dashboard status line — that minute lands far past
+      # both the 25s generation budget and the mobile client's 30s timeout, so the first call after
+      # any quiet spell returns no live line at all.
+      #
+      # Costs memory, not money: 16Gi is reserved for the instance regardless of what is in it.
+      env {
+        name  = "OLLAMA_KEEP_ALIVE"
+        value = "-1"
+      }
 
       resources {
         limits = {
