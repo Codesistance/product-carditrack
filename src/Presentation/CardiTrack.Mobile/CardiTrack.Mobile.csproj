@@ -135,6 +135,28 @@
 			Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android' Or $([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'ios'" />
 	</ItemGroup>
 
+	<!-- Firebase project configuration, paired with the Plugin.Firebase.CloudMessaging reference
+	     above. Both files are committed next to the platform they configure, but neither is picked
+	     up by a default glob: MAUI auto-includes Platforms\iOS\Resources\**, and this plist sits
+	     above that folder, while google-services.json has no default build action at all. Without
+	     these two items the SDK still links and ships — every Firebase framework is in the bundle —
+	     but it has no project to talk to, so FirebaseApp silently fails to initialise and every
+	     GetTokenAsync() throws "Default FirebaseApp is not initialized". That is not a build error;
+	     it surfaces only at runtime as push never arriving, which is exactly how it went unnoticed
+	     (verified 2026-08-13 against the shipped 0.2.163 APK and IPA — both carried the frameworks
+	     and neither carried the config).
+
+	     Neither file is a secret: google-services.json and GoogleService-Info.plist hold client
+	     identifiers that ship inside every copy of the app. FCM send authority lives server-side
+	     with the Cloud Run service account (see PushServiceExtensions), never here. -->
+	<ItemGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android'">
+		<GoogleServicesJson Include="Platforms\Android\google-services.json" />
+	</ItemGroup>
+
+	<ItemGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'ios'">
+		<BundleResource Include="Platforms\iOS\GoogleService-Info.plist" LogicalName="GoogleService-Info.plist" />
+	</ItemGroup>
+
 	<ItemGroup>
 	  <ProjectReference Include="..\..\Core\CardiTrack.Application\CardiTrack.Application.csproj" />
 	  <ProjectReference Include="..\CardiTrack.Mobile.Core\CardiTrack.Mobile.Core.csproj" />
