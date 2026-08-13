@@ -1638,8 +1638,9 @@ jobs:
     # anyway with an empty version and asked the API to create `refs/tags/`, which is a 422. The
     # 2026-08-13 #239 merge was the first infra-only merge to reach main and failed exactly there.
     #
-    # Nothing was mis-deployed when that happened: every deploy job had already succeeded and the
-    # only casualty was the tag. But it fails the whole run, so an infra merge looks broken.
+    # Nothing was mis-deployed when that happened: every build and deploy job had skipped for the
+    # same reason compute-version did, so the tag was the only casualty. But it fails the whole
+    # run, so an infra merge looks broken.
     if: |
       always() &&
       github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
