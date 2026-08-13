@@ -43,8 +43,10 @@ public partial class DigestGenerationService : IDigestGenerationService
         - headline: a label of two to five words naming what this summary is about ("A settled
           night", "Moving less than usual", "A quieter day", "Resting well"). Sentence case, no
           full stop, no name and no {{NAME}}, and not a sentence.
-        - summary: 2-4 sentences written to the family member about the readings below, naming
+        - summary: 4-6 sentences written to the family member about the readings below, naming
           the person as {{NAME}} rather than calling them "your relative" or "your loved one".
+          Cover sleep, movement and heart rate rather than stopping after the first thing worth
+          saying, and say plainly when a reading is missing instead of padding with reassurance.
         - suggestions: exactly three ways the family could support {{NAME}} today, at most eight
           words each ("Ask how they slept", "Suggest a short walk together", "Make their favourite
           tea"). Ordinary, kind things a family member can do, aimed at comfort rather than
@@ -408,7 +410,7 @@ public partial class DigestGenerationService : IDigestGenerationService
         /// into the JSON Schema the client appends to the prompt, so each field the model is
         /// allowed to emit also states what belongs in it.</summary>
         [Description(
-            "The summary itself: 2-4 sentences telling the family member how their relative is "
+            "The summary itself: 4-6 sentences telling the family member how their relative is "
             + "doing. Not a restatement of the instructions and not a description of what a summary is.")]
         public required string Summary { get; init; }
 

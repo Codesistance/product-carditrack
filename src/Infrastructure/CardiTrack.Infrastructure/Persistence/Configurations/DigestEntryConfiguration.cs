@@ -29,7 +29,7 @@ public class DigestEntryConfiguration : IEntityTypeConfiguration<DigestEntry>
         builder.Property(d => d.Headline)
             .HasMaxLength(120);
 
-        // Summaries are 2–4 sentences by prompt design; the cap is a guard against a runaway
+        // Summaries are 4–6 sentences by prompt design; the cap is a guard against a runaway
         // generation ever being stored, not a format the text is expected to approach.
         builder.Property(d => d.Text)
             .IsRequired()
