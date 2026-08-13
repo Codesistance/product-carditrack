@@ -49,6 +49,38 @@ internal static partial class MedicalPromptBlocks
         """;
 
     /// <summary>
+    /// How to refer to the member across more than one sentence. Follows <see cref="Tone"/> in the
+    /// prompts that write prose, and is deliberately absent from the ones that do not.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Handed a <c>{{NAME}}</c> placeholder and told to write with it, a 4B model repeats the
+    /// placeholder in every sentence of a six-sentence summary. The result is grammatical and
+    /// unreadable — a case file about a subject rather than one person telling another how someone
+    /// is doing, which is the voice <see cref="Tone"/> spends seven lines asking for. Pronouns are
+    /// what ordinary writing uses instead, and the model will not risk one unless told it may.
+    /// </para>
+    /// <para>
+    /// The fallback is stated rather than left to inference. Every member created before the M1-04
+    /// form asked for sex sits at <see cref="Domain.Enums.Gender.PreferNotToSay"/>, which
+    /// <see cref="MemberContext"/> renders as "not stated"; a model told to pick a pronoun, given
+    /// no sex and no name to guess from, will still pick one.
+    /// </para>
+    /// <para>
+    /// Not part of <see cref="Tone"/>, and not appended to <c>CurrentStatusInstructions</c>, for
+    /// the same reason: that prompt asks for a two-to-five-word headline and one sentence under
+    /// twelve words, where a pronoun scarcely arises and its own instructions already settle how
+    /// the person is named. It is also the only prompt on a request path a caregiver waits on, and
+    /// the one under a character budget — so a rule that buys nothing there would be paid for in
+    /// latency on nearly every dashboard view. See <c>HealthInsightService.StatusPromptBudget</c>.
+    /// </para>
+    /// </remarks>
+    internal const string Pronouns = """
+        Name them once, then use he or she as the sex given indicates, or they if it is not stated.
+
+        """;
+
+    /// <summary>
     /// Caregiver notes are unbounded free text. A long note would crowd the metrics out of the
     /// context window and cost inference time on a single CPU-served model, so it is truncated
     /// visibly rather than silently.
@@ -72,18 +104,41 @@ internal static partial class MedicalPromptBlocks
         if (member is null)
             return "No member profile available.";
 
-        var lines = new List<string> { $"Age: {member.DateOfBirth.ToAgeInYears(today)}" };
-
-        // Only the two values that carry a clinical reading are passed on; "Other" and
-        // "Prefer not to say" tell the model nothing it can use.
-        if (member.Gender is Gender.Male or Gender.Female)
-            lines.Add($"Sex: {member.Gender}");
+        var lines = new List<string>
+        {
+            $"Age: {member.DateOfBirth.ToAgeInYears(today)}",
+            $"Sex: {SexLine(member.Gender)}",
+        };
 
         if (!string.IsNullOrWhiteSpace(revealedNotes))
             lines.Add($"{PromptContext.DemographicsContextSource.CaregiverContextLabel}: {Flatten(revealedNotes)}");
 
         return string.Join("\n", lines);
     }
+
+    /// <summary>
+    /// Sex as the model should read it. Always emitted, including when it was never asked.
+    /// </summary>
+    /// <remarks>
+    /// The line used to be dropped for anything but <see cref="Gender.Male"/> and
+    /// <see cref="Gender.Female"/>, on the reasoning that the other values told the model nothing
+    /// usable. That was wrong twice over. Silence is not neutral to a model that has been handed an
+    /// age and a set of readings: it fills the gap, and <see cref="Pronouns"/> now asks for a
+    /// pronoun it would have to guess. And because the mobile form did not ask for sex until this
+    /// change,
+    /// every real member sat at <see cref="Gender.PreferNotToSay"/> — so the guard did not filter
+    /// the rare unusable case, it suppressed the line for the entire population.
+    /// <para>
+    /// "not stated" rather than the enum name: <c>PreferNotToSay</c> is an identifier, and a model
+    /// asked to write plainly for a family member should not be reading identifiers.
+    /// </para>
+    /// </remarks>
+    private static string SexLine(Gender gender) => gender switch
+    {
+        Gender.Male => "Male",
+        Gender.Female => "Female",
+        _ => "not stated",
+    };
 
     /// <summary>
     /// Reduces a caregiver note to a single line, then truncates.

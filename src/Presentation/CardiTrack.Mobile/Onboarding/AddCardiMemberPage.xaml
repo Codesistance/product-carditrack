@@ -100,6 +100,24 @@
                         </Border>
                     </VerticalStackLayout>
 
+                    <!-- Sex. Not in the M1-04 comp; sits under Date of Birth because the two
+                         together are what set the reference range the summaries are read against. -->
+                    <VerticalStackLayout Spacing="6" Margin="0,16,0,0">
+                        <Label Text="Sex*" Style="{StaticResource AuthFieldLabel}"/>
+                        <Border Style="{StaticResource AuthEntryBorder}">
+                            <Picker x:Name="SexPicker"
+                                    Title="Select sex"
+                                    FontFamily="Quicksand"
+                                    FontSize="14"
+                                    BackgroundColor="Transparent"
+                                    SemanticProperties.Hint="Used to read heart rate and sleep against the right range"
+                                    SelectedIndexChanged="OnFormChanged"/>
+                        </Border>
+                        <Label Text="Helps us read heart rate and sleep against the right range."
+                               Style="{StaticResource Body2}"
+                               FontSize="12"/>
+                    </VerticalStackLayout>
+
                     <!-- Relationship -->
                     <VerticalStackLayout Spacing="6" Margin="0,16,0,0">
                         <Label Text="Relationship" Style="{StaticResource AuthFieldLabel}"/>

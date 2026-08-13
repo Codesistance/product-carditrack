@@ -120,16 +120,27 @@ public class HealthInsightServicePromptTests
         Assert.DoesNotContain(_memberId.ToString(), prompt);
     }
 
-    [Theory]
-    [InlineData(Gender.Other)]
-    [InlineData(Gender.PreferNotToSay)]
-    public async Task Prompt_OmitsSex_WhenItCarriesNoClinicalReading(Gender gender)
+    [Fact]
+    public async Task Prompt_SaysSexIsNotStated_RatherThanOmittingTheLine()
     {
-        SetupMember(gender);
+        SetupMember(Gender.PreferNotToSay);
 
         await CreateSut().AnalyzeBaselineAsync(_userId, _memberId);
 
-        Assert.DoesNotContain("Sex:", CapturedPrompt());
+        // The line used to be dropped for anything but Male/Female. Silence is not neutral: the
+        // tone block asks for a pronoun, and a model handed an age and no sex will pick one.
+        // Saying so outright is what keeps an unasked question from being answered by inference.
+        Assert.Contains("Sex: not stated", CapturedPrompt());
+    }
+
+    [Fact]
+    public async Task Prompt_NamesSexInPlainWords_NotAsTheEnumIdentifier()
+    {
+        SetupMember(Gender.PreferNotToSay);
+
+        await CreateSut().AnalyzeBaselineAsync(_userId, _memberId);
+
+        Assert.DoesNotContain("PreferNotToSay", CapturedPrompt());
     }
 
     [Fact]

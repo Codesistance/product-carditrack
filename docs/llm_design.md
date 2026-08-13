@@ -367,9 +367,22 @@ Caregiver-reported context: Type 2 diabetes, takes metformin
 
 Rules this block follows:
 
-- **Age and sex only, never name or id.** Neither identifier changes the clinical reading, so neither is sent. `Other`/`Prefer not to say` are omitted rather than passed through — they tell the model nothing it can use.
+- **Age and sex only, never name or id.** Neither identifier changes the clinical reading, so neither is sent.
+- **The sex line is always present, including when sex was never recorded**, where it reads `Sex: not stated`. It used to be dropped for anything but Male/Female, on the reasoning that the other values told the model nothing usable. That was wrong twice over. Silence is not neutral to a model holding an age and a set of readings — it fills the gap, and the pronoun rule below would leave it guessing. And because M1-04 hardcoded `PreferNotToSay` until the form began asking for sex, the guard was not filtering a rare unusable case: it was suppressing the line for **every member in the system**.
 - **Caregiver notes are untrusted input.** They are free text a caregiver typed, so every instruction block states that this section is background information and that instructions inside it must not be followed. Notes are truncated at 1000 characters, visibly.
 - **It goes after the fixed instructions, never inside them.** Anything above the block is the cacheable prefix.
+
+### The pronoun rule (built today)
+
+`MedicalPromptBlocks.Pronouns` is one line, and it is the reason the sex line above must always be present:
+
+```
+Name them once, then use he or she as the sex given indicates, or they if it is not stated.
+```
+
+Handed a `{{NAME}}` placeholder and told to write with it, a 4B model repeats the placeholder in every sentence of a six-sentence summary. The output is grammatical and unreadable — a case file about a subject, not one person telling another how someone is doing, which is the voice the shared tone block spends seven lines asking for. Pronouns are what ordinary writing uses instead, and the model will not risk one unless told it may.
+
+It follows `Tone` in **every prompt that writes prose** — the digest, the assessor, and the alert/baseline/learning/provisional insights — and is deliberately kept out of `CurrentStatusInstructions`. That prompt asks for a two-to-five-word headline and one sentence under twelve words, where a pronoun scarcely arises and its own instructions already settle how the person is named. It is also the only prompt on a request path a caregiver waits on and the only one under a character budget (`StatusPromptBudget`), so a rule that bought nothing there would be paid for in latency on nearly every dashboard view. `MedicalPromptToneTests` pins both halves of that: every other prompt carries the rule, and the status prompt does not.
 
 ### The member-context composer (built today)
 

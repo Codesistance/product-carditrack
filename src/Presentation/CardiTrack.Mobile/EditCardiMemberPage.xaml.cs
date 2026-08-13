@@ -26,6 +26,15 @@ public partial class EditCardiMemberPage : ContentPage
         ("Other", RelationshipType.Other),
     ];
 
+    // Same two options as the M1-04 add form. PreferNotToSay is not offered here either: it is
+    // where a member sits when nobody asked, and re-offering it as a choice would let a form
+    // whose whole purpose is to fill that gap put it back.
+    private static readonly (string Label, Gender Value)[] Sexes =
+    [
+        ("Male", Gender.Male),
+        ("Female", Gender.Female),
+    ];
+
     private static readonly (string Label, AlertSensitivity Value)[] Sensitivities =
     [
         ("Low", AlertSensitivity.Low),
@@ -51,6 +60,7 @@ public partial class EditCardiMemberPage : ContentPage
         _popups = popups;
 
         RelationshipPicker.ItemsSource = Relationships.Select(r => r.Label).ToList();
+        SexPicker.ItemsSource = Sexes.Select(s => s.Label).ToList();
         SensitivityPicker.ItemsSource = Sensitivities.Select(s => s.Label).ToList();
         DobPicker.MaximumDate = DateTime.Today;
         DobPicker.MinimumDate = DateTime.Today.AddYears(-120);
@@ -112,6 +122,12 @@ public partial class EditCardiMemberPage : ContentPage
             ? relationshipIndex
             : Array.FindIndex(Relationships, r => r.Value == RelationshipType.Other);
 
+        // Unlike relationship, an unmatched sex is left unselected rather than defaulted. The only
+        // value that lands here is PreferNotToSay, which means nobody has been asked yet — and
+        // picking a sex on the caregiver's behalf to avoid an empty control would put a guess
+        // behind every summary written about this member.
+        SexPicker.SelectedIndex = Array.FindIndex(Sexes, s => s.Value == member.Gender);
+
         SensitivityPicker.SelectedIndex = Math.Max(
             0, Array.FindIndex(Sensitivities, s => s.Value == member.AlertSensitivity));
     }
@@ -159,6 +175,9 @@ public partial class EditCardiMemberPage : ContentPage
 
         return NameEntry.Text?.Trim() != _member.Name
             || DateOnly.FromDateTime(DobPicker.Date ?? DateTime.Today) != _member.DateOfBirth
+            // Only a picked sex can be a change. An untouched picker on a member with no sex
+            // recorded is the state it loaded in, not an edit worth warning about on cancel.
+            || SelectedSex() is { } sex && sex != _member.Gender
             || SelectedRelationship() != _member.Relationship
             || SelectedSensitivity() != _member.AlertSensitivity
             || NullIfEmpty(MedicalNotesEditor.Text) != NullIfEmpty(_member.MedicalNotes)
@@ -185,6 +204,7 @@ public partial class EditCardiMemberPage : ContentPage
             {
                 Name = NameEntry.Text!.Trim(),
                 DateOfBirth = DateOnly.FromDateTime(DobPicker.Date ?? DateTime.Today),
+                Gender = SelectedSex(),
                 RelationshipType = SelectedRelationship(),
                 Email = _member.Email,
                 Phone = NullIfEmpty(PhoneEntry.Text),
@@ -271,6 +291,17 @@ public partial class EditCardiMemberPage : ContentPage
         RelationshipPicker.SelectedIndex >= 0
             ? Relationships[RelationshipPicker.SelectedIndex].Value
             : RelationshipType.Other;
+
+    /// <summary>
+    /// The picked sex, or <c>null</c> for an untouched picker — which the API reads as "leave the
+    /// stored value alone" rather than as a sex of none. Sex is not made compulsory on this form
+    /// the way it is on M1-04: a caregiver opening the edit screen to fix a phone number should
+    /// not be blocked behind a question about a member they may not have the answer for.
+    /// </summary>
+    private Gender? SelectedSex() =>
+        SexPicker.SelectedIndex >= 0
+            ? Sexes[SexPicker.SelectedIndex].Value
+            : null;
 
     private AlertSensitivity SelectedSensitivity() =>
         SensitivityPicker.SelectedIndex >= 0

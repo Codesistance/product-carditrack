@@ -40,7 +40,7 @@ public static class TestDataSeeder
             OrganizationId = organizationId,
             Name = $"Member {Guid.NewGuid():N}",
             DateOfBirth = new DateOnly(1955, 6, 15),
-            Gender = Gender.Other,
+            Gender = Gender.Female,
             MonitoringPausedUntil = monitoringPausedUntil,
             IsActive = isActive,
             EnvironmentalContextConsentGranted = environmentalContextConsentGranted

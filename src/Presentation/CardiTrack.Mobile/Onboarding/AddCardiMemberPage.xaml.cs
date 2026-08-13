@@ -21,6 +21,18 @@ public partial class AddCardiMemberPage : ContentPage
         ("Other", RelationshipType.Other),
     ];
 
+    /// <summary>
+    /// Only the two values a clinical reading can use. <see cref="Gender.PreferNotToSay"/> exists
+    /// in the enum but is deliberately absent here — it is the state of a member nobody was asked
+    /// about, not an answer to offer, and the whole reason for this field is that every member
+    /// created before it silently held that value.
+    /// </summary>
+    private static readonly (string Label, Gender Value)[] Sexes =
+    [
+        ("Male", Gender.Male),
+        ("Female", Gender.Female),
+    ];
+
     private readonly ICardiTrackApiClient _api;
     private readonly IPopupService _popups;
     private readonly CardiMemberDraftStore _drafts;
@@ -47,6 +59,7 @@ public partial class AddCardiMemberPage : ContentPage
         }
 
         RelationshipPicker.ItemsSource = Relationships.Select(r => r.Label).ToList();
+        SexPicker.ItemsSource = Sexes.Select(s => s.Label).ToList();
         DobPicker.MaximumDate = DateTime.Today;
         DobPicker.MinimumDate = DateTime.Today.AddYears(-120);
         EmergencyPhoneEntry.Placeholder = PhonePlaceholder.ForRegion(RegionInfo.CurrentRegion.TwoLetterISORegionName);
@@ -97,6 +110,7 @@ public partial class AddCardiMemberPage : ContentPage
         // reads back on an untouched form must not make an empty draft look filled in.
         DateOfBirth = _dobTouched ? DobPicker.Date : null,
         RelationshipIndex = RelationshipPicker.SelectedIndex,
+        SexIndex = SexPicker.SelectedIndex,
         DetailsExpanded = DetailsSwitch.IsToggled,
         MedicalNotes = MedicalNotesEditor.Text,
         EmergencyContactName = EmergencyNameEntry.Text,
@@ -118,6 +132,7 @@ public partial class AddCardiMemberPage : ContentPage
             _dobTouched = true;
         }
         RelationshipPicker.SelectedIndex = draft.RelationshipIndex;
+        SexPicker.SelectedIndex = draft.SexIndex;
         DetailsSwitch.IsToggled = draft.DetailsExpanded;
         MedicalNotesEditor.Text = draft.MedicalNotes;
         EmergencyNameEntry.Text = draft.EmergencyContactName;
@@ -189,10 +204,18 @@ public partial class AddCardiMemberPage : ContentPage
 
     private void OnFormChanged(object? sender, EventArgs e)
     {
-        // Name only. Relationship is optional — an unpicked one is sent as "Other", so gating
+        // Name and sex. Relationship is optional — an unpicked one is sent as "Other", so gating
         // Continue on it would make an optional field compulsory in everything but the label.
+        //
+        // Sex is gated, unlike every other field here, because an unanswered picker has nowhere
+        // harmless to fall back to: it would store PreferNotToSay, which is exactly the state
+        // this field exists to stop the whole population sitting in. A default that quietly
+        // reproduces the bug is worse than one more tap.
         var name = NameEntry.Text?.Trim();
-        ContinueBtn.IsEnabled = !string.IsNullOrWhiteSpace(name) && name.Length >= 2;
+        ContinueBtn.IsEnabled =
+            !string.IsNullOrWhiteSpace(name)
+            && name.Length >= 2
+            && SexPicker.SelectedIndex >= 0;
     }
 
     private async void OnContinueClicked(object? sender, EventArgs e)
@@ -207,7 +230,7 @@ public partial class AddCardiMemberPage : ContentPage
             {
                 Name = NameEntry.Text!.Trim(),
                 DateOfBirth = DateOnly.FromDateTime(DobPicker.Date ?? DateTime.Today),
-                Gender = Gender.PreferNotToSay,
+                Gender = SelectedSex(),
                 RelationshipType = SelectedRelationship(),
                 MedicalNotes = NullIfEmpty(MedicalNotesEditor.Text),
                 EmergencyContactName = NullIfEmpty(EmergencyNameEntry.Text),
@@ -244,6 +267,16 @@ public partial class AddCardiMemberPage : ContentPage
         RelationshipPicker.SelectedIndex >= 0
             ? Relationships[RelationshipPicker.SelectedIndex].Value
             : RelationshipType.Other;
+
+    /// <summary>
+    /// The picked sex. <see cref="Gender.PreferNotToSay"/> is unreachable in practice — Continue
+    /// stays disabled until something is picked — and is here only so a future change to that
+    /// gating cannot turn an unanswered picker into an index-out-of-range at the point of submit.
+    /// </summary>
+    private Gender SelectedSex() =>
+        SexPicker.SelectedIndex >= 0
+            ? Sexes[SexPicker.SelectedIndex].Value
+            : Gender.PreferNotToSay;
 
     private static string? NullIfEmpty(string? value) =>
         string.IsNullOrWhiteSpace(value) ? null : value.Trim();

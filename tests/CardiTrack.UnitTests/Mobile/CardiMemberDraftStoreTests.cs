@@ -17,6 +17,7 @@ public class CardiMemberDraftStoreTests
         Name = "Margaret",
         DateOfBirth = new DateTime(1948, 3, 2),
         RelationshipIndex = 0,
+        SexIndex = 1,
         DetailsExpanded = true,
         MedicalNotes = "Warfarin, mornings",
         EmergencyContactName = "Dr Patel",
@@ -41,6 +42,7 @@ public class CardiMemberDraftStoreTests
         Assert.Equal("Margaret", restored!.Name);
         Assert.Equal(new DateTime(1948, 3, 2), restored.DateOfBirth);
         Assert.Equal(0, restored.RelationshipIndex);
+        Assert.Equal(1, restored.SexIndex);
         Assert.True(restored.DetailsExpanded);
         Assert.Equal("Warfarin, mornings", restored.MedicalNotes);
         Assert.Equal("Dr Patel", restored.EmergencyContactName);
@@ -209,6 +211,7 @@ public class CardiMemberDraftStoreTests
     [InlineData(nameof(CardiMemberDraft.Name))]
     [InlineData(nameof(CardiMemberDraft.DateOfBirth))]
     [InlineData(nameof(CardiMemberDraft.RelationshipIndex))]
+    [InlineData(nameof(CardiMemberDraft.SexIndex))]
     [InlineData(nameof(CardiMemberDraft.MedicalNotes))]
     [InlineData(nameof(CardiMemberDraft.EmergencyContactName))]
     [InlineData(nameof(CardiMemberDraft.EmergencyContactPhone))]
@@ -221,6 +224,7 @@ public class CardiMemberDraftStoreTests
             case nameof(CardiMemberDraft.Name): draft.Name = "Margaret"; break;
             case nameof(CardiMemberDraft.DateOfBirth): draft.DateOfBirth = new DateTime(1948, 3, 2); break;
             case nameof(CardiMemberDraft.RelationshipIndex): draft.RelationshipIndex = 0; break;
+            case nameof(CardiMemberDraft.SexIndex): draft.SexIndex = 0; break;
             case nameof(CardiMemberDraft.MedicalNotes): draft.MedicalNotes = "Warfarin"; break;
             case nameof(CardiMemberDraft.EmergencyContactName): draft.EmergencyContactName = "Dr Patel"; break;
             case nameof(CardiMemberDraft.EmergencyContactPhone): draft.EmergencyContactPhone = "+44"; break;

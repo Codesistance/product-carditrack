@@ -52,7 +52,8 @@ public class RealtimeAssessmentService : IRealtimeAssessmentService
     /// after it. The closing severity line is the machine-readable part of the answer — the
     /// parser accepts nothing else, so the instruction is explicit about its format.
     /// </summary>
-    private const string AssessmentInstructions = MedicalPromptBlocks.Tone + """
+    private const string AssessmentInstructions =
+        MedicalPromptBlocks.Tone + MedicalPromptBlocks.Pronouns + """
         You are assessing one hour of a heart patient's wearable data for a monitoring service.
         The heart rate figures are denoised: the trend is the underlying heart rate, and the
         deviation score says how many typical jitters the latest reading sits from that trend.

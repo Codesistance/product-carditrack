@@ -26,6 +26,13 @@ public class UpdateCardiMemberValidator : AbstractValidator<UpdateCardiMemberReq
         RuleFor(x => x.RelationshipType)
             .Must(r => r == 0 || Enum.IsDefined(r)).WithMessage("Invalid relationship type");
 
+        // Null is "leave it alone" and never reaches the entity, so only a supplied value is
+        // checked. Note this rejects the retired Other = 3 as undefined, which is the point:
+        // a client still offering it is a client that needs updating, not data worth storing.
+        RuleFor(x => x.Gender!.Value)
+            .IsInEnum().WithMessage("Invalid gender value")
+            .When(x => x.Gender.HasValue);
+
         RuleFor(x => x.AlertSensitivity)
             .IsInEnum().WithMessage("Invalid alert sensitivity");
 

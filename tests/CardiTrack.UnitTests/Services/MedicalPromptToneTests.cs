@@ -106,6 +106,50 @@ public class MedicalPromptToneTests
         Assert.Equal(7, lines.Count);
     }
 
+    /// <summary>The one prompt the pronoun rule is deliberately kept out of.</summary>
+    private const string StatusPrompt = "HealthInsightService.CurrentStatusInstructions";
+
+    /// <summary>
+    /// Anything that writes more than a sentence gets the pronoun rule. Without it the model
+    /// repeats the <c>{{NAME}}</c> placeholder in every sentence it writes, which reads as a case
+    /// file rather than as the voice the tone block asks for.
+    /// </summary>
+    [Theory]
+    [MemberData(nameof(Prompts))]
+    public void Every_prose_prompt_carries_the_pronoun_rule(string name, string prompt)
+    {
+        if (name == StatusPrompt)
+            return;
+
+        Assert.Contains(MedicalPromptBlocks.Pronouns.Trim(), prompt, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// The status prompt is the exception, and stays one. It asks for a headline of two to five
+    /// words and a sentence under twelve — a pronoun scarcely arises, and its own instructions
+    /// already settle how the person is named. It is also the only prompt a caregiver waits on and
+    /// the only one under a character budget, so an inert rule here is paid for in latency on
+    /// nearly every dashboard view. Deleting this test is the cheap way to lose that.
+    /// </summary>
+    [Fact]
+    public void The_status_prompt_is_left_out_of_the_pronoun_rule()
+    {
+        var status = AllPrompts().Single(p => $"{p.Service}.{p.Field}" == StatusPrompt).Prompt;
+
+        Assert.DoesNotContain(MedicalPromptBlocks.Pronouns.Trim(), status, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Every member created before M1-04 asked for sex sits at "not stated". A rule that named no
+    /// fallback would leave a model that has been told to use a pronoun to infer one from an age
+    /// and a set of readings, which it will do.
+    /// </summary>
+    [Fact]
+    public void The_pronoun_rule_says_what_to_do_when_sex_is_not_stated()
+    {
+        Assert.Contains("they if it is not stated", MedicalPromptBlocks.Pronouns);
+    }
+
     [Theory]
     [MemberData(nameof(Prompts))]
     public void No_prompt_still_carries_its_own_never_alarm_rule(string _, string prompt)
