@@ -780,13 +780,19 @@ public class DigestGenerationServiceTests
     {
         // A model that formatted its own list: the bullets and quotes are the model's, not the
         // suggestion's, and they would render as literal characters in the app.
-        ReturnsSuggestions("- Ask how they slept", "  \"Suggest a short walk\" ", "• Sit with them a while");
+        ReturnsSuggestions(
+            "- Ask about the early waking when you call",
+            "  \"Suggest a short walk before the light goes\" ",
+            "• Sit with them through the afternoon");
 
         await CreateSut().GenerateDueDigestsAsync(UtcNow);
 
         await _digests.Received(1).AddAsync(
             Arg.Is<DigestEntry>(d => Suggestions(
-                d, "Ask how they slept", "Suggest a short walk", "Sit with them a while")),
+                d,
+                "Ask about the early waking when you call",
+                "Suggest a short walk before the light goes",
+                "Sit with them through the afternoon")),
             Arg.Any<CancellationToken>());
     }
 
@@ -797,7 +803,9 @@ public class DigestGenerationServiceTests
     [Fact]
     public async Task StoresNoSuggestions_WhenFewerThanThreeSurvive()
     {
-        ReturnsSuggestions("Ask how they slept", "   ", "Respond with: three ways to support them");
+        ReturnsSuggestions(
+            "Ask about the early waking when you call", "   ",
+            "Respond with: three ways to support them");
 
         var generated = await CreateSut().GenerateDueDigestsAsync(UtcNow);
 
@@ -824,7 +832,62 @@ public class DigestGenerationServiceTests
     public async Task DropsTheWholeSet_WhenTheSameSuggestionCameBackTwice()
     {
         // Three ways to help that are the same way twice is worse than no section at all.
-        ReturnsSuggestions("Ask how they slept", "ask how they SLEPT", "Sit with them a while");
+        ReturnsSuggestions(
+            "Ask about the early waking when you call",
+            "ask about the EARLY WAKING when you call",
+            "Sit with them through the afternoon");
+
+        await CreateSut().GenerateDueDigestsAsync(UtcNow);
+
+        await _digests.Received(1).AddAsync(
+            Arg.Is<DigestEntry>(d => d.Suggestions == null), Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// The failure this prompt change is about: the instructions and the reply schema each carried
+    /// three example suggestions, and those three came back word for word for member after member.
+    /// The examples are gone; this is the backstop that keeps a return to them off the screen.
+    /// </summary>
+    [Fact]
+    public async Task DropsTheWholeSet_WhenTheSuggestionsAreThePromptsOldExamples()
+    {
+        ReturnsSuggestions("Ask how they slept", "Suggest a short walk together", "Make their favourite tea");
+
+        var generated = await CreateSut().GenerateDueDigestsAsync(UtcNow);
+
+        Assert.Equal(1, generated);
+        await _digests.Received(1).AddAsync(
+            Arg.Is<DigestEntry>(d => d.Suggestions == null), Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// The generic phrase is dropped whole, not as a substring — the same words carried on into
+    /// something a family could actually act on are what the prompt now asks for.
+    /// </summary>
+    [Fact]
+    public async Task KeepsASuggestionThatCarriesAGenericOpeningIntoSomethingSpecific()
+    {
+        ReturnsSuggestions(
+            "Ask how they slept when you call tonight",
+            "Put the heating on before they wake",
+            "Sit with them through the afternoon");
+
+        await CreateSut().GenerateDueDigestsAsync(UtcNow);
+
+        await _digests.Received(1).AddAsync(
+            Arg.Is<DigestEntry>(d => Suggestions(
+                d,
+                "Ask how they slept when you call tonight",
+                "Put the heating on before they wake",
+                "Sit with them through the afternoon")),
+            Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>A category of caring is not one of the three; the prompt says so and this holds it.</summary>
+    [Fact]
+    public async Task DropsTheWholeSet_WhenASuggestionIsABareCategoryOfCaring()
+    {
+        ReturnsSuggestions("Check in", "Put the heating on before they wake", "Sit with them through the afternoon");
 
         await CreateSut().GenerateDueDigestsAsync(UtcNow);
 
@@ -855,6 +918,31 @@ public class DigestGenerationServiceTests
         Assert.NotNull(prompt);
         Assert.Contains("Never medical advice", prompt);
         Assert.Contains("never worded as something the", prompt);
+    }
+
+    /// <summary>
+    /// The prompt asks for suggestions the readings earned, and carries no example that could be
+    /// returned as one — an example beside the field is what the model reached for before.
+    /// </summary>
+    [Fact]
+    public async Task AsksForSuggestionsTheReadingsEarned_AndOffersNoExampleToCopy()
+    {
+        string? prompt = null;
+        await _medicalAi.GenerateStructuredAsync<DigestGenerationService.DigestAiResponse>(
+            Arg.Do<string>(p => prompt = p), Arg.Any<CancellationToken>());
+
+        await CreateSut().GenerateDueDigestsAsync(UtcNow);
+
+        Assert.NotNull(prompt);
+        Assert.Contains("must answer something in the readings above", prompt);
+        Assert.Contains("equally true for any person on any day", prompt);
+        foreach (var parroted in new[]
+                 {
+                     "Ask how they slept", "Suggest a short walk together", "Make their favourite tea",
+                 })
+        {
+            Assert.DoesNotContain(parroted, prompt);
+        }
     }
 
     [Fact]
