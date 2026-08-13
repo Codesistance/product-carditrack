@@ -344,7 +344,7 @@ Historical data synced via this device is retained. A CardiMember **may have zer
 
 | Brand (`DeviceType`) | `provider` Value | Data-source API (`HealthApi`) | Integration Mode | Status | Scopes / Permissions |
 |----------------------|-----------------|-------------------------------|------------------|--------|----------------------|
-| Fitbit (`Fitbit`) | `fitbit` | `GoogleHealth` | `server_oauth` | **Implemented** | Google Health API scope bundles: `activity_and_fitness.readonly`, `health_metrics_and_measurements.readonly`, `sleep.readonly` |
+| Fitbit (`Fitbit`) | `fitbit` | `GoogleHealth` | `server_oauth` | **Implemented** | Google Health API scope bundles: `activity_and_fitness.readonly`, `health_metrics_and_measurements.readonly`, `sleep.readonly`, `settings.readonly` (battery; added later, so pre-existing connections lack it) |
 | Google Pixel Watch (`GooglePixelWatch`) | `pixel_watch` | `GoogleHealth` | `server_oauth` | **Implemented** (same engine as `fitbit`) | Same Google Health API bundles as `fitbit` |
 | Apple Watch (`AppleWatch`) | `apple_health` | `AppleHealth` | `on_device_bridge` | Planned | `HKQuantityTypeStepCount`, `HKQuantityTypeHeartRate`, `HKCategoryTypeAsleepCore` |
 | Garmin (`Garmin`) | `garmin` | `GarminConnect` | `server_oauth` | Config-only stub | `activities`, `heart_rate`, `sleep` |
