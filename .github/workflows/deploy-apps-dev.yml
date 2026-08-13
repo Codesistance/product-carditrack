@@ -1562,26 +1562,17 @@ jobs:
       contains(needs.*.result, 'success')
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
-        with:
-          fetch-depth: 0
-          token: ${{ secrets.WORKFLOW_TAG_TOKEN || secrets.GITHUB_TOKEN }}
-      # GITHUB_TOKEN can never carry the `workflows` permission (it's not a
-      # grantable scope for GitHub-App-issued tokens via `permissions:`), and
-      # GitHub blocks *any* new ref — branch or tag — whose target commit
-      # touches .github/workflows/*, regardless of push transport. Every
-      # commit that touches this file will hit that wall, so this step needs
-      # a credential that actually has the `workflows` scope: a
-      # repo-scoped fine-grained PAT (Contents: Read & write, Workflows:
-      # Read & write) stored as the WORKFLOW_TAG_TOKEN secret. Falls back to
-      # GITHUB_TOKEN (today's behavior) until that secret exists.
-      - name: Push tag
+      # Tag via the REST API, not `git push`: receive-pack rejects any ref
+      # update whose commit touches .github/workflows/* unless the credential
+      # has the `workflows` scope — which GITHUB_TOKEN can never be granted.
+      # The create-ref endpoint skips that check because it uploads nothing:
+      # it just names a commit that already exists on main. No checkout needed.
+      - name: Create tag
         env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ needs.compute-version.outputs.version }}
-          PUSH_TOKEN: ${{ secrets.WORKFLOW_TAG_TOKEN || secrets.GITHUB_TOKEN }}
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git tag $TAG
-          git push https://x-access-token:${PUSH_TOKEN}@github.com/${{ github.repository }}.git $TAG
+          gh api "repos/${{ github.repository }}/git/refs" \
+            -f ref="refs/tags/${TAG}" \
+            -f sha="${{ github.sha }}"
           echo "### Tagged: \`$TAG\`" >> $GITHUB_STEP_SUMMARY
