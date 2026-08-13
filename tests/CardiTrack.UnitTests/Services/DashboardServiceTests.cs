@@ -246,6 +246,11 @@ public class DashboardServiceTests
         Assert.Null(result.Metrics.Steps.ChangePercent);
         Assert.Equal("unknown", result.Metrics.Steps.Status);
         Assert.Equal("unknown", result.HealthStatus);
+        // No usual day yet means no denominator at all. This used to be a flat 10,000 — a figure
+        // from a 1965 pedometer's brand name, which is exactly the invention HealthReferenceRanges
+        // refuses to make for steps. The clients draw no bar rather than measure a member against
+        // a number nobody published.
+        Assert.Null(result.Metrics.Steps.Goal);
     }
 
     [Fact]

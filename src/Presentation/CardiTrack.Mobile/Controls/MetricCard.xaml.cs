@@ -44,12 +44,19 @@ public partial class MetricCard : ContentView
             MarkerGrid.IsVisible = false;
             ProgressFill.Background = (Brush)Microsoft.Maui.Controls.Application.Current!.Resources["GradientButtonBrush"];
             SetProgress((double)(value / metric.Goal!.Value));
+            // "Usual", not "Goal". The figure is this member's own average day, which nobody set
+            // as a target — and the Member Detail screen's own explainer says of this same number
+            // that it "is not a target", so calling it a goal here had the two screens
+            // contradicting each other about what the bar is measuring.
             if (!TrendLabel.IsVisible)
-                CaptionLabel.Text = $"Goal {metric.Goal:N0}";
+                CaptionLabel.Text = $"Usual {metric.Goal:N0}";
         }
         else
         {
+            // No bar for a member whose usual day is not known yet, rather than one drawn against
+            // a made-up round number. See MemberInsightsCalculator, which no longer supplies one.
             ProgressTrackBorder.IsVisible = false;
+            MarkerGrid.IsVisible = false;
             if (!TrendLabel.IsVisible)
                 CaptionLabel.Text = "Daily activity";
         }
