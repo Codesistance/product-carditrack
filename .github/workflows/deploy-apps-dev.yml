@@ -494,15 +494,20 @@ jobs:
             apm_mobile_data:${{ needs.changes.outputs.gcp_project_id }}/carditrack-dev-apm-mobile-data
       # Same trade as Android, and the reason PR CI took ~10 min: of a 10.5 min
       # Release step, the managed compile finished in 70 s and the remaining
-      # ~9 min was the ILLink trimmer and AOT. MtouchLink=None below turns the
-      # trimmer off; the AOT compiler is not reached at all for a simulator RID,
-      # which is why no AOT property is passed here. Release device builds
-      # (build-mobile-ios-device) still run on main before any upload. The
-      # configuration stays Release for the XamlC reason given on the Android job
-      # above — Debug reports no XAML errors at all.
-      # MtouchLink=None, not PublishTrimmed=false: the iOS SDK hard-errors on
-      # PublishTrimmed=false ("iOS projects must build with PublishTrimmed=true")
-      # and names MtouchLink as the supported way to turn the trimmer off.
+      # ~9 min was the ILLink trimmer and AOT. Debug skips both. Release device
+      # builds (build-mobile-ios-device) still run on main before any upload.
+      #
+      # This one stays Debug even though Debug cannot report XAML errors, because
+      # the Android job above already carries that gate and XamlC is platform
+      # independent — QuestionCard.xaml's invalid IsClippedToBounds failed the
+      # Android, iOS and Windows legs with the identical XC0009. One platform is
+      # enough to catch it, so it should be the cheap one.
+      #
+      # Not worth reproducing here: -c Release needs the trimmer off to stay
+      # quick, iOS rejects PublishTrimmed=false and only takes MtouchLink=None,
+      # and MtouchLink=None then makes the step slower than leaving the trimmer
+      # on — measured at 26 min before it was cancelled, against ~1.5 min for
+      # Debug. Untrimmed simply gives every later phase more assemblies to chew.
       # -p:CodesignEntitlements= (empty) on both steps below: the SDK auto-detects
       # Platforms/iOS/Entitlements.plist by convention and wires it as CodesignEntitlements for
       # any build, which forces real codesigning — this job targets the simulator and has no
@@ -515,11 +520,10 @@ jobs:
         run: |
           dotnet build src/Presentation/CardiTrack.Mobile/CardiTrack.Mobile.csproj \
             -f net10.0-ios \
-            -c Release \
+            -c Debug \
             -r iossimulator-arm64 \
             -p:ArchiveOnBuild=false \
-            -p:CodesignEntitlements= \
-            -p:MtouchLink=None
+            -p:CodesignEntitlements=
       - name: Build (Release)
         if: github.event_name != 'pull_request'
         env:
