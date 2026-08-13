@@ -75,7 +75,7 @@ public class DeviceConfiguration : IEntityTypeConfiguration<Device>
                 ModelName = "All Models",
                 DisplayName = "Fitbit",
                 Capabilities = """{"hasHeartRate":true,"hasSleep":true,"hasActivity":true,"hasSpO2":true,"hasStress":false}""",
-                ApiEndpoint = "https://api.fitbit.com",
+                ApiEndpoint = "https://health.googleapis.com",
                 IsActive = true,
                 SortOrder = 1,
                 CreatedDate = seedDate
@@ -109,7 +109,7 @@ public class DeviceConfiguration : IEntityTypeConfiguration<Device>
             new Device
             {
                 Id = Guid.Parse("a1b2c3d4-0004-0000-0000-000000000004"),
-                DeviceType = DeviceType.Samsung,
+                DeviceType = DeviceType.GalaxyWatch,
                 Manufacturer = "Samsung",
                 ModelName = "Galaxy Watch",
                 DisplayName = "Samsung Galaxy Watch",
@@ -156,6 +156,19 @@ public class DeviceConfiguration : IEntityTypeConfiguration<Device>
                 ApiEndpoint = "https://api.prod.whoop.com",
                 IsActive = false,
                 SortOrder = 7,
+                CreatedDate = seedDate
+            },
+            new Device
+            {
+                Id = Guid.Parse("a1b2c3d4-0008-0000-0000-000000000008"),
+                DeviceType = DeviceType.GooglePixelWatch,
+                Manufacturer = "Google",
+                ModelName = "Pixel Watch",
+                DisplayName = "Google Pixel Watch",
+                Capabilities = """{"hasHeartRate":true,"hasSleep":true,"hasActivity":true,"hasSpO2":true,"hasECG":true}""",
+                ApiEndpoint = "https://health.googleapis.com",
+                IsActive = true,
+                SortOrder = 8,
                 CreatedDate = seedDate
             }
         );

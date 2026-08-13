@@ -12,7 +12,7 @@ public class ConnectDeviceRequest
     /// </summary>
     public const string AppRedirectScheme = "carditrack";
 
-    /// <summary>Server-OAuth provider name per the REST contract: fitbit, garmin, samsung_health, withings.</summary>
+    /// <summary>Server-OAuth provider name per the REST contract: fitbit, pixel_watch, garmin, samsung_health, withings.</summary>
     public string Provider { get; set; } = string.Empty;
 
     /// <summary>Deep link the provider redirects back to after authorization (e.g. carditrack://oauth/callback).</summary>

@@ -107,8 +107,7 @@ public class EnvironmentalEnrichmentService : IEnvironmentalEnrichmentService
     private async Task<int> EnrichConnectionAsync(
         Guid memberId, DeviceConnection connection, DateTime utcNow, CancellationToken ct)
     {
-        var providerConfig = _providers.FirstOrDefault(p => p.Provider.Equals(
-            connection.DeviceType.ToString(), StringComparison.OrdinalIgnoreCase));
+        var providerConfig = _providers.ConfigFor(connection.DeviceType);
         if (providerConfig is null)
             return 0;
 

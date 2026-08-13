@@ -2,6 +2,7 @@ using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Domain.Entities;
 using CardiTrack.Domain.Enums;
+using CardiTrack.Infrastructure.Settings;
 using CardiTrack.PipelineJobs.Notifications;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -31,9 +32,16 @@ public class NotificationDrainServiceTests
 
     private NotificationDrainService CreateSut()
     {
-        // A real keyed container, because keyed resolution is part of the contract under test.
+        // A real keyed container, because resolution through the configured DeviceType→HealthApi
+        // mapping is part of the contract under test. Garmin stays unmapped on purpose — the
+        // unregistered-device-type case relies on it.
         var services = new ServiceCollection();
-        services.AddKeyedSingleton(DeviceType.Fitbit, _sync);
+        services.Configure<List<DeviceProviderSettings>>(list => list.Add(new DeviceProviderSettings
+        {
+            Provider = "GoogleHealth",
+            DeviceTypes = ["Fitbit", "GooglePixelWatch"],
+        }));
+        services.AddKeyedSingleton(HealthApi.GoogleHealth, _sync);
         return new NotificationDrainService(
             _source, _connections, services.BuildServiceProvider(),
             NullLogger<NotificationDrainService>.Instance);

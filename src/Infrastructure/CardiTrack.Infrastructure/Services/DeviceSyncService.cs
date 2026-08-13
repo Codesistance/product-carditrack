@@ -10,7 +10,8 @@ namespace CardiTrack.Infrastructure.Services;
 
 /// <summary>
 /// Generic sync service that works with any IDeviceApiClient implementation.
-/// Register one instance per provider using .NET keyed services keyed on DeviceType.
+/// Register one instance per data-source API using .NET keyed services keyed on HealthApi;
+/// a connection reaches its engine through the configured DeviceType→HealthApi mapping.
 /// </summary>
 public class DeviceSyncService : IDeviceSyncService
 {
@@ -129,10 +130,9 @@ public class DeviceSyncService : IDeviceSyncService
     }
 
     private DeviceProviderSettings ResolveProviderConfig(DeviceConnection connection) =>
-        _providers.FirstOrDefault(p => p.Provider.Equals(
-            connection.DeviceType.ToString(), StringComparison.OrdinalIgnoreCase))
+        _providers.ConfigFor(connection.DeviceType)
         ?? throw new InvalidOperationException(
-            $"No provider config found for device type '{connection.DeviceType}'.");
+            $"No provider config claims device type '{connection.DeviceType}' in its DeviceTypes.");
 
     /// <summary>
     /// Fetches a trailing window ending at today, storing each day and re-merging it.
@@ -300,5 +300,5 @@ public class DeviceSyncService : IDeviceSyncService
     /// if needed, or broaden to catch a common base exception type.
     /// </summary>
     protected virtual bool IsProviderApiException(Exception ex) =>
-        ex is FitbitApiException;
+        ex is GoogleHealthApiException;
 }

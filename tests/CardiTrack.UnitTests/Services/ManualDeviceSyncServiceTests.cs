@@ -3,6 +3,7 @@ using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Domain.Entities;
 using CardiTrack.Domain.Enums;
+using CardiTrack.Infrastructure.Settings;
 using CardiTrack.Infrastructure.Services;
 using Microsoft.Extensions.Caching.Distributed;
 using Microsoft.Extensions.Caching.Memory;
@@ -46,11 +47,16 @@ public class ManualDeviceSyncServiceTests
 
     private ManualDeviceSyncService CreateSut()
     {
-        // A real keyed container rather than a stub: resolving IDeviceSyncService by DeviceType
-        // is the part of this service most likely to break, and only real keyed registration
-        // exercises it.
+        // A real keyed container rather than a stub: resolving IDeviceSyncService through the
+        // configured DeviceType→HealthApi mapping is the part of this service most likely to
+        // break, and only real keyed registration plus real options exercise it.
         var services = new ServiceCollection();
-        services.AddKeyedSingleton<IDeviceSyncService>(DeviceType.Fitbit, _fitbitSync);
+        services.Configure<List<DeviceProviderSettings>>(list => list.Add(new DeviceProviderSettings
+        {
+            Provider = "GoogleHealth",
+            DeviceTypes = ["Fitbit", "GooglePixelWatch"],
+        }));
+        services.AddKeyedSingleton<IDeviceSyncService>(HealthApi.GoogleHealth, _fitbitSync);
 
         return new ManualDeviceSyncService(
             _unitOfWork,

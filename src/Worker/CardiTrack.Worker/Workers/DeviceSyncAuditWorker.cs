@@ -1,6 +1,7 @@
 using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Domain.Entities;
+using CardiTrack.Infrastructure.Extensions;
 using Microsoft.Extensions.Options;
 
 namespace CardiTrack.Worker.Workers;
@@ -74,7 +75,7 @@ public class DeviceSyncAuditWorker : CronBackgroundService
             // One scope per connection: the wide window tracks far more entities than a routine
             // sync, and a connection that fails must not take the rest of the sample with it.
             using var scope = _scopeFactory.CreateScope();
-            var syncService = scope.ServiceProvider.GetKeyedService<IDeviceSyncService>(connection.DeviceType);
+            var syncService = scope.ServiceProvider.GetDeviceSyncService(connection.DeviceType);
 
             if (syncService is null)
             {

@@ -1,6 +1,6 @@
 namespace CardiTrack.Infrastructure.ExternalClients;
 
-public class FitbitApiException : Exception
+public class GoogleHealthApiException : Exception
 {
     public int StatusCode { get; }
 
@@ -11,7 +11,7 @@ public class FitbitApiException : Exception
     /// </summary>
     public bool IsMalformedRequest { get; }
 
-    public FitbitApiException(int statusCode, string message, bool isMalformedRequest = false)
+    public GoogleHealthApiException(int statusCode, string message, bool isMalformedRequest = false)
         : base(message)
     {
         StatusCode = statusCode;

@@ -78,7 +78,7 @@ builder.Services.AddScoped<IStatisticalAlertService, StatisticalAlertService>();
 builder.Services.AddScoped<IOAuthTokenRefreshService, OAuthTokenRefreshService>();
 
 // Fitbit provider (keyed IDeviceApiClient + keyed IDeviceSyncService)
-builder.Services.AddFitbitProvider();
+builder.Services.AddGoogleHealthProvider();
 
 // Background workers
 builder.Services.AddWorker<WearableSyncWorker>(configuration, nameof(WearableSyncWorker));

@@ -9,8 +9,9 @@ using Newtonsoft.Json.Linq;
 namespace CardiTrack.Infrastructure.ExternalClients;
 
 /// <summary>
-/// Fitbit-provider client backed by the Google Health API v4 (the legacy Fitbit Web API is
-/// decommissioned September 2026).
+/// Google Health API v4 client — serves every DeviceType mapped to HealthApi.GoogleHealth in the
+/// DeviceProviders configuration (Fitbit devices and Pixel Watch alike; the legacy Fitbit Web API
+/// is decommissioned September 2026).
 /// <para>
 /// Reads follow the method each data type actually supports. Interval types (steps, distance,
 /// active-minutes, total-calories, floors, sedentary-period) and Sample types (heart-rate) take
@@ -42,7 +43,7 @@ namespace CardiTrack.Infrastructure.ExternalClients;
 /// (`civil_end_time`) alike — not the camelCase the JSON response is keyed by.
 /// </para>
 /// </summary>
-public class FitbitApiClient : IFitbitApiClient, IDeviceApiClient
+public class GoogleHealthApiClient : IGoogleHealthApiClient, IDeviceApiClient
 {
     /// <summary>
     /// Activity levels that count as "active minutes", matching Fitbit's classic definition.
@@ -92,17 +93,17 @@ public class FitbitApiClient : IFitbitApiClient, IDeviceApiClient
     private readonly HttpClient _httpClient;
     private readonly TimeSpan _pageRequestDelay;
 
-    public FitbitApiClient(IHttpClientFactory httpClientFactory, TimeSpan? pageRequestDelay = null)
+    public GoogleHealthApiClient(IHttpClientFactory httpClientFactory, TimeSpan? pageRequestDelay = null)
     {
         if (pageRequestDelay < TimeSpan.Zero)
             throw new ArgumentOutOfRangeException(
                 nameof(pageRequestDelay), pageRequestDelay, "Page request delay cannot be negative.");
 
-        _httpClient = httpClientFactory.CreateClient("FitbitClient");
+        _httpClient = httpClientFactory.CreateClient("GoogleHealthClient");
         _pageRequestDelay = pageRequestDelay ?? PageRequestDelay;
     }
 
-    public async Task<FitbitActivitiesResult> GetActivitiesAsync(string accessToken, DateOnly date)
+    public async Task<GoogleHealthActivitiesResult> GetActivitiesAsync(string accessToken, DateOnly date)
     {
         // The six rollups are independent — issue them concurrently.
         var stepsTask = DailyRollupValueAsync(accessToken, "steps", date);
@@ -142,7 +143,7 @@ public class FitbitApiClient : IFitbitApiClient, IDeviceApiClient
             ? (int)decimal.Round(sedentarySeconds.Value / 60m)
             : (int?)null;
 
-        return new FitbitActivitiesResult(
+        return new GoogleHealthActivitiesResult(
             steps,
             distanceMillimeters.HasValue
                 ? decimal.Round(distanceMillimeters.Value / 1_000_000m, 3)
@@ -153,7 +154,7 @@ public class FitbitApiClient : IFitbitApiClient, IDeviceApiClient
             calories);
     }
 
-    public async Task<FitbitHeartRateResult> GetHeartRateAsync(string accessToken, DateOnly date)
+    public async Task<GoogleHealthHeartRateResult> GetHeartRateAsync(string accessToken, DateOnly date)
     {
         var heartRate = await DailyRollupValueAsync(accessToken, "heart-rate", date);
 
@@ -173,14 +174,14 @@ public class FitbitApiClient : IFitbitApiClient, IDeviceApiClient
                 accessToken, "daily-resting-heart-rate", "dailyRestingHeartRate", date);
             restingHr = ReadInt(resting, "beatsPerMinute");
         }
-        catch (FitbitApiException ex) when ((ex.StatusCode is 400 or 404) && !ex.IsMalformedRequest)
+        catch (GoogleHealthApiException ex) when ((ex.StatusCode is 400 or 404) && !ex.IsMalformedRequest)
         {
         }
 
-        return new FitbitHeartRateResult(restingHr, avgHr, maxHr, minHr);
+        return new GoogleHealthHeartRateResult(restingHr, avgHr, maxHr, minHr);
     }
 
-    public async Task<FitbitSleepResult> GetSleepAsync(string accessToken, DateOnly date)
+    public async Task<GoogleHealthSleepResult> GetSleepAsync(string accessToken, DateOnly date)
     {
         // Sleep is session-shaped, so it uses list (get/list are its documented methods) with a
         // civil end-time filter: sessions that ended on the requested date.
@@ -241,10 +242,10 @@ public class FitbitApiClient : IFitbitApiClient, IDeviceApiClient
             ? Math.Clamp((int)decimal.Round(asleepMinutes.Value * 100m / sleepPeriodMinutes.Value), 0, 100)
             : (int?)null;
 
-        return new FitbitSleepResult(totalMinutes, efficiency, startTime, endTime, deep, light, rem, awake);
+        return new GoogleHealthSleepResult(totalMinutes, efficiency, startTime, endTime, deep, light, rem, awake);
     }
 
-    public async Task<FitbitAdditionalMetricsResult> GetAdditionalMetricsAsync(
+    public async Task<GoogleHealthAdditionalMetricsResult> GetAdditionalMetricsAsync(
         string accessToken, DateOnly date)
     {
         var spO2Task = GetSpO2Async(accessToken, date);
@@ -264,7 +265,7 @@ public class FitbitApiClient : IFitbitApiClient, IDeviceApiClient
         var (spO2Average, spO2Min, spO2Max) = spO2Task.Result;
         var (nightlyTemperature, temperatureBaseline, temperatureVariation) = temperatureTask.Result;
 
-        return new FitbitAdditionalMetricsResult(
+        return new GoogleHealthAdditionalMetricsResult(
             spO2Average,
             spO2Min,
             spO2Max,
@@ -308,7 +309,7 @@ public class FitbitApiClient : IFitbitApiClient, IDeviceApiClient
             sleep.RemSleepMinutes,
             sleep.AwakeMinutes,
             // Named from here on: StressScore sits among these positionally but has no source on
-            // this API (see FitbitAdditionalMetricsResult), so it is skipped rather than filled.
+            // this API (see GoogleHealthAdditionalMetricsResult), so it is skipped rather than filled.
             SpO2Average: additional.SpO2Average,
             SpO2Min: additional.SpO2Min,
             SpO2Max: additional.SpO2Max,
@@ -370,7 +371,7 @@ public class FitbitApiClient : IFitbitApiClient, IDeviceApiClient
         {
             return await read();
         }
-        catch (FitbitApiException ex) when (IsAbsentDataType(ex))
+        catch (GoogleHealthApiException ex) when (IsAbsentDataType(ex))
         {
             return [];
         }
@@ -391,7 +392,7 @@ public class FitbitApiClient : IFitbitApiClient, IDeviceApiClient
         using var response = await _httpClient.SendAsync(request);
         if (!response.IsSuccessStatusCode)
         {
-            var probe = new FitbitApiException(
+            var probe = new GoogleHealthApiException(
                 (int)response.StatusCode,
                 $"Google Health API identity returned {(int)response.StatusCode}.",
                 IsMalformedRequest((int)response.StatusCode, await response.Content.ReadAsStringAsync()));
@@ -619,7 +620,7 @@ public class FitbitApiClient : IFitbitApiClient, IDeviceApiClient
             var average = ReadDecimal(daily, "averagePercentage");
             return (average.HasValue ? decimal.Round(average.Value, 1) : null, null, null);
         }
-        catch (FitbitApiException ex) when (IsAbsentDataType(ex))
+        catch (GoogleHealthApiException ex) when (IsAbsentDataType(ex))
         {
             return (null, null, null);
         }
@@ -637,7 +638,7 @@ public class FitbitApiClient : IFitbitApiClient, IDeviceApiClient
             var record = await DailyRecordAsync(accessToken, dataType, unionMember, date);
             return ReadDecimal(record, field);
         }
-        catch (FitbitApiException ex) when (IsAbsentDataType(ex))
+        catch (GoogleHealthApiException ex) when (IsAbsentDataType(ex))
         {
             return null;
         }
@@ -660,7 +661,7 @@ public class FitbitApiClient : IFitbitApiClient, IDeviceApiClient
                 ReadDecimal(record, "baselineTemperatureCelsius"),
                 ReadDecimal(record, "relativeNightlyStddev30dCelsius"));
         }
-        catch (FitbitApiException ex) when (IsAbsentDataType(ex))
+        catch (GoogleHealthApiException ex) when (IsAbsentDataType(ex))
         {
             return (null, null, null);
         }
@@ -673,7 +674,7 @@ public class FitbitApiClient : IFitbitApiClient, IDeviceApiClient
     /// violations is a bug in the URL or filter built here, and swallowing it would turn a
     /// permanently broken read into a column that merely looks unsupported forever.
     /// </summary>
-    private static bool IsAbsentDataType(FitbitApiException ex) =>
+    private static bool IsAbsentDataType(GoogleHealthApiException ex) =>
         ex.StatusCode is 400 or 404 && !ex.IsMalformedRequest;
 
     /// <summary>
@@ -798,7 +799,7 @@ public class FitbitApiClient : IFitbitApiClient, IDeviceApiClient
 
             if (!string.IsNullOrEmpty(pageToken) && points.Count >= SampleSeriesCap)
             {
-                throw new FitbitApiException(
+                throw new GoogleHealthApiException(
                     0,
                     $"Google Health API {dataType} returned more than {SampleSeriesCap} points for "
                     + $"{date:yyyy-MM-dd} and still had pages outstanding. A single civil day cannot "
@@ -956,7 +957,7 @@ public class FitbitApiClient : IFitbitApiClient, IDeviceApiClient
     {
         var body = await response.Content.ReadAsStringAsync();
         if (!JsonUtility.TryParse(body, out var root, out var errors))
-            throw new FitbitApiException((int)response.StatusCode,
+            throw new GoogleHealthApiException((int)response.StatusCode,
                 $"Google Health API {what} response was not valid JSON: {string.Join("; ", errors)}. Payload: {JsonUtility.PreviewOf(body)}");
         return root!;
     }
@@ -966,7 +967,7 @@ public class FitbitApiClient : IFitbitApiClient, IDeviceApiClient
         if (!response.IsSuccessStatusCode)
         {
             var body = await response.Content.ReadAsStringAsync();
-            throw new FitbitApiException((int)response.StatusCode,
+            throw new GoogleHealthApiException((int)response.StatusCode,
                 $"Google Health API returned {(int)response.StatusCode}: {body}",
                 IsMalformedRequest((int)response.StatusCode, body));
         }

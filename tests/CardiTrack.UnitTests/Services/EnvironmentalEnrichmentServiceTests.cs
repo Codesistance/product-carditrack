@@ -37,7 +37,7 @@ public class EnvironmentalEnrichmentServiceTests
         _unitOfWork.DeviceConnections.Returns(_connections);
         _unitOfWork.EnvironmentalReadings.Returns(_readings);
 
-        var providers = new List<DeviceProviderSettings> { new() { Provider = "Fitbit" } };
+        var providers = new List<DeviceProviderSettings> { new() { Provider = "GoogleHealth", DeviceTypes = ["Fitbit"] } };
 
         _service = new EnvironmentalEnrichmentService(
             _unitOfWork, _tokenRefresh, _deviceApi, _environmentalContext,

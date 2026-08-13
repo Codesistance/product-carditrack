@@ -16,6 +16,30 @@ public class ConnectDeviceValidatorTests
         Assert.True(_sut.Validate(Request("carditrack://oauth/callback")).IsValid);
     }
 
+    // Brands, not APIs: pixel_watch is a distinct wire name even though it shares the
+    // GoogleHealth engine with fitbit.
+    [Theory]
+    [InlineData("fitbit")]
+    [InlineData("pixel_watch")]
+    [InlineData("garmin")]
+    public void Accepts_EveryServerOAuthBrand(string provider)
+    {
+        var request = new ConnectDeviceRequest { Provider = provider, RedirectUri = "carditrack://oauth/callback" };
+
+        Assert.True(_sut.Validate(request).IsValid);
+    }
+
+    [Fact]
+    public void Rejects_AnUnknownProvider()
+    {
+        var request = new ConnectDeviceRequest { Provider = "apple_health", RedirectUri = "carditrack://oauth/callback" };
+
+        var result = _sut.Validate(request);
+
+        Assert.False(result.IsValid);
+        Assert.Contains(result.Errors, e => e.PropertyName == nameof(ConnectDeviceRequest.Provider));
+    }
+
     [Theory]
     [InlineData("carditrack://oauth/callback#done")]
     [InlineData("carditrack://oauth/callback?x=1#done")]

@@ -29,7 +29,7 @@ public record DeviceHealthSnapshot(
     // Additional health metrics. Field names are confirmed against the v4 discovery document;
     // whether a given wearer's device populates them is a per-device fact, so a client that finds
     // nothing leaves them null rather than substituting a figure. StressScore has no source on
-    // this API at all (see FitbitAdditionalMetricsResult) and is always null.
+    // this API at all (see GoogleHealthAdditionalMetricsResult) and is always null.
     decimal? SpO2Average = null,
     decimal? SpO2Min = null,
     decimal? SpO2Max = null,

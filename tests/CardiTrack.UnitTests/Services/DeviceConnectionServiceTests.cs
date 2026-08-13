@@ -63,7 +63,8 @@ public class DeviceConnectionServiceTests
     {
         var fitbit = new DeviceProviderSettings
         {
-            Provider = "Fitbit",
+            Provider = "GoogleHealth",
+            DeviceTypes = ["Fitbit", "GooglePixelWatch"],
             ClientId = "fitbit_client",
             ClientSecret = "secret",
             AuthorizationUrl = "https://www.fitbit.com/oauth2/authorize",
@@ -240,6 +241,84 @@ public class DeviceConnectionServiceTests
         Assert.Equal(ConnectionStatus.Connected, existing.ConnectionStatus);
         Assert.Equal("enc(access2)", existing.AccessToken);
         Assert.Equal("active", device.Status);
+    }
+
+    // pixel_watch is a second brand on the same GoogleHealth block — the DeviceTypes mapping,
+    // not new code, is what makes it connectable.
+    [Fact]
+    public async Task InitiateConnection_PixelWatch_UsesTheGoogleHealthConfig()
+    {
+        var request = new ConnectDeviceRequest
+        {
+            Provider = "pixel_watch",
+            RedirectUri = "carditrack://oauth/callback"
+        };
+
+        var result = await CreateSut().InitiateConnectionAsync(_userId, _memberId, request);
+
+        Assert.StartsWith("https://www.fitbit.com/oauth2/authorize?response_type=code", result.AuthorizationUrl);
+        Assert.Contains("client_id=fitbit_client", result.AuthorizationUrl);
+    }
+
+    // Google registers one bounce route per OAuth client (…/oauth/redirect/fitbit), so a
+    // pixel_watch initiation legitimately completes through the fitbit segment. The connection
+    // must still come out as the brand the wearer picked.
+    [Fact]
+    public async Task CompleteConnection_PixelWatch_KeepsTheInitiatedBrand_AcrossTheSharedBounceSegment()
+    {
+        _codeExchange.ExchangeCodeAsync(Arg.Any<DeviceProviderSettings>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>())
+            .Returns(new OAuthTokenResult("access", "refresh", 28800, null, null));
+
+        var sut = CreateSut();
+        var initiation = await sut.InitiateConnectionAsync(_userId, _memberId, new ConnectDeviceRequest
+        {
+            Provider = "pixel_watch",
+            RedirectUri = "carditrack://oauth/callback"
+        });
+
+        DeviceConnection? added = null;
+        await _unitOfWork.DeviceConnections.AddAsync(Arg.Do<DeviceConnection>(c => added = c));
+
+        var device = await sut.CompleteConnectionAsync(_userId, "fitbit", new OAuthCallbackRequest
+        {
+            Code = "code",
+            State = initiation.State,
+            CodeVerifier = initiation.CodeVerifier,
+        });
+
+        Assert.NotNull(added);
+        Assert.Equal(DeviceType.GooglePixelWatch, added!.DeviceType);
+        Assert.Equal("Google Pixel Watch", added.DeviceName);
+        Assert.Equal("pixel_watch", device.Provider);
+    }
+
+    [Fact]
+    public async Task GetAppRedirectUri_AllowsTheBounce_ThroughASiblingBrandOnTheSameApi()
+    {
+        var sut = CreateSut();
+        var initiation = await sut.InitiateConnectionAsync(_userId, _memberId, new ConnectDeviceRequest
+        {
+            Provider = "pixel_watch",
+            RedirectUri = "carditrack://oauth/callback"
+        });
+
+        Assert.Equal("carditrack://oauth/callback",
+            await sut.GetAppRedirectUriAsync("fitbit", initiation.State));
+    }
+
+    [Fact]
+    public async Task GetAppRedirectUri_RejectsABrandOnADifferentApi()
+    {
+        var sut = CreateSut();
+        var initiation = await sut.InitiateConnectionAsync(_userId, _memberId, new ConnectDeviceRequest
+        {
+            Provider = "pixel_watch",
+            RedirectUri = "carditrack://oauth/callback"
+        });
+
+        // garmin resolves to a DeviceType no configured block claims, so it shares an API with
+        // nothing — the state must not be released to its route.
+        Assert.Null(await sut.GetAppRedirectUriAsync("garmin", initiation.State));
     }
 
     [Fact]
@@ -480,10 +559,10 @@ public class DeviceConnectionServiceTests
     }
 
     [Fact]
-    public void AddFitbitProvider_FailsFast_WhenFitbitIsNotFirstProvider()
+    public void AddGoogleHealthProvider_FailsFast_WhenFitbitIsNotFirstProvider()
     {
         var services = new ServiceCollection();
-        services.AddFitbitProvider();
+        services.AddGoogleHealthProvider();
         services.Configure<List<DeviceProviderSettings>>(list =>
             list.Add(new DeviceProviderSettings { Provider = "Garmin" }));
 

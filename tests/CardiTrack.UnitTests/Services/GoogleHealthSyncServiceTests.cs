@@ -43,7 +43,8 @@ public class DeviceSyncServiceTests
 
     private readonly DeviceProviderSettings _fitbitConfig = new()
     {
-        Provider = "Fitbit",
+        Provider = "GoogleHealth",
+        DeviceTypes = ["Fitbit", "GooglePixelWatch"],
         ClientId = "test_client",
         ClientSecret = "test_secret",
         TokenUrl = "https://api.fitbit.com/oauth2/token",
@@ -304,9 +305,9 @@ public class DeviceSyncServiceTests
     {
         SetupSuccessfulTokenRefresh();
         _deviceApi.GetHealthSnapshotAsync(Arg.Any<string>(), Arg.Any<DateOnly>())
-            .ThrowsAsync(new FitbitApiException(500, "Internal Server Error"));
+            .ThrowsAsync(new GoogleHealthApiException(500, "Internal Server Error"));
 
-        await Assert.ThrowsAsync<FitbitApiException>(() =>
+        await Assert.ThrowsAsync<GoogleHealthApiException>(() =>
             CreateSut().SyncCardiMemberAsync(_fitbitConnection));
 
         await _deviceConnections.Received(1)
@@ -322,9 +323,9 @@ public class DeviceSyncServiceTests
         _deviceApi.GetHealthSnapshotAsync(Arg.Any<string>(), Arg.Any<DateOnly>())
             .Returns(Snapshot());
         _deviceApi.GetHealthSnapshotAsync(Arg.Any<string>(), Today.AddDays(-1))
-            .ThrowsAsync(new FitbitApiException(503, "Service Unavailable"));
+            .ThrowsAsync(new GoogleHealthApiException(503, "Service Unavailable"));
 
-        await Assert.ThrowsAsync<FitbitApiException>(() =>
+        await Assert.ThrowsAsync<GoogleHealthApiException>(() =>
             CreateSut().SyncCardiMemberAsync(_fitbitConnection));
 
         await _deviceConnections.DidNotReceive()
@@ -339,9 +340,9 @@ public class DeviceSyncServiceTests
         _deviceApi.GetHealthSnapshotAsync(Arg.Any<string>(), Arg.Any<DateOnly>())
             .Returns(Snapshot());
         _deviceApi.GetHealthSnapshotAsync(Arg.Any<string>(), Today.AddDays(-1))
-            .ThrowsAsync(new FitbitApiException(503, "Service Unavailable"));
+            .ThrowsAsync(new GoogleHealthApiException(503, "Service Unavailable"));
 
-        await Assert.ThrowsAsync<FitbitApiException>(() =>
+        await Assert.ThrowsAsync<GoogleHealthApiException>(() =>
             CreateSut().SyncCardiMemberAsync(_fitbitConnection));
 
         // The window runs today-LookbackDays..today oldest first, so the days stored before
@@ -520,9 +521,9 @@ public class DeviceSyncServiceTests
         _deviceApi.GetHealthSnapshotAsync(Arg.Any<string>(), Arg.Any<DateOnly>())
             .Returns(Snapshot());
         _deviceApi.GetHealthSnapshotAsync(Arg.Any<string>(), Today.AddDays(-(LookbackDays + 3)))
-            .ThrowsAsync(new FitbitApiException(503, "Service Unavailable"));
+            .ThrowsAsync(new GoogleHealthApiException(503, "Service Unavailable"));
 
-        await Assert.ThrowsAsync<FitbitApiException>(() =>
+        await Assert.ThrowsAsync<GoogleHealthApiException>(() =>
             CreateSut().SyncCardiMemberAsync(_fitbitConnection, SyncScope.WorkerCadence));
 
         await _deviceConnections.Received(1)
@@ -577,9 +578,9 @@ public class DeviceSyncServiceTests
         SetupSuccessfulTokenRefresh();
         SetupDefaultApiResponse();
         _deviceApi.GetGranularDayAsync(Arg.Any<string>(), Arg.Any<DateOnly>())
-            .ThrowsAsync(new FitbitApiException(503, "Service Unavailable"));
+            .ThrowsAsync(new GoogleHealthApiException(503, "Service Unavailable"));
 
-        await Assert.ThrowsAsync<FitbitApiException>(() =>
+        await Assert.ThrowsAsync<GoogleHealthApiException>(() =>
             CreateSut().SyncCardiMemberAsync(_fitbitConnection, SyncScope.WorkerCadence));
 
         await _deviceConnections.Received(1)
@@ -745,9 +746,9 @@ public class DeviceSyncServiceTests
     {
         SetupSuccessfulTokenRefresh();
         _deviceApi.GetHealthSnapshotAsync(Arg.Any<string>(), Arg.Any<DateOnly>())
-            .ThrowsAsync(new FitbitApiException(500, "Internal Server Error"));
+            .ThrowsAsync(new GoogleHealthApiException(500, "Internal Server Error"));
 
-        await Assert.ThrowsAsync<FitbitApiException>(() =>
+        await Assert.ThrowsAsync<GoogleHealthApiException>(() =>
             CreateSut().AuditSyncAsync(_fitbitConnection));
 
         await _deviceConnections.DidNotReceive()
