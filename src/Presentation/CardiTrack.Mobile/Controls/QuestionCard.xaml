@@ -84,10 +84,10 @@
                  drop-down: the answer box belongs to the question, so it arrives under it rather
                  than on a page of its own. -->
             <Border x:Name="EditorClip"
-                    IsClippedToBounds="True"
-                    HeightRequest="0"
                     StrokeThickness="0"
-                    BackgroundColor="Transparent">
+                    BackgroundColor="Transparent"
+                    Padding="0"
+                    HeightRequest="0">
                 <VerticalStackLayout x:Name="EditorPanel" Spacing="8" Margin="0,4,0,0">
                     <Border Style="{StaticResource AuthEntryBorder}"
                             HeightRequest="100"
