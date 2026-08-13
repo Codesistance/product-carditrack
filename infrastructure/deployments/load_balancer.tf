@@ -36,12 +36,45 @@ resource "google_compute_managed_ssl_certificate" "api" {
   depends_on = [google_project_service.compute]
 }
 
+# Web's certificate carries a generation suffix and create_before_destroy; api's and webhook's
+# deliberately do not. The asymmetry is the point.
+#
+# A Google-managed certificate renews only while its domain still validates. app.dev's DNS record
+# was lost at some point after the certificate was issued on 2026-05-09, renewal quietly failed, and
+# the certificate expired on 2026-08-07 — six days before anyone noticed, because nothing checks
+# that domain. Restoring DNS does not un-expire it; the certificate has to be reissued.
+#
+# Reissuing was not a one-flag operation. With a fixed name and no create_before_destroy,
+# `terraform apply -replace` has to destroy the old certificate before creating one of the same
+# name, and GCP refuses to delete a certificate still attached to a target HTTPS proxy — so the
+# apply dies partway, with the proxy referencing a certificate Terraform has just tried to remove.
+# The generation suffix gives the replacement a distinct name, and create_before_destroy orders it
+# properly: new certificate created, proxy repointed, old one dropped.
+#
+# Why api and webhook keep the old shape: both are ACTIVE and serving. Changing their names would
+# force a replacement, and a *new* managed certificate starts in PROVISIONING — so a working
+# certificate would be destroyed and its replacement might not be ready for up to an hour. That
+# trades a real outage for tidiness. Migrate them the same way when either next needs reissuing,
+# not before.
+#
+# To force a fresh certificate later: bump web_cert_generation. That is the whole procedure.
+variable "web_cert_generation" {
+  description = "Bump to force Google to issue a fresh managed certificate for the web domain. Changing it renames the resource, and create_before_destroy makes the swap safe: the new certificate is created and attached before the old one is removed. Needed because a managed certificate whose domain stopped validating does not recover by itself once it has expired"
+  type        = string
+  default     = "2"
+}
+
 resource "google_compute_managed_ssl_certificate" "web" {
   count = var.web_custom_domain != "" ? 1 : 0
-  name  = "${var.web_service_name}-cert"
+  name  = "${var.web_service_name}-cert-${var.web_cert_generation}"
   managed {
     domains = [var.web_custom_domain]
   }
+
+  lifecycle {
+    create_before_destroy = true
+  }
+
   depends_on = [google_project_service.compute]
 }
 
