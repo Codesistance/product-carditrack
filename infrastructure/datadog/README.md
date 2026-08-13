@@ -150,6 +150,8 @@ would be silently relabelled as info, which is worse than the current state beca
 ### Applying it
 
 ```bash
+# DD_SITE is the full site domain ("uk1.datadoghq.com"), not the short site name
+# from the tables above ("uk1") — that would build a dead host, https://api.uk1.
 BASE="https://api.${DD_SITE:-datadoghq.com}"
 curl -sS -X POST "$BASE/api/v1/logs/config/pipelines" \
   -H "DD-API-KEY: $DD_API_KEY" -H "DD-APPLICATION-KEY: $DD_APP_KEY" \
@@ -217,6 +219,8 @@ Edit the JSON, then `PUT` it. Creating is `POST /api/v1/monitor`; updating is
 `PUT /api/v1/monitor/<id>` with the same body. Keep the table above in sync with any new monitor.
 
 ```bash
+# DD_SITE is the full site domain ("uk1.datadoghq.com"), not the short site name
+# from the tables above ("uk1") — that would build a dead host, https://api.uk1.
 BASE="https://api.${DD_SITE:-datadoghq.com}"
 curl -sS -X PUT "$BASE/api/v1/monitor/33845" \
   -H "DD-API-KEY: $DD_API_KEY" -H "DD-APPLICATION-KEY: $DD_APP_KEY" \
