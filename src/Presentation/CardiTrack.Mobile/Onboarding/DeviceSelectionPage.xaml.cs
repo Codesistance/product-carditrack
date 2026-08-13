@@ -1,14 +1,18 @@
 using CardiTrack.Application.DTOs.Responses;
+using CardiTrack.Mobile.Core.Devices;
 using CardiTrack.Mobile.Services;
 
 namespace CardiTrack.Mobile.Onboarding;
 
-/// <summary>M1-05: choose the wearable to connect. Fitbit only in MVP 1.</summary>
+/// <summary>
+/// M1-05: choose the wearable to connect. Fitbit and Google Pixel Watch are selectable — both
+/// sync through the Google Health API, so they share the same connection flow.
+/// </summary>
 public partial class DeviceSelectionPage : ContentPage
 {
     private readonly WizardContext _ctx;
     private readonly CardiMemberResponse _member;
-    private bool _fitbitSelected = true;
+    private ConnectableDevice? _selected = ConnectableDevice.Fitbit;
 
     public DeviceSelectionPage(WizardContext ctx)
     {
@@ -35,22 +39,38 @@ public partial class DeviceSelectionPage : ContentPage
             await _ctx.CancelAsync(this);
     }
 
-    private void OnFitbitTapped(object? sender, EventArgs e)
+    private void OnFitbitTapped(object? sender, EventArgs e) =>
+        Select(_selected == ConnectableDevice.Fitbit ? null : ConnectableDevice.Fitbit);
+
+    private void OnPixelTapped(object? sender, EventArgs e) =>
+        Select(_selected == ConnectableDevice.PixelWatch ? null : ConnectableDevice.PixelWatch);
+
+    /// <summary>Single-select across the supported cards; re-tapping the selected one clears it.</summary>
+    private void Select(ConnectableDevice? device)
     {
-        _fitbitSelected = !_fitbitSelected;
-        FitbitCard.Stroke = _fitbitSelected
+        _selected = device;
+        StyleCard(FitbitCard, FitbitCheck, _selected == ConnectableDevice.Fitbit);
+        StyleCard(PixelCard, PixelCheck, _selected == ConnectableDevice.PixelWatch);
+        ContinueBtn.IsEnabled = _selected is not null;
+        ContinueBtn.Text = _selected is null
+            ? "Continue"
+            : $"Continue with {_selected.DisplayName}";
+    }
+
+    private static void StyleCard(Border card, Border check, bool selected)
+    {
+        card.Stroke = selected
             ? (Color)App.Current!.Resources["Primary"]
             : (Color)App.Current!.Resources["Divider"];
-        FitbitCard.StrokeThickness = _fitbitSelected ? 2 : 1;
-        FitbitCheck.IsVisible = _fitbitSelected;
-        ContinueBtn.IsEnabled = _fitbitSelected;
+        card.StrokeThickness = selected ? 2 : 1;
+        check.IsVisible = selected;
     }
 
     private async void OnContinueClicked(object? sender, EventArgs e)
     {
-        if (!_fitbitSelected)
+        if (_selected is null)
             return;
-        await Navigation.PushAsync(new FitbitConnectionPage(_ctx));
+        await Navigation.PushAsync(new DeviceConnectionPage(_ctx, _selected));
     }
 
     private async void OnHelpTapped(object? sender, EventArgs e)

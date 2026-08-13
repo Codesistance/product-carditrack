@@ -77,9 +77,10 @@
                            HorizontalTextAlignment="Center"
                            Margin="0,6,0,0"/>
 
-                    <!-- Device grid: Fitbit is the only selectable card in MVP 1 -->
+                    <!-- Device grid: Fitbit and Pixel Watch are selectable (both ride the
+                         Google Health API); the rest are coming-soon placeholders -->
                     <Grid ColumnDefinitions="*,*"
-                          RowDefinitions="Auto,Auto,Auto"
+                          RowDefinitions="Auto,Auto,Auto,Auto"
                           ColumnSpacing="12" RowSpacing="12"
                           Margin="0,20,0,0">
 
@@ -119,8 +120,43 @@
                             </VerticalStackLayout>
                         </Border>
 
+                        <!-- Google Pixel Watch (supported) -->
+                        <Border x:Name="PixelCard"
+                                Grid.Row="0" Grid.Column="1"
+                                Style="{StaticResource DeviceCard}">
+                            <Border.GestureRecognizers>
+                                <TapGestureRecognizer Tapped="OnPixelTapped"/>
+                            </Border.GestureRecognizers>
+                            <VerticalStackLayout>
+                                <Grid>
+                                    <Border Style="{StaticResource DeviceImageFrame}">
+                                        <Image Source="device_other.png" Aspect="AspectFit" Margin="8"/>
+                                    </Border>
+                                    <Border x:Name="PixelCheck"
+                                            WidthRequest="24" HeightRequest="24"
+                                            BackgroundColor="{StaticResource Primary}"
+                                            StrokeThickness="0"
+                                            IsVisible="False"
+                                            HorizontalOptions="End" VerticalOptions="Start"
+                                            Margin="0,6,6,0">
+                                        <Border.StrokeShape>
+                                            <RoundRectangle CornerRadius="12"/>
+                                        </Border.StrokeShape>
+                                        <Label Text="&#x2713;" TextColor="{StaticResource White}"
+                                               FontSize="13" FontAttributes="Bold"
+                                               HorizontalOptions="Center" VerticalOptions="Center"/>
+                                    </Border>
+                                </Grid>
+                                <Label Text="Google Pixel Watch" Style="{StaticResource DeviceName}"/>
+                                <Label Text="Pixel Watch 1&#x2013;3" Style="{StaticResource DeviceModels}"/>
+                                <Border Style="{StaticResource ComingSoonBadge}" BackgroundColor="#DFF5E9">
+                                    <Label Text="&#x2713; Supported" Style="{StaticResource BadgeText}" TextColor="#1E9E5A"/>
+                                </Border>
+                            </VerticalStackLayout>
+                        </Border>
+
                         <!-- Coming Soon cards -->
-                        <Border Grid.Row="0" Grid.Column="1" Style="{StaticResource DeviceCard}" Opacity="0.55">
+                        <Border Grid.Row="1" Grid.Column="0" Style="{StaticResource DeviceCard}" Opacity="0.55">
                             <VerticalStackLayout>
                                 <Border Style="{StaticResource DeviceImageFrame}">
                                     <Image Source="device_garmin.png" Aspect="AspectFit" Margin="8"/>
@@ -133,7 +169,7 @@
                             </VerticalStackLayout>
                         </Border>
 
-                        <Border Grid.Row="1" Grid.Column="0" Style="{StaticResource DeviceCard}" Opacity="0.55">
+                        <Border Grid.Row="1" Grid.Column="1" Style="{StaticResource DeviceCard}" Opacity="0.55">
                             <VerticalStackLayout>
                                 <Border Style="{StaticResource DeviceImageFrame}">
                                     <Image Source="device_apple_watch.png" Aspect="AspectFit" Margin="8"/>
@@ -146,7 +182,7 @@
                             </VerticalStackLayout>
                         </Border>
 
-                        <Border Grid.Row="1" Grid.Column="1" Style="{StaticResource DeviceCard}" Opacity="0.55">
+                        <Border Grid.Row="2" Grid.Column="0" Style="{StaticResource DeviceCard}" Opacity="0.55">
                             <VerticalStackLayout>
                                 <Border Style="{StaticResource DeviceImageFrame}">
                                     <Image Source="device_samsung.png" Aspect="AspectFit" Margin="8"/>
@@ -159,7 +195,7 @@
                             </VerticalStackLayout>
                         </Border>
 
-                        <Border Grid.Row="2" Grid.Column="0" Style="{StaticResource DeviceCard}" Opacity="0.55">
+                        <Border Grid.Row="2" Grid.Column="1" Style="{StaticResource DeviceCard}" Opacity="0.55">
                             <VerticalStackLayout>
                                 <Border Style="{StaticResource DeviceImageFrame}">
                                     <Image Source="device_withings.png" Aspect="AspectFit" Margin="8"/>
@@ -172,7 +208,7 @@
                             </VerticalStackLayout>
                         </Border>
 
-                        <Border Grid.Row="2" Grid.Column="1" Style="{StaticResource DeviceCard}" Opacity="0.55">
+                        <Border Grid.Row="3" Grid.Column="0" Style="{StaticResource DeviceCard}" Opacity="0.55">
                             <VerticalStackLayout>
                                 <Border Style="{StaticResource DeviceImageFrame}">
                                     <Image Source="device_other.png" Aspect="AspectFit" Margin="8"/>

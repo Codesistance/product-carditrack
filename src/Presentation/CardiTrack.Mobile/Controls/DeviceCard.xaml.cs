@@ -271,6 +271,8 @@ public partial class DeviceCard : ContentView
     private static string ProviderImageFor(string provider) => provider.ToLowerInvariant() switch
     {
         "fitbit" => "device_fitbit.png",
+        // Placeholder until design ships a Pixel Watch asset.
+        "pixel_watch" => "device_other.png",
         "garmin" => "device_garmin.png",
         "samsung_health" => "device_samsung.png",
         "withings" => "device_withings.png",
