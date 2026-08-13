@@ -792,8 +792,7 @@ public partial class DigestGenerationService : IDigestGenerationService
         /// place in the prompt to put a phrase that would be usable as an answer.
         /// </remarks>
         [Description(
-            "Exactly three specific, supportive, non-medical actions for today, at most ten "
-            + "words each, each answering something in the readings.")]
+            "Exactly three specific, supportive, actionable, realistic suggestions, at most ten words each, with respect to the readings.")]
         public IReadOnlyList<string>? Suggestions { get; init; }
 
         /// <summary>
