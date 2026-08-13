@@ -117,6 +117,10 @@ try
 
     // MIDDLEWARE PIPELINE
     app.UseHttpsRedirection();
+    // Ahead of the request logging below, so the client build that made the call is on the
+    // request-completion line and on the server span, not just on whatever the request logged
+    // from deeper in.
+    app.UseMiddleware<ClientVersionMiddleware>();
     // Pinned, not left to the library default. The OAuth callback carries the provider's
     // authorization code and our state token in the query string, so logging it would put a
     // live credential in Cloud Logging and the APM provider. Serilog 10 defaults this to false

@@ -5,6 +5,8 @@ using CardiTrack.Mobile.Core.Http;
 using CardiTrack.Mobile.Core.Notifications;
 using CardiTrack.Mobile.Core.Onboarding;
 using CardiTrack.Mobile.Services;
+using CardiTrack.Shared.Http;
+using System.Net.Http.Headers;
 #if ANDROID || IOS
 using CardiTrack.Mobile.Notifications;
 using Microsoft.Maui.LifecycleEvents;
@@ -94,6 +96,7 @@ public static class MauiProgram
         {
             client.BaseAddress = new Uri(AppConfig.ApiBaseUrl);
             client.DefaultRequestHeaders.Add("Accept", "application/json");
+            AddClientIdentityHeaders(client.DefaultRequestHeaders);
             client.Timeout = TimeSpan.FromSeconds(30);
         }).AddHttpMessageHandler<AuthHttpMessageHandler>();
 
@@ -123,5 +126,29 @@ public static class MauiProgram
         var app = builder.Build();
         AppLogging.HookUnhandledExceptions(app.Services);
         return app;
+    }
+
+    /// <summary>
+    /// Stamps every API call with which build is making it. The API turns these into tags on the
+    /// request's server span and properties on every log line it writes, so a slow call or a 500
+    /// can be attributed to an exact client build and platform instead of to "the mobile app".
+    ///
+    /// Default headers rather than a <c>DelegatingHandler</c>: both values are fixed for the
+    /// process lifetime, so re-deriving them per request would buy nothing. Only the CardiTrack
+    /// client gets them — Auth0's host is not ours to describe our builds to, and its client is
+    /// deliberately outside our handler pipeline for the same reason.
+    ///
+    /// Either header is omitted rather than guessed at if its source value is missing or
+    /// malformed; the API treats an absent header as "unknown", which is honest.
+    /// </summary>
+    private static void AddClientIdentityHeaders(HttpRequestHeaders headers)
+    {
+        if (ClientHeaders.FormatVersion(AppInfo.Current.VersionString, AppInfo.Current.BuildString) is { } version)
+            headers.Add(ClientHeaderNames.ClientVersion, version);
+
+        // DevicePlatform is a struct whose ToString is the platform name ("Android", "iOS",
+        // "WinUI"); ClientHeaders lowercases it so one platform can't appear under two spellings.
+        if (ClientHeaders.NormalizePlatform(DeviceInfo.Current.Platform.ToString()) is { } platform)
+            headers.Add(ClientHeaderNames.ClientPlatform, platform);
     }
 }
