@@ -3,6 +3,7 @@ using CardiTrack.API.Infrastructure.UserContext;
 using CardiTrack.Application.DTOs.Requests;
 using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Application.Interfaces.Services;
+using FluentValidation;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -22,14 +23,17 @@ namespace CardiTrack.API.Controllers;
 public class QuestionnairesController : BaseApiController
 {
     private readonly IQuestionnaireService _questionnaires;
+    private readonly IValidator<AnswerQuestionnaireRequest> _answerValidator;
 
     public QuestionnairesController(
         IUserContext userContext,
         ILogger<QuestionnairesController> logger,
-        IQuestionnaireService questionnaires)
+        IQuestionnaireService questionnaires,
+        IValidator<AnswerQuestionnaireRequest> answerValidator)
         : base(userContext, logger)
     {
         _questionnaires = questionnaires;
+        _answerValidator = answerValidator;
     }
 
     /// <summary>Every question asked about this member, newest first, whatever became of it.</summary>
@@ -72,6 +76,10 @@ public class QuestionnairesController : BaseApiController
         {
             return Error("We couldn't find your account — please sign in again.", StatusCodes.Status403Forbidden);
         }
+
+        var validation = await _answerValidator.ValidateAsync(request, ct);
+        if (!validation.IsValid)
+            return ValidationFailed(validation);
 
         try
         {

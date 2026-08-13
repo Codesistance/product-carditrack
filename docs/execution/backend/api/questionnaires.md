@@ -54,7 +54,7 @@ Answer, dismiss and delete are rooted on the questionnaire rather than the membe
 { "answerText": "She moved to the downstairs bedroom last week." }
 ```
 
-Non-empty, at most 2000 characters (`AnswerQuestionnaireValidator`). Blank is rejected with **400**: there is a dismiss action for having nothing to say, and a stored blank would reach the model as an answered question with nothing in it.
+Non-empty, at most 2000 characters (`AnswerQuestionnaireValidator`, invoked by the action and registered in `AddValidators`). Blank — including whitespace-only — is rejected with **400**: there is a dismiss action for having nothing to say, and a stored blank would reach the model as an answered question with nothing in it.
 
 ## Errors
 

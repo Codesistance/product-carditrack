@@ -25,6 +25,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IValidator<PauseMonitoringRequest>, PauseMonitoringValidator>();
         services.AddScoped<IValidator<ConnectDeviceRequest>, ConnectDeviceValidator>();
         services.AddScoped<IValidator<OAuthCallbackRequest>, OAuthCallbackValidator>();
+        services.AddScoped<IValidator<AnswerQuestionnaireRequest>, AnswerQuestionnaireValidator>();
         return services;
     }
 
