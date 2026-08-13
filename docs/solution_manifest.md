@@ -89,7 +89,7 @@ With Device Bundle:
 - .NET 10 (ASP.NET Core Web API)
 - Entity Framework Core (Npgsql)
 - Cloud SQL PostgreSQL 16 (system of record — identity, organizations, subscriptions, health data, audit)
-- .NET Worker Service + Cronos (**non-AI background jobs only**: `WearableSyncWorker` every 10 minutes with in-path OAuth token refresh, `OrphanedOrganizationCleanupWorker` daily at 03:00, `BaselineCalculationWorker` daily at 02:30, `DeviceSyncAuditWorker` weekly on Sunday at 04:00; trial reminders and retention jobs are planned)
+- .NET Worker Service + Cronos (**non-AI background jobs only** — eleven cron jobs: wearable sync with in-path OAuth token refresh, orphan cleanup, baseline calculation, partition maintenance/retention, device-sync audit, inactivity detection, statistical alerting, device-auth recovery, data completeness, notification dispatch, push canary; see [apps/worker/readme.md](./apps/worker/readme.md))
 
 **AI:**
 - MedGemma 1.5 4B (`hf.co/unsloth/medgemma-1.5-4b-it-GGUF:Q4_K_M`) served via **Ollama on Cloud Run** — the Medical provider for health-data interpretation
@@ -156,16 +156,16 @@ With Device Bundle:
                             ↓
 ┌─────────────────────────────────────────────────────────────┐
 │         NON-AI BACKGROUND JOBS (CardiTrack.Worker)          │
-│  - WearableSyncWorker (every 10 min — device data sync,     │
-│    OAuth token refresh inside the sync path)                │
-│  - OrphanedOrganizationCleanupWorker (daily 03:00)          │
-│  - BaselineCalculationWorker (daily, 02:30)                 │
-│  - DeviceSyncAuditWorker (weekly, Sunday 04:00)             │
-│  - Planned: trial reminders, data retention/cleanup         │
+│  - Eleven cron jobs: wearable sync (every 10 min, OAuth     │
+│    refresh in the sync path), orphan cleanup, baselines,    │
+│    partition retention, device-sync audit, inactivity +     │
+│    statistical alerting, device-auth recovery, data         │
+│    completeness, notification dispatch, push canary         │
+│  - Full inventory: docs/apps/worker/readme.md               │
 └─────────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────────┐
-│   AI INGESTION & INFERENCE PIPELINE — TARGET, NOT YET BUILT │
+│   AI INGESTION & INFERENCE PIPELINE — BUILT, RUNNING IN DEV │
 │                    (see llm_design.md)                      │
 │                                                             │
 │  Device webhooks → Pub/Sub → Cloud Run pipeline             │
@@ -174,7 +174,7 @@ With Device Bundle:
 └─────────────────────────────────────────────────────────────┘
 ```
 
-> Current ingestion is the Worker's **10-minute polling sync** (`WearableSyncWorker`) against the Google Health API. The webhook-push pipeline above is the target architecture and ships with the AI rollout wave. The Worker Service hosts only non-AI jobs.
+> Webhook push ingestion is **live in dev** (receiver + Pub/Sub + Cloud Run pipeline; prod gated off). The Worker's **10-minute polling sync** (`WearableSyncWorker`) against the Google Health API remains the guaranteed fallback and runs in every environment. The Worker Service hosts only non-AI jobs.
 
 ### Multi-Device Architecture
 
@@ -193,7 +193,7 @@ Device APIs (Fitbit, Apple, Garmin, Samsung, Withings, Oura, Whoop)
         (MedGemma via Ollama on Cloud Run)
                     ↓
         Contextual Family Alerts
-        (Push, Email — delivery channels planned)
+        (Push (FCM/APNs) shipped; email not built)
 ```
 
 ---
@@ -231,12 +231,12 @@ Device APIs (Fitbit, Apple, Garmin, Samsung, Withings, Oura, Whoop)
 
 ### 2. AI-Powered Pattern Analysis
 
-**Technology:** MedGemma 4B (medical LLM, served via Ollama on Cloud Run) with SSA-LSTM pre-processing — see [llm_design.md](./llm_design.md) for the full pipeline design. The MVP launches with statistical threshold alerts; the MedGemma pipeline replaces them per the [release matrix](./release_matrix.md).
+**Technology:** MedGemma 4B (medical LLM, served via Ollama on Cloud Run) with SSA pre-processing and deterministic trend features — see [llm_design.md](./llm_design.md) for the full pipeline design. The MVP launches with statistical threshold alerts; the MedGemma pipeline replaces them per the [release matrix](./release_matrix.md).
 
 **Algorithms:**
 - **Signal decomposition**: SSA (Singular Spectrum Analysis) — separates trend, oscillation, and noise per metric
-- **Time-series forecasting**: per-user LSTM (trend prediction and 24–72h risk scoring)
-- **Anomaly assessment**: MedGemma interprets denoised trends and anomaly scores, assigns severity
+- **Trend features**: deterministic slope/deviation features computed from the SSA output (no per-user models, no numeric risk scores)
+- **Anomaly assessment**: MedGemma interprets the denoised trends and trend features qualitatively, assigns severity
 
 **Learning Process:**
 1. Collect baseline data per CardiMember — default 30 days (configurable up to 90)
@@ -366,12 +366,12 @@ added after real PHI exists leaves an unauditable gap that can never be closed.
 | Encryption at rest | ✅ | Cloud SQL, GCS — Google-managed keys |
 | Encryption in transit | ✅ | TLS 1.2+ |
 | Field-level encryption — OAuth tokens | ✅ | AES-256-GCM, key-id envelope for rotation |
-| Field-level encryption — medical notes | ✅ | AES-256-GCM; plaintext until W1-1 despite this document claiming otherwise |
+| Field-level encryption — medical notes | ✅ | AES-256-GCM, encrypted at rest via `CardiMemberService` |
 | Token policy | ✅ | Short-lived access tokens (15–60 min), rotating refresh tokens (30-day absolute), ~15-min web idle timeout, biometric re-auth on mobile open |
 | Access controls — RBAC | 🔄 | `UserRole` exists and CardiMember access is gated per-caregiver; role enforcement is not yet applied across every endpoint |
 | Access controls — MFA for admins | ⬜ | Auth0 tenant configuration, not yet enabled |
-| Audit logging of PHI access | ⬜ | Table, EF configuration, indexes and migration exist; **nothing writes to them** (W1-2) |
-| Least privilege | ⬜ | All Cloud Run services share the default compute service account; applications connect to Postgres as admin (W1-6) |
+| Audit logging of PHI access | 🔄 | `AuditLoggingMiddleware` writes audit rows for the six health-data controllers annotated `[AuditHealthDataAccess]`; Onboarding's member creation remains unaudited |
+| Least privilege | 🔄 | api, web, pipeline and webhook-receiver run as dedicated service accounts; worker, migrator and aggregator still share the default compute SA; applications connect to Postgres as admin (W1-6) |
 
 **Administrative safeguards (§164.308) — not started**
 
@@ -388,10 +388,12 @@ document exists and someone owns it.
 | Google Health API | n/a — no BAA offered; user-consent model under Google's Limited Use policy |
 | Gemini consumer API | n/a — outside the Cloud BAA. Identifiable data no longer sent (W0-2); moving to Vertex AI or in-VPC MedGemma is decision D6 |
 
-**Audit logging — target design, not current state**
+**Audit logging — implemented for annotated health-data controllers**
 
-When W1-2 lands: user ID, CardiMember ID, action, timestamp, IP address and user agent, written
-request-scoped so reads are captured and not just writes. Retention is 90 days for the platform
+`AuditLoggingMiddleware` writes user ID, CardiMember ID, action, timestamp, IP address and user
+agent, request-scoped so reads are captured and not just writes, for the six health-data
+controllers annotated `[AuditHealthDataAccess]`. The remaining gap is Onboarding's member
+creation, which writes health data without an audit row. Retention is 90 days for the platform
 audit trail today (`enable_platform_audit_logging`); the six-year figure applies to HIPAA
 §164.316(b)(2) documentation and PHI-access records, and becomes required only when HIPAA
 attaches.
@@ -412,7 +414,7 @@ attaches.
 
 **User**
 - Family members/caregivers
-- Roles: Admin, Staff, Viewer
+- Roles: Member, Admin, Staff (Viewer maps to Member)
 - Authentication via Auth0 Universal Login (JWT validation in the API; no local passwords)
 
 **CardiMember**
@@ -436,7 +438,7 @@ attaches.
 **PatternBaseline**
 - AI-learned normal patterns
 - Personalized per CardiMember
-- Recalculated weekly
+- Recalculated daily at 02:30 UTC (new baselines appended, not replaced)
 - Day-of-week variations
 
 **Alert**
@@ -447,7 +449,7 @@ attaches.
 
 **AuditLog**
 - Schema for access tracking — table, EF configuration, indexes and migration exist
-- ⬜ **Nothing writes to it yet** (W1-2). Target: all health-data access, request-scoped
+- 🔄 Written request-scoped by `AuditLoggingMiddleware` for the six `[AuditHealthDataAccess]`-annotated health-data controllers; Onboarding's member creation is the remaining unaudited path
 - Retention target is set by the regime that applies — see §5
 
 ---
@@ -556,7 +558,7 @@ attaches.
 All environments run on GCP (project `carditrack-490120`, region `europe-west2`); exact sizing and costs live in [infrastructure.md](./infrastructure.md).
 
 **Core shape (dev and prod):**
-- **Cloud Run** services: `api`, `web`, `worker`, `medgemma` (Ollama, CPU) + a migrator Cloud Run Job for EF migrations — scale-to-zero-friendly, pay-per-use
+- **Cloud Run** services: `api`, `web`, `worker`, `medgemma` (Ollama, CPU), `webhook-receiver` (AI pipeline ingress, dev) + Cloud Run Jobs: a migrator for EF migrations and the pipeline's `digest`, `aggregator` and `assessor` jobs (dev) — scale-to-zero-friendly, pay-per-use
 - **Cloud SQL PostgreSQL 16**: small shared-core instance in dev, `db-custom-2-7680` in prod
 - **GCS** buckets (builds, data protection keys) and **Secret Manager** (all secrets)
 - **Pub/Sub** (both environments; carries the AI pipeline's registered webhook traffic in dev)
@@ -668,9 +670,12 @@ The Cloud Run pay-per-use model keeps pre-launch costs near zero and scales line
 
 ### Built so far (as of August 2026)
 - ✅ Core backend (.NET 10, EF Core, Cloud SQL PostgreSQL 16)
-- ✅ Fitbit device integration — migration to the **Google Health API is done** (code + docs); Google console registration is pending, and the app is capped at 100 users until restricted-scope verification completes
+- ✅ Fitbit device integration — migration to the **Google Health API is done** (code + docs); Google console registration completed 2026-08-07, and the app is capped at 100 users until restricted-scope verification completes
 - ✅ Database schema & migrations (deployed via the migrator Cloud Run Job)
 - ✅ Worker ingestion: 10-minute wearable sync + daily orphan cleanup + daily baseline calculation + weekly device-sync audit
+- ✅ Statistical + inactivity alerting in the Worker (deterministic producers, every environment)
+- ✅ Push delivery spine: notification outbox + FCM HTTP v1 (APNs passthrough), escalation ladder, quiet hours
+- ✅ AI pipeline running in dev: webhook receiver → Pub/Sub → aggregator → SSA pre-processing → MedGemma assessment, family digests, real-time heart-rate assessment (prod gated off)
 - ✅ AI providers wired in the API: MedGemma (Ollama on Cloud Run) + Gemini 2.0 Flash (chat, insights, reports)
 - ✅ Datadog APM with opt-in metrics (PR #4); atomic onboarding + orphaned-organization cleanup (PR #5); health-data disclosure banner on Web (PR #9 — a Google verification prerequisite; the mobile equivalent is pending)
 
@@ -683,7 +688,7 @@ The Cloud Run pay-per-use model keeps pre-launch costs near zero and scales line
 - 🔄 Public launch (BYOD model)
 
 ### R2 — Q1 2027: AI Pipeline & Multi-Device Start
-- ⏳ AI pipeline rollout — Pub/Sub ingestion, SSA-LSTM pre-processing, MedGemma inference (see [llm_design.md](./llm_design.md))
+- 🔄 AI pipeline rollout — Pub/Sub ingestion, SSA pre-processing + deterministic trend features, MedGemma inference (running in dev ahead of schedule; prod enablement remains — see [llm_design.md](./llm_design.md))
 - ⏳ .NET MAUI mobile app (iOS & Android)
 - ⏳ Garmin integration
 - ⏳ Advanced dashboard features
@@ -699,7 +704,7 @@ The Cloud Run pay-per-use model keeps pre-launch costs near zero and scales line
 - ⏳ Enterprise features (assisted living)
 - ⏳ Mobile offline support (local SQLite cache) + HealthKit integration
 - ⏳ Withings, Oura, Whoop support
-- ⏳ Refined per-user LSTM risk models (predictive monitoring at scale)
+- ~~Refined per-user LSTM risk models~~ — descoped 2026-08-10; replaced by qualitative trend interpretation (SSA + deterministic trend features read by MedGemma; no per-user models, no risk scores)
 - ⏳ Telemedicine integration
 - ⏳ Scale to 1,000+ users
 
@@ -743,6 +748,6 @@ Proprietary and confidential. All rights reserved.
 
 ---
 
-**Last Updated**: August 7, 2026
-**Version**: 1.1.0
+**Last Updated**: August 13, 2026
+**Version**: 1.2.0
 **Status**: In Development

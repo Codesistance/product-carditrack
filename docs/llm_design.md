@@ -4,9 +4,9 @@
 >
 > - **Built today:** MedGemma (Ollama-served `hf.co/unsloth/medgemma-1.5-4b-it-GGUF:Q4_K_M` on Cloud Run, enabled in dev, scale-to-zero) as the **Medical** AI provider and **Gemini 2.0 Flash** as the **General** provider, consumed by `GenerativeAiService`, `MedicalAiService`, `HealthInsightService`, and `ReportGenerationService` and surfaced through the API's **chat, insights, and reports** endpoints (`ChatController`, `InsightsController`, `ReportsController`). Insight prompts carry a **member context block** (age, sex, caregiver notes — never name or id) and switch by baseline state: a **learning-phase variant** while no baseline exists at all, a **provisional variant** while only a short-window (7/14-day) baseline does, and the full trend prompt once the 30-day baseline lands. The **family summary** is the first *background* LLM process: a Cloud Run job (`carditrack-<env>-pipeline-jobs`, half-hourly Cloud Scheduler, dev only) recomputes a plain-language summary per member whenever their readings have moved since the last one and their previous summary is at least 20 minutes old, via MedGemma, and appends it — every generation is kept — for `GET /api/v1/insights/members/{id}/digest` — wired through `AddMedicalAiServices`, so the job carries no public-provider key at all. Ingestion is **10-minute polling** of the Google Health API by `WearableSyncWorker` in `CardiTrack.Worker`.
 > - **Real-time path (built, dev):** the webhook receiver and 5-minute aggregator are live with the **Subscriber registered against Google (2026-08-10)** — notifications flow end to end — and the **real-time assessment** now runs end to end off the granular store: a twice-hourly Cloud Run job (`carditrack-<env>-pipeline-jobs-assessor`) takes each member's latest hour of heart rate, decomposes it with **SSA** (native .NET, `SsaDecomposition` in Application), asks MedGemma for a severity verdict, stores it in the partitioned `RealtimeAssessments` table (90-day retention by partition drop), and routes red/orange verdicts to `Alert` rows — one unresolved heart-rate alert at a time.
-> - **Environmental-context enrichment (built, dev, consent-gated off by default):** for GPS-equipped wearables, a fourth Cloud Run job (`carditrack-<env>-pipeline-jobs-enricher`, `--job enrich`) looks up ambient temperature and air quality (Google Maps Platform Weather + Air Quality APIs) for a member's GPS-tagged exercise sessions and folds the derived values into the real-time assessment prompt. Gated on a new per-member `CardiMember.EnvironmentalContextConsentGranted` flag — default `false`, the sole candidate filter — and on a new Restricted OAuth scope (`googlehealth.location.readonly`) not yet requested from Google. **Raw GPS coordinates are never persisted**: the enrich job reads a session's coordinates only long enough to call the environmental APIs, and only the resulting temperature/AQI values are stored, in the partitioned `EnvironmentalReadings` table (90-day retention). Noise/sound-level context was scoped out — no location-queryable data source exists at production grade.
+> - **Environmental-context enrichment (built in code and schema, NOT provisioned — it never runs today):** for GPS-equipped wearables, a fourth job mode (`--job enrich`, which would run as `carditrack-<env>-pipeline-jobs-enricher`) is in the pipeline image, but **no Cloud Run job or Cloud Scheduler trigger exists for it in any environment**. When provisioned, it looks up ambient temperature and air quality (Google Maps Platform Weather + Air Quality APIs) for a member's GPS-tagged exercise sessions and folds the derived values into the real-time assessment prompt. Gated on a new per-member `CardiMember.EnvironmentalContextConsentGranted` flag — default `false`, the sole candidate filter — and on a new Restricted OAuth scope (`googlehealth.location.readonly`) not yet requested from Google. **Raw GPS coordinates are never persisted**: the enrich job reads a session's coordinates only long enough to call the environmental APIs, and only the resulting temperature/AQI values are stored, in the partitioned `EnvironmentalReadings` table (90-day retention). Noise/sound-level context was scoped out — no location-queryable data source exists at production grade.
 > - **Design decisions, 2026-08-10:** the **LSTM is dropped**, not parked. Personalization comes through the context window instead: deterministic .NET computes every number (SSA, baselines, multi-horizon rollups), MedGemma interprets them, and clinical reference ranges are **pinned in a curated table injected into the prompt** — never recalled from model weights, so every assessment's yardstick is auditable. With it go the per-user model files, the Python training job, ONNX, and the calibrated numeric risk scores (0–100 fall-risk etc.) — the predictive path becomes the **trend interpretation** design below. **Wearer-audience features are permanently descoped**: wearers never log in; self-monitoring is not the product.
-> - **Still design-only:** trend interpretation (waits on the R1 statistical engine's baselines), push dispatch (FCM/APNs arrives from a separate workstream; this pipeline only wires dispatch once it lands).
+> - **Still design-only:** trend interpretation (waits on the R1 statistical engine's baselines), and the pipeline's own severity→push wiring. Push delivery itself is **built** — the notification engine's FCM HTTP v1 relay with APNs passthrough, escalation ladder and quiet hours shipped from its own workstream — so what remains here is only connecting this pipeline's severity router and digests to it.
 
 ## Overview
 
@@ -35,10 +35,10 @@ MedGemma 4B was chosen over the 27B variant for cost and latency reasons — at 
 | Service | Role | Status |
 |---------|------|--------|
 | **Cloud Run — `carditrack-<env>-medgemma`** | MedGemma inference via Ollama (CPU) | **Built** — enabled in dev; prod leaves `medgemma_image` empty, so the service does not exist there yet |
-| **Cloud Run services/jobs + Cloud Scheduler** | All pipeline logic — webhook receiver, aggregation, SSA pre-processing, assessment, environmental enrichment, trend interpretation, digest, push dispatch | **Built (dev):** digest + aggregator + assessor + enricher jobs (`carditrack-<env>-pipeline-jobs[-aggregator|-assessor|-enricher]`) and the webhook receiver service, all gated on their enable flags; trend interpretation and push dispatch are target design |
+| **Cloud Run services/jobs + Cloud Scheduler** | All pipeline logic — webhook receiver, aggregation, SSA pre-processing, assessment, environmental enrichment, trend interpretation, digest, push dispatch | **Built (dev):** digest + aggregator + assessor jobs (`carditrack-<env>-pipeline-jobs[-aggregator|-assessor]`) and the webhook receiver service, gated on their enable flags. The enricher exists only as a `--job enrich` mode in the image — **no Cloud Run job or scheduler is provisioned for it**. Trend interpretation and the pipeline's severity→push wiring are target design |
 | **Cloud Pub/Sub** (`carditrack-<env>-realtime`) | Wearable raw event stream buffer | Topic + pull subscription provisioned in **dev and prod** (`enable_pubsub`); the receiver publishes and the aggregator drains it in dev, carrying **live registered traffic** since 2026-08-10 |
 | **Cloud SQL PostgreSQL (existing instance)** | OAuth tokens (encrypted AES-256-GCM in `DeviceConnections`), user profiles, sensitivity settings, family relationships — the transactional system of record (see [infrastructure.md](./infrastructure.md#storage-boundary)); plus typed partitioned tables for AI results (below) | Built — core schema plus `DigestEntries`, `RealtimeAssessments`, and `EnvironmentalReadings` |
-| **FCM / APNs** | Push routing for alerts and digests | **Planned — no push infrastructure exists yet** |
+| **FCM / APNs** | Push routing for alerts and digests | **Built** — FCM HTTP v1 relay with APNs passthrough (escalation ladder, quiet hours) shipped via the notification engine; the pipeline's own severity→push wiring is what remains |
 | **Google Maps Platform** (Weather + Air Quality APIs) | Ambient temperature/air-quality lookups for the enrichment job | **Built (code); key unprovisioned** — `Environmental:ApiKey` is required config, not yet in any environment's Secret Manager |
 | **Secret Manager** | Google Health API OAuth client secret, `gemini-api-key`, `medgemma-service-url`, `Environmental:ApiKey` (planned) | Built |
 
@@ -55,10 +55,10 @@ Each component is a Cloud Run service (event/HTTP-triggered) or Cloud Run job (C
 | `HealthWebhookReceiver` | HTTP (Cloud Run service) | On event (~333/s peak) | **Built (dev)** — `carditrack-<env>-webhook-receiver`, gated on `enable_webhook_receiver`. Authenticates the Subscriber's shared secret (full `Authorization` header, constant-time), acknowledges with `200` (the status Google's verification handshake demands), forwards the **raw, unparsed** payload to Pub/Sub — notify-then-fetch means nothing downstream ever trusts it, and the one sanctioned peek drops Google's documented `{"type": "verification"}` probe instead of forwarding it. **Subscriber registered (dev, 2026-08-10)** — live notifications flow; the runbook's provisioning section records the working procedure |
 | `WearableAggregator` | Cloud Scheduler | Every 5 min | **First increment built (dev):** `carditrack-<env>-pipeline-jobs-aggregator` drains the realtime subscription, maps each notification's `healthUserId` to its `DeviceConnection` (captured once per connection during sync via `GET /v4/users/me/identity`), and runs the standard targeted sync — same invariants, sooner; `LastSyncDate` stamping makes polling the fallback rather than a duplicate. The SSA → MedGemma → severity chain runs in the separate assessor job below rather than inline — the aggregator moves data, the assessor reads it, and either works without the other |
 | `RealtimeAssessor` | Cloud Scheduler | Twice hourly, at :02 and :32 (offset from the aggregator) | **Built (dev):** `carditrack-<env>-pipeline-jobs-assessor` — for each member with fresh data, SSA over the latest 60-minute heart-rate window (≥45 covered minutes; window keyed by its start, so an unmoved window costs no inference), MedGemma assessment (`CARDITRACK_REALTIME_ASSESSMENT_PROMPT`), result to the partitioned `RealtimeAssessments` table. Works entirely off the granular store, so it functions on polling alone — webhook registration only makes it fresher. Reads a recent `EnvironmentalReading` (below) through the shared member-context composer, which now carries it into every medical prompt rather than this one alone — the assessor keeps its own three-hour staleness rule |
-| `EnvironmentalEnricher` | Cloud Scheduler | Every 15–30 min (offset from the other jobs) | **Built (dev), consent-gated off by default:** `carditrack-<env>-pipeline-jobs-enricher` — for members with `CardiMember.EnvironmentalContextConsentGranted = true` (the sole candidate filter) and a connection granted the `googlehealth.location.readonly` scope, fetches GPS-tagged exercise sessions (Google Health API `exercise` data type + `exportExerciseTcx`), looks up ambient temperature, described conditions, humidity and air quality for each new session's coordinate (Google Maps Platform Weather + Air Quality APIs — conditions and humidity ride along on the current-conditions response the temperature lookup already makes, so they cost no extra call), and stores only the derived values in the partitioned `EnvironmentalReadings` table — **the raw coordinate is never persisted**, discarded immediately after the environmental lookup. Runs as its own job rather than inline in the aggregator: exercise sessions are sparse and don't need 5-minute freshness, and an external vendor call does not belong in the hot sync loop 10,000 devices go through every few minutes. The Google Maps Platform key and the exercise/GPS device-client methods are registered nowhere else in the process (`EnvironmentalServiceExtensions`), so no other host or job path can reach them |
-| `SeverityRouter` | On new result row | On write | **First increment built (dev), inline in the assessor rather than a separate component:** the model's closing `Severity:` line is parsed strictly (critical/high/medium/low → red/orange/yellow/green; an unparseable answer is stored but routes nowhere — the model cannot page a family by mumbling), and red/orange verdicts create `Alert` rows with a one-unresolved-heart-rate-alert-at-a-time cooldown. Immediate push via FCM/APNs still waits on push infrastructure |
+| `EnvironmentalEnricher` | Cloud Scheduler | Every 15–30 min (offset from the other jobs) | **Built in code and schema, NOT provisioned — no Cloud Run job or scheduler exists, so it never runs today.** When provisioned as `carditrack-<env>-pipeline-jobs-enricher` — for members with `CardiMember.EnvironmentalContextConsentGranted = true` (the sole candidate filter) and a connection granted the `googlehealth.location.readonly` scope, fetches GPS-tagged exercise sessions (Google Health API `exercise` data type + `exportExerciseTcx`), looks up ambient temperature, described conditions, humidity and air quality for each new session's coordinate (Google Maps Platform Weather + Air Quality APIs — conditions and humidity ride along on the current-conditions response the temperature lookup already makes, so they cost no extra call), and stores only the derived values in the partitioned `EnvironmentalReadings` table — **the raw coordinate is never persisted**, discarded immediately after the environmental lookup. Runs as its own job rather than inline in the aggregator: exercise sessions are sparse and don't need 5-minute freshness, and an external vendor call does not belong in the hot sync loop 10,000 devices go through every few minutes. The Google Maps Platform key and the exercise/GPS device-client methods are registered nowhere else in the process (`EnvironmentalServiceExtensions`), so no other host or job path can reach them |
+| `SeverityRouter` | On new result row | On write | **First increment built (dev), inline in the assessor rather than a separate component:** the model's closing `Severity:` line is parsed strictly (critical/high/medium/low → red/orange/yellow/green; an unparseable answer is stored but routes nowhere — the model cannot page a family by mumbling), and red/orange verdicts create `Alert` rows with a one-unresolved-heart-rate-alert-at-a-time cooldown. Push infrastructure is built (the notification engine's FCM HTTP v1 relay with APNs passthrough); wiring this router into it is what remains |
 | `TrendInterpreter` | Cloud Scheduler | Daily (design) | Replaces the former LSTM predictive path (dropped 2026-08-10): reads the member's multi-horizon rollups + R1 baselines, computes trend features deterministically (moving averages, slopes, deviations — .NET, no ML), injects the **pinned clinical reference-range table**, and asks MedGemma for a family-facing trend narrative feeding digests/insights. No risk scores, no per-user models. The R1 statistical engine it reads from is built (`StatisticalAlertWorker` in the Worker); what remains is this interpretation job and its pinned reference-range table |
-| `DigestGenerator` | Cloud Scheduler | **Built (dev):** half-hourly scheduler, regenerating for **whichever members' readings have moved since their last summary** — members whose data has not changed, and members summarised within the last 20 minutes, are skipped before any model call. The two gates decouple the cadence from the *inference* bill: the job can run often enough to catch a quiet member up quickly without regenerating a continuously-uploading one on every pass. They do not make the cadence cost-free, though — where MedGemma scales to zero a pass that finds any work at all pays a cold start at the full CPU allocation, and where it is kept warm (dev today, `medgemma_min_instances`) the cadence drives inference volume against an instance bill that runs regardless. **An alert raised or resolved since the last summary waives both** — that is the one change that rewrites what the summary should say, and making a caregiver wait out the floor to read it would be the floor working against its own purpose. A medium observation alone does not waive them; it rides the ordinary cycle | Summarises the member's local day in progress (their anchor timezone is the earliest-linked caregiver's `User.TimeZoneId`) → calls MedGemma (`CARDITRACK_FAMILY_DIGEST_PROMPT`, returning a short `headline` and the summary text) → **appends** to the partitioned `DigestEntries` table, whose key carries `GeneratedAtUtc` so every recomputation is kept as history (12-month retention by partition drop); read via `GET /api/v1/insights/members/{id}/digest` (current) and `GET /api/v1/insights/members/{id}/digests` (history). The same call may also propose **one short question to the family** when the readings would be clearer for an answer; it is stored as a `MemberQuestionnaire` (see `docs/execution/backend/api/questionnaires.md`) under two noise gates — one open question per member, and seven days since the last one was asked whatever became of it. Push delivery waits on FCM/APNs (arriving from a separate workstream); the family audience is the only audience — wearers never log in |
+| `DigestGenerator` | Cloud Scheduler | **Built (dev):** half-hourly scheduler, regenerating for **whichever members' readings have moved since their last summary** — members whose data has not changed, and members summarised within the last 20 minutes, are skipped before any model call. The two gates decouple the cadence from the *inference* bill: the job can run often enough to catch a quiet member up quickly without regenerating a continuously-uploading one on every pass. They do not make the cadence cost-free, though — where MedGemma scales to zero a pass that finds any work at all pays a cold start at the full CPU allocation, and where it is kept warm (dev today, `medgemma_min_instances`) the cadence drives inference volume against an instance bill that runs regardless. **An alert raised or resolved since the last summary waives both** — that is the one change that rewrites what the summary should say, and making a caregiver wait out the floor to read it would be the floor working against its own purpose. A medium observation alone does not waive them; it rides the ordinary cycle | Summarises the member's local day in progress (their anchor timezone is the earliest-linked caregiver's `User.TimeZoneId`) → calls MedGemma (`CARDITRACK_FAMILY_DIGEST_PROMPT`, returning a short `headline` and the summary text) → **appends** to the partitioned `DigestEntries` table, whose key carries `GeneratedAtUtc` so every recomputation is kept as history (12-month retention by partition drop); read via `GET /api/v1/insights/members/{id}/digest` (current) and `GET /api/v1/insights/members/{id}/digests` (history). The same call may also propose **one short question to the family** when the readings would be clearer for an answer; it is stored as a `MemberQuestionnaire` (see `docs/execution/backend/api/questionnaires.md`) under two noise gates — one open question per member, and seven days since the last one was asked whatever became of it. Push infrastructure is built (FCM HTTP v1 relay with APNs passthrough); the digest's own push wiring is what remains. The family audience is the only audience — wearers never log in |
 | `InactivityDetector` | ~~Cloud Scheduler~~ Worker cron | Every 15 min | **Built:** `InactivityDetectionWorker` in `CardiTrack.Worker` — this table originally drew it beside the pipeline, but it makes no AI call, and non-AI background jobs are Worker-exclusive per CLAUDE.md, so placement follows the rule, not the diagram. Silence means **no granular readings** (a sync that returns nothing is exactly the dead-battery case), measured on the member's anchor clock: >2 h without a minute during waking hours (07:00–22:00 local, effectively from 09:00 so the charger never trips the first alert of the day) raises one yellow `Inactivity` alert, suppressed until resolved |
 
 > **Runtime note:** all pipeline components run on **.NET**, matching the rest of the platform, and every numeric stage (SSA, baselines, trend features) is native, dependency-free .NET. With the LSTM dropped (2026-08-10) there is no ONNX runtime, no TensorFlow, and no Python anywhere in the pipeline — the former `ModelRetrainer` training job is gone with it.
@@ -122,17 +122,17 @@ The public side is deliberately swappable. Every provider implements the same `I
 
 ### AI results: PostgreSQL tables (built as typed + partitioned; the original JSONB sketch below is kept for lineage)
 
-AI outputs are derived data in the **existing Cloud SQL instance** — regenerable, never authoritative. All tables are keyed by `wearer_user_id` for efficient per-user queries, with a JSONB payload column.
+AI outputs are derived data in the **existing Cloud SQL instance** — regenerable, never authoritative. The built tables are keyed by **`CardiMemberId`** with **typed columns, day-partitioned** — the original sketch's `wearer_user_id` keys and JSONB payload columns were both dropped (there is no wearer user; typed columns beat JSONB key-bloat at volume, per the granular-storage ADR).
 
-| Table | Key columns | JSONB payload | Retention |
+| Table (original sketch) | Key columns (sketch) | JSONB payload (sketch) | As built / retention |
 |-------|-------------|---------------|-----------|
 | `realtime_results` | `wearer_user_id`, `window_start`, `severity` | `medgemma_output`, `anomaly_scores` | **Built as the typed, day-partitioned `RealtimeAssessments` table** (`CardiMemberId`, `WindowStartUtc` PK; SSA features, model output and routed severity as columns — typed rather than JSONB, per the granular-storage ADR) — 90 days by partition drop |
 | `prediction_cards` | ~~`wearer_user_id`, `date`~~ | ~~`risk_scores`, `confidences`, `medgemma_output`~~ | **Descoped 2026-08-10** with the LSTM — trend interpretation writes narrative into digests/insights, not risk-score rows |
-| `trend_aggregates` | `wearer_user_id`, `date` | `resting_hr_7d_ma`, `hrv_7d_ma`, `sleep_score_7d_ma` | 2 years |
-| `digest_log` | `wearer_user_id`, `date`, `audience` | `digest_text` | 1 year |
+| `trend_aggregates` | `wearer_user_id`, `date` | `resting_hr_7d_ma`, `hrv_7d_ma`, `sleep_score_7d_ma` | **Built as the typed `MetricRollupsHourly` table + week/month views** (keyed by `CardiMemberId`) — 13 months by partition drop |
+| `digest_log` | `wearer_user_id`, `date`, `audience` | `digest_text` | **Built as the typed, day-partitioned `DigestEntries` table** (`CardiMemberId`, `GeneratedAtUtc` — no audience column; family is the only audience) — 12 months by partition drop |
 | *(net-new)* | — | — | **Built as the typed, day-partitioned `EnvironmentalReadings` table** (`CardiMemberId`, `SessionStartUtc` PK; `TemperatureCelsius`, `AirQualityIndex`, `AirQualityCategory` as columns — no latitude/longitude column exists on this table, structurally) — 90 days by partition drop |
 
-Row expiry runs in the same scheduled cleanup machinery as other retention jobs (a Worker/Cloud Run job), since PostgreSQL has no document TTL.
+Row expiry is a **partition drop performed hourly by `PartitionMaintenanceWorker`** in `CardiTrack.Worker` (digests 12 months, assessments 90 days, environmental readings 90 days) — PostgreSQL has no document TTL, and no other retention job exists.
 
 ---
 
@@ -141,9 +141,9 @@ Row expiry runs in the same scheduled cleanup machinery as other retention jobs 
 Everything is provisioned by the existing Terraform (`infrastructure/` — see the [operator guide](../infrastructure/README.md)):
 
 - **MedGemma service** — `deployments/cloud_run.tf` (gated on `medgemma_image`); image built from `src/Infrastructure/MedGemma/Dockerfile`
-- **Pub/Sub topic + subscription** — `deployments/pubsub.tf` (gated on `enable_pubsub`; prod only today)
-- **Secrets** — `deployments/secret_manager.tf` (`gemini-api-key`, `medgemma-service-url`)
-- Pipeline components (webhook receiver, aggregator, scheduler jobs) will be added to the same Terraform as they are built
+- **Pub/Sub topic + subscription** — `deployments/pubsub.tf` (gated on `enable_pubsub`; **enabled in both dev and prod**)
+- **Secrets** — `deployments/secret_manager.tf` (`gemini-api-key`, `medgemma-service-url`, `webhook-secret`)
+- **Pipeline components** — already in the same Terraform: the webhook receiver service, the digest/aggregator/assessor Cloud Run jobs with their Cloud Scheduler triggers, and a dedicated `pipeline_scheduler` service account that invokes them (`deployments/cloud_run.tf`, gated on `enable_pipeline_jobs`/`enable_webhook_receiver`). The **enricher is the only unprovisioned component** — its `--job enrich` mode ships in the image with no job or scheduler behind it
 
 No imperative CLI provisioning scripts are used.
 
@@ -166,7 +166,7 @@ CardiTrack operates two parallel AI paths with distinct cadences and purposes:
 │                                                             │
 │  Cloud SQL (30-90 day history) → Feature aggregator         │
 │  → Trend features (computed) → MedGemma (interpretation)   │
-│  → Prediction card → Wearer + Family digest                 │
+│  → Trend narrative → Family digest                          │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -190,7 +190,7 @@ Cloud Pub/Sub (carditrack-prod-realtime)
   ↓
 Cloud Run job (Cloud Scheduler, every 5 min) — fetches changed data, aggregates per user
   ↓
-SSA-LSTM pre-processor — denoises signal, extracts trend features
+SSA pre-processor — denoises signal, extracts trend features
   ↓
 MedGemma service (Ollama on Cloud Run, internal VPC)
   ↓
@@ -215,15 +215,15 @@ Before each window is sent to MedGemma, raw wearable time-series data passes thr
 | Deviation check | Actual latest reading vs. SSA trend | Deviation score in noise-RMS units |
 | MedGemma prompt | Denoised trend + deviation yardsticks | Cardiovascular assessment + severity verdict |
 
-### Google Health API Data Type → SSA-LSTM Input Mapping
+### Google Health API Data Type → SSA Input Mapping
 
 The Google Health API consolidates the legacy per-endpoint surface into **data types** queried via `list` (intraday/granular) and `rollUp`/`dailyRollUp` (summaries) at `https://health.googleapis.com`.
 
 Methods follow the v4 REST shape: `GET /v4/users/me/dataTypes/{type}/dataPoints` (list) and `POST .../dataPoints:dailyRollUp` (daily summary; heart-rate/active-minutes/total-calories rollups max 14-day range, others 90 days).
 
-A `dailyRollUp` body takes `range` as a **`CivilTimeInterval`** — closed-open, with `start`/`end` each a **`CivilDateTime`**, meaning the calendar date nests under `date` (`{"start": {"date": {"year": …, "month": …, "day": …}}}`) and `time` is omitted to mean midnight. A bare `{year, month, day}` at `range.start` is rejected with `INVALID_ARGUMENT` field violations — the shape `FitbitApiClient` sent until it was corrected against the live API.
+A `dailyRollUp` body takes `range` as a **`CivilTimeInterval`** — closed-open, with `start`/`end` each a **`CivilDateTime`**, meaning the calendar date nests under `date` (`{"start": {"date": {"year": …, "month": …, "day": …}}}`) and `time` is omitted to mean midnight. A bare `{year, month, day}` at `range.start` is rejected with `INVALID_ARGUMENT` field violations — the shape the API client (`FitbitApiClient`, since renamed `GoogleHealthApiClient`) sent until it was corrected against the live API.
 
-`list` takes its window as an AIP-160 `filter` query parameter instead, and **each filterable field admits exactly one literal format**: physical-time fields (`{type}.interval.start_time`, `sleep.interval.end_time`) require an RFC-3339 instant (`"2026-08-05T00:00:00Z"`), while their civil-time siblings (`{type}.interval.civil_start_time`, `sleep.interval.civil_end_time`) require an ISO 8601 civil time in one of exactly two forms — date-only `2026-08-05` or date-time `2026-08-05T00:00:00`, never with a `Z` or offset suffix (Google's reference writes this as `yyyy-MM-dd[THH:mm:ss]`, where the brackets denote an optional segment, not literal characters). Mixing the two is not coerced — a bare date against `sleep.interval.end_time` returns a 400 with reason `INVALID_DATA_POINT_FILTER` and `detailedReasons: INVALID_DATA_POINT_FILTER_TIMESTAMP_FORMAT`, which is exactly what `FitbitApiClient` sent until it was corrected against the live API. Only `>=` and `<` are supported, and sleep is filterable on **end time only** (sessions are attributed to the day they ended on).
+`list` takes its window as an AIP-160 `filter` query parameter instead, and **each filterable field admits exactly one literal format**: physical-time fields (`{type}.interval.start_time`, `sleep.interval.end_time`) require an RFC-3339 instant (`"2026-08-05T00:00:00Z"`), while their civil-time siblings (`{type}.interval.civil_start_time`, `sleep.interval.civil_end_time`) require an ISO 8601 civil time in one of exactly two forms — date-only `2026-08-05` or date-time `2026-08-05T00:00:00`, never with a `Z` or offset suffix (Google's reference writes this as `yyyy-MM-dd[THH:mm:ss]`, where the brackets denote an optional segment, not literal characters). Mixing the two is not coerced — a bare date against `sleep.interval.end_time` returns a 400 with reason `INVALID_DATA_POINT_FILTER` and `detailedReasons: INVALID_DATA_POINT_FILTER_TIMESTAMP_FORMAT`, which is exactly what the client sent until it was corrected against the live API. Only `>=` and `<` are supported, and sleep is filterable on **end time only** (sessions are attributed to the day they ended on).
 
 Prefer the **civil** variants throughout. Physical-instant filtering buckets by UTC day while every `dailyRollUp` above buckets by the wearer's local day, so for a wearer west of Greenwich a late-evening sleep session would land in the next day's snapshot while the same night's steps stayed in the current one — a silent per-timezone misalignment in the SSA input series, not an error. A unit test pins the emitted sleep filter string.
 
@@ -234,11 +234,11 @@ Prefer the **civil** variants throughout. Physical-instant filtering buckets by 
 | HRV (RMSSD) | `daily-heart-rate-variability` — `list` (granular: `heart-rate-variability` — `list`) | Daily scalar | Secondary series |
 | SpO2 (intraday) | `oxygen-saturation` — `list` | ~5-min intervals | Upsample to 1-min via forward-fill before SSA |
 | Steps (intraday) | `steps` — `list` | 1-min intervals | Used as activity context feature alongside HR |
-| Active Zone Minutes | `active-zone-minutes` — `list` | 1-min intervals | Exogenous input to LSTM |
+| Active Zone Minutes | `active-zone-minutes` — `list` | 1-min intervals | Activity-context feature alongside HR |
 | Skin Temperature | skin-temperature data type — `dailyRollUp` | Daily scalar (nightly) | Early-warning feature; include when available |
 | Sleep Stages | `sleep` — `list` (session-shaped) | Daily summary | Context feature for next-day recovery model |
 
-> **Not every data type supports every method.** A type's *record type* decides: Interval and Sample types (`steps`, `distance`, `active-minutes`, `total-calories`, `floors`, `sedentary-period`, `heart-rate`, `oxygen-saturation`) roll up; **Daily** types (`daily-resting-heart-rate`, `daily-heart-rate-variability`, `daily-oxygen-saturation`, `daily-vo2-max`, `daily-respiratory-rate`, `daily-sleep-temperature-derivations`) are already one point per day and support only `list`/`reconcile`; Session types (`sleep`, `electrocardiogram`, `irregular-rhythm-notification`) support `list`/`get`. A rollup can also be the wrong method for a rollable type: `dailyRollUp`'s union has no `oxygenSaturation` member, so SpO2 min/max exist only in the sample series and `FitbitApiClient` lists it rather than rolling it up. Asking a Daily type for a rollup returns 400 `INVALID_ARGUMENT` with reason `INVALID_PARENT_DATA_TYPE_COLLECTION` — `FitbitApiClient` rolled up a `resting-heart-rate` that is neither a real type ID nor rollable, which failed every wearable sync until it was corrected. A Daily type's window is a `filter` on its own `date` field, using the same ISO literal and `>=`/`<` grammar as the civil-time fields above.
+> **Not every data type supports every method.** A type's *record type* decides: Interval and Sample types (`steps`, `distance`, `active-minutes`, `total-calories`, `floors`, `sedentary-period`, `heart-rate`, `oxygen-saturation`) roll up; **Daily** types (`daily-resting-heart-rate`, `daily-heart-rate-variability`, `daily-oxygen-saturation`, `daily-vo2-max`, `daily-respiratory-rate`, `daily-sleep-temperature-derivations`) are already one point per day and support only `list`/`reconcile`; Session types (`sleep`, `electrocardiogram`, `irregular-rhythm-notification`) support `list`/`get`. A rollup can also be the wrong method for a rollable type: `dailyRollUp`'s union has no `oxygenSaturation` member, so SpO2 min/max exist only in the sample series and `GoogleHealthApiClient` lists it rather than rolling it up. Asking a Daily type for a rollup returns 400 `INVALID_ARGUMENT` with reason `INVALID_PARENT_DATA_TYPE_COLLECTION` — the client rolled up a `resting-heart-rate` that is neither a real type ID nor rollable, which failed every wearable sync until it was corrected. A Daily type's window is a `filter` on its own `date` field, using the same ISO literal and `>=`/`<` grammar as the civil-time fields above.
 >
 > **`filter` member paths are snake_case**, and they name the *data type*, not the response's union member: the documented patterns are `{daily_summary_data_type}.date`, `{interval_data_type}.interval.civil_start_time`, `{sample_data_type}.sample_time.civil_time` and (sleep-specific) `sleep.interval.civil_end_time`. So it is `daily_resting_heart_rate.date >= "2026-08-05"` — the camelCase `dailyRestingHeartRate.date` that keys the *response* is rejected with `INVALID_DATA_POINT_FILTER` / `INVALID_DATA_POINT_FILTER_DATA_TYPE_RESTRICTION` ("does not match any data type"), which failed every wearable sync until it was corrected. Single-word types like `sleep` spell the same either way, so they prove nothing about the convention.
 >
@@ -246,7 +246,7 @@ Prefer the **civil** variants throughout. Physical-instant filtering buckets by 
 >
 > **Three encodings hide behind those names, and every one fails silently if missed.** `int64` fields serialise as JSON **strings** under proto3 JSON (`"countSum": "9423"`), so a numeric-only parse reads them as absent. `Duration` fields serialise as strings with a mandatory **`s` suffix** (`"durationSum": "28800s"`) — `sedentary-period` is the one here, and parsing it as a bare number returns null on every wearer. And the enum members are per-schema: `ActiveMinutesRollupByActivityLevel.activityLevel` is `LIGHT`/`MODERATE`/`VIGOROUS`, *not* the `SEDENTARY`/`LIGHTLY_ACTIVE`/`MODERATELY_ACTIVE`/`VERY_ACTIVE` of the neighbouring `activity-level` type — borrowing that spelling matched no level and summed to zero. The **discovery document** (`https://health.googleapis.com/$discovery/rest?version=v4`, public, no auth) is the authority for all three: it gives each field's `format` and each enum's members, which the prose reference does not. Check it before adding a field, because `int64`, `google-duration` and `double` all look like "a number" in an example payload.
 >
-> **An absent rollup bucket is not a zero.** Google's own guidance is that a date missing from a rollup response means the device was not worn or has not synced, while a present `"countSum": "0"` is a true zero. CardiTrack keeps the two distinct all the way to the column: every activity metric is nullable, and `FitbitApiClient` never coalesces. Collapsing them would corrupt both consumers — the multi-device merge takes the first non-null value, so a manufactured 0 from a higher-priority device beats another device's genuine reading, and the baseline averages unsynced days in as stillness, which is indistinguishable from the inactivity the product exists to detect.
+> **An absent rollup bucket is not a zero.** Google's own guidance is that a date missing from a rollup response means the device was not worn or has not synced, while a present `"countSum": "0"` is a true zero. CardiTrack keeps the two distinct all the way to the column: every activity metric is nullable, and `GoogleHealthApiClient` never coalesces. Collapsing them would corrupt both consumers — the multi-device merge takes the first non-null value, so a manufactured 0 from a higher-priority device beats another device's genuine reading, and the baseline averages unsynced days in as stillness, which is indistinguishable from the inactivity the product exists to detect.
 >
 > An earlier snake_case reading of the convention (`count`, `beatsPerMinute_avg`, `meters_sum`) matched nothing and returned **zeros rather than errors** — the whole class of bug this paragraph exists to prevent. All names, formats and enum members above are now checked against the discovery document and pinned by unit tests, but a schema cannot prove a field is *populated* for a given wearer's device: [`tools/HealthApiProbe`](../tools/HealthApiProbe/README.md) checks that against a live account.
 
@@ -450,7 +450,7 @@ Family members are secondary consumers of CardiTrack data — they care about th
 
 CardiTrack uses the **caregiver-centric** model defined in the API spec ([cardimembers.md](./execution/backend/api/cardimembers.md), [family.md](./execution/backend/api/family.md)):
 
-- The account **Admin** (caregiver) creates the CardiMember profile and records the wearer's consent (per-metric: activity, heart rate, sleep) via the consent endpoint. Data types without recorded consent are never processed by the pipeline or shared.
+- The account **Admin** (caregiver) creates the CardiMember profile and — **per the designed consent endpoint, which is not yet built** — records the wearer's consent (per-metric: activity, heart rate, sleep). Today no `ConsentRecord` entity exists and no consent gating is enforced in the pipeline; the per-metric gate remains target design.
 - Family members join by **Admin invitation** with a role: `admin`, `staff`, or `viewer`.
 - Per-member **family routing rules** control who is pushed what (e.g. a sibling receives `red` only) — stored in the **planned `AlertPreferences` table** (not yet implemented).
 
@@ -461,7 +461,7 @@ Role → visibility mapping:
 | `viewer` (or routing-restricted member) | Push notifications per routing rules; read-only dashboard |
 | `staff` / `admin` | Alerts + daily digest + trend charts + settings |
 
-Raw metric values (exact bpm, SpO2 %) are **hidden by default** in family-facing pushes and digests regardless of role; an Admin can expose them per member. This reduces anxiety-driven misinterpretation by non-clinical family members. A wearer with their own login retains binding controls: pause monitoring, add self-notes, and withdraw consent per metric.
+Raw metric values (exact bpm, SpO2 %) are **hidden by default** in family-facing pushes and digests regardless of role; an Admin can expose them per member. This reduces anxiety-driven misinterpretation by non-clinical family members. (Wearers never log in — pause monitoring and consent withdrawal are exercised by the caregiver on the wearer's behalf.)
 
 ---
 
@@ -471,14 +471,16 @@ Each MedGemma response is parsed for a severity tag. The tag drives the push dec
 
 > **Severity mapping:** Critical/High/Medium/Low is the pipeline's **internal routing scale**. All user-facing surfaces (API, apps) use the product taxonomy: **Critical → `red`, High → `orange`, Medium → `yellow`, Low → `green` (health status; no alert emitted)**.
 
-| Severity | MedGemma output signal | Family push? | Wearer push? | Cadence |
-|----------|----------------------|:---:|:---:|---------|
-| **Critical** | Sustained HR anomaly, SpO2 < 90%, HR > 150 at rest | ✅ Immediate | ✅ Immediate | Real-time (< 30 s) |
-| **High** | HR trend deviation > 2 SD from 7-day baseline, HRV drop > 40% overnight | ✅ Immediate | ✅ Immediate | Within 5-min window |
-| **Medium** | Mild trend deviation, elevated resting HR for 2+ consecutive windows | ❌ Held | ✅ In-app | **Built:** carried into the family summary. `MonitoringContextSource` reads the member's yellow-and-above assessments from the last 24 h, and their unresolved alerts, into `CARDITRACK_FAMILY_DIGEST_PROMPT`. Until this existed the tier routed nowhere — alerts fire at orange and above, and the digest read no assessments at all |
-| **Low / Normal** | No anomaly detected | ❌ | ❌ | Silent; contributes to weekly trend |
+| Severity | MedGemma output signal | Family push? | Cadence |
+|----------|----------------------|:---:|---------|
+| **Critical** | Sustained HR anomaly, SpO2 < 90%, HR > 150 at rest | ✅ Immediate | Real-time (< 30 s) |
+| **High** | HR trend deviation > 2 SD from 7-day baseline, HRV drop > 40% overnight | ✅ Immediate | Within 5-min window |
+| **Medium** | Mild trend deviation, elevated resting HR for 2+ consecutive windows | ❌ Held | **Built:** carried into the family summary. `MonitoringContextSource` reads the member's yellow-and-above assessments from the last 24 h, and their unresolved alerts, into `CARDITRACK_FAMILY_DIGEST_PROMPT`. Until this existed the tier routed nowhere — alerts fire at orange and above, and the digest read no assessments at all |
+| **Low / Normal** | No anomaly detected | ❌ | Silent; contributes to weekly trend |
 
-> The LSTM's Δ anomaly score supplements MedGemma's severity judgement. If MedGemma rates a window "medium" but the anomaly score exceeds 3 SD on the trend, escalate to "high" before routing.
+(The former wearer-push column is gone with the wearer audience — wearers never log in and receive nothing.)
+
+> The stored `HrDeviationScore` (the SSA deviation in noise-RMS units) is **evidence only and never overrides the model's verdict** — severity routes strictly on the parsed closing `Severity:` line. (An earlier design escalated on the LSTM's Δ anomaly score; that went with the LSTM on 2026-08-10.)
 
 ---
 
@@ -488,20 +490,21 @@ Each MedGemma response is parsed for a severity tag. The tag drives the push dec
 MedGemma output (severity + plain-language summary)
   ↓
 Severity router (Cloud Run)
-  ├── Critical / High → FCM / APNs (immediate push — planned; no push infra yet)
+  ├── Critical / High → FCM / APNs (push infra BUILT — FCM HTTP v1 relay with APNs
+  │                     passthrough; wiring this router into it is what remains)
   │                  → SMS fallback if app not installed (future; provider not selected)
   ├── Medium          → read into the next family summary by the digest job (below)
   └── Low / Normal    → trend_aggregates only — no push
 ```
 
-**Daily digest** (08:00 local time, family + wearer):
+**Daily digest** (08:00 local time, family only — wearers never log in):
 - Plain-language overnight summary: sleep quality, HRV trend, any medium events from the prior 24 h (**built** — see `DigestGenerator`; the job runs half-hourly against the member's day in progress rather than once at 08:00)
 - Generated by a second MedGemma call with a digest-specific system prompt (see below)
 - Delivered as push notification with deep link to trend chart
 
-**Weekly trend report** (Monday 09:00 local time, wearer only by default):
+**Weekly trend report** (Monday 09:00 local time, family only — wearers never log in):
 - 7-day cardiovascular trend: resting HR trajectory, HRV baseline shift, SpO2 stability
-- Opt-in for family members at "Full dashboard" level
+- Delivered to family members at "Full dashboard" level
 
 ---
 
@@ -541,7 +544,7 @@ The alert reads: *"No readings from the device since HH:mm. It may need charging
 ### Privacy guardrails
 
 - Family members **never** receive the raw MedGemma inference output. A second, family-framed MedGemma call (or a template fill for low/normal windows) is always used.
-- All AI-result rows are keyed by `wearer_user_id`. Family member reads are scoped by the `UserCardiMembers` relationship record in Cloud SQL — the query layer enforces this; there is no client-side filtering.
+- All AI-result rows are keyed by `CardiMemberId`. Family member reads are scoped by the `UserCardiMembers` relationship record in Cloud SQL — the query layer enforces this; there is no client-side filtering.
 - Access is revocable at any time: an Admin removes the family member (or the wearer withdraws consent per metric); the relationship record is deleted and all future pushes for that pair stop immediately.
 - Family-facing digests **do not include skin temperature** — this is too intimate a signal for a non-clinical audience and can cause disproportionate alarm.
 
@@ -589,7 +592,8 @@ MedGemma (CARDITRACK_TREND_PROMPT) — interprets computed features
   — Generates the plain-language trend narrative
   ↓
 Routing: narrative feeds the family digest and the insights API
-  (push dispatch joins when FCM/APNs lands from its workstream)
+  (push dispatch joins once the pipeline's severity→push wiring lands —
+   the FCM HTTP v1 relay itself is built)
 ```
 
 ---
@@ -652,10 +656,9 @@ Never diagnose. Never alarm.
 | Component | Estimated Cost | Notes |
 |-----------|---------------|-------|
 | Cloud Run — MedGemma (4 vCPU / 16 Gi, CPU always-allocated, 1 instance) | ~£150–175/mo when kept warm | Largest AI line item. Scale-to-zero keeps *idle* cost near zero but not *wake* cost: a cold start bills the full allocation for the ~150s the startup probe allows, so spend tracks scheduler cadence, not member count. The Aug 2026 dev overrun (~£13/day) was this — a `*/5` assessor paying up to 12 cold starts per assessment produced |
-| Cloud Run — pipeline services/jobs (CPU) | Near-zero at this scale | SSA-LSTM pre-processor + predictive batch |
+| Cloud Run — pipeline services/jobs (CPU) | Near-zero at this scale | SSA pre-processor + trend-interpretation batch |
 | Cloud Pub/Sub | ~£5–10/mo | Real-time ingestion buffer at ~333 events/s peak |
-| Cloud SQL headroom (JSONB result tables) | Within existing instance | No separate data plane to pay for |
-| GCS (per-user model store) | ~£0.50/mo | ~500 MB for 10,000 per-user LSTM models |
+| Cloud SQL headroom (typed partitioned result tables) | Within existing instance | No separate data plane to pay for |
 | Gemini 2.0 Flash API | Usage-based, small | General-provider calls (chat/reports) |
 | Google Health API | Free | Restricted scopes — production access requires Google's privacy & security review |
 | Google Maps Platform (Weather + Air Quality APIs) | Usage-based, low volume | Fires per GPS-tagged exercise session, per consented member — orders of magnitude below the heart-rate path's request volume |
@@ -669,10 +672,10 @@ Never diagnose. Never alarm.
 - MedGemma is **not optimised for multi-turn conversation**. Treat each inference request as stateless.
 - All patient data processed through MedGemma must comply with applicable health data regulations (HIPAA, GDPR, etc.).
 - All Google Health API scopes are classified **Restricted** — production (verified) access requires passing Google's privacy & security review; before verification, only enrolled test users can connect devices.
-- The system prompt is identical across all users, making it an ideal candidate for serving-engine prefix caching — ensure it is never personalised per user to preserve this benefit.
+- The system prompt is identical across all users, but **prefix caching is not realisable on this model as served**: Gemma 3 uses sliding-window attention and `llama.cpp` will not restore a KV checkpoint under SWA (`LLAMA_ARG_CACHE_RAM=0` on the container; `cached n_tokens = 0` measured on every generation, 2026-08-13) — every call reprocesses the whole prompt from token zero. Keeping the prompt fixed and unpersonalised is prompt hygiene and auditability, not a caching win; prompt *length* is the only latency lever.
 - The `googlehealth.location.readonly` scope the environmental-enrichment job needs has **not yet been requested from Google** — it is a new Restricted scope on top of the ones already granted, and requesting it re-opens the privacy & security review scope, not just an app update. Until it is granted, the `enrich` job's exercise fetch returns nothing for every connection (no connection carries the scope), which is a safe, silent no-op rather than a failure.
 - Environmental-context enrichment is the platform's first geolocation data of any kind. It ships **consent-gated off by default** (`CardiMember.EnvironmentalContextConsentGranted`) precisely because the platform's broader per-metric consent architecture is still design-only (`docs/technical/data_protection_architecture.md` §8) — see that document and the DPIA for the compliance conditions this feature was built under.
 
 ---
 
-*Version 2.1 — Last Updated: August 12, 2026*
+*Version 2.2 — Last Updated: August 13, 2026*

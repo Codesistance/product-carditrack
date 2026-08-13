@@ -65,6 +65,8 @@ renderer that gets woken, plus a full-sync-on-foreground safety net (§6.4) for 
         │  StatisticalAlertWorker  (#118)│  statistical alerts off baselines
         │  InactivityDetectionWorker     │  device silence, 2h
         │  NotificationDispatchWorker    │  outbox retry + escalation timer
+        │  PushCanaryWorker        (15m) │  end-to-end delivery canary
+        │  DeviceAuthRecoveryWorker (15m)│  retries broken device grants
         └──────────────┬─────────────────┘
                        │  enqueue
         ┌──────────────▼─────────────────┐        ┌──────────────────────────┐
@@ -635,9 +637,9 @@ priority, and silence policy. `Full` = snooze + mute-forever · `Snooze` = time-
 
 **Copy must not promise what isn't built.** Two rules originally did:
 
-- `SLEEP_SCOPE_MISSING` promised *"unlock sleep-disruption alerts"* — `AlertType.Sleep` has no
-  generator today. Reworded to the tracking and trends that ship now; it can promise alerts once
-  generation lands.
+- `SLEEP_SCOPE_MISSING` promised *"unlock sleep-disruption alerts"* — at the time, `AlertType.Sleep`
+  had no generator, so it was reworded to the tracking and trends that shipped then. `IrregularSleepRule`
+  has since landed in `StatisticalAlertWorker`, so the copy may now promise sleep alerts.
 - `EMERGENCY_CONTACT_MISSING` promised *"a one-tap call button"*, which lives on **M1-12 Alert
   Detail – Critical — ⬜ not built, no Figma frame**. Reworded, and held to R2 so the full promise
   ships with the screen that honours it.
@@ -809,13 +811,14 @@ correctness if a call site is ever missed.
 
 ## 13. Workers, observability, and proving it works
 
-Five workers exist today; two are added, both `CronBackgroundService` subclasses configured under
-`Workers:{Name}`.
+Eight other workers exist in `CardiTrack.Worker`; this engine adds three — eleven in total, all
+`CronBackgroundService` subclasses configured under `Workers:{Name}`.
 
 | Worker | Cron | Job |
 |---|---|---|
 | `NotificationDispatchWorker` | `*/30 * * * * *` | Claim due outbox rows (`SKIP LOCKED`), retry, run escalation timers, expire past-TTL rows, disable dead tokens |
 | `DataCompletenessWorker` | `0 0 6 * * *` | Evaluate + reconcile all active orgs, batched, cancellation honoured between batches |
+| `PushCanaryWorker` | `0 */15 * * * *` | Send a real push to the canary fleet, alert if the ack doesn't come back (the synthetic canary below) |
 
 30 seconds is the retry granularity the 60s SLO requires; detection runs at 06:00 UTC, after the 02:30
 baseline recalculation.
@@ -838,8 +841,9 @@ for tables it knows about.
 repeats. A `NotificationRunLog` row per run (§8) makes a misfiring rule visible in one query and lets
 a run resume from the last completed org.
 
-`CronBackgroundService` has **no distributed lock and no error boundary**
-([data_protection_architecture.md](./data_protection_architecture.md) §1 finding #12), and
+`CronBackgroundService` has **no distributed lock** — it gained a per-tick error boundary after the
+2026-08-12 incident, but nothing serializes instances
+([data_protection_architecture.md](./data_protection_architecture.md) §1 finding #12) — and
 `infrastructure/main.tf` sets `cloud_run_max_instances = 3`. The dispatch worker is safe regardless:
 `FOR UPDATE SKIP LOCKED` claiming means three instances divide the outbox rather than duplicate it —
 the same property that makes horizontal scaling a throughput win instead of a correctness problem.
@@ -857,7 +861,7 @@ the same reason.
 - `notification.token_churn`, `.outbox_depth` — leading indicators
 - Nudge funnel: `.seen` → `.complied` / `.snoozed` / `.muted`, plus `time_to_comply` per rule
 
-**Synthetic canary.** A scheduled job sends a real push to a fleet of test devices every 15 minutes and
+**Synthetic canary.** `PushCanaryWorker` sends a real push to a fleet of test devices every 15 minutes and
 alerts if the ack doesn't return. Provider outages, expired credentials and a broken APNs certificate
 are all silent failures otherwise — the kind you discover from a support ticket after the emergency.
 For the primary objective of this engine, a canary is not optional.
@@ -876,10 +880,10 @@ and takes the safety alerts down with it.
 | Issue | Resolution |
 |---|---|
 | `NotificationPreferencesRequest` DTO is per-CardiMember with a registered validator no endpoint consumes | ✅ **Done** — DTO, validator and registration deleted. It described SMS/email channels this engine does not have; the R2 alert-preferences work should introduce the shape it actually needs rather than inherit this one |
-| `UserCardiMember.NotificationPreferences` JSON blob (`{sms,email,push}`), read by nothing | Migrate non-`{}` values into `NotificationPreference`, drop the column. SMS/email keys are discarded — those channels are out of scope by decision |
+| `UserCardiMember.NotificationPreferences` JSON blob (`{sms,email,push}`), read by nothing | ✅ **Done** — the column was dropped in `AddPushDeliverySpine`, with no data migration: SMS/email keys were discarded by decision (those channels are out of scope) |
 | `CardiMember.DateOfBirth` non-nullable `DateOnly` | **Not a defect — leave it.** `CreateCardiMemberValidator` and `UpdateCardiMemberValidator` both require a date and enforce an 18–120 age range, and both are registered, so the API cannot produce a member without one. With `DOB_MISSING` cut (§9) nothing depends on a nullable column, and making it optional would ripple through age display, the insights prompt and two mobile screens to permit a state the product deliberately forbids. If DOB should become optional, that is a product decision with its own change |
-| `OnboardingStatusResponse.HasNotificationPreferences`, `TotalSteps = 7` | **Still open.** With push deferred to R2 there is no preference row and no permission grant to satisfy this step, so onboarding cannot report complete. Drop the step or repoint it — product call, §17.6 |
-| `AlertSensitivity` stored, consumed by nothing | Still inert here; noted so `NO_ALERT_RECIPIENT` isn't confused with sensitivity tuning |
+| `OnboardingStatusResponse.HasNotificationPreferences`, `TotalSteps = 7` | **Still open, for a new reason.** Push has shipped, and the `NotificationPreference` table with its GET/PUT endpoints exists — but `UserService.cs:179` still hard-codes `HasNotificationPreferences = false` (TODO), so onboarding `CurrentStep` sticks at 7 regardless. Wire the real lookup, or drop the step — §17.6 |
+| `AlertSensitivity` stored, consumed by nothing | Still inert here — and the gap has widened: it is now editable end-to-end (edit screen → API → stored) while still consumed by no alert producer. Noted so `NO_ALERT_RECIPIENT` isn't confused with sensitivity tuning |
 | No `device_disconnected` alert type (alerts.md notes the gap) | Covered as Safety nudges `DEVICE_AUTH_BROKEN` / `DEVICE_STALE_LONG` / `DEVICE_BATTERY_LOW` rather than a sixth `AlertType`. A flat battery is a fact about hardware, not about the wearer — the `Alert` history stays clinical, and the Safety category already delivers harder than a red `Alert` does (immediate push, critical flag, quiet-hours override, escalation) |
 
 ---
@@ -925,11 +929,12 @@ and takes the safety alerts down with it.
 
 ## 16. Delivery phases
 
-**The nudge engine ships before the push spine, because it is the only notification content that
-exists today.** No code in the solution creates an `Alert` row — `AlertService` reads and
-acknowledges, and *Statistical alerts (all 5 launch types)* is ⬜ in the
-[release matrix](../release_matrix.md). A delivery spine built first would carry nothing but its own
-canary. Data gaps, by contrast, are detectable on every existing account from day one.
+**The nudge engine shipped before the push spine, because it was the only notification content that
+existed when Phase 1 was scoped.** At that point no code in the solution created an `Alert` row —
+`AlertService` only read and acknowledged, and *Statistical alerts (all 5 launch types)* was ⬜ in the
+[release matrix](../release_matrix.md). Alert generation has since shipped (statistical rules cover
+all five types, and the matrix marks it so). A delivery spine built first would have carried nothing
+but its own canary; data gaps, by contrast, were detectable on every existing account from day one.
 
 **Phase 1 — In-app nudge engine (R1, ~1.5pm).** `Notification` + `NotificationMute` +
 `NotificationRunLog` + migrations · `INudgeRule` + reconciler + snapshot queries ·
@@ -1042,4 +1047,4 @@ them back to something worse.
 ---
 
 **Owner:** Engineering
-**Last Updated:** August 11, 2026
+**Last Updated:** August 13, 2026

@@ -45,7 +45,7 @@ CardiTrack follows **Clean Architecture** principles with clear separation of co
 └─────────────────────────────────────────────┘
 ```
 
-`CardiTrack.Worker` is its own deployable service hosting all non-AI background jobs (wearable data sync, cleanup). The AI ingestion/inference pipeline is designed to run on GCP (Pub/Sub + Cloud Run) — see [docs/llm_design.md](docs/llm_design.md).
+`CardiTrack.Worker` is its own deployable service hosting all non-AI background jobs — wearable data sync, baselines, partition retention, statistical + inactivity alerting, notification dispatch, device-auth recovery, cleanup, and more (11 cron jobs in total). The AI ingestion/inference pipeline runs on GCP (Pub/Sub + Cloud Run) and is **live in dev** — see [docs/llm_design.md](docs/llm_design.md).
 
 ## 📁 Solution Structure
 
@@ -65,15 +65,21 @@ CardiTrack/
 │   │   ├── CardiTrack.Web              # Blazor web dashboard
 │   │   ├── CardiTrack.Mobile           # .NET MAUI app
 │   │   └── CardiTrack.Mobile.Core      # Shared mobile logic
+│   ├── Pipeline/
+│   │   ├── CardiTrack.HealthWebhookReceiver  # AI pipeline ingress (publishes raw to Pub/Sub)
+│   │   └── CardiTrack.PipelineJobs     # AI pipeline Cloud Run jobs (digest, aggregate, assess)
 │   └── Worker/
-│       └── CardiTrack.Worker           # Non-AI background jobs (cron-scheduled)
+│       └── CardiTrack.Worker           # Non-AI background jobs (11, cron-scheduled)
 ├── tests/
 │   ├── CardiTrack.UnitTests
 │   ├── CardiTrack.IntegrationTests
 │   └── CardiTrack.E2ETests
+├── tools/
+│   └── HealthApiProbe                  # Live Google Health API field-population probe
 ├── infrastructure/                     # Terraform (GCP)
 │   ├── *.tf                            # Root stack (dev/prod via tfvars)
 │   ├── common/                         # Shared stack (Artifact Registry, builds bucket)
+│   ├── datadog/                        # Datadog monitors + OTel severity log pipeline
 │   ├── deployments/                    # Cloud Run, Cloud SQL, GCS, Pub/Sub, LB modules
 │   └── environments/                   # common.tfvars, dev.tfvars, prod.tfvars
 ├── docs/                               # Documentation (see docs/readme.md)
@@ -105,9 +111,10 @@ toolchain automatically via a `SessionStart` hook. To configure a Claude Code
 **cloud environment** itself (network access, environment variables, setup script),
 see [docs/technical/claude_cloud_environment_setup.md](docs/technical/claude_cloud_environment_setup.md).
 
-Everything except `CardiTrack.Mobile` is covered by the `CardiTrack.Server.slnf`
-solution filter — the MAUI project needs the `maui-android` workload and the
-Android SDK, so use the filter for server work:
+Everything except `CardiTrack.Mobile` and `tools/HealthApiProbe` is covered by the
+`CardiTrack.Server.slnf` solution filter — the MAUI project needs the `maui-android`
+workload and the Android SDK, and the probe is a standalone live-API tool — so use
+the filter for server work:
 
 ```bash
 dotnet build CardiTrack.Server.slnf
@@ -169,7 +176,7 @@ CardiTrack is designed with HIPAA compliance in mind:
 
 - ✅ Encryption at rest (Cloud SQL disk encryption)
 - ✅ Encryption in transit (TLS 1.2+)
-- ✅ Audit logging (30-day retention in dev, 90-day in prod)
+- ✅ Platform audit logging (prod only, 90-day retention; the feature is off in dev)
 - ✅ Access controls (RBAC, Auth0 authentication)
 - ✅ Secure secret storage (GCP Secret Manager)
 - ✅ Data retention policies
@@ -179,7 +186,7 @@ See the [DPIA](docs/compliance/dpia.md) and the [data protection architecture](d
 ## 📊 Supported Devices
 
 ### Current Support
-- ✅ **Fitbit** via the **Google Health API** (the legacy Fitbit Web API is decommissioned September 2026; the codebase has migrated, Google console registration is pending, and unverified apps are capped at 100 users until Google's restricted-scope verification completes)
+- ✅ **Fitbit** via the **Google Health API** (the legacy Fitbit Web API is decommissioned September 2026; the codebase has migrated, Google console registration was completed 2026-08-07 with field mappings verified 2026-08-09; restricted-scope verification + the annual CASA assessment are still outstanding, and unverified apps are capped at 100 users until they complete)
 
 ### Planned Support
 - 🔄 **Garmin** (Venu, Forerunner, Vivoactive)
@@ -196,11 +203,11 @@ CardiTrack uses a two-provider LLM setup surfaced through the API's chat, insigh
 - **Medical provider — MedGemma 1.5 4B** (`hf.co/unsloth/medgemma-1.5-4b-it-GGUF:Q4_K_M`) served by **Ollama on Cloud Run** (custom image in `src/Infrastructure/MedGemma/`): health-data interpretation and severity assessment
 - **General provider — Gemini 2.0 Flash**: conversational and general-purpose responses
 
-Health data is currently ingested by the Worker's 30-minute polling sync (`WearableSyncWorker`). A webhook-driven AI ingestion/inference pipeline on GCP (Pub/Sub + Cloud Run) is designed in [docs/llm_design.md](docs/llm_design.md) and lands with the R2 wave.
+Health data is ingested by the Worker's 10-minute polling sync (`WearableSyncWorker`) as the guaranteed fallback, and — **live in dev** — by the webhook-driven AI ingestion/inference pipeline on GCP (Pub/Sub + Cloud Run): webhook receiver, aggregator, real-time assessor, and family digests. See [docs/llm_design.md](docs/llm_design.md).
 
 ## 🌐 Deployment
 
-All infrastructure runs on **Google Cloud** (project `carditrack-490120`, region `europe-west2`): Cloud Run services (api, web, worker, medgemma) plus a migrator Cloud Run Job, Cloud SQL PostgreSQL 16, Secret Manager, GCS, Pub/Sub (prod-only), and an optional domain-gated Load Balancer with Cloud Armor.
+All infrastructure runs on **Google Cloud** (project `carditrack-490120`, region `europe-west2`): Cloud Run services (api, web, worker, medgemma, webhook-receiver) plus Cloud Run Jobs (the migrator and the three AI-pipeline jobs — digest, aggregator, assessor), Cloud SQL PostgreSQL 16, Secret Manager, GCS, Pub/Sub (both environments), and an optional domain-gated Load Balancer with Cloud Armor.
 
 ### Infrastructure Setup (Terraform)
 
@@ -253,4 +260,4 @@ For issues, questions, or feature requests:
 
 **Built with ❤️ for family caregivers**
 
-**Last Updated**: August 7, 2026
+**Last Updated**: August 13, 2026

@@ -6,7 +6,7 @@ CardiTrack supports **two organization types** with distinct onboarding flows:
 1. **Family Accounts**: Individual/family monitoring elderly relatives
 2. **Business Accounts**: Care homes and healthcare facilities with staff management
 
-**Implemented today:** embedded Auth0 email/password auth with a hard email-verification gate, atomic organization + trial subscription + user setup (`POST /api/Onboarding/setup`), CardiMember creation, Fitbit device connection via Google OAuth (PKCE) with 10-minute polling ingestion, and daily pattern-baseline calculation, plus Google/Apple social login (app-side, 2026-08-10 — per-tenant Auth0 work pending). Notifications and billing are planned (marked below).
+**Implemented today:** embedded Auth0 email/password auth with a hard email-verification gate, atomic organization + trial subscription + user setup (`POST /api/Onboarding/setup`), CardiMember creation, Fitbit/Pixel Watch device connection via Google OAuth (PKCE) with 10-minute polling ingestion (plus webhook push in dev), daily pattern-baseline calculation, the R1 statistical alert engine, and push/in-app notification delivery, plus Google/Apple social login (app-side 2026-08-10; dev tenant deployed, prod pending). Billing is planned (marked below).
 
 ---
 
@@ -21,7 +21,7 @@ CardiTrack supports **two organization types** with distinct onboarding flows:
 3. Password reset uses `POST /dbconnections/change_password` (Forgot Password flow).
 4. The API validates the RS256 JWT on every request; identity is **token-derived on every request** via `UserContextMiddleware` (`sub` claim + database lookup) — there is no server session.
 
-**Social login (wired 2026-08-10):** the Google and Apple buttons on `CreateAccountPage` and `SignInPage` launch Auth0 Universal Login in the system browser (Authorization Code + PKCE); same-email accounts are unified tenant-side by the post-login Action, with an API 409 backstop ([oauth_clients.md](./oauth_clients.md), runbook §8). Google works once the per-tenant Action/connection work is done; Apple awaits its credentials. Microsoft, Facebook, enterprise SSO (SAML/Azure AD/Okta), MFA, and passwordless are not part of the MVP.
+**Social login (wired 2026-08-10):** the Google and Apple buttons on `CreateAccountPage` and `SignInPage` launch Auth0 Universal Login in the system browser (Authorization Code + PKCE); same-email accounts are unified tenant-side by the post-login Action, with an API 409 backstop ([oauth_clients.md](./oauth_clients.md), runbook §8). Google and Apple are live in the dev tenant (connections + Action deployed; Apple Try-Connection-verified 2026-08-10); prod-tenant deployment remains. Microsoft, Facebook, enterprise SSO (SAML/Azure AD/Okta), MFA, and passwordless are not part of the MVP.
 
 #### **Email Verification Gate (mandatory, between account creation and onboarding)**
 
@@ -133,10 +133,12 @@ JWT bearer validation uses `Auth0:Domain` + `Auth0:Audience` (issuer, audience, 
 Users add the elderly person(s) to monitor (`POST /api/Onboarding/cardimember` — requires an organization; enforced via the token-derived user context):
 
 **Personal Information (actual schema):**
-- **Name**, **DateOfBirth** (DateOnly), **Gender** (Male/Female/Other/PreferNotToSay)
+- **Name**, **DateOfBirth** (DateOnly), **Sex** (`Gender` enum — required on the create DTO and captured at onboarding; the picker offers **Male/Female only**. `PreferNotToSay` is the resting value for members created before the form asked, and `Other = 3` was retired 2026-08-13 — the value stays reserved)
 - **Email / Phone**: optional contacts
 - **EmergencyContactName / EmergencyContactPhone**: two flat columns on `CardiMembers` (not JSON; a richer multi-contact entity is planned)
-- **MedicalNotes**: intended to be encrypted at rest; **currently stored unencrypted** — only device OAuth tokens are AES-256-GCM encrypted today. Encryption of MedicalNotes is a tracked follow-up (see [data_protection_architecture.md](./data_protection_architecture.md)).
+- **MedicalNotes**: **AES-256-GCM encrypted at rest** — `CardiMemberService` encrypts on write and decrypts on read (see [data_protection_architecture.md](./data_protection_architecture.md))
+- **Monitoring controls**: `MonitoringPausedUntil` / `MonitoringPauseReason` (temporary pause) and `AlertSensitivity` (default `Medium`)
+- **EnvironmentalContextConsentGranted** (default `false`) — the sole gate on location/environmental processing
 
 The add-member form localizes the emergency phone placeholder to the device region (PR #8).
 
@@ -147,12 +149,11 @@ UserCardiMembers (Many-to-Many Linking Table)
 ├── IsPrimaryCaregiver: bool
 ├── CanViewHealthData: bool (default true)
 ├── ReceiveAlerts: bool (default true)
-├── NotificationPreferences: JSON — { "sms": true, "email": true, "push": false }
 ├── AssignedDate: DateTime
 └── IsActive: bool
 ```
 
-There are no `CanManageDevices` or `Permissions` columns — granular per-relationship permissions beyond the flags above are planned.
+There are no `CanManageDevices` or `Permissions` columns — granular per-relationship permissions beyond the flags above are planned. Per-user notification preferences live in the separate **`NotificationPreferences` table** (`NotificationPreference` entity), not on this link table — the JSON column that used to sit here was dropped (nothing read it); push reachability derives from `PushDeviceTokens.OsAuthorizationStatus`.
 
 **Key Features:**
 - One CardiMember can have multiple caregivers
@@ -166,17 +167,18 @@ There are no `CanManageDevices` or `Permissions` columns — granular per-relati
 Users connect health monitoring devices:
 
 **Device Selection:**
-Supports 8+ device types:
-- Fitbit
-- AppleWatch
-- Garmin
-- Samsung
-- Withings
-- Oura
-- Whoop
-- Other
+The `DeviceType` enum has nine members:
+- Fitbit (1)
+- AppleWatch (2)
+- Garmin (3)
+- GalaxyWatch (4, "Samsung Galaxy Watch")
+- Withings (5)
+- Oura (6)
+- Whoop (7)
+- GooglePixelWatch (8, "Google Pixel Watch")
+- Other (99)
 
-> **Implemented today:** only the **Fitbit (Google Health API)** provider is registered in DI; the other providers exist as configuration stubs only.
+> **Implemented today:** only the **Google Health API** client is registered in DI (`HealthApi.GoogleHealth`), serving both **Fitbit** and **Google Pixel Watch** through the same client; the other providers exist as configuration stubs only.
 
 **OAuth Authorization Flow:**
 
@@ -218,8 +220,9 @@ Supports 8+ device types:
    ↓
 7. Save encrypted tokens to database (Cloud SQL PostgreSQL, DeviceConnections)
    ↓
-8. Initial sync runs; thereafter the connection is picked up by the 10-minute
-   polling cycle (webhook push ingestion is planned, not built)
+8. Initial sync runs; thereafter webhook push ingestion (notify-then-fetch,
+   live in dev behind webhook.dev.carditrack.com; prod pending) picks up new
+   data, with the 10-minute polling cycle as backstop
    ↓
 9. Notify family: "Fitbit Connected!"
 ```
@@ -233,7 +236,10 @@ DeviceConnection Entity:
 ├── RefreshToken: Encrypted (AES-256-GCM)
 ├── TokenExpiry: DateTime (UTC)
 ├── ConnectionStatus: Connected, Disconnected, TokenExpired, AuthError, SyncError
-├── SyncFrequencyMinutes: default 30
+├── SyncFrequencyMinutes: default 10 (migration ReduceDefaultSyncFrequencyToTenMinutes)
+├── HealthUserId, BatteryLevel/BatteryStatus/BatteryUpdatedAt (paired-device telemetry)
+├── HistoryBackfilledTo, NextPullAt, ConsecutiveEmptyPulls (pull scheduling)
+├── NextAuthRecoveryAt, AuthRecoveryAttempts (auth-recovery backoff)
 └── LastSyncDate: DateTime (UTC) — timestamp of the last successful polling sync
 ```
 
@@ -267,22 +273,25 @@ Unverified apps are capped at 100 connected users — enough for dev and beta, b
 - [ ] Annual assessment by an authorized third-party lab (self-scan not accepted; ~$500–$4,500, 2–6 weeks) → Letter of Assessment submitted to Google, renewed every 12 months
 
 **Data Ingestion & Token Management (implemented today):**
-- **10-minute polling** — `WearableSyncWorker` (in `CardiTrack.Worker`, cron `0 */10 * * * *`) finds connections due for sync and pulls data through the keyed per-provider sync service. There is no webhook ingestion.
-- **Token refresh** — happens **inside the sync path**: `OAuthTokenRefreshService` refreshes expiring OAuth tokens as part of each sync. There is no separate token-refresh worker.
-- **Planned**: Google Health API webhook push (notify-then-fetch) feeding the AI pipeline (see [llm_design.md](../llm_design.md)), and a `device_disconnected` alert when a device goes quiet.
+- **10-minute polling** — `WearableSyncWorker` (in `CardiTrack.Worker`, cron `0 */10 * * * *`) finds connections due for sync and pulls data through the keyed per-provider sync service; the poll is the backstop behind webhook push.
+- **Webhook push (notify-then-fetch)** — built and live in dev behind `webhook.dev.carditrack.com`, feeding the AI pipeline (see [llm_design.md](../llm_design.md)); prod is pending.
+- **Token refresh** — happens **inside the sync path**: `OAuthTokenRefreshService` refreshes expiring OAuth tokens as part of each sync. On top of that, `DeviceAuthRecoveryWorker` (cron `0 3-59/15 * * * *`) re-probes refused refresh tokens on a widening backoff (`DeviceConnection.NextAuthRecoveryAt` / `AuthRecoveryAttempts`).
+- **Device-silence detection** — `InactivityDetectionWorker` (every 15 minutes, `SilenceThresholdMinutes` 120, waking hours 07–22) alerts when a device goes quiet.
 
 ---
 
 ### **STEP 7: NOTIFICATION PREFERENCES**
 
-> **Status: Planned — not yet implemented.** No SMS, email, or push notification delivery code exists (no Twilio, SendGrid, or SignalR anywhere in the stack). What exists today is the `NotificationPreferences` JSON column on `UserCardiMembers` (`{"sms":..., "email":..., "push":...}`) and the `ReceiveAlerts` flag.
+> **Status: Implemented (push + in-app).** Notification delivery is live: push via FCM and in-app delivery, with quiet hours, a lock-screen-detail opt-in, per-category mutes, retry/escalation, and ack tracking (`NotificationDispatchWorker` runs every 30 seconds; `PushCanaryWorker` probes end-to-end delivery). Per-user preferences live in the **`NotificationPreferences` table** (`NotificationPreference` entity — the JSON column on `UserCardiMembers` was dropped), alongside the `ReceiveAlerts` flag; push reachability derives from `PushDeviceTokens.OsAuthorizationStatus`. **SMS and email are permanently out of scope.**
 
-**Planned alert types:**
-1. **Inactivity Alerts**: Steps < 50% baseline for 2+ days
-2. **Heart Rate Alerts**: Resting HR >15% above baseline for 3+ days
-3. **Sleep Disruption**: Sleep efficiency < 70% for 5+ days
-4. **Sudden Pattern Break**: No morning activity by 11am
-5. **Long-term Trends**: Declining mobility over 4 weeks
+**Alert types (implemented — the `StatisticalAlertWorker` R1 rules, see Step 8):**
+1. **Activity decline** (`activity_decline` → Yellow): steps well below baseline
+2. **Elevated heart rate** (`elevated_heart_rate` → Orange): resting HR above baseline
+3. **Irregular sleep** (`irregular_sleep` → Yellow): sleep pattern deviation
+4. **No morning activity** (`no_morning_activity` → Red): no activity by late morning
+5. **Long-term trend** (`long_term_trend` → Orange): sustained decline over weeks
+
+Device silence is detected separately by `InactivityDetectionWorker` (Step 6).
 
 **Alert Severity Levels** (`AlertSeverity`, displays as color names):
 - **Green**: Informational, no action needed
@@ -290,16 +299,16 @@ Unverified apps are capped at 100 connected users — enough for dev and beta, b
 - **Orange**: Concerning pattern, "consider doctor visit"
 - **Red**: Urgent, "please check on them"
 
-**Planned customization:** sensitivity tuning (z-score thresholds), quiet hours, escalation rules, per-alert-type enable/disable.
+**Customization (implemented):** per-member sensitivity (`AlertSensitivity`, default `Medium`), quiet hours, lock-screen-detail opt-in, per-category mutes, and monitoring pause (`MonitoringPausedUntil`).
 
 ---
 
 ### **STEP 8: BASELINE ESTABLISHMENT**
 
-> **Status: Implemented.** `BaselineCalculationWorker` (`CardiTrack.Worker`) writes `PatternBaselines` daily using `BaselineCalculator` (`CardiTrack.Application`). Alert generation from these baselines is still planned — see STEP 7.
+> **Status: Implemented.** `BaselineCalculationWorker` (`CardiTrack.Worker`) writes `PatternBaselines` daily using `BaselineCalculator` (`CardiTrack.Application`). Alert generation from these baselines is **live**: `StatisticalAlertWorker` (cron `0 7-59/15 * * * *`) evaluates the five R1 rules in STEP 7.
 
 **Learning period:**
-- **Duration**: 30, 60 and 90-day baselines are written per member
+- **Duration**: 7 and 14-day (provisional) plus 30, 60 and 90-day baselines are written per member
 - **Coverage gate**: a period needs data on **80% of its days** (24 of 30) before any baseline is written. Until the 30-day baseline exists, `DashboardService` reports the member as still learning and the app shows the "getting to know {Name}" state.
 - **Frequency**: recalculated daily (02:30 UTC), appended rather than replaced so baseline drift stays visible
 
@@ -328,10 +337,10 @@ PatternBaseline Entity:
     └── AvgSleepEfficiency: Mean efficiency %
 ```
 
-Each metric is gated on **7 samples of its own** and left null when thinner — ingestion populates metrics unevenly, so a member can have steps every day and sleep on half of them. Spread is the **sample** standard deviation (n−1), bedtime/wake time are **circular** means over the 24-hour clock (an arithmetic mean of 23:40 and 00:20 is midday) reported in UTC, and weekday buckets are null rather than zero when unsampled. See [worker readme](../apps/worker/readme.md#baselinecalculationworker).
+Each metric is gated on **min(7, ceil(days × 0.8)) samples of its own** — 6 for the 7-day window, 7 for every longer window — and left null when thinner; ingestion populates metrics unevenly, so a member can have steps every day and sleep on half of them. Spread is the **sample** standard deviation (n−1); bedtime/wake time are **circular** means over the 24-hour clock (an arithmetic mean of 23:40 and 00:20 is midday) reported in UTC, and are nulled when the mean resultant length is below 0.3 (times too scattered to average meaningfully); weekday buckets need at least **2 samples** and are null rather than zero otherwise. See [worker readme](../apps/worker/readme.md#baselinecalculationworker).
 
 **AI/ML Pattern Analysis (planned):**
-- **Algorithm**: statistical thresholds at R1; SSA-LSTM + MedGemma from R2 (see [llm_design.md](../llm_design.md))
+- **Algorithm**: statistical thresholds at R1; SSA + MedGemma from R2 (see [llm_design.md](../llm_design.md))
 - **Z-Score Calculation**: (TodayValue - Baseline) / StdDev; |Z| > 2.0 triggers alert
 - **Day-of-Week Awareness** and 7-day rolling trend detection
 
@@ -387,7 +396,7 @@ AuditLog Entity (6-year retention policy; deployed infra currently retains 30 de
 ├── UserAgent: Browser/device info
 └── DataAccessed: JSON (specific fields viewed)
 ```
-(Written by `AuditLoggingMiddleware` for endpoints carrying the opt-in `AuditHealthDataAccessAttribute` — the six health-data controllers; unannotated endpoints such as Onboarding are not audited.)
+(Written by `AuditLoggingMiddleware` for endpoints carrying the opt-in `AuditHealthDataAccessAttribute` — the eight health-data controllers: Alerts, CardiMembers, Chat, Dashboard, Devices, Insights, Questionnaires, Reports; unannotated endpoints such as Onboarding are not audited.)
 
 **Business Associate Agreements (BAAs):**
 - ✅ **Auth0**: BAA required before prod go-live ([runbook §1](./auth0_setup_runbook.md))
@@ -429,13 +438,17 @@ Users
 
 CardiMembers
 ├── Id, OrganizationId, Name, Email, Phone, DateOfBirth, Gender
-├── EmergencyContactName, EmergencyContactPhone, MedicalNotes (encryption planned)
+├── EmergencyContactName, EmergencyContactPhone, MedicalNotes (ENCRYPTED)
+├── MonitoringPausedUntil, MonitoringPauseReason, AlertSensitivity (default Medium)
+├── EnvironmentalContextConsentGranted (default false — sole gate on
+│     location/environmental processing)
 └── LastSyncDate, IsActive, CreatedDate, UpdatedDate
 
 UserCardiMembers (Relationship Table)
 ├── Id, UserId, CardiMemberId, RelationshipType, IsPrimaryCaregiver
-├── CanViewHealthData, ReceiveAlerts, NotificationPreferences (JSON)
+├── CanViewHealthData, ReceiveAlerts
 └── AssignedDate, IsActive, CreatedDate
+    (per-user notification preferences live in the NotificationPreferences table)
 
 Subscriptions
 ├── Id, OrganizationId (UNIQUE, FK→Organizations CASCADE), Tier, Status
@@ -445,7 +458,10 @@ Subscriptions
 DeviceConnections
 ├── Id, CardiMemberId, DeviceType, DeviceName, IsPrimary, ConnectionStatus
 ├── AccessToken (ENCRYPTED), RefreshToken (ENCRYPTED), TokenExpiry, Scopes (JSON)
-└── ConnectedDate, LastSyncDate, SyncFrequencyMinutes (default 30), Metadata (JSON)
+├── HealthUserId, BatteryLevel, BatteryStatus, BatteryUpdatedAt
+├── HistoryBackfilledTo, NextPullAt, ConsecutiveEmptyPulls
+├── NextAuthRecoveryAt, AuthRecoveryAttempts
+└── ConnectedDate, LastSyncDate, SyncFrequencyMinutes (default 10), Metadata (JSON)
 
 Devices (Reference Table)
 ├── Id, DeviceType, Manufacturer, ModelName, DisplayName, Capabilities (JSON)
@@ -456,45 +472,72 @@ ActivityLogs (Populated by polling sync)
 └── ~25 nullable metrics: Steps, HeartRate, Sleep stages, SpO2, VO2Max, ...
 
 PatternBaselines (Written daily by BaselineCalculationWorker)
-Alerts (Planned generation — table exists)
+Alerts (Generated by StatisticalAlertWorker + InactivityDetectionWorker)
 AuditLogs (Written by AuditLoggingMiddleware on PHI access)
 ```
 
 ### **Background Jobs (CardiTrack.Worker — Cronos)**
 
-Non-AI background jobs run in `CardiTrack.Worker` as `CronBackgroundService` subclasses. **Exactly four workers exist today** (6-field cron, Cronos IncludeSeconds, configured in appsettings):
+Non-AI background jobs run in `CardiTrack.Worker` as `CronBackgroundService` subclasses. **Eleven workers exist today** (6-field cron, Cronos IncludeSeconds, configured in appsettings):
 
 ```csharp
 // Every 10 minutes — polls device connections due for sync; token refresh
 // happens inside the sync path (OAuthTokenRefreshService)
-public class WearableSyncWorker : CronBackgroundService              // "0 */10 * * * *"
+public class WearableSyncWorker : CronBackgroundService                // "0 */10 * * * *"
 
 // Daily 03:00 UTC — deletes orphaned organizations (>24h, no users/members);
 // removals logged at Warning (PR #5 safety net)
 public class OrphanedOrganizationCleanupWorker : CronBackgroundService // "0 0 3 * * *"
 
 // Daily 02:30 UTC — recalculates 7/14-day provisional and 30/60/90-day pattern baselines
-public class BaselineCalculationWorker : CronBackgroundService       // "0 30 2 * * 0"
+public class BaselineCalculationWorker : CronBackgroundService         // "0 30 2 * * *"
 
 // Weekly Sunday 04:00 UTC — re-fetches a random sample of connections over a
 // wide window to measure how far back providers revise data (observation only)
-public class DeviceSyncAuditWorker : CronBackgroundService           // "0 0 4 * * 0"
+public class DeviceSyncAuditWorker : CronBackgroundService             // "0 0 4 * * 0"
+
+// Hourly at :15 (and on startup) — creates upcoming time-series partitions and
+// drops those past retention (granular 90d, rollups 13mo, digests 12mo)
+public class PartitionMaintenanceWorker : CronBackgroundService        // "0 15 * * * *"
+
+// Every 15 minutes — device-silence detection (SilenceThresholdMinutes 120,
+// waking hours 07–22)
+public class InactivityDetectionWorker : CronBackgroundService         // "0 */15 * * * *"
+
+// Every 15 minutes at :07 offset — the R1 statistical alert engine (all five
+// rules: activity_decline, irregular_sleep, elevated_heart_rate,
+// no_morning_activity, long_term_trend)
+public class StatisticalAlertWorker : CronBackgroundService            // "0 7-59/15 * * * *"
+
+// Every 15 minutes at :03 offset — re-probes refused refresh tokens on a
+// widening backoff (NextAuthRecoveryAt / AuthRecoveryAttempts)
+public class DeviceAuthRecoveryWorker : CronBackgroundService          // "0 3-59/15 * * * *"
+
+// Daily 06:00 UTC — data-completeness accounting over the ingestion window
+public class DataCompletenessWorker : CronBackgroundService            // "0 0 6 * * *"
+
+// Every 30 seconds — delivers pending notifications (push/in-app), handles
+// retry, escalation, and quiet hours
+public class NotificationDispatchWorker : CronBackgroundService        // "*/30 * * * * *"
+
+// Every 15 minutes — end-to-end push delivery canary (CanaryUserIds)
+public class PushCanaryWorker : CronBackgroundService                  // "0 */15 * * * *"
 ```
 
-> **Planned workers (not yet built):** trial-expiration reminders, retention/cleanup. The AI pipeline's scheduled jobs (aggregation, predictive batch, digests) belong to the planned GCP ingestion pipeline — see [llm_design.md](../llm_design.md).
+> **Planned workers (not yet built):** trial-expiration reminders, retention/cleanup beyond partition maintenance. The AI pipeline's scheduled jobs (aggregation, predictive batch, digests) belong to the GCP ingestion pipeline — see [llm_design.md](../llm_design.md).
 
 ---
 
 ## USER ONBOARDING CHECKLIST
 
 ### **Family Member Actions:**
-- [ ] **Create account** with email/password (Google/Apple buttons exist but are not yet functional)
+- [ ] **Create account** with email/password, or via the Google/Apple buttons — wired end-to-end app-side and live per tenant once the connection + Action are deployed (dev is live; prod pending)
 - [ ] **Verify email** via the emailed link (mandatory — login is blocked until verified; resend available)
 - [ ] **Sign in** and complete setup: select organization type (Family/Business)
-- [ ] **Add CardiMember profile** (name, DOB, gender, emergency contact, medical notes)
+- [ ] **Add CardiMember profile** (name, DOB, sex, emergency contact, medical notes)
 - [ ] **Define relationship** (Parent, Spouse, Grandparent, etc.)
 - [ ] **Connect device** (Fitbit via Google OAuth today)
-- [ ] *(Planned)* Configure notification preferences, review baseline progress, select paid tier
+- [ ] **Configure notification preferences** (quiet hours, category mutes, lock-screen detail, alert sensitivity); *(planned)* select paid tier
 
 ### **Elderly Person Actions:**
 - [ ] Review privacy notice (what family will see)
@@ -513,14 +556,16 @@ public class DeviceSyncAuditWorker : CronBackgroundService           // "0 0 4 *
 - [ ] **Generate opaque OAuth state + PKCE** (single-use, 15-min TTL) for device connection
 - [ ] **Bounce** Google's redirect into the `carditrack://` deep link
 - [ ] **Exchange OAuth code, encrypt and store device tokens** (AES-256-GCM)
-- [ ] **Poll device data every 10 minutes**; refresh OAuth tokens in the sync path
+- [ ] **Ingest webhook pushes** (notify-then-fetch, dev; prod pending) and **poll device data every 10 minutes** as backstop; refresh OAuth tokens in the sync path; **recover refused tokens** on a widening backoff
 - [ ] **Clean up orphaned organizations** daily (03:00 UTC)
 - [ ] **Recalculate pattern baselines** daily (02:30 UTC); **audit provider revision windows** weekly (Sunday 04:00 UTC)
+- [ ] **Generate statistical alerts** every 15 minutes (five R1 rules); **detect device silence** every 15 minutes
+- [ ] **Dispatch notifications** (push/in-app) every 30 seconds with retry/escalation and ack tracking
 - [ ] **Write audit-log entries** for annotated health-data endpoints (`AuditLoggingMiddleware` + `AuditHealthDataAccessAttribute`)
 
 ### **System Actions (Planned):**
-- [ ] Welcome email; device connection invitations; webhook ingestion
-- [ ] AI anomaly detection
+- [ ] Welcome email; device connection invitations
+- [ ] AI (SSA + MedGemma) anomaly assessment — R2 pipeline
 - [ ] Trial expiration reminders; trial conversion/suspension
 
 ---
@@ -578,13 +623,13 @@ The CardiTrack user onboarding process is designed to be **secure, compliant, an
 4. **Privacy transparency**: clear explanation of what family sees; Google-format health-data disclosure (web shipped, mobile pending)
 5. **Immediate value**: first device data within one polling cycle (10 minutes)
 
-**Authentication today:** email/password via Auth0's embedded password-realm grant, with mandatory email verification; Google/Apple social login via Universal Login + PKCE with tenant-side account linking (app code shipped 2026-08-10; per-tenant Action/connection deploy pending, Apple credentials pending). **Planned:** enterprise SSO, MFA.
+**Authentication today:** email/password via Auth0's embedded password-realm grant, with mandatory email verification; Google/Apple social login via Universal Login + PKCE with tenant-side account linking (app code shipped 2026-08-10; dev tenant fully deployed, prod tenant pending). **Planned:** enterprise SSO, MFA.
 
 **Critical Path:**
-Create Account (Auth0 signup) → Verify Email (mandatory gate) → Sign In → Atomic Setup (Organization + Trial + User) → CardiMember Setup → Device Connection (Fitbit via Google OAuth + PKCE) → 10-minute polling ingestion → *(planned)* Notifications → Baseline → Paid Conversion
+Create Account (Auth0 signup) → Verify Email (mandatory gate) → Sign In → Atomic Setup (Organization + Trial + User) → CardiMember Setup → Device Connection (Fitbit/Pixel Watch via Google OAuth + PKCE) → Webhook + 10-minute polling ingestion → Baseline → Alerts → Notifications (push/in-app) → *(planned)* Paid Conversion
 
 ---
 
-**Last Updated:** August 7, 2026
+**Last Updated:** August 13, 2026
 
 **END OF ONBOARDING DOCUMENTATION**

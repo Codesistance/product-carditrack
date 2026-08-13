@@ -67,7 +67,7 @@ Welcome to the CardiTrack documentation. This directory contains comprehensive d
 
 ### API Specification (canonical)
 
-Located in [`/execution/backend/api/`](./execution/backend/api/readme.md) — the **source of truth for all REST endpoints** (`/api/v1/*`), organized by domain (auth, cardimembers, devices, health-data, alerts, family, notifications, subscriptions, reports). The app-level READMEs below link here and do not duplicate endpoint documentation.
+Located in [`/execution/backend/api/`](./execution/backend/api/readme.md) — the **source of truth for all REST endpoints** (`/api/v1/*`), organized by domain (auth, cardimembers, devices, health-data, alerts, family, notifications, questionnaires, subscriptions, reports). The app-level READMEs below link here and do not duplicate endpoint documentation.
 
 ### UI Specifications
 
@@ -94,7 +94,7 @@ Located in `/apps/` — each application has its own README covering stack, stru
 **Store provisioning** — one-time keys, certificates, and Secret Manager secrets that let CI deliver signed builds to TestFlight and the Google Play internal testing track.
 
 #### [apps/worker/](./apps/worker/readme.md)
-**CardiTrack.Worker Background Service** — the .NET Worker Service hosting **non-AI background jobs** (10-minute wearable data sync with in-path OAuth token refresh, daily orphaned-organization cleanup and baseline calculation, weekly device-sync audit) using cron scheduling via Cronos. The AI ingestion/inference pipeline is designed to run on GCP (Pub/Sub + Cloud Run) — see [llm_design.md](./llm_design.md).
+**CardiTrack.Worker Background Service** — the .NET Worker Service hosting the **11 non-AI background jobs** (10-minute wearable data sync with in-path OAuth token refresh, daily orphaned-organization cleanup, daily baseline calculation, partition retention, inactivity + statistical alerting, device-auth recovery, data-completeness checks, notification dispatch, and a push canary) using cron scheduling via Cronos. The AI ingestion/inference pipeline is live in dev on GCP (Pub/Sub + Cloud Run) — see [llm_design.md](./llm_design.md).
 
 ---
 
@@ -123,6 +123,12 @@ Detailed summary of all domain entities, their properties, and relationships.
 #### [data_sync_architecture.md](./technical/data_sync_architecture.md)
 **Data sync & data pull allocation view** — which component runs on which node, over which technology, at which cadence: the 10-minute Worker poll, per-connection due-ness, the trailing window, manual sync, the weekly audit pull, and the R2 webhook pipeline.
 
+#### [notification_engine.md](./technical/notification_engine.md)
+**Notification engine** — reliable alert delivery: the in-app data-completeness engine plus the full push spine (notification outbox, `NotificationDispatchWorker`, FCM HTTP v1 with APNs passthrough, 120s/300s/900s escalation ladder, quiet hours, mobile registration and receipt handling, push canary).
+
+#### [production_setup_runbook.md](./technical/production_setup_runbook.md)
+**Production setup runbook** — the manual ops ledger: every console grant, API registration, and credential-provisioning step performed outside Terraform/CI, in the order production needs them, with dev status as evidence.
+
 #### [data_protection_architecture.md](./technical/data_protection_architecture.md)
 HIPAA/GDPR data architecture (ADR): identifier/clinical schema separation, Safe Harbor de-identification pipeline, retention & erasure jobs, audit/consent models, and the subprocessor register.
 
@@ -143,6 +149,9 @@ Located in `/compliance/`.
 
 #### [dpia.md](./compliance/dpia.md)
 Data Protection Impact Assessment (GDPR Art. 35) — processing inventory, risk assessment, and mitigations for the platform's health-data processing.
+
+#### [art22_alerting_analysis.md](./compliance/art22_alerting_analysis.md)
+GDPR Article 22 analysis of the alerting/severity-routing chain — whether automated alert decisions constitute solely automated decision-making with legal or similarly significant effect, and the safeguards applied.
 
 ---
 
@@ -255,6 +264,12 @@ dotnet build
 
 ## 📝 Documentation Version History
 
+### Version 2.3 (August 13, 2026)
+- ✅ Marked the AI pipeline (webhook receiver, aggregator, assessor, digest) as built and running in dev on Pub/Sub + Cloud Run (prod gated off)
+- ✅ Updated the Worker description to its 11 hosted jobs, including the notification dispatch and push canary jobs of the shipped push spine (FCM HTTP v1 with APNs passthrough)
+- ✅ Indexed new docs: technical/notification_engine.md, technical/production_setup_runbook.md, compliance/art22_alerting_analysis.md
+- ✅ Added questionnaires to the API domain list
+
 ### Version 2.2 (August 7, 2026)
 - ✅ Aligned the index with the GCP platform: llm_design.md (Pub/Sub + Cloud Run + MedGemma via Ollama + Gemini), infrastructure.md (Cloud SQL PostgreSQL 16, Cloud Run, Secret Manager, GCS), and Terraform Google Provider references
 - ✅ Corrected the Worker description to the implemented jobs (30-minute wearable sync, daily orphan cleanup)
@@ -331,6 +346,6 @@ All documentation is proprietary and confidential.
 
 ---
 
-**Last Updated**: August 7, 2026
+**Last Updated**: August 13, 2026
 **Maintained By**: CardiTrack Development Team
-**Version**: 2.2
+**Version**: 2.3

@@ -1,6 +1,6 @@
 # CardiTrack User Stories for UI/UX Design
 
-> **Build status (August 9, 2026):** 12 of 17 Figma M1 screens are built in `CardiTrack.Mobile` (M1-01 through M1-09, plus M1-13 CardiMember Detail, M1-14 Edit CardiMember, M1-15 Device Management); the unbuilt screens are the alert set (M1-10 stub, M1-11/M1-12/M1-16) and M1-17 Health Data Export. Four shipped screens have **no Figma M1 frame — needs design sync**: SignInPage, ForgotPasswordPage, VerifyEmailPage, and Onboarding/AccountSetupPage (see Stories 1.5–1.8). Release waves re-baselined: MVP 1 (R1) → Q4 2026, MVP 2 (R2) → Q1 2027, MVP 3 (R3) → Q2 2027. Release sequencing is governed by the [release matrix](../../../release_matrix.md).
+> **Build status (August 13, 2026):** 13 of 17 Figma M1 screens are built in `CardiTrack.Mobile` (M1-01 through M1-10, plus M1-13 CardiMember Detail, M1-14 Edit CardiMember, M1-15 Device Management). M1-10 is a real API-backed Alerts list (filter chips, expand, acknowledge, archived toggle) — not a stub. The unbuilt screens are the alert details (M1-11/M1-12/M1-16) and M1-17 Health Data Export. Four shipped screens have **no Figma M1 frame — needs design sync**: SignInPage, ForgotPasswordPage, VerifyEmailPage, and Onboarding/AccountSetupPage (see Stories 1.5–1.8). Release waves re-baselined: MVP 1 (R1) → Q4 2026, MVP 2 (R2) → Q1 2027, MVP 3 (R3) → Q2 2027. Release sequencing is governed by the [release matrix](../../../release_matrix.md).
 
 Based on the solution manifest, market analysis, and README, here are comprehensive user stories organized by user persona and platform:
 
@@ -24,8 +24,8 @@ Based on the solution manifest, market analysis, and README, here are comprehens
 - **So that** I don't abandon the setup process due to complexity
 - **Acceptance Criteria:**
   - Progressive disclosure (collect basic info first, details later)
-  - Required fields: Name, Date of Birth, Relationship
-  - Optional fields: Photo, medical notes (encrypted), emergency contacts
+  - Required fields: Name and Sex (Male/Female) — the Sex picker is a **deliberate divergence from the Figma comps** (it sets the reference range readings are judged against); Date of Birth defaults to today
+  - Optional fields: Relationship (falls back to Other), Photo, medical notes (encrypted), emergency contacts
   - Clear privacy messaging ("Your parent will be notified")
   - Visual progress indicator (Step 2 of 4)
   - Emergency-phone placeholder localized by device region (PR #8): US/CA "+1 555 000 0000", GB "+44 7700 900000" — **limitation:** all other regions fall back to the US format, notable given the US + EU target market
@@ -35,7 +35,7 @@ Based on the solution manifest, market analysis, and README, here are comprehens
 - **I want to** connect my parent's wearable device through a guided wizard
 - **So that** I understand what permissions are needed and why
 - **Acceptance Criteria:**
-  - Device selection screen with icons — **Fitbit only in MVP 1**; Apple Watch, Garmin, Samsung, Withings, Other shown as "Coming Soon"
+  - Device selection screen with icons — **Fitbit and Google Pixel Watch in MVP 1** (both ride the Google Health API); Apple Watch, Garmin, Samsung, Withings, Other shown as "Coming Soon"
   - OAuth flow with clear permission explanations
   - "Why we need this" tooltips for each permission
   - Success confirmation with sample data preview
@@ -270,7 +270,7 @@ Based on the solution manifest, market analysis, and README, here are comprehens
 
 ### Consent & Transparency
 
-**Story 7.1: Understanding Monitoring**
+**Story 7.1: Understanding Monitoring** _(Descoped — product decision: wearers never log in; all wearer-facing auth/screens permanently descoped)_
 - **As an** elderly person being monitored
 - **I want to** clearly understand what data is being shared and who can see it
 - **So that** I can give informed consent and maintain dignity
@@ -281,7 +281,7 @@ Based on the solution manifest, market analysis, and README, here are comprehens
   - Option to decline specific data types (e.g., share activity but not sleep)
   - Easy-to-understand video explanation
 
-**Story 7.2: Viewing My Own Data**
+**Story 7.2: Viewing My Own Data** _(Descoped — product decision: wearers never log in; all wearer-facing auth/screens permanently descoped)_
 - **As an** elderly CardiMember
 - **I want to** access my own health dashboard if I choose
 - **So that** I can see what my family sees and feel included
@@ -305,12 +305,12 @@ Based on the solution manifest, market analysis, and README, here are comprehens
 - **As an** app user
 - **I want to** control whether crash reports and usage telemetry are collected from my device
 - **So that** monitoring my family doesn't mean being monitored myself without consent
-- **Current state (shipped):** crash reporting and RUM (PR #4) ship enabled with `TrackingConsent.Granted` hardcoded — consent is granted by default, there is no in-app opt-out and no diagnostics screen. **There is no in-app telemetry control in MVP 1.**
+- **Current state (shipped):** Datadog telemetry is **logs + traces only** — RUM was removed in PR #185, and with it Datadog crash reporting (`NativeCrashReportEnabled=false`); crashes/ANRs come from Play Console vitals. `TrackingConsent.Granted` is still hardcoded — consent is granted by default, there is no in-app opt-out and no diagnostics screen. **There is no in-app telemetry control in MVP 1.**
 - **Why it matters:** in tension with the "consent-first" design principle (Principle 4) and the transparency framing of Story 7.1
 - **Acceptance Criteria (proposed):**
   - Telemetry disclosure during onboarding or first run
   - Settings toggle to opt out of non-essential telemetry
-  - Crash reporting and RUM respect the stored consent state
+  - Log and trace shipping respects the stored consent state
 
 ---
 
@@ -444,8 +444,8 @@ Based on the solution manifest, market analysis, and README, here are comprehens
 ### .NET MAUI Mobile App
 
 **Platform Requirements**
-- **Minimum iOS:** 16.0 — covers ~90%+ of active iPhones; required for modern platform APIs and reliable background push delivery
-- **Minimum Android:** 10 (API 29) — covers ~85–90% of active Android devices; required for scoped storage and modern permission model
+- **Minimum iOS:** 17.0 — required for modern platform APIs and reliable background push delivery
+- **Minimum Android:** 12 (API 31) — raised for the Android 12 SplashScreen API, so one splash design matches the OS handover on every supported device
 - **Target iOS:** 18 (latest stable)
 - **Target Android:** 15 / API 35 (latest stable)
 
@@ -520,7 +520,7 @@ Based on the solution manifest, market analysis, and README, here are comprehens
 - CTA: "Start Free 30-Day Trial"
 
 ### Step 2: Account Creation (1 minute)
-- Email/password or "Continue with Google/Apple" (social buttons shipped but not yet wired)
+- Email/password or "Continue with Google/Apple" (social buttons wired — Auth0 PKCE authorization-code flow in the system browser on Android/iOS)
 - Checkbox: "I agree to Terms & Privacy Policy" (with links)
 - **No auto-login after creation** — the user must verify their email (VerifyEmailPage, Story 1.7) before entering the app; PostLoginRouter then routes to account-type setup (Story 1.8) or Add CardiMember
 
@@ -531,8 +531,8 @@ Based on the solution manifest, market analysis, and README, here are comprehens
 
 ### Step 4: Device Connection (3 minutes)
 - "What wearable device does [Name] use?"
-- Device icons with brands — **Fitbit only active in MVP 1**; Apple Watch, Garmin, Samsung, Withings, Other shown as "Coming Soon"
-- Tap "Continue with Fitbit" → OAuth flow → Success
+- Device icons with brands — **Fitbit and Google Pixel Watch active in MVP 1**; Apple Watch, Garmin, Samsung, Withings, Other shown as "Coming Soon"
+- Tap "Continue with [Device]" (CTA names the selected device) → OAuth flow → Success
 - "Great! We're syncing [Name]'s data. This may take a few minutes."
 
 ### Step 5: Baseline Learning (Info screen)
@@ -603,7 +603,7 @@ Based on the solution manifest, market analysis, and README, here are comprehens
 - [ ] Story 5.2: Mobile widget
 - [ ] Story 5.3: Native sharing
 - [ ] Story 9.2: Printable reports
-- [ ] Story 7.2: CardiMember self-view
+- [ ] Story 7.2: CardiMember self-view _(Descoped — wearers never log in; permanent product decision)_
 
 ### Future (Post-MVP)
 - [ ] Story 8.1-8.3: Enterprise features

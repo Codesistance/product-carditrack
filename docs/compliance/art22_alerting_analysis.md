@@ -10,7 +10,9 @@
 
 ## 1. What is being analysed
 
-Three automated alert producers exist (all dev-only today, alerting a test-user population):
+Three automated alert producers exist. The **LLM-routed producer is dev-only** (gated on
+`enable_pipeline_jobs`); the two **deterministic Worker producers run in every environment
+the Worker deploys to**. All alert a test-user population today:
 
 | Producer | Nature | Alert | Code |
 |---|---|---|---|
@@ -20,9 +22,11 @@ Three automated alert producers exist (all dev-only today, alerting a test-user 
 
 Only the first involves a model; the other two are pure arithmetic against the member's own
 baseline. All three produce the same artifact: an `Alert` row a caregiver sees, acknowledges,
-and resolves. **No alert triggers any action other than informing humans** — there is no
-SMS fallback, no push (infrastructure absent), no automated escalation, no effect on any
-service, price, or entitlement.
+and resolves. Since 2026-08-11, Red/Orange alerts are additionally **dispatched by push (FCM
+HTTP v1 with APNs passthrough)** with a 120s/300s/900s escalation ladder (re-push → fan-out to
+other caregivers → `UNDELIVERED_CRITICAL`) and quiet hours. **No alert triggers any action
+beyond notifying humans** — there is no SMS fallback, no effect on any service, price, or
+entitlement; the escalation ladder only widens *who is notified*, never what is done.
 
 ## 2. Does Art. 22(1) apply?
 
@@ -40,8 +44,10 @@ effects concerning [the data subject] or similarly significantly affect" them.
 - **"Similarly significant effect"** — a false negative (missed anomaly) does not change the
   wearer's position relative to not having the product; a false positive costs a check-in
   call. The DPIA (row B1) conservatively flagged the *designed* pipeline as ADM with
-  significant effect — but that design included SMS dispatch and push escalation, which do
-  not exist. What is built is an information service to a human intermediary.
+  significant effect — that design included SMS dispatch (still absent) and push escalation
+  (**now built** — see the fired-trigger note below). What is built is an information service
+  to a human intermediary, but one that now reaches lock screens and escalates unacknowledged
+  Safety/Red deliveries.
 
 **Conclusion (draft):** as built, the alerting most likely falls **outside** Art. 22(1) —
 there is no solely-automated decision with significant effect; there is automated *profiling*
@@ -50,7 +56,13 @@ the Art. 22 prohibition. **However**, this analysis adopts the conservative post
 treating Art. 22-grade safeguards as required anyway, because (a) the boundary shifts the
 moment push/SMS dispatch lands (a notification that wakes a family at 3am moves toward
 "similarly significant"), and (b) the population is vulnerable (DPIA §2 criterion 7).
-**Re-run this analysis before enabling push dispatch — that is a §13-class review trigger.**
+
+> **Trigger FIRED — 2026-08-11.** The stated re-run condition ("before enabling push
+> dispatch") was overtaken: the push delivery spine shipped on 2026-08-11, so push dispatch
+> is now enabled and the boundary analysis in §2 was written against a system that no longer
+> exists. **The re-run is an open action**, feeding DPIA §13 (recorded in DPIA v0.6's
+> changelog); until it is done, §2's "most likely outside Art. 22(1)" conclusion should be
+> treated as unreviewed for the as-built system. SMS remains absent.
 
 ## 3. Safeguards already engineered (with citations)
 
@@ -120,4 +132,4 @@ real families is gated on both being recorded here.
 | Is built alerting Art. 22(1) ADM? | Most likely **no** (human decision-maker, no significant automated effect) — treated conservatively as if yes |
 | Are Art. 22(3)-grade safeguards present? | Yes — engineered and cited above; one deliberate gap (`no clinical review tier`) flagged for sign-off |
 | What blocks prod alerting? | Executing V2 + V3 and recording results here; the privacy-policy transparency text; sign-off by a qualified reviewer |
-| What re-opens this analysis? | Push/SMS dispatch landing; any prompt/model/severity-mapping change; wearer-population change (e.g. exceeding the 100-user cap) |
+| What re-opens this analysis? | **Push dispatch landed 2026-08-11 — this trigger has FIRED and the re-run is an open action (see §2, DPIA §13).** Also: SMS dispatch landing; any prompt/model/severity-mapping change; wearer-population change (e.g. exceeding the 100-user cap) |

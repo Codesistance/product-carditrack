@@ -3,8 +3,8 @@
 ## Project Overview
 
 **Product:** CardiTrack - Remote health monitoring for elderly family members
-**Platform:** iOS 16+ (iPhone 12+) & Android 10+ (API 29)
-**Minimum OS:** iOS 16.0 · Android 10 (API level 29)
+**Platform:** iOS 17+ (iPhone 12+) & Android 12+ (API 31)
+**Minimum OS:** iOS 17.0 · Android 12 (API level 31) — the Android floor was raised for the Android 12 SplashScreen API, so one splash design matches the OS handover on every supported device
 **Target OS:** iOS 18 · Android 15 (API level 35)
 **Orientation:** Portrait primary, landscape supported
 **Target Users:** Family caregivers across the US & EU monitoring elderly relatives' wearable health data
@@ -19,7 +19,7 @@
 >
 > **M1-11, M1-12, M1-16 and M1-17 are not built** — their entry points show "Coming soon" dialogs in the shipped app.
 >
-> **Six shipped surfaces have no Figma M1 frame** and need design sync: SignInPage, ForgotPasswordPage, VerifyEmailPage, Onboarding/AccountSetupPage, and — built from the existing design system by explicit decision rather than by oversight — the QuestionCard on the CardiMember detail page and the Questions & Answers page. See [Shipped Screens Without Figma M1 Frames](#shipped-screens-without-figma-m1-frames). Per project convention, only screens that exist in the Figma file get M1 IDs — no IDs have been invented for these.
+> **Seven shipped surfaces have no Figma M1 frame** and need design sync: SignInPage, ForgotPasswordPage, VerifyEmailPage, Onboarding/AccountSetupPage, NotificationsPage, and — built from the existing design system by explicit decision rather than by oversight — the QuestionCard on the CardiMember detail page and the Questions & Answers page. See [Shipped Screens Without Figma M1 Frames](#shipped-screens-without-figma-m1-frames). Per project convention, only screens that exist in the Figma file get M1 IDs — no IDs have been invented for these.
 >
 > Unbuilt screens below remain documented as design intent, each marked with a status line.
 
@@ -87,6 +87,7 @@ These screens ship in the current app but have **no Figma M1 frame — needs des
 | ForgotPasswordPage | Password-reset request + confirmation states |
 | VerifyEmailPage | Post-signup email verification gate (resend / open mail / checking / error) |
 | Onboarding/AccountSetupPage | "My Family" / "My Organization" account-type choice with conditional Org Name |
+| NotificationsPage | Data-completeness / nudge inbox — reached from the dashboard's "Complete the picture" section ("See all") |
 
 Full specs in [Shipped Screens Without Figma M1 Frames](#shipped-screens-without-figma-m1-frames-1) below.
 
@@ -329,7 +330,7 @@ Push notification (any time) ─────────────────
 - Badge count on Alerts tab for unread alerts
 - Badge count on Family tab for pending invites (MVP 2)
 - Family tab shows placeholder / "Coming Soon" in MVP 1, or can be hidden
-- As built, the Shell defines a **TabBar only** (Dashboard / Alerts / Family / Settings, SVG icons). Alerts opens the real M1-10 list; the Family tab is still a stub; Settings is minimal (account card, "More settings (M2-01) coming soon", Sign out). Onboarding pages hide the tab bar via `Shell.TabBarIsVisible=False`.
+- As built, the Shell defines a **TabBar only** (Dashboard / Alerts / Family / Settings, SVG icons). Alerts opens the real M1-10 list; the Family tab is still a stub; Settings is minimal (account card, a "Silenced reminders" card listing held notification mutes with a "Show me everything again" reset, "More settings (M2-01) coming soon", Sign out). Onboarding pages hide the tab bar via `Shell.TabBarIsVisible=False`.
 
 ### Flyout Menu
 
@@ -360,7 +361,7 @@ Five MVP 1 screens selected to validate the core design language — covering br
 |---|--------|---------------|
 | 1 | **M1-02 — Welcome / Landing** | Entry point; showcases brand identity, hero carousel, and marketing tone |
 | 2 | **M1-04 — Add First CardiMember** | Onboarding form; demonstrates photo picker, progressive disclosure, and inline privacy messaging |
-| 3 | **M1-09 — Main Dashboard** | Core monitoring screen; shows status hero card, 3-metric layout, severity color system, and sparklines |
+| 3 | **M1-09 — Main Dashboard** | Core monitoring screen; shows status hero card, key-metric grid, severity color system, and star ratings |
 | 4 | **M1-10 — Alerts List** | Alert management; demonstrates severity badges, grouped list design, filter chips, and swipe actions |
 | 5 | **M1-12 — Alert Detail - Critical** | Highest-stakes screen; validates urgency design, pulsing severity treatment, and primary CTA hierarchy |
 
@@ -466,7 +467,7 @@ A single user can sign up, add a CardiMember, connect devices, manage CardiMembe
 **Social Login (2-up icon grid):**
 - "Google" card (white background, Google logo)
 - "Apple" card (dark background, Apple logo)
-- **Unwired** — the social buttons have no tap handlers yet
+- **Wired** — Google/Apple sign-in via Auth0's PKCE authorization-code flow in the system browser on Android/iOS; the Windows target falls back to an error message
 
 **Bottom:**
 - Link: "Already have an account? Sign In" → SignInPage
@@ -501,7 +502,7 @@ A single user can sign up, add a CardiMember, connect devices, manage CardiMembe
 **Introduction:**
 - Icon: person silhouette
 - Text: "Who would you like to look after?"
-- Subtext: "Tell us about your loved one — we'll take it from there"
+- Subtext: "Tell us who you're looking after — we'll take it from there"
 
 **Photo Section:**
 - Circular photo placeholder (large)
@@ -512,8 +513,11 @@ A single user can sign up, add a CardiMember, connect devices, manage CardiMembe
 - "Full Name *" — text input
 - "Date of Birth *" — date picker (format: MM/DD/YYYY)
   - As built, **DOB silently defaults to today** if not changed — not validated (known limitation)
-- "Relationship *" — dropdown picker:
-  - Parent, Grandparent, Spouse, Sibling, Other
+- "Sex *" — picker (Male / Female), helper text: "Helps us read heart rate and sleep against the right range."
+  - **Deliberate divergence from the Figma M1-04/M1-13 comps** — the field is not in the design file but ships because DOB + sex set the reference range the summaries are read against; do not drop it on a pixel-match pass
+
+**Optional Field:**
+- "Relationship" — dropdown picker (no asterisk): Parent, Grandparent, Spouse, Sibling, Other — an unpicked relationship falls back to `Other`
 
 **Optional Fields (collapsible section):**
 - Toggle: "Add More Details (Optional)"
@@ -529,8 +533,10 @@ A single user can sign up, add a CardiMember, connect devices, manage CardiMembe
 - **Not built** — the shipped screen has no privacy-notice card (product follow-up, relevant to the consent-first principle)
 
 **CTA:**
-- Primary button: "Continue" — enabled by **name ≥ 2 characters + relationship selected** only
-- Text link: "Skip for Now"
+- Primary button: "Continue" — enabled by **name ≥ 2 characters + sex selected** only
+- Text link: "Skip for now"
+
+**Draft persistence:** a half-typed member (and its photo) survives app backgrounding — the form saves to `CardiMemberDraftStore` on background/stop and restores on return; the draft is cleared on successful submit.
 
 **States:**
 - **M1-04a — Default:** Empty form with photo placeholder
@@ -543,7 +549,7 @@ A single user can sign up, add a CardiMember, connect devices, manage CardiMembe
 **Status:** Built (`Onboarding/DeviceSelectionPage`)
 **User Story:** 1.3 Device Connection Wizard
 **Entry:** ← M1-04 Add CardiMember ("Continue")
-**Exit:** → M1-06 OAuth Permission ("Continue with Fitbit")
+**Exit:** → M1-06 OAuth Permission ("Continue with [Device]")
 
 **Header:**
 - Back button
@@ -551,7 +557,7 @@ A single user can sign up, add a CardiMember, connect devices, manage CardiMembe
 - Progress indicator: "Step 3 of 4"
 
 **Introduction:**
-- Heading: "What do they wear?" (no name interpolation)
+- Heading: "What does [Name] wear?" (member name interpolated)
 - Subtext: "We'll connect with their device to keep you in the loop"
 
 **Device Grid (fixed 2-column grid):**
@@ -563,11 +569,12 @@ Each device card:
 - "Coming Soon" badge for future devices
 - Coming Soon cards render at **0.55 opacity** and are non-tappable
 
-**Supported Devices (MVP 1 — Fitbit only; remaining devices shown as Coming Soon):**
+**Supported Devices (MVP 1 — Fitbit and Google Pixel Watch, both via the Google Health API; remaining devices shown as Coming Soon):**
 
 | Device | Card text (models) | MVP Availability |
 |--------|--------------------|-----------------|
 | Fitbit | Charge, Versa, Sense series | **MVP 1** |
+| Google Pixel Watch | Pixel Watch 1–3 | **MVP 1** |
 | Garmin | Venu, Forerunner, etc. | MVP 2 (shown Coming Soon) |
 | Apple Watch | Series 4+ | Coming Soon |
 | Samsung Galaxy | All models | Coming Soon |
@@ -578,30 +585,30 @@ Each device card:
 - Link: "Don't see their device? We can help"
 
 **Interactions:**
-- **Fitbit is preselected** — it cannot be deselected, and there is no auto-advance
-- Explicit primary button: **"Continue with Fitbit"** proceeds to M1-06
+- **Fitbit and Google Pixel Watch are selectable** (single-select; Fitbit is preselected on entry) — re-tapping the selected card clears the selection, and there is no auto-advance
+- Explicit primary button: **"Continue with [Device]"** proceeds to M1-06; reads "Continue" and disables while nothing is selected
 - Coming Soon cards are greyed out (0.55 opacity) with "Coming Soon" badges
 
 ---
 
 ### M1-06: Device Connection - OAuth Permission
-**Status:** Built (`Onboarding/FitbitConnectionPage`) — Fitbit-only, hardcoded copy
+**Status:** Built (`Onboarding/DeviceConnectionPage`) — brand-agnostic; the selected device supplies the copy, logo, and wire name
 **User Story:** 1.3 OAuth Flow
-**Entry:** ← M1-05 Device Selection ("Continue with Fitbit")
+**Entry:** ← M1-05 Device Selection ("Continue with [Device]")
 **Exit:** → M1-07 Success (authorization complete) | ← M1-05 Device Selection ("Cancel")
 
 **Header:**
 - Back button
-- Title: hardcoded "Fitbit Connection"
+- Title: "[Device] Connection" (device name interpolated)
 
 **Visual Connection (centered):**
-- Heading: "Connect Your Fitbit"
-- Large device logo
+- Heading: "Connect Your [Device]"
+- Large device logo (interpolated per device)
 - Arrow/connection icon
 - Large CardiTrack logo
 
 **Permission List:**
-- Label: "To look after them, CardiTrack needs:" (no name interpolation)
+- Label: "To look after [Name], CardiTrack needs:" (member name interpolated)
 - Each permission in its own row:
 
 | Icon | Permission | Info Tooltip |
@@ -729,12 +736,15 @@ Each device card:
 - Last synced: "Updated 10 minutes ago"
 - Tap sync icon for manual refresh
 
-**Quick Actions Row (3 horizontal buttons):**
-- "Call [Name]" (phone icon) → initiates phone call
-- "Send Message" (SMS icon) → opens SMS
-- "View Details" (chart icon) → navigates to M1-13
+**Quick Actions Row (4 tiles):**
+- "SOS" (red treatment, leads the row) → dials the **emergency contact number, not the CardiMember**
+- "Call" (phone icon) → initiates phone call
+- "Message" (SMS icon) → opens SMS
+- "Details" (chart icon) → navigates to M1-13
 
-**Key Metrics (3 cards in a row):**
+**Key Metrics (collapsible "Key Metrics" `AccordionSection` — 2-column grid of up to six `MetricCard`s):**
+
+Heart Rate, Sleep, Skin Temp, Steps, SpO2, and Breathing Rate — the last three are **visibility-gated on the device having a reading**, and the grid re-packs at render time so no tile is left beside a gap.
 
 **Star rating (1-5)** appears on every card that has something to compare against (Activity, Heart Rate, Sleep, Skin Temp): how the reading sits against this member's own normal — except sleep, which is also held to the published recommended band for the member's age, because a habitually short sleeper's own normal is the very reading being watched for. The row takes the status pill's colour on cards whose pill is built from `status` (Heart Rate, Skin Temp) and colours itself from the star count (3-5 green, 2 yellow, 1 orange) elsewhere — Activity, which shows no pill, and Sleep, whose GOOD/FAIR/POOR pill is itself named from those bands — never from a status the card isn't showing, which is what would paint a short sleeper's two stars green. SpO2 and Breathing Rate have no baseline yet, so their star row stays hidden rather than rating a reading against an invented normal. See `qualityScore` in [health-data.md](../../backend/api/health-data.md).
 
@@ -744,7 +754,6 @@ Each device card:
 - Visual progress bar (current vs. goal)
 - Comparison text: "85% of normal" with trend arrow (up/down)
 - Star rating (1-5) — the shortfall against normal; walking further than usual is not marked down
-- Mini 7-day sparkline chart
 
 **Card 2: Heart Rate**
 - Icon: heart
@@ -752,7 +761,6 @@ Each device card:
 - Status: "Normal range"
 - Star rating (1-5) — deviation from normal in either direction
 - Range text: "68-75 bpm typical"
-- Mini sparkline
 
 **Card 3: Sleep**
 - Icon: moon
@@ -760,7 +768,6 @@ Each device card:
 - Status pill: **GOOD / FAIR / POOR** — one word naming the band of the star rating (3-5 / 2 / 1), in the same pill chrome and status colours as the other cards; hidden when the night is unrated. From the rating, never from `status`: a quality vocabulary rather than NORMAL/UNUSUAL, because a 4.5-hour night is entirely usual for a member who always sleeps 4.5 hours — and still FAIR
 - Star rating (1-5) — the worse of sleep efficiency and the shortfall in duration against baseline (either alone when the other is unavailable), capped on the length of the night against the published band for the member's age — both ends, so neither 4.5 nor 12 hours can rate five stars
 - Comparison: "Longer than usual" / "Shorter than usual" / "In line with usual" — direction only, no verdict; the stars and pill carry the judgement
-- Mini sparkline
 
 **Recent Alerts (conditional — only shown if alerts exist):**
 - Section heading: "Recent Alerts"
@@ -771,6 +778,12 @@ Each device card:
 **Verify-Email Nudge (conditional):**
 - Dismissible banner prompting the user to verify their email address
 
+**"Complete the picture" section (conditional):**
+- The top two open data-completeness nudges as compact rows, with a "See all" link → NotificationsPage (the nudge inbox)
+
+**Poor-sleep nudge (conditional):**
+- Dismissible banner pointing at the real Sleep alert the statistical worker raised; dismissing it is a local/session convenience, not an acknowledgement — the alert stays in Alerts until acted on there
+
 **Bottom:**
 - Button: "View Trends & History" → M2-03
 
@@ -779,10 +792,11 @@ Each device card:
 - ~~Swipe left on metric card → see detail view~~ (not shipped — no metric-card swipe gesture)
 - ~~Long-press on photo → change photo option~~ (not shipped — no photo long-press gesture)
 
-**States (7 as built):**
+**States (8 as built):**
 - **M1-09a — Loading:** Skeleton/shimmer cards
 - **M1-09b — Normal:** Full data displayed
-- **M1-09c — Stale data / offline:** Cached data with banner: "Last update was X hours ago — pull down to check in"
+- **M1-09c — Stale data / offline:** Cached data with banner: "Last update was X hours ago — pull down to check in". **Suppressed while monitoring is paused** — the data is meant to be stale then, and "pull down to check in" is advice the app can't honour.
+- **Monitoring paused:** amber banner naming the resume time; hero shows the paused status
 - **M1-09d — No device connected:** Prompt card: "Connect [Name]'s device so CardiTrack can start watching over them" → M1-05
 - **M1-09e — Baseline learning:** Shows progress bar instead of "% of normal" comparisons
 - **Refresh / sync-error:** RefreshView in-flight state, plus sync-error surface
@@ -966,71 +980,74 @@ This is the most safety-critical screen in the app. Design for urgency and immed
 ---
 
 ### M1-13: CardiMember Detail
-**Status:** Not built — entry points show "Coming soon"; design intent below
+**Status:** Built (`CardiMemberDetailPage`, Shell route `memberdetail`)
 **User Story:** 1.4 CardiMember Profile Management
-**Entry:** ← M1-09 Dashboard ("View Details") | ← M2-01 Settings ("Manage CardiMembers")
-**Exit:** ← Previous screen (back) | → M1-14 Edit CardiMember | → M1-09 Dashboard | → M1-10 Alerts
+**Entry:** ← M1-09 Dashboard (hero card / "Details" quick action) | ← M2-01 Settings ("Manage CardiMembers", MVP 2)
+**Exit:** ← Previous screen (back) | → M1-14 Edit CardiMember (edit button) | → M1-15 Device Management ("Manage Device") | → M1-10 Alerts ("View Alerts")
 
 **Profile Section (centered):**
-- Large photo (prominent, centered)
+- Large photo (prominent, centered — `MemberAvatar`: photo, or initials when there isn't one)
 - Name (large text)
 - Age & relationship: "78 years old - Dad"
 
 **Contact Info Card:**
-- Emergency contact: name, phone (tappable to call), relationship
+- Emergency contact: name, phone (tappable to call) — plus the member's own phone row, also tappable to call
 
 **Medical Info Card (encrypted):**
 - Lock icon in card header
 - Collapsible: "Medical Notes"
 - Biometric gating of medical notes is **deferred to R4** (per the [release matrix](../../../release_matrix.md)) — not an MVP 1 requirement
 
-**Monitoring Info Card:**
+**Monitoring Info Card (as built):**
+- Monitoring status
 - Connected devices: "2 devices"
-- Monitoring since: "Jan 1, 2026"
-- Baseline status: "Learning (15 days)" or "Established"
+- Time of last contact
 
-**Action Buttons:**
-- "View Dashboard" → M1-09
+**Action Buttons (as built):**
 - "View Alerts" → M1-10
-- "Manage Devices" → M1-15
+- "Manage Device" → M1-15
+- "Questions & Answers" row → QuestionnairesPage
 
-**Danger Zone (separated):**
-- "Pause Monitoring" button (warning treatment)
+**As-built additions beyond the comp:** an AI summary card with suggestions, an inline `QuestionCard` when a question is waiting, a paused-monitoring banner, and a **Key Metric Trends** carousel (`MetricTrendCard` + 7/14/30-day `TrendWindowSelector`).
+
+**Danger Zone (separated — "Management" / "Critical settings" as built):**
+- "Pause Monitoring" (warning treatment; expands an inline duration picker: 24h / 48h / 3 days / 1 week)
 - "Remove CardiMember" button (destructive treatment)
 
 ---
 
 ### M1-14: Edit CardiMember
-**Status:** Not built — design intent below
+**Status:** Built (`EditCardiMemberPage`, Shell route `editcardimember`)
 **User Story:** 1.4 CardiMember Profile Management
 **Entry:** ← M1-13 CardiMember Detail (edit button)
-**Exit:** ← M1-13 CardiMember Detail (cancel or save)
+**Exit:** ← M1-13 CardiMember Detail (back or save)
 
 **Header:**
-- Cancel button
-- Title: "Edit [Name]"
+- Back button
+- Title: "Edit Profile"
 - Save button (enabled when changes exist)
 
 **Form (scrollable):**
 
-**Photo:** Large circular image + "Change Photo" button
+**Photo:** Large circular avatar (photo or initials)
 
 **Basic Info:**
-- "Full Name" — text input
-- "Date of Birth" — date picker
-- "Relationship" — dropdown picker
+- "Full Name*" — text input
+- "Date of Birth*" — date picker
+- "Sex" — picker (Male / Female — same two options as the M1-04 add form; PreferNotToSay is deliberately not re-offered)
+- "Relationship" — dropdown picker (optional; same order and labels as M1-04)
 
-**Optional Info:**
+**Medical & Emergency:**
 - "Medical Notes" — multi-line (encrypted)
 - "Emergency Contact Name" — text input
-- "Emergency Contact Phone" — phone input
+- "Emergency Contact Number" — phone input
+- "Phone Number" — the member's own phone
 
-**Monitoring Preferences:**
-- Toggle: "Enable Monitoring"
-- Dropdown: "Alert Sensitivity" — Low / Medium / High
+**Monitoring Preferences (as built):**
+- Dropdown: "Alert Sensitivity" — Low / Medium / High, with the caption that alerting isn't live yet (there is no "Enable Monitoring" toggle here — pausing lives on M1-13)
 
 **CTA:**
-- Primary button: "Save Changes"
+- "Save" button (header)
 
 **Behavior:**
 - Tracks unsaved changes
@@ -1039,9 +1056,9 @@ This is the most safety-critical screen in the app. Design for urgency and immed
 ---
 
 ### M1-15: Device Management
-**Status:** Not built — design intent below
+**Status:** Built (`DeviceManagementPage`, Shell route `devicemanagement`)
 **User Story:** 6.2 Devices
-**Entry:** ← M2-01 Settings ("Connected Devices") | ← M1-13 CardiMember Detail ("Manage Devices")
+**Entry:** ← M1-13 CardiMember Detail ("Manage Device") | ← M2-01 Settings ("Connected Devices", MVP 2)
 **Exit:** ← Previous screen (back) | → M1-05 Device Selection ("Add Device")
 
 **Header:**
@@ -1049,11 +1066,11 @@ This is the most safety-critical screen in the app. Design for urgency and immed
 - Title: "Connected Devices"
 - "+ Add Device" button
 
-**Devices List (grouped by CardiMember):**
+**Devices List (single member as built):**
 
-**Group Header:** CardiMember name + photo
+**Group Header:** "Devices List" + member subtitle (multi-member grouping arrives with M3-03)
 
-**Device Card:**
+**Device Card (`DeviceCard`):**
 - Device logo (small, left)
 - Device info:
   - Name: "Dad's Fitbit Charge 5"
@@ -1075,13 +1092,13 @@ This is the most safety-critical screen in the app. Design for urgency and immed
 - Last sync: "10 minutes ago"
 - Next sync: "In 20 minutes"
 - Data synced today: "4 updates"
-- Battery: "75%" (if available from device)
+- Battery tile (shipped): shown **only when the server sent a reading** — the tile's grid column collapses when absent, so no gap is left; the value turns **red at the same threshold `DEVICE_BATTERY_LOW` fires at** (`DeviceBattery.IsLow`), so the tile agrees with the critical low-battery warning notification (`DeviceBatteryLowRule`) a caregiver may already have received
 
-**Troubleshooting (bottom, collapsible):**
+**Troubleshooting (bottom, collapsible — as built):**
 - "Having trouble?"
-  - Make sure Bluetooth is on
-  - Try reconnecting the device
-  - We're here to help — contact support
+  - Make sure the device has synced with its own app recently
+  - Try "Refresh Connection" — it renews the link without reconnecting
+  - Still stuck? Remove the device and connect it again
 
 ---
 
@@ -1208,7 +1225,7 @@ The following screens exist in the shipped app but have **no Figma M1 frame — 
 - **"Remember me" checkbox** + "Forgot password" link on one row
 - Inline sign-in error label (no banner)
 - "Sign in" gradient button
-- "Or continue with" divider + 2-up social grid (Google / Apple), same treatment as M1-03
+- "Or continue with" divider + 2-up social grid (Google / Apple), same treatment as M1-03 — wired to the same Auth0 PKCE system-browser flow (Android/iOS)
 - Bottom link: "Don't have an account — Sign Up"
 
 ### ForgotPasswordPage
@@ -1243,11 +1260,20 @@ The following screens exist in the shipped app but have **no Figma M1 frame — 
 
 > **Flagged scope question (not a resolution):** the Organization option surfaces business/organization onboarding in MVP 1, while the Guardian Plus business tier is scoped **post-R4** in the release matrix. Whether organization sign-up should ship this early needs a product decision at the next design sync.
 
+### NotificationsPage
+**Status:** Built — no Figma M1 frame, needs design sync
+**Entry:** ← M1-09 Dashboard ("Complete the picture" section → "See all")
+**Exit:** ← M1-09 Dashboard (back) | deep links into the screen each nudge asks the caregiver to fix
+
+- The data-completeness / nudge inbox: what CardiTrack is missing, what supplying it unlocks, and the three things a caregiver can do about each — fix it now (deep link), put it off, or turn it off
+- Standard full-bleed scaffold (HeaderBand, loading/loaded/empty/error states); each notification renders as a `NudgeCard`
+- Mutes created here are listed and reversible on SettingsPage ("Silenced reminders")
+
 ---
 
 ## Telemetry & Consent (MVP 1 note)
 
-Crash reporting and RUM (PR #4) ship **enabled** with `TrackingConsent.Granted` hardcoded — there is **no in-app telemetry control in MVP 1**: no opt-out toggle and no diagnostics screen exists. This is flagged as a product follow-up; it is in tension with the "consent-first" design principle and the Story 7.1 framing in the user stories.
+Datadog telemetry ships **logs + traces only** — RUM was removed in PR #185, and with it Datadog crash reporting (`NativeCrashReportEnabled=false`); crashes and ANRs come from **Play Console vitals** instead. `TrackingConsent.Granted` is still hardcoded — there is **no in-app telemetry control in MVP 1**: no opt-out toggle and no diagnostics screen exists. This is flagged as a product follow-up; it is in tension with the "consent-first" design principle and the Story 7.1 framing in the user stories.
 
 ---
 
@@ -1265,6 +1291,8 @@ Extends MVP 1 with account management, trend history, notification preferences, 
 **User Story:** 6.1, 6.2 Settings
 **Entry:** Tab bar (Settings)
 **Exit:** → M2-02 Subscription | → M2-04 Notification Settings | → M1-13 CardiMember Detail | → M1-15 Device Management | → M1-17 Health Data Export
+
+> **As built today (MVP 1 `SettingsPage`):** account card, a **"Silenced reminders"** card listing every held notification mute with a "Show me everything again" reset, an "M2-01 coming soon" placeholder card, and Sign out. The full grouped list below is the MVP 2 design intent.
 
 **User Profile Section (top card):**
 - Profile photo (large, tappable to edit)
@@ -1924,14 +1952,35 @@ The design system is **yours to define**. The following are functional requireme
 
 The shipped app already includes these reusable controls — designs should map onto (or consciously replace) them:
 
-| Control | Type | Used by |
+| Control | Type | Purpose |
 |---------|------|---------|
-| `WizardHeader` | XAML component | Onboarding wizard pages (title + "Step N of 4" progress) |
+| `AccordionSection` | XAML component | Generic collapsible section (header + expand hint + chevron); tucks the dashboard's Key Metrics behind a tap |
+| `AlertListCard` | XAML component | One alert row on M1-10 (severity treatment, expand, acknowledge, call) |
+| `AlertMiniCard` | XAML component | M1-09 recent-alerts strip card |
+| `AlertSkeletonCard` | XAML component | Loading placeholder for M1-10 alert rows |
+| `AppChooserPage` | XAML component | App-styled list-of-choices sheet replacing `DisplayActionSheet` |
+| `AppPopupPage` | XAML component | Transparent modal shell behind `PopupService`, above whatever root is active |
+| `BottomNavBar` | XAML component | The app's bottom navigation, drawn in XAML rather than by Shell |
+| `DashboardHeader` | XAML component | M1-09 gradient header: greeting, presence line, refresh, unread-alert bell |
+| `DeviceCard` | XAML component | One connected wearable on M1-15, with its refresh / primary / remove actions and battery tile |
+| `FilterChipBar` | C# control | M1-10 filter chips: All · Unread · Critical · Today · This Week |
+| `HeaderBand` | XAML component | Gradient header band shared by every screen that has a header |
+| `MemberAvatar` | XAML component | Member photo, or initials when there isn't one — shared by hero card and Member Detail |
+| `MetricCard` | XAML component | One dashboard key-metric tile (value, status pill, star rating) |
+| `MetricStatus` | C# helper | The one reading of a metric's status string → accent colour + pill wording |
+| `MetricTrend` | C# model | One slide of the Member Detail Key Metric Trends carousel |
+| `MetricTrendCard` | C# control | One trends-carousel card: metric icon, name, latest reading, status, chart |
+| `NudgeCard` | XAML component | One notification in the inbox, with its comply / not-now / mute affordances |
+| `NudgeMiniRow` | C# control | Compact nudge for the dashboard's "Complete the picture" slots and safety banners |
+| `PopupCard` | C# control | Sizes the card `AppPopupPage` and `AppChooserPage` both draw themselves in |
+| `QuestionCard` | XAML component | One question the service is asking a family, with its inline answer editor |
+| `SkeletonView` | C# drawn control | Loading placeholder block with a gentle opacity pulse |
+| `StarRatingView` | C# drawn control | A metric's rating against the member's own normal, drawn as five stars |
 | `StatusHeroCard` | XAML component | M1-09 dashboard status hero |
-| `MetricCard` | XAML component | M1-09 metric cards (Activity / Heart Rate / Sleep) |
-| `AlertMiniCard` | XAML component | M1-09 recent-alerts strip |
-| `SkeletonView` | C# drawn control | Loading/shimmer states |
-| `SparklineView` | C# drawn control | 7-day mini sparklines on metric cards |
+| `TrendChart` | C# drawn control | Line chart inside a `MetricTrendCard` — daily series with baseline and typical-range marks |
+| `TrendLegendSwatch` | C# control | Legend swatch naming a `TrendChart`'s comparison marks |
+| `TrendWindowSelector` | C# control | 7 / 14 / 30-day segmented window picker above the trends carousel |
+| `WizardHeader` | XAML component | Onboarding wizard pages (title + "Step N of 4" progress) |
 
 ### What You Need to Define
 - Color palette (brand colors, semantic colors, status colors)
@@ -1960,6 +2009,10 @@ The shipped app already includes these reusable controls — designs should map 
 - Data comparison (current vs. baseline) needs clear visual treatment
 
 ### Constraints
+
+**Layout (binding project rule):**
+- All pages/screens are **full-bleed** — edge-to-edge backgrounds and content, with safe-area insets for system UI only. Do not wrap a page in a rounded card/sheet or other page-level clipped chrome.
+- Corner radius belongs on **components** (buttons, inputs, chips, logos, in-layout cards), never on the page shell.
 
 **Accessibility (non-negotiable):**
 - WCAG AA minimum contrast (4.5:1 for text, 3:1 for large text)
@@ -2167,7 +2220,7 @@ Once connected, screen designs can be referenced directly by Figma frame URL dur
 
 ---
 
-**Total Screens:** 68 designed (counting each state as a screen), plus 4 shipped screens without Figma M1 frames (SignIn, ForgotPassword, VerifyEmail, AccountSetup)
+**Total Screens:** 68 designed (counting each state as a screen), plus 6 shipped screens without Figma M1 frames (SignIn, ForgotPassword, VerifyEmail, AccountSetup, Notifications, Questionnaires)
 **MVP 1:** 37 screens — Core Monitoring (design first) — **13 of 17 Figma M1 screens built** as of August 9, 2026
 **MVP 2:** 18 screens — Management, Settings & Family Collaboration (Q1 2027)
 **MVP 3:** 13 screens — Native & Offline (Q2 2027)

@@ -8,7 +8,7 @@ lifecycles.
 
 | | Identity (who signs in) | Device data (whose data flows) |
 |---|---|---|
-| Person | Caregiver / family member | Wearer (often not an app user — authorizes via invitation link) |
+| Person | Caregiver / family member | Wearer — never an app user (product decision 2026-08-10); their only interaction is Google's own OAuth consent screen |
 | Authorization server | Auth0 tenant | Provider's own (Google for Fitbit/Pixel, Garmin, …) |
 | Tokens | Short-lived JWTs for our API; session-scoped | Long-lived refresh tokens, AES-256-GCM-encrypted in `DeviceConnections`; Worker refreshes indefinitely |
 | Configured in | Auth0 dashboard ([runbook](./auth0_setup_runbook.md)) | Each provider's developer console |
@@ -21,9 +21,9 @@ lifecycles.
 | 2 | CardiTrack Mobile | Identity | Public (Native, PKCE, no secret) | Auth0 | `auth0-mobile-client-id` | Created per [runbook §3](./auth0_setup_runbook.md) |
 | 3 | Google sign-in (social) | Identity | Web app client **used by Auth0**, not by our code | Google Cloud (`carditrack-signin`) | Stored inside the Auth0 connection | **Provisioned 2026-08-07** — clients created, both tenants' Auth0 connections wired; **app buttons wired 2026-08-10** (Universal Login + PKCE); **Applications → CardiTrack Mobile toggle enabled in dev 2026-08-10** — prod toggle still outstanding |
 | 4 | Apple Sign In (social) | Identity | Services ID + .p8 key **used by Auth0** | Apple Developer | Stored inside the Auth0 connection | **Credentials provisioned + Try Connection verified in dev 2026-08-10** (Services ID `com.codesistance.carditrack.mobile.signin`); **Applications → CardiTrack Mobile toggle enabled in dev 2026-08-10** — prod credentials + Try Connection + toggle still outstanding (Phase 9, below) |
-| 7 | CardiTrack Actions | Identity | Confidential (M2M, Management API: `read:users` `update:users`) | Auth0 | **Action secrets only** (never Secret Manager, never the repo) | **Created + Action deployed in dev 2026-08-10** — [runbook §8a](./auth0_setup_runbook.md); powers the account-linking Action; prod still pending |
-| 5 | Fitbit provider (Google Health API) | Device data | Confidential Web application | Google Cloud (`carditrack-devices-{env}`) | `devices-fitbit-client-id` / `devices-fitbit-client-secret` | **Provisioned 2026-08-07** — clients created, secrets loaded, API + Worker revisions rolled; field names verified against the v4 discovery document 2026-08-09; **live-wearer population check outstanding** (step 5b below) |
-| 6+ | Garmin / Withings / Oura / Whoop | Device data | Per-vendor | Each vendor's portal | Not yet provisioned (`devices-{provider}-client-{id,secret}`) | Future — config stubs only; **only Fitbit is registered in DI** |
+| 5 | CardiTrack Actions | Identity | Confidential (M2M, Management API: `read:users` `update:users`) | Auth0 | **Action secrets only** (never Secret Manager, never the repo) | **Created + Action deployed in dev 2026-08-10** — [runbook §8a](./auth0_setup_runbook.md); powers the account-linking Action; prod still pending |
+| 6 | Fitbit provider (Google Health API) | Device data | Confidential Web application | Google Cloud (`carditrack-devices-{env}`) | `devices-fitbit-client-id` / `devices-fitbit-client-secret` | **Provisioned 2026-08-07** — clients created, secrets loaded, API + Worker revisions rolled; field names verified against the v4 discovery document 2026-08-09; **live-wearer population check outstanding** (step 5b below) |
+| 7+ | Garmin / Withings / Oura / Whoop | Device data | Per-vendor | Each vendor's portal | Not yet provisioned (`devices-{provider}-client-{id,secret}`) | Future — config stubs only; **only the Google Health API client is registered in DI** (`HealthApi.GoogleHealth`, serving both Fitbit and Google Pixel Watch) |
 
 Device-data secrets are namespaced `devices-{provider}-client-{id,secret}` so each
 new provider adds a matching pair rather than another bare `{vendor}-client-*`.
@@ -32,10 +32,10 @@ Related shared secret: `carditrack-{env}-encryption-key` (`Encryption__Key`) —
 AES-256-GCM key protecting the device-data tokens stored in `DeviceConnections`.
 It belongs to no single OAuth client but every device-data flow depends on it.
 
-> **The #3 vs #5 foot-gun:** both are "Google OAuth clients" under the same
+> **The #3 vs #6 foot-gun:** both are "Google OAuth clients" under the same
 > cloud-ops account, but they are different registrations with different
 > purposes. #3 asks for `openid profile email` so a caregiver can *sign in*;
-> #5 asks for restricted `googlehealth.*` scopes so a wearer can *share heart
+> #6 asks for restricted `googlehealth.*` scopes so a wearer can *share heart
 > data*. Never reuse one for the other — mixing them would drag the sign-in
 > client into Google's restricted-scope verification, and put health scopes on
 > a login button. They live in **separate projects** precisely so this cannot
@@ -57,8 +57,8 @@ must stay intact.
 |---|---|---|
 | `carditrack-490120` | All Terraform-managed infra, **dev and prod**: Cloud Run, Cloud SQL, Secret Manager, the deploy and Play-publisher service accounts. **No OAuth clients.** | none |
 | `carditrack-signin` | `CardiTrack Sign-In (dev)` + `CardiTrack Sign-In (prod)` — client #3, used by Auth0 | `openid profile email` only; **Published** (branding review only, no user cap) |
-| `carditrack-devices-dev` | `CardiTrack Devices (dev)` — client #5, dev | restricted `googlehealth.*`; **stays in Testing permanently**, test users only (max 100) |
-| `carditrack-devices-prod` | `CardiTrack Devices (prod)` — client #5, prod | restricted `googlehealth.*`; **Testing — not yet submitted** (as of 2026-08-07). The only project that will *ever* be submitted for restricted-scope verification + CASA |
+| `carditrack-devices-dev` | `CardiTrack Devices (dev)` — client #6, dev | restricted `googlehealth.*`; **stays in Testing permanently**, test users only (max 100) |
+| `carditrack-devices-prod` | `CardiTrack Devices (prod)` — client #6, prod | restricted `googlehealth.*`; **Testing — not yet submitted** (as of 2026-08-07). The only project that will *ever* be submitted for restricted-scope verification + CASA |
 
 Consequences worth holding onto:
 
@@ -97,12 +97,15 @@ The mobile app renders **Google** and **Apple** buttons on **both**
 wired**: both launch Auth0 Universal Login in the system browser
 (`AuthService.SignInWithProviderAsync` → `connection=google-oauth2|apple`, code
 + PKCE + state, exchange at `/oauth/token`), then join the normal post-login
-routing. **Google's credentials and Auth0 connection are done as of
-2026-08-07**, so Google works as soon as the connection is enabled for
-CardiTrack Mobile and the [runbook §8](./auth0_setup_runbook.md) Action is
-deployed; Apple still needs its credentials — until then its button surfaces
-"not available yet". Microsoft (`windowslive`) is not planned for MVP and has
-no button in the mobile UI — treat it as deferred until product asks.
+routing. **Dev is complete for both providers**: Google's credentials and Auth0
+connection were done 2026-08-07, Apple's were provisioned and
+Try-Connection-verified 2026-08-10, both connections are enabled for
+CardiTrack Mobile, and the [runbook §8](./auth0_setup_runbook.md) Action is
+deployed. **Prod is outstanding for both**: connection credentials, Try
+Connection, and the Applications toggle (plus the M2M app + Action) — until
+then the buttons surface "not available yet" in prod. Microsoft
+(`windowslive`) is not planned for MVP and has no button in the mobile UI —
+treat it as deferred until product asks.
 
 **What's needed per provider:**
 
@@ -114,7 +117,7 @@ tenant. Both clients live in `carditrack-signin` (never the device projects).
 1. Google Cloud console (cloud-ops account), project `carditrack-signin` →
    **Google Auth Platform → Clients → Create client**, type **Web application**,
    name `CardiTrack Sign-In ({env})` — a separate client from the Health API
-   one (#5).
+   one (#6).
 2. Authorized redirect URI: `https://{auth0-tenant-domain}/login/callback`
    (custom-domain tenants use that domain instead).
 3. **Data Access**: only the non-sensitive scopes `openid`, `profile`, `email` —
@@ -234,7 +237,10 @@ connect makes a reconnect look like a failed one.
    matching the public homepage. **Data Access →** add the restricted scopes
    `googlehealth.activity_and_fitness.readonly`,
    `googlehealth.health_metrics_and_measurements.readonly`,
-   `googlehealth.sleep.readonly`, `googlehealth.settings.readonly`.
+   `googlehealth.sleep.readonly`, `googlehealth.settings.readonly`. A fifth
+   Restricted scope, `googlehealth.location.readonly`, is needed by the
+   environmental-enrichment job but must **not** be requested before DPIA
+   mitigation M14 (the Google Maps Platform DPA) closes.
    **`settings.readonly` was added after the first three** (it backs the
    paired-device battery reading, `PairedDevice.batteryLevel`): an existing
    project needs it added here before any wearer can grant it, and **wearers who
@@ -264,7 +270,7 @@ connect makes a reconnect look like a failed one.
 5. **Sandbox verification.** Two separable questions; the first is now closed.
 
    **(a) Are the field names right? — done 2026-08-09, no token required.**
-   Every name, wire format and enum member `FitbitApiClient` reads was checked
+   Every name, wire format and enum member `GoogleHealthApiClient` reads was checked
    against the v4 **discovery document**
    (`https://health.googleapis.com/$discovery/rest?version=v4` — public, no
    auth), which is machine-readable and so settles spelling in a way the prose
@@ -292,7 +298,7 @@ connect makes a reconnect look like a failed one.
    single civil day — not a field-name bug, but the cap's underlying assumption
    (1-minute cadence, ~1,440 points/day) proven wrong by real device behaviour.
    Raised to 100,000 with paced pagination; see
-   `FitbitApiClient.SampleSeriesCap` and the quota note in
+   `GoogleHealthApiClient.SampleSeriesCap` and the quota note in
    [data_sync_architecture.md](./data_sync_architecture.md).
 6. **Before public launch**, in `carditrack-devices-prod` only — **not yet
    submitted as of 2026-08-07**: restricted-scope

@@ -10,9 +10,13 @@ Key implementation facts (verified against `DeviceConnectionService`):
 - **State tokens are single-use with a 15-minute TTL**, held server-side in the distributed cache keyed to the initiating user, member, and provider. The callback consumes the state even if the code exchange fails — a replayed state always fails.
 - **Google authorize URLs include `access_type=offline`** (config-driven), without which Google issues no refresh token. `prompt=consent` (`FirstConsentAuthorizationParams`) is added **only while the member holds no refresh token** on that provider — Google re-issues one only when consent is shown again, but forcing it on every connect makes a reconnect look like a failure. A token exchange that returns no refresh token **leaves the stored one in place** rather than nulling it — unless the exchange came back with a **different `providerUserId`**, in which case the old account's token is dropped so background syncs can't keep pulling the previous wearer's data (and the next initiation re-prompts for consent).
 - **OAuth tokens are AES-encrypted at rest** before being stored on the connection record.
-- **Syncing is a cron poll** by the Worker (`WearableSyncWorker`) every 10 minutes, not provider webhooks. The cron sets only how often the worker *looks*; a connection is actually due once its own `SyncFrequencyMinutes` (default 10) has elapsed. Connections belonging to a **removed or monitoring-paused** CardiMember are excluded by `GetDueForSyncAsync`, so a pause genuinely stops collection — see [cardimembers.md](cardimembers.md). Each due connection writes its own raw `DeviceActivityLogs` row, which is then merged into the member's single daily `ActivityLogs` row.
+- **Syncing is notify-then-fetch.** The `CardiTrack.HealthWebhookReceiver` Cloud Run service (`POST /webhooks/google-health`) receives the provider's data-availability notifications and publishes them to Pub/Sub; `NotificationDrainService` maps each notification's health-user id to the matching connections and runs a **targeted sync** through the same `IDeviceSyncService` the Worker uses. Because that stamps `LastSyncDate`, the routine poll's due-time moves out — making the Worker's 10-minute cron (`WearableSyncWorker`) the **fallback**, not a duplicate. The cron sets only how often the worker *looks*; a connection is actually due once its own `SyncFrequencyMinutes` (default 10) has elapsed. Connections belonging to a **removed or monitoring-paused** CardiMember are excluded by `GetDueForSyncAsync`, so a pause genuinely stops collection — see [cardimembers.md](cardimembers.md). Each due connection writes its own raw `DeviceActivityLogs` row, which is then merged into the member's single daily `ActivityLogs` row.
 - The anonymous bounce endpoint **only redirects into the `carditrack://` app scheme** — any other cached redirect target is rejected, preventing open-redirect leakage of `code`+`state`.
-- **Only Fitbit is actually connectable.** Garmin, Samsung Health, and Withings pass request validation but are **config-only stubs** (placeholder ClientIds, no DI registration) — a connect attempt returns 400 "not configured for connections". Only the Fitbit provider client is registered.
+- **Only the GoogleHealth-backed providers (`fitbit`, `pixel_watch`) are actually connectable** — the GoogleHealth engine is the only one registered in DI. The rest are stubs in different states: `garmin` and `withings` have config blocks with **placeholder client ids**; **Oura and Whoop** have config blocks but **no provider-string mapping**, so they are unreachable from the API entirely; `samsung_health` has **no config block at all**. Every non-Google provider fails a connect attempt with 400 "not configured for connections".
+
+### Real-time notifications
+
+The webhook path is deliberately tolerant of the provider's payload shapes. `WebhookNotificationParser.ExtractHealthUserIds` accepts a `healthUserId` property (case-insensitive, at any nesting depth — the form live traffic uses) and the resource-name form `users/{id}[/dataTypes/…]` as a secondary format; extracted ids are trimmed and matched **exactly** against `DeviceConnection.HealthUserId`. A notification that yields no id is **acknowledged rather than retried**: the routine poll guarantees no data loss, so an unparseable notification costs at most ten minutes of latency, never a poison-message loop.
 
 **User Stories:** 1.3 (Device Connection Wizard), 6.2 (Device Management)
 
@@ -95,7 +99,7 @@ Initiate an OAuth device connection. Returns a redirect URL for the provider's a
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `provider` | string | Yes | A **server-OAuth** provider: `fitbit`, `garmin`, `samsung_health`, `withings`. (`apple_health` uses the on-device bridge — see below — and is not valid here.) |
+| `provider` | string | Yes | A **server-OAuth** provider: `fitbit`, `pixel_watch`, `garmin`, `samsung_health`, `withings`. (`apple_health` uses the on-device bridge — see below — and is not valid here.) |
 | `redirectUri` | string | Yes | Deep link URI for mobile callback. Must be a `carditrack://` URI **with no fragment** — the bounce forwards into whatever is cached here and appends the callback params to it, so another scheme would be an open redirect and a `#` would swallow the params. Rejected at initiation rather than only at the bounce. (An "absolute URI" check alone is not enough: on Linux `Uri.TryCreate` accepts a bare path like `/oauth/callback` as an absolute `file:` URI.) |
 
 ### Response `200 OK`
@@ -347,22 +351,24 @@ Historical data synced via this device is retained. A CardiMember **may have zer
 | Fitbit (`Fitbit`) | `fitbit` | `GoogleHealth` | `server_oauth` | **Implemented** | Google Health API scope bundles: `activity_and_fitness.readonly`, `health_metrics_and_measurements.readonly`, `sleep.readonly`, `settings.readonly` (battery; added later, so pre-existing connections lack it) |
 | Google Pixel Watch (`GooglePixelWatch`) | `pixel_watch` | `GoogleHealth` | `server_oauth` | **Implemented** (same engine as `fitbit`) | Same Google Health API bundles as `fitbit` |
 | Apple Watch (`AppleWatch`) | `apple_health` | `AppleHealth` | `on_device_bridge` | Planned | `HKQuantityTypeStepCount`, `HKQuantityTypeHeartRate`, `HKCategoryTypeAsleepCore` |
-| Garmin (`Garmin`) | `garmin` | `GarminConnect` | `server_oauth` | Config-only stub | `activities`, `heart_rate`, `sleep` |
-| Samsung Galaxy Watch (`GalaxyWatch`) | `samsung_health` | `SamsungHealth` | `server_oauth` | Config-only stub | `steps`, `heart_rate`, `sleep` |
-| Withings (`Withings`) | `withings` | `Withings` | `server_oauth` | Config-only stub | `user.metrics` |
+| Garmin (`Garmin`) | `garmin` | `GarminConnect` | `server_oauth` | Config-only stub (placeholder client id) | `activities`, `heart_rate`, `sleep` |
+| Samsung Galaxy Watch (`GalaxyWatch`) | `samsung_health` | `SamsungHealth` | `server_oauth` | Stub — **no config block** | `steps`, `heart_rate`, `sleep` |
+| Withings (`Withings`) | `withings` | `Withings` | `server_oauth` | Config-only stub (placeholder client id) | `user.metrics` |
+| Oura | — | `Oura` | `server_oauth` | Config-only, **no `provider` value — unreachable** | — |
+| Whoop | — | `Whoop` | `server_oauth` | Config-only, **no `provider` value — unreachable** | — |
 
 > **Brand vs API:** a `provider` value names the **hardware brand** the wearer picked; which data-source API it connects through is the `DeviceProviders` configuration's `DeviceTypes` mapping (e.g. the `GoogleHealth` block lists `["Fitbit", "GooglePixelWatch"]`). Brands on the same API share one OAuth client, one engine, and one registered bounce redirect — a `pixel_watch` authorization returns through the `/oauth/redirect/fitbit` segment, and the callback validates state at the **API level** while the connection keeps the brand from initiation.
 
-> **Config-only stubs:** `garmin`, `samsung_health`, and `withings` are accepted by request validation, but no provider block claims their DeviceTypes (and no engine is registered in DI) — a connect attempt fails with **400** ("not configured for connections"). Only the GoogleHealth engine is wired end-to-end. See the [OAuth client inventory](../../../technical/oauth_clients.md) for provisioning state.
+> **Stubs:** `garmin`, `samsung_health`, and `withings` are accepted by request validation, but no provider block claims their DeviceTypes with a real client (and no engine is registered in DI) — a connect attempt fails with **400** ("not configured for connections"). `garmin` and `withings` have config blocks with placeholder client ids; `samsung_health` has none at all; **Oura and Whoop** have config blocks but no `provider` string maps to them, so the API cannot even be asked for them. Only the GoogleHealth engine is wired end-to-end. See the [OAuth client inventory](../../../technical/oauth_clients.md) for provisioning state.
 
 > The `fitbit` and `pixel_watch` providers authorize via **Google OAuth 2.0** and sync through the **Google Health API** (`health.googleapis.com`), which covers Fitbit devices, Pixel Watch, and connected third-party sources — the legacy Fitbit Web API is decommissioned September 2026.
 
 > **Integration modes:**
-> - **`server_oauth`** — CardiTrack's backend holds OAuth tokens (AES-encrypted at rest) and **polls** the provider's cloud API on a 10-minute Worker cron — there is no webhook ingestion.
+> - **`server_oauth`** — CardiTrack's backend holds OAuth tokens (AES-encrypted at rest) and pulls from the provider's cloud API **notify-then-fetch**: the Google Health webhook triggers a targeted sync, and the 10-minute Worker cron is the fallback poll (see "Real-time notifications" above).
 > - **`on_device_bridge`** (Apple Health — *planned*) — HealthKit has **no server-side OAuth**. Permissions would be granted on the CardiMember's iPhone and the mobile app would upload normalized samples; no ingestion endpoint for this exists yet, and `apple_health` is not a valid value for the OAuth endpoints above.
 
 ---
 
 **Related:** [readme.md](readme.md) | [health-data.md](health-data.md) | [OAuth Client Inventory](../../../technical/oauth_clients.md) | [User Stories 1.3, 6.2](../../ui/mobile/user_stories.md)
 
-**Last Updated:** August 7, 2026
+**Last Updated:** August 13, 2026

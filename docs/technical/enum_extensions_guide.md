@@ -4,13 +4,13 @@ CardiTrack's enums carry Display attributes and extension methods for easy UI re
 
 ## Features
 
-✅ Display Name attributes on enum values (one exception: `ReportStatus` has none and falls back to `ToString()`)
+✅ Display Name attributes on enum values (five exceptions have none and fall back to `ToString()`: `ReportStatus`, `DigestAudience`, `GranularMetric`, `HealthApi`, `QuestionnaireStatus`)
 ✅ Extension methods to convert enums to lists/dictionaries
 ✅ Select list generation for dropdowns
 ✅ Safe parsing with defaults
 ✅ Value validation
 
-> **Serialization note:** enums serialize as **integers** over HTTP (no string-enum converter is registered), so `GetDisplayName()` is a **server-side** rendering helper — API clients receive `4`, not `"Samsung"`. Display names reach clients only when the server maps them into response DTO string fields.
+> **Serialization note:** enums serialize as **integers** over HTTP (no string-enum converter is registered), so `GetDisplayName()` is a **server-side** rendering helper — API clients receive `4`, not `"Samsung Galaxy Watch"`. Display names reach clients only when the server maps them into response DTO string fields.
 
 ## Display Attributes
 
@@ -25,8 +25,8 @@ public enum DeviceType
     [Display(Name = "Apple Watch")]
     AppleWatch = 2,
 
-    [Display(Name = "Samsung")]
-    Samsung = 4,
+    [Display(Name = "Samsung Galaxy Watch")]
+    GalaxyWatch = 4,
 
     // ...
 
@@ -52,7 +52,7 @@ var severity = AlertSeverity.Red;
 var severityName = severity.GetDisplayName(); // Returns: "Red"
 ```
 
-If a value has no `[Display]` attribute (e.g. any `ReportStatus` member), it falls back to `ToString()`.
+If a value has no `[Display]` attribute (e.g. any `ReportStatus`, `DigestAudience`, `GranularMetric`, `HealthApi`, or `QuestionnaireStatus` member), it falls back to `ToString()`.
 
 ### 2. ToList<TEnum>()
 
@@ -70,10 +70,11 @@ foreach (var (value, displayName) in deviceList)
 // Fitbit (1): Fitbit
 // AppleWatch (2): Apple Watch
 // Garmin (3): Garmin
-// Samsung (4): Samsung
+// GalaxyWatch (4): Samsung Galaxy Watch
 // Withings (5): Withings
 // Oura (6): Oura
 // Whoop (7): Whoop
+// GooglePixelWatch (8): Google Pixel Watch
 // Other (99): Other
 ```
 
@@ -117,10 +118,11 @@ var genderOptions = EnumExtensions.ToSelectList<Gender>();
 // [
 //   { Value: "1", Text: "Male", Selected: false },
 //   { Value: "2", Text: "Female", Selected: false },
-//   { Value: "3", Text: "Other", Selected: false },
 //   { Value: "4", Text: "Prefer Not to Say", Selected: false }
 // ]
 ```
+
+`Gender` has exactly three members — `Other = 3` is **retired** (the value stays reserved and must never be reused), and the capture picker offers only Male/Female (`PreferNotToSay` is the resting value for members created before the form asked).
 
 **Blazor Example** *(illustrative pattern — not existing code)*:
 
@@ -189,7 +191,7 @@ if (!EnumExtensions.IsDefined<AlertSeverity>(alertValue))
 
 ## Usage Examples
 
-> **Note:** the examples below are **illustrative patterns**, not existing code. The real call sites today are `DashboardService` and `DeviceConnectionService` — the latter uses `GetDisplayName()` for provider error messages and as the fallback device name, where the **catalog `Device.DisplayName` takes precedence over the enum display name** when a catalog entry exists.
+> **Note:** the examples below are **illustrative patterns**, not existing code. The real call sites today are `DashboardService`, `AlertService`, `DeviceConnectionService`, and — on the mobile client — `CardiMemberDetailPage`. `DeviceConnectionService` uses `GetDisplayName()` for provider error messages and as the fallback device name, where the **catalog `Device.DisplayName` takes precedence over the enum display name** when a catalog entry exists.
 
 ### API Endpoint - Return Enum Options *(illustrative)*
 
@@ -325,27 +327,46 @@ Display names below are the exact `[Display(Name = "...")]` values from `src/Cor
 ### Core Enums
 - **OrganizationType** — Family Account, Business Account
 - **UserRole** — Member, Administrator, Staff Member
-- **Gender** — Male, Female, Other, Prefer Not to Say
+- **Gender** — Male (1), Female (2), Prefer Not to Say (4) — `Other = 3` is **retired** (value reserved, never reuse); only Male/Female are offered in the capture picker
 
 ### Relationship & Monitoring
 - **RelationshipType** — Self, Parent, Spouse, Grandparent, Sibling, Child, Other (Other = 99, non-sequential)
+- **AlertSensitivity** — Low, Medium, High (per-member alert-threshold tuning)
 
 ### Device & Connection
-- **DeviceType** — Fitbit, Apple Watch, Garmin, Samsung, Withings, Oura, Whoop, Other (Other = 99, non-sequential)
+- **DeviceType** — Fitbit, Apple Watch, Garmin, Samsung Galaxy Watch (GalaxyWatch = 4), Withings, Oura, Whoop, Google Pixel Watch (GooglePixelWatch = 8), Other (Other = 99, non-sequential)
 - **ConnectionStatus** — Connected, Disconnected, Token Expired, Authentication Error, Sync Error
+- **HealthApi** — GoogleHealth, SamsungHealth, GarminConnect, AppleHealth, Withings, Oura, Whoop (**no Display attributes**)
+- **DevicePlatform** — iOS, Android
+- **GranularMetric** — HeartRate, Steps, ActiveZoneMinutes, SpO2 (**no Display attributes**)
 
 ### Alerts
 - **AlertType** — Inactivity, Heart Rate, Sleep, Pattern Break, Trend
 - **AlertSeverity** — Green (1), Yellow (2), Orange (3), Red (4)
+- **AlertStatus** — New, Acknowledged, Resolved
+
+### Notifications & Delivery
+- **NotificationCategory** — Safety, Blocking, Unlock, Account
+- **NotificationPriority** — Critical, High, Medium, Low
+- **NotificationState** — Open, Snoozed, Resolved, Superseded
+- **NotificationResolutionReason** — Gap Closed, Dismissed, Monitoring Paused, Scope Removed
+- **DeliveryChannel** — Push, In-app
+- **DeliveryCategory** — Safety, Health, Nudge
+- **DeliverySourceType** — Alert, Notification
+- **DeliveryState** — Pending, Sent, Delivered, Suppressed, Failed, DeadLettered, Undelivered
+- **EscalationStage** — Initial, Re-pushed, Fanned out, Undelivered — critical
+- **OsAuthorizationStatus** — Not determined, Denied, Granted, Provisional, Ephemeral
+- **DigestAudience** — Family, Wearer (**no Display attributes**)
 
 ### Billing
 - **SubscriptionTier** — Basic, Complete, Plus
 - **SubscriptionStatus** — Trial, Active, Past Due, Cancelled, Suspended
 - **BillingCycle** — Monthly, Annual
 
-### Reports
+### Reports & Questionnaires
 - **ReportFormat** — PDF, CSV, FHIR R4, HL7 v2
 - **ReportStatus** — Pending, Ready, Failed, Expired (**no Display attributes** — `GetDisplayName()` falls back to `ToString()`)
+- **QuestionnaireStatus** — Pending, Answered, Dismissed (**no Display attributes**)
 
 ## Testing
 
@@ -426,4 +447,4 @@ Remember: display names are server-side only — over HTTP, enums are plain inte
 
 ---
 
-**Last Updated:** August 7, 2026
+**Last Updated:** August 13, 2026

@@ -80,7 +80,7 @@ The elderly health monitoring market is experiencing rapid growth driven by agin
 **Trend 3: AI/ML in Healthcare**
 - Pattern recognition and predictive analytics
 - Personalized health baselines
-- CardiTrack Alignment: ✅ **MedGemma + per-user LSTM anomaly detection**
+- CardiTrack Alignment: ✅ **MedGemma + SSA-based per-user baseline anomaly detection**
 
 **Trend 4: Subscription-Based Care**
 - Shift from hardware sales to recurring revenue
@@ -307,7 +307,7 @@ The elderly health monitoring market is experiencing rapid growth driven by agin
 
 **CardiTrack Improvements:**
 - ✅ Multi-platform (iOS + Android shipped; web dashboard in development)
-- ✅ Modern AI anomaly detection (MedGemma 1.5 4B + SSA-LSTM)
+- ✅ Modern AI anomaly detection (MedGemma 1.5 4B + SSA pre-processing)
 - ✅ Multi-device roadmap (Fitbit today; Garmin, Apple Watch, Samsung and more per release wave)
 - ✅ Active development & support
 - ✅ Better pricing ($8 vs $15+)
@@ -426,7 +426,7 @@ The elderly health monitoring market is experiencing rapid growth driven by agin
 | **Multi-Device Support** | 🔄 Fitbit shipped (Google Health API, incl. Pixel Watch); Garmin Q1 2027; Apple/Samsung Q2 2027; Withings/Oura/Whoop Q3 2027 | ❌ Proprietary only | ✅ Fitbit only | ✅ Apple only | ✅ Fitbit only |
 | **Preventive Monitoring** | ✅ AI pattern analysis | ❌ Reactive only | ⚠️ Basic insights | ❌ None | ✅ Basic patterns |
 | **Family Dashboard** | 🔄 Mobile shipped; web in development | ⚠️ Limited | ❌ No | ⚠️ Manual check | ✅ iOS only |
-| **Automated Alerts** | 🔄 In development (SMS/email/push delivery on roadmap) | ✅ Emergency only | ❌ None | ❌ None | ✅ Email |
+| **Automated Alerts** | ✅ Statistical + AI alerts with push delivery (FCM); no SMS/email (out of scope) | ✅ Emergency only | ❌ None | ❌ None | ✅ Email |
 | **Pattern Learning** | ✅ MedGemma personalized | ❌ None | ⚠️ Generic | ❌ None | ⚠️ Basic statistical |
 | **Multiple CardiMembers** | ✅ 2 (Basic) / 5 (Complete Care) | ❌ One device/user | ❌ N/A | ❌ N/A | ❌ One elder |
 | **Fall Detection** | ❌ Not planned (preventive focus, not emergency response) | ✅ Primary feature | ❌ No | ✅ Apple Watch | ❌ No |
@@ -627,7 +627,7 @@ The elderly health monitoring market is experiencing rapid growth driven by agin
 **Target:** 20-50 beta families
 
 **Prerequisites:**
-- Google Cloud console registration for the Health API client + sandbox verification (must complete before the legacy Fitbit Web API sunsets in September 2026)
+- Google Health API client verification — console registration done (Aug 7, 2026) and response field mappings verified against the v4 discovery document (Aug 9); the live-wearer population check must complete before the legacy Fitbit Web API sunsets in September 2026
 - Google-mandated health-data disclosure in-app (shipped on web; mobile pending — required before beta wearers connect)
 - Beta stays within the **100-connected-user cap** that applies to unverified restricted-scope apps
 
@@ -800,13 +800,13 @@ The elderly health monitoring market is experiencing rapid growth driven by agin
 
 CardiTrack's data supply chain is single-vendor: Google owns the Health API, the restricted-scope verification gates, and the MedGemma model we run for inference. Specific exposures:
 
-- **September 2026 legacy sunset (~4 weeks away):** we have migrated to the Google Health API, but Google Cloud console registration is still pending and several API response field mappings are "(assumed)" until sandbox verification — until both are done, ingestion is not proven against the replacement API
+- **September 2026 legacy sunset (~4 weeks away):** we have migrated to the Google Health API — console registration completed Aug 7, 2026 and response field mappings verified against the public v4 discovery document Aug 9 — but ingestion is not yet proven against a live wearer population, the final verification step
 - **100-connected-user cap:** all Google Health scopes are Restricted; unverified apps cannot exceed 100 connected wearers. Growth beyond beta is gated on Gate 1 (Trust & Safety restricted-scope review) + Gate 2 (CASA security assessment) — combined runway 4-8 weeks
 - **Recurring cost:** the CASA assessment is **annual** ($500-$4,500 per cycle, 2-6 weeks) — a permanent compliance line item
 - **Policy risk:** Google can change API terms, scope policy, or verification requirements unilaterally
 
 **Mitigation:**
-- Complete console registration and sandbox field verification immediately (blocking task, pre-beta)
+- Complete the live-wearer population check immediately (console registration and field verification are done; this is the last blocking task, pre-beta)
 - Submit verification during Phase 1 beta so approval lands before Phase 2 launch
 - Budget the annual CASA reassessment as fixed operating cost and calendar it so certification never lapses
 - Execute the non-Google device roadmap (Garmin Q1 2027, Apple/Samsung Q2 2027, Withings/Oura/Whoop Q3 2027) to reduce single-API dependence over time
@@ -887,7 +887,7 @@ CardiTrack enters a growing market — $9B+ addressable across the US & EU, with
 5. ✅ Multiple monetization paths (B2C, B2B, enterprise)
 
 **Next Steps:**
-1. Complete Google Cloud console registration + sandbox verification of the Google Health API integration — before the September 2026 legacy Fitbit Web API sunset (Aug-Sep 2026)
+1. Complete the live-wearer verification of the Google Health API integration (console registration and field mappings already verified) — before the September 2026 legacy Fitbit Web API sunset (Aug-Sep 2026)
 2. Complete R1 core monitoring and beta test with 20-50 families (Q4 2026 — within the 100-user cap for unverified apps); submit Google restricted-scope verification (Gate 1 + CASA)
 3. Public launch with Fitbit + Garmin support (Q1 2027 — **requires Google verification passed** to exceed 100 connected wearers, and the mobile disclosure banner shipped)
 4. Add Apple Watch & Samsung (Q2 2027)
@@ -897,6 +897,6 @@ CardiTrack enters a growing market — $9B+ addressable across the US & EU, with
 
 ---
 
-**Document Version:** 1.1
-**Last Updated:** August 7, 2026
+**Document Version:** 1.2
+**Last Updated:** August 13, 2026
 **Next Review:** December 2026 (post-beta)

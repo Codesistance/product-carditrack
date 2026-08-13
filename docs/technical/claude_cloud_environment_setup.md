@@ -2,7 +2,9 @@
 
 Config for the **New cloud environment** dialog in Claude Code (name, network access,
 environment variables, setup script) so a fresh cloud session can build, run, and test
-`CardiTrack.Server.slnf` (API, Web, Worker) with no manual follow-up.
+`CardiTrack.Server.slnf` (14 projects — API, Web, Worker, the two Pipeline hosts
+(HealthWebhookReceiver, PipelineJobs), Mobile.Core, and the test projects; everything
+except `CardiTrack.Mobile`) with no manual follow-up.
 
 This is a different surface from `.devcontainer/`: the dev container is for VS Code /
 `devcontainer up`, and its `SessionStart` hook (`.claude/settings.json` →

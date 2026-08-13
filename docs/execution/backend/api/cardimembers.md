@@ -2,9 +2,11 @@
 
 > **Status: Partially implemented.** Get-by-id, update, delete and monitoring pause/resume now exist on `/api/v1/cardimembers`. Consent, self-authored notes, photos and plan-limit enforcement remain design intent. See "Implemented today" for current coverage.
 
-Manages the elderly individuals being monitored (CardiMembers), their consent settings, monitoring pause state, and self-authored notes.
+Manages the elderly individuals being monitored (CardiMembers), their consent settings, monitoring pause state, and context notes entered on their behalf.
 
 **User Stories:** 1.2 (Adding First CardiMember), 7.1 (Consent & Transparency), 7.2 (Viewing Own Data), 7.3 (Pausing Monitoring)
+
+> **Wearer-audience stories are descoped.** Wearers never log in (product decision 2026-08-10 — self-monitoring is not the objective), so the wearer-facing parts of 7.2/7.3 will never ship: pause/resume is a caregiver action, and "own data"/"own account" framing below is retained only as historical design intent.
 
 ---
 
@@ -15,6 +17,19 @@ CardiMember create/list currently lives on the **Onboarding** controller (note t
 ### POST `/api/Onboarding/cardimember`
 
 Creates a CardiMember in the caller's organization (organization comes from the authenticated user context, never the body). Returns **201** with the member wrapped in the standard `ApiResponse<T>` envelope. Returns **403** if the caller has no organization yet ("set up your organization first"), **400** with field-level `errors` on validation failure.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `name` | string | **Yes** | 2–100 chars |
+| `dateOfBirth` | date (`DateOnly`) | **Yes** | Member must validate as 18–120 years old |
+| `gender` | integer enum | **Yes** | `[Required]` — sex is captured at onboarding (M1-04), a deliberate divergence from the Figma comps, because the reference ranges the prompt layer reads depend on it |
+| `email` | string | No | Validated for email format |
+| `phone` | string | No | Validated as a phone number |
+| `emergencyContactName` | string | No | ≤ 100 chars |
+| `emergencyContactPhone` | string | No | Validated as a phone number |
+| `medicalNotes` | string | No | ≤ 2000 chars; encrypted at rest |
+| `relationshipType` | integer enum | No | Defaults to `Other` (99) — not knowing how you are related is no reason to be unable to start watching over someone |
+| `isPrimaryCaregiver` | boolean | No | Defaults to `true` |
 
 ### GET `/api/Onboarding/cardimembers`
 
@@ -68,11 +83,15 @@ Full detail for one CardiMember — the payload behind mobile M1-13. Requires **
   "monitoringSince": "2026-01-15T09:00:00Z",
   "lastSyncedAt": "2026-03-09T08:30:00Z",
   "connectedDeviceCount": 2,
-  "baseline": { "isLearning": true, "daysCaptured": 15, "daysRequired": 30, "percentComplete": 50 }
+  "baseline": { "isLearning": true, "daysCaptured": 15, "daysRequired": 30, "percentComplete": 50 },
+  "healthStatus": "green",
+  "metrics": { "steps": { "…": "…" }, "restingHeartRate": { "…": "…" }, "sleep": { "…": "…" }, "temperature": { "…": "…" }, "spO2": { "…": "…" }, "breathingRate": { "…": "…" } }
 }
 ```
 
 - `relationship` is the **requesting caregiver's own** link, not the first link stored against the member.
+- `healthStatus` is the same lowercase string, computed the same way, as the dashboard's — see [health-data.md](health-data.md).
+- `metrics` is the full `DashboardMetrics` block (each metric with its 30-day series) so the detail screen's trend cards need no second round-trip; it is **`null`** when the member has no activity history yet, the same condition the dashboard uses.
 - `medicalNotes` is stored AES-256-GCM encrypted and decrypted on read. Rows written before encryption was introduced are returned as-is rather than failing the request.
 - `photoUrl` is always `null` — no photo storage exists. Clients render an initials avatar.
 - `alertSensitivity` is an integer enum (Low=1, Medium=2, High=3). **Stored but not consumed** — alert generation is not built.
@@ -335,7 +354,7 @@ Record or update the CardiMember's consent preferences for what data types are s
 
 Temporarily pause monitoring for a CardiMember. All connected family members are notified.
 
-**Priority:** P2 | **Auth Required:** Yes (CardiMember's own account or Admin)
+**Priority:** P2 | **Auth Required:** Yes (caregiver with manage access — wearers never log in)
 
 ### Request Body
 
@@ -382,7 +401,7 @@ Resume monitoring before the scheduled auto-resume time.
 
 ## GET `/api/v1/cardimembers/{id}/notes`
 
-Get self-authored notes from the CardiMember (e.g. "I was sick this week").
+Get context notes about the CardiMember (e.g. "She was sick this week"). Originally designed as self-authored; since wearers never log in, any notes feature would be **caregiver-entered on the member's behalf**.
 
 **Priority:** P2 | **Auth Required:** Yes
 
@@ -404,9 +423,9 @@ Get self-authored notes from the CardiMember (e.g. "I was sick this week").
 
 ## POST `/api/v1/cardimembers/{id}/notes`
 
-Add a self-authored note as the CardiMember.
+Add a context note about the CardiMember. (Originally "as the CardiMember" — descoped: wearers never log in, so this would be a caregiver writing on their behalf.)
 
-**Priority:** P2 | **Auth Required:** Yes (CardiMember's own account)
+**Priority:** P2 | **Auth Required:** Yes
 
 ### Request Body
 
@@ -436,4 +455,4 @@ Add a self-authored note as the CardiMember.
 
 **Related:** [readme.md](readme.md) | [devices.md](devices.md) | [User Stories 1.2, 7.1–7.3](../../ui/mobile/user_stories.md)
 
-**Last Updated:** August 7, 2026
+**Last Updated:** August 13, 2026

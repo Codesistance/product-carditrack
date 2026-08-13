@@ -6,8 +6,8 @@
 
 **Product:** CardiTrack - Remote health monitoring for elderly family members
 **Release:** MVP 1 — Core Monitoring (R1, Q4 2026) — 17 designed screens / 37 designed states; **13 of 17 built** as of August 9, 2026
-**Platform:** iOS 16+ (iPhone 12+) & Android 10+ (API 29)
-**Minimum OS:** iOS 16.0 · Android 10 (API level 29)
+**Platform:** iOS 17+ (iPhone 12+) & Android 12+ (API 31)
+**Minimum OS:** iOS 17.0 · Android 12 (API level 31)
 **Target OS:** iOS 18 · Android 15 (API level 35)
 **Orientation:** Portrait primary, landscape supported
 **Target Users:** Family caregivers across the US & EU monitoring elderly relatives' wearable health data
@@ -37,7 +37,7 @@ A single user can sign up, add a CardiMember, connect devices, manage CardiMembe
 | M1-03 | Sign Up | 4 (a–d) | ✅ `CreateAccountPage` |
 | M1-04 | Add First CardiMember | 3 (a–c) | ✅ `AddCardiMemberPage` |
 | M1-05 | Device Connection - Selection | 1 | ✅ `DeviceSelectionPage` |
-| M1-06 | Device Connection - OAuth | 3 (a–c) | ✅ `FitbitConnectionPage` |
+| M1-06 | Device Connection - OAuth | 3 (a–c) | ✅ `DeviceConnectionPage` |
 | M1-07 | Device Connection - Success | 3 (a–c) | ✅ `ConnectionSuccessPage` |
 | M1-08 | Baseline Learning Info | 1 | ✅ `BaselineLearningPage` |
 | M1-09 | Main Dashboard | 5 (a–e) + 2 as-built | ✅ `DashboardPage` |
@@ -52,7 +52,7 @@ A single user can sign up, add a CardiMember, connect devices, manage CardiMembe
 
 **Total: 17 designed screens · 37 designed states — 13 of 17 built**
 
-**Shipped screens without Figma M1 frames** (need design sync; no M1 IDs assigned per project convention): SignInPage, ForgotPasswordPage, VerifyEmailPage, Onboarding/AccountSetupPage — see the canonical [ui_screens_maui_mobile.md](../ui_screens_maui_mobile.md) for full specs.
+**Shipped screens without Figma M1 frames** (need design sync; no M1 IDs assigned per project convention): SignInPage, ForgotPasswordPage, VerifyEmailPage, Onboarding/AccountSetupPage, NotificationsPage (nudge inbox), QuestionnairesPage — see the canonical [ui_screens_maui_mobile.md](../ui_screens_maui_mobile.md) for full specs.
 
 ---
 
@@ -221,7 +221,7 @@ Five MVP 1 screens selected to validate the core design language — covering br
 |---|--------|---------------|
 | 1 | **M1-02 — Welcome / Landing** | Entry point; showcases brand identity, hero carousel, and marketing tone |
 | 2 | **M1-04 — Add First CardiMember** | Onboarding form; demonstrates photo picker, progressive disclosure, and inline privacy messaging |
-| 3 | **M1-09 — Main Dashboard** | Core monitoring screen; shows status hero card, 3-metric layout, severity color system, and sparklines |
+| 3 | **M1-09 — Main Dashboard** | Core monitoring screen; shows status hero card, key-metric grid, severity color system, and star ratings |
 | 4 | **M1-10 — Alerts List** | Alert management; demonstrates severity badges, grouped list design, filter chips, and swipe actions |
 | 5 | **M1-12 — Alert Detail - Critical** | Highest-stakes screen; validates urgency design, pulsing severity treatment, and primary CTA hierarchy |
 
@@ -323,7 +323,7 @@ These five screens span onboarding → daily use → emergency response. **Build
 **Social Login (2-up icon grid):**
 - "Google" card (white background, Google logo)
 - "Apple" card (dark background, Apple logo)
-- **Unwired** — the social buttons have no tap handlers yet
+- **Wired** — Google/Apple sign-in via Auth0's PKCE authorization-code flow in the system browser on Android/iOS; the Windows target falls back to an error message
 
 **Bottom:**
 - Link: "Already have an account? Sign In" → SignInPage
@@ -358,7 +358,7 @@ These five screens span onboarding → daily use → emergency response. **Build
 **Introduction:**
 - Icon: person silhouette
 - Text: "Who would you like to look after?"
-- Subtext: "Tell us about your loved one — we'll take it from there"
+- Subtext: "Tell us who you're looking after — we'll take it from there"
 
 **Photo Section:**
 - Circular photo placeholder (large)
@@ -369,8 +369,11 @@ These five screens span onboarding → daily use → emergency response. **Build
 - "Full Name *" — text input
 - "Date of Birth *" — date picker (format: MM/DD/YYYY)
   - As built, **DOB silently defaults to today** if not changed — not validated (known limitation)
-- "Relationship *" — dropdown picker:
-  - Parent, Grandparent, Spouse, Sibling, Other
+- "Sex *" — picker (Male / Female), helper text: "Helps us read heart rate and sleep against the right range."
+  - **Deliberate divergence from the Figma M1-04/M1-13 comps** — the field is not in the design file but ships because DOB + sex set the reference range the summaries are read against; do not drop it on a pixel-match pass
+
+**Optional Field:**
+- "Relationship" — dropdown picker (no asterisk): Parent, Grandparent, Spouse, Sibling, Other — an unpicked relationship falls back to `Other`
 
 **Optional Fields (collapsible section):**
 - Toggle: "Add More Details (Optional)"
@@ -386,8 +389,10 @@ These five screens span onboarding → daily use → emergency response. **Build
 - **Not built** — the shipped screen has no privacy-notice card (product follow-up, relevant to the consent-first principle)
 
 **CTA:**
-- Primary button: "Continue" — enabled by **name ≥ 2 characters + relationship selected** only
-- Text link: "Skip for Now"
+- Primary button: "Continue" — enabled by **name ≥ 2 characters + sex selected** only
+- Text link: "Skip for now"
+
+**Draft persistence:** a half-typed member (and its photo) survives app backgrounding — the form saves to `CardiMemberDraftStore` on background/stop and restores on return; the draft is cleared on successful submit.
 
 **States:**
 - **M1-04a — Default:** Empty form with photo placeholder
@@ -400,7 +405,7 @@ These five screens span onboarding → daily use → emergency response. **Build
 **Status:** Built (`Onboarding/DeviceSelectionPage`)
 **User Story:** 1.3 Device Connection Wizard
 **Entry:** ← M1-04 Add CardiMember ("Continue")
-**Exit:** → M1-06 OAuth Permission ("Continue with Fitbit")
+**Exit:** → M1-06 OAuth Permission ("Continue with [Device]")
 
 **Header:**
 - Back button
@@ -408,7 +413,7 @@ These five screens span onboarding → daily use → emergency response. **Build
 - Progress indicator: "Step 3 of 4"
 
 **Introduction:**
-- Heading: "What do they wear?" (no name interpolation)
+- Heading: "What does [Name] wear?" (member name interpolated)
 - Subtext: "We'll connect with their device to keep you in the loop"
 
 **Device Grid (fixed 2-column grid):**
@@ -420,11 +425,12 @@ Each device card:
 - "Coming Soon" badge for future devices
 - Coming Soon cards render at **0.55 opacity** and are non-tappable
 
-**Supported Devices (MVP 1 — Fitbit only; remaining devices shown as Coming Soon):**
+**Supported Devices (MVP 1 — Fitbit and Google Pixel Watch, both via the Google Health API; remaining devices shown as Coming Soon):**
 
 | Device | Card text (models) | MVP Availability |
 |--------|--------------------|-----------------|
 | Fitbit | Charge, Versa, Sense series | **MVP 1** |
+| Google Pixel Watch | Pixel Watch 1–3 | **MVP 1** |
 | Garmin | Venu, Forerunner, etc. | MVP 2 (shown Coming Soon) |
 | Apple Watch | Series 4+ | Coming Soon |
 | Samsung Galaxy | All models | Coming Soon |
@@ -435,30 +441,30 @@ Each device card:
 - Link: "Don't see their device? We can help"
 
 **Interactions:**
-- **Fitbit is preselected** — it cannot be deselected, and there is no auto-advance
-- Explicit primary button: **"Continue with Fitbit"** proceeds to M1-06
+- **Fitbit and Google Pixel Watch are selectable** (single-select; Fitbit is preselected on entry) — re-tapping the selected card clears the selection, and there is no auto-advance
+- Explicit primary button: **"Continue with [Device]"** proceeds to M1-06; reads "Continue" and disables while nothing is selected
 - Coming Soon cards are greyed out (0.55 opacity) with "Coming Soon" badges
 
 ---
 
 ### M1-06: Device Connection - OAuth Permission
-**Status:** Built (`Onboarding/FitbitConnectionPage`) — Fitbit-only, hardcoded copy
+**Status:** Built (`Onboarding/DeviceConnectionPage`) — brand-agnostic; the selected device supplies the copy, logo, and wire name
 **User Story:** 1.3 OAuth Flow
-**Entry:** ← M1-05 Device Selection ("Continue with Fitbit")
+**Entry:** ← M1-05 Device Selection ("Continue with [Device]")
 **Exit:** → M1-07 Success (authorization complete) | ← M1-05 Device Selection ("Cancel")
 
 **Header:**
 - Back button
-- Title: hardcoded "Fitbit Connection"
+- Title: "[Device] Connection" (device name interpolated)
 
 **Visual Connection (centered):**
-- Heading: "Connect Your Fitbit"
-- Large device logo
+- Heading: "Connect Your [Device]"
+- Large device logo (interpolated per device)
 - Arrow/connection icon
 - Large CardiTrack logo
 
 **Permission List:**
-- Label: "To look after them, CardiTrack needs:" (no name interpolation)
+- Label: "To look after [Name], CardiTrack needs:" (member name interpolated)
 - Each permission in its own row:
 
 | Icon | Permission | Info Tooltip |
@@ -589,12 +595,15 @@ Each device card:
 - **Tap the card body → M1-13 CardiMember Detail**
 - The Paused row is outside the green/yellow/orange/red severity scale on purpose: it says "we are not watching", not "we looked and it's fine"
 
-**Quick Actions Row (3 horizontal buttons):**
-- "Call [Name]" (phone icon) → initiates phone call
-- "Send Message" (SMS icon) → opens SMS
-- "View Details" (chart icon) → navigates to M1-13 (as does tapping the hero card)
+**Quick Actions Row (4 tiles):**
+- "SOS" (red treatment, leads the row) → dials the **emergency contact number, not the CardiMember**
+- "Call" (phone icon) → initiates phone call
+- "Message" (SMS icon) → opens SMS
+- "Details" (chart icon) → navigates to M1-13 (as does tapping the hero card)
 
-**Key Metrics (3 cards in a row):**
+**Key Metrics (collapsible "Key Metrics" `AccordionSection` — 2-column grid of up to six `MetricCard`s):**
+
+Heart Rate, Sleep, Skin Temp, Steps, SpO2, and Breathing Rate — the last three are **visibility-gated on the device having a reading**, and the grid re-packs at render time so no tile is left beside a gap.
 
 **Star rating (1-5)** appears on every card that has something to compare against (Activity, Heart Rate, Sleep, Skin Temp): how the reading sits against this member's own normal — except sleep, which is also held to the published recommended band for the member's age, because a habitually short sleeper's own normal is the very reading being watched for. The row takes the status pill's colour on cards whose pill is built from `status` (Heart Rate, Skin Temp) and colours itself from the star count (3-5 green, 2 yellow, 1 orange) elsewhere — Activity, which shows no pill, and Sleep, whose GOOD/FAIR/POOR pill is itself named from those bands — never from a status the card isn't showing, which is what would paint a short sleeper's two stars green. SpO2 and Breathing Rate have no baseline yet, so their star row stays hidden rather than rating a reading against an invented normal. See `qualityScore` in [health-data.md](../../../backend/api/health-data.md).
 
@@ -604,7 +613,6 @@ Each device card:
 - Visual progress bar (current vs. goal)
 - Comparison text: "85% of normal" with trend arrow (up/down)
 - Star rating (1-5) — the shortfall against normal; walking further than usual is not marked down
-- Mini 7-day sparkline chart
 
 **Card 2: Heart Rate**
 - Icon: heart
@@ -612,7 +620,6 @@ Each device card:
 - Status: "Normal range"
 - Star rating (1-5) — deviation from normal in either direction
 - Range text: "68-75 bpm typical"
-- Mini sparkline
 
 **Card 3: Sleep**
 - Icon: moon
@@ -620,7 +627,6 @@ Each device card:
 - Status pill: **GOOD / FAIR / POOR** — one word naming the band of the star rating (3-5 / 2 / 1), in the same pill chrome and status colours as the other cards; hidden when the night is unrated. From the rating, never from `status`: a quality vocabulary rather than NORMAL/UNUSUAL, because a 4.5-hour night is entirely usual for a member who always sleeps 4.5 hours — and still FAIR
 - Star rating (1-5) — the worse of sleep efficiency and the shortfall in duration against baseline (either alone when the other is unavailable), capped on the length of the night against the published band for the member's age — both ends, so neither 4.5 nor 12 hours can rate five stars
 - Comparison: "Longer than usual" / "Shorter than usual" / "In line with usual" — direction only, no verdict; the stars and pill carry the judgement
-- Mini sparkline
 
 **Recent Alerts (conditional — only shown if alerts exist):**
 - Section heading: "Recent Alerts"
@@ -922,8 +928,8 @@ Saves via `PUT /api/v1/cardimembers/{id}` — a full replacement, so clearing a 
   - A family carrying a **single** dataset names that dataset instead — `Weight`, not `Body 1` — since the name costs the same width and says more. Families carrying several show the family name and the count.
   - **Tap the SHARING header** to expand one detail line per family — `Heart  Heart Rate · Resting HR` — which is where the individual reading names now live. The header is the only tap target: it is where the disclosure state is announced, so it has to be the element an assistive-technology activation reaches, and confining the gesture there keeps a tap on a pill or on the detail text from collapsing the panel out from under the reader. The chevron is hidden when every pill already names its one dataset. The expanded state is held by the page (`_expandedSharing`), so a pull-to-refresh or a device action does not snap it shut.
   - A connection sharing nothing shows a single **"Not sharing any data"** pill in the caution tint the `NEEDS RECONNECT` chip uses — it is a problem to fix, not a neutral fact.
-  - The mapping is deliberately narrower than the scopes: `health_metrics_and_measurements` also covers HRV, which `FitbitApiClient` does not fetch, so it is not named. Scopes we don't recognise are humanised (`irregular_rhythm` → "Irregular Rhythm") rather than rendered as raw URIs — the pre-pill label printed the full `googleapis.com/auth/...` scope strings on the card — and share the grey `Other` pill.
-  - SpO2, VO2 max, breathing rate and body temperature are named too, in the existing **Body** family — `FitbitApiClient` ingests all four under `health_metrics_and_measurements`, which is the same test every other name passes (issue #82). Under the family row the four cost **one pill between them** (none at all where `Weight` already put `Body` on the card) instead of four — which is the point of collapsing the row: the mapping can keep growing without the card growing with it.
+  - The mapping is deliberately narrower than the scopes: `health_metrics_and_measurements` also covers HRV, which `GoogleHealthApiClient` does not fetch, so it is not named. Scopes we don't recognise are humanised (`irregular_rhythm` → "Irregular Rhythm") rather than rendered as raw URIs — the pre-pill label printed the full `googleapis.com/auth/...` scope strings on the card — and share the grey `Other` pill.
+  - SpO2, VO2 max, breathing rate and body temperature are named too, in the existing **Body** family — `GoogleHealthApiClient` ingests all four under `health_metrics_and_measurements`, which is the same test every other name passes (issue #82). Under the family row the four cost **one pill between them** (none at all where `Weight` already put `Body` on the card) instead of four — which is the point of collapsing the row: the mapping can keep growing without the card growing with it.
   - **Still open:** those four have no **M1-09 Key Metrics card**. Each card needs a hand-authored icon and a Figma slot, and the Key Metrics section is specified as steps, heart rate and sleep — so adding cards is a design decision, not a mapping fix. Detailed per-metric history remains M2-03.
 - Primary device star when designated
 - ~~Menu icon (three dots)~~ — **actions are inline** rather than behind a menu, matching the Figma frame
@@ -1107,4 +1113,4 @@ Saves via `PUT /api/v1/cardimembers/{id}` — a full replacement, so clearing a 
 ---
 
 **Source:** Extracted from [ui_screens_maui_mobile.md](../ui_screens_maui_mobile.md) v3.1 (manually re-synced August 9, 2026)
-**Total MVP 1 Screens:** 17 designed screens · 37 designed states — **12 of 17 built**; 4 additional shipped screens have no Figma M1 frame (SignIn, ForgotPassword, VerifyEmail, AccountSetup)
+**Total MVP 1 Screens:** 17 designed screens · 37 designed states — **13 of 17 built**; 6 additional shipped screens have no Figma M1 frame (SignIn, ForgotPassword, VerifyEmail, AccountSetup, Notifications, Questionnaires)

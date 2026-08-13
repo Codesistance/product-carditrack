@@ -49,7 +49,7 @@ src/Presentation/CardiTrack.Web/
 | `/` | Home | Template "Hello, world!" placeholder |
 | `/counter` | Counter | Template leftover |
 | `/weather` | Weather | Template leftover |
-| `/privacy` | Privacy | **Real content** — public privacy policy covering health-data collection, use, retention, and control; contact `cloudoperations@codesistance.com` |
+| `/privacy` | Privacy | **Real prose, placeholder policy** — covers health-data collection, use, retention, and control (contact `cloudoperations@codesistance.com`), but has no versioning, effective date, or GDPR/data-subject sections; needs legal review before Auth0 login ships |
 | `/not-found` | NotFound | Served via `UseStatusCodePagesWithReExecute` |
 | `/Error` | Error | Production exception handler target |
 
@@ -71,7 +71,7 @@ In order, `Program.cs` wires:
 2. **APM tracing** — `AddApmTracing(ApmServiceNames.Web)` (no-op until `Apm__Engine` + `Apm__Data` are set); reports the same release as OTel's `service.version`. The app names itself `web` to the backend — the same constant the log sink gets, so logs and traces share one service.
 3. **Razor components** — `AddRazorComponents().AddInteractiveServerComponents()`.
 4. **Auth state** — `AddCascadingAuthenticationState()` so components can read the principal. **No authentication scheme is registered yet**, so the cascaded principal is always unauthenticated.
-5. **Database + repositories** — `CardiTrackDbContext` on Npgsql plus the full repository set (`IOrganizationRepository` … `IPatternBaselineRepository`), `IUnitOfWork`, and `IUserService`. **Architecturally notable: the Web app talks to PostgreSQL directly** (it needs `IUserService` for the banner's per-user dismissal, and `UnitOfWork` requires every repository) rather than going through the API.
+5. **Database + repositories** — `CardiTrackDbContext` on Npgsql plus the full repository set (`IOrganizationRepository` … `IPatternBaselineRepository`, and the later additions `IGranularMetricRepository`, `IDigestRepository`, `IRealtimeAssessmentRepository`, `IMemberQuestionnaireRepository`, `IEnvironmentalReadingRepository`, `INotificationRepository`, `INotificationMuteRepository`, plus `AddPushRepositories()`), `IUnitOfWork`, and `IUserService`. **Architecturally notable: the Web app talks to PostgreSQL directly** (it needs `IUserService` for the banner's per-user dismissal, and `UnitOfWork` requires every repository) rather than going through the API.
 6. **HTTP client** — a named `CardiTrackApiClient` `HttpClient` whose base address comes from the `Api:BaseUrl` config key (for future API-backed features).
 7. **Data protection** — when `DataProtection:KeysPath` is set, the key ring persists to that directory; deployed, this is a **GCS bucket mounted as a Cloud Run volume**, so antiforgery tokens survive container recycling and validate across instances. Unset locally (default container-local store).
 
@@ -118,6 +118,10 @@ Prerequisites: .NET 10 SDK and a local PostgreSQL 16 with the CardiTrack databas
 ### Docker & deployment
 
 A real `Dockerfile` exists (multi-stage: `sdk:10.0` build → `aspnet:10.0-noble-chiseled-extra` runtime, non-root UID 1654, same pattern as the API). The `-extra` variant carries ICU and tzdata, which plain chiseled lacks. The app deploys as a **Cloud Run service** (`carditrack-<env>-web`); Terraform supplies the APM env vars and mounts the data-protection GCS volume.
+
+Web runs as its **own runtime service account** (`carditrack-<env>-web`, `infrastructure/deployments/service_accounts.tf`) with only three grants: Cloud SQL client, secret accessor on `carditrack-<env>-apm-data`, and object access on the data-protection keys bucket — deliberately no Auth0 or encryption-key access.
+
+Web's **managed TLS certificate is reissuable** via the `web_cert_generation` suffix with `create_before_destroy` (`infrastructure/deployments/load_balancer.tf`): bumping `web_cert_generation` renames the certificate resource, and the new one is created and attached before the old is removed — the whole procedure for forcing a fresh cert after an expiry.
 
 ### Testing
 

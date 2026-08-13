@@ -21,6 +21,8 @@ Endpoints require a JWT Bearer token issued by **Auth0 Universal Login** (Author
 Authorization: Bearer <access_token>
 ```
 
+Routes under `/api/v1/internal/*` are the exception: they use a separate, named **`GoogleOidc`** bearer scheme (issuer-pinned to `https://accounts.google.com`) accepting only the AI pipeline's service account — they are not reachable with an Auth0 user token at all. See [notifications.md](notifications.md).
+
 **Anonymous exceptions:**
 
 | Endpoint | Why anonymous |
@@ -28,10 +30,12 @@ Authorization: Bearer <access_token>
 | `POST /api/v1/auth/resend-verification` | Caller cannot log in until verified; rate-limited 5/hour/IP, always returns 200 (no user enumeration) |
 | `GET /api/v1/oauth/redirect/{provider}` | Provider-facing OAuth bounce; scoped by the single-use state token, only redirects into the `carditrack://` app scheme |
 | `GET /health` | Health probe; requires the `X-Health-Token` header instead of a JWT (wrong/missing token → 401) |
+| `POST /api/v1/notifications/{notificationDeliveryId}/delivered` | Delivery ack from the background push handler, which routinely runs with an expired access token; authorized by the payload's single-use HMAC `ackToken`, not a JWT |
+| `GET /api/v1/internal/notifications/{deliveryId}/content` | Content fetch for content-free pushes, called by a phone rather than the pipeline; authorized by the single-use HMAC `fetchToken`, not a JWT |
 
-**Token policy** (see [auth.md](auth.md)): access tokens live 15–60 minutes; rotating refresh tokens have a 30-day absolute lifetime; web sessions idle out after ~15 minutes; on mobile the refresh token sits behind a biometric gate in secure storage.
+**Token policy** (see [auth.md](auth.md)): access tokens live 1 hour; rotating refresh tokens have a 30-day absolute lifetime; web sessions idle out after ~15 minutes; on mobile the refresh token sits behind a biometric gate in secure storage.
 
-> **JWT valid but no local user row:** most controllers return **403** with a "please sign in again" message when the token is valid but onboarding hasn't created the local `Users` row yet. `ReportsController` inconsistently returns **401** in the same situation — a known drift, tracked for alignment.
+> **JWT valid but no local user row:** controllers return **403** with a "please sign in again" message when the token is valid but onboarding hasn't created the local `Users` row yet.
 
 ## Versioning
 
@@ -50,7 +54,7 @@ All 2xx JSON responses are wrapped in a standard envelope (`ApiResponse<T>`):
 }
 ```
 
-The only unwrapped success responses are the `302` OAuth bounce redirect and the report **download** file stream.
+The only unwrapped success responses are the OAuth bounce hand-off page (`200 text/html`) and the report **download** file stream.
 
 ## Standard Error Format
 
@@ -75,12 +79,11 @@ Errors return an `ErrorResponse` body. There is **no machine-readable `code` fie
 | 200 | Success |
 | 201 | Resource created (onboarding resources, completed device connection) |
 | 202 | Accepted for async processing (report generation) |
-| 302 | OAuth bounce redirect into the mobile app deep link |
 | 400 | Validation error / bad request (including unsupported OAuth provider, bad state token) |
-| 401 | Missing or invalid token (and the ReportsController drift noted above) |
+| 401 | Missing or invalid token |
 | 403 | Authenticated but not authorized (including "no local user row yet") |
 | 404 | Resource not found or not accessible to the caller |
-| 409 | Conflict — currently only "report not ready yet" on download |
+| 409 | Conflict — report not ready yet on download; email already owned by a different Auth0 identity at onboarding |
 | 429 | IP rate limit exceeded |
 | 500 | Internal server error |
 | 502 | Upstream provider failure (OAuth code exchange rejected by the wearable provider) |
@@ -90,6 +93,7 @@ Errors return an `ErrorResponse` body. There is **no machine-readable `code` fie
 - **Enums serialize as integers.** The API uses default `System.Text.Json` settings with no string-enum converter, so enum-typed fields (`gender`, `relationship`, `role`, `format`, `status` on reports, `severity` on alert insights, subscription `tier`/`status`, …) are **integers on the wire**. Fields documented as lowercase strings (dashboard `healthStatus`, device `status`, metric `status`) are explicit string properties mapped in code, not serialized enums.
 - **IDs are raw GUIDs** (`"3fa85f64-5717-4562-b3fc-2c963f66afa6"`). There are no `cm_`/`dev_`/`usr_` style prefixes. The one exception: **report IDs** are GUIDs in compact `"N"` format (32 hex chars, no dashes).
 - Dates are ISO 8601; `DateOnly` fields serialize as `"2026-08-07"`.
+- **Client telemetry headers:** `ClientVersionMiddleware` reads `X-Client-Version` / `X-Client-Platform` on every request so server logs can attribute traffic to an app build — optional to send, never required.
 
 ## Rate Limiting
 
@@ -100,6 +104,7 @@ IP-based (AspNetCoreRateLimit, in-memory), returning **429** when exceeded:
 | All endpoints | 100 requests / minute / IP |
 | All endpoints | 1 000 requests / hour / IP |
 | `POST /api/v1/auth/resend-verification` | 5 requests / hour / IP |
+| `POST /api/v1/notifications/{id}/delivered` | 20 requests / minute / IP |
 
 ## CORS
 
@@ -107,7 +112,7 @@ Cross-origin requests are restricted to a configured **origin allow-list** (`Cor
 
 ## Implemented Endpoints (August 2026)
 
-The full implemented surface is 27 endpoints across 8 controllers:
+The full implemented surface is 54 endpoints across 13 controllers:
 
 | Method + Route | Purpose | Doc |
 |----------------|---------|-----|
@@ -130,11 +135,18 @@ The full implemented surface is 27 endpoints across 8 controllers:
 | `POST /api/v1/cardimembers/{id}/devices/{deviceId}/primary` | Set the primary device | [devices.md](devices.md) |
 | `POST /api/v1/cardimembers/{id}/devices/sync` | Trigger a manual sync | [devices.md](devices.md) |
 | `POST /api/v1/cardimembers/{id}/devices/{deviceId}/refresh` | Refresh a device connection's tokens | [devices.md](devices.md) |
-| `GET /api/v1/oauth/redirect/{provider}` | Anonymous OAuth bounce (302) | [devices.md](devices.md) |
+| `GET /api/v1/oauth/redirect/{provider}` | Anonymous OAuth bounce (200 HTML hand-off) | [devices.md](devices.md) |
 | `POST /api/v1/oauth/callback/{provider}` | Complete OAuth, store connection (201) | [devices.md](devices.md) |
 | `POST /api/v1/chat` | AI chat with recent health data as context | — |
 | `GET /api/v1/insights/alerts/{alertId}` | MedGemma analysis of an alert | [alerts.md](alerts.md) |
 | `GET /api/v1/insights/members/{id}/baseline` | MedGemma narrative baseline analysis | [health-data.md](health-data.md) |
+| `GET /api/v1/insights/members/{id}/status` | Short AI status line for the dashboard hero card | [health-data.md](health-data.md) |
+| `GET /api/v1/insights/members/{id}/digest` | The member's current family digest | [health-data.md](health-data.md) |
+| `GET /api/v1/insights/members/{id}/digests` | Digest history, newest first | [health-data.md](health-data.md) |
+| `GET /api/v1/alerts` | List alerts across all accessible members | [alerts.md](alerts.md) |
+| `GET /api/v1/cardimembers/{id}/alerts` | List one member's alerts | [alerts.md](alerts.md) |
+| `POST /api/v1/alerts/{alertId}/acknowledge` | Acknowledge an alert (idempotent) | [alerts.md](alerts.md) |
+| `DELETE /api/v1/alerts/{alertId}` | Remove an alert from the caller's lists (204) | [alerts.md](alerts.md) |
 | `GET /api/v1/cardimembers/{id}/questionnaires` | Questions asked about a member, and their answers | [questionnaires.md](questionnaires.md) |
 | `PUT /api/v1/questionnaires/{id}/answer` | Answer a question, or replace an answer | [questionnaires.md](questionnaires.md) |
 | `PUT /api/v1/questionnaires/{id}/dismiss` | Skip a question | [questionnaires.md](questionnaires.md) |
@@ -142,6 +154,22 @@ The full implemented surface is 27 endpoints across 8 controllers:
 | `POST /api/v1/reports` | Queue async report generation (202) | [reports.md](reports.md) |
 | `GET /api/v1/reports/{reportId}` | Poll report status | [reports.md](reports.md) |
 | `GET /api/v1/reports/{reportId}/download` | Download completed report | [reports.md](reports.md) |
+| `GET /api/v1/notifications` | The caller's in-app inbox, priority-ranked | [notifications.md](notifications.md) |
+| `GET /api/v1/notifications/summary` | Unseen/open counts, safety banners, dashboard card slots | [notifications.md](notifications.md) |
+| `POST /api/v1/notifications/{id}/seen` | Record first sighting (idempotent) | [notifications.md](notifications.md) |
+| `POST /api/v1/notifications/{id}/snooze` | Snooze a notification (clamped to the rule's max) | [notifications.md](notifications.md) |
+| `POST /api/v1/notifications/{id}/dismiss` | Mute the rule and resolve the row | [notifications.md](notifications.md) |
+| `GET /api/v1/notifications/mutes` | List everything the caller has silenced | [notifications.md](notifications.md) |
+| `DELETE /api/v1/notifications/mutes/{muteId}` | Un-mute one rule | [notifications.md](notifications.md) |
+| `POST /api/v1/notifications/mutes/reset` | Clear all mutes | [notifications.md](notifications.md) |
+| `POST /api/v1/notifications/devices` | Register/upsert a push device token (reachability heartbeat) | [notifications.md](notifications.md) |
+| `DELETE /api/v1/notifications/devices` | Unregister a push device | [notifications.md](notifications.md) |
+| `POST /api/v1/notifications/{id}/delivered` | Anonymous delivery ack (HMAC `ackToken`); halts escalation | [notifications.md](notifications.md) |
+| `GET /api/v1/notifications/preferences` | Quiet hours, lock-screen detail, muted categories | [notifications.md](notifications.md) |
+| `PUT /api/v1/notifications/preferences` | Update notification preferences | [notifications.md](notifications.md) |
+| `PUT /api/v1/users/me/timezone` | Set the caller's IANA timezone | [notifications.md](notifications.md) |
+| `POST /api/v1/internal/notifications/enqueue` | AI pipeline → rules-engine hand-off (`GoogleOidc` scheme) | [notifications.md](notifications.md) |
+| `GET /api/v1/internal/notifications/{deliveryId}/content` | Content fetch for content-free pushes (HMAC `fetchToken`) | [notifications.md](notifications.md) |
 
 Plus `GET /health` — anonymous liveness probe gated by the `X-Health-Token` header.
 
@@ -162,16 +190,16 @@ Plus `GET /health` — anonymous liveness probe gated by the `X-Health-Token` he
 | [cardimembers.md](cardimembers.md) | CardiMember Management | **Partially implemented** — CRUD + pause/resume shipped; consent, notes, plan-limit enforcement planned | 1.2, 7.1, 7.2, 7.3 |
 | [devices.md](devices.md) | Device Management | **Implemented** (connect/list/OAuth/remove/primary/sync/refresh); get-single-device planned | 1.3, 6.2 |
 | [health-data.md](health-data.md) | Health Data & Dashboard | **Partially implemented** (per-member dashboard, AI baseline) | 2.1, 2.2, 2.3, 5.2, 10.1 |
-| [alerts.md](alerts.md) | Alerts & Notification Preferences | **Planned** — alert AI insight endpoint exists | 3.1, 3.2, 3.3, 11.1–11.3 |
+| [alerts.md](alerts.md) | Alerts & Notification Preferences | **Partially implemented** — list/acknowledge/delete shipped; detail, status transitions, notes, photos planned | 3.1, 3.2, 3.3, 11.1–11.3 |
 | [questionnaires.md](questionnaires.md) | Family Questionnaires | **Implemented** — pipeline-generated questions, answered/edited/deleted by caregivers | — |
 | [family.md](family.md) | Family Collaboration | **Planned** | 4.1, 4.2, 8.3 |
-| [notifications.md](notifications.md) | Push Notifications | **Planned** | 3.2, 5.1 |
+| [notifications.md](notifications.md) | Push Notifications | **Implemented** — in-app inbox + push delivery spine | 3.2, 5.1 |
 | [subscriptions.md](subscriptions.md) | Subscription Management | **Planned** — trial auto-created at onboarding | 6.1 |
 | [reports.md](reports.md) | Reports & Exports | **Implemented** (LLM text output; PDF/CSV/FHIR planned) | 2.3, 9.2 |
 | — | Onboarding | **Implemented** (`/api/Onboarding/*`) | 1.1, 1.2 |
 | — | Dashboard | **Implemented** (`GET /api/v1/cardimembers/{id}/dashboard`) | 2.1 |
 | — | AI Chat | **Implemented** (`POST /api/v1/chat`) | — |
-| — | AI Insights | **Implemented** (`/api/v1/insights/*`) | 3.1 |
+| — | AI Insights | **Implemented** (`/api/v1/insights/*` — 5 endpoints) | 3.1 |
 | — | Health check | **Implemented** (`GET /health`) | — |
 
 ## Related Documentation
@@ -185,6 +213,6 @@ Plus `GET /health` — anonymous liveness probe gated by the `X-Health-Token` he
 
 ---
 
-**Document Version:** 2.1
-**Last Updated:** August 9, 2026
+**Document Version:** 2.2
+**Last Updated:** August 13, 2026
 **Owner:** Backend Engineering Team
