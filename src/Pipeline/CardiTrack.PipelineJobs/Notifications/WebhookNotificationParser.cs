@@ -70,7 +70,13 @@ public static partial class WebhookNotificationParser
                 case JProperty { Value: JValue { Type: JTokenType.String } property } p
                     when string.Equals(p.Name, HealthUserIdProperty, StringComparison.OrdinalIgnoreCase):
                 {
-                    if (property.Value<string>() is { Length: > 0 } id && !string.IsNullOrWhiteSpace(id))
+                    // Trimmed, because the id is matched against DeviceConnection.HealthUserId
+                    // exactly: a padded value would miss, count as an unknown user, and produce
+                    // no sync and no error — the same silent shape as the bug this parser is
+                    // being fixed for. These ids are opaque alphanumerics, so any surrounding
+                    // whitespace is incidental and never part of the identity. Trimming first
+                    // also subsumes the empty and whitespace-only cases in one check.
+                    if (property.Value<string>()?.Trim() is { Length: > 0 } id)
                         ids.Add(id);
                     break;
                 }

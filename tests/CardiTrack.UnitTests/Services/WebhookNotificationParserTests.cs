@@ -61,11 +61,36 @@ public class WebhookNotificationParserTests
                     { "civilDateTimeInterval": { "startTime": "2026-08-13T00:00:00" } }
                   ]
                 }
+              },
+              {
+                "data": {
+                  "version": "v4",
+                  "clientProvidedSubscriptionName": "carditrack-dev",
+                  "healthUserId": "AbC123xyz",
+                  "operation": "UPDATE",
+                  "dataType": "heart-rate",
+                  "intervals": [
+                    { "civilDateTimeInterval": { "startTime": "2026-08-13T00:00:00" } }
+                  ]
+                }
+              },
+              {
+                "data": {
+                  "version": "v4",
+                  "clientProvidedSubscriptionName": "carditrack-dev",
+                  "healthUserId": "AbC123xyz",
+                  "operation": "UPDATE",
+                  "dataType": "distance",
+                  "intervals": [
+                    { "civilDateTimeInterval": { "startTime": "2026-08-13T00:00:00" } }
+                  ]
+                }
               }
             ]
             """);
 
-        // One wearer, four data types in the batch — one sync, not four.
+        // Four elements because live traffic was observed as `array[4]` — one per changed data
+        // type, all naming the same wearer. One sync, not four.
         Assert.Equal(["AbC123xyz"], ids);
     }
 
@@ -99,9 +124,21 @@ public class WebhookNotificationParserTests
         Assert.Equal(["abc"], WebhookNotificationParser.ExtractHealthUserIds(body));
     }
 
+    // The id is matched against DeviceConnection.HealthUserId exactly, so padding would miss,
+    // count as an unknown user, and produce no sync and no error.
+    [Theory]
+    [InlineData("""{ "healthUserId": "  abc  " }""")]
+    [InlineData("""{ "healthUserId": "\tabc\n" }""")]
+    [InlineData("""{ "data": { "healthUserId": " abc" } }""")]
+    public void TrimsIncidentalWhitespaceOffTheUserId(string body)
+    {
+        Assert.Equal(["abc"], WebhookNotificationParser.ExtractHealthUserIds(body));
+    }
+
     [Theory]
     [InlineData("""{ "healthUserId": "" }""")]
     [InlineData("""{ "healthUserId": "   " }""")]
+    [InlineData("""{ "healthUserId": "\t\n" }""")]
     [InlineData("""{ "healthUserId": null }""")]
     [InlineData("""{ "healthUserId": 42 }""")]
     [InlineData("""{ "healthUserId": { "nested": "abc" } }""")]
