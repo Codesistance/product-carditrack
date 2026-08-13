@@ -156,6 +156,8 @@ public class EnvironmentalEnrichmentService : IEnvironmentalEnrichmentService
             TemperatureCelsius = context.TemperatureCelsius,
             AirQualityIndex = context.AirQualityIndex,
             AirQualityCategory = context.AirQualityCategory,
+            WeatherCondition = context.WeatherCondition,
+            RelativeHumidityPercent = context.RelativeHumidityPercent,
             GeneratedAtUtc = utcNow,
         };
 

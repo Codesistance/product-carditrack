@@ -45,15 +45,24 @@ public class GoogleEnvironmentalClient : IEnvironmentalContextClient
         var client = _httpClientFactory.CreateClient(_httpClientName);
 
         // Independent calls to independent APIs — a failure in one must not cost the other.
-        var temperatureTask = TryGetTemperatureAsync(client, latitude, longitude, ct);
+        var weatherTask = TryGetWeatherAsync(client, latitude, longitude, ct);
         var airQualityTask = TryGetAirQualityAsync(client, latitude, longitude, ct);
-        await Task.WhenAll(temperatureTask, airQualityTask);
+        await Task.WhenAll(weatherTask, airQualityTask);
 
         return new EnvironmentalContext(
-            temperatureTask.Result, airQualityTask.Result?.Aqi, airQualityTask.Result?.Category);
+            weatherTask.Result?.TemperatureCelsius,
+            airQualityTask.Result?.Aqi,
+            airQualityTask.Result?.Category,
+            weatherTask.Result?.Condition,
+            weatherTask.Result?.HumidityPercent);
     }
 
-    private async Task<double?> TryGetTemperatureAsync(
+    /// <summary>
+    /// The current-conditions call. Temperature, the described condition and humidity all come back
+    /// from this one lookup — reading the fields already in the response rather than making a second
+    /// call for them.
+    /// </summary>
+    private async Task<WeatherReading?> TryGetWeatherAsync(
         HttpClient client, double latitude, double longitude, CancellationToken ct)
     {
         try
@@ -67,22 +76,35 @@ public class GoogleEnvironmentalClient : IEnvironmentalContextClient
             if (!response.IsSuccessStatusCode)
             {
                 _logger.LogWarning(
-                    "Environmental temperature lookup returned HTTP {StatusCode}.", (int)response.StatusCode);
+                    "Environmental weather lookup returned HTTP {StatusCode}.", (int)response.StatusCode);
                 return null;
             }
 
             var body = await response.Content.ReadFromJsonAsync<WeatherCurrentConditionsResponse>(
                 cancellationToken: ct);
-            var temperature = body?.Temperature;
-            if (temperature?.Degrees is not { } degrees)
+            if (body is null)
                 return null;
 
-            // The API's default unit is Celsius, but responds in whatever the request implies —
-            // this client sends none, so Fahrenheit is only ever seen if that default changes.
-            // Converted rather than trusted, since the stored column's unit is fixed.
-            return string.Equals(temperature.Unit, "FAHRENHEIT", StringComparison.OrdinalIgnoreCase)
-                ? (degrees - 32) * 5.0 / 9.0
-                : degrees;
+            double? celsius = null;
+            if (body.Temperature?.Degrees is { } degrees)
+            {
+                // The API's default unit is Celsius, but responds in whatever the request implies —
+                // this client sends none, so Fahrenheit is only ever seen if that default changes.
+                // Converted rather than trusted, since the stored column's unit is fixed.
+                celsius = string.Equals(body.Temperature.Unit, "FAHRENHEIT", StringComparison.OrdinalIgnoreCase)
+                    ? (degrees - 32) * 5.0 / 9.0
+                    : degrees;
+            }
+
+            // The human-readable description first, the enum-style type as a fallback: the former
+            // is what belongs in a sentence a caregiver reads, the latter ("LIGHT_RAIN") is only
+            // better than nothing. Each field is independently optional — a response missing one is
+            // a partial reading, not a failed one.
+            var condition = string.IsNullOrWhiteSpace(body.WeatherCondition?.Description?.Text)
+                ? body.WeatherCondition?.Type
+                : body.WeatherCondition.Description.Text;
+
+            return new WeatherReading(celsius, condition, body.RelativeHumidity);
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException
             or System.Text.Json.JsonException or NotSupportedException)
@@ -93,10 +115,13 @@ public class GoogleEnvironmentalClient : IEnvironmentalContextClient
             // HTML error page from a misrouted request) — ReadFromJsonAsync throws those, and an
             // uncaught one here would fault this task and take the sibling call down with it via
             // Task.WhenAll, defeating the "independent calls" guarantee this class documents.
-            _logger.LogWarning(ex, "Environmental temperature lookup failed.");
+            _logger.LogWarning(ex, "Environmental weather lookup failed.");
             return null;
         }
     }
+
+    /// <summary>What one current-conditions lookup yielded; every field independently optional.</summary>
+    private sealed record WeatherReading(double? TemperatureCelsius, string? Condition, int? HumidityPercent);
 
     private async Task<(int? Aqi, string? Category)?> TryGetAirQualityAsync(
         HttpClient client, double latitude, double longitude, CancellationToken ct)
@@ -138,12 +163,32 @@ public class GoogleEnvironmentalClient : IEnvironmentalContextClient
     private sealed record WeatherCurrentConditionsResponse
     {
         [JsonPropertyName("temperature")] public WeatherTemperature? Temperature { get; init; }
+        [JsonPropertyName("weatherCondition")] public WeatherConditionPayload? WeatherCondition { get; init; }
+        [JsonPropertyName("relativeHumidity")] public int? RelativeHumidity { get; init; }
     }
 
     private sealed record WeatherTemperature
     {
         [JsonPropertyName("degrees")] public double? Degrees { get; init; }
         [JsonPropertyName("unit")] public string? Unit { get; init; }
+    }
+
+    private sealed record WeatherConditionPayload
+    {
+        /// <summary>An enum-style code such as "LIGHT_RAIN" — the fallback when no description came back.</summary>
+        [JsonPropertyName("type")] public string? Type { get; init; }
+
+        [JsonPropertyName("description")] public WeatherConditionDescription? Description { get; init; }
+    }
+
+    /// <summary>
+    /// The localised description. The API returns it in the locale the request implies; this client
+    /// sends none, so it arrives in the service default — worth knowing, since the text goes into a
+    /// prompt rather than being matched against.
+    /// </summary>
+    private sealed record WeatherConditionDescription
+    {
+        [JsonPropertyName("text")] public string? Text { get; init; }
     }
 
     private sealed record AirQualityLookupRequest

@@ -1,0 +1,33 @@
+namespace CardiTrack.Infrastructure.Services.PromptContext;
+
+/// <summary>
+/// Which generated text a member-context section is being built for. Every prompt this platform
+/// sends the private model names one, and every <see cref="IMemberContextSource"/> declares the
+/// set it contributes to — so what a source knows reaches the prompts it is useful to and stays
+/// out of the ones it would only crowd.
+/// </summary>
+/// <remarks>
+/// Flags rather than an enum because the interesting statement a source makes is "these three,
+/// not that one" — <c>Digest | RealtimeAssessment</c> reads as the sentence it is.
+/// </remarks>
+[Flags]
+public enum PromptPurpose
+{
+    /// <summary>The family summary written by the digest job.</summary>
+    Digest = 1,
+
+    /// <summary>The hourly severity assessment written by the assessor job.</summary>
+    RealtimeAssessment = 2,
+
+    /// <summary>The on-demand explanation of one alert.</summary>
+    AlertInsight = 4,
+
+    /// <summary>The on-demand baseline/trend analysis, in all three of its baseline states.</summary>
+    BaselineInsight = 8,
+
+    /// <summary>The dashboard's ambient hero line.</summary>
+    CurrentStatus = 16,
+
+    /// <summary>Everything a member-context source could contribute to.</summary>
+    All = Digest | RealtimeAssessment | AlertInsight | BaselineInsight | CurrentStatus,
+}

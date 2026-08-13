@@ -80,7 +80,8 @@ public class HealthInsightServiceStatusTests
     }
 
     private HealthInsightService CreateSut() =>
-        new(_medicalAi, _unitOfWork, new CardiMemberAccessService(_unitOfWork), _cache);
+        new(_medicalAi, _unitOfWork, new CardiMemberAccessService(_unitOfWork),
+            PromptContextFactory.Composer(_unitOfWork), _cache);
 
     [Fact]
     public async Task Succeeds_ForALinkedUser_AndReturnsTheModelsHeadlineAndMessage()

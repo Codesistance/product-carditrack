@@ -108,7 +108,8 @@ public class DigestGenerationServiceTests
     }
 
     private DigestGenerationService CreateSut() =>
-        new(_unitOfWork, _medicalAi, NullLogger<DigestGenerationService>.Instance);
+        new(_unitOfWork, _medicalAi, PromptContextFactory.Composer(_unitOfWork),
+            PromptContextFactory.Encryption, NullLogger<DigestGenerationService>.Instance);
 
     [Fact]
     public async Task Generates_ForAMemberWithNoSummaryYet()

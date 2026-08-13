@@ -23,4 +23,16 @@ public interface IRealtimeAssessmentRepository
 
     /// <summary>The member's most recent assessment by window start, or null.</summary>
     Task<RealtimeAssessment?> GetLatestAsync(Guid cardiMemberId, CancellationToken ct = default);
+
+    /// <summary>
+    /// The member's assessments whose window starts at or after <paramref name="sinceUtc"/>, newest
+    /// first — what the assessor has noticed over a stretch, rather than only its last word on the
+    /// member.
+    /// </summary>
+    /// <remarks>
+    /// The filter is on the partition column, so a short window reads a small number of partitions
+    /// rather than the whole table.
+    /// </remarks>
+    Task<IReadOnlyList<RealtimeAssessment>> GetSinceAsync(
+        Guid cardiMemberId, DateTime sinceUtc, CancellationToken ct = default);
 }

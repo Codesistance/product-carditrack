@@ -16,6 +16,7 @@ public interface IUnitOfWork : IDisposable
     IGranularMetricRepository GranularMetrics { get; }
     IDigestRepository Digests { get; }
     IRealtimeAssessmentRepository RealtimeAssessments { get; }
+    IMemberQuestionnaireRepository MemberQuestionnaires { get; }
     IEnvironmentalReadingRepository EnvironmentalReadings { get; }
     INotificationRepository Notifications { get; }
     INotificationMuteRepository NotificationMutes { get; }
