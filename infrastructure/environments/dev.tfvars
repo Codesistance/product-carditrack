@@ -37,6 +37,16 @@ worker_cloud_run_memory = "1Gi"
 # 512 Mi default with no VPC attachment, and Terraform would then collide with it.
 medgemma_image = "us-docker.pkg.dev/cloudrun/container/hello"
 
+# Kept warm, which the default (0) does not do. MedGemma is on a latency-sensitive path now —
+# the Dashboard's status line is generated inside the request a caregiver is waiting on — and
+# scaling to zero costs that path twice: a cold start pays the image pull and model load, and a
+# dead instance takes its prefix cache with it, so the fixed instruction block is re-read at
+# ~68 tokens/sec on every call instead of being reused. Set here rather than on the variable's
+# default so prod, which has no MedGemma service yet, does not silently inherit a warm 8 vCPU /
+# 16 Gi instance the day it gets one — with cpu_idle = false that bills continuously and is the
+# largest single line item on this estate.
+medgemma_min_instances = 1
+
 # The AI pipeline's scheduled job (digest generation) — on in dev, where MedGemma runs.
 # Same seed-image mechanics as the medgemma service above.
 enable_pipeline_jobs = true
