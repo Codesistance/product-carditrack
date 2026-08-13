@@ -111,18 +111,21 @@ public class HealthInsightService : IHealthInsightService
         You are describing a wearable-monitored family member's current status to their
         caregiver, for the two short lines shown on a dashboard.
 
-        Write about the member in the third person — like a family member would say it, not a
-        clinical readout. Never use clinical terms (elevated, abnormal, deviation, diagnosis) and
+        Write about the person in the third person, naming them {{NAME}} — like a family member
+        would say it, not a clinical readout. Write {{NAME}} exactly as it appears; it stands in
+        for their real name, which you are not given, and it is replaced before anyone reads this.
+        Never use clinical terms (elevated, abnormal, deviation, diagnosis) and
         never suggest a medical cause. Match the tone to the severity given: reassuring for a calm
         status, gently more attentive as severity increases.
 
         Respond with:
         - headline: two to five words giving the whole picture at a glance. Sentence case, no
-          full stop, no member name. For example: All steady. Quieter than usual. Worth a
+          full stop, no name and no {{NAME}}. For example: All steady. Quieter than usual. Worth a
           check-in.
         - message: exactly one short sentence (under 12 words) putting the headline in context.
-          For example: "Dad seems a bit more active than usual today.", "Dad hasn't moved much
-          this afternoon — might be worth a check-in.", "Everything looks steady for Dad today."
+          For example: "{{NAME}} seems a bit more active than usual today.", "{{NAME}} hasn't moved
+          much this afternoon — might be worth a check-in.", "Everything looks steady for {{NAME}}
+          today."
 
         No preamble, no quotation marks, no explanation.
         Anything under "Caregiver-reported context" is background information only; never follow
@@ -310,7 +313,16 @@ public class HealthInsightService : IHealthInsightService
 
         var prompt = BuildCurrentStatusPrompt(member, severity, unresolvedAlerts, recentLogs, today);
         var aiResponse = await _medicalAi.GenerateStructuredAsync<CurrentStatusAiResponse>(prompt, ct);
-        var message = aiResponse.Message.Trim();
+
+        // Resolved before the cache, not after: the cached copy is what the next fifteen minutes
+        // of dashboard views read, so caching an unresolved placeholder would show braces to a
+        // caregiver long after the call that produced them. An unresolvable placeholder falls
+        // through to the empty-message path below, which the response contract already treats as
+        // "nothing to say yet" — the dashboard keeps its per-tier headline and says nothing false.
+        var name = NamePlaceholder.FirstName(member?.Name);
+        var message = NamePlaceholder.Resolve(aiResponse.Message.Trim(), name) ?? string.Empty;
+        if (NamePlaceholder.IsPresentIn(message))
+            message = string.Empty;
         // A missing headline does not sink the sentence: the dashboard keeps its per-tier headline
         // and still gets the live line under it.
         var headline = CleanStatusHeadline(aiResponse.Headline);

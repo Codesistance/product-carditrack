@@ -65,8 +65,16 @@
 
 		<SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'ios'">17.0</SupportedOSPlatformVersion>
 		<SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'maccatalyst'">17.0</SupportedOSPlatformVersion>
-		<!-- Android 23+ required by the Datadog SDK core, which logs and traces still use (was 21) -->
-		<SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android'">23.0</SupportedOSPlatformVersion>
+		<!-- Android 31+ (was 23, which the Datadog SDK core and Firebase both still require as a
+		     floor). Raised to 31 for the splash: below API 31 the OS draws the supplied bitmap
+		     as-is, at 31 and above it goes through the platform SplashScreen API, which sizes and
+		     circle-masks it. Supporting both meant no single design could match the OS splash on
+		     every device — a circle that matched Android 12+ was a regression on Android 11-, and
+		     the rounded tile that matched Android 11- was clipped on 12+. One floor, one
+		     rendering, one design to match (see SplashPage.xaml and MainActivity).
+		     Set before launch deliberately: there is no installed base to strand today, and
+		     raising a floor after release silently strands whoever is already below it. -->
+		<SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android'">31.0</SupportedOSPlatformVersion>
 		<SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'windows'">10.0.17763.0</SupportedOSPlatformVersion>
 		<TargetPlatformMinVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'windows'">10.0.17763.0</TargetPlatformMinVersion>
 	</PropertyGroup>
@@ -89,11 +97,21 @@
 		     draws (88dp tile, 17dp radius, 79x68 logo AspectFit inside — see SplashPage.xaml)
 		     on the same #174E86 that page grounds itself in, so the OS-to-app handover shows
 		     the same mark in the same place and reads as one screen rather than two.
-		     BaseSize matches the tile's 88dp; iOS and Android 11 and below honour it exactly.
-		     Android 12+ draws the splash through the platform SplashScreen API, which sizes
-		     and circle-masks the icon itself, so there the match is colour and shape, not
-		     pixel geometry. -->
-		<MauiSplashScreen Include="Resources\Splash\splash.png" Color="#174E86" BaseSize="88,88" />
+
+		     The tile sits in a transparent canvas 192/88 of its own size, and BaseSize describes
+		     that canvas rather than the tile. That padding is what makes the two agree on Android
+		     12+, where the platform SplashScreen API draws the icon across a circle-masked 192dp
+		     (measured: 575x576 px on a 480dpi device). Handed the bare tile, the platform stretched
+		     it over that whole circle — the mark rendered at 192dp with its corners shaved off, then
+		     halved to SplashPage's 88dp rounded tile the instant the app took over. Padded, the
+		     tile lands at 88.0dp with its 17dp corners intact and the mask clips only empty space,
+		     so the OS frame and the loading screen's first frame are the same picture.
+
+		     The gradient SplashPage fades in afterwards is deliberately not represented here and
+		     cannot be: Android 12+ takes windowSplashScreenBackground as a colour, not a drawable.
+		     It fades in over the top after the handover, which is the point at which the loading
+		     screen starts being itself rather than continuing the splash. -->
+		<MauiSplashScreen Include="Resources\Splash\splash.png" Color="#174E86" BaseSize="192,192" />
 
 		<!-- Images -->
 		<MauiImage Include="Resources\Images\*" />
@@ -133,6 +151,28 @@
 		     registration/handlers are no-ops on that target (see PushRegistrationService.cs). -->
 		<PackageReference Include="Plugin.Firebase.CloudMessaging" Version="4.0.1"
 			Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android' Or $([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'ios'" />
+	</ItemGroup>
+
+	<!-- Firebase project configuration, paired with the Plugin.Firebase.CloudMessaging reference
+	     above. Both files are committed next to the platform they configure, but neither is picked
+	     up by a default glob: MAUI auto-includes Platforms\iOS\Resources\**, and this plist sits
+	     above that folder, while google-services.json has no default build action at all. Without
+	     these two items the SDK still links and ships — every Firebase framework is in the bundle —
+	     but it has no project to talk to, so FirebaseApp silently fails to initialise and every
+	     GetTokenAsync() throws "Default FirebaseApp is not initialized". That is not a build error;
+	     it surfaces only at runtime as push never arriving, which is exactly how it went unnoticed
+	     (verified 2026-08-13 against the shipped 0.2.163 APK and IPA — both carried the frameworks
+	     and neither carried the config).
+
+	     Neither file is a secret: google-services.json and GoogleService-Info.plist hold client
+	     identifiers that ship inside every copy of the app. FCM send authority lives server-side
+	     with the Cloud Run service account (see PushServiceExtensions), never here. -->
+	<ItemGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android'">
+		<GoogleServicesJson Include="Platforms\Android\google-services.json" />
+	</ItemGroup>
+
+	<ItemGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'ios'">
+		<BundleResource Include="Platforms\iOS\GoogleService-Info.plist" LogicalName="GoogleService-Info.plist" />
 	</ItemGroup>
 
 	<ItemGroup>

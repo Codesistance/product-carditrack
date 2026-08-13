@@ -20,13 +20,14 @@ public sealed class MetricTrend : INotifyPropertyChanged
 
     public MetricTrend(
         string iconSource, string inkKey, string name, string valueFormat, string axisFormat,
-        DashboardMetric metric, int days)
+        DashboardMetric metric, int days, string? memberFirstName = null)
     {
         IconSource = iconSource;
         InkKey = inkKey;
         Name = name;
         AxisFormat = axisFormat;
         Metric = metric;
+        MemberFirstName = memberFirstName;
         ValueText = metric.Value is { } value ? string.Format(valueFormat, value) : "—";
         _days = days;
     }
@@ -51,6 +52,9 @@ public sealed class MetricTrend : INotifyPropertyChanged
     public string AxisFormat { get; }
 
     public DashboardMetric Metric { get; }
+
+    /// <summary>Who the chart is about — lets the explainer copy name them instead of a label.</summary>
+    public string? MemberFirstName { get; }
 
     /// <summary>
     /// The legend entry for this member's own learned normal, or null for a metric that has none

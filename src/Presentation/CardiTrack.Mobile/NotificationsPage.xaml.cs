@@ -196,7 +196,7 @@ public partial class NotificationsPage : ContentPage
         }
 
         var confirmed = await _popups.ConfirmWarningAsync(
-            $"We'll set your account to {local.Id}.",
+            $"We'll set your account to {Unbreakable(local.Id)}.",
             "Use this phone's time zone?",
             confirmText: "Use it");
 
@@ -205,6 +205,16 @@ public partial class NotificationsPage : ContentPage
 
         await MutateAsync(() => _api.UpdateTimeZoneAsync(local.Id));
     }
+
+    /// <summary>
+    /// Keeps a zone id on one line. A reader sees "Europe/London" as a single name, so wrapping
+    /// it at the slash — "Europe/" above "London." — reads as a rendering fault rather than as
+    /// the identifier it is. U+2060 WORD JOINER is zero-width and prints nothing; it only removes
+    /// the line-break opportunity that the slash would otherwise offer. Ids are short enough
+    /// (the longest in the tz database is ~32 characters) to fit the popup's line at the message
+    /// font, so removing the break cannot push one off the edge.
+    /// </summary>
+    private static string Unbreakable(string zoneId) => zoneId.Replace("/", "/⁠");
 
     private async void OnSnoozeRequested(object? sender, NotificationResponse notification)
     {

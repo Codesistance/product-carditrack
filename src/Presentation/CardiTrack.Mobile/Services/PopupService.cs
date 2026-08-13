@@ -20,8 +20,11 @@ public sealed class PopupService : IPopupService
         ShowAsync(PopupSeverity.Info, title ?? "Just so you know", message, confirmText ?? "Yes, continue", cancelText ?? "Not now");
 
     /// <summary>
-    /// Uses the platform action sheet rather than <see cref="AppPopupPage"/>: the app-styled
-    /// popup is a two-button dialog, and a list of choices needs a list.
+    /// Uses <see cref="AppChooserPage"/> rather than the platform action sheet. The sheet was
+    /// correct in structure — a list of choices needs a list, which the two-button
+    /// <see cref="AppPopupPage"/> cannot be — but it rendered in system chrome: square corners,
+    /// system font, system colours, in an app that is rounded, Quicksand and gradient
+    /// everywhere else. AppChooserPage keeps the list and drops the borrowed styling.
     /// </summary>
     public Task<string?> ChooseAsync(string title, string cancelText, params string[] options) =>
         MainThread.InvokeOnMainThreadAsync(async () =>
@@ -30,9 +33,9 @@ public sealed class PopupService : IPopupService
             if (page is null)
                 return null;
 
-            var choice = await page.DisplayActionSheetAsync(title, cancelText, destruction: null, options);
-            // DisplayActionSheet returns the cancel label — or null on an Android back press.
-            return choice == cancelText ? null : choice;
+            var chooser = new AppChooserPage(title, cancelText, options);
+            await page.Navigation.PushModalAsync(chooser, animated: false);
+            return await chooser.Result;
         });
 
     private static Task<bool> ShowAsync(PopupSeverity severity, string title, string message, string confirmText, string? cancelText) =>

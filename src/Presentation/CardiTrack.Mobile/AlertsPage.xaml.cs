@@ -297,7 +297,7 @@ public partial class AlertsPage : ContentPage
         {
             var firstName = NameFormatting.FirstName(alert.CardiMemberName);
             var prompt = string.IsNullOrWhiteSpace(firstName)
-                ? "Would you like to add an emergency contact number for this CardiMember, so you can call them from here?"
+                ? "Would you like to add an emergency contact number, so you can call them from here?"
                 : $"Would you like to add an emergency contact number for {firstName}, so you can call them from here?";
 
             var addNow = await _popups.ConfirmInfoAsync(prompt, "No number yet", "Add number", "Not now");

@@ -34,12 +34,25 @@ public static class MetricExplanations
     private const string NotADiagnosis =
         "CardiTrack watches for changes from someone's own normal. It doesn't diagnose.";
 
-    /// <summary>The line under the chart, and the panel behind the "i".</summary>
-    public static (string Footer, string Panel) For(string name, DashboardMetric metric, string format)
+    /// <summary>
+    /// The line under the chart, and the panel behind the "i". <paramref name="memberFirstName"/>
+    /// is who the chart is about — the copy names them ("Dad's own usual step count") rather than
+    /// reaching for a label, and falls back to "their"/"them" when no name is on file.
+    /// </summary>
+    public static (string Footer, string Panel) For(
+        string name, DashboardMetric metric, string format, string? memberFirstName = null)
     {
-        var panel = Panel(name, metric, format);
+        var panel = Panel(name, metric, format, memberFirstName);
         return (Footer(name, metric, format), $"{panel}\n\n{NotADiagnosis}");
     }
+
+    /// <summary>Possessive form for mid-sentence use: "Dad's" or "their".</summary>
+    private static string Who(string? first) =>
+        string.IsNullOrWhiteSpace(first) ? "their" : $"{first}'s";
+
+    /// <summary>Object form for mid-sentence use: "Dad" or "them".</summary>
+    private static string WhoPlain(string? first) =>
+        string.IsNullOrWhiteSpace(first) ? "them" : first;
 
     /// <summary>
     /// What this metric's dashed rule is called on the card's legend — the same phrase the footer
@@ -104,40 +117,40 @@ public static class MetricExplanations
     /// The fuller account behind the "i". Each metric answers the same two questions — what the
     /// dashed rule is, and what the band is — in whichever form matches what is on the chart.
     /// </summary>
-    private static string Panel(string name, DashboardMetric metric, string format)
+    private static string Panel(string name, DashboardMetric metric, string format, string? who)
     {
         var learned = metric.Baseline is not null;
 
         return name switch
         {
             "Activity" => learned
-                ? "The dashed line is this CardiMember's own usual step count, learned from their own "
+                ? $"The dashed line is {Who(who)} own usual step count, learned from their own "
                   + "history — it is not a target. No health body publishes a step count to compare "
                   + "anyone against, so this chart has no shaded band. A quieter day than usual is "
                   + "worth noticing, not worrying about."
-                : "CardiTrack is still learning this CardiMember's usual step count from their own "
+                : $"CardiTrack is still learning {Who(who)} usual step count from their own "
                   + "history, so there is no dashed line on this chart yet. No health body publishes "
                   + "a step count to compare anyone against either, so there is no shaded band. Until "
                   + "their usual day is known, the shape of the line is the thing to read.",
 
             "Heart Rate" => learned
-                ? "The dashed line is this CardiMember's own resting heart rate, learned over time. "
+                ? $"The dashed line is {Who(who)} own resting heart rate, learned over time. "
                   + $"The shaded band is the typical adult range{Published(metric, format, "bpm")}. "
                   + "Their own normal is the more useful of the two: a resting rate that is steady "
                   + "for them can sit outside the published band and be perfectly ordinary for them."
-                : "CardiTrack is still learning this CardiMember's own resting heart rate, so there "
+                : $"CardiTrack is still learning {Who(who)} own resting heart rate, so there "
                   + "is no dashed line on this chart yet. The shaded band is the typical adult range"
                   + $"{Published(metric, format, "bpm")}. Once their own normal is known it becomes "
                   + "the more useful of the two: a resting rate that is steady for them can sit "
                   + "outside the published band and be perfectly ordinary for them.",
 
             "Sleep" => learned
-                ? "The dashed line is this CardiMember's own usual night. The shaded band is the "
+                ? $"The dashed line is {Who(who)} own usual night. The shaded band is the "
                   + $"nightly sleep recommended for their age group{Published(metric, format, "hours")} "
                   + "— the recommendation drops by an hour from age 65, so it is drawn for their age "
                   + "rather than as a single adult figure. This measures how long they slept, not how "
                   + "well."
-                : "CardiTrack is still learning this CardiMember's usual night, so there is no dashed "
+                : $"CardiTrack is still learning {Who(who)} usual night, so there is no dashed "
                   + "line on this chart yet. The shaded band is the nightly sleep recommended for "
                   + $"their age group{Published(metric, format, "hours")} — the recommendation drops "
                   + "by an hour from age 65, so it is drawn for their age rather than as a single "
@@ -146,12 +159,12 @@ public static class MetricExplanations
             "Skin Temp" => learned
                 ? "A wrist wearable measures skin temperature, not core body temperature — this is "
                   + "not a fever reading. The dashed line is the device's own nightly baseline for "
-                  + "this CardiMember, and what carries meaning is the distance from it rather than "
+                  + $"{WhoPlain(who)}, and what carries meaning is the distance from it rather than "
                   + "the number itself. There is no published range to shade behind it, because there "
                   + "is no population normal for a measurement this personal."
                 : "A wrist wearable measures skin temperature, not core body temperature — this is "
-                  + "not a fever reading. The device has not reported a nightly baseline for this "
-                  + "CardiMember yet, so there is no dashed line to read these numbers against. "
+                  + "not a fever reading. The device has not reported a nightly baseline for "
+                  + $"{WhoPlain(who)} yet, so there is no dashed line to read these numbers against. "
                   + "There is no published range to shade behind them either, because there is no "
                   + "population normal for a measurement this personal.",
 
@@ -167,9 +180,9 @@ public static class MetricExplanations
             // A metric added to the carousel without copy gets the honest minimum rather than a
             // card that silently loses its panel.
             _ => learned
-                ? "The dashed line is this CardiMember's own normal for this reading; a shaded band "
+                ? $"The dashed line is {Who(who)} own normal for this reading; a shaded band "
                   + "is the published typical-adult range."
-                : "CardiTrack is still learning this CardiMember's own normal for this reading, so "
+                : $"CardiTrack is still learning {Who(who)} own normal for this reading, so "
                   + "this chart has no dashed line yet; a shaded band is the published "
                   + "typical-adult range.",
         };

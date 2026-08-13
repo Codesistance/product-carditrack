@@ -9,60 +9,65 @@
          hold the action row and Key Metrics as multi-CardiMember support lands. The health status
          is still carried by the status line's colour and icon, not by any card fill. Tapping the
          row opens M1-13. -->
-    <Grid ColumnDefinitions="Auto,*" ColumnSpacing="16">
+    <!-- The name owns the top row on its own, starting at the card's left edge; the avatar and the
+         status block share the row under it. Previously the name sat in the avatar's column, which
+         indented it and left the status sentence wrapping inside whatever width remained beside a
+         monogram — "today." alone on its own line was the tell. Now the sentence wraps against the
+         width the avatar leaves, and the name against the whole card. -->
+    <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto"
+          ColumnSpacing="16" RowSpacing="8">
         <Grid.GestureRecognizers>
             <TapGestureRecognizer Tapped="OnCardTapped"/>
         </Grid.GestureRecognizers>
 
+        <Label x:Name="NameLabel"
+               Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="2"
+               Style="{StaticResource Heading2}"
+               LineBreakMode="TailTruncation"/>
+
         <!-- Member Detail's display image box, not one of this card's own: the same person must
-             not be a tinted monogram here and a gradient one a tap away. A square, like Member
-             Detail's, just sized up for this row — stretching it to the text block's height made
-             it an oblong that read as a different treatment. Both columns bottom-align instead,
-             so the box's base sits on the base of the last line whatever that line wraps to. -->
+             not be a tinted monogram here and a gradient one a tap away. Top-aligned to the status
+             block now that the name no longer shares this row — bottom-aligning it against a
+             sentence that wraps to two or three lines floated the box away from the text it
+             belongs to. -->
         <controls:MemberAvatar x:Name="Avatar"
-                               Grid.Column="0"
+                               Grid.Row="1" Grid.Column="0"
                                BoxWidth="76"
-                               VerticalOptions="End"/>
+                               VerticalOptions="Start"/>
 
-        <VerticalStackLayout Grid.Column="1" Spacing="5" VerticalOptions="End">
-            <Label x:Name="NameLabel"
-                   Style="{StaticResource Heading2}"
-                   LineBreakMode="TailTruncation"/>
+        <!-- Two lines, not one: the headline is the note a caregiver reads at a glance — short
+             enough to land in one beat — and the sentence under it is the context they read
+             second. Grid, not a stack: the label needs a bounded column width to wrap within, and
+             the icon stays on the headline's row rather than re-centering against however many
+             lines the pair wraps to. Neither label overrides LineHeight — the crammed 1.05 this
+             used to carry made a wrapped line look mispadded.
 
-            <!-- Two lines, not one: the headline is the note a caregiver reads at a glance —
-                 short enough to land in one beat — and the sentence under it is the context they
-                 read second. Grid, not a stack: the label needs a bounded column width to wrap
-                 within, and the icon stays on the headline's row rather than re-centering
-                 against however many lines the pair wraps to. Neither label overrides LineHeight
-                 — the crammed 1.05 this used to carry made a wrapped line look mispadded.
-
-                 The sentence spans both columns rather than sitting in the headline's: only the
-                 headline has a glyph to be indented by, so indenting the sentence too left every
-                 line of the block starting at a different x from the name above it. Both rows
-                 collapse when their labels are hidden, which is what lets the no-baseline tier
-                 below render as the sentence alone. -->
-            <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto"
-                  ColumnSpacing="6" RowSpacing="2">
-                <!-- Tinted per tier by the asset itself (icon_status_*.svg): these were authored
-                     white for the card's original coloured fill, and stayed invisible — as a bare
-                     17dp indent in front of the status line — once the card went white. -->
-                <Image x:Name="StatusIcon"
-                       Grid.Row="0" Grid.Column="0"
-                       Source="icon_status_check.svg"
-                       WidthRequest="17" HeightRequest="17"
-                       VerticalOptions="Center"/>
-                <Label x:Name="StatusHeadlineLabel"
-                       Grid.Row="0" Grid.Column="1"
-                       FontFamily="QuicksandSemiBold"
-                       FontSize="16"
-                       LineBreakMode="TailTruncation"
-                       VerticalOptions="Center"/>
-                <Label x:Name="StatusDetailLabel"
-                       Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2"
-                       Style="{StaticResource Body2}"
-                       LineBreakMode="WordWrap"
-                       MaxLines="3"/>
-            </Grid>
-        </VerticalStackLayout>
+             The sentence spans both columns rather than sitting in the headline's: only the
+             headline has a glyph to be indented by, so indenting the sentence too left every line
+             of the block starting at a different x. Both rows collapse when their labels are
+             hidden, which is what lets the no-baseline tier below render as the sentence alone. -->
+        <Grid Grid.Row="1" Grid.Column="1"
+              ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto"
+              ColumnSpacing="6" RowSpacing="2">
+            <!-- Tinted per tier by the asset itself (icon_status_*.svg): these were authored
+                 white for the card's original coloured fill, and stayed invisible — as a bare
+                 17dp indent in front of the status line — once the card went white. -->
+            <Image x:Name="StatusIcon"
+                   Grid.Row="0" Grid.Column="0"
+                   Source="icon_status_check.svg"
+                   WidthRequest="17" HeightRequest="17"
+                   VerticalOptions="Center"/>
+            <Label x:Name="StatusHeadlineLabel"
+                   Grid.Row="0" Grid.Column="1"
+                   FontFamily="QuicksandSemiBold"
+                   FontSize="16"
+                   LineBreakMode="TailTruncation"
+                   VerticalOptions="Center"/>
+            <Label x:Name="StatusDetailLabel"
+                   Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2"
+                   Style="{StaticResource Body2}"
+                   LineBreakMode="WordWrap"
+                   MaxLines="3"/>
+        </Grid>
     </Grid>
 </ContentView>

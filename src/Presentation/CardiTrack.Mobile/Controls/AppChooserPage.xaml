@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="CardiTrack.Mobile.Controls.AppChooserPage"
+             BackgroundColor="Transparent">
+
+    <!-- Deliberately mirrors AppPopupPage's shell (scrim, card, entry animation) so a chooser
+         and a confirmation read as the same object. Only the body differs: a list of choices
+         instead of a message and two buttons. -->
+    <Grid x:Name="Scrim" BackgroundColor="#80343434" Opacity="0">
+        <Grid.GestureRecognizers>
+            <TapGestureRecognizer Tapped="OnScrimTapped"/>
+        </Grid.GestureRecognizers>
+
+        <Border x:Name="Card"
+                BackgroundColor="{StaticResource White}"
+                Stroke="{StaticResource Divider}"
+                StrokeThickness="1"
+                Padding="24"
+                Margin="32,0"
+                Scale="0.92"
+                MaximumWidthRequest="360"
+                VerticalOptions="Center">
+            <Border.StrokeShape>
+                <RoundRectangle CornerRadius="20"/>
+            </Border.StrokeShape>
+            <Border.GestureRecognizers>
+                <!-- Swallows taps so they don't fall through to the scrim. -->
+                <TapGestureRecognizer/>
+            </Border.GestureRecognizers>
+
+            <VerticalStackLayout>
+                <Label x:Name="TitleLabel"
+                       Style="{StaticResource Heading3}"
+                       HorizontalTextAlignment="Center"/>
+
+                <!-- Options are built in code-behind: the count varies with the caller's list
+                     (snooze offers fewer choices under a rule's own ceiling).
+
+                     No ScrollView, for the reason AppPopupPage's message lost its own: a
+                     ScrollView measures content with an unbounded cross-axis, so the option
+                     buttons ran past the card's right edge and the Border clipped them — and the
+                     overflow dragged the title's tail off with it ("…for how long?" lost its last
+                     word). The lists here are four or five short rows; the card fits them without
+                     scrolling at any font scale the layout survives generally. -->
+                <VerticalStackLayout x:Name="OptionsHost" Spacing="12" Margin="0,20,0,0"/>
+
+                <Button x:Name="CancelBtn"
+                        BackgroundColor="Transparent"
+                        TextColor="{StaticResource MutedText}"
+                        FontFamily="Quicksand"
+                        FontAttributes="Bold"
+                        FontSize="16"
+                        HeightRequest="44"
+                        Margin="0,12,0,0"
+                        Clicked="OnCancelClicked"/>
+            </VerticalStackLayout>
+        </Border>
+    </Grid>
+</ContentPage>
