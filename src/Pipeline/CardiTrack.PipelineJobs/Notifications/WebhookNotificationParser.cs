@@ -5,31 +5,40 @@ namespace CardiTrack.PipelineJobs.Notifications;
 
 /// <summary>
 /// Extracts the health-user ids a notification concerns. The notification body has no schema in
-/// the v4 discovery document, so this does not assume field names: it walks the whole JSON and
-/// collects the id out of every string shaped like a user resource name — `users/{id}` itself,
-/// or anything rooted at it such as `users/{id}/dataTypes/steps`. Notify-then-fetch makes this
-/// safe — the id only selects which connection to re-sync; no data is read from the payload
-/// itself, so an unexpected shape can cost freshness, never correctness.
+/// the v4 discovery document, so this hunts rather than assumes: it walks the whole JSON and takes
+/// an id from either of the two forms a wearer can be named by — a <c>healthUserId</c> property,
+/// which is what live traffic carries, or a string rooted at <c>users/{id}</c>. Notify-then-fetch
+/// makes both safe — the id only selects which connection to re-sync; no data is read from the
+/// payload itself, so an unexpected shape can cost freshness, never correctness.
 /// </summary>
+/// <remarks>
+/// The observed live shape, from the aggregator's own logged description, is a batch of one
+/// element per changed data type:
+/// <code>
+/// [ { "data": { "version": ..., "clientProvidedSubscriptionName": ...,
+///               "healthUserId": "...", "operation": ..., "dataType": ...,
+///               "intervals": [ ... ] } }, ... ]
+/// </code>
+/// </remarks>
 public static partial class WebhookNotificationParser
 {
     /// <summary>
-    /// A user resource name, or any resource rooted at one. The trailing path is deliberately
-    /// tolerated rather than rejected.
+    /// The property live notifications name the wearer with. Matched case-insensitively and
+    /// wherever it appears, rather than at a fixed path: the enclosing envelope has already
+    /// changed once, and a nesting change must not silently stop the aggregator again.
+    /// </summary>
+    private const string HealthUserIdProperty = "healthUserId";
+
+    /// <summary>
+    /// A user resource name, or any resource rooted at one — <c>users/{id}</c> and
+    /// <c>users/{id}/dataTypes/steps</c> alike.
     /// </summary>
     /// <remarks>
-    /// This originally anchored at `$`, accepting a bare `users/{id}` only, on the reasoning that
-    /// `users/{id}/dataTypes/steps` names a collection *under* a user rather than the user. True
-    /// as resource naming, and wrong for this job: every live notification was rejected by it.
-    /// The aggregator ran for days reporting `unparseable` on every message and syncing nothing,
-    /// which looked like health because the routine poll silently covered for it.
-    /// <para>
-    /// Google's own <c>Subscription.dataTypes</c> is documented in the v4 discovery document as
-    /// <c>"users/{health_user_id}/dataTypes/{data_type}"</c>, and the observed payloads are
-    /// batches of 4–6 elements — one per changed data type, each naming its user that way. The
-    /// only question this parser exists to answer is *which wearer changed*, and that longer name
-    /// answers it exactly as definitively as the short one.
-    /// </para>
+    /// Kept as a secondary form, not the primary one. Google names a user this way in the
+    /// <c>Subscription</c> resource, and an earlier fix assumed the notification body did the same;
+    /// it does not, and reading the shape off live traffic is what settled it. Retained because it
+    /// costs nothing, covers the subscription-management shapes, and the cost of guessing wrong
+    /// here is silence rather than an error.
     /// </remarks>
     [GeneratedRegex(@"^users/(?<id>[A-Za-z0-9._\-]+)(?:/.*)?$")]
     private static partial Regex UserResourceName();
@@ -52,13 +61,28 @@ public static partial class WebhookNotificationParser
         IEnumerable<JToken> tokens = root is JContainer container
             ? container.DescendantsAndSelf()
             : [root];
+
         foreach (var token in tokens)
         {
-            if (token is JValue { Type: JTokenType.String } value
-                && value.Value<string>() is { } text
-                && UserResourceName().Match(text) is { Success: true } match)
+            switch (token)
             {
-                ids.Add(match.Groups["id"].Value);
+                // The form live traffic uses: a named property holding the bare id.
+                case JProperty { Value: JValue { Type: JTokenType.String } property } p
+                    when string.Equals(p.Name, HealthUserIdProperty, StringComparison.OrdinalIgnoreCase):
+                {
+                    if (property.Value<string>() is { Length: > 0 } id && !string.IsNullOrWhiteSpace(id))
+                        ids.Add(id);
+                    break;
+                }
+
+                // The resource-name form, wherever a string carries one.
+                case JValue { Type: JTokenType.String } value
+                    when value.Value<string>() is { } text
+                         && UserResourceName().Match(text) is { Success: true } match:
+                {
+                    ids.Add(match.Groups["id"].Value);
+                    break;
+                }
             }
         }
 
