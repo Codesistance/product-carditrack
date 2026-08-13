@@ -257,8 +257,12 @@
                                     </Border>
                                     <Border x:Name="CallAction"
                                             Grid.Column="1"
-                                            Style="{StaticResource ElevatedCard}"
+                                            BackgroundColor="{StaticResource QuickActionTint}"
+                                            StrokeThickness="0"
                                             Padding="6,16,6,11">
+                                        <Border.StrokeShape>
+                                            <RoundRectangle CornerRadius="20"/>
+                                        </Border.StrokeShape>
                                         <Border.GestureRecognizers>
                                             <TapGestureRecognizer Tapped="OnCallTapped"/>
                                         </Border.GestureRecognizers>
@@ -273,8 +277,12 @@
                                     </Border>
                                     <Border x:Name="MessageAction"
                                             Grid.Column="2"
-                                            Style="{StaticResource ElevatedCard}"
+                                            BackgroundColor="{StaticResource QuickActionTint}"
+                                            StrokeThickness="0"
                                             Padding="6,16,6,11">
+                                        <Border.StrokeShape>
+                                            <RoundRectangle CornerRadius="20"/>
+                                        </Border.StrokeShape>
                                         <Border.GestureRecognizers>
                                             <TapGestureRecognizer Tapped="OnMessageTapped"/>
                                         </Border.GestureRecognizers>
@@ -286,8 +294,12 @@
                                         </VerticalStackLayout>
                                     </Border>
                                     <Border Grid.Column="3"
-                                            Style="{StaticResource ElevatedCard}"
+                                            BackgroundColor="{StaticResource QuickActionTint}"
+                                            StrokeThickness="0"
                                             Padding="6,16,6,11">
+                                        <Border.StrokeShape>
+                                            <RoundRectangle CornerRadius="20"/>
+                                        </Border.StrokeShape>
                                         <Border.GestureRecognizers>
                                             <TapGestureRecognizer Tapped="OnViewDetailsTapped"/>
                                         </Border.GestureRecognizers>

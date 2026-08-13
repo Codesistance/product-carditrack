@@ -97,6 +97,13 @@
     <Color x:Key="PillNeutralBackground">#26939DAA</Color>
 
     <!-- Alert icon tiles — Figma rgba(239,68,68,0.14), generalised across the severity set -->
+    <!-- Quick actions (dashboard): the same 14% tint weight as the SOS tile beside them, in the
+         app's own blue rather than a severity colour — these are ordinary controls, and only the
+         one that dials an emergency contact wears red. Flat by design: the row used to be white
+         cards on a white card, which needed a shadow to separate them and read as three pieces of
+         chrome floating on a fourth. A tint separates them without lifting anything. -->
+    <Color x:Key="QuickActionTint">#241884DC</Color>
+
     <Color x:Key="AlertTileRed">#24E53E3E</Color>
     <Color x:Key="AlertTileOrange">#24ED7B2F</Color>
     <Color x:Key="AlertTileYellow">#24F0A92E</Color>
