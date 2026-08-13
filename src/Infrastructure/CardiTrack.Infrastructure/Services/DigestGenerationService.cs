@@ -58,12 +58,19 @@ public partial class DigestGenerationService : IDigestGenerationService
           the person as {{NAME}} rather than calling them "your relative" or "your loved one".
           Cover sleep, movement and heart rate rather than stopping after the first thing worth
           saying, and say plainly when a reading is missing instead of padding with reassurance.
-        - suggestions: exactly three ways the family could support {{NAME}} today, at most eight
-          words each ("Ask how they slept", "Suggest a short walk together", "Make their favourite
-          tea"). Ordinary, kind things a family member can do, aimed at comfort rather than
-          treatment — company, a favourite meal, fresh air, a warmer room all count; they do not
-          need to be medical at all. Never medical advice, never medication, never a test or a
-          measurement to take, and never worded as something the family has failed to do.
+        - suggestions: exactly three ways the family could support {{NAME}} today, at most ten
+          words each. Each one must answer something in the readings above — the short night, the
+          quieter day, the higher resting rate, the reading that is missing — closely enough that
+          a reader could tell which one it came from. Say what to do and when: name the moment
+          ("this afternoon", "before bed", "when you call tonight") and the thing itself. A
+          suggestion that would be equally true for any person on any day is not one of the three;
+          neither is a category of caring like "check in" or "spend time together" — those name a
+          kind of thing, not a thing to do. Make the three different in kind, chosen to fit what
+          the readings show: one about contact or company, one about comfort, food or the home
+          around them, one about rest or gentle movement. Ordinary, kind things a family member
+          can do, aimed at comfort rather than treatment; they do not need to be medical at all.
+          Never medical advice, never medication, never a test or a measurement to take, and
+          never worded as something the family has failed to do.
 
         If, and only if, something in the readings would be clearer if the family explained it, you may also respond with:
         - question: one short question to the family about {{NAME}}'s life, at most twenty words, ending in a question mark.
@@ -97,6 +104,30 @@ public partial class DigestGenerationService : IDigestGenerationService
         "never mention monitoring",
         "most days there is nothing worth asking",
         "respond with",
+    ];
+
+    /// <summary>
+    /// Suggestions that are the prompt talking rather than this member's readings. The first three
+    /// were the examples the instructions and the reply schema both used to carry, and they came
+    /// back verbatim for member after member — the model completing from the nearest text instead
+    /// of from the day it was given. The examples are gone now; these stay as the backstop, along
+    /// with the bare categories of caring the prompt rules out, so a return to parroting shows up
+    /// in the log rather than on a caregiver's screen.
+    /// </summary>
+    /// <remarks>
+    /// Matched whole, not as a substring, and only after trailing punctuation is trimmed: "Ask how
+    /// they slept" is the failure, while "Ask how they slept when you call tonight" is exactly the
+    /// specific, answerable suggestion the prompt now asks for and must survive.
+    /// </remarks>
+    private static readonly string[] ParrotedSuggestions =
+    [
+        "ask how they slept",
+        "suggest a short walk together",
+        "make their favourite tea",
+        "check in on them",
+        "check in",
+        "spend time together",
+        "spend some time together",
     ];
 
     /// <summary>
@@ -619,17 +650,28 @@ public partial class DigestGenerationService : IDigestGenerationService
     /// dropped and the apps hide the section entirely.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// Each item is a label the same way the headline is: no wrapping quotes, no leading bullet
     /// from a model that decided to format its own list, and nothing long enough to be a paragraph
     /// in disguise. Duplicates are dropped too — three ways to help that are the same way twice is
     /// worse than not showing the section.
+    /// </para>
+    /// <para>
+    /// <see cref="ParrotedSuggestions"/> is dropped as well, for the same reason as the
+    /// instruction echoes: a suggestion that is word for word one of the prompt's old examples, or
+    /// one of the bare categories of caring it rules out, is the model answering from the nearest
+    /// text rather than from this member's readings — and it is indistinguishable, on screen, from
+    /// a summary that had nothing to say.
+    /// </para>
     /// </remarks>
     private List<string>? CleanSuggestions(
         IReadOnlyList<string>? suggestions, Guid memberId, DateOnly describedDate)
     {
         var cleaned = (suggestions ?? [])
             .Select(s => (s ?? string.Empty).Trim().TrimStart('-', '*', '•').Trim('"', '\'', ' ').Trim())
-            .Where(s => s.Length is > 0 and <= MaxSuggestionLength && !ReadsLikeTheInstructions(s))
+            .Where(s => s.Length is > 0 and <= MaxSuggestionLength
+                        && !ReadsLikeTheInstructions(s)
+                        && !IsParroted(s))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .Take(SuggestionCount)
             .ToList();
@@ -709,6 +751,11 @@ public partial class DigestGenerationService : IDigestGenerationService
 
     private const int MinimumStepRounding = 50;
 
+    /// <summary>See <see cref="ParrotedSuggestions"/>.</summary>
+    private static bool IsParroted(string suggestion) =>
+        ParrotedSuggestions.Contains(
+            suggestion.TrimEnd('.', '!', ' ').Trim(), StringComparer.OrdinalIgnoreCase);
+
     /// <summary>See <see cref="InstructionEchoes"/>. Whitespace is flattened first so the check does
     /// not depend on the model having re-wrapped the instructions exactly as they were sent.</summary>
     private static bool ReadsLikeTheInstructions(string text)
@@ -745,11 +792,22 @@ public partial class DigestGenerationService : IDigestGenerationService
         public required string Summary { get; init; }
 
         /// <summary>Three supportive actions — see <see cref="CleanSuggestions"/>.</summary>
+        /// <remarks>
+        /// Carries no example, deliberately, and neither do the instructions any more. It used to
+        /// offer three ("Ask how they slept", "Suggest a short walk together", "Make their
+        /// favourite tea") and those three came back verbatim, day after day, for every member —
+        /// the model completing from the nearest text rather than from the readings. An example
+        /// here is the last thing it reads before filling the field, which makes this the worst
+        /// place in the prompt to put a phrase that would be usable as an answer.
+        /// </remarks>
         [Description(
-            "Exactly three short ways the family could support {{NAME}} today, at most eight "
-            + "words each. Ordinary, kind things a family member can do for their comfort — they "
-            + "need not be medical at all. For example: Ask how they slept. Make their favourite "
-            + "tea. Never medical advice or medication.")]
+            "Exactly three short ways the family could support {{NAME}} today, at most ten words "
+            + "each. Each must answer something in the readings — the short night, the quieter "
+            + "day, the higher resting rate — and say what to do and when, closely enough that a "
+            + "reader could tell which reading it came from. Not a category of caring, not "
+            + "something that would be true for anyone on any day. Ordinary, kind things a family "
+            + "member can do for their comfort; they need not be medical at all. Never medical "
+            + "advice or medication.")]
         public IReadOnlyList<string>? Suggestions { get; init; }
 
         /// <summary>
