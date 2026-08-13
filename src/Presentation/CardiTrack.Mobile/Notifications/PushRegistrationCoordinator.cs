@@ -4,6 +4,7 @@
 // class itself doesn't exist there.
 #if ANDROID || IOS
 using CardiTrack.Domain.Enums;
+using CardiTrack.Mobile.Core.Http;
 using CardiTrack.Mobile.Core.Notifications;
 using CardiTrack.Mobile.Core.Onboarding;
 using CardiTrack.Mobile.Services;
@@ -25,8 +26,12 @@ namespace CardiTrack.Mobile.Notifications;
 /// </summary>
 public sealed class PushRegistrationCoordinator : IDisposable
 {
-    /// <summary>Bumped whenever the request/response DTOs materially change, so the server can tell which shape an old build is sending.</summary>
-    private const string AppVersion = "1.0";
+    /// <summary>
+    /// Ceiling on the stored value: PushDeviceToken.AppVersion is varchar(32) and NOT NULL (see
+    /// PushDeviceTokenConfiguration), so an over-long version has to be clipped here rather than
+    /// rejected — a device that can't register its push token is a device that can't be alerted.
+    /// </summary>
+    private const int MaxStoredAppVersionLength = 32;
 
     private const string SafetyChannelId = "carditrack.safety";
     private const string HealthChannelId = "carditrack.health";
@@ -78,7 +83,7 @@ public sealed class PushRegistrationCoordinator : IDisposable
             await _registration.RegisterAsync(
                 deviceId,
                 platform: DeterminePlatform(),
-                appVersion: AppVersion,
+                appVersion: CurrentAppVersion(),
                 token: token,
                 // Plugin.Firebase's CheckIfValidAsync doesn't return a status — it raises Error
                 // when the OS denies the request (OnError below). Reaching here without that
@@ -155,6 +160,29 @@ public sealed class PushRegistrationCoordinator : IDisposable
         var created = Guid.NewGuid().ToString("N");
         await _keyValueStore.SetAsync(key, created);
         return created;
+    }
+
+    /// <summary>
+    /// The build registering the token, in the same "1.4.2+37" form the API's X-Client-Version
+    /// header carries — so a token that stops delivering can be tied to the build that registered
+    /// it, and to that build's traces.
+    ///
+    /// This previously sent a hardcoded "1.0" described as a DTO-shape version. Nothing server-side
+    /// ever read it that way: DeviceTokenService only stores the value, so the column named
+    /// AppVersion now actually holds one.
+    ///
+    /// Never returns empty — the column is NOT NULL, and no version string is worth losing a push
+    /// registration over.
+    /// </summary>
+    private static string CurrentAppVersion()
+    {
+        var version = ClientHeaders.FormatVersion(AppInfo.Current.VersionString, AppInfo.Current.BuildString)
+            ?? AppInfo.Current.VersionString;
+
+        if (string.IsNullOrWhiteSpace(version))
+            return "unknown";
+
+        return version.Length <= MaxStoredAppVersionLength ? version : version[..MaxStoredAppVersionLength];
     }
 
     private static DevicePlatform DeterminePlatform() =>
