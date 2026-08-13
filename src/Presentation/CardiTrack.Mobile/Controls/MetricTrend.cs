@@ -62,16 +62,22 @@ public sealed class MetricTrend : INotifyPropertyChanged
     /// <c>ItemsSource</c> instead would snap it back to the first metric, which on this screen
     /// means a caregiver reading the sleep chart is put back on activity by a background tick.
     /// </summary>
+    /// <remarks>
+    /// Raised as an all-properties change (the empty property name every binder reads as "re-read
+    /// everything") rather than as <c>Metric</c> alone, because half this class is derived from it
+    /// — <see cref="ValueText"/>, <see cref="BaselineText"/>, <see cref="ReferenceText"/> and
+    /// <see cref="Window"/> all move when it does, and a binding on any of them would otherwise
+    /// never hear about it. Naming the four separately would be the same information at the cost
+    /// of four extra <c>Render</c> passes per card per refresh, each of which redraws a chart.
+    /// </remarks>
     public DashboardMetric Metric
     {
         get => _metric;
         set
         {
             _metric = value;
-            // Derived, so it moves with the metric rather than being left describing the last
-            // one; BaselineText, ReferenceText and Window read through to it already.
             ValueText = Format(value);
-            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Metric)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(string.Empty));
         }
     }
 

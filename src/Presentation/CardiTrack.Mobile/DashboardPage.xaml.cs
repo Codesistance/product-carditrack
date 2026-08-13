@@ -419,19 +419,19 @@ public partial class DashboardPage : ContentPage
     /// member's wearable doesn't report.
     /// </summary>
     /// <remarks>
-    /// The order pairs each reading with the one a caregiver reads it beside: activity with skin
-    /// temperature (both about the day the body has had), then sleep with resting heart rate
-    /// (both about the night it spent recovering). Positions are assigned here rather than pinned
-    /// in XAML because three of the six tiles are optional — skin temperature, SpO2 and breathing
-    /// rate each depend on what the device sends — and a fixed slot for an absent tile leaves its
-    /// partner sitting alone beside a half-row of nothing, which reads as a bug rather than as an
-    /// absence. Packing keeps the grid solid whatever the device reports; the declared pairing is
-    /// what a member whose device reports everything sees.
+    /// The order leads with the night — resting heart rate beside sleep — then the day, skin
+    /// temperature beside activity, and closes with the two readings a device reports without any
+    /// comparison to make. Positions are assigned here rather than pinned in XAML because three of
+    /// the six tiles are optional — skin temperature, SpO2 and breathing rate each depend on what
+    /// the device sends — and a fixed slot for an absent tile leaves its partner sitting alone
+    /// beside a half-row of nothing, which reads as a bug rather than as an absence. Packing keeps
+    /// the grid solid whatever the device reports; the declared pairing is what a member whose
+    /// device reports everything sees.
     /// </remarks>
     private void LayoutMetricCards()
     {
         var slot = 0;
-        foreach (var card in new[] { StepsCard, TemperatureCard, SleepCard, HeartRateCard, SpO2Card, BreathingRateCard })
+        foreach (var card in new[] { HeartRateCard, SleepCard, TemperatureCard, StepsCard, SpO2Card, BreathingRateCard })
         {
             if (!card.IsVisible)
                 continue;

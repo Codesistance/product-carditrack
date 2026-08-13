@@ -12,6 +12,16 @@ public partial class MetricCard : ContentView
     /// </summary>
     private const decimal CaptionResolution = 0.05m;
 
+    /// <summary>
+    /// The ends of the skin-temperature track (see <see cref="ApplyTemperatureTrack"/>). Wide
+    /// enough to hold what a wrist wearable reads through a cold room or a warm bed, tight enough
+    /// that a degree of movement is a visible step rather than a twitch.
+    /// </summary>
+    private const decimal SkinTempAxisLow = 30m;
+
+    /// <inheritdoc cref="SkinTempAxisLow"/>
+    private const decimal SkinTempAxisHigh = 40m;
+
     public MetricCard()
     {
         InitializeComponent();
@@ -106,48 +116,35 @@ public partial class MetricCard : ContentView
     /// meaningless in isolation, "a little above where it was last night" is not.
     /// </para>
     /// <para>
-    /// The scale is local: the span of readings this member's device has actually sent, padded so
-    /// the highest and lowest do not sit flush against the ends of the track. It is deliberately
-    /// not a temperature axis with published bounds — no such bounds exist for skin temperature
-    /// (see <see cref="TemperatureComparison"/>) — so the bar is read as "where these two sit
-    /// relative to each other and to this member's own range", which is all it claims.
+    /// The axis is fixed at <see cref="SkinTempAxisLow"/>–<see cref="SkinTempAxisHigh"/>°C rather
+    /// than scaled to the readings in hand, so the same movement is always the same width: a
+    /// tenth of a degree stays a hair, a degree is a visible step. A scale drawn from this
+    /// member's own spread would stretch to fill the track whatever it contained, which makes a
+    /// steady wearer's quarter-degree wobble look exactly like another's full degree.
     /// </para>
     /// <para>
-    /// Drawn only when there is a previous reading to fill to and a spread to place them in. A
-    /// single reading, or a run of identical ones, gets no bar rather than a full one or a pair of
-    /// marks stacked in the middle pretending to a comparison.
+    /// The bounds are a skin range, not a body-temperature one. A wrist wearable does not measure
+    /// core temperature (see <see cref="TemperatureComparison"/>), and running the axis up to a
+    /// fever — or to the highest core temperature anyone has survived — would put every real
+    /// reading in the left third of a track whose right half no wrist sensor can reach. Readings
+    /// outside the axis clamp to its ends; the caption still states the true distance.
+    /// </para>
+    /// <para>
+    /// Drawn only when there is a previous reading to fill to. A device's first night gets no bar
+    /// rather than one marking today against nothing.
     /// </para>
     /// </remarks>
     private void ApplyTemperatureTrack(DashboardMetric metric)
     {
-        var readings = metric.Series.Where(point => point.Value is not null)
-            .Select(point => point.Value!.Value)
-            .ToList();
-
-        if (metric.Value is not { } today
-            || PreviousReading(metric) is not { } previous
-            || readings.Count < 2)
+        if (metric.Value is not { } today || PreviousReading(metric) is not { } previous)
         {
             ProgressTrackBorder.IsVisible = false;
             MarkerGrid.IsVisible = false;
             return;
         }
 
-        var low = readings.Min();
-        var high = readings.Max();
-        var span = high - low;
-        if (span <= 0)
-        {
-            ProgressTrackBorder.IsVisible = false;
-            MarkerGrid.IsVisible = false;
-            return;
-        }
-
-        // A tenth of the span at each end, so a reading at either extreme still reads as a mark on
-        // a track rather than as an empty or a full bar.
-        var padding = span / 10m;
-        var floor = low - padding;
-        var scale = span + (padding * 2);
+        const decimal floor = SkinTempAxisLow;
+        const decimal scale = SkinTempAxisHigh - SkinTempAxisLow;
 
         ProgressTrackBorder.IsVisible = true;
         // Its own colour, not activity's gradient: the same chrome filled to two different kinds

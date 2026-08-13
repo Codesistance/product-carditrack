@@ -343,21 +343,22 @@
                                      tiles sit directly on the CardiMember card — no wash behind
                                      the grid, so the card carries one surface, not two.
 
-                                     Declared in the order they are read, which is the order
-                                     DashboardPage.LayoutMetricCards packs them in: the pairing
-                                     below is what a member whose device reports everything sees,
-                                     and the slots are reassigned at render time for one whose
-                                     device reports less (skin temperature, SpO2 and breathing
-                                     rate are each optional) so no tile is left beside a gap. -->
+                                     Declared in the order they are read — the night first, then
+                                     the day — which is the order DashboardPage.LayoutMetricCards
+                                     packs them in: the pairing below is what a member whose
+                                     device reports everything sees, and the slots are reassigned
+                                     at render time for one whose device reports less (skin
+                                     temperature, SpO2 and breathing rate are each optional) so no
+                                     tile is left beside a gap. -->
                                 <controls:AccordionSection x:Name="MetricsAccordion" HeaderText="Key Metrics">
                                     <controls:AccordionSection.Body>
                                         <Grid ColumnDefinitions="*,*"
                                               RowDefinitions="Auto,Auto,Auto"
                                               ColumnSpacing="10" RowSpacing="10">
-                                            <controls:MetricCard x:Name="StepsCard" Grid.Row="0" Grid.Column="0"/>
-                                            <controls:MetricCard x:Name="TemperatureCard" Grid.Row="0" Grid.Column="1" IsVisible="False"/>
-                                            <controls:MetricCard x:Name="SleepCard" Grid.Row="1" Grid.Column="0"/>
-                                            <controls:MetricCard x:Name="HeartRateCard" Grid.Row="1" Grid.Column="1"/>
+                                            <controls:MetricCard x:Name="HeartRateCard" Grid.Row="0" Grid.Column="0"/>
+                                            <controls:MetricCard x:Name="SleepCard" Grid.Row="0" Grid.Column="1"/>
+                                            <controls:MetricCard x:Name="TemperatureCard" Grid.Row="1" Grid.Column="0" IsVisible="False"/>
+                                            <controls:MetricCard x:Name="StepsCard" Grid.Row="1" Grid.Column="1"/>
                                             <controls:MetricCard x:Name="SpO2Card" Grid.Row="2" Grid.Column="0" IsVisible="False"/>
                                             <controls:MetricCard x:Name="BreathingRateCard" Grid.Row="2" Grid.Column="1" IsVisible="False"/>
                                         </Grid>

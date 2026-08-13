@@ -40,11 +40,16 @@ internal static class PopupCard
     /// Fits <paramref name="card"/> to a page of <paramref name="pageWidth"/>. Safe to call on
     /// every size pass — a page that has not been measured yet (width -1) is left alone.
     /// </summary>
+    /// <remarks>
+    /// Clamped at zero as well as at <see cref="MaxWidth"/>: a window narrower than the two gaps
+    /// would otherwise ask for a negative width, which is not a size MAUI defines behaviour for.
+    /// No phone is that narrow, but a desktop window dragged small is.
+    /// </remarks>
     public static void Fit(Border card, double pageWidth)
     {
         if (pageWidth <= 0)
             return;
 
-        card.WidthRequest = Math.Min(MaxWidth, pageWidth - (SideGap * 2));
+        card.WidthRequest = Math.Clamp(pageWidth - (SideGap * 2), 0, MaxWidth);
     }
 }
