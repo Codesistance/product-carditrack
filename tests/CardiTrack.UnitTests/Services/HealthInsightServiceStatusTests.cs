@@ -242,6 +242,38 @@ public class HealthInsightServiceStatusTests
             Arg.Any<DistributedCacheEntryOptions>(), Arg.Any<CancellationToken>());
     }
 
+    // ── Prompt size ─────────────────────────────────────────────────────────────
+    //
+    // MedGemma reads a prompt at ~68 tokens/sec on CPU, so on this endpoint — the only model call
+    // a caregiver waits on — instruction length is latency, paid on nearly every call because the
+    // service scales to zero and a dead instance takes its prefix cache with it.
+
+    [Fact]
+    public async Task TheRenderedPrompt_StaysWorthWaitingFor()
+    {
+        await CreateSut().GetCurrentStatusMessageAsync(_userId, _memberId);
+
+        var prompt = (string)_medicalAi.ReceivedCalls().Single().GetArguments()[0]!;
+
+        // Not the instruction budget — this is the whole thing for a typical member, and it is
+        // here to catch growth arriving through the data half (extra sections, chattier labels)
+        // rather than through the instructions the budget below guards.
+        Assert.True(prompt.Length < 2_000,
+            $"The status prompt renders to {prompt.Length} characters; every one is read back at "
+            + "~68 tokens/sec while a caregiver waits.");
+    }
+
+    [Fact]
+    public void TheFixedInstructions_StayWithinTheirBudget()
+    {
+        // A const, so this is a compile-time fact tested at runtime — which is the point: it fails
+        // the moment someone adds a clarification, not the next time anyone profiles the endpoint.
+        Assert.True(
+            HealthInsightService.CurrentStatusInstructionsLength <= HealthInsightService.StatusPromptBudget,
+            $"The status instructions are {HealthInsightService.CurrentStatusInstructionsLength} "
+            + $"characters against a budget of {HealthInsightService.StatusPromptBudget}.");
+    }
+
     // ── Not spending a model call ───────────────────────────────────────────────
     //
     // MedGemma is CPU-served and a generation measures 21–26 s, so every path that can decline to
