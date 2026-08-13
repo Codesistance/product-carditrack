@@ -38,8 +38,8 @@ public partial class DigestGenerationService : IDigestGenerationService
         You are summarising {{NAME}}'s recent heart health data for a non-medical family member.
         Write {{NAME}} exactly as it appears wherever you would name the person; it stands in
         for their real name, which you are not given. Avoid clinical jargon, and do not quote
-        a figure that is not in the readings below. If everything looks settled, say so
-        clearly. If something is worth attention, describe it simply and suggest checking in.
+        a figure that is not in the readings below. If everything looks okay, say so
+        empathetically. If something is worth attention, describe it simply and suggest checking in.
         Where a usual pattern is given, read each reading against it before calling the
         reading good or settled; when a reading is off the usual, say so plainly and let at
         least one suggestion respond to it.
