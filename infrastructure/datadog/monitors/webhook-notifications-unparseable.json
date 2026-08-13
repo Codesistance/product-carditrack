@@ -1,0 +1,25 @@
+{
+  "name": "[dev] Webhook notifications arriving but not parsing — real-time path is dead",
+  "type": "log alert",
+  "query": "logs(\"service:pipeline-jobs env:dev @Unparseable:>0\").index(\"*\").rollup(\"count\").last(\"30m\") >= 3",
+  "message": "## What's happening\n\nThe pipeline-jobs aggregator is pulling webhook notifications off the realtime subscription and failing to read a health-user id out of them, so it discards them. Its own summary line says how many: `PipelineJobs run finished. Notifications: 1, ... unparseable: 1`.\n\nThe aggregator runs every 5 minutes, so this monitor firing means at least 3 of the last 6 runs received traffic they could not parse — sustained, not a stray message.\n\n## Why it matters\n\nNo notification is triggering a sync, so the **real-time path is doing nothing**. The 10-minute poll still collects every wearer's data, which is exactly what makes this dangerous: nothing breaks, no error rate moves, the dashboards stay full. The only symptom is that data arrives up to 10 minutes later than it should.\n\nThis is not hypothetical. Between the webhook receiver going live and 2026-08-13, **every single notification was dropped** — `unparseable` equalled `notifications` on every run for days — and it was found by hand while working an unrelated runbook step, not by any alert. This monitor exists so that cannot happen twice.\n\n## Why the query is not `status:error`\n\nThe drop is logged at **warning**, and the summary line that counts it is **info** — a parse failure is a fact about the payload, not an application error, and the aggregator is deliberately poison-tolerant (it acknowledges what it cannot read, because the poll guarantees the data is not lost). So no error-rate monitor will ever see this. It has to be counted from the attribute.\n\n## First steps\n\n1. Read the shape, which is logged alongside every drop and is safe to read — it carries JSON key names and types, never values:\n   `service:pipeline-jobs env:dev \"top-level shape\"`\n   Live traffic looks like `array[4]:data:{version:String,clientProvidedSubscriptionName:String,healthUserId:String,operation:String,dataType:String,intervals:{...}}`.\n2. Compare that against `WebhookNotificationParser.ExtractHealthUserIds` in `src/Pipeline/CardiTrack.PipelineJobs/Notifications/`. If Google has changed the notification shape, the parser needs to learn the new one — the shape line is designed to tell you what changed without needing to read a payload.\n3. Check whether it is only *some* messages: compare `@Unparseable` against `@Messages` on the same log line. A ratio well below 1 is a new element type in the batch; a ratio of exactly 1 is the parser missing the shape entirely.\n4. Reading the Pub/Sub message itself needs `roles/pubsub.subscriber` on `carditrack-dev-realtime-sub`, which the `carditrack-investigator` SA does **not** have — `subscriptions.pull` returns PERMISSION_DENIED. Diagnose from the shape line first; it is there precisely so a payload read is not required.\n\n## What healthy looks like\n\n`unparseable: 0` with either `connections synced` above zero, or `unknown users` above zero — the latter still proves the parse works, it just means no connection holds that `healthUserId` yet.\n\nNOTE: no notification handle is attached yet. Add one (e.g. `@slack-...`) to make this page someone.",
+  "tags": [
+    "service:pipeline-jobs",
+    "env:dev",
+    "app:carditrack",
+    "severity:warning",
+    "managed-by:repo-spec",
+    "spec:infrastructure/datadog/monitors/webhook-notifications-unparseable.json"
+  ],
+  "options": {
+    "thresholds": {
+      "critical": 3
+    },
+    "enable_logs_sample": true,
+    "notify_no_data": false,
+    "notify_audit": false,
+    "include_tags": true,
+    "renotify_interval": 240,
+    "escalation_message": "Notifications are still being dropped. Every wearer update is waiting on the 10-minute poll."
+  }
+}
