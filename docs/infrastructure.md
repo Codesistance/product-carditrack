@@ -411,7 +411,8 @@ GCS buckets are versioned (main and dp-keys), providing object-level rollback.
 ### Access Control
 
 - **Workload Identity Federation** for CI — no service account keys
-- **Per-secret IAM**: the runtime service account gets `secretAccessor` per secret; the deploy service account gets only what CI needs (e.g. `secretVersionManager` on `medgemma-service-url`)
+- **Per-secret IAM**: each runtime service account gets `secretAccessor` per secret; the deploy service account gets only what CI needs (e.g. `secretVersionManager` on `medgemma-service-url`)
+- **Per-service runtime identities**: `api`, `pipeline` (digest + assessor), `web` and `webhook_receiver` each run as their own service account rather than the shared default compute SA. `web`'s is the narrowest — one secret (`apm-data`), the Data Protection key-ring bucket, and `cloudsql.client`, with no database, Auth0 or `encryption-key` access at all. That split matters most for `web` because it is public-facing and the compute SA can read the device-token encryption key. `worker`, the migrator and `pipeline_aggregator` remain on the compute SA; all three are backend-only
 - **Least-privilege bucket IAM**: e.g. the log sink's writer identity gets `objectCreator` only on the audit bucket
 
 ### Compliance
