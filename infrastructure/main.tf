@@ -357,6 +357,8 @@ module "deployments" {
   oom_alert_name               = local.oom_alert_name
   oom_alert_service_prefix     = local.oom_alert_service_prefix
   enable_medgemma_iam_alerting = var.enable_medgemma_iam_alerting
+  enable_cert_expiry_alerting  = var.enable_cert_expiry_alerting
+  cert_expiry_alert_days       = var.cert_expiry_alert_days
   medgemma_iam_alert_name      = local.medgemma_iam_alert_name
   alert_notification_emails    = var.alert_notification_emails
   enable_slack_alerts          = var.enable_slack_alerts
