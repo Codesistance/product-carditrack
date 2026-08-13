@@ -53,7 +53,7 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
             HttpMethod.Put, $"api/v1/cardimembers/{cardiMemberId}", request, ct);
 
     public Task RemoveCardiMemberAsync(Guid cardiMemberId, CancellationToken ct = default) =>
-        SendNoContentAsync(HttpMethod.Delete, $"api/v1/cardimembers/{cardiMemberId}", ct);
+        SendNoDataAsync(HttpMethod.Delete, $"api/v1/cardimembers/{cardiMemberId}", ct);
 
     public Task<MonitoringPauseResponse> PauseMonitoringAsync(
         Guid cardiMemberId, PauseMonitoringRequest request, CancellationToken ct = default) =>
@@ -101,13 +101,13 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
             HttpMethod.Post, $"api/v1/alerts/{alertId}/acknowledge", ct);
 
     public Task DeleteAlertAsync(Guid alertId, CancellationToken ct = default) =>
-        SendNoContentAsync(HttpMethod.Delete, $"api/v1/alerts/{alertId}", ct);
+        SendNoDataAsync(HttpMethod.Delete, $"api/v1/alerts/{alertId}", ct);
 
     public Task<DeviceListResponse> GetDevicesAsync(Guid cardiMemberId, CancellationToken ct = default) =>
         GetAsync<DeviceListResponse>($"api/v1/cardimembers/{cardiMemberId}/devices", ct);
 
     public Task DisconnectDeviceAsync(Guid cardiMemberId, Guid deviceId, CancellationToken ct = default) =>
-        SendNoContentAsync(HttpMethod.Delete, $"api/v1/cardimembers/{cardiMemberId}/devices/{deviceId}", ct);
+        SendNoDataAsync(HttpMethod.Delete, $"api/v1/cardimembers/{cardiMemberId}/devices/{deviceId}", ct);
 
     public Task<DeviceResponse> SetPrimaryDeviceAsync(
         Guid cardiMemberId, Guid deviceId, CancellationToken ct = default) =>
@@ -159,7 +159,7 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
         GetAsync<NotificationSummaryResponse>("api/v1/notifications/summary", ct);
 
     public Task MarkNotificationSeenAsync(Guid notificationId, CancellationToken ct = default) =>
-        SendAsync<object>(HttpMethod.Post, $"api/v1/notifications/{notificationId}/seen", ct);
+        SendNoDataAsync(HttpMethod.Post, $"api/v1/notifications/{notificationId}/seen", ct);
 
     public Task<NotificationResponse> SnoozeNotificationAsync(
         Guid notificationId, TimeSpan? duration = null, CancellationToken ct = default) =>
@@ -172,8 +172,8 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
 
     public Task DismissNotificationAsync(
         Guid notificationId, bool acknowledgedConsequence = false, CancellationToken ct = default) =>
-        PostAsync<DismissNotificationBody, object>(
-            $"api/v1/notifications/{notificationId}/dismiss",
+        SendNoDataAsync(
+            HttpMethod.Post, $"api/v1/notifications/{notificationId}/dismiss",
             new DismissNotificationBody { AcknowledgedConsequence = acknowledgedConsequence },
             ct);
 
@@ -181,13 +181,13 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
         GetAsync<List<NotificationMuteResponse>>("api/v1/notifications/mutes", ct);
 
     public Task RemoveNotificationMuteAsync(Guid muteId, CancellationToken ct = default) =>
-        SendAsync<object>(HttpMethod.Delete, $"api/v1/notifications/mutes/{muteId}", ct);
+        SendNoDataAsync(HttpMethod.Delete, $"api/v1/notifications/mutes/{muteId}", ct);
 
     public Task ResetNotificationMutesAsync(CancellationToken ct = default) =>
-        SendAsync<object>(HttpMethod.Post, "api/v1/notifications/mutes/reset", ct);
+        SendNoDataAsync(HttpMethod.Post, "api/v1/notifications/mutes/reset", ct);
 
     public Task UpdateTimeZoneAsync(string timeZoneId, CancellationToken ct = default) =>
-        SendAsync<UpdateTimeZoneBody, object>(
+        SendNoDataAsync(
             HttpMethod.Put, "api/v1/users/me/timezone",
             new UpdateTimeZoneBody { TimeZoneId = timeZoneId }, ct);
 
@@ -196,13 +196,16 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
         PostAsync<RegisterPushDeviceRequest, PushDeviceTokenResponse>("api/v1/notifications/devices", request, ct);
 
     public Task UnregisterPushDeviceAsync(string deviceId, CancellationToken ct = default) =>
-        SendAsync<UnregisterPushDeviceRequest, object>(
+        SendNoDataAsync(
             HttpMethod.Delete, "api/v1/notifications/devices",
             new UnregisterPushDeviceRequest { DeviceId = deviceId }, ct);
 
+    // The background push handler's ack. A successful ack that throws here reads as a failed
+    // delivery, which is exactly what escalation keys off (§7.2 C3) — so this one must not
+    // trip over the message-only envelope the endpoint returns.
     public Task AckDeliveredAsync(Guid deliveryId, string ackToken, CancellationToken ct = default) =>
-        PostAsync<AckDeliveryRequest, object>(
-            $"api/v1/notifications/{deliveryId}/delivered",
+        SendNoDataAsync(
+            HttpMethod.Post, $"api/v1/notifications/{deliveryId}/delivered",
             new AckDeliveryRequest { AckToken = ackToken }, ct);
 
     public Task<NotificationPreferenceResponse> GetNotificationPreferencesAsync(CancellationToken ct = default) =>
@@ -267,13 +270,24 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
         return await ReadEnvelopeAsync<TResponse>(method.Method, path, response, ct);
     }
 
-    /// <summary>For 204 endpoints — success is the status code, there is no envelope to read.</summary>
-    private async Task SendNoContentAsync(HttpMethod method, string path, CancellationToken ct)
+    /// <summary>
+    /// For commands whose success is the status code: 204s, and the message-only 200 envelope
+    /// (<c>{ success, message, timestamp }</c> with no <c>data</c>) the API returns from a command
+    /// that has nothing to hand back. There is no payload to unwrap, so reading one would only
+    /// invent failures — <see cref="ReadEnvelopeAsync"/> rejects a null <c>data</c>, which is the
+    /// right call for endpoints that do return something and the wrong one here.
+    /// Failures still surface: any non-2xx goes through <see cref="MapErrorAsync"/> as usual.
+    /// </summary>
+    private async Task SendNoDataAsync<TRequest>(
+        HttpMethod method, string path, TRequest? body, CancellationToken ct)
     {
-        var response = await SendCoreAsync<object?>(method, path, body: null, ct);
+        var response = await SendCoreAsync(method, path, body, ct);
         if (!response.IsSuccessStatusCode)
             throw await MapErrorAsync(method.Method, path, response, ct);
     }
+
+    private Task SendNoDataAsync(HttpMethod method, string path, CancellationToken ct) =>
+        SendNoDataAsync<object?>(method, path, body: null, ct);
 
     private async Task<HttpResponseMessage> SendCoreAsync<TRequest>(
         HttpMethod method, string path, TRequest? body, CancellationToken ct)
