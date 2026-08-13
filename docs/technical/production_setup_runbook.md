@@ -236,14 +236,33 @@ row).
 Webhooks are the fast path, not a dependency: if the Subscriber ever degrades, the pipeline
 still runs whole on the **10-minute poll** — notifications only make it fresher.
 
-- **Dev status (2026-08-13):** delivery ✅, aggregation ❌ **→ fix shipped, awaiting confirmation.**
-  Notifications *are* arriving — the aggregator logs `Notifications: 1` on most 5-minute runs,
-  where earlier in the day it logged `0`. But **every one was dropped**: `unparseable: 1`,
-  `connections synced: 0`, on every run since deployment, so no notification has ever triggered
-  a sync. The parser rejected the live resource-name form
-  (`users/{id}/dataTypes/{type}`) while accepting only a bare `users/{id}`; relaxed 2026-08-13.
-  The poll fallback is exactly why this looked healthy for days — freshness was silently lost,
-  correctness never was.
+- **Dev status (2026-08-13):** delivery ✅, aggregation ❌ **→ second fix shipped, awaiting
+  confirmation.** Notifications *are* arriving — the aggregator logs `Notifications: 1` on most
+  5-minute runs, where earlier in the day it logged `0`. But **every one was dropped**:
+  `unparseable: 1`, `connections synced: 0`, on every run since deployment, so no notification has
+  ever triggered a sync. The poll fallback is exactly why this looked healthy for days — freshness
+  was silently lost, correctness never was.
+
+  Two fixes, because the first was wrong. The parser was rejecting the notification outright, and
+  the initial diagnosis assumed the body named wearers the way the `Subscription` resource does
+  (`users/{id}/dataTypes/{type}`) — inferred from the discovery document, since the notification
+  body itself has no published schema. It does not. Shipped alongside that guess was a deepened
+  version of the shape diagnostic, and *that* is what settled it, from one live run:
+
+  ```
+  array[4]:data:{version:String,clientProvidedSubscriptionName:String,healthUserId:String,
+                 operation:String,dataType:String,intervals:{array[1]:civilDateTimeInterval+...}}
+  ```
+
+  A batch of one element per changed data type, each naming its wearer with a plain
+  **`healthUserId`** field — no resource name anywhere. The parser now reads that property
+  directly, wherever it sits and whatever its casing, keeping resource-name matching as a
+  secondary form.
+
+  The lesson worth keeping: **the payload had no schema to reason from, so reasoning was the wrong
+  tool.** The one-level shape line (`array[4]:data`) had already proved batching and could not
+  prove anything more; deepening it to three levels answered the question in a single run. When
+  the next envelope change breaks this, read the shape line first and infer nothing.
 
 **How to confirm the fix** (this is what closes step 9), reading the aggregator job's own
 summary line:

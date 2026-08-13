@@ -4,7 +4,8 @@ namespace CardiTrack.UnitTests.Services;
 
 /// <summary>
 /// The parser hunts rather than assumes: the notification body has no discovery-document schema,
-/// so any string rooted at `users/{id}` anywhere in the JSON yields that id, and nothing else does.
+/// so a `healthUserId` property — the form live traffic uses — or a string rooted at `users/{id}`
+/// yields that id, wherever in the JSON it sits, and nothing else does.
 /// </summary>
 public class WebhookNotificationParserTests
 {
@@ -24,9 +25,132 @@ public class WebhookNotificationParserTests
         Assert.Contains("def.456", ids);
     }
 
+    // The shape live traffic actually carries, reproduced from the aggregator's own logged
+    // description of a dropped notification. This is the case that matters most in the file: an
+    // earlier fix assumed the body named wearers the way the Subscription resource does, and
+    // shipped without any test against the real payload, so it passed while changing nothing.
+    [Fact]
+    public void FindsTheUserId_InTheLiveNotificationShape()
+    {
+        var ids = WebhookNotificationParser.ExtractHealthUserIds("""
+            [
+              {
+                "data": {
+                  "version": "v4",
+                  "clientProvidedSubscriptionName": "carditrack-dev",
+                  "healthUserId": "AbC123xyz",
+                  "operation": "UPDATE",
+                  "dataType": "steps",
+                  "intervals": [
+                    {
+                      "civilDateTimeInterval": { "startTime": "2026-08-13T00:00:00" },
+                      "civilIso8601TimeInterval": "2026-08-13/2026-08-14",
+                      "physicalTimeInterval": { "startTime": "2026-08-13T00:00:00Z" }
+                    }
+                  ]
+                }
+              },
+              {
+                "data": {
+                  "version": "v4",
+                  "clientProvidedSubscriptionName": "carditrack-dev",
+                  "healthUserId": "AbC123xyz",
+                  "operation": "UPDATE",
+                  "dataType": "sleep",
+                  "intervals": [
+                    { "civilDateTimeInterval": { "startTime": "2026-08-13T00:00:00" } }
+                  ]
+                }
+              },
+              {
+                "data": {
+                  "version": "v4",
+                  "clientProvidedSubscriptionName": "carditrack-dev",
+                  "healthUserId": "AbC123xyz",
+                  "operation": "UPDATE",
+                  "dataType": "heart-rate",
+                  "intervals": [
+                    { "civilDateTimeInterval": { "startTime": "2026-08-13T00:00:00" } }
+                  ]
+                }
+              },
+              {
+                "data": {
+                  "version": "v4",
+                  "clientProvidedSubscriptionName": "carditrack-dev",
+                  "healthUserId": "AbC123xyz",
+                  "operation": "UPDATE",
+                  "dataType": "distance",
+                  "intervals": [
+                    { "civilDateTimeInterval": { "startTime": "2026-08-13T00:00:00" } }
+                  ]
+                }
+              }
+            ]
+            """);
+
+        // Four elements because live traffic was observed as `array[4]` — one per changed data
+        // type, all naming the same wearer. One sync, not four.
+        Assert.Equal(["AbC123xyz"], ids);
+    }
+
+    [Fact]
+    public void FindsEveryDistinctUser_AcrossABatch()
+    {
+        var ids = WebhookNotificationParser.ExtractHealthUserIds("""
+            [
+              { "data": { "healthUserId": "one", "dataType": "steps" } },
+              { "data": { "healthUserId": "two", "dataType": "steps" } },
+              { "data": { "healthUserId": "one", "dataType": "sleep" } }
+            ]
+            """);
+
+        Assert.Equal(2, ids.Count);
+        Assert.Contains("one", ids);
+        Assert.Contains("two", ids);
+    }
+
+    // Nesting has already changed once under this parser. Matching the property wherever it
+    // appears — and whatever its casing — is what stops the next envelope change being another
+    // silent multi-day outage.
+    [Theory]
+    [InlineData("""{ "healthUserId": "abc" }""")]
+    [InlineData("""{ "data": { "healthUserId": "abc" } }""")]
+    [InlineData("""{ "a": { "b": { "c": { "healthUserId": "abc" } } } }""")]
+    [InlineData("""{ "HealthUserId": "abc" }""")]
+    [InlineData("""{ "healthuserid": "abc" }""")]
+    public void FindsTheUserId_WhereverAndHoweverCasedItAppears(string body)
+    {
+        Assert.Equal(["abc"], WebhookNotificationParser.ExtractHealthUserIds(body));
+    }
+
+    // The id is matched against DeviceConnection.HealthUserId exactly, so padding would miss,
+    // count as an unknown user, and produce no sync and no error.
+    [Theory]
+    [InlineData("""{ "healthUserId": "  abc  " }""")]
+    [InlineData("""{ "healthUserId": "\tabc\n" }""")]
+    [InlineData("""{ "data": { "healthUserId": " abc" } }""")]
+    public void TrimsIncidentalWhitespaceOffTheUserId(string body)
+    {
+        Assert.Equal(["abc"], WebhookNotificationParser.ExtractHealthUserIds(body));
+    }
+
+    [Theory]
+    [InlineData("""{ "healthUserId": "" }""")]
+    [InlineData("""{ "healthUserId": "   " }""")]
+    [InlineData("""{ "healthUserId": "\t\n" }""")]
+    [InlineData("""{ "healthUserId": null }""")]
+    [InlineData("""{ "healthUserId": 42 }""")]
+    [InlineData("""{ "healthUserId": { "nested": "abc" } }""")]
+    public void IgnoresAHealthUserIdThatIsNotAUsableString(string body)
+    {
+        Assert.Empty(WebhookNotificationParser.ExtractHealthUserIds(body));
+    }
+
     // A resource rooted at a user still names that user, and that is the only question this
     // parser exists to answer. `users/{id}/dataTypes/{type}` is the documented form of
-    // Subscription.dataTypes, and rejecting it is what silently dropped every live notification.
+    // Subscription.dataTypes — retained as a secondary form, though live notifications do not
+    // use it.
     [Theory]
     [InlineData("""{ "a": "users/abc/dataTypes/steps" }""", "abc")]
     [InlineData("""{ "a": "users/abc-123/dataTypes/heart-rate" }""", "abc-123")]
