@@ -28,6 +28,15 @@ public class DeviceConnectionRepository : Repository<DeviceConnection>, IDeviceC
     private static readonly ConnectionStatus[] SyncableStatuses =
         [ConnectionStatus.Connected, ConnectionStatus.SyncError];
 
+    /// <summary>
+    /// The statuses <see cref="SyncableStatuses"/> deliberately excludes, and therefore the ones
+    /// nothing else in the system will ever touch again — which is exactly why they need a probe
+    /// of their own. Re-consent is still the only cure for a grant the wearer actually revoked;
+    /// this exists for the ones that were never revoked at all.
+    /// </summary>
+    private static readonly ConnectionStatus[] RecoverableStatuses =
+        [ConnectionStatus.TokenExpired, ConnectionStatus.AuthError];
+
     public DeviceConnectionRepository(CardiTrackDbContext context) : base(context)
     {
     }
@@ -174,6 +183,48 @@ public class DeviceConnectionRepository : Repository<DeviceConnection>, IDeviceC
             .ExecuteUpdateAsync(s => s
                 .SetProperty(dc => dc.LastSyncDate, syncDate)
                 .SetProperty(dc => dc.ConnectionStatus, ConnectionStatus.Connected));
+    }
+
+    /// <inheritdoc/>
+    public async Task<IEnumerable<DeviceConnection>> GetDueForAuthRecoveryAsync(DateTime utcNow)
+    {
+        return await _dbSet
+            .Where(dc => dc.IsActive
+                         && RecoverableStatuses.Contains(dc.ConnectionStatus)
+                         && dc.RefreshToken != null
+                         && (dc.NextAuthRecoveryAt == null || dc.NextAuthRecoveryAt <= utcNow))
+            .Join(_context.CardiMembers, dc => dc.CardiMemberId, cm => cm.Id, (dc, cm) => new { dc, cm })
+            .Where(x => x.cm.IsActive
+                        && (x.cm.MonitoringPausedUntil == null || x.cm.MonitoringPausedUntil <= utcNow))
+            .Select(x => x.dc)
+            .ToListAsync();
+    }
+
+    /// <inheritdoc/>
+    public async Task MarkAuthRecoveryFailedAsync(Guid id, DateTime nextAttemptAt)
+    {
+        // Same guard as MarkSyncSucceededAsync: a connection the user removed mid-probe keeps the
+        // teardown's state rather than being scheduled for another attempt.
+        await _dbSet
+            .Where(dc => dc.Id == id
+                         && dc.IsActive
+                         && dc.ConnectionStatus != ConnectionStatus.Disconnected)
+            .ExecuteUpdateAsync(s => s
+                .SetProperty(dc => dc.AuthRecoveryAttempts, dc => dc.AuthRecoveryAttempts + 1)
+                .SetProperty(dc => dc.NextAuthRecoveryAt, nextAttemptAt));
+    }
+
+    /// <inheritdoc/>
+    public async Task MarkAuthRecoveredAsync(Guid id)
+    {
+        await _dbSet
+            .Where(dc => dc.Id == id
+                         && dc.IsActive
+                         && dc.ConnectionStatus != ConnectionStatus.Disconnected)
+            .ExecuteUpdateAsync(s => s
+                .SetProperty(dc => dc.ConnectionStatus, ConnectionStatus.Connected)
+                .SetProperty(dc => dc.AuthRecoveryAttempts, 0)
+                .SetProperty(dc => dc.NextAuthRecoveryAt, (DateTime?)null));
     }
 
     public async Task UpdateHistoryBackfilledToAsync(Guid id, DateOnly backfilledTo)

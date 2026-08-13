@@ -24,13 +24,18 @@ public class InactivityDetectionService : IInactivityDetectionService
 {
     private readonly IUnitOfWork _unitOfWork;
     private readonly IDispatchService _dispatch;
+    private readonly IDeviceSyncService _deviceSync;
     private readonly ILogger<InactivityDetectionService> _logger;
 
     public InactivityDetectionService(
-        IUnitOfWork unitOfWork, IDispatchService dispatch, ILogger<InactivityDetectionService> logger)
+        IUnitOfWork unitOfWork,
+        IDispatchService dispatch,
+        IDeviceSyncService deviceSync,
+        ILogger<InactivityDetectionService> logger)
     {
         _unitOfWork = unitOfWork;
         _dispatch = dispatch;
+        _deviceSync = deviceSync;
         _logger = logger;
     }
 
@@ -81,6 +86,64 @@ public class InactivityDetectionService : IInactivityDetectionService
             "Inactivity detection complete. Candidates: {Candidates}, alerts raised: {Raised}.",
             memberIds.Count, raised);
         return raised;
+    }
+
+    /// <summary>
+    /// Forces a pull for every syncable connection this member has, and reports whether readings
+    /// arrived — the self-heal that stands between a stalled puller and a false alarm.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The alert this guards says "no readings from the device", and until now that was inferred
+    /// entirely from what our own pull loop had managed to fetch. A connection that stalled, a
+    /// worker revision that died mid-window, a provider that was briefly slow — each looks exactly
+    /// like a watch on a nightstand, and each would have sent a family to check on someone who was
+    /// perfectly fine. The most expensive thing this product can be is wrong in that direction.
+    /// </para>
+    /// <para>
+    /// Routine scope, not the worker cadence: this is a "is anything there?" probe on the trailing
+    /// window, and it runs at most once per member per pass, gated behind the silence threshold
+    /// and the cooldown above — so it costs a provider request only for members already believed
+    /// to be dark. A pull that throws is left to the sync path's own status handling and treated
+    /// here as "no data", which returns the caller to raising the alert.
+    /// </para>
+    /// </remarks>
+    private async Task<bool> ProbedIntoLifeAsync(
+        Guid memberId, DateTime utcNow, InactivityDetectionRules rules, CancellationToken ct)
+    {
+        var connections = (await _unitOfWork.DeviceConnections.GetActiveByCardiMemberIdAsync(memberId)).ToList();
+        if (connections.Count == 0)
+            return false;
+
+        foreach (var connection in connections)
+        {
+            ct.ThrowIfCancellationRequested();
+            try
+            {
+                await _deviceSync.SyncCardiMemberAsync(connection);
+            }
+            catch (Exception ex)
+            {
+                // Not this pass's problem to solve: the sync path records what a failure means for
+                // the connection (SyncError, TokenExpired), and a member whose device cannot be
+                // reached is exactly who the alert below is for.
+                _logger.LogInformation(
+                    ex, "Inactivity probe pull failed for DeviceConnection {DeviceConnectionId}.", connection.Id);
+            }
+        }
+
+        var lastDataUtc = await LastGranularMinuteAsync(memberId, utcNow, rules.SilenceThresholdMinutes, ct);
+        var revived = lastDataUtc is not null && lastDataUtc > utcNow.AddMinutes(-rules.SilenceThresholdMinutes);
+
+        if (revived)
+        {
+            _logger.LogInformation(
+                "Inactivity probe found readings for CardiMember {CardiMemberId} that the scheduled pull had "
+                + "not fetched (latest {LastDataUtc:o}); no device-silence alert raised.",
+                memberId, lastDataUtc);
+        }
+
+        return revived;
     }
 
     private async Task<bool> CheckMemberAsync(
@@ -135,6 +198,15 @@ public class InactivityDetectionService : IInactivityDetectionService
         {
             return false;
         }
+
+        // Last check before telling a family their father's watch has stopped: pull now, rather
+        // than believing a schedule. Silence at this point means no granular readings have
+        // landed — which is a claim about our own puller as much as about the device, and the
+        // two are indistinguishable from here. A stalled or lagging pull repairs itself in this
+        // call, and no alert is raised; a genuinely quiet watch comes back empty and the alert
+        // below is worth the alarm it causes.
+        if (await ProbedIntoLifeAsync(memberId, utcNow, rules, ct))
+            return false;
 
         var silentSince = lastDataUtc is null
             ? "for several hours"

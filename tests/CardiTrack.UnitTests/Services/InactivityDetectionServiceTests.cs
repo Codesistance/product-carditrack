@@ -23,6 +23,8 @@ public class InactivityDetectionServiceTests
     private readonly IUserRepository _users = Substitute.For<IUserRepository>();
     private readonly IGranularMetricRepository _granular = Substitute.For<IGranularMetricRepository>();
     private readonly IAlertRepository _alerts = Substitute.For<IAlertRepository>();
+    private readonly IDeviceConnectionRepository _connections = Substitute.For<IDeviceConnectionRepository>();
+    private readonly IDeviceSyncService _deviceSync = Substitute.For<IDeviceSyncService>();
 
     private readonly Guid _memberId = Guid.NewGuid();
     private readonly Guid _userId = Guid.NewGuid();
@@ -44,6 +46,10 @@ public class InactivityDetectionServiceTests
         _unitOfWork.Users.Returns(_users);
         _unitOfWork.GranularMetrics.Returns(_granular);
         _unitOfWork.Alerts.Returns(_alerts);
+        _unitOfWork.DeviceConnections.Returns(_connections);
+        // No device by default: the pre-alert probe has nothing to pull, so detection behaves
+        // exactly as it did before the probe existed.
+        _connections.GetActiveByCardiMemberIdAsync(_memberId).Returns([]);
 
         // Defaults: one active London-anchored member whose device has been silent for two and
         // a half hours, with no standing alerts.
@@ -102,7 +108,92 @@ public class InactivityDetectionServiceTests
     }
 
     private InactivityDetectionService CreateSut() =>
-        new(_unitOfWork, Substitute.For<IDispatchService>(), NullLogger<InactivityDetectionService>.Instance);
+        new(_unitOfWork, Substitute.For<IDispatchService>(), _deviceSync,
+            NullLogger<InactivityDetectionService>.Instance);
+
+    /// <summary>
+    /// Gives the member a connected device, so the pre-alert probe has something to pull. Without
+    /// one there is nothing to ask, and detection falls straight through to the alert.
+    /// </summary>
+    private DeviceConnection SetupConnectedDevice()
+    {
+        var connection = new DeviceConnection
+        {
+            Id = Guid.NewGuid(),
+            CardiMemberId = _memberId,
+            DeviceType = DeviceType.Fitbit,
+            ConnectionStatus = ConnectionStatus.Connected,
+            IsActive = true,
+        };
+        _connections.GetActiveByCardiMemberIdAsync(_memberId).Returns([connection]);
+        return connection;
+    }
+
+    /// <summary>
+    /// The probe that stands between a stalled puller and a false alarm: a forced sync that
+    /// actually brings data back means the device was never silent, only unfetched.
+    /// </summary>
+    [Fact]
+    public async Task AProbePullThatFindsReadings_RaisesNoAlert()
+    {
+        SetupConnectedDevice();
+        _deviceSync
+            .When(s => s.SyncCardiMemberAsync(Arg.Any<DeviceConnection>(), Arg.Any<SyncScope>()))
+            .Do(_ => SetupLastDataAt(UtcNow.AddMinutes(-5)));
+
+        var raised = await CreateSut().DetectAsync(UtcNow, Rules);
+
+        Assert.Equal(0, raised);
+        await _deviceSync.Received(1).SyncCardiMemberAsync(Arg.Any<DeviceConnection>(), Arg.Any<SyncScope>());
+        await _alerts.DidNotReceive().AddAsync(Arg.Any<Alert>());
+    }
+
+    /// <summary>A pull that runs and still finds nothing is what makes the alert trustworthy.</summary>
+    [Fact]
+    public async Task AProbePullThatFindsNothing_StillRaisesTheAlert()
+    {
+        SetupConnectedDevice();
+
+        var raised = await CreateSut().DetectAsync(UtcNow, Rules);
+
+        Assert.Equal(1, raised);
+        await _deviceSync.Received(1).SyncCardiMemberAsync(Arg.Any<DeviceConnection>(), Arg.Any<SyncScope>());
+        await _alerts.Received(1).AddAsync(Arg.Any<Alert>());
+    }
+
+    /// <summary>
+    /// A device that cannot even be reached is precisely who the alert is for, so a throwing pull
+    /// must not swallow it.
+    /// </summary>
+    [Fact]
+    public async Task AProbePullThatThrows_StillRaisesTheAlert()
+    {
+        SetupConnectedDevice();
+        _deviceSync
+            .When(s => s.SyncCardiMemberAsync(Arg.Any<DeviceConnection>(), Arg.Any<SyncScope>()))
+            .Do(_ => throw new HttpRequestException("provider unreachable"));
+
+        var raised = await CreateSut().DetectAsync(UtcNow, Rules);
+
+        Assert.Equal(1, raised);
+        await _alerts.Received(1).AddAsync(Arg.Any<Alert>());
+    }
+
+    /// <summary>
+    /// The probe costs a provider request, so it only runs for a member already believed dark —
+    /// never for one whose readings are current.
+    /// </summary>
+    [Fact]
+    public async Task RecentReadings_AreNotProbed()
+    {
+        SetupConnectedDevice();
+        SetupLastDataAt(UtcNow.AddMinutes(-30));
+
+        await CreateSut().DetectAsync(UtcNow, Rules);
+
+        await _deviceSync.DidNotReceive().SyncCardiMemberAsync(
+            Arg.Any<DeviceConnection>(), Arg.Any<SyncScope>());
+    }
 
     [Fact]
     public async Task ASilentDevice_DuringWakingHours_RaisesOneYellowDeviceCheckAlert()

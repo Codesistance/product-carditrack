@@ -46,6 +46,27 @@ public class DeviceConnection : BaseEntity, ISoftDeletable
     public int ConsecutiveEmptyPulls { get; set; }
 
     /// <summary>
+    /// When the auth-recovery probe should next try this connection's refresh token again, for a
+    /// connection the provider has refused (<see cref="ConnectionStatus.TokenExpired"/> /
+    /// <see cref="ConnectionStatus.AuthError"/>). Null means "as soon as the next pass runs".
+    /// </summary>
+    /// <remarks>
+    /// A refused refresh is not proof of a revoked grant. Providers return <c>invalid_grant</c>
+    /// for clock skew and during their own incidents, and a wearer who re-grants access on
+    /// Google's screen changes nothing on our side — a broken connection is excluded from the sync
+    /// rotation, so without this it would stay broken until a caregiver noticed the dashboard had
+    /// been quiet and reconnected by hand. This is what lets a recoverable one heal itself.
+    /// </remarks>
+    public DateTime? NextAuthRecoveryAt { get; set; }
+
+    /// <summary>
+    /// Consecutive failed auth-recovery attempts, driving the widening backoff. Reset the moment a
+    /// refresh succeeds. A genuinely revoked grant simply keeps failing and settles at the daily
+    /// interval, so a dead connection costs the provider one request a day rather than ninety-six.
+    /// </summary>
+    public int AuthRecoveryAttempts { get; set; }
+
+    /// <summary>
     /// The provider's public health-user id — the `users/{user}` segment webhook notifications
     /// and subscriptions are addressed by. Captured opportunistically on the first sync after
     /// this column shipped (see <c>DeviceSyncService</c>), so existing connections self-heal;

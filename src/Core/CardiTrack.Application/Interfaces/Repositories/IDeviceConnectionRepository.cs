@@ -65,6 +65,31 @@ public interface IDeviceConnectionRepository : IRepository<DeviceConnection>
     Task UpdateBatteryAsync(Guid id, int? level, string? status, DateTime readAtUtc);
 
     /// <summary>
+    /// Connections the provider has refused, due another attempt at their refresh token — the
+    /// auth-recovery probe's input set.
+    /// </summary>
+    /// <remarks>
+    /// Deliberately the mirror image of <see cref="GetDueForSyncAsync"/>: it returns exactly the
+    /// statuses that one excludes, because a connection out of the sync rotation is a connection
+    /// nothing else will ever touch again. Paused and removed members stay out — recovering a
+    /// connection is not collection, but it is the first step of it, and a paused member's device
+    /// should not quietly come back into service. A connection with no refresh token stays out
+    /// too: there is nothing to retry with, and only re-consent will produce one.
+    /// </remarks>
+    Task<IEnumerable<DeviceConnection>> GetDueForAuthRecoveryAsync(DateTime utcNow);
+
+    /// <summary>
+    /// Records a failed recovery attempt: increments the counter and schedules the next try.
+    /// </summary>
+    Task MarkAuthRecoveryFailedAsync(Guid id, DateTime nextAttemptAt);
+
+    /// <summary>
+    /// Returns a recovered connection to service — <see cref="ConnectionStatus.Connected"/>, the
+    /// backoff cleared — so the ordinary sync rotation picks it up on its next pass.
+    /// </summary>
+    Task MarkAuthRecoveredAsync(Guid id);
+
+    /// <summary>
     /// The syncable connections a webhook notification for this health-user id addresses —
     /// same active-and-not-paused semantics as <see cref="GetDueForSyncAsync"/>: a notification
     /// must never resurrect collection for a paused or removed member.
