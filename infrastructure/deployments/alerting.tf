@@ -92,7 +92,7 @@ variable "alerting_labels" {
 # an organization — deny policies attach to projects too. Unverified on both counts (org-less
 # projects, and whether that permission is supported), so it is a lead, not a plan.
 variable "enable_medgemma_iam_alerting" {
-  description = "Create the log-based metric and alert policy that fire when MedGemma's IAM policy is changed to grant allUsers or allAuthenticatedUsers. Only meaningful where MedGemma is deployed"
+  description = "Create the log-match alert policy that fires when MedGemma's IAM policy is changed to grant allUsers or allAuthenticatedUsers. Only meaningful where MedGemma is deployed"
   type        = bool
   default     = true
 
@@ -115,7 +115,7 @@ variable "enable_medgemma_iam_alerting" {
 }
 
 variable "medgemma_iam_alert_name" {
-  description = "Name for the MedGemma IAM log-based metric and alert policy, environment-qualified (dev and prod share one GCP project, so this must be unique per environment)"
+  description = "Name for the MedGemma IAM alert policy, environment-qualified (dev and prod share one GCP project, so this must be unique per environment)"
   type        = string
 }
 
@@ -212,11 +212,6 @@ locals {
   # Gated on the service existing as well as the flag: prod leaves medgemma_image empty, and an
   # alert watching a service that was never created is noise in the console and a lie in the docs.
   medgemma_iam_alerting = var.enable_medgemma_iam_alerting && var.medgemma_image != ""
-}
-
-resource "google_logging_metric" "medgemma_public_iam" {
-  count = local.medgemma_iam_alerting ? 1 : 0
-  name  = var.medgemma_iam_alert_name
 
   # Matched on the audit log's own fields rather than resource.type, which differs between the v1
   # and v2 Cloud Run surfaces. methodName is regex-matched for the same reason: the Console, gcloud
@@ -239,7 +234,7 @@ resource "google_logging_metric" "medgemma_public_iam" {
   # policy became; either alone would depend on which the Cloud Run surface populates, and this
   # filter has no second chance to be right — it only ever runs when something has already gone
   # wrong.
-  filter = <<-EOT
+  medgemma_public_iam_filter = <<-EOT
     logName="projects/${var.project_id}/logs/cloudaudit.googleapis.com%2Factivity"
     AND protoPayload.serviceName="run.googleapis.com"
     AND protoPayload.methodName=~"SetIamPolicy"
@@ -251,14 +246,6 @@ resource "google_logging_metric" "medgemma_public_iam" {
       OR protoPayload.response.bindings.members:"allAuthenticatedUsers"
     )
   EOT
-
-  metric_descriptor {
-    metric_kind = "DELTA"
-    value_type  = "INT64"
-    unit        = "1"
-  }
-
-  depends_on = [google_project_service.logging]
 }
 
 resource "google_monitoring_alert_policy" "medgemma_public_iam" {
@@ -266,20 +253,31 @@ resource "google_monitoring_alert_policy" "medgemma_public_iam" {
   display_name = var.medgemma_iam_alert_name
   combiner     = "OR"
 
+  # condition_matched_log, not a metric threshold over a log-based metric.
+  #
+  # The first attempt used the OOM pattern — google_logging_metric plus condition_threshold — and
+  # the API rejected the policy outright: "must specify a restriction on resource.type". A metric
+  # threshold filters time series, and time series are always scoped to a monitored resource. That
+  # is fine for the OOM alert, whose entries are unambiguously cloud_run_revision, but a Cloud Run
+  # SetIamPolicy audit entry could land on cloud_run_revision or on audited_resource, and guessing
+  # wrong would produce a policy that is valid, silent, and indistinguishable from "no incident" —
+  # the failure mode this whole control exists to avoid.
+  #
+  # A log-match condition takes the log filter directly, so there is nothing to guess. It also
+  # removes the log-based metric entirely: one resource instead of two, and no mapping between
+  # them to be wrong about.
   conditions {
     display_name = "MedGemma IAM policy granted public access"
-    condition_threshold {
-      filter          = "metric.type=\"logging.googleapis.com/user/${google_logging_metric.medgemma_public_iam[0].name}\""
-      comparison      = "COMPARISON_GT"
-      threshold_value = 0
-      # First occurrence, no debounce. One grant is the whole event — waiting for it to repeat
-      # would mean waiting for a second mistake.
-      duration = "0s"
+    condition_matched_log {
+      filter = local.medgemma_public_iam_filter
+    }
+  }
 
-      aggregations {
-        alignment_period   = "300s"
-        per_series_aligner = "ALIGN_COUNT"
-      }
+  # Mandatory for log-match conditions — the API rejects the policy without it. Deliberately short:
+  # this fires per matching entry, and a grant being applied repeatedly is itself worth seeing.
+  alert_strategy {
+    notification_rate_limit {
+      period = "300s"
     }
   }
 
