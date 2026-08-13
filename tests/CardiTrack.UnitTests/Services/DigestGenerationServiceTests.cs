@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Reflection;
 using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Interfaces.Services;
@@ -23,6 +24,7 @@ public class DigestGenerationServiceTests
     private readonly IUserCardiMemberRepository _links = Substitute.For<IUserCardiMemberRepository>();
     private readonly IUserRepository _users = Substitute.For<IUserRepository>();
     private readonly IActivityLogRepository _activityLogs = Substitute.For<IActivityLogRepository>();
+    private readonly IPatternBaselineRepository _baselines = Substitute.For<IPatternBaselineRepository>();
     private readonly IDigestRepository _digests = Substitute.For<IDigestRepository>();
     private readonly IMedicalAiService _medicalAi = Substitute.For<IMedicalAiService>();
 
@@ -44,6 +46,7 @@ public class DigestGenerationServiceTests
         _unitOfWork.UserCardiMembers.Returns(_links);
         _unitOfWork.Users.Returns(_users);
         _unitOfWork.ActivityLogs.Returns(_activityLogs);
+        _unitOfWork.PatternBaselines.Returns(_baselines);
         _unitOfWork.Digests.Returns(_digests);
 
         // Defaults: one active London-anchored member whose data landed half an hour ago, and who
@@ -54,6 +57,9 @@ public class DigestGenerationServiceTests
         SetupActivity(DataLandedAt);
         _digests.GetLatestAsync(_memberId, DigestAudience.Family, Arg.Any<CancellationToken>())
             .Returns((DigestEntry?)null);
+        // Still learning by default: no established baseline, so the prompt carries no usual
+        // pattern — the shape every pre-existing expectation below was written against.
+        _baselines.GetLatestByCardiMemberAsync(_memberId, 30).Returns((PatternBaseline?)null);
         _medicalAi.GenerateStructuredAsync<DigestGenerationService.DigestAiResponse>(
                 Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(new DigestGenerationService.DigestAiResponse
@@ -270,7 +276,10 @@ public class DigestGenerationServiceTests
         Assert.Contains("Age: 78", prompt);
         // Today's reading line, formatted the way the prompt builder formats dates (DateOnly's
         // default is culture-dependent, so the expectation goes through it too).
-        Assert.Contains($"Today so far ({Today}, still in progress — totals are partial): steps=5000", prompt);
+        Assert.Contains(
+            $"Today so far ({Today}, still in progress — activity totals are partial; "
+            + "the sleep figure is last night's and complete): steps=5000",
+            prompt);
         Assert.DoesNotContain("Margaret", prompt);  // minimisation, same as insights
     }
 
@@ -452,7 +461,10 @@ public class DigestGenerationServiceTests
         Assert.NotNull(prompt);
 
         Assert.Contains($"Yesterday ({Today.AddDays(-1)}, complete day): steps=3835", prompt);
-        Assert.Contains($"Today so far ({Today}, still in progress — totals are partial): steps=3442", prompt);
+        Assert.Contains(
+            $"Today so far ({Today}, still in progress — activity totals are partial; "
+            + "the sleep figure is last night's and complete): steps=3442",
+            prompt);
 
         // The label leads the line. A note trailing the numbers arrives after the model has read
         // them, which is how the wrong day's total got attributed in the first place.
@@ -471,6 +483,171 @@ public class DigestGenerationServiceTests
 
         // The header used to read "Today so far, and yesterday" over rows running the other way.
         Assert.Contains("oldest first", prompt);
+    }
+
+    // ---- The usual pattern: the yardstick a reading is read against ----
+
+    private static PatternBaseline EstablishedBaseline() => new()
+    {
+        PeriodDays = 30,
+        AvgSteps = 6000,
+        AvgRestingHeartRate = 62,
+        AvgSleepMinutes = 420,
+    };
+
+    private async Task<string> CapturePromptAsync()
+    {
+        string? prompt = null;
+        await _medicalAi.GenerateStructuredAsync<DigestGenerationService.DigestAiResponse>(
+            Arg.Do<string>(p => prompt = p), Arg.Any<CancellationToken>());
+
+        await CreateSut().GenerateDueDigestsAsync(UtcNow);
+        Assert.NotNull(prompt);
+        return prompt;
+    }
+
+    /// <summary>
+    /// The failure this section exists to prevent: a summary called a member's short night "a
+    /// good night's sleep" because nothing in the prompt said what a normal night was for them.
+    /// The model is not asked to know the member's normal — it is handed it.
+    /// </summary>
+    [Fact]
+    public async Task Prompt_CarriesTheUsualPattern_OnceABaselineIsEstablished()
+    {
+        _baselines.GetLatestByCardiMemberAsync(_memberId, 30).Returns(EstablishedBaseline());
+
+        var prompt = await CapturePromptAsync();
+
+        Assert.Contains("--- Usual pattern (30-day average) ---", prompt);
+        Assert.Contains("about 6,000 steps a day", prompt);
+        Assert.Contains("a resting heart rate around 62 bpm", prompt);
+        Assert.Contains("about 7.0 hours of sleep a night", prompt);
+        Assert.Contains("read each reading against it", prompt);
+    }
+
+    [Fact]
+    public async Task Prompt_CarriesNoUsualPattern_WhileTheMemberIsStillBeingLearned()
+    {
+        var prompt = await CapturePromptAsync();
+
+        Assert.DoesNotContain("Usual pattern", prompt);
+    }
+
+    /// <summary>
+    /// Deterministic code computes the verdict on last night, the model only phrases it — the
+    /// same division of labour as the rest of the pipeline, and the same threshold as the
+    /// irregular-sleep alert rule, so the summary can never soothe over a night the alert engine
+    /// pages about. Last night is today's row: sleep is attributed to the day it ended on.
+    /// </summary>
+    [Fact]
+    public async Task Prompt_SaysPlainly_WhenLastNightWasWellShortOfTheUsual()
+    {
+        _baselines.GetLatestByCardiMemberAsync(_memberId, 30).Returns(EstablishedBaseline());
+        _activityLogs.GetByCardiMemberAndDateRangeAsync(_memberId, Arg.Any<DateOnly>(), Arg.Any<DateOnly>())
+            .Returns(
+            [
+                new ActivityLog
+                {
+                    CardiMemberId = _memberId, Date = Today.AddDays(-1), Steps = 5800,
+                    SleepMinutes = 430, CreatedDate = DataLandedAt,
+                },
+                new ActivityLog
+                {
+                    CardiMemberId = _memberId, Date = Today, Steps = 900,
+                    SleepMinutes = 216, CreatedDate = DataLandedAt,
+                },
+            ]);
+
+        var prompt = await CapturePromptAsync();
+
+        Assert.Contains(
+            "Last night's sleep, 3.6 hours, was well short of the usual 7.0 — a poor night, "
+            + "worth saying plainly.",
+            prompt);
+    }
+
+    /// <summary>
+    /// The prompt is model input and a cacheable fixed-prefix construction, so no number in it
+    /// may vary with the host's ambient culture — no locale is pinned in any of the service
+    /// Dockerfiles, and under a European one the grouped step figure "6,000" renders as "6.000",
+    /// which a model can read as six.
+    /// </summary>
+    [Fact]
+    public async Task Prompt_FormatsEveryFigureInvariantly_WhateverTheHostCulture()
+    {
+        var original = CultureInfo.CurrentCulture;
+        CultureInfo.CurrentCulture = new CultureInfo("de-DE");
+        try
+        {
+            _baselines.GetLatestByCardiMemberAsync(_memberId, 30).Returns(EstablishedBaseline());
+            _activityLogs.GetByCardiMemberAndDateRangeAsync(_memberId, Arg.Any<DateOnly>(), Arg.Any<DateOnly>())
+                .Returns(
+                [
+                    new ActivityLog
+                    {
+                        CardiMemberId = _memberId, Date = Today, Steps = 900,
+                        SleepMinutes = 216, CreatedDate = DataLandedAt,
+                    },
+                ]);
+
+            var prompt = await CapturePromptAsync();
+
+            Assert.Contains("about 6,000 steps a day", prompt);
+            Assert.Contains("about 7.0 hours of sleep a night", prompt);
+            Assert.Contains("Last night's sleep, 3.6 hours, was well short of the usual 7.0", prompt);
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = original;
+        }
+    }
+
+    // A night inside the ordinary band earns no note: the note is for the reading that must not
+    // be soothed over, not a running commentary.
+    [Fact]
+    public async Task Prompt_CarriesNoSleepNote_ForAnOrdinaryNight()
+    {
+        _baselines.GetLatestByCardiMemberAsync(_memberId, 30).Returns(EstablishedBaseline());
+        _activityLogs.GetByCardiMemberAndDateRangeAsync(_memberId, Arg.Any<DateOnly>(), Arg.Any<DateOnly>())
+            .Returns(
+            [
+                new ActivityLog
+                {
+                    CardiMemberId = _memberId, Date = Today, Steps = 900,
+                    SleepMinutes = 400, CreatedDate = DataLandedAt,
+                },
+            ]);
+
+        var prompt = await CapturePromptAsync();
+
+        Assert.Contains("--- Usual pattern (30-day average) ---", prompt);
+        Assert.DoesNotContain("Last night's sleep,", prompt);
+    }
+
+    // The note reads the night off today's row only: yesterday's row is the night before last,
+    // and a note about it would flag old news as tonight's.
+    [Fact]
+    public async Task TheSleepNote_NeverReadsYesterdaysNight_AsLastNights()
+    {
+        _baselines.GetLatestByCardiMemberAsync(_memberId, 30).Returns(EstablishedBaseline());
+        _activityLogs.GetByCardiMemberAndDateRangeAsync(_memberId, Arg.Any<DateOnly>(), Arg.Any<DateOnly>())
+            .Returns(
+            [
+                new ActivityLog
+                {
+                    CardiMemberId = _memberId, Date = Today.AddDays(-1), Steps = 5800,
+                    SleepMinutes = 216, CreatedDate = DataLandedAt,
+                },
+                new ActivityLog
+                {
+                    CardiMemberId = _memberId, Date = Today, Steps = 900,
+                    CreatedDate = DataLandedAt,
+                },
+            ]);
+
+        var prompt = await CapturePromptAsync();
+
+        Assert.DoesNotContain("Last night's sleep,", prompt);
     }
 
     // ---- A summary cannot credit today with steps the member has not walked ----

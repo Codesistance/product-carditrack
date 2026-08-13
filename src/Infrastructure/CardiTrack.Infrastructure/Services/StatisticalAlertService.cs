@@ -91,10 +91,17 @@ public class StatisticalAlertService : IStatisticalAlertService
         var yesterdayLog = logsByDate.GetValueOrDefault(yesterday);
         var todayLog = logsByDate.GetValueOrDefault(localToday);
 
+        // Sleep sessions are attributed to the civil day they ENDED on, so last night lives on
+        // today's log, not yesterday's — the dashboard's sleep card rates the same row, and the
+        // two surfaces must not disagree about which night "last night" is. Yesterday's log is
+        // the fallback for a night whose data only arrived after local midnight; the per-night
+        // dedup below is what keeps that fallback from re-judging a night that already alerted.
+        var lastNightLog = todayLog?.SleepMinutes is not null ? todayLog : yesterdayLog;
+
         var candidates = new[]
         {
             StatisticalAlertRules.ActivityDecline(baseline, yesterdayLog),
-            StatisticalAlertRules.IrregularSleep(baseline, yesterdayLog),
+            StatisticalAlertRules.IrregularSleep(baseline, lastNightLog),
             StatisticalAlertRules.ElevatedHeartRate(baseline, yesterdayLog),
             StatisticalAlertRules.NoMorningActivity(baseline, todayLog, localNow),
             StatisticalAlertRules.LongTermTrend(logsByDate, yesterday),
@@ -118,14 +125,22 @@ public class StatisticalAlertService : IStatisticalAlertService
             if (existing.Any(a => AlertRuleMarkers.Suppresses(a, candidate.Type, candidate.Rule)))
                 continue;
 
-            // Same-local-day dedup, regardless of resolution state: a rule reads one day's
-            // data, so one day gets at most one alert from it — resolving at noon must not
-            // re-page at half past from the same readings.
-            if (existing.Any(a => AlertRuleMarkers.HasRule(a, candidate.Rule)
-                    && DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(a.TriggeredDate, timeZone)) == localToday))
-            {
+            bool FiredOnLocalToday(Alert a) =>
+                DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(a.TriggeredDate, timeZone)) == localToday;
+
+            // Same-data dedup, regardless of resolution state: a rule reads one day's data, so
+            // one day's data gets at most one alert from it — resolving at noon must not re-page
+            // at half past from the same readings. A candidate that names the night it judged
+            // dedups on that night rather than the firing day, because late-arriving data can put
+            // the same night in front of the rule on two calendar days; an alert from before
+            // night markers existed cannot say which night it judged and is read as today's.
+            var judgedAlready = candidate.NightOf is { } night
+                ? existing.Any(a => AlertRuleMarkers.HasRule(a, candidate.Rule)
+                    && (AlertRuleMarkers.HasNight(a, night)
+                        || (!AlertRuleMarkers.HasAnyNight(a) && FiredOnLocalToday(a))))
+                : existing.Any(a => AlertRuleMarkers.HasRule(a, candidate.Rule) && FiredOnLocalToday(a));
+            if (judgedAlready)
                 continue;
-            }
 
             ct.ThrowIfCancellationRequested();
             var alert = new Alert

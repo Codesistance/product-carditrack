@@ -239,6 +239,126 @@ public class StatisticalAlertServiceTests
         Assert.Equal(1, raised);
     }
 
+    // ── The sleep rule judges last night, which lives on TODAY's log ─────────────────────
+    //
+    // Sleep sessions are attributed to the civil day they ended on, so the night a family is
+    // looking at this morning is today's row — the same row the dashboard's sleep card rates.
+    // The engine used to read yesterday's row, which meant a poor night showed POOR on the
+    // dashboard all day while the alert could only arrive tomorrow.
+
+    [Fact]
+    public async Task AShortNightOnTodaysLog_AlertsTheSameDay()
+    {
+        SetupLogs(
+            new ActivityLog { CardiMemberId = _memberId, Date = Yesterday, Steps = 6000 },
+            new ActivityLog { CardiMemberId = _memberId, Date = Yesterday.AddDays(1), SleepMinutes = 216 });
+
+        var raised = await CreateSut().EvaluateAsync(UtcNow);
+
+        Assert.Equal(1, raised);
+        await _alerts.Received(1).AddAsync(Arg.Is<Alert>(a =>
+            a.AlertType == AlertType.Sleep
+            && a.MetricValues!.Contains("\"rule\":\"irregular_sleep\"")
+            && a.MetricValues!.Contains("\"night\":\"2026-08-10\"")));
+    }
+
+    // Once today's row carries a sleep reading, yesterday's row is the night before last —
+    // old news, already judged on its own day, never a reason to page today.
+    [Fact]
+    public async Task AnOrdinaryNightOnTodaysLog_IsNeverOverriddenByYesterdays()
+    {
+        SetupLogs(
+            new ActivityLog { CardiMemberId = _memberId, Date = Yesterday, Steps = 6000, SleepMinutes = 200 },
+            new ActivityLog { CardiMemberId = _memberId, Date = Yesterday.AddDays(1), SleepMinutes = 420 });
+
+        var raised = await CreateSut().EvaluateAsync(UtcNow);
+
+        Assert.Equal(0, raised);
+    }
+
+    // The fallback: a night whose data only arrived after local midnight sits on yesterday's
+    // log with nothing on today's yet — better judged late than never.
+    [Fact]
+    public async Task ANightThatSyncedLate_IsStillJudged_FromYesterdaysLog()
+    {
+        SetupLogs(
+            new ActivityLog { CardiMemberId = _memberId, Date = Yesterday, Steps = 6000, SleepMinutes = 200 },
+            new ActivityLog { CardiMemberId = _memberId, Date = Yesterday.AddDays(1), Steps = 4500 });
+
+        var raised = await CreateSut().EvaluateAsync(UtcNow);
+
+        Assert.Equal(1, raised);
+        await _alerts.Received(1).AddAsync(Arg.Is<Alert>(a =>
+            a.AlertType == AlertType.Sleep && a.MetricValues!.Contains("\"night\":\"2026-08-09\"")));
+    }
+
+    // What keeps the fallback honest: the dedup is per night judged, not per firing day, so a
+    // night that already alerted — even on a different calendar day — never alerts again.
+    [Fact]
+    public async Task AResolvedAlertForTheSameNight_StillDedupes_AcrossCalendarDays()
+    {
+        SetupLogs(
+            new ActivityLog { CardiMemberId = _memberId, Date = Yesterday, Steps = 6000, SleepMinutes = 200 },
+            new ActivityLog { CardiMemberId = _memberId, Date = Yesterday.AddDays(1), Steps = 4500 });
+        _alerts.GetByCardiMemberAsync(_memberId, activeOnly: true).Returns(
+        [
+            new Alert
+            {
+                CardiMemberId = _memberId, AlertType = AlertType.Sleep, IsResolved = true,
+                TriggeredDate = UtcNow.AddDays(-1),
+                MetricValues = """{"rule":"irregular_sleep","night":"2026-08-09","sleepMinutes":200}""",
+            },
+        ]);
+
+        var raised = await CreateSut().EvaluateAsync(UtcNow);
+
+        Assert.Equal(0, raised);
+    }
+
+    [Fact]
+    public async Task AResolvedSleepAlertForAnEarlierNight_DoesNotDedupeTonights()
+    {
+        SetupLogs(
+            new ActivityLog { CardiMemberId = _memberId, Date = Yesterday, Steps = 6000 },
+            new ActivityLog { CardiMemberId = _memberId, Date = Yesterday.AddDays(1), SleepMinutes = 216 });
+        _alerts.GetByCardiMemberAsync(_memberId, activeOnly: true).Returns(
+        [
+            new Alert
+            {
+                CardiMemberId = _memberId, AlertType = AlertType.Sleep, IsResolved = true,
+                TriggeredDate = UtcNow.AddDays(-1),
+                MetricValues = """{"rule":"irregular_sleep","night":"2026-08-09","sleepMinutes":180}""",
+            },
+        ]);
+
+        var raised = await CreateSut().EvaluateAsync(UtcNow);
+
+        Assert.Equal(1, raised);
+    }
+
+    // A sleep alert from before night markers existed cannot say which night it judged, so it
+    // reads as the day it fired on — one page per day still holds across the deploy boundary.
+    [Fact]
+    public async Task ALegacyMarkerlessSleepAlertFromToday_StillDedupes()
+    {
+        SetupLogs(
+            new ActivityLog { CardiMemberId = _memberId, Date = Yesterday, Steps = 6000 },
+            new ActivityLog { CardiMemberId = _memberId, Date = Yesterday.AddDays(1), SleepMinutes = 216 });
+        _alerts.GetByCardiMemberAsync(_memberId, activeOnly: true).Returns(
+        [
+            new Alert
+            {
+                CardiMemberId = _memberId, AlertType = AlertType.Sleep, IsResolved = true,
+                TriggeredDate = UtcNow.AddHours(-2),
+                MetricValues = """{"rule":"irregular_sleep","sleepMinutes":216}""",
+            },
+        ]);
+
+        var raised = await CreateSut().EvaluateAsync(UtcNow);
+
+        Assert.Equal(0, raised);
+    }
+
     [Fact]
     public async Task NoMorningActivity_Fires_OnAMeasuredZeroToday()
     {

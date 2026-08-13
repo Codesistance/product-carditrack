@@ -362,7 +362,10 @@ public class HealthInsightServicePromptTests
 
         // Which day a line is opens the line, ahead of the numbers it governs — a note trailing
         // them arrives after the model has already read them.
-        Assert.Contains($"Today so far ({today}, still in progress — totals are partial): steps=900", prompt);
+        Assert.Contains(
+            $"Today so far ({today}, still in progress — activity totals are partial; "
+            + "the sleep figure is last night's and complete): steps=900",
+            prompt);
         Assert.Contains($"Yesterday ({today.AddDays(-1)}, complete day): steps=5100", prompt);
         Assert.DoesNotContain($"Today so far ({today.AddDays(-1)}", prompt);
     }

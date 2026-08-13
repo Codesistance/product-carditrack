@@ -84,6 +84,21 @@ public class StatisticalAlertRulesTests
         Assert.Contains(direction, candidate.Message);
     }
 
+    /// <summary>
+    /// The candidate names the night it judged — the log's own date, the civil day the night
+    /// ended on — both on the record for the orchestrator's per-night dedup and in the stored
+    /// MetricValues, so the same night can never alert twice however late its data arrived.
+    /// </summary>
+    [Fact]
+    public void IrregularSleep_NamesTheNightItJudged()
+    {
+        var candidate = StatisticalAlertRules.IrregularSleep(Baseline(), Log(sleepMinutes: 200));
+
+        Assert.NotNull(candidate);
+        Assert.Equal(new DateOnly(2026, 8, 9), candidate.NightOf);
+        Assert.Contains("\"night\":\"2026-08-09\"", candidate.MetricValues);
+    }
+
     [Theory]
     [InlineData(294)]
     [InlineData(420)]
