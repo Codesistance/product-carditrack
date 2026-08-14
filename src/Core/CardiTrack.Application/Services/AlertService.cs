@@ -93,10 +93,8 @@ public class AlertService : IAlertService
         IReadOnlyList<ActivityLog> logs = [];
         var days = AlertDetailComposer.DailyLogDays(rule);
         var today = DateOnly.FromDateTime(utcNow);
-        var firedOn = DateOnly.FromDateTime(
-            alert.TriggeredDate.Kind == DateTimeKind.Local
-                ? alert.TriggeredDate.ToUniversalTime()
-                : DateTime.SpecifyKind(alert.TriggeredDate, DateTimeKind.Utc));
+        var utcTriggered = ToUtc(alert.TriggeredDate);
+        var firedOn = DateOnly.FromDateTime(utcTriggered);
         ElapsedMatch? elapsed = null;
 
         if (days > 0)
@@ -110,8 +108,7 @@ public class AlertService : IAlertService
             var zone = await MemberAnchorTimeZone.ResolveAsync(_unitOfWork, alert.CardiMemberId);
             elapsed = AlertDetailComposer.ElapsedMatchFor(utcNow, zone);
             today = DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(utcNow, zone));
-            firedOn = DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(
-                DateTime.SpecifyKind(alert.TriggeredDate, DateTimeKind.Utc), zone));
+            firedOn = DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(utcTriggered, zone));
 
             logs = (await _unitOfWork.ActivityLogs.GetByCardiMemberAndDateRangeAsync(
                     alert.CardiMemberId, today.AddDays(-(days - 1)), today))
@@ -261,14 +258,14 @@ public class AlertService : IAlertService
     /// send local midnight. An unspecified kind is read as UTC, the usual reading of a bare
     /// timestamp on the wire.
     /// </summary>
-    private static DateTime? ToUtc(DateTime? value) => value is not { } instant
-        ? null
-        : instant.Kind switch
-        {
-            DateTimeKind.Utc => instant,
-            DateTimeKind.Local => instant.ToUniversalTime(),
-            _ => DateTime.SpecifyKind(instant, DateTimeKind.Utc),
-        };
+    private static DateTime ToUtc(DateTime instant) => instant.Kind switch
+    {
+        DateTimeKind.Utc => instant,
+        DateTimeKind.Local => instant.ToUniversalTime(),
+        _ => DateTime.SpecifyKind(instant, DateTimeKind.Utc),
+    };
+
+    private static DateTime? ToUtc(DateTime? value) => value is { } instant ? ToUtc(instant) : null;
 
     /// <summary>
     /// The members named by this page of alerts, keyed by id — in one read rather than one per
@@ -287,10 +284,7 @@ public class AlertService : IAlertService
     private static AlertSummaryResponse ToSummary(Alert alert, CardiMember? member)
     {
         var rule = AlertDetailComposer.ReadRule(alert.MetricValues);
-        var firedOn = DateOnly.FromDateTime(
-            alert.TriggeredDate.Kind == DateTimeKind.Local
-                ? alert.TriggeredDate.ToUniversalTime()
-                : DateTime.SpecifyKind(alert.TriggeredDate, DateTimeKind.Utc));
+        var firedOn = DateOnly.FromDateTime(ToUtc(alert.TriggeredDate));
 
         return new()
         {

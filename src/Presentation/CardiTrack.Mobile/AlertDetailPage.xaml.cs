@@ -359,7 +359,7 @@ public partial class AlertDetailPage : ContentPage
     private static string FormatWhen(AlertDetailResponse alert)
     {
         var local = DateTime.SpecifyKind(alert.TriggeredAt, DateTimeKind.Utc).ToLocalTime();
-        if (alert.AboutDate != DateOnly.FromDateTime(local))
+        if (alert.AboutDate != default && alert.AboutDate != DateOnly.FromDateTime(local))
             return alert.AboutDate.ToString("d MMMM yyyy");
 
         return local.ToString("d MMMM yyyy 'at' h:mm tt");
