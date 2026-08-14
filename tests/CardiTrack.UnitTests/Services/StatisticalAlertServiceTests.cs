@@ -53,7 +53,7 @@ public class StatisticalAlertServiceTests
         ]);
         _users.GetByIdAsync(_userId).Returns(new User { Id = _userId, TimeZoneId = "Europe/London" });
         SetupLogs(new ActivityLog { CardiMemberId = _memberId, Date = Yesterday, Steps = 1000 });
-        _alerts.GetByCardiMemberAsync(_memberId, Arg.Any<bool>()).Returns([]);
+        _alerts.GetByCardiMemberAsync(_memberId, activeOnly: false).Returns([]);
     }
 
     private CardiMember Member() => new()
@@ -132,7 +132,7 @@ public class StatisticalAlertServiceTests
     [Fact]
     public async Task AnUnresolvedAlertOfTheSameRule_Suppresses()
     {
-        _alerts.GetByCardiMemberAsync(_memberId, Arg.Any<bool>()).Returns(
+        _alerts.GetByCardiMemberAsync(_memberId, activeOnly: false).Returns(
         [
             new Alert
             {
@@ -151,7 +151,7 @@ public class StatisticalAlertServiceTests
     [Fact]
     public async Task AnUnresolvedDeviceSilenceAlert_DoesNotSuppressActivityDecline()
     {
-        _alerts.GetByCardiMemberAsync(_memberId, Arg.Any<bool>()).Returns(
+        _alerts.GetByCardiMemberAsync(_memberId, activeOnly: false).Returns(
         [
             new Alert
             {
@@ -170,7 +170,7 @@ public class StatisticalAlertServiceTests
     [Fact]
     public async Task ALegacyMarkerlessInactivityAlert_ReadsAsDeviceSilence()
     {
-        _alerts.GetByCardiMemberAsync(_memberId, Arg.Any<bool>()).Returns(
+        _alerts.GetByCardiMemberAsync(_memberId, activeOnly: false).Returns(
         [
             new Alert
             {
@@ -196,7 +196,7 @@ public class StatisticalAlertServiceTests
             Steps = 6000,
             RestingHeartRate = 80,
         });
-        _alerts.GetByCardiMemberAsync(_memberId, Arg.Any<bool>()).Returns(
+        _alerts.GetByCardiMemberAsync(_memberId, activeOnly: false).Returns(
         [
             new Alert
             {
@@ -215,7 +215,7 @@ public class StatisticalAlertServiceTests
     [Fact]
     public async Task AResolvedAlertFromToday_StillDedupes()
     {
-        _alerts.GetByCardiMemberAsync(_memberId, Arg.Any<bool>()).Returns(
+        _alerts.GetByCardiMemberAsync(_memberId, activeOnly: false).Returns(
         [
             new Alert
             {
@@ -235,7 +235,7 @@ public class StatisticalAlertServiceTests
     [Fact]
     public async Task ADeletedAlertFromToday_StillDedupes()
     {
-        _alerts.GetByCardiMemberAsync(_memberId, Arg.Any<bool>()).Returns(
+        _alerts.GetByCardiMemberAsync(_memberId, activeOnly: false).Returns(
         [
             new Alert
             {
@@ -257,7 +257,7 @@ public class StatisticalAlertServiceTests
     [Fact]
     public async Task ADeletedAlertFromYesterday_DoesNotDedupeToday()
     {
-        _alerts.GetByCardiMemberAsync(_memberId, Arg.Any<bool>()).Returns(
+        _alerts.GetByCardiMemberAsync(_memberId, activeOnly: false).Returns(
         [
             new Alert
             {
@@ -279,7 +279,7 @@ public class StatisticalAlertServiceTests
         SetupLogs(
             new ActivityLog { CardiMemberId = _memberId, Date = Yesterday, Steps = 6000, SleepMinutes = 200 },
             new ActivityLog { CardiMemberId = _memberId, Date = Yesterday.AddDays(1), Steps = 4500 });
-        _alerts.GetByCardiMemberAsync(_memberId, Arg.Any<bool>()).Returns(
+        _alerts.GetByCardiMemberAsync(_memberId, activeOnly: false).Returns(
         [
             new Alert
             {
@@ -298,7 +298,7 @@ public class StatisticalAlertServiceTests
     [Fact]
     public async Task AResolvedAlertFromYesterday_DoesNotDedupeToday()
     {
-        _alerts.GetByCardiMemberAsync(_memberId, Arg.Any<bool>()).Returns(
+        _alerts.GetByCardiMemberAsync(_memberId, activeOnly: false).Returns(
         [
             new Alert
             {
@@ -374,7 +374,7 @@ public class StatisticalAlertServiceTests
         SetupLogs(
             new ActivityLog { CardiMemberId = _memberId, Date = Yesterday, Steps = 6000, SleepMinutes = 200 },
             new ActivityLog { CardiMemberId = _memberId, Date = Yesterday.AddDays(1), Steps = 4500 });
-        _alerts.GetByCardiMemberAsync(_memberId, Arg.Any<bool>()).Returns(
+        _alerts.GetByCardiMemberAsync(_memberId, activeOnly: false).Returns(
         [
             new Alert
             {
@@ -395,7 +395,7 @@ public class StatisticalAlertServiceTests
         SetupLogs(
             new ActivityLog { CardiMemberId = _memberId, Date = Yesterday, Steps = 6000 },
             new ActivityLog { CardiMemberId = _memberId, Date = Yesterday.AddDays(1), SleepMinutes = 216 });
-        _alerts.GetByCardiMemberAsync(_memberId, Arg.Any<bool>()).Returns(
+        _alerts.GetByCardiMemberAsync(_memberId, activeOnly: false).Returns(
         [
             new Alert
             {
@@ -418,7 +418,7 @@ public class StatisticalAlertServiceTests
         SetupLogs(
             new ActivityLog { CardiMemberId = _memberId, Date = Yesterday, Steps = 6000 },
             new ActivityLog { CardiMemberId = _memberId, Date = Yesterday.AddDays(1), SleepMinutes = 216 });
-        _alerts.GetByCardiMemberAsync(_memberId, Arg.Any<bool>()).Returns(
+        _alerts.GetByCardiMemberAsync(_memberId, activeOnly: false).Returns(
         [
             new Alert
             {

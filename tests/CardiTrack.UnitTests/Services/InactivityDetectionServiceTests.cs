@@ -61,7 +61,7 @@ public class InactivityDetectionServiceTests
         _members.GetByIdAsync(_memberId).Returns(Member());
         SetupAnchorTimeZone("Europe/London");
         SetupLastDataAt(UtcNow.AddMinutes(-150));
-        _alerts.GetByCardiMemberAsync(_memberId, Arg.Any<bool>()).Returns([]);
+        _alerts.GetByCardiMemberAsync(_memberId, activeOnly: false).Returns([]);
     }
 
     private CardiMember Member() => new()
@@ -299,7 +299,7 @@ public class InactivityDetectionServiceTests
     [Fact]
     public async Task AnUnresolvedInactivityAlert_SuppressesANewOne()
     {
-        _alerts.GetByCardiMemberAsync(_memberId, Arg.Any<bool>()).Returns(
+        _alerts.GetByCardiMemberAsync(_memberId, activeOnly: false).Returns(
         [
             new Alert { CardiMemberId = _memberId, AlertType = AlertType.Inactivity, IsResolved = false },
         ]);
@@ -315,7 +315,7 @@ public class InactivityDetectionServiceTests
     [Fact]
     public async Task ADeletedUnresolvedDeviceSilenceAlert_StillSuppresses()
     {
-        _alerts.GetByCardiMemberAsync(_memberId, Arg.Any<bool>()).Returns(
+        _alerts.GetByCardiMemberAsync(_memberId, activeOnly: false).Returns(
         [
             new Alert
             {
@@ -340,7 +340,7 @@ public class InactivityDetectionServiceTests
             IsActive = false,
             MetricValues = """{"rule":"device_silence","thresholdMinutes":120}""",
         };
-        _alerts.GetByCardiMemberAsync(_memberId, Arg.Any<bool>()).Returns([deleted]);
+        _alerts.GetByCardiMemberAsync(_memberId, activeOnly: false).Returns([deleted]);
         SetupLastDataAt(UtcNow.AddMinutes(-10));
 
         var raised = await CreateSut().DetectAsync(UtcNow, Rules);
@@ -354,7 +354,7 @@ public class InactivityDetectionServiceTests
     [Fact]
     public async Task AResolvedInactivityAlert_DoesNotSuppress()
     {
-        _alerts.GetByCardiMemberAsync(_memberId, Arg.Any<bool>()).Returns(
+        _alerts.GetByCardiMemberAsync(_memberId, activeOnly: false).Returns(
         [
             new Alert { CardiMemberId = _memberId, AlertType = AlertType.Inactivity, IsResolved = true },
         ]);
@@ -369,7 +369,7 @@ public class InactivityDetectionServiceTests
     [Fact]
     public async Task AnUnresolvedAlertOfAnotherType_DoesNotSuppress()
     {
-        _alerts.GetByCardiMemberAsync(_memberId, Arg.Any<bool>()).Returns(
+        _alerts.GetByCardiMemberAsync(_memberId, activeOnly: false).Returns(
         [
             new Alert { CardiMemberId = _memberId, AlertType = AlertType.HeartRate, IsResolved = false },
         ]);

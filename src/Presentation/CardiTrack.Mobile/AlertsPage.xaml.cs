@@ -396,22 +396,26 @@ public partial class AlertsPage : ContentPage
         try
         {
             await _api.DeleteAlertAsync(alert.AlertId);
-            _pendingDeletes.Remove(alert.AlertId);
         }
         catch (ApiException ex) when (ex.IsNotFound)
         {
             // The row is already gone — that's the outcome they asked for.
-            _pendingDeletes.Remove(alert.AlertId);
         }
         catch (ApiException ex) when (!ex.IsSessionExpired)
         {
             var stillThere = await AlertStillExistsAsync(alert.AlertId);
-            _pendingDeletes.Remove(alert.AlertId);
             if (stillThere)
             {
                 RestoreAlert(alert);
                 await _popups.ShowWarningAsync(ex.Message, "Couldn't remove it");
             }
+        }
+        finally
+        {
+            // Always drop the id once the attempt has finished — including a 401, which the
+            // filters above do not catch. Leaving it in the set would hide a still-standing
+            // alert from every later refresh if they sign back in on the same page instance.
+            _pendingDeletes.Remove(alert.AlertId);
         }
     }
 

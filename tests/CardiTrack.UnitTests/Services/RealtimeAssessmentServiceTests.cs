@@ -59,7 +59,7 @@ public class RealtimeAssessmentServiceTests
             .Returns(false);
         _assessments.UpsertAsync(Arg.Any<RealtimeAssessment>(), Arg.Any<CancellationToken>())
             .Returns(true);
-        _alerts.GetByCardiMemberAsync(_memberId, Arg.Any<bool>()).Returns([]);
+        _alerts.GetByCardiMemberAsync(_memberId, activeOnly: false).Returns([]);
         _medicalAi.GenerateStructuredAsync<RealtimeAssessmentService.AssessmentAiResponse>(
                 Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(new RealtimeAssessmentService.AssessmentAiResponse
@@ -169,7 +169,7 @@ public class RealtimeAssessmentServiceTests
     {
         SetupWindow(HeartRateMinutes(from: 150, to: 209, bpm: 72, jumpLast: false));
         var open = new Alert { CardiMemberId = _memberId, AlertType = AlertType.HeartRate, IsResolved = false };
-        _alerts.GetByCardiMemberAsync(_memberId, Arg.Any<bool>()).Returns([open]);
+        _alerts.GetByCardiMemberAsync(_memberId, activeOnly: false).Returns([open]);
 
         var assessed = await CreateSut().AssessDueMembersAsync(UtcNow);
 
@@ -238,7 +238,7 @@ public class RealtimeAssessmentServiceTests
                 Message = "Still elevated.",
                 Severity = "critical",
             });
-        _alerts.GetByCardiMemberAsync(_memberId, Arg.Any<bool>()).Returns(
+        _alerts.GetByCardiMemberAsync(_memberId, activeOnly: false).Returns(
         [
             new Alert { CardiMemberId = _memberId, AlertType = AlertType.HeartRate, IsResolved = false },
         ]);
@@ -283,7 +283,7 @@ public class RealtimeAssessmentServiceTests
                 Message = "Still elevated.",
                 Severity = "critical",
             });
-        _alerts.GetByCardiMemberAsync(_memberId, Arg.Any<bool>()).Returns(
+        _alerts.GetByCardiMemberAsync(_memberId, activeOnly: false).Returns(
         [
             new Alert
             {
@@ -308,7 +308,7 @@ public class RealtimeAssessmentServiceTests
             CardiMemberId = _memberId, AlertType = AlertType.HeartRate, IsResolved = false,
             IsActive = false,
         };
-        _alerts.GetByCardiMemberAsync(_memberId, Arg.Any<bool>()).Returns([deleted]);
+        _alerts.GetByCardiMemberAsync(_memberId, activeOnly: false).Returns([deleted]);
 
         var assessed = await CreateSut().AssessDueMembersAsync(UtcNow);
 
@@ -327,7 +327,7 @@ public class RealtimeAssessmentServiceTests
                 Message = "Elevated again.",
                 Severity = "critical",
             });
-        _alerts.GetByCardiMemberAsync(_memberId, Arg.Any<bool>()).Returns(
+        _alerts.GetByCardiMemberAsync(_memberId, activeOnly: false).Returns(
         [
             new Alert { CardiMemberId = _memberId, AlertType = AlertType.HeartRate, IsResolved = true },
         ]);
