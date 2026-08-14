@@ -416,9 +416,13 @@ public class HealthInsightServicePromptTests
 
         var prompt = CapturedPrompt();
         Assert.Contains("Write as a caregiver would", prompt);
+        Assert.Contains("Everyday words for the readings are fine", prompt);
         Assert.Contains("what this alert means in the recent readings", prompt);
         Assert.Contains("lay mention", prompt);
+        Assert.Contains("one specific thing the caregiver can do now that answers this", prompt);
         Assert.Contains("{{NAME}}", prompt);
+        Assert.DoesNotContain("heart rate, sleep, quieter today, worth a look", prompt);
+        Assert.DoesNotContain("check-in", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("means clinically", prompt);
         Assert.DoesNotContain("medical AI assistant", prompt);
         Assert.DoesNotContain("flag for review", prompt);

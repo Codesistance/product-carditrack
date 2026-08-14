@@ -259,9 +259,12 @@ public class HealthInsightServiceStatusTests
 
         var prompt = (string)_medicalAi.ReceivedCalls().Single().GetArguments()[0]!;
         Assert.Contains("Write as a caregiver would", prompt);
-        Assert.Contains("heart rate, sleep, quieter today, worth a look", prompt);
+        Assert.Contains("Everyday words for the readings are fine", prompt);
         Assert.Contains("Not clinic-speak", prompt);
-        Assert.Contains("enough to react, not to treat or fix", prompt);
+        Assert.Contains("enough to be informed and react, not to treat or fix", prompt);
+        Assert.DoesNotContain("heart rate, sleep, quieter today, worth a look", prompt);
+        Assert.DoesNotContain("a bug", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("poor night", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("Never suggest a medical cause", prompt);
         // "Never diagnose" now comes from the shared tone block every prompt opens with, rather
         // than from this prompt's own wording — same guarantee, one place.

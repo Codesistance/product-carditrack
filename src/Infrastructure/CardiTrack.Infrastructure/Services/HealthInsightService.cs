@@ -32,28 +32,26 @@ public class HealthInsightService : IHealthInsightService
     // for every member (docs/llm_design.md). Member data always goes *after* them.
 
     /// <summary>
-    /// <c>CARDITRACK_ALERT_PROMPT</c> — explains a fired alert to a caregiver. The register is a
-    /// family caregiver's, not a clinician's: heart rate and sleep are fine; elevated and
-    /// deviation are not. A lay mention of what the readings can mean is allowed so the family
-    /// can be informed and react; treating or fixing is not. "Flag for review" was the old
-    /// clinical-queue brief and does not belong on a line a family reads.
+    /// <c>CARDITRACK_ALERT_PROMPT</c> — explains a fired alert to a caregiver. The register is
+    /// <see cref="MedicalPromptBlocks.CaregiverRegister"/>: everyday words, a lay mention so the
+    /// family can be informed and react, not clinic-speak and not a fix. "Flag for review" was
+    /// the old clinical-queue brief and does not belong on a line a family reads. The action is
+    /// one specific thing they can do now — named by the model from this alert, not chosen from
+    /// a list of examples it would otherwise repeat for every member.
     /// </summary>
     private const string AlertInstructions =
         MedicalPromptBlocks.Tone + MedicalPromptBlocks.Pronouns + """
         Explain this alert to a family caregiver.
 
-        Write as a caregiver would: heart rate, sleep, quieter today, worth a look.
-        A lay mention of what this can mean is fine (a bug, not drinking enough, a poor night) — enough to be informed and react, not to treat or fix.
-        Not clinic-speak (elevated, abnormal, deviation).
+        """ + MedicalPromptBlocks.CaregiverRegister + """
         Write {{NAME}} exactly as written wherever you would name the person; it stands in
         for their real name, which you are not given.
 
         Respond with:
         - explanation: what this alert means in the recent readings, and a lay mention of what
           may sit behind it if the readings support one.
-        - recommendedAction: one specific thing the caregiver can do now — a check-in, a look
-          at the device, or mentioning it to the care team. Never start, stop or change
-          medication, never a diagnosis, and never a fix.
+        - recommendedAction: one specific thing the caregiver can do now that answers this
+          alert. Never start, stop or change medication, never a diagnosis, and never a fix.
 
         Keep both fields factual and concise.
         """ + MedicalPromptBlocks.ContextGuardrail;
@@ -116,9 +114,9 @@ public class HealthInsightService : IHealthInsightService
     /// <c>CARDITRACK_CURRENT_STATUS_PROMPT</c> — a single empathetic line for the Dashboard's
     /// hero card. Distinct from the other three: this is ambient, ever-present copy shown on
     /// every dashboard view rather than something a caregiver deliberately opened, so it asks for
-    /// one short, warm sentence rather than a structured explanation. The register is a family
-    /// caregiver's, not a clinician's: heart rate and sleep are fine; elevated and deviation are
-    /// not. A simple why (a poor night, a bug) is allowed; treating or fixing is not.
+    /// one short, warm sentence rather than a structured explanation. The register is
+    /// <see cref="MedicalPromptBlocks.CaregiverRegister"/> — no sample phrases, because this
+    /// model repeats them.
     /// </summary>
     /// <remarks>
     /// Kept short on purpose, and shorter than its siblings. This is the only prompt on a request
@@ -136,9 +134,8 @@ public class HealthInsightService : IHealthInsightService
         Describe how this person is doing to their caregiver.
 
         Third person, write {{NAME}} exactly as written; it stands in for their real
-        name. Write as a caregiver would: heart rate, sleep, quieter today, worth a look.
-        A simple why is fine (a poor night, a bug) — enough to react, not to treat or fix.
-        Not clinic-speak (elevated, abnormal, deviation).
+        name.
+        """ + MedicalPromptBlocks.CaregiverRegister + """
         Match the given tier: green settled, yellow a mention,
         orange or red more attentive.
 

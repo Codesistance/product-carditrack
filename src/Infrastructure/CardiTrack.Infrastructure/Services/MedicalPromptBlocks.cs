@@ -102,6 +102,34 @@ internal static partial class MedicalPromptBlocks
         """;
 
     /// <summary>
+    /// The register every family-facing generation writes in: a caregiver's words, a lay mention
+    /// of what the readings can mean, not clinic-speak and not a fix.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Rules only — no sample phrases, no parentheticals, no "don't say this" lists. MedGemma is
+    /// not suited to few-shot examples: it completes from the nearest text and returns the
+    /// illustration as the answer, member after member. The digest already learned this the hard
+    /// way (<c>DigestGenerationService.ParrotedSuggestions</c> — "Ask how they slept" came back
+    /// verbatim for every member because it sat in the prompt as an example). The same failure
+    /// would turn "quieter today, worth a look" and "(a bug, a poor night)" into the hero line
+    /// and the alert copy. A negative list is still a list it will echo.
+    /// </para>
+    /// <para>
+    /// "Everyday words for the readings" is the positive form of the old "heart rate, sleep are
+    /// fine". "A lay mention of what they can mean" is the allowance to inform and react, not to
+    /// treat or fix — without naming a bug or a poor night. "Not clinic-speak" is the ban without
+    /// handing the model elevated, abnormal, or deviation to repeat.
+    /// </para>
+    /// </remarks>
+    internal const string CaregiverRegister = """
+        Write as a caregiver would. Everyday words for the readings are fine.
+        A lay mention of what they can mean is fine — enough to be informed and react, not to treat or fix.
+        Not clinic-speak.
+
+        """;
+
+    /// <summary>
     /// Injection framing for the free-text sections a family member can write into. The quoted
     /// labels must match the section headings the context sources render, verbatim — the scoping
     /// to named sections is what makes the warning enforceable without also disarming the

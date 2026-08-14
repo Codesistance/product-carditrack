@@ -192,13 +192,66 @@ public class MedicalPromptToneTests
         var alert = AllPrompts().Single(p => p.Field == "AlertInstructions").Prompt;
 
         Assert.Contains("Write as a caregiver would", alert);
-        Assert.Contains("heart rate, sleep, quieter today, worth a look", alert);
+        Assert.Contains(MedicalPromptBlocks.CaregiverRegister.Trim(), alert, StringComparison.Ordinal);
         Assert.Contains("Not clinic-speak", alert);
         Assert.Contains("enough to be informed and react, not to treat or fix", alert);
+        Assert.Contains("one specific thing the caregiver can do now that answers this", alert);
+        Assert.DoesNotContain("heart rate, sleep, quieter today, worth a look", alert);
+        Assert.DoesNotContain("a bug", alert, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("poor night", alert, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("check-in", alert, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("look at the device", alert, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("care team", alert, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("medical AI assistant", alert, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("means clinically", alert, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("flag for review", alert, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("Never suggest a medical cause", alert);
+    }
+
+    /// <summary>
+    /// MedGemma completes from the nearest text. Sample phrases in this block become the
+    /// answer — the digest already shipped "Ask how they slept" for every member that way.
+    /// Parentheticals and "don't say this" lists are the same failure. Rules only.
+    /// </summary>
+    [Fact]
+    public void The_caregiver_register_carries_no_examples()
+    {
+        var register = MedicalPromptBlocks.CaregiverRegister;
+
+        Assert.Contains("Write as a caregiver would", register);
+        Assert.Contains("Everyday words for the readings are fine", register);
+        Assert.Contains("enough to be informed and react, not to treat or fix", register);
+        Assert.Contains("Not clinic-speak", register);
+        Assert.DoesNotContain("(", register, StringComparison.Ordinal);
+        Assert.DoesNotContain("heart rate", register, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("quieter today", register, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("worth a look", register, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("a bug", register, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("poor night", register, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("elevated", register, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("abnormal", register, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("deviation", register, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Every_rule_in_the_caregiver_register_fits_on_one_line()
+    {
+        var lines = MedicalPromptBlocks.CaregiverRegister
+            .Split('\n')
+            .Select(l => l.Trim())
+            .Where(l => l.Length > 0)
+            .ToList();
+
+        Assert.All(lines, line => Assert.EndsWith(".", line));
+        Assert.Equal(3, lines.Count);
+    }
+
+    [Fact]
+    public void The_status_prompt_uses_the_shared_caregiver_register()
+    {
+        var status = AllPrompts().Single(p => $"{p.Service}.{p.Field}" == StatusPrompt).Prompt;
+
+        Assert.Contains(MedicalPromptBlocks.CaregiverRegister.Trim(), status, StringComparison.Ordinal);
     }
 
     [Theory]
