@@ -69,9 +69,12 @@
                          IsVisible="False"
                          RefreshColor="{StaticResource Primary}"
                          Refreshing="OnPullToRefresh">
+                <!-- No Padding here: CollectionView doesn't reliably expose it as a bindable
+                     property across MAUI/platform versions (it built locally but failed Android's
+                     XamlC in CI with XC0009 — "No property ... found for Padding"). Insets are done
+                     with Margin instead, which every View supports, applied to the header, each
+                     item's root, and the footer so the edges line up. -->
                 <CollectionView x:Name="AnsweredList"
-                                Margin="0,0,0,0"
-                                Padding="20,20,20,28"
                                 VerticalScrollBarVisibility="Never"
                                 RemainingItemsThreshold="3"
                                 RemainingItemsThresholdReached="OnRemainingItemsThresholdReached">
@@ -81,7 +84,7 @@
                     </CollectionView.ItemsLayout>
 
                     <CollectionView.Header>
-                        <VerticalStackLayout Spacing="16" Margin="0,0,0,16">
+                        <VerticalStackLayout Spacing="16" Margin="20,20,20,16">
 
                             <Label x:Name="IntroLabel"
                                    Style="{StaticResource Body2}"
@@ -151,17 +154,22 @@
                     <CollectionView.ItemTemplate>
                         <DataTemplate x:DataType="controls:AnsweredQuestionnaireItem">
                             <controls:AnsweredQuestionRow
+                                Margin="20,0,20,0"
                                 AnswerSubmitted="OnAnsweredRowAnswerSubmitted"
                                 DeleteRequested="OnAnsweredRowDeleteRequested"/>
                         </DataTemplate>
                     </CollectionView.ItemTemplate>
 
                     <CollectionView.Footer>
-                        <!-- The next page's placeholder while it loads in the background. -->
-                        <controls:SkeletonView x:Name="LoadMoreSkeleton"
-                                                HeightRequest="72"
-                                                Margin="0,14,0,0"
-                                                IsVisible="False"/>
+                        <!-- Always present (unlike the skeleton it wraps) so the list keeps the same
+                             trailing breathing room below the last row whether or not a page is
+                             loading — the old page's Grid.Padding bottom inset, reproduced without a
+                             CollectionView.Padding. -->
+                        <VerticalStackLayout Margin="20,14,20,28">
+                            <controls:SkeletonView x:Name="LoadMoreSkeleton"
+                                                    HeightRequest="72"
+                                                    IsVisible="False"/>
+                        </VerticalStackLayout>
                     </CollectionView.Footer>
                 </CollectionView>
             </RefreshView>

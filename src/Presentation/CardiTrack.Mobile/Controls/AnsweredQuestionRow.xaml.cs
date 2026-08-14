@@ -15,14 +15,14 @@ public sealed record AnsweredQuestionnaireItem(QuestionnaireResponse Questionnai
 /// </summary>
 /// <remarks>
 /// A CollectionView template recycles this instance across items as the list scrolls, so state is
-/// read from <see cref="BindingContext"/> at event time rather than captured in a closure — the
+/// read from <c>BindingContext</c> at event time rather than captured in a closure — the
 /// same instance that raised the click may already have moved on to a different item's data by the
 /// time a fire-and-forget save completes.
 /// </remarks>
 public partial class AnsweredQuestionRow : ContentView
 {
     /// <summary>The caregiver saved an answer edit. Carries the questionnaire it was for and the
-    /// trimmed text, since <see cref="BindingContext"/> may have moved on by the time a handler
+    /// trimmed text, since <c>BindingContext</c> may have moved on by the time a handler
     /// reacts to this.</summary>
     public event EventHandler<(QuestionnaireResponse Questionnaire, string Answer)>? AnswerSubmitted;
 
