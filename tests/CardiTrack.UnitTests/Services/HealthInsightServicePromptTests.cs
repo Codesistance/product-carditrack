@@ -417,10 +417,12 @@ public class HealthInsightServicePromptTests
         var prompt = CapturedPrompt();
         Assert.Contains("Write as a caregiver would", prompt);
         Assert.Contains("what this alert means in the recent readings", prompt);
+        Assert.Contains("lay mention", prompt);
         Assert.Contains("{{NAME}}", prompt);
         Assert.DoesNotContain("means clinically", prompt);
         Assert.DoesNotContain("medical AI assistant", prompt);
         Assert.DoesNotContain("flag for review", prompt);
+        Assert.DoesNotContain("Never suggest a medical cause", prompt);
     }
 
     [Fact]

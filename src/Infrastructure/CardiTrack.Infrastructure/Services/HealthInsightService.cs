@@ -34,23 +34,26 @@ public class HealthInsightService : IHealthInsightService
     /// <summary>
     /// <c>CARDITRACK_ALERT_PROMPT</c> — explains a fired alert to a caregiver. The register is a
     /// family caregiver's, not a clinician's: heart rate and sleep are fine; elevated and
-    /// deviation are not. "Flag for review" was the old clinical-queue brief and does not belong
-    /// on a line a family reads.
+    /// deviation are not. A lay mention of what the readings can mean is allowed so the family
+    /// can be informed and react; treating or fixing is not. "Flag for review" was the old
+    /// clinical-queue brief and does not belong on a line a family reads.
     /// </summary>
     private const string AlertInstructions =
         MedicalPromptBlocks.Tone + MedicalPromptBlocks.Pronouns + """
         Explain this alert to a family caregiver.
 
         Write as a caregiver would: heart rate, sleep, quieter today, worth a look.
-        Not clinic-speak (elevated, abnormal, deviation). Never suggest a medical cause.
+        A lay mention of what this can mean is fine (a bug, not drinking enough, a poor night) — enough to be informed and react, not to treat or fix.
+        Not clinic-speak (elevated, abnormal, deviation).
         Write {{NAME}} exactly as written wherever you would name the person; it stands in
         for their real name, which you are not given.
 
         Respond with:
-        - explanation: what this alert means in the recent readings, and what may sit behind it.
+        - explanation: what this alert means in the recent readings, and a lay mention of what
+          may sit behind it if the readings support one.
         - recommendedAction: one specific thing the caregiver can do now — a check-in, a look
           at the device, or mentioning it to the care team. Never start, stop or change
-          medication, and never a diagnosis.
+          medication, never a diagnosis, and never a fix.
 
         Keep both fields factual and concise.
         """ + MedicalPromptBlocks.ContextGuardrail;
@@ -115,7 +118,7 @@ public class HealthInsightService : IHealthInsightService
     /// every dashboard view rather than something a caregiver deliberately opened, so it asks for
     /// one short, warm sentence rather than a structured explanation. The register is a family
     /// caregiver's, not a clinician's: heart rate and sleep are fine; elevated and deviation are
-    /// not.
+    /// not. A simple why (a poor night, a bug) is allowed; treating or fixing is not.
     /// </summary>
     /// <remarks>
     /// Kept short on purpose, and shorter than its siblings. This is the only prompt on a request
@@ -134,7 +137,8 @@ public class HealthInsightService : IHealthInsightService
 
         Third person, write {{NAME}} exactly as written; it stands in for their real
         name. Write as a caregiver would: heart rate, sleep, quieter today, worth a look.
-        Not clinic-speak (elevated, abnormal, deviation). Never suggest a medical cause.
+        A simple why is fine (a poor night, a bug) — enough to react, not to treat or fix.
+        Not clinic-speak (elevated, abnormal, deviation).
         Match the given tier: green settled, yellow a mention,
         orange or red more attentive.
 

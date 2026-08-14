@@ -261,6 +261,8 @@ public class HealthInsightServiceStatusTests
         Assert.Contains("Write as a caregiver would", prompt);
         Assert.Contains("heart rate, sleep, quieter today, worth a look", prompt);
         Assert.Contains("Not clinic-speak", prompt);
+        Assert.Contains("enough to react, not to treat or fix", prompt);
+        Assert.DoesNotContain("Never suggest a medical cause", prompt);
         // "Never diagnose" now comes from the shared tone block every prompt opens with, rather
         // than from this prompt's own wording — same guarantee, one place.
         Assert.Contains("never diagnose", prompt, StringComparison.OrdinalIgnoreCase);
