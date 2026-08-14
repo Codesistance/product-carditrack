@@ -194,7 +194,10 @@ public class InactivityDetectionService : IInactivityDetectionService
             return false;
         }
 
-        var existing = (await _unitOfWork.Alerts.GetByCardiMemberAsync(memberId, activeOnly: true)).ToList();
+        // Soft-deleted rows still count: removing the card dismisses this silence episode, not
+        // the next 15-minute tick of the same dead watch. Resolving when the device reports
+        // again (below) is what re-arms the path.
+        var existing = (await _unitOfWork.Alerts.GetByCardiMemberAsync(memberId, activeOnly: false)).ToList();
         var lastDataUtc = await LastGranularMinuteAsync(memberId, utcNow, rules.SilenceThresholdMinutes, ct);
 
         if (lastDataUtc is not null && lastDataUtc > utcNow.AddMinutes(-rules.SilenceThresholdMinutes))

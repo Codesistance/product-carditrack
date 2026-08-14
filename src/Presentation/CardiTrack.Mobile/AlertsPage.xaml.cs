@@ -26,6 +26,7 @@ public partial class AlertsPage : ContentPage
     private CancellationTokenSource? _loadCts;
     private DateTime _lastLoadedUtc = DateTime.MinValue;
     private AlertListResponse? _lastData;
+    private readonly HashSet<Guid> _pendingDeletes = [];
 
     public AlertsPage(ICardiTrackApiClient api, IPopupService popups)
     {
@@ -175,7 +176,14 @@ public partial class AlertsPage : ContentPage
     {
         GroupsStack.Clear();
 
-        var hasAlerts = data.Alerts.Count > 0;
+        // A delete in flight must not reappear because the 30-second tick (or a resume) raced
+        // the DELETE — the card left the screen when they asked, and only a confirmed failure
+        // that still finds the row is allowed to put it back.
+        var alerts = _pendingDeletes.Count == 0
+            ? data.Alerts
+            : data.Alerts.Where(a => !_pendingDeletes.Contains(a.AlertId)).ToList();
+
+        var hasAlerts = alerts.Count > 0;
         GroupsStack.IsVisible = hasAlerts;
         EmptyPanel.IsVisible = !hasAlerts;
 
@@ -207,7 +215,7 @@ public partial class AlertsPage : ContentPage
 
         var sectionTitle = (Style)Microsoft.Maui.Controls.Application.Current!.Resources["Heading3"];
 
-        foreach (var group in GroupByDate(data.Alerts))
+        foreach (var group in GroupByDate(alerts))
         {
             var section = new VerticalStackLayout { Spacing = 13 };
             section.Add(new Label { Text = group.Key, Style = sectionTitle });
@@ -368,12 +376,13 @@ public partial class AlertsPage : ContentPage
 
     /// <summary>
     /// Removes an alert entirely — the caregiver's own housekeeping, distinct from
-    /// acknowledging it. Confirmed first since there's no undo, then removed from view directly
-    /// rather than reloaded, same as <see cref="OnAcknowledgeRequested"/>.
+    /// acknowledging it. Confirmed first since there's no undo. The card leaves the list
+    /// immediately; it only comes back if the DELETE fails <em>and</em> the alert is still
+    /// on the server. A 404 (already gone, or a timeout after a successful write) stays gone.
     /// </summary>
     private async void OnDeleteRequested(object? sender, AlertSummaryResponse alert)
     {
-        if (sender is not AlertListCard card)
+        if (sender is not AlertListCard)
             return;
 
         var confirmed = await _popups.ConfirmWarningAsync(
@@ -382,19 +391,91 @@ public partial class AlertsPage : ContentPage
         if (!confirmed)
             return;
 
+        HideAlert(alert);
+
         try
         {
             await _api.DeleteAlertAsync(alert.AlertId);
-            (card.Parent as Layout)?.Remove(card);
-            if (_lastData is not null)
+        }
+        catch (ApiException ex) when (ex.IsNotFound)
+        {
+            // The row is already gone — that's the outcome they asked for.
+        }
+        catch (ApiException ex) when (!ex.IsSessionExpired)
+        {
+            var stillThere = await AlertStillExistsAsync(alert.AlertId);
+            if (stillThere)
             {
-                _lastData.Alerts = _lastData.Alerts.Where(a => a.AlertId != alert.AlertId).ToList();
-                _lastData.Total = Math.Max(0, _lastData.Total - 1);
+                RestoreAlert(alert);
+                await _popups.ShowWarningAsync(ex.Message, "Couldn't remove it");
             }
         }
-        catch (ApiException ex)
+        finally
         {
-            await _popups.ShowWarningAsync(ex.Message, "Couldn't remove it");
+            // Always drop the id once the attempt has finished — including a 401, which the
+            // filters above do not catch. Leaving it in the set would hide a still-standing
+            // alert from every later refresh if they sign back in on the same page instance.
+            _pendingDeletes.Remove(alert.AlertId);
+        }
+    }
+
+    /// <summary>
+    /// Optimistic hide: drop the row from the cached page and rebuild, and remember the id so a
+    /// refresh that still carries it cannot put it back while DELETE is in flight.
+    /// </summary>
+    private void HideAlert(AlertSummaryResponse alert)
+    {
+        _pendingDeletes.Add(alert.AlertId);
+        if (_lastData is null)
+            return;
+
+        var remaining = _lastData.Alerts.Where(a => a.AlertId != alert.AlertId).ToList();
+        if (remaining.Count != _lastData.Alerts.Count)
+        {
+            _lastData.Alerts = remaining;
+            _lastData.Total = Math.Max(0, _lastData.Total - 1);
+        }
+
+        Render(_lastData);
+    }
+
+    private void RestoreAlert(AlertSummaryResponse alert)
+    {
+        if (_lastData is null)
+            return;
+
+        if (_lastData.Alerts.All(a => a.AlertId != alert.AlertId))
+        {
+            _lastData.Alerts = _lastData.Alerts
+                .Append(alert)
+                .OrderByDescending(a => a.TriggeredAt)
+                .ThenByDescending(a => a.AlertId)
+                .ToList();
+            _lastData.Total++;
+        }
+
+        Render(_lastData);
+    }
+
+    /// <summary>
+    /// Whether the server still has this alert. A 404 is a definite no; any other failure
+    /// cannot confirm existence, so the card stays hidden and the next successful list load
+    /// will show it if it is still there.
+    /// </summary>
+    private async Task<bool> AlertStillExistsAsync(Guid alertId)
+    {
+        try
+        {
+            await _api.GetAlertAsync(alertId);
+            return true;
+        }
+        catch (ApiException ex) when (ex.IsNotFound)
+        {
+            return false;
+        }
+        catch (ApiException)
+        {
+            return false;
         }
     }
 
