@@ -24,6 +24,13 @@ public interface IAlertService
         CancellationToken ct = default);
 
     /// <summary>
+    /// One alert for the detail screen. Throws <see cref="KeyNotFoundException"/> when the
+    /// alert does not exist, is inactive, or belongs to a member the user may not read.
+    /// </summary>
+    Task<AlertDetailResponse> GetByIdAsync(
+        Guid requestingUserId, Guid alertId, CancellationToken ct = default);
+
+    /// <summary>
     /// Marks one alert as handled by the requesting user. Idempotent: acknowledging an
     /// already-acknowledged alert keeps the original timestamp and acknowledger rather than
     /// rewriting who dealt with it. Throws <see cref="KeyNotFoundException"/> when the alert

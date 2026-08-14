@@ -10,8 +10,7 @@ using Microsoft.AspNetCore.Mvc;
 namespace CardiTrack.API.Controllers;
 
 /// <summary>
-/// Alert retrieval and acknowledgment — the P0 slice of docs/execution/backend/api/alerts.md
-/// that backs the mobile Alerts List (M1-10).
+/// Alert retrieval, acknowledgment, and the detail payload for M1-11/12/16.
 /// </summary>
 [Authorize]
 [Route("api/v1")]
@@ -63,6 +62,31 @@ public class AlertsController : BaseApiController
         [FromQuery] int? offset,
         CancellationToken ct)
         => ListAsync(cardiMemberId, severity, status, from, to, limit, offset, ct);
+
+    /// <summary>One alert for the mobile detail screen — the series is the metric that caused it.</summary>
+    [HttpGet("alerts/{alertId:guid}")]
+    [AuditHealthDataAccess("ViewAlert")]
+    [ProducesResponseType(typeof(ApiResponse<AlertDetailResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<ApiResponse<AlertDetailResponse>>> GetAlert(
+        Guid alertId, CancellationToken ct)
+    {
+        if (!UserContext.IsAuthenticated || UserContext.UserId == Guid.Empty)
+        {
+            return Error("We couldn't find your account — please sign in again.", StatusCodes.Status403Forbidden);
+        }
+
+        try
+        {
+            var result = await _alertService.GetByIdAsync(UserContext.UserId, alertId, ct);
+            return Success(result);
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return Error(ex.Message, StatusCodes.Status404NotFound);
+        }
+    }
 
     /// <summary>Marks an alert as handled by the signed-in caregiver.</summary>
     [HttpPost("alerts/{alertId:guid}/acknowledge")]

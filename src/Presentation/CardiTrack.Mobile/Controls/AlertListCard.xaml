@@ -8,9 +8,7 @@
          its left edge. That is what makes the severity rail round into the card's corner
          instead of butting against it as a straight bar would.
 
-         The chevron expands the card in place rather than pushing an alert-detail screen —
-         M1-11/M1-12/M1-16 are not built, and a row that opens nothing would be worse than one
-         that opens its own full text. -->
+         The title opens the detail screen. The chevron still expands the preview in place. -->
     <Border x:Name="SeverityRail"
             StrokeThickness="0"
             Padding="4,0,0,0">
@@ -90,7 +88,7 @@
                        LineBreakMode="TailTruncation"
                        MaxLines="2">
                     <Label.GestureRecognizers>
-                        <TapGestureRecognizer Tapped="OnExpandTapped"/>
+                        <TapGestureRecognizer Tapped="OnOpenTapped"/>
                     </Label.GestureRecognizers>
                 </Label>
 

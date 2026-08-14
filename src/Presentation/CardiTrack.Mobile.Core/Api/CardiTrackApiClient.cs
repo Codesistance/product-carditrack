@@ -123,6 +123,9 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
         return GetAsync<AlertListResponse>(path, ct);
     }
 
+    public Task<AlertDetailResponse> GetAlertAsync(Guid alertId, CancellationToken ct = default) =>
+        GetAsync<AlertDetailResponse>($"api/v1/alerts/{alertId}", ct);
+
     public Task<AlertAcknowledgementResponse> AcknowledgeAlertAsync(
         Guid alertId, CancellationToken ct = default) =>
         SendAsync<AlertAcknowledgementResponse>(

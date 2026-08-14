@@ -204,6 +204,7 @@ public partial class AlertsPage : ContentPage
                 card.CallRequested += OnCallRequested;
                 card.AcknowledgeRequested += OnAcknowledgeRequested;
                 card.DeleteRequested += OnDeleteRequested;
+                card.OpenRequested += OnOpenRequested;
                 section.Add(card);
             }
 
@@ -341,6 +342,9 @@ public partial class AlertsPage : ContentPage
             await _popups.ShowWarningAsync(ex.Message, "Couldn't mark it handled");
         }
     }
+
+    private async void OnOpenRequested(object? sender, AlertSummaryResponse alert) =>
+        await Shell.Current.GoToAsync($"{AlertDetailPage.Route}?alertId={alert.AlertId}");
 
     /// <summary>
     /// Removes an alert entirely — the caregiver's own housekeeping, distinct from
