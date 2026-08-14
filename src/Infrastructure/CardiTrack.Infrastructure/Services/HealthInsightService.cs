@@ -125,8 +125,8 @@ public class HealthInsightService : IHealthInsightService
         as it rises.
 
         Respond with:
-        - headline: two to five words, sentence case, no full stop, no name. E.g. All steady
-        - message: one sentence under 12 words. E.g. Everything looks steady for {{NAME}} today.
+        - headline: two to five words, sentence case, no full stop, no name
+        - message: one sentence under 15 words.
 
         No preamble, no quotation marks, no explanation.
         """ + MedicalPromptBlocks.ContextGuardrail;
