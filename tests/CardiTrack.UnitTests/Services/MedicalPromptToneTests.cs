@@ -355,4 +355,18 @@ public class MedicalPromptToneTests
         Assert.DoesNotContain("pre-existing condition", digest, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("care team", digest, StringComparison.OrdinalIgnoreCase);
     }
+
+    [Fact]
+    public void The_assessment_prompt_uses_caregiver_language_and_names_no_sample_causes()
+    {
+        var assessment = AllPrompts().Single(p => p.Field == "AssessmentInstructions").Prompt;
+
+        Assert.Contains(MedicalPromptBlocks.CaregiverRegister.Trim(), assessment, StringComparison.Ordinal);
+        Assert.Contains("scores under 3 are ordinary", assessment);
+        Assert.Contains("exactly one of critical, high, medium, or low", assessment);
+        Assert.DoesNotContain("heart patient", assessment, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("elevated heart rate during steps", assessment, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("poor air", assessment, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Never diagnose.", assessment, StringComparison.Ordinal);
+    }
 }
