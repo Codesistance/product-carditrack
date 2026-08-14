@@ -1,0 +1,57 @@
+name: Request Copilot review
+
+# Copilot code review only starts when Copilot is added as a reviewer. Cursor's
+# GitHub App token cannot do that (403 Resource not accessible by integration),
+# and a bot `@copilot` comment does not request a review either. This workflow
+# uses AUTOMERGE_TOKEN (a user PAT) so every non-draft PR gets a Copilot review
+# on open, on ready-for-review, and again on each push.
+
+on:
+  pull_request:
+    types: [opened, ready_for_review, reopened, synchronize]
+
+permissions:
+  pull-requests: write
+
+concurrency:
+  group: copilot-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  request-copilot:
+    name: Request Copilot review
+    if: github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    steps:
+      - name: Request Copilot as reviewer
+        env:
+          GH_TOKEN: ${{ secrets.AUTOMERGE_TOKEN || secrets.GITHUB_TOKEN }}
+          PR: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          pending="$(gh api graphql -F owner="${REPO%/*}" -F repo="${REPO#*/}" -F number="${PR}" -f query='
+            query($owner: String!, $repo: String!, $number: Int!) {
+              repository(owner: $owner, name: $repo) {
+                pullRequest(number: $number) {
+                  reviewRequests(first: 100) {
+                    nodes {
+                      requestedReviewer {
+                        __typename
+                        ... on Bot { login }
+                        ... on User { login }
+                      }
+                    }
+                  }
+                }
+              }
+            }' --jq '[.data.repository.pullRequest.reviewRequests.nodes[].requestedReviewer.login] | map(sub("\\[bot\\]$";"")) | any(. == "copilot-pull-request-reviewer")')"
+          if [ "${pending}" = "true" ]; then
+            echo "Copilot review already requested."
+            exit 0
+          fi
+          if ! gh api --method POST "repos/${REPO}/pulls/${PR}/requested_reviewers" \
+            -f 'reviewers[]=copilot-pull-request-reviewer'; then
+            echo "::error::Could not request Copilot review. GITHUB_TOKEN cannot add Copilot; set AUTOMERGE_TOKEN to a user PAT with pull-requests:write."
+            exit 1
+          fi

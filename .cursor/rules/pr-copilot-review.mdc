@@ -1,0 +1,13 @@
+---
+description: Ready PRs only; always wait for Copilot review and triage comments
+alwaysApply: true
+---
+
+# PR Copilot review
+
+- **Never open draft PRs.** Create them ready for review (`draft: false`). Converting a draft to ready does not request Copilot.
+- After opening or pushing to a PR, **request a GitHub Copilot code review** (reviewer `copilot-pull-request-reviewer`). A bot `@copilot` comment is not sufficient. The Cursor GitHub App token cannot add that reviewer (403); the `Request Copilot review` workflow does it with `AUTOMERGE_TOKEN`.
+- **Wait until Copilot finishes** — poll until `copilot-pull-request-reviewer` submits a review. Do not triage from an empty comment list.
+- Pull every Copilot review comment, verify it against the code, and **triage fix vs leave**. Do not apply comments blindly.
+- Post a triage table on the PR (valid / leave / partially valid) and fix the ones that should be fixed.
+- After pushing those fixes, re-request Copilot, wait again, and triage any new comments.
