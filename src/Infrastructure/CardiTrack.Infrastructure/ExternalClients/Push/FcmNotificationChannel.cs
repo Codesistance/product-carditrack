@@ -229,9 +229,9 @@ public class FcmNotificationChannel : INotificationChannel
                 {
                     ChannelId = delivery.Category switch
                     {
-                        DeliveryCategory.Safety => "carditrack.safety",
-                        DeliveryCategory.Health => "carditrack.health",
-                        _ => "carditrack.nudges"
+                        DeliveryCategory.Safety => NotificationChannels.Safety,
+                        DeliveryCategory.Health => NotificationChannels.Health,
+                        _ => NotificationChannels.Nudges
                     },
                     // Named here as well as in the manifest default. Android's small icon has to be
                     // a white-on-transparent silhouette; with neither this nor the manifest
@@ -239,7 +239,9 @@ public class FcmNotificationChannel : INotificationChannel
                     // renders as a featureless grey square — the notification arrived with nothing
                     // on it to say who was calling.
                     Icon = SmallIconName,
-                    Color = SmallIconColor
+                    Color = SmallIconColor,
+                    Sound = PlaysAlertSound(delivery.Category) ? NotificationChannels.AlertSound : null,
+                    DefaultVibrateTimings = PlaysAlertSound(delivery.Category)
                 }
             },
             Apns = new ApnsConfig
@@ -255,11 +257,21 @@ public class FcmNotificationChannel : INotificationChannel
                     .ToDictionary(kv => kv.Key, kv => kv.Value),
                 Aps = new Aps
                 {
-                    Sound = "default",
+                    Sound = PlaysAlertSound(delivery.Category)
+                        ? NotificationChannels.AlertSoundFile
+                        : "default",
                     MutableContent = true,
                     CustomData = new Dictionary<string, object> { ["interruption-level"] = interruptionLevel }
                 }
             }
         };
     }
+
+    /// <summary>
+    /// Safety and Health are the ones a caregiver must hear. Nudges stay on the system default
+    /// (and in practice never push) so a data-gap reminder cannot train someone to silence the
+    /// real pager.
+    /// </summary>
+    private static bool PlaysAlertSound(DeliveryCategory category) =>
+        category is DeliveryCategory.Safety or DeliveryCategory.Health;
 }

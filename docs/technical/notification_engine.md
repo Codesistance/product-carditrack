@@ -162,7 +162,7 @@ channel it lands in, whether it escalates, and whether the user may silence it.
 | Quiet hours | **Overridden** | Red overrides; orange defers | Always respected |
 | Escalates (§6.3) | Yes | Red only | No |
 | Silenceable | No — snooze ≤72h with logged acknowledgement | Sensitivity tuning (R2) | Yes — snooze, mute forever |
-| OS channel | `carditrack.safety` | `carditrack.health` | `carditrack.nudges` (low importance) |
+| OS channel | `carditrack.safety.v2` (sound + vibration) | `carditrack.health.v2` (sound + vibration) | `carditrack.nudges` (low importance) |
 
 Health alerts keep their own `Alert` table and lifecycle (New → Acknowledged → Resolved). Nudges get
 the `Notification` table. **Both produce `NotificationDelivery` rows** — that shared outbox is what
@@ -215,9 +215,14 @@ items can be delivered quietly to Notification Center without a prompt. Two enti
   Time Sensitive; Critical Alerts is an upgrade the code should be ready to flip on per-category.
 
 **Android** — `POST_NOTIFICATIONS` runtime permission (13+). Three notification channels registered at
-first launch so the OS settings screen gives per-category control that mirrors ours; `carditrack.safety`
-at `IMPORTANCE_HIGH`, `carditrack.nudges` at `IMPORTANCE_LOW`. High-priority FCM messages wake the app
-from Doze.
+first launch so the OS settings screen gives per-category control that mirrors ours; `carditrack.safety.v2`
+at `IMPORTANCE_HIGH` with the bundled alert sound and vibration, `carditrack.health.v2` at
+`IMPORTANCE_DEFAULT` with the same sound and a shorter vibrate, `carditrack.nudges` at `IMPORTANCE_LOW`.
+High-priority FCM messages wake the app from Doze. Channel ids are versioned because Android freezes
+a channel's sound the first time it is created — v2 is how Safety/Health gained an audible alert
+after v1 shipped without one. The bundled two-tone chime is `carditrack_alert.wav` (44.1 kHz 16-bit
+mono PCM, under a second) — keep the iOS `Resources/` copy and the Android `res/raw/` copy
+byte-identical; APNs takes the filename with extension, Android the resource name without.
 
 **Detecting denial.** On every foreground the app reads the OS notification settings (authorization
 status on iOS; `areNotificationsEnabled` plus per-channel importance on Android) and reports them with
@@ -247,9 +252,11 @@ check.** This is the single most important reachability signal in the design.
       "ttl": "1800s",
       "collapse_key": "alert-9b2f5f64",
       "notification": {
-        "channel_id": "carditrack.safety",
+        "channel_id": "carditrack.safety.v2",
         "icon": "icon_notification",   // white silhouette; Android alpha-masks the small icon
-        "color": "#135497"
+        "color": "#135497",
+        "sound": "carditrack_alert",
+        "default_vibrate_timings": true
       }
     },
     "apns": {
@@ -261,7 +268,7 @@ check.** This is the single most important reachability signal in the design.
       },
       "payload": { "aps": {
         "interruption-level": "time-sensitive",   // or critical, once entitled
-        "sound": "default", "badge": 3, "mutable-content": 1
+        "sound": "carditrack_alert.wav", "badge": 3, "mutable-content": 1
       }}
     }
   }

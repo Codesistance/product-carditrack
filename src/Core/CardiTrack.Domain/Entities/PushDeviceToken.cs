@@ -32,7 +32,7 @@ public class PushDeviceToken : BaseEntity
 
     public OsAuthorizationStatus OsAuthorizationStatus { get; set; } = OsAuthorizationStatus.NotDetermined;
 
-    /// <summary>Whether the OS-level <c>carditrack.safety</c> channel is enabled — muting it at the OS level arms <c>PUSH_UNREACHABLE</c> the same as a revoked permission.</summary>
+    /// <summary>Whether the OS-level Safety notification channel is enabled — muting it at the OS level arms <c>PUSH_UNREACHABLE</c> the same as a revoked permission.</summary>
     public bool SafetyChannelEnabled { get; set; } = true;
 
     public DateTime LastSeenDate { get; set; }
