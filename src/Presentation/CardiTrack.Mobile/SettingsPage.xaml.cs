@@ -38,6 +38,12 @@ public partial class SettingsPage : ContentPage
         _ = LoadMutesAsync();
     }
 
+    /// <summary>Settings is a tab root reachable by deep link (notification preferences,
+    /// timezone), so like Alerts the arrow falls back to the dashboard when there is no history
+    /// of its own to pop.</summary>
+    private async void OnBackTapped(object? sender, TappedEventArgs e) =>
+        await this.GoBackAsync(AppShell.DashboardRoute);
+
     // ------------------------------------------------------------------ silenced reminders
 
     /// <summary>
