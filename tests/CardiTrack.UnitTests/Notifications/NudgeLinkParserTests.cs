@@ -33,6 +33,17 @@ public class NudgeLinkParserTests
     }
 
     [Fact]
+    public void AlertLinksCarryTheAlertIdThrough()
+    {
+        var alertId = Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
+        var destination = NudgeLinkParser.Parse($"carditrack://alerts/{alertId}");
+
+        Assert.Equal(NudgeDestinationKind.AlertDetail, destination.Kind);
+        Assert.Equal(alertId, destination.EntityId);
+        Assert.Null(destination.CardiMemberId);
+    }
+
+    [Fact]
     public void TheTimeZoneFragmentIsItsOwnDestination()
     {
         // Distinguished from plain settings so the inbox can answer it from the device clock

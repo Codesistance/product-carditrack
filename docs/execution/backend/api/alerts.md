@@ -27,12 +27,13 @@ The one alert-related endpoint that exists: on-demand **MedGemma analysis** of a
 
 ### The M1-10 slice — `AlertsController`
 
-Four endpoints are live, serving the mobile Alerts List:
+Five endpoints are live, serving the mobile Alerts List and the alert detail screen:
 
 | Endpoint | Notes |
 |----------|-------|
 | `GET /api/v1/alerts` | Query params `cardiMemberId`, `severity`, `status`, `from`, `to`, `limit` (default 50, max 200), `offset`. Scoped to the members the caller may read via `ICardiMemberAccessService`; an unreadable `cardiMemberId` returns **404**, not 403, for the usual non-disclosure reason. Unrecognised `severity`/`status` values are rejected with **400** rather than silently ignored. |
 | `GET /api/v1/cardimembers/{id}/alerts` | Same filters, single member. |
+| `GET /api/v1/alerts/{alertId}` | Detail for M1-11/12/16. Same view-access / 404-not-403 rule. Carries **one** chart series chosen from the alert's `rule` (steps for activity/trend/no-morning, resting HR for elevated HR, sleep hours for irregular sleep, granular HR for `realtime_hr`). `device_silence` has no chart. Does **not** return the dashboard's six-metric payload. |
 | `POST /api/v1/alerts/{alertId}/acknowledge` | No request body. Idempotent — re-acknowledging keeps the original timestamp and acknowledger, so a second family member tapping "handled" doesn't overwrite who dealt with it. |
 | `DELETE /api/v1/alerts/{alertId}` | Returns **204**. Removes the alert from the caregiver's lists — housekeeping, not a clinical action. **404** on an unreachable alert (unknown or not the caller's to see). |
 
@@ -42,7 +43,7 @@ Response shape differs from the design below in three ways, all because the impl
 - `severity` is the lowercase `AlertSeverity` name (`green`/`yellow`/`orange`/`red`), and `status` is derived from `AcknowledgedDate` + `IsResolved` rather than stored — see `AlertStatus`.
 - Each summary carries `cardiMemberName`, `emergencyContactPhone` and `emergencyContactName` so the M1-10 card can render its avatar and Call action without a second round-trip. `cardiMemberPhotoUrl` is present but always null: no member photo storage exists yet.
 
-**Still not implemented:** alert detail, status transitions (`PUT .../status`), notes, photos, and history. Per-CardiMember alert preferences remain unbuilt too, though quiet hours and per-category push muting now exist **at user scope** — see "Sensitivity and preferences" below. Acknowledgment takes no `note`/`actionTaken` — notes belong to the unbuilt M1-11/M1-12 detail screens and would need a schema change.
+**Still not implemented:** status transitions (`PUT .../status`), notes, photos, and history. Per-CardiMember alert preferences remain unbuilt too, though quiet hours and per-category push muting now exist **at user scope** — see "Sensitivity and preferences" below. Acknowledgment takes no `note`/`actionTaken` — notes would need a schema change (`AlertNote`).
 
 Alert **summaries** also surface in the dashboard's `recentAlerts` array — see [health-data.md](health-data.md).
 
@@ -155,7 +156,7 @@ Same schema as `GET /api/v1/alerts`.
 
 ## GET `/api/v1/alerts/{alertId}`
 
-Get full detail for a single alert, including context, recommended actions, and alert history frequency.
+> **Implemented** — see "The M1-10 slice" above. The live payload is `AlertDetailResponse`: list fields plus `rule`, `phone`, `acknowledgedByName`, a single `chart` (or null), `comparison`, and silence/no-morning context. It does not return `recommendedActions`, `notes`, or `photos`.
 
 **Priority:** P0 | **Auth Required:** Yes
 

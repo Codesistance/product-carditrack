@@ -28,9 +28,8 @@ public enum NudgeDestinationKind
 /// <summary>A parsed action link: what to open, and for whom.</summary>
 /// <param name="EntityId">
 /// The alert or notification id for <see cref="NudgeDestinationKind.AlertDetail"/>/
-/// <see cref="NudgeDestinationKind.NotificationDetail"/> — currently routed to the list screen
-/// regardless, since no per-item detail screen has a Figma frame yet (M1-11/12/16). Carried
-/// through as inert data so wiring a future detail screen is a routing change, not a re-parse.
+/// <see cref="NudgeDestinationKind.NotificationDetail"/>. Alert taps land on the detail
+/// screen (M1-11/12/16); notification taps still go to the inbox until that screen exists.
 /// </param>
 public readonly record struct NudgeDestination(NudgeDestinationKind Kind, Guid? CardiMemberId, Guid? EntityId = null)
 {

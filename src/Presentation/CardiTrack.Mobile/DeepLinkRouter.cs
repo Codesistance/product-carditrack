@@ -43,6 +43,9 @@ public static class DeepLinkRouter
 
             NudgeDestinationKind.Settings => AppShell.SettingsRoute,
 
+            NudgeDestinationKind.AlertDetail when destination.EntityId is { } a
+                => $"{AlertDetailPage.Route}?alertId={a}",
+
             _ => null
         };
     }

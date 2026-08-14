@@ -67,6 +67,55 @@ public class AlertService : IAlertService
         };
     }
 
+    public async Task<AlertDetailResponse> GetByIdAsync(
+        Guid requestingUserId, Guid alertId, CancellationToken ct = default)
+    {
+        var alert = await _unitOfWork.Alerts.GetByIdWithCardiMemberAsync(alertId);
+        // Same anti-enumeration as HealthInsightService.AnalyzeAlertAsync: missing, inactive,
+        // and unreadable ids all report "Alert not found", so a guessed id cannot be probed.
+        if (alert is null
+            || !alert.IsActive
+            || !await _access.HasViewAccessAsync(requestingUserId, alert.CardiMemberId, ct))
+            throw new KeyNotFoundException("Alert not found");
+
+        var member = await _unitOfWork.CardiMembers.GetByIdAsync(alert.CardiMemberId);
+
+        User? acknowledger = null;
+        if (alert.AcknowledgedByUserId is { } userId)
+            acknowledger = await _unitOfWork.Users.GetByIdAsync(userId);
+
+        var rule = AlertDetailComposer.ReadRule(alert.MetricValues);
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+
+        // Fetch only the window the chart will plot. A sleep alert must not pay for six
+        // dashboard metrics, and device-silence has no health series at all.
+        IReadOnlyList<ActivityLog> logs = [];
+        var days = AlertDetailComposer.DailyLogDays(rule);
+        if (days > 0)
+        {
+            logs = (await _unitOfWork.ActivityLogs.GetByCardiMemberAndDateRangeAsync(
+                    alert.CardiMemberId, today.AddDays(-(days - 1)), today))
+                .ToList();
+        }
+
+        GranularWindow? granular = null;
+        if (AlertDetailComposer.NeedsGranular(rule)
+            && AlertDetailComposer.GranularBounds(alert.MetricValues) is { } bounds)
+        {
+            granular = await _unitOfWork.GranularMetrics.GetWindowAsync(
+                alert.CardiMemberId, bounds.FromUtc, bounds.ToUtc, ct);
+        }
+
+        PatternBaseline? baseline = null;
+        if (days > 0 || granular is not null)
+        {
+            baseline = await _unitOfWork.PatternBaselines.GetLatestByCardiMemberAsync(
+                alert.CardiMemberId, BaselineProgress.PeriodDays);
+        }
+
+        return AlertDetailComposer.Compose(alert, member, acknowledger, logs, today, granular, baseline);
+    }
+
     public async Task<AlertAcknowledgementResponse> AcknowledgeAsync(
         Guid requestingUserId, Guid alertId, CancellationToken ct = default)
     {

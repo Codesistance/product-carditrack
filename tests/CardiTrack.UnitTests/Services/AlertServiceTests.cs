@@ -14,6 +14,10 @@ public class AlertServiceTests
     private readonly IUserCardiMemberRepository _links = Substitute.For<IUserCardiMemberRepository>();
     private readonly ICardiMemberRepository _members = Substitute.For<ICardiMemberRepository>();
     private readonly IAlertRepository _alerts = Substitute.For<IAlertRepository>();
+    private readonly IActivityLogRepository _logs = Substitute.For<IActivityLogRepository>();
+    private readonly IPatternBaselineRepository _baselines = Substitute.For<IPatternBaselineRepository>();
+    private readonly IGranularMetricRepository _granular = Substitute.For<IGranularMetricRepository>();
+    private readonly IUserRepository _users = Substitute.For<IUserRepository>();
 
     private readonly Guid _userId = Guid.NewGuid();
     private readonly Guid _memberId = Guid.NewGuid();
@@ -24,6 +28,10 @@ public class AlertServiceTests
         _unitOfWork.UserCardiMembers.Returns(_links);
         _unitOfWork.CardiMembers.Returns(_members);
         _unitOfWork.Alerts.Returns(_alerts);
+        _unitOfWork.ActivityLogs.Returns(_logs);
+        _unitOfWork.PatternBaselines.Returns(_baselines);
+        _unitOfWork.GranularMetrics.Returns(_granular);
+        _unitOfWork.Users.Returns(_users);
 
         SetupLink(canViewHealthData: true);
         SetupMember(new CardiMember
@@ -359,5 +367,117 @@ public class AlertServiceTests
 
         await Assert.ThrowsAsync<KeyNotFoundException>(
             () => CreateSut().DeleteAsync(_userId, alert.Id));
+    }
+
+    [Fact]
+    public async Task GetById_ForAnUnknownAlert_ThrowsBeforeReadingLogs()
+    {
+        _alerts.GetByIdWithCardiMemberAsync(Arg.Any<Guid>()).Returns((Alert?)null);
+
+        var ex = await Assert.ThrowsAsync<KeyNotFoundException>(
+            () => CreateSut().GetByIdAsync(_userId, Guid.NewGuid()));
+        Assert.Equal("Alert not found", ex.Message);
+
+        await _logs.DidNotReceive().GetByCardiMemberAndDateRangeAsync(
+            Arg.Any<Guid>(), Arg.Any<DateOnly>(), Arg.Any<DateOnly>());
+        await _granular.DidNotReceive().GetWindowAsync(
+            Arg.Any<Guid>(), Arg.Any<DateTime>(), Arg.Any<DateTime>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task GetById_ForAnUnreadableMember_ThrowsBeforeReadingLogs()
+    {
+        var alert = MakeAlert(memberId: _otherMemberId);
+        alert.MetricValues = """{"rule":"activity_decline","steps":100}""";
+        _alerts.GetByIdWithCardiMemberAsync(alert.Id).Returns(alert);
+
+        var ex = await Assert.ThrowsAsync<KeyNotFoundException>(
+            () => CreateSut().GetByIdAsync(_userId, alert.Id));
+        Assert.Equal("Alert not found", ex.Message);
+
+        await _logs.DidNotReceive().GetByCardiMemberAndDateRangeAsync(
+            Arg.Any<Guid>(), Arg.Any<DateOnly>(), Arg.Any<DateOnly>());
+    }
+
+    [Fact]
+    public async Task GetById_ForActivityDecline_FetchesStepsWindowNotGranular()
+    {
+        var alert = MakeAlert(type: AlertType.Inactivity);
+        alert.MetricValues = """{"rule":"activity_decline","steps":2500,"baselineAvgSteps":5000}""";
+        _alerts.GetByIdWithCardiMemberAsync(alert.Id).Returns(alert);
+        _members.GetByIdAsync(_memberId).Returns(new CardiMember { Id = _memberId, Name = "Margaret Doe" });
+        _logs.GetByCardiMemberAndDateRangeAsync(Arg.Any<Guid>(), Arg.Any<DateOnly>(), Arg.Any<DateOnly>())
+            .Returns([]);
+
+        var detail = await CreateSut().GetByIdAsync(_userId, alert.Id);
+
+        Assert.Equal(alert.Id, detail.AlertId);
+        Assert.Equal("activity_decline", detail.Rule);
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        await _logs.Received(1).GetByCardiMemberAndDateRangeAsync(
+            _memberId,
+            today.AddDays(-(AlertDetailComposer.ActivityDays - 1)),
+            today);
+        await _granular.DidNotReceive().GetWindowAsync(
+            Arg.Any<Guid>(), Arg.Any<DateTime>(), Arg.Any<DateTime>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task GetById_ForDeviceSilence_FetchesNeitherLogsNorGranular()
+    {
+        var alert = MakeAlert(type: AlertType.Inactivity);
+        alert.MetricValues = """{"rule":"device_silence","lastDataUtc":"2026-08-14T08:00:00Z"}""";
+        _alerts.GetByIdWithCardiMemberAsync(alert.Id).Returns(alert);
+        _members.GetByIdAsync(_memberId).Returns(new CardiMember { Id = _memberId, Name = "Margaret Doe" });
+
+        var detail = await CreateSut().GetByIdAsync(_userId, alert.Id);
+
+        Assert.Null(detail.Chart);
+        await _logs.DidNotReceive().GetByCardiMemberAndDateRangeAsync(
+            Arg.Any<Guid>(), Arg.Any<DateOnly>(), Arg.Any<DateOnly>());
+        await _granular.DidNotReceive().GetWindowAsync(
+            Arg.Any<Guid>(), Arg.Any<DateTime>(), Arg.Any<DateTime>(), Arg.Any<CancellationToken>());
+        await _baselines.DidNotReceive().GetLatestByCardiMemberAsync(Arg.Any<Guid>(), Arg.Any<int>());
+    }
+
+    [Fact]
+    public async Task GetById_ForRealtimeHeartRate_FetchesGranularNotDailyLogs()
+    {
+        var start = new DateTime(2026, 8, 14, 10, 0, 0, DateTimeKind.Utc);
+        var alert = MakeAlert(type: AlertType.HeartRate);
+        alert.MetricValues =
+            """{"rule":"realtime_hr","hrTrendLast":90,"windowStartUtc":"2026-08-14T10:00:00Z","windowEndUtc":"2026-08-14T11:00:00Z"}""";
+        _alerts.GetByIdWithCardiMemberAsync(alert.Id).Returns(alert);
+        _members.GetByIdAsync(_memberId).Returns(new CardiMember { Id = _memberId, Name = "Margaret Doe" });
+        _granular.GetWindowAsync(_memberId, start, start.AddHours(1), Arg.Any<CancellationToken>())
+            .Returns(new GranularWindow
+            {
+                CardiMemberId = _memberId,
+                FromUtc = start,
+                ToUtc = start.AddHours(1),
+                MinuteSeries = new Dictionary<GranularMetric, float?[]>
+                {
+                    [GranularMetric.HeartRate] = [70f, 90f],
+                },
+            });
+
+        var detail = await CreateSut().GetByIdAsync(_userId, alert.Id);
+
+        Assert.Equal("heartRate", detail.Chart?.Metric);
+        await _granular.Received(1).GetWindowAsync(
+            _memberId, start, start.AddHours(1), Arg.Any<CancellationToken>());
+        await _logs.DidNotReceive().GetByCardiMemberAndDateRangeAsync(
+            Arg.Any<Guid>(), Arg.Any<DateOnly>(), Arg.Any<DateOnly>());
+    }
+
+    [Fact]
+    public async Task GetById_ForASoftDeletedAlert_Throws()
+    {
+        var alert = MakeAlert();
+        alert.IsActive = false;
+        _alerts.GetByIdWithCardiMemberAsync(alert.Id).Returns(alert);
+
+        await Assert.ThrowsAsync<KeyNotFoundException>(
+            () => CreateSut().GetByIdAsync(_userId, alert.Id));
     }
 }

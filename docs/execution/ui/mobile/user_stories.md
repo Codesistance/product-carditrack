@@ -1,6 +1,6 @@
 # CardiTrack User Stories for UI/UX Design
 
-> **Build status (August 13, 2026):** 13 of 17 Figma M1 screens are built in `CardiTrack.Mobile` (M1-01 through M1-10, plus M1-13 CardiMember Detail, M1-14 Edit CardiMember, M1-15 Device Management). M1-10 is a real API-backed Alerts list (filter chips, expand, acknowledge, archived toggle) — not a stub. The unbuilt screens are the alert details (M1-11/M1-12/M1-16) and M1-17 Health Data Export. Four shipped screens have **no Figma M1 frame — needs design sync**: SignInPage, ForgotPasswordPage, VerifyEmailPage, and Onboarding/AccountSetupPage (see Stories 1.5–1.8). Release waves re-baselined: MVP 1 (R1) → Q4 2026, MVP 2 (R2) → Q1 2027, MVP 3 (R3) → Q2 2027. Release sequencing is governed by the [release matrix](../../../release_matrix.md).
+> **Build status (August 14, 2026):** 16 of 17 Figma M1 screens are built in `CardiTrack.Mobile` (M1-01 through M1-16). Alert detail is one page (`AlertDetailPage`) covering M1-11/12/16, charted from the single series that caused the alert. Unbuilt: M1-17 Health Data Export. Four shipped screens have **no Figma M1 frame — needs design sync**: SignInPage, ForgotPasswordPage, VerifyEmailPage, and Onboarding/AccountSetupPage (see Stories 1.5–1.8). Release waves re-baselined: MVP 1 (R1) → Q4 2026, MVP 2 (R2) → Q1 2027, MVP 3 (R3) → Q2 2027. Release sequencing is governed by the [release matrix](../../../release_matrix.md).
 
 Based on the solution manifest, market analysis, and README, here are comprehensive user stories organized by user persona and platform:
 

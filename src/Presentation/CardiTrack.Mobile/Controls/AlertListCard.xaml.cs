@@ -11,6 +11,7 @@ public partial class AlertListCard : ContentView
     public event EventHandler<AlertSummaryResponse>? CallRequested;
     public event EventHandler<AlertSummaryResponse>? AcknowledgeRequested;
     public event EventHandler<AlertSummaryResponse>? DeleteRequested;
+    public event EventHandler<AlertSummaryResponse>? OpenRequested;
 
     private AlertSummaryResponse? _alert;
     private bool _isExpanded;
@@ -100,6 +101,12 @@ public partial class AlertListCard : ContentView
     }
 
     private void OnExpandTapped(object? sender, TappedEventArgs e) => SetExpanded(!_isExpanded);
+
+    private void OnOpenTapped(object? sender, TappedEventArgs e)
+    {
+        if (_alert is { } alert)
+            OpenRequested?.Invoke(this, alert);
+    }
 
     private void OnCallTapped(object? sender, TappedEventArgs e)
     {

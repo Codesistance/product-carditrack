@@ -397,6 +397,31 @@ public class CardiTrackApiClientTests
     }
 
     [Fact]
+    public async Task GetAlert_GetsTheDetailRoute_AndUnwrapsTheChart()
+    {
+        var (client, http) = CreateSut();
+        var alertId = Guid.NewGuid();
+        http.Enqueue(HttpStatusCode.OK, $$"""
+            {"success":true,"message":"ok","data":{
+              "alertId":"{{alertId}}","cardiMemberId":"3fa85f64-5717-4562-b3fc-2c963f66afa6",
+              "cardiMemberName":"Margaret Doe","type":"Inactivity","rule":"activity_decline",
+              "severity":"yellow","status":"new","title":"Quieter than usual","message":"Fewer steps.",
+              "triggeredAt":"2026-08-14T07:00:00Z",
+              "chart":{"metric":"steps","name":"Activity","unit":"steps","windowLabel":"Last 14 days",
+                "value":2500,"baseline":5000,"series":[{"date":"2026-08-13","value":2500}]}
+            },"timestamp":"2026-08-14T00:00:00Z"}
+            """);
+
+        var detail = await client.GetAlertAsync(alertId);
+
+        Assert.Equal($"/api/v1/alerts/{alertId}", http.Requests.Single().Uri!.AbsolutePath);
+        Assert.Equal("activity_decline", detail.Rule);
+        Assert.Equal("steps", detail.Chart!.Metric);
+        Assert.Equal(2500, detail.Chart.Value);
+        Assert.Equal("Last 14 days", detail.Chart.WindowLabel);
+    }
+
+    [Fact]
     public async Task AcknowledgeAlert_PostsToAcknowledgeRoute_WithNoBody()
     {
         var (client, http) = CreateSut();

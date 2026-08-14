@@ -1,0 +1,207 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:controls="clr-namespace:CardiTrack.Mobile.Controls"
+             x:Class="CardiTrack.Mobile.AlertDetailPage"
+             Shell.NavBarIsVisible="False"
+             Shell.TabBarIsVisible="False"
+             BackgroundColor="{StaticResource PageGround}">
+
+    <!-- Alert detail (M1-11 / M1-12 / M1-16). Chrome matches Member Detail: HeaderBand,
+         ElevatedCard, BottomNavBar. Full-bleed — radius is on the cards, not the page. -->
+
+    <Grid RowDefinitions="Auto,*,Auto">
+
+        <controls:HeaderBand Grid.Row="0" ContentPadding="20,16,20,26">
+            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="14">
+                <Border Grid.Column="0"
+                        WidthRequest="38" HeightRequest="38"
+                        StrokeThickness="0"
+                        BackgroundColor="#33FFFFFF"
+                        VerticalOptions="Center">
+                    <Border.StrokeShape>
+                        <RoundRectangle CornerRadius="19"/>
+                    </Border.StrokeShape>
+                    <ImageButton Source="icon_back_white.svg"
+                                 WidthRequest="20" HeightRequest="20"
+                                 BackgroundColor="Transparent"
+                                 Clicked="OnBackClicked"/>
+                </Border>
+
+                <Label Grid.Column="1"
+                       Text="Alert Details"
+                       Style="{StaticResource Heading3}"
+                       TextColor="{StaticResource White}"
+                       VerticalTextAlignment="Center"/>
+            </Grid>
+        </controls:HeaderBand>
+
+        <RefreshView x:Name="Refresher"
+                     Grid.Row="1"
+                     RefreshColor="{StaticResource Primary}"
+                     Refreshing="OnPullToRefresh">
+            <ScrollView>
+                <Grid Padding="20,16,20,28">
+
+                    <VerticalStackLayout x:Name="SkeletonPanel" Spacing="14" IsVisible="False">
+                        <controls:SkeletonView HeightRequest="88"/>
+                        <controls:SkeletonView HeightRequest="160"/>
+                        <controls:SkeletonView HeightRequest="80"/>
+                    </VerticalStackLayout>
+
+                    <VerticalStackLayout x:Name="ErrorPanel"
+                                         Spacing="10"
+                                         IsVisible="False"
+                                         Padding="0,60,0,0">
+                        <Label Text="We couldn't load this alert"
+                               Style="{StaticResource Heading3}"
+                               HorizontalTextAlignment="Center"/>
+                        <Label x:Name="ErrorDetailLabel"
+                               Style="{StaticResource Body2}"
+                               HorizontalTextAlignment="Center"/>
+                        <Button Text="Try again"
+                                Style="{StaticResource SecondaryOutlineButton}"
+                                HorizontalOptions="Center"
+                                Clicked="OnRetryClicked"/>
+                    </VerticalStackLayout>
+
+                    <VerticalStackLayout x:Name="ContentPanel" Spacing="14" IsVisible="False">
+
+                        <Border x:Name="SeverityBanner"
+                                StrokeThickness="0"
+                                Padding="16,14">
+                            <Border.StrokeShape>
+                                <RoundRectangle CornerRadius="20"/>
+                            </Border.StrokeShape>
+                            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
+                                <Image x:Name="SeverityIcon"
+                                       WidthRequest="28" HeightRequest="28"
+                                       VerticalOptions="Start"/>
+                                <VerticalStackLayout Grid.Column="1" Spacing="4">
+                                    <Label x:Name="SeverityBadge"
+                                           FontFamily="QuicksandSemiBold"
+                                           FontSize="12"
+                                           TextColor="{StaticResource White}"/>
+                                    <Label x:Name="TitleLabel"
+                                           Style="{StaticResource Heading3}"
+                                           TextColor="{StaticResource White}"
+                                           LineBreakMode="WordWrap"/>
+                                    <Label x:Name="TimeLabel"
+                                           Style="{StaticResource Body2}"
+                                           TextColor="{StaticResource White}"/>
+                                </VerticalStackLayout>
+                            </Grid>
+                        </Border>
+
+                        <Border Style="{StaticResource ElevatedCard}">
+                            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
+                                <controls:MemberAvatar x:Name="Avatar" BoxWidth="52"/>
+                                <VerticalStackLayout Grid.Column="1" Spacing="2" VerticalOptions="Center">
+                                    <Label x:Name="MemberNameLabel"
+                                           Style="{StaticResource Body1SemiBoldDark}"/>
+                                    <Label x:Name="MemberTypeLabel"
+                                           Style="{StaticResource Body2}"/>
+                                </VerticalStackLayout>
+                            </Grid>
+                        </Border>
+
+                        <Border Style="{StaticResource ElevatedCard}">
+                            <Label x:Name="MessageLabel"
+                                   Style="{StaticResource Body2Dark}"
+                                   LineBreakMode="WordWrap"/>
+                        </Border>
+
+                        <Border x:Name="ChartCard"
+                                Style="{StaticResource ElevatedCard}"
+                                IsVisible="False">
+                            <VerticalStackLayout Spacing="10">
+                                <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10">
+                                    <Border Style="{StaticResource IconTile}"
+                                            BackgroundColor="{StaticResource MetricTileTint}"
+                                            WidthRequest="40" HeightRequest="40"
+                                            Padding="0"
+                                            VerticalOptions="Start">
+                                        <Image x:Name="ChartIcon"
+                                               WidthRequest="22" HeightRequest="22"
+                                               HorizontalOptions="Center"
+                                               VerticalOptions="Center"/>
+                                    </Border>
+                                    <VerticalStackLayout Grid.Column="1" Spacing="1" VerticalOptions="Center">
+                                        <Label x:Name="ChartNameLabel"
+                                               Style="{StaticResource Body1SemiBoldDark}"/>
+                                        <Label x:Name="ChartWindowLabel"
+                                               Style="{StaticResource Body2}"
+                                               FontSize="12"/>
+                                    </VerticalStackLayout>
+                                    <Label x:Name="ChartValueLabel"
+                                           Grid.Column="2"
+                                           Style="{StaticResource Heading3}"
+                                           VerticalOptions="Center"/>
+                                </Grid>
+                                <controls:TrendChart x:Name="Chart" HeightRequest="160"/>
+                                <Label x:Name="ChartBaselineLabel"
+                                       Style="{StaticResource Body2}"
+                                       FontSize="12"/>
+                            </VerticalStackLayout>
+                        </Border>
+
+                        <Border x:Name="ComparisonCard"
+                                Style="{StaticResource ElevatedCard}"
+                                IsVisible="False">
+                            <VerticalStackLayout Spacing="10">
+                                <Grid ColumnDefinitions="*,*" ColumnSpacing="12">
+                                    <VerticalStackLayout Spacing="2">
+                                        <Label x:Name="CurrentLabel"
+                                               Style="{StaticResource Body2}"/>
+                                        <Label x:Name="CurrentValueLabel"
+                                               Style="{StaticResource Body1SemiBoldDark}"/>
+                                    </VerticalStackLayout>
+                                    <VerticalStackLayout Grid.Column="1" Spacing="2">
+                                        <Label x:Name="NormalLabel"
+                                               Style="{StaticResource Body2}"/>
+                                        <Label x:Name="NormalValueLabel"
+                                               Style="{StaticResource Body1SemiBoldDark}"/>
+                                    </VerticalStackLayout>
+                                </Grid>
+                                <Label x:Name="ChangeLabel"
+                                       Style="{StaticResource Body1SemiBoldDark}"
+                                       HorizontalTextAlignment="Center"/>
+                            </VerticalStackLayout>
+                        </Border>
+
+                        <Border x:Name="ContextCard"
+                                Style="{StaticResource ElevatedCard}"
+                                IsVisible="False">
+                            <VerticalStackLayout Spacing="4">
+                                <Label Text="What's going on"
+                                       Style="{StaticResource DashboardSectionTitle}"/>
+                                <Label x:Name="ContextLabel"
+                                       Style="{StaticResource Body2}"
+                                       LineBreakMode="WordWrap"/>
+                            </VerticalStackLayout>
+                        </Border>
+
+                        <Label x:Name="AcknowledgedLabel"
+                               Style="{StaticResource Body2}"
+                               IsVisible="False"/>
+
+                        <Button x:Name="CallButton"
+                                Style="{StaticResource PrimaryGradientButton}"
+                                Clicked="OnCallClicked"/>
+
+                        <Button x:Name="MessageButton"
+                                Style="{StaticResource SecondaryOutlineButton}"
+                                Clicked="OnMessageClicked"/>
+
+                        <Button x:Name="AcknowledgeButton"
+                                Style="{StaticResource SecondaryOutlineButton}"
+                                Clicked="OnAcknowledgeClicked"/>
+
+                    </VerticalStackLayout>
+                </Grid>
+            </ScrollView>
+        </RefreshView>
+
+        <controls:BottomNavBar Grid.Row="2" Tab="Alerts"/>
+    </Grid>
+</ContentPage>
