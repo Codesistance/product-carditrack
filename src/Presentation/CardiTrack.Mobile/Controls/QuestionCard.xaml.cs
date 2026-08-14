@@ -1,5 +1,6 @@
 using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Mobile.Core.Questionnaires;
+using CardiTrack.Mobile.Services;
 
 namespace CardiTrack.Mobile.Controls;
 
@@ -32,6 +33,9 @@ public partial class QuestionCard : ContentView
     /// <summary>The caregiver skipped the question.</summary>
     public event EventHandler? DismissRequested;
 
+    /// <summary>The caregiver asked to delete this answered question and its answer.</summary>
+    public event EventHandler? DeleteRequested;
+
     /// <summary>The questionnaire this card is showing.</summary>
     public QuestionnaireResponse? Questionnaire { get; private set; }
 
@@ -62,6 +66,14 @@ public partial class QuestionCard : ContentView
 
         OpenButton.Text = isAnswered ? "Edit answer" : "Answer";
         DismissButton.IsVisible = !isAnswered;
+        DeleteButton.IsVisible = isAnswered;
+
+        CaptionLabel.IsVisible = isAnswered;
+        if (isAnswered)
+        {
+            var answeredAt = questionnaire.AnsweredAtUtc ?? questionnaire.GeneratedAtUtc;
+            CaptionLabel.Text = $"Answered {RelativeTime.Format(answeredAt)}";
+        }
 
         AnswerEditor.Text = questionnaire.AnswerText ?? string.Empty;
         SaveButton.IsEnabled = MemberQuestionnaires.IsAnswerable(AnswerEditor.Text);
@@ -69,13 +81,15 @@ public partial class QuestionCard : ContentView
         CloseEditor(animated: false);
     }
 
-    /// <summary>Locks the card while a save or a skip is in flight.</summary>
+    /// <summary>Locks the card while a save, skip, or delete is in flight.</summary>
     public void SetBusy(bool busy)
     {
         SaveButton.IsEnabled = !busy && MemberQuestionnaires.IsAnswerable(AnswerEditor.Text);
         CancelButton.IsEnabled = !busy;
         OpenButton.IsEnabled = !busy;
         DismissButton.IsEnabled = !busy;
+        DeleteButton.IsEnabled = !busy;
+        DeleteButton.InputTransparent = busy;
     }
 
     /// <summary>
@@ -114,6 +128,9 @@ public partial class QuestionCard : ContentView
 
     private void OnDismissClicked(object? sender, EventArgs e) =>
         DismissRequested?.Invoke(this, EventArgs.Empty);
+
+    private void OnDeleteTapped(object? sender, TappedEventArgs e) =>
+        DeleteRequested?.Invoke(this, EventArgs.Empty);
 
     private void OpenEditor()
     {

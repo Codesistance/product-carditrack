@@ -16,7 +16,7 @@
          not sit inside an outer ScrollView or that virtualization is defeated. Everything that used
          to sit above the answered stack — the intro, the pending card, the search box, the empty
          state — now lives in CollectionView.Header so it scrolls with the list instead of pinning
-         above it. -->
+         above it. Delete lives on each answered QuestionCard, behind a warning confirm. -->
 
     <Grid RowDefinitions="Auto,*,Auto">
 

@@ -98,8 +98,8 @@ Full specs in [Shipped Screens Without Figma M1 Frames](#shipped-screens-without
 **Entry:** ← M1-13 CardiMember Detail (the card appears inline when a question is waiting; the "Questions & Answers" row opens the page)
 **Exit:** → M1-13 CardiMember Detail
 
-- **QuestionCard** — `ElevatedCard` anatomy with no severity rail (the rail is the grammar for "something is wrong"; this is an invitation): 💬 glyph + heading, the question, an "Asked because …" rationale block in `SelectedOptionBackground`, an optional-by-design softener line, and an "Answer" gradient button that expands an `AuthEntryBorder` editor in place (200 ms, the pause-drop-down animation) with Save/Cancel. A "✕" skips the question after a soft confirm.
-- **QuestionnairesPage** — standard full-bleed scaffold (HeaderBand, RefreshView, skeleton/error/content panels, BottomNavBar): the pending question at the top, then answered questions newest first, each with an "Answered …" caption and a delete action behind a warning confirm. Empty state when nothing has been answered yet.
+- **QuestionCard** — `ElevatedCard` anatomy with no severity rail (the rail is the grammar for "something is wrong"; this is an invitation): 💬 glyph + heading, the question, an "Asked because …" rationale block in `SelectedOptionBackground`, an optional-by-design softener line, and an "Answer" gradient button that expands an `AuthEntryBorder` editor in place (200 ms, the pause-drop-down animation) with Save/Cancel. A "✕" skips a pending question after a soft confirm. An answered card keeps the same chrome and puts a trash control in that header slot (the same 28px tinted action as alert-list delete) plus an "Answered …" caption inside the card; tapping trash asks for a warning confirm before the answer is removed.
+- **QuestionnairesPage** — standard full-bleed scaffold (HeaderBand, RefreshView, skeleton/error/content panels, BottomNavBar): the pending question at the top, then answered questions newest first. Empty state when nothing has been answered yet.
 
 ## User Flows
 

@@ -1,5 +1,4 @@
 using CardiTrack.Application.DTOs.Responses;
-using CardiTrack.Mobile.Services;
 
 namespace CardiTrack.Mobile.Controls;
 
@@ -10,8 +9,8 @@ namespace CardiTrack.Mobile.Controls;
 public sealed record AnsweredQuestionnaireItem(QuestionnaireResponse Questionnaire, string? MemberName);
 
 /// <summary>
-/// One row in the Q&amp;A archive's lazy-loaded list — a <see cref="QuestionCard"/> plus the
-/// answered-at caption and delete affordance beneath it.
+/// One row in the Q&amp;A archive's lazy-loaded list — a <see cref="QuestionCard"/> in its
+/// answered mode, including the in-card delete affordance.
 /// </summary>
 /// <remarks>
 /// A CollectionView template recycles this instance across items as the list scrolls, so state is
@@ -40,7 +39,7 @@ public partial class AnsweredQuestionRow : ContentView
             if (_item is not null)
                 AnswerSubmitted?.Invoke(this, (_item.Questionnaire, answer));
         };
-        DeleteButton.Clicked += (_, _) =>
+        Card.DeleteRequested += (_, _) =>
         {
             if (_item is not null)
                 DeleteRequested?.Invoke(this, _item.Questionnaire);
@@ -62,8 +61,5 @@ public partial class AnsweredQuestionRow : ContentView
             return;
 
         Card.Apply(_item.Questionnaire, _item.MemberName);
-
-        var answeredAt = _item.Questionnaire.AnsweredAtUtc ?? _item.Questionnaire.GeneratedAtUtc;
-        CaptionLabel.Text = $"Answered {RelativeTime.Format(answeredAt)}";
     }
 }
