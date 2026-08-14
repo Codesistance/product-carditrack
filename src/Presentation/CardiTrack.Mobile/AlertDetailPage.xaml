@@ -181,27 +181,73 @@
                             </VerticalStackLayout>
                         </Border>
 
+                        <!-- The deviation reads as a band across the foot of the card rather than
+                             as another line inside it, which is what the design asks for and what
+                             the content wants: the two figures above are neutral readings, and
+                             this is the judgement drawn from them. Padding moves off the card onto
+                             the two sections so the band can run edge to edge; its own bottom
+                             corners match the card's, so it stays a band rather than relying on
+                             the Border to clip it. -->
                         <Border x:Name="ComparisonCard"
                                 Style="{StaticResource ElevatedCard}"
+                                Padding="0"
                                 IsVisible="False">
-                            <VerticalStackLayout Spacing="10">
-                                <Grid ColumnDefinitions="*,*" ColumnSpacing="12">
+                            <VerticalStackLayout Spacing="0">
+                                <Grid ColumnDefinitions="*,*" ColumnSpacing="12"
+                                      Padding="14,14,13,14">
                                     <VerticalStackLayout Spacing="2">
                                         <Label x:Name="CurrentLabel"
                                                Style="{StaticResource Body2}"/>
-                                        <Label x:Name="CurrentValueLabel"
-                                               Style="{StaticResource Body1SemiBoldDark}"/>
+                                        <!-- Number and unit as two spans: the reading is what the
+                                             eye is here for, and "steps" set at the same weight
+                                             competes with the figure it belongs to. -->
+                                        <Label>
+                                            <Label.FormattedText>
+                                                <FormattedString>
+                                                    <Span x:Name="CurrentValueNumber"
+                                                          FontFamily="QuicksandSemiBold"
+                                                          FontSize="18"
+                                                          TextColor="{StaticResource HeadingText}"/>
+                                                    <Span x:Name="CurrentValueUnit"
+                                                          FontFamily="Quicksand"
+                                                          FontSize="13"
+                                                          TextColor="{StaticResource BodyText}"/>
+                                                </FormattedString>
+                                            </Label.FormattedText>
+                                        </Label>
                                     </VerticalStackLayout>
                                     <VerticalStackLayout Grid.Column="1" Spacing="2">
                                         <Label x:Name="NormalLabel"
                                                Style="{StaticResource Body2}"/>
-                                        <Label x:Name="NormalValueLabel"
-                                               Style="{StaticResource Body1SemiBoldDark}"/>
+                                        <Label>
+                                            <Label.FormattedText>
+                                                <FormattedString>
+                                                    <Span x:Name="NormalValueNumber"
+                                                          FontFamily="QuicksandSemiBold"
+                                                          FontSize="18"
+                                                          TextColor="{StaticResource HeadingText}"/>
+                                                    <Span x:Name="NormalValueUnit"
+                                                          FontFamily="Quicksand"
+                                                          FontSize="13"
+                                                          TextColor="{StaticResource BodyText}"/>
+                                                </FormattedString>
+                                            </Label.FormattedText>
+                                        </Label>
                                     </VerticalStackLayout>
                                 </Grid>
-                                <Label x:Name="ChangeLabel"
-                                       Style="{StaticResource Body1SemiBoldDark}"
-                                       HorizontalTextAlignment="Center"/>
+
+                                <Border x:Name="ChangeBand"
+                                        StrokeThickness="0"
+                                        Padding="14,11"
+                                        IsVisible="False">
+                                    <Border.StrokeShape>
+                                        <RoundRectangle CornerRadius="0,0,20,20"/>
+                                    </Border.StrokeShape>
+                                    <Label x:Name="ChangeLabel"
+                                           Style="{StaticResource Body2Medium}"
+                                           HorizontalOptions="Center"
+                                           HorizontalTextAlignment="Center"/>
+                                </Border>
                             </VerticalStackLayout>
                         </Border>
 

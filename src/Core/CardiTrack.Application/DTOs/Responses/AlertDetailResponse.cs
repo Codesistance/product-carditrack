@@ -91,6 +91,18 @@ public class AlertComparisonResponse
     public string NormalLabel { get; set; } = string.Empty;
     public string NormalValue { get; set; } = string.Empty;
     public string? ChangeLabel { get; set; }
+
+    /// <summary>
+    /// The same deviation <see cref="ChangeLabel"/> describes, signed and rounded to whole
+    /// percent — negative below normal, positive above, zero in line. Null when there is nothing
+    /// to compare.
+    /// </summary>
+    /// <remarks>
+    /// The label already carries "below"/"above" in words, so this exists for what words cannot
+    /// drive: which way the arrow beside it points. Deriving that by parsing the sentence would
+    /// make a display decision depend on its wording.
+    /// </remarks>
+    public decimal? ChangePercent { get; set; }
 }
 
 /// <summary>
