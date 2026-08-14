@@ -105,6 +105,7 @@ public partial class AlertsPage : ContentPage
         var showArchived = _showArchived;
         var (severity, status, from) = QueryFor(requestedFilter, showArchived);
 
+        var loadNudges = false;
         try
         {
             var data = await _api.GetAlertsAsync(severity, status, from, ct: cts.Token);
@@ -115,6 +116,7 @@ public partial class AlertsPage : ContentPage
             _lastLoadedUtc = DateTime.UtcNow;
             Render(data);
             SetState(AlertsState.Loaded);
+            loadNudges = true;
         }
         catch (ApiException ex)
         {
@@ -141,24 +143,41 @@ public partial class AlertsPage : ContentPage
             // try, so a hung summary call left pull-to-refresh spinning and blocked the next chip
             // load's finally from looking like the owner of the spinner (#307 / #308).
             //
-            // Only the newest request owns the page's loading state — and it has to let go of the
-            // field before disposing, or it leaves _loadCts pointing at a disposed source and the
-            // Cancel above throws ObjectDisposedException on the very next load.
+            // Leave `_loadCts` pointing at this source until nudges finish so a newer load can
+            // still Cancel() them — only clear the loading flags here.
             if (generation == _loadGeneration && ReferenceEquals(_loadCts, cts))
             {
-                _loadCts = null;
                 _isLoading = false;
                 Refresher.IsRefreshing = false;
             }
 
-            cts.Dispose();
+            // `return` above still runs this finally, then exits the method — dispose here so a
+            // superseded load cannot leak its CTS. A successful load disposes after nudges below.
+            if (!loadNudges)
+            {
+                if (ReferenceEquals(_loadCts, cts))
+                    _loadCts = null;
+                cts.Dispose();
+            }
         }
+
+        if (!loadNudges)
+            return;
 
         // After the alerts, and isolated from them: this screen's job is health events, and a
         // failure fetching housekeeping must never cost the caregiver the list they came for.
-        // Generation (not the disposed CTS) decides whether this load is still the one on screen.
-        if (generation == _loadGeneration)
-            await LoadNudgeSectionAsync(CancellationToken.None);
+        // Still uses this load's token so a newer chip tap cancels the summary in flight.
+        try
+        {
+            if (!IsStale(generation, cts))
+                await LoadNudgeSectionAsync(generation, cts.Token);
+        }
+        finally
+        {
+            if (ReferenceEquals(_loadCts, cts))
+                _loadCts = null;
+            cts.Dispose();
+        }
     }
 
     private void CancelInFlightLoad()
@@ -534,11 +553,13 @@ public partial class AlertsPage : ContentPage
     /// Fills the "Also needs your attention" section — data-completeness items, kept in their own
     /// block below the health alerts rather than mixed into them.
     /// </summary>
-    private async Task LoadNudgeSectionAsync(CancellationToken ct)
+    private async Task LoadNudgeSectionAsync(int generation, CancellationToken ct)
     {
         try
         {
             var summary = await _api.GetNotificationSummaryAsync(ct);
+            if (generation != _loadGeneration)
+                return;
 
             NudgeStack.Clear();
 
@@ -558,8 +579,15 @@ public partial class AlertsPage : ContentPage
             NudgeSection.IsVisible = items.Count > 0;
             NudgeSeeAllLink.IsVisible = summary.OpenCount > items.Count;
         }
+        catch (ApiException) when (ct.IsCancellationRequested || generation != _loadGeneration)
+        {
+            // Superseded — leave whatever the newer load paints; do not blank the section.
+        }
         catch (ApiException)
         {
+            if (generation != _loadGeneration)
+                return;
+
             NudgeSection.IsVisible = false;
         }
     }
