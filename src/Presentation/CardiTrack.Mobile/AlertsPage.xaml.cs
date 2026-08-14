@@ -118,6 +118,11 @@ public partial class AlertsPage : ContentPage
             SetState(AlertsState.Loaded);
             loadNudges = true;
         }
+        catch (OperationCanceledException) when (IsStale(generation, cts))
+        {
+            // Cancellation during the HTTP body read is not wrapped as ApiException — treat it
+            // the same as a superseded transport cancel so fire-and-forget callers stay quiet.
+        }
         catch (ApiException ex)
         {
             // A superseded request reports its cancellation as a transport failure. That is
