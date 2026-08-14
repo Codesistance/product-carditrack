@@ -46,6 +46,12 @@ builder.Services.AddSingleton(configLoader);
 builder.Services.AddSingleton<IEncryptionService>(
     new AesEncryptionService(configLoader.GetRequired(ConfigurationKeys.Encryption.Key)));
 
+// Distributed cache — Redis in production, in-process locally (AddCachingServices' own
+// fallback). InactivityDetectionService and StatisticalAlertService use it to invalidate the
+// Dashboard's cached status line when they raise or resolve an alert, and that invalidation
+// only reaches the API process's cache when both sides are pointed at the same Redis instance.
+builder.Services.AddCachingServices(configuration);
+
 // Repositories
 builder.Services.AddScoped<IOrganizationRepository, OrganizationRepository>();
 builder.Services.AddScoped<IUserRepository, UserRepository>();
