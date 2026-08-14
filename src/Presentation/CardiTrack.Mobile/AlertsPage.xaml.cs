@@ -24,6 +24,12 @@ public partial class AlertsPage : ContentPage
     private bool _isLoading;
     private bool _showArchived;
     private CancellationTokenSource? _loadCts;
+    /// <summary>
+    /// Bumps on every new load so a slow response from a cancelled request cannot paint over the
+    /// chip the caregiver just tapped — CTS cancellation alone is not enough when the HTTP call
+    /// has already completed and its continuation is queued behind the UI thread.
+    /// </summary>
+    private int _loadGeneration;
     private DateTime _lastLoadedUtc = DateTime.MinValue;
     private AlertListResponse? _lastData;
     private readonly HashSet<Guid> _pendingDeletes = [];
@@ -80,35 +86,41 @@ public partial class AlertsPage : ContentPage
         if (_isLoading && !force)
             return;
 
-        _loadCts?.Cancel();
+        // Cancel can throw if a previous finally already disposed the source while another
+        // caller still held the field — that used to abort the new load before SetState, so the
+        // chip highlighted and the list never moved (#308) and the pull spinner never cleared (#307).
+        CancelInFlightLoad();
+
         var cts = new CancellationTokenSource();
         _loadCts = cts;
+        var generation = ++_loadGeneration;
         _isLoading = true;
 
         if (_lastData is null)
             SetState(AlertsState.Loading);
 
+        // Capture the chip at request start so a later tap cannot let this response paint under
+        // a different filter — the generation check drops the whole load if it was superseded.
+        var requestedFilter = Filters.Selected;
+        var showArchived = _showArchived;
+        var (severity, status, from) = QueryFor(requestedFilter, showArchived);
+
         try
         {
-            var (severity, status, from) = CurrentQuery();
             var data = await _api.GetAlertsAsync(severity, status, from, ct: cts.Token);
-            if (cts.IsCancellationRequested)
+            if (IsStale(generation, cts))
                 return;
 
             _lastData = data;
             _lastLoadedUtc = DateTime.UtcNow;
             Render(data);
             SetState(AlertsState.Loaded);
-
-            // After the alerts, and isolated from them: this screen's job is health events, and a
-            // failure fetching housekeeping must never cost the caregiver the list they came for.
-            await LoadNudgeSectionAsync(cts.Token);
         }
         catch (ApiException ex)
         {
             // A superseded request reports its cancellation as a transport failure. That is
             // this page's own doing, so it must not surface as "no connection".
-            if (cts.IsCancellationRequested)
+            if (IsStale(generation, cts))
                 return;
 
             if (_lastData is null)
@@ -125,44 +137,63 @@ public partial class AlertsPage : ContentPage
         }
         finally
         {
+            // Release the list's loading state before housekeeping. Nudges used to sit inside the
+            // try, so a hung summary call left pull-to-refresh spinning and blocked the next chip
+            // load's finally from looking like the owner of the spinner (#307 / #308).
+            //
             // Only the newest request owns the page's loading state — and it has to let go of the
             // field before disposing, or it leaves _loadCts pointing at a disposed source and the
-            // Cancel above throws ObjectDisposedException on the very next load. That is not a
-            // theoretical race: it fired on the second load every time, which is to say always.
-            //
-            // What it looked like was not a crash. Every caller but one starts the load without
-            // awaiting it, so the exception went to an unobserved task and vanished — the screen
-            // simply stopped updating, frozen on whatever its first load had rendered, with the
-            // chips, the pull-to-refresh spinner and the 30-second tick all silently doing
-            // nothing. A caregiver looking at "Nothing to worry about" was reading a snapshot from
-            // whenever they first opened the tab. The archive button is the one caller that does
-            // await, so it turned the same bug into an app-killing crash out of an async void.
-            //
-            // A superseded request leaves the field alone: it belongs to the newer load, which is
-            // still using it.
-            if (ReferenceEquals(_loadCts, cts))
+            // Cancel above throws ObjectDisposedException on the very next load.
+            if (generation == _loadGeneration && ReferenceEquals(_loadCts, cts))
             {
                 _loadCts = null;
                 _isLoading = false;
                 Refresher.IsRefreshing = false;
             }
+
             cts.Dispose();
         }
+
+        // After the alerts, and isolated from them: this screen's job is health events, and a
+        // failure fetching housekeeping must never cost the caregiver the list they came for.
+        // Generation (not the disposed CTS) decides whether this load is still the one on screen.
+        if (generation == _loadGeneration)
+            await LoadNudgeSectionAsync(CancellationToken.None);
     }
+
+    private void CancelInFlightLoad()
+    {
+        var inFlight = _loadCts;
+        if (inFlight is null)
+            return;
+
+        try
+        {
+            inFlight.Cancel();
+        }
+        catch (ObjectDisposedException)
+        {
+            // Already finished disposing — treat as cancelled.
+        }
+    }
+
+    private bool IsStale(int generation, CancellationTokenSource cts) =>
+        generation != _loadGeneration || cts.IsCancellationRequested;
 
     /// <summary>
     /// The chip selection as wire filters. Archived overrides the chips entirely — it is a
     /// different list, not a narrower one.
     /// </summary>
-    private (string? Severity, string? Status, DateTime? From) CurrentQuery()
+    private static (string? Severity, string? Status, DateTime? From) QueryFor(
+        AlertFilter filter, bool showArchived)
     {
-        if (_showArchived)
+        if (showArchived)
             return (null, "resolved", null);
 
         // Local midnight, not UTC: "Today" has to mean the caregiver's today.
         var todayStart = DateTime.Today;
 
-        return Filters.Selected switch
+        return filter switch
         {
             AlertFilter.Unread => (null, "new", null),
             AlertFilter.Critical => ("red", null, null),
@@ -281,8 +312,10 @@ public partial class AlertsPage : ContentPage
     private void OnFilterChanged(object? sender, AlertFilter filter)
     {
         // A filter change is a different query, so the cached page no longer applies —
-        // dropping it puts the skeleton back rather than leaving stale rows under new chips.
+        // dropping it and showing the skeleton immediately rather than leaving stale rows
+        // under the newly highlighted chip while the request is in flight (#308).
         _lastData = null;
+        SetState(AlertsState.Loading);
         _ = LoadAsync(force: true);
     }
 
@@ -360,6 +393,17 @@ public partial class AlertsPage : ContentPage
             if (_lastData is not null)
                 _lastData.UnreadCount = result.UnreadCount;
 
+            // Under Unread, an acknowledged row no longer matches the chip — drop it the same
+            // way a delete does, rather than re-applying in place and leaving a handled card
+            // under a filter that promised only new ones (#308).
+            if (Filters.Selected == AlertFilter.Unread && !_showArchived)
+            {
+                RemoveAlertFromCache(alert.AlertId);
+                if (_lastData is not null)
+                    Render(_lastData);
+                return;
+            }
+
             // Re-applied rather than reloaded: the caregiver is looking at this row, and a full
             // reload would reshuffle the list under their thumb.
             card.Apply(alert);
@@ -426,17 +470,22 @@ public partial class AlertsPage : ContentPage
     private void HideAlert(AlertSummaryResponse alert)
     {
         _pendingDeletes.Add(alert.AlertId);
+        RemoveAlertFromCache(alert.AlertId);
+        if (_lastData is not null)
+            Render(_lastData);
+    }
+
+    private void RemoveAlertFromCache(Guid alertId)
+    {
         if (_lastData is null)
             return;
 
-        var remaining = _lastData.Alerts.Where(a => a.AlertId != alert.AlertId).ToList();
-        if (remaining.Count != _lastData.Alerts.Count)
-        {
-            _lastData.Alerts = remaining;
-            _lastData.Total = Math.Max(0, _lastData.Total - 1);
-        }
+        var remaining = _lastData.Alerts.Where(a => a.AlertId != alertId).ToList();
+        if (remaining.Count == _lastData.Alerts.Count)
+            return;
 
-        Render(_lastData);
+        _lastData.Alerts = remaining;
+        _lastData.Total = Math.Max(0, _lastData.Total - 1);
     }
 
     private void RestoreAlert(AlertSummaryResponse alert)
