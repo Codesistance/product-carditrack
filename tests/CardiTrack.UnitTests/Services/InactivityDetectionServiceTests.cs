@@ -5,6 +5,7 @@ using CardiTrack.Domain.Entities;
 using CardiTrack.Domain.Enums;
 using CardiTrack.Infrastructure.Services;
 using CardiTrack.Infrastructure.Settings;
+using Microsoft.Extensions.Caching.Distributed;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
@@ -133,7 +134,7 @@ public class InactivityDetectionServiceTests
 
     private InactivityDetectionService CreateSut() =>
         new(_unitOfWork, Substitute.For<IDispatchService>(), BuildServices(),
-            NullLogger<InactivityDetectionService>.Instance);
+            Substitute.For<IDistributedCache>(), NullLogger<InactivityDetectionService>.Instance);
 
     /// <summary>
     /// Gives the member a connected device, so the pre-alert probe has something to pull. Without

@@ -5,6 +5,7 @@ using CardiTrack.Application.Services;
 using CardiTrack.Domain.Entities;
 using CardiTrack.Domain.Enums;
 using CardiTrack.Infrastructure.Services.PromptContext;
+using Microsoft.Extensions.Caching.Distributed;
 using Microsoft.Extensions.Logging;
 
 namespace CardiTrack.Infrastructure.Services;
@@ -71,17 +72,20 @@ public class RealtimeAssessmentService : IRealtimeAssessmentService
     private readonly IUnitOfWork _unitOfWork;
     private readonly IMedicalAiService _medicalAi;
     private readonly MemberContextComposer _memberContext;
+    private readonly IDistributedCache _cache;
     private readonly ILogger<RealtimeAssessmentService> _logger;
 
     public RealtimeAssessmentService(
         IUnitOfWork unitOfWork,
         IMedicalAiService medicalAi,
         MemberContextComposer memberContext,
+        IDistributedCache cache,
         ILogger<RealtimeAssessmentService> logger)
     {
         _unitOfWork = unitOfWork;
         _medicalAi = medicalAi;
         _memberContext = memberContext;
+        _cache = cache;
         _logger = logger;
     }
 
@@ -229,7 +233,13 @@ public class RealtimeAssessmentService : IRealtimeAssessmentService
     {
         var existing = await _unitOfWork.Alerts.GetByCardiMemberAsync(memberId, activeOnly: true);
         if (AlertResolution.Resolve(existing, a => a.AlertType == AlertType.HeartRate, utcNow) > 0)
+        {
             await _unitOfWork.SaveChangesAsync();
+
+            // The dashboard's live status line may have been generated while this alert was
+            // still open, so it can go on describing a tier the member has since left.
+            await _cache.RemoveAsync(DashboardStatusCacheKey.For(memberId), ct);
+        }
     }
 
     private async Task RaiseAlertAsync(RealtimeAssessment assessment, CancellationToken ct)
@@ -265,6 +275,7 @@ public class RealtimeAssessmentService : IRealtimeAssessmentService
             }),
         });
         await _unitOfWork.SaveChangesAsync();
+        await _cache.RemoveAsync(DashboardStatusCacheKey.For(assessment.CardiMemberId), ct);
     }
 
     /// <summary>MedGemma's reply shape for this prompt. Internal, not Application/DTOs — this

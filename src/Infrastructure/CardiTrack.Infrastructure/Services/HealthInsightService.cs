@@ -331,7 +331,7 @@ public class HealthInsightService : IHealthInsightService
     {
         await _access.RequireViewAccessAsync(requestingUserId, cardiMemberId, ct);
 
-        var cacheKey = $"dashboard-status:{cardiMemberId}";
+        var cacheKey = DashboardStatusCacheKey.For(cardiMemberId);
         var cachedJson = await _cache.GetStringAsync(cacheKey, ct);
         if (cachedJson is not null)
         {

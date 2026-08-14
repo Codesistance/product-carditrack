@@ -3,6 +3,7 @@ using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Application.Services;
 using CardiTrack.Application.Services.Notifications;
 using CardiTrack.Domain.Entities;
+using Microsoft.Extensions.Caching.Distributed;
 using Microsoft.Extensions.Logging;
 
 namespace CardiTrack.Infrastructure.Services;
@@ -24,13 +25,18 @@ public class StatisticalAlertService : IStatisticalAlertService
 {
     private readonly IUnitOfWork _unitOfWork;
     private readonly IDispatchService _dispatch;
+    private readonly IDistributedCache _cache;
     private readonly ILogger<StatisticalAlertService> _logger;
 
     public StatisticalAlertService(
-        IUnitOfWork unitOfWork, IDispatchService dispatch, ILogger<StatisticalAlertService> logger)
+        IUnitOfWork unitOfWork,
+        IDispatchService dispatch,
+        IDistributedCache cache,
+        ILogger<StatisticalAlertService> logger)
     {
         _unitOfWork = unitOfWork;
         _dispatch = dispatch;
+        _cache = cache;
         _logger = logger;
     }
 
@@ -160,6 +166,12 @@ public class StatisticalAlertService : IStatisticalAlertService
         if (created.Count > 0)
         {
             await _unitOfWork.SaveChangesAsync();
+
+            // A newly-raised alert can move the member's severity tier, and the dashboard's live
+            // status line was generated (and cached for up to 15 minutes) against whatever tier
+            // was current when it last ran — without this a caregiver can see a fresh warning
+            // badge sitting over a stale "everything looks steady" sentence.
+            await _cache.RemoveAsync(DashboardStatusCacheKey.For(memberId), ct);
 
             // Push dispatch (notification_engine.md Phase 3) — the same direct-service-call
             // pattern INotificationGapResolver already establishes, not a domain event (this
