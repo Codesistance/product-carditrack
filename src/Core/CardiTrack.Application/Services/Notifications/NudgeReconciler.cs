@@ -173,7 +173,7 @@ public static class NudgeReconciler
             RuleCode = rule.RuleCode,
             RuleVersion = rule.Version,
             Category = rule.Spec.Category,
-            Priority = rule.Spec.Priority,
+            Priority = verdict.Priority ?? rule.Spec.Priority,
             Fingerprint = fingerprint,
             TitleKey = NudgeRuleCatalogue.TitleKey(rule.RuleCode, verdict.Variant),
             BodyKey = NudgeRuleCatalogue.BodyKey(rule.RuleCode, verdict.Variant),
@@ -221,6 +221,16 @@ public static class NudgeReconciler
 
         // Progress counters move while the gap stays open — "4/30 days" becoming "11/30".
         existing.TemplateData = Serialize(verdict.TemplateData);
+
+        // Same fingerprint, worse gap: a device connection keeps its id as its battery keeps
+        // draining, so a tier change (warning -> urgent -> critical) refreshes this same row
+        // rather than opening a new one. Without this a notification raised at "warning" would
+        // sit at that wording and priority for as long as the caregiver leaves it open, even as
+        // the battery — and the actual urgency — kept falling.
+        existing.Priority = verdict.Priority ?? rule.Spec.Priority;
+        existing.TitleKey = NudgeRuleCatalogue.TitleKey(rule.RuleCode, verdict.Variant);
+        existing.BodyKey = NudgeRuleCatalogue.BodyKey(rule.RuleCode, verdict.Variant);
+        existing.BenefitKey = NudgeRuleCatalogue.BenefitKey(rule.RuleCode, verdict.Variant);
     }
 
     private static string Serialize(IReadOnlyDictionary<string, object> templateData) =>

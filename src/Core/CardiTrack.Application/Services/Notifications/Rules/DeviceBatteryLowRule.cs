@@ -45,39 +45,49 @@ public sealed class DeviceBatteryLowRule : INudgeRule
         if (hasBrokenGrant)
             return NudgeVerdict.NoGap;
 
-        var lowest = context.Connections
+        var worst = context.Connections
             .Where(c => c.Status == ConnectionStatus.Connected)
             // A reading only means anything while it is current. Past the freshness window the
             // device has stopped syncing entirely, which DeviceStaleLongRule and the device-silence
             // alert both own — and a percentage captured before the last charge would be a lie.
             .Where(c => DeviceBattery.IsFresh(c.BatteryUpdatedAt, context.UtcNow))
-            .Where(c => DeviceBattery.IsLow(c.BatteryLevel, c.BatteryStatus))
-            // Worst first, then by id so a tie resolves the same way on every evaluation — the
-            // discriminator below is what keeps one device's warning from replacing another's.
-            .OrderBy(c => c.BatteryLevel ?? int.MaxValue)
-            .ThenBy(c => c.Id)
+            .Select(c => (Connection: c, Tier: DeviceBattery.GetTier(c.BatteryLevel, c.BatteryStatus)))
+            .Where(x => x.Tier is not null)
+            // Worst tier first; a tie breaks on the lower percentage, then on id so it resolves
+            // the same way on every evaluation — the discriminator below is what keeps one
+            // device's warning from replacing another's.
+            .OrderByDescending(x => x.Tier)
+            .ThenBy(x => x.Connection.BatteryLevel ?? int.MaxValue)
+            .ThenBy(x => x.Connection.Id)
             .FirstOrDefault();
 
-        if (lowest is null)
+        if (worst is not { Tier: { } tier })
             return NudgeVerdict.NoGap;
 
-        // Three materially different things to say, so three variants rather than one sentence
-        // with holes in it: the device has stopped; it is nearly flat and we know how nearly; it
-        // is nearly flat and the provider gave a band but no number. The third is not hypothetical
-        // — batteryLevel and batteryStatus are independently optional on the provider's schema —
-        // and a "{percent}%" that never gets substituted reaches the caregiver verbatim.
-        var (variant, templateData) = (lowest.BatteryStatus, lowest.BatteryLevel) switch
+        // The tier names the severity; the suffix names the one thing that changes what the
+        // sentence can say. batteryLevel and batteryStatus are independently optional on the
+        // provider's schema, so a variant with no percentage to report must not share a template
+        // with one that has to — a "{percent}%" placeholder nothing ever fills reaches the
+        // caregiver verbatim. Empty gets its own suffix too: the device has already stopped, which
+        // is a materially different sentence from "at 8%" even though both are Critical.
+        var isEmpty = string.Equals(
+            worst.Connection.BatteryStatus, DeviceBattery.EmptyStatus, StringComparison.OrdinalIgnoreCase);
+        var tierName = tier.ToString().ToLowerInvariant();
+        var variant = (isEmpty, worst.Connection.BatteryLevel) switch
         {
-            var (status, _) when string.Equals(status, DeviceBattery.EmptyStatus, StringComparison.OrdinalIgnoreCase)
-                => ("empty", new Dictionary<string, object>()),
-            (_, { } level) => ("low", new Dictionary<string, object> { ["percent"] = level }),
-            _ => ("low_unknown", new Dictionary<string, object>())
+            (true, _) => "critical_empty",
+            (false, { } level) => tierName,
+            (false, null) => $"{tierName}_unknown",
         };
+        var templateData = worst.Connection.BatteryLevel is { } percent
+            ? new Dictionary<string, object> { ["percent"] = percent }
+            : new Dictionary<string, object>();
 
         return NudgeVerdict.Gap(
             deepLink: $"carditrack://cardimembers/{context.Member.Id}/devices",
-            discriminator: lowest.Id.ToString("N"),
+            discriminator: worst.Connection.Id.ToString("N"),
             variant: variant,
-            templateData: templateData);
+            templateData: templateData,
+            priority: DeviceBattery.PriorityFor(tier));
     }
 }

@@ -36,19 +36,36 @@ public static class NudgeCopy
             "Permission to read {name}'s health data was withdrawn, so nothing is being collected.",
         ["nudge.DEVICE_AUTH_BROKEN.revoked.benefit"] = "Reconnect to restore monitoring.",
 
-        ["nudge.DEVICE_BATTERY_LOW.low.title"] = "{name}'s watch is almost out of battery",
-        ["nudge.DEVICE_BATTERY_LOW.low.body"] = "It's down to {percent}%, and will stop collecting when it runs out.",
-        ["nudge.DEVICE_BATTERY_LOW.low.benefit"] = "Charging it now keeps monitoring unbroken.",
+        // Three severity tiers (BatteryAlertTier), each with a plain reading and a "no percentage
+        // reported" variant — a band-only device must not carry a {percent} placeholder nothing
+        // will ever substitute.
+        ["nudge.DEVICE_BATTERY_LOW.warning.title"] = "{name}'s watch battery is getting low",
+        ["nudge.DEVICE_BATTERY_LOW.warning.body"] =
+            "It's down to {percent}%. Charging it tonight avoids a gap in monitoring.",
+        ["nudge.DEVICE_BATTERY_LOW.warning.benefit"] = "Charging it keeps monitoring running smoothly.",
 
-        // Band-only devices report "Low" with no percentage, so this variant carries no {percent}
-        // placeholder rather than one that would reach the caregiver unsubstituted.
-        ["nudge.DEVICE_BATTERY_LOW.low_unknown.title"] = "{name}'s watch is almost out of battery",
-        ["nudge.DEVICE_BATTERY_LOW.low_unknown.body"] = "It will stop collecting when it runs out.",
-        ["nudge.DEVICE_BATTERY_LOW.low_unknown.benefit"] = "Charging it now keeps monitoring unbroken.",
+        ["nudge.DEVICE_BATTERY_LOW.urgent.title"] = "{name}'s watch battery is running low",
+        ["nudge.DEVICE_BATTERY_LOW.urgent.body"] =
+            "It's down to {percent}%, and could stop collecting within a few hours.",
+        ["nudge.DEVICE_BATTERY_LOW.urgent.benefit"] = "Charging it now avoids a gap in monitoring.",
 
-        ["nudge.DEVICE_BATTERY_LOW.empty.title"] = "{name}'s watch has run out of battery",
-        ["nudge.DEVICE_BATTERY_LOW.empty.body"] = "It's stopped collecting, so nothing new is reaching CardiTrack.",
-        ["nudge.DEVICE_BATTERY_LOW.empty.benefit"] = "Charging it restores monitoring.",
+        // Band-only devices report "Low" with no percentage — the same tier as a known 11-20%
+        // reading, but the sentence has no number to give.
+        ["nudge.DEVICE_BATTERY_LOW.urgent_unknown.title"] = "{name}'s watch battery is running low",
+        ["nudge.DEVICE_BATTERY_LOW.urgent_unknown.body"] = "It could stop collecting soon if it isn't charged.",
+        ["nudge.DEVICE_BATTERY_LOW.urgent_unknown.benefit"] = "Charging it now avoids a gap in monitoring.",
+
+        ["nudge.DEVICE_BATTERY_LOW.critical.title"] = "{name}'s watch is almost out of battery",
+        ["nudge.DEVICE_BATTERY_LOW.critical.body"] =
+            "It's down to {percent}%, and will stop collecting when it runs out.",
+        ["nudge.DEVICE_BATTERY_LOW.critical.benefit"] = "Charging it now keeps monitoring unbroken.",
+
+        // A device reporting "Empty" has already stopped, whatever its last percentage said — a
+        // materially different sentence from "at 8%", not just the same one with the number gone.
+        ["nudge.DEVICE_BATTERY_LOW.critical_empty.title"] = "{name}'s watch has run out of battery",
+        ["nudge.DEVICE_BATTERY_LOW.critical_empty.body"] =
+            "It's stopped collecting, so nothing new is reaching CardiTrack.",
+        ["nudge.DEVICE_BATTERY_LOW.critical_empty.benefit"] = "Charging it restores monitoring.",
 
         // ---- Blocking: core value is unavailable ----
         ["nudge.DEVICE_REMOVED.title"] = "{name} has no connected wearable",

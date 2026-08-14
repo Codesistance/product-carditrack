@@ -356,6 +356,38 @@ public class NudgeReconcilerTests
         Assert.Contains("\"captured\":11", stored[0].TemplateData);
     }
 
+    /// <summary>
+    /// The device connection keeps its id as its battery keeps draining, so the same fingerprint
+    /// refreshes rather than a new row being raised — and the refresh must carry the worsened
+    /// tier's priority and copy forward, or the notification would sit at "warning" wording for
+    /// as long as the caregiver leaves it open while the battery kept falling toward zero.
+    /// </summary>
+    [Fact]
+    public void ABatteryNotificationEscalatesInPlaceAsTheTierWorsens()
+    {
+        var deviceId = Guid.Parse("77777777-7777-7777-7777-777777777777");
+        var rules = new INudgeRule[] { new DeviceBatteryLowRule() };
+
+        var warning = new NudgeContextBuilder()
+            .WithConnections(NudgeContextBuilder.BatteryConnection(25, id: deviceId))
+            .Build();
+        var stored = NudgeReconciler.Reconcile([warning], [], rules).ToInsert;
+
+        var inserted = Assert.Single(stored);
+        Assert.Equal(NotificationPriority.Medium, inserted.Priority);
+        Assert.EndsWith(".warning.title", inserted.TitleKey);
+
+        var critical = new NudgeContextBuilder()
+            .WithConnections(NudgeContextBuilder.BatteryConnection(5, id: deviceId))
+            .Build();
+        var plan = NudgeReconciler.Reconcile([critical], stored, rules);
+
+        var updated = Assert.Single(plan.ToUpdate);
+        Assert.Same(inserted, updated);
+        Assert.Equal(NotificationPriority.Critical, updated.Priority);
+        Assert.EndsWith(".critical.title", updated.TitleKey);
+    }
+
     [Fact]
     public void FingerprintsSeparateRulesTargetsAndScopes()
     {
