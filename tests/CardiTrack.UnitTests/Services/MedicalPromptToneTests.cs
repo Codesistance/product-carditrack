@@ -88,6 +88,17 @@ public class MedicalPromptToneTests
     }
 
     /// <summary>
+    /// "Never diagnose" alone is a word a 4B model can obey while still naming the condition it
+    /// just invented. The extra clause is the actual failure mode; forbidding every mention of a
+    /// condition would also stop it using one the caregiver already reported.
+    /// </summary>
+    [Fact]
+    public void The_tone_forbids_inventing_a_condition_not_just_the_word_diagnose()
+    {
+        Assert.Contains("Never diagnose or invent a condition", MedicalPromptBlocks.Tone);
+    }
+
+    /// <summary>
     /// Each rule in the shared block sits wholly on one line. The echo guards that stop a model's
     /// own brief being shown to a caregiver match phrases against the reply, so a rule split
     /// across two lines is one that can never be matched whole — the guard would go on passing

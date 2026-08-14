@@ -27,6 +27,11 @@ internal static partial class MedicalPromptBlocks
     /// because calm is always the answer.
     /// </para>
     /// <para>
+    /// "Never diagnose" is not enough on its own: a 4B model will obey the word and still name
+    /// the condition it just invented. "Or invent a condition" is that failure mode. Forbidding
+    /// every mention of a condition would also stop it using one the caregiver already reported.
+    /// </para>
+    /// <para>
     /// A <c>const</c>, and first in every prompt, because these blocks are the fixed prefix a
     /// serving engine can reuse between calls (docs/llm_design.md). Composed at compile time, so
     /// prepending it costs nothing and cannot vary per member.
@@ -50,7 +55,7 @@ internal static partial class MedicalPromptBlocks
         Be plain, warm and steady, and say what the readings show.
         Add no urgency the data does not carry, and no reassurance it does not support.
         Never suggest the family has missed something or done something wrong.
-        Never diagnose.
+        Never diagnose or invent a condition.
 
         """;
 
