@@ -27,7 +27,7 @@ public partial class AlertListCard : ContentView
     {
         _alert = alert;
 
-        InitialsLabel.Text = NameFormatting.Initials(alert.CardiMemberName);
+        Avatar.Apply(alert.CardiMemberName, alert.CardiMemberPhotoUrl);
         TitleLabel.Text = alert.Title;
         MemberLabel.Text = alert.CardiMemberName;
         MemberLabel.IsVisible = !string.IsNullOrWhiteSpace(alert.CardiMemberName);

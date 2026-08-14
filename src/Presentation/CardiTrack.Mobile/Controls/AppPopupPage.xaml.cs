@@ -14,6 +14,9 @@ public partial class AppPopupPage : ContentPage
     /// <summary>Caps runaway messages (e.g. raw error bodies) so the popup stays readable.</summary>
     private const int MaxMessageLength = 600;
 
+    /// <summary>Gap between Cancel and Confirm, applied only when there are two buttons.</summary>
+    private const double ButtonGap = 12;
+
     private readonly TaskCompletionSource<bool> _result = new();
     private readonly bool _isConfirmation;
     private bool _closing;
@@ -47,6 +50,9 @@ public partial class AppPopupPage : ContentPage
             CancelBtn.Text = cancelText;
             CancelBtn.IsVisible = true;
             CancelColumn.Width = GridLength.Star;
+            // Only now is there a second button for the gutter to separate — see the row's
+            // comment in XAML for what an always-on gutter did to the single-button case.
+            ButtonRow.ColumnSpacing = ButtonGap;
         }
     }
 
