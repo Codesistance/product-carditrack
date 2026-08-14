@@ -241,11 +241,21 @@ public class HealthInsightService : IHealthInsightService
         return new AlertInsightResponse
         {
             AlertId = alertId,
-            Explanation = NamePlaceholder.Resolve(aiResponse.Explanation, name) ?? aiResponse.Explanation,
+            Explanation = ResolvedOrEmpty(aiResponse.Explanation, name),
             Severity = alert.Severity,
-            RecommendedAction = NamePlaceholder.Resolve(aiResponse.RecommendedAction, name)
-                ?? aiResponse.RecommendedAction,
+            RecommendedAction = ResolvedOrEmpty(aiResponse.RecommendedAction, name),
         };
+    }
+
+    /// <summary>
+    /// Substitutes <see cref="NamePlaceholder.Token"/> when a name is on file. Leftover braces
+    /// are dropped rather than returned: the status line and the digest already refuse to show
+    /// them, and an insight that still says <c>{{NAME}}</c> is worse than an empty field.
+    /// </summary>
+    private static string ResolvedOrEmpty(string? text, string? name)
+    {
+        var resolved = NamePlaceholder.Resolve(text, name) ?? string.Empty;
+        return NamePlaceholder.IsPresentIn(resolved) ? string.Empty : resolved;
     }
 
     public async Task<BaselineInsightResponse> AnalyzeBaselineAsync(

@@ -452,4 +452,24 @@ public class HealthInsightServicePromptTests
         Assert.Equal("Margaret's steps dropped well below usual.", result.Explanation);
         Assert.Equal("Call Margaret today and see how they are.", result.RecommendedAction);
     }
+
+    [Fact]
+    public async Task AlertInsight_DropsUnresolvedNamePlaceholders_WhenNoNameIsOnFile()
+    {
+        SetupAlert();
+        _members.GetByIdAsync(_memberId).Returns(new CardiMember
+        {
+            Id = _memberId,
+            Name = "   ",
+            DateOfBirth = DateOfBirth,
+            IsActive = true,
+        });
+
+        var result = await CreateSut().AnalyzeAlertAsync(_userId, _alertId);
+
+        Assert.Equal(string.Empty, result.Explanation);
+        Assert.Equal(string.Empty, result.RecommendedAction);
+        Assert.DoesNotContain("{{NAME}}", result.Explanation, StringComparison.Ordinal);
+        Assert.DoesNotContain("{{NAME}}", result.RecommendedAction, StringComparison.Ordinal);
+    }
 }
