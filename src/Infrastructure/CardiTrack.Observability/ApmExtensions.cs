@@ -220,6 +220,14 @@ public static class ApmExtensions
                     // and Npgsql's meter (connections, commands) — no extra packages.
                     .AddMeter("System.Runtime")
                     .AddMeter("Npgsql")
+                    // EF Core's built-in meter (active DbContexts, queries, SaveChanges,
+                    // compiled-query cache hits/misses, execution-strategy and optimistic-
+                    // concurrency failures). EF publishes these instruments whether or not
+                    // anyone listens, so leaving the meter unsubscribed did not save any work —
+                    // it only dropped the measurements and made the SDK log one
+                    // "Instrument belongs to a Meter not subscribed" warning per instrument
+                    // at every cold start.
+                    .AddMeter("Microsoft.EntityFrameworkCore")
                     // GenAI client metrics (gen_ai.client.operation.duration,
                     // gen_ai.client.token.usage) from AiTelemetry.
                     .AddMeter(TelemetryNames.AiSource)
