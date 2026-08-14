@@ -1060,16 +1060,29 @@ public class DigestGenerationServiceTests
     // ---- Questions ----
 
     [Fact]
+    public void TheQuestionRationaleSchema_AsksForCaregiverLanguage_NotALabNote()
+    {
+        var description = typeof(DigestGenerationService.DigestAiResponse)
+            .GetProperty(nameof(DigestGenerationService.DigestAiResponse.QuestionRationale))!
+            .GetCustomAttribute<System.ComponentModel.DescriptionAttribute>()!
+            .Description;
+
+        Assert.Contains("everyday sentence in a caregiver's words", description, StringComparison.Ordinal);
+        Assert.DoesNotContain("prompted", description, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("in the readings", description, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task StoresTheProposedQuestion_WithWhatPromptedIt()
     {
-        ReturnsQuestion("Has anything changed at home recently?", "Sleep has been shorter all week.");
+        ReturnsQuestion("Has anything changed at home recently?", "Yesterday looked quieter than usual.");
 
         await CreateSut().GenerateDueDigestsAsync(UtcNow);
 
         await _questionnaires.Received(1).AddAsync(Arg.Is<MemberQuestionnaire>(q =>
             q.CardiMemberId == _memberId
             && q.Status == QuestionnaireStatus.Pending
-            && q.TriggerContext == "Sleep has been shorter all week."
+            && q.TriggerContext == "Yesterday looked quieter than usual."
             && q.GeneratedAtUtc == UtcNow));
         await _unitOfWork.Received().SaveChangesAsync();
     }
@@ -1310,6 +1323,98 @@ public class DigestGenerationServiceTests
         await _questionnaires.Received(1).AddAsync(Arg.Any<MemberQuestionnaire>());
     }
 
+    /// <summary>
+    /// The 12-hour gap path exists so a <em>different</em> question can close a live gap sooner.
+    /// The same sentence landing twice in a day is the thing the ordinary week is there to stop,
+    /// and a yellow observation does not waive that.
+    /// </summary>
+    [Fact]
+    public async Task DoesNotReaskTheSameQuestion_EvenWhenAGapWouldAllowANewOne()
+    {
+        const string question = "Did Dad have any visitors yesterday?";
+        ReturnsQuestion(question, "Yesterday looked quieter than usual.");
+        GivenAlerts(AnAlert(UtcNow.AddHours(-2), resolved: false));
+        GivenPreviousQuestion(question, UtcNow.AddHours(-17));
+
+        await CreateSut().GenerateDueDigestsAsync(UtcNow);
+
+        await _questionnaires.DidNotReceive().AddAsync(Arg.Any<MemberQuestionnaire>());
+    }
+
+    /// <summary>The skip control promises the question will not come back. Honour that even after
+    /// the ordinary week has passed, otherwise "we won't ask it again" is a lie.</summary>
+    [Fact]
+    public async Task DoesNotReaskADismissedQuestion_EvenAfterTheOrdinaryFloor()
+    {
+        const string question = "Did Dad have any visitors yesterday?";
+        ReturnsQuestion(question);
+        GivenPreviousQuestion(question, UtcNow.AddDays(-8), QuestionnaireStatus.Dismissed);
+
+        await CreateSut().GenerateDueDigestsAsync(UtcNow);
+
+        await _questionnaires.DidNotReceive().AddAsync(Arg.Any<MemberQuestionnaire>());
+    }
+
+    /// <summary>A standing fact already answered is not a new standing fact. The permanent path
+    /// skips the week so a <em>first</em> ask can land; it must not loop the one they already
+    /// answered.</summary>
+    [Fact]
+    public async Task DoesNotReaskAnAnsweredPermanentQuestion()
+    {
+        const string question = "Does she have a pacemaker?";
+        ReturnsQuestion(question, questionScope: "permanent");
+        GivenPreviousQuestion(
+            question, UtcNow.AddDays(-8), QuestionnaireStatus.Answered, QuestionnaireScope.Permanent);
+
+        await CreateSut().GenerateDueDigestsAsync(UtcNow);
+
+        await _questionnaires.DidNotReceive().AddAsync(Arg.Any<MemberQuestionnaire>());
+    }
+
+    [Fact]
+    public async Task GapBackedQuestion_MayAskSomethingDifferent_SoonerThanTheOrdinaryFloor()
+    {
+        ReturnsQuestion("Has anything changed at home recently?", "Yesterday looked quieter than usual.");
+        GivenAlerts(AnAlert(UtcNow.AddHours(-2), resolved: false));
+        GivenPreviousQuestion("Did Dad have any visitors yesterday?", UtcNow.AddDays(-1));
+
+        await CreateSut().GenerateDueDigestsAsync(UtcNow);
+
+        await _questionnaires.Received(1).AddAsync(Arg.Any<MemberQuestionnaire>());
+    }
+
+    /// <summary>
+    /// A mechanical caption is worse than none. The question is still worth asking; the family
+    /// just should not have to read a lab note under it.
+    /// </summary>
+    [Theory]
+    [InlineData("The question was prompted by the reading that Dad had no visitors yesterday.")]
+    [InlineData("The heart rate was slightly elevated today, reaching 100 bpm during the last hour.")]
+    public async Task DropsAMechanicalRationale_ButStillAsksTheQuestion(string rationale)
+    {
+        ReturnsQuestion("Has anything changed at home recently?", rationale);
+
+        await CreateSut().GenerateDueDigestsAsync(UtcNow);
+
+        await _questionnaires.Received(1).AddAsync(Arg.Is<MemberQuestionnaire>(q =>
+            q.TriggerContext == null
+            && PromptContextFactory.Encryption.Decrypt(q.QuestionText)
+                == "Has anything changed at home recently?"));
+    }
+
+    [Fact]
+    public async Task StripsAnAskedBecausePrefix_RatherThanShowingItTwice()
+    {
+        ReturnsQuestion(
+            "Has anything changed at home recently?",
+            "Asked because yesterday looked quieter than usual.");
+
+        await CreateSut().GenerateDueDigestsAsync(UtcNow);
+
+        await _questionnaires.Received(1).AddAsync(Arg.Is<MemberQuestionnaire>(q =>
+            q.TriggerContext == "Yesterday looked quieter than usual."));
+    }
+
     // ---- Arrangement helpers for the sections above ----
 
     private void GivenPreviousSummary(DateTime generatedAt) =>
@@ -1334,6 +1439,28 @@ public class DigestGenerationServiceTests
         IsResolved = resolved,
         UpdatedDate = updatedAt,
     };
+
+    private void GivenPreviousQuestion(
+        string question,
+        DateTime askedAt,
+        QuestionnaireStatus status = QuestionnaireStatus.Answered,
+        QuestionnaireScope scope = QuestionnaireScope.TimeScoped)
+    {
+        _questionnaires.GetByCardiMemberAsync(_memberId, Arg.Any<CancellationToken>())
+            .Returns(
+            [
+                new MemberQuestionnaire
+                {
+                    CardiMemberId = _memberId,
+                    QuestionText = PromptContextFactory.Encryption.Encrypt(question),
+                    Status = status,
+                    GeneratedAtUtc = askedAt,
+                    Scope = scope,
+                },
+            ]);
+        _questionnaires.GetLatestGeneratedAtAsync(_memberId, Arg.Any<CancellationToken>())
+            .Returns(askedAt);
+    }
 
     private void ReturnsQuestion(string question, string? rationale = null, string? questionScope = null) =>
         _medicalAi.GenerateStructuredAsync<DigestGenerationService.DigestAiResponse>(

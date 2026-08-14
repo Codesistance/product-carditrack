@@ -15,7 +15,7 @@ public class QuestionnaireResponse
     /// <summary>The answer, in plain text. Null while the question is unanswered.</summary>
     public string? AnswerText { get; set; }
 
-    /// <summary>Why it was asked, for the apps to show beneath it. Null when the model gave no reason.</summary>
+    /// <summary>Why it was asked, for the apps to show beneath it. Null when the model gave no reason worth showing.</summary>
     public string? TriggerContext { get; set; }
 
     /// <summary>pending / answered / dismissed, lowercase — the same string convention as alert severity.</summary>

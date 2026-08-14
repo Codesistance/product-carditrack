@@ -80,7 +80,8 @@
                    Style="{StaticResource Body1SemiBoldDark}"
                    LineBreakMode="WordWrap"/>
 
-            <!-- Why this is being asked. Set apart rather than run on from the question, so a
+            <!-- Why this is being asked — the model's own everyday sentence, not a mechanical
+                 "asked because" prefix. Set apart rather than run on from the question, so a
                  question never arrives looking arbitrary. -->
             <Border x:Name="RationaleCard"
                     IsVisible="False"
