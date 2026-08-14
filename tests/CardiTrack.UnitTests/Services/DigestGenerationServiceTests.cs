@@ -943,6 +943,10 @@ public class DigestGenerationServiceTests
         Assert.NotNull(prompt);
         Assert.Contains("must answer something in the readings above", prompt);
         Assert.Contains("equally true for any person on any day", prompt);
+        Assert.DoesNotContain("suggest checking in", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("change of routine", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("new room", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("difficult week", prompt, StringComparison.OrdinalIgnoreCase);
         foreach (var parroted in new[]
                  {
                      "Ask how they slept", "Suggest a short walk together", "Make their favourite tea",

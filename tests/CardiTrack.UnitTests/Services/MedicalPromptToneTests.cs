@@ -340,4 +340,19 @@ public class MedicalPromptToneTests
             StringComparison.Ordinal);
         Assert.DoesNotContain("as background only", digest, StringComparison.Ordinal);
     }
+
+    [Fact]
+    public void The_digest_prompt_uses_the_shared_caregiver_register_and_names_no_sample_phrases()
+    {
+        var digest = AllPrompts().Single(p => p.Field == "FamilyDigestInstructions").Prompt;
+
+        Assert.Contains(MedicalPromptBlocks.CaregiverRegister.Trim(), digest, StringComparison.Ordinal);
+        Assert.Contains("Summarise {{NAME}}'s recent readings for their family", digest);
+        Assert.DoesNotContain("non-medical family member", digest, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Avoid clinical jargon", digest, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("suggest checking in", digest, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("change of routine", digest, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("pre-existing condition", digest, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("care team", digest, StringComparison.OrdinalIgnoreCase);
+    }
 }
