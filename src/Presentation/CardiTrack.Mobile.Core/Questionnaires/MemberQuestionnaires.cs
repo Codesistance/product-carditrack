@@ -19,4 +19,25 @@ public static class MemberQuestionnaires
     /// front of the model.
     /// </summary>
     public static bool IsAnswerable(string? answer) => !string.IsNullOrWhiteSpace(answer);
+
+    /// <summary>
+    /// A question about right now ("did they have visitors yesterday?") rather than a standing
+    /// fact. Unknown or missing scope reads as momentary — that is the model's default, and the
+    /// safer caption if a row arrives without one.
+    /// </summary>
+    public static bool IsForTheMoment(string? scope) =>
+        !string.Equals(scope, "permanent", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// The footnote under the question. Momentary ones say so, so a caregiver does not think we
+    /// will keep "yesterday" on this list; standing ones say we will keep them here.
+    /// </summary>
+    public static string Softener(string? scope, bool isAnswered) =>
+        IsForTheMoment(scope)
+            ? isAnswered
+                ? "This was just for the moment. You can still change or remove it."
+                : "Just for the moment — answering is optional."
+            : isAnswered
+                ? "We'll keep this here. You can change or remove it whenever you like."
+                : "We'll keep this here. Answering is optional.";
 }

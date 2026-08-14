@@ -7,6 +7,7 @@ using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Application.Services;
 using CardiTrack.Domain.Entities;
 using CardiTrack.Domain.Enums;
+using CardiTrack.Infrastructure.Security;
 using CardiTrack.Infrastructure.Services.PromptContext;
 using Microsoft.Extensions.Logging;
 
@@ -70,7 +71,8 @@ public partial class DigestGenerationService : IDigestGenerationService
         - question: one short question to the family about {{NAME}}'s life, at most twenty
           words, ending in a question mark, about ordinary things that would explain the
           readings. Never ask them to measure, check or observe anything, nor about medication, symptoms or a diagnosis.
-        - questionRationale: one plain sentence naming what in the readings prompted the question.
+          Never repeat a question already listed under Family answers to earlier questions.
+        - questionRationale: one everyday sentence in a caregiver's words, so the family can see why this is worth asking. Never name a reading as a reading, never quote a figure, never restate the question.
         - questionScope: permanent if the answer would be a standing fact about {{NAME}} that
           stays true regardless of the day and should inform every future summary; time-scoped if it only explains the
           present moment and should stop mattering once that passes. Most questions are time-scoped.
@@ -101,6 +103,9 @@ public partial class DigestGenerationService : IDigestGenerationService
         "recent monitoring context",
         "never mention monitoring",
         "most days there is nothing worth asking",
+        "family answers to earlier questions",
+        "name a reading as a reading",
+        "never quote a figure",
         "respond with",
     ];
 
@@ -239,6 +244,22 @@ public partial class DigestGenerationService : IDigestGenerationService
 
     /// <summary>Storage cap for the "why this was asked" caption; matches the column.</summary>
     private const int MaxRationaleLength = 500;
+
+    /// <summary>
+    /// Stems that make a rationale a lab note rather than a reason a family would recognise.
+    /// Matched as substrings against the flattened rationale, the same backstop pattern as
+    /// <see cref="DiagnosticMarkers"/>: the prompt already asks for caregiver language, and this
+    /// is what holds when the model names the reading, quotes a figure, or restates the brief.
+    /// Not listed in the prompt — a negative list there is a list it will echo.
+    /// </summary>
+    private static readonly string[] MechanicalRationaleMarkers =
+    [
+        "prompted",
+        "the reading",
+        "asked because",
+        "bpm",
+        "elevated",
+    ];
 
     /// <summary>
     /// Phrasings that make a question clinical rather than curious. CardiTrack is not a medical
@@ -549,6 +570,10 @@ public partial class DigestGenerationService : IDigestGenerationService
     /// <see cref="HasActiveMonitoringContextAsync"/>); no floor at all beyond the pending gate for a
     /// <see cref="QuestionnaireScope.Permanent"/> question, which is a first ask of a new standing
     /// fact rather than a repeat of an old one; or <see cref="MinimumQuestionInterval"/> otherwise.
+    /// Those faster floors never waive the last gate: a proposed question whose wording matches one
+    /// this family has already been asked — dismissed, or within the ordinary week — is dropped.
+    /// The 12-hour path exists so a <em>different</em> question can close a live gap sooner, not so
+    /// the same sentence can land twice.
     /// </para>
     /// </remarks>
     private async Task StoreQuestionIfWorthAskingAsync(
@@ -581,17 +606,25 @@ public partial class DigestGenerationService : IDigestGenerationService
 
             if (utcNow - lastAsked < floor)
                 return;
+
+            var previous = await _unitOfWork.MemberQuestionnaires.GetByCardiMemberAsync(memberId, ct);
+            if (IsRepeatQuestion(resolved, previous, utcNow))
+            {
+                _logger.LogInformation(
+                    "Dropped a proposed family question for CardiMember {CardiMemberId}: it repeats "
+                    + "one this family has already been asked.",
+                    memberId);
+                return;
+            }
         }
 
-        var rationale = aiResponse.QuestionRationale is { } text
-            ? MedicalPromptBlocks.Flatten(NamePlaceholder.Resolve(text, name) ?? string.Empty)
-            : null;
+        var rationale = CleanRationale(aiResponse.QuestionRationale, resolved, name, memberId);
 
         await _unitOfWork.MemberQuestionnaires.AddAsync(new MemberQuestionnaire
         {
             CardiMemberId = memberId,
             QuestionText = _encryption.Encrypt(resolved),
-            TriggerContext = TrimRationale(rationale),
+            TriggerContext = rationale,
             Status = QuestionnaireStatus.Pending,
             GeneratedAtUtc = utcNow,
             Scope = scope,
@@ -607,11 +640,96 @@ public partial class DigestGenerationService : IDigestGenerationService
             memberId, scope);
     }
 
-    /// <summary>The rationale is a caption, not prose; an over-long one is cut rather than dropped.</summary>
-    private static string? TrimRationale(string? rationale) =>
-        string.IsNullOrWhiteSpace(rationale) ? null
-        : rationale.Length > MaxRationaleLength ? rationale[..MaxRationaleLength]
-        : rationale;
+    /// <summary>
+    /// The rationale the family sees under the question, or null when there is nothing worth
+    /// showing. Dropped rather than rewritten: a mechanical caption ("prompted by the reading")
+    /// is worse than no caption, and the question itself is still worth asking without it.
+    /// </summary>
+    private string? CleanRationale(string? rationale, string question, string? name, Guid memberId)
+    {
+        var resolved = NamePlaceholder.Resolve(rationale, name);
+        var cleaned = MedicalPromptBlocks.Flatten(resolved ?? string.Empty)
+            .Trim().TrimStart('-', '*', '•').Trim('"', '\'', ' ').Trim();
+
+        const string askedBecause = "asked because ";
+        if (cleaned.StartsWith(askedBecause, StringComparison.OrdinalIgnoreCase))
+            cleaned = cleaned[askedBecause.Length..].TrimStart();
+
+        if (cleaned.Length == 0)
+            return null;
+
+        cleaned = char.ToUpperInvariant(cleaned[0]) + cleaned[1..];
+
+        var reason = cleaned switch
+        {
+            _ when ReadsLikeTheInstructions(cleaned) => "it restated the instructions",
+            _ when MechanicalRationaleMarkers.Any(marker =>
+                cleaned.Contains(marker, StringComparison.OrdinalIgnoreCase)) =>
+                "it named the reading rather than the day",
+            _ when RestatesTheQuestion(cleaned, question) => "it restated the question",
+            _ => null,
+        };
+
+        if (reason is not null)
+        {
+            _logger.LogInformation(
+                "Dropped the proposed question rationale for CardiMember {CardiMemberId}: "
+                + "{Reason}. The question is stored without a caption.",
+                memberId, reason);
+            return null;
+        }
+
+        return cleaned.Length > MaxRationaleLength ? cleaned[..MaxRationaleLength] : cleaned;
+    }
+
+    /// <summary>
+    /// True when this family has already been asked this wording — dismissed (the skip control
+    /// promises it will not come back), a standing fact already answered, or anything asked inside
+    /// the ordinary week. Compared on flattened, caseless wording so punctuation and a leftover
+    /// question mark cannot sneak the same sentence through.
+    /// </summary>
+    private bool IsRepeatQuestion(
+        string proposed, IReadOnlyList<MemberQuestionnaire> previous, DateTime utcNow)
+    {
+        var needle = NormalizeQuestion(proposed);
+        if (needle.Length == 0)
+            return false;
+
+        foreach (var existing in previous)
+        {
+            var text = EncryptedFieldReader.Reveal(_encryption, existing.QuestionText);
+            if (text is null || NormalizeQuestion(text) != needle)
+                continue;
+
+            if (existing.Status == QuestionnaireStatus.Dismissed)
+                return true;
+
+            if (existing.Scope == QuestionnaireScope.Permanent
+                && existing.Status == QuestionnaireStatus.Answered)
+                return true;
+
+            if (utcNow - existing.GeneratedAtUtc < MinimumQuestionInterval)
+                return true;
+        }
+
+        return false;
+    }
+
+    private static string NormalizeQuestion(string question)
+    {
+        var chars = MedicalPromptBlocks.Flatten(question).ToLowerInvariant()
+            .Select(c => char.IsLetterOrDigit(c) ? c : ' ')
+            .ToArray();
+        return string.Join(' ', new string(chars).Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+    }
+
+    /// <summary>The rationale is the question in statement form — a caption that adds nothing.</summary>
+    private static bool RestatesTheQuestion(string rationale, string question)
+    {
+        var body = NormalizeQuestion(question);
+        return body.Length >= 12
+            && NormalizeQuestion(rationale).Contains(body, StringComparison.Ordinal);
+    }
 
     /// <summary>
     /// The proposed question, or null when there is nothing worth asking.
@@ -975,13 +1093,21 @@ public partial class DigestGenerationService : IDigestGenerationService
         /// </summary>
         [Description(
             "Optional, and usually absent. One short question to the family about {{NAME}}'s "
-            + "life, at most twenty words, ending in a question mark.")]
+            + "life, at most twenty words, ending in a question mark. Never a question the "
+            + "family has already been asked.")]
         public string? Question { get; init; }
 
         /// <summary>Why that question is being asked, shown to the family beside it.</summary>
+        /// <remarks>
+        /// Carries no example, for the same reason as <see cref="Suggestion"/>: this is the last
+        /// thing the model reads before filling the field. "Naming what in the readings prompted
+        /// it" used to sit here and came back as the caption, word for word — "prompted by the
+        /// reading that…" — which is a lab note, not a reason a family would recognise.
+        /// </remarks>
         [Description(
-            "Only when a question is present: one plain sentence naming what in the readings "
-            + "prompted it.")]
+            "Only when a question is present: one everyday sentence in a caregiver's words "
+            + "about why this is worth asking. Never name a reading as a reading, never quote "
+            + "a figure, never restate the question.")]
         public string? QuestionRationale { get; init; }
 
         /// <summary>

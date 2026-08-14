@@ -36,10 +36,10 @@ public class MemberQuestionnaire : BaseEntity
     public string? AnswerText { get; set; }
 
     /// <summary>
-    /// Why this was asked, in one plain sentence ("Sleep has been shorter than usual all week").
+    /// Why this was asked, in one everyday sentence ("Yesterday looked quieter than usual").
     /// Stored as written, not encrypted: it describes a pattern in readings the service already
     /// holds, the same class of derived prose as <see cref="Alert.Message"/>. Shown to the family so
-    /// a question never arrives looking arbitrary.
+    /// a question never arrives looking arbitrary. Null when the model gave no reason worth showing.
     /// </summary>
     public string? TriggerContext { get; set; }
 

@@ -37,8 +37,9 @@ public class QuestionnairesController : BaseApiController
     }
 
     /// <summary>
-    /// The pending question, and a page of the answered history newest first — optionally filtered
-    /// to those whose question or answer text contains <paramref name="search"/>.
+    /// The pending question, and a page of answers that still belong on the family's list —
+    /// standing facts plus momentary ones that have not aged out — newest first, optionally
+    /// filtered to those whose question or answer text contains <paramref name="search"/>.
     /// </summary>
     [HttpGet("cardimembers/{cardiMemberId:guid}/questionnaires")]
     [ProducesResponseType(typeof(ApiResponse<QuestionnairesPageResponse>), StatusCodes.Status200OK)]

@@ -354,6 +354,12 @@ public class MedicalPromptToneTests
         Assert.DoesNotContain("change of routine", digest, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("pre-existing condition", digest, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("care team", digest, StringComparison.OrdinalIgnoreCase);
+        // The schema used to ask the model to "name what in the readings prompted" the
+        // question, and that brief came back as the caption. The instruction must not
+        // invite that register again.
+        Assert.DoesNotContain("prompted", digest, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("everyday sentence in a caregiver's words", digest, StringComparison.Ordinal);
+        Assert.Contains("Never repeat a question already listed", digest, StringComparison.Ordinal);
     }
 
     [Fact]

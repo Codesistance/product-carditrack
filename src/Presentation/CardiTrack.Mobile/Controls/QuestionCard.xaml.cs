@@ -58,11 +58,9 @@ public partial class QuestionCard : ContentView
         QuestionLabel.Text = questionnaire.QuestionText;
 
         RationaleCard.IsVisible = !string.IsNullOrWhiteSpace(questionnaire.TriggerContext);
-        RationaleLabel.Text = $"Asked because {LowerFirst(questionnaire.TriggerContext)}";
+        RationaleLabel.Text = questionnaire.TriggerContext;
 
-        OptionalLabel.Text = isAnswered
-            ? "You can change or remove this whenever you like."
-            : $"Answering helps us understand {name} better — it's completely optional.";
+        OptionalLabel.Text = MemberQuestionnaires.Softener(questionnaire.Scope, isAnswered);
 
         OpenButton.Text = isAnswered ? "Edit answer" : "Answer";
         DismissButton.IsVisible = !isAnswered;
@@ -162,14 +160,4 @@ public partial class QuestionCard : ContentView
         new Animation(v => EditorClip.HeightRequest = v, EditorClip.Height, 0)
             .Commit(this, DropdownAnimation, 16, DropdownMs, Easing.CubicIn);
     }
-
-    /// <summary>
-    /// The rationale is a sentence of its own from the model, but it lands mid-sentence here after
-    /// "Asked because". Only the first letter moves, so an acronym or a name later in the line is
-    /// left alone.
-    /// </summary>
-    private static string LowerFirst(string? text) =>
-        string.IsNullOrWhiteSpace(text)
-            ? string.Empty
-            : char.ToLowerInvariant(text[0]) + text[1..];
 }
