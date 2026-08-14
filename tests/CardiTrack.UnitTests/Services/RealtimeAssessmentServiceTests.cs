@@ -3,6 +3,7 @@ using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Domain.Entities;
 using CardiTrack.Domain.Enums;
 using CardiTrack.Infrastructure.Services;
+using Microsoft.Extensions.Caching.Distributed;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
@@ -23,6 +24,7 @@ public class RealtimeAssessmentServiceTests
     private readonly IEnvironmentalReadingRepository _environmentalReadings = Substitute.For<IEnvironmentalReadingRepository>();
     private readonly IAlertRepository _alerts = Substitute.For<IAlertRepository>();
     private readonly IMedicalAiService _medicalAi = Substitute.For<IMedicalAiService>();
+    private readonly IDistributedCache _cache = Substitute.For<IDistributedCache>();
 
     private readonly Guid _memberId = Guid.NewGuid();
 
@@ -105,7 +107,7 @@ public class RealtimeAssessmentServiceTests
     }
 
     private RealtimeAssessmentService CreateSut() =>
-        new(_unitOfWork, _medicalAi, PromptContextFactory.Composer(_unitOfWork),
+        new(_unitOfWork, _medicalAi, PromptContextFactory.Composer(_unitOfWork), _cache,
             NullLogger<RealtimeAssessmentService>.Instance);
 
     [Fact]
