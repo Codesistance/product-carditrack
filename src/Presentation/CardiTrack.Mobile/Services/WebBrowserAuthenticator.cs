@@ -33,13 +33,18 @@ public sealed class WebBrowserAuthenticator(IAppResumeNotifier resumeNotifier) :
         // dismisses it or the callback arrives, whichever the token doesn't preempt.
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         void OnResumed(object? sender, EventArgs e) => cts.CancelAfter(ResumeGrace);
-        resumeNotifier.Resumed += OnResumed;
+
+        // The resume watchdog only fixes a bug that exists on Android (see the class remarks) —
+        // wiring it on other platforms would risk cancelling a still-open native sheet (e.g. iOS's
+        // ASWebAuthenticationSession) on a resume that has nothing to do with the sheet closing.
+        if (OperatingSystem.IsAndroid())
+            resumeNotifier.Resumed += OnResumed;
 
         try
         {
             var cancellationTask = Task.Delay(Timeout.InfiniteTimeSpan, cts.Token);
             var completed = await Task.WhenAny(authenticateTask, cancellationTask);
-            if (completed == cancellationTask)
+            if (completed == cancellationTask && !authenticateTask.IsCompleted)
                 cts.Token.ThrowIfCancellationRequested();
 
             var result = await authenticateTask;
@@ -47,6 +52,7 @@ public sealed class WebBrowserAuthenticator(IAppResumeNotifier resumeNotifier) :
         }
         finally
         {
+            cts.Cancel();
             resumeNotifier.Resumed -= OnResumed;
         }
     }
