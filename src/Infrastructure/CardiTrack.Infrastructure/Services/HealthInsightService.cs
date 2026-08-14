@@ -129,7 +129,7 @@ public class HealthInsightService : IHealthInsightService
         - message: one sentence under 15 words.
 
         No preamble, no quotation marks, no explanation.
-        """ + MedicalPromptBlocks.ContextGuardrail;
+        """ + MedicalPromptBlocks.ContextGuardrailNotesOnly;
 
     /// <summary>
     /// Ceiling on <see cref="CurrentStatusInstructions"/>, in characters — the fixed half of the

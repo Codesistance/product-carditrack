@@ -25,6 +25,13 @@ namespace CardiTrack.Infrastructure.Services.PromptContext;
 /// </remarks>
 internal sealed class MonitoringContextSource : IMemberContextSource
 {
+    /// <summary>
+    /// The heading this section sits under. Load-bearing: the digest prompt names it when it
+    /// tells the model to surface an unresolved alert, and when it says never to follow
+    /// instructions in it.
+    /// </summary>
+    internal const string SectionLabel = "Recent monitoring context";
+
     /// <summary>How far back an assessment still describes "lately" for a daily summary.</summary>
     private static readonly TimeSpan Window = TimeSpan.FromHours(24);
 
@@ -81,7 +88,7 @@ internal sealed class MonitoringContextSource : IMemberContextSource
         lines.AddRange(unresolved.Select(a => DescribeAlert(a, request.UtcNow)));
         lines.AddRange(notable.Select(a => DescribeAssessment(a, request.UtcNow)));
 
-        return new MemberContextSection("Recent monitoring context", string.Join("\n", lines));
+        return new MemberContextSection(SectionLabel, string.Join("\n", lines));
     }
 
     private static string DescribeAlert(Alert alert, DateTime utcNow) =>

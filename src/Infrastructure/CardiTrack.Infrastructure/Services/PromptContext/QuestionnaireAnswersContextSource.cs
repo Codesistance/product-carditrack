@@ -23,6 +23,12 @@ namespace CardiTrack.Infrastructure.Services.PromptContext;
 internal sealed class QuestionnaireAnswersContextSource : IMemberContextSource
 {
     /// <summary>
+    /// The heading this section sits under. Load-bearing: the instruction blocks scope their
+    /// never-follow-instructions warning to this exact phrase.
+    /// </summary>
+    internal const string SectionLabel = "Family answers to earlier questions";
+
+    /// <summary>
     /// How many <see cref="QuestionnaireScope.TimeScoped"/> answers travel. The newest few are the
     /// ones still describing the member's current life; an answer from months ago is more likely to
     /// mislead than inform, and every line here competes with the readings for the model's
@@ -84,7 +90,7 @@ internal sealed class QuestionnaireAnswersContextSource : IMemberContextSource
         if (lines.Count == 0)
             return null;
 
-        return new MemberContextSection("Family answers to earlier questions", string.Join("\n", lines));
+        return new MemberContextSection(SectionLabel, string.Join("\n", lines));
     }
 
     private string FormatLine(MemberQuestionnaire questionnaire)
