@@ -57,7 +57,7 @@ Assessed against the EDPB (WP248) nine criteria; two or more generally makes a D
 
 ### 2.1 Regulatory-boundary flag: early-warning positioning
 
-CardiTrack is positioned as an **early-warning system based on trends and patterns**, not a diagnostic tool; the design states "never predicted — specific diagnoses… Do not diagnose — flag for review" (`docs/llm_design.md`). However, software intended to **predict or prognose** disease can qualify as a medical device under EU MDR (Rule 11) and UK MDR even without diagnosing, and FDA has analogous software-as-medical-device criteria. **`[DECISION REQUIRED — OI-2]`**: a formal device-classification assessment must be completed before launch marketing settles on claims. This DPIA does not assume either outcome.
+CardiTrack is positioned as an **early-warning system based on trends and patterns**, not a diagnostic tool; the live MedGemma tone block states "Never diagnose or invent a condition" (`MedicalPromptBlocks.Tone`, `docs/llm_design.md`). However, software intended to **predict or prognose** disease can qualify as a medical device under EU MDR (Rule 11) and UK MDR even without diagnosing, and FDA has analogous software-as-medical-device criteria. **`[DECISION REQUIRED — OI-2]`**: a formal device-classification assessment must be completed before launch marketing settles on claims. This DPIA does not assume either outcome.
 
 ---
 

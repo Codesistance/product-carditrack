@@ -540,18 +540,20 @@ Forward-looking awareness is CardiTrack's core market differentiator — every c
 
 1. **Deterministic trend features** — moving averages, slopes, and deviations computed in .NET from the multi-horizon rollups and R1 baselines (e.g. "resting HR up 6 bpm over 4 days against the 30-day baseline"). Code computes every number; nothing is estimated by a model.
 2. **Pinned reference ranges** — a curated, versioned table of clinical norms (resting HR by age/sex, sleep-duration ranges, activity guidelines) sourced from named standards and injected into the prompt. The model never recalls benchmarks from its training data, so the yardstick behind every narrative is reviewable.
-3. **MedGemma interpretation** — reads the computed features against the member's own history and the pinned ranges, and writes the family-facing trend narrative ("this trajectory is worth watching") that feeds digests and insights.
+3. **MedGemma interpretation** — reads the computed features against the member's own history and the pinned ranges, and writes the family-facing trend narrative that feeds digests and insights.
 
 ### What is watched
 
 The signal patterns worth narrating are unchanged — they are simply *computed as rules* now rather than predicted as scores:
 
-| Pattern | Deterministic signal | Framing to family |
-|---------|---------------------|-------------------|
-| **Possible illness onset** | Rising resting HR trend + declining HRV vs. baseline | "May be coming down with something — worth a check-in" |
-| **Fatigue / overexertion** | Active zone minutes > personal 7-day average × 1.5 | "A lighter day could help" |
-| **Poor sleep pattern** | Elevated evening HR, late activity, short prior nights | "A settled evening might help tonight's rest" |
-| **Cardiac trend** | 3+ day resting HR rise > 5 bpm or HRV decline > 30% from 30-day baseline | "A trend the family should keep an eye on" |
+| Pattern | Deterministic signal | What the family should take from it |
+|---------|---------------------|--------------------------------------|
+| **Possible illness onset** | Rising resting HR trend + declining HRV vs. baseline | A lay mention that they may be unwell — enough to react, not to treat |
+| **Fatigue / overexertion** | Active zone minutes > personal 7-day average × 1.5 | That a quieter day would help |
+| **Poor sleep pattern** | Elevated evening HR, late activity, short prior nights | That the evening before a short night is worth settling |
+| **Cardiac trend** | 3+ day resting HR rise > 5 bpm or HRV decline > 30% from 30-day baseline | That this is a trend to keep an eye on |
+
+These are the *product* meanings of each pattern, not phrases to put in the prompt. Sample copy in a MedGemma prompt comes back verbatim.
 
 > **What is never produced:** numeric risk scores or probabilities (an LLM cannot honestly calibrate them, and the dropped LSTM was the only component that could have tried), specific diagnoses, medication interactions, or acute cardiac event predictions. Outputs are qualitative trend observations, not clinical predictions.
 
