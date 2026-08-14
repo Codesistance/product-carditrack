@@ -46,8 +46,8 @@ public class TracingProxyResolutionTests
         var create = typeof(TracingProxy<>).MakeGenericType(interfaceType)
             .GetMethod(nameof(TracingProxy<object>.Create))!;
 
-        // Throws ArgumentException("The base type ... cannot be sealed") if TracingProxy<T> is
-        // sealed — the exact exception that took push and both alert workers down.
+        // If TracingProxy<T> is sealed, Create throws ArgumentException at runtime; invoked via reflection
+        // here it surfaces as TargetInvocationException wrapping that ArgumentException.
         var proxy = create.Invoke(null, [target, Source]);
 
         Assert.NotNull(proxy);
