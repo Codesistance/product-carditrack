@@ -585,6 +585,10 @@ public partial class AlertsPage : ContentPage
             NudgeSection.IsVisible = items.Count > 0;
             NudgeSeeAllLink.IsVisible = summary.OpenCount > items.Count;
         }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested || generation != _loadGeneration)
+        {
+            // Superseded mid-read — leave whatever the newer load paints.
+        }
         catch (ApiException) when (ct.IsCancellationRequested || generation != _loadGeneration)
         {
             // Superseded — leave whatever the newer load paints; do not blank the section.
