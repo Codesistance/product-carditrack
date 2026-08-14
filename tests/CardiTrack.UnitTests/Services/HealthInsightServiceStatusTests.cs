@@ -253,18 +253,21 @@ public class HealthInsightServiceStatusTests
     }
 
     [Fact]
-    public async Task TellsTheModelToStayNonClinicalAndBrief()
+    public async Task TellsTheModelToUseCaregiverLanguageAndStayBrief()
     {
         await CreateSut().GetCurrentStatusMessageAsync(_userId, _memberId);
 
         var prompt = (string)_medicalAi.ReceivedCalls().Single().GetArguments()[0]!;
-        Assert.Contains("Never use clinical terms", prompt);
+        Assert.Contains("Write as a caregiver would", prompt);
+        Assert.Contains("heart rate, sleep, quieter today, worth a look", prompt);
+        Assert.Contains("Not clinic-speak", prompt);
         // "Never diagnose" now comes from the shared tone block every prompt opens with, rather
         // than from this prompt's own wording — same guarantee, one place.
         Assert.Contains("never diagnose", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("under 15 words", prompt);
         Assert.Contains("green settled, yellow a mention", prompt);
         Assert.Contains("write {{NAME}} exactly as written", prompt);
+        Assert.DoesNotContain("Never use clinical terms", prompt, StringComparison.Ordinal);
     }
 
     [Fact]

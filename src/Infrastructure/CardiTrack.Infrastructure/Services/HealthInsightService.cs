@@ -102,7 +102,9 @@ public class HealthInsightService : IHealthInsightService
     /// <c>CARDITRACK_CURRENT_STATUS_PROMPT</c> — a single empathetic line for the Dashboard's
     /// hero card. Distinct from the other three: this is ambient, ever-present copy shown on
     /// every dashboard view rather than something a caregiver deliberately opened, so it asks for
-    /// one short, warm sentence rather than a structured explanation.
+    /// one short, warm sentence rather than a structured explanation. The register is a family
+    /// caregiver's, not a clinician's: heart rate and sleep are fine; elevated and deviation are
+    /// not.
     /// </summary>
     /// <remarks>
     /// Kept short on purpose, and shorter than its siblings. This is the only prompt on a request
@@ -120,8 +122,9 @@ public class HealthInsightService : IHealthInsightService
         Describe how this person is doing to their caregiver.
 
         Third person, write {{NAME}} exactly as written; it stands in for their real
-        name. Never use clinical terms (elevated, abnormal, deviation) and never
-        suggest a medical cause. Match the given tier: green settled, yellow a mention,
+        name. Write as a caregiver would: heart rate, sleep, quieter today, worth a look.
+        Not clinic-speak (elevated, abnormal, deviation). Never suggest a medical cause.
+        Match the given tier: green settled, yellow a mention,
         orange or red more attentive.
 
         Respond with:
