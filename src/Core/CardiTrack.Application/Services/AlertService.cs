@@ -71,10 +71,12 @@ public class AlertService : IAlertService
         Guid requestingUserId, Guid alertId, CancellationToken ct = default)
     {
         var alert = await _unitOfWork.Alerts.GetByIdWithCardiMemberAsync(alertId);
-        if (alert is null || !alert.IsActive)
+        // Same anti-enumeration as HealthInsightService.AnalyzeAlertAsync: missing, inactive,
+        // and unreadable ids all report "Alert not found", so a guessed id cannot be probed.
+        if (alert is null
+            || !alert.IsActive
+            || !await _access.HasViewAccessAsync(requestingUserId, alert.CardiMemberId, ct))
             throw new KeyNotFoundException("Alert not found");
-
-        await _access.RequireViewAccessAsync(requestingUserId, alert.CardiMemberId, ct);
 
         var member = await _unitOfWork.CardiMembers.GetByIdAsync(alert.CardiMemberId);
 

@@ -336,7 +336,8 @@ public static class AlertDetailComposer
         var step = Math.Max(1, (int)Math.Ceiling(samples.Length / (double)GranularMaxPoints));
         var series = new List<MetricPoint>();
         decimal? latest = null;
-        for (var i = 0; i < samples.Length; i += step)
+
+        void Add(int i)
         {
             decimal? value = samples[i] is { } sample ? (decimal)sample : null;
             if (value is not null)
@@ -346,6 +347,20 @@ public static class AlertDetailComposer
                 Date = DateOnly.FromDateTime(granular.FromUtc.AddMinutes(i)),
                 Value = value,
             });
+        }
+
+        for (var i = 0; i < samples.Length; i += step)
+            Add(i);
+
+        // A stride that divides the window can skip the closing minute; the headline value
+        // should still be that last reading. Stay at GranularMaxPoints by replacing the
+        // last strided point rather than growing the series.
+        var last = samples.Length - 1;
+        if (last > 0 && last % step != 0)
+        {
+            if (series.Count >= GranularMaxPoints)
+                series.RemoveAt(series.Count - 1);
+            Add(last);
         }
 
         if (series.Count < 2 || series.All(p => p.Value is null))

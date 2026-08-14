@@ -153,6 +153,35 @@ public class AlertDetailComposerTests
     }
 
     [Fact]
+    public void RealtimeHeartRate_KeepsTheClosingMinuteWhenDownsampling()
+    {
+        var start = new DateTime(2026, 8, 14, 10, 0, 0, DateTimeKind.Utc);
+        var samples = new float?[AlertDetailComposer.GranularMaxPoints * 2];
+        samples[0] = 70;
+        samples[^2] = 80;
+        samples[^1] = 99;
+        var window = new GranularWindow
+        {
+            CardiMemberId = _memberId,
+            FromUtc = start,
+            ToUtc = start.AddHours(1),
+            MinuteSeries = new Dictionary<GranularMetric, float?[]>
+            {
+                [GranularMetric.HeartRate] = samples,
+            },
+        };
+        var alert = MakeAlert(
+            AlertType.HeartRate,
+            """{"rule":"realtime_hr","hrTrendLast":99,"windowStartUtc":"2026-08-14T10:00:00Z","windowEndUtc":"2026-08-14T11:00:00Z"}""");
+
+        var detail = AlertDetailComposer.Compose(alert, Member(), null, [], _today, window, null);
+
+        Assert.Equal(99, detail.Chart!.Value);
+        Assert.Equal(99, detail.Chart.Series[^1].Value);
+        Assert.True(detail.Chart.Series.Count <= AlertDetailComposer.GranularMaxPoints);
+    }
+
+    [Fact]
     public void GranularBounds_AlignToWholeUtcHours()
     {
         var bounds = AlertDetailComposer.GranularBounds(

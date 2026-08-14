@@ -374,8 +374,9 @@ public class AlertServiceTests
     {
         _alerts.GetByIdWithCardiMemberAsync(Arg.Any<Guid>()).Returns((Alert?)null);
 
-        await Assert.ThrowsAsync<KeyNotFoundException>(
+        var ex = await Assert.ThrowsAsync<KeyNotFoundException>(
             () => CreateSut().GetByIdAsync(_userId, Guid.NewGuid()));
+        Assert.Equal("Alert not found", ex.Message);
 
         await _logs.DidNotReceive().GetByCardiMemberAndDateRangeAsync(
             Arg.Any<Guid>(), Arg.Any<DateOnly>(), Arg.Any<DateOnly>());
@@ -390,8 +391,9 @@ public class AlertServiceTests
         alert.MetricValues = """{"rule":"activity_decline","steps":100}""";
         _alerts.GetByIdWithCardiMemberAsync(alert.Id).Returns(alert);
 
-        await Assert.ThrowsAsync<KeyNotFoundException>(
+        var ex = await Assert.ThrowsAsync<KeyNotFoundException>(
             () => CreateSut().GetByIdAsync(_userId, alert.Id));
+        Assert.Equal("Alert not found", ex.Message);
 
         await _logs.DidNotReceive().GetByCardiMemberAndDateRangeAsync(
             Arg.Any<Guid>(), Arg.Any<DateOnly>(), Arg.Any<DateOnly>());
@@ -411,10 +413,11 @@ public class AlertServiceTests
 
         Assert.Equal(alert.Id, detail.AlertId);
         Assert.Equal("activity_decline", detail.Rule);
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
         await _logs.Received(1).GetByCardiMemberAndDateRangeAsync(
             _memberId,
-            Arg.Is<DateOnly>(from => from == DateOnly.FromDateTime(DateTime.UtcNow).AddDays(-(AlertDetailComposer.ActivityDays - 1))),
-            Arg.Is<DateOnly>(to => to == DateOnly.FromDateTime(DateTime.UtcNow)));
+            today.AddDays(-(AlertDetailComposer.ActivityDays - 1)),
+            today);
         await _granular.DidNotReceive().GetWindowAsync(
             Arg.Any<Guid>(), Arg.Any<DateTime>(), Arg.Any<DateTime>(), Arg.Any<CancellationToken>());
     }
