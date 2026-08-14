@@ -1,4 +1,5 @@
 using System.Text.Json;
+using CardiTrack.Application.Interfaces.Clients;
 using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Application.Services;
@@ -12,13 +13,15 @@ namespace CardiTrack.Infrastructure.Services;
 
 /// <summary>
 /// The real-time assessment pass (docs/llm_design.md): every few minutes, for each member with
-/// fresh granular data, decompose the latest hour of heart rate with SSA, ask the private
-/// medical model to assess the denoised picture, store the assessment, and raise an alert when
-/// the routed severity says a human should look.
+/// fresh granular data, decompose the latest hour of heart rate with SSA, and only if that
+/// score is a jump (<see cref="DigestRefreshRules.SampleJumpScore"/>) ask the private medical
+/// model to assess the denoised picture, store the assessment, and raise an alert when the
+/// routed severity says a human should look.
 /// <para>
 /// The pass runs entirely off the granular store — polled or webhook-fed alike — so it needs
 /// nothing from the notification path to function. Deduplication by window start means members
-/// whose data has not moved cost no inference.
+/// whose data has not moved cost no inference. Ordinary windows (score below the jump) are
+/// not stored, so a later pass can still consult the model if the same hour later jumps.
 /// </para>
 /// </summary>
 public class RealtimeAssessmentService : IRealtimeAssessmentService
@@ -78,6 +81,7 @@ public class RealtimeAssessmentService : IRealtimeAssessmentService
     private readonly MemberContextComposer _memberContext;
     private readonly IDistributedCache _cache;
     private readonly ILogger<RealtimeAssessmentService> _logger;
+    private readonly IAlertNotificationEnqueue? _alertEnqueue;
 
     public RealtimeAssessmentService(
         IUnitOfWork unitOfWork,
@@ -85,7 +89,8 @@ public class RealtimeAssessmentService : IRealtimeAssessmentService
         IMedicalAiService medicalAi,
         MemberContextComposer memberContext,
         IDistributedCache cache,
-        ILogger<RealtimeAssessmentService> logger)
+        ILogger<RealtimeAssessmentService> logger,
+        IAlertNotificationEnqueue? alertEnqueue = null)
     {
         _unitOfWork = unitOfWork;
         _ssa = ssa;
@@ -93,6 +98,7 @@ public class RealtimeAssessmentService : IRealtimeAssessmentService
         _memberContext = memberContext;
         _cache = cache;
         _logger = logger;
+        _alertEnqueue = alertEnqueue;
     }
 
     public async Task<int> AssessDueMembersAsync(DateTime utcNow, CancellationToken ct = default)
@@ -170,6 +176,21 @@ public class RealtimeAssessmentService : IRealtimeAssessmentService
         // one sitting at the floor.
         var noiseRms = Math.Max(ssa.NoiseRms, NoiseFloorBpm);
         var deviationScore = Math.Abs(series[^1] - ssa.TrendLast) / noiseRms;
+
+        // SSA is the pre-filter that makes a 5-minute cadence affordable: ordinary jitter is
+        // not a reason to wake MedGemma, and not storing the row means a later pass can still
+        // consult the model if this hour later jumps. The bound is the same number the prompt
+        // already tells the model is ordinary variation, and the same number that waives the
+        // digest floor — three places, one yardstick.
+        //
+        // Closing HeartRate alerts still belongs here. The only automatic resolve is "this
+        // window is not orange/red"; if we return before that, an episode that has ended
+        // stays open and RaiseAlertAsync's cooldown never re-arms.
+        if (deviationScore < DigestRefreshRules.SampleJumpScore)
+        {
+            await ResolveHeartRateAlertsAsync(memberId, utcNow, ct);
+            return false;
+        }
 
         var steps = SumIfAny(window.MinuteSeries, GranularMetric.Steps, lastIndex, WindowMinutes);
         var spo2 = MeanIfAny(window.MinuteSeries, GranularMetric.SpO2, lastIndex, WindowMinutes);
@@ -259,7 +280,7 @@ public class RealtimeAssessmentService : IRealtimeAssessmentService
             return;
 
         ct.ThrowIfCancellationRequested();
-        await _unitOfWork.Alerts.AddAsync(new Alert
+        var alert = new Alert
         {
             CardiMemberId = assessment.CardiMemberId,
             AlertType = AlertType.HeartRate,
@@ -280,9 +301,32 @@ public class RealtimeAssessmentService : IRealtimeAssessmentService
                 windowStartUtc = assessment.WindowStartUtc,
                 windowEndUtc = assessment.WindowEndUtc,
             }),
-        });
+        };
+        await _unitOfWork.Alerts.AddAsync(alert);
         await _unitOfWork.SaveChangesAsync();
         await _cache.RemoveAsync(DashboardStatusCacheKey.For(assessment.CardiMemberId), ct);
+
+        // Transport, not a copy of the send stack: the API's internal enqueue endpoint runs
+        // the same DispatchService the Worker uses. A failed POST must not roll back the
+        // alert — NotificationDispatchWorker cannot see a row that was never written, but it
+        // also cannot see one the API never accepted; the next assessor pass is suppressed
+        // by the unresolved-alert cooldown, so this is best-effort with a log.
+        if (_alertEnqueue is null)
+        {
+            _logger.LogWarning(
+                "Alert {AlertId} was raised with no enqueue transport registered — caregivers will not be pushed.",
+                alert.Id);
+            return;
+        }
+
+        try
+        {
+            await _alertEnqueue.EnqueueForAlertAsync(alert.Id, ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Push enqueue failed for Alert {AlertId}.", alert.Id);
+        }
     }
 
     /// <summary>MedGemma's reply shape for this prompt. Internal, not Application/DTOs — this

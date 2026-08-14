@@ -1,3 +1,4 @@
+using CardiTrack.Application.Interfaces.Clients;
 using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Application.Services;
@@ -13,8 +14,9 @@ namespace CardiTrack.UnitTests.Services;
 
 /// <summary>
 /// Pins the assessment pass's guarantees: the model is only consulted when a full fresh window
-/// of heart rate exists and has not been assessed before; a red or orange verdict raises exactly
-/// one alert per episode; and an answer the parser cannot read is stored but routes nowhere.
+/// of heart rate exists, has not been assessed before, and SSA says the latest reading jumped
+/// from trend; a red or orange verdict raises exactly one alert per episode and asks the API
+/// to push it; and an answer the parser cannot read is stored but routes nowhere.
 /// </summary>
 public class RealtimeAssessmentServiceTests
 {
@@ -26,6 +28,7 @@ public class RealtimeAssessmentServiceTests
     private readonly IAlertRepository _alerts = Substitute.For<IAlertRepository>();
     private readonly IMedicalAiService _medicalAi = Substitute.For<IMedicalAiService>();
     private readonly IDistributedCache _cache = Substitute.For<IDistributedCache>();
+    private readonly IAlertNotificationEnqueue _enqueue = Substitute.For<IAlertNotificationEnqueue>();
 
     private readonly Guid _memberId = Guid.NewGuid();
 
@@ -76,12 +79,16 @@ public class RealtimeAssessmentServiceTests
         MedicalNotes = "On beta blockers.",
     };
 
-    /// <summary>A range-length heart-rate series with values on minutes [from, to].</summary>
-    private static float?[] HeartRateMinutes(int from, int to, float bpm)
+    /// <summary>A range-length heart-rate series with values on minutes [from, to]. The last
+    /// sample jumps well past SSA's ordinary-variation gate so the default fixture reaches the
+    /// model; pass <paramref name="jumpLast"/> false for a calm hour that must skip inference.</summary>
+    private static float?[] HeartRateMinutes(int from, int to, float bpm, bool jumpLast = true)
     {
         var series = new float?[RangeMinutes];
         for (var i = from; i <= to; i++)
             series[i] = bpm + (i % 3);  // a little jitter so SSA has a noise floor to find
+        if (jumpLast && to >= from)
+            series[to] = bpm + 25;
         return series;
     }
 
@@ -109,7 +116,7 @@ public class RealtimeAssessmentServiceTests
 
     private RealtimeAssessmentService CreateSut() =>
         new(_unitOfWork, new SsaDecomposition(), _medicalAi, PromptContextFactory.Composer(_unitOfWork), _cache,
-            NullLogger<RealtimeAssessmentService>.Instance);
+            NullLogger<RealtimeAssessmentService>.Instance, _enqueue);
 
     [Fact]
     public async Task AFullFreshHour_IsAssessed_AndStoredUnderItsWindowStart()
@@ -135,6 +142,63 @@ public class RealtimeAssessmentServiceTests
         await CreateSut().AssessDueMembersAsync(UtcNow);
 
         await _alerts.DidNotReceive().AddAsync(Arg.Any<Alert>());
+        await _enqueue.DidNotReceive().EnqueueForAlertAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>());
+    }
+
+    // SSA is the cost control that makes a 5-minute cadence affordable: a calm hour is scored
+    // every pass (cheap) and never sent to MedGemma. The row is not stored, so a later tick
+    // can still consult the model if the same hour later jumps.
+    [Fact]
+    public async Task AnOrdinaryWindow_CostsNoInference_AndIsNotStored()
+    {
+        SetupWindow(HeartRateMinutes(from: 150, to: 209, bpm: 72, jumpLast: false));
+
+        var assessed = await CreateSut().AssessDueMembersAsync(UtcNow);
+
+        Assert.Equal(0, assessed);
+        await _medicalAi.DidNotReceive().GenerateStructuredAsync<RealtimeAssessmentService.AssessmentAiResponse>(
+            Arg.Any<string>(), Arg.Any<CancellationToken>());
+        await _assessments.DidNotReceive().UpsertAsync(Arg.Any<RealtimeAssessment>(), Arg.Any<CancellationToken>());
+        await _enqueue.DidNotReceive().EnqueueForAlertAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>());
+    }
+
+    // The SSA skip used to return before the only automatic resolve. An episode that had
+    // ended would stay open, and RaiseAlertAsync's cooldown would never re-arm.
+    [Fact]
+    public async Task AnOrdinaryWindow_ResolvesAnOpenHeartRateAlert_WithoutInference()
+    {
+        SetupWindow(HeartRateMinutes(from: 150, to: 209, bpm: 72, jumpLast: false));
+        var open = new Alert { CardiMemberId = _memberId, AlertType = AlertType.HeartRate, IsResolved = false };
+        _alerts.GetByCardiMemberAsync(_memberId, activeOnly: true).Returns([open]);
+
+        var assessed = await CreateSut().AssessDueMembersAsync(UtcNow);
+
+        Assert.Equal(0, assessed);
+        Assert.True(open.IsResolved);
+        await _unitOfWork.Received(1).SaveChangesAsync();
+        await _medicalAi.DidNotReceive().GenerateStructuredAsync<RealtimeAssessmentService.AssessmentAiResponse>(
+            Arg.Any<string>(), Arg.Any<CancellationToken>());
+        await _assessments.DidNotReceive().UpsertAsync(Arg.Any<RealtimeAssessment>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task AFailedEnqueue_DoesNotLoseTheAlert()
+    {
+        _medicalAi.GenerateStructuredAsync<RealtimeAssessmentService.AssessmentAiResponse>(
+                Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new RealtimeAssessmentService.AssessmentAiResponse
+            {
+                Message = "Heart rate has risen sharply with no activity.",
+                Severity = "critical",
+            });
+        _enqueue.EnqueueForAlertAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(new HttpRequestException("API 503"));
+
+        var assessed = await CreateSut().AssessDueMembersAsync(UtcNow);
+
+        Assert.Equal(1, assessed);
+        await _alerts.Received(1).AddAsync(Arg.Any<Alert>());
+        await _unitOfWork.Received(1).SaveChangesAsync();
     }
 
     [Theory]
@@ -159,6 +223,7 @@ public class RealtimeAssessmentServiceTests
             && a.Message.Contains("risen sharply")
             && a.MetricValues!.Contains("hrDeviationScore")));
         await _unitOfWork.Received(1).SaveChangesAsync();
+        await _enqueue.Received(1).EnqueueForAlertAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>());
     }
 
     // Twelve pages an hour about one sustained event teaches families to ignore the pager —
@@ -182,6 +247,7 @@ public class RealtimeAssessmentServiceTests
 
         Assert.Equal(1, assessed);
         await _alerts.DidNotReceive().AddAsync(Arg.Any<Alert>());
+        await _enqueue.DidNotReceive().EnqueueForAlertAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>());
     }
 
     // Two overlapping executions can both assess the same window — the Exists probe is not
@@ -204,6 +270,7 @@ public class RealtimeAssessmentServiceTests
 
         Assert.Equal(1, assessed);
         await _alerts.DidNotReceive().AddAsync(Arg.Any<Alert>());
+        await _enqueue.DidNotReceive().EnqueueForAlertAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -224,6 +291,7 @@ public class RealtimeAssessmentServiceTests
         await CreateSut().AssessDueMembersAsync(UtcNow);
 
         await _alerts.Received(1).AddAsync(Arg.Any<Alert>());
+        await _enqueue.Received(1).EnqueueForAlertAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>());
     }
 
     // Fail safe in both directions: the model cannot page a family by deviating from the schema's
@@ -247,6 +315,7 @@ public class RealtimeAssessmentServiceTests
             Arg.Is<RealtimeAssessment>(a => a.Severity == null && a.RawSeverity == "unclear"),
             Arg.Any<CancellationToken>());
         await _alerts.DidNotReceive().AddAsync(Arg.Any<Alert>());
+        await _enqueue.DidNotReceive().EnqueueForAlertAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>());
     }
 
     // The natural key is the cost control: a window only moves when new minutes land, so an

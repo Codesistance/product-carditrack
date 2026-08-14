@@ -78,7 +78,8 @@ builder.Services.AddScoped<IEnvironmentalReadingRepository, EnvironmentalReading
 builder.Services.AddScoped<INotificationRepository, NotificationRepository>();
 builder.Services.AddScoped<INotificationMuteRepository, NotificationMuteRepository>();
 // Repositories only, not AddPushServices — the pipeline gets a transport (the internal enqueue
-// endpoint), not a copy of the send stack. See PushServiceExtensions.AddPushServices' remarks.
+// endpoint, wired below for the assessor), not a copy of the send stack. See
+// PushServiceExtensions.AddPushServices' remarks.
 builder.Services.AddPushRepositories();
 builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
 
@@ -124,6 +125,14 @@ if (jobName == "enrich")
     builder.Services.AddEnvironmentalContextServices(configuration);
 }
 
+// Assessor-only: orange/red alerts POST to the API's internal enqueue endpoint. Digest and
+// aggregator never raise those alerts, so they must not require Api:BaseUrl / Pipeline:Audience
+// at startup. The send stack itself stays in the API (AddPushServices is still not called).
+if (jobName == "assess")
+{
+    builder.Services.AddInternalNotificationEnqueue(configuration);
+}
+
 var app = builder.Build();
 
 // No app.Run(): a job executes one pass and exits, and never listens.
@@ -153,7 +162,16 @@ try
         case "assess":
             var assessments = scope.ServiceProvider.GetRequiredService<IRealtimeAssessmentService>();
             var assessed = await assessments.AssessDueMembersAsync(DateTime.UtcNow);
-            Log.Information("PipelineJobs run finished. Assessments written: {Assessed}.", assessed);
+            // The digest job still runs at :00/:30; this pass runs every 5 minutes, two minutes
+            // after the aggregator. An hour the assessor has just called a problem would otherwise
+            // sit behind a summary written on the half-hour until the next digest tick. Generation
+            // still no-ops members whose readings have not become worth rewriting (the 20-minute
+            // floor, waived for problem samples, baseline divergence and jumps).
+            var digestAfterAssess = scope.ServiceProvider.GetRequiredService<IDigestGenerationService>();
+            var generatedAfterAssess = await digestAfterAssess.GenerateDueDigestsAsync(DateTime.UtcNow);
+            Log.Information(
+                "PipelineJobs run finished. Assessments written: {Assessed}, summaries written: {Generated}.",
+                assessed, generatedAfterAssess);
             return 0;
 
         case "enrich":

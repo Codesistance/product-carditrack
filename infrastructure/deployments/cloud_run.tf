@@ -284,10 +284,10 @@ resource "google_cloud_run_v2_service" "api" {
 
       # The internal enqueue endpoint's GoogleOidc scheme (notification_engine.md §7.2 C4) pins
       # both the audience and the calling service account. Set here rather than in var.api_env_vars
-      # because the service account identity comes from data.google_project.current (this module,
-      # outputs.tf), not something root main.tf can compute. The pipeline jobs run as this same
-      # default compute SA (no dedicated identity — see the pipeline_aggregator_subscriber comment
-      # below), so this is also the identity a future SeverityRouter caller would authenticate as.
+      # because the service account identity comes from this module, not something root main.tf
+      # can compute. The digest/assessor jobs run as google_service_account.pipeline (not the
+      # default compute SA); when those jobs are disabled the pin stays on the compute SA so the
+      # API can still boot — nothing will mint a matching token until the pipeline exists.
       env {
         name  = "Pipeline__Audience"
         value = "${var.project_id}-internal-notifications"
@@ -295,7 +295,7 @@ resource "google_cloud_run_v2_service" "api" {
 
       env {
         name  = "Pipeline__ServiceAccount"
-        value = "${data.google_project.current.number}-compute@developer.gserviceaccount.com"
+        value = var.enable_pipeline_jobs ? google_service_account.pipeline[0].email : "${data.google_project.current.number}-compute@developer.gserviceaccount.com"
       }
 
       volume_mounts {
@@ -1258,27 +1258,28 @@ resource "google_cloud_scheduler_job" "pipeline_aggregator_5min" {
 }
 
 # ── Pipeline assessor job (AI pipeline — real-time assessment) ───────────────────────────────
-# Same image as the digest job, selected via container args: every 5 minutes, SSA over each
-# member's latest hour of heart rate, one MedGemma assessment per moved window, severity routed
-# to alerts. Works entirely off the granular store, so it needs the digest job's exact
-# environment (database + MedGemma + encryption) and reuses those variables — no device
-# credentials and no Pub/Sub. Gated on the pipeline alone: unlike the aggregator it consumes
-# no topic, and it is useful with polling-only ingestion.
+# Same image as the digest job, selected via container args: SSA over each member's latest
+# hour of heart rate, one MedGemma assessment per moved window, severity routed to alerts,
+# then a digest pass so a window just flagged as a problem rewrites the family summary on
+# the same execution rather than waiting for the next */30 digest schedule. Works entirely
+# off the granular store, so it needs the digest job's exact environment (database + MedGemma
+# + encryption) and reuses those variables — no device credentials and no Pub/Sub. Gated on
+# the pipeline alone: unlike the aggregator it consumes no topic, and it is useful with
+# polling-only ingestion.
 
-# Twice hourly, not every 5 minutes. RealtimeAssessmentService assesses a 60-minute window and
-# dedups on windowStart (RealtimeAssessments.ExistsAsync), so a given member yields at most one
-# new assessment per hour no matter how often this runs. At the old */5 cadence a pass that had
-# work woke MedGemma — a multi-GB image pull plus model load, billed at the full CPU allocation
-# for the ~150s the startup probe allows — up to twelve times to produce that one assessment.
+# Every 5 minutes, two minutes after the aggregator (`*/5` → this is `2-59/5`). The SSA
+# pre-filter in RealtimeAssessmentService skips MedGemma unless the latest reading sits at
+# least SampleJumpScore typical jitters from trend, so a tighter cadence no longer buys a
+# cold start per calm member. Unmoved windows still short-circuit on ExistsAsync; ordinary
+# windows are not stored, so a later tick can still consult the model if the hour jumps.
 #
-# Two passes rather than one: the second is not redundant. A member who crosses the 45-minute
-# coverage floor (MinCoveredMinutes) partway through an hour, or whose first pass failed, gets
-# picked up half an hour sooner instead of waiting for the next hour. Still :02-offset from the
-# aggregator so a fresh sync tends to land before the assessment pass that reads it.
+# Offset from the aggregator so a fresh sync tends to land before the assessment pass that
+# reads it. Two minutes is enough for the aggregator's targeted sync on a typical member
+# and keeps the historical :02/:32 ticks as a subset of the new schedule.
 variable "pipeline_assessor_schedule" {
-  description = "Cloud Scheduler cron for the assessor job — twice hourly, offset from the aggregator so one member's fresh sync tends to land before the next assessment pass. The 60-minute assessment window and its windowStart dedup cap output at one assessment per member per hour, so a tighter cadence only buys extra MedGemma cold starts"
+  description = "Cloud Scheduler cron for the assessor job — every 5 minutes, offset two minutes from the aggregator so one member's fresh sync tends to land before the next assessment pass. MedGemma is consulted only when SSA says the window jumped; a tighter cadence therefore scores often without inferring on every calm member"
   type        = string
-  default     = "2,32 * * * *"
+  default     = "2-59/5 * * * *"
 }
 
 resource "google_cloud_run_v2_job" "pipeline_assessor" {
@@ -1291,9 +1292,11 @@ resource "google_cloud_run_v2_job" "pipeline_assessor" {
     template {
       max_retries = 1
 
-      # One CPU-served MedGemma call per member whose window moved since the last pass; the
-      # timeout bounds a pathological pass without killing an ordinary busy one.
-      timeout = "1800s"
+      # Assessment plus the digest refresh that follows it on this job (see Program.cs): one
+      # CPU-served MedGemma call per member whose window moved, then another per member whose
+      # summary is now due. The timeout matches the digest job so a busy pass of both stages
+      # is not killed mid-generation.
+      timeout = "3600s"
 
       service_account = google_service_account.pipeline[0].email
 
@@ -1340,6 +1343,20 @@ resource "google_cloud_run_v2_job" "pipeline_assessor" {
               }
             }
           }
+        }
+
+        # Reach the API's internal enqueue endpoint (orange/red → push). Custom-domain
+        # environments put the API behind the load balancer (INTERNAL_LOAD_BALANCER ingress),
+        # so the *.run.app URI is not routable — use the public hostname there. Audience must
+        # match the API's Pipeline__Audience pin, not the request URL.
+        env {
+          name  = "Api__BaseUrl"
+          value = var.api_custom_domain != "" ? "https://${var.api_custom_domain}" : google_cloud_run_v2_service.api.uri
+        }
+
+        env {
+          name  = "Pipeline__Audience"
+          value = "${var.project_id}-internal-notifications"
         }
 
         volume_mounts {
