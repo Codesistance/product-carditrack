@@ -242,7 +242,9 @@ public class AlertService : IAlertService
             throw new KeyNotFoundException("Alert not found");
 
         // Manage, not view: removing an alert is a more consequential action than reading one,
-        // same bar CardiMemberService.RemoveAsync applies to member removal.
+        // same bar CardiMemberService.RemoveAsync applies to member removal. Soft-delete only
+        // — producers still see the row so the same day's quieter steps (or the same silence
+        // episode) cannot page the family again 15 minutes later.
         await _access.RequireManageAccessAsync(requestingUserId, alert.CardiMemberId, ct);
 
         alert.IsActive = false;

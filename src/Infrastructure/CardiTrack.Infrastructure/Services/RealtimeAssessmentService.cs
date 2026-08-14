@@ -259,7 +259,10 @@ public class RealtimeAssessmentService : IRealtimeAssessmentService
 
     private async Task ResolveHeartRateAlertsAsync(Guid memberId, DateTime utcNow, CancellationToken ct)
     {
-        var existing = await _unitOfWork.Alerts.GetByCardiMemberAsync(memberId, activeOnly: true);
+        // Include soft-deleted rows so a dismissed heart episode is actually closed when the
+        // hour comes back ordinary — otherwise deleting the card would re-arm the path while
+        // the same anomaly was still running.
+        var existing = await _unitOfWork.Alerts.GetByCardiMemberAsync(memberId, activeOnly: false);
         if (AlertResolution.Resolve(existing, a => a.AlertType == AlertType.HeartRate, utcNow) > 0)
         {
             await _unitOfWork.SaveChangesAsync();
@@ -272,10 +275,12 @@ public class RealtimeAssessmentService : IRealtimeAssessmentService
 
     private async Task RaiseAlertAsync(RealtimeAssessment assessment, CancellationToken ct)
     {
-        // Cooldown: one unresolved heart-rate alert at a time. A sustained anomaly would
-        // otherwise re-alert every pass, and twelve pages an hour about one event teaches
-        // families to ignore the pager — resolving the alert is what re-arms it.
-        var existing = await _unitOfWork.Alerts.GetByCardiMemberAsync(assessment.CardiMemberId, activeOnly: true);
+        // Cooldown: one unresolved heart-rate alert at a time, including a card the caregiver
+        // already deleted — that dismissed this episode, not the next pass of the same anomaly.
+        // Resolving when the hour comes back ordinary (above) is what re-arms it. A sustained
+        // anomaly would otherwise re-alert every pass, and twelve pages an hour about one event
+        // teaches families to ignore the pager.
+        var existing = await _unitOfWork.Alerts.GetByCardiMemberAsync(assessment.CardiMemberId, activeOnly: false);
         if (existing.Any(a => a.AlertType == AlertType.HeartRate && !a.IsResolved))
             return;
 

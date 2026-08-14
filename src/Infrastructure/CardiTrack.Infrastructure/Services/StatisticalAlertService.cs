@@ -16,9 +16,10 @@ namespace CardiTrack.Infrastructure.Services;
 /// members without an established baseline are skipped wholesale.
 /// <para>
 /// Two layers keep a 15-minute cadence from paging anyone twice: the rule-scoped cooldown
-/// (<see cref="AlertRuleMarkers.Suppresses"/> — one unresolved alert per remedy) and a
-/// same-local-day dedup (a daily-grain rule that fired and was resolved must not re-fire from
-/// the same day's data that evening).
+/// (<see cref="AlertRuleMarkers.Suppresses"/> — one unresolved <em>standing</em> alert per
+/// remedy) and a same-local-day dedup (a daily-grain rule that already judged today — whether
+/// that alert is still on the list, resolved, or the caregiver deleted it — must not re-fire
+/// from the same day's data that evening).
 /// </para>
 /// </summary>
 public class StatisticalAlertService : IStatisticalAlertService
@@ -123,28 +124,35 @@ public class StatisticalAlertService : IStatisticalAlertService
         if (candidates.Count == 0)
             return 0;
 
-        var existing = (await _unitOfWork.Alerts.GetByCardiMemberAsync(memberId, activeOnly: true)).ToList();
+        // Soft-deleted rows are part of the history a daily rule already judged. Fetching only
+        // standing alerts meant deleting a card re-armed the same quieter day on the next tick
+        // — the caregiver's housekeeping became a new page. Cooldown still looks at standing
+        // rows only: this engine does not auto-resolve, so a deleted alert must not latch the
+        // rule forever. Same-data dedup below reads the full history.
+        var history = (await _unitOfWork.Alerts.GetByCardiMemberAsync(memberId, activeOnly: false)).ToList();
+        var standing = history.Where(a => a.IsActive).ToList();
 
         var created = new List<Alert>();
         foreach (var candidate in candidates)
         {
-            if (existing.Any(a => AlertRuleMarkers.Suppresses(a, candidate.Type, candidate.Rule)))
+            if (standing.Any(a => AlertRuleMarkers.Suppresses(a, candidate.Type, candidate.Rule)))
                 continue;
 
             bool FiredOnLocalToday(Alert a) =>
                 DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(a.TriggeredDate, timeZone)) == localToday;
 
-            // Same-data dedup, regardless of resolution state: a rule reads one day's data, so
-            // one day's data gets at most one alert from it — resolving at noon must not re-page
-            // at half past from the same readings. A candidate that names the night it judged
-            // dedups on that night rather than the firing day, because late-arriving data can put
-            // the same night in front of the rule on two calendar days; an alert from before
-            // night markers existed cannot say which night it judged and is read as today's.
+            // Same-data dedup, regardless of resolution or deletion: a rule reads one day's data,
+            // so one day's data gets at most one alert from it — resolving or deleting at noon
+            // must not re-page at half past from the same readings. A candidate that names the
+            // night it judged dedups on that night rather than the firing day, because
+            // late-arriving data can put the same night in front of the rule on two calendar
+            // days; an alert from before night markers existed cannot say which night it judged
+            // and is read as today's.
             var judgedAlready = candidate.NightOf is { } night
-                ? existing.Any(a => AlertRuleMarkers.HasRule(a, candidate.Rule)
+                ? history.Any(a => AlertRuleMarkers.HasRule(a, candidate.Rule)
                     && (AlertRuleMarkers.HasNight(a, night)
                         || (!AlertRuleMarkers.HasAnyNight(a) && FiredOnLocalToday(a))))
-                : existing.Any(a => AlertRuleMarkers.HasRule(a, candidate.Rule) && FiredOnLocalToday(a));
+                : history.Any(a => AlertRuleMarkers.HasRule(a, candidate.Rule) && FiredOnLocalToday(a));
             if (judgedAlready)
                 continue;
 

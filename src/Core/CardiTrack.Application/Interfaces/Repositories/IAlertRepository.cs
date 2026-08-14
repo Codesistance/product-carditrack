@@ -5,6 +5,11 @@ namespace CardiTrack.Application.Interfaces.Repositories;
 
 public interface IAlertRepository : IRepository<Alert>
 {
+    /// <summary>
+    /// Alerts for one member, newest first. Tracked, so producers can resolve or inspect
+    /// history in place. Pass <paramref name="activeOnly"/> false when the same-data / same
+    /// episode check must still see a caregiver-deleted row.
+    /// </summary>
     Task<IEnumerable<Alert>> GetByCardiMemberAsync(Guid cardiMemberId, bool activeOnly);
 
     /// <summary>
