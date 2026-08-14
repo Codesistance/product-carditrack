@@ -108,7 +108,9 @@ public partial class QuickActionRow : ContentView
 
         if (string.IsNullOrWhiteSpace(target.Phone))
         {
-            await OfferToAddNumberAsync(AddPhonePrompt(NameFormatting.FirstName(target.Name)));
+            await OfferToAddNumberAsync(
+                AddPhonePrompt(NameFormatting.FirstName(target.Name)),
+                EditCardiMemberPage.FocusPhone);
             return;
         }
 
@@ -129,7 +131,9 @@ public partial class QuickActionRow : ContentView
 
         if (string.IsNullOrWhiteSpace(target.Phone))
         {
-            await OfferToAddNumberAsync(AddPhonePrompt(NameFormatting.FirstName(target.Name)));
+            await OfferToAddNumberAsync(
+                AddPhonePrompt(NameFormatting.FirstName(target.Name)),
+                EditCardiMemberPage.FocusPhone);
             return;
         }
 
@@ -151,7 +155,8 @@ public partial class QuickActionRow : ContentView
         if (string.IsNullOrWhiteSpace(target.EmergencyContactPhone))
         {
             await OfferToAddNumberAsync(
-                AddEmergencyContactPrompt(NameFormatting.FirstName(target.Name)));
+                AddEmergencyContactPrompt(NameFormatting.FirstName(target.Name)),
+                EditCardiMemberPage.FocusEmergencyPhone);
             return;
         }
 
@@ -180,14 +185,19 @@ public partial class QuickActionRow : ContentView
     /// validates the fields the API requires (name, date of birth, relationship), which a
     /// profile saved before those rules tightened could trip.
     /// </summary>
-    private async Task OfferToAddNumberAsync(string prompt)
+    /// <param name="focus">
+    /// Which number field to land on — member phone or emergency contact — so the caret is on
+    /// the gap that triggered this offer rather than at the top of the form.
+    /// </param>
+    private async Task OfferToAddNumberAsync(string prompt, string focus)
     {
         if (_popups is not { } popups || _target is not { } target)
             return;
 
         var addNow = await popups.ConfirmInfoAsync(prompt, "No number yet", "Add number", "Not now");
         if (addNow)
-            await Shell.Current.GoToAsync($"{EditCardiMemberPage.Route}?memberId={target.CardiMemberId}");
+            await Shell.Current.GoToAsync(
+                $"{EditCardiMemberPage.Route}?memberId={target.CardiMemberId}&focus={focus}");
     }
 
     private Task ShowWarningAsync(string message) =>

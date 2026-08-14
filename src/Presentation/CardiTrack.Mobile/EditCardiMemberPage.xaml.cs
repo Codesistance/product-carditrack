@@ -11,9 +11,16 @@ namespace CardiTrack.Mobile;
 
 /// <summary>M1-14 Edit CardiMember. Entered from the M1-13 detail screen's edit button.</summary>
 [QueryProperty(nameof(MemberId), "memberId")]
+[QueryProperty(nameof(FocusField), "focus")]
 public partial class EditCardiMemberPage : ContentPage
 {
     public const string Route = "editcardimember";
+
+    /// <summary>Scrolls to and focuses the member phone field after the form loads.</summary>
+    public const string FocusPhone = "phone";
+
+    /// <summary>Scrolls to and focuses the emergency contact number after the form loads.</summary>
+    public const string FocusEmergencyPhone = "emergency";
 
     // Same order and labels as the M1-04 add form, so a member's relationship doesn't
     // appear to change wording between the two screens.
@@ -49,6 +56,7 @@ public partial class EditCardiMemberPage : ContentPage
     private readonly IPopupService _popups;
 
     private Guid _memberId;
+    private string? _focusField;
     private CardiMemberDetailResponse? _member;
     private bool _isSaving;
     private bool _loaded;
@@ -76,6 +84,17 @@ public partial class EditCardiMemberPage : ContentPage
             : Guid.Empty;
     }
 
+    /// <summary>
+    /// Optional field to land on — <see cref="FocusPhone"/> or <see cref="FocusEmergencyPhone"/>.
+    /// Used when the caregiver came to fix one number, not to re-walk the whole profile.
+    /// </summary>
+    public string FocusField
+    {
+        set => _focusField = string.IsNullOrWhiteSpace(value)
+            ? null
+            : Uri.UnescapeDataString(value).Trim().ToLowerInvariant();
+    }
+
     protected override void OnAppearing()
     {
         base.OnAppearing();
@@ -97,6 +116,7 @@ public partial class EditCardiMemberPage : ContentPage
             _member = await _api.GetCardiMemberAsync(_memberId);
             Fill(_member);
             SetState(form: true);
+            await ApplyFocusAsync();
         }
         catch (ApiException ex)
         {
@@ -138,6 +158,36 @@ public partial class EditCardiMemberPage : ContentPage
         FormPanel.IsVisible = form;
         ErrorPanel.IsVisible = error;
         SaveButton.IsVisible = form;
+    }
+
+    /// <summary>
+    /// Lands the caregiver on the field they came to change. The form is long enough that a
+    /// phone-only fix otherwise starts at the top of Basic Info — they came here to type a
+    /// number, so put the caret there.
+    /// </summary>
+    private async Task ApplyFocusAsync()
+    {
+        View? section = _focusField switch
+        {
+            FocusPhone => PhoneFieldSection,
+            FocusEmergencyPhone => EmergencyPhoneFieldSection,
+            _ => null,
+        };
+        if (section is null)
+            return;
+
+        // Layout has to finish before ScrollToAsync has bounds to aim at — without this the
+        // scroll is a no-op on the first paint after SetState(form: true).
+        await Task.Yield();
+        await FormScroller.ScrollToAsync(section, ScrollToPosition.MakeVisible, animated: true);
+
+        Entry? entry = _focusField switch
+        {
+            FocusPhone => PhoneEntry,
+            FocusEmergencyPhone => EmergencyPhoneEntry,
+            _ => null,
+        };
+        entry?.Focus();
     }
 
     /// <summary>Keeps the avatar in step with the name as it is typed.</summary>

@@ -283,7 +283,10 @@ public partial class CardiMemberDetailPage : ContentPage
 
         var hasPhone = !string.IsNullOrWhiteSpace(member.Phone);
         PhoneLabel.Text = hasPhone ? member.Phone : "No phone number yet";
+        // Call when a number exists; otherwise primary caregivers get an edit affordance so
+        // adding one is one tap from this card rather than hunting the header pencil (#280).
         PhoneCallButton.IsVisible = hasPhone;
+        PhoneEditButton.IsVisible = !hasPhone && member.IsPrimaryCaregiver;
 
         MedicalNotesLabel.Text = string.IsNullOrWhiteSpace(member.MedicalNotes)
             ? "No medical notes yet."
@@ -643,6 +646,15 @@ public partial class CardiMemberDetailPage : ContentPage
         {
             await _popups.ShowWarningAsync("Phone calls aren't supported on this device.");
         }
+    }
+
+    private async void OnEditPhoneTapped(object? sender, TappedEventArgs e)
+    {
+        if (_member is not { IsPrimaryCaregiver: true })
+            return;
+
+        await Shell.Current.GoToAsync(
+            $"{EditCardiMemberPage.Route}?memberId={_memberId}&focus={EditCardiMemberPage.FocusPhone}");
     }
 
     private async void OnEditClicked(object? sender, EventArgs e) =>
