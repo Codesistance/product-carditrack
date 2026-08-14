@@ -207,7 +207,7 @@ Turns accumulated `ActivityLog` history into `PatternBaseline` rows — the stat
 - Uses **one DI scope per member**: the read tracks up to 90 rows each, which would accumulate across the whole run on a shared `DbContext`, and a member that fails takes nothing else down with it.
 - **Appends** rather than replacing, so a shift in a member's own normal stays visible in history. Unlike the partitioned tables, **baselines have no retention today** — pruning falls under the planned retention job (see [dpia.md](../../compliance/dpia.md) §6.3).
 
-The arithmetic lives in `BaselineCalculator` (`CardiTrack.Application/Services`) — pure and stateless, so it is unit-tested without a database or a clock. Its rules:
+The arithmetic lives in `BaselineCalculator` (`CardiTrack.Application/Services`) — pure and stateless, so it is unit-tested without a database or a clock. Mean and sample σ stay here (package-free Application); Math.NET Numerics is registered on this host (`AddNumerics`) for SSA and for the robust median/MAD helpers that are **not yet** what this job persists — see [mathnet_numerics.md](../../technical/mathnet_numerics.md). Its rules:
 
 | Rule | Behaviour |
 |---|---|

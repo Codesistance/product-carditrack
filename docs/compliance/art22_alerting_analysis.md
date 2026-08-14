@@ -72,7 +72,7 @@ contest — maps onto controls that exist in code today:
 | Safeguard | Implementation | Where |
 |---|---|---|
 | The model cannot alert by mumbling | Only an explicit closing `Severity:` line routes; an unparseable verdict is stored with null severity and **never** alerts | `AssessmentSeverityParser`; `RealtimeAssessmentService` |
-| The model never computes, only interprets | Every number (trend, deviation, baselines) is deterministic .NET; calibrated numeric risk scores were **descoped with the LSTM** (2026-08-10), deleting DPIA R-B2's worst exposure | `SsaDecomposition`, `StatisticalAlertRules`; llm_design "Trend Interpretation" |
+| The model never computes, only interprets | Every number (trend, deviation, baselines) is deterministic in-process .NET; SSA eigen-decomposition is Math.NET Numerics (`SsaParameters.Engine = "MathNet.Numerics.Evd"`), grouping and residual stay CardiTrack code; calibrated numeric risk scores were **descoped with the LSTM** (2026-08-10), deleting DPIA R-B2's worst exposure | `ISsaDecomposition` / `SsaDecomposition`, `StatisticalAlertRules`; llm_design "Trend Interpretation"; [mathnet_numerics.md](../technical/mathnet_numerics.md) |
 | No alarms from statistically thin evidence | Provisional (7/14-day) baselines never alert — enforced by fetching only the established 30-day baseline | `StatisticalAlertService` |
 | Absence of data never reads as an event | Null-vs-zero discipline; the one red rule requires a **measured** zero | `StatisticalAlertRules.NoMorningActivity` |
 | Alarm fatigue is bounded | One unresolved alert per remedy (cooldowns); exactly-once severity routing under concurrency; per-day dedup | `AlertRuleMarkers`; assessment upsert claim |
@@ -117,10 +117,15 @@ audience restricted to staff-owned test members for ≥2 weeks; measure alert vo
 (staff adjudication), and cooldown behavior under real load before any real family is
 enrolled. This slots between runbook steps 6 and 10's lift.
 
-**V4 — Change control (standing):** any change to a `CARDITRACK_*` prompt, the model tag, or
-the severity mapping re-triggers V2 (the DPIA already names prompt-content changes as a §13
-review trigger). The model tag is pinned (`Q4_K_M`, one tag across environments) precisely so
-an assessment means the same thing everywhere.
+**V4 — Change control (standing):** any change to a `CARDITRACK_*` prompt, the model tag,
+the severity mapping, **or the numerical engine that produces SSA features / baseline
+formulas** (`SsaParameters.Engine`, `BaselineCalculator` mean/σ vs robust alternatives)
+re-triggers V2 (the DPIA already names prompt-content changes as a §13 review trigger;
+numerical-engine changes were added 2026-08-14). The model tag is pinned (`Q4_K_M`, one
+tag across environments) and the SSA engine is pinned (`MathNet.Numerics.Evd`) precisely so
+an assessment means the same thing everywhere. The 2026-08-14 Jacobi → Math.NET EVD swap is
+a V4 event: stored `HrDeviationScore` values from before that date are the same algebra, a
+different solver, and must not be treated as bit-stable against post-swap rows.
 
 **Results ledger:** append V2/V3 results to this document when executed; prod alerting for
 real families is gated on both being recorded here.

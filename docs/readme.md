@@ -135,6 +135,9 @@ HIPAA/GDPR data architecture (ADR): identifier/clinical schema separation, Safe 
 #### [granular_timeseries_storage.md](./technical/granular_timeseries_storage.md)
 **Granular time-series storage (ADR)** — sub-daily wearable samples stay in the existing Cloud SQL instance as day-partitioned hour-vector tables (no Bigtable/BigQuery); rollup ladder, retention, alternatives, and the triggers that would reopen the decision.
 
+#### [mathnet_numerics.md](./technical/mathnet_numerics.md)
+**Math.NET Numerics (ADR)** — in-process statistical engine for SSA eigen-decomposition; ports, formula gaps still on mean/σ, and the documentation holes that matter for Art. 13–15 / Art. 22.
+
 #### [enum_extensions_guide.md](./technical/enum_extensions_guide.md)
 Guide to enum extensions and helper methods used throughout the solution.
 

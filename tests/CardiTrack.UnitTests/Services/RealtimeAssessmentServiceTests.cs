@@ -107,7 +107,7 @@ public class RealtimeAssessmentServiceTests
     }
 
     private RealtimeAssessmentService CreateSut() =>
-        new(_unitOfWork, _medicalAi, PromptContextFactory.Composer(_unitOfWork), _cache,
+        new(_unitOfWork, new SsaDecomposition(), _medicalAi, PromptContextFactory.Composer(_unitOfWork), _cache,
             NullLogger<RealtimeAssessmentService>.Instance);
 
     [Fact]

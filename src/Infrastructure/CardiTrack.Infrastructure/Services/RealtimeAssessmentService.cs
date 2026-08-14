@@ -73,6 +73,7 @@ public class RealtimeAssessmentService : IRealtimeAssessmentService
         """ + MedicalPromptBlocks.ContextGuardrail;
 
     private readonly IUnitOfWork _unitOfWork;
+    private readonly ISsaDecomposition _ssa;
     private readonly IMedicalAiService _medicalAi;
     private readonly MemberContextComposer _memberContext;
     private readonly IDistributedCache _cache;
@@ -80,12 +81,14 @@ public class RealtimeAssessmentService : IRealtimeAssessmentService
 
     public RealtimeAssessmentService(
         IUnitOfWork unitOfWork,
+        ISsaDecomposition ssa,
         IMedicalAiService medicalAi,
         MemberContextComposer memberContext,
         IDistributedCache cache,
         ILogger<RealtimeAssessmentService> logger)
     {
         _unitOfWork = unitOfWork;
+        _ssa = ssa;
         _medicalAi = medicalAi;
         _memberContext = memberContext;
         _cache = cache;
@@ -159,7 +162,7 @@ public class RealtimeAssessmentService : IRealtimeAssessmentService
             return false;
 
         var series = FillGaps(hrWindow);
-        var ssa = SsaDecomposition.Decompose(series);
+        var ssa = _ssa.Decompose(series);
         // The floored yardstick is what the deviation score is denominated in, so it is also
         // what the prompt states as the member's typical jitter — the model must see the same
         // units the score uses. The *stored* HrNoiseRms stays the measured residual: flooring

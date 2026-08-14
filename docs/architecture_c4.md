@@ -111,7 +111,7 @@ C4Component
     Component(digest, "DigestGenerationService", "--job digest, half-hourly (*/30)", "Recomputes a member's summary once their readings have moved past the last one, and no more often than the 20-min regeneration floor; describes their local day in progress; every generation kept as history; no summary from silence")
     Component(drain, "NotificationDrainService", "--job aggregate, 5-min", "Pulls batches, hunts users/{id}, maps healthUserId to DeviceConnection, runs the standard targeted sync. Ack = nothing still needs a retry")
     Component(assess, "RealtimeAssessmentService", "--job assess, twice hourly (:02/:32)", "Latest 60-min HR window (>=45 min covered), dedup by (member, windowStart) - an unmoved window costs no inference")
-    Component(ssa, "SsaDecomposition", "Application, dependency-free", "Lag-covariance + Jacobi eigen: trend + oscillation + noise residual; deviation in noise-RMS units")
+    Component(ssa, "SsaDecomposition", "Infrastructure, Math.NET EVD", "BK lag-covariance + MathNet.Numerics.Evd: trend + oscillation + noise residual; deviation in noise-RMS units")
     Component(parser, "AssessmentSeverityParser", "Application", "Strict closing 'Severity:' line only; critical/high/medium/low -> red/orange/yellow/green; unparseable NEVER alerts")
     Component(blocks, "MedicalPromptBlocks", "Shared prompt hygiene", "Age/sex/notes - never name or id; injection-framed caregiver notes")
   }
@@ -176,8 +176,8 @@ four):
 
 ```
 Domain          -> references nothing
-Application     -> Domain only, zero NuGet packages (SSA and the alert rules live here, dependency-free)
-Infrastructure  -> Application + Domain (EF Core, Npgsql, provider clients, MedGemma/Gemini clients)
+Application     -> Domain + Shared, zero NuGet packages (alert rules and baseline formulas live here)
+Infrastructure  -> Application + Domain (EF Core, Npgsql, provider clients, MedGemma/Gemini clients, Math.NET SSA)
 Hosts           -> composition roots only; HealthWebhookReceiver deliberately references
                    neither Application nor Infrastructure - no business logic in the one
                    container the internet can reach

@@ -31,6 +31,9 @@
     <PackageReference Include="Microsoft.Extensions.Configuration.EnvironmentVariables" Version="10.0.11" />
     <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="10.0.11" />
     <PackageReference Include="Microsoft.Extensions.Http" Version="10.0.11" />
+    <!-- In-process numerical engine for SSA (symmetric EVD) and descriptive statistics.
+         MIT; no network; not a subprocessor. See docs/technical/mathnet_numerics.md. -->
+    <PackageReference Include="MathNet.Numerics" Version="5.0.0" />
   </ItemGroup>
 
   <PropertyGroup>

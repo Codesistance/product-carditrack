@@ -9,7 +9,10 @@ namespace CardiTrack.Application.Services;
 /// against and that alerting will eventually threshold on.
 /// <para>
 /// Pure and stateless: the job that drives it lives in <c>CardiTrack.Worker</c>, so everything here
-/// is unit-testable without a database or a clock.
+/// is unit-testable without a database or a clock. Mean and sample σ are computed here rather than
+/// through <c>IDescriptiveStatistics</c> so this class stays package-free; Math.NET's matching
+/// formulas (and the robust median/MAD alternatives) live in Infrastructure — see
+/// <c>docs/technical/mathnet_numerics.md</c>.
 /// </para>
 /// </summary>
 public static class BaselineCalculator
