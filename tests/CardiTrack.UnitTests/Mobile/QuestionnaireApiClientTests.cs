@@ -19,30 +19,55 @@ public class QuestionnaireApiClientTests
     }
 
     [Fact]
-    public async Task GetQuestionnaires_ReadsTheMembersList_AndUnwrapsTheEnvelope()
+    public async Task GetQuestionnaires_ReadsThePendingQuestionAndTheAnsweredPage_AndUnwrapsTheEnvelope()
     {
         var (client, http) = CreateSut();
         var memberId = Guid.NewGuid();
         http.Enqueue(HttpStatusCode.OK, $$"""
-            {"success":true,"message":"ok","data":[
-              {"id":"{{Guid.NewGuid()}}","cardiMemberId":"{{memberId}}",
+            {"success":true,"message":"ok","data":{
+              "hasAny":true,
+              "pending":{"id":"{{Guid.NewGuid()}}","cardiMemberId":"{{memberId}}",
                "questionText":"Has anything changed at home recently?","answerText":null,
                "triggerContext":"Sleep has been shorter all week.","status":"pending",
-               "generatedAtUtc":"2026-08-13T09:00:00Z","answeredAtUtc":null,"answeredByUserId":null}],
+               "generatedAtUtc":"2026-08-13T09:00:00Z","answeredAtUtc":null,"answeredByUserId":null},
+              "answered":{"items":[],"page":1,"pageSize":20,"totalCount":0,"hasMore":false} },
              "timestamp":"2026-08-13T09:00:00Z"}
             """);
 
-        var questionnaires = await client.GetQuestionnairesAsync(memberId);
+        var result = await client.GetQuestionnairesAsync(memberId);
 
         var request = http.Requests.Single();
         Assert.Equal(HttpMethod.Get, request.Method);
         Assert.Equal($"/api/v1/cardimembers/{memberId}/questionnaires", request.Uri!.AbsolutePath);
+        Assert.Equal("page=1&pageSize=20", request.Uri!.Query.TrimStart('?'));
 
-        var only = Assert.Single(questionnaires);
-        Assert.Equal("Has anything changed at home recently?", only.QuestionText);
-        Assert.Equal("pending", only.Status);
-        Assert.Null(only.AnswerText);
-        Assert.Equal("Sleep has been shorter all week.", only.TriggerContext);
+        Assert.True(result.HasAny);
+        Assert.NotNull(result.Pending);
+        Assert.Equal("Has anything changed at home recently?", result.Pending!.QuestionText);
+        Assert.Equal("pending", result.Pending.Status);
+        Assert.Null(result.Pending.AnswerText);
+        Assert.Equal("Sleep has been shorter all week.", result.Pending.TriggerContext);
+        Assert.Empty(result.Answered.Items);
+    }
+
+    /// <summary>Search text is escaped into the query string rather than interpolated raw — this
+    /// proves a value with characters the querystring would otherwise mangle round-trips intact.</summary>
+    [Fact]
+    public async Task GetQuestionnaires_SendsSearchAndPagingAsAQueryString()
+    {
+        var (client, http) = CreateSut();
+        var memberId = Guid.NewGuid();
+        http.Enqueue(HttpStatusCode.OK, """
+            {"success":true,"message":"ok","data":{"hasAny":true,"pending":null,
+             "answered":{"items":[],"page":2,"pageSize":10,"totalCount":0,"hasMore":false}},
+             "timestamp":"2026-08-13T09:00:00Z"}
+            """);
+
+        await client.GetQuestionnairesAsync(memberId, search: "bedrooms & more", page: 2, pageSize: 10);
+
+        var request = http.Requests.Single();
+        Assert.Equal(
+            "page=2&pageSize=10&search=bedrooms%20%26%20more", request.Uri!.Query.TrimStart('?'));
     }
 
     /// <summary>

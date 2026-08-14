@@ -3,7 +3,6 @@ using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Domain.Extensions;
 using CardiTrack.Mobile.Controls;
 using CardiTrack.Mobile.Core.Api;
-using CardiTrack.Mobile.Core.Questionnaires;
 using CardiTrack.Mobile.Services;
 
 namespace CardiTrack.Mobile;
@@ -355,13 +354,13 @@ public partial class CardiMemberDetailPage : ContentPage
 
         try
         {
-            var questionnaires = await _api.GetQuestionnairesAsync(memberId);
+            var result = await _api.GetQuestionnairesAsync(memberId);
             if (memberId != _memberId)
                 return;
 
-            QuestionsRow.IsVisible = questionnaires.Count > 0;
+            QuestionsRow.IsVisible = result.HasAny;
 
-            var pending = MemberQuestionnaires.FirstPending(questionnaires);
+            var pending = result.Pending;
             if (pending is null)
             {
                 PendingQuestionCard.IsVisible = false;

@@ -9,7 +9,14 @@
 
     <!-- Everything the service has asked this member's family, and what they said. Reached from
          the CardiMember detail page; no Figma frame yet, so it is built from the same components
-         and styles as the screens either side of it. Full-bleed, like every page. -->
+         and styles as the screens either side of it. Full-bleed, like every page.
+
+         The answered history is a CollectionView rather than a stack in a ScrollView: it is the
+         only way to get real virtualization and RemainingItemsThreshold lazy-loading, and it must
+         not sit inside an outer ScrollView or that virtualization is defeated. Everything that used
+         to sit above the answered stack — the intro, the pending card, the search box, the empty
+         state — now lives in CollectionView.Header so it scrolls with the list instead of pinning
+         above it. -->
 
     <Grid RowDefinitions="Auto,*,Auto">
 
@@ -38,62 +45,127 @@
             </Grid>
         </controls:HeaderBand>
 
-        <RefreshView x:Name="Refresher"
-                     Grid.Row="1"
-                     RefreshColor="{StaticResource Primary}"
-                     Refreshing="OnPullToRefresh">
-            <ScrollView>
-                <Grid Padding="20,20,20,28">
+        <Grid Grid.Row="1">
 
-                    <VerticalStackLayout x:Name="SkeletonPanel" Spacing="14" IsVisible="False">
-                        <controls:SkeletonView HeightRequest="120"/>
-                        <controls:SkeletonView HeightRequest="120"/>
-                        <controls:SkeletonView HeightRequest="120"/>
-                    </VerticalStackLayout>
+            <VerticalStackLayout x:Name="SkeletonPanel" Spacing="14" Padding="20,20" IsVisible="False">
+                <controls:SkeletonView HeightRequest="120"/>
+                <controls:SkeletonView HeightRequest="120"/>
+                <controls:SkeletonView HeightRequest="120"/>
+            </VerticalStackLayout>
 
-                    <VerticalStackLayout x:Name="ErrorPanel" Spacing="12" IsVisible="False">
-                        <Label Text="We couldn't load these questions"
-                               Style="{StaticResource Heading3}"
-                               HorizontalTextAlignment="Center"/>
-                        <Label x:Name="ErrorDetailLabel"
-                               Style="{StaticResource Body2}"
-                               HorizontalTextAlignment="Center"/>
-                        <Button Text="Try again"
-                                Style="{StaticResource SecondaryOutlineButton}"
-                                Clicked="OnRetryClicked"/>
-                    </VerticalStackLayout>
+            <VerticalStackLayout x:Name="ErrorPanel" Spacing="12" Padding="20,20" IsVisible="False">
+                <Label Text="We couldn't load these questions"
+                       Style="{StaticResource Heading3}"
+                       HorizontalTextAlignment="Center"/>
+                <Label x:Name="ErrorDetailLabel"
+                       Style="{StaticResource Body2}"
+                       HorizontalTextAlignment="Center"/>
+                <Button Text="Try again"
+                        Style="{StaticResource SecondaryOutlineButton}"
+                        Clicked="OnRetryClicked"/>
+            </VerticalStackLayout>
 
-                    <VerticalStackLayout x:Name="ContentPanel" Spacing="16" IsVisible="False">
+            <RefreshView x:Name="Refresher"
+                         IsVisible="False"
+                         RefreshColor="{StaticResource Primary}"
+                         Refreshing="OnPullToRefresh">
+                <CollectionView x:Name="AnsweredList"
+                                Margin="0,0,0,0"
+                                Padding="20,20,20,28"
+                                VerticalScrollBarVisibility="Never"
+                                RemainingItemsThreshold="3"
+                                RemainingItemsThresholdReached="OnRemainingItemsThresholdReached">
 
-                        <Label x:Name="IntroLabel"
-                               Style="{StaticResource Body2}"
-                               LineBreakMode="WordWrap"/>
+                    <CollectionView.ItemsLayout>
+                        <LinearItemsLayout Orientation="Vertical" ItemSpacing="14"/>
+                    </CollectionView.ItemsLayout>
 
-                        <!-- The one still waiting, if there is one: a caregiver who scrolled past
-                             it on the member's page can still answer it here. -->
-                        <controls:QuestionCard x:Name="PendingCard" IsVisible="False"/>
+                    <CollectionView.Header>
+                        <VerticalStackLayout Spacing="16" Margin="0,0,0,16">
 
-                        <Border x:Name="EmptyPanel"
-                                Style="{StaticResource ElevatedCard}"
-                                Padding="20,17,20,20"
-                                IsVisible="False">
-                            <VerticalStackLayout Spacing="6">
-                                <Label x:Name="EmptyTitleLabel"
-                                       Text="Nothing to look back on yet"
-                                       Style="{StaticResource Heading3}"
-                                       HorizontalTextAlignment="Center"/>
-                                <Label x:Name="EmptyDetailLabel"
-                                       Style="{StaticResource Body2}"
-                                       TextColor="{StaticResource HeadingText}"
-                                       HorizontalTextAlignment="Center"/>
-                            </VerticalStackLayout>
-                        </Border>
+                            <Label x:Name="IntroLabel"
+                                   Style="{StaticResource Body2}"
+                                   LineBreakMode="WordWrap"/>
 
-                        <VerticalStackLayout x:Name="AnsweredStack" Spacing="14"/>
-                    </VerticalStackLayout>
-                </Grid>
-            </ScrollView>
-        </RefreshView>
+                            <!-- The one still waiting, if there is one: a caregiver who scrolled past
+                                 it on the member's page can still answer it here. -->
+                            <controls:QuestionCard x:Name="PendingCard" IsVisible="False"/>
+
+                            <!-- Full-text search over this member's Q&A history. Hidden until there is
+                                 anything to search — a search box over an empty archive is a control
+                                 with nothing to do. -->
+                            <Border x:Name="SearchBorder"
+                                    Style="{StaticResource AuthEntryBorder}"
+                                    HeightRequest="48"
+                                    IsVisible="False">
+                                <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8">
+                                    <Label Grid.Column="0"
+                                           Text="🔍"
+                                           FontSize="16"
+                                           VerticalOptions="Center"
+                                           AutomationProperties.IsInAccessibleTree="False"/>
+
+                                    <Entry x:Name="SearchEntry"
+                                           Grid.Column="1"
+                                           FontFamily="Quicksand"
+                                           FontSize="14"
+                                           Placeholder="Search your questions and answers"
+                                           TextColor="{AppThemeBinding Light={StaticResource Gray900}, Dark={StaticResource White}}"
+                                           PlaceholderColor="{StaticResource Gray500}"
+                                           ReturnType="Search"
+                                           TextChanged="OnSearchTextChanged"/>
+
+                                    <Button x:Name="ClearSearchButton"
+                                            Grid.Column="2"
+                                            Text="✕"
+                                            FontFamily="QuicksandSemiBold"
+                                            FontSize="13"
+                                            TextColor="{StaticResource MutedText}"
+                                            BackgroundColor="Transparent"
+                                            WidthRequest="32"
+                                            HeightRequest="32"
+                                            Padding="0"
+                                            IsVisible="False"
+                                            SemanticProperties.Description="Clear search"
+                                            Clicked="OnClearSearchClicked"/>
+                                </Grid>
+                            </Border>
+
+                            <Border x:Name="EmptyPanel"
+                                    Style="{StaticResource ElevatedCard}"
+                                    Padding="20,17,20,20"
+                                    IsVisible="False">
+                                <VerticalStackLayout Spacing="6">
+                                    <Label x:Name="EmptyTitleLabel"
+                                           Style="{StaticResource Heading3}"
+                                           HorizontalTextAlignment="Center"/>
+                                    <Label x:Name="EmptyDetailLabel"
+                                           Style="{StaticResource Body2}"
+                                           TextColor="{StaticResource HeadingText}"
+                                           HorizontalTextAlignment="Center"/>
+                                </VerticalStackLayout>
+                            </Border>
+                        </VerticalStackLayout>
+                    </CollectionView.Header>
+
+                    <CollectionView.ItemTemplate>
+                        <DataTemplate x:DataType="controls:AnsweredQuestionnaireItem">
+                            <controls:AnsweredQuestionRow
+                                AnswerSubmitted="OnAnsweredRowAnswerSubmitted"
+                                DeleteRequested="OnAnsweredRowDeleteRequested"/>
+                        </DataTemplate>
+                    </CollectionView.ItemTemplate>
+
+                    <CollectionView.Footer>
+                        <!-- The next page's placeholder while it loads in the background. -->
+                        <controls:SkeletonView x:Name="LoadMoreSkeleton"
+                                                HeightRequest="72"
+                                                Margin="0,14,0,0"
+                                                IsVisible="False"/>
+                    </CollectionView.Footer>
+                </CollectionView>
+            </RefreshView>
+        </Grid>
 
         <controls:BottomNavBar Grid.Row="2" Tab="Dashboard"/>
     </Grid>

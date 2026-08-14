@@ -1,15 +1,16 @@
+using System.Collections.ObjectModel;
 using CardiTrack.Application.DTOs.Requests;
 using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Mobile.Controls;
 using CardiTrack.Mobile.Core.Api;
-using CardiTrack.Mobile.Core.Questionnaires;
 using CardiTrack.Mobile.Services;
 
 namespace CardiTrack.Mobile;
 
 /// <summary>
 /// Everything the service has asked this member's family, and what they answered — with the answers
-/// editable and removable.
+/// editable and removable, searchable by question or answer text, and lazily loaded as the family
+/// scrolls back through it.
 /// </summary>
 /// <remarks>
 /// An archive rather than a live screen, so it refetches when opened and on a pull, and does not
@@ -22,12 +23,26 @@ public partial class QuestionnairesPage : ContentPage
     /// <summary>Shell route; see <see cref="AppShell"/>.</summary>
     public const string Route = "memberquestions";
 
+    /// <summary>How many answered questions a page fetches. Small enough that a page arrives while
+    /// a scroll is still in motion, large enough that scrolling rarely outruns it.</summary>
+    private const int PageSize = 20;
+
+    /// <summary>How long to hold after a keystroke before searching — long enough that a caregiver
+    /// typing a whole word does not fire a request per letter, short enough to still feel live.</summary>
+    private static readonly TimeSpan SearchDebounce = TimeSpan.FromMilliseconds(350);
+
     private readonly ICardiTrackApiClient _api;
     private readonly IPopupService _popups;
+    private readonly ObservableCollection<AnsweredQuestionnaireItem> _answeredItems = [];
 
     private Guid _memberId;
     private string? _memberName;
+    private string? _searchTerm;
+    private int _currentPage;
+    private bool _hasMorePages;
+    private bool _isLoadingMore;
     private bool _isBusy;
+    private CancellationTokenSource? _searchDebounceCts;
 
     public QuestionnairesPage(ICardiTrackApiClient api, IPopupService popups)
     {
@@ -35,6 +50,7 @@ public partial class QuestionnairesPage : ContentPage
         _api = api;
         _popups = popups;
 
+        AnsweredList.ItemsSource = _answeredItems;
         PendingCard.AnswerSubmitted += OnPendingAnswered;
         PendingCard.DismissRequested += OnPendingDismissed;
     }
@@ -73,14 +89,55 @@ public partial class QuestionnairesPage : ContentPage
     private async void OnBackTapped(object? sender, EventArgs e) =>
         await this.GoBackAsync($"{CardiMemberDetailPage.Route}?memberId={_memberId}");
 
+    private void OnSearchTextChanged(object? sender, TextChangedEventArgs e)
+    {
+        ClearSearchButton.IsVisible = !string.IsNullOrEmpty(e.NewTextValue);
+        _searchTerm = string.IsNullOrWhiteSpace(e.NewTextValue) ? null : e.NewTextValue.Trim();
+
+        _searchDebounceCts?.Cancel();
+        var cts = new CancellationTokenSource();
+        _searchDebounceCts = cts;
+        _ = DebouncedSearchAsync(cts.Token);
+    }
+
+    private void OnClearSearchClicked(object? sender, EventArgs e) => SearchEntry.Text = string.Empty;
+
+    private async Task DebouncedSearchAsync(CancellationToken ct)
+    {
+        try
+        {
+            await Task.Delay(SearchDebounce, ct);
+        }
+        catch (TaskCanceledException)
+        {
+            return;
+        }
+
+        if (!ct.IsCancellationRequested)
+            await LoadAsync();
+    }
+
+    /// <summary>(Re)loads from page one — the initial open, a pull-to-refresh, a search edit, or
+    /// anything that changes what belongs at the top of the list.</summary>
     private async Task LoadAsync()
     {
         SetState(loading: true);
+        _currentPage = 1;
 
         try
         {
-            var questionnaires = await _api.GetQuestionnairesAsync(_memberId);
-            Apply(questionnaires);
+            var result = await _api.GetQuestionnairesAsync(_memberId, _searchTerm, _currentPage, PageSize);
+            ApplyHeader(result);
+
+            _answeredItems.Clear();
+            foreach (var questionnaire in result.Answered.Items)
+                _answeredItems.Add(new AnsweredQuestionnaireItem(questionnaire, _memberName));
+
+            _hasMorePages = result.Answered.HasMore;
+            EmptyPanel.IsVisible = result.Answered.TotalCount == 0;
+            if (EmptyPanel.IsVisible)
+                ApplyEmptyStateText();
+
             SetState(loaded: true);
         }
         catch (ApiException ex)
@@ -90,139 +147,100 @@ public partial class QuestionnairesPage : ContentPage
         }
     }
 
-    private void Apply(IReadOnlyList<QuestionnaireResponse> questionnaires)
+    /// <summary>Fetches the next page and appends it — never resets what is already on screen, so a
+    /// caregiver mid-scroll never loses their place.</summary>
+    private async Task LoadMoreAsync()
+    {
+        if (_isLoadingMore || !_hasMorePages)
+            return;
+
+        _isLoadingMore = true;
+        LoadMoreSkeleton.IsVisible = true;
+        try
+        {
+            var nextPage = _currentPage + 1;
+            var result = await _api.GetQuestionnairesAsync(_memberId, _searchTerm, nextPage, PageSize);
+
+            foreach (var questionnaire in result.Answered.Items)
+                _answeredItems.Add(new AnsweredQuestionnaireItem(questionnaire, _memberName));
+
+            _currentPage = nextPage;
+            _hasMorePages = result.Answered.HasMore;
+        }
+        catch (ApiException)
+        {
+            // Best-effort: staying on what already loaded beats an error banner over a scroll
+            // gesture. The next pull-to-refresh or search edit gets another chance.
+            _hasMorePages = false;
+        }
+        finally
+        {
+            _isLoadingMore = false;
+            LoadMoreSkeleton.IsVisible = false;
+        }
+    }
+
+    private void OnRemainingItemsThresholdReached(object? sender, EventArgs e) => _ = LoadMoreAsync();
+
+    private void ApplyHeader(QuestionnairesPageResponse result)
     {
         var name = string.IsNullOrWhiteSpace(_memberName) ? "them" : _memberName;
         IntroLabel.Text =
             $"Things we've asked about {name}, and what you told us. Your answers help us read "
             + "their readings properly.";
 
-        var pending = MemberQuestionnaires.FirstPending(questionnaires);
-        PendingCard.IsVisible = pending is not null;
-        if (pending is not null)
-            PendingCard.Apply(pending, _memberName);
+        PendingCard.IsVisible = result.Pending is not null;
+        if (result.Pending is not null)
+            PendingCard.Apply(result.Pending, _memberName);
 
-        var answered = MemberQuestionnaires.AnsweredNewestFirst(questionnaires);
-
-        AnsweredStack.Clear();
-        foreach (var questionnaire in answered)
-            AnsweredStack.Add(BuildAnsweredCard(questionnaire));
-
-        EmptyPanel.IsVisible = answered.Count == 0;
-        EmptyDetailLabel.Text =
-            $"When we ask something about {name} and you answer, we'll keep it here.";
+        // Nothing to search until there is a first answer to find.
+        SearchBorder.IsVisible = result.HasAny;
     }
 
-    /// <summary>
-    /// One answered question. The card is the same control the pending question uses, in its
-    /// prefilled mode — so editing an answer is the same gesture as giving one — with the edit and
-    /// delete affordances beneath it.
-    /// </summary>
-    private View BuildAnsweredCard(QuestionnaireResponse questionnaire)
+    private void ApplyEmptyStateText()
     {
-        var card = new QuestionCard();
-        card.Apply(questionnaire, _memberName);
-        card.AnswerSubmitted += async (_, answer) => await SaveAnswerAsync(card, questionnaire, answer);
+        var name = string.IsNullOrWhiteSpace(_memberName) ? "them" : _memberName;
 
-        var answeredAt = questionnaire.AnsweredAtUtc ?? questionnaire.GeneratedAtUtc;
-        var caption = new Label
+        if (!string.IsNullOrWhiteSpace(_searchTerm))
         {
-            Text = $"Answered {RelativeTime.Format(answeredAt)}",
-            FontFamily = "Quicksand",
-            FontSize = 12,
-            TextColor = (Color)App.Current!.Resources["BodyText"],
-            VerticalTextAlignment = TextAlignment.Center,
-        };
-
-        var delete = new ImageButton
-        {
-            Source = "icon_trash.svg",
-            BackgroundColor = Colors.Transparent,
-            WidthRequest = 44,
-            HeightRequest = 44,
-            Padding = 11,
-        };
-        SemanticProperties.SetDescription(delete, "Delete this question and answer");
-        delete.Clicked += async (_, _) => await DeleteAsync(questionnaire);
-
-        var footer = new Grid
-        {
-            ColumnDefinitions = [new(GridLength.Star), new(GridLength.Auto)],
-            ColumnSpacing = 8,
-            Margin = new Thickness(4, 0, 0, 0),
-        };
-        footer.Add(caption);
-        footer.Add(delete, column: 1);
-
-        var layout = new VerticalStackLayout { Spacing = 4 };
-        layout.Add(card);
-        layout.Add(footer);
-        return layout;
-    }
-
-    private async Task SaveAnswerAsync(QuestionCard card, QuestionnaireResponse questionnaire, string answer)
-    {
-        if (_isBusy)
-            return;
-
-        _isBusy = true;
-        card.SetBusy(true);
-        try
-        {
-            await _api.AnswerQuestionnaireAsync(
-                questionnaire.Id, new AnswerQuestionnaireRequest { AnswerText = answer });
-
-            // Reloaded rather than patched in place: an edit can change what the pending card
-            // shows too, and this page is cheap to rebuild.
-            card.CloseEditor();
-            await LoadAsync();
+            EmptyTitleLabel.Text = "No matches";
+            EmptyDetailLabel.Text =
+                $"Nothing about “{_searchTerm}” yet — try a different word, or clear the "
+                + "search to see everything.";
         }
-        catch (ApiException ex) when (!ex.IsSessionExpired)
+        else
         {
-            // Editor stays open, text intact — retrying must not mean retyping.
-            await _popups.ShowWarningAsync(ex.Message, "Couldn't save your answer");
-        }
-        finally
-        {
-            _isBusy = false;
-            card.SetBusy(false);
-        }
-    }
-
-    private async Task DeleteAsync(QuestionnaireResponse questionnaire)
-    {
-        if (_isBusy)
-            return;
-
-        // There is no undo, and the answer is gone for the whole family — the same confirmation
-        // weight deleting an alert carries.
-        var confirmed = await _popups.ConfirmWarningAsync(
-            "This question and your answer will be removed for everyone.",
-            "Delete this answer?",
-            "Yes, delete");
-        if (!confirmed)
-            return;
-
-        _isBusy = true;
-        try
-        {
-            await _api.DeleteQuestionnaireAsync(questionnaire.Id);
-            await LoadAsync();
-        }
-        catch (ApiException ex) when (!ex.IsSessionExpired)
-        {
-            await _popups.ShowErrorAsync(ex.Message, "Couldn't delete that answer");
-        }
-        finally
-        {
-            _isBusy = false;
+            EmptyTitleLabel.Text = "Nothing to look back on yet";
+            EmptyDetailLabel.Text = $"When we ask something about {name} and you answer, we'll keep it here.";
         }
     }
 
     private async void OnPendingAnswered(object? sender, string answer)
     {
-        if (PendingCard.Questionnaire is { } questionnaire)
-            await SaveAnswerAsync(PendingCard, questionnaire, answer);
+        if (_isBusy || PendingCard.Questionnaire is not { } questionnaire)
+            return;
+
+        _isBusy = true;
+        PendingCard.SetBusy(true);
+        try
+        {
+            await _api.AnswerQuestionnaireAsync(
+                questionnaire.Id, new AnswerQuestionnaireRequest { AnswerText = answer });
+
+            // A full reload rather than a patch: answering the pending question both removes it
+            // from the header and inserts a brand-new row at the top of the answered list.
+            PendingCard.CloseEditor();
+            await LoadAsync();
+        }
+        catch (ApiException ex) when (!ex.IsSessionExpired)
+        {
+            await _popups.ShowWarningAsync(ex.Message, "Couldn't save your answer");
+        }
+        finally
+        {
+            _isBusy = false;
+            PendingCard.SetBusy(false);
+        }
     }
 
     private async void OnPendingDismissed(object? sender, EventArgs e)
@@ -253,10 +271,115 @@ public partial class QuestionnairesPage : ContentPage
         }
     }
 
+    /// <summary>
+    /// An edit to an already-answered question. Patched into <see cref="_answeredItems"/> in place
+    /// rather than reloaded — this list can now be many pages deep, and a reload would both refetch
+    /// pages already on screen and throw the scroll position away.
+    /// </summary>
+    private async void OnAnsweredRowAnswerSubmitted(
+        object? sender, (QuestionnaireResponse Questionnaire, string Answer) e)
+    {
+        if (_isBusy || sender is not AnsweredQuestionRow row)
+            return;
+
+        _isBusy = true;
+        row.SetBusy(true);
+        try
+        {
+            var updated = await _api.AnswerQuestionnaireAsync(
+                e.Questionnaire.Id, new AnswerQuestionnaireRequest { AnswerText = e.Answer });
+
+            row.CloseEditor();
+            ReplaceAnsweredItem(updated);
+        }
+        catch (ApiException ex) when (!ex.IsSessionExpired)
+        {
+            await _popups.ShowWarningAsync(ex.Message, "Couldn't save your answer");
+        }
+        finally
+        {
+            _isBusy = false;
+            row.SetBusy(false);
+        }
+    }
+
+    private async void OnAnsweredRowDeleteRequested(object? sender, QuestionnaireResponse questionnaire)
+    {
+        if (_isBusy)
+            return;
+
+        // There is no undo, and the answer is gone for the whole family — the same confirmation
+        // weight deleting an alert carries.
+        var confirmed = await _popups.ConfirmWarningAsync(
+            "This question and your answer will be removed for everyone.",
+            "Delete this answer?",
+            "Yes, delete");
+        if (!confirmed)
+            return;
+
+        _isBusy = true;
+        try
+        {
+            await _api.DeleteQuestionnaireAsync(questionnaire.Id);
+            RemoveAnsweredItem(questionnaire.Id);
+        }
+        catch (ApiException ex) when (!ex.IsSessionExpired)
+        {
+            await _popups.ShowErrorAsync(ex.Message, "Couldn't delete that answer");
+        }
+        finally
+        {
+            _isBusy = false;
+        }
+    }
+
+    /// <summary>
+    /// Re-stamped answers sort back to the top — the same order <c>QuestionnaireService.AnswerAsync</c>
+    /// gives the server's copy of the list.
+    /// </summary>
+    private void ReplaceAnsweredItem(QuestionnaireResponse updated)
+    {
+        var index = IndexOfAnswered(updated.Id);
+        if (index < 0)
+            return;
+
+        _answeredItems.RemoveAt(index);
+        _answeredItems.Insert(0, new AnsweredQuestionnaireItem(updated, _memberName));
+    }
+
+    private void RemoveAnsweredItem(Guid questionnaireId)
+    {
+        var index = IndexOfAnswered(questionnaireId);
+        if (index < 0)
+            return;
+
+        _answeredItems.RemoveAt(index);
+
+        if (_answeredItems.Count > 0 || _hasMorePages)
+        {
+            EmptyPanel.IsVisible = false;
+            return;
+        }
+
+        EmptyPanel.IsVisible = true;
+        ApplyEmptyStateText();
+    }
+
+    private int IndexOfAnswered(Guid questionnaireId)
+    {
+        for (var i = 0; i < _answeredItems.Count; i++)
+        {
+            if (_answeredItems[i].Questionnaire.Id == questionnaireId)
+                return i;
+        }
+
+        return -1;
+    }
+
     private void SetState(bool loading = false, bool loaded = false, bool error = false)
     {
         SkeletonPanel.IsVisible = loading;
-        ContentPanel.IsVisible = loaded;
+        Refresher.IsVisible = loaded;
         ErrorPanel.IsVisible = error;
     }
 }

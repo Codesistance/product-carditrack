@@ -95,6 +95,9 @@
                         <Editor x:Name="AnswerEditor"
                                 FontFamily="Quicksand"
                                 FontSize="14"
+                                PlaceholderColor="{StaticResource BodyText}"
+                                TextColor="{StaticResource HeadingText}"
+                                BackgroundColor="Transparent"
                                 Placeholder="Type your answer…"
                                 AutoSize="Disabled"
                                 TextChanged="OnAnswerChanged"/>

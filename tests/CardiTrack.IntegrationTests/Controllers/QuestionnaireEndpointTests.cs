@@ -101,4 +101,60 @@ public class QuestionnaireEndpointTests
         await _questionnaires.DidNotReceive().AnswerAsync(
             Arg.Any<Guid>(), Arg.Any<Guid>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
     }
+
+    private readonly Guid _memberId = Guid.NewGuid();
+
+    private QuestionnairesPageResponse EmptyPage() => new()
+    {
+        HasAny = false,
+        Answered = new PagedResult<QuestionnaireResponse> { Items = [] },
+    };
+
+    [Fact]
+    public async Task GetForMember_RefusesASignedOutCaller()
+    {
+        var result = await CreateSut(authenticated: false)
+            .GetForMember(_memberId, search: null, page: 1, pageSize: 20, CancellationToken.None);
+
+        var objectResult = Assert.IsAssignableFrom<ObjectResult>(result.Result);
+        Assert.Equal(StatusCodes.Status403Forbidden, objectResult.StatusCode);
+        await _questionnaires.DidNotReceive().GetForMemberAsync(
+            Arg.Any<Guid>(), Arg.Any<Guid>(), Arg.Any<string?>(), Arg.Any<int>(), Arg.Any<int>(),
+            Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>A page or page size of zero — the default for an unset query parameter — is a
+    /// caller's first request, not a malformed one, so it is corrected rather than rejected.</summary>
+    [Theory]
+    [InlineData(0, 0, 1, 20)]
+    [InlineData(0, 999, 1, 50)]
+    [InlineData(-3, 5, 1, 5)]
+    public async Task GetForMember_ClampsPageAndPageSize(
+        int requestedPage, int requestedPageSize, int expectedPage, int expectedPageSize)
+    {
+        _questionnaires.GetForMemberAsync(
+                _userId, _memberId, Arg.Any<string?>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(EmptyPage());
+
+        await CreateSut().GetForMember(
+            _memberId, search: null, page: requestedPage, pageSize: requestedPageSize, CancellationToken.None);
+
+        await _questionnaires.Received(1).GetForMemberAsync(
+            _userId, _memberId, null, expectedPage, expectedPageSize, Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task GetForMember_PassesSearchThrough()
+    {
+        _questionnaires.GetForMemberAsync(
+                _userId, _memberId, "bedrooms", Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(EmptyPage());
+
+        var result = await CreateSut().GetForMember(
+            _memberId, search: "bedrooms", page: 1, pageSize: 20, CancellationToken.None);
+
+        Assert.IsAssignableFrom<ObjectResult>(result.Result);
+        await _questionnaires.Received(1).GetForMemberAsync(
+            _userId, _memberId, "bedrooms", 1, 20, Arg.Any<CancellationToken>());
+    }
 }
