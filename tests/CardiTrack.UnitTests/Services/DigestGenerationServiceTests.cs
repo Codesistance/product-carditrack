@@ -876,6 +876,24 @@ public class DigestGenerationServiceTests
             Arg.Is<DigestEntry>(d => d.Suggestion == null), Arg.Any<CancellationToken>());
     }
 
+    /// <summary>
+    /// Regression: the backstop originally matched the bare word "condition", which would have
+    /// dropped these — none of them name or guess at anything medical.
+    /// </summary>
+    [Theory]
+    [InlineData("Ask if they'd like a walk given today's warm conditions")]
+    [InlineData("Check their walking shoes are still in good condition")]
+    [InlineData("Make sure the air conditioning is on before they nap")]
+    public async Task KeepsASuggestion_ThatMentionsConditionWithoutAMedicalMeaning(string suggestion)
+    {
+        ReturnsSuggestion(suggestion);
+
+        await CreateSut().GenerateDueDigestsAsync(UtcNow);
+
+        await _digests.Received(1).AddAsync(
+            Arg.Is<DigestEntry>(d => d.Suggestion == suggestion), Arg.Any<CancellationToken>());
+    }
+
     [Fact]
     public async Task KeepsAMedicationReminderTiedToAKnownRoutine()
     {

@@ -118,7 +118,7 @@ public class DashboardService : IDashboardService
             },
             Baseline = BaselineProgress.From(logs, baseline),
             Metrics = metrics,
-            Weather = WeatherSnapshotResponse.From(
+            Weather = WeatherSnapshotMapper.From(
                 member.EnvironmentalContextConsentGranted, environmentalReading),
             RecentAlerts = activeAlerts
                 .Take(RecentAlertCount)

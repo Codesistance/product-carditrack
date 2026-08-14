@@ -83,7 +83,7 @@ public partial class StatusHeroCard : ContentView
     }
 
     /// <summary>Icon-and-temperature chip beside the name. Hidden outright rather than shown
-    /// empty — see <see cref="WeatherSnapshotResponse.From"/> for when the server sends one.</summary>
+    /// empty — the server sends null unless the member has consented and something was derived.</summary>
     private void ApplyWeather(WeatherSnapshotResponse? weather)
     {
         _weather = weather;

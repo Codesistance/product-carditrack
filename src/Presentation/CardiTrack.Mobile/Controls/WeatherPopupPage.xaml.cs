@@ -13,7 +13,9 @@ namespace CardiTrack.Mobile.Controls;
 /// </summary>
 public partial class WeatherPopupPage : ContentPage
 {
-    private readonly TaskCompletionSource _closed = new();
+    // RunContinuationsAsynchronously so completing this from CloseAsync/OnDisappearing (both
+    // already on the UI thread) doesn't run the awaiter's continuation synchronously in-line.
+    private readonly TaskCompletionSource _closed = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private bool _closing;
 
     public WeatherPopupPage(WeatherSnapshotResponse weather)

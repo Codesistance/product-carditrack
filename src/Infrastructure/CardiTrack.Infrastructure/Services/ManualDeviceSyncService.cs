@@ -25,6 +25,15 @@ public class ManualDeviceSyncService : IManualDeviceSyncService
 
     private const string CooldownKeyPrefix = "manualsync:";
 
+    /// <summary>
+    /// Ceiling on <see cref="RenewCooldownAsync"/>'s cache write. It runs in a <c>finally</c> on
+    /// <see cref="CancellationToken.None"/> by design (see that method's remarks), so without a
+    /// bound of its own a stalled cache backend would hang the request indefinitely on the way
+    /// out — including a request whose caller already gave up. A cache write is normally
+    /// sub-second; this is a backstop, not a realistic budget.
+    /// </summary>
+    private static readonly TimeSpan RenewalTimeout = TimeSpan.FromSeconds(5);
+
     private readonly IUnitOfWork _unitOfWork;
     private readonly ICardiMemberAccessService _access;
     private readonly IServiceProvider _services;
@@ -192,15 +201,18 @@ public class ManualDeviceSyncService : IManualDeviceSyncService
     /// manual sync start concurrently — the opposite failure from the one the "not released on
     /// failure" design above accepts. Called from a <c>finally</c> around that loop so the window
     /// covers the whole sync, not just its start. Uses its own token rather than the caller's: a
-    /// cancelled request should not skip protecting quota for the pulls that already went out. A
-    /// failure here is logged and swallowed rather than thrown, so it can never mask whatever the
-    /// try block was already unwinding for.
+    /// cancelled request should not skip protecting quota for the pulls that already went out —
+    /// bounded by <see cref="RenewalTimeout"/> rather than left uncancellable, so a stalled cache
+    /// backend cannot hang the request on the way out either. A failure here is logged and
+    /// swallowed rather than thrown, so it can never mask whatever the try block was already
+    /// unwinding for.
     /// </remarks>
     private async Task RenewCooldownAsync(Guid cardiMemberId)
     {
         try
         {
-            await SetCooldownAsync(cardiMemberId, CancellationToken.None);
+            using var timeout = new CancellationTokenSource(RenewalTimeout);
+            await SetCooldownAsync(cardiMemberId, timeout.Token);
         }
         catch (Exception ex)
         {

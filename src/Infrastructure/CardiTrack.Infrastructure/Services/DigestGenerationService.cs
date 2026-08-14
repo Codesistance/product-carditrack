@@ -130,13 +130,21 @@ public partial class DigestGenerationService : IDigestGenerationService
     /// not a claim that the prompt alone is reliable. Matched as substrings so inflections
     /// ("diagnosed", "diagnosis") are covered by the stem.
     /// </summary>
+    /// <remarks>
+    /// The condition entries are compound phrases, not the bare word "condition" — a suggestion
+    /// can honestly mention "today's warm conditions" or leave a device "in good condition"
+    /// without naming anything medical, and a bare stem would drop those as false positives.
+    /// </remarks>
     private static readonly string[] DiagnosticMarkers =
     [
         "diagnos",
         "afib",
         "fibrillation",
         "arrhythmia",
-        "condition",
+        "medical condition",
+        "heart condition",
+        "health condition",
+        "cardiac condition",
         "disease",
         "disorder",
         "syndrome",

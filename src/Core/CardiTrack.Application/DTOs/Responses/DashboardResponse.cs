@@ -1,5 +1,3 @@
-using CardiTrack.Domain.Entities;
-
 namespace CardiTrack.Application.DTOs.Responses;
 
 /// <summary>
@@ -68,10 +66,11 @@ public class DashboardResponse
 }
 
 /// <summary>
-/// Last-known weather for a member, derived from their most recent exercise session — see
-/// <see cref="EnvironmentalReading"/> for why this is "last known" rather than live, and why it
-/// carries no coordinate. Shared between <see cref="DashboardResponse"/> and
-/// <see cref="CardiMemberDetailResponse"/> so both screens read it the same way.
+/// Last-known weather for a member, derived from their most recent exercise session — carries
+/// no coordinate, and is not live weather. Shared between <see cref="DashboardResponse"/> and
+/// <see cref="CardiMemberDetailResponse"/> so both screens read it the same way. Plain data only
+/// — built by <see cref="CardiTrack.Application.Services.WeatherSnapshotMapper"/>, not by a
+/// domain-referencing factory here, so this DTO stays independent of the domain model.
 /// </summary>
 public class WeatherSnapshotResponse
 {
@@ -88,34 +87,6 @@ public class WeatherSnapshotResponse
     /// <summary>When the session that produced this reading ended — clients use this to say
     /// "as of" rather than implying the conditions are current.</summary>
     public DateTime AsOfUtc { get; set; }
-
-    /// <summary>
-    /// Null when the member hasn't consented to environmental context, or nothing has been
-    /// derived for them yet — either way there is nothing to show, so the card should hide.
-    /// </summary>
-    public static WeatherSnapshotResponse? From(bool consentGranted, EnvironmentalReading? reading)
-    {
-        if (!consentGranted || reading is null)
-            return null;
-
-        // A reading with every field empty is possible (the enrichment pass can succeed for one
-        // field and fail for the rest) — nothing to show is nothing to show, same as no reading.
-        if (reading.TemperatureCelsius is null && reading.WeatherCondition is null
-            && reading.RelativeHumidityPercent is null && reading.AirQualityCategory is null)
-        {
-            return null;
-        }
-
-        return new WeatherSnapshotResponse
-        {
-            TemperatureCelsius = reading.TemperatureCelsius is { } c ? (decimal)c : null,
-            Condition = reading.WeatherCondition,
-            HumidityPercent = reading.RelativeHumidityPercent,
-            AirQualityIndex = reading.AirQualityIndex,
-            AirQualityCategory = reading.AirQualityCategory,
-            AsOfUtc = reading.SessionEndUtc,
-        };
-    }
 }
 
 public class DashboardDeviceState
