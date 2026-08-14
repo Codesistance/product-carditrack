@@ -342,8 +342,14 @@
                         </Border>
 
                         <!-- Personal phone (issue #162) — distinct from the emergency contact
-                             above; same graceful-absence treatment. -->
-                        <Border Style="{StaticResource ElevatedCard}">
+                             above; same graceful-absence treatment. Primary caregivers can tap
+                             the card (or the edit affordance when empty) to jump straight to
+                             the phone field on M1-14 — #280. -->
+                        <Border x:Name="PhoneCard"
+                                Style="{StaticResource ElevatedCard}">
+                            <Border.GestureRecognizers>
+                                <TapGestureRecognizer Tapped="OnEditPhoneTapped"/>
+                            </Border.GestureRecognizers>
                             <VerticalStackLayout Spacing="10">
                                 <Label Text="Phone"
                                        Style="{StaticResource DashboardSectionTitle}"/>
@@ -367,6 +373,25 @@
                                             <TapGestureRecognizer Tapped="OnCallPhoneTapped"/>
                                         </Border.GestureRecognizers>
                                         <Image Source="icon_action_call.svg"
+                                               WidthRequest="20" HeightRequest="20"
+                                               HorizontalOptions="Center" VerticalOptions="Center"/>
+                                    </Border>
+                                    <Border x:Name="PhoneEditButton"
+                                            Grid.Column="1"
+                                            WidthRequest="44" HeightRequest="44"
+                                            StrokeThickness="0"
+                                            BackgroundColor="{StaticResource SelectedOptionBackground}"
+                                            VerticalOptions="Center"
+                                            IsVisible="False"
+                                            SemanticProperties.Description="Edit phone number"
+                                            SemanticProperties.Hint="Opens the profile form on their phone number">
+                                        <Border.StrokeShape>
+                                            <RoundRectangle CornerRadius="12"/>
+                                        </Border.StrokeShape>
+                                        <Border.GestureRecognizers>
+                                            <TapGestureRecognizer Tapped="OnEditPhoneTapped"/>
+                                        </Border.GestureRecognizers>
+                                        <Image Source="icon_edit.svg"
                                                WidthRequest="20" HeightRequest="20"
                                                HorizontalOptions="Center" VerticalOptions="Center"/>
                                     </Border>

@@ -331,7 +331,8 @@ public partial class AlertsPage : ContentPage
 
             var addNow = await _popups.ConfirmInfoAsync(prompt, "No number yet", "Add number", "Not now");
             if (addNow)
-                await Shell.Current.GoToAsync($"{EditCardiMemberPage.Route}?memberId={alert.CardiMemberId}");
+                await Shell.Current.GoToAsync(
+                    $"{EditCardiMemberPage.Route}?memberId={alert.CardiMemberId}&focus={EditCardiMemberPage.FocusEmergencyPhone}");
             return;
         }
 

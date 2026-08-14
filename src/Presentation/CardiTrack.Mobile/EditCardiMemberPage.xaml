@@ -47,7 +47,7 @@
             </Grid>
         </controls:HeaderBand>
 
-        <ScrollView Grid.Row="1">
+        <ScrollView x:Name="FormScroller" Grid.Row="1">
             <Grid Padding="20,18,20,28">
 
                 <VerticalStackLayout x:Name="SkeletonPanel" Spacing="14" IsVisible="False">
@@ -183,7 +183,7 @@
                         </Border>
                     </VerticalStackLayout>
 
-                    <VerticalStackLayout Spacing="4">
+                    <VerticalStackLayout x:Name="EmergencyPhoneFieldSection" Spacing="4">
                         <Label Text="Emergency Contact Number" Style="{StaticResource AuthFieldLabel}"/>
                         <Border Style="{StaticResource AuthEntryBorder}">
                             <Entry x:Name="EmergencyPhoneEntry"
@@ -196,7 +196,7 @@
                                IsVisible="False"/>
                     </VerticalStackLayout>
 
-                    <VerticalStackLayout Spacing="4">
+                    <VerticalStackLayout x:Name="PhoneFieldSection" Spacing="4">
                         <Label Text="Phone Number" Style="{StaticResource AuthFieldLabel}"/>
                         <Border Style="{StaticResource AuthEntryBorder}">
                             <Entry x:Name="PhoneEntry"
