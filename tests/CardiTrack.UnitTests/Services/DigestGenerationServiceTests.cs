@@ -1073,7 +1073,7 @@ public class DigestGenerationServiceTests
     }
 
     [Fact]
-    public async Task StoresTheProposedQuestion_WithWhatPromptedIt()
+    public async Task StoresTheProposedQuestion_WithTheReasonItWasAsked()
     {
         ReturnsQuestion("Has anything changed at home recently?", "Yesterday looked quieter than usual.");
 
@@ -1335,6 +1335,18 @@ public class DigestGenerationServiceTests
         ReturnsQuestion(question, "Yesterday looked quieter than usual.");
         GivenAlerts(AnAlert(UtcNow.AddHours(-2), resolved: false));
         GivenPreviousQuestion(question, UtcNow.AddHours(-17));
+
+        await CreateSut().GenerateDueDigestsAsync(UtcNow);
+
+        await _questionnaires.DidNotReceive().AddAsync(Arg.Any<MemberQuestionnaire>());
+    }
+
+    [Fact]
+    public async Task DoesNotReaskTheSameQuestion_WhenOnlyPunctuationDiffers()
+    {
+        ReturnsQuestion("Did Dad have any visitors, yesterday?");
+        GivenAlerts(AnAlert(UtcNow.AddHours(-2), resolved: false));
+        GivenPreviousQuestion("Did Dad have any visitors yesterday?", UtcNow.AddHours(-17));
 
         await CreateSut().GenerateDueDigestsAsync(UtcNow);
 

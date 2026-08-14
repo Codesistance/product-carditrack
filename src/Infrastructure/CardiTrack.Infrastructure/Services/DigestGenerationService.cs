@@ -685,7 +685,7 @@ public partial class DigestGenerationService : IDigestGenerationService
     /// <summary>
     /// True when this family has already been asked this wording — dismissed (the skip control
     /// promises it will not come back), a standing fact already answered, or anything asked inside
-    /// the ordinary week. Compared on flattened, caseless text so punctuation and a leftover
+    /// the ordinary week. Compared on flattened, caseless wording so punctuation and a leftover
     /// question mark cannot sneak the same sentence through.
     /// </summary>
     private bool IsRepeatQuestion(
@@ -715,8 +715,13 @@ public partial class DigestGenerationService : IDigestGenerationService
         return false;
     }
 
-    private static string NormalizeQuestion(string question) =>
-        MedicalPromptBlocks.Flatten(question).TrimEnd('?').Trim().ToLowerInvariant();
+    private static string NormalizeQuestion(string question)
+    {
+        var chars = MedicalPromptBlocks.Flatten(question).ToLowerInvariant()
+            .Select(c => char.IsLetterOrDigit(c) ? c : ' ')
+            .ToArray();
+        return string.Join(' ', new string(chars).Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+    }
 
     /// <summary>The rationale is the question in statement form — a caption that adds nothing.</summary>
     private static bool RestatesTheQuestion(string rationale, string question)
