@@ -271,7 +271,9 @@ public class DispatchService : IDispatchService
     {
         using var activity = PushDispatchTelemetry.Source.StartActivity("notification.attempt", ActivityKind.Internal);
         activity?.SetTag(PushDispatchTelemetry.DeliveryIdTag, target.Id.ToString());
-        activity?.SetTag(PushDispatchTelemetry.AttemptNumberTag, target.Attempts);
+        // 1-based: target.Attempts counts prior failures (starts at 0), but the tag is read as a
+        // human-facing ordinal in trace UIs/dashboards — "attempt 1" for the first try, not "0".
+        activity?.SetTag(PushDispatchTelemetry.AttemptNumberTag, target.Attempts + 1);
 
         target.SendTraceParent = activity?.Id;
 

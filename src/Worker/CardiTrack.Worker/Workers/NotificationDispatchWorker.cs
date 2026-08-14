@@ -99,6 +99,9 @@ public class NotificationDispatchWorker : CronBackgroundService
         catch (Exception ex)
         {
             activity?.SetStatus(ActivityStatusCode.Error, ex.GetType().Name);
+            // Without this, ExceptionLoggingSpanProcessor finds no "exception" event on the span
+            // and silently re-logs nothing for this failure — SetStatus alone isn't enough.
+            activity?.AddException(ex);
             _logger.LogError(ex, "NotificationDispatch phase {Phase} failed; the next tick retries it.", phase);
         }
     }

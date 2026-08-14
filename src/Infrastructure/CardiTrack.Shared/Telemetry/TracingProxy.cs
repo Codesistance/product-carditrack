@@ -8,23 +8,27 @@ namespace CardiTrack.Shared.Telemetry;
 
 /// <summary>
 /// Wraps any interface implementation so every method call becomes an <see cref="Activity"/>
-/// span, without the wrapped class taking any OpenTelemetry dependency itself. Register through
-/// <see cref="TracingServiceCollectionExtensions.AddScopedWithTracing{TInterface,TImplementation}"/>
+/// span, without the wrapped class taking any OpenTelemetry dependency itself. The caller
+/// supplies which <see cref="ActivitySource"/> spans are emitted under (see
+/// <see cref="TracingServiceCollectionExtensions.AddScopedWithTracing{TInterface,TImplementation}"/>)
+/// — this class has no opinion of its own on that, so reusing it for an unrelated interface
+/// never mislabels spans under someone else's source. Register through that extension method
 /// rather than constructing directly. Ported from ConcairgeApp's identically-named class.
 /// </summary>
 public sealed class TracingProxy<T> : DispatchProxy where T : class
 {
-    private static readonly ActivitySource Source = new(TelemetryNames.PushSource);
     private static readonly ConcurrentDictionary<Type, MethodInfo> GenericTaskWrappers = new();
 
     private T _target = null!;
     private string _typeName = string.Empty;
+    private ActivitySource _source = null!;
 
-    public static T Create(T target)
+    public static T Create(T target, ActivitySource source)
     {
         var proxy = (TracingProxy<T>)(object)Create<T, TracingProxy<T>>()!;
         proxy._target = target;
         proxy._typeName = target.GetType().Name;
+        proxy._source = source;
         return (T)(object)proxy;
     }
 
@@ -34,7 +38,7 @@ public sealed class TracingProxy<T> : DispatchProxy where T : class
             return null;
 
         var spanName = $"{_typeName}.{targetMethod.Name}";
-        var activity = Source.StartActivity(spanName, ActivityKind.Internal);
+        var activity = _source.StartActivity(spanName, ActivityKind.Internal);
         activity?.SetTag("service.type", _typeName);
         activity?.SetTag("service.method", targetMethod.Name);
 
@@ -141,10 +145,13 @@ public static class TracingServiceCollectionExtensions
     /// Registers <typeparamref name="TImplementation"/> as normal, then registers
     /// <typeparamref name="TInterface"/> as a <see cref="TracingProxy{T}"/> wrapping it — every
     /// resolved <typeparamref name="TInterface"/> is the proxy, invisibly emitting a span per
-    /// interface method call.
+    /// interface method call under <paramref name="source"/>. Pass the caller's own
+    /// <see cref="ActivitySource"/> (e.g. push callers pass
+    /// <c>CardiTrack.Infrastructure.Diagnostics.PushTelemetry.Source</c>) — this helper has no
+    /// default of its own, so spans always land under a source the caller already registered.
     /// </summary>
     public static IServiceCollection AddScopedWithTracing<TInterface, TImplementation>(
-        this IServiceCollection services)
+        this IServiceCollection services, ActivitySource source)
         where TInterface : class
         where TImplementation : class, TInterface
     {
@@ -154,7 +161,7 @@ public static class TracingServiceCollectionExtensions
 
         services.AddScoped<TImplementation>();
         services.AddScoped<TInterface>(sp =>
-            TracingProxy<TInterface>.Create(sp.GetRequiredService<TImplementation>()));
+            TracingProxy<TInterface>.Create(sp.GetRequiredService<TImplementation>(), source));
         return services;
     }
 }
