@@ -1,7 +1,6 @@
 using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Application.Services;
 using MathNet.Numerics.LinearAlgebra;
-using MathNet.Numerics.LinearAlgebra.Factorization;
 
 namespace CardiTrack.Infrastructure.Services;
 
