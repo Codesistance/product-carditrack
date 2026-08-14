@@ -11,7 +11,7 @@ The 11 workers registered today (crons from `appsettings.json`):
 | `WearableSyncWorker` | `0 */10 * * * *` (every 10 min) | Polls due device connections and syncs wearable data |
 | `OrphanedOrganizationCleanupWorker` | `0 0 3 * * *` (daily 03:00) | Deletes organizations stranded by a failed onboarding |
 | `BaselineCalculationWorker` | `0 30 2 * * *` (daily 02:30) | Recalculates each member's `PatternBaseline` rows — 7/14-day provisional and 30/60/90-day windows |
-| `PartitionMaintenanceWorker` | `0 15 * * * *` (hourly; `RunOnStartup: true`) | Pre-creates partitions for the partitioned time-series tables and drops the ones past retention — granular 90 d, hourly rollups 13 mo, **digests 12 mo, real-time assessments 90 d, environmental readings 90 d** |
+| `PartitionMaintenanceWorker` | `0 15 * * * *` (hourly; `RunOnStartup: true`) | Pre-creates partitions for the partitioned time-series tables and drops the ones past retention — granular 90 d, hourly rollups 13 mo, **digests 3 mo, real-time assessments 90 d, environmental readings 90 d** |
 | `DeviceSyncAuditWorker` | `0 0 4 * * 0` (Sunday 04:00) | Re-fetches a small random sample over a 14-day window to measure how far back each provider revises data |
 | `InactivityDetectionWorker` | `0 */15 * * * *` (every 15 min) | Device-silence failsafe — one yellow `Inactivity` alert when a member has no granular readings for >2 h in waking hours |
 | `StatisticalAlertWorker` | `0 7-59/15 * * * *` (every 15 min, offset) | R1 statistical alert engine — five deterministic rules vs the established 30-day baseline |
@@ -223,7 +223,7 @@ Keeps the partitioned time-series tables (`GranularMetricHours`, `MetricRollupsH
 
 - Runs **hourly** (`0 15 * * * *`) and additionally **once at startup** — `CronBackgroundService` now supports a `RunOnStartup` mode (`WorkerOptions.RunOnStartup`, off by default) and this worker opts in (`RunOnStartup: true` in appsettings), so a fresh deploy has its partitions before the first insert rather than waiting for the next hourly tick. Creation is idempotent (`IF NOT EXISTS`) and near-free.
 - Pre-creates from **yesterday** through `DaysAhead` (default **7**) days out — a sync straddling UTC midnight can still write into the day that just ended, and a week of headroom survives a multi-day worker outage.
-- Retention is a **partition drop** — instant, no dead tuples to vacuum: granular hours after `GranularRetentionDays` (default **90**), hourly rollups after `RollupRetentionMonths` (default **13**), digests after `DigestRetentionMonths` (default **12**), real-time assessments after `RealtimeRetentionDays` (default **90**), environmental readings after `EnvironmentalRetentionDays` (default **90**). A partition is dropped only when its whole range is past the cutoff.
+- Retention is a **partition drop** — instant, no dead tuples to vacuum: granular hours after `GranularRetentionDays` (default **90**), hourly rollups after `RollupRetentionMonths` (default **13**), digests after `DigestRetentionMonths` (default **3**), real-time assessments after `RealtimeRetentionDays` (default **90**), environmental readings after `EnvironmentalRetentionDays` (default **90**). A partition is dropped only when its whole range is past the cutoff.
 - **Never drops what it did not name**: the drop path parses each child's name against the worker's own naming scheme, so a manually attached partition is left alone regardless of age.
 - Drops log at **Warning** — destroying health data past retention is the one thing this job does that an audit should be able to reconstruct.
 
@@ -384,7 +384,7 @@ Cron schedules bind per worker class name under the `Workers` section, consumed 
       "DaysAhead": 14,
       "GranularRetentionDays": 90,
       "RollupRetentionMonths": 13,
-      "DigestRetentionMonths": 12,
+      "DigestRetentionMonths": 3,
       "RealtimeRetentionDays": 90
     },
     "DeviceSyncAuditWorker": {

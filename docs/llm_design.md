@@ -129,10 +129,10 @@ AI outputs are derived data in the **existing Cloud SQL instance** — regenerab
 | `realtime_results` | `wearer_user_id`, `window_start`, `severity` | `medgemma_output`, `anomaly_scores` | **Built as the typed, day-partitioned `RealtimeAssessments` table** (`CardiMemberId`, `WindowStartUtc` PK; SSA features, model output and routed severity as columns — typed rather than JSONB, per the granular-storage ADR) — 90 days by partition drop |
 | `prediction_cards` | ~~`wearer_user_id`, `date`~~ | ~~`risk_scores`, `confidences`, `medgemma_output`~~ | **Descoped 2026-08-10** with the LSTM — trend interpretation writes narrative into digests/insights, not risk-score rows |
 | `trend_aggregates` | `wearer_user_id`, `date` | `resting_hr_7d_ma`, `hrv_7d_ma`, `sleep_score_7d_ma` | **Built as the typed `MetricRollupsHourly` table + week/month views** (keyed by `CardiMemberId`) — 13 months by partition drop |
-| `digest_log` | `wearer_user_id`, `date`, `audience` | `digest_text` | **Built as the typed, day-partitioned `DigestEntries` table** (`CardiMemberId`, `GeneratedAtUtc` — no audience column; family is the only audience) — 12 months by partition drop |
+| `digest_log` | `wearer_user_id`, `date`, `audience` | `digest_text` | **Built as the typed, day-partitioned `DigestEntries` table** (`CardiMemberId`, `GeneratedAtUtc` — no audience column; family is the only audience) — 90 days (3 months) by partition drop |
 | *(net-new)* | — | — | **Built as the typed, day-partitioned `EnvironmentalReadings` table** (`CardiMemberId`, `SessionStartUtc` PK; `TemperatureCelsius`, `AirQualityIndex`, `AirQualityCategory` as columns — no latitude/longitude column exists on this table, structurally) — 90 days by partition drop |
 
-Row expiry is a **partition drop performed hourly by `PartitionMaintenanceWorker`** in `CardiTrack.Worker` (digests 12 months, assessments 90 days, environmental readings 90 days) — PostgreSQL has no document TTL, and no other retention job exists.
+Row expiry is a **partition drop performed hourly by `PartitionMaintenanceWorker`** in `CardiTrack.Worker` (digests 90 days, assessments 90 days, environmental readings 90 days) — PostgreSQL has no document TTL, and no other retention job exists.
 
 ---
 

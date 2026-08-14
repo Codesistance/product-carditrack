@@ -21,10 +21,10 @@ public class PartitionMaintenanceOptions
     public int RollupRetentionMonths { get; set; } = 13;
 
     /// <summary>
-    /// Months the `DigestEntries` rows are kept — 12, the llm_design retention for digests.
-    /// Derived data: regenerable in principle, though the source window ages out first.
+    /// Months the `DigestEntries` rows are kept — 3 (≈90 days), the llm_design retention for
+    /// digests. Derived data: regenerable in principle, though the source window ages out first.
     /// </summary>
-    public int DigestRetentionMonths { get; set; } = 12;
+    public int DigestRetentionMonths { get; set; } = 3;
 
     /// <summary>
     /// Days the `RealtimeAssessments` rows are kept — 90, the llm_design retention for
