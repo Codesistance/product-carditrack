@@ -25,7 +25,7 @@ Links are created automatically when a CardiMember is added during onboarding; t
 
 **Roles:** the implemented `UserRole` enum is `Member` (1), `Admin` (2), `Staff` (3) — **integers on the wire, and there is no `viewer` role**. No endpoint currently enforces role-based restrictions; authorization is member-link based.
 
-**Naming collision warning:** this doc's "activity log" means the HIPAA **audit trail**. The write side of it is live: `AuditLoggingMiddleware` writes an `AuditLog` row (user, member, action, path, method, IP, user-agent, response status) for every endpoint carrying `[AuditHealthDataAccess]` — applied across CardiMembers, Devices, Alerts, Insights, Questionnaires, and Reports. What remains **planned** is the read/query endpoint below. The codebase's `ActivityLog` entity is something else entirely: **daily health metrics** (steps, heart rate, sleep) synced from wearables.
+**Naming collision warning:** this doc's "activity log" means the HIPAA **audit trail**. The write side of it is live: `AuditLoggingMiddleware` writes an `AuditLog` row (user, member, action, path, method, IP, user-agent, response status) for every endpoint carrying `[AuditHealthDataAccess]` — applied across CardiMembers, Dashboard, Devices, Alerts, Insights, Questionnaires, Chat, and Reports. Repeated GETs coalesce for 15 minutes. What remains **planned** is the read/query endpoint below. The codebase's `ActivityLog` entity is something else entirely: **daily health metrics** (steps, heart rate, sleep) synced from wearables.
 
 Everything below is the **planned** contract, kept as design intent.
 
@@ -384,4 +384,4 @@ HIPAA-compliant audit log of all access events — who viewed what data and when
 
 **Related:** [readme.md](readme.md) | [alerts.md](alerts.md) | [notifications.md](notifications.md) | [User Stories 4.1, 4.2, 8.3](../../ui/mobile/user_stories.md)
 
-**Last Updated:** August 13, 2026
+**Last Updated:** August 14, 2026

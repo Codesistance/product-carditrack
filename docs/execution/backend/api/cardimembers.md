@@ -94,7 +94,7 @@ Full detail for one CardiMember — the payload behind mobile M1-13. Requires **
 - `metrics` is the full `DashboardMetrics` block (each metric with its 30-day series) so the detail screen's trend cards need no second round-trip; it is **`null`** when the member has no activity history yet, the same condition the dashboard uses.
 - `medicalNotes` is stored AES-256-GCM encrypted and decrypted on read. Rows written before encryption was introduced are returned as-is rather than failing the request.
 - `photoUrl` is always `null` — no photo storage exists. Clients render an initials avatar.
-- `alertSensitivity` is an integer enum (Low=1, Medium=2, High=3). **Stored but not consumed** — alert generation is not built.
+- `alertSensitivity` is an integer enum (Low=1, Medium=2, High=3). **Stored but not consumed** — statistical alerting uses the established 30-day baseline, not this field.
 
 ### PUT `/api/v1/cardimembers/{id}`
 
@@ -455,4 +455,4 @@ Add a context note about the CardiMember. (Originally "as the CardiMember" — d
 
 **Related:** [readme.md](readme.md) | [devices.md](devices.md) | [User Stories 1.2, 7.1–7.3](../../ui/mobile/user_stories.md)
 
-**Last Updated:** August 13, 2026
+**Last Updated:** August 14, 2026

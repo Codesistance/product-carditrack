@@ -60,7 +60,7 @@ These are Worker-local by rule. A copy or a move into `Shared`/`Infrastructure` 
 
 ## Step 4 — AI work in the wrong place
 
-The AI ingestion/inference **pipeline** — webhook aggregation, SSA-LSTM pre-processing, severity routing, digest generation — runs on GCP (Pub/Sub + Cloud Run) per [llm_design.md](../../../../docs/llm_design.md). Calling out to a model over HTTP is not the pipeline.
+The AI ingestion/inference **pipeline** — webhook aggregation, SSA pre-processing (Math.NET), severity routing, digest generation — runs on GCP (Pub/Sub + Cloud Run) per [llm_design.md](../../../../docs/llm_design.md). Calling out to a model over HTTP is not the pipeline.
 
 ```bash
 grep -rln "MedGemma\|Gemini\|IExternalAiClient" src/ --include=*.cs
@@ -68,7 +68,7 @@ grep -rln "MedGemma\|Gemini\|IExternalAiClient" src/ --include=*.cs
 
 **Known good, do not report:** `Infrastructure/ExternalClients/Medical/MedGemmaClient.cs` and `Infrastructure/ExternalClients/General/GeminiClient.cs` implement the `IExternalAiClient` port from `Application/Interfaces/Clients` and call a remote Ollama/Gemini endpoint over `IHttpClientFactory`. They are adapters — exactly where an adapter belongs. `src/Infrastructure/MedGemma/` is a `Dockerfile` for the remotely-hosted model image, not a .NET project.
 
-🔴 **Critical** is *pipeline stages* implemented in-process: aggregation windows, SSA-LSTM pre-processing, severity routing, or digest assembly running inside the API, Web, or Worker. Conversely, the GCP pipeline must not pick up non-AI work — a Pub/Sub subscriber doing token refresh or cleanup belongs in `CardiTrack.Worker`.
+🔴 **Critical** is *pipeline stages* implemented in-process: aggregation windows, SSA pre-processing, severity routing, or digest assembly running inside the API, Web, or Worker. Conversely, the GCP pipeline must not pick up non-AI work — a Pub/Sub subscriber doing token refresh or cleanup belongs in `CardiTrack.Worker`.
 
 ## Step 5 — Composition-root leaks
 

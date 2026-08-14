@@ -12,7 +12,7 @@
 **Orientation:** Portrait primary, landscape supported
 **Target Users:** Family caregivers across the US & EU monitoring elderly relatives' wearable health data
 **Document Version:** 1.1 (extracted from full spec v3.1)
-**Last Updated:** August 7, 2026
+**Last Updated:** August 14, 2026
 
 ---
 
@@ -68,7 +68,7 @@ As built: Welcome's only affordances lead to Sign Up; SignInPage is reached from
       ▼
 [M1-02 Welcome]
       │              │
-"Start Free Trial" "Sign up" (top-right — same destination)
+"Start Free Trial" "Sign in" (top-right → SignInPage)
       ▼
 [M1-03 Sign Up (CreateAccountPage)]
       │                        │
@@ -225,7 +225,7 @@ Five MVP 1 screens selected to validate the core design language — covering br
 | 4 | **M1-10 — Alerts List** | Alert management; demonstrates severity badges, grouped list design, filter chips, and swipe actions |
 | 5 | **M1-12 — Alert Detail - Critical** | Highest-stakes screen; validates urgency design, pulsing severity treatment, and primary CTA hierarchy |
 
-These five screens span onboarding → daily use → emergency response. **Build status:** M1-02, M1-04, M1-09, and M1-10 are built; M1-12 is not built — so the POC set currently validates onboarding, daily monitoring, and alert management in code, but not yet the emergency-response design language.
+These five screens span onboarding → daily use → emergency response. **Build status:** M1-02, M1-04, M1-09, M1-10, **and M1-12** are built — `AlertDetailPage` covers the emergency-response design language for red / no-morning-activity alerts.
 
 ---
 
@@ -270,7 +270,7 @@ These five screens span onboarding → daily use → emergency response. **Build
 | Slide | Illustration | Headline | Subtext |
 |-------|-------------|----------|---------|
 | 1 | Happy elderly person with smartwatch | "Know They're Okay" | "Stay close to the people you love — even from far away" |
-| 2 | Phone showing health dashboard | "Their Watch, Your Peace of Mind" | "Connects with Fitbit, Apple Watch, Garmin & more" |
+| 2 | Phone showing health dashboard | "Their Watch, Your Peace" | "Connects with Fitbit, Apple Watch, Garmin & more" |
 | 3 | Family members on phones | "Care Together" | "Share the watch with your siblings — you're not in this alone" |
 
 **CTA Section (bottom 30%):**
@@ -504,7 +504,7 @@ Each device card:
 
 **Success Message:**
 - Heading: "You're all set!"
-- Text: "The Fitbit is now connected" (no name/device interpolation)
+- Text: `$"{name}'s {device.DisplayName} is now connected"` (member name + selected device)
 - Subtext: "We're pulling in their latest data — just a moment"
 
 **Data Preview Card:**
@@ -801,7 +801,7 @@ architecture exists.
 ---
 
 ### M1-12: Alert Detail - Critical (No Movement)
-**Status:** Not built — design intent below
+**Status:** Built (`AlertDetailPage`) — `no_morning_activity` and red alerts; Call now + I'm on my way. Family-notify and notes are still not built.
 **User Story:** 11.3 No Morning Activity | 3.3 Alert Acknowledgment & Notes
 **Entry:** ← M1-10 Alerts List | Push notification (direct)
 **Exit:** ← M1-10 Alerts List (back) | → Phone call | → Note input
@@ -920,7 +920,7 @@ Saves via `PUT /api/v1/cardimembers/{id}` — a full replacement, so clearing a 
 
 **Monitoring Preferences:**
 - ~~Toggle: "Enable Monitoring"~~ — **not shipped here.** Monitoring is paused from M1-13's Management section, where it is time-bounded; an open-ended toggle on an edit form is how someone stops being monitored without anyone deciding to.
-- Dropdown: "Alert Sensitivity" — Low / Medium / High. **Stored but not yet consumed**: alert generation lives in the unbuilt GCP pipeline (`docs/llm_design.md`), and the form says so under the field.
+- Dropdown: "Alert Sensitivity" — Low / Medium / High. **Stored but not consumed** — statistical alerting uses the established 30-day baseline, not this field. The in-app caption still says alerting isn't live (copy bug).
 
 **Behavior:**
 - Client-side validation mirrors the server's rules (name 2–100, age 18–120, phone format, notes ≤2000)
@@ -972,7 +972,7 @@ Saves via `PUT /api/v1/cardimembers/{id}` — a full replacement, so clearing a 
 ---
 
 ### M1-16: Alert Detail - Heart Rate
-**Status:** Not built — design intent below
+**Status:** Built (`AlertDetailPage`) — `elevated_heart_rate` uses the 7-day resting-HR series; `realtime_hr` uses that hour's granular HR.
 **User Story:** 11.2 Elevated HR
 **Entry:** ← M1-10 Alerts List
 **Exit:** ← M1-10 Alerts List (back) | → Phone call | → M2-03 Trend Charts

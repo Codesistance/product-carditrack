@@ -1,6 +1,6 @@
 # CardiTrack documentation map
 
-What's in `docs/` and when a PM should open it. Covers all 37 canonical markdown docs individually; the 3 files in `docs/archive/` are covered as a category (never canonical, so never cited), and the two generated PDFs under `mvp1/` are noted with their source. Paths are repo-relative; links resolve from this file.
+What's in `docs/` and when a PM should open it. Covers all canonical markdown docs individually; the 3 files in `docs/archive/` are covered as a category (never canonical, so never cited), and the two generated PDFs under `mvp1/` are noted with their source. Paths are repo-relative; links resolve from this file.
 
 ## Precedence when docs disagree
 
@@ -42,10 +42,11 @@ Anything in [docs/archive/](../../../../docs/archive/) is **superseded and never
 - [auth.md](../../../../docs/execution/backend/api/auth.md) — Auth0 Universal Login, tokens, email verification. No local password endpoints
 - [cardimembers.md](../../../../docs/execution/backend/api/cardimembers.md) — CardiMember CRUD, profile, medical notes, emergency contacts
 - [devices.md](../../../../docs/execution/backend/api/devices.md) — connection, status, primary device, reconnect, remove
-- [health-data.md](../../../../docs/execution/backend/api/health-data.md) — metrics, dashboard, baselines, exports
+- [health-data.md](../../../../docs/execution/backend/api/health-data.md) — metrics, dashboard, baselines, exports, digest (one `suggestion` + `urgency`)
 - [alerts.md](../../../../docs/execution/backend/api/alerts.md) — alert types, severity, acknowledgment, notes
 - [family.md](../../../../docs/execution/backend/api/family.md) — invitations, roles (admin/staff/viewer), shared notes
 - [notifications.md](../../../../docs/execution/backend/api/notifications.md) — channels, preferences, quiet hours, push registration
+- [questionnaires.md](../../../../docs/execution/backend/api/questionnaires.md) — family questions (standing vs momentary, gap-backed asking)
 - [subscriptions.md](../../../../docs/execution/backend/api/subscriptions.md) — **canonical plan limits and gates**, trial handling
 - [reports.md](../../../../docs/execution/backend/api/reports.md) — report generation and formats
 
@@ -65,13 +66,14 @@ Anything in [docs/archive/](../../../../docs/archive/) is **superseded and never
 
 | Doc | Contents | Open it when |
 |---|---|---|
-| [llm_design.md](../../../../docs/llm_design.md) | AI pipeline on GCP: Pub/Sub + Cloud Run, MedGemma via Ollama, Gemini 2.0 Flash, webhook aggregation, SSA-LSTM pre-processing, prompt structure, **severity routing**, predictive monitoring, digests, cost estimates, caveats | Anything AI-touching: insights, chat, predictions, `long_term_trend` alerts, digests, AI cost |
-| [infrastructure.md](../../../../docs/infrastructure.md) | Cloud SQL PostgreSQL 16 as system of record, schema & entity relationships, EF Core + migrator Cloud Run Job, AES-256-GCM + Secret Manager, GCP resources, Terraform stacks, CI/CD, monitoring, scaling, DR | Feasibility on storage, retention, scale, cost, or deployment |
+| [architecture_c4.md](../../../../docs/architecture_c4.md) | C4 Context / Containers / Components of the system as built and deployed | Orienting on runtime topology; any architectural change must update this in the same PR |
+| [llm_design.md](../../../../docs/llm_design.md) | AI pipeline on GCP: Pub/Sub + Cloud Run, MedGemma via Ollama, Gemini 2.0 Flash, webhook aggregation, SSA pre-processing (Math.NET; LSTM dropped), prompt structure, **severity routing**, digests, cost estimates, caveats | Anything AI-touching: insights, chat, predictions, `long_term_trend` alerts, digests, AI cost |
+| [infrastructure.md](../../../../docs/infrastructure.md) | Cloud SQL PostgreSQL 16 as system of record (local/tests Postgres 17), schema & entity relationships, EF Core + migrator Cloud Run Job, AES-256-GCM + Secret Manager, GCP resources, Terraform stacks, CI/CD, monitoring, scaling, DR | Feasibility on storage, retention, scale, cost, or deployment |
 | [apps/api/readme.md](../../../../docs/apps/api/readme.md) | ASP.NET Core Web API — stack, structure, middleware, config, local run (Swagger non-prod only) | Orienting on the API app itself |
 | [apps/web/readme.md](../../../../docs/apps/web/readme.md) | Blazor Web App — current template-shell state, disclosure banner, privacy page, APM/DataProtection wiring, planned dashboard | Any web scoping — **read this before assuming web parity with mobile** |
-| [apps/mobile/readme.md](../../../../docs/apps/mobile/readme.md) | .NET MAUI app — iOS/Android architecture, Mobile.Core, Auth0 native login, onboarding flow, APM/crash reporting, planned HealthKit/Health Connect/push/offline. States that **UI scope is governed by the Figma M1 file** | Any mobile scoping |
+| [apps/mobile/readme.md](../../../../docs/apps/mobile/readme.md) | .NET MAUI app — iOS 17 / Android API 31, Mobile.Core, Auth0 native login, onboarding flow, APM, **push shipped**. Planned HealthKit/Health Connect/offline. States that **UI scope is governed by the Figma M1 file** | Any mobile scoping |
 | [apps/mobile/store_provisioning.md](../../../../docs/apps/mobile/store_provisioning.md) | Keys, certs, and Secret Manager secrets for TestFlight + Play internal testing delivery | Release/launch planning for mobile |
-| [apps/worker/readme.md](../../../../docs/apps/worker/readme.md) | `CardiTrack.Worker` — the only home for non-AI background jobs (30-min wearable sync with in-path token refresh, daily orphaned-org cleanup), Cronos scheduling | Any feature needing a scheduled/background job |
+| [apps/worker/readme.md](../../../../docs/apps/worker/readme.md) | `CardiTrack.Worker` — the only home for non-AI background jobs (11 crons: 10-min wearable sync with in-path token refresh, daily orphaned-org cleanup, baselines, partition retention, inactivity + statistical alerting, device-auth recovery, data-completeness, notification dispatch, push canary) | Any feature needing a scheduled/background job |
 
 ## Technical reference
 
@@ -84,6 +86,12 @@ Anything in [docs/archive/](../../../../docs/archive/) is **superseded and never
 | [technical/entity_summary.md](../../../../docs/technical/entity_summary.md) | Domain entities, properties, relationships — get names right in specs |
 | [technical/data_protection_architecture.md](../../../../docs/technical/data_protection_architecture.md) | HIPAA/GDPR ADR: identifier/clinical schema separation, Safe Harbor de-identification, retention & erasure jobs, audit/consent models, subprocessor register — **any new health data field, sharing surface, or export** |
 | [technical/apm_setup_runbook.md](../../../../docs/technical/apm_setup_runbook.md) | Serilog + OpenTelemetry, switchable `Apm:Engine` (Datadog) — **how a success metric will actually be measured**; if you can't name the signal, it isn't a metric yet |
+| [technical/notification_engine.md](../../../../docs/technical/notification_engine.md) | In-app completeness engine + push spine (FCM HTTP v1, escalation, quiet hours, Safety-class nudge push, three-tier battery) |
+| [technical/data_sync_architecture.md](../../../../docs/technical/data_sync_architecture.md) | Which component runs where, over which technology, at which cadence (10-min poll, webhooks, manual sync, weekly audit) |
+| [technical/granular_timeseries_storage.md](../../../../docs/technical/granular_timeseries_storage.md) | ADR: sub-daily samples stay in Cloud SQL as day-partitioned hour vectors |
+| [technical/mathnet_numerics.md](../../../../docs/technical/mathnet_numerics.md) | ADR: in-process SSA eigen engine; median/MAD persisted unused for live alerts |
+| [technical/production_setup_runbook.md](../../../../docs/technical/production_setup_runbook.md) | Manual ops ledger outside Terraform/CI |
+| [technical/claude_cloud_environment_setup.md](../../../../docs/technical/claude_cloud_environment_setup.md) | Cursor/Claude cloud environment config for `CardiTrack.Server.slnf` |
 | [technical/enum_extensions_guide.md](../../../../docs/technical/enum_extensions_guide.md) | Enum conventions — when a spec introduces a new status/type value |
 
 ## Compliance
@@ -91,6 +99,8 @@ Anything in [docs/archive/](../../../../docs/archive/) is **superseded and never
 | Doc | Open it when |
 |---|---|
 | [compliance/dpia.md](../../../../docs/compliance/dpia.md) | GDPR Art. 35 DPIA — processing inventory, risk assessment, mitigations. **Any feature that changes what data is processed, why, or who sees it needs a DPIA line.** Flag it as a Viability item and route it to the compliance owner |
+| [compliance/art22_alerting_analysis.md](../../../../docs/compliance/art22_alerting_analysis.md) | Whether automated alert decisions are Art. 22 solely automated decision-making |
+| [compliance/alerting_algorithm_card.md](../../../../docs/compliance/alerting_algorithm_card.md) | Shipped alerting logic in one place: 30% of mean, 2σ with 5 bpm floor, 5%/week × 4, 80% coverage, 30-day gate, named SSA engine, MedGemma interprets only |
 
 ## Root
 

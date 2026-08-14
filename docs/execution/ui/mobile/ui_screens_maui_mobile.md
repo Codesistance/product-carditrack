@@ -99,13 +99,13 @@ Full specs in [Shipped Screens Without Figma M1 Frames](#shipped-screens-without
 **Exit:** → M1-13 CardiMember Detail
 
 - **QuestionCard** — `ElevatedCard` anatomy with no severity rail (the rail is the grammar for "something is wrong"; this is an invitation): 💬 glyph + heading, the question, a rationale sentence in `SelectedOptionBackground` (the model's everyday reason, not an "Asked because …" prefix), a scope footnote ("Just for the moment" on time-scoped questions; "We'll keep this here" on standing ones), an optional-by-design softener, and an "Answer" gradient button that expands an `AuthEntryBorder` editor in place (200 ms, the pause-drop-down animation) with Save/Cancel. A "✕" skips a pending question after a soft confirm. An answered card keeps the same chrome and puts a trash control in that header slot (the same 28px tinted action as alert-list delete) plus an "Answered …" caption inside the card; tapping trash asks for a warning confirm before the answer is removed.
-- **QuestionnairesPage** — standard full-bleed scaffold (HeaderBand, RefreshView, skeleton/error/content panels, BottomNavBar): the pending question at the top, then standing answers and still-current momentary ones, newest first. Expired momentary answers are omitted. Empty state when nothing lasting is on the list.
+- **QuestionnairesPage** — standard full-bleed scaffold (HeaderBand, RefreshView, skeleton/error/content panels, BottomNavBar): the pending question at the top, then standing answers and still-current momentary ones, newest first. Expired momentary answers are omitted. Empty state when nothing lasting is on the list. **As built:** debounced search, lazy page size 20, delete-on-card with a warning confirm.
 
 ## User Flows
 
 ### Flow 1: First-Time Onboarding (MVP 1)
 
-As built: Welcome's only affordances lead to Sign Up; SignInPage is reached from CreateAccount's "Already have an account? Sign In" link. Email verification (VerifyEmailPage) gates entry, then PostLoginRouter routes to AccountSetupPage (if account type not yet set) or AddCardiMemberPage. Onboarding pages hide the tab bar (`Shell.TabBarIsVisible=False`).
+As built: Welcome's primary CTA leads to Sign Up; the top-right **"Sign in"** opens SignInPage. CreateAccount still has "Already have an account? Sign In". Email verification (VerifyEmailPage) gates entry, then PostLoginRouter routes to AccountSetupPage (if account type not yet set) or AddCardiMemberPage. Onboarding pages hide the tab bar (`Shell.TabBarIsVisible=False`).
 
 ```
 [M1-01 Splash] ──────────────────────────────────────────> [M1-09 Dashboard]
@@ -113,7 +113,7 @@ As built: Welcome's only affordances lead to Sign Up; SignInPage is reached from
       ▼
 [M1-02 Welcome]
       │              │
-"Start Free Trial" "Sign up" (top-right — same destination)
+"Start Free Trial" "Sign in" (top-right → SignInPage)
       ▼
 [M1-03 Sign Up (CreateAccountPage)]
       │                        │
@@ -315,7 +315,9 @@ Push notification (any time) ─────────────────
 
 ## Navigation Structure
 
-### Bottom Tab Bar (always visible)
+### Bottom Tab Bar
+
+Visible on tab roots (Dashboard / Alerts / Family / Settings). Onboarding hides it (`Shell.TabBarIsVisible=False`). Tab pages hide Shell's bar and seat `BottomNavBar` **full-bleed** (safe-area inset is padding inside the bar).
 
 ```
 ┌────────────────────────────────────┐
@@ -329,7 +331,7 @@ Push notification (any time) ─────────────────
 
 - Badge count on Alerts tab for unread alerts
 - Badge count on Family tab for pending invites (MVP 2)
-- Family tab shows placeholder / "Coming Soon" in MVP 1, or can be hidden
+- Family tab shows a stub ("Family sharing (MVP 2) is coming soon") in MVP 1 — the tab is **always present**, never hidden
 - As built, the Shell defines a **TabBar only** (Dashboard / Alerts / Family / Settings, SVG icons). Alerts opens the real M1-10 list; the Family tab is still a stub; Settings is minimal (account card, a "Silenced reminders" card listing held notification mutes with a "Show me everything again" reset, "More settings (M2-01) coming soon", Sign out). Onboarding pages hide the tab bar via `Shell.TabBarIsVisible=False`.
 
 ### Flyout Menu
@@ -365,7 +367,7 @@ Five MVP 1 screens selected to validate the core design language — covering br
 | 4 | **M1-10 — Alerts List** | Alert management; demonstrates severity badges, grouped list design, filter chips, and swipe actions |
 | 5 | **M1-12 — Alert Detail - Critical** | Highest-stakes screen; validates urgency design, pulsing severity treatment, and primary CTA hierarchy |
 
-These five screens span onboarding → daily use → emergency response. **Build status:** M1-02, M1-04, M1-09, and M1-10 are built; M1-12 is not built — so the POC set currently validates onboarding, daily monitoring, and alert management in code, but not yet the emergency-response design language.
+These five screens span onboarding → daily use → emergency response. **Build status:** M1-02, M1-04, M1-09, M1-10, **and M1-12** are built — `AlertDetailPage` covers the emergency-response design language for red / no-morning-activity alerts.
 
 ---
 
@@ -386,9 +388,8 @@ A single user can sign up, add a CardiMember, connect devices, manage CardiMembe
 **Layout:**
 - Full-screen gradient background (CardiTrack brand colors)
 - Large CardiTrack logo (centered)
-- App name beneath logo
-- Loading spinner (bottom third)
-- Version number (bottom, small text)
+- Loading spinner
+- **As built:** default state is logo + spinner only. The wordmark appears on the **error** state, not under the logo while loading. There is **no version number**.
 
 **States:**
 - **M1-01a — Default:** Logo + spinner animation
@@ -400,13 +401,13 @@ A single user can sign up, add a CardiMember, connect devices, manage CardiMembe
 **Status:** Built (`WelcomePage`)
 **User Story:** 1.1 First-Time Registration
 **Entry:** ← M1-01 Splash (first launch only)
-**Exit:** → M1-03 Sign Up (primary CTA and top-right "Sign up" — same destination). There is **no Sign In affordance on Welcome**; sign-in is reached via CreateAccount's "Already have an account? Sign In" link.
+**Exit:** → M1-03 Sign Up (primary CTA "Start Free 30-Day Trial") | → SignInPage (top-right **"Sign in"** — no Figma M1 frame). There **is** a Sign In affordance on Welcome; it is the header label, not a bottom secondary button.
 
 **Layout:**
 
 **Header (top 20%):**
 - CardiTrack logo (top-left, small)
-- "Sign up" label (top-right) → M1-03 (same destination as primary CTA)
+- "Sign in" label (top-right) → SignInPage
 
 **Hero Carousel (middle 50%):**
 - 3 swipeable slides with pagination dots:
@@ -414,14 +415,14 @@ A single user can sign up, add a CardiMember, connect devices, manage CardiMembe
 | Slide | Illustration | Headline | Subtext |
 |-------|-------------|----------|---------|
 | 1 | Happy elderly person with smartwatch | "Know They're Okay" | "Stay close to the people you love — even from far away" |
-| 2 | Phone showing health dashboard | "Their Watch, Your Peace of Mind" | "Connects with Fitbit, Apple Watch, Garmin & more" |
+| 2 | Phone showing health dashboard | "Their Watch, Your Peace" | "Connects with Fitbit, Apple Watch, Garmin & more" |
 | 3 | Family members on phones | "Care Together" | "Share the watch with your siblings — you're not in this alone" |
 
 **CTA Section (bottom 30%):**
 - Primary button (full width, bold): "Start Free 30-Day Trial"
 - Pricing text (small, muted): "Then $8/month - Cancel anytime"
-- Secondary button (text style, subtle): "Sign In"
 - Legal link (small): "By continuing, you agree to Terms & Privacy"
+- **As built: no secondary bottom "Sign In" button** — Sign in is the header label.
 
 **Interactions:**
 - Carousel is **swipe-only** (`Loop=False`, no auto-advance)
@@ -648,7 +649,7 @@ Each device card:
 
 **Success Message:**
 - Heading: "You're all set!"
-- Text: "The Fitbit is now connected" (no name/device interpolation)
+- Text: `$"{name}'s {device.DisplayName} is now connected"` (member name + selected device)
 - Subtext: "We're pulling in their latest data — just a moment"
 
 **Data Preview Card:**
@@ -688,8 +689,8 @@ Each device card:
 - Static emoji glyphs: 🧠⚙ (no Lottie animation shipped)
 
 **Explanation:**
-- Heading: "Getting to know them" (singular, no name interpolation)
-- Body: "Over the next 30 days, CardiTrack will learn what a normal day looks like for them:"
+- Heading: `$"Getting to know {_member.Name}"` (name interpolated)
+- Body interpolates the member's name (not a generic "them")
 - Bullet list:
   - "When they usually wake up and go to sleep"
   - "How active they are day to day"
@@ -702,6 +703,7 @@ Each device card:
 **Options Card:**
 - Toggle switch: "Keep me posted while CardiTrack is learning"
 - Description: "You'll get basic alerts right away (like heart rate over 100)"
+- **As built: the switch has no handler.** Statistical rules stay silent until a **30-day** baseline exists. The toggle is dead chrome.
 
 **CTA:**
 - Primary button: "Go to Dashboard"
@@ -713,7 +715,7 @@ Each device card:
 **Status:** Built (`DashboardPage`)
 **User Story:** 2.1 Daily Health Overview
 **Entry:** Tab bar (Home) | ← M1-08 Baseline Info (first time)
-**Exit:** → M1-10 Alerts List | → M2-03 Trend Charts | → M1-13 CardiMember Detail | → Phone call / SMS
+**Exit:** → M1-10 Alerts List | → M1-13 CardiMember Detail | → Phone call / SMS / SOS | → AlertDetailPage (any open alert) | → WeatherPopupPage (hero weather chip)
 
 **Header (fixed):**
 - Greeting: "Good Morning, [User First Name]"
@@ -724,7 +726,8 @@ Each device card:
 - Large card with gradient background colored by status
 - CardiMember photo (circular, large)
 - Name and age: "[Name], 78"
-- Large status indicator:
+- Large status indicator — the four-tier labels below are the **fallback** while `GetCurrentStatusAsync` is in flight. After load, a **single AI sentence** (under 15 words) replaces them. **"Loading" appears only after 1.5 s**, so a fast response never flashes the word.
+- Weather chip (as-built) → `WeatherPopupPage` (session weather for a GPS-tagged exercise, not live)
 
 | Status | Label | Icon |
 |--------|-------|------|
@@ -769,11 +772,11 @@ Heart Rate, Sleep, Skin Temp, Steps, SpO2, and Breathing Rate — the last three
 - Star rating (1-5) — the worse of sleep efficiency and the shortfall in duration against baseline (either alone when the other is unavailable), capped on the length of the night against the published band for the member's age — both ends, so neither 4.5 nor 12 hours can rate five stars
 - Comparison: "Longer than usual" / "Shorter than usual" / "In line with usual" — direction only, no verdict; the stars and pill carry the judgement
 
-**Recent Alerts (conditional — only shown if alerts exist):**
+**Recent Alerts (conditional — unresolved alerts only):**
 - Section heading: "Recent Alerts"
-- Horizontal scrollable alert cards
+- Horizontal scrollable alert cards (resolved/settled alerts are omitted)
 - Each card: icon, title, time, status
-- Tap any card → M1-11 or M1-12 Alert Detail
+- Tap any card → `AlertDetailPage` (M1-11 / M1-12 / M1-16 depending on rule)
 
 **Verify-Email Nudge (conditional):**
 - Dismissible banner prompting the user to verify their email address
@@ -785,7 +788,7 @@ Heart Rate, Sleep, Skin Temp, Steps, SpO2, and Breathing Rate — the last three
 - Dismissible banner pointing at the real Sleep alert the statistical worker raised; dismissing it is a local/session convenience, not an acknowledgement — the alert stays in Alerts until acted on there
 
 **Bottom:**
-- Button: "View Trends & History" → M2-03
+- **As built: no "View Trends & History" button.** Trends live on M1-13's Key Metric Trends carousel.
 
 **Interactions:**
 - Pull-to-refresh triggers data sync; manual refresh icon sits in the page **header**
@@ -870,6 +873,10 @@ Heart rate alerts tap → M1-16
 
 ### M1-11: Alert Detail - Activity
 **Status:** Built (`AlertDetailPage`, Shell route `alertdetail`) — one page shared with M1-12/M1-16; activity-decline and long-term-trend rules show the steps chart only.
+
+**As built (applies to M1-11/12/16):** reason icon, **one rule-specific `TrendChart`**, comparison card, context, shared `QuickActionRow` (SOS / Call / Message / Details). More Options = View Detailed (→ M1-13) + OS share. Acknowledge, and **"I'm on my way"** on red alerts, plus undo. **Not built:** header Share as a distinct control, notes, family-notify card, timeline, medical history, Book a Doctor / CALL NOW as distinct screens.
+
+The layout below is the Figma design intent; where it disagrees with the as-built paragraph, the as-built paragraph wins.
 **User Story:** 11.1 Activity Decline | 3.3 Alert Acknowledgment & Notes
 **Entry:** ← M1-10 Alerts List (tap alert card)
 **Exit:** ← M1-10 Alerts List (back) | → Phone call | → SMS | → M2-03 Trend Charts
@@ -1092,7 +1099,7 @@ This is the most safety-critical screen in the app. Design for urgency and immed
 - Last sync: "10 minutes ago"
 - Next sync: "In 20 minutes"
 - Data synced today: "4 updates"
-- Battery tile (shipped): shown **only when the server sent a reading** — the tile's grid column collapses when absent, so no gap is left; the value turns **red at the same threshold `DEVICE_BATTERY_LOW` fires at** (`DeviceBattery.IsLow`), so the tile agrees with the critical low-battery warning notification (`DeviceBatteryLowRule`) a caregiver may already have received
+- Battery tile (shipped): shown **only when the server sent a reading** — the tile's grid column collapses when absent, so no gap is left; the value turns **red at `DeviceBattery.IsLow`**, which is **any of the three tiers** (Warning ≤30% / Urgent ≤20% / Critical ≤10% or Low/Empty band), matching `DEVICE_BATTERY_LOW`. Freshness is **12 hours**.
 
 **Troubleshooting (bottom, collapsible — as built):**
 - "Having trouble?"
@@ -1980,6 +1987,9 @@ The shipped app already includes these reusable controls — designs should map 
 | `TrendChart` | C# drawn control | Line chart inside a `MetricTrendCard` — daily series with baseline and typical-range marks |
 | `TrendLegendSwatch` | C# control | Legend swatch naming a `TrendChart`'s comparison marks |
 | `TrendWindowSelector` | C# control | 7 / 14 / 30-day segmented window picker above the trends carousel |
+| `WeatherPopupPage` | XAML component | Session-weather sheet from the hero/detail weather chip |
+| `QuickActionRow` | XAML component | SOS / Call / Message / Details row on alert detail and member detail |
+| `AnsweredQuestionRow` | XAML component | One answered Q&A card with in-card delete |
 | `WizardHeader` | XAML component | Onboarding wizard pages (title + "Step N of 4" progress) |
 
 ### What You Need to Define

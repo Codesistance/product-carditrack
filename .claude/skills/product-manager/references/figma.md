@@ -22,28 +22,26 @@ Contains frames **M1-01 … M1-17** — 17 designed screens, 37 designed states.
 | M1-03 | Sign Up | 4 (a–d) | ✅ `CreateAccountPage` |
 | M1-04 | Add First CardiMember | 3 (a–c) | ✅ `AddCardiMemberPage` |
 | M1-05 | Device Connection — Selection | 1 | ✅ `DeviceSelectionPage` |
-| M1-06 | Device Connection — OAuth | 3 (a–c) | ✅ `FitbitConnectionPage` |
+| M1-06 | Device Connection — OAuth | 3 (a–c) | ✅ `DeviceConnectionPage` |
 | M1-07 | Device Connection — Success | 3 (a–c) | ✅ `ConnectionSuccessPage` |
 | M1-08 | Baseline Learning Info | 1 | ✅ `BaselineLearningPage` |
 | M1-09 | Main Dashboard | 5 (a–e) + 2 as-built | ✅ `DashboardPage` |
 | M1-10 | Alerts List | 4 (a–d) | ✅ `AlertsPage` |
-| M1-11 | Alert Detail — Activity | 1 | ❌ not built |
-| M1-12 | Alert Detail — Critical | 1 | ❌ not built |
+| M1-11 | Alert Detail — Activity | 1 | ✅ `AlertDetailPage` (rule branch) |
+| M1-12 | Alert Detail — Critical | 1 | ✅ `AlertDetailPage` (severity branch) |
 | M1-13 | CardiMember Detail | 1 + 3 as-built | ✅ `CardiMemberDetailPage` |
 | M1-14 | Edit CardiMember | 1 + 2 as-built | ✅ `EditCardiMemberPage` |
 | M1-15 | Device Management | 1 + 3 as-built | ✅ `DeviceManagementPage` |
-| M1-16 | Alert Detail — Heart Rate | 1 | ❌ not built |
+| M1-16 | Alert Detail — Heart Rate | 1 | ✅ `AlertDetailPage` (rule branch) |
 | M1-17 | Health Data Export | 4 (a–d) | ❌ not built |
 
 Source: [mvp1/screens.md](../../../../docs/execution/ui/mobile/mvp1/screens.md) (extract of the canonical [ui_screens_maui_mobile.md](../../../../docs/execution/ui/mobile/ui_screens_maui_mobile.md)).
 
-> **The correct count is 13**, verified against `src/Presentation/CardiTrack.Mobile`: `CardiMemberDetailPage.xaml` (307 lines), `EditCardiMemberPage.xaml` (210) and `DeviceManagementPage.xaml` (142) are all real, substantial pages (checked 2026-08-08), and `AlertsPage.xaml` became the real M1-10 list on 2026-08-09 — it was a 13-line placeholder until then, which is where the earlier count of 12 came from.
->
-> The build-status prose in `ui_screens_maui_mobile.md` and the `mvp1/` extracts previously said 9, contradicting their own tables; corrected at source (canonical doc + re-extract + PDF regen via `convert_to_pdf.py`) on 2026-08-09.
+> **The correct count is 16 of 17**, verified against `src/Presentation/CardiTrack.Mobile` (2026-08-14). Intermediate counts: 9 (onboarding + dashboard) → 12 (M1-13/14/15) → 13 (`AlertsPage` became the real M1-10 list on 2026-08-09) → 16 (`AlertDetailPage` covering M1-11/12/16). The only unbuilt Figma frame is **M1-17 Health Data Export**.
 
-Unbuilt frames cluster hard around **alert detail and export** (M1-11, M1-12, M1-16, M1-17; M1-10 itself is now built) — which matches the release matrix showing the entire alerting loop as ⬜ Not started. That's the R1 critical path.
+Unbuilt Figma work is now **export only**. The alerting loop (list + detail + ack/undo + push) is shipped; notes/photos and M1-17 remain open.
 
-Frame → page mapping verified in code: M1-01 `SplashPage` · M1-02 `WelcomePage` · M1-03 `CreateAccountPage` · M1-04 `Onboarding/AddCardiMemberPage` · M1-05 `Onboarding/DeviceSelectionPage` · M1-06 `Onboarding/FitbitConnectionPage` · M1-07 `Onboarding/ConnectionSuccessPage` · M1-08 `Onboarding/BaselineLearningPage` · M1-09 `DashboardPage` · M1-13 `CardiMemberDetailPage` · M1-14 `EditCardiMemberPage` · M1-15 `DeviceManagementPage`. `FamilyPage` and `SettingsPage` also ship with no M1 frame, but they are documented tab stubs rather than design gaps — `FamilyPage` is a tab stub and `SettingsPage` is minimal (sign-out, verify-email nudge reset), per [apps/mobile/readme.md](../../../../docs/apps/mobile/readme.md).
+Frame → page mapping verified in code: M1-01 `SplashPage` · M1-02 `WelcomePage` · M1-03 `CreateAccountPage` · M1-04 `Onboarding/AddCardiMemberPage` · M1-05 `Onboarding/DeviceSelectionPage` · M1-06 `Onboarding/DeviceConnectionPage` · M1-07 `Onboarding/ConnectionSuccessPage` · M1-08 `Onboarding/BaselineLearningPage` · M1-09 `DashboardPage` · M1-10 `AlertsPage` · M1-11/12/16 `AlertDetailPage` · M1-13 `CardiMemberDetailPage` · M1-14 `EditCardiMemberPage` · M1-15 `DeviceManagementPage`. `FamilyPage` is a tab stub ("Family sharing (MVP 2) is coming soon"). `SettingsPage` is minimal (account card, Silenced reminders, M2-01 coming soon, Sign out). Verify-email dismiss lives on the **dashboard**, not Settings.
 
 ## Design-sync backlog
 
@@ -51,7 +49,7 @@ Carry these into any PRD that touches the affected surface:
 
 | Item | Detail |
 |---|---|
-| **Four shipped screens have no Figma frame** | `SignInPage`, `ForgotPasswordPage`, `VerifyEmailPage`, `Onboarding/AccountSetupPage` — built and shipped, specced only in [ui_screens_maui_mobile.md § Shipped Screens Without Figma M1 Frames](../../../../docs/execution/ui/mobile/ui_screens_maui_mobile.md), no M1 IDs assigned |
+| **Seven shipped screens have no Figma frame** | `SignInPage`, `ForgotPasswordPage`, `VerifyEmailPage`, `Onboarding/AccountSetupPage`, plus `NotificationsPage`, `QuestionnairesPage`, and `QuestionCard` — built and shipped, specced only in [ui_screens_maui_mobile.md § Shipped Screens Without Figma M1 Frames](../../../../docs/execution/ui/mobile/ui_screens_maui_mobile.md), no M1 IDs assigned |
 | **M1-06 state-letter mismatch** | Shipped code maps **B = Error, C = Authorizing overlay** — the reverse of the frame's lettering. Figma is the arbiter; realign the code or update the frame at the next sync |
 | **Flyout menu retired** | The Shell is TabBar-only with no edge-swipe flyout. The flyout concept in older spec text is retired unless re-introduced through Figma — don't spec navigation that assumes it |
 | **Dashboard "as-built" states** | M1-09, M1-13, M1-14, M1-15 each have as-built states beyond the designed ones. Reconcile before adding new states |

@@ -69,7 +69,7 @@ Close with a call: **Pursue / Prototype first / Kill.** If you say "Prototype fi
 
 Do not just write happy-path user stories. Actively hunt for technical, legal, and UX blind spots. On CardiTrack, sweep this list every time:
 
-- **Data absence** — wearer took the watch off, battery died, device fell offline, the 30-minute poll returned nothing. Silence must never read as "healthy". What does the UI say for a 6-hour gap?
+- **Data absence** — wearer took the watch off, battery died, device fell offline, the 10-minute poll returned nothing. Silence must never read as "healthy". What does the UI say for a 6-hour gap?
 - **OAuth decay** — refresh token revoked, user disconnected Fitbit from Google's side, scope changed after verification. Who gets told, and how fast?
 - **False alarms** — an alert that isn't real erodes trust faster than a missed one builds it. What is the acknowledgment/snooze/tuning path?
 - **Baseline immaturity** — the learning period means early alerts are statistically weak. What ships during days 1–14?
@@ -120,14 +120,15 @@ Match the house style of the existing specs — story numbering (`Story 1.1`), `
 - [docs/readme.md](../../../docs/readme.md) — documentation index, conventions, ownership, precedence rules
 
 **Specs (canonical contracts)**
-- [docs/execution/backend/api/](../../../docs/execution/backend/api/readme.md) — source of truth for every `/api/v1/*` endpoint: [auth](../../../docs/execution/backend/api/auth.md), [cardimembers](../../../docs/execution/backend/api/cardimembers.md), [devices](../../../docs/execution/backend/api/devices.md), [health-data](../../../docs/execution/backend/api/health-data.md), [alerts](../../../docs/execution/backend/api/alerts.md), [family](../../../docs/execution/backend/api/family.md), [notifications](../../../docs/execution/backend/api/notifications.md), [subscriptions](../../../docs/execution/backend/api/subscriptions.md), [reports](../../../docs/execution/backend/api/reports.md)
+- [docs/execution/backend/api/](../../../docs/execution/backend/api/readme.md) — source of truth for every `/api/v1/*` endpoint: [auth](../../../docs/execution/backend/api/auth.md), [cardimembers](../../../docs/execution/backend/api/cardimembers.md), [devices](../../../docs/execution/backend/api/devices.md), [health-data](../../../docs/execution/backend/api/health-data.md), [alerts](../../../docs/execution/backend/api/alerts.md), [family](../../../docs/execution/backend/api/family.md), [notifications](../../../docs/execution/backend/api/notifications.md), [questionnaires](../../../docs/execution/backend/api/questionnaires.md), [subscriptions](../../../docs/execution/backend/api/subscriptions.md), [reports](../../../docs/execution/backend/api/reports.md)
 - [docs/execution/ui/mobile/ui_screens_maui_mobile.md](../../../docs/execution/ui/mobile/ui_screens_maui_mobile.md) + [user_stories.md](../../../docs/execution/ui/mobile/user_stories.md) — canonical mobile specs (MVP 1–3)
 - [docs/execution/ui/mobile/mvp1/](../../../docs/execution/ui/mobile/mvp1/screens.md) — MVP 1 extracts ([screens](../../../docs/execution/ui/mobile/mvp1/screens.md), [user stories](../../../docs/execution/ui/mobile/mvp1/user_stories.md), PDFs)
 - [docs/execution/ui/web/ui_screens_blazor_web.md](../../../docs/execution/ui/web/ui_screens_blazor_web.md) + [user_stories.md](../../../docs/execution/ui/web/user_stories.md) — canonical web specs (MVP 1–4)
 
 **Architecture & platform**
-- [docs/llm_design.md](../../../docs/llm_design.md) — AI pipeline on GCP: Pub/Sub + Cloud Run, MedGemma via Ollama, Gemini, SSA-LSTM pre-processing, severity routing, digests, cost
-- [docs/infrastructure.md](../../../docs/infrastructure.md) — Cloud SQL PostgreSQL 16, schema, EF Core migrations, encryption, GCP resources, Terraform, CI/CD, DR
+- [docs/llm_design.md](../../../docs/llm_design.md) — AI pipeline on GCP: Pub/Sub + Cloud Run, MedGemma via Ollama, Gemini, SSA pre-processing (Math.NET; LSTM dropped), severity routing, digests, cost
+- [docs/infrastructure.md](../../../docs/infrastructure.md) — Cloud SQL PostgreSQL 16 (local/tests Postgres 17), schema, EF Core migrations, encryption, GCP resources, Terraform, CI/CD, DR
+- [docs/architecture_c4.md](../../../docs/architecture_c4.md) — C4 Context/Containers/Components of the system as built
 - Per-app READMEs (`docs/apps/` has no index file — go straight to one): [api](../../../docs/apps/api/readme.md), [web](../../../docs/apps/web/readme.md), [mobile](../../../docs/apps/mobile/readme.md) (+ [store_provisioning](../../../docs/apps/mobile/store_provisioning.md)), [worker](../../../docs/apps/worker/readme.md)
 
 **Technical reference**
@@ -148,9 +149,9 @@ Match the house style of the existing specs — story numbering (`Story 1.1`), `
 
 The mobile M1 design file is the arbiter of UI scope: **https://www.figma.com/design/ux4slk0SA3BsAxFpGzv4NB** (frames M1-01 … M1-17). Only screens that exist in Figma get built, and only screens in Figma get M1 IDs — do not invent frame IDs for shipped screens that lack a frame.
 
-Known state: **12 of 17 frames built** — M1-01 … M1-09 plus M1-13, M1-14, M1-15. M1-10 (Alerts List) is a 13-line placeholder, and M1-11, M1-12, M1-16, M1-17 don't exist — so the unbuilt frames are almost entirely **alerts and export**, matching the release matrix's ⬜ on the whole alerting loop. Four shipped screens (SignIn, ForgotPassword, VerifyEmail, AccountSetup) have **no Figma frame and need design sync**.
+Known state: **16 of 17 frames built** — M1-01 … M1-16. Alert detail is one page (`AlertDetailPage`) covering M1-11/12/16. The only unbuilt Figma frame is **M1-17 Health Data Export**. Seven shipped screens have **no Figma frame and need design sync**: SignIn, ForgotPassword, VerifyEmail, AccountSetup, plus Notifications, Questionnaires, and QuestionCard.
 
-> The build-status prose in `mvp1/screens.md` and `ui_screens_maui_mobile.md` was corrected to **12 of 17** on 2026-08-09 (it previously said 9, contradicting its own tables); 12 is verified against `src/Presentation/CardiTrack.Mobile` (see [references/figma.md](references/figma.md)).
+> The count moved 9 → 12 (M1-13/14/15) → 13 (M1-10 list) → 16 (alert detail, 2026-08-14). Verify against `src/Presentation/CardiTrack.Mobile` and [references/figma.md](references/figma.md), not an older snapshot.
 
 For reading frames, variables, and screenshots via the Figma MCP tools, and for the design-sync backlog, see [references/figma.md](references/figma.md).
 

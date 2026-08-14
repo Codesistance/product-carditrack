@@ -43,7 +43,7 @@ Rules:
 
 ### Database Provider
 
-- **Engine**: Cloud SQL for **PostgreSQL 16** (`POSTGRES_16`), Enterprise edition
+- **Engine**: Cloud SQL for **PostgreSQL 16** (`POSTGRES_16`), Enterprise edition. Local docker-compose, the devcontainer, and Testcontainers use **Postgres 17** (`postgres:17-alpine`) — same major-version family, not a production upgrade.
 - **Driver**: Npgsql via EF Core
 - **Connectivity**: **Private IP only** (`ipv4_enabled = false` in both environments). Cloud Run services connect through the **Cloud SQL Auth Proxy Unix socket** (`/cloudsql/<connection-name>`) over the VPC; the proxy provides TLS, so the connection string uses `SSL Mode=Disable` for the local socket only. Direct TCP connections are `ENCRYPTED_ONLY`.
 - **Audit flags**: `log_connections` / `log_disconnections` are switched on when `enable_platform_audit_logging` is set (prod)
@@ -95,6 +95,11 @@ Current tables (25 DbSets):
 **Key recent migrations** (full history in `src/Infrastructure/CardiTrack.Infrastructure/Migrations/`):
 
 - `AddDigestSuggestions` (2026-08-12) — digest suggestion columns on `DigestEntries`
+- `DigestSuggestionToSingleMessage` (2026-08-14) — three-item `Suggestions` array collapsed to one `Suggestion`
+- `AddQuestionnaireScope` (2026-08-14) — standing vs momentary questions
+- `AddDigestUrgency` (2026-08-14) — `watch` / `check-in` / `concerning` / `act-now` on digests
+- `AddNotificationPushedDate` (2026-08-14) — Safety-class nudge push bookkeeping
+- `AddRobustBaselineStatsAndSsaEngine` (2026-08-14) — median/MAD on `PatternBaselines`; `SsaEngine` stamped on assessments
 - `AddGooglePixelWatchDevice` (2026-08-13) — Google Pixel Watch in the device catalog
 - `AddEnvironmentalWeatherAndMemberQuestionnaires` (2026-08-13) — weather fields on `EnvironmentalReadings` + the `MemberQuestionnaires` table
 - `AddDeviceBatteryLevel` (2026-08-13) — device battery level on connections
@@ -506,4 +511,4 @@ terraform force-unlock <lock-id>   # use with caution
 
 ---
 
-*Version 2.1 — Last Updated: August 13, 2026*
+*Version 2.2 — Last Updated: August 14, 2026*

@@ -113,7 +113,7 @@ dotnet run
 # http://localhost:5026
 ```
 
-Prerequisites: .NET 10 SDK and a local PostgreSQL 16 with the CardiTrack database (the app opens a DB connection for the banner's user lookup).
+Prerequisites: .NET 10 SDK and a local **PostgreSQL 17** with the CardiTrack database (the app opens a DB connection for the banner's user lookup). Cloud SQL remains PostgreSQL 16.
 
 ### Docker & deployment
 
@@ -154,4 +154,4 @@ For web dashboard issues, contact: web-support@carditrack.com
 
 ---
 
-**Last Updated:** August 7, 2026
+**Last Updated:** August 14, 2026

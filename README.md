@@ -67,7 +67,7 @@ CardiTrack/
 │   │   └── CardiTrack.Mobile.Core      # Shared mobile logic
 │   ├── Pipeline/
 │   │   ├── CardiTrack.HealthWebhookReceiver  # AI pipeline ingress (publishes raw to Pub/Sub)
-│   │   └── CardiTrack.PipelineJobs     # AI pipeline Cloud Run jobs (digest, aggregate, assess)
+│   │   └── CardiTrack.PipelineJobs     # AI pipeline Cloud Run jobs (digest, aggregate, assess; enrich in the image, unprovisioned)
 │   └── Worker/
 │       └── CardiTrack.Worker           # Non-AI background jobs (11, cron-scheduled)
 ├── tests/
@@ -260,4 +260,4 @@ For issues, questions, or feature requests:
 
 **Built with ❤️ for family caregivers**
 
-**Last Updated**: August 13, 2026
+**Last Updated**: August 14, 2026

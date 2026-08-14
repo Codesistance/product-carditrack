@@ -20,7 +20,7 @@ The 11 workers registered today (crons from `appsettings.json`):
 | `NotificationDispatchWorker` | `*/30 * * * * *` (every 30 s) | The push spine's pump — claims due outbox rows, retries, escalates, expires |
 | `PushCanaryWorker` | `0 */15 * * * *` (every 15 min) | Sends a real Safety push to configured test devices and screams if the previous one never acked |
 
-OAuth token refresh is **not a separate cron job** — it happens inside the sync path (`DeviceSyncService` calls `IOAuthTokenRefreshService` before hitting the provider API), with `DeviceAuthRecoveryWorker` retrying only the connections the provider has refused. Trial expiration reminders and the general data-retention job are **planned** but not yet implemented; the partitioned tables' retention is the exception, live via `PartitionMaintenanceWorker` — it covers the granular tables **and** `DigestEntries` (12 months), `RealtimeAssessments` (90 days) and `EnvironmentalReadings` (90 days).
+OAuth token refresh is **not a separate cron job** — it happens inside the sync path (`DeviceSyncService` calls `IOAuthTokenRefreshService` before hitting the provider API), with `DeviceAuthRecoveryWorker` retrying only the connections the provider has refused. Trial expiration reminders and the general data-retention job are **planned** but not yet implemented; the partitioned tables' retention is the exception, live via `PartitionMaintenanceWorker` — it covers the granular tables **and** `DigestEntries` (90 days / 3 months), `RealtimeAssessments` (90 days) and `EnvironmentalReadings` (90 days).
 
 > **Scope note:** the AI ingestion/inference pipeline (webhook aggregation, pre-processing, MedGemma calls, severity routing, digests) is **live in dev** — Pub/Sub + dedicated Cloud Run services per [llm_design.md](../../llm_design.md) (prod gated off). The `WearableSyncWorker` polling job below is the **guaranteed fallback** and runs in every environment; the registered webhook path triggers the same sync sooner, never a duplicate (see [release_matrix.md](../../release_matrix.md)).
 
@@ -66,22 +66,39 @@ src/Worker/CardiTrack.Worker/
 
 ### CronBackgroundService
 
-Abstract base class that drives any scheduled job via a cron expression.
+Abstract base class that drives any scheduled job via a cron expression. A logger is **required** — both the optional run-on-startup invocation and every scheduled tick swallow job exceptions so one failing worker cannot take down the host (`BackgroundServiceExceptionBehavior.StopHost` is the default). A job that throws misses its own tick and is logged; it runs again on the next occurrence.
 
 ```csharp
 public abstract class CronBackgroundService : BackgroundService
 {
     private readonly CronExpression _cron;
     private readonly TimeZoneInfo _timeZone;
+    private readonly bool _runOnStartup;
+    private readonly ILogger _logger;
 
-    protected CronBackgroundService(string cronExpression, TimeZoneInfo? timeZone = null)
+    protected CronBackgroundService(
+        string cronExpression,
+        ILogger logger,
+        TimeZoneInfo? timeZone = null,
+        bool runOnStartup = false)
     {
         _cron = CronExpression.Parse(cronExpression, CronFormat.IncludeSeconds);
         _timeZone = timeZone ?? TimeZoneInfo.Utc;
+        _runOnStartup = runOnStartup;
+        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        if (_runOnStartup && !stoppingToken.IsCancellationRequested)
+        {
+            try { await ExecuteJobAsync(stoppingToken); }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                _logger.LogError(ex, "Run-on-startup invocation of {Job} failed.", GetType().Name);
+            }
+        }
+
         while (!stoppingToken.IsCancellationRequested)
         {
             var now = DateTimeOffset.UtcNow;
@@ -93,7 +110,13 @@ public abstract class CronBackgroundService : BackgroundService
                 await Task.Delay(delay, stoppingToken);
 
             if (!stoppingToken.IsCancellationRequested)
-                await ExecuteJobAsync(stoppingToken);
+            {
+                try { await ExecuteJobAsync(stoppingToken); }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    _logger.LogError(ex, "Scheduled invocation of {Job} failed.", GetType().Name);
+                }
+            }
         }
     }
 
@@ -222,8 +245,8 @@ The arithmetic lives in `BaselineCalculator` (`CardiTrack.Application/Services`)
 Keeps the partitioned time-series tables (`GranularMetricHours`, `MetricRollupsHourly`, `DigestEntries`, `RealtimeAssessments`, `EnvironmentalReadings` — see the [granular-storage ADR](../../technical/granular_timeseries_storage.md)) alive: PostgreSQL neither creates range partitions on demand nor expires rows, so this job pre-creates partitions ahead of the data and drops the ones wholly past retention.
 
 - Runs **hourly** (`0 15 * * * *`) and additionally **once at startup** — `CronBackgroundService` now supports a `RunOnStartup` mode (`WorkerOptions.RunOnStartup`, off by default) and this worker opts in (`RunOnStartup: true` in appsettings), so a fresh deploy has its partitions before the first insert rather than waiting for the next hourly tick. Creation is idempotent (`IF NOT EXISTS`) and near-free.
-- Pre-creates from **yesterday** through `DaysAhead` (default **7**) days out — a sync straddling UTC midnight can still write into the day that just ended, and a week of headroom survives a multi-day worker outage.
-- Retention is a **partition drop** — instant, no dead tuples to vacuum: granular hours after `GranularRetentionDays` (default **90**), hourly rollups after `RollupRetentionMonths` (default **13**), digests after `DigestRetentionMonths` (default **3**), real-time assessments after `RealtimeRetentionDays` (default **90**), environmental readings after `EnvironmentalRetentionDays` (default **90**). A partition is dropped only when its whole range is past the cutoff.
+- Pre-creates from **yesterday** through `DaysAhead` days out — C# fallback is **7**; `appsettings.json` sets **14**, so a week of headroom survives a multi-day worker outage, and a sync straddling UTC midnight can still write into the day that just ended.
+- Retention is a **partition drop** — instant, no dead tuples to vacuum: granular hours after `GranularRetentionDays` (default **90**), hourly rollups after `RollupRetentionMonths` (default **13**), digests after `DigestRetentionMonths` (default **3**), real-time assessments after `RealtimeRetentionDays` (default **90**), environmental readings after `EnvironmentalRetentionDays` (C# default **90**; not set in `appsettings.json`). A partition is dropped only when its whole range is past the cutoff.
 - **Never drops what it did not name**: the drop path parses each child's name against the worker's own naming scheme, so a manually attached partition is left alone regardless of age.
 - Drops log at **Warning** — destroying health data past retention is the one thing this job does that an audit should be able to reconstruct.
 
@@ -564,4 +587,4 @@ Logging mirrors the API: **Serilog console sink** always, plus `AddApmShipping` 
 
 ---
 
-**Last Updated:** August 13, 2026
+**Last Updated:** August 14, 2026

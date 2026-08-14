@@ -2,7 +2,7 @@
 
 This document provides an overview of all domain entities in the CardiTrack system. All entities live in **PostgreSQL 16 on GCP Cloud SQL**, the transactional system of record; the planned AI pipeline's outputs are documented separately in [llm_design.md](../llm_design.md). Field-level protection (what is encrypted, and what is planned to be) is covered in [data_protection_architecture.md](./data_protection_architecture.md).
 
-**Implemented today:** 25 entity classes and 30 enums exist in `CardiTrack.Domain` (plus two static merge helpers, `ActivityLogMerge` and `GranularSeriesMerge`, in `Entities/`), mapped by EF Core (27 migrations applied as of 2026-08-13 — this count drifts fast and is not re-verified every edit; the pipeline's own output entities, e.g. `RealtimeAssessment`/`DigestEntry`/`EnvironmentalReading`/`MemberQuestionnaire`, are among the 25 but are documented in [llm_design.md](../llm_design.md) instead — `MemberQuestionnaire` also has its own API contract in [questionnaires.md](../execution/backend/api/questionnaires.md), and is the one entity deliberately **not** soft-deletable, since erasing a family's answer has to mean the row is gone). A further set of feature entities is designed but not yet built — see the "Planned" section below.
+**Implemented today:** 25 entity classes and **32** enums exist in `CardiTrack.Domain` (plus two static merge helpers, `ActivityLogMerge` and `GranularSeriesMerge`, in `Entities/`), mapped by EF Core (**33** migrations applied as of 2026-08-14 — this count drifts fast and is not re-verified every edit; the pipeline's own output entities, e.g. `RealtimeAssessment`/`DigestEntry`/`EnvironmentalReading`/`MemberQuestionnaire`, are among the 25 but are documented in [llm_design.md](../llm_design.md) instead — `MemberQuestionnaire` also has its own API contract in [questionnaires.md](../execution/backend/api/questionnaires.md), and is the one entity deliberately **not** soft-deletable, since erasing a family's answer has to mean the row is gone). A further set of feature entities is designed but not yet built — see the "Planned" section below.
 
 ## Entity Overview
 
@@ -190,7 +190,7 @@ Planned relationships (when the planned entities land): Organization→FamilyInv
 
 ## Enums
 
-The 30 domain enums:
+The 32 domain enums:
 
 - **OrganizationType**: Family, Business
 - **UserRole**: Member, Admin, Staff (displays "Member" / "Administrator" / "Staff Member")
@@ -217,6 +217,8 @@ The 30 domain enums:
 - **OsAuthorizationStatus**: NotDetermined, Denied, Granted, Provisional, Ephemeral (OS-level push permission)
 - **DigestAudience**: Family, Wearer (Wearer generated only once wearer logins exist — currently never)
 - **QuestionnaireStatus**: Pending, Answered, Dismissed
+- **QuestionnaireScope**: TimeScoped (1), Permanent (2) — standing facts stay in every future prompt until deleted; momentary ones age out
+- **DigestUrgency**: Watch (1), CheckIn, Concerning, ActNow — the model's read of how soon the family should act on a digest; never drives Alert rows
 - **SubscriptionTier**: Basic, Complete, Plus
 - **SubscriptionStatus**: Trial (1), Active, PastDue, Cancelled, Suspended
 - **BillingCycle**: Monthly, Annual
@@ -236,16 +238,16 @@ CardiTrack.Domain/
 ├── Interfaces/
 │   ├── IEntity.cs
 │   └── ISoftDeletable.cs
-├── Enums/       one file per enum — the 30 listed above
+├── Enums/       one file per enum — the 32 listed above
 └── Entities/    27 files — the 25 entity classes, plus the two static
                  merge helpers (ActivityLogMerge.cs, GranularSeriesMerge.cs)
 ```
 
-EF Core mapping lives in `CardiTrack.Infrastructure/Persistence` (a configuration class per entity; plural table names — Users, CardiMembers, ActivityLogs, PatternBaselines, Alerts, AuditLogs, ...). 27 migrations exist — see `Migrations/` for the current list (the latest: AddDeviceBatteryLevel, AddDeviceAuthRecoveryBackoff, RetireOtherGender).
+EF Core mapping lives in `CardiTrack.Infrastructure/Persistence` (a configuration class per entity; plural table names — Users, CardiMembers, ActivityLogs, PatternBaselines, Alerts, AuditLogs, ...). 33 migrations exist — see `Migrations/` for the current list (the latest: `AddRobustBaselineStatsAndSsaEngine`, `AddNotificationPushedDate`, `AddDigestUrgency`, `AddQuestionnaireScope`, `DigestSuggestionToSingleMessage`).
 
 ## Next Steps
 
-1. ~~Create EF Core DbContext and entity configurations~~ — done (`CardiTrackDbContext` + per-entity FluentAPI configurations, 27 migrations)
+1. ~~Create EF Core DbContext and entity configurations~~ — done (`CardiTrackDbContext` + per-entity FluentAPI configurations, 33 migrations)
 2. ~~Set up encryption for device OAuth tokens and MedicalNotes~~ — done (AES-256-GCM for both)
 3. ~~Implement repositories with Guid-based queries~~ — done (UnitOfWork + repositories)
 4. ~~Add core indexes~~ — done (unique Email, filtered unique Auth0UserId, OrganizationId, status indexes)
@@ -257,4 +259,4 @@ EF Core mapping lives in `CardiTrack.Infrastructure/Persistence` (a configuratio
 
 ---
 
-**Last Updated:** August 13, 2026
+**Last Updated:** August 14, 2026
