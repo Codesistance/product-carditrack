@@ -162,6 +162,25 @@ public class RealtimeAssessmentServiceTests
         await _enqueue.DidNotReceive().EnqueueForAlertAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>());
     }
 
+    // The SSA skip used to return before the only automatic resolve. An episode that had
+    // ended would stay open, and RaiseAlertAsync's cooldown would never re-arm.
+    [Fact]
+    public async Task AnOrdinaryWindow_ResolvesAnOpenHeartRateAlert_WithoutInference()
+    {
+        SetupWindow(HeartRateMinutes(from: 150, to: 209, bpm: 72, jumpLast: false));
+        var open = new Alert { CardiMemberId = _memberId, AlertType = AlertType.HeartRate, IsResolved = false };
+        _alerts.GetByCardiMemberAsync(_memberId, activeOnly: true).Returns([open]);
+
+        var assessed = await CreateSut().AssessDueMembersAsync(UtcNow);
+
+        Assert.Equal(0, assessed);
+        Assert.True(open.IsResolved);
+        await _unitOfWork.Received(1).SaveChangesAsync();
+        await _medicalAi.DidNotReceive().GenerateStructuredAsync<RealtimeAssessmentService.AssessmentAiResponse>(
+            Arg.Any<string>(), Arg.Any<CancellationToken>());
+        await _assessments.DidNotReceive().UpsertAsync(Arg.Any<RealtimeAssessment>(), Arg.Any<CancellationToken>());
+    }
+
     [Fact]
     public async Task AFailedEnqueue_DoesNotLoseTheAlert()
     {

@@ -182,8 +182,15 @@ public class RealtimeAssessmentService : IRealtimeAssessmentService
         // consult the model if this hour later jumps. The bound is the same number the prompt
         // already tells the model is ordinary variation, and the same number that waives the
         // digest floor — three places, one yardstick.
+        //
+        // Closing HeartRate alerts still belongs here. The only automatic resolve is "this
+        // window is not orange/red"; if we return before that, an episode that has ended
+        // stays open and RaiseAlertAsync's cooldown never re-arms.
         if (deviationScore < DigestRefreshRules.SampleJumpScore)
+        {
+            await ResolveHeartRateAlertsAsync(memberId, utcNow, ct);
             return false;
+        }
 
         var steps = SumIfAny(window.MinuteSeries, GranularMetric.Steps, lastIndex, WindowMinutes);
         var spo2 = MeanIfAny(window.MinuteSeries, GranularMetric.SpO2, lastIndex, WindowMinutes);
