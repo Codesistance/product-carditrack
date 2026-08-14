@@ -76,6 +76,15 @@ internal static partial class MedicalPromptBlocks
     /// what ordinary writing uses instead, and the model will not risk one unless told it may.
     /// </para>
     /// <para>
+    /// The line used to open "Name them once". <see cref="Tone"/> has just said the reader is a
+    /// family member, so "them" attaches to the reader, not the person the readings are about.
+    /// And most of the prompts that carry this rule never give a name at all — only the digest
+    /// and the status line send <c>{{NAME}}</c>, and of those only the digest carries this
+    /// block — so "name them" was an instruction to invent. The token itself stays out of this
+    /// line: alert and assessor copy is stored without resolving it, and a leftover brace pair
+    /// would reach a caregiver.
+    /// </para>
+    /// <para>
     /// The fallback is stated rather than left to inference. Every member created before the M1-04
     /// form asked for sex sits at <see cref="Domain.Enums.Gender.PreferNotToSay"/>, which
     /// <see cref="MemberContext"/> renders as "not stated"; a model told to pick a pronoun, given
@@ -91,7 +100,7 @@ internal static partial class MedicalPromptBlocks
     /// </para>
     /// </remarks>
     internal const string Pronouns = """
-        Name them once, then use he or she as the sex given indicates, or they if it is not stated.
+        If a name appears in these instructions, write it at most once and never invent one; then use he or she as the sex given indicates, or they if it is not stated.
 
         """;
 

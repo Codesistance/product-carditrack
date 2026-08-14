@@ -161,6 +161,18 @@ public class MedicalPromptToneTests
         Assert.Contains("they if it is not stated", MedicalPromptBlocks.Pronouns);
     }
 
+    /// <summary>
+    /// "Name them once" pointed at the family member Tone had just named, and asked prompts that
+    /// never send a name to invent one. The replacement names the condition (a name in the
+    /// instructions) and forbids invention.
+    /// </summary>
+    [Fact]
+    public void The_pronoun_rule_does_not_ask_to_name_them_or_invent_one()
+    {
+        Assert.DoesNotContain("Name them once", MedicalPromptBlocks.Pronouns, StringComparison.Ordinal);
+        Assert.Contains("never invent one", MedicalPromptBlocks.Pronouns);
+    }
+
     [Theory]
     [MemberData(nameof(Prompts))]
     public void No_prompt_still_carries_its_own_never_alarm_rule(string _, string prompt)
