@@ -361,7 +361,11 @@ public class DigestGenerationServiceTests
     {
         _medicalAi.GenerateStructuredAsync<DigestGenerationService.DigestAiResponse>(
                 Arg.Any<string>(), Arg.Any<CancellationToken>())
-            .Returns(new DigestGenerationService.DigestAiResponse { Summary = reply });
+            .Returns(new DigestGenerationService.DigestAiResponse
+            {
+                Summary = reply,
+                Headline = "A settled night",
+            });
 
         var generated = await CreateSut().GenerateDueDigestsAsync(UtcNow);
 
@@ -1131,6 +1135,7 @@ public class DigestGenerationServiceTests
             .Returns(new DigestGenerationService.DigestAiResponse
             {
                 Summary = "Here are the recent readings for their family.",
+                Headline = "A settled night",
                 Question = "Has anything changed at home recently?",
             });
 

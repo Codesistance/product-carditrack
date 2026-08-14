@@ -5,6 +5,7 @@ using System.Net;
 using System.Text.Json;
 using CardiTrack.Application.DTOs.Common;
 using CardiTrack.Infrastructure.ExternalClients.Medical;
+using CardiTrack.Infrastructure.Services;
 using CardiTrack.Infrastructure.Settings;
 using CardiTrack.Shared.Telemetry;
 using CardiTrack.UnitTests.Mobile;
@@ -343,6 +344,45 @@ public class MedGemmaClientTests
         var body = Assert.Single(handler.Requests).Body!;
         // Once inside "format" (grammar-constrained decoding) and once in the prompt text.
         Assert.Equal(2, CountOccurrences(body, "Two sentences on the trend."));
+    }
+
+    /// <summary>
+    /// The schema is Ollama's grammar constraint, so what it marks optional the model may decline
+    /// to write, and the order it declares is the order the model writes in. Both halves of that
+    /// cost the digest its headline: declared first and optional, it was skipped on every one of
+    /// 214 consecutive generations across 25 builds — always logged "the model returned none",
+    /// never a length or echo rejection — while the equally optional suggestion and urgency
+    /// fields, judged after the summary, arrived every time.
+    /// </summary>
+    /// <remarks>
+    /// Every unit test of the digest stubs the reply with a headline already in it, so nothing in
+    /// the suite could see this. Asserting on the generated schema is what closes that gap.
+    /// </remarks>
+    [Fact]
+    public async Task GenerateStructuredAsync_RequiresTheDigestHeadline_AndAsksForItAfterTheSummary()
+    {
+        var handler = new FakeHttpMessageHandler().Enqueue(
+            HttpStatusCode.OK,
+            StructuredPayload("""{"summary":"Trends look stable.","headline":"A settled night"}"""));
+        var client = CreateClient(handler, out _);
+
+        await client.GenerateStructuredAsync<DigestGenerationService.DigestAiResponse>(Prompt);
+
+        using var doc = JsonDocument.Parse(Assert.Single(handler.Requests).Body!);
+        var schema = doc.RootElement.GetProperty("format");
+
+        var required = schema.GetProperty("required").EnumerateArray().Select(e => e.GetString()).ToList();
+        Assert.Contains("headline", required);
+
+        // Immediately after the summary: the label describes prose the model has already written.
+        var properties = schema.GetProperty("properties").EnumerateObject().Select(p => p.Name).ToList();
+        Assert.Equal(properties.IndexOf("summary") + 1, properties.IndexOf("headline"));
+
+        // A nullable type would let the grammar satisfy "required" with a null and put us straight
+        // back to an empty headline, so the type has to be the bare string, not ["string","null"].
+        Assert.Equal(
+            JsonValueKind.String,
+            schema.GetProperty("properties").GetProperty("headline").GetProperty("type").ValueKind);
     }
 
     private static int CountOccurrences(string haystack, string needle)

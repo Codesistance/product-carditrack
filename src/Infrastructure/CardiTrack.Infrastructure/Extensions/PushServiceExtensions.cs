@@ -14,6 +14,7 @@ using FirebaseAdmin.Messaging;
 using Google.Apis.Auth.OAuth2;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace CardiTrack.Infrastructure.Extensions;
 
@@ -85,7 +86,9 @@ public static class PushServiceExtensions
             _ => new AckTokenService(configLoader.GetRequired(ConfigurationKeys.Notifications.AckTokenKey)));
 
         // DispatchService's own dependency — belongs here so every AddPushServices caller gets it.
-        services.AddScoped<INotificationGapResolver, NotificationGapResolver>();
+        // TryAdd because AddGoogleHealthProvider registers the same resolver for DeviceSyncService:
+        // a host calling both (Worker) should end up with one registration whichever order it uses.
+        services.TryAddScoped<INotificationGapResolver, NotificationGapResolver>();
 
         // Traced (see TracingProxy): outer per-call boundary around the notification.enqueue/
         // .attempt spans DispatchService/AckDeliveryService already start by hand, and — unlike

@@ -1,3 +1,5 @@
+using CardiTrack.Application.Interfaces.Repositories;
+using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Infrastructure.Extensions;
 using CardiTrack.Infrastructure.Settings;
 using Microsoft.Extensions.DependencyInjection;
@@ -142,6 +144,32 @@ public class DeviceProviderServiceExtensionsTests
         var exception = Record.Exception(() => Resolve(settings));
 
         Assert.Null(exception);
+    }
+
+    /// <summary>
+    /// The keyed <c>IDeviceSyncService</c> this extension registers is built by a factory, so a
+    /// dependency it cannot resolve is not a startup error — it throws on first use, deep inside
+    /// the notification drain, in whichever host happens to lack the registration.
+    /// </summary>
+    /// <remarks>
+    /// That is exactly how it shipped (2026-08-14): <c>INotificationGapResolver</c> lived only in
+    /// <c>PushServiceExtensions.AddPushServices</c>, which <c>CardiTrack.PipelineJobs</c>
+    /// deliberately does not call, so every notification-triggered sync in that host failed with
+    /// "No service for type INotificationGapResolver" while the container validated clean and
+    /// Worker — which calls both extensions — stayed healthy. Asserting on this extension alone is
+    /// the point: whatever else a host wires, taking the provider must be enough to construct the
+    /// sync service it registers.
+    /// </remarks>
+    [Fact]
+    public void AddGoogleHealthProvider_RegistersEverythingItsSyncServiceNeeds_WithoutThePushStack()
+    {
+        var services = new ServiceCollection();
+        services.Configure<List<DeviceProviderSettings>>(list => list.Add(GoogleHealth()));
+
+        services.AddGoogleHealthProvider();
+
+        Assert.Single(services, d => d.ServiceType == typeof(INotificationGapResolver));
+        Assert.Single(services, d => d.ServiceType == typeof(INotificationSnapshotQueries));
     }
 
     private static DeviceProviderSettings GoogleHealth() => new()

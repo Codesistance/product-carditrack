@@ -1,10 +1,13 @@
 using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Interfaces.Services;
+using CardiTrack.Application.Services.Notifications;
 using CardiTrack.Domain.Enums;
 using CardiTrack.Infrastructure.ExternalClients;
+using CardiTrack.Infrastructure.Repositories;
 using CardiTrack.Infrastructure.Services;
 using CardiTrack.Infrastructure.Settings;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
 
 namespace CardiTrack.Infrastructure.Extensions;
@@ -125,6 +128,20 @@ public static class DeviceProviderServiceExtensions
         // Provider-neutral, but registered here because only the sync services constructed below
         // consume it.
         services.AddScoped<IGranularIngestionService, GranularIngestionService>();
+
+        // Same reasoning, one step further out: DeviceSyncService closes notification gaps as it
+        // ingests, so the resolver and the snapshot queries it reads are dependencies of *this*
+        // graph, not of the push send stack. They were reachable only through AddPushServices,
+        // which CardiTrack.PipelineJobs deliberately does not call (see that method's remarks) —
+        // so the pipeline resolved a keyed IDeviceSyncService that could not be constructed, and
+        // every notification-triggered sync threw "No service for type INotificationGapResolver"
+        // at drain time rather than at startup. Registering them here means any host that wires a
+        // provider gets a constructible sync service, without handing the pipeline the send stack.
+        //
+        // TryAdd, not Add: Worker calls AddPushServices and registers INotificationSnapshotQueries
+        // itself, both before this, and those registrations must stay the ones that win.
+        services.TryAddScoped<INotificationSnapshotQueries, NotificationSnapshotQueries>();
+        services.TryAddScoped<INotificationGapResolver, NotificationGapResolver>();
 
         services.AddKeyedScoped<IDeviceSyncService>(
             HealthApi.GoogleHealth,
