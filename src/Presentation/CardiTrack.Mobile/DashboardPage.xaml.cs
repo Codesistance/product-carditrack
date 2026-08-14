@@ -616,8 +616,12 @@ public partial class DashboardPage : ContentPage
     private async void OnViewAllAlertsTapped(object? sender, TappedEventArgs e) =>
         await Shell.Current.GoToAsync(AppShell.AlertsRoute);
 
+    /// <summary>
+    /// Alert detail (M1-11) isn't built yet, so a tapped card lands where the bell and
+    /// "View All" already go — the alerts list — rather than a dead-end "coming soon" popup.
+    /// </summary>
     private async void OnAlertTapped(object? sender, Guid alertId) =>
-        await _popups.ShowInfoAsync("Alert details (M1-11) are on the way.", "Coming soon");
+        await Shell.Current.GoToAsync(AppShell.AlertsRoute);
 
     private async void OnAddMemberClicked(object? sender, EventArgs e)
     {
