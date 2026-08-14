@@ -408,8 +408,8 @@ public class CardiTrackApiClientTests
               "severity":"yellow","status":"new","title":"Quieter than usual","message":"Fewer steps.",
               "triggeredAt":"2026-08-14T07:00:00Z",
               "chart":{"metric":"steps","name":"Activity","unit":"steps","windowLabel":"Last 14 days",
-                "value":2500,"baseline":5000,"series":[{"date":"2026-08-13","value":2500}]}},
-              "timestamp":"2026-08-14T00:00:00Z"}
+                "value":2500,"baseline":5000,"series":[{"date":"2026-08-13","value":2500}]}
+            },"timestamp":"2026-08-14T00:00:00Z"}
             """);
 
         var detail = await client.GetAlertAsync(alertId);
