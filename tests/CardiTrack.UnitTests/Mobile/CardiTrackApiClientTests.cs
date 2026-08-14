@@ -382,7 +382,7 @@ public class CardiTrackApiClientTests
               {"alertId":"7f9619ff-8b86-d011-b42d-00c04fc964ff","cardiMemberId":"3fa85f64-5717-4562-b3fc-2c963f66afa6",
                "cardiMemberName":"Margaret Doe","emergencyContactPhone":"+441234567891","type":"Heart Rate",
                "severity":"orange","status":"new","title":"Elevated Heart Rate","message":"Higher than usual.",
-               "triggeredAt":"2026-08-09T07:00:00Z"}],
+               "triggeredAt":"2026-08-09T07:00:00Z","aboutDate":"2026-08-09"}],
               "total":1,"unreadCount":1},"timestamp":"2026-08-09T00:00:00Z"}
             """);
 
@@ -393,6 +393,7 @@ public class CardiTrackApiClientTests
         Assert.Equal("new", alert.Status);
         Assert.Equal("Margaret Doe", alert.CardiMemberName);
         Assert.Equal("+441234567891", alert.EmergencyContactPhone);
+        Assert.Equal(new DateOnly(2026, 8, 9), alert.AboutDate);
         Assert.Equal(1, page.UnreadCount);
     }
 
@@ -406,7 +407,7 @@ public class CardiTrackApiClientTests
               "alertId":"{{alertId}}","cardiMemberId":"3fa85f64-5717-4562-b3fc-2c963f66afa6",
               "cardiMemberName":"Margaret Doe","type":"Inactivity","rule":"activity_decline",
               "severity":"yellow","status":"new","title":"Quieter than usual","message":"Fewer steps.",
-              "triggeredAt":"2026-08-14T07:00:00Z",
+              "triggeredAt":"2026-08-14T07:00:00Z","aboutDate":"2026-08-13",
               "chart":{"metric":"steps","name":"Activity","unit":"steps","windowLabel":"Last 14 days",
                 "value":2500,"baseline":5000,"series":[{"date":"2026-08-13","value":2500}]}
             },"timestamp":"2026-08-14T00:00:00Z"}
@@ -416,6 +417,7 @@ public class CardiTrackApiClientTests
 
         Assert.Equal($"/api/v1/alerts/{alertId}", http.Requests.Single().Uri!.AbsolutePath);
         Assert.Equal("activity_decline", detail.Rule);
+        Assert.Equal(new DateOnly(2026, 8, 13), detail.AboutDate);
         Assert.Equal("steps", detail.Chart!.Metric);
         Assert.Equal(2500, detail.Chart.Value);
         Assert.Equal("Last 14 days", detail.Chart.WindowLabel);

@@ -210,6 +210,22 @@ public class AlertServiceTests
         Assert.Equal("+441234567891", summary.EmergencyContactPhone);
     }
 
+    [Fact]
+    public async Task GetAlerts_ActivityDecline_AboutDateIsTheQuieterDay_NotTheFiringAfternoon()
+    {
+        var alert = MakeAlert();
+        alert.AlertType = AlertType.Inactivity;
+        alert.TriggeredDate = new DateTime(2026, 8, 14, 12, 22, 0, DateTimeKind.Utc);
+        alert.MetricValues = """{"rule":"activity_decline","day":"2026-08-13","steps":1477,"baselineAvgSteps":3797}""";
+        _alerts.QueryAsync(Arg.Any<AlertQuery>(), Arg.Any<CancellationToken>()).Returns([alert]);
+
+        var result = await CreateSut().GetAlertsAsync(_userId);
+
+        var summary = Assert.Single(result.Alerts);
+        Assert.Equal(new DateOnly(2026, 8, 13), summary.AboutDate);
+        Assert.Equal(alert.TriggeredDate, summary.TriggeredAt);
+    }
+
     [Theory]
     [InlineData(false, false, "new")]
     [InlineData(true, false, "acknowledged")]

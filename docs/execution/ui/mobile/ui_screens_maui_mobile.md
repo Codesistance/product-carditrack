@@ -892,6 +892,7 @@ The layout below is the Figma design intent; where it disagrees with the as-buil
 - Title: "Low Activity Alert"
 - CardiMember photo + name
 - Timestamp: "January 10, 2026 at 11:30 AM"
+  _As built:_ daily-grain rules that judge yesterday (`activity_decline`, `elevated_heart_rate`, `long_term_trend`) print that civil day with no clock ("13 August 2026") — the quieter day has no time-of-day, and dating it as the afternoon the worker noticed it filed the alert under Today. Intra-day rules keep the raise datetime. The list groups by `aboutDate`, not `triggeredAt`.
 
 **Description:**
 - Card with icon

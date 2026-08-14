@@ -229,21 +229,26 @@ public partial class AlertsPage : ContentPage
 
     /// <summary>
     /// Date buckets in the order M1-10 specifies: Today, Yesterday, This Week, Older.
-    /// Timestamps arrive in UTC and are bucketed in local time, so an alert raised at 23:30
-    /// local doesn't land under "Yesterday".
+    /// Daily-grain alerts are bucketed by the day they are about, not the instant they were
+    /// raised, so yesterday's quieter day does not land under Today because the worker
+    /// noticed it this afternoon. Timestamps still arrive in UTC and, when there is no
+    /// <see cref="AlertSummaryResponse.AboutDate"/> yet, fall back to local raise time so an
+    /// alert raised at 23:30 local doesn't land under "Yesterday".
     /// </summary>
     private static IEnumerable<IGrouping<string, AlertSummaryResponse>> GroupByDate(
         IEnumerable<AlertSummaryResponse> alerts)
     {
-        var today = DateTime.Today;
+        var today = DateOnly.FromDateTime(DateTime.Today);
 
         return alerts
             .GroupBy(a =>
             {
-                var local = DateTime.SpecifyKind(a.TriggeredAt, DateTimeKind.Utc).ToLocalTime().Date;
-                if (local == today) return "Today";
-                if (local == today.AddDays(-1)) return "Yesterday";
-                return local > today.AddDays(-7) ? "This Week" : "Older";
+                var day = a.AboutDate != default
+                    ? a.AboutDate
+                    : DateOnly.FromDateTime(DateTime.SpecifyKind(a.TriggeredAt, DateTimeKind.Utc).ToLocalTime());
+                if (day == today) return "Today";
+                if (day == today.AddDays(-1)) return "Yesterday";
+                return day > today.AddDays(-7) ? "This Week" : "Older";
             })
             .OrderBy(g => g.Key switch
             {

@@ -103,6 +103,34 @@ public static class AlertDetailComposer
         or StatisticalAlertRules.LongTermTrendRule;
 
     /// <summary>
+    /// Rules that judge yesterday's completed day and fire the next local day. Their
+    /// <see cref="AlertDetailResponse.AboutDate"/> is the day judged, not the firing day —
+    /// otherwise the list buckets them under Today and the banner dates the quieter day as
+    /// this afternoon.
+    /// </summary>
+    public static bool IsAboutPreviousLocalDay(string? rule) => rule is
+        StatisticalAlertRules.ActivityDeclineRule
+        or StatisticalAlertRules.ElevatedHeartRateRule
+        or StatisticalAlertRules.LongTermTrendRule;
+
+    /// <summary>
+    /// The civil day this alert is about. Prefers the <c>day</c> / <c>night</c> stamp the
+    /// producer wrote; unstamped yesterday-grain rows (raised before that stamp existed)
+    /// fall back to the local day before they fired.
+    /// </summary>
+    public static DateOnly AboutDate(string? rule, string? metricValues, DateOnly firedOn)
+    {
+        if (TryParse(metricValues, out var metrics))
+        {
+            var stamped = ReadDateOnly(metrics, "day") ?? ReadDateOnly(metrics, "night");
+            if (stamped is { } day)
+                return day;
+        }
+
+        return IsAboutPreviousLocalDay(rule) ? firedOn.AddDays(-1) : firedOn;
+    }
+
+    /// <summary>
     /// The least of the elapsed hours each day must have data for before the two are worth
     /// comparing. A day the watch spent four hours off the wrist is not the same stretch as a day
     /// it was worn throughout, and reporting one against the other as a like-for-like match would
@@ -229,6 +257,11 @@ public static class AlertDetailComposer
     /// Today-so-far and the matching stretch of yesterday, or null when this rule does not need an
     /// elapsed match or the minute store could not answer for it.
     /// </param>
+    /// <param name="firedOn">
+    /// The member's local calendar day the alert was raised on. When omitted, the UTC date of
+    /// <see cref="Alert.TriggeredDate"/> is used — fine for tests, and the fallback the list
+    /// mapping uses when it has not resolved the member's zone.
+    /// </param>
     public static AlertDetailResponse Compose(
         Alert alert,
         CardiMember? member,
@@ -237,10 +270,16 @@ public static class AlertDetailComposer
         DateOnly today,
         GranularWindow? granular,
         PatternBaseline? baseline,
-        ElapsedSteps? elapsedSteps = null)
+        ElapsedSteps? elapsedSteps = null,
+        DateOnly? firedOn = null)
     {
         var rule = ReadRule(alert.MetricValues);
         TryParse(alert.MetricValues, out var metrics);
+        var raisedOn = firedOn ?? DateOnly.FromDateTime(
+            alert.TriggeredDate.Kind == DateTimeKind.Local
+                ? alert.TriggeredDate.ToUniversalTime()
+                : DateTime.SpecifyKind(alert.TriggeredDate, DateTimeKind.Utc));
+        var aboutDate = AboutDate(rule, alert.MetricValues, raisedOn);
 
         return new AlertDetailResponse
         {
@@ -259,10 +298,11 @@ public static class AlertDetailComposer
             Title = alert.Title,
             Message = alert.Message,
             TriggeredAt = alert.TriggeredDate,
+            AboutDate = aboutDate,
             AcknowledgedAt = alert.AcknowledgedDate,
             AcknowledgedByUserId = alert.AcknowledgedByUserId,
             AcknowledgedByName = acknowledger?.Name,
-            Comparison = Comparison(rule, metrics, baseline),
+            Comparison = Comparison(rule, metrics, baseline, today, aboutDate),
             Chart = Chart(rule, logs, today, granular, baseline, metrics, elapsedSteps),
             LastActivityOn = LastMeasuredStepsDay(logs),
             TypicalWakeTime = ReadString(metrics, "typicalWakeTime")
@@ -298,13 +338,13 @@ public static class AlertDetailComposer
     };
 
     private static AlertComparisonResponse? Comparison(
-        string? rule, JsonElement metrics, PatternBaseline? baseline)
+        string? rule, JsonElement metrics, PatternBaseline? baseline, DateOnly today, DateOnly aboutDate)
     {
         return rule switch
         {
-            StatisticalAlertRules.ActivityDeclineRule => StepsComparison(metrics, baseline),
+            StatisticalAlertRules.ActivityDeclineRule => StepsComparison(metrics, baseline, today, aboutDate),
             StatisticalAlertRules.LongTermTrendRule => TrendComparison(metrics),
-            StatisticalAlertRules.ElevatedHeartRateRule => HeartRateComparison(metrics, baseline),
+            StatisticalAlertRules.ElevatedHeartRateRule => HeartRateComparison(metrics, baseline, today, aboutDate),
             StatisticalAlertRules.IrregularSleepRule => SleepComparison(metrics, baseline),
             StatisticalAlertRules.NoMorningActivityRule => NoMorningComparison(metrics, baseline),
             RealtimeHeartRateRule => RealtimeHeartComparison(metrics, baseline),
@@ -312,7 +352,8 @@ public static class AlertDetailComposer
         };
     }
 
-    private static AlertComparisonResponse? StepsComparison(JsonElement metrics, PatternBaseline? baseline)
+    private static AlertComparisonResponse? StepsComparison(
+        JsonElement metrics, PatternBaseline? baseline, DateOnly today, DateOnly aboutDate)
     {
         var current = ReadDecimal(metrics, "steps");
         var usual = ReadDecimal(metrics, "baselineAvgSteps") ?? baseline?.AvgSteps;
@@ -321,7 +362,7 @@ public static class AlertDetailComposer
 
         return new AlertComparisonResponse
         {
-            CurrentLabel = "Yesterday",
+            CurrentLabel = DayLabel(aboutDate, today) ?? "Yesterday",
             CurrentValue = current is { } steps ? $"{steps:N0} steps" : "—",
             NormalLabel = "Usual day",
             NormalValue = usual is { } avg ? $"{avg:N0} steps" : "—",
@@ -359,7 +400,8 @@ public static class AlertDetailComposer
         };
     }
 
-    private static AlertComparisonResponse? HeartRateComparison(JsonElement metrics, PatternBaseline? baseline)
+    private static AlertComparisonResponse? HeartRateComparison(
+        JsonElement metrics, PatternBaseline? baseline, DateOnly today, DateOnly aboutDate)
     {
         var current = ReadDecimal(metrics, "restingHeartRate");
         var usual = ReadDecimal(metrics, "baselineAvgRestingHeartRate") ?? baseline?.AvgRestingHeartRate;
@@ -368,7 +410,7 @@ public static class AlertDetailComposer
 
         return new AlertComparisonResponse
         {
-            CurrentLabel = "Yesterday",
+            CurrentLabel = DayLabel(aboutDate, today) ?? "Yesterday",
             CurrentValue = current is { } bpm ? $"{bpm:N0} bpm" : "—",
             NormalLabel = "Usual",
             NormalValue = usual is { } avg ? $"{avg:N0} bpm" : "—",
@@ -712,6 +754,19 @@ public static class AlertDetailComposer
                 ? DateTime.SpecifyKind(parsed, DateTimeKind.Utc)
                 : parsed.ToUniversalTime();
         }
+
+        return null;
+    }
+
+    private static DateOnly? ReadDateOnly(JsonElement obj, string name)
+    {
+        if (obj.ValueKind != JsonValueKind.Object || !obj.TryGetProperty(name, out var p))
+            return null;
+        if (p.ValueKind == JsonValueKind.Null)
+            return null;
+        if (p.ValueKind == JsonValueKind.String
+            && DateOnly.TryParse(p.GetString(), CultureInfo.InvariantCulture, DateTimeStyles.None, out var parsed))
+            return parsed;
 
         return null;
     }

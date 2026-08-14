@@ -65,6 +65,57 @@ public class AlertDetailComposerTests
         Assert.Equal("Yesterday", detail.Comparison!.CurrentLabel);
         Assert.Contains("2,500", detail.Comparison.CurrentValue);
         Assert.Equal("50% below usual", detail.Comparison.ChangeLabel);
+        Assert.Equal(_today.AddDays(-1), detail.AboutDate);
+    }
+
+    [Fact]
+    public void ActivityDecline_AboutDateIsTheDayStamp_NotTheAfternoonItFired()
+    {
+        var alert = MakeAlert(
+            AlertType.Inactivity,
+            """{"rule":"activity_decline","day":"2026-08-13","steps":1477,"baselineAvgSteps":3797}""");
+
+        var detail = AlertDetailComposer.Compose(alert, Member(), null, [], _today, null, null);
+
+        Assert.Equal(new DateOnly(2026, 8, 13), detail.AboutDate);
+        Assert.Equal("Yesterday", detail.Comparison!.CurrentLabel);
+    }
+
+    [Fact]
+    public void ActivityDecline_WithoutADayStamp_FallsBackToTheDayBeforeItFired()
+    {
+        var alert = MakeAlert(
+            AlertType.Inactivity,
+            """{"rule":"activity_decline","steps":1477,"baselineAvgSteps":3797}""");
+
+        var detail = AlertDetailComposer.Compose(alert, Member(), null, [], _today, null, null);
+
+        Assert.Equal(new DateOnly(2026, 8, 13), detail.AboutDate);
+    }
+
+    [Fact]
+    public void NoMorningActivity_AboutDateIsTheDayItFired()
+    {
+        var alert = MakeAlert(
+            AlertType.PatternBreak,
+            """{"rule":"no_morning_activity","typicalWakeTime":"07:30"}""");
+
+        var detail = AlertDetailComposer.Compose(alert, Member(), null, [], _today, null, null);
+
+        Assert.Equal(_today, detail.AboutDate);
+        Assert.Equal("Today", detail.Comparison!.CurrentLabel);
+    }
+
+    [Fact]
+    public void IrregularSleep_AboutDateIsTheNightItJudged()
+    {
+        var alert = MakeAlert(
+            AlertType.Sleep,
+            """{"rule":"irregular_sleep","night":"2026-08-14","sleepMinutes":240,"baselineAvgSleepMinutes":420}""");
+
+        var detail = AlertDetailComposer.Compose(alert, Member(), null, [], _today, null, null);
+
+        Assert.Equal(_today, detail.AboutDate);
     }
 
     [Fact]
@@ -520,7 +571,7 @@ public class AlertDetailComposerTests
         Severity = AlertSeverity.Yellow,
         Title = "Test",
         Message = "Something changed.",
-        TriggeredDate = DateTime.UtcNow,
+        TriggeredDate = _today.ToDateTime(new TimeOnly(12, 22), DateTimeKind.Utc),
         MetricValues = metricValues,
         IsActive = true,
     };

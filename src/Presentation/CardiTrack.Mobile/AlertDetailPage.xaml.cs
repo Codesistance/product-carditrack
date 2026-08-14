@@ -137,7 +137,7 @@ public partial class AlertDetailPage : ContentPage
         SeverityBadge.Text = badge;
         ReasonIcon.Source = ReasonIconFor(alert.Reason);
         TitleLabel.Text = alert.Title;
-        TimeLabel.Text = FormatTriggered(alert.TriggeredAt);
+        TimeLabel.Text = FormatWhen(alert);
 
         Avatar.BoxWidth = 52;
         Avatar.Apply(alert.CardiMemberName, alert.CardiMemberPhotoUrl);
@@ -351,9 +351,17 @@ public partial class AlertDetailPage : ContentPage
         return $"{who}, {RelativeTime.Format(at)}";
     }
 
-    private static string FormatTriggered(DateTime utc)
+    /// <summary>
+    /// Daily-grain alerts are about a civil day, not a clock time — showing the afternoon we
+    /// noticed a quieter yesterday dated the quieter day as today. When <see cref="AlertDetailResponse.AboutDate"/>
+    /// is a different calendar day from the raise, print that day and drop the clock.
+    /// </summary>
+    private static string FormatWhen(AlertDetailResponse alert)
     {
-        var local = DateTime.SpecifyKind(utc, DateTimeKind.Utc).ToLocalTime();
+        var local = DateTime.SpecifyKind(alert.TriggeredAt, DateTimeKind.Utc).ToLocalTime();
+        if (alert.AboutDate != DateOnly.FromDateTime(local))
+            return alert.AboutDate.ToString("d MMMM yyyy");
+
         return local.ToString("d MMMM yyyy 'at' h:mm tt");
     }
 
@@ -449,7 +457,7 @@ public partial class AlertDetailPage : ContentPage
             await Share.Default.RequestAsync(new ShareTextRequest
             {
                 Title = "Share this alert",
-                Text = $"CardiTrack alert for {who}: {alert.Title} ({FormatTriggered(alert.TriggeredAt)}).",
+                Text = $"CardiTrack alert for {who}: {alert.Title} ({FormatWhen(alert)}).",
             });
         }
         catch (Exception)

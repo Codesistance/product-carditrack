@@ -61,6 +61,15 @@ public class AlertDetailResponse
     public string Title { get; set; } = string.Empty;
     public string Message { get; set; } = string.Empty;
     public DateTime TriggeredAt { get; set; }
+
+    /// <summary>
+    /// The civil day the alert is about. Daily-grain rules that judge yesterday
+    /// (<c>activity_decline</c>, <c>elevated_heart_rate</c>, <c>long_term_trend</c>) stamp that
+    /// day; sleep stamps the night it judged. The banner date follows this, not
+    /// <see cref="TriggeredAt"/>, so a quieter day is not dated as the afternoon we noticed it.
+    /// </summary>
+    public DateOnly AboutDate { get; set; }
+
     public DateTime? AcknowledgedAt { get; set; }
     public Guid? AcknowledgedByUserId { get; set; }
     public string? AcknowledgedByName { get; set; }

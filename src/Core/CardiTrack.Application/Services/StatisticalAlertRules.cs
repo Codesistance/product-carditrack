@@ -74,7 +74,13 @@ public static class StatisticalAlertRules
             "Activity was well below the usual",
             $"About {steps:N0} steps yesterday against a usual {average:N0} — a quieter day than normal. "
             + "Worth a gentle check-in.",
-            Serialize(new { rule = ActivityDeclineRule, steps, baselineAvgSteps = average }));
+            Serialize(new
+            {
+                rule = ActivityDeclineRule,
+                day = yesterday.Date.ToString("O"),
+                steps,
+                baselineAvgSteps = average,
+            }));
     }
 
     /// <summary>
@@ -130,6 +136,7 @@ public static class StatisticalAlertRules
             Serialize(new
             {
                 rule = ElevatedHeartRateRule,
+                day = yesterday.Date.ToString("O"),
                 restingHeartRate = restingHr,
                 baselineAvgRestingHeartRate = average,
                 marginBpm = Math.Round(margin, 1),
@@ -198,6 +205,7 @@ public static class StatisticalAlertRules
             Serialize(new
             {
                 rule = LongTermTrendRule,
+                day = yesterday.ToString("O"),
                 weeklyAvgSteps = weeklyAverages.Reverse().Select(a => Math.Round(a)).ToArray(),
                 declineFraction = Math.Round(totalDecline, 2),
             }));

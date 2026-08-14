@@ -48,6 +48,14 @@ public class AlertSummaryResponse
     public string Title { get; set; } = string.Empty;
     public string Message { get; set; } = string.Empty;
     public DateTime TriggeredAt { get; set; }
+
+    /// <summary>
+    /// The civil day the alert is <em>about</em> — yesterday's quiet day for
+    /// <c>activity_decline</c>, not the instant the worker raised it. List grouping (Today /
+    /// Yesterday) keys off this so a next-day statistical alert does not land under Today.
+    /// </summary>
+    public DateOnly AboutDate { get; set; }
+
     public DateTime? AcknowledgedAt { get; set; }
     public Guid? AcknowledgedByUserId { get; set; }
 }
