@@ -82,7 +82,6 @@ This document provides an overview of all domain entities in the CardiTrack syst
 - AI-learned normal patterns for each CardiMember, recalculated daily by `BaselineCalculationWorker` (02:30 UTC)
 - Calculated over 7, 14, 30, 60, and 90 day periods
 - Contains: Average and sample σ for steps and resting heart rate, **median and unscaled MAD** for steps, resting HR, and sleep minutes (additive; live alerts still use the mean), sleep averages, typical bedtime/wake, day-of-week variations (JSON)
-- Includes day-of-week variations (JSON)
 
 ### Business Entities
 

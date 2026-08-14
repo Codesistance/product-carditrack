@@ -5,7 +5,6 @@
 namespace CardiTrack.Infrastructure.Migrations
 {
     /// <inheritdoc />
-    /// <inheritdoc />
     /// <remarks>
     /// Additive, nullable, unbackfilled. Existing <c>PatternBaseline</c> rows keep mean/σ and
     /// gain null median/MAD until the next daily job; live R1 alerts still read the mean.
