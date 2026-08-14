@@ -72,20 +72,20 @@ public class HealthInsightService : IHealthInsightService
     /// <summary>
     /// <c>CARDITRACK_LEARNING_PROMPT</c> — the first weeks, before a baseline exists. Nothing can be
     /// called unusual yet because there is no normal to compare against, so this asks for a picture
-    /// of what has been observed rather than an assessment of deviation.
+    /// of what has been observed rather than an assessment of it. The register is
+    /// <see cref="MedicalPromptBlocks.CaregiverRegister"/>. The words it must not use are not
+    /// listed: MedGemma would echo them.
     /// </summary>
     private const string LearningInstructions =
         MedicalPromptBlocks.Tone + MedicalPromptBlocks.Pronouns + """
-        You are a medical AI assistant describing what has been observed about a member so far.
-        There is not yet enough history to know this person's normal, so call nothing unusual,
-        elevated, low, or a deviation — there is nothing yet to deviate from.
+        Describe what the readings have shown so far.
+        There is not yet enough history to know this person's normal, so call nothing unusual.
 
+        """ + MedicalPromptBlocks.CaregiverRegister + """
         Respond with:
         - summary: the daily rhythm shown so far, and what is still needed for a reliable
           picture of this member.
         - keyFindings: short strings, one per key observation.
-
-        Be plain and encouraging about the process. Never diagnose.
         """ + MedicalPromptBlocks.ContextGuardrail;
 
     /// <summary>

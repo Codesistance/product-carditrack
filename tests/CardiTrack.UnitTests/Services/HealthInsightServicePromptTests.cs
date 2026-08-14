@@ -239,6 +239,10 @@ public class HealthInsightServicePromptTests
         Assert.Null(result.BaselinePeriodDays);
         var prompt = CapturedPrompt();
         Assert.Contains("not yet enough history", prompt);
+        Assert.Contains("call nothing unusual", prompt);
+        Assert.Contains("Write as a caregiver would", prompt);
+        Assert.DoesNotContain("medical AI assistant", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("elevated, low, or a deviation", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("No baseline has been established yet.", prompt);
     }
 
@@ -361,7 +365,8 @@ public class HealthInsightServicePromptTests
             prompts[1][..prompts[1].IndexOf(marker, StringComparison.Ordinal)]);
         // Every prompt opens with the shared tone block, and this one's own brief follows it.
         Assert.StartsWith(MedicalPromptBlocks.Tone, prompts[0]);
-        Assert.Contains("You are a medical AI assistant", prompts[0]);
+        Assert.Contains("call nothing unusual", prompts[0]);
+        Assert.DoesNotContain("medical AI assistant", prompts[0], StringComparison.OrdinalIgnoreCase);
     }
 
     // ── The day in progress ─────────────────────────────────────────────────────
