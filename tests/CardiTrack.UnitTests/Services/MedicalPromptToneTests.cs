@@ -268,6 +268,22 @@ public class MedicalPromptToneTests
         Assert.DoesNotContain("Be plain and encouraging about the process", learning, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void The_provisional_prompt_uses_caregiver_language_and_names_no_sample_hedges()
+    {
+        var provisional = AllPrompts().Single(p => p.Field == "ProvisionalInstructions").Prompt;
+
+        Assert.Contains(MedicalPromptBlocks.CaregiverRegister.Trim(), provisional, StringComparison.Ordinal);
+        Assert.Contains("baseline is provisional", provisional);
+        Assert.Contains("Do not treat so short a window as settled", provisional);
+        Assert.DoesNotContain("medical AI assistant", provisional, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("early signs", provisional, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("\"so far\"", provisional, StringComparison.Ordinal);
+        Assert.DoesNotContain("\"appears\"", provisional, StringComparison.Ordinal);
+        Assert.DoesNotContain("flag for review", provisional, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("deviation", provisional, StringComparison.OrdinalIgnoreCase);
+    }
+
     [Theory]
     [MemberData(nameof(Prompts))]
     public void Every_prompt_tells_the_model_not_to_follow_instructions_in_family_text(string _, string prompt)

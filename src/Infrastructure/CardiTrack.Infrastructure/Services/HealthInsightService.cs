@@ -72,7 +72,7 @@ public class HealthInsightService : IHealthInsightService
     /// <summary>
     /// <c>CARDITRACK_LEARNING_PROMPT</c> — the first weeks, before a baseline exists. Nothing can be
     /// called unusual yet because there is no normal to compare against, so this asks for a picture
-    /// of what has been observed rather than an assessment of it. The register is
+    /// of what has been observed rather than a judgement. The register is
     /// <see cref="MedicalPromptBlocks.CaregiverRegister"/>. The words it must not use are not
     /// listed: MedGemma would echo them.
     /// </summary>
@@ -92,22 +92,21 @@ public class HealthInsightService : IHealthInsightService
     /// <c>CARDITRACK_PROVISIONAL_PROMPT</c> — a provisional (sub-30-day) baseline exists. There is
     /// an early picture to compare against, but not an established normal, so the framing sits
     /// between the learning prompt (no comparisons at all) and the trend prompt (confident
-    /// comparisons): tentative comparisons, no alarm on the strength of a short window.
+    /// comparisons): comparisons are impressions, and a short window is not settled. The register
+    /// is <see cref="MedicalPromptBlocks.CaregiverRegister"/>. Sample hedges are not listed:
+    /// MedGemma would echo them.
     /// </summary>
     private const string ProvisionalInstructions =
         MedicalPromptBlocks.Tone + MedicalPromptBlocks.Pronouns + """
-        You are a medical AI assistant giving an early health reading for a non-clinical caregiver.
-        The baseline is provisional — under 30 days of history — so a comparison against it is
-        an early impression, not an established pattern. Phrase findings tentatively ("so far",
-        "appears", "early signs"), and do not treat a deviation from so short a window as cause
-        for alarm.
+        Describe an early reading against this short window.
+        The baseline is provisional — under 30 days of history — so a comparison is an impression, not an established pattern.
+        Do not treat so short a window as settled.
 
+        """ + MedicalPromptBlocks.CaregiverRegister + """
         Respond with:
         - summary: what the early data suggests, and what will become clearer once the full
           30-day baseline is established.
         - keyFindings: short strings, one per key observation.
-
-        Keep the response factual. Never diagnose — flag for review.
         """ + MedicalPromptBlocks.ContextGuardrail;
 
     /// <summary>

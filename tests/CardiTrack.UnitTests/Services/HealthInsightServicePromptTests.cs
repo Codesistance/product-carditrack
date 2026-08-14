@@ -288,6 +288,11 @@ public class HealthInsightServicePromptTests
         Assert.Equal(7, result.BaselinePeriodDays);
         var prompt = CapturedPrompt();
         Assert.Contains("baseline is provisional", prompt);
+        Assert.Contains("Do not treat so short a window as settled", prompt);
+        Assert.Contains("Write as a caregiver would", prompt);
+        Assert.DoesNotContain("medical AI assistant", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("early signs", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("flag for review", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("7-day (provisional) — Steps: 5200±810.5", prompt);
         Assert.DoesNotContain("not yet enough history", prompt);
     }
