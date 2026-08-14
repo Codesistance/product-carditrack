@@ -93,6 +93,8 @@ public class AlertService : IAlertService
         IReadOnlyList<ActivityLog> logs = [];
         var days = AlertDetailComposer.DailyLogDays(rule);
         var today = DateOnly.FromDateTime(utcNow);
+        var utcTriggered = ToUtc(alert.TriggeredDate);
+        var firedOn = DateOnly.FromDateTime(utcTriggered);
         ElapsedMatch? elapsed = null;
 
         if (days > 0)
@@ -106,6 +108,7 @@ public class AlertService : IAlertService
             var zone = await MemberAnchorTimeZone.ResolveAsync(_unitOfWork, alert.CardiMemberId);
             elapsed = AlertDetailComposer.ElapsedMatchFor(utcNow, zone);
             today = DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(utcNow, zone));
+            firedOn = DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(utcTriggered, zone));
 
             logs = (await _unitOfWork.ActivityLogs.GetByCardiMemberAndDateRangeAsync(
                     alert.CardiMemberId, today.AddDays(-(days - 1)), today))
@@ -132,7 +135,7 @@ public class AlertService : IAlertService
             : null;
 
         return AlertDetailComposer.Compose(
-            alert, member, acknowledger, logs, today, granular, baseline, elapsedSteps);
+            alert, member, acknowledger, logs, today, granular, baseline, elapsedSteps, firedOn);
     }
 
     /// <summary>
@@ -255,14 +258,14 @@ public class AlertService : IAlertService
     /// send local midnight. An unspecified kind is read as UTC, the usual reading of a bare
     /// timestamp on the wire.
     /// </summary>
-    private static DateTime? ToUtc(DateTime? value) => value is not { } instant
-        ? null
-        : instant.Kind switch
-        {
-            DateTimeKind.Utc => instant,
-            DateTimeKind.Local => instant.ToUniversalTime(),
-            _ => DateTime.SpecifyKind(instant, DateTimeKind.Utc),
-        };
+    private static DateTime ToUtc(DateTime instant) => instant.Kind switch
+    {
+        DateTimeKind.Utc => instant,
+        DateTimeKind.Local => instant.ToUniversalTime(),
+        _ => DateTime.SpecifyKind(instant, DateTimeKind.Utc),
+    };
+
+    private static DateTime? ToUtc(DateTime? value) => value is { } instant ? ToUtc(instant) : null;
 
     /// <summary>
     /// The members named by this page of alerts, keyed by id — in one read rather than one per
@@ -278,25 +281,32 @@ public class AlertService : IAlertService
         return members.ToDictionary(m => m.Id);
     }
 
-    private static AlertSummaryResponse ToSummary(Alert alert, CardiMember? member) => new()
+    private static AlertSummaryResponse ToSummary(Alert alert, CardiMember? member)
     {
-        AlertId = alert.Id,
-        CardiMemberId = alert.CardiMemberId,
-        CardiMemberName = member?.Name ?? string.Empty,
-        // No photo storage exists yet (see CardiMemberService) — the field is here so the card
-        // can show one the moment it does, and falls back to initials until then.
-        CardiMemberPhotoUrl = null,
-        EmergencyContactPhone = member?.EmergencyContactPhone,
-        EmergencyContactName = member?.EmergencyContactName,
-        Type = alert.AlertType.GetDisplayName(),
-        Severity = SeverityLabel(alert.Severity),
-        Status = StatusLabel(alert),
-        Title = alert.Title,
-        Message = alert.Message,
-        TriggeredAt = alert.TriggeredDate,
-        AcknowledgedAt = alert.AcknowledgedDate,
-        AcknowledgedByUserId = alert.AcknowledgedByUserId,
-    };
+        var rule = AlertDetailComposer.ReadRule(alert.MetricValues);
+        var firedOn = DateOnly.FromDateTime(ToUtc(alert.TriggeredDate));
+
+        return new()
+        {
+            AlertId = alert.Id,
+            CardiMemberId = alert.CardiMemberId,
+            CardiMemberName = member?.Name ?? string.Empty,
+            // No photo storage exists yet (see CardiMemberService) — the field is here so the card
+            // can show one the moment it does, and falls back to initials until then.
+            CardiMemberPhotoUrl = null,
+            EmergencyContactPhone = member?.EmergencyContactPhone,
+            EmergencyContactName = member?.EmergencyContactName,
+            Type = alert.AlertType.GetDisplayName(),
+            Severity = SeverityLabel(alert.Severity),
+            Status = StatusLabel(alert),
+            Title = alert.Title,
+            Message = alert.Message,
+            TriggeredAt = alert.TriggeredDate,
+            AboutDate = AlertDetailComposer.AboutDate(rule, alert.MetricValues, firedOn),
+            AcknowledgedAt = alert.AcknowledgedDate,
+            AcknowledgedByUserId = alert.AcknowledgedByUserId,
+        };
+    }
 
     private static string SeverityLabel(AlertSeverity severity) =>
         severity.ToString().ToLowerInvariant();

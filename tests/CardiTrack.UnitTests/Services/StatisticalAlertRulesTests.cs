@@ -42,6 +42,7 @@ public class StatisticalAlertRulesTests
         Assert.Equal(AlertType.Inactivity, candidate.Type);
         Assert.Equal(AlertSeverity.Yellow, candidate.Severity);
         Assert.Contains("\"rule\":\"activity_decline\"", candidate.MetricValues);
+        Assert.Contains("\"day\":\"2026-08-09\"", candidate.MetricValues);
     }
 
     // 70% of 6000 is 4200 — the boundary itself is not a decline.
@@ -120,6 +121,7 @@ public class StatisticalAlertRulesTests
         Assert.NotNull(candidate);
         Assert.Equal(AlertType.HeartRate, candidate.Type);
         Assert.Equal(AlertSeverity.Orange, candidate.Severity);
+        Assert.Contains("\"day\":\"2026-08-09\"", candidate.MetricValues);
     }
 
     // σ = 6 → 2σ = 12 beats the floor: 62 + 12 = 74 is the boundary.
@@ -217,6 +219,7 @@ public class StatisticalAlertRulesTests
         Assert.Equal(AlertType.Trend, candidate.Type);
         Assert.Equal(AlertSeverity.Orange, candidate.Severity);
         Assert.Contains("\"rule\":\"long_term_trend\"", candidate.MetricValues);
+        Assert.Contains("\"day\":\"2026-08-09\"", candidate.MetricValues);
     }
 
     // One recovering week breaks the pattern — a sustained trend, not three bad patches.
