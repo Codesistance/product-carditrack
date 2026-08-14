@@ -56,6 +56,10 @@ public partial class AnsweredQuestionRow : ContentView
     {
         base.OnBindingContextChanged();
 
+        // Recycled CollectionView rows keep visual state. A lock from a previous
+        // item's in-flight save or delete must not ride onto the next questionnaire.
+        Card.SetBusy(false);
+
         _item = BindingContext as AnsweredQuestionnaireItem;
         if (_item is null)
             return;
