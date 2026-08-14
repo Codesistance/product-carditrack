@@ -15,7 +15,17 @@ namespace CardiTrack.Shared.Telemetry;
 /// never mislabels spans under someone else's source. Register through that extension method
 /// rather than constructing directly. Ported from ConcairgeApp's identically-named class.
 /// </summary>
-public sealed class TracingProxy<T> : DispatchProxy where T : class
+/// <remarks>
+/// <b>Deliberately not <c>sealed</c>.</b> <see cref="DispatchProxy.Create{T,TProxy}"/> emits a
+/// type that <em>derives from</em> this one, so sealing it makes every <see cref="Create"/> call
+/// throw <c>ArgumentException: The base type ... cannot be sealed</c> — at DI resolution time, not
+/// at startup, so nothing fails until the first real call. That is exactly how it reached dev:
+/// <c>INotificationChannel</c>, <c>IDispatchService</c> and <c>IAckDeliveryService</c> all became
+/// unresolvable, which took down push dispatch, <c>StatisticalAlertWorker</c> and
+/// <c>InactivityDetectionWorker</c> — alerts stopped being raised at all, not merely delivered
+/// (2026-08-14, 05:59Z until this fix). <c>TracingProxyResolutionTests</c> is the guard.
+/// </remarks>
+public class TracingProxy<T> : DispatchProxy where T : class
 {
     private static readonly ConcurrentDictionary<Type, MethodInfo> GenericTaskWrappers = new();
 

@@ -85,14 +85,27 @@ public class FcmPayloadPrivacyTests
     }
 
     [Fact]
-    public void FidField_CarriesTheDecryptedRegistrationToken_NeverTheStoredCiphertext()
+    public void TokenField_CarriesTheDecryptedRegistrationToken_NeverTheStoredCiphertext()
     {
         var deviceToken = Token();
 
         var message = CreateSut().BuildMessage(Delivery(), deviceToken);
 
-        Assert.Equal(DecryptedToken, message.Fid);
-        Assert.NotEqual(deviceToken.Token, message.Fid);
+#pragma warning disable CS0618 // Message.Token is deprecated in favour of Fid — see FcmNotificationChannel.BuildMessage.
+        Assert.Equal(DecryptedToken, message.Token);
+        Assert.NotEqual(deviceToken.Token, message.Token);
+#pragma warning restore CS0618
+    }
+
+    [Fact]
+    public void RegistrationToken_TargetsTheTokenField_NotFid()
+    {
+        // Fid is a Firebase Installation ID, a different identifier from the registration token
+        // the app registers — see the comment on BuildMessage. Putting the token in `fid` sends
+        // every push to a target FCM cannot resolve, and does so silently at the payload layer.
+        var message = CreateSut().BuildMessage(Delivery(), Token());
+
+        Assert.Null(message.Fid);
     }
 
     [Theory]
