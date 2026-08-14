@@ -92,7 +92,7 @@ public partial class DigestGenerationService : IDigestGenerationService
     /// </summary>
     private static readonly string[] InstructionEchoes =
     [
-        "you are summarising",
+        "recent readings for their family",
         "you are writing for a concerned family member",
         "never suggest the family has missed something",
         "never diagnose",

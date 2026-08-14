@@ -352,8 +352,7 @@ public class DigestGenerationServiceTests
     /// a caregiver seeing the "nothing to say yet" copy.
     /// </summary>
     [Theory]
-    [InlineData("You are summarising a loved one's recent heart health data for a "
-                + "non-medical family member. Use plain, reassuring language.")]
+    [InlineData("Summarise a loved one's recent readings for their family.")]
     // Re-wrapped: the check flattens whitespace, so a differently broken echo still matches.
     [InlineData("Use plain,\n  reassuring language.\nNever diagnose.")]
     [InlineData("Respond with: summary — the summary itself, 2-4 sentences.")]
