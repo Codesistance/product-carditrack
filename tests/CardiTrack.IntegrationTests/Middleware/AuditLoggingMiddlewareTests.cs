@@ -257,6 +257,24 @@ public class AuditLoggingMiddlewareTests
     }
 
     [Fact]
+    public async Task StillWritesTheAuditEntry_WhenTheClientHasDisconnected()
+    {
+        // The write happens after the pipeline. A cancelled dashboard poll would otherwise
+        // cancel the SQL insert via RequestAborted and drop the row.
+        var context = BuildContext(new AuditHealthDataAccessAttribute("ViewDashboard"));
+        using var gone = new CancellationTokenSource();
+        gone.Cancel();
+        context.RequestAborted = gone.Token;
+        var userContext = new FakeUserContext { UserId = _userId, IsAuthenticated = true };
+
+        await CreateSut().InvokeAsync(context, userContext, _auditLogs);
+
+        await _auditLogs.Received(1).AppendAsync(
+            Arg.Any<AuditLog>(),
+            Arg.Is<CancellationToken>(t => !t.IsCancellationRequested));
+    }
+
+    [Fact]
     public async Task CoalescesRepeatGets_OfTheSameLook()
     {
         var cache = new MemoryDistributedCache(Options.Create(new MemoryDistributedCacheOptions()));

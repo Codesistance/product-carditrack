@@ -25,6 +25,15 @@ public class AuditLoggingMiddleware
     /// </summary>
     internal static readonly TimeSpan ReadSessionWindow = TimeSpan.FromMinutes(15);
 
+    /// <summary>
+    /// Bound for cache and SQL work after the response has gone out. The client's
+    /// <see cref="HttpContext.RequestAborted"/> is often already cancelled by then (dashboard
+    /// poll navigated away); using it would drop the audit row. Unbounded
+    /// <see cref="CancellationToken.None"/> can hang the request on the way out if Redis or
+    /// Cloud SQL stall — same bound as <c>ManualDeviceSyncService</c> cooldown renewal.
+    /// </summary>
+    internal static readonly TimeSpan PostPipelineTimeout = TimeSpan.FromSeconds(5);
+
     /// <summary>Route values that name the member whose data is being reached.</summary>
     private static readonly string[] CardiMemberRouteKeys = ["cardiMemberId", "memberId", "id"];
 
@@ -74,11 +83,16 @@ public class AuditLoggingMiddleware
         var entityType = Truncate(descriptor.EntityType, MaxEntityTypeLength);
         var cardiMemberId = ResolveCardiMemberId(httpContext);
 
-        if (await IsCoalescedReadAsync(httpContext, userContext.UserId, action, entityType, cardiMemberId))
-            return;
+        using (var lookupTimeout = new CancellationTokenSource(PostPipelineTimeout))
+        {
+            if (await IsCoalescedReadAsync(
+                    httpContext, userContext.UserId, action, entityType, cardiMemberId, lookupTimeout.Token))
+                return;
+        }
 
         try
         {
+            using var writeTimeout = new CancellationTokenSource(PostPipelineTimeout);
             await auditLogs.AppendAsync(new AuditLog
             {
                 UserId = userContext.UserId,
@@ -94,9 +108,10 @@ public class AuditLoggingMiddleware
                 RequestPath = Truncate(httpContext.Request.Path.Value ?? string.Empty, MaxRequestPathLength),
                 HttpMethod = Truncate(httpContext.Request.Method, MaxHttpMethodLength),
                 ResponseStatus = httpContext.Response.StatusCode,
-            }, httpContext.RequestAborted);
+            }, writeTimeout.Token);
 
-            await RememberReadAsync(httpContext, userContext.UserId, action, entityType, cardiMemberId);
+            await RememberReadAsync(
+                httpContext, userContext.UserId, action, entityType, cardiMemberId, writeTimeout.Token);
         }
         catch (Exception ex)
         {
@@ -122,7 +137,12 @@ public class AuditLoggingMiddleware
     /// duplicate.
     /// </remarks>
     private async Task<bool> IsCoalescedReadAsync(
-        HttpContext httpContext, Guid userId, string action, string entityType, Guid? cardiMemberId)
+        HttpContext httpContext,
+        Guid userId,
+        string action,
+        string entityType,
+        Guid? cardiMemberId,
+        CancellationToken ct)
     {
         if (!HttpMethods.IsGet(httpContext.Request.Method) || httpContext.Response.StatusCode >= 400)
             return false;
@@ -131,7 +151,7 @@ public class AuditLoggingMiddleware
         {
             return await _readSessions.GetStringAsync(
                 ReadSessionKey(userId, action, entityType, cardiMemberId),
-                httpContext.RequestAborted) is not null;
+                ct) is not null;
         }
         catch (Exception ex)
         {
@@ -141,7 +161,12 @@ public class AuditLoggingMiddleware
     }
 
     private async Task RememberReadAsync(
-        HttpContext httpContext, Guid userId, string action, string entityType, Guid? cardiMemberId)
+        HttpContext httpContext,
+        Guid userId,
+        string action,
+        string entityType,
+        Guid? cardiMemberId,
+        CancellationToken ct)
     {
         if (!HttpMethods.IsGet(httpContext.Request.Method) || httpContext.Response.StatusCode >= 400)
             return;
@@ -152,7 +177,7 @@ public class AuditLoggingMiddleware
                 ReadSessionKey(userId, action, entityType, cardiMemberId),
                 "1",
                 new DistributedCacheEntryOptions { AbsoluteExpirationRelativeToNow = ReadSessionWindow },
-                httpContext.RequestAborted);
+                ct);
         }
         catch (Exception ex)
         {
