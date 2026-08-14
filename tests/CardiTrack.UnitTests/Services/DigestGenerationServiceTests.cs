@@ -761,104 +761,73 @@ public class DigestGenerationServiceTests
         Assert.Equal(1, generated);
     }
 
-    // ---- Suggestions: three usable ones or none at all ----
+    // ---- Suggestion: one usable message or none at all ----
 
-    private void ReturnsSuggestions(params string[] suggestions) =>
+    private void ReturnsSuggestion(string? suggestion) =>
         _medicalAi.GenerateStructuredAsync<DigestGenerationService.DigestAiResponse>(
                 Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(new DigestGenerationService.DigestAiResponse
             {
                 Headline = "A settled night",
                 Summary = "A quiet, steady day.",
-                Suggestions = suggestions,
+                Suggestion = suggestion,
             });
 
-    private static bool Suggestions(DigestEntry entry, params string[] expected) =>
-        entry.Suggestions is not null && entry.Suggestions.SequenceEqual(expected);
-
     [Fact]
-    public async Task StoresThreeSuggestions_Trimmed()
+    public async Task StoresTheSuggestion_Trimmed()
     {
-        // A model that formatted its own list: the bullets and quotes are the model's, not the
-        // suggestion's, and they would render as literal characters in the app.
-        ReturnsSuggestions(
-            "- Ask about the early waking when you call",
-            "  \"Suggest a short walk before the light goes\" ",
-            "• Sit with them through the afternoon");
+        // A model that formatted its own list: the leading bullet is the model's, not the
+        // suggestion's, and it would render as a literal character in the app.
+        ReturnsSuggestion("  - Ask about the early waking when you call  ");
 
         await CreateSut().GenerateDueDigestsAsync(UtcNow);
 
         await _digests.Received(1).AddAsync(
-            Arg.Is<DigestEntry>(d => Suggestions(
-                d,
-                "Ask about the early waking when you call",
-                "Suggest a short walk before the light goes",
-                "Sit with them through the afternoon")),
+            Arg.Is<DigestEntry>(d => d.Suggestion == "Ask about the early waking when you call"),
             Arg.Any<CancellationToken>());
     }
 
-    /// <summary>
-    /// The section promises three ways to help. Anything short of a full, usable set is dropped so
-    /// the apps hide it, rather than rendering a heading over one bullet.
-    /// </summary>
     [Fact]
-    public async Task StoresNoSuggestions_WhenFewerThanThreeSurvive()
+    public async Task StoresNoSuggestion_WhenTheModelReturnedNone()
     {
-        ReturnsSuggestions(
-            "Ask about the early waking when you call", "   ",
-            "Respond with: three ways to support them");
+        // The column is nullable precisely so this is representable; an empty string would make
+        // the apps decide what an empty section looks like.
+        ReturnsSuggestion(null);
+
+        await CreateSut().GenerateDueDigestsAsync(UtcNow);
+
+        await _digests.Received(1).AddAsync(
+            Arg.Is<DigestEntry>(d => d.Suggestion == null), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task StoresNoSuggestion_WhenItRestatesTheInstructions()
+    {
+        ReturnsSuggestion("Respond with: one way to support them");
 
         var generated = await CreateSut().GenerateDueDigestsAsync(UtcNow);
 
         Assert.Equal(1, generated);
         await _digests.Received(1).AddAsync(
-            Arg.Is<DigestEntry>(d => d.Suggestions == null && d.Text == "A quiet, steady day."),
+            Arg.Is<DigestEntry>(d => d.Suggestion == null && d.Text == "A quiet, steady day."),
             Arg.Any<CancellationToken>());
     }
 
-    [Fact]
-    public async Task StoresNoSuggestions_WhenTheModelReturnedNone()
-    {
-        // The column is nullable precisely so this is representable; an empty list would make the
-        // apps decide what an empty section looks like.
-        ReturnsSuggestions();
-
-        await CreateSut().GenerateDueDigestsAsync(UtcNow);
-
-        await _digests.Received(1).AddAsync(
-            Arg.Is<DigestEntry>(d => d.Suggestions == null), Arg.Any<CancellationToken>());
-    }
-
-    [Fact]
-    public async Task DropsTheWholeSet_WhenTheSameSuggestionCameBackTwice()
-    {
-        // Three ways to help that are the same way twice is worse than no section at all.
-        ReturnsSuggestions(
-            "Ask about the early waking when you call",
-            "ask about the EARLY WAKING when you call",
-            "Sit with them through the afternoon");
-
-        await CreateSut().GenerateDueDigestsAsync(UtcNow);
-
-        await _digests.Received(1).AddAsync(
-            Arg.Is<DigestEntry>(d => d.Suggestions == null), Arg.Any<CancellationToken>());
-    }
-
     /// <summary>
-    /// The failure this prompt change is about: the instructions and the reply schema each carried
-    /// three example suggestions, and those three came back word for word for member after member.
-    /// The examples are gone; this is the backstop that keeps a return to them off the screen.
+    /// The failure this prompt change is about: the instructions and the reply schema used to
+    /// carry example suggestions, and those examples came back word for word for member after
+    /// member. The examples are gone; this is the backstop that keeps a return to them off screen.
     /// </summary>
     [Fact]
-    public async Task DropsTheWholeSet_WhenTheSuggestionsAreThePromptsOldExamples()
+    public async Task DropsTheSuggestion_WhenItIsThePromptsOldExample()
     {
-        ReturnsSuggestions("Ask how they slept", "Suggest a short walk together", "Make their favourite tea");
+        ReturnsSuggestion("Ask how they slept");
 
         var generated = await CreateSut().GenerateDueDigestsAsync(UtcNow);
 
         Assert.Equal(1, generated);
         await _digests.Received(1).AddAsync(
-            Arg.Is<DigestEntry>(d => d.Suggestions == null), Arg.Any<CancellationToken>());
+            Arg.Is<DigestEntry>(d => d.Suggestion == null), Arg.Any<CancellationToken>());
     }
 
     /// <summary>
@@ -868,47 +837,77 @@ public class DigestGenerationServiceTests
     [Fact]
     public async Task KeepsASuggestionThatCarriesAGenericOpeningIntoSomethingSpecific()
     {
-        ReturnsSuggestions(
-            "Ask how they slept when you call tonight",
-            "Put the heating on before they wake",
-            "Sit with them through the afternoon");
+        ReturnsSuggestion("Ask how they slept when you call tonight");
 
         await CreateSut().GenerateDueDigestsAsync(UtcNow);
 
         await _digests.Received(1).AddAsync(
-            Arg.Is<DigestEntry>(d => Suggestions(
-                d,
-                "Ask how they slept when you call tonight",
-                "Put the heating on before they wake",
-                "Sit with them through the afternoon")),
+            Arg.Is<DigestEntry>(d => d.Suggestion == "Ask how they slept when you call tonight"),
             Arg.Any<CancellationToken>());
     }
 
-    /// <summary>A category of caring is not one of the three; the prompt says so and this holds it.</summary>
+    /// <summary>A bare category of caring is not a suggestion; the prompt says so and this holds it.</summary>
     [Fact]
-    public async Task DropsTheWholeSet_WhenASuggestionIsABareCategoryOfCaring()
+    public async Task DropsTheSuggestion_WhenItIsABareCategoryOfCaring()
     {
-        ReturnsSuggestions("Check in", "Put the heating on before they wake", "Sit with them through the afternoon");
+        ReturnsSuggestion("Check in");
 
         await CreateSut().GenerateDueDigestsAsync(UtcNow);
 
         await _digests.Received(1).AddAsync(
-            Arg.Is<DigestEntry>(d => d.Suggestions == null), Arg.Any<CancellationToken>());
+            Arg.Is<DigestEntry>(d => d.Suggestion == null), Arg.Any<CancellationToken>());
     }
 
-    [Fact]
-    public async Task KeepsOnlyTheFirstThree_WhenTheModelOverruns()
+    /// <summary>
+    /// The relaxed guardrail allows a reminder tied to a known routine fact, like a scheduled
+    /// medication — but naming or guessing at what might be wrong is still a diagnosis, and the
+    /// prompt asking nicely is not trusted alone to keep it out.
+    /// </summary>
+    [Theory]
+    [InlineData("This could be a sign of afib, worth watching")]
+    [InlineData("This looks like it could be a heart condition")]
+    public async Task DropsTheSuggestion_WhenItNamesOrGuessesAtACondition(string suggestion)
     {
-        ReturnsSuggestions("One", "Two", "Three", "Four", "Five");
+        ReturnsSuggestion(suggestion);
 
         await CreateSut().GenerateDueDigestsAsync(UtcNow);
 
         await _digests.Received(1).AddAsync(
-            Arg.Is<DigestEntry>(d => Suggestions(d, "One", "Two", "Three")), Arg.Any<CancellationToken>());
+            Arg.Is<DigestEntry>(d => d.Suggestion == null), Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// Regression: the backstop originally matched the bare word "condition", which would have
+    /// dropped these — none of them name or guess at anything medical.
+    /// </summary>
+    [Theory]
+    [InlineData("Ask if they'd like a walk given today's warm conditions")]
+    [InlineData("Check their walking shoes are still in good condition")]
+    [InlineData("Make sure the air conditioning is on before they nap")]
+    public async Task KeepsASuggestion_ThatMentionsConditionWithoutAMedicalMeaning(string suggestion)
+    {
+        ReturnsSuggestion(suggestion);
+
+        await CreateSut().GenerateDueDigestsAsync(UtcNow);
+
+        await _digests.Received(1).AddAsync(
+            Arg.Is<DigestEntry>(d => d.Suggestion == suggestion), Arg.Any<CancellationToken>());
     }
 
     [Fact]
-    public async Task AsksForSuggestionsThatSupportRatherThanTreat()
+    public async Task KeepsAMedicationReminderTiedToAKnownRoutine()
+    {
+        ReturnsSuggestion("Remind Dad to take his evening medication if he hasn't yet");
+
+        await CreateSut().GenerateDueDigestsAsync(UtcNow);
+
+        await _digests.Received(1).AddAsync(
+            Arg.Is<DigestEntry>(d => d.Suggestion == "Remind Dad to take his evening medication if he hasn't yet"),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task AsksForASuggestionThatNeverNamesACondition()
     {
         string? prompt = null;
         await _medicalAi.GenerateStructuredAsync<DigestGenerationService.DigestAiResponse>(
@@ -917,7 +916,7 @@ public class DigestGenerationServiceTests
         await CreateSut().GenerateDueDigestsAsync(UtcNow);
 
         Assert.NotNull(prompt);
-        Assert.Contains("Never medical advice", prompt);
+        Assert.Contains("never name or guess at a medical condition", prompt);
         Assert.Contains("never worded as something the", prompt);
     }
 

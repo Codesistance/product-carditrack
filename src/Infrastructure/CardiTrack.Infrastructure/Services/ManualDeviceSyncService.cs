@@ -25,6 +25,15 @@ public class ManualDeviceSyncService : IManualDeviceSyncService
 
     private const string CooldownKeyPrefix = "manualsync:";
 
+    /// <summary>
+    /// Ceiling on <see cref="RenewCooldownAsync"/>'s cache write. It runs in a <c>finally</c> on
+    /// <see cref="CancellationToken.None"/> by design (see that method's remarks), so without a
+    /// bound of its own a stalled cache backend would hang the request indefinitely on the way
+    /// out — including a request whose caller already gave up. A cache write is normally
+    /// sub-second; this is a backstop, not a realistic budget.
+    /// </summary>
+    private static readonly TimeSpan RenewalTimeout = TimeSpan.FromSeconds(5);
+
     private readonly IUnitOfWork _unitOfWork;
     private readonly ICardiMemberAccessService _access;
     private readonly IServiceProvider _services;
@@ -77,12 +86,19 @@ public class ManualDeviceSyncService : IManualDeviceSyncService
         await EnforceCooldownAsync(cardiMemberId, ct);
 
         var outcomes = new List<DeviceSyncOutcome>(connections.Count);
-        foreach (var connection in connections)
+        try
         {
-            // Between devices rather than only up front: a caller who has walked away should not
-            // pay for the second provider's round trip.
-            ct.ThrowIfCancellationRequested();
-            outcomes.Add(await SyncOneAsync(connection, ct));
+            foreach (var connection in connections)
+            {
+                // Between devices rather than only up front: a caller who has walked away should
+                // not pay for the second provider's round trip.
+                ct.ThrowIfCancellationRequested();
+                outcomes.Add(await SyncOneAsync(connection, ct));
+            }
+        }
+        finally
+        {
+            await RenewCooldownAsync(cardiMemberId);
         }
 
         // Re-read rather than trusting DateTime.UtcNow: SyncCardiMemberAsync only stamps
@@ -166,18 +182,49 @@ public class ManualDeviceSyncService : IManualDeviceSyncService
     /// </remarks>
     private async Task EnforceCooldownAsync(Guid cardiMemberId, CancellationToken ct)
     {
-        var key = CooldownKeyPrefix + cardiMemberId;
-        if (await _cache.GetStringAsync(key, ct) is not null)
+        if (await _cache.GetStringAsync(CooldownKeyPrefix + cardiMemberId, ct) is not null)
         {
             throw new ManualSyncUnavailableException(
                 ManualSyncUnavailableException.TooSoon,
                 "We checked in moments ago — give it a minute before trying again.");
         }
 
-        await _cache.SetStringAsync(
-            key,
+        await SetCooldownAsync(cardiMemberId, ct);
+    }
+
+    /// <summary>
+    /// Renews the cooldown slot claimed in <see cref="EnforceCooldownAsync"/>.
+    /// </summary>
+    /// <remarks>
+    /// The initial claim is set before the device loop starts, so a slow multi-device sync (or a
+    /// hung provider call) can let it expire before the sync itself is done, letting a second
+    /// manual sync start concurrently — the opposite failure from the one the "not released on
+    /// failure" design above accepts. Called from a <c>finally</c> around that loop so the window
+    /// covers the whole sync, not just its start. Uses its own token rather than the caller's: a
+    /// cancelled request should not skip protecting quota for the pulls that already went out —
+    /// bounded by <see cref="RenewalTimeout"/> rather than left uncancellable, so a stalled cache
+    /// backend cannot hang the request on the way out either. A failure here is logged and
+    /// swallowed rather than thrown, so it can never mask whatever the try block was already
+    /// unwinding for.
+    /// </remarks>
+    private async Task RenewCooldownAsync(Guid cardiMemberId)
+    {
+        try
+        {
+            using var timeout = new CancellationTokenSource(RenewalTimeout);
+            await SetCooldownAsync(cardiMemberId, timeout.Token);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex,
+                "Failed to renew manual-sync cooldown for CardiMember {CardiMemberId}.", cardiMemberId);
+        }
+    }
+
+    private Task SetCooldownAsync(Guid cardiMemberId, CancellationToken ct) =>
+        _cache.SetStringAsync(
+            CooldownKeyPrefix + cardiMemberId,
             "1",
             new DistributedCacheEntryOptions { AbsoluteExpirationRelativeToNow = Cooldown },
             ct);
-    }
 }

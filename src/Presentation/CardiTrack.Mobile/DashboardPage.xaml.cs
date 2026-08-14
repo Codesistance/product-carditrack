@@ -41,6 +41,7 @@ public partial class DashboardPage : ContentPage
         _authService = authService;
         _popups = popups;
         HeroCard.MemberTapped += (_, _) => OpenMemberDetails();
+        HeroCard.WeatherTapped += async (_, weather) => await _popups.ShowWeatherAsync(weather);
         Header.RefreshRequested += OnRefreshClicked;
         Header.BellTapped += OnBellClicked;
 

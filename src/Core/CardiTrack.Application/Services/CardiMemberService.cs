@@ -139,7 +139,7 @@ public class CardiMemberService : ICardiMemberService
     {
         await _access.RequireViewAccessAsync(requestingUserId, cardiMemberId, ct);
         var member = await RequireActiveMemberAsync(cardiMemberId);
-        return await BuildDetailAsync(requestingUserId, member);
+        return await BuildDetailAsync(requestingUserId, member, ct);
     }
 
     public async Task<CardiMemberDetailResponse> UpdateAsync(
@@ -183,7 +183,7 @@ public class CardiMemberService : ICardiMemberService
         // still sitting there when the screen pops.
         await _gapResolver.ResolveForCardiMemberAsync(cardiMemberId, ct);
 
-        return await BuildDetailAsync(requestingUserId, member);
+        return await BuildDetailAsync(requestingUserId, member, ct);
     }
 
     public async Task RemoveAsync(Guid requestingUserId, Guid cardiMemberId, CancellationToken ct = default)
@@ -281,7 +281,8 @@ public class CardiMemberService : ICardiMemberService
         return links.FirstOrDefault(l => l.CardiMemberId == cardiMemberId && l.IsActive);
     }
 
-    private async Task<CardiMemberDetailResponse> BuildDetailAsync(Guid requestingUserId, CardiMember member)
+    private async Task<CardiMemberDetailResponse> BuildDetailAsync(
+        Guid requestingUserId, CardiMember member, CancellationToken ct = default)
     {
         // The relationship shown is the requesting caregiver's own ("Dad"), not whatever the
         // first link in the table happens to say.
@@ -302,6 +303,12 @@ public class CardiMemberService : ICardiMemberService
         var pause = PauseStateOf(member, now);
         var age = CalculateAge(member.DateOfBirth);
         var metrics = logs.Count == 0 ? null : MemberInsightsCalculator.BuildMetrics(logs, baseline, today, age);
+
+        // Consent checked before the query, not after — same stance as EnvironmentalContextSource:
+        // only a consented member can ever have a row, so the common case skips the roundtrip.
+        var environmentalReading = member.EnvironmentalContextConsentGranted
+            ? await _unitOfWork.EnvironmentalReadings.GetLatestAsync(member.Id, ct)
+            : null;
 
         return new CardiMemberDetailResponse
         {
@@ -328,6 +335,8 @@ public class CardiMemberService : ICardiMemberService
             Baseline = BaselineProgress.From(logs, baseline),
             HealthStatus = MemberInsightsCalculator.ComputeHealthStatus(unresolvedAlerts, baseline is null, metrics),
             Metrics = metrics,
+            Weather = WeatherSnapshotMapper.From(
+                member.EnvironmentalContextConsentGranted, environmentalReading),
         };
     }
 

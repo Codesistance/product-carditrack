@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="CardiTrack.Mobile.Controls.WeatherPopupPage"
+             BackgroundColor="Transparent">
+
+    <!-- Same shell as AppPopupPage/AppChooserPage (scrim, card, entry animation), so a third
+         popup still reads as the same object as the other two. Only the body differs: a small
+         table of readings instead of a message or a list of choices. -->
+    <Grid x:Name="Scrim" BackgroundColor="#80343434" Opacity="0">
+        <Grid.GestureRecognizers>
+            <TapGestureRecognizer Tapped="OnScrimTapped"/>
+        </Grid.GestureRecognizers>
+
+        <Border x:Name="Card"
+                BackgroundColor="{StaticResource White}"
+                Stroke="{StaticResource Divider}"
+                StrokeThickness="1"
+                Padding="24"
+                Margin="32,0"
+                Scale="0.92"
+                HorizontalOptions="Center"
+                VerticalOptions="Center">
+            <Border.StrokeShape>
+                <RoundRectangle CornerRadius="20"/>
+            </Border.StrokeShape>
+            <Border.GestureRecognizers>
+                <!-- Swallows taps so they don't fall through to the scrim. -->
+                <TapGestureRecognizer/>
+            </Border.GestureRecognizers>
+
+            <VerticalStackLayout Spacing="16">
+                <Label x:Name="GlyphLabel" FontSize="40" HorizontalTextAlignment="Center"/>
+
+                <VerticalStackLayout Spacing="2">
+                    <Label x:Name="TemperatureLabel"
+                           Style="{StaticResource Heading2}"
+                           HorizontalTextAlignment="Center"/>
+                    <Label x:Name="ConditionLabel"
+                           Style="{StaticResource Body2}"
+                           TextColor="{StaticResource BodyText}"
+                           HorizontalTextAlignment="Center"/>
+                </VerticalStackLayout>
+
+                <!-- Rows are built in code-behind: humidity and air quality are each independently
+                     optional (EnvironmentalReading — the enrichment pass can succeed for one field
+                     and fail for the rest), so the card only ever shows what actually came back. -->
+                <VerticalStackLayout x:Name="DetailRows" Spacing="8" Margin="0,4,0,0"/>
+
+                <Label x:Name="AsOfLabel"
+                       Style="{StaticResource Body2}"
+                       TextColor="{StaticResource MutedText}"
+                       HorizontalTextAlignment="Center"
+                       Margin="0,4,0,0"/>
+
+                <Button x:Name="CloseBtn"
+                        Text="Close"
+                        BackgroundColor="Transparent"
+                        TextColor="{StaticResource MutedText}"
+                        FontFamily="Quicksand"
+                        FontAttributes="Bold"
+                        FontSize="16"
+                        HeightRequest="44"
+                        Margin="0,4,0,0"
+                        Clicked="OnCloseClicked"/>
+            </VerticalStackLayout>
+        </Border>
+    </Grid>
+</ContentPage>

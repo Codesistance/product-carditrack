@@ -61,7 +61,13 @@ public class DashboardService : IDashboardService
 
         var activeAlerts = (await _unitOfWork.Alerts.GetByCardiMemberAsync(cardiMemberId, activeOnly: true)).ToList();
 
-        var isLearning = baseline is null;
+        // The established 30-day baseline specifically, not the provisional 14/7-day one that
+        // may have won the fallback search above. StatisticalAlertService will not raise a single
+        // alert until that same 30 days exists — showing a confident "All steady" any earlier
+        // would claim a clean bill of health from the one system not yet watching for a dirty one.
+        // Metrics and the baseline-progress card below still read the provisional baseline; only
+        // the health-status colour waits for the real one.
+        var isLearning = baseline is not { PeriodDays: BaselinePeriodDays };
 
         var age = member.DateOfBirth.ToAgeInYears(today);
         var metrics = logs.Count == 0 ? null : MemberInsightsCalculator.BuildMetrics(logs, baseline, today, age);
@@ -74,6 +80,12 @@ public class DashboardService : IDashboardService
         var latestAssessment = await _unitOfWork.RealtimeAssessments.GetLatestAsync(cardiMemberId, ct);
         var (freshnessTier, freshnessMessage) = MemberInsightsCalculator.ComputeDataFreshness(
             lastSyncedAt, latestAssessment?.GeneratedAtUtc, now, FirstNameOf(member.Name));
+
+        // Consent checked before the query, not after — same stance as EnvironmentalContextSource:
+        // only a consented member can ever have a row, so the common case skips the roundtrip.
+        var environmentalReading = member.EnvironmentalContextConsentGranted
+            ? await _unitOfWork.EnvironmentalReadings.GetLatestAsync(cardiMemberId, ct)
+            : null;
 
         return new DashboardResponse
         {
@@ -106,6 +118,8 @@ public class DashboardService : IDashboardService
             },
             Baseline = BaselineProgress.From(logs, baseline),
             Metrics = metrics,
+            Weather = WeatherSnapshotMapper.From(
+                member.EnvironmentalContextConsentGranted, environmentalReading),
             RecentAlerts = activeAlerts
                 .Take(RecentAlertCount)
                 .Select(a => new DashboardAlertSummary

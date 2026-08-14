@@ -62,7 +62,7 @@ public class DigestQueryServiceTests
     }
 
     [Fact]
-    public async Task GetDigest_CarriesTheSuggestionsGeneratedWithTheSummary()
+    public async Task GetDigest_CarriesTheSuggestionGeneratedWithTheSummary()
     {
         _digests.GetLatestAsync(_memberId, DigestAudience.Family, Arg.Any<CancellationToken>())
             .Returns(new DigestEntry
@@ -71,24 +71,23 @@ public class DigestQueryServiceTests
                 LocalDate = new DateOnly(2026, 8, 12),
                 Audience = DigestAudience.Family,
                 Text = "A quiet, steady day.",
-                Suggestions = ["Ask how they slept", "Suggest a short walk", "Sit with them a while"],
+                Suggestion = "Ask how they slept when you call tonight",
                 GeneratedAtUtc = new DateTime(2026, 8, 12, 7, 0, 0, DateTimeKind.Utc),
             });
 
         var result = await CreateSut().GetDigestAsync(_userId, _memberId, localDate: null);
 
         Assert.NotNull(result);
-        Assert.Equal(
-            ["Ask how they slept", "Suggest a short walk", "Sit with them a while"], result.Suggestions);
+        Assert.Equal("Ask how they slept when you call tonight", result.Suggestion);
     }
 
     /// <summary>
-    /// A summary written before suggestions existed has none, and one whose suggestions did not
+    /// A summary written before suggestions existed has none, and one whose suggestion did not
     /// survive validation has none either. Both reach the apps as null so the section is hidden,
-    /// rather than as an empty list they would have to decide how to render.
+    /// rather than as an empty string they would have to decide how to render.
     /// </summary>
     [Fact]
-    public async Task GetDigest_LeavesSuggestionsNull_WhenTheSummaryHasNone()
+    public async Task GetDigest_LeavesSuggestionNull_WhenTheSummaryHasNone()
     {
         _digests.GetLatestAsync(_memberId, DigestAudience.Family, Arg.Any<CancellationToken>())
             .Returns(new DigestEntry
@@ -103,7 +102,7 @@ public class DigestQueryServiceTests
         var result = await CreateSut().GetDigestAsync(_userId, _memberId, localDate: null);
 
         Assert.NotNull(result);
-        Assert.Null(result.Suggestions);
+        Assert.Null(result.Suggestion);
     }
 
     /// <summary>

@@ -64,13 +64,6 @@ public partial class CardiMemberDetailPage : ContentPage
     /// </summary>
     private bool _digestRendered;
 
-    /// <summary>
-    /// How many suggestions the "ways to help" section is built around. The generator writes three
-    /// or none (DigestGenerationService.CleanSuggestions); this is the client holding the same
-    /// line rather than trusting it to.
-    /// </summary>
-    private const int SuggestionCount = 3;
-
     /// <summary>Open/close timing of the pause-duration drop down, matching AccordionSection.</summary>
     private const uint PauseDropdownMs = 200;
 
@@ -223,6 +216,15 @@ public partial class CardiMemberDetailPage : ContentPage
         NameLabel.Text = member.Name;
         AgeRelationshipLabel.Text = $"{member.Age} years old • {member.Relationship.GetDisplayName()}";
 
+        WeatherChip.IsVisible = member.Weather is not null;
+        if (member.Weather is { } weather)
+        {
+            WeatherGlyphLabel.Text = WeatherGlyph.For(weather.Condition);
+            WeatherTemperatureLabel.Text = weather.TemperatureCelsius is { } temperature
+                ? $"{temperature:F0}°C"
+                : string.Empty;
+        }
+
         PausedBanner.IsVisible = member.MonitoringPaused;
         if (member.MonitoringPaused)
         {
@@ -319,7 +321,7 @@ public partial class CardiMemberDetailPage : ContentPage
             SummaryGeneratedLabel.IsVisible = true;
             _digestRendered = true;
 
-            ApplySuggestions(digest.Suggestions);
+            ApplySuggestion(digest.Suggestion);
 
             if (unchanged)
                 return;
@@ -452,77 +454,19 @@ public partial class CardiMemberDetailPage : ContentPage
     }
 
     /// <summary>
-    /// Rebuilds the "how to support them" bullets under the summary, or hides the section when
-    /// this generation produced none.
+    /// Shows the "Tips" message under the summary, or hides the section when this generation
+    /// produced none.
     /// </summary>
-    /// <remarks>
-    /// Rebuilt rather than diffed: it is three short labels, and the alternative is keeping a
-    /// second copy of them around to compare against. The heading names the CardiMember, because
-    /// a caregiver may be looking after more than one and "how to support them" on a screen
-    /// reached from a notification should say who.
-    /// </remarks>
-    private void ApplySuggestions(IReadOnlyList<string>? suggestions)
+    private void ApplySuggestion(string? suggestion)
     {
-        SuggestionsList.Clear();
-
-        // Three or nothing, enforced here and not merely assumed. The generator already drops a
-        // partial set, so today this only ever sees three or null — but "the server would never"
-        // is what the heading over one lonely bullet always got explained by, and this screen
-        // outlives any one version of the API that feeds it.
-        if (suggestions is not { Count: >= SuggestionCount })
+        if (string.IsNullOrWhiteSpace(suggestion))
         {
             SuggestionsCard.IsVisible = false;
             return;
         }
 
-        SuggestionsTitleLabel.Text = _member is null
-            ? "Ways to help"
-            : $"Ways to help {NameFormatting.FirstName(_member.Name)}";
-
-        // Taking rather than assuming: a later API that sent four would otherwise either hide the
-        // section or grow the card past what the layout was drawn for.
-        foreach (var suggestion in suggestions.Take(SuggestionCount))
-        {
-            var row = new Grid
-            {
-                ColumnDefinitions =
-                [
-                    new ColumnDefinition(GridLength.Auto),
-                    new ColumnDefinition(GridLength.Star),
-                ],
-                ColumnSpacing = 8,
-            };
-
-            // A plain bullet, because the idea glyph now sits on the heading: what each row still
-            // needs is to read as one item of a list rather than a run-on of the line above, and
-            // the dot the tips on Device Management already use does that without competing with
-            // the words. Pinned to Start so it sits beside the first line of a suggestion that
-            // wraps. Decorative, so out of the accessibility tree — a bullet read aloud before
-            // every suggestion is noise, same call as MetricCard's star row.
-            // Body2Dark, matching the summary above: these two blocks are what the caregiver came
-            // to read, and Body2's grey left them the palest thing on the screen.
-            var resources = Microsoft.Maui.Controls.Application.Current!.Resources;
-            var glyph = new Label
-            {
-                Text = "•",
-                Style = (Style)resources["Body2Dark"],
-                VerticalOptions = LayoutOptions.Start,
-            };
-            AutomationProperties.SetIsInAccessibleTree(glyph, false);
-            row.Add(glyph);
-
-            row.Add(
-                new Label
-                {
-                    Text = suggestion,
-                    Style = (Style)resources["Body2Dark"],
-                    LineBreakMode = LineBreakMode.WordWrap,
-                },
-                1);
-
-            SuggestionsList.Add(row);
-        }
-
+        SuggestionsTitleLabel.Text = "Tips";
+        SuggestionLabel.Text = suggestion;
         SuggestionsCard.IsVisible = true;
     }
 
@@ -676,6 +620,12 @@ public partial class CardiMemberDetailPage : ContentPage
 
     private async void OnEditClicked(object? sender, EventArgs e) =>
         await Shell.Current.GoToAsync($"{EditCardiMemberPage.Route}?memberId={_memberId}");
+
+    private async void OnWeatherTapped(object? sender, TappedEventArgs e)
+    {
+        if (_member?.Weather is { } weather)
+            await _popups.ShowWeatherAsync(weather);
+    }
 
     private async void OnManageDevicesClicked(object? sender, EventArgs e) =>
         await Shell.Current.GoToAsync($"{DeviceManagementPage.Route}?memberId={_memberId}");

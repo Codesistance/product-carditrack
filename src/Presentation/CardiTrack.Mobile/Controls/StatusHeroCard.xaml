@@ -20,10 +20,31 @@
             <TapGestureRecognizer Tapped="OnCardTapped"/>
         </Grid.GestureRecognizers>
 
-        <Label x:Name="NameLabel"
-               Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="2"
-               Style="{StaticResource Heading2}"
-               LineBreakMode="TailTruncation"/>
+        <Grid Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="2"
+              ColumnDefinitions="*,Auto" ColumnSpacing="8">
+            <Label x:Name="NameLabel"
+                   Grid.Column="0"
+                   Style="{StaticResource Heading2}"
+                   LineBreakMode="TailTruncation"/>
+
+            <!-- Last-session weather (EnvironmentalReading — not live, no stored coordinate).
+                 Its own TapGestureRecognizer takes taps before the row's own below, so tapping
+                 the chip opens the weather popup rather than M1-13. Hidden outright when the
+                 member has no reading, or hasn't granted environmental-context consent. -->
+            <HorizontalStackLayout x:Name="WeatherChip"
+                                    Grid.Column="1"
+                                    Spacing="4"
+                                    VerticalOptions="Center"
+                                    IsVisible="False">
+                <HorizontalStackLayout.GestureRecognizers>
+                    <TapGestureRecognizer Tapped="OnWeatherTapped"/>
+                </HorizontalStackLayout.GestureRecognizers>
+                <Label x:Name="WeatherGlyphLabel" FontSize="16" VerticalOptions="Center"/>
+                <Label x:Name="WeatherTemperatureLabel"
+                       Style="{StaticResource Body2Dark}"
+                       VerticalOptions="Center"/>
+            </HorizontalStackLayout>
+        </Grid>
 
         <!-- Member Detail's display image box, not one of this card's own: the same person must
              not be a tinted monogram here and a gradient one a tap away. Top-aligned to the status

@@ -29,19 +29,14 @@ public class DigestRepository : IDigestRepository
         // Every mapped column is listed explicitly, and a new one has to be added here by hand —
         // this insert is raw SQL, so EF cannot notice a property it does not mention. "Suggestions"
         // was added to the entity, the configuration and a migration without reaching this list,
-        // and the result was silent: the generator validated three suggestions and assigned them,
+        // and the result was silent: the generator validated its suggestions and assigned them,
         // the row inserted cleanly with the column left NULL, and the apps hid a section they were
         // never given anything to show. No exception, no warning, nothing in a log to find.
-        //
-        // The cast is load-bearing for the null case: an untyped NULL parameter gives Npgsql
-        // nothing to infer an array type from, so the type is stated in the SQL instead.
         await _context.Database.ExecuteSqlInterpolatedAsync($"""
             INSERT INTO "DigestEntries"
-                ("CardiMemberId", "LocalDate", "Audience", "Headline", "Text", "Suggestions", "GeneratedAtUtc")
+                ("CardiMemberId", "LocalDate", "Audience", "Headline", "Text", "Suggestion", "GeneratedAtUtc")
             VALUES ({entry.CardiMemberId}, {entry.LocalDate}, {entry.Audience.ToString()},
-                    {entry.Headline}, {entry.Text},
-                    {entry.Suggestions?.ToArray()}::character varying(200)[],
-                    {entry.GeneratedAtUtc})
+                    {entry.Headline}, {entry.Text}, {entry.Suggestion}, {entry.GeneratedAtUtc})
             ON CONFLICT ("CardiMemberId", "LocalDate", "Audience", "GeneratedAtUtc")
             DO NOTHING
             """, ct);

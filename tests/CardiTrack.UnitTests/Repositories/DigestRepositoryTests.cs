@@ -13,7 +13,7 @@ namespace CardiTrack.UnitTests.Repositories;
 /// migration SQL and the insert is a hand-written <c>ON CONFLICT</c> statement naming its columns
 /// one by one. A substitute vouches for neither, and it is precisely the column list that went
 /// wrong — <c>Suggestions</c> reached the entity, the configuration and a migration without ever
-/// reaching the <c>INSERT</c>, so three validated suggestions were dropped on the floor with no
+/// reaching the <c>INSERT</c>, so a validated suggestion was dropped on the floor with no
 /// exception and no log line, and the apps hid a section they had nothing to fill.
 /// </summary>
 [Collection("DatabaseCollection")]
@@ -23,53 +23,52 @@ public class DigestRepositoryTests(TestDatabaseFixture fixture)
         await scope.ServiceProvider.GetRequiredService<ITimeSeriesPartitionService>()
             .EnsureUpcomingPartitionsAsync(daysAhead: 7);
 
-    private static DigestEntry Entry(Guid memberId, List<string>? suggestions) => new()
+    private static DigestEntry Entry(Guid memberId, string? suggestion) => new()
     {
         CardiMemberId = memberId,
         LocalDate = DateOnly.FromDateTime(DateTime.UtcNow),
         Audience = DigestAudience.Family,
         Headline = "A settled night",
         Text = "Steps and heart rate both look ordinary today.",
-        Suggestions = suggestions,
+        Suggestion = suggestion,
         GeneratedAtUtc = DateTime.UtcNow,
     };
 
     [Fact]
-    public async Task AddAsync_RoundTripsTheSuggestions()
+    public async Task AddAsync_RoundTripsTheSuggestion()
     {
         using var scope = fixture.CreateScope();
         await EnsurePartitionsAsync(scope);
         var repo = scope.ServiceProvider.GetRequiredService<IDigestRepository>();
         var memberId = Guid.NewGuid();
 
-        List<string> suggestions = ["Ask how they slept", "Suggest a short walk", "Make their favourite tea"];
-        await repo.AddAsync(Entry(memberId, suggestions));
+        const string suggestion = "Ask how they slept when you call tonight";
+        await repo.AddAsync(Entry(memberId, suggestion));
 
         var stored = await repo.GetLatestAsync(memberId, DigestAudience.Family);
 
         Assert.NotNull(stored);
-        Assert.Equal(suggestions, stored.Suggestions);
+        Assert.Equal(suggestion, stored.Suggestion);
     }
 
     /// <summary>
-    /// The nullable case is its own test rather than an afterthought: an untyped NULL array
-    /// parameter is what Npgsql cannot infer a type for, so the path that stores "no suggestions"
-    /// is the one most likely to throw at the driver rather than return an empty answer.
+    /// The nullable case is its own test rather than an afterthought — the path that stores "no
+    /// suggestion" is the one most likely to be missed by a hand-written column list.
     /// </summary>
     [Fact]
-    public async Task AddAsync_StoresNoSuggestions_WhenTheGenerationProducedNone()
+    public async Task AddAsync_StoresNoSuggestion_WhenTheGenerationProducedNone()
     {
         using var scope = fixture.CreateScope();
         await EnsurePartitionsAsync(scope);
         var repo = scope.ServiceProvider.GetRequiredService<IDigestRepository>();
         var memberId = Guid.NewGuid();
 
-        await repo.AddAsync(Entry(memberId, suggestions: null));
+        await repo.AddAsync(Entry(memberId, suggestion: null));
 
         var stored = await repo.GetLatestAsync(memberId, DigestAudience.Family);
 
         Assert.NotNull(stored);
-        Assert.Null(stored.Suggestions);
+        Assert.Null(stored.Suggestion);
     }
 
     /// <summary>
@@ -83,7 +82,7 @@ public class DigestRepositoryTests(TestDatabaseFixture fixture)
         await EnsurePartitionsAsync(scope);
         var repo = scope.ServiceProvider.GetRequiredService<IDigestRepository>();
         var memberId = Guid.NewGuid();
-        var entry = Entry(memberId, ["a", "b", "c"]);
+        var entry = Entry(memberId, "a");
 
         await repo.AddAsync(entry);
 

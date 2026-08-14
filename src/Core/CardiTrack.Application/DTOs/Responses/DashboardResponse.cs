@@ -54,7 +54,39 @@ public class DashboardResponse
     public DashboardBaselineState Baseline { get; set; } = new();
     public DashboardMetrics? Metrics { get; set; }
     public List<DashboardAlertSummary> RecentAlerts { get; set; } = new();
+
+    /// <summary>
+    /// Conditions from the member's last GPS-tagged exercise session — not live weather, and
+    /// never a stored coordinate (see <see cref="EnvironmentalReading"/>). Null when the member
+    /// hasn't granted environmental-context consent, or nothing has been derived yet.
+    /// </summary>
+    public WeatherSnapshotResponse? Weather { get; set; }
+
     public DateTime GeneratedAt { get; set; }
+}
+
+/// <summary>
+/// Last-known weather for a member, derived from their most recent exercise session — carries
+/// no coordinate, and is not live weather. Shared between <see cref="DashboardResponse"/> and
+/// <see cref="CardiMemberDetailResponse"/> so both screens read it the same way. Plain data only
+/// — built by <see cref="CardiTrack.Application.Services.WeatherSnapshotMapper"/>, not by a
+/// domain-referencing factory here, so this DTO stays independent of the domain model.
+/// </summary>
+public class WeatherSnapshotResponse
+{
+    public decimal? TemperatureCelsius { get; set; }
+
+    /// <summary>Free text from the weather provider ("Light rain", "Partly cloudy") — described
+    /// to a reader, never matched against, same stance as the AI prompt context that reads it.</summary>
+    public string? Condition { get; set; }
+
+    public int? HumidityPercent { get; set; }
+    public int? AirQualityIndex { get; set; }
+    public string? AirQualityCategory { get; set; }
+
+    /// <summary>When the session that produced this reading ended — clients use this to say
+    /// "as of" rather than implying the conditions are current.</summary>
+    public DateTime AsOfUtc { get; set; }
 }
 
 public class DashboardDeviceState

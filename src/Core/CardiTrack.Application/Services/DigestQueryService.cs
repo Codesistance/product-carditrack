@@ -53,7 +53,7 @@ public class DigestQueryService : IDigestQueryService
         Audience = entry.Audience.ToString(),
         Headline = entry.Headline,
         Text = entry.Text,
-        Suggestions = entry.Suggestions,
+        Suggestion = entry.Suggestion,
         GeneratedAtUtc = entry.GeneratedAtUtc,
     };
 }
