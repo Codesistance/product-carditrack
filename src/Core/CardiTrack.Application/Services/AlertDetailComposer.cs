@@ -326,6 +326,7 @@ public static class AlertDetailComposer
             NormalLabel = "Usual day",
             NormalValue = usual is { } avg ? $"{avg:N0} steps" : "—",
             ChangeLabel = ChangeLabel(current, usual, "usual"),
+            ChangePercent = ChangePercent(current, usual),
         };
     }
 
@@ -350,6 +351,11 @@ public static class AlertDetailComposer
             ChangeLabel = fraction is { } f
                 ? $"{f * 100:0}% below a month ago"
                 : ChangeLabel(newest, oldest, "a month ago"),
+            // The rule reports its decline as a positive fraction of the earlier figure; the
+            // signed form of "below" is negative.
+            ChangePercent = fraction is { } decline
+                ? -Math.Round(decline * 100m, 0)
+                : ChangePercent(newest, oldest),
         };
     }
 
@@ -367,6 +373,7 @@ public static class AlertDetailComposer
             NormalLabel = "Usual",
             NormalValue = usual is { } avg ? $"{avg:N0} bpm" : "—",
             ChangeLabel = ChangeLabel(current, usual, "usual"),
+            ChangePercent = ChangePercent(current, usual),
         };
     }
 
@@ -384,6 +391,7 @@ public static class AlertDetailComposer
             NormalLabel = "Usual night",
             NormalValue = HoursLabel(usualMinutes),
             ChangeLabel = ChangeLabel(currentMinutes, usualMinutes, "usual"),
+            ChangePercent = ChangePercent(currentMinutes, usualMinutes),
         };
     }
 
@@ -416,6 +424,7 @@ public static class AlertDetailComposer
             NormalLabel = "Usual resting",
             NormalValue = usual is { } avg ? $"{avg:N0} bpm" : "—",
             ChangeLabel = ChangeLabel(current, usual, "usual"),
+            ChangePercent = ChangePercent(current, usual),
         };
     }
 
@@ -613,11 +622,23 @@ public static class AlertDetailComposer
             ? day
             : null;
 
-    private static string StatusLabel(Alert alert) =>
-        (alert.IsResolved ? AlertStatus.Resolved
-            : alert.AcknowledgedDate is not null ? AlertStatus.Acknowledged
-            : AlertStatus.New)
-        .ToString().ToLowerInvariant();
+    /// <summary>
+    /// Third reader of the same two columns, so it goes through the one mapper the alerts list
+    /// and the dashboard strip already share — see <see cref="AlertLifecycle"/>. A detail page
+    /// that disagreed with the row a caregiver tapped to reach it is the exact failure this
+    /// branch started from.
+    /// </summary>
+    private static string StatusLabel(Alert alert) => AlertLifecycle.StatusLabel(alert);
+
+    /// <summary>
+    /// The deviation behind <see cref="ChangeLabel"/> as a signed whole percent — see
+    /// <see cref="AlertComparisonResponse.ChangePercent"/>. Same inputs and same rounding, so the
+    /// number and the sentence can never describe different movements.
+    /// </summary>
+    private static decimal? ChangePercent(decimal? current, decimal? usual) =>
+        current is not { } c || usual is not > 0
+            ? null
+            : Math.Round((c - usual.Value) / usual.Value * 100m, 0);
 
     private static string? ChangeLabel(decimal? current, decimal? usual, string usualWord)
     {

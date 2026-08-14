@@ -124,9 +124,24 @@ public partial class AlertsPage : ContentPage
         }
         finally
         {
-            // Only the newest request owns the page's loading state.
+            // Only the newest request owns the page's loading state — and it has to let go of the
+            // field before disposing, or it leaves _loadCts pointing at a disposed source and the
+            // Cancel above throws ObjectDisposedException on the very next load. That is not a
+            // theoretical race: it fired on the second load every time, which is to say always.
+            //
+            // What it looked like was not a crash. Every caller but one starts the load without
+            // awaiting it, so the exception went to an unobserved task and vanished — the screen
+            // simply stopped updating, frozen on whatever its first load had rendered, with the
+            // chips, the pull-to-refresh spinner and the 30-second tick all silently doing
+            // nothing. A caregiver looking at "Nothing to worry about" was reading a snapshot from
+            // whenever they first opened the tab. The archive button is the one caller that does
+            // await, so it turned the same bug into an app-killing crash out of an async void.
+            //
+            // A superseded request leaves the field alone: it belongs to the newer load, which is
+            // still using it.
             if (ReferenceEquals(_loadCts, cts))
             {
+                _loadCts = null;
                 _isLoading = false;
                 Refresher.IsRefreshing = false;
             }

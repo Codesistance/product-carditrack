@@ -24,23 +24,14 @@ public class AlertRepository : Repository<Alert>, IAlertRepository
         return await query.OrderByDescending(a => a.TriggeredDate).ToListAsync();
     }
 
-    public async Task<IReadOnlyList<Alert>> GetRecentByCardiMemberAsync(Guid cardiMemberId, int limit)
-    {
-        return await _dbSet.AsNoTracking()
-            .Where(a => a.CardiMemberId == cardiMemberId && a.IsActive)
-            .OrderByDescending(a => a.TriggeredDate)
-            // Ties are real: the pipeline can emit several alerts for one member in the same
-            // instant, and Take without a tie-breaker can swap which five the dashboard shows.
-            .ThenByDescending(a => a.Id)
-            .Take(limit)
-            .ToListAsync();
-    }
-
     public async Task<IReadOnlyList<Alert>> GetUnresolvedByCardiMemberAsync(Guid cardiMemberId)
     {
         return await _dbSet.AsNoTracking()
             .Where(a => a.CardiMemberId == cardiMemberId && a.IsActive && !a.IsResolved)
             .OrderByDescending(a => a.TriggeredDate)
+            // Ties are real: the pipeline can emit several alerts for one member in the same
+            // instant, and the dashboard takes the head of this list — an unstable sort would
+            // swap which five it shows between refreshes.
             .ThenByDescending(a => a.Id)
             .ToListAsync();
     }

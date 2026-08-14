@@ -301,11 +301,7 @@ public class AlertService : IAlertService
     private static string SeverityLabel(AlertSeverity severity) =>
         severity.ToString().ToLowerInvariant();
 
-    private static string StatusLabel(Alert alert) => ToStatus(alert).ToString().ToLowerInvariant();
-
-    /// <summary>The lifecycle rule, in one place — see <see cref="AlertStatus"/>.</summary>
-    private static AlertStatus ToStatus(Alert alert) =>
-        alert.IsResolved ? AlertStatus.Resolved
-        : alert.AcknowledgedDate is not null ? AlertStatus.Acknowledged
-        : AlertStatus.New;
+    /// <summary>The lifecycle rule now lives in <see cref="AlertLifecycle"/>, which the
+    /// dashboard's own alert strip reads too — see <see cref="AlertStatus"/>.</summary>
+    private static string StatusLabel(Alert alert) => AlertLifecycle.StatusLabel(alert);
 }

@@ -39,11 +39,18 @@ public partial class AlertListCard : ContentView
         // Badge wording follows the M1-10 spec (CRITICAL/URGENT/INFO); the colour follows the
         // app's own severity scale rather than Figma's blue "Info" chip, so a yellow alert can't
         // show a yellow rail beside a blue badge.
+        // NOTICE, not INFO, for yellow. The badge word and the banner fill are both read off
+        // severity, so a yellow alert used to put the mildest word in the vocabulary on an amber
+        // banner and read as a contradiction — and "INFO" was doing duty for green as well, which
+        // flattened "nothing to report" and "something is different" into one word. The colour is
+        // deliberately unchanged: see AlertListCard, which colours by our own severity scale
+        // rather than by Figma's blue INFO chip so a badge can never disagree with the rail
+        // beside it. This diverges from M1-10's CRITICAL/URGENT/INFO wording on purpose.
         var (badge, severityKey) = alert.Severity switch
         {
             "red" => ("CRITICAL", "StatusRed"),
             "orange" => ("URGENT", "StatusOrange"),
-            "yellow" => ("INFO", "StatusYellow"),
+            "yellow" => ("NOTICE", "StatusYellow"),
             "green" => ("INFO", "StatusGreen"),
             _ => ("INFO", "StatusUnknown"),
         };

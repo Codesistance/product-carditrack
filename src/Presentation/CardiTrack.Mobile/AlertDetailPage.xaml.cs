@@ -118,11 +118,18 @@ public partial class AlertDetailPage : ContentPage
         var resources = Microsoft.Maui.Controls.Application.Current!.Resources;
         var firstName = NameFormatting.FirstName(alert.CardiMemberName);
 
+        // NOTICE, not INFO, for yellow. The badge word and the banner fill are both read off
+        // severity, so a yellow alert used to put the mildest word in the vocabulary on an amber
+        // banner and read as a contradiction — and "INFO" was doing duty for green as well, which
+        // flattened "nothing to report" and "something is different" into one word. The colour is
+        // deliberately unchanged: see AlertListCard, which colours by our own severity scale
+        // rather than by Figma's blue INFO chip so a badge can never disagree with the rail
+        // beside it. This diverges from M1-10's CRITICAL/URGENT/INFO wording on purpose.
         var (badge, bannerKey) = alert.Severity switch
         {
             "red" => ("CRITICAL", "StatusRed"),
             "orange" => ("URGENT", "StatusOrange"),
-            "yellow" => ("INFO", "StatusYellow"),
+            "yellow" => ("NOTICE", "StatusYellow"),
             _ => ("INFO", "StatusUnknown"),
         };
 
@@ -141,7 +148,7 @@ public partial class AlertDetailPage : ContentPage
         MessageLabel.Text = alert.Message;
 
         ApplyChart(alert.Chart);
-        ApplyComparison(alert.Comparison);
+        ApplyComparison(alert.Comparison, alert.Severity);
         ApplyContext(alert, firstName);
         ApplyAcknowledgement(alert);
 
@@ -224,7 +231,7 @@ public partial class AlertDetailPage : ContentPage
             : string.Empty;
     }
 
-    private void ApplyComparison(AlertComparisonResponse? comparison)
+    private void ApplyComparison(AlertComparisonResponse? comparison, string severity)
     {
         if (comparison is null)
         {
@@ -234,11 +241,53 @@ public partial class AlertDetailPage : ContentPage
 
         ComparisonCard.IsVisible = true;
         CurrentLabel.Text = comparison.CurrentLabel;
-        CurrentValueLabel.Text = comparison.CurrentValue;
         NormalLabel.Text = comparison.NormalLabel;
-        NormalValueLabel.Text = comparison.NormalValue;
-        ChangeLabel.IsVisible = !string.IsNullOrWhiteSpace(comparison.ChangeLabel);
-        ChangeLabel.Text = comparison.ChangeLabel ?? string.Empty;
+        SetValue(CurrentValueNumber, CurrentValueUnit, comparison.CurrentValue);
+        SetValue(NormalValueNumber, NormalValueUnit, comparison.NormalValue);
+
+        var hasChange = !string.IsNullOrWhiteSpace(comparison.ChangeLabel);
+        ChangeBand.IsVisible = hasChange;
+        if (!hasChange)
+            return;
+
+        // The arrow says which way, the tint says how much it matters. The tint is the alert's own
+        // severity rather than a fixed red: this comparison is the reason the alert exists, so a
+        // band louder than the alert would have the same screen disagreeing with itself — the
+        // failure the badge word beside it was just corrected for.
+        var resources = Microsoft.Maui.Controls.Application.Current!.Resources;
+        var (tintKey, inkKey) = severity switch
+        {
+            "red" => ("PillRedBackground", "StatusRed"),
+            "orange" => ("PillOrangeBackground", "StatusOrange"),
+            "yellow" => ("PillYellowBackground", "StatusYellow"),
+            _ => ("PillNeutralBackground", "StatusUnknown"),
+        };
+
+        ChangeBand.BackgroundColor = (Color)resources[tintKey];
+        ChangeLabel.TextColor = (Color)resources[inkKey];
+
+        // No arrow when the reading is in line with normal — there is no direction to point.
+        var arrow = comparison.ChangePercent switch
+        {
+            < 0 => "↓ ",
+            > 0 => "↑ ",
+            _ => string.Empty,
+        };
+        ChangeLabel.Text = $"{arrow}{comparison.ChangeLabel}";
+    }
+
+    /// <summary>
+    /// Splits a formatted reading into the figure and its unit, so the two can be set at different
+    /// weights. Every producer in <c>AlertDetailComposer</c> formats these as "{number} {unit}"
+    /// ("1,477 steps", "68 bpm", "7.2 hours"), and the ones that don't carry a unit at all — an
+    /// em dash for a missing reading, a wake time — have no space to split on and pass through
+    /// whole.
+    /// </summary>
+    private static void SetValue(Span number, Span unit, string value)
+    {
+        var split = value.IndexOf(' ');
+        number.Text = split < 0 ? value : value[..split];
+        unit.Text = split < 0 ? string.Empty : value[split..];
     }
 
     private void ApplyContext(AlertDetailResponse alert, string firstName)

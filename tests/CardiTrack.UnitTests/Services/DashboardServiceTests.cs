@@ -48,7 +48,6 @@ public class DashboardServiceTests
         _activityLogs.GetByCardiMemberAndDateRangeAsync(_memberId, Arg.Any<DateOnly>(), Arg.Any<DateOnly>())
             .Returns([]);
         _baselines.GetLatestByCardiMemberAsync(_memberId, 30).Returns((PatternBaseline?)null);
-        _alerts.GetRecentByCardiMemberAsync(_memberId, Arg.Any<int>()).Returns([]);
         _alerts.GetUnresolvedByCardiMemberAsync(_memberId).Returns([]);
         _realtimeAssessments.GetLatestAsync(_memberId, Arg.Any<CancellationToken>())
             .Returns((RealtimeAssessment?)null);
@@ -525,7 +524,6 @@ public class DashboardServiceTests
                 AcknowledgedDate = DateTime.UtcNow,
             },
         ];
-        _alerts.GetRecentByCardiMemberAsync(_memberId, Arg.Any<int>()).Returns(alerts);
         _alerts.GetUnresolvedByCardiMemberAsync(_memberId).Returns(alerts);
 
         var result = await CreateSut().GetDashboardAsync(_userId, _memberId);
@@ -534,10 +532,63 @@ public class DashboardServiceTests
         Assert.Equal(1, result.UnreadAlertCount);
         Assert.Equal(2, result.RecentAlerts.Count);
         Assert.Equal("red", result.RecentAlerts[0].Severity);
-        Assert.False(result.RecentAlerts[0].IsAcknowledged);
-        Assert.True(result.RecentAlerts[1].IsAcknowledged);
-        await _alerts.Received(1).GetRecentByCardiMemberAsync(_memberId, 5);
+        // Acknowledged is not resolved: the episode is still open, and the strip has to say
+        // which of the two it is rather than calling both "Resolved".
+        Assert.Equal("new", result.RecentAlerts[0].Status);
+        Assert.Equal("acknowledged", result.RecentAlerts[1].Status);
         await _alerts.Received(1).GetUnresolvedByCardiMemberAsync(_memberId);
+    }
+
+    /// <summary>
+    /// The Recent Alerts strip used to be built from every alert whose row was still
+    /// <c>IsActive</c> — the soft-delete flag, which resolution does not touch — so an alert the
+    /// producer had already called over went on sitting on the dashboard while the alerts list
+    /// and the status colour had both moved past it.
+    /// </summary>
+    [Fact]
+    public async Task RecentAlerts_ExcludeResolvedAlerts()
+    {
+        SetupActivityLogs(days: 30);
+
+        // What the repository answers is already unresolved-only; the point of the test is that
+        // the strip reads that set rather than a wider one of its own.
+        _alerts.GetUnresolvedByCardiMemberAsync(_memberId).Returns([]);
+
+        var result = await CreateSut().GetDashboardAsync(_userId, _memberId);
+
+        Assert.Empty(result.RecentAlerts);
+        await _alerts.DidNotReceive().GetByCardiMemberAsync(_memberId, Arg.Any<bool>());
+    }
+
+    /// <summary>
+    /// The strip shows <c>RecentAlertCount</c> at most, newest first — the cap moved off the
+    /// repository when the two reads collapsed into one, so it is asserted here instead.
+    /// </summary>
+    [Fact]
+    public async Task RecentAlerts_AreCappedAtFive()
+    {
+        SetupActivityLogs(days: 30);
+
+        var newest = DateTime.UtcNow;
+        var alerts = Enumerable.Range(0, 8)
+            .Select(i => new Alert
+            {
+                CardiMemberId = _memberId,
+                AlertType = AlertType.Inactivity,
+                Severity = AlertSeverity.Yellow,
+                Title = $"Alert {i}",
+                // Newest first, as the repository orders them.
+                TriggeredDate = newest.AddMinutes(-i),
+                IsResolved = false,
+            })
+            .ToArray();
+        _alerts.GetUnresolvedByCardiMemberAsync(_memberId).Returns(alerts);
+
+        var result = await CreateSut().GetDashboardAsync(_userId, _memberId);
+
+        Assert.Equal(5, result.RecentAlerts.Count);
+        Assert.Equal("Alert 0", result.RecentAlerts[0].Title);
+        Assert.Equal("Alert 4", result.RecentAlerts[4].Title);
     }
 
     [Fact]

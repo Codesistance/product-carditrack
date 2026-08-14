@@ -5,9 +5,15 @@
              x:Class="CardiTrack.Mobile.DashboardPage"
              Shell.NavBarIsVisible="False"
              Shell.TabBarIsVisible="False"
-             BackgroundColor="{StaticResource PageGround}">
+             BackgroundColor="{StaticResource PageGround}"
+>
 
-    <Grid RowDefinitions="Auto,Auto,*,Auto">
+    <!-- Safe area is claimed per edge, and by this layout rather than by the ContentPage:
+         SafeAreaEdges is honoured on layouts, and setting it on the page above has no
+         effect on Android (verified on API 37). Top keeps the status-bar inset the header
+         band is drawn against; bottom releases it, so BottomNavBar can run to the screen
+         edge and pad itself instead — see that control. -->
+    <Grid RowDefinitions="Auto,Auto,*,Auto" SafeAreaEdges="None, Container, None, None">
 
         <!-- ════════════════════════════════════════
              FIXED HEADER (Figma 101:2872) — edge to edge, so it sits outside the

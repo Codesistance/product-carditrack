@@ -42,20 +42,23 @@ public partial class AlertMiniCard : ContentView
 
         IconTileBorder.BackgroundColor = (Color)resources[tileKey];
 
-        // An acknowledged alert reads as settled whatever its severity was; an open one keeps
-        // the severity colour so a red alert can't be mistaken for handled.
-        if (alert.IsAcknowledged)
+        // Same three words the alerts list uses (see AlertListCard) — this pill used to read
+        // "Resolved" for a merely acknowledged alert, which told a caregiver the episode was over
+        // when all it recorded was that somebody had looked. An acknowledged alert reads as
+        // settled whatever its severity was; an open one keeps the severity colour so a red alert
+        // can't be mistaken for handled. "resolved" never reaches this strip — the dashboard
+        // carries unresolved alerts only — but it is mapped rather than left to the fallback so a
+        // resolved one could not arrive here wearing the "New" pill.
+        var (statusText, backgroundKey, inkColorKey) = alert.Status switch
         {
-            StatusPillBorder.BackgroundColor = (Color)resources["PillGreenBackground"];
-            StatusPillLabel.TextColor = (Color)resources["StatusGreen"];
-            StatusPillLabel.Text = "Resolved";
-        }
-        else
-        {
-            StatusPillBorder.BackgroundColor = (Color)resources[pillKey];
-            StatusPillLabel.TextColor = (Color)resources[inkKey];
-            StatusPillLabel.Text = "New";
-        }
+            "resolved" => ("Resolved", "PillGreenBackground", "StatusGreen"),
+            "acknowledged" => ("Acknowledged", "PillGreenBackground", "StatusGreen"),
+            _ => ("New", pillKey, inkKey),
+        };
+
+        StatusPillLabel.Text = statusText;
+        StatusPillBorder.BackgroundColor = (Color)resources[backgroundKey];
+        StatusPillLabel.TextColor = (Color)resources[inkColorKey];
     }
 
     private void OnTapped(object? sender, EventArgs e) =>
