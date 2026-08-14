@@ -6,6 +6,7 @@ using CardiTrack.Domain.Entities;
 using CardiTrack.Domain.Enums;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Features;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
@@ -65,9 +66,10 @@ public class AuditLoggingMiddlewareTests
         public Endpoint? Endpoint { get; set; }
     }
 
-    private AuditLoggingMiddleware CreateSut(RequestDelegate? next = null) =>
+    private AuditLoggingMiddleware CreateSut(RequestDelegate? next = null, IMemoryCache? cache = null) =>
         new(next ?? (_ => Task.CompletedTask),
-            Substitute.For<ILogger<AuditLoggingMiddleware>>());
+            Substitute.For<ILogger<AuditLoggingMiddleware>>(),
+            cache ?? new MemoryCache(new MemoryCacheOptions()));
 
     private async Task<AuditLog?> InvokeAndCaptureAsync(
         DefaultHttpContext httpContext, bool authenticated = true)
@@ -250,6 +252,43 @@ public class AuditLoggingMiddlewareTests
         // request into a 500 after the fact.
         await CreateSut().InvokeAsync(
             BuildContext(new AuditHealthDataAccessAttribute("ViewDashboard")), userContext, _auditLogs);
+    }
+
+    [Fact]
+    public async Task CoalescesRepeatGets_OfTheSameLook()
+    {
+        var cache = new MemoryCache(new MemoryCacheOptions());
+        var context = BuildContext(
+            new AuditHealthDataAccessAttribute("ViewDashboard"),
+            routeValue: ("cardiMemberId", _memberId.ToString()));
+        var userContext = new FakeUserContext { UserId = _userId, IsAuthenticated = true };
+        var sut = CreateSut(cache: cache);
+
+        await sut.InvokeAsync(context, userContext, _auditLogs);
+        await sut.InvokeAsync(context, userContext, _auditLogs);
+
+        await _auditLogs.Received(1).AppendAsync(Arg.Any<AuditLog>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task StillRecordsEveryWrite_AndEveryDeniedGet()
+    {
+        var cache = new MemoryCache(new MemoryCacheOptions());
+        var userContext = new FakeUserContext { UserId = _userId, IsAuthenticated = true };
+        var sut = CreateSut(cache: cache);
+
+        var acknowledge = BuildContext(new AuditHealthDataAccessAttribute("AcknowledgeAlert"));
+        acknowledge.Request.Method = "POST";
+        await sut.InvokeAsync(acknowledge, userContext, _auditLogs);
+        await sut.InvokeAsync(acknowledge, userContext, _auditLogs);
+
+        var denied = BuildContext(
+            new AuditHealthDataAccessAttribute("ViewDashboard"),
+            statusCode: StatusCodes.Status404NotFound);
+        await sut.InvokeAsync(denied, userContext, _auditLogs);
+        await sut.InvokeAsync(denied, userContext, _auditLogs);
+
+        await _auditLogs.Received(4).AppendAsync(Arg.Any<AuditLog>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]

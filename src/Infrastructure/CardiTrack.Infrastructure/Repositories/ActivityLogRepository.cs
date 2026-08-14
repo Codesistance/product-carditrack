@@ -65,7 +65,11 @@ public class ActivityLogRepository : Repository<ActivityLog>, IActivityLogReposi
     public async Task<IEnumerable<ActivityLog>> GetByCardiMemberAndDateRangeAsync(
         Guid cardiMemberId, DateOnly from, DateOnly to)
     {
+        // Read-only for every caller (dashboard, insights, alerting). Upsert looks the row up
+        // itself, so these entities must not enter the tracker — a 30-day dashboard poll would
+        // otherwise attach ~30 wide rows on every tick.
         return await _dbSet
+            .AsNoTracking()
             .Where(al => al.CardiMemberId == cardiMemberId
                          && al.Date >= from
                          && al.Date <= to)

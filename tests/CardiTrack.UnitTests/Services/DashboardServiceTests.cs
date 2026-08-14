@@ -48,7 +48,8 @@ public class DashboardServiceTests
         _activityLogs.GetByCardiMemberAndDateRangeAsync(_memberId, Arg.Any<DateOnly>(), Arg.Any<DateOnly>())
             .Returns([]);
         _baselines.GetLatestByCardiMemberAsync(_memberId, 30).Returns((PatternBaseline?)null);
-        _alerts.GetByCardiMemberAsync(_memberId, true).Returns([]);
+        _alerts.GetRecentByCardiMemberAsync(_memberId, Arg.Any<int>()).Returns([]);
+        _alerts.GetUnresolvedByCardiMemberAsync(_memberId).Returns([]);
         _realtimeAssessments.GetLatestAsync(_memberId, Arg.Any<CancellationToken>())
             .Returns((RealtimeAssessment?)null);
     }
@@ -502,7 +503,7 @@ public class DashboardServiceTests
     public async Task UnresolvedAlerts_DriveHealthStatusAndUnreadCount()
     {
         SetupActivityLogs(days: 30);
-        _alerts.GetByCardiMemberAsync(_memberId, true).Returns(
+        Alert[] alerts =
         [
             new Alert
             {
@@ -523,7 +524,9 @@ public class DashboardServiceTests
                 IsResolved = false,
                 AcknowledgedDate = DateTime.UtcNow,
             },
-        ]);
+        ];
+        _alerts.GetRecentByCardiMemberAsync(_memberId, Arg.Any<int>()).Returns(alerts);
+        _alerts.GetUnresolvedByCardiMemberAsync(_memberId).Returns(alerts);
 
         var result = await CreateSut().GetDashboardAsync(_userId, _memberId);
 
@@ -533,6 +536,8 @@ public class DashboardServiceTests
         Assert.Equal("red", result.RecentAlerts[0].Severity);
         Assert.False(result.RecentAlerts[0].IsAcknowledged);
         Assert.True(result.RecentAlerts[1].IsAcknowledged);
+        await _alerts.Received(1).GetRecentByCardiMemberAsync(_memberId, 5);
+        await _alerts.Received(1).GetUnresolvedByCardiMemberAsync(_memberId);
     }
 
     [Fact]

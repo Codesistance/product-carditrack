@@ -42,6 +42,7 @@ public class NotificationRepository : Repository<Notification>, INotificationRep
         int offset,
         CancellationToken ct = default)
         => await Filtered(userId, state, category, cardiMemberId, owned)
+            .AsNoTracking()
             .OrderBy(ByUrgency)
             .ThenByDescending(n => n.FirstDetectedDate)
             // Ties are real — one run can create several rows in the same instant, and an unstable
@@ -72,6 +73,7 @@ public class NotificationRepository : Repository<Notification>, INotificationRep
     public async Task<IReadOnlyList<Notification>> GetTopForDashboardAsync(
         Guid userId, int limit, DateTime utcNow, CancellationToken ct = default)
         => await _dbSet
+            .AsNoTracking()
             .Where(n => n.UserId == userId
                         && n.IsActive
                         && n.IsOwner

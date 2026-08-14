@@ -33,7 +33,7 @@ public class CardiMemberServiceTests
         _unitOfWork.ActivityLogs.Returns(_activityLogs);
         _unitOfWork.PatternBaselines.Returns(_baselines);
         _unitOfWork.Alerts.Returns(_alerts);
-        _alerts.GetByCardiMemberAsync(Arg.Any<Guid>(), Arg.Any<bool>()).Returns([]);
+        _alerts.GetUnresolvedByCardiMemberAsync(Arg.Any<Guid>()).Returns([]);
 
         // Reversible stand-in for AES so tests can assert that notes are stored encrypted
         // and read back in the clear without pulling in a real key.

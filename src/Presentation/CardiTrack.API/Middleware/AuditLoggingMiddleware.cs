@@ -2,6 +2,7 @@ using CardiTrack.API.Infrastructure.Auditing;
 using CardiTrack.API.Infrastructure.UserContext;
 using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Domain.Entities;
+using Microsoft.Extensions.Caching.Memory;
 
 namespace CardiTrack.API.Middleware;
 
@@ -16,6 +17,14 @@ namespace CardiTrack.API.Middleware;
 /// </remarks>
 public class AuditLoggingMiddleware
 {
+    /// <summary>
+    /// How long a successful GET of the same user/action/member counts as one look. The mobile
+    /// dashboard polls every 30 seconds; writing a row per tick fills the trail with "left the
+    /// phone on the table" and spends a Cloud SQL insert each time. The first GET in the window
+    /// still records the access. Writes and failed/denied attempts are never coalesced.
+    /// </summary>
+    internal static readonly TimeSpan ReadSessionWindow = TimeSpan.FromMinutes(15);
+
     /// <summary>Route values that name the member whose data is being reached.</summary>
     private static readonly string[] CardiMemberRouteKeys = ["cardiMemberId", "memberId", "id"];
 
@@ -31,11 +40,16 @@ public class AuditLoggingMiddleware
 
     private readonly RequestDelegate _next;
     private readonly ILogger<AuditLoggingMiddleware> _logger;
+    private readonly IMemoryCache _readSessions;
 
-    public AuditLoggingMiddleware(RequestDelegate next, ILogger<AuditLoggingMiddleware> logger)
+    public AuditLoggingMiddleware(
+        RequestDelegate next,
+        ILogger<AuditLoggingMiddleware> logger,
+        IMemoryCache readSessions)
     {
         _next = next;
         _logger = logger;
+        _readSessions = readSessions;
     }
 
     public async Task InvokeAsync(
@@ -54,16 +68,23 @@ public class AuditLoggingMiddleware
         if (!userContext.IsAuthenticated || userContext.UserId == Guid.Empty)
             return;
 
+        var action = Truncate(
+            descriptor.Action ?? $"{httpContext.Request.Method} {httpContext.Request.Path}",
+            MaxActionLength);
+        var entityType = Truncate(descriptor.EntityType, MaxEntityTypeLength);
+        var cardiMemberId = ResolveCardiMemberId(httpContext);
+
+        if (IsCoalescedRead(httpContext, userContext.UserId, action, entityType, cardiMemberId))
+            return;
+
         try
         {
             await auditLogs.AppendAsync(new AuditLog
             {
                 UserId = userContext.UserId,
-                CardiMemberId = ResolveCardiMemberId(httpContext),
-                Action = Truncate(
-                    descriptor.Action ?? $"{httpContext.Request.Method} {httpContext.Request.Path}",
-                    MaxActionLength),
-                EntityType = Truncate(descriptor.EntityType, MaxEntityTypeLength),
+                CardiMemberId = cardiMemberId,
+                Action = action,
+                EntityType = entityType,
                 Timestamp = DateTime.UtcNow,
                 IpAddress = Truncate(
                     httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown", MaxIpAddressLength),
@@ -74,6 +95,8 @@ public class AuditLoggingMiddleware
                 HttpMethod = Truncate(httpContext.Request.Method, MaxHttpMethodLength),
                 ResponseStatus = httpContext.Response.StatusCode,
             }, httpContext.RequestAborted);
+
+            RememberRead(httpContext, userContext.UserId, action, entityType, cardiMemberId);
         }
         catch (Exception ex)
         {
@@ -85,6 +108,35 @@ public class AuditLoggingMiddleware
                 httpContext.Request.Method, httpContext.Request.Path, userContext.UserId);
         }
     }
+
+    /// <summary>
+    /// True when this GET is a repeat look inside <see cref="ReadSessionWindow"/>. Failed
+    /// responses and any non-GET (acknowledge, delete, chat) always return false.
+    /// </summary>
+    private bool IsCoalescedRead(
+        HttpContext httpContext, Guid userId, string action, string entityType, Guid? cardiMemberId)
+    {
+        if (!HttpMethods.IsGet(httpContext.Request.Method) || httpContext.Response.StatusCode >= 400)
+            return false;
+
+        return _readSessions.TryGetValue(ReadSessionKey(userId, action, entityType, cardiMemberId), out _);
+    }
+
+    private void RememberRead(
+        HttpContext httpContext, Guid userId, string action, string entityType, Guid? cardiMemberId)
+    {
+        if (!HttpMethods.IsGet(httpContext.Request.Method) || httpContext.Response.StatusCode >= 400)
+            return;
+
+        _readSessions.Set(
+            ReadSessionKey(userId, action, entityType, cardiMemberId),
+            true,
+            ReadSessionWindow);
+    }
+
+    private static string ReadSessionKey(
+        Guid userId, string action, string entityType, Guid? cardiMemberId) =>
+        $"audit-read:{userId:N}:{action}:{entityType}:{cardiMemberId:N}";
 
     /// <summary>
     /// Pulls the member id out of the route. Null is legitimate — some audited endpoints take
