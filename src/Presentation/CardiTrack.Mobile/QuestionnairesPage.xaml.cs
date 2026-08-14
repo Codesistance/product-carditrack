@@ -81,16 +81,17 @@ public partial class QuestionnairesPage : ContentPage
     protected override void OnAppearing()
     {
         base.OnAppearing();
-        _ = LoadAsync();
+        _ = LoadAsync(showSkeleton: true);
     }
 
     private async void OnPullToRefresh(object? sender, EventArgs e)
     {
-        await LoadAsync();
+        // RefreshView's own spinner is already showing; the skeleton swap would fight it.
+        await LoadAsync(showSkeleton: false);
         Refresher.IsRefreshing = false;
     }
 
-    private void OnRetryClicked(object? sender, EventArgs e) => _ = LoadAsync();
+    private void OnRetryClicked(object? sender, EventArgs e) => _ = LoadAsync(showSkeleton: true);
 
     private async void OnBackTapped(object? sender, EventArgs e) =>
         await this.GoBackAsync($"{CardiMemberDetailPage.Route}?memberId={_memberId}");
@@ -121,15 +122,27 @@ public partial class QuestionnairesPage : ContentPage
         }
 
         if (!ct.IsCancellationRequested)
-            await LoadAsync();
+            await LoadAsync(showSkeleton: false, resetScroll: true);
     }
 
     /// <summary>(Re)loads from page one — the initial open, a pull-to-refresh, a search edit, or
     /// anything that changes what belongs at the top of the list.</summary>
-    private async Task LoadAsync()
+    /// <param name="showSkeleton">
+    /// Only for a cold start (nothing meaningful already on screen — the first open, or a retry
+    /// from the error panel). Every other caller already has the list, and the search box, on
+    /// screen — the search box lives in the CollectionView's own header, so swapping the whole
+    /// view out for the skeleton on every search edit also yanked the box the caregiver was
+    /// mid-keystroke in. Those callers reload with the list left exactly as it is until the new
+    /// results are ready, and swap the contents in place.
+    /// </param>
+    /// <param name="resetScroll">A new search is a new result set — scrolls back to the top so a
+    /// caregiver who had scrolled deep into the old list doesn't land on a blank tail of the new,
+    /// shorter one.</param>
+    private async Task LoadAsync(bool showSkeleton, bool resetScroll = false)
     {
         var generation = ++_loadGeneration;
-        SetState(loading: true);
+        if (showSkeleton)
+            SetState(loading: true);
         _currentPage = 1;
 
         try
@@ -150,6 +163,8 @@ public partial class QuestionnairesPage : ContentPage
                 ApplyEmptyStateText();
 
             SetState(loaded: true);
+            if (resetScroll && _answeredItems.Count > 0)
+                AnsweredList.ScrollTo(0, position: ScrollToPosition.Start, animate: false);
         }
         catch (ApiException ex)
         {
@@ -252,7 +267,7 @@ public partial class QuestionnairesPage : ContentPage
             // A full reload rather than a patch: answering the pending question both removes it
             // from the header and inserts a brand-new row at the top of the answered list.
             PendingCard.CloseEditor();
-            await LoadAsync();
+            await LoadAsync(showSkeleton: false);
         }
         catch (ApiException ex) when (!ex.IsSessionExpired)
         {
@@ -280,7 +295,7 @@ public partial class QuestionnairesPage : ContentPage
         try
         {
             await _api.DismissQuestionnaireAsync(questionnaire.Id);
-            await LoadAsync();
+            await LoadAsync(showSkeleton: false);
         }
         catch (ApiException ex) when (!ex.IsSessionExpired)
         {
