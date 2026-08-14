@@ -54,15 +54,15 @@ public partial class DigestGenerationService : IDigestGenerationService
           the person as {{NAME}} the first time and by pronoun after that — never "your
           relative" or "your loved one". Cover sleep, movement and heart rate, and say plainly
           when a reading is missing instead of padding with reassurance.
-        - suggestions: exactly three ways the family could support {{NAME}} today, at most ten
-          words each. Each must answer something in the readings above closely enough that a
-          reader could tell which one it came from, and say what to do and when. A suggestion
-          equally true for any person on any day is not one of the three; neither is a bare
-          category of caring. Make the three different in kind: one about contact or company,
-          one about comfort, food or the home, one about rest or gentle movement. Ordinary
-          kindnesses aimed at comfort, not treatment. Never medical advice, never medication,
-          never a test or a measurement, and never worded as something the family has failed
-          to do.
+        - suggestion: one supportive, specific action the family could take today, at most 25
+          words, in plain everyday language rather than clinical terms. It must answer something in the readings above closely enough that a reader could tell what it came
+          from — a suggestion equally true for any person on any day is not this one. It may
+          reference an already-known routine fact, such as reminding them about a medication
+          they are scheduled to take, or a check-in tied to something mentioned in the readings.
+          It must never invent a diagnosis, never name or guess at a medical condition, never
+          suggest starting, stopping or changing any medication or dose, and never tell the
+          family to interpret a reading themselves. If something concerning continues, say the
+          family should mention it to {{NAME}}'s care team rather than act on it alone, and never worded as something the family has failed to do.
 
         Only if something in the readings would be clearer if the family explained it, also respond with:
         - question: one short question to the family about {{NAME}}'s life, at most twenty
@@ -124,23 +124,36 @@ public partial class DigestGenerationService : IDigestGenerationService
     ];
 
     /// <summary>
+    /// Stems that make a suggestion a diagnosis rather than a supportive action. The prompt already
+    /// asks the model not to name or guess at a medical condition; this is the backstop for when it
+    /// does anyway — the same "written but rejected" pattern as <see cref="ParrotedSuggestions"/>,
+    /// not a claim that the prompt alone is reliable. Matched as substrings so inflections
+    /// ("diagnosed", "diagnosis") are covered by the stem.
+    /// </summary>
+    private static readonly string[] DiagnosticMarkers =
+    [
+        "diagnos",
+        "afib",
+        "fibrillation",
+        "arrhythmia",
+        "condition",
+        "disease",
+        "disorder",
+        "syndrome",
+    ];
+
+    /// <summary>
     /// Storage cap for the headline. Well past the two-to-five words asked for — this is the
     /// guard against a model that answers with a sentence, not the length being aimed at.
     /// </summary>
     private const int MaxHeadlineLength = 120;
 
     /// <summary>
-    /// How many supportive suggestions a summary carries. Three is the number the section is built
-    /// around: enough to feel like options, few enough to read at a glance and act on one.
-    /// </summary>
-    private const int SuggestionCount = 3;
-
-    /// <summary>
-    /// Storage cap per suggestion. Well past the eight words asked for — like
+    /// Storage cap for the suggestion. Well past the 25 words asked for — like
     /// <see cref="MaxHeadlineLength"/> this guards against a model that answers with a paragraph,
     /// rather than describing the length being aimed at.
     /// </summary>
-    private const int MaxSuggestionLength = 200;
+    private const int MaxSuggestionLength = 260;
 
     /// <summary>
     /// The floor between two summaries for the same member. The job runs every quarter hour so a
@@ -374,8 +387,8 @@ public partial class DigestGenerationService : IDigestGenerationService
             Audience = DigestAudience.Family,
             Headline = NamePlaceholder.Resolve(CleanHeadline(aiResponse.Headline, memberId, describedDate), name),
             Text = NamePlaceholder.Resolve(text, name)!,
-            Suggestions = CleanSuggestions(aiResponse.Suggestions, memberId, describedDate)
-                ?.Select(s => NamePlaceholder.Resolve(s, name)!).ToList(),
+            Suggestion = NamePlaceholder.Resolve(
+                CleanSuggestion(aiResponse.Suggestion, memberId, describedDate), name),
             GeneratedAtUtc = utcNow,
         }, ct);
 
@@ -638,45 +651,44 @@ public partial class DigestGenerationService : IDigestGenerationService
     }
 
     /// <summary>
-    /// Three suggestions or none. A partial set is not a shorter list, it is a section that
-    /// promises three ways to help and delivers one — so anything short of a full, usable set is
-    /// dropped and the apps hide the section entirely.
+    /// One suggestion or none. A suggestion that fails validation is dropped rather than fixed up
+    /// — the apps hide the section entirely, which is a better outcome than showing a mangled or
+    /// unsafe line.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// Each item is a label the same way the headline is: no wrapping quotes, no leading bullet
-    /// from a model that decided to format its own list, and nothing long enough to be a paragraph
-    /// in disguise. Duplicates are dropped too — three ways to help that are the same way twice is
-    /// worse than not showing the section.
+    /// A label the same way the headline is: no wrapping quotes, no leading bullet from a model
+    /// that decided to format its own list, and nothing long enough to be a paragraph in disguise.
     /// </para>
     /// <para>
-    /// <see cref="ParrotedSuggestions"/> is dropped as well, for the same reason as the
-    /// instruction echoes: a suggestion that is word for word one of the prompt's old examples, or
-    /// one of the bare categories of caring it rules out, is the model answering from the nearest
-    /// text rather than from this member's readings — and it is indistinguishable, on screen, from
-    /// a summary that had nothing to say.
+    /// <see cref="ParrotedSuggestions"/> is dropped for the same reason as the instruction echoes:
+    /// a suggestion that is word for word one of the prompt's old examples, or one of the bare
+    /// categories of caring it rules out, is the model answering from the nearest text rather than
+    /// from this member's readings. <see cref="DiagnosticMarkers"/> is dropped because the prompt's
+    /// ban on naming or guessing a condition is a line worth a second check, not just a request.
     /// </para>
     /// </remarks>
-    private List<string>? CleanSuggestions(
-        IReadOnlyList<string>? suggestions, Guid memberId, DateOnly describedDate)
+    private string? CleanSuggestion(string? suggestion, Guid memberId, DateOnly describedDate)
     {
-        var cleaned = (suggestions ?? [])
-            .Select(s => (s ?? string.Empty).Trim().TrimStart('-', '*', '•').Trim('"', '\'', ' ').Trim())
-            .Where(s => s.Length is > 0 and <= MaxSuggestionLength
-                        && !ReadsLikeTheInstructions(s)
-                        && !IsParroted(s))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .Take(SuggestionCount)
-            .ToList();
+        var cleaned = (suggestion ?? string.Empty).Trim().TrimStart('-', '*', '•').Trim('"', '\'', ' ').Trim();
 
-        if (cleaned.Count == SuggestionCount)
+        var reason = cleaned.Length switch
+        {
+            0 => "the model returned none",
+            > MaxSuggestionLength => $"it ran to {cleaned.Length} characters",
+            _ when ReadsLikeTheInstructions(cleaned) => "it restated the instructions",
+            _ when IsParroted(cleaned) => "it matched a parroted example",
+            _ when IsDiagnostic(cleaned) => "it named or guessed at a medical condition",
+            _ => null,
+        };
+
+        if (reason is null)
             return cleaned;
 
         _logger.LogWarning(
-            "Dropped the generated suggestions for CardiMember {CardiMemberId} on {LocalDate}: "
-            + "{Usable} of the {Required} required survived validation. The summary is stored "
-            + "without them and the apps will hide the section.",
-            memberId, describedDate, cleaned.Count, SuggestionCount);
+            "Dropped the generated suggestion for CardiMember {CardiMemberId} on {LocalDate}: "
+            + "{Reason}. The summary is stored without it and the apps will hide the section.",
+            memberId, describedDate, reason);
         return null;
     }
 
@@ -749,6 +761,10 @@ public partial class DigestGenerationService : IDigestGenerationService
         ParrotedSuggestions.Contains(
             suggestion.TrimEnd('.', '!', ' ').Trim(), StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>See <see cref="DiagnosticMarkers"/>.</summary>
+    private static bool IsDiagnostic(string suggestion) =>
+        DiagnosticMarkers.Any(marker => suggestion.Contains(marker, StringComparison.OrdinalIgnoreCase));
+
     /// <summary>See <see cref="InstructionEchoes"/>. Whitespace is flattened first so the check does
     /// not depend on the model having re-wrapped the instructions exactly as they were sent.</summary>
     private static bool ReadsLikeTheInstructions(string text)
@@ -782,7 +798,7 @@ public partial class DigestGenerationService : IDigestGenerationService
             + "{{NAME}} exactly. Not a restatement of the instructions.")]
         public required string Summary { get; init; }
 
-        /// <summary>Three supportive actions — see <see cref="CleanSuggestions"/>.</summary>
+        /// <summary>One supportive action — see <see cref="CleanSuggestion"/>.</summary>
         /// <remarks>
         /// Carries no example, deliberately, and neither do the instructions any more. It used to
         /// offer three ("Ask how they slept", "Suggest a short walk together", "Make their
@@ -792,8 +808,9 @@ public partial class DigestGenerationService : IDigestGenerationService
         /// place in the prompt to put a phrase that would be usable as an answer.
         /// </remarks>
         [Description(
-            "Exactly three specific, supportive, actionable, realistic suggestions, at most ten words each, with respect to the readings.")]
-        public IReadOnlyList<string>? Suggestions { get; init; }
+            "One specific, supportive, actionable suggestion in plain language, at most 25 words, "
+            + "with respect to the readings. Never a diagnosis or a guess at a medical condition.")]
+        public string? Suggestion { get; init; }
 
         /// <summary>
         /// The optional clarifying question — see <see cref="CleanQuestion"/> for what happens to

@@ -303,6 +303,12 @@ public class CardiMemberService : ICardiMemberService
         var age = CalculateAge(member.DateOfBirth);
         var metrics = logs.Count == 0 ? null : MemberInsightsCalculator.BuildMetrics(logs, baseline, today, age);
 
+        // Consent checked before the query, not after — same stance as EnvironmentalContextSource:
+        // only a consented member can ever have a row, so the common case skips the roundtrip.
+        var environmentalReading = member.EnvironmentalContextConsentGranted
+            ? await _unitOfWork.EnvironmentalReadings.GetLatestAsync(member.Id)
+            : null;
+
         return new CardiMemberDetailResponse
         {
             Id = member.Id,
@@ -328,6 +334,8 @@ public class CardiMemberService : ICardiMemberService
             Baseline = BaselineProgress.From(logs, baseline),
             HealthStatus = MemberInsightsCalculator.ComputeHealthStatus(unresolvedAlerts, baseline is null, metrics),
             Metrics = metrics,
+            Weather = WeatherSnapshotResponse.From(
+                member.EnvironmentalContextConsentGranted, environmentalReading),
         };
     }
 

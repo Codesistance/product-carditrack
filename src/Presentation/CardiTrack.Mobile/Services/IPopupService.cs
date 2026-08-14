@@ -1,3 +1,5 @@
+using CardiTrack.Application.DTOs.Responses;
+
 namespace CardiTrack.Mobile.Services;
 
 /// <summary>Drives the popup's icon glyph and accent colour.</summary>
@@ -49,4 +51,7 @@ public interface IPopupService
     /// Returns null when cancelled or dismissed via back.
     /// </summary>
     Task<string?> ChooseAsync(string title, string cancelText, params string[] options);
+
+    /// <summary>Shows the detail behind a dashboard/detail weather chip. Completes once dismissed.</summary>
+    Task ShowWeatherAsync(WeatherSnapshotResponse weather);
 }

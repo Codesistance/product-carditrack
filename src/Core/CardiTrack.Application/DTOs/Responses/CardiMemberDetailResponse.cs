@@ -54,4 +54,7 @@ public class CardiMemberDetailResponse
     /// showing fewer days takes. Null when there's no activity history yet, same condition
     /// <see cref="DashboardResponse.Metrics"/> uses.</summary>
     public DashboardMetrics? Metrics { get; set; }
+
+    /// <summary>Same field and meaning as <see cref="DashboardResponse.Weather"/>.</summary>
+    public WeatherSnapshotResponse? Weather { get; set; }
 }

@@ -8,6 +8,11 @@ public partial class StatusHeroCard : ContentView
     /// <summary>Raised when the card body is tapped — the dashboard's route into M1-13.</summary>
     public event EventHandler? MemberTapped;
 
+    /// <summary>Raised when the weather chip is tapped, carrying the reading it was built from.</summary>
+    public event EventHandler<WeatherSnapshotResponse>? WeatherTapped;
+
+    private WeatherSnapshotResponse? _weather;
+
     /// <summary>
     /// Which tier <see cref="Apply"/> last rendered, so a late-arriving
     /// <see cref="ApplyDynamicMessage"/> can tell whether it's still describing the status
@@ -73,6 +78,29 @@ public partial class StatusHeroCard : ContentView
 
         SetStatusLine(line.ColorKey, line.Icon, line.Headline, line.Detail);
         _healthStatus = data.HealthStatus;
+
+        ApplyWeather(data.Weather);
+    }
+
+    /// <summary>Icon-and-temperature chip beside the name. Hidden outright rather than shown
+    /// empty — see <see cref="WeatherSnapshotResponse.From"/> for when the server sends one.</summary>
+    private void ApplyWeather(WeatherSnapshotResponse? weather)
+    {
+        _weather = weather;
+        WeatherChip.IsVisible = weather is not null;
+        if (weather is null)
+            return;
+
+        WeatherGlyphLabel.Text = WeatherGlyph.For(weather.Condition);
+        WeatherTemperatureLabel.Text = weather.TemperatureCelsius is { } temperature
+            ? $"{temperature:F0}°C"
+            : string.Empty;
+    }
+
+    private void OnWeatherTapped(object? sender, TappedEventArgs e)
+    {
+        if (_weather is { } weather)
+            WeatherTapped?.Invoke(this, weather);
     }
 
     /// <summary>

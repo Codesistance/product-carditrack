@@ -41,17 +41,18 @@ public class DigestEntry
     public string Text { get; set; } = string.Empty;
 
     /// <summary>
-    /// Three short things the family could do to support this CardiMember today, generated with
-    /// the summary so they follow from the same readings it describes rather than from a fixed
-    /// list. Null when the model returned none, or returned some that did not survive validation
-    /// — the apps show nothing rather than a partial set.
+    /// One short, specific thing the family could do to support this CardiMember today, generated
+    /// with the summary so it follows from the same readings the summary describes. Null when the
+    /// model returned none, or returned one that did not survive validation — the apps show
+    /// nothing rather than a mangled or unsafe line.
     /// </summary>
     /// <remarks>
-    /// Support, never treatment: these are the register of "ask how they slept", not of dosage or
-    /// diagnosis. Derived and regenerable like the rest of this entity, and never authoritative
-    /// (docs/llm_design.md).
+    /// Support, never treatment: register is "ask how they slept," not dosage or diagnosis — it
+    /// may reference an already-known routine fact like a scheduled medication, but never names or
+    /// guesses at a condition. Derived and regenerable like the rest of this entity, and never
+    /// authoritative (docs/llm_design.md).
     /// </remarks>
-    public List<string>? Suggestions { get; set; }
+    public string? Suggestion { get; set; }
 
     /// <summary>
     /// When this generation ran. Part of the key: it is what distinguishes one recomputation of a

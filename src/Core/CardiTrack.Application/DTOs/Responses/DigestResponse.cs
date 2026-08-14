@@ -21,11 +21,11 @@ public class DigestResponse
     public required string Text { get; init; }
 
     /// <summary>
-    /// Three short ways the family could support this CardiMember today, generated alongside the
-    /// text. Null when this generation produced none that survived validation — clients hide the
-    /// section rather than rendering a partial set.
+    /// One short, specific way the family could support this CardiMember today, generated
+    /// alongside the text. Null when this generation produced none that survived validation —
+    /// clients hide the section rather than rendering a mangled line.
     /// </summary>
-    public IReadOnlyList<string>? Suggestions { get; init; }
+    public string? Suggestion { get; init; }
 
     public required DateTime GeneratedAtUtc { get; init; }
 }

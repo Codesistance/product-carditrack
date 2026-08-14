@@ -91,7 +91,7 @@
 
                         <!-- Profile -->
                         <Border Style="{StaticResource ElevatedCard}">
-                            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="14">
+                            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="14">
                                 <!-- This screen's own display image box, lifted into a shared
                                      control so the dashboard hero can wear it too — and it now
                                      shows the member's photo when there is one, not just their
@@ -105,6 +105,23 @@
                                     <Label x:Name="AgeRelationshipLabel" Style="{StaticResource Body2}"/>
                                 </VerticalStackLayout>
 
+                                <!-- Last-session weather (EnvironmentalReading — not live, no
+                                     stored coordinate). Same chip and popup as the dashboard hero
+                                     card; hidden when the member has no reading or hasn't
+                                     consented to environmental context. -->
+                                <HorizontalStackLayout x:Name="WeatherChip"
+                                                        Grid.Column="2"
+                                                        Spacing="4"
+                                                        VerticalOptions="Center"
+                                                        IsVisible="False">
+                                    <HorizontalStackLayout.GestureRecognizers>
+                                        <TapGestureRecognizer Tapped="OnWeatherTapped"/>
+                                    </HorizontalStackLayout.GestureRecognizers>
+                                    <Label x:Name="WeatherGlyphLabel" FontSize="16" VerticalOptions="Center"/>
+                                    <Label x:Name="WeatherTemperatureLabel"
+                                           Style="{StaticResource Body2Dark}"
+                                           VerticalOptions="Center"/>
+                                </HorizontalStackLayout>
                             </Grid>
                         </Border>
 
@@ -209,24 +226,19 @@
                             </VerticalStackLayout>
                         </Border>
 
-                        <!-- Suggestions. Generated with the summary above and from the same
-                             readings, so what it proposes follows from what the summary just said
-                             rather than from a fixed list. Hidden outright when this generation
-                             produced none — a section headed "three ways to help" showing one is
-                             worse than no section. Support, never treatment: the register is "ask
-                             how they slept", not dosage. -->
+                        <!-- Tips. Generated with the summary above and from the same readings, so
+                             what it proposes follows from what the summary just said rather than
+                             from a fixed list. Hidden outright when this generation produced none.
+                             Support, never treatment: the register is "ask how they slept" or a
+                             scheduled-medication reminder, never a diagnosis or a dose. -->
                         <Border x:Name="SuggestionsCard"
                                 Style="{StaticResource ElevatedCard}"
                                 IsVisible="False">
                             <VerticalStackLayout Spacing="10">
-                                <!-- The idea glyph belongs to the heading, not to every row: it
-                                     says the section is a set of things to try, which is a point
-                                     worth making once. Repeated down the rows it read as three
-                                     separate ideas being announced and crowded the words it was
-                                     meant to introduce. Sits under the same icon-then-title
-                                     treatment as the cards above, pinned to Start so a heading
-                                     that wraps keeps it beside its first line. Decorative, so out
-                                     of the accessibility tree — the heading is the words. -->
+                                <!-- Sits under the same icon-then-title treatment as the cards
+                                     above, pinned to Start so a heading that wraps keeps it beside
+                                     its first line. Decorative, so out of the accessibility tree —
+                                     the heading is the words. -->
                                 <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
                                     <Label Grid.Column="0"
                                            Text="&#x1F4A1;"
@@ -239,7 +251,9 @@
                                            Style="{StaticResource DashboardSectionTitle}"
                                            LineBreakMode="WordWrap"/>
                                 </Grid>
-                                <VerticalStackLayout x:Name="SuggestionsList" Spacing="8"/>
+                                <Label x:Name="SuggestionLabel"
+                                       Style="{StaticResource Body2Dark}"
+                                       LineBreakMode="WordWrap"/>
                             </VerticalStackLayout>
                         </Border>
 

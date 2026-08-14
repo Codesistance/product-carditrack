@@ -1,3 +1,4 @@
+using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Mobile.Controls;
 
 namespace CardiTrack.Mobile.Services;
@@ -54,6 +55,26 @@ public sealed class PopupService : IPopupService
             {
                 // Released only once the chooser has left the modal stack — the page underneath
                 // is raised on the way out, and it reads IsShowing to know that it never left.
+                Interlocked.Decrement(ref _open);
+            }
+        });
+
+    public Task ShowWeatherAsync(WeatherSnapshotResponse weather) =>
+        MainThread.InvokeOnMainThreadAsync(async () =>
+        {
+            var page = Microsoft.Maui.Controls.Application.Current?.Windows.FirstOrDefault()?.Page;
+            if (page is null)
+                return;
+
+            var popup = new WeatherPopupPage(weather);
+            Interlocked.Increment(ref _open);
+            try
+            {
+                await page.Navigation.PushModalAsync(popup, animated: false);
+                await popup.Closed;
+            }
+            finally
+            {
                 Interlocked.Decrement(ref _open);
             }
         });

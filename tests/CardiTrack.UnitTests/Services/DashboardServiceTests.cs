@@ -16,6 +16,7 @@ public class DashboardServiceTests
     private readonly IPatternBaselineRepository _baselines = Substitute.For<IPatternBaselineRepository>();
     private readonly IAlertRepository _alerts = Substitute.For<IAlertRepository>();
     private readonly IRealtimeAssessmentRepository _realtimeAssessments = Substitute.For<IRealtimeAssessmentRepository>();
+    private readonly IEnvironmentalReadingRepository _environmentalReadings = Substitute.For<IEnvironmentalReadingRepository>();
 
     private readonly Guid _userId = Guid.NewGuid();
     private readonly Guid _memberId = Guid.NewGuid();
@@ -29,6 +30,7 @@ public class DashboardServiceTests
         _unitOfWork.PatternBaselines.Returns(_baselines);
         _unitOfWork.Alerts.Returns(_alerts);
         _unitOfWork.RealtimeAssessments.Returns(_realtimeAssessments);
+        _unitOfWork.EnvironmentalReadings.Returns(_environmentalReadings);
 
         // Defaults: linked user, active member, no devices/data/baseline/alerts.
         SetupLink(canViewHealthData: true);
@@ -122,6 +124,10 @@ public class DashboardServiceTests
         Assert.Equal(7, result.Baseline.BaselinePeriodDays);
         // The colours anchor to the provisional average instead of reading "unknown".
         Assert.Equal("green", result.Metrics!.RestingHeartRate.Status);
+        // But the hero status does not: StatisticalAlertService will not raise a single alert
+        // until the full 30 days exists, so claiming "green" off a week of data would be a
+        // clean bill of health from the one system not yet watching for a dirty one.
+        Assert.Equal("unknown", result.HealthStatus);
     }
 
     [Fact]
@@ -605,5 +611,72 @@ public class DashboardServiceTests
         Assert.False(result.MonitoringPaused);
         Assert.NotEqual("paused", result.HealthStatus);
         Assert.Null(result.MonitoringPauseReason);
+    }
+
+    // ── Weather ──────────────────────────────────────────────────────────────
+
+    private void SetupConsent(bool granted) =>
+        _members.GetByIdAsync(_memberId).Returns(new CardiMember
+        {
+            Id = _memberId,
+            Name = "Margaret Doe",
+            DateOfBirth = DateOnly.FromDateTime(DateTime.UtcNow.AddYears(-78)),
+            IsActive = true,
+            EnvironmentalContextConsentGranted = granted,
+        });
+
+    [Fact]
+    public async Task Weather_IsNull_AndNeverQueried_WhenConsentNotGranted()
+    {
+        SetupConsent(granted: false);
+        _environmentalReadings.GetLatestAsync(_memberId, Arg.Any<CancellationToken>()).Returns(new EnvironmentalReading
+        {
+            CardiMemberId = _memberId,
+            TemperatureCelsius = 21,
+        });
+
+        var result = await CreateSut().GetDashboardAsync(_userId, _memberId);
+
+        // Consent checked before the query, not after — same stance as EnvironmentalContextSource.
+        Assert.Null(result.Weather);
+        await _environmentalReadings.DidNotReceive().GetLatestAsync(_memberId, Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task Weather_IsNull_WhenConsentGranted_ButNothingDerivedYet()
+    {
+        SetupConsent(granted: true);
+        _environmentalReadings.GetLatestAsync(_memberId, Arg.Any<CancellationToken>())
+            .Returns((EnvironmentalReading?)null);
+
+        var result = await CreateSut().GetDashboardAsync(_userId, _memberId);
+
+        Assert.Null(result.Weather);
+    }
+
+    [Fact]
+    public async Task Weather_CarriesTheLatestReading_WhenConsentGranted()
+    {
+        SetupConsent(granted: true);
+        var sessionEnd = DateTime.UtcNow.AddHours(-2);
+        _environmentalReadings.GetLatestAsync(_memberId, Arg.Any<CancellationToken>()).Returns(new EnvironmentalReading
+        {
+            CardiMemberId = _memberId,
+            SessionEndUtc = sessionEnd,
+            TemperatureCelsius = 21.4,
+            WeatherCondition = "Partly cloudy",
+            RelativeHumidityPercent = 55,
+            AirQualityIndex = 42,
+            AirQualityCategory = "Good",
+        });
+
+        var result = await CreateSut().GetDashboardAsync(_userId, _memberId);
+
+        Assert.NotNull(result.Weather);
+        Assert.Equal(21.4m, result.Weather!.TemperatureCelsius);
+        Assert.Equal("Partly cloudy", result.Weather.Condition);
+        Assert.Equal(55, result.Weather.HumidityPercent);
+        Assert.Equal("Good", result.Weather.AirQualityCategory);
+        Assert.Equal(sessionEnd, result.Weather.AsOfUtc);
     }
 }

@@ -1,3 +1,5 @@
+using CardiTrack.Domain.Entities;
+
 namespace CardiTrack.Application.DTOs.Responses;
 
 /// <summary>
@@ -54,7 +56,66 @@ public class DashboardResponse
     public DashboardBaselineState Baseline { get; set; } = new();
     public DashboardMetrics? Metrics { get; set; }
     public List<DashboardAlertSummary> RecentAlerts { get; set; } = new();
+
+    /// <summary>
+    /// Conditions from the member's last GPS-tagged exercise session — not live weather, and
+    /// never a stored coordinate (see <see cref="EnvironmentalReading"/>). Null when the member
+    /// hasn't granted environmental-context consent, or nothing has been derived yet.
+    /// </summary>
+    public WeatherSnapshotResponse? Weather { get; set; }
+
     public DateTime GeneratedAt { get; set; }
+}
+
+/// <summary>
+/// Last-known weather for a member, derived from their most recent exercise session — see
+/// <see cref="EnvironmentalReading"/> for why this is "last known" rather than live, and why it
+/// carries no coordinate. Shared between <see cref="DashboardResponse"/> and
+/// <see cref="CardiMemberDetailResponse"/> so both screens read it the same way.
+/// </summary>
+public class WeatherSnapshotResponse
+{
+    public decimal? TemperatureCelsius { get; set; }
+
+    /// <summary>Free text from the weather provider ("Light rain", "Partly cloudy") — described
+    /// to a reader, never matched against, same stance as the AI prompt context that reads it.</summary>
+    public string? Condition { get; set; }
+
+    public int? HumidityPercent { get; set; }
+    public int? AirQualityIndex { get; set; }
+    public string? AirQualityCategory { get; set; }
+
+    /// <summary>When the session that produced this reading ended — clients use this to say
+    /// "as of" rather than implying the conditions are current.</summary>
+    public DateTime AsOfUtc { get; set; }
+
+    /// <summary>
+    /// Null when the member hasn't consented to environmental context, or nothing has been
+    /// derived for them yet — either way there is nothing to show, so the card should hide.
+    /// </summary>
+    public static WeatherSnapshotResponse? From(bool consentGranted, EnvironmentalReading? reading)
+    {
+        if (!consentGranted || reading is null)
+            return null;
+
+        // A reading with every field empty is possible (the enrichment pass can succeed for one
+        // field and fail for the rest) — nothing to show is nothing to show, same as no reading.
+        if (reading.TemperatureCelsius is null && reading.WeatherCondition is null
+            && reading.RelativeHumidityPercent is null && reading.AirQualityCategory is null)
+        {
+            return null;
+        }
+
+        return new WeatherSnapshotResponse
+        {
+            TemperatureCelsius = reading.TemperatureCelsius is { } c ? (decimal)c : null,
+            Condition = reading.WeatherCondition,
+            HumidityPercent = reading.RelativeHumidityPercent,
+            AirQualityIndex = reading.AirQualityIndex,
+            AirQualityCategory = reading.AirQualityCategory,
+            AsOfUtc = reading.SessionEndUtc,
+        };
+    }
 }
 
 public class DashboardDeviceState
