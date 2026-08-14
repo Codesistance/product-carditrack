@@ -50,8 +50,17 @@ jobs:
             echo "Copilot review already requested."
             exit 0
           fi
-          if ! gh api --method POST "repos/${REPO}/pulls/${PR}/requested_reviewers" \
-            -f 'reviewers[]=copilot-pull-request-reviewer'; then
-            echo "::error::Could not request Copilot review. GITHUB_TOKEN cannot add Copilot; set AUTOMERGE_TOKEN to a user PAT with pull-requests:write."
-            exit 1
+          # `copilot-pull-request-reviewer` without [bot] is looked up as a user and
+          # 422s ("not a collaborator"). The CLI's @copilot alias and the bot login
+          # are the supported spellings.
+          if gh pr edit "${PR}" --repo "${REPO}" --add-reviewer copilot; then
+            echo "Requested Copilot via gh pr edit --add-reviewer copilot."
+            exit 0
           fi
+          if gh api --method POST "repos/${REPO}/pulls/${PR}/requested_reviewers" \
+            -f 'reviewers[]=copilot-pull-request-reviewer[bot]'; then
+            echo "Requested Copilot via REST bot login."
+            exit 0
+          fi
+          echo "::error::Could not request Copilot review. Set AUTOMERGE_TOKEN to a user PAT with pull-requests:write; GITHUB_TOKEN cannot add Copilot."
+          exit 1
