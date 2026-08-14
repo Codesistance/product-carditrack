@@ -1000,6 +1000,7 @@ This is the most safety-critical screen in the app. Design for urgency and immed
 
 **Contact Info Card:**
 - Emergency contact: name, phone (tappable to call) — plus the member's own phone row, also tappable to call
+- **As built:** primary caregivers can tap the Phone number column (or its edit affordance when empty) to open M1-14 scrolled to the Phone Number field (`focus=phone`) — same save path as the header pencil; the call button is a separate hit target
 
 **Medical Info Card (encrypted):**
 - Lock icon in card header
