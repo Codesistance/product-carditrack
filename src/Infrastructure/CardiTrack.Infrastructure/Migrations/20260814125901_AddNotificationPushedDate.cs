@@ -28,8 +28,8 @@ namespace CardiTrack.Infrastructure.Migrations
             migrationBuilder.CreateIndex(
                 name: "IX_Notifications_PendingPush",
                 table: "Notifications",
-                columns: new[] { "State", "RuleCode" },
-                filter: "\"PushedDate\" IS NULL");
+                column: "RuleCode",
+                filter: "\"PushedDate\" IS NULL AND \"IsActive\" AND \"IsOwner\" AND \"State\" = 'Open'");
         }
 
         /// <inheritdoc />

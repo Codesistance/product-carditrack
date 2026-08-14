@@ -135,21 +135,31 @@ public class NotificationDispatchWorker : CronBackgroundService
     /// detection that now happens within a device-sync cycle rather than at 06:00 the next day.
     /// </para>
     /// <para>
-    /// <b>Ordering.</b> <c>PushedDate</c> is stamped on the tracked row <em>before</em> the enqueue,
-    /// so <c>DispatchService</c>'s own <c>SaveChangesAsync</c> commits the mark and the delivery row
-    /// together — no window where one exists without the other. The explicit save afterwards covers
-    /// the dedup-hit path, where <c>EnqueueAsync</c> returns early without saving and the mark would
-    /// otherwise be dropped, leaving the sweep to pick the same row up forever.
+    /// <b>Claim, then send.</b> This host runs three Cloud Run instances and this sweep has no
+    /// advisory lock or <c>SKIP LOCKED</c> claim, so all three read the same pending rows.
+    /// <c>TryClaimForPushAsync</c> is a conditional UPDATE that only one of them can win, which is
+    /// what keeps a single flat battery from ringing three phones — the dedup key cannot do it,
+    /// since each tick stamps its own timestamp and the three keys differ. A failed enqueue hands
+    /// the claim back so the next tick retries rather than the warning being marked delivered and
+    /// never sent.
+    /// </para>
+    /// <para>
+    /// <b>One scope per row</b>, matching <see cref="RetryClaimedRowsAsync"/>. A batch sharing one
+    /// <c>DbContext</c> would carry a failed <c>SaveChanges</c>'s pending inserts into the next
+    /// row's save, so one transient database error would take the rest of the batch with it — for
+    /// Safety warnings, that is warnings nobody receives.
     /// </para>
     /// </remarks>
     private async Task EnqueuePendingNudgePushesAsync(DateTime utcNow, CancellationToken ct)
     {
-        using var scope = _scopeFactory.CreateScope();
-        var unitOfWork = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
-        var dispatch = scope.ServiceProvider.GetRequiredService<IDispatchService>();
+        IReadOnlyList<Domain.Entities.Notification> pending;
 
-        var pending = await unitOfWork.Notifications.GetPendingPushAsync(
-            NudgeRuleCatalogue.PushableRuleCodes, PushSweepBatchSize, ct);
+        using (var readScope = _scopeFactory.CreateScope())
+        {
+            var unitOfWork = readScope.ServiceProvider.GetRequiredService<IUnitOfWork>();
+            pending = await unitOfWork.Notifications.GetPendingPushAsync(
+                NudgeRuleCatalogue.PushableRuleCodes, PushSweepBatchSize, ct);
+        }
 
         if (pending.Count == 0)
             return;
@@ -161,10 +171,17 @@ public class NotificationDispatchWorker : CronBackgroundService
             if (ct.IsCancellationRequested)
                 break;
 
+            using var scope = _scopeFactory.CreateScope();
+            var unitOfWork = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
+            var claimed = false;
+
             try
             {
-                notification.PushedDate = utcNow;
-                unitOfWork.Notifications.Update(notification);
+                var dispatch = scope.ServiceProvider.GetRequiredService<IDispatchService>();
+
+                claimed = await unitOfWork.Notifications.TryClaimForPushAsync(notification.Id, utcNow, ct);
+                if (!claimed)
+                    continue;
 
                 await dispatch.EnqueueAsync(new EnqueueRequest(
                     SourceType: DeliverySourceType.Notification,
@@ -184,21 +201,39 @@ public class NotificationDispatchWorker : CronBackgroundService
                     // battery should replace the first rather than stack beneath it.
                     CollapseKey: $"nudge-{notification.Fingerprint}"), ct);
 
-                await unitOfWork.SaveChangesAsync();
                 enqueued++;
             }
             catch (Exception ex)
             {
-                // Undo the in-memory mark. Every row in this batch shares one DbContext, so a
-                // PushedDate left set on a failed row would be committed by the *next* row's save —
-                // silently marking a warning as pushed that never was.
-                notification.PushedDate = null;
                 _logger.LogError(ex, "Failed to enqueue a push for Notification {NotificationId}.", notification.Id);
+
+                if (claimed)
+                    await ReleasePushClaimSafelyAsync(unitOfWork, notification.Id, ct);
             }
         }
 
         if (enqueued > 0)
             _logger.LogInformation("NotificationDispatch enqueued {Count} Safety nudge push(es).", enqueued);
+    }
+
+    /// <summary>
+    /// Releases a claim whose send failed. Swallows its own failure deliberately: this runs inside a
+    /// catch block, and letting it throw would replace the real error with a second one and skip the
+    /// remaining rows. A claim that cannot be handed back re-arms when the gap next closes and
+    /// returns — worse than a retry next tick, better than losing the batch.
+    /// </summary>
+    private async Task ReleasePushClaimSafelyAsync(IUnitOfWork unitOfWork, Guid notificationId, CancellationToken ct)
+    {
+        try
+        {
+            await unitOfWork.Notifications.ReleasePushClaimAsync(notificationId, ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex,
+                "Could not release the push claim on Notification {NotificationId}; it will not retry until the gap re-arms.",
+                notificationId);
+        }
     }
 
     private async Task RetryClaimedRowsAsync(DateTime utcNow, CancellationToken ct)

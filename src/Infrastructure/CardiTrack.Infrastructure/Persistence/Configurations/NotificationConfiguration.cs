@@ -104,12 +104,15 @@ public class NotificationConfiguration : IEntityTypeConfiguration<Notification>
         // Retention purges terminal rows by age.
         builder.HasIndex(n => new { n.State, n.ResolvedDate });
 
-        // The dispatch worker's push sweep, every 30 seconds: Open rows for the pushable rules
-        // that have not been handed to the outbox yet. Filtered so the index holds only the rows
-        // the sweep can actually act on — an Open-and-unpushed row is a transient state, so this
-        // stays tiny no matter how large the table grows.
-        builder.HasIndex(n => new { n.State, n.RuleCode })
-            .HasFilter("\"PushedDate\" IS NULL")
+        // The dispatch worker's push sweep, every 30 seconds. The filter carries the sweep's whole
+        // predicate rather than PushedDate alone: PushedDate is null for every row of every
+        // non-pushable rule and for every terminal one, so filtering on it by itself would index
+        // most of the table. With the state predicates the index holds only rows the sweep can act
+        // on — open, owned, live, unpushed — which is a transient population no matter how large
+        // Notifications grows. RuleCode is the key because it is the one predicate left for the
+        // index to discriminate on.
+        builder.HasIndex(n => n.RuleCode)
+            .HasFilter("\"PushedDate\" IS NULL AND \"IsActive\" AND \"IsOwner\" AND \"State\" = 'Open'")
             .HasDatabaseName("IX_Notifications_PendingPush");
     }
 }

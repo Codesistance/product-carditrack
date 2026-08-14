@@ -12,7 +12,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace CardiTrack.Infrastructure.Migrations
 {
     [DbContext(typeof(CardiTrackDbContext))]
-    [Migration("20260814121449_AddNotificationPushedDate")]
+    [Migration("20260814125901_AddNotificationPushedDate")]
     partial class AddNotificationPushedDate
     {
         /// <inheritdoc />
@@ -1202,11 +1202,11 @@ namespace CardiTrack.Infrastructure.Migrations
 
                     b.HasIndex("OrganizationId");
 
-                    b.HasIndex("State", "ResolvedDate");
-
-                    b.HasIndex("State", "RuleCode")
+                    b.HasIndex("RuleCode")
                         .HasDatabaseName("IX_Notifications_PendingPush")
-                        .HasFilter("\"PushedDate\" IS NULL");
+                        .HasFilter("\"PushedDate\" IS NULL AND \"IsActive\" AND \"IsOwner\" AND \"State\" = 'Open'");
+
+                    b.HasIndex("State", "ResolvedDate");
 
                     b.HasIndex("UserId", "RuleCode");
 

@@ -64,4 +64,31 @@ public interface INotificationRepository : IRepository<Notification>
     /// </remarks>
     Task<IReadOnlyList<Notification>> GetPendingPushAsync(
         IReadOnlyList<string> ruleCodes, int limit, CancellationToken ct = default);
+
+    /// <summary>
+    /// Claims one row for push by stamping <see cref="Notification.PushedDate"/>, and reports
+    /// whether this caller is the one that got it. False means someone else already did, or the
+    /// row stopped qualifying between the sweep reading it and reaching it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A single conditional UPDATE, not read-then-write. <c>NotificationDispatchWorker</c> runs on
+    /// three Cloud Run instances by design and this sweep has no advisory lock or <c>SKIP LOCKED</c>
+    /// claim — so all three read the same pending rows. Deciding in memory would send one push per
+    /// instance, and the dedup key cannot save it: each tick stamps its own timestamp, so the three
+    /// keys differ and <c>DispatchService</c>'s dedup sees three distinct deliveries. Only one
+    /// instance's UPDATE can move a row from null, so only one sends.
+    /// </para>
+    /// <para>
+    /// The state predicates ride along for the same reason: a nudge dismissed in the window between
+    /// the sweep's read and this call would otherwise still push.
+    /// </para>
+    /// </remarks>
+    Task<bool> TryClaimForPushAsync(Guid notificationId, DateTime utcNow, CancellationToken ct = default);
+
+    /// <summary>
+    /// Hands a claim back after the enqueue failed, so the next tick can retry it rather than the
+    /// warning being marked delivered and never sent.
+    /// </summary>
+    Task ReleasePushClaimAsync(Guid notificationId, CancellationToken ct = default);
 }

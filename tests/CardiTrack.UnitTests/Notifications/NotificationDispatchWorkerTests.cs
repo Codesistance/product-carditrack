@@ -39,6 +39,11 @@ public class NotificationDispatchWorkerTests
                 Arg.Any<IReadOnlyList<string>>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
             .Returns(Array.Empty<Notification>());
 
+        // Claim won by default — the tests that care about losing it say so explicitly.
+        _notifications.TryClaimForPushAsync(
+                Arg.Any<Guid>(), Arg.Any<DateTime>(), Arg.Any<CancellationToken>())
+            .Returns(true);
+
         // Nothing due anywhere: every phase reaches its own work but finds an empty queue, so the
         // only thing under test is what happens when one of them throws.
         _deliveries.ClaimDueAsync(Arg.Any<int>(), Arg.Any<DateTime>(), Arg.Any<CancellationToken>())
@@ -123,24 +128,40 @@ public class NotificationDispatchWorkerTests
     }
 
     [Fact]
-    public async Task PushSweep_StampsPushedDate_SoTheNextTickDoesNotSendItAgain()
+    public async Task PushSweep_ClaimsTheRowBeforeSending_SoTheNextTickDoesNotSendItAgain()
     {
         var notification = PendingNudge();
         StagePending(notification);
 
         await CreateWorker().RunOnceAsync(CancellationToken.None);
 
-        Assert.NotNull(notification.PushedDate);
-        _notifications.Received(1).Update(notification);
-        await _unitOfWork.Received().SaveChangesAsync();
+        await _notifications.Received(1).TryClaimForPushAsync(
+            notification.Id, Arg.Any<DateTime>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
-    public async Task PushSweep_LeavesPushedDateUnset_WhenTheEnqueueFails()
+    public async Task PushSweep_SendsNothing_WhenAnotherInstanceWonTheClaim()
     {
-        // Every row in the batch shares one DbContext. A PushedDate left set on a row whose enqueue
-        // threw would be committed by the *next* row's save, marking a warning as delivered that
-        // was never sent — and the sweep would never look at it again.
+        // Three Cloud Run instances run this worker and the sweep has no advisory lock, so all
+        // three read the same pending rows. Only the one whose UPDATE moved the row may send —
+        // otherwise a single flat battery rings three phones, and the dedup key cannot stop it
+        // because each tick stamps its own timestamp into a different key.
+        StagePending(PendingNudge());
+        _notifications.TryClaimForPushAsync(
+                Arg.Any<Guid>(), Arg.Any<DateTime>(), Arg.Any<CancellationToken>())
+            .Returns(false);
+
+        await CreateWorker().RunOnceAsync(CancellationToken.None);
+
+        await _dispatch.DidNotReceive().EnqueueAsync(
+            Arg.Any<EnqueueRequest>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task PushSweep_ReleasesTheClaim_WhenTheEnqueueFails()
+    {
+        // A claim held by a send that never happened would mark the warning delivered and stop the
+        // sweep ever looking at the row again — the gap would have to close and return to re-arm.
         var notification = PendingNudge();
         StagePending(notification);
         _dispatch.EnqueueAsync(Arg.Any<EnqueueRequest>(), Arg.Any<CancellationToken>())
@@ -148,7 +169,45 @@ public class NotificationDispatchWorkerTests
 
         await CreateWorker().RunOnceAsync(CancellationToken.None);
 
-        Assert.Null(notification.PushedDate);
+        await _notifications.Received(1).ReleasePushClaimAsync(
+            notification.Id, Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task PushSweep_DoesNotReleaseAClaimItNeverWon()
+    {
+        // Releasing here would hand back a claim another instance is mid-send on, and that instance
+        // would then push a second time on a later tick.
+        StagePending(PendingNudge());
+        _notifications.TryClaimForPushAsync(
+                Arg.Any<Guid>(), Arg.Any<DateTime>(), Arg.Any<CancellationToken>())
+            .Returns(false);
+        _dispatch.EnqueueAsync(Arg.Any<EnqueueRequest>(), Arg.Any<CancellationToken>())
+            .Throws(new InvalidOperationException("should never be reached"));
+
+        await CreateWorker().RunOnceAsync(CancellationToken.None);
+
+        await _notifications.DidNotReceive().ReleasePushClaimAsync(
+            Arg.Any<Guid>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task PushSweep_KeepsGoing_WhenOneRowsEnqueueFails()
+    {
+        // The reason each row gets its own scope: a shared DbContext carries a failed SaveChanges's
+        // pending insert into the next row's save, so one transient error would take the rest of
+        // the batch with it — Safety warnings nobody receives.
+        var failing = PendingNudge();
+        var following = PendingNudge();
+        StagePending(failing, following);
+        _dispatch.EnqueueAsync(
+                Arg.Is<EnqueueRequest>(r => r.SourceId == failing.Id), Arg.Any<CancellationToken>())
+            .Throws(new InvalidOperationException("transient database failure"));
+
+        await CreateWorker().RunOnceAsync(CancellationToken.None);
+
+        await _dispatch.Received(1).EnqueueAsync(
+            Arg.Is<EnqueueRequest>(r => r.SourceId == following.Id), Arg.Any<CancellationToken>());
     }
 
     [Fact]

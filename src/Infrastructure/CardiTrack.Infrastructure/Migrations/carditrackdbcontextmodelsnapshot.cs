@@ -1199,11 +1199,11 @@ namespace CardiTrack.Infrastructure.Migrations
 
                     b.HasIndex("OrganizationId");
 
-                    b.HasIndex("State", "ResolvedDate");
-
-                    b.HasIndex("State", "RuleCode")
+                    b.HasIndex("RuleCode")
                         .HasDatabaseName("IX_Notifications_PendingPush")
-                        .HasFilter("\"PushedDate\" IS NULL");
+                        .HasFilter("\"PushedDate\" IS NULL AND \"IsActive\" AND \"IsOwner\" AND \"State\" = 'Open'");
+
+                    b.HasIndex("State", "ResolvedDate");
 
                     b.HasIndex("UserId", "RuleCode");
 

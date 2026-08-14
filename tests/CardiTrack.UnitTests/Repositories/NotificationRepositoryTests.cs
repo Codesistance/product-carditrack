@@ -165,6 +165,71 @@ public class NotificationRepositoryTests(TestDatabaseFixture fixture)
         Assert.Equal(wanted.Fingerprint, row.Fingerprint);
     }
 
+    /// <summary>
+    /// The claim is what keeps three Cloud Run instances from sending three pushes for one flat
+    /// battery, and it only works because the database arbitrates it — which makes this exactly the
+    /// test that must run against real Postgres rather than a substitute agreeing with itself.
+    /// </summary>
+    [Fact]
+    public async Task TryClaimForPushAsync_IsWonByExactlyOneCaller()
+    {
+        using var scope = fixture.CreateScope();
+        var context = scope.ServiceProvider.GetRequiredService<CardiTrackDbContext>();
+        var row = Row(Guid.NewGuid(), NotificationPriority.Critical, "DEVICE_BATTERY_LOW");
+        context.Set<Notification>().Add(row);
+        await context.SaveChangesAsync();
+
+        var repo = scope.ServiceProvider.GetRequiredService<INotificationRepository>();
+
+        var first = await repo.TryClaimForPushAsync(row.Id, Detected);
+        var second = await repo.TryClaimForPushAsync(row.Id, Detected.AddSeconds(30));
+
+        Assert.True(first);
+        Assert.False(second);
+    }
+
+    [Fact]
+    public async Task TryClaimForPushAsync_RefusesARowThatStoppedQualifying()
+    {
+        // The window between the sweep's read and its claim. A nudge dismissed in it must not push.
+        using var scope = fixture.CreateScope();
+        var context = scope.ServiceProvider.GetRequiredService<CardiTrackDbContext>();
+        var row = Row(Guid.NewGuid(), NotificationPriority.Critical, "DEVICE_BATTERY_LOW");
+        row.State = NotificationState.Resolved;
+        context.Set<Notification>().Add(row);
+        await context.SaveChangesAsync();
+
+        var repo = scope.ServiceProvider.GetRequiredService<INotificationRepository>();
+
+        Assert.False(await repo.TryClaimForPushAsync(row.Id, Detected));
+    }
+
+    [Fact]
+    public async Task ReleasePushClaimAsync_PutsTheRowBackInThePendingSet()
+    {
+        // The failed-enqueue path: a claim held by a send that never happened would mark the
+        // warning delivered and the sweep would never look at the row again.
+        using var scope = fixture.CreateScope();
+        var context = scope.ServiceProvider.GetRequiredService<CardiTrackDbContext>();
+        var userId = Guid.NewGuid();
+        var row = Row(userId, NotificationPriority.Critical, "DEVICE_BATTERY_LOW");
+        context.Set<Notification>().Add(row);
+        await context.SaveChangesAsync();
+
+        var repo = scope.ServiceProvider.GetRequiredService<INotificationRepository>();
+        Assert.True(await repo.TryClaimForPushAsync(row.Id, Detected));
+        Assert.DoesNotContain(
+            await repo.GetPendingPushAsync(["DEVICE_BATTERY_LOW"], limit: 50),
+            n => n.Id == row.Id);
+
+        await repo.ReleasePushClaimAsync(row.Id);
+
+        Assert.Contains(
+            await repo.GetPendingPushAsync(["DEVICE_BATTERY_LOW"], limit: 50),
+            n => n.Id == row.Id);
+        Assert.True(await repo.TryClaimForPushAsync(row.Id, Detected.AddMinutes(1)));
+    }
+
     [Fact]
     public async Task GetPendingPushAsync_ReturnsNothing_WhenNoRulesDeclareThatTheyPush()
     {

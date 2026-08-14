@@ -101,9 +101,11 @@ public class NotificationRepository : Repository<Notification>, INotificationRep
         if (ruleCodes.Count == 0)
             return [];
 
-        // Tracked, not AsNoTracking: the caller stamps PushedDate on these rows and saves them in
-        // the same unit of work as the delivery insert, so the two land together.
+        // AsNoTracking: the caller does not write through these instances — it claims each row with
+        // TryClaimForPushAsync, a conditional UPDATE in its own scope — so tracking them here would
+        // hold a graph the sweep never saves.
         return await _dbSet
+            .AsNoTracking()
             .Where(n => n.IsActive
                         && n.IsOwner
                         && n.State == NotificationState.Open
@@ -116,6 +118,28 @@ public class NotificationRepository : Repository<Notification>, INotificationRep
             .Take(limit)
             .ToListAsync(ct);
     }
+
+    public async Task<bool> TryClaimForPushAsync(
+        Guid notificationId, DateTime utcNow, CancellationToken ct = default)
+    {
+        // ExecuteUpdate, so the read and the write are one statement the database arbitrates —
+        // see the interface remarks for why an in-memory decision cannot be made safe here.
+        // Postgres reports how many rows it actually moved, and that number is the answer.
+        var claimed = await _dbSet
+            .Where(n => n.Id == notificationId
+                        && n.PushedDate == null
+                        && n.IsActive
+                        && n.IsOwner
+                        && n.State == NotificationState.Open)
+            .ExecuteUpdateAsync(s => s.SetProperty(n => n.PushedDate, utcNow), ct);
+
+        return claimed == 1;
+    }
+
+    public async Task ReleasePushClaimAsync(Guid notificationId, CancellationToken ct = default)
+        => await _dbSet
+            .Where(n => n.Id == notificationId)
+            .ExecuteUpdateAsync(s => s.SetProperty(n => n.PushedDate, (DateTime?)null), ct);
 
     private IQueryable<Notification> Filtered(
         Guid userId,
