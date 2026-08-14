@@ -47,9 +47,12 @@ public partial class CreateAccountPage : ContentPage
             await _authService.SignInWithProviderAsync(connection);
             await _router.RouteAsync(this);
         }
-        catch (TaskCanceledException)
+        catch (OperationCanceledException)
         {
             // Browser sheet dismissed — back to the page, no error banner (Fitbit precedent).
+            // Covers both WebAuthenticator's own TaskCanceledException and the resume-triggered
+            // cancellation WebBrowserAuthenticator raises when Android dismisses the Custom Tab
+            // without a callback.
         }
         catch (AuthException ex)
         {
