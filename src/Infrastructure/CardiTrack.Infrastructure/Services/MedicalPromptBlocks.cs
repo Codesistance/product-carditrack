@@ -70,10 +70,13 @@ internal static partial class MedicalPromptBlocks
     /// <remarks>
     /// <para>
     /// Handed a <c>{{NAME}}</c> placeholder and told to write with it, a 4B model repeats the
-    /// placeholder in every sentence of a six-sentence summary. The result is grammatical and
-    /// unreadable — a case file about a subject rather than one person telling another how someone
-    /// is doing, which is the voice <see cref="Tone"/> asks for. Pronouns are
-    /// what ordinary writing uses instead, and the model will not risk one unless told it may.
+    /// placeholder in every sentence of a six-sentence summary. When sex is known, that is the
+    /// wrong shape — a case file about a subject rather than one person telling another how
+    /// someone is doing, which is the voice <see cref="Tone"/> asks for — so the rule is he or
+    /// she after at most one name. When sex is not stated, repeating the name is the lesser
+    /// wrong: "they" is a stranger's word for a family reading about one specific person, and
+    /// every member created before M1-04 asked for sex sits at
+    /// <see cref="Domain.Enums.Gender.PreferNotToSay"/>.
     /// </para>
     /// <para>
     /// The line used to open "Name them once". <see cref="Tone"/> has just said the reader is a
@@ -82,13 +85,7 @@ internal static partial class MedicalPromptBlocks
     /// and the status line send <c>{{NAME}}</c>, and of those only the digest carries this
     /// block — so "name them" was an instruction to invent. The token itself stays out of this
     /// line: alert and assessor copy is stored without resolving it, and a leftover brace pair
-    /// would reach a caregiver.
-    /// </para>
-    /// <para>
-    /// The fallback is stated rather than left to inference. Every member created before the M1-04
-    /// form asked for sex sits at <see cref="Domain.Enums.Gender.PreferNotToSay"/>, which
-    /// <see cref="MemberContext"/> renders as "not stated"; a model told to pick a pronoun, given
-    /// no sex and no name to guess from, will still pick one.
+    /// would reach a caregiver. "They" remains only for that nameless, sex-not-stated case.
     /// </para>
     /// <para>
     /// Not part of <see cref="Tone"/>, and not appended to <c>CurrentStatusInstructions</c>, for
@@ -100,7 +97,7 @@ internal static partial class MedicalPromptBlocks
     /// </para>
     /// </remarks>
     internal const string Pronouns = """
-        If a name appears in these instructions, write it at most once and never invent one; then use he or she as the sex given indicates, or they if it is not stated.
+        Use he or she as the sex given indicates, writing a given name at most once. If sex is not stated, use a given name instead of they. Never invent a name; they only if no name is given either.
 
         """;
 
@@ -164,8 +161,8 @@ internal static partial class MedicalPromptBlocks
     /// The line used to be dropped for anything but <see cref="Gender.Male"/> and
     /// <see cref="Gender.Female"/>, on the reasoning that the other values told the model nothing
     /// usable. That was wrong twice over. Silence is not neutral to a model that has been handed an
-    /// age and a set of readings: it fills the gap, and <see cref="Pronouns"/> now asks for a
-    /// pronoun it would have to guess. And because the mobile form did not ask for sex until this
+    /// age and a set of readings: it fills the gap, and <see cref="Pronouns"/> would then guess a
+    /// he or she instead of using the name. And because the mobile form did not ask for sex until this
     /// change,
     /// every real member sat at <see cref="Gender.PreferNotToSay"/> — so the guard did not filter
     /// the rare unusable case, it suppressed the line for the entire population.

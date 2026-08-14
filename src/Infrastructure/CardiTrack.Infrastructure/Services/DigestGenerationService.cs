@@ -51,8 +51,7 @@ public partial class DigestGenerationService : IDigestGenerationService
         - headline: a three-to-six-word label for this summary — sentence case, no full stop,
           no name and no {{NAME}}, not a sentence.
         - summary: 4-6 sentences written to the family member about the readings below, naming
-          the person as {{NAME}} the first time and by pronoun after that — never "your
-          relative" or "your loved one". Cover sleep, movement and heart rate, and say plainly
+          the person as {{NAME}} — never "your relative" or "your loved one". Cover sleep, movement and heart rate, and say plainly
           when a reading is missing instead of padding with reassurance.
         - suggestion: one supportive, specific action the family could take today, at most 25
           words, in plain everyday language rather than clinical terms. It must answer something in the readings above closely enough that a reader could tell what it came

@@ -151,26 +151,28 @@ public class MedicalPromptToneTests
     }
 
     /// <summary>
-    /// Every member created before M1-04 asked for sex sits at "not stated". A rule that named no
-    /// fallback would leave a model that has been told to use a pronoun to infer one from an age
-    /// and a set of readings, which it will do.
+    /// Every member created before M1-04 asked for sex sits at "not stated". "They" is a
+    /// stranger's word for a family reading about one specific person, so the name is the
+    /// fallback — and still stated, rather than left for the model to guess a he or she.
     /// </summary>
     [Fact]
-    public void The_pronoun_rule_says_what_to_do_when_sex_is_not_stated()
+    public void The_pronoun_rule_uses_the_name_when_sex_is_not_stated()
     {
-        Assert.Contains("they if it is not stated", MedicalPromptBlocks.Pronouns);
+        Assert.Contains("writing a given name at most once", MedicalPromptBlocks.Pronouns);
+        Assert.Contains("use a given name instead of they", MedicalPromptBlocks.Pronouns);
+        Assert.Contains("they only if no name is given either", MedicalPromptBlocks.Pronouns);
     }
 
     /// <summary>
     /// "Name them once" pointed at the family member Tone had just named, and asked prompts that
-    /// never send a name to invent one. The replacement names the condition (a name in the
-    /// instructions) and forbids invention.
+    /// never send a name to invent one. The replacement still forbids invention: alert and
+    /// assessor copy is stored without resolving a placeholder.
     /// </summary>
     [Fact]
     public void The_pronoun_rule_does_not_ask_to_name_them_or_invent_one()
     {
         Assert.DoesNotContain("Name them once", MedicalPromptBlocks.Pronouns, StringComparison.Ordinal);
-        Assert.Contains("never invent one", MedicalPromptBlocks.Pronouns);
+        Assert.Contains("Never invent a name", MedicalPromptBlocks.Pronouns);
     }
 
     [Theory]

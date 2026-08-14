@@ -128,8 +128,8 @@ public class HealthInsightServicePromptTests
         await CreateSut().AnalyzeBaselineAsync(_userId, _memberId);
 
         // The line used to be dropped for anything but Male/Female. Silence is not neutral: the
-        // tone block asks for a pronoun, and a model handed an age and no sex will pick one.
-        // Saying so outright is what keeps an unasked question from being answered by inference.
+        // pronoun rule would otherwise guess a he or she, and when sex is not stated it needs
+        // this line so it can use the name instead of they.
         Assert.Contains("Sex: not stated", CapturedPrompt());
     }
 
