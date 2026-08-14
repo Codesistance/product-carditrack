@@ -8,6 +8,7 @@ using CardiTrack.Observability;
 using CardiTrack.Shared;
 using CardiTrack.Web.Components;
 using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.EntityFrameworkCore;
 using Serilog;
 
@@ -87,11 +88,41 @@ try
             .PersistKeysToFileSystem(new DirectoryInfo(dataProtectionKeysPath));
     }
 
+    // 6. REVERSE PROXY + HTTPS — Cloud Run terminates TLS at its front end and forwards
+    // plain HTTP to the container, so without reading X-Forwarded-Proto the app believes
+    // every request arrived over http: UseHsts() below never emits a header, and
+    // UseHttpsRedirection() has no https binding to derive a port from, so it logs
+    // "Failed to determine the https port for redirect" and passes the request through
+    // unredirected. Honouring the header restores the real scheme; HttpsPort then only
+    // applies to the requests that genuinely arrived in cleartext (Cloud Run serves the
+    // http endpoint too), which are the ones that should be redirected. Reading the scheme
+    // first is also what stops the pinned port turning every proxied request into a
+    // redirect loop.
+    //
+    // KnownIPNetworks/KnownProxies are cleared because the front end is neither on loopback
+    // nor at an address knowable ahead of time. The container is only reachable through it,
+    // it appends its own value last, and the default ForwardLimit of 1 reads only that last
+    // value — so a client-supplied header cannot win. Local development keeps the framework
+    // defaults, where the launch profile's https binding already supplies the port.
+    if (!builder.Environment.IsDevelopment())
+    {
+        builder.Services.Configure<ForwardedHeadersOptions>(options =>
+        {
+            options.ForwardedHeaders = ForwardedHeaders.XForwardedProto;
+            options.KnownIPNetworks.Clear();
+            options.KnownProxies.Clear();
+        });
+        builder.Services.AddHttpsRedirection(options => options.HttpsPort = 443);
+    }
+
     var app = builder.Build();
 
     // MIDDLEWARE PIPELINE
     if (!app.Environment.IsDevelopment())
     {
+        // Ahead of HSTS and the redirect below — both branch on the request scheme, so they
+        // have to run after it has been corrected from the forwarded header.
+        app.UseForwardedHeaders();
         app.UseExceptionHandler("/Error", createScopeForErrors: true);
         app.UseHsts();
     }

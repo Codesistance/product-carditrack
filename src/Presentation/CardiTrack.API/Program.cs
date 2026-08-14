@@ -5,6 +5,7 @@ using CardiTrack.Infrastructure.Extensions;
 using CardiTrack.Infrastructure.Persistence;
 using CardiTrack.Observability;
 using CardiTrack.Shared;
+using Microsoft.AspNetCore.HttpOverrides;
 using Serilog;
 using Serilog.Events;
 
@@ -113,9 +114,34 @@ try
     builder.Services.AddAutoMapper(cfg => { }, AppDomain.CurrentDomain.GetAssemblies());
 
 
+    // 13. REVERSE PROXY + HTTPS — same reasoning as CardiTrack.Web. Cloud Run terminates TLS
+    // at its front end and forwards plain HTTP, so unless X-Forwarded-Proto is honoured the
+    // app sees http for every request and UseHttpsRedirection() below has no https binding to
+    // take a port from — it logs "Failed to determine the https port for redirect" and lets
+    // the request through unredirected. Restoring the scheme first is also what keeps the
+    // pinned HttpsPort from redirecting already-secure proxied requests in a loop; it applies
+    // only to requests that really did arrive in cleartext. KnownIPNetworks/KnownProxies are
+    // cleared because the front end is not on loopback and has no fixed address — with the
+    // default ForwardLimit of 1 only the value it appends last is read, so a client-supplied
+    // header cannot win. Local development keeps the framework defaults.
+    if (!builder.Environment.IsDevelopment())
+    {
+        builder.Services.Configure<ForwardedHeadersOptions>(options =>
+        {
+            options.ForwardedHeaders = ForwardedHeaders.XForwardedProto;
+            options.KnownIPNetworks.Clear();
+            options.KnownProxies.Clear();
+        });
+        builder.Services.AddHttpsRedirection(options => options.HttpsPort = 443);
+    }
+
     var app = builder.Build();
 
     // MIDDLEWARE PIPELINE
+    // Ahead of the redirect below, which branches on the request scheme and so has to see the
+    // corrected one.
+    if (!app.Environment.IsDevelopment())
+        app.UseForwardedHeaders();
     app.UseHttpsRedirection();
     // Ahead of the request logging below, so the client build that made the call is on the
     // request-completion line and on the server span, not just on whatever the request logged
