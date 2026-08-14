@@ -278,12 +278,28 @@ public partial class AlertDetailPage : ContentPage
             return;
         }
 
+        AcknowledgedLabel.Text = HandledLabel(alert);
+        AcknowledgedLabel.IsVisible = true;
+    }
+
+    /// <summary>
+    /// What closed this alert. The two states are not the same claim and must not share a
+    /// sentence: <c>AlertResolution.Resolve</c> sets <c>IsResolved</c> from the producer's own
+    /// "the condition has passed" test and never looks at who acknowledged, so a resolved alert
+    /// nobody touched has no acknowledger and no acknowledgement time. Keying the copy off the
+    /// handled state rather than off <see cref="AlertDetailResponse.AcknowledgedAt"/> told the
+    /// caregiver a bare "Acknowledged" about an episode that had simply settled by itself.
+    /// </summary>
+    private static string HandledLabel(AlertDetailResponse alert)
+    {
+        if (alert.AcknowledgedAt is not { } at)
+            return "This settled on its own — no action needed";
+
         var who = string.IsNullOrWhiteSpace(alert.AcknowledgedByName)
             ? "Acknowledged"
             : $"Acknowledged by {NameFormatting.FirstName(alert.AcknowledgedByName)}";
-        var when = alert.AcknowledgedAt is { } at ? RelativeTime.Format(at) : null;
-        AcknowledgedLabel.Text = when is null ? who : $"{who}, {when}";
-        AcknowledgedLabel.IsVisible = true;
+
+        return $"{who}, {RelativeTime.Format(at)}";
     }
 
     private static string FormatTriggered(DateTime utc)

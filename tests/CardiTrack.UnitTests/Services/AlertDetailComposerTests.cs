@@ -234,6 +234,26 @@ public class AlertDetailComposerTests
         Assert.Equal("steps", detail.Chart!.Metric);
     }
 
+    /// <summary>
+    /// Resolution and acknowledgement are different claims, and the detail screen branches its
+    /// copy on the second one — so a resolved alert nobody touched must arrive with no
+    /// acknowledger and no acknowledgement time. <c>AlertResolution.Resolve</c> closes an episode
+    /// from the producer's own "the condition has passed" test and never consults who looked.
+    /// </summary>
+    [Fact]
+    public void ResolvedButNeverAcknowledged_CarriesNoAcknowledger()
+    {
+        var alert = MakeAlert(AlertType.Inactivity, """{"rule":"activity_decline","steps":2500}""");
+        alert.IsResolved = true;
+
+        var detail = AlertDetailComposer.Compose(alert, Member(), null, [], _today, null, null);
+
+        Assert.Equal("resolved", detail.Status);
+        Assert.Null(detail.AcknowledgedAt);
+        Assert.Null(detail.AcknowledgedByUserId);
+        Assert.Null(detail.AcknowledgedByName);
+    }
+
     // ── The reason icon key ───────────────────────────────────────────────────
 
     [Theory]

@@ -47,8 +47,10 @@ public interface IAlertService
     /// </summary>
     /// <remarks>
     /// Idempotent like its opposite, and refuses a <see cref="Domain.Entities.Alert.IsResolved"/>
-    /// alert with <see cref="InvalidOperationException"/>: resolution is the system's judgement
-    /// that the underlying condition has passed, and a caregiver toggle must not reopen it.
+    /// alert with <see cref="Exceptions.AlertStateException"/>: resolution is the system's
+    /// judgement that the underlying condition has passed, and a caregiver toggle must not reopen
+    /// it. Its own exception type rather than <see cref="InvalidOperationException"/> because the
+    /// API returns the message to the caregiver verbatim — see the type's own remarks.
     /// </remarks>
     Task<AlertAcknowledgementResponse> UnacknowledgeAsync(
         Guid requestingUserId, Guid alertId, CancellationToken ct = default);
