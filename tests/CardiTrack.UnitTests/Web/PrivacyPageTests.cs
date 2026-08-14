@@ -13,9 +13,12 @@ public class PrivacyPageTests : BunitContext
     public void PrivacyPage_ExplainsHowAlertingWorks_WithoutClaimingTunableSensitivity()
     {
         var cut = Render<Privacy>();
-        var text = cut.Markup;
+        var text = string.Join(
+            ' ',
+            cut.FindAll("p").Select(p =>
+                string.Join(' ', p.TextContent.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries))));
 
-        Assert.Contains("How alerting works", text);
+        Assert.Contains("How alerting works", cut.Markup);
         Assert.Contains("30%", text);
         Assert.Contains("two standard deviations", text);
         Assert.Contains("5 beats per minute", text);
