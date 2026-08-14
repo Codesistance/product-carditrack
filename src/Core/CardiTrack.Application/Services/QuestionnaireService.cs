@@ -23,13 +23,62 @@ public class QuestionnaireService : IQuestionnaireService
         _encryption = encryption;
     }
 
-    public async Task<IReadOnlyList<QuestionnaireResponse>> GetForMemberAsync(
-        Guid requestingUserId, Guid cardiMemberId, CancellationToken ct = default)
+    public async Task<QuestionnairesPageResponse> GetForMemberAsync(
+        Guid requestingUserId,
+        Guid cardiMemberId,
+        string? search,
+        int page,
+        int pageSize,
+        CancellationToken ct = default)
     {
         await _access.RequireViewAccessAsync(requestingUserId, cardiMemberId, ct);
 
-        var questionnaires = await _unitOfWork.MemberQuestionnaires.GetByCardiMemberAsync(cardiMemberId, ct);
-        return questionnaires.Select(ToResponse).ToList();
+        // Question and answer text are encrypted at rest (see ToResponse/Reveal below), so there is
+        // no SQL-level way to filter or page on them — every row for this member has to be decrypted
+        // before search or paging can be applied. That is the same cost the unpaged endpoint always
+        // paid; this only changes how much of the result crosses the wire afterwards.
+        var all = (await _unitOfWork.MemberQuestionnaires.GetByCardiMemberAsync(cardiMemberId, ct))
+            .Select(ToResponse)
+            .ToList();
+
+        var pending = all.FirstOrDefault(
+            q => string.Equals(q.Status, "pending", StringComparison.OrdinalIgnoreCase));
+
+        IEnumerable<QuestionnaireResponse> answered = all
+            .Where(q => string.Equals(q.Status, "answered", StringComparison.OrdinalIgnoreCase))
+            .OrderByDescending(q => q.AnsweredAtUtc ?? q.GeneratedAtUtc);
+
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            answered = answered.Where(q =>
+                (q.QuestionText?.Contains(search, StringComparison.OrdinalIgnoreCase) ?? false)
+                || (q.AnswerText?.Contains(search, StringComparison.OrdinalIgnoreCase) ?? false));
+        }
+
+        var answeredList = answered.ToList();
+
+        // page/pageSize arrive as int query params, and only pageSize is upper-bounded by the
+        // controller — an extreme page number would overflow an int-only (page - 1) * pageSize.
+        // Widening to long for the arithmetic, then clamping to the list length before the Skip
+        // needs an int back, keeps this correct (and just an empty page) at any page value instead
+        // of wrapping into a bogus skip count.
+        var skip = (int)Math.Min((long)(page - 1) * pageSize, answeredList.Count);
+        var pageItems = answeredList.Skip(skip).Take(pageSize).ToList();
+        var hasMore = (long)page * pageSize < answeredList.Count;
+
+        return new QuestionnairesPageResponse
+        {
+            HasAny = all.Count > 0,
+            Pending = pending,
+            Answered = new PagedResult<QuestionnaireResponse>
+            {
+                Items = pageItems,
+                Page = page,
+                PageSize = pageSize,
+                TotalCount = answeredList.Count,
+                HasMore = hasMore,
+            },
+        };
     }
 
     public async Task<QuestionnaireResponse> AnswerAsync(

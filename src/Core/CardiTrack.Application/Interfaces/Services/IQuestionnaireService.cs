@@ -12,9 +12,17 @@ namespace CardiTrack.Application.Interfaces.Services;
 /// </remarks>
 public interface IQuestionnaireService
 {
-    /// <summary>Every question asked about this member, newest first.</summary>
-    Task<IReadOnlyList<QuestionnaireResponse>> GetForMemberAsync(
-        Guid requestingUserId, Guid cardiMemberId, CancellationToken ct = default);
+    /// <summary>
+    /// The pending question (if any) and a page of the answered history, newest first, optionally
+    /// filtered to those whose question or answer text contains <paramref name="search"/>.
+    /// </summary>
+    Task<QuestionnairesPageResponse> GetForMemberAsync(
+        Guid requestingUserId,
+        Guid cardiMemberId,
+        string? search,
+        int page,
+        int pageSize,
+        CancellationToken ct = default);
 
     /// <summary>
     /// Records an answer. The same call answers a pending question and replaces an existing answer —

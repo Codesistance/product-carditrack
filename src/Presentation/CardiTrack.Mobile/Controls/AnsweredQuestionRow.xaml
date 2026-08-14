@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentView xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:controls="clr-namespace:CardiTrack.Mobile.Controls"
+             x:Class="CardiTrack.Mobile.Controls.AnsweredQuestionRow">
+
+    <!-- One answered question in the Q&A archive's lazy-loaded list. The card is QuestionCard in
+         its prefilled mode, same as the page built inline before this was a CollectionView item —
+         only how it is populated (BindingContext, for recycling) changed. -->
+    <VerticalStackLayout Spacing="4">
+        <controls:QuestionCard x:Name="Card"/>
+
+        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8" Margin="4,0,0,0">
+            <Label x:Name="CaptionLabel"
+                   Grid.Column="0"
+                   FontFamily="Quicksand"
+                   FontSize="12"
+                   TextColor="{StaticResource BodyText}"
+                   VerticalTextAlignment="Center"/>
+
+            <ImageButton x:Name="DeleteButton"
+                         Grid.Column="1"
+                         Source="icon_trash.svg"
+                         BackgroundColor="Transparent"
+                         WidthRequest="44"
+                         HeightRequest="44"
+                         Padding="11"
+                         SemanticProperties.Description="Delete this question and answer"/>
+        </Grid>
+    </VerticalStackLayout>
+</ContentView>

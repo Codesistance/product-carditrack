@@ -54,11 +54,16 @@ public interface ICardiTrackApiClient
     // ---- Questions the service asks the family ----
 
     /// <summary>
-    /// Every question asked about this member, newest first. At most one is pending at a time, by
-    /// design — the pipeline will not ask a second thing while the first is unanswered.
+    /// The pending question (at most one, by design — the pipeline will not ask a second thing
+    /// while the first is unanswered) plus a page of the answered history, newest first, optionally
+    /// filtered to those whose question or answer text contains <paramref name="search"/>.
     /// </summary>
-    Task<List<QuestionnaireResponse>> GetQuestionnairesAsync(
-        Guid cardiMemberId, CancellationToken ct = default);
+    Task<QuestionnairesPageResponse> GetQuestionnairesAsync(
+        Guid cardiMemberId,
+        string? search = null,
+        int page = 1,
+        int pageSize = 20,
+        CancellationToken ct = default);
 
     /// <summary>Answers a pending question, or replaces an answer already given.</summary>
     Task<QuestionnaireResponse> AnswerQuestionnaireAsync(

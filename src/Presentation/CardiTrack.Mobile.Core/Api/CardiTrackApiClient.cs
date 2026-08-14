@@ -74,9 +74,20 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
     public Task<DigestResponse> GetDigestAsync(Guid cardiMemberId, CancellationToken ct = default) =>
         GetAsync<DigestResponse>($"api/v1/insights/members/{cardiMemberId}/digest", ct);
 
-    public Task<List<QuestionnaireResponse>> GetQuestionnairesAsync(
-        Guid cardiMemberId, CancellationToken ct = default) =>
-        GetAsync<List<QuestionnaireResponse>>($"api/v1/cardimembers/{cardiMemberId}/questionnaires", ct);
+    public Task<QuestionnairesPageResponse> GetQuestionnairesAsync(
+        Guid cardiMemberId,
+        string? search = null,
+        int page = 1,
+        int pageSize = 20,
+        CancellationToken ct = default)
+    {
+        var query = $"?page={page}&pageSize={pageSize}";
+        if (!string.IsNullOrWhiteSpace(search))
+            query += $"&search={Uri.EscapeDataString(search)}";
+
+        return GetAsync<QuestionnairesPageResponse>(
+            $"api/v1/cardimembers/{cardiMemberId}/questionnaires{query}", ct);
+    }
 
     public Task<QuestionnaireResponse> AnswerQuestionnaireAsync(
         Guid questionnaireId, AnswerQuestionnaireRequest request, CancellationToken ct = default) =>

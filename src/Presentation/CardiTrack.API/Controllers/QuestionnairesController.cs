@@ -36,22 +36,35 @@ public class QuestionnairesController : BaseApiController
         _answerValidator = answerValidator;
     }
 
-    /// <summary>Every question asked about this member, newest first, whatever became of it.</summary>
+    /// <summary>
+    /// The pending question, and a page of the answered history newest first — optionally filtered
+    /// to those whose question or answer text contains <paramref name="search"/>.
+    /// </summary>
     [HttpGet("cardimembers/{cardiMemberId:guid}/questionnaires")]
-    [ProducesResponseType(typeof(ApiResponse<IReadOnlyList<QuestionnaireResponse>>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResponse<QuestionnairesPageResponse>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status403Forbidden)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
-    public async Task<ActionResult<ApiResponse<IReadOnlyList<QuestionnaireResponse>>>> GetForMember(
-        Guid cardiMemberId, CancellationToken ct)
+    public async Task<ActionResult<ApiResponse<QuestionnairesPageResponse>>> GetForMember(
+        Guid cardiMemberId,
+        [FromQuery] string? search,
+        [FromQuery] int page,
+        [FromQuery] int pageSize,
+        CancellationToken ct)
     {
         if (!UserContext.IsAuthenticated || UserContext.UserId == Guid.Empty)
         {
             return Error("We couldn't find your account — please sign in again.", StatusCodes.Status403Forbidden);
         }
 
+        // Clamped rather than validated: this endpoint is a scroll position, not a form — an odd
+        // page or pageSize from a client is worth correcting silently, not worth a 400 for.
+        page = Math.Max(1, page == 0 ? 1 : page);
+        pageSize = Math.Clamp(pageSize == 0 ? 20 : pageSize, 1, 50);
+
         try
         {
-            var result = await _questionnaires.GetForMemberAsync(UserContext.UserId, cardiMemberId, ct);
+            var result = await _questionnaires.GetForMemberAsync(
+                UserContext.UserId, cardiMemberId, search, page, pageSize, ct);
             return Success(result);
         }
         catch (KeyNotFoundException ex)

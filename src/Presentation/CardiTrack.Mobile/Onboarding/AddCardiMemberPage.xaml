@@ -151,6 +151,9 @@
                                 <Editor x:Name="MedicalNotesEditor"
                                         FontFamily="Quicksand"
                                         FontSize="14"
+                                        PlaceholderColor="{StaticResource BodyText}"
+                                        TextColor="{StaticResource HeadingText}"
+                                        BackgroundColor="Transparent"
                                         Placeholder="Allergies, conditions, medication..."
                                         MaxLength="500"
                                         TextChanged="OnMedicalNotesChanged"/>
