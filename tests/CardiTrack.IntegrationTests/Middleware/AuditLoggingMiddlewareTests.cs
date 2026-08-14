@@ -6,7 +6,10 @@ using CardiTrack.Domain.Entities;
 using CardiTrack.Domain.Enums;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Features;
+using Microsoft.Extensions.Caching.Distributed;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
 
@@ -65,9 +68,10 @@ public class AuditLoggingMiddlewareTests
         public Endpoint? Endpoint { get; set; }
     }
 
-    private AuditLoggingMiddleware CreateSut(RequestDelegate? next = null) =>
+    private AuditLoggingMiddleware CreateSut(RequestDelegate? next = null, IDistributedCache? cache = null) =>
         new(next ?? (_ => Task.CompletedTask),
-            Substitute.For<ILogger<AuditLoggingMiddleware>>());
+            Substitute.For<ILogger<AuditLoggingMiddleware>>(),
+            cache ?? new MemoryDistributedCache(Options.Create(new MemoryDistributedCacheOptions())));
 
     private async Task<AuditLog?> InvokeAndCaptureAsync(
         DefaultHttpContext httpContext, bool authenticated = true)
@@ -250,6 +254,61 @@ public class AuditLoggingMiddlewareTests
         // request into a 500 after the fact.
         await CreateSut().InvokeAsync(
             BuildContext(new AuditHealthDataAccessAttribute("ViewDashboard")), userContext, _auditLogs);
+    }
+
+    [Fact]
+    public async Task StillWritesTheAuditEntry_WhenTheClientHasDisconnected()
+    {
+        // The write happens after the pipeline. A cancelled dashboard poll would otherwise
+        // cancel the SQL insert via RequestAborted and drop the row.
+        var context = BuildContext(new AuditHealthDataAccessAttribute("ViewDashboard"));
+        using var gone = new CancellationTokenSource();
+        gone.Cancel();
+        context.RequestAborted = gone.Token;
+        var userContext = new FakeUserContext { UserId = _userId, IsAuthenticated = true };
+
+        await CreateSut().InvokeAsync(context, userContext, _auditLogs);
+
+        await _auditLogs.Received(1).AppendAsync(
+            Arg.Any<AuditLog>(),
+            Arg.Is<CancellationToken>(t => !t.IsCancellationRequested));
+    }
+
+    [Fact]
+    public async Task CoalescesRepeatGets_OfTheSameLook()
+    {
+        var cache = new MemoryDistributedCache(Options.Create(new MemoryDistributedCacheOptions()));
+        var context = BuildContext(
+            new AuditHealthDataAccessAttribute("ViewDashboard"),
+            routeValue: ("cardiMemberId", _memberId.ToString()));
+        var userContext = new FakeUserContext { UserId = _userId, IsAuthenticated = true };
+        var sut = CreateSut(cache: cache);
+
+        await sut.InvokeAsync(context, userContext, _auditLogs);
+        await sut.InvokeAsync(context, userContext, _auditLogs);
+
+        await _auditLogs.Received(1).AppendAsync(Arg.Any<AuditLog>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task StillRecordsEveryWrite_AndEveryDeniedGet()
+    {
+        var cache = new MemoryDistributedCache(Options.Create(new MemoryDistributedCacheOptions()));
+        var userContext = new FakeUserContext { UserId = _userId, IsAuthenticated = true };
+        var sut = CreateSut(cache: cache);
+
+        var acknowledge = BuildContext(new AuditHealthDataAccessAttribute("AcknowledgeAlert"));
+        acknowledge.Request.Method = "POST";
+        await sut.InvokeAsync(acknowledge, userContext, _auditLogs);
+        await sut.InvokeAsync(acknowledge, userContext, _auditLogs);
+
+        var denied = BuildContext(
+            new AuditHealthDataAccessAttribute("ViewDashboard"),
+            statusCode: StatusCodes.Status404NotFound);
+        await sut.InvokeAsync(denied, userContext, _auditLogs);
+        await sut.InvokeAsync(denied, userContext, _auditLogs);
+
+        await _auditLogs.Received(4).AppendAsync(Arg.Any<AuditLog>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]

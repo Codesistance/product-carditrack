@@ -2,6 +2,7 @@
 
 ## Code Quality
 - All changes must be verified best practices before being applied.
+- Open pull requests ready for review (never draft). Request GitHub Copilot code review, wait until it finishes, then triage comments (fix vs leave) rather than applying them blindly.
 
 ## Architecture
 - **Non-AI** background jobs (OAuth token refresh, baseline recalculation, trial reminders, retention/cleanup) and any DB polling belong exclusively in `CardiTrack.Worker`. No other project may host these.

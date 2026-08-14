@@ -295,9 +295,7 @@ public class CardiMemberService : ICardiMemberService
             .ToList();
         var baseline = await _unitOfWork.PatternBaselines.GetLatestByCardiMemberAsync(
             member.Id, BaselineProgress.PeriodDays);
-        var unresolvedAlerts = (await _unitOfWork.Alerts.GetByCardiMemberAsync(member.Id, activeOnly: true))
-            .Where(a => !a.IsResolved)
-            .ToList();
+        var unresolvedAlerts = await _unitOfWork.Alerts.GetUnresolvedByCardiMemberAsync(member.Id);
 
         var now = DateTime.UtcNow;
         var pause = PauseStateOf(member, now);

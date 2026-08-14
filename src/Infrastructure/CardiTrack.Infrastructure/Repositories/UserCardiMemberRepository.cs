@@ -13,9 +13,11 @@ public class UserCardiMemberRepository : Repository<UserCardiMember>, IUserCardi
 
     public async Task<IEnumerable<UserCardiMember>> GetByUserIdAsync(Guid userId)
     {
+        // Access checks and onboarding only need the link row. Including CardiMember here
+        // loaded every linked member entity on every dashboard poll.
         return await _dbSet
+            .AsNoTracking()
             .Where(ucm => ucm.UserId == userId)
-            .Include(ucm => ucm.CardiMember)
             .ToListAsync();
     }
 

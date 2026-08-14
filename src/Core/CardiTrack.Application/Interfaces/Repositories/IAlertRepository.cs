@@ -6,6 +6,19 @@ namespace CardiTrack.Application.Interfaces.Repositories;
 public interface IAlertRepository : IRepository<Alert>
 {
     Task<IEnumerable<Alert>> GetByCardiMemberAsync(Guid cardiMemberId, bool activeOnly);
+
+    /// <summary>
+    /// Newest active alerts, capped in SQL. Read-only — producers that resolve alerts must
+    /// keep using <see cref="GetByCardiMemberAsync"/> so the entities stay tracked.
+    /// </summary>
+    Task<IReadOnlyList<Alert>> GetRecentByCardiMemberAsync(Guid cardiMemberId, int limit);
+
+    /// <summary>
+    /// Active, unresolved alerts. Read-only, same tracking rule as
+    /// <see cref="GetRecentByCardiMemberAsync"/>.
+    /// </summary>
+    Task<IReadOnlyList<Alert>> GetUnresolvedByCardiMemberAsync(Guid cardiMemberId);
+
     Task<Alert?> GetByIdWithCardiMemberAsync(Guid alertId);
 
     /// <summary>One page of alerts matching <paramref name="query"/>, newest first.</summary>

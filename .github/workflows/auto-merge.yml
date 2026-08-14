@@ -41,6 +41,7 @@ on:
       - 'CI / Deploy Apps → Dev'
       - 'Deploy Infrastructure → Dev'
       - 'Deploy Infrastructure → Common'
+      - 'Request Copilot review'
     types: [completed]
 
 permissions:

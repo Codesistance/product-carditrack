@@ -20,7 +20,29 @@ public class AlertRepository : Repository<Alert>, IAlertRepository
         if (activeOnly)
             query = query.Where(a => a.IsActive);
 
+        // Tracked on purpose: AlertResolution mutates these entities and SaveChanges.
         return await query.OrderByDescending(a => a.TriggeredDate).ToListAsync();
+    }
+
+    public async Task<IReadOnlyList<Alert>> GetRecentByCardiMemberAsync(Guid cardiMemberId, int limit)
+    {
+        return await _dbSet.AsNoTracking()
+            .Where(a => a.CardiMemberId == cardiMemberId && a.IsActive)
+            .OrderByDescending(a => a.TriggeredDate)
+            // Ties are real: the pipeline can emit several alerts for one member in the same
+            // instant, and Take without a tie-breaker can swap which five the dashboard shows.
+            .ThenByDescending(a => a.Id)
+            .Take(limit)
+            .ToListAsync();
+    }
+
+    public async Task<IReadOnlyList<Alert>> GetUnresolvedByCardiMemberAsync(Guid cardiMemberId)
+    {
+        return await _dbSet.AsNoTracking()
+            .Where(a => a.CardiMemberId == cardiMemberId && a.IsActive && !a.IsResolved)
+            .OrderByDescending(a => a.TriggeredDate)
+            .ThenByDescending(a => a.Id)
+            .ToListAsync();
     }
 
     public async Task<Alert?> GetByIdWithCardiMemberAsync(Guid alertId)
@@ -34,6 +56,7 @@ public class AlertRepository : Repository<Alert>, IAlertRepository
             return [];
 
         return await Filtered(query)
+            .AsNoTracking()
             .OrderByDescending(a => a.TriggeredDate)
             // Ties are real: the pipeline can emit several alerts for one member in the same
             // instant, and an unstable sort would let paging repeat or skip them.

@@ -59,7 +59,12 @@ public class DashboardService : IDashboardService
                 break;
         }
 
-        var activeAlerts = (await _unitOfWork.Alerts.GetByCardiMemberAsync(cardiMemberId, activeOnly: true)).ToList();
+        // Two bounded reads rather than every active alert: status/unread only need the
+        // unresolved set, and the hero strip only shows RecentAlertCount. Producers that
+        // resolve alerts still use the tracked GetByCardiMemberAsync.
+        var recentAlerts = await _unitOfWork.Alerts.GetRecentByCardiMemberAsync(
+            cardiMemberId, RecentAlertCount);
+        var unresolvedAlerts = await _unitOfWork.Alerts.GetUnresolvedByCardiMemberAsync(cardiMemberId);
 
         // The established 30-day baseline specifically, not the provisional 14/7-day one that
         // may have won the fallback search above. StatisticalAlertService will not raise a single
@@ -71,7 +76,6 @@ public class DashboardService : IDashboardService
 
         var age = member.DateOfBirth.ToAgeInYears(today);
         var metrics = logs.Count == 0 ? null : MemberInsightsCalculator.BuildMetrics(logs, baseline, today, age);
-        var unresolvedAlerts = activeAlerts.Where(a => !a.IsResolved).ToList();
 
         var now = DateTime.UtcNow;
         var isPaused = member.IsMonitoringPaused(now);
@@ -120,8 +124,7 @@ public class DashboardService : IDashboardService
             Metrics = metrics,
             Weather = WeatherSnapshotMapper.From(
                 member.EnvironmentalContextConsentGranted, environmentalReading),
-            RecentAlerts = activeAlerts
-                .Take(RecentAlertCount)
+            RecentAlerts = recentAlerts
                 .Select(a => new DashboardAlertSummary
                 {
                     AlertId = a.Id,

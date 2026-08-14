@@ -14,6 +14,7 @@ public class PatternBaselineRepository : Repository<PatternBaseline>, IPatternBa
     public async Task<PatternBaseline?> GetLatestByCardiMemberAsync(Guid cardiMemberId, int periodDays)
     {
         return await _dbSet
+            .AsNoTracking()
             .Where(pb => pb.CardiMemberId == cardiMemberId && pb.PeriodDays == periodDays)
             .OrderByDescending(pb => pb.CalculatedDate)
             .FirstOrDefaultAsync();

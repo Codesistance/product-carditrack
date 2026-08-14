@@ -2,6 +2,7 @@ using CardiTrack.API.Infrastructure.Auditing;
 using CardiTrack.API.Infrastructure.UserContext;
 using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Domain.Entities;
+using Microsoft.Extensions.Caching.Distributed;
 
 namespace CardiTrack.API.Middleware;
 
@@ -16,6 +17,23 @@ namespace CardiTrack.API.Middleware;
 /// </remarks>
 public class AuditLoggingMiddleware
 {
+    /// <summary>
+    /// How long a successful GET of the same user/action/member counts as one look. The mobile
+    /// dashboard polls every 30 seconds; writing a row per tick fills the trail with "left the
+    /// phone on the table" and spends a Cloud SQL insert each time. The first GET in the window
+    /// still records the access. Writes and failed/denied attempts are never coalesced.
+    /// </summary>
+    internal static readonly TimeSpan ReadSessionWindow = TimeSpan.FromMinutes(15);
+
+    /// <summary>
+    /// Bound for cache and SQL work after the response has gone out. The client's
+    /// <see cref="HttpContext.RequestAborted"/> is often already cancelled by then (dashboard
+    /// poll navigated away); using it would drop the audit row. Unbounded
+    /// <see cref="CancellationToken.None"/> can hang the request on the way out if Redis or
+    /// Cloud SQL stall — same bound as <c>ManualDeviceSyncService</c> cooldown renewal.
+    /// </summary>
+    internal static readonly TimeSpan PostPipelineTimeout = TimeSpan.FromSeconds(5);
+
     /// <summary>Route values that name the member whose data is being reached.</summary>
     private static readonly string[] CardiMemberRouteKeys = ["cardiMemberId", "memberId", "id"];
 
@@ -31,11 +49,16 @@ public class AuditLoggingMiddleware
 
     private readonly RequestDelegate _next;
     private readonly ILogger<AuditLoggingMiddleware> _logger;
+    private readonly IDistributedCache _readSessions;
 
-    public AuditLoggingMiddleware(RequestDelegate next, ILogger<AuditLoggingMiddleware> logger)
+    public AuditLoggingMiddleware(
+        RequestDelegate next,
+        ILogger<AuditLoggingMiddleware> logger,
+        IDistributedCache readSessions)
     {
         _next = next;
         _logger = logger;
+        _readSessions = readSessions;
     }
 
     public async Task InvokeAsync(
@@ -54,16 +77,28 @@ public class AuditLoggingMiddleware
         if (!userContext.IsAuthenticated || userContext.UserId == Guid.Empty)
             return;
 
+        var action = Truncate(
+            descriptor.Action ?? $"{httpContext.Request.Method} {httpContext.Request.Path}",
+            MaxActionLength);
+        var entityType = Truncate(descriptor.EntityType, MaxEntityTypeLength);
+        var cardiMemberId = ResolveCardiMemberId(httpContext);
+
+        using (var lookupTimeout = new CancellationTokenSource(PostPipelineTimeout))
+        {
+            if (await IsCoalescedReadAsync(
+                    httpContext, userContext.UserId, action, entityType, cardiMemberId, lookupTimeout.Token))
+                return;
+        }
+
         try
         {
+            using var writeTimeout = new CancellationTokenSource(PostPipelineTimeout);
             await auditLogs.AppendAsync(new AuditLog
             {
                 UserId = userContext.UserId,
-                CardiMemberId = ResolveCardiMemberId(httpContext),
-                Action = Truncate(
-                    descriptor.Action ?? $"{httpContext.Request.Method} {httpContext.Request.Path}",
-                    MaxActionLength),
-                EntityType = Truncate(descriptor.EntityType, MaxEntityTypeLength),
+                CardiMemberId = cardiMemberId,
+                Action = action,
+                EntityType = entityType,
                 Timestamp = DateTime.UtcNow,
                 IpAddress = Truncate(
                     httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown", MaxIpAddressLength),
@@ -73,7 +108,10 @@ public class AuditLoggingMiddleware
                 RequestPath = Truncate(httpContext.Request.Path.Value ?? string.Empty, MaxRequestPathLength),
                 HttpMethod = Truncate(httpContext.Request.Method, MaxHttpMethodLength),
                 ResponseStatus = httpContext.Response.StatusCode,
-            }, httpContext.RequestAborted);
+            }, writeTimeout.Token);
+
+            await RememberReadAsync(
+                httpContext, userContext.UserId, action, entityType, cardiMemberId, writeTimeout.Token);
         }
         catch (Exception ex)
         {
@@ -85,6 +123,73 @@ public class AuditLoggingMiddleware
                 httpContext.Request.Method, httpContext.Request.Path, userContext.UserId);
         }
     }
+
+    /// <summary>
+    /// True when this GET is a repeat look inside <see cref="ReadSessionWindow"/>. Failed
+    /// responses and any non-GET (acknowledge, delete, chat) always return false.
+    /// </summary>
+    /// <remarks>
+    /// Shared via <see cref="IDistributedCache"/> so Cloud Run replicas (prod max 3) agree on
+    /// the window. The get-then-set is not atomic — two identical GETs in the same instant can
+    /// both miss and both write — which is the same trade-off as the other cache gates in this
+    /// codebase. Dashboard polls are 30 seconds apart, so the race is not the case that happens.
+    /// A cache failure fails open and writes the row: losing an audit entry is worse than a
+    /// duplicate.
+    /// </remarks>
+    private async Task<bool> IsCoalescedReadAsync(
+        HttpContext httpContext,
+        Guid userId,
+        string action,
+        string entityType,
+        Guid? cardiMemberId,
+        CancellationToken ct)
+    {
+        if (!HttpMethods.IsGet(httpContext.Request.Method) || httpContext.Response.StatusCode >= 400)
+            return false;
+
+        try
+        {
+            return await _readSessions.GetStringAsync(
+                ReadSessionKey(userId, action, entityType, cardiMemberId),
+                ct) is not null;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Audit read-session lookup failed; writing the entry.");
+            return false;
+        }
+    }
+
+    private async Task RememberReadAsync(
+        HttpContext httpContext,
+        Guid userId,
+        string action,
+        string entityType,
+        Guid? cardiMemberId,
+        CancellationToken ct)
+    {
+        if (!HttpMethods.IsGet(httpContext.Request.Method) || httpContext.Response.StatusCode >= 400)
+            return;
+
+        try
+        {
+            await _readSessions.SetStringAsync(
+                ReadSessionKey(userId, action, entityType, cardiMemberId),
+                "1",
+                new DistributedCacheEntryOptions { AbsoluteExpirationRelativeToNow = ReadSessionWindow },
+                ct);
+        }
+        catch (Exception ex)
+        {
+            // The audit row is already written. Failing to remember it only means the next GET
+            // in this window writes another, which is the pre-coalesce behaviour.
+            _logger.LogWarning(ex, "Audit read-session remember failed.");
+        }
+    }
+
+    private static string ReadSessionKey(
+        Guid userId, string action, string entityType, Guid? cardiMemberId) =>
+        $"audit-read:{userId:N}:{action}:{entityType}:{cardiMemberId:N}";
 
     /// <summary>
     /// Pulls the member id out of the route. Null is legitimate — some audited endpoints take

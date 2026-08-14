@@ -379,7 +379,8 @@ public static class MemberInsightsCalculator
         return series;
     }
 
-    public static string ComputeHealthStatus(List<Alert> unresolvedAlerts, bool isLearning, DashboardMetrics? metrics)
+    public static string ComputeHealthStatus(
+        IReadOnlyCollection<Alert> unresolvedAlerts, bool isLearning, DashboardMetrics? metrics)
     {
         if (unresolvedAlerts.Count > 0)
         {

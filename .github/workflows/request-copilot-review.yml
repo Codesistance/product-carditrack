@@ -1,0 +1,66 @@
+name: Request Copilot review
+
+# Copilot code review only starts when Copilot is added as a reviewer. Cursor's
+# GitHub App token cannot do that (403 Resource not accessible by integration),
+# and a bot `@copilot` comment does not request a review either. This workflow
+# uses AUTOMERGE_TOKEN (a user PAT) so every non-draft PR gets a Copilot review
+# on open, on ready-for-review, and again on each push.
+
+on:
+  pull_request:
+    types: [opened, ready_for_review, reopened, synchronize]
+
+permissions:
+  pull-requests: write
+
+concurrency:
+  group: copilot-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  request-copilot:
+    name: Request Copilot review
+    if: github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    steps:
+      - name: Request Copilot as reviewer
+        env:
+          GH_TOKEN: ${{ secrets.AUTOMERGE_TOKEN || secrets.GITHUB_TOKEN }}
+          PR: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          pending="$(gh api graphql -F owner="${REPO%/*}" -F repo="${REPO#*/}" -F number="${PR}" -f query='
+            query($owner: String!, $repo: String!, $number: Int!) {
+              repository(owner: $owner, name: $repo) {
+                pullRequest(number: $number) {
+                  reviewRequests(first: 100) {
+                    nodes {
+                      requestedReviewer {
+                        __typename
+                        ... on Bot { login }
+                        ... on User { login }
+                      }
+                    }
+                  }
+                }
+              }
+            }' --jq '[.data.repository.pullRequest.reviewRequests.nodes[].requestedReviewer.login] | map(select(. != null) | sub("\\[bot\\]$";"")) | any(. == "copilot-pull-request-reviewer")')"
+          if [ "${pending}" = "true" ]; then
+            echo "Copilot review already requested."
+            exit 0
+          fi
+          # `copilot-pull-request-reviewer` without [bot] is looked up as a user and
+          # 422s ("not a collaborator"). The CLI's @copilot alias and the bot login
+          # are the supported spellings.
+          if gh pr edit "${PR}" --repo "${REPO}" --add-reviewer copilot; then
+            echo "Requested Copilot via gh pr edit --add-reviewer copilot."
+            exit 0
+          fi
+          if gh api --method POST "repos/${REPO}/pulls/${PR}/requested_reviewers" \
+            -f 'reviewers[]=copilot-pull-request-reviewer[bot]'; then
+            echo "Requested Copilot via REST bot login."
+            exit 0
+          fi
+          echo "::error::Could not request Copilot review. Set AUTOMERGE_TOKEN to a user PAT with pull-requests:write; GITHUB_TOKEN cannot add Copilot."
+          exit 1
