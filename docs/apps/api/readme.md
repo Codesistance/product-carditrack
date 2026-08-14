@@ -134,7 +134,7 @@ environment is visibly missing; an invented `prod` is a false alarm.
 
 ## Project Structure
 
-> **Target structure** — the tree below is the planned layout, not a mirror of the current code. Today's `Controllers/` holds twelve public controllers — `Alerts`, `Auth`, `Onboarding`, `CardiMembers`, `Dashboard`, `Devices`, `Reports`, `Chat`, `Insights`, `Notifications`, `Questionnaires`, and `Users` — plus the internal `Internal/InternalNotificationsController` (GoogleOidc-authenticated enqueue endpoint), **54 endpoints total**, all deriving from `BaseApiController`. Health-data webhook receipt lives in its own service, `src/Pipeline/CardiTrack.HealthWebhookReceiver` — which references neither Application nor Infrastructure and publishes raw notifications to Pub/Sub — and **will never live in the API** (no business logic in the one container the internet must reach; see [llm_design.md](../../llm_design.md)).
+> **Target structure** — the tree below is the planned layout, not a mirror of the current code. Today's `Controllers/` holds twelve public controllers — `Alerts`, `Auth`, `Onboarding`, `CardiMembers`, `Dashboard`, `Devices`, `Reports`, `Chat`, `Insights`, `Notifications`, `Questionnaires`, and `Users` — plus the internal `Internal/InternalNotificationsController` (GoogleOidc-authenticated enqueue endpoint), **56 endpoints total**, all deriving from `BaseApiController`. Health-data webhook receipt lives in its own service, `src/Pipeline/CardiTrack.HealthWebhookReceiver` — which references neither Application nor Infrastructure and publishes raw notifications to Pub/Sub — and **will never live in the API** (no business logic in the one container the internet must reach; see [llm_design.md](../../llm_design.md)).
 >
 > **Routing note:** `BaseApiController` carries the route template `api/[controller]` (plus `[ApiController]`, JSON `Produces`, and the standard `ApiResponse<T>`/`ErrorResponse` envelope helpers). All controllers except one override it with explicit **`/api/v1/*`** routes; only `OnboardingController` still serves **`/api/Onboarding/*`**-style routes. API versioning is registered (default `1.0`, assumed when unspecified); moving Onboarding onto the versioned template is the remaining spec/code alignment task.
 
@@ -207,7 +207,7 @@ X-Rate-Limit-Reset: 2026-08-07T12:01:00.0000000Z
 
 ## HIPAA Compliance
 
-- PHI access is audit-logged via the opt-in `AuditHealthDataAccess` attribute, applied controller-wide on the six health-data controllers (CardiMembers, Dashboard, Devices, Insights, Chat, Reports); entries record user ID, CardiMember ID, action, timestamp, IP, and user agent. Unannotated endpoints (Auth, Onboarding) are **not** audited — onboarding's CardiMember creation is a known audit gap. **Retention policy is 6 years**; the deployed infrastructure currently retains 30 days (dev) / 90 days (prod) via tfvars — extending it to the policy horizon is tracked follow-up infra work
+- PHI access is audit-logged via the opt-in `AuditHealthDataAccess` attribute, applied on **eight** controllers: CardiMembers, Dashboard, Devices, Insights, Chat, Reports (controller-wide), Questionnaires (controller-wide), and Alerts (per-action). Repeated GETs from the same caller coalesce into one row per 15-minute window (`AuditLoggingMiddleware.ReadSessionWindow`). Unannotated endpoints (Auth, Onboarding, Notifications) are **not** audited — onboarding's CardiMember creation is a known audit gap. **Retention policy is 6 years**; the deployed infrastructure currently retains 30 days (dev) / 90 days (prod) via tfvars — extending it to the policy horizon is tracked follow-up infra work
 - TLS 1.2+ in transit; Cloud SQL encryption at rest (Google-managed keys); field-level AES-256-GCM encryption for OAuth tokens and medical notes
 - See [infrastructure.md](../../infrastructure.md) for encryption and key management details
 
@@ -418,4 +418,4 @@ For API support, contact: api-support@carditrack.com
 
 ---
 
-**Last Updated:** August 13, 2026
+**Last Updated:** August 14, 2026

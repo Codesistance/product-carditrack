@@ -47,7 +47,7 @@ flowchart LR
     A3["DashboardService<br/><i>reads ActivityLogs only</i>"]
   end
 
-  subgraph DB["CLOUD SQL · POSTGRESQL 16"]
+  subgraph DB["CLOUD SQL · POSTGRESQL 16 (local/tests: 17)"]
     direction TB
     D1["DeviceConnections<br/><i>AES-256-GCM tokens</i>"]
     D2["DeviceActivityLogs<br/><i>one row per device-day</i>"]
@@ -60,7 +60,7 @@ flowchart LR
   MB["<b>MAUI mobile</b><br/>DashboardPage<br/><i>refresh on foreground resume</i><br/><i>2-h stale threshold</i>"]
 
   W -->|"vendor sync"| GH
-  WK -->|"HTTPS · Bearer · 13 calls per day-in-window + 1 battery · every 10 min"| GH
+  WK -->|"HTTPS · Bearer · 17 calls per day-in-window (13 daily + 4 granular) + 1 battery per pull · every 10 min"| GH
   WK -->|"EF Core · Npgsql · upsert + merge"| DB
   DB -->|"GetDueForSyncAsync"| WK
   AP -->|"manual sync · on demand · max 1/min per member"| GH
@@ -113,7 +113,7 @@ The aggregator's **first increment is live (dev)**: every 5 minutes the `pipelin
 | | `DashboardService`, `HealthInsightService`, `ReportGenerationService` | EF Core reads over `ActivityLogs` | per request |
 | **Cloud SQL** PostgreSQL 16 | `DeviceConnections`, `DeviceActivityLogs`, `ActivityLogs`, `PatternBaselines`, `DeviceTypeSyncProfiles` | EF Core 10 + Npgsql, `EnableLegacyTimestampBehavior=false`; AES-256-GCM at rest for tokens | write per synced day; read per request |
 | **Memorystore Redis** | manual-sync cooldown key, OAuth state, report cache | `IDistributedCache` | 1 min / 1 h TTLs — **`enable_redis = false` in prod today** |
-| **External** `health.googleapis.com` | Google Health API v4, Google OAuth 2.0 | HTTPS, Bearer tokens | 13 calls per day-in-window per connection, **plus one `pairedDevices` battery read per pull** — flat, not per day, and skipped entirely without the `settings` scope |
+| **External** `health.googleapis.com` | Google Health API v4, Google OAuth 2.0 | HTTPS, Bearer tokens | **17** calls per day-in-window per connection on the Worker cadence (13 daily + 4 granular), **plus one `pairedDevices` battery read per pull** — flat, not per day, and skipped entirely without the `settings` scope |
 | **Client** MAUI mobile | `DashboardPage` | .NET MAUI (iOS/Android) | refresh on foreground resume (5-s minimum gap) + pull-to-refresh; 2-h stale threshold |
 | **Client** Blazor web | — | .NET 10 Blazor Web App, EF Core direct to Cloud SQL | no data-refresh path yet (template shell) |
 
@@ -251,4 +251,4 @@ Cadence belongs to the **device type**, not to any one connection — providers 
 
 ---
 
-**Last Updated:** August 13, 2026
+**Last Updated:** August 14, 2026

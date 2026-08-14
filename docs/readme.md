@@ -49,7 +49,7 @@ Welcome to the CardiTrack documentation. This directory contains comprehensive d
 
 #### [infrastructure.md](./infrastructure.md)
 **Complete infrastructure and database documentation.**
-- Cloud SQL PostgreSQL 16 as the system of record
+- Cloud SQL PostgreSQL 16 as the system of record (local/devcontainer/tests use Postgres 17)
 - Database schema and entity relationships
 - Entity Framework Core setup and migrations (via the migrator Cloud Run Job)
 - Security and encryption (AES-256-GCM, Secret Manager)
@@ -94,7 +94,7 @@ Located in `/apps/` — each application has its own README covering stack, stru
 **Store provisioning** — one-time keys, certificates, and Secret Manager secrets that let CI deliver signed builds to TestFlight and the Google Play internal testing track.
 
 #### [apps/worker/](./apps/worker/readme.md)
-**CardiTrack.Worker Background Service** — the .NET Worker Service hosting the **11 non-AI background jobs** (10-minute wearable data sync with in-path OAuth token refresh, daily orphaned-organization cleanup, daily baseline calculation, partition retention, inactivity + statistical alerting, device-auth recovery, data-completeness checks, notification dispatch, and a push canary) using cron scheduling via Cronos. The AI ingestion/inference pipeline is live in dev on GCP (Pub/Sub + Cloud Run) — see [llm_design.md](./llm_design.md).
+**CardiTrack.Worker Background Service** — the .NET Worker Service hosting the **11 non-AI background jobs** (10-minute wearable data sync with in-path OAuth token refresh, daily orphaned-organization cleanup, daily baseline calculation, partition retention — granular 90 d / rollups 13 mo / **digests 90 days** / assessments 90 d / environmental 90 d — inactivity + statistical alerting, device-auth recovery, data-completeness checks, notification dispatch, and a push canary) using cron scheduling via Cronos. The AI ingestion/inference pipeline is live in dev on GCP (Pub/Sub + Cloud Run) — see [llm_design.md](./llm_design.md).
 
 ---
 
@@ -270,6 +270,15 @@ dotnet build
 
 ## 📝 Documentation Version History
 
+### Version 2.4 (August 14, 2026)
+- ✅ Alert detail shipped as one `AlertDetailPage` covering M1-11/12/16 (16 of 17 Figma frames; only M1-17 export remains)
+- ✅ Math.NET Numerics is the in-process SSA eigen engine; median/MAD persisted on baselines unused for live alerts
+- ✅ Digest payload is one `suggestion` + `urgency` (not a three-item array); digest retention 90 days
+- ✅ Safety-class nudges push; three-tier battery (Warning/Urgent/Critical), 12-hour freshness
+- ✅ Questionnaires: standing vs momentary, gap-backed asking, in-card delete
+- ✅ API surface is 56 endpoints (added GET alert detail + undo-ack to the index)
+- ✅ Indexed mathnet_numerics.md and alerting_algorithm_card.md; local Postgres 17 vs Cloud SQL 16
+
 ### Version 2.3 (August 13, 2026)
 - ✅ Marked the AI pipeline (webhook receiver, aggregator, assessor, digest) as built and running in dev on Pub/Sub + Cloud Run (prod gated off)
 - ✅ Updated the Worker description to its 11 hosted jobs, including the notification dispatch and push canary jobs of the shipped push spine (FCM HTTP v1 with APNs passthrough)
@@ -352,6 +361,6 @@ All documentation is proprietary and confidential.
 
 ---
 
-**Last Updated**: August 13, 2026
+**Last Updated**: August 14, 2026
 **Maintained By**: CardiTrack Development Team
-**Version**: 2.3
+**Version**: 2.4

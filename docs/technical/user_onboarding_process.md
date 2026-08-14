@@ -497,7 +497,7 @@ public class BaselineCalculationWorker : CronBackgroundService         // "0 30 
 public class DeviceSyncAuditWorker : CronBackgroundService             // "0 0 4 * * 0"
 
 // Hourly at :15 (and on startup) — creates upcoming time-series partitions and
-// drops those past retention (granular 90d, rollups 13mo, digests 12mo)
+// drops those past retention (granular 90d, rollups 13mo, digests 90d)
 public class PartitionMaintenanceWorker : CronBackgroundService        // "0 15 * * * *"
 
 // Every 15 minutes — device-silence detection (SilenceThresholdMinutes 120,

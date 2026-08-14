@@ -1,6 +1,6 @@
 # CardiTrack User Stories for UI/UX Design
 
-> **Build status (August 14, 2026):** 16 of 17 Figma M1 screens are built in `CardiTrack.Mobile` (M1-01 through M1-16). Alert detail is one page (`AlertDetailPage`) covering M1-11/12/16, charted from the single series that caused the alert. Unbuilt: M1-17 Health Data Export. Four shipped screens have **no Figma M1 frame — needs design sync**: SignInPage, ForgotPasswordPage, VerifyEmailPage, and Onboarding/AccountSetupPage (see Stories 1.5–1.8). Release waves re-baselined: MVP 1 (R1) → Q4 2026, MVP 2 (R2) → Q1 2027, MVP 3 (R3) → Q2 2027. Release sequencing is governed by the [release matrix](../../../release_matrix.md).
+> **Build status (August 14, 2026):** 16 of 17 Figma M1 screens are built in `CardiTrack.Mobile` (M1-01 through M1-16). Alert detail is one page (`AlertDetailPage`) covering M1-11/12/16, charted from the single series that caused the alert. Unbuilt: M1-17 Health Data Export. **Seven** shipped surfaces have **no Figma M1 frame — needs design sync**: SignInPage, ForgotPasswordPage, VerifyEmailPage, Onboarding/AccountSetupPage (see Stories 1.5–1.8), plus NotificationsPage, QuestionnairesPage, and QuestionCard. Release waves re-baselined: MVP 1 (R1) → Q4 2026, MVP 2 (R2) → Q1 2027, MVP 3 (R3) → Q2 2027. Release sequencing is governed by the [release matrix](../../../release_matrix.md).
 
 Based on the solution manifest, market analysis, and README, here are comprehensive user stories organized by user persona and platform:
 
@@ -26,7 +26,7 @@ Based on the solution manifest, market analysis, and README, here are comprehens
   - Progressive disclosure (collect basic info first, details later)
   - Required fields: Name and Sex (Male/Female) — the Sex picker is a **deliberate divergence from the Figma comps** (it sets the reference range readings are judged against); Date of Birth defaults to today
   - Optional fields: Relationship (falls back to Other), Photo, medical notes (encrypted), emergency contacts
-  - Clear privacy messaging ("Your parent will be notified")
+  - Privacy card **not built** (the "Your parent will be notified" AC is unmet)
   - Visual progress indicator (Step 2 of 4)
   - Emergency-phone placeholder localized by device region (PR #8): US/CA "+1 555 000 0000", GB "+44 7700 900000" — **limitation:** all other regions fall back to the US format, notable given the US + EU target market
 
@@ -112,7 +112,7 @@ Based on the solution manifest, market analysis, and README, here are comprehens
   - Key metrics at-a-glance: Steps, Heart Rate, Sleep Quality
   - "Last synced" timestamp
   - Comparison to baseline ("20% below normal activity")
-  - Quick action buttons ("Call Mom", "View Details", "Acknowledge Alert")
+  - Quick action buttons on the dashboard: SOS / Call / Message / Details. Acknowledge lives on M1-10 and `AlertDetailPage`, not on the dashboard row
 
 **Story 2.2: Multi-Member Dashboard**
 - **As a** caregiver monitoring both parents
@@ -199,9 +199,8 @@ Based on the solution manifest, market analysis, and README, here are comprehens
 - **I want to** receive push notifications for critical alerts on my phone
 - **So that** I can respond quickly even when not using the app
 - **Acceptance Criteria:**
-  - Rich notifications with action buttons (Call, View, Acknowledge)
-  - Lock screen visibility for critical alerts
-  - Notification grouping (multiple alerts from same CardiMember)
+  - **Shipped:** FCM registration, content-free payload, deep link to `alertdetail`, Safety-class nudge push (`DEVICE_AUTH_BROKEN`, three-tier `DEVICE_BATTERY_LOW`)
+  - **Not shipped (remain M4-05 / R4):** rich lock-screen action buttons, notification grouping, iOS notification service extension
   - Badge count on app icon
   - Deep linking to specific alert or CardiMember
 
@@ -291,7 +290,7 @@ Based on the solution manifest, market analysis, and README, here are comprehens
   - "Your family was notified about..." transparency
   - Ability to add notes ("I was sick this week, that's why activity is low")
 
-**Story 7.3: Pausing Monitoring Temporarily**
+**Story 7.3: Pausing Monitoring Temporarily** _(P0 — shipped on M1-13 for the caregiver; wearer-self-pause remains descoped)_
 - **As an** independent elderly person
 - **I want to** temporarily pause monitoring when I don't need it
 - **So that** I maintain autonomy and privacy when desired
@@ -526,7 +525,7 @@ Based on the solution manifest, market analysis, and README, here are comprehens
 
 ### Step 3: Add CardiMember (2 minutes)
 - "Who would you like to monitor?"
-- Form: Name, DOB, Relationship, Photo (optional)
+- Form: Name, Sex (Male/Female, required), DOB, Relationship, Photo (optional)
 - Tone: "We'll help you set up monitoring in 4 simple steps" (the wizard is a 4-step flow: Create Account → Add CardiMember → Connect Device → Baseline)
 
 ### Step 4: Device Connection (3 minutes)
@@ -539,7 +538,7 @@ Based on the solution manifest, market analysis, and README, here are comprehens
 - "CardiTrack is learning [Name]'s normal patterns..."
 - Progress indicator: "Day 3 of 30"
 - "You'll start receiving alerts after we establish a baseline (30 days)"
-- Option: "Use statistical alerts in the meantime" (basic threshold alerts)
+- **As built:** every statistical rule stays silent until that 30-day baseline exists. The learning-screen toggle does not persist and does not enable "alerts in the meantime".
 
 ### Step 6: Invite Family (Optional)
 - "Want to share monitoring with family members?"
@@ -581,11 +580,11 @@ Based on the solution manifest, market analysis, and README, here are comprehens
 ## 🎯 Priority Matrix for MVP 1 (Q4 2026)
 
 ### Must Have (P0)
-- [ ] Story 1.1-1.3: Onboarding flow
-- [ ] Story 1.4: CardiMember profile management
-- [ ] Story 1.5-1.8: Sign In, Forgot Password, Verify Email, Account-Type Setup (shipped; need Figma frames)
-- [ ] Story 2.1: Daily health overview
-- [ ] Story 3.1: Critical alert display
+- [x] Story 1.1-1.3: Onboarding flow
+- [x] Story 1.4: CardiMember profile management
+- [x] Story 1.5-1.8: Sign In, Forgot Password, Verify Email, Account-Type Setup (shipped; need Figma frames)
+- [x] Story 2.1: Daily health overview
+- [x] Story 3.1: Critical alert display (`AlertDetailPage`)
 - [ ] Story 6.3: Health data export (PDF, CSV, FHIR R4)
 
 ### Should Have (P1)
@@ -641,8 +640,8 @@ Based on the solution manifest, market analysis, and README, here are comprehens
 
 ---
 
-**Document Version:** 1.1
-**Last Updated:** August 7, 2026
+**Document Version:** 1.2
+**Last Updated:** August 14, 2026
 **Next Review:** Q4 2026 (MVP 1 / R1 wave — post-beta feedback)
 **Owner:** Product & UX Team
 

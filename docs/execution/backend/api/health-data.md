@@ -278,7 +278,7 @@ Clients must not label either output as a trend assessment. The learning prompt 
 
 ## GET `/api/v1/insights/members/{id}/digest` — implemented (AI narrative)
 
-The member's **family digest**: a plain-language **rolling summary of the local day in progress**, regenerated whenever the member's readings move — with a **20-minute floor** between regenerations, on a **quarter-hourly** scheduler trigger. It is *not* a fixed 06:00 previous-day snapshot: the text a caregiver reads at noon describes the day so far. Read-only — no model call happens on this path; `?date=YYYY-MM-DD` selects a specific local day, otherwise the most recent digest is returned.
+The member's **family digest**: a plain-language **rolling summary of the local day in progress**, regenerated whenever the member's readings move — with a **20-minute floor** between regenerations, on a **half-hourly** scheduler trigger (`*/30`). It is *not* a fixed 06:00 previous-day snapshot: the text a caregiver reads at noon describes the day so far. Read-only — no model call happens on this path; `?date=YYYY-MM-DD` selects a specific local day, otherwise the most recent digest is returned.
 
 **Priority:** P1 | **Auth Required:** Yes
 
@@ -291,16 +291,13 @@ The member's **family digest**: a plain-language **rolling summary of the local 
   "audience": "Family",
   "headline": "A settled day so far",
   "text": "Margaret is having a settled day so far — activity in her usual range after a full night's sleep. Nothing needs your attention.",
-  "suggestions": [
-    "A short afternoon walk together would top up her steps.",
-    "She slept well — a good day for a longer call.",
-    "No follow-up needed on yesterday's low activity."
-  ],
+  "suggestion": "A short afternoon walk together would top up her steps.",
+  "urgency": "watch",
   "generatedAtUtc": "2026-08-10T14:20:12Z"
 }
 ```
 
-`headline` is a few words naming what the summary is about — `null` on digests generated before headlines existed, so clients fall back to their own label. `suggestions` is **exactly three** short ways the family could support the member today, generated alongside the text; it is `null` when a generation produced none that survived validation, and clients hide the section rather than render a partial set.
+`headline` is a few words naming what the summary is about — `null` on digests generated before headlines existed, so clients fall back to their own label. `suggestion` is **one** short way the family could support the member today, generated alongside the text; it is `null` when a generation produced none that survived validation, and clients hide the section rather than render a mangled line. `urgency` is `watch` / `check-in` / `concerning` / `act-now` — the model's own read of how soon the family should act, alongside (never in place of) the dashboard's deterministic alert-driven status.
 
 `404` when no digest has been generated yet — the first days of a new member legitimately are, since digests require a day of data behind them. `localDate` is the member's local calendar day the text describes, so clients render it without timezone arithmetic.
 
@@ -372,4 +369,4 @@ Export health data in human-readable (PDF, CSV) and interoperable medical format
 
 **Related:** [readme.md](readme.md) | [alerts.md](alerts.md) | [reports.md](reports.md) | [devices.md](devices.md) | [User Stories 2.1, 2.2, 2.3, 5.2, 10.1](../../ui/mobile/user_stories.md)
 
-**Last Updated:** August 13, 2026
+**Last Updated:** August 14, 2026

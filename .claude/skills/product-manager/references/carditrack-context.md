@@ -1,6 +1,6 @@
 # CardiTrack product context
 
-Facts a PM needs before writing anything. **Sourced from `docs/` as of August 8, 2026 — re-read the source doc before quoting a number in an artefact.** Where this file and a `docs/` file disagree, the `docs/` file wins.
+Facts a PM needs before writing anything. **Sourced from `docs/` as of August 14, 2026 — re-read the source doc before quoting a number in an artefact.** Where this file and a `docs/` file disagree, the `docs/` file wins.
 
 ## What the product is
 
@@ -68,25 +68,25 @@ Canonical, and it wins over every other doc on sequencing: [release_matrix.md](.
 
 Platform docs keep their own MVP numbering (mobile 3 MVPs, web 4); the matrix maps them onto these waves.
 
-**Resolved conflicts you must not re-open without new evidence** (decision log in the matrix): subscriptions ship API+UI together in R2 · FHIR export is mobile-R1 / web-R2 deliberately · all exports gated to Complete Care · `long_term_trend` alerts need the AI pipeline so they're R2 · severity taxonomy Critical/High/Medium/Low → red/orange/yellow/green · 30-minute polling is the shipped R1 ingestion path, webhooks move to R2 · the AI pipeline runs on **GCP**, superseding the earlier Azure design.
+**Resolved conflicts you must not re-open without new evidence** (decision log in the matrix): subscriptions ship API+UI together in R2 · FHIR export is mobile-R1 / web-R2 deliberately · all exports gated to Complete Care · `long_term_trend` alerts need the AI pipeline so they're R2 · severity taxonomy Critical/High/Medium/Low → red/orange/yellow/green · 10-minute Worker polling is the shipped R1 ingestion path (originally 30-minute); Google Health webhooks + the AI pipeline shipped in **dev** ahead of R2, prod remains gated · the AI pipeline runs on **GCP**, superseding the earlier Azure design · LSTM dropped 2026-08-10 (SSA + Math.NET remains).
 
 ## Build status — what actually exists
 
-As of the matrix's August 7, 2026 snapshot. **Check the matrix, not this summary, before writing "we have".**
+As of the matrix's August 14, 2026 snapshot. **Check the matrix, not this summary, before writing "we have".**
 
-**✅ Shipped:** Auth0 Universal Login incl. email-verification gate · onboarding (atomic account + org + CardiMember) · Google Health API client (migrated off legacy Fitbit Web API, PR #10) · 30-minute Worker polling ingestion · per-member dashboard endpoint + mobile dashboard · synchronous AI insights/chat endpoints · weekly baseline calculation worker + mobile learning screen · 30-day trial · region-localised phone input · Datadog APM.
+**✅ Shipped:** Auth0 Universal Login incl. email-verification gate · social sign-in on **mobile** (Auth0 PKCE via system browser; production tenant connections remain an ops gate) · onboarding (atomic account + org + CardiMember, sex captured) · Google Health API client · 10-minute Worker polling + webhook path in **dev** · per-member dashboard + mobile dashboard (unresolved-alerts strip, weather popup, delayed "Loading", 30-day baseline gate) · 16 of 17 Figma M1 screens (`AlertDetailPage` covers M1-11/12/16; only M1-17 export is unbuilt) · CardiMember CRUD, pause/resume, device management, emergency contacts, encrypted medical notes (mobile + API) · statistical + inactivity alerts with ack/undo and push · family questionnaires (permanence, gap-backed asking, in-card delete) · in-app data-completeness nudges + Safety-class push (auth-broken, three-tier battery) · FCM/APNs push spine · synchronous AI insights/chat + digest/assessor pipeline in **dev** · daily baseline worker (mean/σ live; median/MAD persisted unused) · Math.NET SSA eigen engine · 30-day trial · Datadog APM.
 
-**🔶 Partial:** social sign-in buttons unwired · CardiMember CRUD only via onboarding · reports text-only (no PDF/CSV/FHIR) · web dashboard and web baseline not started (**the web app is still template-stage**) · health-data disclosure shipped on web, **missing on mobile — public-launch gate**.
+**🔶 Partial:** web app still template-stage (no Auth0, no dashboard) · reports text-only (no PDF/CSV/FHIR) · health-data disclosure shipped on web, **missing on mobile — public-launch gate** · alert notes/photos not started · per-member notification preferences and sensitivity unused · wearable battery code shipped, **blocked on the console `settings.readonly` scope** · enricher built but unprovisioned.
 
-**⬜ Not started:** emergency contacts / encrypted medical notes · per-metric consent recording · device management (status/primary/reconnect/remove) · **all alerts** (no CRUD, no acknowledgment, no SMS/email/push channels) · push registration · exports · monitoring pause/resume · everything R2+.
+**⬜ Not started:** per-metric consent recording · Stripe billing · family invitations · M1-17 export · everything else R2+ that the matrix still marks ⬜.
 
-The single most load-bearing gap: **the alerting loop does not exist yet.** Anything that assumes alerts work is proposing R1 scope, not building on it.
+The load-bearing remaining R1 gaps are **mobile health-data disclosure**, **M1-17 export**, **alert notes**, and **Google restricted-scope verification** (100-wearer cap). The alerting loop itself exists.
 
 ## Architecture constraints that bind product decisions
 
 From [CLAUDE.md](../../../../CLAUDE.md), [infrastructure.md](../../../../docs/infrastructure.md), [llm_design.md](../../../../docs/llm_design.md):
 
-- **Stack:** .NET 10 — `CardiTrack.Api` (ASP.NET Core), `CardiTrack.Web` (Blazor), `CardiTrack.Mobile` (.NET MAUI, iOS 16+ / Android 10 API 29+), `CardiTrack.Worker`. GCP: Cloud Run, Cloud SQL PostgreSQL 16, GCS, Pub/Sub, Secret Manager, `europe-west2`. Terraform (common/dev/prod).
+- **Stack:** .NET 10 — `CardiTrack.API` (ASP.NET Core), `CardiTrack.Web` (Blazor), `CardiTrack.Mobile` (.NET MAUI, iOS 17+ / Android 12 API 31+), `CardiTrack.Worker`. GCP: Cloud Run, Cloud SQL PostgreSQL **16** (local/devcontainer/tests use Postgres **17**), GCS, Pub/Sub, Secret Manager, `europe-west2`. Terraform (common/dev/prod).
 - **Non-AI background jobs and all DB polling live only in `CardiTrack.Worker`.** OAuth token refresh, baseline recalculation, trial reminders, retention/cleanup. No other project may host them. A feature needing a scheduled job is a Worker change — say so in feasibility.
 - **The AI ingestion/inference pipeline runs on GCP (Pub/Sub + Cloud Run)** per `llm_design.md` — the only sanctioned exception, and it must not host non-AI jobs.
 - **UI:** all pages are full-bleed, edge-to-edge; corner radius belongs on components, never the page shell. Specs proposing rounded page-level cards contradict house rules.
@@ -97,7 +97,7 @@ From [CLAUDE.md](../../../../CLAUDE.md), [infrastructure.md](../../../../docs/in
 | Gate | Impact |
 |---|---|
 | **Google restricted-scope verification** (Trust & Safety review + annual CASA assessment, $500–$4,500, combined runway 4–8 weeks) | **Hard cap of 100 connected wearers** until it passes. Not started. Any reach estimate above 100 wearers is fiction. |
-| **Legacy Fitbit Web API sunset — September 2026** | Code migrated; **blocking task is Google console registration + sandbox verification of assumed field mappings**. |
+| **Legacy Fitbit Web API sunset — September 2026** | Code migrated; console registration + field verification done; **blocking task is the live-wearer check that each type is actually populated**. |
 | **Mobile health-data disclosure** | Google-mandated in-app disclosure; missing on mobile; blocks public launch. |
 | **Stripe billing** | Doesn't exist. R1 trial expiry has no defined billing path — an explicit R2 entry criterion. |
 

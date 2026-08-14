@@ -644,7 +644,7 @@ priority, and silence policy. `Full` = snooze + mute-forever · `Snooze` = time-
 | Code | Detection | Copy | Silence | Wave |
 |---|---|---|---|---|
 | `DEVICE_AUTH_BROKEN` | `ConnectionStatus` ∈ {`TokenExpired`, `AuthError`} | "Reconnect to restore monitoring — no data is reaching CardiTrack right now." | Safety | **R1** |
-| `DEVICE_BATTERY_LOW` | `BatteryLevel ≤ 10` or `BatteryStatus` ∈ {`Low`, `Empty`}, reading < 24h old, no broken grant outstanding | "{Name}'s watch is almost out of battery — charging it now keeps monitoring unbroken." | Safety | **R1** |
+| `DEVICE_BATTERY_LOW` | Three tiers from `DeviceBattery.GetTier`: **Warning ≤30%**, **Urgent ≤20%** (or a `Low` band with no percentage), **Critical ≤10%** or `Empty`. Reading must be **< 12h** old (`DeviceBattery.FreshFor`; tightened from 24h). Suppressed when a broken-grant notification outranks it. Flat-battery is re-evaluated on sync. Copy variants: `warning` / `urgent` / `urgent_unknown` / `critical` / `critical_empty`. `PushesWhenOpen`. | "{Name}'s watch battery is getting low / running low / almost out / has run out." | Safety | **R1** |
 | `PUSH_UNREACHABLE` | OS permission denied/revoked, safety channel muted, token dead 7d, or `Permanent` send failure | "Alerts can't reach this phone. Turn notifications on so urgent alerts get through." | Safety | R2 (with push) |
 | `NO_ALERT_RECIPIENT` | Every active `UserCardiMember` has `ReceiveAlerts = false` | "Nobody is set to receive {Name}'s alerts. Turn one on so a red alert reaches someone." | Safety | **R3** |
 
@@ -1110,4 +1110,4 @@ them back to something worse.
 ---
 
 **Owner:** Engineering
-**Last Updated:** August 13, 2026
+**Last Updated:** August 14, 2026

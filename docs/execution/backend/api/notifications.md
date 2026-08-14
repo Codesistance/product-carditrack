@@ -64,7 +64,7 @@ Two things about this payload are deliberate:
 
 `isOwner` is false for relatives who can see an item somebody else is responsible for: visible so the family knows it is outstanding, never actionable, so one missing emergency contact does not nag five people.
 
-**Rule example — `DEVICE_BATTERY_LOW`:** the Safety-class battery rule shows what the full treatment looks like. It gets the Safety envelope — immediate push, critical APNs flag, quiet-hours override, 30-minute TTL, escalation — and fires when a wearable's battery is at **≤ 10%** or the provider reports a `Low`/`Empty` band. It is gated on battery data **fresh within 24 hours** (a stale reading proves nothing about the battery now), and it is suppressed when a broken-grant notification outranks it: a device that cannot sync at all is the bigger problem, and the battery warning would be noise beside it.
+**Rule example — `DEVICE_BATTERY_LOW`:** the Safety-class battery rule shows what the full treatment looks like. It gets the Safety envelope — immediate push, critical APNs flag, quiet-hours override, 30-minute TTL, escalation — and fires in **three tiers**: Warning at **≤ 30%**, Urgent at **≤ 20%** (or a `Low` band with no percentage), Critical at **≤ 10%** or an `Empty` band. It is gated on battery data **fresh within 12 hours** (tightened from 24 h), and it is suppressed when a broken-grant notification outranks it: a device that cannot sync at all is the bigger problem, and the battery warning would be noise beside it. Copy differs per tier (`warning` / `urgent` / `urgent_unknown` / `critical` / `critical_empty`).
 
 ### Related — implemented alongside
 
@@ -194,4 +194,4 @@ What the iOS notification service extension (or Android's data-message handler) 
 
 **Related:** [readme.md](readme.md) | [alerts.md](alerts.md) | [User Stories 3.2, 5.1](../../ui/mobile/user_stories.md)
 
-**Last Updated:** August 13, 2026
+**Last Updated:** August 14, 2026

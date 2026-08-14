@@ -15,21 +15,21 @@ API endpoint priorities (P0–P2 in [/execution/backend/api/](./execution/backen
 
 ## Feature Matrix
 
-Legend: wave number = ships in that wave; — = not planned for that surface. **Status** is as of **August 13, 2026**: ✅ Shipped · 🔶 In progress / partial · ⬜ Not started.
+Legend: wave number = ships in that wave; — = not planned for that surface. **Status** is as of **August 14, 2026**: ✅ Shipped · 🔶 In progress / partial · ⬜ Not started.
 
-| Feature | API | Mobile | Web | Plan gate | Status (Aug 13, 2026) |
+| Feature | API | Mobile | Web | Plan gate | Status (Aug 14, 2026) |
 |---------|-----|--------|-----|-----------|----------------------|
 | Auth0 Universal Login (email + password) | R1 | R1 | R1 | — | ✅ Shipped, incl. email-verification gate |
-| Social sign-in (Google / Apple via Auth0) | R1 | R1 | R1 | — | 🔶 Buttons shipped but unwired (Phase 9; social connection credentials pending) |
-| Onboarding (atomic account + org + CardiMember setup) | R1 | R1 | R1 | — | ✅ Shipped, incl. org-orphaning cleanup fix (PR #5) |
-| CardiMember CRUD + profile | R1 | R1 | R1 | Member limit by tier | 🔶 API + mobile shipped (GET/PUT/DELETE `/api/v1/cardimembers/{id}` + detail/edit screens); web not started (template-stage). Tier member limit not yet enforced |
+| Social sign-in (Google / Apple via Auth0) | R1 | R1 | R1 | — | 🔶 **Mobile wired** (Auth0 PKCE via system browser; cancel restores button opacity). Web pending. Production tenant social connections remain an ops gate |
+| Onboarding (atomic account + org + CardiMember setup) | R1 | R1 | R1 | — | ✅ Shipped, incl. org-orphaning cleanup fix (PR #5) and sex capture at M1-04 |
+| CardiMember CRUD + profile | R1 | R1 | R1 | Member limit by tier | 🔶 API + mobile shipped (GET/PUT/DELETE `/api/v1/cardimembers/{id}` + detail/edit screens, member Phone on M1-14); web not started (template-stage). Tier member limit not yet enforced |
 | Emergency contacts, medical notes (encrypted) | R1 | R1 | R1 | — | 🔶 API + mobile shipped inside member CRUD (medical notes AES-encrypted at rest); web not started (template-stage) |
 | Consent recording (per-metric) | R1 | R1 | R1 | — | ⬜ Not started |
 | Fitbit connection (Google Health API — server OAuth + REST client) | R1 | R1 | R1 | **100 connected wearers max until Google verification passes** | ✅ Client shipped (PR #10, migrated off legacy Fitbit Web API); registration done 2026-08-07; 🔶 live-wearer field verification pending |
-| Fitbit webhook subscriptions (push ingestion) | R2 | R2 | R2 | — | 🔶 **Shipped in dev ahead of R2** — receiver live + Subscriber registered 2026-08-10, feeding Pub/Sub + the aggregator; prod off until the pipeline rollout. 10-minute Worker polling (✅ shipped) remains the guaranteed fallback |
+| Google Health webhook subscriptions (push ingestion) | R2 | R2 | R2 | — | 🔶 **Shipped in dev ahead of R2** — receiver live (`POST /webhooks/google-health`) + Subscriber registered 2026-08-10, feeding Pub/Sub + the aggregator; prod off until the pipeline rollout. 10-minute Worker polling (✅ shipped) remains the guaranteed fallback |
 | Device management (status, primary, reconnect, remove) | R1 | R1 | R1 | — | 🔶 API + mobile shipped (remove / set-primary / sync / refresh endpoints + device management screen, M1-15); web not started (template-stage) |
-| Dashboard + daily health summary | R1 | R1 | R1 | — | 🔶 Per-member dashboard endpoint + mobile dashboard shipped; web dashboard not started (web app is still template-stage) |
-| Statistical alerts (all 5 launch types) + acknowledgment/notes | R1 | R1 | R1 | — | 🔶 **Shipped** via `StatisticalAlertWorker` (PR #118) and `InactivityDetectionWorker` (PR #116); `AlertsController` + `AlertsPage` (M1-10) + `AlertDetailPage` (M1-11/12/16) serve them, and Red/Orange alerts now push via the delivery spine ([notification_engine.md](./technical/notification_engine.md)). Notes/photos not started. *Caveat: `InactivityDetectionWorker` was throwing on every tick until fixed 2026-08-13 — inactivity alerting was silently dead before that date* |
+| Dashboard + daily health summary | R1 | R1 | R1 | — | 🔶 Per-member dashboard endpoint + mobile dashboard shipped (unresolved-alerts strip, weather popup, delayed "Loading", single-sentence AI status, 30-day baseline gate); web dashboard not started (web app is still template-stage) |
+| Statistical alerts (all 5 launch types) + acknowledgment/notes | R1 | R1 | R1 | — | 🔶 **Shipped** via `StatisticalAlertWorker` (PR #118) and `InactivityDetectionWorker` (PR #116); `AlertsController` (6 routes incl. GET detail + undo-ack) + `AlertsPage` (M1-10) + `AlertDetailPage` (M1-11/12/16, rule-specific chart) serve them. Red/Orange alerts push via the delivery spine; Safety-class nudges (`DEVICE_AUTH_BROKEN`, three-tier `DEVICE_BATTERY_LOW`) also push ([notification_engine.md](./technical/notification_engine.md)). Notes/photos not started. SSA eigen-decomposition is in-process Math.NET ([mathnet_numerics.md](./technical/mathnet_numerics.md)). *Caveat: `InactivityDetectionWorker` was throwing on every tick until fixed 2026-08-13 — inactivity alerting was silently dead before that date* |
 | AI insights + chat endpoints (MedGemma via Ollama on Cloud Run; Gemini 2.0 Flash) | R1 | R1 | R1 | — | ✅ Shipped (synchronous endpoints; the R2 event-driven pipeline is separate) |
 | Reports (health report generation) | R1 | R1 | R2 | Complete Care | 🔶 Text-only generation shipped; PDF/CSV/FHIR R4 formats not started |
 | **Data-completeness notifications (in-app)** | R1 | R1 | R3 | — | ✅ **Shipped** — detection worker, 8 rules, inbox + dashboard card + safety banners + mute management. In-app only by decision; the staleness rule defers to `InactivityDetectionWorker`'s faster device-silence alert ([notification_engine.md](./technical/notification_engine.md)) |
@@ -42,7 +42,7 @@ Legend: wave number = ships in that wave; — = not planned for that surface. **
 | Health-data disclosure (Google-mandated in-app disclosure) | R1 | R1 | R1 | — | 🔶 Web shipped (PR #9); **mobile missing — gate for public launch** |
 | Observability (Datadog APM, opt-in metrics via `Apm:Engine`) | R1 | — | — | — | ✅ Shipped (PR #4) |
 | **Google restricted-scope verification + annual CASA** | R1→R2 gate | R1→R2 gate | R1→R2 gate | **Blocks >100 connected wearers** | ⬜ Not started — cross-wave external gate: Gate 1 Trust & Safety review + Gate 2 annual CASA ($500–$4,500, 2–6 weeks; combined runway 4–8 weeks). **Now four scopes to justify, not three** — `settings.readonly` added 2026-08-13 (PR #262) for wearable battery; added deliberately *before* submission, since a scope added afterwards needs its own second review. See [user_onboarding_process.md Step 6](./technical/user_onboarding_process.md), [oauth_clients.md](./technical/oauth_clients.md) and [runbook step 1b](./technical/production_setup_runbook.md) |
-| Wearable battery level + `DEVICE_BATTERY_LOW` safety notification | R1 | R1 | — | Needs `settings.readonly` granted | 🔶 Code, migration and Terraform shipped (PR #262); **blocked on the console scope change** (runbook step 1b) in both devices projects. Existing connections report no battery until the wearer reconnects — degrades silently by design, never fails a sync |
+| Wearable battery level + `DEVICE_BATTERY_LOW` safety notification | R1 | R1 | — | Needs `settings.readonly` granted | 🔶 Code, migration and Terraform shipped (PR #262); **three tiers** (Warning ≤30% / Urgent ≤20% / Critical ≤10% or Empty band), freshness **12 hours**, Safety-class push. **Blocked on the console scope change** (runbook step 1b) in both devices projects. Existing connections report no battery until the wearer reconnects — degrades silently by design, never fails a sync |
 | **Legacy Fitbit Web API sunset — September 2026** | external deadline | external deadline | external deadline | — | 🔶 Hard external deadline (~4 weeks away). Code migrated to Google Health API (PR #10); console registration done 2026-08-07; field mappings verified against the v4 discovery document 2026-08-09 (two silent-zero defects found and fixed); **blocking task: live-wearer check that each type is actually populated** |
 | Trend charts (7d/30d/90d/custom) | R2 | R2 | R2 | — | ⬜ Not started |
 | Notification preferences (global + per-member, quiet hours, sensitivity) | R2 | R2 | R2 | — | 🔶 Global quiet hours + lock-screen detail + per-category mute shipped ahead of schedule alongside the push spine ([notifications.md](./execution/backend/api/notifications.md)); per-member scoping and sensitivity tuning not started |
@@ -52,7 +52,7 @@ Legend: wave number = ships in that wave; — = not planned for that surface. **
 | Export — HL7 v2 | R2 | R2 | R2 | Complete Care | ⬜ Not started |
 | Family summaries / digests (half-hourly MedGemma summary + history) | R2 | R2 | R2 | — | 🔶 **Shipped in dev ahead of R2** — append-only `DigestEntries` with history, read via the insights digest endpoints; prod gated with the pipeline |
 | Real-time heart-rate assessment (SSA → MedGemma severity verdict) | R2 | R2 | R2 | — | 🔶 **Shipped in dev ahead of R2** — twice-hourly assessor over the granular store, red/orange verdicts create alerts; prod gated with the pipeline |
-| Family questionnaires (digest-proposed questions + answers) | R2 | R2 | — | — | ✅ Shipped — `MemberQuestionnaires` + questionnaires endpoints, one open question per member |
+| Family questionnaires (digest-proposed questions + answers) | R2 | R2 | — | — | ✅ Shipped — `MemberQuestionnaires` + questionnaires endpoints; standing vs momentary (`QuestionnaireScope`); gap-backed asking (unresolved alert / Yellow+ observation, 12-hour ceiling); dismissed and answered-permanent never re-asked; in-card delete with confirm |
 | Environmental enrichment (weather/AQI context for GPS exercise sessions) | R3 | R3 | — | — | 🔶 Built but **inert** — code, schema and consent flag shipped; no Cloud Run job or scheduler provisioned, and the `googlehealth.location.readonly` scope not yet requested |
 | Granular minute-grain storage (hour vectors + rollups + retention) | R1 | R1 | R1 | — | ✅ Shipped — `GranularMetricHours`/`MetricRollupsHourly`, partitioned with retention by partition drop |
 | Trend interpretation (family-facing narrative, no risk scores) | R3 | R3 | R3 | Complete Care | ⬜ Not started — replaces predictive monitoring; prediction cards were descoped 2026-08-10 with the LSTM |
@@ -95,6 +95,6 @@ Legend: wave number = ships in that wave; — = not planned for that surface. **
 
 ---
 
-**Document Version:** 2.3
-**Last Updated:** August 13, 2026
+**Document Version:** 2.4
+**Last Updated:** August 14, 2026
 **Owner:** Product Lead

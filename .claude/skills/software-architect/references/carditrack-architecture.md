@@ -126,7 +126,7 @@ Per [CLAUDE.md](../../../../CLAUDE.md), this project is the **only** permitted h
 
 `src/Infrastructure/MedGemma/` contains a **`Dockerfile` only** — it builds the image for the remotely-hosted model. It is not a .NET project and has no `.csproj`.
 
-The AI ingestion/inference **pipeline** — webhook aggregation, SSA-LSTM pre-processing, severity routing, digests — **runs on GCP** (Pub/Sub + Cloud Run) per [llm_design.md](../../../../docs/llm_design.md). It is the only sanctioned exception to the Worker rule, and it must not host non-AI jobs.
+The AI ingestion/inference **pipeline** — webhook aggregation, SSA pre-processing (Math.NET), severity routing, digests — **runs on GCP** (Pub/Sub + Cloud Run) per [llm_design.md](../../../../docs/llm_design.md). It is the only sanctioned exception to the Worker rule, and it must not host non-AI jobs. LSTM was dropped 2026-08-10.
 
 What *is* in-process is the outbound adapter: `Infrastructure/ExternalClients/Medical/MedGemmaClient.cs` and `Infrastructure/ExternalClients/General/GeminiClient.cs` implement `IExternalAiClient` (declared in `Application/Interfaces/Clients`) and call a remote Ollama/Gemini endpoint via `IHttpClientFactory`, wired up in `Infrastructure/Extensions/AiServiceExtensions.cs`. That is a port-and-adapter, and it is correct. Do not mistake it for the pipeline.
 

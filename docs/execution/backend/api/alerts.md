@@ -12,7 +12,7 @@ Handles alert retrieval, acknowledgment, status lifecycle, photo attachments, an
 
 ### GET `/api/v1/insights/alerts/{alertId}` — AI alert analysis
 
-The one alert-related endpoint that exists: on-demand **MedGemma analysis** of a single alert (explanation, severity, recommended action). Returns 200 with `ApiResponse<AlertInsightResponse>`, **404** for an unknown alert ID.
+On-demand **MedGemma analysis** of a single alert (explanation, severity, recommended action). Returns 200 with `ApiResponse<AlertInsightResponse>`, **404** for an unknown alert ID. This is an Insights endpoint, not part of `AlertsController`.
 
 ```json
 {
@@ -476,4 +476,4 @@ Returns updated preferences object (same schema as GET).
 
 **Related:** [readme.md](readme.md) | [notifications.md](notifications.md) | [family.md](family.md) | [User Stories 3.1, 3.2, 3.3, 11.1–11.3](../../ui/mobile/user_stories.md)
 
-**Last Updated:** August 13, 2026
+**Last Updated:** August 14, 2026

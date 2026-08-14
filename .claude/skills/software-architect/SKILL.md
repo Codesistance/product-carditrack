@@ -69,7 +69,7 @@ The question you will be asked most. Answer with this table before writing anyth
 | Is an EF entity configuration or a migration | `Infrastructure/Persistence/Configurations`, `Infrastructure/Migrations` | Migrations are generated against `CardiTrackDbContextFactory`. |
 | Is an HTTP endpoint | `API/Controllers` (+ `API/Validators`) | Controllers, not minimal APIs — see conventions. |
 | Is a recurring or polling **non-AI** job | `Worker/Workers` **only** | Binding rule — see below. |
-| Is an AI **pipeline stage** — webhook aggregation, SSA-LSTM pre-processing, severity routing, digests | GCP (Pub/Sub + Cloud Run) | Per [docs/llm_design.md](../../../docs/llm_design.md). Not the Worker, not the API. |
+| Is an AI **pipeline stage** — webhook aggregation, SSA pre-processing (Math.NET), severity routing, digests | GCP (Pub/Sub + Cloud Run) | Per [docs/llm_design.md](../../../docs/llm_design.md). Not the Worker, not the API. |
 | Is an outbound **call** to a model endpoint | `Infrastructure/ExternalClients` | Behind `IExternalAiClient`; `MedGemmaClient`/`GeminiClient` already do this. Calling a model is an adapter, not the pipeline. |
 | Is a config key name or JSON option | `Shared` | Constants and helpers only — no business logic, no I/O. |
 | Is APM, tracing, or logging wiring | `Observability` | |

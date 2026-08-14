@@ -78,7 +78,7 @@ Load the reference that matches the task — keep this file lean and pull detail
 
 Read `CLAUDE.md` and `docs/llm_design.md` before proposing changes to this repo's GCP footprint — the architecture is already constrained:
 
-- The AI ingestion/inference pipeline (webhook aggregation, SSA-LSTM pre-processing, MedGemma calls, severity routing, digests) runs on GCP via Pub/Sub + Cloud Run and must not host non-AI background jobs.
+- The AI ingestion/inference pipeline (webhook aggregation, SSA pre-processing via Math.NET, MedGemma calls, severity routing, digests) runs on GCP via Pub/Sub + Cloud Run and must not host non-AI background jobs. LSTM was dropped 2026-08-10.
 - Non-AI background jobs and DB polling belong exclusively in `CardiTrack.Worker`, not on GCP.
 - The workload handles health data — weight security and reliability findings accordingly.
 

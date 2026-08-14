@@ -1,6 +1,6 @@
 # CardiTrack — C4 Architecture
 
-> The system as **built and deployed on 2026-08-13** — dev environment, GCP `carditrack-490120`,
+> The system as **built and deployed on 2026-08-14** — dev environment, GCP `carditrack-490120`,
 > `europe-west2`. Planned-but-absent elements (trend interpretation, prod MedGemma, the
 > unprovisioned enrich job) are marked *(planned)*; everything else on these diagrams exists and runs.
 > Levels follow the [C4 model](https://c4model.com): Context → Containers → Components.
@@ -25,7 +25,7 @@ C4Context
 
   System_Ext(health, "Google Health API", "Wearable data (Fitbit, Pixel Watch): polling + registered webhook notifications")
   System_Ext(auth0, "Auth0", "Caregiver identity: email + social login")
-  System_Ext(gemini, "Gemini 2.0 Flash", "General (non-medical) AI - never receives health data")
+  System_Ext(gemini, "Gemini 2.0 Flash", "General AI for chat + reports: de-identified daily readings only (no name/id). Insights/digest/assess stay on in-project MedGemma")
   System_Ext(push, "FCM / APNs", "Push delivery - FCM HTTP v1 with APNs passthrough, escalation ladder, quiet hours")
   System_Ext(dd, "Datadog", "APM traces + logs over OTLP, deployed (mobile excluded - UK1 unsupported by the MAUI SDK)")
 
@@ -34,15 +34,16 @@ C4Context
   Rel(staff, carditrack, "Uses", "web")
   Rel(carditrack, health, "Polls 10-min + receives webhooks", "OAuth per connection")
   Rel(carditrack, auth0, "Authenticates via")
-  Rel(carditrack, gemini, "Non-medical generation only")
+  Rel(carditrack, gemini, "Chat + reports (de-identified readings)")
   Rel(carditrack, dd, "Ships telemetry to")
   Rel(carditrack, push, "Dispatches alerts via")
 ```
 
-**The one boundary that explains most of the design:** health data goes only to the
-**in-project MedGemma** (a container below, not an external system); Gemini is wired so that
-hosts holding health data physically cannot reach it (`AddMedicalAiServices` registers no
-public-provider key — DPIA A5).
+**The one boundary that explains most of the design:** **insights, digests and real-time assessments** go only to
+**in-project MedGemma**. Chat and reports use Gemini's consumer endpoint with **de-identified daily readings**
+(no name or member id — chat used to send the GUID and no longer does). Gemini is outside the Google Cloud BAA;
+moving it to Vertex AI is decision D6. Pipeline jobs are wired through `AddMedicalAiServices` so they hold no
+public-provider key.
 
 ## Level 2 — Containers
 
@@ -75,10 +76,10 @@ C4Container
   Rel(caregiver, mobile, "Uses")
   Rel(caregiver, web, "Uses")
   Rel(mobile, api, "JSON/HTTPS", "Auth0 JWT")
-  Rel(web, api, "JSON/HTTPS")
+  Rel(web, sql, "EF Core (direct; named API client unused)")
   Rel(api, sql, "EF Core")
-  Rel(api, medgemma, "Insights, chat, reports (medical)")
-  Rel(api, gemini, "General AI only - no health data")
+  Rel(api, medgemma, "Insights only (plus pipeline digest/assess)")
+  Rel(api, gemini, "Chat + reports (de-identified readings; no name/id)")
   Rel(mobile, auth0, "Login")
   Rel(worker, sql, "Sync writes, baselines, retention")
   Rel(worker, health, "Polls every 10 min", "OAuth")
@@ -142,7 +143,7 @@ C4Component
   Container_Boundary(wb, "CardiTrack.Worker") {
     Component(sync, "WearableSyncWorker", "10-min", "Trailing-window poll per due connection; granular ingestion + backfill run outside the sync success envelope")
     Component(base, "BaselineCalculationWorker", "daily 02:30", "30/60/90-day PatternBaselines + provisional 7/14-day windows (provisional never alerts)")
-    Component(part, "PartitionMaintenanceWorker", "hourly", "Creates partitions ahead; retention = partition drop: granular 90d, rollups 13mo, digests 12mo, assessments 90d. Never drops what it did not name")
+    Component(part, "PartitionMaintenanceWorker", "hourly", "Creates partitions ahead; retention = partition drop: granular 90d, rollups 13mo, digests 90d, assessments 90d, environmental 90d. Never drops what it did not name")
     Component(inact, "InactivityDetectionWorker", "15-min", "Silence = no granular readings >2h in waking hours on the anchor clock; one yellow device-check alert, resolve to re-arm")
     Component(stat, "StatisticalAlertWorker", "15-min offset", "R1 engine: 5 rules vs established 30-day baseline; null is never zero; remedy-scoped cooldowns (HeartRate type-scoped across producers)")
     Component(audit, "DeviceSyncAuditWorker", "weekly", "Sampled sync-integrity audit")

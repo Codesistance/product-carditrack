@@ -2,11 +2,11 @@
 
 ## Overview
 
-The CardiTrack Mobile App is a cross-platform **.NET 10 MAUI** application for family members and caregivers. What exists today is the **authentication + onboarding experience and the tabbed app shell**: native Auth0 email/password login with a hard email-verification gate, the M1 onboarding wizard (account setup → add CardiMember → device selection → device connection (brand-agnostic) → baseline learning), a Dashboard tab and a real API-backed Alerts tab — only Family remains a stub — plus a minimal Settings page. **Push notifications are wired up** — see [Push notifications](#push-notifications). HealthKit/Health Connect and offline storage are **planned** — see [Planned](#planned).
+The CardiTrack Mobile App is a cross-platform **.NET 10 MAUI** application for family members and caregivers. What exists today is **16 of 17 Figma M1 screens** plus several shipped surfaces that have no M1 frame: native Auth0 email/password and social login with a hard email-verification gate, the M1 onboarding wizard (account setup → add CardiMember → device selection → device connection (brand-agnostic) → baseline learning), Dashboard, Alerts list, **Alert detail** (`AlertDetailPage` covering M1-11/12/16), CardiMember detail/edit, device management, Questionnaires, Notifications, a weather popup, and a minimal Settings page. Only Family remains a stub. **Push notifications are wired up** — see [Push notifications](#push-notifications). HealthKit/Health Connect and offline storage are **planned** — see [Planned](#planned).
 
 The app is built **code-behind first (XAML + `.xaml.cs`) — there is no MVVM layer**, no ViewModels folder, and no data-binding framework. Platform-independent logic (API client, Auth0 client, token handling, localization) lives in the separate plain-`net10.0` library **`CardiTrack.Mobile.Core`**, which is what the unit tests target.
 
-> UI scope is governed by the Figma M1 file — only screens that exist in Figma get built. Screen specs: [mobile screen specifications](../../execution/ui/mobile/ui_screens_maui_mobile.md), [MVP 1 user stories](../../execution/ui/mobile/mvp1/user_stories.md).
+> Figma governs M1 IDs — only screens that exist in Figma get an M1 ID. Several shipped screens (SignIn, ForgotPassword, VerifyEmail, AccountSetup, Notifications, Questionnaires) await design sync. Screen specs: [mobile screen specifications](../../execution/ui/mobile/ui_screens_maui_mobile.md), [MVP 1 user stories](../../execution/ui/mobile/mvp1/user_stories.md).
 
 ## Technology Stack
 
@@ -62,14 +62,16 @@ src/Presentation/CardiTrack.Mobile/
 │   ├── DeviceConnectionPage                  # M1-06: brand-agnostic OAuth explainer + round-trip
 │   ├── ConnectionSuccessPage                 # M1-07
 │   └── BaselineLearningPage                  # M1-08
-├── Controls/                                 # 27 shared controls: AccordionSection, AlertListCard,
-│                                             # AlertMiniCard, AlertSkeletonCard, AppChooserPage,
-│                                             # AppPopupPage, BottomNavBar, DashboardHeader, DeviceCard,
-│                                             # FilterChipBar, HeaderBand, MemberAvatar, MetricCard,
-│                                             # MetricStatus, MetricTrend, MetricTrendCard, NudgeCard,
-│                                             # NudgeMiniRow, PopupCard, QuestionCard, SkeletonView,
+├── Controls/                                 # 30 shared controls: AccordionSection, AlertListCard,
+│                                             # AlertMiniCard, AlertSkeletonCard, AnsweredQuestionRow,
+│                                             # AppChooserPage, AppPopupPage, BottomNavBar,
+│                                             # DashboardHeader, DeviceCard, FilterChipBar, HeaderBand,
+│                                             # MemberAvatar, MetricCard, MetricStatus, MetricTrend,
+│                                             # MetricTrendCard, NudgeCard, NudgeMiniRow, PopupCard,
+│                                             # QuestionCard, QuickActionRow, SkeletonView,
 │                                             # StarRatingView, StatusHeroCard, TrendChart,
-│                                             # TrendLegendSwatch, TrendWindowSelector, WizardHeader
+│                                             # TrendLegendSwatch, TrendWindowSelector, WeatherPopupPage,
+│                                             # WizardHeader
 ├── Notifications/
 │   └── PushRegistrationCoordinator.cs        # FCM token registration + tapped-push routing (Android/iOS)
 ├── Services/
@@ -145,10 +147,9 @@ Splash → Welcome → SignIn / CreateAccount
   - **Silent**: a resume refresh that fails leaves what is on screen alone instead of raising "Couldn't refresh".
 - **Three unattended triggers, one path.** Every live screen now routes arriving on the page (`OnAppearing`), the app resuming, and the periodic tick through a single `RefreshUnattendedAsync`, gated only by `ResumeRefresh.MinimumGap` (5 s — it exists so a load that has just run is not repeated, since Android raises `OnAppearing` again on resume and iOS does not). The per-page "skip the load if the last one was under 2–5 minutes old" windows are **gone**: a caregiver who navigates to a screen is asking for its current state, and could previously be handed one minutes stale with no request in flight.
 - **In-app polling** (`PeriodicRefresh.RefreshEvery`, wired in the constructor of Dashboard, CardiMember Detail and Alerts): a screen left open also re-reads itself every **`PeriodicRefresh.LiveDataInterval` = 30 s**, under the same visible-page and silent-failure rules. All of this is a pull of **already-computed values** — `GET` against the dashboard / member-detail / alerts / notifications endpoints — never a device sync. 30 s rather than the 2–5 min these screens used to sit at: those windows were set when the Worker's 10-minute poll was the only way data arrived, and webhook-triggered syncs plus the 5-minute GCP aggregator/assessor jobs mean a reading, an assessment or an alert can now land at any moment (see [data_sync_architecture.md](../../technical/data_sync_architecture.md)).
-- **Call / Send Message dial the emergency contact**, not `CardiMember.Phone`. `Phone` exists on the entity and on both request DTOs, but **no screen in the design captures it** — M1-04's optional block and M1-14 offer Medical Notes, Emergency Contact Name and Emergency Contact Number only — so it is null for every member created in the app, and quick actions built on it would be permanently dead. The tiles dim when `EmergencyContactPhone` is unset and stay tappable, since a dimmed tile on touch has no hover state to explain itself with; the tap and `ToolTipProperties` both point at the emergency-contact field, which the forms really do have.
-  > Open question: the tile is labelled with the *CardiMember's* name ("Call Dad") but dials the *emergency contact's* number, who may be someone else entirely. The tooltip names them for that reason. Whether the label should change is a design decision — see #67.
-- **Alerts tab** (recent change): the placeholder is gone — `AlertsPage` is the real M1-10 list, backed by `GET /api/v1/alerts`, with filter chips, date-grouped `AlertListCard` rows, inline expand, call and acknowledge actions, and the empty / filtered-empty / loading / error states.
-- Remaining dashboard touchpoints (trends M2-03) still show "Coming soon" alerts. Alert detail (M1-11/12/16) is `AlertDetailPage`.
+- **Call / Send Message dial `CardiMember.Phone`**; **SOS dials the emergency contact**. M1-14 captures Phone Number; when it is empty the Call/Message tiles offer to add one. The SOS tile dims when `EmergencyContactPhone` is unset and stays tappable.
+- **Alerts tab**: `AlertsPage` is the real M1-10 list, backed by `GET /api/v1/alerts`, with filter chips, date-grouped `AlertListCard` rows, inline expand, call and acknowledge actions, and the empty / filtered-empty / loading / error states. Tap opens `AlertDetailPage` (M1-11/12/16).
+- **Dashboard recent-alerts strip** shows **unresolved alerts only** (acknowledged-but-open still appear; resolved/settled do not). There is no "View Trends & History" control on the dashboard — trends live on M1-13's carousel. The hero status is a **single AI sentence** (under 15 words); **"Loading" appears only after 1.5 s**. A weather chip on the hero opens `WeatherPopupPage` (session weather, not live). Manual sync is refused with "too soon" after a recent pull.
 
 ## Configuration
 
@@ -343,4 +344,4 @@ For mobile app issues, contact: mobile-support@carditrack.com
 
 ---
 
-**Last Updated:** August 7, 2026
+**Last Updated:** August 14, 2026

@@ -112,7 +112,7 @@ Cross-origin requests are restricted to a configured **origin allow-list** (`Cor
 
 ## Implemented Endpoints (August 2026)
 
-The full implemented surface is 54 endpoints across 13 controllers:
+The full implemented surface is 56 endpoints across 13 controllers:
 
 | Method + Route | Purpose | Doc |
 |----------------|---------|-----|
@@ -145,7 +145,9 @@ The full implemented surface is 54 endpoints across 13 controllers:
 | `GET /api/v1/insights/members/{id}/digests` | Digest history, newest first | [health-data.md](health-data.md) |
 | `GET /api/v1/alerts` | List alerts across all accessible members | [alerts.md](alerts.md) |
 | `GET /api/v1/cardimembers/{id}/alerts` | List one member's alerts | [alerts.md](alerts.md) |
+| `GET /api/v1/alerts/{alertId}` | Alert detail for M1-11/12/16 (one rule-specific chart) | [alerts.md](alerts.md) |
 | `POST /api/v1/alerts/{alertId}/acknowledge` | Acknowledge an alert (idempotent) | [alerts.md](alerts.md) |
+| `DELETE /api/v1/alerts/{alertId}/acknowledge` | Undo acknowledgment (idempotent; 400 if already resolved) | [alerts.md](alerts.md) |
 | `DELETE /api/v1/alerts/{alertId}` | Remove an alert from the caller's lists (204) | [alerts.md](alerts.md) |
 | `GET /api/v1/cardimembers/{id}/questionnaires` | Questions asked about a member, and their answers | [questionnaires.md](questionnaires.md) |
 | `PUT /api/v1/questionnaires/{id}/answer` | Answer a question, or replace an answer | [questionnaires.md](questionnaires.md) |
@@ -190,7 +192,7 @@ Plus `GET /health` — anonymous liveness probe gated by the `X-Health-Token` he
 | [cardimembers.md](cardimembers.md) | CardiMember Management | **Partially implemented** — CRUD + pause/resume shipped; consent, notes, plan-limit enforcement planned | 1.2, 7.1, 7.2, 7.3 |
 | [devices.md](devices.md) | Device Management | **Implemented** (connect/list/OAuth/remove/primary/sync/refresh); get-single-device planned | 1.3, 6.2 |
 | [health-data.md](health-data.md) | Health Data & Dashboard | **Partially implemented** (per-member dashboard, AI baseline) | 2.1, 2.2, 2.3, 5.2, 10.1 |
-| [alerts.md](alerts.md) | Alerts & Notification Preferences | **Partially implemented** — list/acknowledge/delete shipped; detail, status transitions, notes, photos planned | 3.1, 3.2, 3.3, 11.1–11.3 |
+| [alerts.md](alerts.md) | Alerts & Notification Preferences | **Partially implemented** — list/detail/acknowledge/undo-ack/delete shipped; status transitions, notes, photos planned | 3.1, 3.2, 3.3, 11.1–11.3 |
 | [questionnaires.md](questionnaires.md) | Family Questionnaires | **Implemented** — pipeline-generated questions, answered/edited/deleted by caregivers | — |
 | [family.md](family.md) | Family Collaboration | **Planned** | 4.1, 4.2, 8.3 |
 | [notifications.md](notifications.md) | Push Notifications | **Implemented** — in-app inbox + push delivery spine | 3.2, 5.1 |
@@ -213,6 +215,6 @@ Plus `GET /health` — anonymous liveness probe gated by the `X-Health-Token` he
 
 ---
 
-**Document Version:** 2.2
-**Last Updated:** August 13, 2026
+**Document Version:** 2.3
+**Last Updated:** August 14, 2026
 **Owner:** Backend Engineering Team
