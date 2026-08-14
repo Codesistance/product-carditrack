@@ -24,6 +24,17 @@ public class FcmNotificationChannel : INotificationChannel
 {
     private const int MaxAttempts = 2;
 
+    /// <summary>
+    /// The Android drawable the small icon resolves to. Matches the MAUI image resource of the
+    /// same name in the mobile app (<c>Resources/Images/icon_notification.svg</c>) and the
+    /// <c>default_notification_icon</c> meta-data in its manifest — all three name one asset, and
+    /// renaming it means renaming it in all three.
+    /// </summary>
+    private const string SmallIconName = "icon_notification";
+
+    /// <summary>Tints the small icon and the notification's accent — CardiTrack's primary blue.</summary>
+    private const string SmallIconColor = "#135497";
+
     private readonly FirebaseMessaging _messaging;
     private readonly IEncryptionService _encryption;
     private readonly IAckTokenService _ackTokens;
@@ -196,10 +207,18 @@ public class FcmNotificationChannel : INotificationChannel
             // Content-free by default (§7.1): identifiers and a category-level teaser only. The
             // notification service extension (or Android's data-message handler) fetches the real
             // copy over authenticated HTTPS and rewrites it before display.
+            //
+            // "Tap to view" was content-free and also close to contentless: on a lock screen it
+            // reads as a system message with nothing behind it, and a caregiver who does not open
+            // it has been told nothing at all. Naming the app and asking for the app is the most
+            // these strings can carry without carrying the alert — and it is the difference
+            // between a notification that gets dismissed and one that gets opened.
             Notification = new FirebaseAdmin.Messaging.Notification
             {
                 Title = "CardiTrack",
-                Body = delivery.Category == DeliveryCategory.Safety ? "Urgent — tap to view" : "Tap to view"
+                Body = delivery.Category == DeliveryCategory.Safety
+                    ? "Urgent — open CardiTrack now"
+                    : "Something needs your attention — open CardiTrack"
             },
             Android = new AndroidConfig
             {
@@ -213,7 +232,14 @@ public class FcmNotificationChannel : INotificationChannel
                         DeliveryCategory.Safety => "carditrack.safety",
                         DeliveryCategory.Health => "carditrack.health",
                         _ => "carditrack.nudges"
-                    }
+                    },
+                    // Named here as well as in the manifest default. Android's small icon has to be
+                    // a white-on-transparent silhouette; with neither this nor the manifest
+                    // meta-data set it falls back to the adaptive launcher icon, which the system
+                    // renders as a featureless grey square — the notification arrived with nothing
+                    // on it to say who was calling.
+                    Icon = SmallIconName,
+                    Color = SmallIconColor
                 }
             },
             Apns = new ApnsConfig

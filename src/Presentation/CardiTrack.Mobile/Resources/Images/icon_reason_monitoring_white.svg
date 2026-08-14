@@ -1,0 +1,6 @@
+<!-- icon_monitoring in white — see icon_reason_activity_white.svg for why this is a copy. The
+     catch-all, for an alert that names no single metric. -->
+<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+<circle cx="12" cy="12" r="8.5" stroke="#FFFFFF" stroke-width="2"/>
+<path d="M12 7v5l3.5 2" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

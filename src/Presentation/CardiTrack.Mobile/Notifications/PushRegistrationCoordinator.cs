@@ -37,6 +37,14 @@ public sealed class PushRegistrationCoordinator : IDisposable
     private const string HealthChannelId = "carditrack.health";
     private const string NudgesChannelId = "carditrack.nudges";
 
+    /// <summary>
+    /// The white silhouette Android paints in the status bar. Matches
+    /// <c>Resources/Images/icon_notification.svg</c>, the manifest's
+    /// <c>default_notification_icon</c>, and <c>FcmNotificationChannel.SmallIconName</c> on the
+    /// server — one asset, named in four places, and renaming it means renaming it in all of them.
+    /// </summary>
+    private const string NotificationSmallIconName = "icon_notification";
+
     private readonly IFirebaseCloudMessaging _messaging;
     private readonly IPushDeviceRegistrationService _registration;
     private readonly ISecureKeyValueStore _keyValueStore;
@@ -301,6 +309,22 @@ public sealed class PushRegistrationCoordinator : IDisposable
         });
 
         FirebaseCloudMessagingImplementation.ChannelId = SafetyChannelId;
+
+        // The manifest's default_notification_icon covers the notifications the FCM SDK renders;
+        // this covers the ones Plugin.Firebase builds itself, which read this static instead and
+        // otherwise fall back to the launcher icon (see the manifest comment for why that arrives
+        // as a blank square).
+        //
+        // Resolved by name rather than through the generated Resource class: the drawable is
+        // produced from a MauiImage at build time, and looking it up by identifier keeps this from
+        // depending on when in the build that generation lands. A miss is logged rather than
+        // swallowed — a silently-zero icon ref is the exact failure this change exists to fix.
+        var iconRef = context.Resources?.GetIdentifier(
+            NotificationSmallIconName, "drawable", context.PackageName) ?? 0;
+        if (iconRef == 0)
+            Log.Warning("Notification small icon '{Name}' did not resolve to a drawable.", NotificationSmallIconName);
+        else
+            FirebaseCloudMessagingImplementation.SmallIconRef = iconRef;
     }
 #endif
 

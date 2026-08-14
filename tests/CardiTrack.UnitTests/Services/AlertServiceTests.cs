@@ -1,5 +1,6 @@
 using System.Linq.Expressions;
 using CardiTrack.Application.DTOs.Common;
+using CardiTrack.Application.Exceptions;
 using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Services;
 using CardiTrack.Domain.Entities;
@@ -320,6 +321,73 @@ public class AlertServiceTests
     }
 
     [Fact]
+    public async Task Unacknowledge_ClearsTheStampAndSaves()
+    {
+        var alert = MakeAlert(acknowledgedAt: DateTime.UtcNow.AddMinutes(-5));
+        alert.AcknowledgedByUserId = Guid.NewGuid();
+        _alerts.GetByIdWithCardiMemberAsync(alert.Id).Returns(alert);
+
+        var result = await CreateSut().UnacknowledgeAsync(_userId, alert.Id);
+
+        Assert.Equal("new", result.Status);
+        Assert.Null(alert.AcknowledgedDate);
+        Assert.Null(alert.AcknowledgedByUserId);
+        Assert.Null(result.AcknowledgedAt);
+        await _unitOfWork.Received(1).SaveChangesAsync();
+    }
+
+    [Fact]
+    public async Task Unacknowledge_IsIdempotentForAnAlertNobodyHandled()
+    {
+        var alert = MakeAlert();
+        _alerts.GetByIdWithCardiMemberAsync(alert.Id).Returns(alert);
+
+        var result = await CreateSut().UnacknowledgeAsync(_userId, alert.Id);
+
+        Assert.Equal("new", result.Status);
+        await _unitOfWork.DidNotReceive().SaveChangesAsync();
+    }
+
+    /// <summary>
+    /// Resolution is the system's judgement that the underlying condition has passed. A caregiver
+    /// undoing their own "handled" must not be able to reopen it.
+    /// </summary>
+    [Fact]
+    public async Task Unacknowledge_ForAResolvedAlert_Refuses()
+    {
+        var alert = MakeAlert(acknowledgedAt: DateTime.UtcNow.AddHours(-2), isResolved: true);
+        _alerts.GetByIdWithCardiMemberAsync(alert.Id).Returns(alert);
+
+        await Assert.ThrowsAsync<AlertStateException>(
+            () => CreateSut().UnacknowledgeAsync(_userId, alert.Id));
+
+        Assert.NotNull(alert.AcknowledgedDate);
+        await _unitOfWork.DidNotReceive().SaveChangesAsync();
+    }
+
+    [Fact]
+    public async Task Unacknowledge_ForAnAlertOnAnUnreadableMember_Throws()
+    {
+        var alert = MakeAlert(memberId: _otherMemberId, acknowledgedAt: DateTime.UtcNow);
+        _alerts.GetByIdWithCardiMemberAsync(alert.Id).Returns(alert);
+
+        await Assert.ThrowsAsync<KeyNotFoundException>(
+            () => CreateSut().UnacknowledgeAsync(_userId, alert.Id));
+
+        Assert.NotNull(alert.AcknowledgedDate);
+        await _unitOfWork.DidNotReceive().SaveChangesAsync();
+    }
+
+    [Fact]
+    public async Task Unacknowledge_ForAnUnknownAlert_Throws()
+    {
+        _alerts.GetByIdWithCardiMemberAsync(Arg.Any<Guid>()).Returns((Alert?)null);
+
+        await Assert.ThrowsAsync<KeyNotFoundException>(
+            () => CreateSut().UnacknowledgeAsync(_userId, Guid.NewGuid()));
+    }
+
+    [Fact]
     public async Task Delete_ByThePrimaryCaregiver_SoftDeletesAndSaves()
     {
         SetupLink(canViewHealthData: true, isPrimaryCaregiver: true);
@@ -399,8 +467,13 @@ public class AlertServiceTests
             Arg.Any<Guid>(), Arg.Any<DateOnly>(), Arg.Any<DateOnly>());
     }
 
+    /// <summary>
+    /// The daily window for the chart, plus the two minute-grain windows the elapsed match needs —
+    /// today so far and the same stretch of yesterday. Both, because comparing a running total
+    /// against a completed day is the unfairness the match exists to remove.
+    /// </summary>
     [Fact]
-    public async Task GetById_ForActivityDecline_FetchesStepsWindowNotGranular()
+    public async Task GetById_ForActivityDecline_FetchesTheStepsWindowAndBothElapsedWindows()
     {
         var alert = MakeAlert(type: AlertType.Inactivity);
         alert.MetricValues = """{"rule":"activity_decline","steps":2500,"baselineAvgSteps":5000}""";
@@ -413,11 +486,40 @@ public class AlertServiceTests
 
         Assert.Equal(alert.Id, detail.AlertId);
         Assert.Equal("activity_decline", detail.Rule);
+        // No caregiver link carries a timezone in this fixture, so the anchor clock is UTC.
         var today = DateOnly.FromDateTime(DateTime.UtcNow);
         await _logs.Received(1).GetByCardiMemberAndDateRangeAsync(
             _memberId,
             today.AddDays(-(AlertDetailComposer.ActivityDays - 1)),
             today);
+        await _granular.Received(2).GetRollupsAsync(
+            _memberId, GranularMetric.Steps,
+            Arg.Any<DateTime>(), Arg.Any<DateTime>(), Arg.Any<CancellationToken>());
+        // Rollups, never minute vectors: the two stretches reach ~48 hours by late evening and
+        // GetWindowAsync would return every metric's full minute grid for them.
+        await _granular.DidNotReceive().GetWindowAsync(
+            Arg.Any<Guid>(), Arg.Any<DateTime>(), Arg.Any<DateTime>(), Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// A sleep alert must not pay for the elapsed match. Last night's sleep is a settled figure by
+    /// the time it is reported, so there is no running total to match against.
+    /// </summary>
+    [Fact]
+    public async Task GetById_ForIrregularSleep_FetchesNoGranularWindows()
+    {
+        var alert = MakeAlert(type: AlertType.Sleep);
+        alert.MetricValues = """{"rule":"irregular_sleep","sleepMinutes":240,"baselineAvgSleepMinutes":420}""";
+        _alerts.GetByIdWithCardiMemberAsync(alert.Id).Returns(alert);
+        _members.GetByIdAsync(_memberId).Returns(new CardiMember { Id = _memberId, Name = "Margaret Doe" });
+        _logs.GetByCardiMemberAndDateRangeAsync(Arg.Any<Guid>(), Arg.Any<DateOnly>(), Arg.Any<DateOnly>())
+            .Returns([]);
+
+        await CreateSut().GetByIdAsync(_userId, alert.Id);
+
+        await _granular.DidNotReceive().GetRollupsAsync(
+            Arg.Any<Guid>(), Arg.Any<GranularMetric>(),
+            Arg.Any<DateTime>(), Arg.Any<DateTime>(), Arg.Any<CancellationToken>());
         await _granular.DidNotReceive().GetWindowAsync(
             Arg.Any<Guid>(), Arg.Any<DateTime>(), Arg.Any<DateTime>(), Arg.Any<CancellationToken>());
     }

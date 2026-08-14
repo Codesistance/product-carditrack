@@ -91,6 +91,13 @@ internal static class TrendChartInk
     /// <summary>Longer than the band's edges: at a glance the dash tells the two marks apart.</summary>
     public static readonly float[] BaselineDashes = [6f, 4f];
 
+    /// <summary>
+    /// The run into a day still in progress. Shorter and tighter than the baseline's dashes, and
+    /// drawn at the line's own weight rather than the rule's, so it reads as the same line
+    /// continuing provisionally — not as a third kind of mark on the chart.
+    /// </summary>
+    public static readonly float[] PartialDayDashes = [2f, 2f];
+
     public static Color Reference => MetricStatus.Resource("ChartReferenceBand", Colors.Gray);
 
     /// <summary>
@@ -168,6 +175,9 @@ internal sealed class TrendChartDrawable : IDrawable
         DrawBaseline(canvas, dirtyRect, scale, Y);
 
         var line = new PathF();
+        // The run into a day that has not finished yet, drawn apart from the rest — see
+        // MetricPoint.IsPartial. Empty for every window that ends on a completed day.
+        var partial = new PathF();
         var area = new PathF();
         // Only the longer windows skip the per-day markers, and those are exactly the windows with
         // the most points to collect — so the list is not built at all unless it will be drawn.
@@ -178,10 +188,17 @@ internal sealed class TrendChartDrawable : IDrawable
         var lastKnown = 0d;
         var started = false;
         var lastX = 0f;
+        var lastSettled = default(PointF);
+        var hasSettled = false;
+        var partialStarted = false;
+        // Where the previous point was plotted, so the dashed run can start on the solid line
+        // rather than in mid-air.
+        var previous = default(PointF);
 
         for (var i = 0; i < Points.Count; i++)
         {
             var value = Points[i].Value;
+            var isPartial = Points[i].IsPartial;
 
             // A window that opens before this member's first reading starts the line where the
             // data does, rather than drawing a flat run at a value nobody recorded. Gaps *inside*
@@ -195,6 +212,7 @@ internal sealed class TrendChartDrawable : IDrawable
 
             var x = left + plotWidth * i / (Points.Count - 1);
             var y = Y(lastKnown);
+            var point = new PointF(x, y);
 
             if (!started)
             {
@@ -203,18 +221,43 @@ internal sealed class TrendChartDrawable : IDrawable
                 area.LineTo(x, y);
                 started = true;
             }
+            else if (isPartial)
+            {
+                // The dashed run starts where the solid line stopped, so the two paths meet rather
+                // than leaving a gap.
+                if (!partialStarted)
+                {
+                    partial.MoveTo(previous.X, previous.Y);
+                    partialStarted = true;
+                }
+                partial.LineTo(x, y);
+            }
             else
             {
                 line.LineTo(x, y);
                 area.LineTo(x, y);
             }
 
-            lastX = x;
+            previous = point;
+
+            if (!isPartial)
+            {
+                lastX = x;
+                if (value is not null)
+                {
+                    lastSettled = point;
+                    hasSettled = true;
+                }
+            }
+
             if (value is not null)
             {
-                latestMarker = new PointF(x, y);
+                latestMarker = point;
                 hasMarker = true;
-                markers?.Add(latestMarker);
+                // A running total is not one of the readings the window is made of, so it does not
+                // get a day marker — the dashed run is what says it is there.
+                if (!isPartial)
+                    markers?.Add(point);
             }
         }
 
@@ -223,17 +266,30 @@ internal sealed class TrendChartDrawable : IDrawable
         if (!started)
             return;
 
-        area.LineTo(lastX, bottom);
-        area.Close();
-
-        canvas.FillColor = LineColor.WithAlpha(0.14f);
-        canvas.FillPath(area);
-
         canvas.StrokeColor = LineColor;
         canvas.StrokeSize = LineThickness;
         canvas.StrokeLineCap = LineCap.Round;
         canvas.StrokeLineJoin = LineJoin.Round;
-        canvas.DrawPath(line);
+
+        // The shaded area stops at the last finished day. Filling under a half-collected total
+        // would give it the same visual weight as the days either side of it — and a window whose
+        // only reading *is* that partial day has no finished run to shade at all.
+        if (hasSettled)
+        {
+            area.LineTo(lastX, bottom);
+            area.Close();
+
+            canvas.FillColor = LineColor.WithAlpha(0.14f);
+            canvas.FillPath(area);
+            canvas.DrawPath(line);
+        }
+
+        if (partialStarted)
+        {
+            canvas.StrokeDashPattern = TrendChartInk.PartialDayDashes;
+            canvas.DrawPath(partial);
+            canvas.StrokeDashPattern = null;
+        }
 
         if (markers is not null)
         {
@@ -242,8 +298,12 @@ internal sealed class TrendChartDrawable : IDrawable
         }
 
         // The most recent reading is always marked, whatever the window: it is the number the
-        // card's headline value quotes, and the caregiver needs to see where it sits.
-        if (hasMarker)
+        // card's headline value quotes, and the caregiver needs to see where it sits. Where the
+        // window ends on a day in progress the headline quotes the last finished day instead, so
+        // that is the point the emphasis belongs to.
+        if (hasSettled)
+            DrawMarker(canvas, lastSettled, LatestMarkerRadius);
+        else if (hasMarker)
             DrawMarker(canvas, latestMarker, LatestMarkerRadius);
     }
 

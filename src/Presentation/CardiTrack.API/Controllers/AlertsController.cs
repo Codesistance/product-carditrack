@@ -2,6 +2,7 @@ using CardiTrack.API.Infrastructure.Auditing;
 using CardiTrack.API.Infrastructure.UserContext;
 using CardiTrack.Application.DTOs.Common;
 using CardiTrack.Application.DTOs.Responses;
+using CardiTrack.Application.Exceptions;
 using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Domain.Enums;
 using Microsoft.AspNetCore.Authorization;
@@ -110,6 +111,43 @@ public class AlertsController : BaseApiController
         catch (KeyNotFoundException ex)
         {
             return Error(ex.Message, StatusCodes.Status404NotFound);
+        }
+    }
+
+    /// <summary>
+    /// Puts an acknowledged alert back to unhandled — the undo for
+    /// <see cref="Acknowledge"/>, which a caregiver can otherwise only get wrong once.
+    /// </summary>
+    [HttpDelete("alerts/{alertId:guid}/acknowledge")]
+    [AuditHealthDataAccess("UnacknowledgeAlert")]
+    [ProducesResponseType(typeof(ApiResponse<AlertAcknowledgementResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<ApiResponse<AlertAcknowledgementResponse>>> Unacknowledge(
+        Guid alertId, CancellationToken ct)
+    {
+        if (!UserContext.IsAuthenticated || UserContext.UserId == Guid.Empty)
+        {
+            return Error("We couldn't find your account — please sign in again.", StatusCodes.Status403Forbidden);
+        }
+
+        try
+        {
+            var result = await _alertService.UnacknowledgeAsync(UserContext.UserId, alertId, ct);
+            return Success(result, "Marked as not handled.");
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return Error(ex.Message, StatusCodes.Status404NotFound);
+        }
+        catch (AlertStateException ex)
+        {
+            // A resolved alert. The service's own message explains why and is written to be read
+            // by a caregiver — which is exactly why this catches its own exception type and not
+            // InvalidOperationException: an incidental framework fault must surface as a 5xx, not
+            // as advice.
+            return Error(ex.Message);
         }
     }
 

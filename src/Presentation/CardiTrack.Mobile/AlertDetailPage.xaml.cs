@@ -118,17 +118,17 @@ public partial class AlertDetailPage : ContentPage
         var resources = Microsoft.Maui.Controls.Application.Current!.Resources;
         var firstName = NameFormatting.FirstName(alert.CardiMemberName);
 
-        var (badge, icon, bannerKey) = alert.Severity switch
+        var (badge, bannerKey) = alert.Severity switch
         {
-            "red" => ("CRITICAL", "icon_status_critical.svg", "StatusRed"),
-            "orange" => ("URGENT", "icon_status_urgent.svg", "StatusOrange"),
-            "yellow" => ("INFO", "icon_status_warning.svg", "StatusYellow"),
-            _ => ("INFO", "icon_status_warning.svg", "StatusUnknown"),
+            "red" => ("CRITICAL", "StatusRed"),
+            "orange" => ("URGENT", "StatusOrange"),
+            "yellow" => ("INFO", "StatusYellow"),
+            _ => ("INFO", "StatusUnknown"),
         };
 
         SeverityBanner.BackgroundColor = (Color)resources[bannerKey];
         SeverityBadge.Text = badge;
-        SeverityIcon.Source = icon;
+        ReasonIcon.Source = ReasonIconFor(alert.Reason);
         TitleLabel.Text = alert.Title;
         TimeLabel.Text = FormatTriggered(alert.TriggeredAt);
 
@@ -144,8 +144,30 @@ public partial class AlertDetailPage : ContentPage
         ApplyComparison(alert.Comparison);
         ApplyContext(alert, firstName);
         ApplyAcknowledgement(alert);
-        ApplyActions(alert, firstName);
+
+        QuickActions.Apply(
+            new QuickActionTarget(
+                alert.CardiMemberId,
+                alert.CardiMemberName,
+                alert.Phone,
+                alert.EmergencyContactPhone,
+                alert.EmergencyContactName),
+            _popups);
     }
+
+    /// <summary>
+    /// The reason icon, in the white-stroke variants the coloured banner needs. An unrecognised
+    /// key falls back to the catch-all rather than to no icon: a server that learns a new reason
+    /// before the app does should leave the banner looking ordinary, not empty.
+    /// </summary>
+    private static string ReasonIconFor(string? reason) => reason switch
+    {
+        AlertReasons.Activity => "icon_reason_activity_white.svg",
+        AlertReasons.Heart => "icon_reason_heart_white.svg",
+        AlertReasons.Sleep => "icon_reason_sleep_white.svg",
+        AlertReasons.Device => "icon_reason_device_white.svg",
+        _ => "icon_reason_monitoring_white.svg",
+    };
 
     private void ApplyChart(AlertChartResponse? chart)
     {
@@ -161,6 +183,10 @@ public partial class AlertDetailPage : ContentPage
         ChartValueLabel.Text = chart.Value is { } value
             ? string.Format(ValueFormat(chart.Metric), value)
             : "—";
+        ChartValueDayLabel.Text = chart.ValueLabel ?? string.Empty;
+        ChartValueDayLabel.IsVisible = !string.IsNullOrWhiteSpace(chart.ValueLabel);
+        ChartPartialDayLabel.Text = chart.PartialDayLabel ?? string.Empty;
+        ChartPartialDayLabel.IsVisible = !string.IsNullOrWhiteSpace(chart.PartialDayLabel);
         ChartIcon.Source = chart.Metric switch
         {
             "steps" => "icon_metric_steps.svg",
@@ -231,11 +257,20 @@ public partial class AlertDetailPage : ContentPage
         ContextLabel.Text = copy ?? string.Empty;
     }
 
+    /// <summary>
+    /// The handled state and its undo. Acknowledged offers Undo; resolved does not — resolution is
+    /// the system's own judgement that the condition has passed, and the endpoint refuses to
+    /// reopen it, so offering a button that would come back with an error would be a worse answer
+    /// than not offering one.
+    /// </summary>
     private void ApplyAcknowledgement(AlertDetailResponse alert)
     {
-        var handled = alert.Status is "acknowledged" or "resolved";
+        var acknowledged = alert.Status == "acknowledged";
+        var handled = acknowledged || alert.Status == "resolved";
+
         AcknowledgeButton.IsVisible = !handled;
         AcknowledgeButton.Text = alert.Severity == "red" ? "I'm on my way" : "Mark as acknowledged";
+        UndoAcknowledgeButton.IsVisible = acknowledged;
 
         if (!handled)
         {
@@ -249,25 +284,6 @@ public partial class AlertDetailPage : ContentPage
         var when = alert.AcknowledgedAt is { } at ? RelativeTime.Format(at) : null;
         AcknowledgedLabel.Text = when is null ? who : $"{who}, {when}";
         AcknowledgedLabel.IsVisible = true;
-    }
-
-    private void ApplyActions(AlertDetailResponse alert, string firstName)
-    {
-        var isCritical = alert.Severity == "red";
-        var emergency = !string.IsNullOrWhiteSpace(alert.EmergencyContactPhone);
-        var memberPhone = !string.IsNullOrWhiteSpace(alert.Phone);
-
-        CallButton.Text = isCritical
-            ? "Call now"
-            : string.IsNullOrWhiteSpace(firstName) ? "Call" : $"Call {firstName}";
-
-        // Critical alerts dial the emergency contact (M1-12); others match M1-10 and dial
-        // the emergency number too when that is all we have, else the member.
-        CallButton.Opacity = (isCritical ? emergency : memberPhone || emergency) ? 1 : UnavailableActionOpacity;
-
-        MessageButton.Text = string.IsNullOrWhiteSpace(firstName) ? "Send a message" : $"Message {firstName}";
-        MessageButton.IsVisible = !isCritical;
-        MessageButton.Opacity = memberPhone ? 1 : UnavailableActionOpacity;
     }
 
     private static string FormatTriggered(DateTime utc)
@@ -296,93 +312,84 @@ public partial class AlertDetailPage : ContentPage
         ErrorPanel.IsVisible = error;
     }
 
-    private async void OnCallClicked(object? sender, EventArgs e)
+    private void OnAcknowledgeClicked(object? sender, EventArgs e) =>
+        _ = SetAcknowledgedAsync(handled: true);
+
+    private void OnUndoAcknowledgeClicked(object? sender, EventArgs e) =>
+        _ = SetAcknowledgedAsync(handled: false);
+
+    /// <summary>
+    /// Both directions of the same toggle. The response is applied to the alert already on screen
+    /// rather than triggering a reload — the caregiver is looking at this card, and a full refetch
+    /// would blink the whole page for one field.
+    /// </summary>
+    private async Task SetAcknowledgedAsync(bool handled)
     {
-        if (_alert is null)
-            return;
-
-        var isCritical = _alert.Severity == "red";
-        var number = isCritical
-            ? _alert.EmergencyContactPhone
-            : FirstNonEmpty(_alert.Phone, _alert.EmergencyContactPhone);
-
-        if (string.IsNullOrWhiteSpace(number))
-        {
-            await OfferToAddNumberAsync(isCritical);
-            return;
-        }
-
-        try
-        {
-            PhoneDialer.Default.Open(number);
-        }
-        catch (Exception)
-        {
-            await _popups.ShowWarningAsync("Phone calls aren't supported on this device.");
-        }
-    }
-
-    private async void OnMessageClicked(object? sender, EventArgs e)
-    {
-        if (_alert is null)
-            return;
-
-        if (string.IsNullOrWhiteSpace(_alert.Phone))
-        {
-            await OfferToAddNumberAsync(emergency: false);
-            return;
-        }
-
-        try
-        {
-            await Sms.Default.ComposeAsync(new SmsMessage(string.Empty, _alert.Phone));
-        }
-        catch (Exception)
-        {
-            await _popups.ShowWarningAsync("Messaging isn't supported on this device.");
-        }
-    }
-
-    private async void OnAcknowledgeClicked(object? sender, EventArgs e)
-    {
-        if (_alert is null)
+        if (_alert is not { } alert)
             return;
 
         AcknowledgeButton.IsEnabled = false;
+        UndoAcknowledgeButton.IsEnabled = false;
         try
         {
-            var result = await _api.AcknowledgeAlertAsync(_alert.AlertId);
-            _alert.Status = result.Status;
-            _alert.AcknowledgedAt = result.AcknowledgedAt;
-            _alert.AcknowledgedByUserId = result.AcknowledgedByUserId;
-            ApplyAcknowledgement(_alert);
+            var result = handled
+                ? await _api.AcknowledgeAlertAsync(alert.AlertId)
+                : await _api.UnacknowledgeAlertAsync(alert.AlertId);
+
+            alert.Status = result.Status;
+            alert.AcknowledgedAt = result.AcknowledgedAt;
+            alert.AcknowledgedByUserId = result.AcknowledgedByUserId;
+
+            // The name belongs to whoever acknowledged it, so it has to go when the acknowledgement
+            // does — otherwise undoing leaves a stale "Acknowledged by Sam" behind the next tap.
+            if (!handled)
+                alert.AcknowledgedByName = null;
+
+            ApplyAcknowledgement(alert);
         }
         catch (ApiException ex)
         {
-            await _popups.ShowWarningAsync(ex.Message, "Couldn't mark it handled");
+            await _popups.ShowWarningAsync(
+                ex.Message, handled ? "Couldn't mark it handled" : "Couldn't undo that");
         }
         finally
         {
             AcknowledgeButton.IsEnabled = true;
+            UndoAcknowledgeButton.IsEnabled = true;
         }
     }
 
-    private async Task OfferToAddNumberAsync(bool emergency)
+    private async void OnViewActivityDataTapped(object? sender, TappedEventArgs e)
     {
-        var firstName = NameFormatting.FirstName(_alert?.CardiMemberName);
-        var prompt = emergency
-            ? string.IsNullOrWhiteSpace(firstName)
-                ? "Would you like to add an emergency contact number, so you can call them from here?"
-                : $"Would you like to add an emergency contact number for {firstName}, so you can call them from here?"
-            : string.IsNullOrWhiteSpace(firstName)
-                ? "Would you like to add a phone number, so you can call or message them from here?"
-                : $"Would you like to add a phone number for {firstName}, so you can call or message them from here?";
-
-        var addNow = await _popups.ConfirmInfoAsync(prompt, "No number yet", "Add number", "Not now");
-        if (addNow && _alert is { } alert)
-            await Shell.Current.GoToAsync($"{EditCardiMemberPage.Route}?memberId={alert.CardiMemberId}");
+        if (_alert is { } alert)
+            await Shell.Current.GoToAsync($"{CardiMemberDetailPage.Route}?memberId={alert.CardiMemberId}");
     }
 
-    private static string? FirstNonEmpty(params string?[] values) =>
-        values.FirstOrDefault(v => !string.IsNullOrWhiteSpace(v));
+    /// <summary>
+    /// Hands the alert to whatever the caregiver already uses to talk to their family. Deliberately
+    /// the same three facts the sharer can see on the banner in front of them — who, what, and
+    /// when — and none of the numbers below it: this leaves the app for an arbitrary destination,
+    /// so it carries the least that still makes the message worth sending.
+    /// </summary>
+    private async void OnShareWithFamilyTapped(object? sender, TappedEventArgs e)
+    {
+        if (_alert is not { } alert)
+            return;
+
+        var firstName = NameFormatting.FirstName(alert.CardiMemberName);
+        var who = string.IsNullOrWhiteSpace(firstName) ? "a CardiMember" : firstName;
+
+        try
+        {
+            await Share.Default.RequestAsync(new ShareTextRequest
+            {
+                Title = "Share this alert",
+                Text = $"CardiTrack alert for {who}: {alert.Title} ({FormatTriggered(alert.TriggeredAt)}).",
+            });
+        }
+        catch (Exception)
+        {
+            await _popups.ShowWarningAsync("Sharing isn't supported on this device.");
+        }
+    }
 }

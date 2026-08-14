@@ -73,10 +73,26 @@
                             <Border.StrokeShape>
                                 <RoundRectangle CornerRadius="20"/>
                             </Border.StrokeShape>
+                            <!-- The icon says what the alert is about; the banner's colour already
+                                 says how bad it is. It used to be a second severity glyph — and
+                                 one stroked in the severity colour at that, so on the yellow and
+                                 orange banners it was the same colour as the ground behind it and
+                                 the title simply had no icon at all. Hence the translucent-white
+                                 tile and the white-stroke variants: on a coloured ground the mark
+                                 has to bring its own contrast. -->
                             <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
-                                <Image x:Name="SeverityIcon"
-                                       WidthRequest="28" HeightRequest="28"
-                                       VerticalOptions="Start"/>
+                                <Border WidthRequest="44" HeightRequest="44"
+                                        StrokeThickness="0"
+                                        BackgroundColor="#33FFFFFF"
+                                        VerticalOptions="Start">
+                                    <Border.StrokeShape>
+                                        <RoundRectangle CornerRadius="14"/>
+                                    </Border.StrokeShape>
+                                    <Image x:Name="ReasonIcon"
+                                           WidthRequest="24" HeightRequest="24"
+                                           HorizontalOptions="Center"
+                                           VerticalOptions="Center"/>
+                                </Border>
                                 <VerticalStackLayout Grid.Column="1" Spacing="4">
                                     <Label x:Name="SeverityBadge"
                                            FontFamily="QuicksandSemiBold"
@@ -133,15 +149,35 @@
                                                Style="{StaticResource Body2}"
                                                FontSize="12"/>
                                     </VerticalStackLayout>
-                                    <Label x:Name="ChartValueLabel"
-                                           Grid.Column="2"
-                                           Style="{StaticResource Heading3}"
-                                           VerticalOptions="Center"/>
+                                    <VerticalStackLayout Grid.Column="2"
+                                                         Spacing="1"
+                                                         VerticalOptions="Center"
+                                                         HorizontalOptions="End">
+                                        <Label x:Name="ChartValueLabel"
+                                               Style="{StaticResource Heading3}"
+                                               HorizontalTextAlignment="End"/>
+                                        <!-- Names the day the headline belongs to. Without it the
+                                             header quoted one day and the comparison card below
+                                             quoted another, with nothing on screen to say they
+                                             were different days. -->
+                                        <Label x:Name="ChartValueDayLabel"
+                                               Style="{StaticResource Body2}"
+                                               FontSize="12"
+                                               HorizontalTextAlignment="End"
+                                               IsVisible="False"/>
+                                    </VerticalStackLayout>
                                 </Grid>
                                 <controls:TrendChart x:Name="Chart" HeightRequest="160"/>
                                 <Label x:Name="ChartBaselineLabel"
                                        Style="{StaticResource Body2}"
                                        FontSize="12"/>
+                                <!-- The day in progress, against the same stretch of yesterday.
+                                     See AlertChartResponse.PartialDayLabel. -->
+                                <Label x:Name="ChartPartialDayLabel"
+                                       Style="{StaticResource Body2}"
+                                       FontSize="12"
+                                       LineBreakMode="WordWrap"
+                                       IsVisible="False"/>
                             </VerticalStackLayout>
                         </Border>
 
@@ -181,21 +217,71 @@
                             </VerticalStackLayout>
                         </Border>
 
+                        <!-- The same four actions the Dashboard's CardiMember card offers, and the
+                             same control — this screen used to carry its own pair of full-width
+                             Call/Message buttons, worded differently and with their own
+                             availability rules. -->
+                        <controls:QuickActionRow x:Name="QuickActions" Margin="0,2,0,0"/>
+
+                        <Label Text="More Options"
+                               Style="{StaticResource DashboardSectionTitle}"
+                               Margin="0,6,0,0"/>
+
+                        <!-- M1-11's More Options list, restricted to the rows that do something.
+                             Figma also shows Adjust Baseline, Add Note About This Alert and Book a
+                             Doctor Visit; none of those has a backend yet (no baseline override,
+                             no alert-notes store, no clinician or consent architecture), and a row
+                             that opens an apology is worse than a row that is not there. -->
+                        <Border Style="{StaticResource ElevatedCard}" Padding="4,2">
+                            <VerticalStackLayout>
+                                <Grid ColumnDefinitions="*,Auto" Padding="12,14">
+                                    <Grid.GestureRecognizers>
+                                        <TapGestureRecognizer Tapped="OnViewActivityDataTapped"/>
+                                    </Grid.GestureRecognizers>
+                                    <Label Text="View Detailed Activity Data"
+                                           Style="{StaticResource Body2Dark}"
+                                           VerticalTextAlignment="Center"/>
+                                    <Image Grid.Column="1" Source="icon_chevron.svg"
+                                           WidthRequest="14" HeightRequest="14"
+                                           VerticalOptions="Center"/>
+                                </Grid>
+
+                                <BoxView HeightRequest="1"
+                                         Color="{StaticResource Divider}"
+                                         Margin="12,0"/>
+
+                                <Grid ColumnDefinitions="*,Auto" Padding="12,14">
+                                    <Grid.GestureRecognizers>
+                                        <TapGestureRecognizer Tapped="OnShareWithFamilyTapped"/>
+                                    </Grid.GestureRecognizers>
+                                    <Label Text="Share with Family"
+                                           Style="{StaticResource Body2Dark}"
+                                           VerticalTextAlignment="Center"/>
+                                    <Image Grid.Column="1" Source="icon_chevron.svg"
+                                           WidthRequest="14" HeightRequest="14"
+                                           VerticalOptions="Center"/>
+                                </Grid>
+                            </VerticalStackLayout>
+                        </Border>
+
                         <Label x:Name="AcknowledgedLabel"
                                Style="{StaticResource Body2}"
+                               HorizontalTextAlignment="Center"
+                               Margin="0,6,0,0"
                                IsVisible="False"/>
 
-                        <Button x:Name="CallButton"
-                                Style="{StaticResource PrimaryGradientButton}"
-                                Clicked="OnCallClicked"/>
-
-                        <Button x:Name="MessageButton"
-                                Style="{StaticResource SecondaryOutlineButton}"
-                                Clicked="OnMessageClicked"/>
-
                         <Button x:Name="AcknowledgeButton"
-                                Style="{StaticResource SecondaryOutlineButton}"
+                                Style="{StaticResource PrimaryGradientButton}"
                                 Clicked="OnAcknowledgeClicked"/>
+
+                        <!-- Acknowledging is a claim a caregiver makes about themselves, and they
+                             can make it by accident. Undo stays on the screen rather than living
+                             in a toast that is gone by the time they notice. -->
+                        <Button x:Name="UndoAcknowledgeButton"
+                                Text="Undo — mark as not handled"
+                                Style="{StaticResource SecondaryOutlineButton}"
+                                IsVisible="False"
+                                Clicked="OnUndoAcknowledgeClicked"/>
 
                     </VerticalStackLayout>
                 </Grid>

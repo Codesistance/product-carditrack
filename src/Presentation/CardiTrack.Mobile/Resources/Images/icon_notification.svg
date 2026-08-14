@@ -1,0 +1,13 @@
+<!-- The Android status-bar small icon. Android masks a small icon by its alpha channel and paints
+     the result in one flat colour, so this is authored as a solid silhouette: colour, gradients and
+     strokes are all discarded, and anything that relies on them arrives as a featureless blob. The
+     pulse is therefore a hole cut through the heart with fill-rule="evenodd", not a line drawn over
+     it — a stroke in another colour would simply be filled in with the rest.
+
+     Named to match FcmNotificationChannel.SmallIconName and the default_notification_icon
+     meta-data in Platforms/Android/AndroidManifest.xml. All three name this one asset. -->
+<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+<path fill-rule="evenodd" clip-rule="evenodd" fill="#FFFFFF"
+      d="M12 20.5S3.5 15 3.5 9.2A4.7 4.7 0 0 1 12 6.4a4.7 4.7 0 0 1 8.5 2.8C20.5 15 12 20.5 12 20.5Z
+         M5.6 11.1H9.1L10.5 8.6L12.5 12.6L14.1 10.1H18.4V11.9H14.1L12.5 14.4L10.5 10.4L9.1 12.9H5.6Z"/>
+</svg>

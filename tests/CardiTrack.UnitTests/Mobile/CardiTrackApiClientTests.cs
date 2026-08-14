@@ -441,6 +441,28 @@ public class CardiTrackApiClientTests
         Assert.Equal(2, result.UnreadCount);
     }
 
+    [Fact]
+    public async Task UnacknowledgeAlert_DeletesTheAcknowledgement_NotTheAlert()
+    {
+        var (client, http) = CreateSut();
+        var alertId = Guid.NewGuid();
+        http.Enqueue(HttpStatusCode.OK, $$"""
+            {"success":true,"message":"ok","data":{"alertId":"{{alertId}}","status":"new",
+             "acknowledgedAt":null,"unreadCount":3},"timestamp":"2026-08-14T00:00:00Z"}
+            """);
+
+        var result = await client.UnacknowledgeAlertAsync(alertId);
+
+        var request = http.Requests.Single();
+        Assert.Equal(HttpMethod.Delete, request.Method);
+        // The /acknowledge suffix is the whole distinction from DeleteAlertAsync, which removes
+        // the alert itself — the two differ only by this segment.
+        Assert.Equal($"/api/v1/alerts/{alertId}/acknowledge", request.Uri!.AbsolutePath);
+        Assert.Equal("new", result.Status);
+        Assert.Null(result.AcknowledgedAt);
+        Assert.Equal(3, result.UnreadCount);
+    }
+
     // ── Message-only command envelopes ──────────────────────────────────────────
     //
     // Commands that hand nothing back return `{ success, message, timestamp }` with no `data`

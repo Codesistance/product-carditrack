@@ -16,8 +16,6 @@ public partial class DashboardPage : ContentPage
     private const string DismissedSleepAlertKey = "DismissedSleepAlertId";
     private static readonly TimeSpan StaleThreshold = TimeSpan.FromHours(2);
 
-    private const double UnavailableActionOpacity = 0.4;
-
     /// <summary>Columns in the Key Metrics grid; see <see cref="LayoutMetricCards"/>.</summary>
     private const int MetricsPerRow = 2;
 
@@ -294,8 +292,14 @@ public partial class DashboardPage : ContentPage
         Header.SetUnreadCount(data.UnreadAlertCount);
 
         var firstName = NameFormatting.FirstName(data.Name);
-        ApplyPhoneAvailability(data, firstName);
-        ApplyEmergencyCallAvailability(data, firstName);
+        QuickActions.Apply(
+            new QuickActionTarget(
+                data.CardiMemberId,
+                data.Name,
+                data.Phone,
+                data.EmergencyContactPhone,
+                data.EmergencyContactName),
+            _popups);
 
         // Paused banner (M1-13)
         PausedBanner.IsVisible = data.MonitoringPaused;
@@ -443,90 +447,6 @@ public partial class DashboardPage : ContentPage
         }
     }
 
-    /// <summary>
-    /// Dims Call and Send Message when the CardiMember has no phone of their own to act on
-    /// (issue #162 — these reach the member directly now, not the emergency contact).
-    /// </summary>
-    /// <remarks>
-    /// The tiles keep their tap handlers: a dimmed tile on touch has no hover state to explain
-    /// itself with, so the tap has to. <c>ToolTipProperties</c> covers long-press and desktop.
-    /// </remarks>
-    private void ApplyPhoneAvailability(DashboardResponse data, string firstName)
-    {
-        var hasPhone = !string.IsNullOrWhiteSpace(data.Phone);
-        var noPhoneMessage = NoPhoneMessage(firstName);
-
-        CallAction.Opacity = hasPhone ? 1 : UnavailableActionOpacity;
-        MessageAction.Opacity = hasPhone ? 1 : UnavailableActionOpacity;
-
-        // Distinct verbs per tile — Message doesn't call, so sharing one "Calls..." tooltip
-        // between both would misdescribe it.
-        ToolTipProperties.SetText(CallAction, hasPhone ? $"Calls {firstName} directly." : noPhoneMessage);
-        ToolTipProperties.SetText(MessageAction, hasPhone ? $"Messages {firstName} directly." : noPhoneMessage);
-    }
-
-    /// <summary>
-    /// Dims the Emergency Call tile when there's no emergency contact number (issue #67's
-    /// original dim-not-hide pattern, now on its own tile rather than borrowed by "Call {name}").
-    /// </summary>
-    private void ApplyEmergencyCallAvailability(DashboardResponse data, string firstName)
-    {
-        var hasPhone = !string.IsNullOrWhiteSpace(data.EmergencyContactPhone);
-        var tooltip = hasPhone
-            ? string.IsNullOrWhiteSpace(data.EmergencyContactName)
-                ? $"Calls {firstName}'s emergency contact."
-                : $"Calls {data.EmergencyContactName}, {firstName}'s emergency contact."
-            : NoEmergencyContactMessage(firstName);
-
-        EmergencyCallAction.Opacity = hasPhone ? 1 : UnavailableActionOpacity;
-        ToolTipProperties.SetText(EmergencyCallAction, tooltip);
-    }
-
-    // The nameless branch drops the noun rather than substituting one. Every stand-in available
-    // here is either internal vocabulary ("this CardiMember") or a greeting-card relationship
-    // noun ("your loved one"), and the caregiver is looking at one specific person's card either
-    // way — the sentence reads better with nothing in that slot than with the wrong word in it.
-    private static string NoPhoneMessage(string firstName) =>
-        string.IsNullOrWhiteSpace(firstName)
-            ? "Add a phone number to call or message them from here."
-            : $"Add a phone number for {firstName} to call or message them from here.";
-
-    private static string NoEmergencyContactMessage(string firstName) =>
-        string.IsNullOrWhiteSpace(firstName)
-            ? "Add an emergency contact number to call from here."
-            : $"Add an emergency contact number for {firstName} to call from here.";
-
-    // Question forms of the two messages above. The statements are what a tooltip says about a
-    // dimmed tile; these are what the tile asks when it is actually tapped.
-    private static string AddPhonePrompt(string firstName) =>
-        string.IsNullOrWhiteSpace(firstName)
-            ? "Would you like to add a phone number, so you can call or message them from here?"
-            : $"Would you like to add a phone number for {firstName}, so you can call or message them from here?";
-
-    private static string AddEmergencyContactPrompt(string firstName) =>
-        string.IsNullOrWhiteSpace(firstName)
-            ? "Would you like to add an emergency contact number, so you can call them from here?"
-            : $"Would you like to add an emergency contact number for {firstName}, so you can call them from here?";
-
-    /// <summary>
-    /// The single answer to "there is no number here yet": ask, then open the profile form so the
-    /// caregiver can add one. Offering the fix beats reporting the gap — they reached for this
-    /// tile to make contact, and a dialog that only explains leaves them to go find the form
-    /// themselves. Declining costs nothing, and the form arrives pre-filled from the saved
-    /// profile, so in the ordinary case the number is all that is left to type — it still
-    /// validates the fields the API requires (name, date of birth, relationship), which a
-    /// profile saved before those rules tightened could trip.
-    /// </summary>
-    private async Task OfferToAddNumberAsync(string prompt)
-    {
-        if (_lastData is not { } data)
-            return;
-
-        var addNow = await _popups.ConfirmInfoAsync(prompt, "No number yet", "Add number", "Not now");
-        if (addNow)
-            await Shell.Current.GoToAsync($"{EditCardiMemberPage.Route}?memberId={data.CardiMemberId}");
-    }
-
     private void SetState(DashboardState state)
     {
         SkeletonPanel.IsVisible = state == DashboardState.Loading;
@@ -535,63 +455,9 @@ public partial class DashboardPage : ContentPage
         ErrorPanel.IsVisible = state == DashboardState.Error;
     }
 
-    private async void OnCallTapped(object? sender, EventArgs e)
-    {
-        if (string.IsNullOrWhiteSpace(_lastData?.Phone))
-        {
-            await OfferToAddNumberAsync(AddPhonePrompt(NameFormatting.FirstName(_lastData?.Name)));
-            return;
-        }
-        try
-        {
-            PhoneDialer.Default.Open(_lastData.Phone);
-        }
-        catch (Exception)
-        {
-            await _popups.ShowWarningAsync("Phone calls aren't supported on this device.");
-        }
-    }
-
-    private async void OnMessageTapped(object? sender, EventArgs e)
-    {
-        if (string.IsNullOrWhiteSpace(_lastData?.Phone))
-        {
-            await OfferToAddNumberAsync(AddPhonePrompt(NameFormatting.FirstName(_lastData?.Name)));
-            return;
-        }
-        try
-        {
-            await Sms.Default.ComposeAsync(new SmsMessage(string.Empty, _lastData.Phone));
-        }
-        catch (Exception)
-        {
-            await _popups.ShowWarningAsync("Messaging isn't supported on this device.");
-        }
-    }
-
-    private async void OnEmergencyCallTapped(object? sender, EventArgs e)
-    {
-        if (string.IsNullOrWhiteSpace(_lastData?.EmergencyContactPhone))
-        {
-            await OfferToAddNumberAsync(
-                AddEmergencyContactPrompt(NameFormatting.FirstName(_lastData?.Name)));
-            return;
-        }
-        try
-        {
-            PhoneDialer.Default.Open(_lastData.EmergencyContactPhone);
-        }
-        catch (Exception)
-        {
-            await _popups.ShowWarningAsync("Phone calls aren't supported on this device.");
-        }
-    }
-
-    private void OnViewDetailsTapped(object? sender, EventArgs e) => OpenMemberDetails();
-
     /// <summary>
-    /// Both the hero card and the "View Details" action land on M1-13. The member id comes
-    /// from the loaded dashboard rather than the cached preference, so it always matches
+    /// Both the hero card and the quick-action row's Details tile land on M1-13. The member id
+    /// comes from the loaded dashboard rather than the cached preference, so it always matches
     /// whoever is actually on screen.
     /// </summary>
     private void OpenMemberDetails()

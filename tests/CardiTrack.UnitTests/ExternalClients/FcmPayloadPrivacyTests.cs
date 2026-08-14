@@ -62,9 +62,9 @@ public class FcmPayloadPrivacyTests
     // ── Content-free by default ───────────────────────────────────────────────
 
     [Theory]
-    [InlineData(DeliveryCategory.Safety, "Urgent — tap to view")]
-    [InlineData(DeliveryCategory.Health, "Tap to view")]
-    [InlineData(DeliveryCategory.Nudge, "Tap to view")]
+    [InlineData(DeliveryCategory.Safety, "Urgent — open CardiTrack now")]
+    [InlineData(DeliveryCategory.Health, "Something needs your attention — open CardiTrack")]
+    [InlineData(DeliveryCategory.Nudge, "Something needs your attention — open CardiTrack")]
     public void Notification_IsAlwaysTheGenericContentFreeTeaser_NeverDeliverySpecificText(
         DeliveryCategory category, string expectedBody)
     {
@@ -72,6 +72,34 @@ public class FcmPayloadPrivacyTests
 
         Assert.Equal("CardiTrack", message.Notification.Title);
         Assert.Equal(expectedBody, message.Notification.Body);
+    }
+
+    /// <summary>
+    /// The teaser has to be worth opening as well as content-free. A body that names no app and
+    /// asks for nothing ("Tap to view") passed every privacy assertion above and still told a
+    /// caregiver nothing on a lock screen — so the shape is pinned, not just the exact strings.
+    /// </summary>
+    [Theory]
+    [InlineData(DeliveryCategory.Safety)]
+    [InlineData(DeliveryCategory.Health)]
+    [InlineData(DeliveryCategory.Nudge)]
+    public void Notification_NamesTheAppAndAsksForIt(DeliveryCategory category)
+    {
+        var body = CreateSut().BuildMessage(Delivery(category), Token()).Notification.Body;
+
+        Assert.Contains("CardiTrack", body);
+        Assert.Contains("open", body, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void AndroidNotification_CarriesTheWhiteSilhouetteSmallIcon()
+    {
+        var android = CreateSut().BuildMessage(Delivery(), Token()).Android.Notification;
+
+        // Without an explicit small icon Android falls back to the adaptive launcher icon and
+        // alpha-masks it to a featureless square — see icon_notification.svg.
+        Assert.Equal("icon_notification", android.Icon);
+        Assert.False(string.IsNullOrWhiteSpace(android.Color));
     }
 
     [Fact]
