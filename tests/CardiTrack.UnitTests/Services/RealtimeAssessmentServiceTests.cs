@@ -353,6 +353,10 @@ public class RealtimeAssessmentServiceTests
 
         Assert.NotNull(prompt);
         Assert.Contains("exactly one of critical, high, medium, or low", prompt);
+        Assert.Contains("scores under 3 are ordinary", prompt);
+        Assert.Contains("Write as a caregiver would", prompt);
+        Assert.DoesNotContain("heart patient", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("elevated heart rate during steps", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Deviation score", prompt);
         Assert.Contains("Steps this hour: 600", prompt);
         Assert.Contains("SpO2 this hour: not measured", prompt);

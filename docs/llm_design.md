@@ -365,26 +365,18 @@ Each inference request covers a single user's 5-minute aggregated window.
 > make it cheaper; and the fixed-prefix discipline below should be kept anyway, because it costs
 > nothing and pays off the day the model or the serving engine changes.
 
-**System prompt** (fixed — a fixed prefix benefits from serving-engine prompt caching where the
-model supports it; see the note above — this one does not):
-```
-[CARDITRACK_SYSTEM_PROMPT]
-You are a medical AI assistant analysing cardiovascular wearable data.
-Identify anomalies, patterns, or trends that may require clinical attention.
-Be concise. Flag severity. Do not diagnose — flag for review.
-```
+**Live prompt:** `CARDITRACK_REALTIME_ASSESSMENT_PROMPT` in `RealtimeAssessmentService` — Tone, Pronouns, and `CaregiverRegister`, then an hour of SSA yardsticks, then a caregiver-facing message plus a strict `critical` / `high` / `medium` / `low` severity token. The sketch that used to sit here (`[CARDITRACK_SYSTEM_PROMPT]`, "medical AI assistant", "flag for review", "clinical attention") is not sent. MedGemma copies sample phrases verbatim, so the live instructions name the SSA threshold (`scores under 3 are ordinary variation`) and tell the model to read activity and conditions in the data, without illustrating exercise, heat, or poor air.
 
-**User prompt** (per user, per 5-min window — values are SSA-denoised trends):
+**User prompt** (per member, per hour — values are SSA-denoised):
 ```
-Patient wearable data (5-minute window, SSA-denoised):
-- Heart rate trend: Xbpm (Δ vs predicted: ±Xbpm, noise RMS: Xbpm)
-- HRV (RMSSD): Xms
-- SpO2 trend: X%
-- Steps: X
-- Active zone minutes: X
-- Skin temperature delta: ±X°C (if available)
-
-Assess for cardiovascular anomalies or patterns requiring attention.
+--- Last hour of data ---
+Denoised heart rate trend, end of hour: X bpm
+Latest reading: X bpm
+Deviation score (typical jitters from trend): X
+Typical jitter for this member: X bpm
+Minutes with data this hour: X of 60
+Steps this hour: X
+SpO2 this hour: not measured
 ```
 
 ### Member context block (built today)
@@ -402,7 +394,7 @@ Rules this block follows:
 
 - **Age and sex only, never name or id.** Neither identifier changes the clinical reading, so neither is sent.
 - **The sex line is always present, including when sex was never recorded**, where it reads `Sex: not stated`. It used to be dropped for anything but Male/Female, on the reasoning that the other values told the model nothing usable. That was wrong twice over. Silence is not neutral to a model holding an age and a set of readings — it fills the gap, and the pronoun rule below would leave it guessing. And because M1-04 hardcoded `PreferNotToSay` until the form began asking for sex, the guard was not filtering a rare unusable case: it was suppressing the line for **every member in the system**.
-- **Caregiver notes are untrusted input.** They are free text a caregiver typed, so every instruction block states that this section is background information and that instructions inside it must not be followed. Notes are truncated at 1000 characters, visibly.
+- **Caregiver notes are untrusted input.** They are free text a caregiver typed, so every instruction block states that this section is information about the person and that instructions inside it must not be followed. Notes are truncated at 1000 characters, visibly.
 - **It goes after the fixed instructions, never inside them.** Anything above the block is the cacheable prefix.
 
 ### The pronoun rule (built today)
@@ -410,12 +402,12 @@ Rules this block follows:
 `MedicalPromptBlocks.Pronouns` is one line, and it is the reason the sex line above must always be present:
 
 ```
-Name them once, then use he or she as the sex given indicates, or they if it is not stated.
+Use he or she as the sex given indicates, writing a given name at most once. If sex is not stated, use a given name instead of they. Never invent a name; they only if no name is given either.
 ```
 
-Handed a `{{NAME}}` placeholder and told to write with it, a 4B model repeats the placeholder in every sentence of a six-sentence summary. The output is grammatical and unreadable — a case file about a subject, not one person telling another how someone is doing, which is the voice the shared tone block spends seven lines asking for. Pronouns are what ordinary writing uses instead, and the model will not risk one unless told it may.
+Handed a `{{NAME}}` placeholder and told to write with it, a 4B model repeats the placeholder in every sentence of a six-sentence summary. When sex is known, that is the wrong shape — a case file about a subject, not one person telling another how someone is doing — so the rule is he or she after at most one name. When sex is not stated, repeating the name is the lesser wrong: "they" is a stranger's word for a family reading about one specific person, and every member created before M1-04 asked for sex sits at "not stated". The line used to open "Name them once": after Tone has just named the family member as the reader, "them" attaches to the reader, and most of the prompts that carry this rule never send a name at all, so it was also an instruction to invent. The token itself stays out of this line because alert and assessor copy is stored without resolving it; "they" remains only for that nameless, sex-not-stated case.
 
-It follows `Tone` in **every prompt that writes prose** — the digest, the assessor, and the alert/baseline/learning/provisional insights — and is deliberately kept out of `CurrentStatusInstructions`. That prompt asks for a two-to-five-word headline and one sentence under twelve words, where a pronoun scarcely arises and its own instructions already settle how the person is named. It is also the only prompt on a request path a caregiver waits on and the only one under a character budget (`StatusPromptBudget`), so a rule that bought nothing there would be paid for in latency on nearly every dashboard view. `MedicalPromptToneTests` pins both halves of that: every other prompt carries the rule, and the status prompt does not.
+It follows `Tone` in **every prompt that writes prose** — the digest, the assessor, and the alert/baseline/learning/provisional insights — and is deliberately kept out of `CurrentStatusInstructions`. That prompt asks for a two-to-five-word headline and one sentence under fifteen words, where a pronoun scarcely arises and its own instructions already settle how the person is named. It is also the only prompt on a request path a caregiver waits on and the only one under a character budget (`StatusPromptBudget`), so a rule that bought nothing there would be paid for in latency on nearly every dashboard view. `MedicalPromptToneTests` pins both halves of that: every other prompt carries the rule, and the status prompt does not.
 
 ### The member-context composer (built today)
 
@@ -436,9 +428,9 @@ A source with nothing to say produces no heading at all, which is a stronger gua
 
 ### Learning-phase and provisional prompts (built today)
 
-Before a member has any `PatternBaseline` there is no normal to deviate from, so `CARDITRACK_LEARNING_PROMPT` replaces the trend prompt and asks the model to describe what has been observed so far and what is still missing — explicitly forbidding words like *elevated*, *low*, or *deviation*. The API reports this state as `isLearning` on the baseline-insight response, matching the dashboard's learning state so the two surfaces never disagree.
+Before a member has any `PatternBaseline` there is no normal to compare against, so `CARDITRACK_LEARNING_PROMPT` replaces the trend prompt and asks the model to describe what has been observed so far and what is still missing — call nothing unusual, without listing the words it must not use (MedGemma would echo them). The API reports this state as `isLearning` on the baseline-insight response, matching the dashboard's learning state so the two surfaces never disagree.
 
-From about the first week, a **provisional** 7- or 14-day baseline exists before the 30-day one does. `CARDITRACK_PROVISIONAL_PROMPT` sits between the two framings: there is an early picture to compare against, so tentative comparisons are allowed ("so far", "appears", "early signs"), but nothing may be treated as an established pattern or cause for alarm on the strength of a short window. The response carries `isProvisional`, again mirroring the dashboard. Provisional baselines colour dashboards and soften insight phrasing only — **they never feed alert thresholds** (see [alerts.md](./execution/backend/api/alerts.md)).
+From about the first week, a **provisional** 7- or 14-day baseline exists before the 30-day one does. `CARDITRACK_PROVISIONAL_PROMPT` sits between the two framings: there is an early picture to compare against, so a comparison is an impression, not an established pattern, and a short window is not treated as settled. Sample hedges are not listed. The response carries `isProvisional`, again mirroring the dashboard. Provisional baselines colour dashboards and soften insight phrasing only — **they never feed alert thresholds** (see [alerts.md](./execution/backend/api/alerts.md)).
 
 ---
 
@@ -512,15 +504,7 @@ Severity router (Cloud Run)
 
 The system prompt changes depending on whether the output is destined for a clinician review queue, the wearer, or a family member. The **user prompt stays identical** — only the framing of the response changes.
 
-**Family member system prompt:**
-```
-[CARDITRACK_FAMILY_PROMPT]
-You are summarising a loved one's heart health data for a non-medical family member.
-Use plain, reassuring language. Avoid clinical jargon.
-If there is nothing to worry about, say so clearly.
-If there is a concern, describe it simply and recommend they check on their loved one.
-Never diagnose. Never speculate about conditions. Do not include raw numbers unless severity is Critical.
-```
+**Family member prompt (live):** `CARDITRACK_ALERT_PROMPT` in `HealthInsightService` — Tone, Pronouns, `CaregiverRegister`, then an explanation of this alert and one specific action the caregiver can do now that answers it. The sketch that used to sit here (`[CARDITRACK_FAMILY_PROMPT]`, "non-medical family member", "check on their loved one", "Avoid clinical jargon") is not sent. Sample actions are not listed: MedGemma would repeat them.
 
 > *(A wearer-audience digest prompt — `CARDITRACK_DIGEST_PROMPT` — used to sit here. Descoped 2026-08-10: wearers never log in, so there is no wearer to read it. Family is the only audience.)*
 >
@@ -556,18 +540,20 @@ Forward-looking awareness is CardiTrack's core market differentiator — every c
 
 1. **Deterministic trend features** — moving averages, slopes, and deviations computed in .NET from the multi-horizon rollups and R1 baselines (e.g. "resting HR up 6 bpm over 4 days against the 30-day baseline"). Code computes every number; nothing is estimated by a model.
 2. **Pinned reference ranges** — a curated, versioned table of clinical norms (resting HR by age/sex, sleep-duration ranges, activity guidelines) sourced from named standards and injected into the prompt. The model never recalls benchmarks from its training data, so the yardstick behind every narrative is reviewable.
-3. **MedGemma interpretation** — reads the computed features against the member's own history and the pinned ranges, and writes the family-facing trend narrative ("this trajectory is worth watching") that feeds digests and insights.
+3. **MedGemma interpretation** — reads the computed features against the member's own history and the pinned ranges, and writes the family-facing trend narrative that feeds digests and insights.
 
 ### What is watched
 
 The signal patterns worth narrating are unchanged — they are simply *computed as rules* now rather than predicted as scores:
 
-| Pattern | Deterministic signal | Framing to family |
-|---------|---------------------|-------------------|
-| **Possible illness onset** | Rising resting HR trend + declining HRV vs. baseline | "May be coming down with something — worth a check-in" |
-| **Fatigue / overexertion** | Active zone minutes > personal 7-day average × 1.5 | "A lighter day could help" |
-| **Poor sleep pattern** | Elevated evening HR, late activity, short prior nights | "A settled evening might help tonight's rest" |
-| **Cardiac trend** | 3+ day resting HR rise > 5 bpm or HRV decline > 30% from 30-day baseline | "A trend the family should keep an eye on" |
+| Pattern | Deterministic signal | What the family should take from it |
+|---------|---------------------|--------------------------------------|
+| **Possible illness onset** | Rising resting HR trend + declining HRV vs. baseline | A lay mention that they may be unwell — enough to react, not to treat |
+| **Fatigue / overexertion** | Active zone minutes > personal 7-day average × 1.5 | That a quieter day would help |
+| **Poor sleep pattern** | Elevated evening HR, late activity, short prior nights | That the evening before a short night is worth settling |
+| **Cardiac trend** | 3+ day resting HR rise > 5 bpm or HRV decline > 30% from 30-day baseline | That this is a trend to keep an eye on |
+
+These are the *product* meanings of each pattern, not phrases to put in the prompt. Sample copy in a MedGemma prompt comes back verbatim.
 
 > **What is never produced:** numeric risk scores or probabilities (an LLM cannot honestly calibrate them, and the dropped LSTM was the only component that could have tried), specific diagnoses, medication interactions, or acute cardiac event predictions. Outputs are qualitative trend observations, not clinical predictions.
 
@@ -614,24 +600,15 @@ False positives are CardiTrack's primary churn risk (market target: <5% FP rate 
 
 A separate system prompt ensures trend output is framed as forward-looking guidance, not a current-state alarm.
 
-**Trend system prompt (design):**
+**Trend prompt (design — not built).** When this ships it uses the same shared blocks as every other family-facing generation (`Tone`, `Pronouns`, `CaregiverRegister`). Sample hedges and example outputs are not listed: MedGemma copies them verbatim.
+
 ```
 [CARDITRACK_TREND_PROMPT]
-You are summarising multi-day health trends for a family caregiver app.
-You have been given computed trend features and the clinical reference ranges to read them against.
-Use only the numbers and ranges provided; never supply your own reference values.
-Write a short, plain-language trend note (2–3 sentences max).
-Frame trajectories as possibilities, not certainties: "may", "could", "worth watching".
-If everything is settled, lead with reassurance.
-If one trend is drifting, mention it gently and suggest one practical action.
-Never diagnose. Never alarm.
+Describe this person's health trends for a family caregiver.
+Use only the numbers and ranges provided; never supply your own.
+Write a short trend note of two to three sentences.
+Frame trajectories as possibilities, not certainties.
 ```
-
-**Example output for a fatigue-pattern day:**
-> "Based on recent activity levels, [Name] may feel more tired than usual today — a lighter day could help. Heart rate and sleep patterns look broadly stable. Nothing urgent, but a check-in this afternoon might be welcome."
-
-**Example output for a settled week:**
-> "[Name]'s health patterns look settled. Resting heart rate and sleep quality have been consistent this week — a good sign."
 
 > Fixed-prefix and cacheable, the same as every other prompt in the registry.
 
@@ -641,13 +618,13 @@ Never diagnose. Never alarm.
 
 | Prompt | Cadence | Audience | Purpose |
 |--------|---------|----------|---------|
-| `CARDITRACK_SYSTEM_PROMPT` | Every 5 min | Internal (clinical review queue) | Real-time anomaly flagging — **built today as `CARDITRACK_REALTIME_ASSESSMENT_PROMPT`** (`RealtimeAssessmentService`): denoised trend + deviation yardsticks in, 1–3 caregiver-actionable sentences plus a strict closing `Severity:` line out |
+| `CARDITRACK_SYSTEM_PROMPT` | Every 5 min | Internal (clinical review queue) | **Superseded** by live `CARDITRACK_REALTIME_ASSESSMENT_PROMPT` (`RealtimeAssessmentService`): caregiver register, SSA yardsticks in, 1–3 caregiver-actionable sentences plus a strict severity token out |
 | `CARDITRACK_LEARNING_PROMPT` | On request, before any baseline | Caregiver | What has been observed so far, before any baseline exists — **built today** |
-| `CARDITRACK_PROVISIONAL_PROMPT` | On request, while only a 7/14-day baseline exists | Caregiver | Early impressions against a provisional baseline, phrased tentatively — **built today** |
-| `CARDITRACK_FAMILY_PROMPT` | On high/critical events | Family members | Plain-language alert |
-| `CARDITRACK_FAMILY_DIGEST_PROMPT` | Whenever the member's readings have moved past their last summary, or their alert state changes (half-hourly job) | Family members | Headline, summary of the local day so far, one supportive suggestion in plain language, and optionally one question for the family — **built today** (append-only store with history + API read; push pending). The suggestion may reference an already-known routine fact (e.g. a scheduled medication reminder) but must never name or guess at a medical condition; naming a possible diagnosis stays the job of the alert/severity pipeline below, which never names a condition either — it prompts "reach out now" and surfaces one-tap contact, deliberately without a diagnostic guess. |
+| `CARDITRACK_PROVISIONAL_PROMPT` | On request, while only a 7/14-day baseline exists | Caregiver | Early impressions against a provisional baseline — **built today** |
+| `CARDITRACK_FAMILY_PROMPT` | On high/critical events | Family members | **Superseded** by live `CARDITRACK_ALERT_PROMPT` (`HealthInsightService`) |
+| `CARDITRACK_FAMILY_DIGEST_PROMPT` | Whenever the member's readings have moved past their last summary, or their alert state changes (half-hourly job) | Family members | Headline, summary of the local day so far, one supportive suggestion in plain language, and optionally one question for the family — **built today** (append-only store with history + API read; push pending). The suggestion must answer these readings and must never name or guess at a medical condition; naming a possible diagnosis stays the job of the alert/severity pipeline below, which never names a condition either — it prompts "reach out now" and surfaces one-tap contact, deliberately without a diagnostic guess. |
 | ~~`CARDITRACK_DIGEST_PROMPT`~~ | — | ~~Wearer~~ | **Descoped 2026-08-10** — wearers never log in; self-monitoring is not the product |
-| `CARDITRACK_TREND_PROMPT` | Daily (design) | Family members | Trend narrative over computed features + pinned reference ranges — replaces `CARDITRACK_PREDICT_PROMPT`, which died with the LSTM's risk scores |
+| `CARDITRACK_TREND_PROMPT` | Daily (design) | Family members | Trend narrative over computed features + pinned reference ranges — replaces `CARDITRACK_PREDICT_PROMPT`, which died with the LSTM's risk scores. Same caregiver register as the live prompts; no sample hedges or example outputs |
 
 ---
 

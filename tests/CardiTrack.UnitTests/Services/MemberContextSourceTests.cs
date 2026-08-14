@@ -181,7 +181,7 @@ public class MemberContextSourceTests
         var section = await new MonitoringContextSource(_unitOfWork).BuildAsync(Request(), default);
 
         Assert.NotNull(section);
-        Assert.Equal("Recent monitoring context", section.Label);
+        Assert.Equal(MonitoringContextSource.SectionLabel, section.Label);
         Assert.Contains("Unresolved alert (Orange, HeartRate, raised 3h ago): Heart rate worth checking on", section.Body);
         Assert.Contains("Resting heart rate has been a little higher", section.Body);
     }

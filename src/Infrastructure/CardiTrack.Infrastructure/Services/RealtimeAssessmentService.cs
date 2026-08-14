@@ -49,18 +49,21 @@ public class RealtimeAssessmentService : IRealtimeAssessmentService
 
     /// <summary>
     /// <c>CARDITRACK_REALTIME_ASSESSMENT_PROMPT</c> — the real-time severity assessment
-    /// (docs/llm_design.md prompt registry). Fixed prefix, cacheable in principle though not on
-    /// this model; member data always goes after it.
+    /// (docs/llm_design.md prompt registry). The register is
+    /// <see cref="MedicalPromptBlocks.CaregiverRegister"/>. Exercise / heat / poor-air
+    /// illustrations are not listed: MedGemma would echo them. The SSA score threshold stays,
+    /// because that is a yardstick, not sample copy. Fixed prefix, cacheable in principle though
+    /// not on this model; member data always goes after it.
     /// The closing severity line is the machine-readable part of the answer — the
     /// parser accepts nothing else, so the instruction is explicit about its format.
     /// </summary>
     private const string AssessmentInstructions =
         MedicalPromptBlocks.Tone + MedicalPromptBlocks.Pronouns + """
-        You are assessing one hour of a heart patient's wearable data for a monitoring service.
-        In the data, trend is the denoised underlying heart rate, and the deviation score says
-        how many typical jitters the latest reading sits from it; scores under 3 are ordinary
-        variation. An elevated heart rate during steps is exercise, not an anomaly; heat or poor air
-        quality during a recent exercise session explains an elevated rate the same way. Never diagnose.
+        Assess this hour of wearable readings for a family caregiver.
+
+        """ + MedicalPromptBlocks.CaregiverRegister + """
+        In the data, trend is the denoised underlying heart rate, and the deviation score says how many typical jitters the latest reading sits from it; scores under 3 are ordinary variation.
+        Read activity and conditions in the data before calling a rate unusual.
 
         Respond with:
         - message: 1-3 plain sentences a caregiver can act on.

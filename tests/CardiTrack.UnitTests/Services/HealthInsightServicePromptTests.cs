@@ -25,10 +25,12 @@ public class HealthInsightServicePromptTests
     private readonly ICardiMemberRepository _members = Substitute.For<ICardiMemberRepository>();
     private readonly IActivityLogRepository _activityLogs = Substitute.For<IActivityLogRepository>();
     private readonly IPatternBaselineRepository _baselines = Substitute.For<IPatternBaselineRepository>();
+    private readonly IAlertRepository _alerts = Substitute.For<IAlertRepository>();
     private readonly IDistributedCache _cache = Substitute.For<IDistributedCache>();
 
     private readonly Guid _userId = Guid.NewGuid();
     private readonly Guid _memberId = Guid.NewGuid();
+    private readonly Guid _alertId = Guid.NewGuid();
 
     private static readonly DateOnly DateOfBirth = new(1948, 3, 15);
 
@@ -38,6 +40,7 @@ public class HealthInsightServicePromptTests
         _unitOfWork.CardiMembers.Returns(_members);
         _unitOfWork.ActivityLogs.Returns(_activityLogs);
         _unitOfWork.PatternBaselines.Returns(_baselines);
+        _unitOfWork.Alerts.Returns(_alerts);
 
         _links.GetByUserIdAsync(_userId).Returns([
             new UserCardiMember
@@ -57,6 +60,13 @@ public class HealthInsightServicePromptTests
         _medicalAi.GenerateStructuredAsync<HealthInsightService.BaselineAiResponse>(
                 Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(new HealthInsightService.BaselineAiResponse { Summary = "Summary body.", KeyFindings = [] });
+        _medicalAi.GenerateStructuredAsync<HealthInsightService.AlertAiResponse>(
+                Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new HealthInsightService.AlertAiResponse
+            {
+                Explanation = "{{NAME}}'s steps dropped well below usual.",
+                RecommendedAction = "Call {{NAME}} today and see how they are.",
+            });
     }
 
     private HealthInsightService CreateSut() =>
@@ -128,8 +138,8 @@ public class HealthInsightServicePromptTests
         await CreateSut().AnalyzeBaselineAsync(_userId, _memberId);
 
         // The line used to be dropped for anything but Male/Female. Silence is not neutral: the
-        // tone block asks for a pronoun, and a model handed an age and no sex will pick one.
-        // Saying so outright is what keeps an unasked question from being answered by inference.
+        // pronoun rule would otherwise guess a he or she, and when sex is not stated it needs
+        // this line so it can use the name instead of they.
         Assert.Contains("Sex: not stated", CapturedPrompt());
     }
 
@@ -229,6 +239,10 @@ public class HealthInsightServicePromptTests
         Assert.Null(result.BaselinePeriodDays);
         var prompt = CapturedPrompt();
         Assert.Contains("not yet enough history", prompt);
+        Assert.Contains("call nothing unusual", prompt);
+        Assert.Contains("Write as a caregiver would", prompt);
+        Assert.DoesNotContain("medical AI assistant", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("elevated, low, or a deviation", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("No baseline has been established yet.", prompt);
     }
 
@@ -241,7 +255,10 @@ public class HealthInsightServicePromptTests
 
         Assert.False(result.IsLearning);
         var prompt = CapturedPrompt();
-        Assert.Contains("health trend analysis", prompt);
+        Assert.Contains("established baseline", prompt);
+        Assert.Contains("Write as a caregiver would", prompt);
+        Assert.DoesNotContain("medical AI assistant", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("flag for review", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("30-day — Steps: 5200±810.5", prompt);
         Assert.DoesNotContain("not yet enough history", prompt);
     }
@@ -274,6 +291,11 @@ public class HealthInsightServicePromptTests
         Assert.Equal(7, result.BaselinePeriodDays);
         var prompt = CapturedPrompt();
         Assert.Contains("baseline is provisional", prompt);
+        Assert.Contains("Do not treat so short a window as settled", prompt);
+        Assert.Contains("Write as a caregiver would", prompt);
+        Assert.DoesNotContain("medical AI assistant", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("early signs", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("flag for review", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("7-day (provisional) — Steps: 5200±810.5", prompt);
         Assert.DoesNotContain("not yet enough history", prompt);
     }
@@ -351,7 +373,8 @@ public class HealthInsightServicePromptTests
             prompts[1][..prompts[1].IndexOf(marker, StringComparison.Ordinal)]);
         // Every prompt opens with the shared tone block, and this one's own brief follows it.
         Assert.StartsWith(MedicalPromptBlocks.Tone, prompts[0]);
-        Assert.Contains("You are a medical AI assistant", prompts[0]);
+        Assert.Contains("call nothing unusual", prompts[0]);
+        Assert.DoesNotContain("medical AI assistant", prompts[0], StringComparison.OrdinalIgnoreCase);
     }
 
     // ── The day in progress ─────────────────────────────────────────────────────
@@ -381,5 +404,72 @@ public class HealthInsightServicePromptTests
             prompt);
         Assert.Contains($"Yesterday ({today.AddDays(-1)}, complete day): steps=5100", prompt);
         Assert.DoesNotContain($"Today so far ({today.AddDays(-1)}", prompt);
+    }
+
+    // ── Alert insight ───────────────────────────────────────────────────────────
+
+    private void SetupAlert()
+    {
+        _alerts.GetByIdWithCardiMemberAsync(_alertId).Returns(new Alert
+        {
+            Id = _alertId,
+            CardiMemberId = _memberId,
+            Title = "Steps well below baseline",
+            Message = "Steps are 91% below the 30-day baseline.",
+            Severity = AlertSeverity.Orange,
+        });
+    }
+
+    [Fact]
+    public async Task AlertPrompt_UsesCaregiverLanguage_NotClinicSpeak()
+    {
+        SetupAlert();
+
+        await CreateSut().AnalyzeAlertAsync(_userId, _alertId);
+
+        var prompt = CapturedPrompt();
+        Assert.Contains("Write as a caregiver would", prompt);
+        Assert.Contains("Everyday words for the readings are fine", prompt);
+        Assert.Contains("what this alert means in the recent readings", prompt);
+        Assert.Contains("lay mention", prompt);
+        Assert.Contains("one specific thing the caregiver can do now that answers this", prompt);
+        Assert.Contains("{{NAME}}", prompt);
+        Assert.DoesNotContain("heart rate, sleep, quieter today, worth a look", prompt);
+        Assert.DoesNotContain("check-in", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("means clinically", prompt);
+        Assert.DoesNotContain("medical AI assistant", prompt);
+        Assert.DoesNotContain("flag for review", prompt);
+        Assert.DoesNotContain("Never suggest a medical cause", prompt);
+    }
+
+    [Fact]
+    public async Task AlertInsight_ResolvesTheNamePlaceholder_InBothFields()
+    {
+        SetupAlert();
+
+        var result = await CreateSut().AnalyzeAlertAsync(_userId, _alertId);
+
+        Assert.Equal("Margaret's steps dropped well below usual.", result.Explanation);
+        Assert.Equal("Call Margaret today and see how they are.", result.RecommendedAction);
+    }
+
+    [Fact]
+    public async Task AlertInsight_DropsUnresolvedNamePlaceholders_WhenNoNameIsOnFile()
+    {
+        SetupAlert();
+        _members.GetByIdAsync(_memberId).Returns(new CardiMember
+        {
+            Id = _memberId,
+            Name = "   ",
+            DateOfBirth = DateOfBirth,
+            IsActive = true,
+        });
+
+        var result = await CreateSut().AnalyzeAlertAsync(_userId, _alertId);
+
+        Assert.Equal(string.Empty, result.Explanation);
+        Assert.Equal(string.Empty, result.RecommendedAction);
+        Assert.DoesNotContain("{{NAME}}", result.Explanation, StringComparison.Ordinal);
+        Assert.DoesNotContain("{{NAME}}", result.RecommendedAction, StringComparison.Ordinal);
     }
 }

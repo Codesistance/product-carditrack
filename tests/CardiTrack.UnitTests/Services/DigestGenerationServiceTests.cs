@@ -352,8 +352,7 @@ public class DigestGenerationServiceTests
     /// a caregiver seeing the "nothing to say yet" copy.
     /// </summary>
     [Theory]
-    [InlineData("You are summarising a loved one's recent heart health data for a "
-                + "non-medical family member. Use plain, reassuring language.")]
+    [InlineData("Summarise a loved one's recent readings for their family.")]
     // Re-wrapped: the check flattens whitespace, so a differently broken echo still matches.
     [InlineData("Use plain,\n  reassuring language.\nNever diagnose.")]
     [InlineData("Respond with: summary — the summary itself, 2-4 sentences.")]
@@ -943,6 +942,10 @@ public class DigestGenerationServiceTests
         Assert.NotNull(prompt);
         Assert.Contains("must answer something in the readings above", prompt);
         Assert.Contains("equally true for any person on any day", prompt);
+        Assert.DoesNotContain("suggest checking in", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("change of routine", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("new room", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("difficult week", prompt, StringComparison.OrdinalIgnoreCase);
         foreach (var parroted in new[]
                  {
                      "Ask how they slept", "Suggest a short walk together", "Make their favourite tea",
@@ -1127,7 +1130,7 @@ public class DigestGenerationServiceTests
                 Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(new DigestGenerationService.DigestAiResponse
             {
-                Summary = "You are summarising the readings for a family member.",
+                Summary = "Here are the recent readings for their family.",
                 Question = "Has anything changed at home recently?",
             });
 

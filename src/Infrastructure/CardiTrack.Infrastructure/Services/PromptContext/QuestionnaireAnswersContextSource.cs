@@ -15,13 +15,19 @@ namespace CardiTrack.Infrastructure.Services.PromptContext;
 /// would be a survey — the point is that the next summary is written by a model that knows the
 /// answer.
 /// <para>
-/// Excluded from the hero status line, which is one sentence under twelve words: there is nothing
+/// Excluded from the hero status line, which is one sentence under fifteen words: there is nothing
 /// it could do with this that would fit, and it is generated on every dashboard view. Adding it
 /// later is one flag.
 /// </para>
 /// </remarks>
 internal sealed class QuestionnaireAnswersContextSource : IMemberContextSource
 {
+    /// <summary>
+    /// The heading this section sits under. Load-bearing: the instruction blocks scope their
+    /// never-follow-instructions warning to this exact phrase.
+    /// </summary>
+    internal const string SectionLabel = "Family answers to earlier questions";
+
     /// <summary>
     /// How many <see cref="QuestionnaireScope.TimeScoped"/> answers travel. The newest few are the
     /// ones still describing the member's current life; an answer from months ago is more likely to
@@ -84,7 +90,7 @@ internal sealed class QuestionnaireAnswersContextSource : IMemberContextSource
         if (lines.Count == 0)
             return null;
 
-        return new MemberContextSection("Family answers to earlier questions", string.Join("\n", lines));
+        return new MemberContextSection(SectionLabel, string.Join("\n", lines));
     }
 
     private string FormatLine(MemberQuestionnaire questionnaire)

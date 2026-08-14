@@ -31,78 +31,94 @@ public class HealthInsightService : IHealthInsightService
     // only reuse a cached prefix that has not changed, and personalising them would throw that away
     // for every member (docs/llm_design.md). Member data always goes *after* them.
 
-    /// <summary><c>CARDITRACK_ALERT_PROMPT</c> — explains a fired alert to a caregiver.</summary>
+    /// <summary>
+    /// <c>CARDITRACK_ALERT_PROMPT</c> — explains a fired alert to a caregiver. The register is
+    /// <see cref="MedicalPromptBlocks.CaregiverRegister"/>: everyday words, a lay mention so the
+    /// family can be informed and react, not clinic-speak and not a fix. "Flag for review" was
+    /// the old clinical-queue brief and does not belong on a line a family reads. The action is
+    /// one specific thing they can do now — named by the model from this alert, not chosen from
+    /// a list of examples it would otherwise repeat for every member.
+    /// </summary>
     private const string AlertInstructions =
         MedicalPromptBlocks.Tone + MedicalPromptBlocks.Pronouns + """
-        You are a medical AI assistant analysing a health alert for a non-clinical caregiver.
+        Explain this alert to a family caregiver.
+
+        """ + MedicalPromptBlocks.CaregiverRegister + """
+        Write {{NAME}} exactly as written wherever you would name the person; it stands in
+        for their real name, which you are not given.
 
         Respond with:
-        - explanation: what this alert means clinically, with likely contributing factors from
-          the recent data.
-        - recommendedAction: a concise recommended action for the caregiver.
+        - explanation: what this alert means in the recent readings, and a lay mention of what
+          may sit behind it if the readings support one.
+        - recommendedAction: one specific thing the caregiver can do now that answers this
+          alert. Never start, stop or change medication, never a diagnosis, and never a fix.
 
-        Keep both fields factual and concise. Never diagnose — flag for review.
+        Keep both fields factual and concise.
         """ + MedicalPromptBlocks.ContextGuardrail;
 
-    /// <summary><c>CARDITRACK_BASELINE_PROMPT</c> — trend analysis once a baseline exists.</summary>
+    /// <summary>
+    /// <c>CARDITRACK_BASELINE_PROMPT</c> — trend analysis once a 30-day baseline exists. The
+    /// register is <see cref="MedicalPromptBlocks.CaregiverRegister"/>. "Flag for review" was the
+    /// old clinical-queue brief and does not belong on a line a family reads.
+    /// </summary>
     private const string BaselineInstructions =
         MedicalPromptBlocks.Tone + MedicalPromptBlocks.Pronouns + """
-        You are a medical AI assistant performing a health trend analysis for a non-clinical caregiver.
+        Describe this person's health trends against the established baseline.
 
+        """ + MedicalPromptBlocks.CaregiverRegister + """
         Respond with:
-        - summary: the member's overall health trends, including any patterns that warrant
+        - summary: this person's overall health trends, including any patterns that warrant
           caregiver attention.
         - keyFindings: short strings, one per key finding.
-
-        Keep the response factual. Never diagnose — flag for review.
         """ + MedicalPromptBlocks.ContextGuardrail;
 
     /// <summary>
     /// <c>CARDITRACK_LEARNING_PROMPT</c> — the first weeks, before a baseline exists. Nothing can be
     /// called unusual yet because there is no normal to compare against, so this asks for a picture
-    /// of what has been observed rather than an assessment of deviation.
+    /// of what has been observed rather than a judgement. The register is
+    /// <see cref="MedicalPromptBlocks.CaregiverRegister"/>. The words it must not use are not
+    /// listed: MedGemma would echo them.
     /// </summary>
     private const string LearningInstructions =
         MedicalPromptBlocks.Tone + MedicalPromptBlocks.Pronouns + """
-        You are a medical AI assistant describing what has been observed about a member so far.
-        There is not yet enough history to know this person's normal, so call nothing unusual,
-        elevated, low, or a deviation — there is nothing yet to deviate from.
+        Describe what the readings have shown so far.
+        There is not yet enough history to know this person's normal, so call nothing unusual.
 
+        """ + MedicalPromptBlocks.CaregiverRegister + """
         Respond with:
         - summary: the daily rhythm shown so far, and what is still needed for a reliable
           picture of this member.
         - keyFindings: short strings, one per key observation.
-
-        Be plain and encouraging about the process. Never diagnose.
         """ + MedicalPromptBlocks.ContextGuardrail;
 
     /// <summary>
     /// <c>CARDITRACK_PROVISIONAL_PROMPT</c> — a provisional (sub-30-day) baseline exists. There is
     /// an early picture to compare against, but not an established normal, so the framing sits
     /// between the learning prompt (no comparisons at all) and the trend prompt (confident
-    /// comparisons): tentative comparisons, no alarm on the strength of a short window.
+    /// comparisons): comparisons are impressions, and a short window is not settled. The register
+    /// is <see cref="MedicalPromptBlocks.CaregiverRegister"/>. Sample hedges are not listed:
+    /// MedGemma would echo them.
     /// </summary>
     private const string ProvisionalInstructions =
         MedicalPromptBlocks.Tone + MedicalPromptBlocks.Pronouns + """
-        You are a medical AI assistant giving an early health reading for a non-clinical caregiver.
-        The baseline is provisional — under 30 days of history — so a comparison against it is
-        an early impression, not an established pattern. Phrase findings tentatively ("so far",
-        "appears", "early signs"), and do not treat a deviation from so short a window as cause
-        for alarm.
+        Describe an early reading against this short window.
+        The baseline is provisional — under 30 days of history — so a comparison is an impression, not an established pattern.
+        Do not treat so short a window as settled.
 
+        """ + MedicalPromptBlocks.CaregiverRegister + """
         Respond with:
         - summary: what the early data suggests, and what will become clearer once the full
           30-day baseline is established.
         - keyFindings: short strings, one per key observation.
-
-        Keep the response factual. Never diagnose — flag for review.
         """ + MedicalPromptBlocks.ContextGuardrail;
 
     /// <summary>
     /// <c>CARDITRACK_CURRENT_STATUS_PROMPT</c> — a single empathetic line for the Dashboard's
     /// hero card. Distinct from the other three: this is ambient, ever-present copy shown on
     /// every dashboard view rather than something a caregiver deliberately opened, so it asks for
-    /// one short, warm sentence rather than a structured explanation.
+    /// one short, warm sentence rather than a structured explanation. The register is
+    /// <see cref="MedicalPromptBlocks.CaregiverRegister"/> — no sample phrases, because this
+    /// model repeats them.
     /// </summary>
     /// <remarks>
     /// Kept short on purpose, and shorter than its siblings. This is the only prompt on a request
@@ -117,19 +133,20 @@ public class HealthInsightService : IHealthInsightService
     /// <see cref="StatusPromptBudget"/> keeps it that way.
     /// </remarks>
     private const string CurrentStatusInstructions = MedicalPromptBlocks.Tone + """
-        Describe this person's current status to their caregiver.
+        Describe how this person is doing to their caregiver.
 
-        Third person, naming them {{NAME}} exactly as written; it stands in for their real
-        name. Never use clinical terms (elevated, abnormal, deviation, diagnosis) and never
-        suggest a medical cause. Match the tone to the severity given, gently more attentive
-        as it rises.
+        Third person, write {{NAME}} exactly as written; it stands in for their real
+        name.
+        """ + MedicalPromptBlocks.CaregiverRegister + """
+        Match the given tier: green settled, yellow a mention,
+        orange or red more attentive.
 
         Respond with:
         - headline: two to five words, sentence case, no full stop, no name
         - message: one sentence under 15 words.
 
         No preamble, no quotation marks, no explanation.
-        """ + MedicalPromptBlocks.ContextGuardrail;
+        """ + MedicalPromptBlocks.ContextGuardrailNotesOnly;
 
     /// <summary>
     /// Ceiling on <see cref="CurrentStatusInstructions"/>, in characters — the fixed half of the
@@ -220,13 +237,25 @@ public class HealthInsightService : IHealthInsightService
         var prompt = BuildAlertPrompt(alert, memberContext, recentLogs, baseline, to);
         var aiResponse = await _medicalAi.GenerateStructuredAsync<AlertAiResponse>(prompt, ct);
 
+        var name = NamePlaceholder.FirstName(member?.Name);
         return new AlertInsightResponse
         {
             AlertId = alertId,
-            Explanation = aiResponse.Explanation,
+            Explanation = ResolvedOrEmpty(aiResponse.Explanation, name),
             Severity = alert.Severity,
-            RecommendedAction = aiResponse.RecommendedAction
+            RecommendedAction = ResolvedOrEmpty(aiResponse.RecommendedAction, name),
         };
+    }
+
+    /// <summary>
+    /// Substitutes <see cref="NamePlaceholder.Token"/> when a name is on file. Leftover braces
+    /// are dropped rather than returned: the status line and the digest already refuse to show
+    /// them, and an insight that still says <c>{{NAME}}</c> is worse than an empty field.
+    /// </summary>
+    private static string ResolvedOrEmpty(string? text, string? name)
+    {
+        var resolved = NamePlaceholder.Resolve(text, name) ?? string.Empty;
+        return NamePlaceholder.IsPresentIn(resolved) ? string.Empty : resolved;
     }
 
     public async Task<BaselineInsightResponse> AnalyzeBaselineAsync(
@@ -424,8 +453,12 @@ public class HealthInsightService : IHealthInsightService
         if (NamePlaceholder.IsPresentIn(message))
             message = string.Empty;
         // A missing headline does not sink the sentence: the dashboard keeps its per-tier headline
-        // and still gets the live line under it.
+        // and still gets the live line under it. The headline is not resolved — it is asked not
+        // to name them, and the card already shows who this is — so a leftover placeholder is
+        // dropped rather than turned into a name in the title.
         var headline = CleanStatusHeadline(aiResponse.Headline);
+        if (NamePlaceholder.IsPresentIn(headline))
+            headline = null;
         var generatedAt = DateTimeOffset.UtcNow;
 
         // An empty response reads as a transient model hiccup, not a stable "nothing to say" —

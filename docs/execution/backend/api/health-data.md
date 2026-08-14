@@ -252,7 +252,7 @@ MedGemma-generated **narrative** analysis of a CardiMember's baseline trends —
 }
 ```
 
-**`isLearning`** is `true` until the member has any `PatternBaseline` — the same test the dashboard's `baseline.isLearning` makes. While it is true, the summary describes **what has been observed so far**, not how the member compares to normal, because no normal has been established yet. When only a provisional (7/14-day) baseline exists, **`isProvisional`** is `true` instead and the summary is phrased as an early impression — tentative comparisons, no alarm on the strength of a short window:
+**`isLearning`** is `true` until the member has any `PatternBaseline` — the same test the dashboard's `baseline.isLearning` makes. While it is true, the summary describes **what has been observed so far**, not how the member compares to normal, because no normal has been established yet. When only a provisional (7/14-day) baseline exists, **`isProvisional`** is `true` instead and the summary is an early impression — a comparison, not a settled pattern:
 
 ```json
 {
@@ -266,7 +266,7 @@ MedGemma-generated **narrative** analysis of a CardiMember's baseline trends —
 
 ```json
 {
-  "summary": "Early signs suggest a steady resting heart rate and consistent sleep — worth revisiting once the full baseline is in.",
+  "summary": "The early data shows a steady resting heart rate and consistent sleep — clearer once the full baseline is in.",
   "keyFindings": ["Resting heart rate steady so far"],
   "isLearning": false,
   "isProvisional": true,
@@ -274,7 +274,7 @@ MedGemma-generated **narrative** analysis of a CardiMember's baseline trends —
 }
 ```
 
-Clients must not label either output as a trend assessment. The learning prompt is forbidden from calling anything elevated, low, or a deviation; the provisional prompt allows tentative comparisons only.
+Clients must not label either output as a trend assessment. The learning prompt asks the model to call nothing unusual (the words it must not use are not listed — MedGemma would echo them). The provisional prompt treats a short window as an impression, not settled.
 
 ## GET `/api/v1/insights/members/{id}/digest` — implemented (AI narrative)
 
