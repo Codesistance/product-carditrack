@@ -2,7 +2,7 @@ using CardiTrack.API.Infrastructure.Auditing;
 using CardiTrack.API.Infrastructure.UserContext;
 using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Domain.Entities;
-using Microsoft.Extensions.Caching.Memory;
+using Microsoft.Extensions.Caching.Distributed;
 
 namespace CardiTrack.API.Middleware;
 
@@ -40,12 +40,12 @@ public class AuditLoggingMiddleware
 
     private readonly RequestDelegate _next;
     private readonly ILogger<AuditLoggingMiddleware> _logger;
-    private readonly IMemoryCache _readSessions;
+    private readonly IDistributedCache _readSessions;
 
     public AuditLoggingMiddleware(
         RequestDelegate next,
         ILogger<AuditLoggingMiddleware> logger,
-        IMemoryCache readSessions)
+        IDistributedCache readSessions)
     {
         _next = next;
         _logger = logger;
@@ -74,7 +74,7 @@ public class AuditLoggingMiddleware
         var entityType = Truncate(descriptor.EntityType, MaxEntityTypeLength);
         var cardiMemberId = ResolveCardiMemberId(httpContext);
 
-        if (IsCoalescedRead(httpContext, userContext.UserId, action, entityType, cardiMemberId))
+        if (await IsCoalescedReadAsync(httpContext, userContext.UserId, action, entityType, cardiMemberId))
             return;
 
         try
@@ -96,7 +96,7 @@ public class AuditLoggingMiddleware
                 ResponseStatus = httpContext.Response.StatusCode,
             }, httpContext.RequestAborted);
 
-            RememberRead(httpContext, userContext.UserId, action, entityType, cardiMemberId);
+            await RememberReadAsync(httpContext, userContext.UserId, action, entityType, cardiMemberId);
         }
         catch (Exception ex)
         {
@@ -113,25 +113,53 @@ public class AuditLoggingMiddleware
     /// True when this GET is a repeat look inside <see cref="ReadSessionWindow"/>. Failed
     /// responses and any non-GET (acknowledge, delete, chat) always return false.
     /// </summary>
-    private bool IsCoalescedRead(
+    /// <remarks>
+    /// Shared via <see cref="IDistributedCache"/> so Cloud Run replicas (prod max 3) agree on
+    /// the window. The get-then-set is not atomic — two identical GETs in the same instant can
+    /// both miss and both write — which is the same trade-off as the other cache gates in this
+    /// codebase. Dashboard polls are 30 seconds apart, so the race is not the case that happens.
+    /// A cache failure fails open and writes the row: losing an audit entry is worse than a
+    /// duplicate.
+    /// </remarks>
+    private async Task<bool> IsCoalescedReadAsync(
         HttpContext httpContext, Guid userId, string action, string entityType, Guid? cardiMemberId)
     {
         if (!HttpMethods.IsGet(httpContext.Request.Method) || httpContext.Response.StatusCode >= 400)
             return false;
 
-        return _readSessions.TryGetValue(ReadSessionKey(userId, action, entityType, cardiMemberId), out _);
+        try
+        {
+            return await _readSessions.GetStringAsync(
+                ReadSessionKey(userId, action, entityType, cardiMemberId),
+                httpContext.RequestAborted) is not null;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Audit read-session lookup failed; writing the entry.");
+            return false;
+        }
     }
 
-    private void RememberRead(
+    private async Task RememberReadAsync(
         HttpContext httpContext, Guid userId, string action, string entityType, Guid? cardiMemberId)
     {
         if (!HttpMethods.IsGet(httpContext.Request.Method) || httpContext.Response.StatusCode >= 400)
             return;
 
-        _readSessions.Set(
-            ReadSessionKey(userId, action, entityType, cardiMemberId),
-            true,
-            ReadSessionWindow);
+        try
+        {
+            await _readSessions.SetStringAsync(
+                ReadSessionKey(userId, action, entityType, cardiMemberId),
+                "1",
+                new DistributedCacheEntryOptions { AbsoluteExpirationRelativeToNow = ReadSessionWindow },
+                httpContext.RequestAborted);
+        }
+        catch (Exception ex)
+        {
+            // The audit row is already written. Failing to remember it only means the next GET
+            // in this window writes another, which is the pre-coalesce behaviour.
+            _logger.LogWarning(ex, "Audit read-session remember failed.");
+        }
     }
 
     private static string ReadSessionKey(

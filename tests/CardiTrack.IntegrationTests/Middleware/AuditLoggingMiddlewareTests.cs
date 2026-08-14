@@ -6,8 +6,10 @@ using CardiTrack.Domain.Entities;
 using CardiTrack.Domain.Enums;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Features;
+using Microsoft.Extensions.Caching.Distributed;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
 
@@ -66,10 +68,10 @@ public class AuditLoggingMiddlewareTests
         public Endpoint? Endpoint { get; set; }
     }
 
-    private AuditLoggingMiddleware CreateSut(RequestDelegate? next = null, IMemoryCache? cache = null) =>
+    private AuditLoggingMiddleware CreateSut(RequestDelegate? next = null, IDistributedCache? cache = null) =>
         new(next ?? (_ => Task.CompletedTask),
             Substitute.For<ILogger<AuditLoggingMiddleware>>(),
-            cache ?? new MemoryCache(new MemoryCacheOptions()));
+            cache ?? new MemoryDistributedCache(Options.Create(new MemoryDistributedCacheOptions())));
 
     private async Task<AuditLog?> InvokeAndCaptureAsync(
         DefaultHttpContext httpContext, bool authenticated = true)
@@ -257,7 +259,7 @@ public class AuditLoggingMiddlewareTests
     [Fact]
     public async Task CoalescesRepeatGets_OfTheSameLook()
     {
-        var cache = new MemoryCache(new MemoryCacheOptions());
+        var cache = new MemoryDistributedCache(Options.Create(new MemoryDistributedCacheOptions()));
         var context = BuildContext(
             new AuditHealthDataAccessAttribute("ViewDashboard"),
             routeValue: ("cardiMemberId", _memberId.ToString()));
@@ -273,7 +275,7 @@ public class AuditLoggingMiddlewareTests
     [Fact]
     public async Task StillRecordsEveryWrite_AndEveryDeniedGet()
     {
-        var cache = new MemoryCache(new MemoryCacheOptions());
+        var cache = new MemoryDistributedCache(Options.Create(new MemoryDistributedCacheOptions()));
         var userContext = new FakeUserContext { UserId = _userId, IsAuthenticated = true };
         var sut = CreateSut(cache: cache);
 
