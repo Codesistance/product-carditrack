@@ -1,5 +1,6 @@
 using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Interfaces.Services;
+using CardiTrack.Application.Services;
 using CardiTrack.Domain.Entities;
 using CardiTrack.Domain.Enums;
 using CardiTrack.UnitTests.Infrastructure;
@@ -45,6 +46,7 @@ public class RealtimeAssessmentRepositoryTests(TestDatabaseFixture fixture)
                 _ => null,
             },
             Severity = severity,
+            SsaEngine = SsaParameters.Engine,
             GeneratedAtUtc = DateTime.UtcNow,
         };
 

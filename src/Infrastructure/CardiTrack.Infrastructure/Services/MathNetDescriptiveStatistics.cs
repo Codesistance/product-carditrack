@@ -6,7 +6,8 @@ namespace CardiTrack.Infrastructure.Services;
 /// <summary>
 /// Math.NET Numerics implementation of <see cref="IDescriptiveStatistics"/>. Mean and sample
 /// σ match <c>BaselineCalculator</c>'s formulas (arithmetic mean; n−1); median / MAD /
-/// percentile are the robust alternatives the calculator does not yet persist — see
+/// percentile are the robust alternatives <c>BaselineCalculator</c> now persists alongside
+/// mean/σ. Live R1 alerts still threshold on the mean — see
 /// <c>docs/technical/mathnet_numerics.md</c>.
 /// </summary>
 public sealed class MathNetDescriptiveStatistics : IDescriptiveStatistics

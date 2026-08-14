@@ -5,8 +5,7 @@ namespace CardiTrack.UnitTests.Services;
 /// <summary>
 /// Pins Math.NET's descriptive-stat formulas against the ones <c>BaselineCalculator</c>
 /// already ships (mean, sample σ) and records the robust alternatives (median, MAD) that
-/// would stop a single outlier day from widening a member's "normal" — the gap documented
-/// in <c>docs/technical/mathnet_numerics.md</c>, not yet wired into stored baselines.
+/// BaselineCalculator now persists alongside them — live R1 alerts still use the mean.
 /// </summary>
 public class MathNetDescriptiveStatisticsTests
 {
@@ -34,7 +33,7 @@ public class MathNetDescriptiveStatisticsTests
     public void AnOutlierDay_InflatesMeanAndSigma_ButBarelyMovesMedianAndMad()
     {
         // 29 ordinary days around 5_000 steps, then one 20_000-step day — a wedding, not a
-        // new normal. Mean/σ (what we persist today) shift; median/MAD (what Math.NET offers)
+        // new normal. Mean/σ (what live R1 still uses) shift; median/MAD (now also persisted)
         // stay on the ordinary cluster.
         var ordinary = Enumerable.Repeat(5000.0, 29).ToArray();
         var withOutlier = ordinary.Append(20_000.0).ToArray();

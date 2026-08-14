@@ -22,7 +22,7 @@ Jacobi at L=30 is numerically adequate. The product gaps are elsewhere (robust l
 
 1. **Math.NET Numerics is the numerical engine.** Package lives only on `CardiTrack.Infrastructure`. Ports (`ISsaDecomposition`, `IDescriptiveStatistics`) live in Application. Domain and Application still have zero `PackageReference`.
 2. **SSA eigen-decomposition uses Math.NET's symmetric EVD** (`Matrix<double>.Evd(Symmetricity.Symmetric)`). Embedding, eigentriple grouping (first = trend, next two = oscillation), hankelization, and noise-as-residual stay CardiTrack code — the Art. 22 reconstructable algebra does not move into a black box.
-3. **Baseline mean/σ and the five R1 rules do not change in this increment.** Math.NET already implements matching mean and sample σ, plus median / MAD / percentiles; those robust statistics are registered and tested but **not persisted** on `PatternBaseline`. Switching formulas is a product change that would retune every alert threshold and must land with Art. 22 V4.
+3. **Baseline mean/σ and the five R1 rules do not change in this increment.** Median and unscaled MAD are now **persisted** on `PatternBaseline` alongside mean/σ. Live alerts still threshold on the mean (steps/sleep 30%) and on mean+max(2σ, 5 bpm) for HR. Switching the live fence is a product change that would retune every alert and must land with Art. 22 V4 after G2 shadow evaluation.
 4. **Math.NET is not a subprocessor.** It is an in-process MIT library. No reading leaves the Cloud Run/Worker process. It does not belong on the [subprocessor register](./data_protection_architecture.md#9-subprocessor-register). It does belong on the SBOM / software inventory.
 
 Engine identifier for audit: `SsaParameters.Engine = "MathNet.Numerics.Evd"`.
@@ -56,12 +56,12 @@ These are the accuracy levers on the &lt;10% MVP / &lt;5% steady-state false-pos
 
 | # | Gap | What fires today | What Math.NET (or ~40 lines on top) would give | Why it is deferred |
 |---|---|---|---|---|
-| G1 | Mean/σ baselines poisoned by one unusual day | `BaselineCalculator` arithmetic mean + sample σ | Median, MAD, IQR, percentiles already on `IDescriptiveStatistics` | Changes every stored `PatternBaseline` and every R1 threshold; needs a migration + V4 |
-| G2 | Steps/sleep alerts ignore the member's own variability | 30% of the mean | z-score or IQR fence using σ / MAD already on the baseline row (σ is stored, unused for steps/sleep) | Product copy and `StatisticalAlertRulesTests` are the contract |
+| G1 | Mean/σ baselines poisoned by one unusual day | `BaselineCalculator` arithmetic mean + sample σ | Median, MAD now **persisted** on the same row via `IDescriptiveStatistics`; IQR/percentiles available | Live R1 still uses mean/σ. Switching is a product change + V4 |
+| G2 | Steps/sleep alerts ignore the member's own variability | 30% of the mean | `RobustThresholdShadow` compares 30%-of-mean vs 3× unscaled-MAD on the same reading | Shadow only — `StatisticalAlertRules` unchanged until FP rate is measured on real families |
 | G3 | Long-term trend is four consecutive 5% weekly drops | Misses a smooth 4%/week decline | Mann–Kendall + Theil–Sen slope (not in Math.NET; small Application function) | New rule semantics |
 | G4 | SSA eigentriple grouping is naive | Component 0 = trend, 1–2 = oscillation | W-correlation of reconstructed components (Math.NET matrix ops) | Would move energy between Trend/Oscillation/Noise and change `HrDeviationScore` |
 | G5 | No change-point / spike p-value on the minute series | Noise-RMS score only | Microsoft.ML.TimeSeries `DetectSpikeBySsa` as a *shadow* path | Heavier dependency; does not replace the three-series contract |
-| G6 | No algorithm version on `RealtimeAssessment` | Features stored, engine not named on the row | Column or `MetricValues` tag `SsaParameters.Engine` | Schema change; do before the next engine swap |
+| G6 | No algorithm version on `RealtimeAssessment` | Features stored, engine not named on the row | **Done.** `RealtimeAssessment.SsaEngine` stamped `SsaParameters.Engine` | — |
 | G7 | Circular bedtime mean | Hand-rolled resultant length | Math.NET has no circular clock-mean | Keep homemade |
 
 ### Out of scope for Math.NET
@@ -86,38 +86,39 @@ Art. 13–15 require “meaningful information about the logic involved” in pr
 
 | # | Gap | Why it is a compliance problem | Owner |
 |---|---|---|---|
-| D1 | **No privacy-policy section “how alerting works.”** In-app copy names the observation; `/privacy` is a placeholder. Art. 22 analysis §4 already flags this (M12). | Arts. 13–15: profiling exists (baselines, SSA, five rules). A regulator will ask for the logic in plain language. Changing the eigen solver without that text still leaves the duty unmet. | Privacy policy work |
-| D2 | **Art. 22 V2/V3 never executed.** Retrospective benchmark and prod shadow are the gate on prod alerting (`art22_alerting_analysis.md` §5). V4 now includes numerical-engine changes. | This SSA swap is a recorded V4 event. Stored `HrDeviationScore` from before 2026-08-14 is the same algebra, a different solver. Mixing pre/post rows in a bit-stability claim would be false. | Compliance + engineering — run V2 on post-swap windows before prod families |
+| D1 | **Privacy-policy “how alerting works.”** | **Shipped** on `/privacy`. Still a short policy overall (no Google Limited Use section, no Art. 14 wearer notice) | Product + compliance |
+| D2 | **Art. 22 V2/V3 never executed.** Retrospective benchmark and prod shadow are the gate on prod alerting (`art22_alerting_analysis.md` §5). V4 now includes numerical-engine changes. | This SSA swap is a recorded V4 event. Stored `HrDeviationScore` from before 2026-08-14 is the same algebra, a different solver. Mixing pre/post rows in a bit-stability claim would be false. V2 needs real stored assessments — not executable in a VM with no family data. | Compliance + engineering — run V2 on post-swap windows before prod families |
 | D3 | **Art. 22 re-run after push dispatch (2026-08-11) is still an open action.** | Push makes “similarly significant effect” more plausible. An engine swap on top of an unreviewed analysis compounds the gap. | Privacy professional sign-off |
-| D4 | **DPIA §13 did not name “numerical engine / alerting formula” as a review trigger.** Adding a library that computes profiling numbers is not a new processor, but it is a change to automated profiling logic. | A DPIA that only triggers on “new processor or model provider” misses this class of change. | DPIA §13 (updated in this PR to include it) |
-| D5 | **Python reference in llm_design (`pyts` SVD grouping `[[0],[1,2]]`) never matched production (BK EVD, not trajectory SVD).** | Contestability: the “reference implementation” a reviewer copies will not reproduce `HrTrendLast`. | llm_design — annotate that pyts is pedagogical, production is BK+Math.NET EVD |
-| D6 | **No algorithm card.** Thresholds live in `StatisticalAlertRules` constants and alerts.md, not in a caregiver-facing or DPIA appendix table (30%, 2σ, 5 bpm floor, 5%/week × 4, coverage 80%, provisional never alerts). | Art. 15 “meaningful information about the logic” is currently scattered. An algorithm card would be the artefact. | Product + compliance |
-| D7 | **`PatternBaseline` stores mean/σ only.** The DPIA A10 inventory describes that honestly, but does not warn that a single atypical day inflates σ and can *hide* a later genuine elevation (HR margin is max(2σ, 5)). | False-negative pathway on the one orange heart-rate statistical rule. Robust stats (G1) are the fix; the doc gap is that A10 reads as if mean/σ were a finished control. | DPIA A10 note (this PR) |
-| D8 | **Assessments do not record the engine id.** `HrDeviationScore` is evidence; which solver produced it is not on the row. | Months-later reconstruction (“the model never computes, only interprets”) is weaker if two engines coexist in the 90-day partition. | G6 — schema, next increment |
-| D9 | **Math.NET is not on any software inventory in-repo.** Subprocessor register correctly excludes it; HIPAA/SBOM reviewers will still ask. | This ADR is the inventory entry. Link it from the DPIA processor table as “in-process library, not a processor.” | DPIA §4.3 note (this PR) |
-| D10 | **AlertPreferences (low/medium/high) documented as unbuilt.** Only medium (30%) exists. | A privacy notice that implies tunable sensitivity would be false. Keep the notice to the shipped profile. | Product |
+| D4 | **DPIA §13 did not name “numerical engine / alerting formula” as a review trigger.** Adding a library that computes profiling numbers is not a new processor, but it is a change to automated profiling logic. | A DPIA that only triggers on “new processor or model provider” misses this class of change. | DPIA §13 (updated in increment 0) |
+| D5 | **Python reference in llm_design (`pyts` SVD grouping `[[0],[1,2]]`) never matched production (BK EVD, not trajectory SVD).** | Contestability: the “reference implementation” a reviewer copies will not reproduce `HrTrendLast`. | llm_design — annotate that pyts is pedagogical, production is BK+Math.NET EVD (increment 0) |
+| D6 | **Algorithm card.** | **Shipped** — [alerting_algorithm_card.md](../compliance/alerting_algorithm_card.md) | — |
+| D7 | **`PatternBaseline` stored mean/σ only.** | Median/MAD now persisted; A10 updated. Live HR margin is still max(2σ, 5) so the false-negative pathway remains until G2 ships as a live fence | DPIA A10 |
+| D8 | **Assessments do not record the engine id.** | **Shipped.** `RealtimeAssessment.SsaEngine`; null on pre-column rows | — |
+| D9 | **Math.NET is not on any software inventory in-repo.** Subprocessor register correctly excludes it; HIPAA/SBOM reviewers will still ask. | This ADR is the inventory entry. Link it from the DPIA processor table as “in-process library, not a processor.” | DPIA §4.3 note (increment 0) |
+| D10 | **AlertPreferences (low/medium/high) documented as unbuilt.** Only medium (30%) exists. | Privacy notice and algorithm card state there is no sensitivity slider | Product |
 
 ## 6. Plan
 
-### Increment 0 — this PR (shipped)
+### Increment 0 — engine (shipped)
 
 - Add `MathNet.Numerics` 5.0.0 to Infrastructure.
 - Move SSA implementation behind `ISsaDecomposition`; swap Jacobi for Math.NET EVD.
 - Register `IDescriptiveStatistics` / `MathNetDescriptiveStatistics` (Worker + PipelineJobs).
-- Keep `BaselineCalculator` and `StatisticalAlertRules` formulas unchanged.
+- Keep `BaselineCalculator` mean/σ and `StatisticalAlertRules` formulas unchanged.
 - Align llm_design, C4, Art. 22, DPIA with the running engine; record D1–D10.
 
-### Increment 1 — before prod families (compliance, not code)
+### Increment 1 — before prod families (compliance)
 
-- Execute Art. 22 V2 on stored `RealtimeAssessments`: agreement of `HrDeviationScore` bands vs the rule-based reference, split by age/sex as already specified.
+- Execute Art. 22 V2 on stored `RealtimeAssessments`: agreement of `HrDeviationScore` bands vs the rule-based reference, split by age/sex as already specified. **Still outstanding** — needs real stored assessments.
 - Optionally recompute a sample of windows with the old Jacobi fixture in a branch if any pre-swap assessments must be compared.
-- Draft the algorithm card (D6) and the privacy-policy “how alerting works” section (D1) from alerts.md + this ADR. Do not invent tunable sensitivity.
+- **Done:** algorithm card (D6) and privacy-policy “how alerting works” (D1). No invented tunable sensitivity.
 
-### Increment 2 — robust baselines (product change)
+### Increment 2 — robust baselines (this PR)
 
-- Persist median + MAD (or IQR) on `PatternBaseline` alongside mean/σ (additive columns, no silent replacement).
-- Shadow-evaluate G2 (steps/sleep fences using MAD or stored σ) against the 30% rule on historical `ActivityLogs`; ship only if FP rate does not regress the &lt;10% target.
-- Stamp `SsaParameters.Engine` (or a baseline-algorithm version) on new assessment/baseline rows (G6).
+- **Done:** persist median + MAD on `PatternBaseline` alongside mean/σ (additive columns, no silent replacement).
+- **Done:** `RobustThresholdShadow` (G2) — 30%-of-mean vs 3× unscaled-MAD; unit-tested disagreement cases; live rules unchanged.
+- **Done:** stamp `SsaParameters.Engine` on `RealtimeAssessment.SsaEngine` (G6).
+- **Not done here:** switching live steps/sleep fences to MAD. That waits on G2 measured against historical `ActivityLogs` from real families.
 
 ### Increment 3 — trend + grouping (only if Increment 2 still misses)
 
@@ -147,4 +148,4 @@ Art. 13–15 require “meaningful information about the logic involved” in pr
 
 ---
 
-*Prepared as an architecture decision record. Increment 0 lands with this PR; later increments are separate PRs.*
+*Prepared as an architecture decision record. Increments 0–2 land in this PR; V2 execution and any live-fence switch are separate.*

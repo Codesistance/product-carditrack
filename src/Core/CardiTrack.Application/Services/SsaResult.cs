@@ -10,8 +10,8 @@ public static class SsaParameters
     public const int DefaultWindowSize = 30;
 
     /// <summary>
-    /// Identifies the numerical engine that produces <see cref="SsaResult"/>. Stored in docs
-    /// and Art. 22 evidence, not on the assessment row — a change here re-triggers the
+    /// Identifies the numerical engine that produces <see cref="SsaResult"/>. Stamped on
+    /// each <c>RealtimeAssessment.SsaEngine</c> row. A change here re-triggers the
     /// validation protocol in <c>docs/compliance/art22_alerting_analysis.md</c> §5 V4.
     /// </summary>
     public const string Engine = "MathNet.Numerics.Evd";

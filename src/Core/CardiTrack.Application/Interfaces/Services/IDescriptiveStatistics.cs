@@ -3,9 +3,10 @@ namespace CardiTrack.Application.Interfaces.Services;
 /// <summary>
 /// Descriptive statistics over a finite sample. The port exists so Application can name the
 /// operations without taking a NuGet package; Math.NET Numerics implements them in
-/// Infrastructure. Baseline calculation and the R1 alert rules still use the hand-rolled
-/// mean/σ in <c>BaselineCalculator</c> — switching those formulas is a product change, not
-/// a wiring change (see <c>docs/technical/mathnet_numerics.md</c>).
+/// Infrastructure. Mean and sample σ on stored baselines stay hand-rolled in
+/// <c>BaselineCalculator</c> so a library bump cannot retune R1. Median and MAD are
+/// persisted alongside them for shadow evaluation; they do not fire alerts
+/// (see <c>docs/technical/mathnet_numerics.md</c>).
 /// </summary>
 public interface IDescriptiveStatistics
 {

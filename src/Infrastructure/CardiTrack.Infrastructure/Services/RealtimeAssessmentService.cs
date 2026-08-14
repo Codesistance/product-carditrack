@@ -201,6 +201,7 @@ public class RealtimeAssessmentService : IRealtimeAssessmentService
             ModelOutput = aiResponse.Message.Length <= 4000 ? aiResponse.Message : aiResponse.Message[..4000],
             RawSeverity = rawSeverity,
             Severity = severity,
+            SsaEngine = SsaParameters.Engine,
             GeneratedAtUtc = utcNow,
         };
         // The upsert doubles as the concurrency arbiter: the Exists probe above is not atomic

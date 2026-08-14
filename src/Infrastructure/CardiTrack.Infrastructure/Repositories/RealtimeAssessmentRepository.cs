@@ -31,11 +31,12 @@ public class RealtimeAssessmentRepository : IRealtimeAssessmentRepository
             INSERT INTO "RealtimeAssessments"
                 ("CardiMemberId", "WindowStartUtc", "WindowEndUtc", "HrTrendLast",
                  "HrDeviationScore", "HrNoiseRms", "StepsSum", "SpO2Mean", "ModelOutput",
-                 "RawSeverity", "Severity", "GeneratedAtUtc")
+                 "RawSeverity", "Severity", "SsaEngine", "GeneratedAtUtc")
             VALUES ({assessment.CardiMemberId}, {assessment.WindowStartUtc}, {assessment.WindowEndUtc},
                     {assessment.HrTrendLast}, {assessment.HrDeviationScore}, {assessment.HrNoiseRms},
                     {assessment.StepsSum}, {assessment.SpO2Mean}, {assessment.ModelOutput},
-                    {assessment.RawSeverity}, {assessment.Severity?.ToString()}, {assessment.GeneratedAtUtc})
+                    {assessment.RawSeverity}, {assessment.Severity?.ToString()}, {assessment.SsaEngine},
+                    {assessment.GeneratedAtUtc})
             ON CONFLICT ("CardiMemberId", "WindowStartUtc") DO NOTHING
             RETURNING 1 AS "Value"
             """).ToListAsync(ct);
@@ -54,6 +55,7 @@ public class RealtimeAssessmentRepository : IRealtimeAssessmentRepository
                 "ModelOutput" = {assessment.ModelOutput},
                 "RawSeverity" = {assessment.RawSeverity},
                 "Severity" = {assessment.Severity?.ToString()},
+                "SsaEngine" = {assessment.SsaEngine},
                 "GeneratedAtUtc" = {assessment.GeneratedAtUtc}
             WHERE "CardiMemberId" = {assessment.CardiMemberId}
               AND "WindowStartUtc" = {assessment.WindowStartUtc}

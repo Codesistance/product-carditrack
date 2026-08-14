@@ -1,4 +1,5 @@
 using CardiTrack.Application.Interfaces.Repositories;
+using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Application.Services;
 using Microsoft.Extensions.Options;
 
@@ -84,6 +85,7 @@ public class BaselineCalculationWorker : CronBackgroundService
     {
         using var scope = _scopeFactory.CreateScope();
         var unitOfWork = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
+        var stats = scope.ServiceProvider.GetRequiredService<IDescriptiveStatistics>();
 
         // Fetched once for the longest period; BaselineCalculator windows the list itself.
         var logs = (await unitOfWork.ActivityLogs
@@ -94,7 +96,7 @@ public class BaselineCalculationWorker : CronBackgroundService
 
         foreach (var periodDays in BaselineCalculator.SupportedPeriods)
         {
-            var baseline = BaselineCalculator.Calculate(memberId, logs, periodDays, windowEnd);
+            var baseline = BaselineCalculator.Calculate(memberId, logs, periodDays, windowEnd, stats);
             if (baseline is null)
             {
                 skipped++;

@@ -77,7 +77,7 @@ contest — maps onto controls that exist in code today:
 | Absence of data never reads as an event | Null-vs-zero discipline; the one red rule requires a **measured** zero | `StatisticalAlertRules.NoMorningActivity` |
 | Alarm fatigue is bounded | One unresolved alert per remedy (cooldowns); exactly-once severity routing under concurrency; per-day dedup | `AlertRuleMarkers`; assessment upsert claim |
 | Human intervention is structural | The alert lifecycle **is** the human-review pathway: every alert awaits acknowledgment by a named caregiver; resolution is recorded (`AcknowledgedByUserId`, `IsResolved`) and is what re-arms the producer | `Alert` entity; `AlertsController` |
-| Contestability / auditability | Every alert carries its evidence: the `rule` discriminator plus the numbers that fired it in `MetricValues`; assessments store model input features, full output, raw severity word, and routed severity — reconstructable months later | `RealtimeAssessment`; alert producers |
+| Contestability / auditability | Every alert carries its evidence: the `rule` discriminator plus the numbers that fired it in `MetricValues`; assessments store model input features, full output, raw severity word, routed severity, and **`SsaEngine`** — reconstructable months later | `RealtimeAssessment`; alert producers |
 | Transparency to the reader | Alert text names the observation and the yardstick in plain language; the on-demand insight endpoint explains any alert | alerts.md; `GET /api/v1/insights/alerts/{alertId}` |
 
 **Gap acknowledged:** the DPIA's "human-review queue for Critical" beyond the caregiver (a
@@ -91,9 +91,11 @@ sign-off.
 
 Profiling exists (baselines, assessments), so Arts. 13–15 require telling users meaningful
 information about the logic involved. Current state: the in-app alert text explains each
-alert's basis; **a plain-language "how alerting works" section in the privacy policy does not
-exist yet** — the Web app's `/privacy` page is a placeholder. Carried as an open item to
-the privacy-policy work (DPIA mitigation **M12**), not duplicated here.
+alert's basis; `/privacy` has a plain-language **How alerting works** section (shipped
+thresholds only — no sensitivity slider); the auditor-facing artefact is
+[alerting_algorithm_card.md](alerting_algorithm_card.md). Remaining privacy-policy work
+(Google Limited Use, Art. 14 wearer notice, emergency-contact notice) is still DPIA
+mitigation **M12** / §6.4, not duplicated here.
 
 ## 5. Model validation protocol (to execute before prod alerting)
 
@@ -136,5 +138,5 @@ real families is gated on both being recorded here.
 |---|---|
 | Is built alerting Art. 22(1) ADM? | Most likely **no** (human decision-maker, no significant automated effect) — treated conservatively as if yes |
 | Are Art. 22(3)-grade safeguards present? | Yes — engineered and cited above; one deliberate gap (`no clinical review tier`) flagged for sign-off |
-| What blocks prod alerting? | Executing V2 + V3 and recording results here; the privacy-policy transparency text; sign-off by a qualified reviewer |
+| What blocks prod alerting? | Executing V2 + V3 and recording results here; sign-off by a qualified reviewer. Privacy-policy alerting text and the algorithm card now exist; the rest of `/privacy` is still a short placeholder |
 | What re-opens this analysis? | **Push dispatch landed 2026-08-11 — this trigger has FIRED and the re-run is an open action (see §2, DPIA §13).** Also: SMS dispatch landing; any prompt/model/severity-mapping change; wearer-population change (e.g. exceeding the 100-user cap) |

@@ -25,15 +25,21 @@ public class PatternBaselineConfiguration : IEntityTypeConfiguration<PatternBase
         // Activity Baseline Metrics
         builder.Property(p => p.AvgSteps);
         builder.Property(p => p.StdDevSteps).HasColumnType("decimal(10,2)");
+        builder.Property(p => p.MedianSteps);
+        builder.Property(p => p.MadSteps).HasColumnType("decimal(10,2)");
         builder.Property(p => p.AvgActiveMinutes);
 
         // Heart Rate Baseline Metrics
         builder.Property(p => p.AvgRestingHeartRate);
         builder.Property(p => p.StdDevHeartRate).HasColumnType("decimal(10,2)");
+        builder.Property(p => p.MedianRestingHeartRate);
+        builder.Property(p => p.MadHeartRate).HasColumnType("decimal(10,2)");
         builder.Property(p => p.MaxHeartRateObserved);
 
         // Sleep Baseline Metrics
         builder.Property(p => p.AvgSleepMinutes);
+        builder.Property(p => p.MedianSleepMinutes);
+        builder.Property(p => p.MadSleepMinutes).HasColumnType("decimal(10,2)");
         builder.Property(p => p.TypicalBedtime);
         builder.Property(p => p.TypicalWakeTime);
         builder.Property(p => p.AvgSleepEfficiency);
