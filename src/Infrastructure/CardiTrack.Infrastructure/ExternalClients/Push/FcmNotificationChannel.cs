@@ -162,7 +162,22 @@ public class FcmNotificationChannel : INotificationChannel
         {
             // The FCM SDK needs the raw registration token — decrypted here, at the one call site
             // that actually sends, rather than carried in plaintext any earlier in the pipeline.
-            Fid = _encryption.Decrypt(token.Token),
+            //
+            // Token, not Fid, despite FirebaseAdmin 3.6.0 marking this property deprecated in
+            // favour of it. They are not two names for one value: `fid` targets a Firebase
+            // Installation ID, and what PushDeviceToken stores is a registration token from
+            // Plugin.Firebase's GetTokenAsync (PushRegistrationCoordinator). Google's own guidance
+            // is to move to `fid` *once clients register using Installation IDs* — ours do not, and
+            // moving this field alone just puts the wrong identifier in the right slot. `token`
+            // keeps working through the transition; migrating means changing what the app
+            // registers first, then this line, together.
+            //
+            // The CS0618 suppression is the whole point of the comment above: silencing the
+            // deprecation warning by switching field is what broke delivery. Lift it when
+            // PushRegistrationCoordinator registers an Installation ID, not before.
+#pragma warning disable CS0618 // Message.Token is deprecated in favour of Fid — see above.
+            Token = _encryption.Decrypt(token.Token),
+#pragma warning restore CS0618
             Data = new Dictionary<string, string>
             {
                 ["deliveryId"] = delivery.Id.ToString(),
