@@ -27,6 +27,10 @@ internal static partial class MedicalPromptBlocks
     /// because calm is always the answer.
     /// </para>
     /// <para>
+    /// "Concerned", not "worried". The reader is a family caregiver who cares; calling them
+    /// worried is a cue the model will write as if they are already anxious.
+    /// </para>
+    /// <para>
     /// "Never diagnose" is not enough on its own: a 4B model will obey the word and still name
     /// the condition it just invented. "Or invent a condition" is that failure mode. Forbidding
     /// every mention of a condition would also stop it using one the caregiver already reported.
@@ -51,7 +55,7 @@ internal static partial class MedicalPromptBlocks
     /// Each rule therefore sits on one line. See <c>DigestGenerationService.InstructionEchoes</c>.
     /// </remarks>
     internal const string Tone = """
-        Tone: you are writing for a worried family member, not a clinician.
+        Tone: you are writing for a concerned family member, not a clinician.
         Be plain, warm and steady, and say what the readings show.
         Add no urgency the data does not carry, and no reassurance it does not support.
         Never suggest the family has missed something or done something wrong.

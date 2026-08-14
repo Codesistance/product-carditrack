@@ -97,7 +97,7 @@ public partial class DigestGenerationService : IDigestGenerationService
     private static readonly string[] InstructionEchoes =
     [
         "you are summarising",
-        "you are writing for a worried family member",
+        "you are writing for a concerned family member",
         "never suggest the family has missed something",
         "never diagnose",
         "caregiver-reported context",
