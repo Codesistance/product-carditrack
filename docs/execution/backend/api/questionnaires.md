@@ -23,7 +23,7 @@ The caption under the question (`triggerContext`) is one everyday sentence in a 
 
 | Endpoint | Purpose |
 |---|---|
-| `GET /api/v1/cardimembers/{cardiMemberId}/questionnaires` | Every question asked about this member, newest first, whatever its status |
+| `GET /api/v1/cardimembers/{cardiMemberId}/questionnaires` | The pending question, and a page of answers that still belong on the list — standing facts, plus momentary ones that have not expired. Newest first |
 | `PUT /api/v1/questionnaires/{questionnaireId}/answer` | Answers a question, or replaces an answer already given |
 | `PUT /api/v1/questionnaires/{questionnaireId}/dismiss` | Skips the question — it is never asked again |
 | `DELETE /api/v1/questionnaires/{questionnaireId}` | Removes the question and its answer (**204**) |
@@ -40,13 +40,14 @@ Answer, dismiss and delete are rooted on the questionnaire rather than the membe
   "answerText": "She moved to the downstairs bedroom last week.",
   "triggerContext": "Yesterday looked quieter than usual.",
   "status": "answered",
+  "scope": "timescoped",
   "generatedAtUtc": "2026-08-13T09:00:00Z",
   "answeredAtUtc": "2026-08-13T10:12:00Z",
   "answeredByUserId": "1f2e3d4c-5717-4562-b3fc-2c963f66afa6"
 }
 ```
 
-`status` is the lowercase `QuestionnaireStatus` name — `pending`, `answered` or `dismissed` — matching the string convention alert severity uses. `triggerContext` is why the question was asked, shown to the family beneath it so a question never arrives looking arbitrary; it is null when the model gave no reason worth showing.
+`status` is the lowercase `QuestionnaireStatus` name — `pending`, `answered` or `dismissed` — matching the string convention alert severity uses. `scope` is `permanent` or `timescoped`: a standing fact stays on the Questions & Answers page until the family deletes it; a momentary one (the default) carries a "just for the moment" note and drops off that list once `ExpiresAtUtc` has passed — the same clock that stops it informing later summaries. A null expiry (rows written before this distinction existed) stays visible. `triggerContext` is why the question was asked, shown to the family beneath it so a question never arrives looking arbitrary; it is null when the model gave no reason worth showing.
 
 `answeredAtUtc` moves with an edit. What a caregiver wants beside an answer is when it was last true, not when the question first happened to be answered.
 

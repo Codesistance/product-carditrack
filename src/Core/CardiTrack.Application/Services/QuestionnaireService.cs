@@ -37,17 +37,16 @@ public class QuestionnaireService : IQuestionnaireService
         // no SQL-level way to filter or page on them — every row for this member has to be decrypted
         // before search or paging can be applied. That is the same cost the unpaged endpoint always
         // paid; this only changes how much of the result crosses the wire afterwards.
-        var all = (await _unitOfWork.MemberQuestionnaires.GetByCardiMemberAsync(cardiMemberId, ct))
-            .Select(ToResponse)
-            .ToList();
+        var all = await _unitOfWork.MemberQuestionnaires.GetByCardiMemberAsync(cardiMemberId, ct);
 
-        var pending = all.FirstOrDefault(
-            q => string.Equals(q.Status, "pending", StringComparison.OrdinalIgnoreCase));
+        var pendingRow = all.FirstOrDefault(q => q.Status == QuestionnaireStatus.Pending);
 
-        IEnumerable<QuestionnaireResponse> answered = all
-            .Where(q => string.Equals(q.Status, "answered", StringComparison.OrdinalIgnoreCase))
+        var utcNow = DateTime.UtcNow;
+        IEnumerable<MemberQuestionnaire> answeredRows = all
+            .Where(q => q.Status == QuestionnaireStatus.Answered && StillOnTheList(q, utcNow))
             .OrderByDescending(q => q.AnsweredAtUtc ?? q.GeneratedAtUtc);
 
+        IEnumerable<QuestionnaireResponse> answered = answeredRows.Select(ToResponse);
         if (!string.IsNullOrWhiteSpace(search))
         {
             answered = answered.Where(q =>
@@ -69,7 +68,7 @@ public class QuestionnaireService : IQuestionnaireService
         return new QuestionnairesPageResponse
         {
             HasAny = all.Count > 0,
-            Pending = pending,
+            Pending = pendingRow is null ? null : ToResponse(pendingRow),
             Answered = new PagedResult<QuestionnaireResponse>
             {
                 Items = pageItems,
@@ -141,6 +140,19 @@ public class QuestionnaireService : IQuestionnaireService
 
         return questionnaire;
     }
+
+    /// <summary>
+    /// Whether an answered question still belongs on the family's Q&amp;A list. Standing facts
+    /// stay until the family deletes them. Momentary ones drop off once they expire — the same
+    /// clock that stops them informing later summaries — so "did they have visitors yesterday"
+    /// does not accumulate as a history of the same day, over and over. A null expiry (rows
+    /// written before this distinction existed) stays visible, matching how those answers already
+    /// read back into prompts.
+    /// </summary>
+    private static bool StillOnTheList(MemberQuestionnaire questionnaire, DateTime utcNow) =>
+        questionnaire.Scope == QuestionnaireScope.Permanent
+        || questionnaire.ExpiresAtUtc is null
+        || questionnaire.ExpiresAtUtc > utcNow;
 
     private QuestionnaireResponse ToResponse(MemberQuestionnaire questionnaire) => new()
     {

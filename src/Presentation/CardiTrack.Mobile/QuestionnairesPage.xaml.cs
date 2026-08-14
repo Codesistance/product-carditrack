@@ -248,7 +248,9 @@ public partial class QuestionnairesPage : ContentPage
         else
         {
             EmptyTitleLabel.Text = "Nothing to look back on yet";
-            EmptyDetailLabel.Text = $"When we ask something about {name} and you answer, we'll keep it here.";
+            EmptyDetailLabel.Text =
+                $"Standing answers about {name} stay here. Ones just for the moment drop off "
+                + "once they no longer apply.";
         }
     }
 

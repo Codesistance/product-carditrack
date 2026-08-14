@@ -41,7 +41,7 @@ public class QuestionnaireServiceTests
 
     private MemberQuestionnaire Questionnaire(
         QuestionnaireStatus status = QuestionnaireStatus.Pending, string? answer = null,
-        QuestionnaireScope scope = QuestionnaireScope.TimeScoped) => new()
+        QuestionnaireScope scope = QuestionnaireScope.TimeScoped, DateTime? expiresAtUtc = null) => new()
         {
             Id = _questionnaireId,
             CardiMemberId = _memberId,
@@ -51,6 +51,7 @@ public class QuestionnaireServiceTests
             Status = status,
             GeneratedAtUtc = new DateTime(2026, 8, 12, 9, 0, 0, DateTimeKind.Utc),
             Scope = scope,
+            ExpiresAtUtc = expiresAtUtc,
         };
 
     [Fact]
@@ -77,6 +78,54 @@ public class QuestionnaireServiceTests
         var result = await CreateSut().GetForMemberAsync(_userId, _memberId, search: null, page: 1, pageSize: 20);
 
         Assert.Equal("permanent", Assert.Single(result.Answered.Items).Scope);
+    }
+
+    /// <summary>
+    /// The Q&amp;A archive is standing facts plus momentary answers that still apply. An expired
+    /// "yesterday" must not sit next to a pacemaker answer as if both were still true.
+    /// </summary>
+    [Fact]
+    public async Task Listing_OmitsAnExpiredMomentAnswer_AndKeepsStandingAndCurrentOnes()
+    {
+        var expired = Questionnaire(
+            QuestionnaireStatus.Answered, "No visitors.", QuestionnaireScope.TimeScoped,
+            expiresAtUtc: DateTime.UtcNow.AddDays(-1));
+        expired.Id = Guid.NewGuid();
+        expired.AnsweredAtUtc = new DateTime(2026, 7, 1, 9, 0, 0, DateTimeKind.Utc);
+
+        var currentMoment = Questionnaire(
+            QuestionnaireStatus.Answered, "Yes, her sister.", QuestionnaireScope.TimeScoped,
+            expiresAtUtc: DateTime.UtcNow.AddDays(7));
+        currentMoment.Id = Guid.NewGuid();
+        currentMoment.AnsweredAtUtc = new DateTime(2026, 8, 10, 9, 0, 0, DateTimeKind.Utc);
+
+        var standing = Questionnaire(
+            QuestionnaireStatus.Answered, "Pacemaker since 2020.", QuestionnaireScope.Permanent);
+        standing.Id = Guid.NewGuid();
+        standing.AnsweredAtUtc = new DateTime(2026, 8, 1, 9, 0, 0, DateTimeKind.Utc);
+
+        _questionnaires.GetByCardiMemberAsync(_memberId, Arg.Any<CancellationToken>())
+            .Returns([expired, currentMoment, standing]);
+
+        var result = await CreateSut().GetForMemberAsync(_userId, _memberId, search: null, page: 1, pageSize: 20);
+
+        Assert.Equal(2, result.Answered.TotalCount);
+        Assert.Equal(
+            ["Yes, her sister.", "Pacemaker since 2020."],
+            result.Answered.Items.Select(q => q.AnswerText));
+    }
+
+    /// <summary>A row written before expiry existed is not expired — it already informed prompts
+    /// indefinitely, and hiding it from the archive would be a silent deletion.</summary>
+    [Fact]
+    public async Task Listing_KeepsAMomentAnswerWithNoExpiry()
+    {
+        _questionnaires.GetByCardiMemberAsync(_memberId, Arg.Any<CancellationToken>())
+            .Returns([Questionnaire(QuestionnaireStatus.Answered, "She moved bedrooms.")]);
+
+        var result = await CreateSut().GetForMemberAsync(_userId, _memberId, search: null, page: 1, pageSize: 20);
+
+        Assert.Equal("She moved bedrooms.", Assert.Single(result.Answered.Items).AnswerText);
     }
 
     /// <summary>

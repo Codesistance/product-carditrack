@@ -97,6 +97,9 @@
                        LineBreakMode="WordWrap"/>
             </Border>
 
+            <!-- Just-for-the-moment vs we'll-keep-this-here, plus the optional-by-design
+                 softener. Set from code because the wording depends on scope and whether this
+                 card is pending or already answered. -->
             <Label x:Name="OptionalLabel"
                    Style="{StaticResource Body2}"
                    FontSize="12"

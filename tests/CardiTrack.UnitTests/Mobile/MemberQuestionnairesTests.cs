@@ -6,8 +6,7 @@ namespace CardiTrack.UnitTests.Mobile;
 /// Rules about a questionnaire answer that stay true regardless of where it renders. Picking out
 /// the pending question and sorting/paging the answered ones moved server-side (see
 /// <c>QuestionnaireServiceTests</c>) once the questions screen started fetching pages instead of
-/// the whole history — only <see cref="MemberQuestionnaires.IsAnswerable"/> is still a client-side
-/// rule.
+/// the whole history — only the client-side rules about a single answer remain here.
 /// </summary>
 public class MemberQuestionnairesTests
 {
@@ -24,5 +23,26 @@ public class MemberQuestionnairesTests
     public void IsAnswerable_RejectsWhitespace(string? answer, bool expected)
     {
         Assert.Equal(expected, MemberQuestionnaires.IsAnswerable(answer));
+    }
+
+    [Theory]
+    [InlineData(null, true)]
+    [InlineData("", true)]
+    [InlineData("timescoped", true)]
+    [InlineData("permanent", false)]
+    [InlineData("Permanent", false)]
+    public void IsForTheMoment_TreatsAnythingButPermanentAsMomentary(string? scope, bool expected)
+    {
+        Assert.Equal(expected, MemberQuestionnaires.IsForTheMoment(scope));
+    }
+
+    [Theory]
+    [InlineData("timescoped", false, "Just for the moment — answering is optional.")]
+    [InlineData("timescoped", true, "This was just for the moment. You can still change or remove it.")]
+    [InlineData("permanent", false, "We'll keep this here. Answering is optional.")]
+    [InlineData("permanent", true, "We'll keep this here. You can change or remove it whenever you like.")]
+    public void Softener_SaysWhetherTheAnswerStaysOnTheList(string scope, bool isAnswered, string expected)
+    {
+        Assert.Equal(expected, MemberQuestionnaires.Softener(scope, isAnswered));
     }
 }

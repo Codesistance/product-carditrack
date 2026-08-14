@@ -31,7 +31,8 @@ public class QuestionnaireResponse
 
     /// <summary>
     /// permanent / timescoped, lowercase — the same string convention as <see cref="Status"/>.
-    /// Permanent answers keep informing every future summary; time-scoped ones age out. Either
+    /// Permanent answers stay on the Questions &amp; Answers page until the family deletes them;
+    /// time-scoped ones are "just for the moment" and drop off that list once they expire. Either
     /// way the family can delete this answer outright — see the delete endpoint.
     /// </summary>
     public string Scope { get; set; } = "timescoped";

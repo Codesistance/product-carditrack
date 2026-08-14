@@ -60,9 +60,7 @@ public partial class QuestionCard : ContentView
         RationaleCard.IsVisible = !string.IsNullOrWhiteSpace(questionnaire.TriggerContext);
         RationaleLabel.Text = questionnaire.TriggerContext;
 
-        OptionalLabel.Text = isAnswered
-            ? "You can change or remove this whenever you like."
-            : $"Answering helps us understand {name} better — it's completely optional.";
+        OptionalLabel.Text = MemberQuestionnaires.Softener(questionnaire.Scope, isAnswered);
 
         OpenButton.Text = isAnswered ? "Edit answer" : "Answer";
         DismissButton.IsVisible = !isAnswered;
