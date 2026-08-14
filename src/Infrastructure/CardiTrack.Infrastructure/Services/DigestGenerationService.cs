@@ -181,10 +181,12 @@ public partial class DigestGenerationService : IDigestGenerationService
     /// device produces new readings on nearly every pass — and without a floor that would mean an
     /// inference and a history row every half hour for wording that barely moves.
     /// <para>
-    /// This bounds cost and keeps the history list legible: at this floor a member writes at most
-    /// three summaries an hour, so the page the apps read still spans most of a day rather than
-    /// the last couple of hours. It is a floor on <em>regeneration</em>, not on freshness — the
-    /// first pass after new data on a member with no recent summary is never delayed by it.
+    /// This bounds cost and keeps the history list legible for the ordinary cycle: at this
+    /// floor a continuously-uploading member writes at most three summaries an hour. Waivers
+    /// (a problem window, a jump, a baseline divergence, an alert) can write more, which is
+    /// the point — those are the hours a caregiver should see densely. It is a floor on
+    /// <em>regeneration of wording that barely moves</em>, not on freshness — the first pass
+    /// after new data on a member with no recent summary is never delayed by it.
     /// </para>
     /// <para>
     /// What the wording should say waives it (see <see cref="GenerateForMemberAsync"/>): an alert
@@ -376,14 +378,7 @@ public partial class DigestGenerationService : IDigestGenerationService
         var today = logs.FirstOrDefault(l => l.Date == describedDate);
         var yesterday = logs.FirstOrDefault(l => l.Date == describedDate.AddDays(-1));
 
-        // The yardstick the readings are read against — the same established 30-day baseline the
-        // statistical alert engine judges by, so the summary and the alerts cannot disagree about
-        // what "usual" means for this member. Fetched before the significance probe so a reading
-        // that has just gone off-usual can waive the floor; absent while the member is still
-        // being learned, which leaves the prompt exactly as it was: raw readings with no normal
-        // to compare them to.
-        var baseline = await _unitOfWork.PatternBaselines.GetLatestByCardiMemberAsync(memberId, periodDays: 30);
-
+        PatternBaseline? baseline = null;
         if (!forceRefresh && previous is not null)
         {
             // Every summary is written after the readings it describes, so data stamped later
@@ -394,13 +389,25 @@ public partial class DigestGenerationService : IDigestGenerationService
             if (dataChangedAtUtc <= previous.GeneratedAtUtc)
                 return false;
 
-            if (utcNow - previous.GeneratedAtUtc < MinimumRegenerationInterval
-                && !DigestRefreshRules.ReadingsDivergeFromBaseline(baseline, today, yesterday)
-                && !DigestRefreshRules.ReadingsJumpedFromPrevious(today, yesterday))
+            if (utcNow - previous.GeneratedAtUtc < MinimumRegenerationInterval)
             {
-                return false;
+                // The yardstick the readings are read against — fetched here only because the
+                // floor decision needs it. A member whose data has not moved never reaches this.
+                baseline = await _unitOfWork.PatternBaselines
+                    .GetLatestByCardiMemberAsync(memberId, periodDays: 30);
+                if (!DigestRefreshRules.ReadingsDivergeFromBaseline(baseline, today, yesterday)
+                    && !DigestRefreshRules.ReadingsJumpedFromPrevious(today, yesterday))
+                {
+                    return false;
+                }
             }
         }
+
+        // Same 30-day baseline the statistical alert engine judges by, so the summary and the
+        // alerts cannot disagree about what "usual" means. Absent while the member is still
+        // being learned, which leaves the prompt exactly as it was: raw readings with no
+        // normal to compare them to.
+        baseline ??= await _unitOfWork.PatternBaselines.GetLatestByCardiMemberAsync(memberId, periodDays: 30);
 
         // Everything the model is told about the member, from every registered source — see
         // MemberContextComposer. What used to be a single hand-built "--- Member ---" block here is
@@ -808,8 +815,10 @@ public partial class DigestGenerationService : IDigestGenerationService
 
     /// <summary>
     /// Whether the latest real-time window is new since the last summary and is a problem or a
-    /// jump — see <see cref="DigestRefreshRules.SamplesIndicateAProblem"/>. One indexed lookup,
-    /// the same shape as the previous-summary probe, so a skip still does not scan a date range.
+    /// jump — see <see cref="DigestRefreshRules.SamplesIndicateAProblem"/>. One indexed lookup
+    /// so a force-refresh does not depend on the daily rows (granular samples can move without
+    /// them). The date-range read of those rows still happens later, because the prompt needs
+    /// them and because baseline/jump waivers judge them.
     /// </summary>
     private async Task<bool> ConcerningSamplesSinceAsync(
         Guid memberId, DigestEntry previous, CancellationToken ct)

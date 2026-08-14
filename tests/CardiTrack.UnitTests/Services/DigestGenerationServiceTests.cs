@@ -218,6 +218,9 @@ public class DigestGenerationServiceTests
         Assert.Equal(0, generated);
         await _medicalAi.DidNotReceive().GenerateStructuredAsync<DigestGenerationService.DigestAiResponse>(
             Arg.Any<string>(), Arg.Any<CancellationToken>());
+        // Unmoved daily rows never need the yardstick — fetching it here would be a baseline
+        // query on every mostly-skipping pass.
+        await _baselines.DidNotReceive().GetLatestByCardiMemberAsync(_memberId, Arg.Any<int>());
     }
 
     /// <summary>An edited log — a corrected or backfilled day — is new data too.</summary>
