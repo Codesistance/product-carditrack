@@ -9,17 +9,19 @@ namespace CardiTrack.UnitTests.Mobile;
 /// </summary>
 public class AlertSoundAssetTests
 {
-    [Fact]
-    public void BundledAlertSounds_AreIdenticalShortPcmWavs()
+    [Theory]
+    [InlineData(NotificationChannels.AlertSoundFile)]
+    [InlineData(NotificationChannels.NudgeSoundFile)]
+    public void BundledSounds_AreIdenticalShortPcmWavsOnIosAndAndroid(string fileName)
     {
         var root = FindRepoRoot();
         var ios = Path.Combine(root, "src", "Presentation", "CardiTrack.Mobile",
-            "Platforms", "iOS", "Resources", NotificationChannels.AlertSoundFile);
+            "Platforms", "iOS", "Resources", fileName);
         var android = Path.Combine(root, "src", "Presentation", "CardiTrack.Mobile",
-            "Platforms", "Android", "Resources", "raw", NotificationChannels.AlertSoundFile);
+            "Platforms", "Android", "Resources", "raw", fileName);
 
-        Assert.True(File.Exists(ios), $"Missing iOS alert sound at {ios}");
-        Assert.True(File.Exists(android), $"Missing Android alert sound at {android}");
+        Assert.True(File.Exists(ios), $"Missing iOS sound at {ios}");
+        Assert.True(File.Exists(android), $"Missing Android sound at {android}");
 
         var bytes = File.ReadAllBytes(ios);
         Assert.Equal(bytes, File.ReadAllBytes(android));

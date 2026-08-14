@@ -240,8 +240,8 @@ public class FcmNotificationChannel : INotificationChannel
                     // on it to say who was calling.
                     Icon = SmallIconName,
                     Color = SmallIconColor,
-                    Sound = PlaysAlertSound(delivery.Category) ? NotificationChannels.AlertSound : null,
-                    DefaultVibrateTimings = PlaysAlertSound(delivery.Category)
+                    Sound = AndroidSound(delivery.Category),
+                    DefaultVibrateTimings = delivery.Category == DeliveryCategory.Safety
                 }
             },
             Apns = new ApnsConfig
@@ -257,9 +257,7 @@ public class FcmNotificationChannel : INotificationChannel
                     .ToDictionary(kv => kv.Key, kv => kv.Value),
                 Aps = new Aps
                 {
-                    Sound = PlaysAlertSound(delivery.Category)
-                        ? NotificationChannels.AlertSoundFile
-                        : "default",
+                    Sound = IosSound(delivery.Category),
                     MutableContent = true,
                     CustomData = new Dictionary<string, object> { ["interruption-level"] = interruptionLevel }
                 }
@@ -267,11 +265,14 @@ public class FcmNotificationChannel : INotificationChannel
         };
     }
 
-    /// <summary>
-    /// Safety and Health are the ones a caregiver must hear. Nudges stay on the system default
-    /// (and in practice never push) so a data-gap reminder cannot train someone to silence the
-    /// real pager.
-    /// </summary>
-    private static bool PlaysAlertSound(DeliveryCategory category) =>
-        category is DeliveryCategory.Safety or DeliveryCategory.Health;
+    /// <summary>Safety/Health share the unlock chime; Nudges use the shorter ding.</summary>
+    private static string AndroidSound(DeliveryCategory category) =>
+        category is DeliveryCategory.Safety or DeliveryCategory.Health
+            ? NotificationChannels.AlertSound
+            : NotificationChannels.NudgeSound;
+
+    private static string IosSound(DeliveryCategory category) =>
+        category is DeliveryCategory.Safety or DeliveryCategory.Health
+            ? NotificationChannels.AlertSoundFile
+            : NotificationChannels.NudgeSoundFile;
 }

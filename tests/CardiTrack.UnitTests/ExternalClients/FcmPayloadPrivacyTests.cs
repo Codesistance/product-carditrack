@@ -115,26 +115,17 @@ public class FcmPayloadPrivacyTests
     }
 
     [Theory]
-    [InlineData(DeliveryCategory.Safety, NotificationChannels.AlertSoundFile, NotificationChannels.AlertSound)]
-    [InlineData(DeliveryCategory.Health, NotificationChannels.AlertSoundFile, NotificationChannels.AlertSound)]
-    public void SafetyAndHealth_PlayTheBundledAlertSound_AndVibrate(
-        DeliveryCategory category, string iosSound, string androidSound)
+    [InlineData(DeliveryCategory.Safety, NotificationChannels.AlertSoundFile, NotificationChannels.AlertSound, true)]
+    [InlineData(DeliveryCategory.Health, NotificationChannels.AlertSoundFile, NotificationChannels.AlertSound, false)]
+    [InlineData(DeliveryCategory.Nudge, NotificationChannels.NudgeSoundFile, NotificationChannels.NudgeSound, false)]
+    public void Payload_PlaysTheCategorySound_AndOnlySafetyForcesVibration(
+        DeliveryCategory category, string iosSound, string androidSound, bool vibrate)
     {
         var message = CreateSut().BuildMessage(Delivery(category), Token());
 
         Assert.Equal(iosSound, message.Apns.Aps.Sound);
         Assert.Equal(androidSound, message.Android.Notification.Sound);
-        Assert.True(message.Android.Notification.DefaultVibrateTimings);
-    }
-
-    [Fact]
-    public void Nudges_KeepTheSystemDefaultSound_AndDoNotForceVibration()
-    {
-        var message = CreateSut().BuildMessage(Delivery(DeliveryCategory.Nudge), Token());
-
-        Assert.Equal("default", message.Apns.Aps.Sound);
-        Assert.Null(message.Android.Notification.Sound);
-        Assert.False(message.Android.Notification.DefaultVibrateTimings);
+        Assert.Equal(vibrate, message.Android.Notification.DefaultVibrateTimings);
     }
 
     [Fact]

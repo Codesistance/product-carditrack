@@ -162,15 +162,16 @@ channel it lands in, whether it escalates, and whether the user may silence it.
 | Quiet hours | **Overridden** | Red overrides; orange defers | Always respected |
 | Escalates (§6.3) | Yes | Red only | No |
 | Silenceable | No — snooze ≤72h with logged acknowledgement | Sensitivity tuning (R2) | Yes — snooze, mute forever |
-| OS channel | `carditrack.safety.v2` (sound + vibration) | `carditrack.health.v2` (sound + vibration) | `carditrack.nudges` (low importance) |
+| OS channel | `carditrack.safety.v2` (sound + vibration) | `carditrack.health.v3` (sound, no vibration) | `carditrack.nudges.v2` (ding, no vibration) |
 
 Health alerts keep their own `Alert` table and lifecycle (New → Acknowledged → Resolved). Nudges get
 the `Notification` table. **Both produce `NotificationDelivery` rows** — that shared outbox is what
 makes the reliability work in §6 apply uniformly, without merging two domain models that disagree
 about almost everything else.
 
-Nudges are deliberately near-silent. A caregiver who gets pushed about an empty medical-notes field
-learns to swipe CardiTrack away, and takes the safety alerts with it. The exceptions
+Nudges play a short ding at default importance, not the Safety/Health chime. A caregiver who
+gets pushed about an empty medical-notes field should not hear the same pager as a safety alert.
+The exceptions
 (`DEVICE_AUTH_BROKEN`, `DEVICE_BATTERY_LOW`, and `NO_ALERT_RECIPIENT` when it ships) are
 safety-category precisely because they mean monitoring is not working.
 
@@ -216,14 +217,15 @@ items can be delivered quietly to Notification Center without a prompt. Two enti
 
 **Android** — `POST_NOTIFICATIONS` runtime permission (13+). Three notification channels registered at
 first launch so the OS settings screen gives per-category control that mirrors ours; `carditrack.safety.v2`
-at `IMPORTANCE_HIGH` with the bundled alert sound and vibration, `carditrack.health.v2` at
-`IMPORTANCE_DEFAULT` with the same sound and a shorter vibrate, `carditrack.nudges` at `IMPORTANCE_LOW`.
+at `IMPORTANCE_HIGH` with the bundled alert sound and vibration, `carditrack.health.v3` at
+`IMPORTANCE_DEFAULT` with the same sound and no vibration, `carditrack.nudges.v2` at
+`IMPORTANCE_DEFAULT` with a shorter ding and no vibration.
 High-priority FCM messages wake the app from Doze. Channel ids are versioned because Android freezes
-a channel's sound the first time it is created — v2 is how Safety/Health gained an audible alert
-after v1 shipped without one. The bundled alert is `carditrack_alert.wav` (44.1 kHz 16-bit
-PCM, converted from the OM FX / Uppbeat source) — keep the iOS `Resources/` copy and the
-Android `res/raw/` copy byte-identical; APNs takes the filename with extension, Android the
-resource name without.
+a channel's sound the first time it is created — bumping the id is how a later release can change
+sound or vibration. Safety/Health share `carditrack_alert.wav`; Nudges use `carditrack_nudge.wav`
+(both 44.1 kHz 16-bit PCM, converted from the Uppbeat sources) — keep each iOS `Resources/` copy
+byte-identical to the matching Android `res/raw/` copy; APNs takes the filename with extension,
+Android the resource name without.
 
 **Detecting denial.** On every foreground the app reads the OS notification settings (authorization
 status on iOS; `areNotificationsEnabled` plus per-channel importance on Android) and reports them with
