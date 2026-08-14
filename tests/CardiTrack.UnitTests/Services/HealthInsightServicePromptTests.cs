@@ -25,10 +25,12 @@ public class HealthInsightServicePromptTests
     private readonly ICardiMemberRepository _members = Substitute.For<ICardiMemberRepository>();
     private readonly IActivityLogRepository _activityLogs = Substitute.For<IActivityLogRepository>();
     private readonly IPatternBaselineRepository _baselines = Substitute.For<IPatternBaselineRepository>();
+    private readonly IAlertRepository _alerts = Substitute.For<IAlertRepository>();
     private readonly IDistributedCache _cache = Substitute.For<IDistributedCache>();
 
     private readonly Guid _userId = Guid.NewGuid();
     private readonly Guid _memberId = Guid.NewGuid();
+    private readonly Guid _alertId = Guid.NewGuid();
 
     private static readonly DateOnly DateOfBirth = new(1948, 3, 15);
 
@@ -38,6 +40,7 @@ public class HealthInsightServicePromptTests
         _unitOfWork.CardiMembers.Returns(_members);
         _unitOfWork.ActivityLogs.Returns(_activityLogs);
         _unitOfWork.PatternBaselines.Returns(_baselines);
+        _unitOfWork.Alerts.Returns(_alerts);
 
         _links.GetByUserIdAsync(_userId).Returns([
             new UserCardiMember
@@ -57,6 +60,13 @@ public class HealthInsightServicePromptTests
         _medicalAi.GenerateStructuredAsync<HealthInsightService.BaselineAiResponse>(
                 Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(new HealthInsightService.BaselineAiResponse { Summary = "Summary body.", KeyFindings = [] });
+        _medicalAi.GenerateStructuredAsync<HealthInsightService.AlertAiResponse>(
+                Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new HealthInsightService.AlertAiResponse
+            {
+                Explanation = "{{NAME}}'s steps dropped well below usual.",
+                RecommendedAction = "Call {{NAME}} today and see how they are.",
+            });
     }
 
     private HealthInsightService CreateSut() =>
@@ -381,5 +391,46 @@ public class HealthInsightServicePromptTests
             prompt);
         Assert.Contains($"Yesterday ({today.AddDays(-1)}, complete day): steps=5100", prompt);
         Assert.DoesNotContain($"Today so far ({today.AddDays(-1)}", prompt);
+    }
+
+    // ── Alert insight ───────────────────────────────────────────────────────────
+
+    private void SetupAlert()
+    {
+        _alerts.GetByIdWithCardiMemberAsync(_alertId).Returns(new Alert
+        {
+            Id = _alertId,
+            CardiMemberId = _memberId,
+            Title = "Steps well below baseline",
+            Message = "Steps are 91% below the 30-day baseline.",
+            Severity = AlertSeverity.Orange,
+        });
+    }
+
+    [Fact]
+    public async Task AlertPrompt_UsesCaregiverLanguage_NotClinicSpeak()
+    {
+        SetupAlert();
+
+        await CreateSut().AnalyzeAlertAsync(_userId, _alertId);
+
+        var prompt = CapturedPrompt();
+        Assert.Contains("Write as a caregiver would", prompt);
+        Assert.Contains("what this alert means in the recent readings", prompt);
+        Assert.Contains("{{NAME}}", prompt);
+        Assert.DoesNotContain("means clinically", prompt);
+        Assert.DoesNotContain("medical AI assistant", prompt);
+        Assert.DoesNotContain("flag for review", prompt);
+    }
+
+    [Fact]
+    public async Task AlertInsight_ResolvesTheNamePlaceholder_InBothFields()
+    {
+        SetupAlert();
+
+        var result = await CreateSut().AnalyzeAlertAsync(_userId, _alertId);
+
+        Assert.Equal("Margaret's steps dropped well below usual.", result.Explanation);
+        Assert.Equal("Call Margaret today and see how they are.", result.RecommendedAction);
     }
 }

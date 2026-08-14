@@ -186,6 +186,19 @@ public class MedicalPromptToneTests
         Assert.DoesNotContain("Never alarm", prompt, StringComparison.OrdinalIgnoreCase);
     }
 
+    [Fact]
+    public void The_alert_prompt_uses_caregiver_language_not_clinic_speak()
+    {
+        var alert = AllPrompts().Single(p => p.Field == "AlertInstructions").Prompt;
+
+        Assert.Contains("Write as a caregiver would", alert);
+        Assert.Contains("heart rate, sleep, quieter today, worth a look", alert);
+        Assert.Contains("Not clinic-speak", alert);
+        Assert.DoesNotContain("medical AI assistant", alert, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("means clinically", alert, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("flag for review", alert, StringComparison.OrdinalIgnoreCase);
+    }
+
     [Theory]
     [MemberData(nameof(Prompts))]
     public void Every_prompt_tells_the_model_not_to_follow_instructions_in_family_text(string _, string prompt)
@@ -230,5 +243,18 @@ public class MedicalPromptToneTests
             digest,
             StringComparison.Ordinal);
         Assert.DoesNotContain("as background only", digest, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void The_alert_prompt_uses_caregiver_language_not_clinic_speak()
+    {
+        var alert = AllPrompts().Single(p => p.Field == "AlertInstructions").Prompt;
+
+        Assert.Contains("Write as a caregiver would", alert);
+        Assert.Contains("heart rate, sleep, quieter today, worth a look", alert);
+        Assert.Contains("Not clinic-speak", alert);
+        Assert.DoesNotContain("medical AI assistant", alert, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("means clinically", alert, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("flag for review", alert, StringComparison.OrdinalIgnoreCase);
     }
 }

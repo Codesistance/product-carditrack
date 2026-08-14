@@ -31,17 +31,28 @@ public class HealthInsightService : IHealthInsightService
     // only reuse a cached prefix that has not changed, and personalising them would throw that away
     // for every member (docs/llm_design.md). Member data always goes *after* them.
 
-    /// <summary><c>CARDITRACK_ALERT_PROMPT</c> — explains a fired alert to a caregiver.</summary>
+    /// <summary>
+    /// <c>CARDITRACK_ALERT_PROMPT</c> — explains a fired alert to a caregiver. The register is a
+    /// family caregiver's, not a clinician's: heart rate and sleep are fine; elevated and
+    /// deviation are not. "Flag for review" was the old clinical-queue brief and does not belong
+    /// on a line a family reads.
+    /// </summary>
     private const string AlertInstructions =
         MedicalPromptBlocks.Tone + MedicalPromptBlocks.Pronouns + """
-        You are a medical AI assistant analysing a health alert for a non-clinical caregiver.
+        Explain this alert to a family caregiver.
+
+        Write as a caregiver would: heart rate, sleep, quieter today, worth a look.
+        Not clinic-speak (elevated, abnormal, deviation). Never suggest a medical cause.
+        Write {{NAME}} exactly as written wherever you would name the person; it stands in
+        for their real name, which you are not given.
 
         Respond with:
-        - explanation: what this alert means clinically, with likely contributing factors from
-          the recent data.
-        - recommendedAction: a concise recommended action for the caregiver.
+        - explanation: what this alert means in the recent readings, and what may sit behind it.
+        - recommendedAction: one specific thing the caregiver can do now — a check-in, a look
+          at the device, or mentioning it to the care team. Never start, stop or change
+          medication, and never a diagnosis.
 
-        Keep both fields factual and concise. Never diagnose — flag for review.
+        Keep both fields factual and concise.
         """ + MedicalPromptBlocks.ContextGuardrail;
 
     /// <summary><c>CARDITRACK_BASELINE_PROMPT</c> — trend analysis once a baseline exists.</summary>
@@ -223,12 +234,14 @@ public class HealthInsightService : IHealthInsightService
         var prompt = BuildAlertPrompt(alert, memberContext, recentLogs, baseline, to);
         var aiResponse = await _medicalAi.GenerateStructuredAsync<AlertAiResponse>(prompt, ct);
 
+        var name = NamePlaceholder.FirstName(member?.Name);
         return new AlertInsightResponse
         {
             AlertId = alertId,
-            Explanation = aiResponse.Explanation,
+            Explanation = NamePlaceholder.Resolve(aiResponse.Explanation, name) ?? aiResponse.Explanation,
             Severity = alert.Severity,
-            RecommendedAction = aiResponse.RecommendedAction
+            RecommendedAction = NamePlaceholder.Resolve(aiResponse.RecommendedAction, name)
+                ?? aiResponse.RecommendedAction,
         };
     }
 
