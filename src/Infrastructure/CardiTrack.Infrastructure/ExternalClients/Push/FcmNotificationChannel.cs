@@ -229,9 +229,9 @@ public class FcmNotificationChannel : INotificationChannel
                 {
                     ChannelId = delivery.Category switch
                     {
-                        DeliveryCategory.Safety => "carditrack.safety",
-                        DeliveryCategory.Health => "carditrack.health",
-                        _ => "carditrack.nudges"
+                        DeliveryCategory.Safety => NotificationChannels.Safety,
+                        DeliveryCategory.Health => NotificationChannels.Health,
+                        _ => NotificationChannels.Nudges
                     },
                     // Named here as well as in the manifest default. Android's small icon has to be
                     // a white-on-transparent silhouette; with neither this nor the manifest
@@ -239,7 +239,9 @@ public class FcmNotificationChannel : INotificationChannel
                     // renders as a featureless grey square — the notification arrived with nothing
                     // on it to say who was calling.
                     Icon = SmallIconName,
-                    Color = SmallIconColor
+                    Color = SmallIconColor,
+                    Sound = AndroidSound(delivery.Category),
+                    DefaultVibrateTimings = delivery.Category == DeliveryCategory.Safety
                 }
             },
             Apns = new ApnsConfig
@@ -255,11 +257,22 @@ public class FcmNotificationChannel : INotificationChannel
                     .ToDictionary(kv => kv.Key, kv => kv.Value),
                 Aps = new Aps
                 {
-                    Sound = "default",
+                    Sound = IosSound(delivery.Category),
                     MutableContent = true,
                     CustomData = new Dictionary<string, object> { ["interruption-level"] = interruptionLevel }
                 }
             }
         };
     }
+
+    /// <summary>Safety/Health share the unlock chime; Nudges use the shorter ding.</summary>
+    private static string AndroidSound(DeliveryCategory category) =>
+        category is DeliveryCategory.Safety or DeliveryCategory.Health
+            ? NotificationChannels.AlertSound
+            : NotificationChannels.NudgeSound;
+
+    private static string IosSound(DeliveryCategory category) =>
+        category is DeliveryCategory.Safety or DeliveryCategory.Health
+            ? NotificationChannels.AlertSoundFile
+            : NotificationChannels.NudgeSoundFile;
 }

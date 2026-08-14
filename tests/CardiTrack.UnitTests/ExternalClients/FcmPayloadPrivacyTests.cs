@@ -1,4 +1,5 @@
 using CardiTrack.Application.Interfaces.Security;
+using CardiTrack.Application.Services.Notifications;
 using CardiTrack.Domain.Entities;
 using CardiTrack.Domain.Enums;
 using CardiTrack.Infrastructure.ExternalClients.Push;
@@ -100,6 +101,31 @@ public class FcmPayloadPrivacyTests
         // alpha-masks it to a featureless square — see icon_notification.svg.
         Assert.Equal("icon_notification", android.Icon);
         Assert.False(string.IsNullOrWhiteSpace(android.Color));
+    }
+
+    [Theory]
+    [InlineData(DeliveryCategory.Safety, NotificationChannels.Safety)]
+    [InlineData(DeliveryCategory.Health, NotificationChannels.Health)]
+    [InlineData(DeliveryCategory.Nudge, NotificationChannels.Nudges)]
+    public void AndroidNotification_TargetsTheVersionedChannel(DeliveryCategory category, string expectedChannel)
+    {
+        var android = CreateSut().BuildMessage(Delivery(category), Token()).Android.Notification;
+
+        Assert.Equal(expectedChannel, android.ChannelId);
+    }
+
+    [Theory]
+    [InlineData(DeliveryCategory.Safety, NotificationChannels.AlertSoundFile, NotificationChannels.AlertSound, true)]
+    [InlineData(DeliveryCategory.Health, NotificationChannels.AlertSoundFile, NotificationChannels.AlertSound, false)]
+    [InlineData(DeliveryCategory.Nudge, NotificationChannels.NudgeSoundFile, NotificationChannels.NudgeSound, false)]
+    public void Payload_PlaysTheCategorySound_AndOnlySafetyForcesVibration(
+        DeliveryCategory category, string iosSound, string androidSound, bool vibrate)
+    {
+        var message = CreateSut().BuildMessage(Delivery(category), Token());
+
+        Assert.Equal(iosSound, message.Apns.Aps.Sound);
+        Assert.Equal(androidSound, message.Android.Notification.Sound);
+        Assert.Equal(vibrate, message.Android.Notification.DefaultVibrateTimings);
     }
 
     [Fact]

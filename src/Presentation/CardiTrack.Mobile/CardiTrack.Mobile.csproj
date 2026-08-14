@@ -171,6 +171,13 @@
 
 	<ItemGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'ios'">
 		<BundleResource Include="Platforms\iOS\GoogleService-Info.plist" LogicalName="GoogleService-Info.plist" />
+		<!-- APNs custom sound: must sit in the main bundle under this exact filename. The FCM
+		     payload's aps.sound names NotificationChannels.AlertSoundFile. Remove the SDK's
+		     implicit include first so we don't embed the same file twice. -->
+		<BundleResource Remove="Platforms\iOS\Resources\carditrack_alert.wav" />
+		<BundleResource Include="Platforms\iOS\Resources\carditrack_alert.wav" LogicalName="carditrack_alert.wav" />
+		<BundleResource Remove="Platforms\iOS\Resources\carditrack_nudge.wav" />
+		<BundleResource Include="Platforms\iOS\Resources\carditrack_nudge.wav" LogicalName="carditrack_nudge.wav" />
 	</ItemGroup>
 
 	<ItemGroup>

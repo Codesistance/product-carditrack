@@ -106,7 +106,7 @@ Registers or upserts a device's FCM token for the authenticated user, and double
 | `token` | string | The raw FCM registration token — never logged, stored encrypted at rest |
 | `appVersion` | string | Diagnostics only |
 | `osAuthorizationStatus` | int (`OsAuthorizationStatus`) | Read from the OS permission API |
-| `safetyChannelEnabled` | bool | Whether the OS-level `carditrack.safety` channel is on; muting it at the OS level arms `PUSH_UNREACHABLE` the same as a revoked permission |
+| `safetyChannelEnabled` | bool | Whether the OS-level Safety channel (`carditrack.safety.v2`) is on; muting it at the OS level arms `PUSH_UNREACHABLE` the same as a revoked permission |
 
 **Response `200 OK`:**
 

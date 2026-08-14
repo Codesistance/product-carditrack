@@ -3,6 +3,7 @@
 // absent on the Windows target — there is nothing to make conditional inside the class, the
 // class itself doesn't exist there.
 #if ANDROID || IOS
+using CardiTrack.Application.Services.Notifications;
 using CardiTrack.Domain.Enums;
 using CardiTrack.Mobile.Core.Http;
 using CardiTrack.Mobile.Core.Notifications;
@@ -33,9 +34,9 @@ public sealed class PushRegistrationCoordinator : IDisposable
     /// </summary>
     private const int MaxStoredAppVersionLength = 32;
 
-    private const string SafetyChannelId = "carditrack.safety";
-    private const string HealthChannelId = "carditrack.health";
-    private const string NudgesChannelId = "carditrack.nudges";
+    private const string SafetyChannelId = NotificationChannels.Safety;
+    private const string HealthChannelId = NotificationChannels.Health;
+    private const string NudgesChannelId = NotificationChannels.Nudges;
 
     /// <summary>
     /// The white silhouette Android paints in the status bar. Matches
@@ -276,9 +277,9 @@ public sealed class PushRegistrationCoordinator : IDisposable
 #if ANDROID
     /// <summary>
     /// Registered once at app start — Android requires a channel to exist before any
-    /// notification can be posted to it. Safety at IMPORTANCE_HIGH wakes the device from Doze;
-    /// nudges at IMPORTANCE_LOW is the "near-silent by design" channel (§3), though nudges never
-    /// push today (only the two safety-class rules do, which arrive as Safety, not Nudge).
+    /// notification can be posted to it. Safety at IMPORTANCE_HIGH wakes the device from Doze
+    /// and plays the bundled alert sound with vibration. Health at DEFAULT plays the same
+    /// sound with no vibration. Nudges at DEFAULT play the shorter ding, also without vibration.
     /// </summary>
     private static void RegisterAndroidChannels()
     {
@@ -290,23 +291,47 @@ public sealed class PushRegistrationCoordinator : IDisposable
         if (manager is null)
             return;
 
-        manager.CreateNotificationChannel(new global::Android.App.NotificationChannel(
+        // Channel sound/vibration freeze on first create. Delete earlier ids so Settings
+        // does not keep a silent or vibrating duplicate next to the current channel.
+        manager.DeleteNotificationChannel(NotificationChannels.SafetyLegacy);
+        manager.DeleteNotificationChannel(NotificationChannels.HealthLegacy);
+        manager.DeleteNotificationChannel(NotificationChannels.HealthLegacyV2);
+        manager.DeleteNotificationChannel(NotificationChannels.NudgesLegacy);
+
+        var alertSound = RawSoundUri(context, NotificationChannels.AlertSound);
+        var nudgeSound = RawSoundUri(context, NotificationChannels.NudgeSound);
+        var audio = new global::Android.Media.AudioAttributes.Builder()
+            .SetUsage(global::Android.Media.AudioUsageKind.Notification)
+            .SetContentType(global::Android.Media.AudioContentType.Sonification)
+            .Build();
+
+        var safety = new global::Android.App.NotificationChannel(
             SafetyChannelId, "Safety alerts", global::Android.App.NotificationImportance.High)
         {
             Description = "Monitoring is down, or nobody is listening."
-        });
+        };
+        safety.EnableVibration(true);
+        safety.SetVibrationPattern([0L, 500L, 200L, 500L]);
+        safety.SetSound(alertSound, audio);
+        manager.CreateNotificationChannel(safety);
 
-        manager.CreateNotificationChannel(new global::Android.App.NotificationChannel(
+        var health = new global::Android.App.NotificationChannel(
             HealthChannelId, "Health alerts", global::Android.App.NotificationImportance.Default)
         {
             Description = "A red or orange anomaly in a wearer's data."
-        });
+        };
+        health.EnableVibration(false);
+        health.SetSound(alertSound, audio);
+        manager.CreateNotificationChannel(health);
 
-        manager.CreateNotificationChannel(new global::Android.App.NotificationChannel(
-            NudgesChannelId, "Reminders", global::Android.App.NotificationImportance.Low)
+        var nudges = new global::Android.App.NotificationChannel(
+            NudgesChannelId, "Reminders", global::Android.App.NotificationImportance.Default)
         {
             Description = "Data-completeness nudges."
-        });
+        };
+        nudges.EnableVibration(false);
+        nudges.SetSound(nudgeSound, audio);
+        manager.CreateNotificationChannel(nudges);
 
         FirebaseCloudMessagingImplementation.ChannelId = SafetyChannelId;
 
@@ -325,6 +350,20 @@ public sealed class PushRegistrationCoordinator : IDisposable
             Log.Warning("Notification small icon '{Name}' did not resolve to a drawable.", NotificationSmallIconName);
         else
             FirebaseCloudMessagingImplementation.SmallIconRef = iconRef;
+    }
+
+    private static global::Android.Net.Uri RawSoundUri(
+        global::Android.Content.Context context, string resourceName)
+    {
+        var resId = context.Resources?.GetIdentifier(resourceName, "raw", context.PackageName) ?? 0;
+        if (resId == 0)
+        {
+            Log.Warning("Notification sound '{Name}' did not resolve to a raw resource — using the system notification sound.",
+                resourceName);
+            return global::Android.Media.RingtoneManager.GetDefaultUri(global::Android.Media.RingtoneType.Notification);
+        }
+
+        return global::Android.Net.Uri.Parse($"android.resource://{context.PackageName}/{resId}");
     }
 #endif
 
