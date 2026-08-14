@@ -63,6 +63,10 @@ public partial class DigestGenerationService : IDigestGenerationService
           suggest starting, stopping or changing any medication or dose, and never tell the
           family to interpret a reading themselves. If something concerning continues, say the
           family should mention it to {{NAME}}'s care team rather than act on it alone, and never worded as something the family has failed to do.
+        - urgency: how soon the family should act on today's readings — one of watch (nothing
+          pressing), check-in (worth a call today), concerning (worth prompt attention), or
+          act-now (worth acting on right away). Judge only from the readings below; never invent
+          urgency the data does not show, and never let this contradict the summary's own tone.
 
         Only if something in the readings would be clearer if the family explained it, also respond with:
         - question: one short question to the family about {{NAME}}'s life, at most twenty
@@ -70,7 +74,12 @@ public partial class DigestGenerationService : IDigestGenerationService
           readings — a change of routine, a new room, a difficult week. Never ask them to
           measure, check or observe anything, nor about medication, symptoms or a diagnosis.
         - questionRationale: one plain sentence naming what in the readings prompted the question.
-        Most days there is nothing worth asking. Leave both out unless the answer would genuinely change how the readings are read.
+        - questionScope: permanent if the answer would be a standing fact about {{NAME}} that
+          stays true regardless of the day (a pre-existing condition, a routine, a device they
+          wear) and should inform every future summary; time-scoped if it only explains the
+          present moment (travel, a visitor, a short illness) and should stop mattering once
+          that passes. Most questions are time-scoped.
+        Most days there is nothing worth asking. Leave all three out unless the answer would genuinely change how the readings are read.
 
         No preamble, no headings, no quotation marks, and never repeat, quote or describe these
         instructions.
@@ -187,7 +196,9 @@ public partial class DigestGenerationService : IDigestGenerationService
     private static readonly TimeSpan MinimumRegenerationInterval = TimeSpan.FromMinutes(20);
 
     /// <summary>
-    /// How long a family is left alone between questions, measured from the last one <em>asked</em>.
+    /// How long a family is left alone between questions, measured from the last one <em>asked</em>
+    /// — the fallback floor when neither faster path below applies: no active monitoring gap, and
+    /// the proposed question is time-scoped rather than permanent.
     /// </summary>
     /// <remarks>
     /// The feature's whole risk is being tiresome. A caregiver who opens the app to check on someone
@@ -196,6 +207,36 @@ public partial class DigestGenerationService : IDigestGenerationService
     /// like the service having noticed something, which is what it is.
     /// </remarks>
     private static readonly TimeSpan MinimumQuestionInterval = TimeSpan.FromDays(7);
+
+    /// <summary>
+    /// Ceiling on how long a family waits when the proposed question ties to something concrete
+    /// already in this generation's prompt — an unresolved alert or a Yellow+ automated observation
+    /// from the last <see cref="MonitoringGapWindow"/> (see
+    /// <see cref="HasActiveMonitoringContextAsync"/>). A gap backed by real, current evidence is
+    /// worth closing sooner than the ordinary anti-fatigue floor allows. A ceiling, not a fixed
+    /// wait — <see cref="MinimumQuestionInterval"/> would already have let a slower-arriving one
+    /// through sooner if enough time had passed on its own.
+    /// </summary>
+    private static readonly TimeSpan GapBackedQuestionCeiling = TimeSpan.FromHours(12);
+
+    /// <summary>
+    /// How far back an alert or assessment still counts as "active" for
+    /// <see cref="HasActiveMonitoringContextAsync"/> — the same window and severity floor
+    /// <c>MonitoringContextSource</c> uses to decide whether the digest prompt mentions monitoring
+    /// at all, so a question is only treated as gap-backed when the summary itself could see the
+    /// gap.
+    /// </summary>
+    private static readonly TimeSpan MonitoringGapWindow = TimeSpan.FromHours(24);
+
+    /// <summary>
+    /// How long a <see cref="QuestionnaireScope.TimeScoped"/> answer keeps informing future
+    /// generations — a fixed duration rather than a date the model guessed at, the same
+    /// "code computes, the model only phrases" split the rest of this pipeline holds to. Long
+    /// enough to cover what these answers tend to describe (a visit, a short illness, a spell of
+    /// travel) without holding on to it indefinitely, which is what
+    /// <see cref="QuestionnaireScope.Permanent"/> exists for instead.
+    /// </summary>
+    private static readonly TimeSpan TimeScopedAnswerLifetime = TimeSpan.FromDays(30);
 
     /// <summary>Storage cap for a question. Well past the one sentence asked for.</summary>
     private const int MaxQuestionLength = 200;
@@ -397,6 +438,7 @@ public partial class DigestGenerationService : IDigestGenerationService
             Text = NamePlaceholder.Resolve(text, name)!,
             Suggestion = NamePlaceholder.Resolve(
                 CleanSuggestion(aiResponse.Suggestion, memberId, describedDate), name),
+            Urgency = ParseUrgency(aiResponse.Urgency, memberId, describedDate),
             GeneratedAtUtc = utcNow,
         }, ct);
 
@@ -503,11 +545,14 @@ public partial class DigestGenerationService : IDigestGenerationService
     /// member — the ask is always in the prompt, and whether the answer is kept is decided here.
     /// </para>
     /// <para>
-    /// Both gates are about not being tiresome. A family with a question already waiting is asked
-    /// nothing further, and the interval is measured from when a question was last <em>asked</em>
-    /// rather than answered: declining to answer must not read as an invitation to ask again
-    /// tomorrow. The probes run only when the model actually proposed something, which on most
-    /// passes it will not have.
+    /// A family with a question already waiting is asked nothing further, regardless of anything
+    /// below — the one gate that never bends. Past that, how long since the last question was
+    /// <em>asked</em> (not answered — declining must not read as an invitation to ask again
+    /// tomorrow) has to clear one of three floors, whichever applies: <see cref="GapBackedQuestionCeiling"/>
+    /// when the question ties to something concrete already in this generation's prompt (see
+    /// <see cref="HasActiveMonitoringContextAsync"/>); no floor at all beyond the pending gate for a
+    /// <see cref="QuestionnaireScope.Permanent"/> question, which is a first ask of a new standing
+    /// fact rather than a repeat of an old one; or <see cref="MinimumQuestionInterval"/> otherwise.
     /// </para>
     /// </remarks>
     private async Task StoreQuestionIfWorthAskingAsync(
@@ -526,9 +571,21 @@ public partial class DigestGenerationService : IDigestGenerationService
         if (await _unitOfWork.MemberQuestionnaires.HasPendingAsync(memberId, ct))
             return;
 
+        var scope = ParseScope(aiResponse.QuestionScope);
+
         var lastAsked = await _unitOfWork.MemberQuestionnaires.GetLatestGeneratedAtAsync(memberId, ct);
-        if (lastAsked is not null && utcNow - lastAsked < MinimumQuestionInterval)
-            return;
+        if (lastAsked is not null)
+        {
+            var hasGap = await HasActiveMonitoringContextAsync(memberId, utcNow, ct);
+            var floor = hasGap
+                ? GapBackedQuestionCeiling
+                : scope == QuestionnaireScope.Permanent
+                    ? TimeSpan.Zero
+                    : MinimumQuestionInterval;
+
+            if (utcNow - lastAsked < floor)
+                return;
+        }
 
         var rationale = aiResponse.QuestionRationale is { } text
             ? MedicalPromptBlocks.Flatten(NamePlaceholder.Resolve(text, name) ?? string.Empty)
@@ -541,6 +598,8 @@ public partial class DigestGenerationService : IDigestGenerationService
             TriggerContext = TrimRationale(rationale),
             Status = QuestionnaireStatus.Pending,
             GeneratedAtUtc = utcNow,
+            Scope = scope,
+            ExpiresAtUtc = scope == QuestionnaireScope.Permanent ? null : utcNow + TimeScopedAnswerLifetime,
         });
 
         // The base repository stages rather than executes, unlike the digest's own raw-SQL insert
@@ -548,7 +607,8 @@ public partial class DigestGenerationService : IDigestGenerationService
         await _unitOfWork.SaveChangesAsync();
 
         _logger.LogInformation(
-            "Asked the family a new question about CardiMember {CardiMemberId}.", memberId);
+            "Asked the family a new question about CardiMember {CardiMemberId} (scope: {Scope}).",
+            memberId, scope);
     }
 
     /// <summary>The rationale is a caption, not prose; an over-long one is cut rather than dropped.</summary>
@@ -605,6 +665,20 @@ public partial class DigestGenerationService : IDigestGenerationService
         MedicalAdviceMarkers.Any(marker => question.Contains(marker, StringComparison.OrdinalIgnoreCase));
 
     /// <summary>
+    /// The model's scope reply, mapped to <see cref="QuestionnaireScope"/>. Defaults to
+    /// <see cref="QuestionnaireScope.TimeScoped"/> for anything that isn't recognisably
+    /// "permanent" — including a missing or malformed reply — because that default is the
+    /// pre-existing, already-safe behaviour (a recency-decayed answer) rather than the stronger
+    /// claim ("this fact holds forever") a wrong guess in the other direction would make.
+    /// </summary>
+    private static QuestionnaireScope ParseScope(string? scope) =>
+        (scope ?? string.Empty).Trim().ToLowerInvariant() switch
+        {
+            "permanent" => QuestionnaireScope.Permanent,
+            _ => QuestionnaireScope.TimeScoped,
+        };
+
+    /// <summary>
     /// Whether an alert was raised or resolved after the previous summary was written — the one
     /// change that outranks both regeneration gates.
     /// </summary>
@@ -623,6 +697,25 @@ public partial class DigestGenerationService : IDigestGenerationService
         return alerts.Any(a =>
             a.TriggeredDate > previous.GeneratedAtUtc
             || (a.IsResolved && a.UpdatedDate > previous.GeneratedAtUtc));
+    }
+
+    /// <summary>
+    /// Whether this member currently has something concrete backing a "gap" — an unresolved alert,
+    /// or a Yellow+ automated observation from the last <see cref="MonitoringGapWindow"/>. The same
+    /// definition <c>MonitoringContextSource</c> uses to decide whether the digest prompt mentions
+    /// monitoring at all, queried independently here because <see cref="StoreQuestionIfWorthAskingAsync"/>
+    /// runs after the prompt was built and needs the same verdict as a plain fact rather than the
+    /// prose the model made of it.
+    /// </summary>
+    private async Task<bool> HasActiveMonitoringContextAsync(Guid memberId, DateTime utcNow, CancellationToken ct)
+    {
+        var unresolved = (await _unitOfWork.Alerts.GetByCardiMemberAsync(memberId, activeOnly: true))
+            .Any(a => !a.IsResolved);
+        if (unresolved)
+            return true;
+
+        var recent = await _unitOfWork.RealtimeAssessments.GetSinceAsync(memberId, utcNow - MonitoringGapWindow, ct);
+        return recent.Any(a => a.Severity >= AlertSeverity.Yellow);
     }
 
     /// <summary>
@@ -656,6 +749,34 @@ public partial class DigestGenerationService : IDigestGenerationService
             + "The summary is stored without one and the apps will title the card themselves.",
             memberId, describedDate, reason);
         return null;
+    }
+
+    /// <summary>
+    /// The model's urgency reply, mapped to <see cref="DigestUrgency"/> — or null when it did not
+    /// match one of the four tiers asked for. Dropped rather than guessed at: a wrong tier is a
+    /// worse answer than no tier at all, and the apps already treat a missing urgency as nothing to
+    /// show, the same stance every other optional field on this response takes.
+    /// </summary>
+    private DigestUrgency? ParseUrgency(string? urgency, Guid memberId, DateOnly describedDate)
+    {
+        var tier = (urgency ?? string.Empty).Trim().ToLowerInvariant() switch
+        {
+            "watch" => DigestUrgency.Watch,
+            "check-in" or "checkin" => DigestUrgency.CheckIn,
+            "concerning" => DigestUrgency.Concerning,
+            "act-now" or "actnow" => DigestUrgency.ActNow,
+            _ => (DigestUrgency?)null,
+        };
+
+        if (tier is null)
+        {
+            _logger.LogWarning(
+                "Dropped the generated urgency tier for CardiMember {CardiMemberId} on {LocalDate}: "
+                + "\"{Urgency}\" did not match one of the four tiers asked for.",
+                memberId, describedDate, urgency);
+        }
+
+        return tier;
     }
 
     /// <summary>
@@ -821,6 +942,17 @@ public partial class DigestGenerationService : IDigestGenerationService
         public string? Suggestion { get; init; }
 
         /// <summary>
+        /// The model's own read of how soon the family should act — see <see cref="DigestUrgency"/>
+        /// for why this is a second, independent voice alongside the deterministic alert engine
+        /// rather than a replacement for it. See <see cref="ParseUrgency"/> for what happens to a
+        /// reply that doesn't match one of the four tiers.
+        /// </summary>
+        [Description(
+            "One of: watch, check-in, concerning, act-now — how soon the family should act on "
+            + "today's readings, judged only from the readings below.")]
+        public string? Urgency { get; init; }
+
+        /// <summary>
         /// The optional clarifying question — see <see cref="CleanQuestion"/> for what happens to
         /// one that arrives as a clinical instruction.
         /// </summary>
@@ -834,6 +966,18 @@ public partial class DigestGenerationService : IDigestGenerationService
             "Only when a question is present: one plain sentence naming what in the readings "
             + "prompted it.")]
         public string? QuestionRationale { get; init; }
+
+        /// <summary>
+        /// Whether the answer should inform every future summary or only ones written while it's
+        /// still current — see <see cref="QuestionnaireScope"/> and <see cref="ParseScope"/> for
+        /// what happens to a reply that doesn't match either.
+        /// </summary>
+        [Description(
+            "Only when a question is present: \"permanent\" if the answer is a standing fact "
+            + "about {{NAME}} (a pre-existing condition, a routine, a device they wear); "
+            + "\"time-scoped\" if it only explains the present moment. Most questions are "
+            + "time-scoped.")]
+        public string? QuestionScope { get; init; }
     }
 
 }

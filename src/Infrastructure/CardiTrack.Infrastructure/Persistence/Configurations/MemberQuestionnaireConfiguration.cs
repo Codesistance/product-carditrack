@@ -34,6 +34,12 @@ public class MemberQuestionnaireConfiguration : IEntityTypeConfiguration<MemberQ
         builder.Property(q => q.GeneratedAtUtc)
             .IsRequired();
 
+        // Same reasoning as Status: a name survives an incident and an enum renumbering.
+        builder.Property(q => q.Scope)
+            .HasConversion<string>()
+            .HasMaxLength(20)
+            .IsRequired();
+
         builder.Property(q => q.CreatedDate)
             .HasDefaultValueSql("NOW()");
 

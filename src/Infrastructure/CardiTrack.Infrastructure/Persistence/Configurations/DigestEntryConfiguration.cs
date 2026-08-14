@@ -40,6 +40,13 @@ public class DigestEntryConfiguration : IEntityTypeConfiguration<DigestEntry>
         builder.Property(d => d.Suggestion)
             .HasMaxLength(260);
 
+        // Same reasoning as Audience: a name survives an incident and an enum renumbering.
+        // Nullable for the same reason as Suggestion — a generation the model gave nothing
+        // parseable for stores none.
+        builder.Property(d => d.Urgency)
+            .HasConversion<string>()
+            .HasMaxLength(20);
+
         builder.Property(d => d.GeneratedAtUtc)
             .IsRequired();
     }

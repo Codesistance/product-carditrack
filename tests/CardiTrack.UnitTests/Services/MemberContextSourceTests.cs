@@ -273,6 +273,60 @@ public class MemberContextSourceTests
         Assert.DoesNotContain("Answer 4", section.Body);
     }
 
+    /// <summary>
+    /// The gap this source used to have: a standing fact like "has a pacemaker" would silently
+    /// age out the moment three newer answers arrived, same as any other. A permanent answer now
+    /// survives regardless of how many newer time-scoped ones exist.
+    /// </summary>
+    [Fact]
+    public async Task Answers_AlwaysIncludeAPermanentOne_EvenPastTheTimeScopedCap()
+    {
+        GivenQuestionnaires(
+        [
+            Questionnaire(QuestionnaireStatus.Answered, "Does she have a pacemaker?", "Yes, fitted in 2020.",
+                scope: QuestionnaireScope.Permanent),
+            .. Enumerable.Range(0, 4)
+                .Select(i => Questionnaire(QuestionnaireStatus.Answered, $"Question {i}?", $"Answer {i}")),
+        ]);
+
+        var section = await new QuestionnaireAnswersContextSource(_unitOfWork, PromptContextFactory.Encryption)
+            .BuildAsync(Request(), default);
+
+        Assert.NotNull(section);
+        Assert.Contains("pacemaker", section.Body);
+        // Still three of the time-scoped ones — the permanent answer doesn't eat into that cap.
+        Assert.Equal(4, section.Body.Split('\n').Length);
+    }
+
+    [Fact]
+    public async Task Answers_DropAnExpiredTimeScopedAnswer()
+    {
+        GivenQuestionnaires(
+            Questionnaire(QuestionnaireStatus.Answered, "Are you travelling this week?", "Yes, back Friday.",
+                expiresAtUtc: UtcNow.AddDays(-1)));
+
+        var section = await new QuestionnaireAnswersContextSource(_unitOfWork, PromptContextFactory.Encryption)
+            .BuildAsync(Request(), default);
+
+        Assert.Null(section);
+    }
+
+    /// <summary>Rows written before this distinction existed carry a null expiry — read as "not
+    /// expired," so they keep behaving exactly as they always did.</summary>
+    [Fact]
+    public async Task Answers_KeepATimeScopedAnswerWithNoExpiry()
+    {
+        GivenQuestionnaires(
+            Questionnaire(QuestionnaireStatus.Answered, "Are you travelling this week?", "Yes, back Friday.",
+                expiresAtUtc: null));
+
+        var section = await new QuestionnaireAnswersContextSource(_unitOfWork, PromptContextFactory.Encryption)
+            .BuildAsync(Request(), default);
+
+        Assert.NotNull(section);
+        Assert.Contains("travelling", section.Body);
+    }
+
     // ---- Arrangement helpers ----
 
     private CardiMember ConsentedMember() => new()
@@ -319,7 +373,9 @@ public class MemberContextSourceTests
         GeneratedAtUtc = UtcNow.AddHours(-1),
     };
 
-    private MemberQuestionnaire Questionnaire(QuestionnaireStatus status, string question, string? answer) => new()
+    private MemberQuestionnaire Questionnaire(
+        QuestionnaireStatus status, string question, string? answer,
+        QuestionnaireScope scope = QuestionnaireScope.TimeScoped, DateTime? expiresAtUtc = null) => new()
     {
         Id = Guid.NewGuid(),
         CardiMemberId = _memberId,
@@ -327,5 +383,7 @@ public class MemberContextSourceTests
         AnswerText = answer is null ? null : PromptContextFactory.Encryption.Encrypt(answer),
         Status = status,
         GeneratedAtUtc = UtcNow.AddDays(-1),
+        Scope = scope,
+        ExpiresAtUtc = expiresAtUtc,
     };
 }

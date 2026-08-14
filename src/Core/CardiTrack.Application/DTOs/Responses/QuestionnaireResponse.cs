@@ -28,4 +28,11 @@ public class QuestionnaireResponse
 
     /// <summary>Which caregiver answered — several may share a member.</summary>
     public Guid? AnsweredByUserId { get; set; }
+
+    /// <summary>
+    /// permanent / timescoped, lowercase — the same string convention as <see cref="Status"/>.
+    /// Permanent answers keep informing every future summary; time-scoped ones age out. Either
+    /// way the family can delete this answer outright — see the delete endpoint.
+    /// </summary>
+    public string Scope { get; set; } = "timescoped";
 }

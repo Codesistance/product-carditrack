@@ -153,6 +153,7 @@ public class QuestionnaireService : IQuestionnaireService
         GeneratedAtUtc = questionnaire.GeneratedAtUtc,
         AnsweredAtUtc = questionnaire.AnsweredAtUtc,
         AnsweredByUserId = questionnaire.AnsweredByUserId,
+        Scope = questionnaire.Scope.ToString().ToLowerInvariant(),
     };
 
     /// <summary>

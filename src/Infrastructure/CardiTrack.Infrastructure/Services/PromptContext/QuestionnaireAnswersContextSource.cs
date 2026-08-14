@@ -1,5 +1,6 @@
 using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Interfaces.Security;
+using CardiTrack.Domain.Entities;
 using CardiTrack.Domain.Enums;
 using CardiTrack.Infrastructure.Security;
 
@@ -22,11 +23,21 @@ namespace CardiTrack.Infrastructure.Services.PromptContext;
 internal sealed class QuestionnaireAnswersContextSource : IMemberContextSource
 {
     /// <summary>
-    /// How many answers travel. The newest few are the ones still describing the member's current
-    /// life; an answer from months ago is more likely to mislead than inform, and every line here
-    /// competes with the readings for the model's attention.
+    /// How many <see cref="QuestionnaireScope.TimeScoped"/> answers travel. The newest few are the
+    /// ones still describing the member's current life; an answer from months ago is more likely to
+    /// mislead than inform, and every line here competes with the readings for the model's
+    /// attention. <see cref="QuestionnaireScope.Permanent"/> answers are not subject to this cap —
+    /// see <see cref="MaxPermanentAnswers"/>.
     /// </summary>
     private const int MaxAnswers = 3;
+
+    /// <summary>
+    /// Ceiling on <see cref="QuestionnaireScope.Permanent"/> answers, which otherwise never age
+    /// out. Not a claim that a member could have this many standing facts worth knowing — a
+    /// backstop against the model over-tagging answers as permanent and this section growing
+    /// without bound, the same role <see cref="MaxAnswers"/> plays for the other scope.
+    /// </summary>
+    private const int MaxPermanentAnswers = 10;
 
     /// <summary>Per-answer cap. A caregiver writing at length is answering more than was asked.</summary>
     private const int MaxAnswerLength = 300;
@@ -51,27 +62,41 @@ internal sealed class QuestionnaireAnswersContextSource : IMemberContextSource
         var questionnaires = await _unitOfWork.MemberQuestionnaires
             .GetByCardiMemberAsync(request.CardiMemberId, ct);
 
+        // Newest-first from the repository, which both Take calls below rely on.
         var answered = questionnaires
             .Where(q => q.Status == QuestionnaireStatus.Answered && !string.IsNullOrWhiteSpace(q.AnswerText))
-            .Take(MaxAnswers)
             .ToList();
 
-        if (answered.Count == 0)
+        // Permanent answers first and never subject to the recency cap or an expiry — a standing
+        // fact does not stop being true because three newer answers arrived. Time-scoped answers
+        // keep the pre-existing recency-decay behaviour, now also dropping anything past its own
+        // ExpiresAtUtc; a null expiry (every row written before this distinction existed) reads as
+        // "not expired," preserving exactly what those rows already did.
+        var permanent = answered
+            .Where(q => q.Scope == QuestionnaireScope.Permanent)
+            .Take(MaxPermanentAnswers);
+        var timeScoped = answered
+            .Where(q => q.Scope == QuestionnaireScope.TimeScoped
+                        && (q.ExpiresAtUtc is null || q.ExpiresAtUtc > request.UtcNow))
+            .Take(MaxAnswers);
+
+        var lines = permanent.Concat(timeScoped).Select(FormatLine).ToList();
+        if (lines.Count == 0)
             return null;
 
-        var lines = answered.Select(q =>
-        {
-            var question = MedicalPromptBlocks.Flatten(
-                EncryptedFieldReader.Reveal(_encryption, q.QuestionText) ?? string.Empty);
-            var answer = MedicalPromptBlocks.Flatten(
-                EncryptedFieldReader.Reveal(_encryption, q.AnswerText) ?? string.Empty);
-
-            if (answer.Length > MaxAnswerLength)
-                answer = $"{answer[..MaxAnswerLength]}…";
-
-            return $"- Q: {question} A: {answer}";
-        });
-
         return new MemberContextSection("Family answers to earlier questions", string.Join("\n", lines));
+    }
+
+    private string FormatLine(MemberQuestionnaire questionnaire)
+    {
+        var question = MedicalPromptBlocks.Flatten(
+            EncryptedFieldReader.Reveal(_encryption, questionnaire.QuestionText) ?? string.Empty);
+        var answer = MedicalPromptBlocks.Flatten(
+            EncryptedFieldReader.Reveal(_encryption, questionnaire.AnswerText) ?? string.Empty);
+
+        if (answer.Length > MaxAnswerLength)
+            answer = $"{answer[..MaxAnswerLength]}…";
+
+        return $"- Q: {question} A: {answer}";
     }
 }

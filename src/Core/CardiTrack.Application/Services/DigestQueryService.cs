@@ -54,6 +54,21 @@ public class DigestQueryService : IDigestQueryService
         Headline = entry.Headline,
         Text = entry.Text,
         Suggestion = entry.Suggestion,
+        Urgency = ToUrgencyWireValue(entry.Urgency),
         GeneratedAtUtc = entry.GeneratedAtUtc,
+    };
+
+    /// <summary>
+    /// The hyphenated wire vocabulary (watch / check-in / concerning / act-now) rather than a bare
+    /// <c>ToString().ToLowerInvariant()</c> — the same words the AI prompt itself asks for, so a
+    /// client matching on this string is matching the vocabulary the model was actually given.
+    /// </summary>
+    private static string? ToUrgencyWireValue(DigestUrgency? urgency) => urgency switch
+    {
+        DigestUrgency.Watch => "watch",
+        DigestUrgency.CheckIn => "check-in",
+        DigestUrgency.Concerning => "concerning",
+        DigestUrgency.ActNow => "act-now",
+        _ => null,
     };
 }
