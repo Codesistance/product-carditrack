@@ -246,7 +246,7 @@ Keeps the partitioned time-series tables (`GranularMetricHours`, `MetricRollupsH
 
 - Runs **hourly** (`0 15 * * * *`) and additionally **once at startup** — `CronBackgroundService` now supports a `RunOnStartup` mode (`WorkerOptions.RunOnStartup`, off by default) and this worker opts in (`RunOnStartup: true` in appsettings), so a fresh deploy has its partitions before the first insert rather than waiting for the next hourly tick. Creation is idempotent (`IF NOT EXISTS`) and near-free.
 - Pre-creates from **yesterday** through `DaysAhead` days out — C# fallback is **7**; `appsettings.json` sets **14**, so a week of headroom survives a multi-day worker outage, and a sync straddling UTC midnight can still write into the day that just ended.
-- Retention is a **partition drop** — instant, no dead tuples to vacuum: granular hours after `GranularRetentionDays` (default **90**), hourly rollups after `RollupRetentionMonths` (default **13**), digests after `DigestRetentionMonths` (default **3**), real-time assessments after `RealtimeRetentionDays` (default **90**), environmental readings after `EnvironmentalRetentionDays` (default **90**). A partition is dropped only when its whole range is past the cutoff.
+- Retention is a **partition drop** — instant, no dead tuples to vacuum: granular hours after `GranularRetentionDays` (default **90**), hourly rollups after `RollupRetentionMonths` (default **13**), digests after `DigestRetentionMonths` (default **3**), real-time assessments after `RealtimeRetentionDays` (default **90**), environmental readings after `EnvironmentalRetentionDays` (C# default **90**; not set in `appsettings.json`). A partition is dropped only when its whole range is past the cutoff.
 - **Never drops what it did not name**: the drop path parses each child's name against the worker's own naming scheme, so a manually attached partition is left alone regardless of age.
 - Drops log at **Warning** — destroying health data past retention is the one thing this job does that an audit should be able to reconstruct.
 
@@ -408,8 +408,7 @@ Cron schedules bind per worker class name under the `Workers` section, consumed 
       "GranularRetentionDays": 90,
       "RollupRetentionMonths": 13,
       "DigestRetentionMonths": 3,
-      "RealtimeRetentionDays": 90,
-      "EnvironmentalRetentionDays": 90
+      "RealtimeRetentionDays": 90
     },
     "DeviceSyncAuditWorker": {
       "CronExpression": "0 0 4 * * 0",
