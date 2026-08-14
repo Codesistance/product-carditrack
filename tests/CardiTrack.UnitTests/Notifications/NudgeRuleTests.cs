@@ -529,4 +529,29 @@ public class NudgeRuleTests
             }
         }
     }
+
+    // ── Which rules push ──────────────────────────────────────────────────────
+
+    [Fact]
+    public void OnlyTheTwoShippedSafetyDeviceRulesPush()
+    {
+        // §6: "Nudges never push", with the Safety-class exceptions. Pinned as an exact set rather
+        // than a contains-check — a new rule quietly acquiring PushesWhenOpen is a decision that
+        // should fail a test and be made on purpose, not arrive with someone's copy-paste.
+        Assert.Equal(
+            ["DEVICE_AUTH_BROKEN", "DEVICE_BATTERY_LOW"],
+            NudgeRuleCatalogue.PushableRuleCodes.Order());
+    }
+
+    [Fact]
+    public void PushUnreachableIsSafetyClassButNeverPushes()
+    {
+        // The rule that exists because push is not arriving. Delivering it by push would either be
+        // a contradiction or proof the gap it reports has already closed.
+        var rule = NudgeRuleCatalogue.Find(PushUnreachableRule.Code);
+
+        Assert.NotNull(rule);
+        Assert.Equal(NotificationCategory.Safety, rule.Spec.Category);
+        Assert.False(rule.Spec.PushesWhenOpen);
+    }
 }

@@ -34,6 +34,13 @@ public class NotificationDispatchWorker : CronBackgroundService
 {
     private const int ClaimBatchSize = 100;
 
+    /// <summary>
+    /// Open Safety nudges converted to pushes per tick. Separate from <see cref="ClaimBatchSize"/>
+    /// despite the same value — one bounds a retry claim off the outbox, the other a scan of the
+    /// notification table, and they have no reason to move together.
+    /// </summary>
+    private const int PushSweepBatchSize = 100;
+
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<NotificationDispatchWorker> _logger;
     private readonly TimeProvider _timeProvider;
@@ -72,6 +79,7 @@ public class NotificationDispatchWorker : CronBackgroundService
         // construction — each opens its own scope and commits its own work — so a failed one
         // genuinely leaves the others able to run, and every row it would have touched is still
         // due on the next 30-second tick.
+        await RunPhaseAsync(nameof(EnqueuePendingNudgePushesAsync), () => EnqueuePendingNudgePushesAsync(utcNow, stoppingToken), stoppingToken);
         await RunPhaseAsync(nameof(RetryClaimedRowsAsync), () => RetryClaimedRowsAsync(utcNow, stoppingToken), stoppingToken);
         await RunPhaseAsync(nameof(RunEscalationSweepAsync), () => RunEscalationSweepAsync(utcNow, stoppingToken), stoppingToken);
         await RunPhaseAsync(nameof(ExpirePastTtlRowsAsync), () => ExpirePastTtlRowsAsync(utcNow, stoppingToken), stoppingToken);
@@ -103,6 +111,128 @@ public class NotificationDispatchWorker : CronBackgroundService
             // and silently re-logs nothing for this failure — SetStatus alone isn't enough.
             activity?.AddException(ex);
             _logger.LogError(ex, "NotificationDispatch phase {Phase} failed; the next tick retries it.", phase);
+        }
+    }
+
+    /// <summary>
+    /// Turns an open Safety-class nudge into a push (§6.2). The rules that qualify declare it
+    /// themselves via <c>NudgeSpec.PushesWhenOpen</c> — <c>DEVICE_BATTERY_LOW</c> and
+    /// <c>DEVICE_AUTH_BROKEN</c> today.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Why a sweep rather than an enqueue at the point of detection.</b> Every producer of these
+    /// rows funnels through <c>NotificationGapResolver</c>, which would be the obvious place to
+    /// call <see cref="IDispatchService"/> — except <c>DispatchService</c> already depends on
+    /// <c>INotificationGapResolver</c> to arm <c>PUSH_UNREACHABLE</c> after a permanent send
+    /// failure, so that edge closes a scoped DI cycle. Reading the rows back here instead keeps the
+    /// dependency one-directional, and picks up gaps opened by <em>any</em> of the resolver's nine
+    /// call sites plus <c>DataCompletenessWorker</c>'s daily run, rather than the subset someone
+    /// remembered to wire.
+    /// </para>
+    /// <para>
+    /// Latency is one tick — at most 30 seconds against a 30-second dispatch SLO, on top of
+    /// detection that now happens within a device-sync cycle rather than at 06:00 the next day.
+    /// </para>
+    /// <para>
+    /// <b>Claim, then send.</b> This host runs three Cloud Run instances and this sweep has no
+    /// advisory lock or <c>SKIP LOCKED</c> claim, so all three read the same pending rows.
+    /// <c>TryClaimForPushAsync</c> is a conditional UPDATE that only one of them can win, which is
+    /// what keeps a single flat battery from ringing three phones — the dedup key cannot do it,
+    /// since each tick stamps its own timestamp and the three keys differ. A failed enqueue hands
+    /// the claim back so the next tick retries rather than the warning being marked delivered and
+    /// never sent.
+    /// </para>
+    /// <para>
+    /// <b>One scope per row</b>, matching <see cref="RetryClaimedRowsAsync"/>. A batch sharing one
+    /// <c>DbContext</c> would carry a failed <c>SaveChanges</c>'s pending inserts into the next
+    /// row's save, so one transient database error would take the rest of the batch with it — for
+    /// Safety warnings, that is warnings nobody receives.
+    /// </para>
+    /// </remarks>
+    private async Task EnqueuePendingNudgePushesAsync(DateTime utcNow, CancellationToken ct)
+    {
+        IReadOnlyList<Domain.Entities.Notification> pending;
+
+        using (var readScope = _scopeFactory.CreateScope())
+        {
+            var unitOfWork = readScope.ServiceProvider.GetRequiredService<IUnitOfWork>();
+            pending = await unitOfWork.Notifications.GetPendingPushAsync(
+                NudgeRuleCatalogue.PushableRuleCodes, PushSweepBatchSize, ct);
+        }
+
+        if (pending.Count == 0)
+            return;
+
+        var enqueued = 0;
+
+        foreach (var notification in pending)
+        {
+            if (ct.IsCancellationRequested)
+                break;
+
+            using var scope = _scopeFactory.CreateScope();
+            var unitOfWork = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
+            var claimed = false;
+
+            try
+            {
+                var dispatch = scope.ServiceProvider.GetRequiredService<IDispatchService>();
+
+                claimed = await unitOfWork.Notifications.TryClaimForPushAsync(notification.Id, utcNow, ct);
+                if (!claimed)
+                    continue;
+
+                await dispatch.EnqueueAsync(new EnqueueRequest(
+                    SourceType: DeliverySourceType.Notification,
+                    SourceId: notification.Id,
+                    UserId: notification.UserId,
+                    CardiMemberId: notification.CardiMemberId,
+                    // The nudge engine's Safety and the delivery spine's Safety are separate enums
+                    // over the same idea; this is the one place they meet. Severity stays null —
+                    // it describes a wearer's clinical reading, and none of these are about one.
+                    Category: DeliveryCategory.Safety,
+                    Severity: null,
+                    // Per arming, not per gap: a delivery's dedup key matches in any state and
+                    // never expires, so keying on the fingerprint alone would swallow every warning
+                    // after the first time this gap ever opened.
+                    DedupKey: $"nudge:{notification.Fingerprint}:{utcNow:yyyyMMddHHmmss}",
+                    // Per gap, not per arming: on the device, a second warning about the same flat
+                    // battery should replace the first rather than stack beneath it.
+                    CollapseKey: $"nudge-{notification.Fingerprint}"), ct);
+
+                enqueued++;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to enqueue a push for Notification {NotificationId}.", notification.Id);
+
+                if (claimed)
+                    await ReleasePushClaimSafelyAsync(unitOfWork, notification.Id, ct);
+            }
+        }
+
+        if (enqueued > 0)
+            _logger.LogInformation("NotificationDispatch enqueued {Count} Safety nudge push(es).", enqueued);
+    }
+
+    /// <summary>
+    /// Releases a claim whose send failed. Swallows its own failure deliberately: this runs inside a
+    /// catch block, and letting it throw would replace the real error with a second one and skip the
+    /// remaining rows. A claim that cannot be handed back re-arms when the gap next closes and
+    /// returns — worse than a retry next tick, better than losing the batch.
+    /// </summary>
+    private async Task ReleasePushClaimSafelyAsync(IUnitOfWork unitOfWork, Guid notificationId, CancellationToken ct)
+    {
+        try
+        {
+            await unitOfWork.Notifications.ReleasePushClaimAsync(notificationId, ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex,
+                "Could not release the push claim on Notification {NotificationId}; it will not retry until the gap re-arms.",
+                notificationId);
         }
     }
 

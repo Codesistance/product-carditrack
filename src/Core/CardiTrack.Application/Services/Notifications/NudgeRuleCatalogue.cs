@@ -36,6 +36,14 @@ public static class NudgeRuleCatalogue
     public static INudgeRule? Find(string ruleCode) =>
         All.FirstOrDefault(r => r.RuleCode == ruleCode);
 
+    /// <summary>
+    /// Rule codes whose open gaps also push (<see cref="NudgeSpec.PushesWhenOpen"/>) — the
+    /// predicate <c>NotificationDispatchWorker</c>'s push sweep filters on, derived from the
+    /// catalogue rather than restated as a list the two could drift apart on.
+    /// </summary>
+    public static IReadOnlyList<string> PushableRuleCodes { get; } =
+        [.. All.Where(r => r.Spec.PushesWhenOpen).Select(r => r.RuleCode)];
+
     /// <summary>Localization key for a rule's copy, optionally in a variant.</summary>
     public static string TitleKey(string ruleCode, string? variant = null) => Key(ruleCode, "title", variant);
     public static string BodyKey(string ruleCode, string? variant = null) => Key(ruleCode, "body", variant);

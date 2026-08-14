@@ -1,5 +1,6 @@
 using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Interfaces.Services;
+using CardiTrack.Application.Services;
 using CardiTrack.Domain.Entities;
 using CardiTrack.Domain.Enums;
 using CardiTrack.Infrastructure.ExternalClients;
@@ -20,6 +21,7 @@ public class DeviceSyncServiceTests
     private readonly IActivityLogAggregationService _aggregation = Substitute.For<IActivityLogAggregationService>();
     private readonly IGranularIngestionService _granularIngestion = Substitute.For<IGranularIngestionService>();
     private readonly IUnitOfWork _unitOfWork = Substitute.For<IUnitOfWork>();
+    private readonly INotificationGapResolver _gapResolver = Substitute.For<INotificationGapResolver>();
 
     private readonly DeviceConnection _fitbitConnection = new()
     {
@@ -57,7 +59,7 @@ public class DeviceSyncServiceTests
         var options = Options.Create(new List<DeviceProviderSettings> { _googleHealthConfig });
         return new DeviceSyncService(
             _tokenRefresh, _deviceApi, _deviceConnections, _deviceActivityLogs,
-            _aggregation, _granularIngestion, _unitOfWork, options);
+            _aggregation, _granularIngestion, _unitOfWork, _gapResolver, options);
     }
 
     private static DeviceHealthSnapshot Snapshot(int steps = 8000) =>
@@ -877,5 +879,108 @@ public class DeviceSyncServiceTests
 
         await _deviceConnections.DidNotReceive()
             .UpdateBatteryAsync(Arg.Any<Guid>(), Arg.Any<int?>(), Arg.Any<string>(), Arg.Any<DateTime>());
+    }
+
+    // ── Battery crossing into or out of "low" re-evaluates the member's gaps ───
+    //
+    // The cadence half of the low-battery warning. DataCompletenessWorker runs at 06:00 daily, and
+    // a device that is minutes-to-hours from stopping cannot wait for it — reconciling on the
+    // crossing puts DEVICE_BATTERY_LOW within a sync cycle of the reading that opened it.
+
+    [Fact]
+    public async Task SyncCardiMemberAsync_ReevaluatesGaps_WhenTheBatteryDropsIntoLow()
+    {
+        SetupSuccessfulTokenRefresh();
+        SetupDefaultApiResponse();
+        _fitbitConnection.Scopes = SettingsScope;
+        _fitbitConnection.BatteryLevel = 80;
+        _fitbitConnection.BatteryUpdatedAt = DateTime.UtcNow.AddMinutes(-10);
+        _deviceApi.GetPairedDevicesAsync(Arg.Any<string>()).Returns([Paired(8, "Low")]);
+
+        await CreateSut().SyncCardiMemberAsync(_fitbitConnection);
+
+        await _gapResolver.Received(1).ResolveForCardiMemberAsync(
+            _fitbitConnection.CardiMemberId, Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task SyncCardiMemberAsync_ReevaluatesGaps_WhenTheBatteryRecoversOutOfLow()
+    {
+        // The closing half: charged overnight, so the nudge should resolve now rather than sit in
+        // the inbox contradicting a device list that already reads 90%.
+        SetupSuccessfulTokenRefresh();
+        SetupDefaultApiResponse();
+        _fitbitConnection.Scopes = SettingsScope;
+        _fitbitConnection.BatteryLevel = 8;
+        _fitbitConnection.BatteryStatus = "Low";
+        _fitbitConnection.BatteryUpdatedAt = DateTime.UtcNow.AddMinutes(-10);
+        _deviceApi.GetPairedDevicesAsync(Arg.Any<string>()).Returns([Paired(90, "High")]);
+
+        await CreateSut().SyncCardiMemberAsync(_fitbitConnection);
+
+        await _gapResolver.Received(1).ResolveForCardiMemberAsync(
+            _fitbitConnection.CardiMemberId, Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task SyncCardiMemberAsync_DoesNotReevaluateGaps_WhenTheBatteryStaysLow()
+    {
+        // Every ten minutes, per connection, for as long as the battery stays flat. Reconciliation
+        // loads the member's whole snapshot — spending it to rediscover an unchanged gap is the
+        // cost this guard exists to stop.
+        SetupSuccessfulTokenRefresh();
+        SetupDefaultApiResponse();
+        _fitbitConnection.Scopes = SettingsScope;
+        _fitbitConnection.BatteryLevel = 9;
+        _fitbitConnection.BatteryStatus = "Low";
+        _fitbitConnection.BatteryUpdatedAt = DateTime.UtcNow.AddMinutes(-10);
+        _deviceApi.GetPairedDevicesAsync(Arg.Any<string>()).Returns([Paired(7, "Low")]);
+
+        await CreateSut().SyncCardiMemberAsync(_fitbitConnection);
+
+        await _gapResolver.DidNotReceive().ResolveForCardiMemberAsync(
+            Arg.Any<Guid>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task SyncCardiMemberAsync_ReevaluatesGaps_WhenAStaleLowReadingIsReplacedByAFreshOne()
+    {
+        // A reading past DeviceBattery.FreshFor is not "low" to DeviceBatteryLowRule, which skips
+        // it on the same freshness test. Treating the stored value as low here would report no
+        // transition and leave the gap unopened — the rule can see it, so this must too.
+        SetupSuccessfulTokenRefresh();
+        SetupDefaultApiResponse();
+        _fitbitConnection.Scopes = SettingsScope;
+        _fitbitConnection.BatteryLevel = 9;
+        _fitbitConnection.BatteryStatus = "Low";
+        _fitbitConnection.BatteryUpdatedAt = DateTime.UtcNow - DeviceBattery.FreshFor.Add(TimeSpan.FromHours(1));
+        _deviceApi.GetPairedDevicesAsync(Arg.Any<string>()).Returns([Paired(7, "Low")]);
+
+        await CreateSut().SyncCardiMemberAsync(_fitbitConnection);
+
+        await _gapResolver.Received(1).ResolveForCardiMemberAsync(
+            _fitbitConnection.CardiMemberId, Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task SyncCardiMemberAsync_StillSucceeds_WhenReevaluatingGapsThrows()
+    {
+        // Same contract as the battery read itself: a notification that cannot be reconciled must
+        // never cost the member the health data this sync just landed.
+        SetupSuccessfulTokenRefresh();
+        SetupDefaultApiResponse();
+        _fitbitConnection.Scopes = SettingsScope;
+        _fitbitConnection.BatteryLevel = 80;
+        _fitbitConnection.BatteryUpdatedAt = DateTime.UtcNow.AddMinutes(-10);
+        _deviceApi.GetPairedDevicesAsync(Arg.Any<string>()).Returns([Paired(8, "Low")]);
+        _gapResolver.ResolveForCardiMemberAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>())
+            .Throws(new InvalidOperationException("reconciliation unavailable"));
+
+        var thrown = await Record.ExceptionAsync(
+            () => CreateSut().SyncCardiMemberAsync(_fitbitConnection));
+
+        Assert.Null(thrown);
+        await _deviceConnections.Received(1)
+            .MarkSyncSucceededAsync(_fitbitConnection.Id, Arg.Any<DateTime>());
     }
 }

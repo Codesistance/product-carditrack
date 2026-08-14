@@ -170,9 +170,27 @@ makes the reliability work in §6 apply uniformly, without merging two domain mo
 about almost everything else.
 
 Nudges are deliberately near-silent. A caregiver who gets pushed about an empty medical-notes field
-learns to swipe CardiTrack away, and takes the safety alerts with it. The two exceptions
-(`DEVICE_AUTH_BROKEN`, `NO_ALERT_RECIPIENT`) are safety-category precisely because they mean
-monitoring is not working.
+learns to swipe CardiTrack away, and takes the safety alerts with it. The exceptions
+(`DEVICE_AUTH_BROKEN`, `DEVICE_BATTERY_LOW`, and `NO_ALERT_RECIPIENT` when it ships) are
+safety-category precisely because they mean monitoring is not working.
+
+A rule opts in by declaring `NudgeSpec.PushesWhenOpen`, and `NotificationDispatchWorker`'s
+enqueue sweep turns its open rows into `NotificationDelivery` rows on the next 30-second tick.
+The flag is per rule rather than read off the category, because `PUSH_UNREACHABLE` is
+safety-category and must never push: a notification saying push is broken, delivered by push, is
+either a contradiction or proof the gap has already closed.
+
+The sweep reads the rows back rather than enqueueing where they are detected, which is not the
+obvious design. Every producer funnels through `NotificationGapResolver`, the natural place to
+call `IDispatchService` — except `DispatchService` already depends on `INotificationGapResolver`
+to arm `PUSH_UNREACHABLE` after a permanent send failure, and that edge closes a scoped DI cycle.
+Reading the rows back keeps the dependency one-directional and covers gaps opened by any of the
+resolver's call sites, not the subset someone remembered to wire.
+
+`PushedDate` on `Notification` is what stops a re-send every 30 seconds, and it is cleared when a
+resolved row reopens. That clearing is the point: a delivery's `DedupKey` is matched in any state
+and never expires, so keying on the fingerprint alone would push the first flat battery and
+silently swallow every one after it.
 
 ---
 
@@ -539,6 +557,9 @@ Notification                            -- a nudge: one open gap, per target use
 ├── State enum (Open|Snoozed|Resolved|Superseded)
 ├── SnoozedUntil, ResolvedDate, ResolutionReason
 ├── FirstDetectedDate, LastEvaluatedDate, FirstSeenDate, IsOwner
+├── PushedDate?                         -- when handed to the outbox, for PushesWhenOpen rules.
+│                                          Cleared when a resolved row reopens, so the gap
+│                                          coming back warns again (§6.2)
 └── IsActive, CreatedDate, UpdatedDate
 
 NotificationDelivery                    -- transactional outbox; BOTH producers write here
@@ -758,8 +779,9 @@ the entire reason the Critical Alerts entitlement is worth pursuing. Evaluated a
 `User.TimeZoneId`, which is why `TIMEZONE_DEFAULT` is High priority.
 
 **Budget.** Push: Safety and red Health are uncapped (capping an emergency is indefensible); orange
-Health coalesces to at most one per member per 6h; Nudges never push. In-app: 3 new nudge rows per user
-per run, 2 dashboard cards, inbox uncapped and priority-ranked.
+Health coalesces to at most one per member per 6h; Nudges never push except the rules that declare
+`PushesWhenOpen`, which push once per arming — once more only after the gap has closed and returned.
+In-app: 3 new nudge rows per user per run, 2 dashboard cards, inbox uncapped and priority-ranked.
 
 **Escape hatches**, one settings screen: mute a category, mute a rule, quiet hours, lock-screen detail
 toggle, and **"Show me everything again"** to clear all mutes. Every mute is listed and reversible
@@ -821,12 +843,20 @@ Eight other workers exist in `CardiTrack.Worker`; this engine adds three — ele
 
 | Worker | Cron | Job |
 |---|---|---|
-| `NotificationDispatchWorker` | `*/30 * * * * *` | Claim due outbox rows (`SKIP LOCKED`), retry, run escalation timers, expire past-TTL rows, disable dead tokens |
+| `NotificationDispatchWorker` | `*/30 * * * * *` | Enqueue open `PushesWhenOpen` nudges, claim due outbox rows (`SKIP LOCKED`), retry, run escalation timers, expire past-TTL rows, disable dead tokens |
 | `DataCompletenessWorker` | `0 0 6 * * *` | Evaluate + reconcile all active orgs, batched, cancellation honoured between batches |
 | `PushCanaryWorker` | `0 */15 * * * *` | Send a real push to the canary fleet, alert if the ack doesn't come back (the synthetic canary below) |
 
-30 seconds is the retry granularity the 60s SLO requires; detection runs at 06:00 UTC, after the 02:30
-baseline recalculation.
+30 seconds is the retry granularity the 60s SLO requires; the full sweep runs at 06:00 UTC, after the
+02:30 baseline recalculation.
+
+**06:00 is not the only detection clock, and for the device rules it is not the useful one.**
+`INotificationGapResolver` re-runs detection immediately after any write that could have opened or
+closed a gap, and `DeviceSyncService` calls it when a battery reading crosses into or out of "low" —
+so `DEVICE_BATTERY_LOW` opens within a sync cycle of the reading rather than up to 24 hours later,
+which for a device the rule describes as minutes-to-hours from stopping is the difference between a
+warning and a post-mortem. Only on the crossing: connections pull every ten minutes, and
+reconciliation loads a member's whole snapshot. The daily sweep remains the backstop.
 
 **Retention** folds into `DataRetentionWorker` ([data_protection_architecture.md](./data_protection_architecture.md) §5.2),
 or `PartitionMaintenanceWorker` if that lands first:
@@ -871,6 +901,13 @@ alerts if the ack doesn't return. Provider outages, expired credentials and a br
 are all silent failures otherwise — the kind you discover from a support ticket after the emergency.
 For the primary objective of this engine, a canary is not optional.
 
+> **It has never run.** `Workers:PushCanaryWorker:CanaryUserIds` is empty in every environment, so
+> the worker skips out immediately, and the argument above is currently a description of something
+> that does not happen. On 2026-08-14 a sealed `TracingProxy<T>` made every push registration
+> unresolvable for 5.5 hours — dispatch, alert generation and delivery all down — and it was found
+> by reading logs, not by the canary. Configuring a test-device fleet is the cheapest reliability
+> work outstanding in this document.
+
 **Anti-nag gate, quarterly:** any nudge rule with comply rate <15% or mute rate >30% over 500+
 impressions goes to **rework — copy, timing, or deep-link target — not automatic deletion.** The
 engine is required scope, so a failing rule is evidence the prompt is wrong, not that the gap stopped
@@ -889,7 +926,7 @@ and takes the safety alerts down with it.
 | `CardiMember.DateOfBirth` non-nullable `DateOnly` | **Not a defect — leave it.** `CreateCardiMemberValidator` and `UpdateCardiMemberValidator` both require a date and enforce an 18–120 age range, and both are registered, so the API cannot produce a member without one. With `DOB_MISSING` cut (§9) nothing depends on a nullable column, and making it optional would ripple through age display, the insights prompt and two mobile screens to permit a state the product deliberately forbids. If DOB should become optional, that is a product decision with its own change |
 | `OnboardingStatusResponse.HasNotificationPreferences`, `TotalSteps = 7` | **Still open, for a new reason.** Push has shipped, and the `NotificationPreference` table with its GET/PUT endpoints exists — but `UserService.cs:179` still hard-codes `HasNotificationPreferences = false` (TODO), so onboarding `CurrentStep` sticks at 7 regardless. Wire the real lookup, or drop the step — §17.6 |
 | `AlertSensitivity` stored, consumed by nothing | Still inert here — and the gap has widened: it is now editable end-to-end (edit screen → API → stored) while still consumed by no alert producer. Noted so `NO_ALERT_RECIPIENT` isn't confused with sensitivity tuning |
-| No `device_disconnected` alert type (alerts.md notes the gap) | Covered as Safety nudges `DEVICE_AUTH_BROKEN` / `DEVICE_STALE_LONG` / `DEVICE_BATTERY_LOW` rather than a sixth `AlertType`. A flat battery is a fact about hardware, not about the wearer — the `Alert` history stays clinical, and the Safety category already delivers harder than a red `Alert` does (immediate push, critical flag, quiet-hours override, escalation) |
+| No `device_disconnected` alert type (alerts.md notes the gap) | Covered as Safety nudges `DEVICE_AUTH_BROKEN` / `DEVICE_STALE_LONG` / `DEVICE_BATTERY_LOW` rather than a sixth `AlertType`. A flat battery is a fact about hardware, not about the wearer — the `Alert` history stays clinical, and the Safety category already delivers harder than a red `Alert` does (immediate push, critical flag, quiet-hours override, escalation). **This claim was aspirational until 2026-08-14** — the rules were Safety class and the planner would have treated them as such, but nothing turned a nudge into a `NotificationDelivery`, so both rules reached the inbox and stopped there. `PushesWhenOpen` plus the dispatch worker's enqueue sweep is what makes the sentence true |
 
 ---
 

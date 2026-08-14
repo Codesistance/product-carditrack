@@ -115,4 +115,134 @@ public class NotificationRepositoryTests(TestDatabaseFixture fixture)
 
         Assert.Equal(ByUrgency, first.Concat(second).Select(r => r.Priority));
     }
+
+    // ── The dispatch worker's push sweep ──────────────────────────────────────
+
+    /// <summary>
+    /// Every state the sweep must exclude, seeded together. Each exclusion is a different way for a
+    /// caregiver's phone to ring when it should not, and the filtered index this rides on makes the
+    /// predicate worth pinning against real SQL rather than a substitute's say-so.
+    /// </summary>
+    [Fact]
+    public async Task GetPendingPushAsync_ReturnsOnlyOpenUnpushedOwnedRowsForTheGivenRules()
+    {
+        using var scope = fixture.CreateScope();
+        var context = scope.ServiceProvider.GetRequiredService<CardiTrackDbContext>();
+        var userId = Guid.NewGuid();
+
+        var wanted = Row(userId, NotificationPriority.Critical, "DEVICE_BATTERY_LOW");
+
+        var alreadyPushed = Row(userId, NotificationPriority.Critical, "DEVICE_AUTH_BROKEN");
+        alreadyPushed.PushedDate = Detected;
+
+        // A snooze the caregiver chose is not a state to push through.
+        var snoozed = Row(userId, NotificationPriority.Critical, "DEVICE_BATTERY_LOW");
+        snoozed.Fingerprint = $"{userId:N}-snoozed";
+        snoozed.State = NotificationState.Snoozed;
+        snoozed.SnoozedUntil = Detected.AddHours(12);
+
+        var resolved = Row(userId, NotificationPriority.Critical, "DEVICE_BATTERY_LOW");
+        resolved.Fingerprint = $"{userId:N}-resolved";
+        resolved.State = NotificationState.Resolved;
+
+        // The read-only copy a second caregiver holds — visible, never a second ringing phone.
+        var notOwned = Row(userId, NotificationPriority.Critical, "DEVICE_BATTERY_LOW", isOwner: false);
+        notOwned.Fingerprint = $"{userId:N}-not-owned";
+
+        // Open and unpushed, but its rule does not declare PushesWhenOpen.
+        var notPushableRule = Row(userId, NotificationPriority.High, "TIMEZONE_DEFAULT");
+
+        context.Set<Notification>().AddRange(
+            wanted, alreadyPushed, snoozed, resolved, notOwned, notPushableRule);
+        await context.SaveChangesAsync();
+
+        var repo = scope.ServiceProvider.GetRequiredService<INotificationRepository>();
+
+        var pending = await repo.GetPendingPushAsync(
+            ["DEVICE_BATTERY_LOW", "DEVICE_AUTH_BROKEN"], limit: 50);
+
+        var row = Assert.Single(pending, n => n.UserId == userId);
+        Assert.Equal(wanted.Fingerprint, row.Fingerprint);
+    }
+
+    /// <summary>
+    /// The claim is what keeps three Cloud Run instances from sending three pushes for one flat
+    /// battery, and it only works because the database arbitrates it — which makes this exactly the
+    /// test that must run against real Postgres rather than a substitute agreeing with itself.
+    /// </summary>
+    [Fact]
+    public async Task TryClaimForPushAsync_IsWonByExactlyOneCaller()
+    {
+        using var scope = fixture.CreateScope();
+        var context = scope.ServiceProvider.GetRequiredService<CardiTrackDbContext>();
+        var row = Row(Guid.NewGuid(), NotificationPriority.Critical, "DEVICE_BATTERY_LOW");
+        context.Set<Notification>().Add(row);
+        await context.SaveChangesAsync();
+
+        var repo = scope.ServiceProvider.GetRequiredService<INotificationRepository>();
+
+        var first = await repo.TryClaimForPushAsync(row.Id, Detected);
+        var second = await repo.TryClaimForPushAsync(row.Id, Detected.AddSeconds(30));
+
+        Assert.True(first);
+        Assert.False(second);
+    }
+
+    [Fact]
+    public async Task TryClaimForPushAsync_RefusesARowThatStoppedQualifying()
+    {
+        // The window between the sweep's read and its claim. A nudge dismissed in it must not push.
+        using var scope = fixture.CreateScope();
+        var context = scope.ServiceProvider.GetRequiredService<CardiTrackDbContext>();
+        var row = Row(Guid.NewGuid(), NotificationPriority.Critical, "DEVICE_BATTERY_LOW");
+        row.State = NotificationState.Resolved;
+        context.Set<Notification>().Add(row);
+        await context.SaveChangesAsync();
+
+        var repo = scope.ServiceProvider.GetRequiredService<INotificationRepository>();
+
+        Assert.False(await repo.TryClaimForPushAsync(row.Id, Detected));
+    }
+
+    [Fact]
+    public async Task ReleasePushClaimAsync_PutsTheRowBackInThePendingSet()
+    {
+        // The failed-enqueue path: a claim held by a send that never happened would mark the
+        // warning delivered and the sweep would never look at the row again.
+        using var scope = fixture.CreateScope();
+        var context = scope.ServiceProvider.GetRequiredService<CardiTrackDbContext>();
+        var userId = Guid.NewGuid();
+        var row = Row(userId, NotificationPriority.Critical, "DEVICE_BATTERY_LOW");
+        context.Set<Notification>().Add(row);
+        await context.SaveChangesAsync();
+
+        var repo = scope.ServiceProvider.GetRequiredService<INotificationRepository>();
+        Assert.True(await repo.TryClaimForPushAsync(row.Id, Detected));
+        Assert.DoesNotContain(
+            await repo.GetPendingPushAsync(["DEVICE_BATTERY_LOW"], limit: 50),
+            n => n.Id == row.Id);
+
+        await repo.ReleasePushClaimAsync(row.Id);
+
+        Assert.Contains(
+            await repo.GetPendingPushAsync(["DEVICE_BATTERY_LOW"], limit: 50),
+            n => n.Id == row.Id);
+        Assert.True(await repo.TryClaimForPushAsync(row.Id, Detected.AddMinutes(1)));
+    }
+
+    [Fact]
+    public async Task GetPendingPushAsync_ReturnsNothing_WhenNoRulesDeclareThatTheyPush()
+    {
+        // Defends the sweep against an empty catalogue filter degenerating into "every open row".
+        using var scope = fixture.CreateScope();
+        var context = scope.ServiceProvider.GetRequiredService<CardiTrackDbContext>();
+        var userId = Guid.NewGuid();
+
+        context.Set<Notification>().Add(Row(userId, NotificationPriority.Critical, "DEVICE_BATTERY_LOW"));
+        await context.SaveChangesAsync();
+
+        var repo = scope.ServiceProvider.GetRequiredService<INotificationRepository>();
+
+        Assert.Empty(await repo.GetPendingPushAsync([], limit: 50));
+    }
 }

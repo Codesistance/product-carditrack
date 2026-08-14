@@ -12,7 +12,7 @@ public sealed class DeviceAuthBrokenRule : INudgeRule
 
     public string RuleCode => Code;
     public int Version => 1;
-    public NudgeSpec Spec { get; } = NudgeSpec.Safety();
+    public NudgeSpec Spec { get; } = NudgeSpec.Safety() with { PushesWhenOpen = true };
 
     public NudgeVerdict Evaluate(NudgeContext context)
     {
