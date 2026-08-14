@@ -71,6 +71,14 @@ public class NotificationDelivery : BaseEntity
     /// <summary>Client ack via <c>POST /delivered</c> — proves the pipe worked, distinct from <c>Notification.FirstSeenDate</c> proving the human engaged.</summary>
     public DateTime? DeliveredDate { get; set; }
 
+    /// <summary>
+    /// The W3C traceparent (<c>00-&lt;trace-id&gt;-&lt;span-id&gt;-01</c>) of the most recent send
+    /// attempt's Activity — lets the eventual ack, which can arrive independently up to the
+    /// escalation ladder's 900s ceiling later, link back to the trace that sent it. Overwritten by
+    /// every repush, so this reflects only the latest attempt, not a full history of each one.
+    /// </summary>
+    public string? SendTraceParent { get; set; }
+
     public EscalationStage EscalationStage { get; set; } = EscalationStage.Initial;
 
     /// <summary>Set on a re-push/fan-out row, pointing back at the delivery it escalated from.</summary>

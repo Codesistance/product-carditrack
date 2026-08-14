@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Services.Notifications;
 using CardiTrack.Domain.Enums;
@@ -51,6 +52,12 @@ public class NotificationDispatchWorker : CronBackgroundService
 
     protected override async Task ExecuteJobAsync(CancellationToken stoppingToken)
     {
+        // The trace root for every send this tick drives — without it, RetryClaimedRowsAsync's and
+        // RunEscalationSweepAsync's fcm.send spans (most real sends; the API's immediate-send path
+        // is the only other producer) would each be an orphaned single-span trace with no context
+        // for which tick or phase produced them.
+        using var activity = PushTelemetry.Source.StartActivity("notification.dispatch_tick", ActivityKind.Internal);
+
         var utcNow = _timeProvider.GetUtcNow().UtcDateTime;
 
         // Each phase is isolated, for the same reason CronBackgroundService guards its
@@ -78,6 +85,9 @@ public class NotificationDispatchWorker : CronBackgroundService
     /// </summary>
     private async Task RunPhaseAsync(string phase, Func<Task> run, CancellationToken ct)
     {
+        using var activity = PushTelemetry.Source.StartActivity("notification.dispatch_phase", ActivityKind.Internal);
+        activity?.SetTag(PushTelemetry.PhaseTag, phase);
+
         try
         {
             await run();
@@ -88,6 +98,7 @@ public class NotificationDispatchWorker : CronBackgroundService
         }
         catch (Exception ex)
         {
+            activity?.SetStatus(ActivityStatusCode.Error, ex.GetType().Name);
             _logger.LogError(ex, "NotificationDispatch phase {Phase} failed; the next tick retries it.", phase);
         }
     }
@@ -97,6 +108,7 @@ public class NotificationDispatchWorker : CronBackgroundService
         using var claimScope = _scopeFactory.CreateScope();
         var unitOfWork = claimScope.ServiceProvider.GetRequiredService<IUnitOfWork>();
         var claimed = await unitOfWork.NotificationDeliveries.ClaimDueAsync(ClaimBatchSize, utcNow, ct);
+        Activity.Current?.SetTag(PushTelemetry.ClaimedCountTag, claimed.Count);
 
         if (claimed.Count == 0)
             return;
@@ -138,6 +150,7 @@ public class NotificationDispatchWorker : CronBackgroundService
         var dispatch = scope.ServiceProvider.GetRequiredService<IDispatchService>();
 
         var candidates = await unitOfWork.NotificationDeliveries.GetDueForEscalationAsync(utcNow, ct);
+        Activity.Current?.SetTag(PushTelemetry.CandidateCountTag, candidates.Count);
 
         foreach (var delivery in candidates)
         {

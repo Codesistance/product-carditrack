@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using CardiTrack.Application.Interfaces.Clients;
 using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Interfaces.Services;
@@ -83,13 +84,21 @@ public class DispatchService : IDispatchService
 
     public async Task<NotificationDelivery> EnqueueAsync(EnqueueRequest request, CancellationToken ct = default)
     {
+        using var activity = PushDispatchTelemetry.Source.StartActivity("notification.enqueue", ActivityKind.Internal);
+        activity?.SetTag(PushDispatchTelemetry.CategoryTag, request.Category.ToString());
+
         var utcNow = _timeProvider.GetUtcNow().UtcDateTime;
 
         // Dedup — namespaced per producer (§6.2). An existing live row for the same key means this
         // is a re-run of detection, not a new event; return it unchanged rather than double-send.
         var existing = await _unitOfWork.NotificationDeliveries.GetByDedupKeyAsync(request.DedupKey, ct);
         if (existing is not null)
+        {
+            activity?.SetTag(PushDispatchTelemetry.DeliveryIdTag, existing.Id.ToString());
+            activity?.SetTag(PushDispatchTelemetry.DedupHitTag, true);
             return existing;
+        }
+        activity?.SetTag(PushDispatchTelemetry.DedupHitTag, false);
 
         var user = await _unitOfWork.Users.GetByIdAsync(request.UserId);
         var timeZoneId = user?.TimeZoneId ?? "UTC";
@@ -125,6 +134,9 @@ public class DispatchService : IDispatchService
 
         await _unitOfWork.NotificationDeliveries.AddAsync(delivery);
         await _unitOfWork.SaveChangesAsync();
+
+        activity?.SetTag(PushDispatchTelemetry.DeliveryIdTag, delivery.Id.ToString());
+        activity?.SetTag(PushDispatchTelemetry.ChannelTag, plan.Channel.ToString());
 
         // In-app only, or deferred by quiet hours — the dispatch worker's 30-second loop picks it
         // up when it's due. Nothing to attempt right now.
@@ -203,8 +215,7 @@ public class DispatchService : IDispatchService
                 return;
             }
 
-            var result = await _channel.SendAsync(delivery, token, ct);
-            await ApplyAsync(delivery, token, result, ct);
+            await SendOneAttemptAsync(delivery, token, ct);
             _unitOfWork.NotificationDeliveries.Update(delivery);
             await _unitOfWork.SaveChangesAsync();
             return;
@@ -239,8 +250,7 @@ public class DispatchService : IDispatchService
 
             target.PushDeviceTokenId = token.Id;
 
-            var result = await _channel.SendAsync(target, token, ct);
-            await ApplyAsync(target, token, result, ct);
+            await SendOneAttemptAsync(target, token, ct);
 
             if (target != delivery)
                 await _unitOfWork.NotificationDeliveries.AddAsync(target);
@@ -249,6 +259,26 @@ public class DispatchService : IDispatchService
         }
 
         await _unitOfWork.SaveChangesAsync();
+    }
+
+    /// <summary>
+    /// Wraps one FCM send + its outcome in a <c>notification.attempt</c> span (parent of
+    /// <c>FcmNotificationChannel</c>'s own <c>fcm.send</c> span), and stamps the delivery with this
+    /// span's id — a W3C traceparent — so the eventual client ack, which can arrive independently
+    /// up to the escalation ladder's 900s ceiling later, can link back to the trace that sent it.
+    /// </summary>
+    private async Task SendOneAttemptAsync(NotificationDelivery target, PushDeviceToken token, CancellationToken ct)
+    {
+        using var activity = PushDispatchTelemetry.Source.StartActivity("notification.attempt", ActivityKind.Internal);
+        activity?.SetTag(PushDispatchTelemetry.DeliveryIdTag, target.Id.ToString());
+        activity?.SetTag(PushDispatchTelemetry.AttemptNumberTag, target.Attempts);
+
+        target.SendTraceParent = activity?.Id;
+
+        var result = await _channel.SendAsync(target, token, ct);
+        await ApplyAsync(target, token, result, ct);
+
+        activity?.SetTag(PushDispatchTelemetry.StateTag, target.State.ToString());
     }
 
     private async Task ApplyAsync(
