@@ -77,6 +77,7 @@ builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
 builder.Services.AddScoped<ITimeSeriesPartitionService, TimeSeriesPartitionService>();
 
 // Application services
+builder.Services.AddNumerics();
 builder.Services.AddScoped<IActivityLogAggregationService, ActivityLogAggregationService>();
 builder.Services.AddScoped<IInactivityDetectionService, InactivityDetectionService>();
 builder.Services.AddScoped<IStatisticalAlertService, StatisticalAlertService>();

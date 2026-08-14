@@ -22,6 +22,37 @@
     We never sell or share your family's health data.
 </p>
 
+<h2>How alerting works</h2>
+<p>
+    CardiTrack compares each person against their own recent history — not a population
+    average — and tells caregivers when today's readings sit well outside that picture.
+    A human caregiver always decides whether to check in. CardiTrack does not diagnose,
+    contact emergency services, or change anyone's care.
+</p>
+<p>
+    For the first weeks we build a picture of a typical day. Until we have about a month
+    of data (at least 80% of those days with readings), we do not raise statistical alerts.
+    Early “provisional” pictures may colour the dashboard but never page you.
+</p>
+<p>
+    Statistical alerts use the same thresholds for everyone. There is no low, medium, or high sensitivity setting yet.
+    A quieter day than usual is a drop of more than 30%
+    below that person's average steps; sleep is flagged when it is more than 30% above or
+    below their average; resting heart rate is flagged when it sits above their average by
+    at least two standard deviations, and never by less than 5 beats per minute; a
+    four-week run of at least 5% fewer steps each week is a longer-term trend; and a
+    measured zero steps well after the usual waking time (the device is reporting; they
+    have not moved) is treated as urgent. A day the device did not measure is not treated
+    as a day of no activity.
+</p>
+<p>
+    When a connected device sends minute-by-minute heart rate, we separate the underlying
+    trend from ordinary jitter in-process, then a medical language model writes a short
+    assessment. The model never computes the numbers; it only interprets them. Only
+    assessments labelled as needing attention become alerts. An unreadable answer is stored
+    but does not alert.
+</p>
+
 <h2>Retention and control</h2>
 <p>
     You can disconnect a device at any time, which stops further collection. Contact us

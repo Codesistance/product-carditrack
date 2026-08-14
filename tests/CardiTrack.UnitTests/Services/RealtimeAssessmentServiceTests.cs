@@ -1,5 +1,6 @@
 using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Interfaces.Services;
+using CardiTrack.Application.Services;
 using CardiTrack.Domain.Entities;
 using CardiTrack.Domain.Enums;
 using CardiTrack.Infrastructure.Services;
@@ -107,7 +108,7 @@ public class RealtimeAssessmentServiceTests
     }
 
     private RealtimeAssessmentService CreateSut() =>
-        new(_unitOfWork, _medicalAi, PromptContextFactory.Composer(_unitOfWork), _cache,
+        new(_unitOfWork, new SsaDecomposition(), _medicalAi, PromptContextFactory.Composer(_unitOfWork), _cache,
             NullLogger<RealtimeAssessmentService>.Instance);
 
     [Fact]
@@ -123,7 +124,8 @@ public class RealtimeAssessmentServiceTests
                 && a.WindowStartUtc == RangeStart.AddMinutes(150)
                 && a.WindowEndUtc == RangeStart.AddMinutes(210)
                 && a.Severity == AlertSeverity.Green
-                && a.RawSeverity == "low"),
+                && a.RawSeverity == "low"
+                && a.SsaEngine == SsaParameters.Engine),
             Arg.Any<CancellationToken>());
     }
 

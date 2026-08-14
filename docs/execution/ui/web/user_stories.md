@@ -385,6 +385,7 @@ The primary web user checks in from a laptop or desktop at home or work. They wa
   - States how it is used: anomaly detection, daily digests, trend monitoring — and that health data is never sold or shared
   - States retention and control: disconnecting a device stops collection; deletion of previously collected data available on request
   - Provides a contact: cloudoperations@codesistance.com
+  - Explains how alerting works in plain language: own-history comparison, 80% coverage / provisional baselines never page, the shipped 30% / 2σ / 5 bpm / 5%-per-week-×-4 / measured-zero rules, no low/medium/high sensitivity slider, and that the medical model interprets numbers it does not compute
 
 ---
 

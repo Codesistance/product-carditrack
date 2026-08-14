@@ -1,4 +1,5 @@
 using System.Text.Json;
+using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Domain.Entities;
 
 namespace CardiTrack.Application.Services;
@@ -9,7 +10,10 @@ namespace CardiTrack.Application.Services;
 /// against and that alerting will eventually threshold on.
 /// <para>
 /// Pure and stateless: the job that drives it lives in <c>CardiTrack.Worker</c>, so everything here
-/// is unit-testable without a database or a clock.
+/// is unit-testable without a database or a clock. Mean and sample σ stay hand-rolled so this
+/// class stays package-free and the R1 thresholds do not silently retune. Median and MAD are
+/// filled through <c>IDescriptiveStatistics</c> (Math.NET in Infrastructure) and persisted
+/// alongside the mean — they do not fire alerts. See <c>docs/technical/mathnet_numerics.md</c>.
 /// </para>
 /// </summary>
 public static class BaselineCalculator
@@ -72,9 +76,20 @@ public static class BaselineCalculator
     /// averaged in would drag every member's "normal" down by whatever hour the job happened to
     /// run at.
     /// </param>
+    /// <param name="stats">
+    /// Robust location/scale (median, unscaled MAD). Mean and σ are still computed here so a
+    /// Math.NET bump cannot retune live R1 thresholds.
+    /// </param>
     public static PatternBaseline? Calculate(
-        Guid cardiMemberId, IReadOnlyList<ActivityLog> logs, int periodDays, DateOnly windowEnd)
+        Guid cardiMemberId,
+        IReadOnlyList<ActivityLog> logs,
+        int periodDays,
+        DateOnly windowEnd,
+        IDescriptiveStatistics stats)
     {
+        ArgumentNullException.ThrowIfNull(logs);
+        ArgumentNullException.ThrowIfNull(stats);
+
         if (periodDays <= 0)
             throw new ArgumentOutOfRangeException(nameof(periodDays), periodDays, "Period must be positive.");
 
@@ -97,6 +112,7 @@ public static class BaselineCalculator
 
         var steps = Samples(days, l => l.Steps);
         var restingHeartRate = Samples(days, l => l.RestingHeartRate);
+        var sleepMinutes = Samples(days, l => l.SleepMinutes);
 
         return new PatternBaseline
         {
@@ -105,15 +121,21 @@ public static class BaselineCalculator
 
             AvgSteps = MeanAsInt(steps, minimumSamples),
             StdDevSteps = StandardDeviation(steps, minimumSamples),
+            MedianSteps = MedianAsInt(steps, minimumSamples, stats),
+            MadSteps = MedianAbsoluteDeviation(steps, minimumSamples, stats),
             AvgActiveMinutes = MeanAsInt(Samples(days, l => l.ActiveMinutes), minimumSamples),
 
             AvgRestingHeartRate = MeanAsInt(restingHeartRate, minimumSamples),
             StdDevHeartRate = StandardDeviation(restingHeartRate, minimumSamples),
+            MedianRestingHeartRate = MedianAsInt(restingHeartRate, minimumSamples, stats),
+            MadHeartRate = MedianAbsoluteDeviation(restingHeartRate, minimumSamples, stats),
             // An observed maximum is a fact rather than an estimate, so it is reported from whatever
             // readings exist instead of being gated on a sample count.
             MaxHeartRateObserved = days.Select(l => l.MaxHeartRate).Where(v => v.HasValue).Max(),
 
-            AvgSleepMinutes = MeanAsInt(Samples(days, l => l.SleepMinutes), minimumSamples),
+            AvgSleepMinutes = MeanAsInt(sleepMinutes, minimumSamples),
+            MedianSleepMinutes = MedianAsInt(sleepMinutes, minimumSamples, stats),
+            MadSleepMinutes = MedianAbsoluteDeviation(sleepMinutes, minimumSamples, stats),
             TypicalBedtime = TypicalTime(days, l => l.SleepStartTime, minimumSamples),
             TypicalWakeTime = TypicalTime(days, l => l.SleepEndTime, minimumSamples),
             AvgSleepEfficiency = MeanAsInt(Samples(days, l => l.SleepEfficiency), minimumSamples),
@@ -143,6 +165,33 @@ public static class BaselineCalculator
         var mean = samples.Average();
         var variance = samples.Sum(v => (v - mean) * (v - mean)) / (samples.Count - 1);
         return Math.Round((decimal)Math.Sqrt((double)variance), 2, MidpointRounding.AwayFromZero);
+    }
+
+    private static int? MedianAsInt(
+        IReadOnlyList<decimal> samples, int minimumSamples, IDescriptiveStatistics stats)
+    {
+        if (samples.Count < minimumSamples)
+            return null;
+
+        return (int)Math.Round(stats.Median(ToDoubles(samples)), MidpointRounding.AwayFromZero);
+    }
+
+    private static decimal? MedianAbsoluteDeviation(
+        IReadOnlyList<decimal> samples, int minimumSamples, IDescriptiveStatistics stats)
+    {
+        if (samples.Count < minimumSamples)
+            return null;
+
+        return Math.Round(
+            (decimal)stats.MedianAbsoluteDeviation(ToDoubles(samples)), 2, MidpointRounding.AwayFromZero);
+    }
+
+    private static double[] ToDoubles(IReadOnlyList<decimal> samples)
+    {
+        var values = new double[samples.Count];
+        for (var i = 0; i < samples.Count; i++)
+            values[i] = (double)samples[i];
+        return values;
     }
 
     /// <summary>

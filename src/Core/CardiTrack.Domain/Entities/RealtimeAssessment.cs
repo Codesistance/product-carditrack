@@ -63,5 +63,12 @@ public class RealtimeAssessment
     /// </summary>
     public AlertSeverity? Severity { get; set; }
 
+    /// <summary>
+    /// Named SSA numerical engine that produced the stored features (today
+    /// <c>MathNet.Numerics.Evd</c>). Null on rows written before this column existed.
+    /// Needed so a later solver swap does not mix engines inside one 90-day partition.
+    /// </summary>
+    public string? SsaEngine { get; set; }
+
     public DateTime GeneratedAtUtc { get; set; }
 }

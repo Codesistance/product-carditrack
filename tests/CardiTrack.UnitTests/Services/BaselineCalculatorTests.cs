@@ -1,6 +1,8 @@
 using System.Text.Json;
+using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Application.Services;
 using CardiTrack.Domain.Entities;
+using CardiTrack.Infrastructure.Services;
 
 namespace CardiTrack.UnitTests.Services;
 
@@ -17,6 +19,11 @@ public class BaselineCalculatorTests
 
     private static readonly Guid MemberId = Guid.NewGuid();
     private static readonly DateOnly Today = new(2026, 8, 2);
+    private static readonly IDescriptiveStatistics Stats = new MathNetDescriptiveStatistics();
+
+    private static PatternBaseline? Calc(
+        IReadOnlyList<ActivityLog> logs, int periodDays, DateOnly windowEnd) =>
+        BaselineCalculator.Calculate(MemberId, logs, periodDays, windowEnd, Stats);
 
     /// <summary>
     /// <paramref name="dayCount"/> consecutive covered days ending on <see cref="Today"/>. Every day
@@ -41,13 +48,13 @@ public class BaselineCalculatorTests
     [Fact]
     public void Calculate_ReturnsNull_WhenTheWindowIsTooSparse()
     {
-        Assert.Null(BaselineCalculator.Calculate(MemberId, Window(RequiredDays - 1), Period, Today));
+        Assert.Null(Calc(Window(RequiredDays - 1), Period, Today));
     }
 
     [Fact]
     public void Calculate_ReturnsBaseline_AtExactlyTheRequiredCoverage()
     {
-        var baseline = BaselineCalculator.Calculate(MemberId, Window(RequiredDays), Period, Today);
+        var baseline = Calc(Window(RequiredDays), Period, Today);
 
         Assert.NotNull(baseline);
         Assert.Equal(MemberId, baseline.CardiMemberId);
@@ -61,7 +68,7 @@ public class BaselineCalculatorTests
         var logs = Window(20);
         logs.AddRange(Window(20, Today.AddDays(-60)));
 
-        Assert.Null(BaselineCalculator.Calculate(MemberId, logs, Period, Today));
+        Assert.Null(Calc(logs, Period, Today));
     }
 
     [Fact]
@@ -71,7 +78,7 @@ public class BaselineCalculatorTests
         var logs = Window(RequiredDays - 1);
         logs.Add(new ActivityLog { CardiMemberId = MemberId, Date = Today, RestingHeartRate = 71 });
 
-        Assert.Null(BaselineCalculator.Calculate(MemberId, logs, Period, Today));
+        Assert.Null(Calc(logs, Period, Today));
     }
 
     [Fact]
@@ -91,7 +98,7 @@ public class BaselineCalculatorTests
 
         // Too few step samples overall for an average, so the weekday bucket is what exposes which of
         // the two rows for Today was chosen: 9000 if the later write won, 5000 if the earlier one did.
-        var baseline = BaselineCalculator.Calculate(MemberId, logs, Period, Today);
+        var baseline = Calc(logs, Period, Today);
 
         Assert.NotNull(baseline);
         var byDayOfWeek = JsonSerializer.Deserialize<int?[]>(baseline.StepsByDayOfWeek!)!;
@@ -103,7 +110,7 @@ public class BaselineCalculatorTests
     public void Calculate_RejectsANonPositivePeriod()
     {
         Assert.Throws<ArgumentOutOfRangeException>(
-            () => BaselineCalculator.Calculate(MemberId, Window(RequiredDays), 0, Today));
+            () => Calc(Window(RequiredDays), 0, Today));
     }
 
     // ── Provisional windows ─────────────────────────────────────────────────────
@@ -116,7 +123,7 @@ public class BaselineCalculatorTests
     [Fact]
     public void Calculate_WritesASevenDayBaseline_FromSixCoveredDays()
     {
-        var baseline = BaselineCalculator.Calculate(MemberId, Window(6), 7, Today);
+        var baseline = Calc(Window(6), 7, Today);
 
         Assert.NotNull(baseline);
         Assert.Equal(7, baseline.PeriodDays);
@@ -127,7 +134,7 @@ public class BaselineCalculatorTests
     [Fact]
     public void Calculate_ReturnsNull_WhenTheSevenDayWindowHasOnlyFiveDays()
     {
-        Assert.Null(BaselineCalculator.Calculate(MemberId, Window(5), 7, Today));
+        Assert.Null(Calc(Window(5), 7, Today));
     }
 
     [Fact]
@@ -139,7 +146,7 @@ public class BaselineCalculatorTests
         for (var i = 0; i < 6; i++)
             logs[i].Steps = 4_000;
 
-        var baseline = BaselineCalculator.Calculate(MemberId, logs, 14, Today);
+        var baseline = Calc(logs, 14, Today);
 
         Assert.NotNull(baseline);
         Assert.Null(baseline.AvgSteps);
@@ -162,13 +169,35 @@ public class BaselineCalculatorTests
         for (var i = 0; i < steps.Length; i++)
             logs[i].Steps = steps[i];
 
-        var baseline = BaselineCalculator.Calculate(MemberId, logs, Period, Today);
+        var baseline = Calc(logs, Period, Today);
 
         Assert.NotNull(baseline);
         Assert.Equal(5_000, baseline.AvgSteps);
         // n−1 gives 2138.09; the population form would report 2000 and quietly narrow the
         // "normal range" the dashboard draws from it.
         Assert.Equal(2138.09m, baseline.StdDevSteps);
+        // Eight samples, even count: median is the average of 4_000 and 5_000.
+        Assert.Equal(4_500, baseline.MedianSteps);
+        // |x − 4500|: 2500, 500, 500, 500, 500, 500, 2500, 4500 → median 500.
+        Assert.Equal(500.00m, baseline.MadSteps);
+    }
+
+    [Fact]
+    public void Calculate_PersistsMedianAndMad_WithoutChangingTheMean()
+    {
+        // 7 ordinary 5_000-step days plus one 20_000-step day. Mean/σ shift; median/MAD stay
+        // on the ordinary cluster. Live R1 still uses the mean — these columns are additive.
+        var logs = Window(RequiredDays);
+        for (var i = 0; i < 7; i++)
+            logs[i].Steps = 5_000;
+        logs[7].Steps = 20_000;
+
+        var baseline = Calc(logs, Period, Today);
+
+        Assert.NotNull(baseline);
+        Assert.Equal(6_875, baseline.AvgSteps);
+        Assert.Equal(5_000, baseline.MedianSteps);
+        Assert.Equal(0.00m, baseline.MadSteps);
     }
 
     [Fact]
@@ -178,10 +207,12 @@ public class BaselineCalculatorTests
         for (var i = 0; i < 6; i++)
             logs[i].SleepMinutes = 420;
 
-        var baseline = BaselineCalculator.Calculate(MemberId, logs, Period, Today);
+        var baseline = Calc(logs, Period, Today);
 
         Assert.NotNull(baseline);
         Assert.Null(baseline.AvgSleepMinutes);
+        Assert.Null(baseline.MedianSleepMinutes);
+        Assert.Null(baseline.MadSleepMinutes);
         Assert.Equal(60, baseline.AvgRestingHeartRate);
     }
 
@@ -192,7 +223,7 @@ public class BaselineCalculatorTests
         logs[0].MaxHeartRate = 142;
         logs[1].MaxHeartRate = 118;
 
-        var baseline = BaselineCalculator.Calculate(MemberId, logs, Period, Today);
+        var baseline = Calc(logs, Period, Today);
 
         Assert.NotNull(baseline);
         Assert.Equal(142, baseline.MaxHeartRateObserved);
@@ -203,7 +234,7 @@ public class BaselineCalculatorTests
     {
         // Max() over int? returns null for an empty sequence rather than throwing, unlike the
         // non-nullable overload. Pinned because the difference is easy to misread.
-        var baseline = BaselineCalculator.Calculate(MemberId, Window(RequiredDays), Period, Today);
+        var baseline = Calc(Window(RequiredDays), Period, Today);
 
         Assert.NotNull(baseline);
         Assert.Null(baseline.MaxHeartRateObserved);
@@ -222,7 +253,7 @@ public class BaselineCalculatorTests
             logs[i].SleepStartTime = logs[i].Date.ToDateTime(new TimeOnly(hour, 0), DateTimeKind.Utc);
         }
 
-        var baseline = BaselineCalculator.Calculate(MemberId, logs, Period, Today);
+        var baseline = Calc(logs, Period, Today);
 
         Assert.NotNull(baseline);
         Assert.Equal(new TimeOnly(0, 0), baseline.TypicalBedtime);
@@ -235,7 +266,7 @@ public class BaselineCalculatorTests
         for (var i = 0; i < 8; i++)
             logs[i].SleepStartTime = logs[i].Date.ToDateTime(new TimeOnly(i * 3, 0), DateTimeKind.Utc);
 
-        var baseline = BaselineCalculator.Calculate(MemberId, logs, Period, Today);
+        var baseline = Calc(logs, Period, Today);
 
         Assert.NotNull(baseline);
         Assert.Null(baseline.TypicalBedtime);
@@ -262,7 +293,7 @@ public class BaselineCalculatorTests
             };
         }
 
-        var baseline = BaselineCalculator.Calculate(MemberId, logs, Period, Today);
+        var baseline = Calc(logs, Period, Today);
 
         Assert.NotNull(baseline);
         Assert.Equal(
@@ -278,7 +309,7 @@ public class BaselineCalculatorTests
         foreach (var log in mondays)
             log.Steps = 4_000;
 
-        var baseline = BaselineCalculator.Calculate(MemberId, logs, Period, Today);
+        var baseline = Calc(logs, Period, Today);
 
         Assert.NotNull(baseline);
         var byDayOfWeek = JsonSerializer.Deserialize<int?[]>(baseline.StepsByDayOfWeek!)!;
@@ -290,7 +321,7 @@ public class BaselineCalculatorTests
     [Fact]
     public void Calculate_OmitsTheWeekdayProfile_WhenNoDayHasEnoughSteps()
     {
-        var baseline = BaselineCalculator.Calculate(MemberId, Window(RequiredDays), Period, Today);
+        var baseline = Calc(Window(RequiredDays), Period, Today);
 
         Assert.NotNull(baseline);
         Assert.Null(baseline.StepsByDayOfWeek);

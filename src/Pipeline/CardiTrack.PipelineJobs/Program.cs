@@ -84,6 +84,7 @@ builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
 
 // AI — the private (medical) slot only; see the header note
 builder.Services.AddMedicalAiServices(configuration);
+builder.Services.AddNumerics();
 builder.Services.AddScoped<IDigestGenerationService, DigestGenerationService>();
 builder.Services.AddScoped<IRealtimeAssessmentService, RealtimeAssessmentService>();
 

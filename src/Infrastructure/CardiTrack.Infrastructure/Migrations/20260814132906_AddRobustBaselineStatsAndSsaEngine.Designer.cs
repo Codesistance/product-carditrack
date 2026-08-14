@@ -3,6 +3,7 @@ using System;
 using CardiTrack.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace CardiTrack.Infrastructure.Migrations
 {
     [DbContext(typeof(CardiTrackDbContext))]
-    partial class CardiTrackDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260814132906_AddRobustBaselineStatsAndSsaEngine")]
+    partial class AddRobustBaselineStatsAndSsaEngine
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -1145,9 +1148,6 @@ namespace CardiTrack.Infrastructure.Migrations
                         .HasMaxLength(50)
                         .HasColumnType("character varying(50)");
 
-                    b.Property<DateTime?>("PushedDate")
-                        .HasColumnType("timestamp with time zone");
-
                     b.Property<string>("ResolutionReason")
                         .HasMaxLength(50)
                         .HasColumnType("character varying(50)");
@@ -1198,10 +1198,6 @@ namespace CardiTrack.Infrastructure.Migrations
                         .IsUnique();
 
                     b.HasIndex("OrganizationId");
-
-                    b.HasIndex("RuleCode")
-                        .HasDatabaseName("IX_Notifications_PendingPush")
-                        .HasFilter("\"PushedDate\" IS NULL AND \"IsActive\" AND \"IsOwner\" AND \"State\" = 'Open'");
 
                     b.HasIndex("State", "ResolvedDate");
 

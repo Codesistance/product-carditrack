@@ -34,5 +34,8 @@ public class RealtimeAssessmentConfiguration : IEntityTypeConfiguration<Realtime
 
         builder.Property(a => a.GeneratedAtUtc)
             .IsRequired();
+
+        builder.Property(a => a.SsaEngine)
+            .HasMaxLength(50);
     }
 }

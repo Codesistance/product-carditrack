@@ -207,13 +207,13 @@ Turns accumulated `ActivityLog` history into `PatternBaseline` rows — the stat
 - Uses **one DI scope per member**: the read tracks up to 90 rows each, which would accumulate across the whole run on a shared `DbContext`, and a member that fails takes nothing else down with it.
 - **Appends** rather than replacing, so a shift in a member's own normal stays visible in history. Unlike the partitioned tables, **baselines have no retention today** — pruning falls under the planned retention job (see [dpia.md](../../compliance/dpia.md) §6.3).
 
-The arithmetic lives in `BaselineCalculator` (`CardiTrack.Application/Services`) — pure and stateless, so it is unit-tested without a database or a clock. Its rules:
+The arithmetic lives in `BaselineCalculator` (`CardiTrack.Application/Services`) — pure and stateless, so it is unit-tested without a database or a clock. Mean and sample σ stay here (package-free Application) so a Math.NET bump cannot retune live R1 thresholds. Median and unscaled MAD are filled through `IDescriptiveStatistics` (Math.NET, registered on this host via `AddNumerics`) and **persisted on the same row**; they do not fire alerts. See [mathnet_numerics.md](../../technical/mathnet_numerics.md). Its rules:
 
 | Rule | Behaviour |
 |---|---|
 | Coverage gate | No baseline for a window unless **80% of it** has data (24 of 30 days; 6 of 7 for the shortest provisional window). Below that the window is skipped rather than scored against an average of almost nothing. |
 | Per-metric floor | Each metric needs **7 samples** of its own (scaled down to the window's coverage bar for windows shorter than 9 days); ingestion populates metrics unevenly, so a thin metric is left null instead of averaged. |
-| Spread | **Sample** standard deviation (n−1) — the dashboard turns σ into the member's normal range, so the population form would narrow that band on every member. |
+| Spread | **Sample** standard deviation (n−1) — the dashboard turns σ into the member's normal range, so the population form would narrow that band on every member. **Median + unscaled MAD** are written alongside and unused for paging. |
 | Bedtime / wake time | **Circular** mean over the 24-hour clock; an arithmetic mean of 23:40 and 00:20 is midday. Reported in **UTC** — `CardiMember` carries no timezone. |
 | Weekday profile | Monday-first JSON array of average steps. A weekday with fewer than 2 samples is `null`, not `0` — "no data for Sundays" must not read as "this member does not move on Sundays". |
 

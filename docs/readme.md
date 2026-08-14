@@ -135,6 +135,9 @@ HIPAA/GDPR data architecture (ADR): identifier/clinical schema separation, Safe 
 #### [granular_timeseries_storage.md](./technical/granular_timeseries_storage.md)
 **Granular time-series storage (ADR)** — sub-daily wearable samples stay in the existing Cloud SQL instance as day-partitioned hour-vector tables (no Bigtable/BigQuery); rollup ladder, retention, alternatives, and the triggers that would reopen the decision.
 
+#### [mathnet_numerics.md](./technical/mathnet_numerics.md)
+**Math.NET Numerics (ADR)** — in-process statistical engine for SSA eigen-decomposition; median/MAD persisted on baselines but unused for live alerts; Art. 13–15 / Art. 22 documentation gaps.
+
 #### [enum_extensions_guide.md](./technical/enum_extensions_guide.md)
 Guide to enum extensions and helper methods used throughout the solution.
 
@@ -152,6 +155,9 @@ Data Protection Impact Assessment (GDPR Art. 35) — processing inventory, risk 
 
 #### [art22_alerting_analysis.md](./compliance/art22_alerting_analysis.md)
 GDPR Article 22 analysis of the alerting/severity-routing chain — whether automated alert decisions constitute solely automated decision-making with legal or similarly significant effect, and the safeguards applied.
+
+#### [alerting_algorithm_card.md](./compliance/alerting_algorithm_card.md)
+Shipped alerting logic in one place: 30% of mean, 2σ with 5 bpm floor, 5%/week × 4, 80% coverage, provisional never alerts, named SSA engine, MedGemma interprets only.
 
 ---
 
