@@ -15,7 +15,7 @@ namespace CardiTrack.Infrastructure.Services.PromptContext;
 /// would be a survey — the point is that the next summary is written by a model that knows the
 /// answer.
 /// <para>
-/// Excluded from the hero status line, which is one sentence under twelve words: there is nothing
+/// Excluded from the hero status line, which is one sentence under fifteen words: there is nothing
 /// it could do with this that would fit, and it is generated on every dashboard view. Adding it
 /// later is one flag.
 /// </para>

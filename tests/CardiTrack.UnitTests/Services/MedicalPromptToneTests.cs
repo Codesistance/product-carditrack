@@ -138,7 +138,7 @@ public class MedicalPromptToneTests
 
     /// <summary>
     /// The status prompt is the exception, and stays one. It asks for a headline of two to five
-    /// words and a sentence under twelve — a pronoun scarcely arises, and its own instructions
+    /// words and a sentence under fifteen — a pronoun scarcely arises, and its own instructions
     /// already settle how the person is named. It is also the only prompt a caregiver waits on and
     /// the only one under a character budget, so an inert rule here is paid for in latency on
     /// nearly every dashboard view. Deleting this test is the cheap way to lose that.

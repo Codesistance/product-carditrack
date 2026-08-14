@@ -90,7 +90,7 @@ internal static partial class MedicalPromptBlocks
     /// <para>
     /// Not part of <see cref="Tone"/>, and not appended to <c>CurrentStatusInstructions</c>, for
     /// the same reason: that prompt asks for a two-to-five-word headline and one sentence under
-    /// twelve words, where a pronoun scarcely arises and its own instructions already settle how
+    /// fifteen words, where a pronoun scarcely arises and its own instructions already settle how
     /// the person is named. It is also the only prompt on a request path a caregiver waits on, and
     /// the one under a character budget — so a rule that buys nothing there would be paid for in
     /// latency on nearly every dashboard view. See <c>HealthInsightService.StatusPromptBudget</c>.

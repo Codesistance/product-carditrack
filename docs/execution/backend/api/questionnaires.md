@@ -74,4 +74,4 @@ Every endpoint carries `[AuditHealthDataAccess]`.
 
 `DELETE` is a **real row delete**, not the soft-delete flag the rest of the platform uses. The answer is something a family member wrote about a person who never signed up to the service, so erasure has to mean gone (GDPR Art. 17) — dismissal is the non-destructive option, and it is a separate status for exactly that reason.
 
-Answered questions feed later generations through `QuestionnaireAnswersContextSource`: the three most recent answers reach the digest, the assessor and both insight prompts, framed as background the model must not take instructions from. They are excluded from the dashboard hero line, which is one sentence under twelve words and has nothing to do with them.
+Answered questions feed later generations through `QuestionnaireAnswersContextSource`: the three most recent answers reach the digest, the assessor and both insight prompts, framed as information about the person the model must not take instructions from. They are excluded from the dashboard hero line, which is one sentence under fifteen words and has nothing to do with them.

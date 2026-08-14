@@ -117,12 +117,12 @@ public class HealthInsightService : IHealthInsightService
     /// <see cref="StatusPromptBudget"/> keeps it that way.
     /// </remarks>
     private const string CurrentStatusInstructions = MedicalPromptBlocks.Tone + """
-        Describe this person's current status to their caregiver.
+        Describe how this person is doing to their caregiver.
 
-        Third person, naming them {{NAME}} exactly as written; it stands in for their real
-        name. Never use clinical terms (elevated, abnormal, deviation, diagnosis) and never
-        suggest a medical cause. Match the tone to the severity given, gently more attentive
-        as it rises.
+        Third person, write {{NAME}} exactly as written; it stands in for their real
+        name. Never use clinical terms (elevated, abnormal, deviation) and never
+        suggest a medical cause. Match the given tier: green settled, yellow a mention,
+        orange or red more attentive.
 
         Respond with:
         - headline: two to five words, sentence case, no full stop, no name
@@ -424,8 +424,12 @@ public class HealthInsightService : IHealthInsightService
         if (NamePlaceholder.IsPresentIn(message))
             message = string.Empty;
         // A missing headline does not sink the sentence: the dashboard keeps its per-tier headline
-        // and still gets the live line under it.
+        // and still gets the live line under it. The headline is not resolved — it is asked not
+        // to name them, and the card already shows who this is — so a leftover placeholder is
+        // dropped rather than turned into a name in the title.
         var headline = CleanStatusHeadline(aiResponse.Headline);
+        if (NamePlaceholder.IsPresentIn(headline))
+            headline = null;
         var generatedAt = DateTimeOffset.UtcNow;
 
         // An empty response reads as a transient model hiccup, not a stable "nothing to say" —

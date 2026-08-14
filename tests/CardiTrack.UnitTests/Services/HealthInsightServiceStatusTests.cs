@@ -120,6 +120,28 @@ public class HealthInsightServiceStatusTests
         Assert.Equal("Margaret seems steady today.", result.Message);
     }
 
+    /// <summary>
+    /// The headline is asked not to name them, and unlike the sentence it is not resolved on
+    /// the way out — the card already shows who this is. A leftover placeholder would be braces
+    /// in the title; dropping it keeps the tier headline and the live line.
+    /// </summary>
+    [Fact]
+    public async Task HeadlineThatStillCarriesThePlaceholder_IsDropped_TheMessageSurvives()
+    {
+        _medicalAi.GenerateStructuredAsync<HealthInsightService.CurrentStatusAiResponse>(
+                Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new HealthInsightService.CurrentStatusAiResponse
+            {
+                Headline = "{{NAME}} is quiet",
+                Message = "{{NAME}} seems steady today.",
+            });
+
+        var result = await CreateSut().GetCurrentStatusMessageAsync(_userId, _memberId);
+
+        Assert.Null(result.Headline);
+        Assert.Equal("Margaret seems steady today.", result.Message);
+    }
+
     [Fact]
     public async Task Throws_ForAUserNotLinkedToTheMember()
     {
@@ -241,6 +263,8 @@ public class HealthInsightServiceStatusTests
         // than from this prompt's own wording — same guarantee, one place.
         Assert.Contains("never diagnose", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("under 15 words", prompt);
+        Assert.Contains("green settled, yellow a mention", prompt);
+        Assert.Contains("write {{NAME}} exactly as written", prompt);
     }
 
     [Fact]
