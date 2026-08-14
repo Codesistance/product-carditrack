@@ -613,11 +613,13 @@ public static class AlertDetailComposer
             ? day
             : null;
 
-    private static string StatusLabel(Alert alert) =>
-        (alert.IsResolved ? AlertStatus.Resolved
-            : alert.AcknowledgedDate is not null ? AlertStatus.Acknowledged
-            : AlertStatus.New)
-        .ToString().ToLowerInvariant();
+    /// <summary>
+    /// Third reader of the same two columns, so it goes through the one mapper the alerts list
+    /// and the dashboard strip already share — see <see cref="AlertLifecycle"/>. A detail page
+    /// that disagreed with the row a caregiver tapped to reach it is the exact failure this
+    /// branch started from.
+    /// </summary>
+    private static string StatusLabel(Alert alert) => AlertLifecycle.StatusLabel(alert);
 
     private static string? ChangeLabel(decimal? current, decimal? usual, string usualWord)
     {
