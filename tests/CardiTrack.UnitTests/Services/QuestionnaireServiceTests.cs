@@ -153,6 +153,25 @@ public class QuestionnaireServiceTests
         Assert.Empty(result.Answered.Items);
     }
 
+    /// <summary>
+    /// Only pageSize is clamped before this method sees it (see QuestionnairesController) — an
+    /// extreme page number must still resolve to an empty page rather than overflow the int
+    /// arithmetic behind Skip/HasMore.
+    /// </summary>
+    [Fact]
+    public async Task Listing_ReturnsAnEmptyPage_ForAnExtremePageNumber_WithoutOverflowing()
+    {
+        _questionnaires.GetByCardiMemberAsync(_memberId, Arg.Any<CancellationToken>())
+            .Returns([Questionnaire(QuestionnaireStatus.Answered, "She moved bedrooms.")]);
+
+        var result = await CreateSut().GetForMemberAsync(
+            _userId, _memberId, search: null, page: int.MaxValue, pageSize: 50);
+
+        Assert.Empty(result.Answered.Items);
+        Assert.False(result.Answered.HasMore);
+        Assert.Equal(1, result.Answered.TotalCount);
+    }
+
     [Fact]
     public async Task Answering_StoresTheAnswerEncrypted_AndStampsWhoAndWhen()
     {

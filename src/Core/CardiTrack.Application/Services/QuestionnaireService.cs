@@ -56,7 +56,15 @@ public class QuestionnaireService : IQuestionnaireService
         }
 
         var answeredList = answered.ToList();
-        var pageItems = answeredList.Skip((page - 1) * pageSize).Take(pageSize).ToList();
+
+        // page/pageSize arrive as int query params, and only pageSize is upper-bounded by the
+        // controller — an extreme page number would overflow an int-only (page - 1) * pageSize.
+        // Widening to long for the arithmetic, then clamping to the list length before the Skip
+        // needs an int back, keeps this correct (and just an empty page) at any page value instead
+        // of wrapping into a bogus skip count.
+        var skip = (int)Math.Min((long)(page - 1) * pageSize, answeredList.Count);
+        var pageItems = answeredList.Skip(skip).Take(pageSize).ToList();
+        var hasMore = (long)page * pageSize < answeredList.Count;
 
         return new QuestionnairesPageResponse
         {
@@ -68,7 +76,7 @@ public class QuestionnaireService : IQuestionnaireService
                 Page = page,
                 PageSize = pageSize,
                 TotalCount = answeredList.Count,
-                HasMore = page * pageSize < answeredList.Count,
+                HasMore = hasMore,
             },
         };
     }

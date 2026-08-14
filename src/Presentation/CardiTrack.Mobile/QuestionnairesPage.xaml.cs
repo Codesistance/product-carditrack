@@ -44,6 +44,12 @@ public partial class QuestionnairesPage : ContentPage
     private bool _isBusy;
     private CancellationTokenSource? _searchDebounceCts;
 
+    /// <summary>Bumped by every <see cref="LoadAsync"/> call. A response — from that call or from a
+    /// <see cref="LoadMoreAsync"/> started under it — is only applied if this hasn't moved on by the
+    /// time it arrives, so a slow, superseded request can't paint stale results over a newer search,
+    /// refresh, or pending answer.</summary>
+    private int _loadGeneration;
+
     public QuestionnairesPage(ICardiTrackApiClient api, IPopupService popups)
     {
         InitializeComponent();
@@ -95,6 +101,7 @@ public partial class QuestionnairesPage : ContentPage
         _searchTerm = string.IsNullOrWhiteSpace(e.NewTextValue) ? null : e.NewTextValue.Trim();
 
         _searchDebounceCts?.Cancel();
+        _searchDebounceCts?.Dispose();
         var cts = new CancellationTokenSource();
         _searchDebounceCts = cts;
         _ = DebouncedSearchAsync(cts.Token);
@@ -121,12 +128,16 @@ public partial class QuestionnairesPage : ContentPage
     /// anything that changes what belongs at the top of the list.</summary>
     private async Task LoadAsync()
     {
+        var generation = ++_loadGeneration;
         SetState(loading: true);
         _currentPage = 1;
 
         try
         {
             var result = await _api.GetQuestionnairesAsync(_memberId, _searchTerm, _currentPage, PageSize);
+            if (generation != _loadGeneration)
+                return; // superseded by a newer load; its own response will paint the page.
+
             ApplyHeader(result);
 
             _answeredItems.Clear();
@@ -142,6 +153,9 @@ public partial class QuestionnairesPage : ContentPage
         }
         catch (ApiException ex)
         {
+            if (generation != _loadGeneration)
+                return;
+
             ErrorDetailLabel.Text = ex.Message;
             SetState(error: true);
         }
@@ -154,12 +168,17 @@ public partial class QuestionnairesPage : ContentPage
         if (_isLoadingMore || !_hasMorePages)
             return;
 
+        var generation = _loadGeneration;
         _isLoadingMore = true;
         LoadMoreSkeleton.IsVisible = true;
         try
         {
             var nextPage = _currentPage + 1;
             var result = await _api.GetQuestionnairesAsync(_memberId, _searchTerm, nextPage, PageSize);
+
+            if (generation != _loadGeneration)
+                return; // a new search or reload started while this page was in flight; drop it —
+                         // it belongs to a list that no longer exists on screen.
 
             foreach (var questionnaire in result.Answered.Items)
                 _answeredItems.Add(new AnsweredQuestionnaireItem(questionnaire, _memberName));
@@ -193,8 +212,11 @@ public partial class QuestionnairesPage : ContentPage
         if (result.Pending is not null)
             PendingCard.Apply(result.Pending, _memberName);
 
-        // Nothing to search until there is a first answer to find.
-        SearchBorder.IsVisible = result.HasAny;
+        // HasAny covers every status, including a pending-only or dismissed-only member with
+        // nothing answered yet — visible once there's answered history to search, or while a
+        // search is already active (so it stays put, and clearable, even if the filter currently
+        // matches nothing).
+        SearchBorder.IsVisible = result.Answered.TotalCount > 0 || !string.IsNullOrWhiteSpace(_searchTerm);
     }
 
     private void ApplyEmptyStateText()
