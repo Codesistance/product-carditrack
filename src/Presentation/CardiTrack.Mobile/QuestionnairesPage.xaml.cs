@@ -342,11 +342,12 @@ public partial class QuestionnairesPage : ContentPage
 
     private async void OnAnsweredRowDeleteRequested(object? sender, QuestionnaireResponse questionnaire)
     {
-        if (_isBusy)
+        if (_isBusy || sender is not AnsweredQuestionRow row)
             return;
 
         // There is no undo, and the answer is gone for the whole family — the same confirmation
-        // weight deleting an alert carries.
+        // weight deleting an alert carries. The trash lives on the card; this dialog is what
+        // stops a stray tap from erasing it.
         var confirmed = await _popups.ConfirmWarningAsync(
             "This question and your answer will be removed for everyone.",
             "Delete this answer?",
@@ -355,6 +356,7 @@ public partial class QuestionnairesPage : ContentPage
             return;
 
         _isBusy = true;
+        row.SetBusy(true);
         try
         {
             await _api.DeleteQuestionnaireAsync(questionnaire.Id);
@@ -367,6 +369,7 @@ public partial class QuestionnairesPage : ContentPage
         finally
         {
             _isBusy = false;
+            row.SetBusy(false);
         }
     }
 

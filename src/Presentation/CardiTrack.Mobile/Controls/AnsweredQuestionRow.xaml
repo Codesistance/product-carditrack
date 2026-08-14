@@ -6,26 +6,7 @@
 
     <!-- One answered question in the Q&A archive's lazy-loaded list. The card is QuestionCard in
          its prefilled mode, same as the page built inline before this was a CollectionView item —
-         only how it is populated (BindingContext, for recycling) changed. -->
-    <VerticalStackLayout Spacing="4">
-        <controls:QuestionCard x:Name="Card"/>
-
-        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8" Margin="4,0,0,0">
-            <Label x:Name="CaptionLabel"
-                   Grid.Column="0"
-                   FontFamily="Quicksand"
-                   FontSize="12"
-                   TextColor="{StaticResource BodyText}"
-                   VerticalTextAlignment="Center"/>
-
-            <ImageButton x:Name="DeleteButton"
-                         Grid.Column="1"
-                         Source="icon_trash.svg"
-                         BackgroundColor="Transparent"
-                         WidthRequest="44"
-                         HeightRequest="44"
-                         Padding="11"
-                         SemanticProperties.Description="Delete this question and answer"/>
-        </Grid>
-    </VerticalStackLayout>
+         only how it is populated (BindingContext, for recycling) changed. Delete lives on the
+         card itself (header trash), behind the page's warning confirm. -->
+    <controls:QuestionCard x:Name="Card"/>
 </ContentView>

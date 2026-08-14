@@ -46,6 +46,34 @@
                         SemanticProperties.Description="Skip this question"
                         SemanticProperties.Hint="We won't ask it again"
                         Clicked="OnDismissClicked"/>
+
+                <!-- Same slot as skip, only on an answered card. The archive used to hang this
+                     trash outside the card, which made the row look like a card plus a toolbar. -->
+                <Border x:Name="DeleteButton"
+                        Grid.Column="2"
+                        WidthRequest="40" HeightRequest="40"
+                        StrokeThickness="0"
+                        BackgroundColor="Transparent"
+                        VerticalOptions="Center"
+                        IsVisible="False"
+                        SemanticProperties.Description="Delete this question and answer">
+                    <Border.GestureRecognizers>
+                        <TapGestureRecognizer Tapped="OnDeleteTapped"/>
+                    </Border.GestureRecognizers>
+                    <Border WidthRequest="28" HeightRequest="28"
+                            StrokeThickness="0"
+                            BackgroundColor="{StaticResource AlertActionBackground}"
+                            HorizontalOptions="Center"
+                            VerticalOptions="Center">
+                        <Border.StrokeShape>
+                            <RoundRectangle CornerRadius="14"/>
+                        </Border.StrokeShape>
+                        <Image Source="icon_trash.svg"
+                               WidthRequest="15" HeightRequest="15"
+                               HorizontalOptions="Center"
+                               VerticalOptions="Center"/>
+                    </Border>
+                </Border>
             </Grid>
 
             <Label x:Name="QuestionLabel"
@@ -71,6 +99,13 @@
             <Label x:Name="OptionalLabel"
                    Style="{StaticResource Body2}"
                    FontSize="12"
+                   LineBreakMode="WordWrap"/>
+
+            <Label x:Name="CaptionLabel"
+                   FontFamily="Quicksand"
+                   FontSize="12"
+                   TextColor="{StaticResource BodyText}"
+                   IsVisible="False"
                    LineBreakMode="WordWrap"/>
 
             <Button x:Name="OpenButton"
