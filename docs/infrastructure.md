@@ -182,7 +182,7 @@ carditrack-<env>
 │   └── AI pipeline jobs (enable_pipeline_jobs — dev only today; Cloud Scheduler-triggered):
 │       ├── carditrack-<env>-pipeline-jobs             (digest — family digests, half-hourly)
 │       ├── carditrack-<env>-pipeline-jobs-aggregator  (Pub/Sub drain + targeted sync, 5-min)
-│       └── carditrack-<env>-pipeline-jobs-assessor    (real-time HR assessment, :02/:32)
+│       └── carditrack-<env>-pipeline-jobs-assessor    (real-time HR assessment, 5-min :02 offset)
 ├── Cloud SQL
 │   └── carditrack-<env>-sql  (PostgreSQL 16, private IP only)
 ├── Cloud Storage

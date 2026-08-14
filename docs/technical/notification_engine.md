@@ -1031,8 +1031,8 @@ faster and asks the caregiver for the same thing.
 MAUI push registration, permission flow at M1-07, background handlers, OS notification channels ·
 `NotificationDispatchWorker` · content-free payloads · escalation ladder + `UNDELIVERED_CRITICAL`
 paging · token liveness (passive sweep — see §17) · `PUSH_UNREACHABLE` · quiet hours + preferences ·
-`PushCanaryWorker` · `/internal/enqueue` (GoogleOidc scheme) wired for the pipeline's future
-`SeverityRouter`. **Deferred:** the iOS notification service extension's Xcode project itself (§17).
+`PushCanaryWorker` · `/internal/enqueue` (GoogleOidc scheme) wired for the pipeline's
+`SeverityRouter` (assessor POSTs orange/red alert ids). **Deferred:** the iOS notification service extension's Xcode project itself (§17).
 
 > **Start the Apple Critical Alerts application now regardless (#106).** It is weeks of queue latency
 > at Apple and costs nothing to have in hand early; #107 (APNs key) and #108 (Firebase) stay open for

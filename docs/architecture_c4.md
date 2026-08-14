@@ -61,7 +61,7 @@ C4Container
 
     Container_Boundary(pipe, "AI pipeline (the sanctioned exception to the Worker rule)") {
       Container(rcv, "HealthWebhookReceiver", "Cloud Run service, public", "Authenticates Subscriber secret, drops verification probes, forwards raw to Pub/Sub")
-      Container(jobs, "PipelineJobs", "Cloud Run jobs x3, one image", "--job digest (half-hourly, */30) | aggregate (5-min) | assess (twice hourly, :02/:32); --job enrich exists in the image but has no Cloud Run job or scheduler provisioned yet")
+      Container(jobs, "PipelineJobs", "Cloud Run jobs x3, one image", "--job digest (half-hourly, */30) | aggregate (5-min) | assess (5-min, :02 offset, SSA-gated); --job enrich exists in the image but has no Cloud Run job or scheduler provisioned yet")
       Container(medgemma, "MedGemma", "Ollama on Cloud Run, CPU, IAM-authorised", "Private medical model, Q4_K_M; scale-to-zero")
     }
 
@@ -111,7 +111,7 @@ C4Component
   Container_Boundary(jobsb, "PipelineJobs (one image, --job dispatch)") {
     Component(digest, "DigestGenerationService", "--job digest, half-hourly (*/30); also after --job assess", "Recomputes a member's summary once their readings have moved past the last one, and no more often than the 20-min regeneration floor unless samples indicate a problem, diverge from baseline, jumped from yesterday, or an alert changed; describes their local day in progress; every generation kept as history; no summary from silence")
     Component(drain, "NotificationDrainService", "--job aggregate, 5-min", "Pulls batches, hunts users/{id}, maps healthUserId to DeviceConnection, runs the standard targeted sync. Ack = nothing still needs a retry")
-    Component(assess, "RealtimeAssessmentService", "--job assess, twice hourly (:02/:32)", "Latest 60-min HR window (>=45 min covered), dedup by (member, windowStart) - an unmoved window costs no inference; then DigestGenerationService so a concerning window rewrites the family summary on this execution")
+    Component(assess, "RealtimeAssessmentService", "--job assess, every 5 min (:02 offset)", "Latest 60-min HR window (>=45 min covered); SSA jump (>=3) is the MedGemma gate — ordinary windows are not stored; dedup by (member, windowStart); orange/red POST internal enqueue; then DigestGenerationService so a concerning window rewrites the family summary on this execution")
     Component(ssa, "SsaDecomposition", "Infrastructure, Math.NET EVD", "BK lag-covariance + MathNet.Numerics.Evd: trend + oscillation + noise residual; deviation in noise-RMS units")
     Component(parser, "AssessmentSeverityParser", "Application", "Strict closing 'Severity:' line only; critical/high/medium/low -> red/orange/yellow/green; unparseable NEVER alerts")
     Component(blocks, "MedicalPromptBlocks", "Shared prompt hygiene", "Age/sex/notes - never name or id; injection-framed caregiver notes")
