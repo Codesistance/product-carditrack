@@ -68,7 +68,14 @@
                        HorizontalTextAlignment="Start"
                        LineBreakMode="WordWrap"/>
 
-                <Grid ColumnSpacing="12" Margin="0,24,0,0">
+                <!-- Starts as a single full-width button and only becomes a two-up row when a
+                     cancel is supplied. Both the collapsed column AND the spacing have to go:
+                     a Grid lays its gutter between every adjacent pair of columns, whether or
+                     not one of them measured to nothing, so a 12dp ColumnSpacing left here
+                     indented the lone Confirm button 12dp from the card's content box and cut
+                     12dp off its width — visibly out of line with the message above it.
+                     The gutter is restored alongside the cancel column in code-behind. -->
+                <Grid x:Name="ButtonRow" ColumnSpacing="0" Margin="0,24,0,0">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition x:Name="CancelColumn" Width="0"/>
                         <ColumnDefinition Width="*"/>

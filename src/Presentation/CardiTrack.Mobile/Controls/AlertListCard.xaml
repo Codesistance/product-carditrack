@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8" ?>
 <ContentView xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:controls="clr-namespace:CardiTrack.Mobile.Controls"
              x:Class="CardiTrack.Mobile.Controls.AlertListCard">
 
     <!-- One row of the Alerts List (Figma 101:6525). Two stacked rounded rects, exactly as the
@@ -31,23 +32,19 @@
                   ColumnSpacing="14"
                   RowSpacing="4">
 
-                <!-- Initials rather than a photo: no member photo storage exists yet, so the
-                     tile keeps the designed 50x52 box and fills it with initials. -->
-                <Border Grid.Row="0" Grid.RowSpan="3" Grid.Column="0"
-                        WidthRequest="50" HeightRequest="52"
-                        StrokeThickness="0"
-                        BackgroundColor="{StaticResource SelectedOptionBackground}"
-                        VerticalOptions="Start">
-                    <Border.StrokeShape>
-                        <RoundRectangle CornerRadius="11"/>
-                    </Border.StrokeShape>
-                    <Label x:Name="InitialsLabel"
-                           FontFamily="QuicksandSemiBold"
-                           FontSize="18"
-                           TextColor="{StaticResource Primary}"
-                           HorizontalOptions="Center"
-                           VerticalOptions="Center"/>
-                </Border>
+                <!-- MemberAvatar rather than a tile of this card's own: it is the one box a
+                     CardiMember is shown in, so the person on this row reads the same as they
+                     do on the dashboard hero, Member Detail, and the alert's own detail screen.
+                     This card used to draw its own — a pale tile with blue initials, per Figma
+                     101:6525 — so the same relative changed appearance on the way from this
+                     list into the detail. Sized to match AlertDetailPage's 52, which is where
+                     the title on this row leads.
+
+                     It also carries the photo the list already returns; the local tile was
+                     initials-only and ignored it. -->
+                <controls:MemberAvatar x:Name="Avatar"
+                                       Grid.Row="0" Grid.RowSpan="3" Grid.Column="0"
+                                       BoxWidth="52"/>
 
                 <HorizontalStackLayout Grid.Row="0" Grid.Column="1" Spacing="8">
                     <Border x:Name="SeverityPill"
