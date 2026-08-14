@@ -48,11 +48,11 @@ public partial class DigestGenerationService : IDigestGenerationService
         If "Recent monitoring context" shows an unresolved alert or an observation that is suspicious, say so plainly in your own words and let the suggestion answer it; when that section is absent, never mention monitoring, alerts or observations at all.
 
         Respond with:
-        - headline: a three-to-six-word label for this summary — sentence case, no full stop,
-          no name and no {{NAME}}, not a sentence.
         - summary: 4-6 sentences written to the family member about the readings below, naming
           the person as {{NAME}} — never a relationship stand-in. Cover each kind of reading below, and say plainly
           when a reading is missing instead of padding with reassurance.
+        - headline: a three-to-six-word label for the summary you just wrote — sentence case, no
+          full stop, no name and no {{NAME}}, not a sentence.
         - suggestion: one supportive, specific action the family could take today, at most 25
           words. It must answer something in the readings above closely enough that a reader could tell what it came
           from — a suggestion equally true for any person on any day is not this one. It may
@@ -903,12 +903,6 @@ public partial class DigestGenerationService : IDigestGenerationService
     /// private so IMedicalAiService.GenerateStructuredAsync&lt;T&gt; can be exercised in tests.</summary>
     internal sealed record DigestAiResponse
     {
-        /// <summary>The card title this summary is shown under — see
-        /// <see cref="CleanHeadline"/> for what happens to one that arrives as a sentence.</summary>
-        [Description(
-            "A short label, not a sentence.")]
-        public string? Headline { get; init; }
-
         /// <summary>Named and described rather than left as a bare "text": the description travels
         /// into the JSON Schema the client appends to the prompt, so each field the model is
         /// allowed to emit also states what belongs in it.</summary>
@@ -922,6 +916,33 @@ public partial class DigestGenerationService : IDigestGenerationService
             "4-6 sentences telling the family member how {{NAME}} is doing, naming them as "
             + "{{NAME}} exactly. Not a restatement of the instructions.")]
         public required string Summary { get; init; }
+
+        /// <summary>The card title this summary is shown under — see
+        /// <see cref="CleanHeadline"/> for what happens to one that arrives as a sentence.</summary>
+        /// <remarks>
+        /// <para>
+        /// Declared after <see cref="Summary"/>, and required, because of how the reply is actually
+        /// produced: the schema is Ollama's grammar constraint, so declaration order is generation
+        /// order and an optional nullable property is one the model may simply decline to open. As
+        /// the first, optional field it was declined every time — 214 consecutive generations across
+        /// 25 builds logged "the model returned none" and not one length or echo rejection, while
+        /// the equally optional suggestion and urgency fields, both judged after the summary text,
+        /// arrived every time. Asking for a label before any prose exists is asking the model to
+        /// title something it has not written yet.
+        /// </para>
+        /// <para>
+        /// Required here constrains the grammar, not the reader: <c>string</c> rather than
+        /// <c>string?</c> so the model must emit characters instead of satisfying the schema with a
+        /// null, and <see cref="CleanHeadline"/> still drops anything empty, over-long or echoing
+        /// the brief. The summary is stored either way — a card the apps title themselves is the
+        /// designed fallback, not a failure.
+        /// </para>
+        /// </remarks>
+        [Description(
+            "A three-to-six-word label for the summary above, in sentence case. Names what today's "
+            + "readings show. No full stop, no quotation marks, no name and no {{NAME}}. A label, "
+            + "not a sentence.")]
+        public required string Headline { get; init; }
 
         /// <summary>One supportive action — see <see cref="CleanSuggestion"/>.</summary>
         /// <remarks>
