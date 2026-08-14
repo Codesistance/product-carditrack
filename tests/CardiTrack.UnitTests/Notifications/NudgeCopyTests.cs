@@ -39,8 +39,15 @@ public class NudgeCopyTests
                 .NoBaseline().DaysCaptured(4)
                 .LastActivity(DateOnly.FromDateTime(NudgeContextBuilder.Now).AddDays(-20))
                 .Build(),
-            // All three battery variants. The band-only one is the reason they are three: its copy
+            // All five battery variants (three tiers, plus the two "no percentage reported"
+            // variants) — the band-only ones are why there are five and not three: their copy
             // must carry no {percent}, since the rule has no percentage to substitute.
+            new NudgeContextBuilder()
+                .WithConnections(NudgeContextBuilder.BatteryConnection(25))
+                .Build(),
+            new NudgeContextBuilder()
+                .WithConnections(NudgeContextBuilder.BatteryConnection(15))
+                .Build(),
             new NudgeContextBuilder()
                 .WithConnections(NudgeContextBuilder.BatteryConnection(7))
                 .Build(),

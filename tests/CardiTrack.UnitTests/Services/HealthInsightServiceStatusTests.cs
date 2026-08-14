@@ -240,7 +240,7 @@ public class HealthInsightServiceStatusTests
         // "Never diagnose" now comes from the shared tone block every prompt opens with, rather
         // than from this prompt's own wording — same guarantee, one place.
         Assert.Contains("never diagnose", prompt, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("under 12 words", prompt);
+        Assert.Contains("under 15 words", prompt);
     }
 
     [Fact]

@@ -27,6 +27,8 @@ public class DigestGenerationServiceTests
     private readonly IPatternBaselineRepository _baselines = Substitute.For<IPatternBaselineRepository>();
     private readonly IDigestRepository _digests = Substitute.For<IDigestRepository>();
     private readonly IAlertRepository _alerts = Substitute.For<IAlertRepository>();
+    private readonly IRealtimeAssessmentRepository _realtimeAssessments =
+        Substitute.For<IRealtimeAssessmentRepository>();
     private readonly IMemberQuestionnaireRepository _questionnaires =
         Substitute.For<IMemberQuestionnaireRepository>();
     private readonly IMedicalAiService _medicalAi = Substitute.For<IMedicalAiService>();
@@ -52,6 +54,7 @@ public class DigestGenerationServiceTests
         _unitOfWork.PatternBaselines.Returns(_baselines);
         _unitOfWork.Digests.Returns(_digests);
         _unitOfWork.Alerts.Returns(_alerts);
+        _unitOfWork.RealtimeAssessments.Returns(_realtimeAssessments);
         _unitOfWork.MemberQuestionnaires.Returns(_questionnaires);
 
         // Defaults: one active London-anchored member whose data landed half an hour ago, and who
@@ -65,8 +68,12 @@ public class DigestGenerationServiceTests
         // Still learning by default: no established baseline, so the prompt carries no usual
         // pattern — the shape every pre-existing expectation below was written against.
         _baselines.GetLatestByCardiMemberAsync(_memberId, 30).Returns((PatternBaseline?)null);
-        // A calm member by default: no alerts to change state, nothing already asked.
+        // A calm member by default: no alerts to change state, nothing already asked, and no
+        // recent automated observations — so a proposed question is never treated as gap-backed
+        // unless a test explicitly gives it something to back the gap with.
         _alerts.GetByCardiMemberAsync(_memberId, Arg.Any<bool>()).Returns([]);
+        _realtimeAssessments.GetSinceAsync(_memberId, Arg.Any<DateTime>(), Arg.Any<CancellationToken>())
+            .Returns([]);
         _questionnaires.GetByCardiMemberAsync(_memberId, Arg.Any<CancellationToken>()).Returns([]);
         _questionnaires.HasPendingAsync(_memberId, Arg.Any<CancellationToken>()).Returns(false);
         _questionnaires.GetLatestGeneratedAtAsync(_memberId, Arg.Any<CancellationToken>())
@@ -1150,6 +1157,151 @@ public class DigestGenerationServiceTests
         await _digests.Received(1).AddAsync(Arg.Any<DigestEntry>(), Arg.Any<CancellationToken>());
     }
 
+    // ---- Urgency ----
+
+    [Theory]
+    [InlineData("watch", DigestUrgency.Watch)]
+    [InlineData("check-in", DigestUrgency.CheckIn)]
+    [InlineData("concerning", DigestUrgency.Concerning)]
+    [InlineData("act-now", DigestUrgency.ActNow)]
+    public async Task StoresTheUrgencyTier_WhenItMatchesOneOfTheFour(string urgency, DigestUrgency expected)
+    {
+        ReturnsUrgency(urgency);
+
+        await CreateSut().GenerateDueDigestsAsync(UtcNow);
+
+        await _digests.Received(1).AddAsync(
+            Arg.Is<DigestEntry>(d => d.Urgency == expected), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task DropsTheUrgencyTier_WhenItDoesNotMatchOneOfTheFour()
+    {
+        ReturnsUrgency("kind of concerning I guess");
+
+        await CreateSut().GenerateDueDigestsAsync(UtcNow);
+
+        await _digests.Received(1).AddAsync(
+            Arg.Is<DigestEntry>(d => d.Urgency == null), Arg.Any<CancellationToken>());
+    }
+
+    // ---- Question scope and expiry ----
+
+    [Fact]
+    public async Task StoresAPermanentQuestion_WithNoExpiry()
+    {
+        ReturnsQuestion("Does she have a pacemaker?", questionScope: "permanent");
+
+        await CreateSut().GenerateDueDigestsAsync(UtcNow);
+
+        await _questionnaires.Received(1).AddAsync(Arg.Is<MemberQuestionnaire>(q =>
+            q.Scope == QuestionnaireScope.Permanent && q.ExpiresAtUtc == null));
+    }
+
+    [Fact]
+    public async Task StoresATimeScopedQuestion_WithAnExpiryThirtyDaysOut()
+    {
+        ReturnsQuestion("Are you travelling this week?", questionScope: "time-scoped");
+
+        await CreateSut().GenerateDueDigestsAsync(UtcNow);
+
+        await _questionnaires.Received(1).AddAsync(Arg.Is<MemberQuestionnaire>(q =>
+            q.Scope == QuestionnaireScope.TimeScoped && q.ExpiresAtUtc == UtcNow + TimeSpan.FromDays(30)));
+    }
+
+    [Fact]
+    public async Task DefaultsToTimeScoped_WhenTheModelDidNotSayWhichScope()
+    {
+        ReturnsQuestion("Has anything changed at home recently?");
+
+        await CreateSut().GenerateDueDigestsAsync(UtcNow);
+
+        await _questionnaires.Received(1).AddAsync(Arg.Is<MemberQuestionnaire>(q =>
+            q.Scope == QuestionnaireScope.TimeScoped));
+    }
+
+    // ---- Question gating: the gap-backed ceiling beats the ordinary floor ----
+
+    /// <summary>A day since the last question is well inside the ordinary 7-day floor, but past
+    /// the 12h gap-backed ceiling — proving the shorter path actually applies, not just that the
+    /// interval happened to clear both.</summary>
+    [Fact]
+    public async Task GapBackedQuestion_IsAllowed_SoonerThanTheOrdinaryFloorWouldAllow()
+    {
+        ReturnsQuestion("Has anything changed at home recently?");
+        GivenAlerts(AnAlert(UtcNow.AddHours(-2), resolved: false));
+        _questionnaires.GetLatestGeneratedAtAsync(_memberId, Arg.Any<CancellationToken>())
+            .Returns(UtcNow.AddDays(-1));
+
+        await CreateSut().GenerateDueDigestsAsync(UtcNow);
+
+        await _questionnaires.Received(1).AddAsync(Arg.Any<MemberQuestionnaire>());
+    }
+
+    [Fact]
+    public async Task GapBackedQuestion_StillWaitsOutTheTwelveHourCeiling()
+    {
+        ReturnsQuestion("Has anything changed at home recently?");
+        GivenAlerts(AnAlert(UtcNow.AddHours(-2), resolved: false));
+        _questionnaires.GetLatestGeneratedAtAsync(_memberId, Arg.Any<CancellationToken>())
+            .Returns(UtcNow.AddHours(-6));
+
+        await CreateSut().GenerateDueDigestsAsync(UtcNow);
+
+        await _questionnaires.DidNotReceive().AddAsync(Arg.Any<MemberQuestionnaire>());
+    }
+
+    /// <summary>The exact same one-day interval that <see cref="GapBackedQuestion_IsAllowed_SoonerThanTheOrdinaryFloorWouldAllow"/>
+    /// lets through — without a gap, it still waits for the ordinary floor.</summary>
+    [Fact]
+    public async Task SameIntervalWithoutAGap_StillWaitsForTheOrdinaryFloor()
+    {
+        ReturnsQuestion("Has anything changed at home recently?");
+        _questionnaires.GetLatestGeneratedAtAsync(_memberId, Arg.Any<CancellationToken>())
+            .Returns(UtcNow.AddDays(-1));
+
+        await CreateSut().GenerateDueDigestsAsync(UtcNow);
+
+        await _questionnaires.DidNotReceive().AddAsync(Arg.Any<MemberQuestionnaire>());
+    }
+
+    /// <summary>The gap check isn't alert-only — a Yellow+ automated observation counts too, the
+    /// same definition MonitoringContextSource uses to decide whether the prompt itself mentions
+    /// monitoring.</summary>
+    [Fact]
+    public async Task GapBackedQuestion_AlsoTriggersFromAYellowPlusAssessment_NotJustAnAlert()
+    {
+        ReturnsQuestion("Has anything changed at home recently?");
+        _realtimeAssessments.GetSinceAsync(_memberId, Arg.Any<DateTime>(), Arg.Any<CancellationToken>())
+            .Returns([new RealtimeAssessment
+            {
+                CardiMemberId = _memberId,
+                Severity = AlertSeverity.Yellow,
+                WindowEndUtc = UtcNow.AddHours(-1),
+            }]);
+        _questionnaires.GetLatestGeneratedAtAsync(_memberId, Arg.Any<CancellationToken>())
+            .Returns(UtcNow.AddDays(-1));
+
+        await CreateSut().GenerateDueDigestsAsync(UtcNow);
+
+        await _questionnaires.Received(1).AddAsync(Arg.Any<MemberQuestionnaire>());
+    }
+
+    /// <summary>A permanent question is a first ask of a new standing fact, not a repeat of an
+    /// old one — it clears the pending-question gate alone, without waiting on the anti-fatigue
+    /// floor an ordinary time-scoped question would be held to.</summary>
+    [Fact]
+    public async Task PermanentQuestion_IgnoresTheAntiFatigueFloor_WhenThereIsNoGap()
+    {
+        ReturnsQuestion("Does she have a pacemaker?", questionScope: "permanent");
+        _questionnaires.GetLatestGeneratedAtAsync(_memberId, Arg.Any<CancellationToken>())
+            .Returns(UtcNow.AddHours(-1));
+
+        await CreateSut().GenerateDueDigestsAsync(UtcNow);
+
+        await _questionnaires.Received(1).AddAsync(Arg.Any<MemberQuestionnaire>());
+    }
+
     // ---- Arrangement helpers for the sections above ----
 
     private void GivenPreviousSummary(DateTime generatedAt) =>
@@ -1175,7 +1327,7 @@ public class DigestGenerationServiceTests
         UpdatedDate = updatedAt,
     };
 
-    private void ReturnsQuestion(string question, string? rationale = null) =>
+    private void ReturnsQuestion(string question, string? rationale = null, string? questionScope = null) =>
         _medicalAi.GenerateStructuredAsync<DigestGenerationService.DigestAiResponse>(
                 Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(new DigestGenerationService.DigestAiResponse
@@ -1184,6 +1336,17 @@ public class DigestGenerationServiceTests
                 Summary = "A settled day: steady heart rate and a good night's sleep.",
                 Question = question,
                 QuestionRationale = rationale,
+                QuestionScope = questionScope,
+            });
+
+    private void ReturnsUrgency(string urgency) =>
+        _medicalAi.GenerateStructuredAsync<DigestGenerationService.DigestAiResponse>(
+                Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new DigestGenerationService.DigestAiResponse
+            {
+                Headline = "A settled night",
+                Summary = "A settled day: steady heart rate and a good night's sleep.",
+                Urgency = urgency,
             });
 
     private async Task<string> CapturedPrompt()

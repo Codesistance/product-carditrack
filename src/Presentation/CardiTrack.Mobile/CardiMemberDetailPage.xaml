@@ -223,6 +223,18 @@
                                            IsVisible="False"/>
                                 </Grid>
                                 <Label x:Name="SummaryLabel" Style="{StaticResource Body2Dark}"/>
+
+                                <!-- The model's own urgency read, alongside — never instead of —
+                                     the card's dashboard-driven status colour above. Hidden when
+                                     this generation returned nothing parseable. -->
+                                <HorizontalStackLayout x:Name="UrgencyRow" Spacing="6" IsVisible="False">
+                                    <Ellipse x:Name="UrgencyDot"
+                                             WidthRequest="8" HeightRequest="8"
+                                             VerticalOptions="Center"/>
+                                    <Label x:Name="UrgencyLabel"
+                                           Style="{StaticResource Body2Dark}"
+                                           FontAttributes="Bold"/>
+                                </HorizontalStackLayout>
                             </VerticalStackLayout>
                         </Border>
 

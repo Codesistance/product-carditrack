@@ -322,6 +322,7 @@ public partial class CardiMemberDetailPage : ContentPage
             _digestRendered = true;
 
             ApplySuggestion(digest.Suggestion);
+            ApplyUrgency(digest.Urgency);
 
             if (unchanged)
                 return;
@@ -468,6 +469,32 @@ public partial class CardiMemberDetailPage : ContentPage
         SuggestionsTitleLabel.Text = "Tips";
         SuggestionLabel.Text = suggestion;
         SuggestionsCard.IsVisible = true;
+    }
+
+    /// <summary>
+    /// Shows the model's own urgency read beside the summary — alongside, never instead of, the
+    /// card's dashboard-driven status colour. Hidden when this generation returned nothing
+    /// parseable, the same treatment every optional digest field gets.
+    /// </summary>
+    private void ApplyUrgency(string? urgency)
+    {
+        var (colorKey, text) = urgency switch
+        {
+            "watch" => ("StatusGreen", "Nothing pressing today"),
+            "check-in" => ("StatusYellow", "Worth a check-in today"),
+            "concerning" => ("StatusOrange", "Worth prompt attention"),
+            "act-now" => ("StatusRed", "Worth acting on right away"),
+            _ => (null, null),
+        };
+
+        UrgencyRow.IsVisible = colorKey is not null;
+        if (colorKey is null)
+            return;
+
+        var color = (Color)Microsoft.Maui.Controls.Application.Current!.Resources[colorKey];
+        UrgencyDot.Fill = color;
+        UrgencyLabel.TextColor = color;
+        UrgencyLabel.Text = text;
     }
 
     /// <summary>

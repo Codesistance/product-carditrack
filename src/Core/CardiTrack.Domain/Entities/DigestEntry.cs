@@ -55,6 +55,13 @@ public class DigestEntry
     public string? Suggestion { get; set; }
 
     /// <summary>
+    /// The model's own read of how soon the family should act — see <see cref="DigestUrgency"/>
+    /// for why this runs alongside, never in place of, the deterministic alert engine. Null when
+    /// the model returned nothing parseable, or on entries written before this field existed.
+    /// </summary>
+    public DigestUrgency? Urgency { get; set; }
+
+    /// <summary>
     /// When this generation ran. Part of the key: it is what distinguishes one recomputation of a
     /// day from the next, and ordering by it is how readers find the current summary.
     /// </summary>

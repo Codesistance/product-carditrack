@@ -106,6 +106,54 @@ public class DigestQueryServiceTests
     }
 
     /// <summary>
+    /// The hyphenated wire vocabulary (watch / check-in / concerning / act-now), not a bare
+    /// enum-name lowercase — the same words the AI prompt itself asks the model for.
+    /// </summary>
+    [Theory]
+    [InlineData(DigestUrgency.Watch, "watch")]
+    [InlineData(DigestUrgency.CheckIn, "check-in")]
+    [InlineData(DigestUrgency.Concerning, "concerning")]
+    [InlineData(DigestUrgency.ActNow, "act-now")]
+    public async Task GetDigest_CarriesTheUrgencyTier_AsItsHyphenatedWireValue(
+        DigestUrgency urgency, string expectedWireValue)
+    {
+        _digests.GetLatestAsync(_memberId, DigestAudience.Family, Arg.Any<CancellationToken>())
+            .Returns(new DigestEntry
+            {
+                CardiMemberId = _memberId,
+                LocalDate = new DateOnly(2026, 8, 12),
+                Audience = DigestAudience.Family,
+                Text = "A quiet, steady day.",
+                Urgency = urgency,
+                GeneratedAtUtc = new DateTime(2026, 8, 12, 7, 0, 0, DateTimeKind.Utc),
+            });
+
+        var result = await CreateSut().GetDigestAsync(_userId, _memberId, localDate: null);
+
+        Assert.NotNull(result);
+        Assert.Equal(expectedWireValue, result.Urgency);
+    }
+
+    [Fact]
+    public async Task GetDigest_LeavesUrgencyNull_WhenTheSummaryHasNone()
+    {
+        _digests.GetLatestAsync(_memberId, DigestAudience.Family, Arg.Any<CancellationToken>())
+            .Returns(new DigestEntry
+            {
+                CardiMemberId = _memberId,
+                LocalDate = new DateOnly(2026, 8, 12),
+                Audience = DigestAudience.Family,
+                Text = "A quiet, steady day.",
+                GeneratedAtUtc = new DateTime(2026, 8, 12, 7, 0, 0, DateTimeKind.Utc),
+            });
+
+        var result = await CreateSut().GetDigestAsync(_userId, _memberId, localDate: null);
+
+        Assert.NotNull(result);
+        Assert.Null(result.Urgency);
+    }
+
+    /// <summary>
     /// A day now holds every recomputation, so asking for one names the day and takes the current
     /// summary of it — not whichever row the store happened to return first.
     /// </summary>

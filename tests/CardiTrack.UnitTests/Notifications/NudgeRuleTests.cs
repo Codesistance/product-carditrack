@@ -127,8 +127,8 @@ public class NudgeRuleTests
     // ---------------------------------------------------------------- DEVICE_BATTERY_LOW
 
     [Theory]
-    [InlineData(11, false)]  // just above the threshold
-    [InlineData(10, true)]   // the threshold itself fires
+    [InlineData(31, false)]  // just above the loosest threshold
+    [InlineData(30, true)]   // Warning threshold itself fires
     [InlineData(3, true)]
     public void DeviceBatteryLow_FiresAtTheThresholdAndNotAbove(int level, bool expected)
     {
@@ -140,12 +140,36 @@ public class NudgeRuleTests
     }
 
     [Theory]
-    [InlineData("Empty", "empty")]
-    [InlineData("Low", "low_unknown")]
-    public void DeviceBatteryLow_FiresOnABandWhenNoPercentageIsReported(string status, string variant)
+    [InlineData(30, "warning", NotificationPriority.Medium)]
+    [InlineData(21, "warning", NotificationPriority.Medium)]
+    [InlineData(20, "urgent", NotificationPriority.High)]
+    [InlineData(11, "urgent", NotificationPriority.High)]
+    [InlineData(10, "critical", NotificationPriority.Critical)]
+    [InlineData(1, "critical", NotificationPriority.Critical)]
+    public void DeviceBatteryLow_TierFollowsThePercentage(
+        int level, string variant, NotificationPriority priority)
+    {
+        var context = new NudgeContextBuilder()
+            .WithConnections(NudgeContextBuilder.BatteryConnection(level))
+            .Build();
+
+        var verdict = new DeviceBatteryLowRule().Evaluate(context);
+
+        Assert.Equal(variant, verdict.Variant);
+        Assert.Equal(priority, verdict.Priority);
+        Assert.Equal(level, Assert.Contains("percent", verdict.TemplateData));
+    }
+
+    [Theory]
+    [InlineData("Empty", "critical_empty", NotificationPriority.Critical)]
+    [InlineData("Low", "urgent_unknown", NotificationPriority.High)]
+    public void DeviceBatteryLow_FiresOnABandWhenNoPercentageIsReported(
+        string status, string variant, NotificationPriority priority)
     {
         // batteryLevel and batteryStatus are independently optional on the provider's schema, so a
-        // band with no number has to stand on its own.
+        // band with no number has to stand on its own. Empty means the device has already
+        // stopped regardless of tier math, which is why it is Critical outright rather than
+        // falling through to the Urgent a bare "Low" band gets.
         var context = new NudgeContextBuilder()
             .WithConnections(NudgeContextBuilder.BatteryConnection(level: null, status: status))
             .Build();
@@ -154,21 +178,9 @@ public class NudgeRuleTests
 
         Assert.True(verdict.HasGap);
         Assert.Equal(variant, verdict.Variant);
+        Assert.Equal(priority, verdict.Priority);
         Assert.False(verdict.TemplateData.ContainsKey("percent"),
             "A variant with no {percent} placeholder must not carry one, and vice versa.");
-    }
-
-    [Fact]
-    public void DeviceBatteryLow_CarriesThePercentageWhenItIsKnown()
-    {
-        var context = new NudgeContextBuilder()
-            .WithConnections(NudgeContextBuilder.BatteryConnection(8))
-            .Build();
-
-        var verdict = new DeviceBatteryLowRule().Evaluate(context);
-
-        Assert.Equal("low", verdict.Variant);
-        Assert.Equal(8, Assert.Contains("percent", verdict.TemplateData));
     }
 
     [Fact]
@@ -179,12 +191,31 @@ public class NudgeRuleTests
             .WithConnections(NudgeContextBuilder.BatteryConnection(4, status: "Empty"))
             .Build();
 
-        Assert.Equal("empty", new DeviceBatteryLowRule().Evaluate(context).Variant);
+        Assert.Equal("critical_empty", new DeviceBatteryLowRule().Evaluate(context).Variant);
+    }
+
+    [Fact]
+    public void DeviceBatteryLow_ReportsTheWorstTierWhenSeveralDevicesQualify()
+    {
+        // A Warning-tier reading must not win just because it happens to have a lower raw
+        // percentage than another device's Urgent-band reading would suggest at a glance — tier
+        // orders first, percentage only breaks a tie within the same tier.
+        var worst = Guid.Parse("55555555-5555-5555-5555-555555555555");
+        var context = new NudgeContextBuilder()
+            .WithConnections(
+                NudgeContextBuilder.BatteryConnection(25),        // Warning
+                NudgeContextBuilder.BatteryConnection(5, id: worst)) // Critical
+            .Build();
+
+        var verdict = new DeviceBatteryLowRule().Evaluate(context);
+
+        Assert.Equal(worst.ToString("N"), verdict.Discriminator);
+        Assert.Equal("critical", verdict.Variant);
     }
 
     [Theory]
-    [InlineData(23, false)]  // inside the freshness window
-    [InlineData(25, true)]   // aged out
+    [InlineData(11, false)]  // inside the freshness window
+    [InlineData(13, true)]   // aged out
     public void DeviceBatteryLow_IgnoresAReadingTooOldToMeanAnything(int hoursAgo, bool silent)
     {
         // Past the window the device stopped syncing, which DEVICE_STALE_LONG and the

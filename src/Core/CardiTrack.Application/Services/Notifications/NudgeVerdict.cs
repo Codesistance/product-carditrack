@@ -1,3 +1,5 @@
+using CardiTrack.Domain.Enums;
+
 namespace CardiTrack.Application.Services.Notifications;
 
 /// <summary>
@@ -31,16 +33,29 @@ public sealed record NudgeVerdict
     /// </summary>
     public string? Variant { get; private init; }
 
+    /// <summary>
+    /// Overrides <see cref="NudgeSpec.Priority"/> for this instance of the gap. Null for every
+    /// rule whose severity does not vary by instance — the overwhelming majority, where the
+    /// rule-level <see cref="NudgeSpec.Priority"/> already says everything there is to say. Exists
+    /// for the rare rule (device battery, so far) that reports the same gap at genuinely different
+    /// severities depending on what it found — priority only, never delivery: category still
+    /// decides push/critical-flag/quiet-hours behaviour, so this cannot make one instance of a
+    /// Safety gap ring louder than another.
+    /// </summary>
+    public NotificationPriority? Priority { get; private init; }
+
     public static NudgeVerdict Gap(
         string deepLink,
         string discriminator = "",
         IReadOnlyDictionary<string, object>? templateData = null,
-        string? variant = null) => new()
+        string? variant = null,
+        NotificationPriority? priority = null) => new()
         {
             HasGap = true,
             ActionDeepLink = deepLink,
             Discriminator = discriminator,
             TemplateData = templateData ?? new Dictionary<string, object>(),
-            Variant = variant
+            Variant = variant,
+            Priority = priority
         };
 }

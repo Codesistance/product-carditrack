@@ -40,7 +40,8 @@ public class QuestionnaireServiceTests
         new(_unitOfWork, new CardiMemberAccessService(_unitOfWork), PromptContextFactory.Encryption);
 
     private MemberQuestionnaire Questionnaire(
-        QuestionnaireStatus status = QuestionnaireStatus.Pending, string? answer = null) => new()
+        QuestionnaireStatus status = QuestionnaireStatus.Pending, string? answer = null,
+        QuestionnaireScope scope = QuestionnaireScope.TimeScoped) => new()
         {
             Id = _questionnaireId,
             CardiMemberId = _memberId,
@@ -49,6 +50,7 @@ public class QuestionnaireServiceTests
             TriggerContext = "Sleep has been shorter all week.",
             Status = status,
             GeneratedAtUtc = new DateTime(2026, 8, 12, 9, 0, 0, DateTimeKind.Utc),
+            Scope = scope,
         };
 
     [Fact]
@@ -64,6 +66,17 @@ public class QuestionnaireServiceTests
         Assert.Equal("She moved bedrooms last week.", only.AnswerText);
         Assert.Equal("answered", only.Status);
         Assert.Equal("Sleep has been shorter all week.", only.TriggerContext);
+    }
+
+    [Fact]
+    public async Task Listing_CarriesTheScope_AsItsLowercaseWireValue()
+    {
+        _questionnaires.GetByCardiMemberAsync(_memberId, Arg.Any<CancellationToken>())
+            .Returns([Questionnaire(QuestionnaireStatus.Answered, "Yes, fitted in 2020.", QuestionnaireScope.Permanent)]);
+
+        var result = await CreateSut().GetForMemberAsync(_userId, _memberId, search: null, page: 1, pageSize: 20);
+
+        Assert.Equal("permanent", Assert.Single(result.Answered.Items).Scope);
     }
 
     /// <summary>

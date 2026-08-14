@@ -32,11 +32,14 @@ public class DigestRepository : IDigestRepository
         // and the result was silent: the generator validated its suggestions and assigned them,
         // the row inserted cleanly with the column left NULL, and the apps hid a section they were
         // never given anything to show. No exception, no warning, nothing in a log to find.
+        // Urgency.ToString() would be wrong here: Nullable<T>.ToString() returns "" (not null)
+        // when unset, which would insert an empty string a later read could not parse back as
+        // the enum HasConversion<string>() expects. The null-conditional keeps it a real NULL.
         await _context.Database.ExecuteSqlInterpolatedAsync($"""
             INSERT INTO "DigestEntries"
-                ("CardiMemberId", "LocalDate", "Audience", "Headline", "Text", "Suggestion", "GeneratedAtUtc")
+                ("CardiMemberId", "LocalDate", "Audience", "Headline", "Text", "Suggestion", "Urgency", "GeneratedAtUtc")
             VALUES ({entry.CardiMemberId}, {entry.LocalDate}, {entry.Audience.ToString()},
-                    {entry.Headline}, {entry.Text}, {entry.Suggestion}, {entry.GeneratedAtUtc})
+                    {entry.Headline}, {entry.Text}, {entry.Suggestion}, {entry.Urgency?.ToString()}, {entry.GeneratedAtUtc})
             ON CONFLICT ("CardiMemberId", "LocalDate", "Audience", "GeneratedAtUtc")
             DO NOTHING
             """, ct);

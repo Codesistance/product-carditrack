@@ -8,10 +8,32 @@
              BackgroundColor="{StaticResource PageGround}">
     <Grid RowDefinitions="Auto,*,Auto">
 
-        <controls:HeaderBand Grid.Row="0">
-            <Label Text="Settings"
-                   Style="{StaticResource Heading3}"
-                   TextColor="{StaticResource White}"/>
+        <!-- Back arrow, same reasoning as Alerts: Settings has real deep-link entry points from
+             push notifications (notification preferences, timezone), so a caregiver can land here
+             with nothing behind it in the app's own history and needs an obvious way back. -->
+        <controls:HeaderBand Grid.Row="0" ContentPadding="20,14,20,26">
+            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
+
+                <Border Grid.Column="0"
+                        WidthRequest="40" HeightRequest="40"
+                        StrokeThickness="0"
+                        BackgroundColor="{StaticResource HeaderButtonTint}"
+                        VerticalOptions="Center">
+                    <Border.StrokeShape>
+                        <RoundRectangle CornerRadius="20"/>
+                    </Border.StrokeShape>
+                    <Border.GestureRecognizers>
+                        <TapGestureRecognizer Tapped="OnBackTapped"/>
+                    </Border.GestureRecognizers>
+                    <Image Source="icon_back_white.svg" WidthRequest="20" HeightRequest="20"/>
+                </Border>
+
+                <Label Grid.Column="1"
+                       Text="Settings"
+                       Style="{StaticResource Heading3}"
+                       TextColor="{StaticResource White}"
+                       VerticalTextAlignment="Center"/>
+            </Grid>
         </controls:HeaderBand>
 
         <ScrollView Grid.Row="1">

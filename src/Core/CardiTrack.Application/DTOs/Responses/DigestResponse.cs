@@ -27,5 +27,13 @@ public class DigestResponse
     /// </summary>
     public string? Suggestion { get; init; }
 
+    /// <summary>
+    /// watch / check-in / concerning / act-now — the model's own read of how soon the family
+    /// should act, alongside (never in place of) the dashboard's deterministic alert-driven
+    /// status. Null when the model returned nothing parseable, or on summaries generated before
+    /// this field existed.
+    /// </summary>
+    public string? Urgency { get; init; }
+
     public required DateTime GeneratedAtUtc { get; init; }
 }

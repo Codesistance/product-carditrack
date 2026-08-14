@@ -51,4 +51,16 @@ public class MemberQuestionnaire : BaseEntity
 
     /// <summary>Which caregiver answered — several may share a member, and answers can be edited.</summary>
     public Guid? AnsweredByUserId { get; set; }
+
+    /// <summary>See <see cref="QuestionnaireScope"/>. Defaults to the pre-existing recency-decay
+    /// behaviour, so rows written before this distinction existed carry on exactly as they did.</summary>
+    public QuestionnaireScope Scope { get; set; } = QuestionnaireScope.TimeScoped;
+
+    /// <summary>
+    /// When a <see cref="QuestionnaireScope.TimeScoped"/> answer stops being read back into prompts
+    /// — set once, at generation, from a fixed duration rather than a date the model guessed at (see
+    /// <c>DigestGenerationService.TimeScopedAnswerLifetime</c>). Null for
+    /// <see cref="QuestionnaireScope.Permanent"/>, which never expires on its own.
+    /// </summary>
+    public DateTime? ExpiresAtUtc { get; set; }
 }

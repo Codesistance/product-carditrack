@@ -23,7 +23,7 @@ public class DigestRepositoryTests(TestDatabaseFixture fixture)
         await scope.ServiceProvider.GetRequiredService<ITimeSeriesPartitionService>()
             .EnsureUpcomingPartitionsAsync(daysAhead: 7);
 
-    private static DigestEntry Entry(Guid memberId, string? suggestion) => new()
+    private static DigestEntry Entry(Guid memberId, string? suggestion, DigestUrgency? urgency = null) => new()
     {
         CardiMemberId = memberId,
         LocalDate = DateOnly.FromDateTime(DateTime.UtcNow),
@@ -31,6 +31,7 @@ public class DigestRepositoryTests(TestDatabaseFixture fixture)
         Headline = "A settled night",
         Text = "Steps and heart rate both look ordinary today.",
         Suggestion = suggestion,
+        Urgency = urgency,
         GeneratedAtUtc = DateTime.UtcNow,
     };
 
@@ -82,7 +83,7 @@ public class DigestRepositoryTests(TestDatabaseFixture fixture)
         await EnsurePartitionsAsync(scope);
         var repo = scope.ServiceProvider.GetRequiredService<IDigestRepository>();
         var memberId = Guid.NewGuid();
-        var entry = Entry(memberId, "a");
+        var entry = Entry(memberId, "a", DigestUrgency.CheckIn);
 
         await repo.AddAsync(entry);
 
@@ -94,5 +95,28 @@ public class DigestRepositoryTests(TestDatabaseFixture fixture)
         Assert.Equal(entry.Audience, stored.Audience);
         Assert.Equal(entry.Headline, stored.Headline);
         Assert.Equal(entry.Text, stored.Text);
+        Assert.Equal(entry.Urgency, stored.Urgency);
+    }
+
+    /// <summary>
+    /// The nullable case for Urgency specifically: <c>Nullable&lt;T&gt;.ToString()</c> returns ""
+    /// rather than null when unset, which would have inserted an empty string a later read could
+    /// not parse back as the enum — the same class of bug this file exists to catch for
+    /// Suggestion, at a different column.
+    /// </summary>
+    [Fact]
+    public async Task AddAsync_StoresNoUrgency_WhenTheGenerationProducedNone()
+    {
+        using var scope = fixture.CreateScope();
+        await EnsurePartitionsAsync(scope);
+        var repo = scope.ServiceProvider.GetRequiredService<IDigestRepository>();
+        var memberId = Guid.NewGuid();
+
+        await repo.AddAsync(Entry(memberId, "a", urgency: null));
+
+        var stored = await repo.GetLatestAsync(memberId, DigestAudience.Family);
+
+        Assert.NotNull(stored);
+        Assert.Null(stored.Urgency);
     }
 }
