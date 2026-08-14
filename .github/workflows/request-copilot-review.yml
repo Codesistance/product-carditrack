@@ -45,7 +45,7 @@ jobs:
                   }
                 }
               }
-            }' --jq '[.data.repository.pullRequest.reviewRequests.nodes[].requestedReviewer.login] | map(sub("\\[bot\\]$";"")) | any(. == "copilot-pull-request-reviewer")')"
+            }' --jq '[.data.repository.pullRequest.reviewRequests.nodes[].requestedReviewer.login] | map(select(. != null) | sub("\\[bot\\]$";"")) | any(. == "copilot-pull-request-reviewer")')"
           if [ "${pending}" = "true" ]; then
             echo "Copilot review already requested."
             exit 0
