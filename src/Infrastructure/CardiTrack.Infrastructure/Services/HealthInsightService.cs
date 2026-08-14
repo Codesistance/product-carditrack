@@ -56,17 +56,20 @@ public class HealthInsightService : IHealthInsightService
         Keep both fields factual and concise.
         """ + MedicalPromptBlocks.ContextGuardrail;
 
-    /// <summary><c>CARDITRACK_BASELINE_PROMPT</c> — trend analysis once a baseline exists.</summary>
+    /// <summary>
+    /// <c>CARDITRACK_BASELINE_PROMPT</c> — trend analysis once a 30-day baseline exists. The
+    /// register is <see cref="MedicalPromptBlocks.CaregiverRegister"/>. "Flag for review" was the
+    /// old clinical-queue brief and does not belong on a line a family reads.
+    /// </summary>
     private const string BaselineInstructions =
         MedicalPromptBlocks.Tone + MedicalPromptBlocks.Pronouns + """
-        You are a medical AI assistant performing a health trend analysis for a non-clinical caregiver.
+        Describe this person's health trends against the established baseline.
 
+        """ + MedicalPromptBlocks.CaregiverRegister + """
         Respond with:
-        - summary: the member's overall health trends, including any patterns that warrant
+        - summary: this person's overall health trends, including any patterns that warrant
           caregiver attention.
         - keyFindings: short strings, one per key finding.
-
-        Keep the response factual. Never diagnose — flag for review.
         """ + MedicalPromptBlocks.ContextGuardrail;
 
     /// <summary>

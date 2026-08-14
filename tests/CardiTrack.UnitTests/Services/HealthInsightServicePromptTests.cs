@@ -255,7 +255,10 @@ public class HealthInsightServicePromptTests
 
         Assert.False(result.IsLearning);
         var prompt = CapturedPrompt();
-        Assert.Contains("health trend analysis", prompt);
+        Assert.Contains("established baseline", prompt);
+        Assert.Contains("Write as a caregiver would", prompt);
+        Assert.DoesNotContain("medical AI assistant", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("flag for review", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("30-day — Steps: 5200±810.5", prompt);
         Assert.DoesNotContain("not yet enough history", prompt);
     }

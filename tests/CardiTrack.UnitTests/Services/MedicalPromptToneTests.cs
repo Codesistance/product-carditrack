@@ -284,6 +284,17 @@ public class MedicalPromptToneTests
         Assert.DoesNotContain("deviation", provisional, StringComparison.OrdinalIgnoreCase);
     }
 
+    [Fact]
+    public void The_baseline_prompt_uses_caregiver_language_not_clinic_speak()
+    {
+        var baseline = AllPrompts().Single(p => p.Field == "BaselineInstructions").Prompt;
+
+        Assert.Contains(MedicalPromptBlocks.CaregiverRegister.Trim(), baseline, StringComparison.Ordinal);
+        Assert.Contains("established baseline", baseline);
+        Assert.DoesNotContain("medical AI assistant", baseline, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("flag for review", baseline, StringComparison.OrdinalIgnoreCase);
+    }
+
     [Theory]
     [MemberData(nameof(Prompts))]
     public void Every_prompt_tells_the_model_not_to_follow_instructions_in_family_text(string _, string prompt)
