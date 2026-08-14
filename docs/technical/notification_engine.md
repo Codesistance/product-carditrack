@@ -220,9 +220,10 @@ at `IMPORTANCE_HIGH` with the bundled alert sound and vibration, `carditrack.hea
 `IMPORTANCE_DEFAULT` with the same sound and a shorter vibrate, `carditrack.nudges` at `IMPORTANCE_LOW`.
 High-priority FCM messages wake the app from Doze. Channel ids are versioned because Android freezes
 a channel's sound the first time it is created — v2 is how Safety/Health gained an audible alert
-after v1 shipped without one. The bundled two-tone chime is `carditrack_alert.wav` (44.1 kHz 16-bit
-mono PCM, under a second) — keep the iOS `Resources/` copy and the Android `res/raw/` copy
-byte-identical; APNs takes the filename with extension, Android the resource name without.
+after v1 shipped without one. The bundled alert is `carditrack_alert.wav` (44.1 kHz 16-bit
+PCM, converted from the OM FX / Uppbeat source) — keep the iOS `Resources/` copy and the
+Android `res/raw/` copy byte-identical; APNs takes the filename with extension, Android the
+resource name without.
 
 **Detecting denial.** On every foreground the app reads the OS notification settings (authorization
 status on iOS; `areNotificationsEnabled` plus per-channel importance on Android) and reports them with

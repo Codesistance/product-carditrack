@@ -28,19 +28,40 @@ public class AlertSoundAssetTests
         Assert.Equal("RIFF", Encoding.ASCII.GetString(bytes, 0, 4));
         Assert.Equal("WAVE", Encoding.ASCII.GetString(bytes, 8, 4));
 
-        var audioFormat = BitConverter.ToUInt16(bytes, 20);
-        var channels = BitConverter.ToUInt16(bytes, 22);
-        var sampleRate = BitConverter.ToInt32(bytes, 24);
-        var byteRate = BitConverter.ToInt32(bytes, 28);
-        var bitsPerSample = BitConverter.ToUInt16(bytes, 34);
+        var fmt = RequireChunk(bytes, "fmt ");
+        var data = RequireChunk(bytes, "data");
+
+        var audioFormat = BitConverter.ToUInt16(fmt, 0);
+        var channels = BitConverter.ToUInt16(fmt, 2);
+        var sampleRate = BitConverter.ToInt32(fmt, 4);
+        var bitsPerSample = BitConverter.ToUInt16(fmt, 14);
 
         Assert.Equal(1, audioFormat); // linear PCM — Apple's custom-sound requirement
-        Assert.Equal(1, channels);
+        Assert.InRange(channels, 1, 2);
         Assert.Equal(44100, sampleRate);
         Assert.Equal(16, bitsPerSample);
 
-        var durationSeconds = (bytes.Length - 44) / (double)byteRate;
-        Assert.InRange(durationSeconds, 0.3, 5.0); // distinctive, well under Apple's 30s cap
+        var bytesPerSec = sampleRate * channels * (bitsPerSample / 8);
+        var durationSeconds = data.Length / (double)bytesPerSec;
+        Assert.InRange(durationSeconds, 0.3, 30.0); // Apple rejects custom sounds over 30s
+    }
+
+    private static byte[] RequireChunk(byte[] wav, string fourCc)
+    {
+        var offset = 12;
+        while (offset + 8 <= wav.Length)
+        {
+            var id = Encoding.ASCII.GetString(wav, offset, 4);
+            var size = BitConverter.ToInt32(wav, offset + 4);
+            var start = offset + 8;
+            if (size < 0 || start + size > wav.Length)
+                break;
+            if (id == fourCc)
+                return wav.AsSpan(start, size).ToArray();
+            offset = start + size + (size & 1);
+        }
+
+        throw new InvalidOperationException($"WAV is missing a {fourCc} chunk.");
     }
 
     private static string FindRepoRoot()
