@@ -197,7 +197,7 @@ public partial class QuickActionRow : ContentView
         var addNow = await popups.ConfirmInfoAsync(prompt, "No number yet", "Add number", "Not now");
         if (addNow)
             await Shell.Current.GoToAsync(
-                $"{EditCardiMemberPage.Route}?memberId={target.CardiMemberId}&focus={focus}");
+                $"{EditCardiMemberPage.Route}?memberId={target.CardiMemberId}&focus={Uri.EscapeDataString(focus)}");
     }
 
     private Task ShowWarningAsync(string message) =>

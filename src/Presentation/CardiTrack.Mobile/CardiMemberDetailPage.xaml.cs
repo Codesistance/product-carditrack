@@ -287,6 +287,7 @@ public partial class CardiMemberDetailPage : ContentPage
         // adding one is one tap from this card rather than hunting the header pencil (#280).
         PhoneCallButton.IsVisible = hasPhone;
         PhoneEditButton.IsVisible = !hasPhone && member.IsPrimaryCaregiver;
+        PhoneEditTarget.InputTransparent = !member.IsPrimaryCaregiver;
 
         MedicalNotesLabel.Text = string.IsNullOrWhiteSpace(member.MedicalNotes)
             ? "No medical notes yet."
@@ -654,7 +655,7 @@ public partial class CardiMemberDetailPage : ContentPage
             return;
 
         await Shell.Current.GoToAsync(
-            $"{EditCardiMemberPage.Route}?memberId={_memberId}&focus={EditCardiMemberPage.FocusPhone}");
+            $"{EditCardiMemberPage.Route}?memberId={_memberId}&focus={Uri.EscapeDataString(EditCardiMemberPage.FocusPhone)}");
     }
 
     private async void OnEditClicked(object? sender, EventArgs e) =>

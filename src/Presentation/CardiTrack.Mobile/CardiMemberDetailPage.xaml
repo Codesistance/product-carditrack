@@ -343,21 +343,25 @@
 
                         <!-- Personal phone (issue #162) — distinct from the emergency contact
                              above; same graceful-absence treatment. Primary caregivers can tap
-                             the card (or the edit affordance when empty) to jump straight to
-                             the phone field on M1-14 — #280. -->
+                             the number column (or the edit affordance when empty) to jump
+                             straight to the phone field on M1-14 — #280. The call/edit button
+                             stays outside that tap target so the gestures cannot collide. -->
                         <Border x:Name="PhoneCard"
                                 Style="{StaticResource ElevatedCard}">
-                            <Border.GestureRecognizers>
-                                <TapGestureRecognizer Tapped="OnEditPhoneTapped"/>
-                            </Border.GestureRecognizers>
                             <VerticalStackLayout Spacing="10">
                                 <Label Text="Phone"
                                        Style="{StaticResource DashboardSectionTitle}"/>
                                 <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
-                                    <Label x:Name="PhoneLabel"
-                                           Grid.Column="0"
-                                           Style="{StaticResource Body2}"
-                                           VerticalOptions="Center"/>
+                                    <VerticalStackLayout x:Name="PhoneEditTarget"
+                                                         Grid.Column="0"
+                                                         VerticalOptions="Center">
+                                        <VerticalStackLayout.GestureRecognizers>
+                                            <TapGestureRecognizer Tapped="OnEditPhoneTapped"/>
+                                        </VerticalStackLayout.GestureRecognizers>
+                                        <Label x:Name="PhoneLabel"
+                                               Style="{StaticResource Body2}"
+                                               VerticalOptions="Center"/>
+                                    </VerticalStackLayout>
                                     <Border x:Name="PhoneCallButton"
                                             Grid.Column="1"
                                             WidthRequest="44" HeightRequest="44"
