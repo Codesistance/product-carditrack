@@ -59,11 +59,9 @@ public class DashboardService : IDashboardService
                 break;
         }
 
-        // Two bounded reads rather than every active alert: status/unread only need the
-        // unresolved set, and the hero strip only shows RecentAlertCount. Producers that
-        // resolve alerts still use the tracked GetByCardiMemberAsync.
-        var recentAlerts = await _unitOfWork.Alerts.GetRecentByCardiMemberAsync(
-            cardiMemberId, RecentAlertCount);
+        // One read rather than every active alert: the status colour, the unread count and the
+        // Recent Alerts strip are all readings of the same unresolved set. Producers that resolve
+        // alerts still use the tracked GetByCardiMemberAsync.
         var unresolvedAlerts = await _unitOfWork.Alerts.GetUnresolvedByCardiMemberAsync(cardiMemberId);
 
         // The established 30-day baseline specifically, not the provisional 14/7-day one that
@@ -124,7 +122,15 @@ public class DashboardService : IDashboardService
             Metrics = metrics,
             Weather = WeatherSnapshotMapper.From(
                 member.EnvironmentalContextConsentGranted, environmentalReading),
-            RecentAlerts = recentAlerts
+            // Unresolved only, newest first. This strip used to be built from every alert whose
+            // row was still IsActive — which is the soft-delete flag, and nothing about an
+            // episode ending touches it. Acknowledging records who looked and resolution closes
+            // the episode; neither deactivated the row, so an alert the producer had already
+            // called over sat here until five newer ones pushed it out, on the same screen whose
+            // status colour had long since moved on. Same read HealthStatus and UnreadAlertCount
+            // above already made, and the same one HealthInsightService makes for the hero line.
+            RecentAlerts = unresolvedAlerts
+                .Take(RecentAlertCount)
                 .Select(a => new DashboardAlertSummary
                 {
                     AlertId = a.Id,
@@ -133,7 +139,7 @@ public class DashboardService : IDashboardService
                     Title = a.Title,
                     Message = a.Message,
                     TriggeredAt = a.TriggeredDate,
-                    IsAcknowledged = a.AcknowledgedDate is not null,
+                    Status = AlertLifecycle.StatusLabel(a),
                 })
                 .ToList(),
             GeneratedAt = DateTime.UtcNow,

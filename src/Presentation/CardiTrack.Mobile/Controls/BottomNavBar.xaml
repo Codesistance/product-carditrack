@@ -6,13 +6,24 @@
     <!-- Figma 101:2949. Shell's native tab bar can't carry the upward shadow, the white
          hairline, or a per-state icon, so the bar is drawn here and Shell's own is hidden.
          Square corners are deliberate: the design's bar is edge-to-edge, and CLAUDE.md
-         keeps radius off page-level chrome. -->
+         keeps radius off page-level chrome.
+
+         The bottom inset is claimed here rather than by the page, which releases its own
+         (see each tab page's SafeAreaEdges). Left to the page, the inset was reserved above
+         this bar and painted in the page ground, so the white bar floated on a strip of
+         nothing with the gesture pill sitting on it — a page-level edge that CLAUDE.md's
+         full-bleed rule does not allow. Claimed here, the white runs to the bottom of the
+         screen and the inset becomes padding under the icons, which is what it is for.
+
+         MinimumHeightRequest, not HeightRequest: the inset has to add to the bar's 77, and a
+         fixed height would have squeezed the icons up into it instead. -->
     <Border x:Name="BarBorder"
             BackgroundColor="{StaticResource White}"
             Stroke="{StaticResource White}"
             StrokeThickness="0"
             Padding="0"
-            HeightRequest="77"
+            MinimumHeightRequest="77"
+            SafeAreaEdges="None, None, None, Container"
             VerticalOptions="End">
         <Border.Shadow>
             <Shadow Brush="#014297" Opacity="0.11" Radius="14" Offset="0,-5"/>

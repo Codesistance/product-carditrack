@@ -6,7 +6,12 @@
              Shell.NavBarIsVisible="False"
              Shell.TabBarIsVisible="False"
              BackgroundColor="{StaticResource PageGround}">
-    <Grid RowDefinitions="Auto,*,Auto">
+    <!-- Safe area is claimed per edge, and by this layout rather than by the ContentPage:
+         SafeAreaEdges is honoured on layouts, and setting it on the page above has no
+         effect on Android (verified on API 37). Top keeps the status-bar inset the header
+         band is drawn against; bottom releases it, so BottomNavBar can run to the screen
+         edge and pad itself instead — see that control. -->
+    <Grid RowDefinitions="Auto,*,Auto" SafeAreaEdges="None, Container, None, None">
 
         <!-- Back arrow, same treatment as Alerts and Settings — a tab root falls back to the
              dashboard when there is no history of its own to pop. -->

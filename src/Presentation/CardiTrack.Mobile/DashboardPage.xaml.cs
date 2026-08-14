@@ -16,6 +16,13 @@ public partial class DashboardPage : ContentPage
     private const string DismissedSleepAlertKey = "DismissedSleepAlertId";
     private static readonly TimeSpan StaleThreshold = TimeSpan.FromHours(2);
 
+    /// <summary>
+    /// How long the hero card waits for the live status line before it admits to waiting — see
+    /// <see cref="LoadCurrentStatusAsync"/>. Long enough that a cached answer never flashes a
+    /// placeholder, short enough that a generation isn't left looking like a finished screen.
+    /// </summary>
+    private static readonly TimeSpan StatusLoadingThreshold = TimeSpan.FromMilliseconds(1500);
+
     /// <summary>Columns in the Key Metrics grid; see <see cref="LayoutMetricCards"/>.</summary>
     private const int MetricsPerRow = 2;
 
@@ -370,7 +377,7 @@ public partial class DashboardPage : ContentPage
 
         // Poor-sleep nudge: points at the real, unacknowledged Sleep alert StatisticalAlertWorker
         // already raises, rather than a second judgement derived from today's metric alone.
-        var sleepAlert = data.RecentAlerts.FirstOrDefault(a => a.Type == "Sleep" && !a.IsAcknowledged);
+        var sleepAlert = data.RecentAlerts.FirstOrDefault(a => a.Type == "Sleep" && a.Status == "new");
         var dismissedId = Preferences.Default.Get(DismissedSleepAlertKey, string.Empty);
         _currentSleepAlertId = sleepAlert?.AlertId;
         SleepConcernBanner.IsVisible = sleepAlert is not null
@@ -568,16 +575,34 @@ public partial class DashboardPage : ContentPage
         if (data.HealthStatus is "unknown" or "paused")
             return;
 
-        // Say so, rather than showing the per-tier copy as though it were the answer and then
-        // swapping it out under the reader a few seconds later. Skipped when the card is already
-        // showing a live line for this tier: the server caches the message for minutes, so an
-        // unattended tick would blank a perfectly good line to re-fetch the same words.
-        if (!HeroCard.HasLiveStatusFor(data.HealthStatus))
+        var pending = _api.GetCurrentStatusAsync(data.CardiMemberId);
+
+        // Only say "Loading" once the wait is long enough to be worth admitting to.
+        //
+        // This used to blank the card the moment the call started, on the reasoning that showing
+        // the per-tier copy as though it were the answer and swapping it under the reader a few
+        // seconds later was the worse of the two. That reasoning holds for a slow call and not for
+        // a quick one, and the quick one is the ordinary case — the server caches this line for
+        // minutes, so most loads answer from cache in well under a second. What the unconditional
+        // version cost was the cold path: the generation runs to a 25-second server budget, and a
+        // caregiver opening the dashboard could sit on "Please wait — checking how they're doing"
+        // for all of it, with the tier's own perfectly good sentence withheld the whole time.
+        //
+        // Waiting the threshold gets both: a cached answer goes straight from the static line to
+        // the live one with no placeholder in between, and a generation still says what it is
+        // doing rather than leaving a stale-looking sentence to be replaced without warning.
+        //
+        // Skipped when the card already shows a live line for this tier — an unattended tick
+        // would otherwise blank a good line to re-fetch the same words.
+        if (!HeroCard.HasLiveStatusFor(data.HealthStatus)
+            && await Task.WhenAny(pending, Task.Delay(StatusLoadingThreshold)) != pending)
+        {
             HeroCard.ShowStatusLoading();
+        }
 
         try
         {
-            var status = await _api.GetCurrentStatusAsync(data.CardiMemberId);
+            var status = await pending;
             if (status.Message is { } message)
             {
                 HeroCard.ApplyDynamicMessage(status.Headline, message, data.HealthStatus);
@@ -592,8 +617,9 @@ public partial class DashboardPage : ContentPage
         }
         catch (ApiException)
         {
-            // Put the static copy back: the card is showing "Loading", and leaving it there would
-            // turn a failed side-call into a screen that never resolves.
+            // Put the static copy back: the card may be showing "Loading", and leaving it there
+            // would turn a failed side-call into a screen that never resolves. Harmless when it
+            // isn't — Apply re-renders the same tier, and restores the live line if one survived.
             HeroCard.Apply(data);
             // Static per-tier copy stays. Nothing to show the caregiver about this failure —
             // it isn't actionable and isn't worth interrupting them for.

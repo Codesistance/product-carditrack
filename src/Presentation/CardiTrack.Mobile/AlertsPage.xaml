@@ -10,7 +10,12 @@
     <!-- M1-10 Alerts List. Figma 101:6525 (default), 101:3840 (empty), 101:6206 (filtered
          empty), 101:4509 (loading). -->
 
-    <Grid RowDefinitions="Auto,Auto,*,Auto">
+    <!-- Safe area is claimed per edge, and by this layout rather than by the ContentPage:
+         SafeAreaEdges is honoured on layouts, and setting it on the page above has no
+         effect on Android (verified on API 37). Top keeps the status-bar inset the header
+         band is drawn against; bottom releases it, so BottomNavBar can run to the screen
+         edge and pad itself instead — see that control. -->
+    <Grid RowDefinitions="Auto,Auto,*,Auto" SafeAreaEdges="None, Container, None, None">
 
         <!-- Back arrow and title. Figma's header also carried a filter button; it duplicated the
              chip row below and is gone, leaving the chips as the single filter affordance. They
