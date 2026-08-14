@@ -28,4 +28,11 @@ public static class TelemetryNames
     /// would make it for a normal external call.
     /// </summary>
     public const string PushSource = "CardiTrack.Push";
+
+    /// <summary>
+    /// Span/tag key for a <c>NotificationDelivery</c> id, stamped on every push-spine span
+    /// (enqueue, dispatch attempt, FCM send, worker tick, ack) so the whole lifecycle is
+    /// filterable by one value even where the spans don't share a trace id.
+    /// </summary>
+    public const string PushDeliveryIdTag = "notification.delivery_id";
 }

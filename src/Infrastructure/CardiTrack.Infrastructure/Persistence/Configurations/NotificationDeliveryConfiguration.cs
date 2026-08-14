@@ -62,6 +62,8 @@ public class NotificationDeliveryConfiguration : IEntityTypeConfiguration<Notifi
         builder.Property(d => d.SentDate);
         builder.Property(d => d.DeliveredDate);
 
+        builder.Property(d => d.SendTraceParent).HasMaxLength(64);
+
         builder.Property(d => d.EscalationStage)
             .IsRequired()
             .HasConversion<string>()

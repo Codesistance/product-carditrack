@@ -3,10 +3,12 @@ using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Interfaces.Security;
 using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Application.Services.Notifications;
+using CardiTrack.Infrastructure.Diagnostics;
 using CardiTrack.Infrastructure.ExternalClients.Push;
 using CardiTrack.Infrastructure.Repositories;
 using CardiTrack.Infrastructure.Security;
 using CardiTrack.Shared;
+using CardiTrack.Shared.Telemetry;
 using FirebaseAdmin;
 using FirebaseAdmin.Messaging;
 using Google.Apis.Auth.OAuth2;
@@ -74,7 +76,10 @@ public static class PushServiceExtensions
 
         // INotificationChannel has exactly one implementation with no runtime-selectable axis —
         // unlike AI:Public's provider-kind switch, there is nothing to key this registration by.
-        services.AddScoped<INotificationChannel, FcmNotificationChannel>();
+        // Traced (see TracingProxy): the proxy span is the outer per-call boundary around the
+        // existing hand-written fcm.send span, catching every call uniformly including any future
+        // method this class gains that nobody remembers to hand-instrument.
+        services.AddScopedWithTracing<INotificationChannel, FcmNotificationChannel>(PushTelemetry.Source);
 
         services.AddSingleton<IAckTokenService>(
             _ => new AckTokenService(configLoader.GetRequired(ConfigurationKeys.Notifications.AckTokenKey)));
@@ -82,8 +87,11 @@ public static class PushServiceExtensions
         // DispatchService's own dependency — belongs here so every AddPushServices caller gets it.
         services.AddScoped<INotificationGapResolver, NotificationGapResolver>();
 
-        services.AddScoped<IDispatchService, DispatchService>();
-        services.AddScoped<IAckDeliveryService, AckDeliveryService>();
+        // Traced (see TracingProxy): outer per-call boundary around the notification.enqueue/
+        // .attempt spans DispatchService/AckDeliveryService already start by hand, and — unlike
+        // those — covers RetryClaimedAsync's non-send early-return branches too.
+        services.AddScopedWithTracing<IDispatchService, DispatchService>(PushTelemetry.Source);
+        services.AddScopedWithTracing<IAckDeliveryService, AckDeliveryService>(PushTelemetry.Source);
         services.AddScoped<IDeviceTokenService, DeviceTokenService>();
         services.AddScoped<INotificationPreferenceService, NotificationPreferenceService>();
         services.AddScoped<INotificationContentService, NotificationContentService>();

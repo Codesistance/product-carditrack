@@ -48,6 +48,7 @@ public class FcmNotificationChannel : INotificationChannel
         NotificationDelivery delivery, PushDeviceToken token, CancellationToken ct = default)
     {
         using var activity = PushTelemetry.Source.StartActivity("fcm.send", ActivityKind.Client);
+        activity?.SetTag(PushTelemetry.DeliveryIdTag, delivery.Id.ToString());
         activity?.SetTag(PushTelemetry.CategoryTag, delivery.Category.ToString());
 
         var message = BuildMessage(delivery, token);

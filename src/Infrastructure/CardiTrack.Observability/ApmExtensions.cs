@@ -1,3 +1,5 @@
+using System.Net;
+using System.Security.Claims;
 using CardiTrack.Shared;
 using CardiTrack.Shared.Telemetry;
 using Microsoft.AspNetCore.Builder;
@@ -136,6 +138,15 @@ public static class ApmExtensions
         // noise. They still ship fine; they're just invisible to HttpClientInstrumentation.
         var shippingHosts = provider.ShippingHosts(options);
 
+        // A failed OTLP export (network error, non-2xx, serialization failure) is otherwise
+        // completely silent — the SDK only reports it through its own EventSource, which nothing
+        // subscribes to by default. Provider-agnostic so any engine gets this, not just Datadog.
+        builder.Services.AddHostedService<OtlpExportDiagnostics>();
+
+        // Re-logs a failed span's exception as a normal structured log line, so it's searchable
+        // in Datadog Logs like any other error instead of only visible inside span data.
+        builder.Services.AddSingleton<ExceptionLoggingSpanProcessor>();
+
         var telemetry = builder.Services.AddOpenTelemetry()
             // service.version is the release the spans belong to — the deploy's semver tag,
             // not the assembly version (which stays at the SDK default nobody stamps).
@@ -144,6 +155,7 @@ public static class ApmExtensions
             .WithTracing(tracing =>
             {
                 tracing
+                    .AddProcessor(sp => sp.GetRequiredService<ExceptionLoggingSpanProcessor>())
                     .SetSampler(new ParentBasedSampler(
                         new NoiseFilteringSampler(new TraceIdRatioBasedSampler(options.ClampedSampleRatio))))
                     .AddAspNetCoreInstrumentation(instrumentation =>
@@ -153,6 +165,26 @@ public static class ApmExtensions
                         instrumentation.Filter = context =>
                             !context.Request.Path.StartsWithSegments("/health")
                             && !context.Request.Path.StartsWithSegments("/healthz");
+                        // Client IP, masked (last IPv4 octet / last 16 IPv6 bits dropped) — useful
+                        // for abuse/rate-limit investigation without pinning down an exact device.
+                        instrumentation.EnrichWithHttpRequest = (activity, request) =>
+                        {
+                            var maskedIp = MaskClientIp(request.HttpContext.Connection.RemoteIpAddress);
+                            if (maskedIp is not null)
+                                activity.SetTag("http.client_ip", maskedIp);
+                        };
+                        // Fires at request end (Activity stop), not start — EnrichWithHttpRequest
+                        // runs before the middleware pipeline (including authentication) has had a
+                        // chance to populate HttpContext.User. Auth0UserId only, pseudonymous —
+                        // never email: UserContextMiddleware.cs already made this call explicitly
+                        // (pushing email into telemetry "made a health service's user list readable
+                        // from telemetry"), and this must not reopen that.
+                        instrumentation.EnrichWithHttpResponse = (activity, response) =>
+                        {
+                            var auth0UserId = response.HttpContext.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                            if (!string.IsNullOrEmpty(auth0UserId))
+                                activity.SetTag("enduser.id", auth0UserId);
+                        };
                     })
                     .AddHttpClientInstrumentation(instrumentation =>
                     {
@@ -214,7 +246,18 @@ public static class ApmExtensions
     /// </summary>
     private static ResourceBuilder ConfigureApmResource(ResourceBuilder resource, string serviceName)
     {
-        resource.AddService(serviceName: serviceName, serviceVersion: DeploymentInfo.Version);
+        resource.AddService(
+            serviceName: serviceName,
+            serviceVersion: DeploymentInfo.Version,
+            serviceInstanceId: Environment.MachineName);
+
+        resource.AddAttributes(
+        [
+            new KeyValuePair<string, object>("service.namespace", "carditrack"),
+            new KeyValuePair<string, object>("host.name", Environment.MachineName),
+            new KeyValuePair<string, object>("process.runtime.name", ".NET"),
+            new KeyValuePair<string, object>("process.runtime.version", Environment.Version.ToString()),
+        ]);
 
         if (DeploymentInfo.EnvironmentName is { } environmentName)
             resource.AddAttributes(
@@ -224,6 +267,24 @@ public static class ApmExtensions
             ]);
 
         return resource;
+    }
+
+    /// <summary>
+    /// Zeroes the last IPv4 octet or the last 16 bits of an IPv6 address — enough to group by
+    /// rough origin (abuse/rate-limit investigation) without pinning down an exact device.
+    /// </summary>
+    private static string? MaskClientIp(IPAddress? address)
+    {
+        if (address is null)
+            return null;
+
+        var bytes = address.GetAddressBytes();
+        if (address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork)
+            bytes[^1] = 0;
+        else
+            Array.Clear(bytes, bytes.Length - 2, 2);
+
+        return new IPAddress(bytes).ToString();
     }
 
     /// <summary>

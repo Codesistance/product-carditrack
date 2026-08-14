@@ -1,5 +1,7 @@
+using System.Diagnostics;
 using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Domain.Enums;
+using CardiTrack.Shared.Telemetry;
 
 namespace CardiTrack.Application.Services.Notifications;
 
@@ -31,6 +33,15 @@ public class AckDeliveryService : IAckDeliveryService
         if (delivery is null || delivery.PushDeviceTokenId != pushDeviceTokenId)
             return;
 
+        // Tag and link the ack request's own span (ASP.NET Core auto-instrumentation started it;
+        // Application never starts its own here) back to the trace that sent this delivery — a
+        // real shared trace id isn't reliable across a gap the escalation ladder can stretch to
+        // 900s, so a link is the correlation primitive, not trace-id continuation.
+        var current = Activity.Current;
+        current?.SetTag(PushDispatchTelemetry.DeliveryIdTag, deliveryId.ToString());
+        if (TraceLinking.TryBuildLink(delivery.SendTraceParent) is { } link)
+            current?.AddLink(link);
+
         var utcNow = _timeProvider.GetUtcNow().UtcDateTime;
 
         // Already delivered — a replay, not a new event. Escalation is already halted; touching
@@ -41,6 +52,13 @@ public class AckDeliveryService : IAckDeliveryService
         delivery.State = DeliveryState.Delivered;
         delivery.DeliveredDate = utcNow;
         _unitOfWork.NotificationDeliveries.Update(delivery);
+
+        // The SLO metric (notification_engine.md §6.1) — p99 for Safety must stay under 60s.
+        if (delivery.SentDate is { } sentDate)
+        {
+            PushDispatchTelemetry.TimeToAck.Record((utcNow - sentDate).TotalSeconds,
+                new KeyValuePair<string, object?>(PushDispatchTelemetry.CategoryTag, delivery.Category.ToString()));
+        }
 
         var token = await _unitOfWork.PushDeviceTokens.GetByIdAsync(pushDeviceTokenId);
         if (token is not null)

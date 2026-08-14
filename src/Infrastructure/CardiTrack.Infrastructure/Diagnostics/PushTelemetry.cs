@@ -40,11 +40,7 @@ public static class PushTelemetry
     public static readonly Counter<long> UndeliveredCritical = Meter.CreateCounter<long>(
         "notification.undelivered_critical", description: "Escalation exhausted with no ack from anyone — paged operational event");
 
-    /// <summary>The SLO metric (§6.1) — p99 for Safety must stay under 60s. Alerting on the breach is a Datadog monitor, not code.</summary>
-    public static readonly Histogram<double> TimeToAck = Meter.CreateHistogram<double>(
-        "notification.time_to_ack", unit: "s", description: "Seconds from enqueue to client ack");
-
-    /// <summary>Per-call FCM RPC duration, independent of <see cref="TimeToAck"/> — this measures the send, not the round trip to the device.</summary>
+    /// <summary>Per-call FCM RPC duration, independent of the enqueue-to-ack SLO metric (<c>notification.time_to_ack</c>, recorded by CardiTrack.Application's PushDispatchTelemetry where the ack happens) — this measures the send, not the round trip to the device.</summary>
     public static readonly Histogram<double> FcmSendDuration = Meter.CreateHistogram<double>(
         "fcm.send.duration", unit: "s", description: "Duration of a single FCM SendAsync call");
 
@@ -55,4 +51,10 @@ public static class PushTelemetry
     public const string ReasonTag = "notification.reason";
     public const string StageTag = "notification.stage";
     public const string ErrorTypeTag = "error.type";
+    public const string PhaseTag = "notification.phase";
+    public const string ClaimedCountTag = "notification.claimed_count";
+    public const string CandidateCountTag = "notification.candidate_count";
+
+    /// <summary>Shared with CardiTrack.Application's own ActivitySource instance of the same name (see TelemetryNames' remarks) so every push-spine span, in either project, tags the same key.</summary>
+    public const string DeliveryIdTag = TelemetryNames.PushDeliveryIdTag;
 }
