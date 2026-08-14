@@ -1130,7 +1130,7 @@ public class DigestGenerationServiceTests
                 Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(new DigestGenerationService.DigestAiResponse
             {
-                Summary = "You are summarising the readings for a family member.",
+                Summary = "Here are the recent readings for their family.",
                 Question = "Has anything changed at home recently?",
             });
 
