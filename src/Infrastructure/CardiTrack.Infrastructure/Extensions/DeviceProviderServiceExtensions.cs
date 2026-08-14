@@ -136,6 +136,7 @@ public static class DeviceProviderServiceExtensions
                 sp.GetRequiredService<IActivityLogAggregationService>(),
                 sp.GetRequiredService<IGranularIngestionService>(),
                 sp.GetRequiredService<IUnitOfWork>(),
+                sp.GetRequiredService<INotificationGapResolver>(),
                 sp.GetRequiredService<IOptions<List<DeviceProviderSettings>>>()));
 
         return services;

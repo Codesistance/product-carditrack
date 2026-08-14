@@ -115,4 +115,69 @@ public class NotificationRepositoryTests(TestDatabaseFixture fixture)
 
         Assert.Equal(ByUrgency, first.Concat(second).Select(r => r.Priority));
     }
+
+    // ── The dispatch worker's push sweep ──────────────────────────────────────
+
+    /// <summary>
+    /// Every state the sweep must exclude, seeded together. Each exclusion is a different way for a
+    /// caregiver's phone to ring when it should not, and the filtered index this rides on makes the
+    /// predicate worth pinning against real SQL rather than a substitute's say-so.
+    /// </summary>
+    [Fact]
+    public async Task GetPendingPushAsync_ReturnsOnlyOpenUnpushedOwnedRowsForTheGivenRules()
+    {
+        using var scope = fixture.CreateScope();
+        var context = scope.ServiceProvider.GetRequiredService<CardiTrackDbContext>();
+        var userId = Guid.NewGuid();
+
+        var wanted = Row(userId, NotificationPriority.Critical, "DEVICE_BATTERY_LOW");
+
+        var alreadyPushed = Row(userId, NotificationPriority.Critical, "DEVICE_AUTH_BROKEN");
+        alreadyPushed.PushedDate = Detected;
+
+        // A snooze the caregiver chose is not a state to push through.
+        var snoozed = Row(userId, NotificationPriority.Critical, "DEVICE_BATTERY_LOW");
+        snoozed.Fingerprint = $"{userId:N}-snoozed";
+        snoozed.State = NotificationState.Snoozed;
+        snoozed.SnoozedUntil = Detected.AddHours(12);
+
+        var resolved = Row(userId, NotificationPriority.Critical, "DEVICE_BATTERY_LOW");
+        resolved.Fingerprint = $"{userId:N}-resolved";
+        resolved.State = NotificationState.Resolved;
+
+        // The read-only copy a second caregiver holds — visible, never a second ringing phone.
+        var notOwned = Row(userId, NotificationPriority.Critical, "DEVICE_BATTERY_LOW", isOwner: false);
+        notOwned.Fingerprint = $"{userId:N}-not-owned";
+
+        // Open and unpushed, but its rule does not declare PushesWhenOpen.
+        var notPushableRule = Row(userId, NotificationPriority.High, "TIMEZONE_DEFAULT");
+
+        context.Set<Notification>().AddRange(
+            wanted, alreadyPushed, snoozed, resolved, notOwned, notPushableRule);
+        await context.SaveChangesAsync();
+
+        var repo = scope.ServiceProvider.GetRequiredService<INotificationRepository>();
+
+        var pending = await repo.GetPendingPushAsync(
+            ["DEVICE_BATTERY_LOW", "DEVICE_AUTH_BROKEN"], limit: 50);
+
+        var row = Assert.Single(pending, n => n.UserId == userId);
+        Assert.Equal(wanted.Fingerprint, row.Fingerprint);
+    }
+
+    [Fact]
+    public async Task GetPendingPushAsync_ReturnsNothing_WhenNoRulesDeclareThatTheyPush()
+    {
+        // Defends the sweep against an empty catalogue filter degenerating into "every open row".
+        using var scope = fixture.CreateScope();
+        var context = scope.ServiceProvider.GetRequiredService<CardiTrackDbContext>();
+        var userId = Guid.NewGuid();
+
+        context.Set<Notification>().Add(Row(userId, NotificationPriority.Critical, "DEVICE_BATTERY_LOW"));
+        await context.SaveChangesAsync();
+
+        var repo = scope.ServiceProvider.GetRequiredService<INotificationRepository>();
+
+        Assert.Empty(await repo.GetPendingPushAsync([], limit: 50));
+    }
 }

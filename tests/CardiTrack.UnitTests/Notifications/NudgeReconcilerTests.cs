@@ -119,6 +119,39 @@ public class NudgeReconcilerTests
     }
 
     [Fact]
+    public void AGapThatClosedAndReturnedReArmsItsPush()
+    {
+        // The push half of "news both times". PushedDate is what stops the dispatch sweep resending
+        // the same warning every 30 seconds; leaving it set across a reopen would mean a watch that
+        // goes flat, gets charged, and goes flat again warns exactly once — and the second time is
+        // no less urgent than the first.
+        var stored = NudgeReconciler.Reconcile([MissingDevice()], [], OnlyDeviceRemoved).ToInsert;
+        stored[0].State = NotificationState.Resolved;
+        stored[0].ResolutionReason = NotificationResolutionReason.GapClosed;
+        stored[0].ResolvedDate = Now.AddDays(-5);
+        stored[0].PushedDate = Now.AddDays(-6);
+
+        NudgeReconciler.Reconcile([MissingDevice()], stored, OnlyDeviceRemoved);
+
+        Assert.Equal(NotificationState.Open, stored[0].State);
+        Assert.Null(stored[0].PushedDate);
+    }
+
+    [Fact]
+    public void AGapThatNeverClosedKeepsItsPushedDate()
+    {
+        // The counterpart: a gap that has simply stayed open must not re-arm on every reconcile, or
+        // the sweep would push the same flat battery on every pass.
+        var stored = NudgeReconciler.Reconcile([MissingDevice()], [], OnlyDeviceRemoved).ToInsert;
+        stored[0].PushedDate = Now.AddHours(-1);
+
+        NudgeReconciler.Reconcile([MissingDevice()], stored, OnlyDeviceRemoved);
+
+        Assert.Equal(NotificationState.Open, stored[0].State);
+        Assert.Equal(Now.AddHours(-1), stored[0].PushedDate);
+    }
+
+    [Fact]
     public void ARuleVersionBumpReArmsADismissedRule()
     {
         var stored = NudgeReconciler.Reconcile([MissingDevice()], [], OnlyDeviceRemoved).ToInsert;

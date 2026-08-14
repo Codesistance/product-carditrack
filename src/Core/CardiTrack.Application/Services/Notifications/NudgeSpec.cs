@@ -42,6 +42,19 @@ public sealed record NudgeSpec
     /// </summary>
     public bool AppliesDuringRedAlert { get; init; }
 
+    /// <summary>
+    /// Whether opening this gap also sends a push, rather than only landing in the inbox
+    /// (notification_engine.md §6 — "Nudges never push", with the Safety-class exceptions).
+    /// </summary>
+    /// <remarks>
+    /// Deliberately opt-in per rule rather than derived from <see cref="Category"/>, even though
+    /// only Safety rules set it. <c>PUSH_UNREACHABLE</c> is Safety class and must never push — a
+    /// notification saying push is broken, delivered by push, is either a contradiction or proof
+    /// the gap has already closed. Reading the flag off the category would make that rule's
+    /// correctness an accident of the enqueue predicate rather than a stated property of the rule.
+    /// </remarks>
+    public bool PushesWhenOpen { get; init; }
+
     /// <summary>A Safety-class spec with the caps and exemptions that class implies.</summary>
     public static NudgeSpec Safety(NotificationPriority priority = NotificationPriority.Critical) => new()
     {

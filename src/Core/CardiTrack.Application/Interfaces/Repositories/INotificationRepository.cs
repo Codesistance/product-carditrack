@@ -46,4 +46,22 @@ public interface INotificationRepository : IRepository<Notification>
     /// </summary>
     Task<IReadOnlyList<Notification>> GetLiveForCardiMemberAsync(
         Guid cardiMemberId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Open, owned rows for the pushable Safety rules that have not been handed to the push outbox
+    /// for their current arming — the dispatch worker's enqueue sweep (§6.2).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Open only, never snoozed.</b> A Safety row can be snoozed for up to 72 hours, and a
+    /// snooze the caregiver chose is not a state to push through.
+    /// </para>
+    /// <para>
+    /// <b>Owned only.</b> The read-only copy a second caregiver holds exists so everyone can see
+    /// the gap is outstanding, not so five phones ring about one flat battery — the escalation
+    /// ladder is what reaches the others, and only when nobody acks.
+    /// </para>
+    /// </remarks>
+    Task<IReadOnlyList<Notification>> GetPendingPushAsync(
+        IReadOnlyList<string> ruleCodes, int limit, CancellationToken ct = default);
 }

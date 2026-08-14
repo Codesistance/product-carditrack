@@ -95,6 +95,28 @@ public class NotificationRepository : Repository<Notification>, INotificationRep
                         && (n.State == NotificationState.Open || n.State == NotificationState.Snoozed))
             .ToListAsync(ct);
 
+    public async Task<IReadOnlyList<Notification>> GetPendingPushAsync(
+        IReadOnlyList<string> ruleCodes, int limit, CancellationToken ct = default)
+    {
+        if (ruleCodes.Count == 0)
+            return [];
+
+        // Tracked, not AsNoTracking: the caller stamps PushedDate on these rows and saves them in
+        // the same unit of work as the delivery insert, so the two land together.
+        return await _dbSet
+            .Where(n => n.IsActive
+                        && n.IsOwner
+                        && n.State == NotificationState.Open
+                        && n.PushedDate == null
+                        && ruleCodes.Contains(n.RuleCode))
+            // Oldest gap first: if a backlog ever forms, the warning that has been waiting longest
+            // is the one to clear, and a stable order keeps the batch boundary deterministic.
+            .OrderBy(n => n.FirstDetectedDate)
+            .ThenBy(n => n.Id)
+            .Take(limit)
+            .ToListAsync(ct);
+    }
+
     private IQueryable<Notification> Filtered(
         Guid userId,
         NotificationState? state,

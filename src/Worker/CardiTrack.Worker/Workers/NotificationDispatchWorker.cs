@@ -34,6 +34,13 @@ public class NotificationDispatchWorker : CronBackgroundService
 {
     private const int ClaimBatchSize = 100;
 
+    /// <summary>
+    /// Open Safety nudges converted to pushes per tick. Separate from <see cref="ClaimBatchSize"/>
+    /// despite the same value — one bounds a retry claim off the outbox, the other a scan of the
+    /// notification table, and they have no reason to move together.
+    /// </summary>
+    private const int PushSweepBatchSize = 100;
+
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<NotificationDispatchWorker> _logger;
     private readonly TimeProvider _timeProvider;
@@ -72,6 +79,7 @@ public class NotificationDispatchWorker : CronBackgroundService
         // construction — each opens its own scope and commits its own work — so a failed one
         // genuinely leaves the others able to run, and every row it would have touched is still
         // due on the next 30-second tick.
+        await RunPhaseAsync(nameof(EnqueuePendingNudgePushesAsync), () => EnqueuePendingNudgePushesAsync(utcNow, stoppingToken), stoppingToken);
         await RunPhaseAsync(nameof(RetryClaimedRowsAsync), () => RetryClaimedRowsAsync(utcNow, stoppingToken), stoppingToken);
         await RunPhaseAsync(nameof(RunEscalationSweepAsync), () => RunEscalationSweepAsync(utcNow, stoppingToken), stoppingToken);
         await RunPhaseAsync(nameof(ExpirePastTtlRowsAsync), () => ExpirePastTtlRowsAsync(utcNow, stoppingToken), stoppingToken);
@@ -104,6 +112,93 @@ public class NotificationDispatchWorker : CronBackgroundService
             activity?.AddException(ex);
             _logger.LogError(ex, "NotificationDispatch phase {Phase} failed; the next tick retries it.", phase);
         }
+    }
+
+    /// <summary>
+    /// Turns an open Safety-class nudge into a push (§6.2). The rules that qualify declare it
+    /// themselves via <c>NudgeSpec.PushesWhenOpen</c> — <c>DEVICE_BATTERY_LOW</c> and
+    /// <c>DEVICE_AUTH_BROKEN</c> today.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Why a sweep rather than an enqueue at the point of detection.</b> Every producer of these
+    /// rows funnels through <c>NotificationGapResolver</c>, which would be the obvious place to
+    /// call <see cref="IDispatchService"/> — except <c>DispatchService</c> already depends on
+    /// <c>INotificationGapResolver</c> to arm <c>PUSH_UNREACHABLE</c> after a permanent send
+    /// failure, so that edge closes a scoped DI cycle. Reading the rows back here instead keeps the
+    /// dependency one-directional, and picks up gaps opened by <em>any</em> of the resolver's nine
+    /// call sites plus <c>DataCompletenessWorker</c>'s daily run, rather than the subset someone
+    /// remembered to wire.
+    /// </para>
+    /// <para>
+    /// Latency is one tick — at most 30 seconds against a 30-second dispatch SLO, on top of
+    /// detection that now happens within a device-sync cycle rather than at 06:00 the next day.
+    /// </para>
+    /// <para>
+    /// <b>Ordering.</b> <c>PushedDate</c> is stamped on the tracked row <em>before</em> the enqueue,
+    /// so <c>DispatchService</c>'s own <c>SaveChangesAsync</c> commits the mark and the delivery row
+    /// together — no window where one exists without the other. The explicit save afterwards covers
+    /// the dedup-hit path, where <c>EnqueueAsync</c> returns early without saving and the mark would
+    /// otherwise be dropped, leaving the sweep to pick the same row up forever.
+    /// </para>
+    /// </remarks>
+    private async Task EnqueuePendingNudgePushesAsync(DateTime utcNow, CancellationToken ct)
+    {
+        using var scope = _scopeFactory.CreateScope();
+        var unitOfWork = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
+        var dispatch = scope.ServiceProvider.GetRequiredService<IDispatchService>();
+
+        var pending = await unitOfWork.Notifications.GetPendingPushAsync(
+            NudgeRuleCatalogue.PushableRuleCodes, PushSweepBatchSize, ct);
+
+        if (pending.Count == 0)
+            return;
+
+        var enqueued = 0;
+
+        foreach (var notification in pending)
+        {
+            if (ct.IsCancellationRequested)
+                break;
+
+            try
+            {
+                notification.PushedDate = utcNow;
+                unitOfWork.Notifications.Update(notification);
+
+                await dispatch.EnqueueAsync(new EnqueueRequest(
+                    SourceType: DeliverySourceType.Notification,
+                    SourceId: notification.Id,
+                    UserId: notification.UserId,
+                    CardiMemberId: notification.CardiMemberId,
+                    // The nudge engine's Safety and the delivery spine's Safety are separate enums
+                    // over the same idea; this is the one place they meet. Severity stays null —
+                    // it describes a wearer's clinical reading, and none of these are about one.
+                    Category: DeliveryCategory.Safety,
+                    Severity: null,
+                    // Per arming, not per gap: a delivery's dedup key matches in any state and
+                    // never expires, so keying on the fingerprint alone would swallow every warning
+                    // after the first time this gap ever opened.
+                    DedupKey: $"nudge:{notification.Fingerprint}:{utcNow:yyyyMMddHHmmss}",
+                    // Per gap, not per arming: on the device, a second warning about the same flat
+                    // battery should replace the first rather than stack beneath it.
+                    CollapseKey: $"nudge-{notification.Fingerprint}"), ct);
+
+                await unitOfWork.SaveChangesAsync();
+                enqueued++;
+            }
+            catch (Exception ex)
+            {
+                // Undo the in-memory mark. Every row in this batch shares one DbContext, so a
+                // PushedDate left set on a failed row would be committed by the *next* row's save —
+                // silently marking a warning as pushed that never was.
+                notification.PushedDate = null;
+                _logger.LogError(ex, "Failed to enqueue a push for Notification {NotificationId}.", notification.Id);
+            }
+        }
+
+        if (enqueued > 0)
+            _logger.LogInformation("NotificationDispatch enqueued {Count} Safety nudge push(es).", enqueued);
     }
 
     private async Task RetryClaimedRowsAsync(DateTime utcNow, CancellationToken ct)

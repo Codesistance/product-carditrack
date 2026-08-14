@@ -217,6 +217,11 @@ public static class NudgeReconciler
             existing.ResolutionReason = null;
             existing.FirstSeenDate = null;
             existing.RuleVersion = rule.Version;
+
+            // "Telling a second time" includes the push. Without this the row reopens Open but
+            // still carries the first arming's PushedDate, so the dispatch sweep skips it forever
+            // and a watch that goes flat, gets charged, and goes flat again warns exactly once.
+            existing.PushedDate = null;
         }
 
         // Progress counters move while the gap stays open — "4/30 days" becoming "11/30".

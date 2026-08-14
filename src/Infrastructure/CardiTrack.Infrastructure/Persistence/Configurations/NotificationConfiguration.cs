@@ -73,6 +73,7 @@ public class NotificationConfiguration : IEntityTypeConfiguration<Notification>
             .HasDefaultValueSql("NOW()");
 
         builder.Property(n => n.FirstSeenDate);
+        builder.Property(n => n.PushedDate);
 
         builder.Property(n => n.IsOwner)
             .IsRequired()
@@ -102,5 +103,13 @@ public class NotificationConfiguration : IEntityTypeConfiguration<Notification>
 
         // Retention purges terminal rows by age.
         builder.HasIndex(n => new { n.State, n.ResolvedDate });
+
+        // The dispatch worker's push sweep, every 30 seconds: Open rows for the pushable rules
+        // that have not been handed to the outbox yet. Filtered so the index holds only the rows
+        // the sweep can actually act on — an Open-and-unpushed row is a transient state, so this
+        // stays tiny no matter how large the table grows.
+        builder.HasIndex(n => new { n.State, n.RuleCode })
+            .HasFilter("\"PushedDate\" IS NULL")
+            .HasDatabaseName("IX_Notifications_PendingPush");
     }
 }

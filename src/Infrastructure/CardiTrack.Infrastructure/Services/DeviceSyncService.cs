@@ -1,5 +1,6 @@
 using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Interfaces.Services;
+using CardiTrack.Application.Services;
 using CardiTrack.Application.Services.Notifications;
 using CardiTrack.Domain.Entities;
 using CardiTrack.Domain.Enums;
@@ -24,6 +25,7 @@ public class DeviceSyncService : IDeviceSyncService
     private readonly IActivityLogAggregationService _aggregation;
     private readonly IGranularIngestionService _granularIngestion;
     private readonly IUnitOfWork _unitOfWork;
+    private readonly INotificationGapResolver _gapResolver;
     private readonly List<DeviceProviderSettings> _providers;
 
     public DeviceSyncService(
@@ -34,6 +36,7 @@ public class DeviceSyncService : IDeviceSyncService
         IActivityLogAggregationService aggregation,
         IGranularIngestionService granularIngestion,
         IUnitOfWork unitOfWork,
+        INotificationGapResolver gapResolver,
         IOptions<List<DeviceProviderSettings>> providers)
     {
         _tokenRefresh = tokenRefresh;
@@ -43,6 +46,7 @@ public class DeviceSyncService : IDeviceSyncService
         _aggregation = aggregation;
         _granularIngestion = granularIngestion;
         _unitOfWork = unitOfWork;
+        _gapResolver = gapResolver;
         _providers = providers.Value;
     }
 
@@ -179,12 +183,62 @@ public class DeviceSyncService : IDeviceSyncService
         if (lowest is null)
             return;
 
+        var readAt = DateTime.UtcNow;
+
+        // Whether the *stored* reading counted as low before this one landed. A stale reading is
+        // not low for this purpose no matter what number it holds — DeviceBatteryLowRule ignores
+        // it on exactly the same freshness test, so treating it as low here would report a
+        // transition the rule cannot see.
+        var wasLow = DeviceBattery.IsFresh(connection.BatteryUpdatedAt, readAt)
+                     && DeviceBattery.IsLow(connection.BatteryLevel, connection.BatteryStatus);
+        var isLow = DeviceBattery.IsLow(lowest.BatteryLevel, lowest.BatteryStatus);
+
         await _deviceConnections.UpdateBatteryAsync(
-            connection.Id, lowest.BatteryLevel, lowest.BatteryStatus, DateTime.UtcNow);
+            connection.Id, lowest.BatteryLevel, lowest.BatteryStatus, readAt);
 
         connection.BatteryLevel = lowest.BatteryLevel;
         connection.BatteryStatus = lowest.BatteryStatus;
-        connection.BatteryUpdatedAt = DateTime.UtcNow;
+        connection.BatteryUpdatedAt = readAt;
+
+        if (wasLow != isLow)
+            await ReevaluateGapsAsync(connection.CardiMemberId);
+    }
+
+    /// <summary>
+    /// Re-runs gap detection for the member, so a battery that has just crossed into (or back out
+    /// of) "low" opens or closes <c>DEVICE_BATTERY_LOW</c> now rather than at the next
+    /// <c>DataCompletenessWorker</c> run.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Cadence is the whole point. The daily 06:00 sweep is the wrong clock for a device the rule
+    /// itself describes as minutes-to-hours from stopping — a warning that arrives up to 24 hours
+    /// after the reading has already been overtaken by the thing it was warning about. Reconciling
+    /// here puts it within a sync cycle. The push follows from
+    /// <c>NotificationDispatchWorker</c>'s sweep; nothing about delivery is decided in this class.
+    /// </para>
+    /// <para>
+    /// Only on a <em>transition</em>, never on every pull. Connections sync every ten minutes and
+    /// reconciliation loads a member's whole snapshot — running it each time would re-evaluate the
+    /// estate roughly 144 times a day per connection to discover nothing changed. The gap opens and
+    /// closes on the crossing, so the crossing is the only moment worth spending it on.
+    /// </para>
+    /// <para>
+    /// Best-effort, like everything else in <see cref="CaptureBatteryAsync"/>: a caller's health
+    /// data must not be lost because a notification could not be reconciled. A missed call here
+    /// delays the nudge to the daily run — which is exactly where it stood before this existed.
+    /// </para>
+    /// </remarks>
+    private async Task ReevaluateGapsAsync(Guid cardiMemberId)
+    {
+        try
+        {
+            await _gapResolver.ResolveForCardiMemberAsync(cardiMemberId);
+        }
+        catch (Exception)
+        {
+            // Deliberately swallowed — see the remarks. DataCompletenessWorker remains the backstop.
+        }
     }
 
     /// <summary>Scopes are stored as a JSON array; a malformed value must not break a sync.</summary>

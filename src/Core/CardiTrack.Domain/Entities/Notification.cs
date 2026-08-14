@@ -76,6 +76,20 @@ public class Notification : BaseEntity, ISoftDeletable
     public DateTime? FirstSeenDate { get; set; }
 
     /// <summary>
+    /// When this row was handed to the push outbox, for the Safety-class rules that push
+    /// (<c>NudgeSpec.PushesWhenOpen</c>). Null means "not pushed for the current arming" — it is
+    /// what stops the dispatch sweep sending the same warning every 30 seconds.
+    /// </summary>
+    /// <remarks>
+    /// Cleared when a resolved row reopens (see <c>NudgeReconciler.Refresh</c>), which is the whole
+    /// reason it is a column rather than a join against <c>NotificationDelivery</c>. A delivery's
+    /// dedup key is matched in any state and never expires, so a fingerprint-derived key alone
+    /// would push the first flat battery and silently swallow every one after it — the gap closing
+    /// and reopening is exactly the case that matters here.
+    /// </remarks>
+    public DateTime? PushedDate { get; set; }
+
+    /// <summary>
     /// False for the other caregivers in a family: they see the item read-only, so everyone knows
     /// it is outstanding without five people being nagged to fix one emergency contact.
     /// </summary>
