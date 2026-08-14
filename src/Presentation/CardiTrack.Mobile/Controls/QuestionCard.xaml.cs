@@ -90,6 +90,7 @@ public partial class QuestionCard : ContentView
         DismissButton.IsEnabled = !busy;
         DeleteButton.IsEnabled = !busy;
         DeleteButton.InputTransparent = busy;
+        AnswerEditor.IsReadOnly = busy;
     }
 
     /// <summary>
