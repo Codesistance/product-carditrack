@@ -278,7 +278,7 @@ Clients must not label either output as a trend assessment. The learning prompt 
 
 ## GET `/api/v1/insights/members/{id}/digest` — implemented (AI narrative)
 
-The member's **family digest**: a plain-language **rolling summary of the local day in progress**, regenerated whenever the member's readings move — with a **20-minute floor** between regenerations, on a **half-hourly** scheduler trigger (`*/30`). It is *not* a fixed 06:00 previous-day snapshot: the text a caregiver reads at noon describes the day so far. Read-only — no model call happens on this path; `?date=YYYY-MM-DD` selects a specific local day, otherwise the most recent digest is returned.
+The member's **family digest**: a plain-language **rolling summary of the local day in progress**, regenerated whenever the member's readings move — with a **20-minute floor** between regenerations, waived when samples indicate a problem, daily readings diverge from the baseline or jumped from yesterday, or an alert changed. The digest Cloud Scheduler is **half-hourly**; the assessor job re-runs generation immediately afterwards so a concerning hour is not stuck behind the next slot. It is *not* a fixed 06:00 previous-day snapshot: the text a caregiver reads at noon describes the day so far. Read-only — no model call happens on this path; `?date=YYYY-MM-DD` selects a specific local day, otherwise the most recent digest is returned.
 
 **Priority:** P1 | **Auth Required:** Yes
 

@@ -153,7 +153,16 @@ try
         case "assess":
             var assessments = scope.ServiceProvider.GetRequiredService<IRealtimeAssessmentService>();
             var assessed = await assessments.AssessDueMembersAsync(DateTime.UtcNow);
-            Log.Information("PipelineJobs run finished. Assessments written: {Assessed}.", assessed);
+            // The digest job runs at :00/:30; this pass runs at :02/:32. An hour the assessor
+            // has just called a problem would otherwise sit behind a summary written two minutes
+            // earlier until the next half-hour. Generation still no-ops members whose readings
+            // have not become worth rewriting (the 20-minute floor, waived for problem samples,
+            // baseline divergence and jumps).
+            var digestAfterAssess = scope.ServiceProvider.GetRequiredService<IDigestGenerationService>();
+            var generatedAfterAssess = await digestAfterAssess.GenerateDueDigestsAsync(DateTime.UtcNow);
+            Log.Information(
+                "PipelineJobs run finished. Assessments written: {Assessed}, summaries written: {Generated}.",
+                assessed, generatedAfterAssess);
             return 0;
 
         case "enrich":

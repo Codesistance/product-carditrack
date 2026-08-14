@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Reflection;
 using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Interfaces.Services;
+using CardiTrack.Application.Services;
 using CardiTrack.Domain.Entities;
 using CardiTrack.Domain.Enums;
 using CardiTrack.Infrastructure.Services;
@@ -11,12 +12,13 @@ using NSubstitute.ExceptionExtensions;
 
 namespace CardiTrack.UnitTests.Services;
 
-/// <summary>
-/// Pins the summary due-ness rules: recomputed whenever the member's readings have moved since
-/// their last summary but no more often than the regeneration floor, never while paused, never
-/// from silence — and one member's failure never costs another family theirs. Every generation is
-/// appended, so a day accumulates history rather than being overwritten.
-/// </summary>
+    /// <summary>
+    /// Pins the summary due-ness rules: recomputed whenever the member's readings have moved
+    /// since their last summary but no more often than the regeneration floor — unless the new
+    /// readings are a problem, off the baseline, or a jump from yesterday, or an alert changed.
+    /// Never while paused, never from silence — and one member's failure never costs another
+    /// family theirs.
+    /// </summary>
 public class DigestGenerationServiceTests
 {
     private readonly IUnitOfWork _unitOfWork = Substitute.For<IUnitOfWork>();
@@ -74,6 +76,8 @@ public class DigestGenerationServiceTests
         _alerts.GetByCardiMemberAsync(_memberId, Arg.Any<bool>()).Returns([]);
         _realtimeAssessments.GetSinceAsync(_memberId, Arg.Any<DateTime>(), Arg.Any<CancellationToken>())
             .Returns([]);
+        _realtimeAssessments.GetLatestAsync(_memberId, Arg.Any<CancellationToken>())
+            .Returns((RealtimeAssessment?)null);
         _questionnaires.GetByCardiMemberAsync(_memberId, Arg.Any<CancellationToken>()).Returns([]);
         _questionnaires.HasPendingAsync(_memberId, Arg.Any<CancellationToken>()).Returns(false);
         _questionnaires.GetLatestGeneratedAtAsync(_memberId, Arg.Any<CancellationToken>())
@@ -100,7 +104,7 @@ public class DigestGenerationServiceTests
     /// Stamped explicitly rather than left to the entity base's wall-clock default: it is the
     /// value the recompute trigger compares against, so the tests must own it.
     /// </param>
-    private void SetupActivity(DateTime landedAt)
+    private void SetupActivity(DateTime landedAt, int? sleepMinutes = null)
     {
         _activityLogs.GetByCardiMemberAndDateRangeAsync(_memberId, Arg.Any<DateOnly>(), Arg.Any<DateOnly>())
             .Returns(call =>
@@ -111,9 +115,36 @@ public class DigestGenerationServiceTests
                     Date = call.ArgAt<DateOnly>(2),
                     Steps = 5000,
                     RestingHeartRate = 68,
+                    SleepMinutes = sleepMinutes,
                     CreatedDate = landedAt,
                 },
             ]);
+    }
+
+    private void SetupTodayAndYesterday(DateTime todayLandedAt, int todayRestingHr, int yesterdayRestingHr)
+    {
+        _activityLogs.GetByCardiMemberAndDateRangeAsync(_memberId, Arg.Any<DateOnly>(), Arg.Any<DateOnly>())
+            .Returns(call =>
+            {
+                var today = call.ArgAt<DateOnly>(2);
+                return new[]
+                {
+                    new ActivityLog
+                    {
+                        CardiMemberId = _memberId,
+                        Date = today.AddDays(-1),
+                        RestingHeartRate = yesterdayRestingHr,
+                        CreatedDate = todayLandedAt.AddDays(-1),
+                    },
+                    new ActivityLog
+                    {
+                        CardiMemberId = _memberId,
+                        Date = today,
+                        RestingHeartRate = todayRestingHr,
+                        CreatedDate = todayLandedAt,
+                    },
+                };
+            });
     }
 
     private void SetupAnchorTimeZone(string timeZoneId)
@@ -219,10 +250,10 @@ public class DigestGenerationServiceTests
     }
 
     /// <summary>
-    /// The cost bound that lets the job run quarter-hourly. A worn device uploads on nearly every
-    /// pass, so "data has moved" alone would mean an inference and a history row every fifteen
-    /// minutes — the floor is what decouples how often the job runs from how many summaries a
-    /// member accumulates.
+    /// The cost bound that lets the assessor re-run generation after every pass. A worn device
+    /// uploads on nearly every pass, so "data has moved" alone would mean an inference every
+    /// half hour — the floor is what decouples how often the jobs run from how many summaries a
+    /// member accumulates, and ordinary new readings still sit behind it.
     /// </summary>
     [Fact]
     public async Task Skips_WhenTheLastSummaryIsTooRecent_EvenThoughNewDataHasLanded()
@@ -242,10 +273,6 @@ public class DigestGenerationServiceTests
         Assert.Equal(0, generated);
         await _medicalAi.DidNotReceive().GenerateStructuredAsync<DigestGenerationService.DigestAiResponse>(
             Arg.Any<string>(), Arg.Any<CancellationToken>());
-        // Inside the floor the readings are never read either — the skip costs one indexed lookup,
-        // not a date-range scan, which is what makes a mostly-skipping pass cheap.
-        await _activityLogs.DidNotReceive().GetByCardiMemberAndDateRangeAsync(
-            _memberId, Arg.Any<DateOnly>(), Arg.Any<DateOnly>());
     }
 
     /// <summary>
@@ -273,7 +300,7 @@ public class DigestGenerationServiceTests
     /// <summary>
     /// The floor bounds regeneration, never the first summary: a member who has been quiet and
     /// starts uploading again is caught by the very next pass, which is the freshness the
-    /// quarter-hourly cadence was bought for.
+    /// half-hourly cadence was bought for.
     /// </summary>
     [Fact]
     public async Task Generates_ImmediatelyForAMemberWithNoSummaryYet_WhateverTheFloor()
@@ -1026,6 +1053,96 @@ public class DigestGenerationServiceTests
     }
 
     /// <summary>
+    /// A yellow window is the assessor saying something is off, without (yet) paging. That used
+    /// to ride the ordinary cycle, which is how a dire hour sat behind a twenty-minute-old
+    /// "settled day" card. It waives the floor the same way an alert does.
+    /// </summary>
+    [Fact]
+    public async Task RegeneratesInsideTheFloor_WhenAYellowAssessmentLandedSinceTheLastSummary()
+    {
+        GivenPreviousSummary(UtcNow.AddMinutes(-5));
+        GivenLatestAssessment(AlertSeverity.Yellow, score: 1.2, generatedAt: UtcNow.AddMinutes(-1));
+
+        Assert.Equal(1, await CreateSut().GenerateDueDigestsAsync(UtcNow));
+    }
+
+    /// <summary>
+    /// The SSA score is the jump the assessor already computed. A green window with a jump is
+    /// still a change in what the summary should say — the model calling it "low" does not make
+    /// the reading ordinary.
+    /// </summary>
+    [Fact]
+    public async Task RegeneratesInsideTheFloor_WhenTheSsaScoreIsAJump()
+    {
+        GivenPreviousSummary(UtcNow.AddMinutes(-5));
+        GivenLatestAssessment(AlertSeverity.Green, DigestRefreshRules.SampleJumpScore, UtcNow.AddMinutes(-1));
+
+        Assert.Equal(1, await CreateSut().GenerateDueDigestsAsync(UtcNow));
+    }
+
+    [Fact]
+    public async Task StillSkipsInsideTheFloor_WhenTheAssessmentPredatesTheLastSummary()
+    {
+        GivenPreviousSummary(UtcNow.AddMinutes(-5));
+        GivenLatestAssessment(AlertSeverity.Red, score: 8.0, generatedAt: UtcNow.AddMinutes(-6));
+
+        Assert.Equal(0, await CreateSut().GenerateDueDigestsAsync(UtcNow));
+    }
+
+    /// <summary>
+    /// Last night well short of the usual is the same off-baseline the statistical engine would
+    /// page about. New data inside the floor must still rewrite the summary.
+    /// </summary>
+    [Fact]
+    public async Task RegeneratesInsideTheFloor_WhenReadingsDivergeFromBaseline()
+    {
+        GivenPreviousSummary(UtcNow.AddMinutes(-5));
+        SetupActivity(UtcNow.AddMinutes(-2), sleepMinutes: 250);
+        _baselines.GetLatestByCardiMemberAsync(_memberId, 30).Returns(new PatternBaseline
+        {
+            CardiMemberId = _memberId,
+            PeriodDays = 30,
+            AvgSleepMinutes = 420,
+        });
+
+        Assert.Equal(1, await CreateSut().GenerateDueDigestsAsync(UtcNow));
+    }
+
+    /// <summary>
+    /// A 30% jump in resting heart rate from yesterday, even while still learning (no baseline).
+    /// The floor is for wording that barely moves, not for a jump like this.
+    /// </summary>
+    [Fact]
+    public async Task RegeneratesInsideTheFloor_WhenReadingsJumpedFromYesterday()
+    {
+        GivenPreviousSummary(UtcNow.AddMinutes(-5));
+        SetupTodayAndYesterday(
+            todayLandedAt: UtcNow.AddMinutes(-2),
+            todayRestingHr: 80,
+            yesterdayRestingHr: 60);
+
+        Assert.Equal(1, await CreateSut().GenerateDueDigestsAsync(UtcNow));
+    }
+
+    /// <summary>
+    /// Ordinary new readings inside the floor still skip: today's resting HR moved a couple of
+    /// beats, which is exactly the continuously-uploading case the floor exists for.
+    /// </summary>
+    [Fact]
+    public async Task StillSkipsInsideTheFloor_WhenNewDataIsOrdinary()
+    {
+        GivenPreviousSummary(UtcNow.AddMinutes(-5));
+        SetupTodayAndYesterday(
+            todayLandedAt: UtcNow.AddMinutes(-2),
+            todayRestingHr: 64,
+            yesterdayRestingHr: 62);
+
+        Assert.Equal(0, await CreateSut().GenerateDueDigestsAsync(UtcNow));
+        await _medicalAi.DidNotReceive().GenerateStructuredAsync<DigestGenerationService.DigestAiResponse>(
+            Arg.Any<string>(), Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
     /// The one gate nothing waives. A summary generated from silence would read as "all quiet" when
     /// the truth is "not measuring" — the confusion this product exists to prevent.
     /// </summary>
@@ -1440,6 +1557,16 @@ public class DigestGenerationServiceTests
 
     private void GivenAlerts(params Alert[] alerts) =>
         _alerts.GetByCardiMemberAsync(_memberId, Arg.Any<bool>()).Returns(alerts);
+
+    private void GivenLatestAssessment(AlertSeverity? severity, double score, DateTime generatedAt) =>
+        _realtimeAssessments.GetLatestAsync(_memberId, Arg.Any<CancellationToken>())
+            .Returns(new RealtimeAssessment
+            {
+                CardiMemberId = _memberId,
+                Severity = severity,
+                HrDeviationScore = score,
+                GeneratedAtUtc = generatedAt,
+            });
 
     private Alert AnAlert(DateTime triggeredAt, bool resolved, DateTime? updatedAt = null) => new()
     {

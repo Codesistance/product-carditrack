@@ -1258,12 +1258,14 @@ resource "google_cloud_scheduler_job" "pipeline_aggregator_5min" {
 }
 
 # ── Pipeline assessor job (AI pipeline — real-time assessment) ───────────────────────────────
-# Same image as the digest job, selected via container args: every 5 minutes, SSA over each
-# member's latest hour of heart rate, one MedGemma assessment per moved window, severity routed
-# to alerts. Works entirely off the granular store, so it needs the digest job's exact
-# environment (database + MedGemma + encryption) and reuses those variables — no device
-# credentials and no Pub/Sub. Gated on the pipeline alone: unlike the aggregator it consumes
-# no topic, and it is useful with polling-only ingestion.
+# Same image as the digest job, selected via container args: SSA over each member's latest
+# hour of heart rate, one MedGemma assessment per moved window, severity routed to alerts,
+# then a digest pass so a window just flagged as a problem rewrites the family summary on
+# the same execution rather than waiting for the next */30 digest schedule. Works entirely
+# off the granular store, so it needs the digest job's exact environment (database + MedGemma
+# + encryption) and reuses those variables — no device credentials and no Pub/Sub. Gated on
+# the pipeline alone: unlike the aggregator it consumes no topic, and it is useful with
+# polling-only ingestion.
 
 # Twice hourly, not every 5 minutes. RealtimeAssessmentService assesses a 60-minute window and
 # dedups on windowStart (RealtimeAssessments.ExistsAsync), so a given member yields at most one
@@ -1291,9 +1293,11 @@ resource "google_cloud_run_v2_job" "pipeline_assessor" {
     template {
       max_retries = 1
 
-      # One CPU-served MedGemma call per member whose window moved since the last pass; the
-      # timeout bounds a pathological pass without killing an ordinary busy one.
-      timeout = "1800s"
+      # Assessment plus the digest refresh that follows it on this job (see Program.cs): one
+      # CPU-served MedGemma call per member whose window moved, then another per member whose
+      # summary is now due. The timeout matches the digest job so a busy pass of both stages
+      # is not killed mid-generation.
+      timeout = "3600s"
 
       service_account = google_service_account.pipeline[0].email
 

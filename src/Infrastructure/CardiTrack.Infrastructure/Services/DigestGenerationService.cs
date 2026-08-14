@@ -24,7 +24,9 @@ namespace CardiTrack.Infrastructure.Services;
 /// whose device has uploaded nothing new costs no inference, which is what bounds this from
 /// re-running the fleet on every pass. A worn device uploads on nearly every pass, though, so
 /// <see cref="MinimumRegenerationInterval"/> is the second bound — together they decouple how
-/// often the job runs from how many summaries a member accumulates.
+/// often the job runs from how many summaries a member accumulates. The floor yields when the
+/// new readings are a problem, off the baseline, or a jump from yesterday, and the assessor
+/// job re-runs this pass immediately so a dire hour is not stuck behind the next half-hour.
 /// </para>
 /// </summary>
 public partial class DigestGenerationService : IDigestGenerationService
@@ -174,10 +176,10 @@ public partial class DigestGenerationService : IDigestGenerationService
     private const int MaxSuggestionLength = 260;
 
     /// <summary>
-    /// The floor between two summaries for the same member. The job runs every quarter hour so a
-    /// member who has been quiet catches up quickly, but a continuously-uploading device produces
-    /// new readings on nearly every pass — and without a floor that would mean an inference and a
-    /// history row every fifteen minutes, for a summary whose wording barely moves.
+    /// The floor between two summaries for the same member. The digest job runs half-hourly, and
+    /// the assessor pass re-runs generation immediately afterwards, so a continuously-uploading
+    /// device produces new readings on nearly every pass — and without a floor that would mean an
+    /// inference and a history row every half hour for wording that barely moves.
     /// <para>
     /// This bounds cost and keeps the history list legible: at this floor a member writes at most
     /// three summaries an hour, so the page the apps read still spans most of a day rather than
@@ -185,13 +187,12 @@ public partial class DigestGenerationService : IDigestGenerationService
     /// first pass after new data on a member with no recent summary is never delayed by it.
     /// </para>
     /// <para>
-    /// A change in the member's alert state waives it (see
-    /// <see cref="GenerateForMemberAsync"/>). The floor exists because a summary whose wording
-    /// barely moves is not worth an inference — but an alert being raised or resolved is the one
-    /// change that rewrites what the summary should say, and making a caregiver wait twenty minutes
-    /// to read it would be the floor working against the thing it protects. A severity that shifts
-    /// without an alert — a medium observation — is not enough on its own, and rides the ordinary
-    /// cycle.
+    /// What the wording should say waives it (see <see cref="GenerateForMemberAsync"/>): an alert
+    /// raised or resolved, a yellow-or-above real-time window or an SSA jump since the last
+    /// summary, or new daily readings that diverge from the baseline or jumped from yesterday.
+    /// The floor exists because a summary whose wording barely moves is not worth an inference —
+    /// making a caregiver wait twenty minutes to read that someone is in a bad way would be the
+    /// floor working against the thing it protects.
     /// </para>
     /// </summary>
     private static readonly TimeSpan MinimumRegenerationInterval = TimeSpan.FromMinutes(20);
@@ -338,23 +339,23 @@ public partial class DigestGenerationService : IDigestGenerationService
         if (member is null || !member.IsActive || member.IsMonitoringPaused(utcNow))
             return false;
 
-        // The member's own last summary answers both remaining gates, so it is read before the
-        // readings are: on a quarter-hourly job most members are inside the floor, and those
-        // passes should cost one indexed lookup rather than a date-range scan as well.
+        // The member's own last summary answers the remaining gates. The cheap probes (alerts,
+        // latest assessment) run first so a force-refresh does not depend on the daily rows;
+        // the date-range read below is then what the prompt needs anyway, and what the
+        // baseline/jump probes judge.
         var previous = await _unitOfWork.Digests.GetLatestAsync(memberId, DigestAudience.Family, ct);
 
-        // What the gates below yield to. An alert raised or resolved since the last summary is a
-        // change in what the summary should say — not more of the same readings — so neither the
-        // floor nor the data-moved probe may hold it back. Resolution counts as much as the alert
-        // did: a summary still hedging about an episode that ended reads as a service that has not
-        // noticed, which is the same failure in the other direction.
-        var alertStateChanged = previous is not null && await AlertStateChangedSinceAsync(memberId, previous, ct);
-
-        if (!alertStateChanged
-            && previous is not null && utcNow - previous.GeneratedAtUtc < MinimumRegenerationInterval)
-        {
-            return false;
-        }
+        // What the floor and the data-moved probe yield to. An alert raised or resolved, or a
+        // real-time window the assessor has just called a problem or a jump, is a change in what
+        // the summary should say — not more of the same readings. Resolution counts as much as
+        // the alert did: a summary still hedging about an episode that ended reads as a service
+        // that has not noticed, which is the same failure in the other direction. A yellow
+        // observation that has not become an alert is the same kind of change; it used to ride
+        // the ordinary cycle, which is how a dire hour could sit behind a twenty-minute-old
+        // "settled day" card.
+        var forceRefresh = previous is not null
+            && (await AlertStateChangedSinceAsync(memberId, previous, ct)
+                || await ConcerningSamplesSinceAsync(memberId, previous, ct));
 
         // A summary is keyed by the local day it DESCRIBES, and it now describes the day in
         // progress rather than yesterday: recomputing on every data update is only worth doing if
@@ -366,27 +367,40 @@ public partial class DigestGenerationService : IDigestGenerationService
 
         // Stored dates are the wearer's civil days, which is the closest grain we hold to the
         // reader's local day. Yesterday comes along for context — early in the member's morning it
-        // is most of what there is to say.
+        // is most of what there is to say — and for the jump/baseline probes below.
         var logs = (await _unitOfWork.ActivityLogs
             .GetByCardiMemberAndDateRangeAsync(memberId, describedDate.AddDays(-1), describedDate)).ToList();
         if (logs.Count == 0)
             return false;
 
-        // The recompute trigger. Every summary is written after the readings it describes, so data
-        // stamped later than the last generation is data that generation did not see — and data
-        // that has not moved is a member whose summary already says everything there is to say.
-        // This is what keeps "recompute on every update" from meaning "re-run the fleet on every
-        // pass": no new readings, no inference.
-        var dataChangedAtUtc = logs.Max(l => l.UpdatedDate ?? l.CreatedDate);
-        if (!alertStateChanged && previous is not null && dataChangedAtUtc <= previous.GeneratedAtUtc)
-            return false;
+        var today = logs.FirstOrDefault(l => l.Date == describedDate);
+        var yesterday = logs.FirstOrDefault(l => l.Date == describedDate.AddDays(-1));
 
         // The yardstick the readings are read against — the same established 30-day baseline the
         // statistical alert engine judges by, so the summary and the alerts cannot disagree about
-        // what "usual" means for this member. Fetched only once a summary is actually due, and
-        // absent while the member is still being learned, which leaves the prompt exactly as it
-        // was: raw readings with no normal to compare them to.
+        // what "usual" means for this member. Fetched before the significance probe so a reading
+        // that has just gone off-usual can waive the floor; absent while the member is still
+        // being learned, which leaves the prompt exactly as it was: raw readings with no normal
+        // to compare them to.
         var baseline = await _unitOfWork.PatternBaselines.GetLatestByCardiMemberAsync(memberId, periodDays: 30);
+
+        if (!forceRefresh && previous is not null)
+        {
+            // Every summary is written after the readings it describes, so data stamped later
+            // than the last generation is data that generation did not see — and data that has
+            // not moved is a member whose summary already says everything there is to say,
+            // unless forceRefresh already named a change the daily rows do not.
+            var dataChangedAtUtc = logs.Max(l => l.UpdatedDate ?? l.CreatedDate);
+            if (dataChangedAtUtc <= previous.GeneratedAtUtc)
+                return false;
+
+            if (utcNow - previous.GeneratedAtUtc < MinimumRegenerationInterval
+                && !DigestRefreshRules.ReadingsDivergeFromBaseline(baseline, today, yesterday)
+                && !DigestRefreshRules.ReadingsJumpedFromPrevious(today, yesterday))
+            {
+                return false;
+            }
+        }
 
         // Everything the model is told about the member, from every registered source — see
         // MemberContextComposer. What used to be a single hand-built "--- Member ---" block here is
@@ -793,8 +807,20 @@ public partial class DigestGenerationService : IDigestGenerationService
         };
 
     /// <summary>
-    /// Whether an alert was raised or resolved after the previous summary was written — the one
-    /// change that outranks both regeneration gates.
+    /// Whether the latest real-time window is new since the last summary and is a problem or a
+    /// jump — see <see cref="DigestRefreshRules.SamplesIndicateAProblem"/>. One indexed lookup,
+    /// the same shape as the previous-summary probe, so a skip still does not scan a date range.
+    /// </summary>
+    private async Task<bool> ConcerningSamplesSinceAsync(
+        Guid memberId, DigestEntry previous, CancellationToken ct)
+    {
+        var latest = await _unitOfWork.RealtimeAssessments.GetLatestAsync(memberId, ct);
+        return DigestRefreshRules.SamplesIndicateAProblem(latest, previous.GeneratedAtUtc);
+    }
+
+    /// <summary>
+    /// Whether an alert was raised or resolved after the previous summary was written — one of
+    /// the changes that outranks both regeneration gates.
     /// </summary>
     /// <remarks>
     /// <c>activeOnly</c> filters on <c>IsActive</c>, which a resolved alert stays, so this sees

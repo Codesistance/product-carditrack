@@ -11,7 +11,9 @@ public interface IDigestGenerationService
     /// <summary>
     /// Generates every summary due at <paramref name="utcNow"/>; returns how many were written.
     /// Cheap to re-run — a member whose readings have not changed since their last summary is
-    /// skipped before any model call.
+    /// skipped before any model call. Also invoked at the end of the assessor job so a window
+    /// just flagged as a problem rewrites the summary on the same execution, rather than waiting
+    /// for the next half-hourly digest schedule.
     /// </summary>
     Task<int> GenerateDueDigestsAsync(DateTime utcNow, CancellationToken ct = default);
 }
