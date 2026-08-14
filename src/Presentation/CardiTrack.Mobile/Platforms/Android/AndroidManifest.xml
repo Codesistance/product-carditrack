@@ -4,6 +4,14 @@
 		<!-- Firebase Cloud Messaging (notification_engine.md Phase 3) — required by
 		     Plugin.Firebase.CloudMessaging (see its cloud_messaging.md "Android specifics"),
 		     confirmed current against the plugin's own sample app manifest. -->
+		<!-- What the status bar shows when the FCM SDK renders the notification itself (app
+		     killed or backgrounded). Without these Android falls back to @mipmap/appicon, which
+		     is an adaptive launcher icon: the system alpha-masks a small icon, so a full-bleed
+		     launcher icon masks to a solid square and the notification arrives blank. The
+		     drawable is generated from Resources/Images/icon_notification.svg — a white
+		     silhouette, the only form that survives that masking. -->
+		<meta-data android:name="com.google.firebase.messaging.default_notification_icon" android:resource="@drawable/icon_notification" />
+		<meta-data android:name="com.google.firebase.messaging.default_notification_color" android:resource="@color/notification_accent" />
 		<receiver android:name="com.google.firebase.iid.FirebaseInstanceIdInternalReceiver" android:exported="false" />
 		<receiver android:name="com.google.firebase.iid.FirebaseInstanceIdReceiver" android:exported="true" android:permission="com.google.android.c2dm.permission.SEND">
 			<intent-filter>

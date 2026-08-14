@@ -5,7 +5,7 @@
 ## Project Overview
 
 **Product:** CardiTrack - Remote health monitoring for elderly family members
-**Release:** MVP 1 — Core Monitoring (R1, Q4 2026) — 17 designed screens / 37 designed states; **13 of 17 built** as of August 9, 2026
+**Release:** MVP 1 — Core Monitoring (R1, Q4 2026) — 17 designed screens / 37 designed states; **16 of 17 built** as of August 14, 2026
 **Platform:** iOS 17+ (iPhone 12+) & Android 12+ (API 31)
 **Minimum OS:** iOS 17.0 · Android 12 (API level 31)
 **Target OS:** iOS 18 · Android 15 (API level 35)
@@ -18,7 +18,7 @@
 
 ## Build Status (as of August 9, 2026)
 
-> **13 of 17 Figma M1 screens are built** in `CardiTrack.Mobile` (M1-01 through M1-10, plus M1-13 CardiMemberDetailPage, M1-14 EditCardiMemberPage, M1-15 DeviceManagementPage). **The unbuilt screens are alert detail and export** — M1-11/M1-12/M1-16 Alert Details and M1-17 Health Data Export; their entry points show "Coming soon" dialogs, except the dashboard's Add-Member action, which pushes M1-04 (AddCardiMemberPage) directly. **Four shipped screens have no Figma M1 frame — needs design sync:** SignInPage, ForgotPasswordPage, VerifyEmailPage, Onboarding/AccountSetupPage (specs in the canonical doc). Unbuilt screens below remain design intent, each marked with a status line.
+> **16 of 17 Figma M1 screens are built** in `CardiTrack.Mobile` (M1-01 through M1-10, plus M1-11/M1-12/M1-16 Alert Details — one `AlertDetailPage` branching on rule and severity — M1-13 CardiMemberDetailPage, M1-14 EditCardiMemberPage, M1-15 DeviceManagementPage). **The one unbuilt screen is M1-17 Health Data Export**; its entry point shows a "Coming soon" dialog, as does anything else unbuilt, except the dashboard's Add-Member action, which pushes M1-04 (AddCardiMemberPage) directly. **Four shipped screens have no Figma M1 frame — needs design sync:** SignInPage, ForgotPasswordPage, VerifyEmailPage, Onboarding/AccountSetupPage (specs in the canonical doc). Unbuilt screens below remain design intent, each marked with a status line.
 
 ---
 
@@ -42,15 +42,15 @@ A single user can sign up, add a CardiMember, connect devices, manage CardiMembe
 | M1-08 | Baseline Learning Info | 1 | ✅ `BaselineLearningPage` |
 | M1-09 | Main Dashboard | 5 (a–e) + 2 as-built | ✅ `DashboardPage` |
 | M1-10 | Alerts List | 4 (a–d) | ✅ `AlertsPage` |
-| M1-11 | Alert Detail - Activity | 1 | ❌ not built |
-| M1-12 | Alert Detail - Critical | 1 | ❌ not built |
+| M1-11 | Alert Detail - Activity | 1 | ✅ `AlertDetailPage` |
+| M1-12 | Alert Detail - Critical | 1 | ✅ `AlertDetailPage` (severity branch) |
 | M1-13 | CardiMember Detail | 1 + 3 as-built | ✅ `CardiMemberDetailPage` |
 | M1-14 | Edit CardiMember | 1 + 2 as-built | ✅ `EditCardiMemberPage` |
 | M1-15 | Device Management | 1 + 3 as-built | ✅ `DeviceManagementPage` |
-| M1-16 | Alert Detail - Heart Rate | 1 | ❌ not built |
+| M1-16 | Alert Detail - Heart Rate | 1 | ✅ `AlertDetailPage` (rule branch) |
 | M1-17 | Health Data Export | 4 (a–d) | ❌ not built |
 
-**Total: 17 designed screens · 37 designed states — 13 of 17 built**
+**Total: 17 designed screens · 37 designed states — 16 of 17 built**
 
 **Shipped screens without Figma M1 frames** (need design sync; no M1 IDs assigned per project convention): SignInPage, ForgotPasswordPage, VerifyEmailPage, Onboarding/AccountSetupPage, NotificationsPage (nudge inbox), QuestionnairesPage — see the canonical [ui_screens_maui_mobile.md](../ui_screens_maui_mobile.md) for full specs.
 
@@ -713,7 +713,7 @@ Heart rate alerts tap → M1-16
 - **Chips are M1-10a's set in M1-10c's styling.** The frames disagree — M1-10a has [All] [Unread] [Critical] [Today] [This Week] as plain pills, M1-10c has [Recent] [High Priority] [Heart Rate] [Oxygen] with dropdown carets. The set is M1-10a's (the one this spec documents, and the one every chip can actually filter — there is no SpO2 alert type); the pill, caret and spacing are M1-10c's.
 - **Loading is built as drawn** — the "Syncing with Device… / Refresh Now" card over four structured skeleton rows (`AlertSkeletonCard`, whose shimmer blocks sit where the avatar, badge, title and status pill will land). Refresh Now supersedes the in-flight request rather than being swallowed by it, so the button works in the one state it appears in.
 - **Severity badges are severity-coloured.** Wording follows this spec (CRITICAL / URGENT / INFO); the colour follows the app's own scale, so a yellow alert can't show a yellow rail beside Figma's blue "Info" chip.
-- **The chevron expands the card in place.** M1-11 / M1-12 / M1-16 are not built, so a row that pushed a detail screen would open nothing; expanding reveals the full message instead. This is the "Expand (chevron)" action above.
+- **The chevron expands the card in place.** Kept from when M1-11 / M1-12 / M1-16 did not exist: expanding reveals the full message without leaving the list, which is still the faster read when scanning several alerts. The detail screen is reachable by tapping the card itself.
 - **"View Archived Alerts" switches this list to resolved alerts** rather than pushing an archive screen, and flips back the same way. The chip row hides while archived — it is a different list, not a narrower one.
 - **Avatars are initials.** No member photo storage exists yet; `cardiMemberPhotoUrl` is on the wire and the tile keeps its designed box.
 - **Swipe actions are not implemented.** The card's inline Call and Acknowledge buttons cover both gestures.
@@ -721,7 +721,9 @@ Heart rate alerts tap → M1-16
 ---
 
 ### M1-11: Alert Detail - Activity
-**Status:** Not built — design intent below
+**Status:** ✅ Built — `AlertDetailPage`. One page serves M1-11, M1-12 and M1-16; sections are shown
+by the alert's rule and severity rather than by three near-identical screens. Divergences from the
+design intent below are called out inline.
 **User Story:** 11.1 Activity Decline | 3.3 Alert Acknowledgment & Notes
 **Entry:** ← M1-10 Alerts List (tap alert card)
 **Exit:** ← M1-10 Alerts List (back) | → Phone call | → SMS | → M2-03 Trend Charts
@@ -733,7 +735,10 @@ Heart rate alerts tap → M1-16
 
 **Alert Header Card:**
 - Caution-level severity banner
-- Warning icon
+- ~~Warning icon~~ — _as built:_ a **reason** icon (steps / heart / sleep / watch), in a
+  translucent-white tile with white-stroke artwork. Severity is already the banner's colour, so a
+  second severity glyph says nothing new — and the one it replaced was stroked in the severity
+  colour, which on the yellow and orange banners made it invisible against its own ground.
 - Title: "Low Activity Alert"
 - CardiMember photo + name
 - Timestamp: "January 10, 2026 at 11:30 AM"
@@ -745,6 +750,12 @@ Heart rate alerts tap → M1-16
 **Mini Trend Chart:**
 - 2-week activity trend showing declining line
 - Baseline range shaded, current data overlaid
+- _As built:_ the headline figure is the last **finished** day and says which day it is; today is
+  drawn as a dashed run, unmarked (the day markers belong to the readings the window is made of,
+  and a running total is not one of them), with a caption comparing it to the same elapsed stretch
+  of yesterday ("865 steps so far today, 22% below the 1,102 by this time yesterday"). Plotting a
+  running total beside completed days made a normal lunchtime read as a collapse. See
+  `AlertChartResponse.partialDayLabel` in the alerts API doc.
 
 **Comparison Card (2-column grid):**
 
@@ -762,22 +773,30 @@ Heart rate alerts tap → M1-16
   - They might be in pain or uncomfortable
   - They may be feeling low or tired
 
-**Recommended Actions (full-width button list):**
-1. "Give Dad a Call" (primary, phone icon)
-2. "Send a Quick Message" (secondary, SMS icon)
-3. "Book a Doctor Visit" (secondary, calendar icon)
+**Recommended Actions** — _as built:_ the Dashboard's SOS / Call / Message / Details quick-action
+row (`Controls/QuickActionRow`), not the three full-width buttons below. One control, so the two
+screens cannot drift into offering the same actions with different wording and different
+availability rules. "Book a Doctor Visit" is not offered at all — no clinician or booking
+architecture exists.
 
-**More Options (collapsible):**
-- "Adjust Baseline" (if this is a new normal)
-- "Add Note About This Alert"
-- "Share with Family"
+1. ~~"Give Dad a Call" (primary, phone icon)~~ → Call tile
+2. ~~"Send a Quick Message" (secondary, SMS icon)~~ → Message tile
+3. ~~"Book a Doctor Visit" (secondary, calendar icon)~~ → not built
+
+**More Options** — _as built:_ only the rows with a backend behind them.
+- ~~"Adjust Baseline" (if this is a new normal)~~ — no baseline-override endpoint
+- ~~"Add Note About This Alert"~~ — no `AlertNote` store
+- "Share with Family" — OS share sheet, carrying only the title, time and first name already on
+  screen; no metric values
+- "View Detailed Activity Data" → M1-13 (moved up from the bottom of the screen)
 
 **Acknowledgment Section:**
-- If unread: Button "Mark as Acknowledged"
-- If acknowledged: "Acknowledged by Sarah, 30 min ago" + any notes
-
-**Bottom:**
-- Button: "View Detailed Activity Data" → M2-03 _(MVP 2)_
+- If unread: Button "Mark as Acknowledged" ("I'm on my way" on a critical alert)
+- If acknowledged: "Acknowledged by Sarah, 30 min ago", plus **"Undo — mark as not handled"**
+  (`DELETE /alerts/{id}/acknowledge`). Acknowledging is a claim a caregiver makes about themselves
+  and they can make it by accident; the undo persists on the screen rather than living in a toast
+  that is gone by the time they notice. Not offered once the system has *resolved* the alert.
+  Notes are not built.
 
 ---
 
@@ -1113,4 +1132,4 @@ Saves via `PUT /api/v1/cardimembers/{id}` — a full replacement, so clearing a 
 ---
 
 **Source:** Extracted from [ui_screens_maui_mobile.md](../ui_screens_maui_mobile.md) v3.1 (manually re-synced August 9, 2026)
-**Total MVP 1 Screens:** 17 designed screens · 37 designed states — **13 of 17 built**; 6 additional shipped screens have no Figma M1 frame (SignIn, ForgotPassword, VerifyEmail, AccountSetup, Notifications, Questionnaires)
+**Total MVP 1 Screens:** 17 designed screens · 37 designed states — **16 of 17 built**; 6 additional shipped screens have no Figma M1 frame (SignIn, ForgotPassword, VerifyEmail, AccountSetup, Notifications, Questionnaires)

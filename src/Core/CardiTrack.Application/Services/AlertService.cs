@@ -1,5 +1,6 @@
 using CardiTrack.Application.DTOs.Common;
 using CardiTrack.Application.DTOs.Responses;
+using CardiTrack.Application.Exceptions;
 using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Domain.Entities;
@@ -85,14 +86,27 @@ public class AlertService : IAlertService
             acknowledger = await _unitOfWork.Users.GetByIdAsync(userId);
 
         var rule = AlertDetailComposer.ReadRule(alert.MetricValues);
-        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        var utcNow = DateTime.UtcNow;
 
         // Fetch only the window the chart will plot. A sleep alert must not pay for six
         // dashboard metrics, and device-silence has no health series at all.
         IReadOnlyList<ActivityLog> logs = [];
         var days = AlertDetailComposer.DailyLogDays(rule);
+        var today = DateOnly.FromDateTime(utcNow);
+        ElapsedMatch? elapsed = null;
+
         if (days > 0)
         {
+            // The member's anchor clock, not UTC — the same one StatisticalAlertService evaluated
+            // the rule on. Reading an alert back on a different calendar than the one that raised
+            // it is how a caregiver ends up looking at a window whose "yesterday" is not the
+            // yesterday the alert is about. Resolved only when a daily window is actually being
+            // plotted: it costs a links query plus a user read, and device-silence and the
+            // realtime-HR rule never look at a calendar day.
+            var zone = await MemberAnchorTimeZone.ResolveAsync(_unitOfWork, alert.CardiMemberId);
+            elapsed = AlertDetailComposer.ElapsedMatchFor(utcNow, zone);
+            today = DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(utcNow, zone));
+
             logs = (await _unitOfWork.ActivityLogs.GetByCardiMemberAndDateRangeAsync(
                     alert.CardiMemberId, today.AddDays(-(days - 1)), today))
                 .ToList();
@@ -113,7 +127,36 @@ public class AlertService : IAlertService
                 alert.CardiMemberId, BaselineProgress.PeriodDays);
         }
 
-        return AlertDetailComposer.Compose(alert, member, acknowledger, logs, today, granular, baseline);
+        var elapsedSteps = AlertDetailComposer.NeedsElapsedMatch(rule) && elapsed is { } match
+            ? await ElapsedStepsAsync(alert.CardiMemberId, match, ct)
+            : null;
+
+        return AlertDetailComposer.Compose(
+            alert, member, acknowledger, logs, today, granular, baseline, elapsedSteps);
+    }
+
+    /// <summary>
+    /// Today-so-far and the same run of hours yesterday, read off the hourly rollup ladder, so the
+    /// day in progress can be reported against something it is actually comparable to.
+    /// </summary>
+    /// <remarks>
+    /// Rollups rather than minute vectors: the two stretches together reach ~48 hours by late
+    /// evening, <c>GetWindowAsync</c> returns every metric's full minute grid for what it is
+    /// asked, and the detail page re-polls this endpoint the whole time it is open. Steps per hour
+    /// is precisely what <c>MetricRollupsHourly</c> is for. Two fetches rather than one spanning
+    /// both days, because the stretch between them — yesterday evening and last night — is hours
+    /// neither figure counts.
+    /// </remarks>
+    private async Task<ElapsedSteps?> ElapsedStepsAsync(
+        Guid cardiMemberId, ElapsedMatch match, CancellationToken ct)
+    {
+        var todayHours = await _unitOfWork.GranularMetrics.GetRollupsAsync(
+            cardiMemberId, GranularMetric.Steps, match.TodayFromUtc, match.TodayToUtc, ct);
+        var comparisonHours = await _unitOfWork.GranularMetrics.GetRollupsAsync(
+            cardiMemberId, GranularMetric.Steps,
+            match.ComparisonFromUtc, match.ComparisonToUtc, ct);
+
+        return AlertDetailComposer.ElapsedStepsFrom(todayHours, comparisonHours, match.Hours);
     }
 
     public async Task<AlertAcknowledgementResponse> AcknowledgeAsync(
@@ -131,6 +174,47 @@ public class AlertService : IAlertService
         {
             alert.AcknowledgedDate = DateTime.UtcNow;
             alert.AcknowledgedByUserId = requestingUserId;
+            _unitOfWork.Alerts.Update(alert);
+            await _unitOfWork.SaveChangesAsync();
+        }
+
+        var unread = await _unitOfWork.Alerts.CountUnreadAsync(
+            await _access.GetViewableMemberIdsAsync(requestingUserId, ct), ct);
+
+        return new AlertAcknowledgementResponse
+        {
+            AlertId = alert.Id,
+            Status = StatusLabel(alert),
+            AcknowledgedAt = alert.AcknowledgedDate,
+            AcknowledgedByUserId = alert.AcknowledgedByUserId,
+            UnreadCount = unread,
+        };
+    }
+
+    public async Task<AlertAcknowledgementResponse> UnacknowledgeAsync(
+        Guid requestingUserId, Guid alertId, CancellationToken ct = default)
+    {
+        var alert = await _unitOfWork.Alerts.GetByIdWithCardiMemberAsync(alertId);
+        if (alert is null || !alert.IsActive)
+            throw new KeyNotFoundException("Alert not found");
+
+        // Same bar as acknowledging, not the higher one Delete asks for: this restores an alert
+        // to everyone's attention rather than taking it away, so the cautious direction here is
+        // to allow it.
+        await _access.RequireViewAccessAsync(requestingUserId, alert.CardiMemberId, ct);
+
+        if (alert.IsResolved)
+        {
+            throw new AlertStateException(
+                "This alert has already been resolved, so it can't be marked unhandled again.");
+        }
+
+        // Idempotent, mirroring AcknowledgeAsync — two family members undoing at once is the same
+        // expected race, and the second one must not fail.
+        if (alert.AcknowledgedDate is not null)
+        {
+            alert.AcknowledgedDate = null;
+            alert.AcknowledgedByUserId = null;
             _unitOfWork.Alerts.Update(alert);
             await _unitOfWork.SaveChangesAsync();
         }

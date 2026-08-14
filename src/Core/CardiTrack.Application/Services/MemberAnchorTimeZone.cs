@@ -1,6 +1,6 @@
 using CardiTrack.Application.Interfaces.Repositories;
 
-namespace CardiTrack.Infrastructure.Services;
+namespace CardiTrack.Application.Services;
 
 /// <summary>
 /// Resolves the timezone a member's local clock is anchored to: the earliest-linked active
@@ -13,9 +13,16 @@ namespace CardiTrack.Infrastructure.Services;
 /// work); a member with no resolvable zone anchors to UTC so they are never silently skipped.
 /// </para>
 /// </summary>
-internal static class MemberAnchorTimeZone
+/// <remarks>
+/// Lives in Application rather than Infrastructure because reading an alert now needs the same
+/// clock that raised it. <c>StatisticalAlertService</c> anchors here to decide which day is
+/// "yesterday"; <c>AlertService</c> reading that alert back had been using UTC, so a caregiver far
+/// enough from Greenwich could open an alert about yesterday and be shown a window ending on a
+/// different day than the rule had evaluated.
+/// </remarks>
+public static class MemberAnchorTimeZone
 {
-    internal static async Task<TimeZoneInfo> ResolveAsync(IUnitOfWork unitOfWork, Guid cardiMemberId)
+    public static async Task<TimeZoneInfo> ResolveAsync(IUnitOfWork unitOfWork, Guid cardiMemberId)
     {
         var links = (await unitOfWork.UserCardiMembers.GetByCardiMemberIdAsync(cardiMemberId))
             .Where(l => l.IsActive)

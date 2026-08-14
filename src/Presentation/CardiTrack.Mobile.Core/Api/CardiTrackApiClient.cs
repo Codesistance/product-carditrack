@@ -131,6 +131,11 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
         SendAsync<AlertAcknowledgementResponse>(
             HttpMethod.Post, $"api/v1/alerts/{alertId}/acknowledge", ct);
 
+    public Task<AlertAcknowledgementResponse> UnacknowledgeAlertAsync(
+        Guid alertId, CancellationToken ct = default) =>
+        SendAsync<AlertAcknowledgementResponse>(
+            HttpMethod.Delete, $"api/v1/alerts/{alertId}/acknowledge", ct);
+
     public Task DeleteAlertAsync(Guid alertId, CancellationToken ct = default) =>
         SendNoDataAsync(HttpMethod.Delete, $"api/v1/alerts/{alertId}", ct);
 

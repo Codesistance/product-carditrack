@@ -1,3 +1,4 @@
+using System.Globalization;
 using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Application.Services;
 using CardiTrack.Domain.Entities;
@@ -232,6 +233,284 @@ public class AlertDetailComposerTests
         Assert.Equal("07:00", detail.TypicalWakeTime);
         Assert.Equal("steps", detail.Chart!.Metric);
     }
+
+    /// <summary>
+    /// Resolution and acknowledgement are different claims, and the detail screen branches its
+    /// copy on the second one — so a resolved alert nobody touched must arrive with no
+    /// acknowledger and no acknowledgement time. <c>AlertResolution.Resolve</c> closes an episode
+    /// from the producer's own "the condition has passed" test and never consults who looked.
+    /// </summary>
+    [Fact]
+    public void ResolvedButNeverAcknowledged_CarriesNoAcknowledger()
+    {
+        var alert = MakeAlert(AlertType.Inactivity, """{"rule":"activity_decline","steps":2500}""");
+        alert.IsResolved = true;
+
+        var detail = AlertDetailComposer.Compose(alert, Member(), null, [], _today, null, null);
+
+        Assert.Equal("resolved", detail.Status);
+        Assert.Null(detail.AcknowledgedAt);
+        Assert.Null(detail.AcknowledgedByUserId);
+        Assert.Null(detail.AcknowledgedByName);
+    }
+
+    // ── The reason icon key ───────────────────────────────────────────────────
+
+    [Theory]
+    [InlineData(StatisticalAlertRules.ActivityDeclineRule, AlertType.Inactivity, AlertReasons.Activity)]
+    [InlineData(StatisticalAlertRules.NoMorningActivityRule, AlertType.PatternBreak, AlertReasons.Activity)]
+    [InlineData(StatisticalAlertRules.LongTermTrendRule, AlertType.Trend, AlertReasons.Activity)]
+    [InlineData(StatisticalAlertRules.ElevatedHeartRateRule, AlertType.HeartRate, AlertReasons.Heart)]
+    [InlineData(AlertDetailComposer.RealtimeHeartRateRule, AlertType.HeartRate, AlertReasons.Heart)]
+    [InlineData(StatisticalAlertRules.IrregularSleepRule, AlertType.Sleep, AlertReasons.Sleep)]
+    [InlineData(AlertDetailComposer.DeviceSilenceRule, AlertType.Inactivity, AlertReasons.Device)]
+    public void Reason_FollowsTheRuleNotTheSeverity(string rule, AlertType type, string expected) =>
+        Assert.Equal(expected, AlertDetailComposer.Reason(rule, type));
+
+    [Theory]
+    // A markerless Inactivity row is the old device-silence producer — the watch, not the wearer.
+    [InlineData(AlertType.Inactivity, AlertReasons.Device)]
+    [InlineData(AlertType.Trend, AlertReasons.Activity)]
+    [InlineData(AlertType.HeartRate, AlertReasons.Heart)]
+    [InlineData(AlertType.Sleep, AlertReasons.Sleep)]
+    [InlineData(AlertType.PatternBreak, AlertReasons.Monitoring)]
+    public void Reason_FallsBackToTheAlertTypeForRowsWithoutARule(AlertType type, string expected) =>
+        Assert.Equal(expected, AlertDetailComposer.Reason(null, type));
+
+    // ── The day in progress ───────────────────────────────────────────────────
+
+    [Theory]
+    [InlineData(StatisticalAlertRules.ActivityDeclineRule, true)]
+    [InlineData(StatisticalAlertRules.NoMorningActivityRule, true)]
+    [InlineData(StatisticalAlertRules.LongTermTrendRule, true)]
+    // Settled figures when reported — the calendar day having hours left does not make them running
+    // totals, so neither gets the partial-day treatment.
+    [InlineData(StatisticalAlertRules.ElevatedHeartRateRule, false)]
+    [InlineData(StatisticalAlertRules.IrregularSleepRule, false)]
+    [InlineData(AlertDetailComposer.DeviceSilenceRule, false)]
+    public void NeedsElapsedMatch_OnlyForTheStepWindows(string rule, bool expected) =>
+        Assert.Equal(expected, AlertDetailComposer.NeedsElapsedMatch(rule));
+
+    [Fact]
+    public void ActivityDecline_HeadlineIsTheLastFinishedDay_NotTodaySoFar()
+    {
+        var alert = MakeAlert(
+            AlertType.Inactivity,
+            """{"rule":"activity_decline","steps":1477,"baselineAvgSteps":3797}""");
+        var logs = new[]
+        {
+            // Today, still collecting. This is the number that used to be the headline while the
+            // comparison card below it reported yesterday — two days, one number apiece.
+            Log(_today, steps: 865),
+            Log(_today.AddDays(-1), steps: 1477),
+            Log(_today.AddDays(-2), steps: 3600),
+        };
+
+        var detail = AlertDetailComposer.Compose(alert, Member(), null, logs, _today, null, null);
+
+        Assert.Equal(1477, detail.Chart!.Value);
+        Assert.Equal("Yesterday", detail.Chart.ValueLabel);
+        Assert.Contains("1,477", detail.Comparison!.CurrentValue);
+
+        var last = detail.Chart.Series[^1];
+        Assert.Equal(_today, last.Date);
+        Assert.True(last.IsPartial);
+        Assert.DoesNotContain(detail.Chart.Series.SkipLast(1), p => p.IsPartial);
+    }
+
+    [Fact]
+    public void ElevatedHeartRate_MarksNoDayPartial()
+    {
+        var alert = MakeAlert(
+            AlertType.HeartRate,
+            """{"rule":"elevated_heart_rate","restingHeartRate":88,"baselineAvgRestingHeartRate":68}""");
+        var logs = new[] { Log(_today, restingHr: 88), Log(_today.AddDays(-1), restingHr: 70) };
+
+        var detail = AlertDetailComposer.Compose(alert, Member(), null, logs, _today, null, null);
+
+        Assert.DoesNotContain(detail.Chart!.Series, p => p.IsPartial);
+        Assert.Null(detail.Chart.ValueLabel);
+        Assert.Equal(88, detail.Chart.Value);
+    }
+
+    [Fact]
+    public void PartialDayLabel_ComparesTheSameElapsedStretchOfYesterday()
+    {
+        var alert = MakeAlert(
+            AlertType.Inactivity,
+            """{"rule":"activity_decline","steps":1477,"baselineAvgSteps":3797}""");
+        var logs = new[] { Log(_today, steps: 865), Log(_today.AddDays(-1), steps: 1477) };
+
+        var detail = AlertDetailComposer.Compose(
+            alert, Member(), null, logs, _today, null, null,
+            new ElapsedSteps(Today: 865, Comparison: 1102));
+
+        var label = detail.Chart!.PartialDayLabel;
+        Assert.Contains("865 steps so far today", label);
+        Assert.Contains("1,102 by this time yesterday", label);
+        // 865 against 1,102 — the honest figure, not the 77% collapse that comparing this
+        // half-day against yesterday's whole 3,797 would have produced.
+        Assert.Contains("22% below", label);
+    }
+
+    [Fact]
+    public void PartialDayLabel_SaysOnlyWhatItKnows_WhenYesterdayHasNoMinuteData()
+    {
+        var alert = MakeAlert(AlertType.Inactivity, """{"rule":"activity_decline","steps":1477}""");
+        var logs = new[] { Log(_today, steps: 865), Log(_today.AddDays(-1), steps: 1477) };
+
+        var detail = AlertDetailComposer.Compose(
+            alert, Member(), null, logs, _today, null, null,
+            new ElapsedSteps(Today: 865, Comparison: null));
+
+        Assert.Equal("865 steps so far today", detail.Chart!.PartialDayLabel);
+    }
+
+    [Fact]
+    public void PartialDayLabel_IsAbsentWithoutAnElapsedMatch()
+    {
+        var alert = MakeAlert(AlertType.Inactivity, """{"rule":"activity_decline","steps":1477}""");
+        var logs = new[] { Log(_today, steps: 865), Log(_today.AddDays(-1), steps: 1477) };
+
+        var detail = AlertDetailComposer.Compose(alert, Member(), null, logs, _today, null, null);
+
+        Assert.Null(detail.Chart!.PartialDayLabel);
+        // The day is still marked partial, so the chart draws it apart even with nothing to
+        // compare it against — the one thing that must never happen is plotting it as finished.
+        Assert.True(detail.Chart.Series[^1].IsPartial);
+    }
+
+    // ── Elapsed-match arithmetic ──────────────────────────────────────────────
+
+    [Fact]
+    public void ElapsedMatchFor_SpansMidnightToTheTopOfTheHour_AndTheSameRunYesterday()
+    {
+        // 13:30 local in a zone one hour ahead of UTC.
+        var zone = TimeZoneInfo.CreateCustomTimeZone("test+1", TimeSpan.FromHours(1), "test+1", "test+1");
+        var nowUtc = new DateTime(2026, 8, 14, 12, 30, 0, DateTimeKind.Utc);
+
+        var match = AlertDetailComposer.ElapsedMatchFor(nowUtc, zone);
+
+        Assert.NotNull(match);
+        Assert.Equal(new DateOnly(2026, 8, 14), match!.Value.Today);
+        Assert.Equal(new DateTime(2026, 8, 13, 23, 0, 0, DateTimeKind.Utc), match.Value.TodayFromUtc);
+        // The top of the current hour, not now: the comparison is served from hourly rollups.
+        Assert.Equal(new DateTime(2026, 8, 14, 12, 0, 0, DateTimeKind.Utc), match.Value.TodayToUtc);
+        Assert.Equal(new DateTime(2026, 8, 12, 23, 0, 0, DateTimeKind.Utc), match.Value.ComparisonFromUtc);
+        Assert.Equal(new DateTime(2026, 8, 13, 12, 0, 0, DateTimeKind.Utc), match.Value.ComparisonToUtc);
+        Assert.Equal(13, match.Value.Hours);
+
+        // Both stretches cover the same number of hours — that is the whole point of the match.
+        Assert.Equal(
+            match.Value.TodayToUtc - match.Value.TodayFromUtc,
+            match.Value.ComparisonToUtc - match.Value.ComparisonFromUtc);
+    }
+
+    /// <summary>
+    /// The hour count comes from today's real elapsed span, so a clock-change day still compares
+    /// two runs of the same length. Deriving it from the local time-of-day instead would project
+    /// an end past "now" on a spring-forward day.
+    /// </summary>
+    [Theory]
+    [InlineData("2026-09-06T15:30:00Z")]  // Santiago springs forward
+    [InlineData("2026-04-05T15:30:00Z")]  // and falls back
+    public void ElapsedMatchFor_NeverProjectsPastNow_AcrossAClockChange(string nowIso)
+    {
+        var zone = TimeZoneInfo.FindSystemTimeZoneById("America/Santiago");
+        var nowUtc = DateTime.Parse(
+            nowIso, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind).ToUniversalTime();
+
+        var match = AlertDetailComposer.ElapsedMatchFor(nowUtc, zone);
+
+        Assert.NotNull(match);
+        Assert.True(match!.Value.TodayToUtc <= nowUtc);
+        Assert.Equal(
+            match.Value.Hours,
+            (int)(match.Value.ComparisonToUtc - match.Value.ComparisonFromUtc).TotalHours);
+    }
+
+    [Fact]
+    public void ElapsedMatchFor_IsNullBeforeTheFirstWholeLocalHour()
+    {
+        var zone = TimeZoneInfo.CreateCustomTimeZone("test+1", TimeSpan.FromHours(1), "test+1", "test+1");
+        var midnightLocal = new DateTime(2026, 8, 13, 23, 0, 0, DateTimeKind.Utc);
+
+        Assert.Null(AlertDetailComposer.ElapsedMatchFor(midnightLocal, zone));
+        Assert.Null(AlertDetailComposer.ElapsedMatchFor(midnightLocal.AddMinutes(59), zone));
+        Assert.NotNull(AlertDetailComposer.ElapsedMatchFor(midnightLocal.AddHours(1), zone));
+    }
+
+    [Fact]
+    public void StepsOver_SumsOnlyTheHoursThatCarrySamples()
+    {
+        var hours = new[]
+        {
+            Rollup(0, sum: 400, samples: 60),
+            Rollup(1, sum: 0, samples: 0),
+            Rollup(2, sum: 465, samples: 60),
+        };
+
+        var (steps, covered) = AlertDetailComposer.StepsOver(hours);
+
+        Assert.Equal(865m, steps);
+        // The empty hour is not coverage — it is the gap the coverage gate exists to notice.
+        Assert.Equal(2, covered);
+    }
+
+    [Fact]
+    public void ElapsedStepsFrom_ComparesTwoWellCoveredDays()
+    {
+        var elapsed = AlertDetailComposer.ElapsedStepsFrom(
+            CoveredHours(865m, hours: 12), CoveredHours(1102m, hours: 12), elapsedHours: 12);
+
+        Assert.NotNull(elapsed);
+        Assert.Equal(865m, elapsed!.Today);
+        Assert.Equal(1102m, elapsed.Comparison);
+    }
+
+    /// <summary>
+    /// A day the watch spent most of its hours off the wrist is not the same stretch as a day it
+    /// was worn throughout. Comparing them would swap one unfair comparison for another.
+    /// </summary>
+    [Fact]
+    public void ElapsedStepsFrom_DropsTheComparison_WhenYesterdayIsBarelyCovered()
+    {
+        var elapsed = AlertDetailComposer.ElapsedStepsFrom(
+            CoveredHours(865m, hours: 12), CoveredHours(400m, hours: 4), elapsedHours: 12);
+
+        Assert.NotNull(elapsed);
+        Assert.Equal(865m, elapsed!.Today);
+        Assert.Null(elapsed.Comparison);
+    }
+
+    [Fact]
+    public void ElapsedStepsFrom_IsNull_WhenTodayItselfIsBarelyCovered()
+    {
+        Assert.Null(AlertDetailComposer.ElapsedStepsFrom(
+            CoveredHours(200m, hours: 3), CoveredHours(1102m, hours: 12), elapsedHours: 12));
+        Assert.Null(AlertDetailComposer.ElapsedStepsFrom(
+            [], CoveredHours(1102m, hours: 12), elapsedHours: 12));
+    }
+
+    /// <summary>
+    /// <paramref name="hours"/> hours that all count as covered, carrying <paramref name="steps"/>
+    /// between them. The whole total sits in the first hour rather than being divided across them:
+    /// what the assertions care about is the sum and the coverage count, and an even split would
+    /// only add float rounding to every expected value.
+    /// </summary>
+    private MetricRollupHourly[] CoveredHours(decimal steps, int hours) =>
+        Enumerable.Range(0, hours)
+            .Select(h => Rollup(h, sum: h == 0 ? (float)steps : 0f, samples: 60))
+            .ToArray();
+
+    private MetricRollupHourly Rollup(int hourOffset, float sum, short samples) => new()
+    {
+        CardiMemberId = _memberId,
+        Metric = GranularMetric.Steps,
+        HourStartUtc = new DateTime(2026, 8, 14, 0, 0, 0, DateTimeKind.Utc).AddHours(hourOffset),
+        Sum = sum,
+        SampleCount = samples,
+    };
 
     private Alert MakeAlert(AlertType type, string metricValues) => new()
     {

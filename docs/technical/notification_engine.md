@@ -241,12 +241,16 @@ check.** This is the single most important reachability signal in the design.
       "ackToken": "...",               // HMAC, single-use, halts escalation  (§7.2 C3)
       "fetchToken": "..."              // HMAC, scoped to this delivery       (§7.2 C5)
     },
-    "notification": { "title": "CardiTrack", "body": "Urgent — tap to view" },
+    "notification": { "title": "CardiTrack", "body": "Urgent — open CardiTrack now" },
     "android": {
       "priority": "high",              // wakes from Doze
       "ttl": "1800s",
       "collapse_key": "alert-9b2f5f64",
-      "notification": { "channel_id": "carditrack.safety" }
+      "notification": {
+        "channel_id": "carditrack.safety",
+        "icon": "icon_notification",   // white silhouette; Android alpha-masks the small icon
+        "color": "#135497"
+      }
     },
     "apns": {
       "headers": {
@@ -378,6 +382,23 @@ transit through Apple's and Google's infrastructure.
 CardiTrack, the body a category-level teaser. The iOS notification service extension (and Android's
 data-message handler) fetches the real copy over authenticated HTTPS and rewrites the notification
 before it displays. The user sees rich content; APNs and FCM never do.
+
+The live teasers are `"Urgent — open CardiTrack now"` for Safety and
+`"Something needs your attention — open CardiTrack"` for everything else. They replaced
+`"Urgent — tap to view"` / `"Tap to view"`, which were content-free and also close to contentless:
+on a lock screen they read as a system message with nothing behind them, and a caregiver who did not
+open one had been told nothing at all. Naming the app and asking for the app is the most these
+strings can carry without carrying the alert, and it is the difference between a notification that
+gets dismissed and one that gets opened. Both are pinned by `FcmPayloadPrivacyTests` — for the
+privacy invariant *and* for the shape, so a future edit cannot quietly go back to saying nothing.
+
+**Small icon.** `AndroidNotification.icon` names `icon_notification`, a white-on-transparent
+silhouette generated from the mobile app's `Resources/Images/icon_notification.svg`; the same
+drawable is wired as `default_notification_icon` in `AndroidManifest.xml` (for pushes the FCM SDK
+renders) and as `FirebaseCloudMessagingImplementation.SmallIconRef` (for the ones Plugin.Firebase
+builds). Android alpha-masks a small icon and repaints it flat, so with none of these set it falls
+back to the adaptive launcher icon and the notification arrives as a featureless grey square. iOS
+needs no equivalent — APNs uses the app icon.
 
 **Opt-in richness.** A setting — *"Show alert details on the lock screen"* — lets a caregiver who
 values speed over discretion get the full text directly in the payload. Off by default; the choice is

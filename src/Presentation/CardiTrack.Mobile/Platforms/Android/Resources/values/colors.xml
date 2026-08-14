@@ -3,4 +3,10 @@
     <color name="colorPrimary">#135497</color>
     <color name="colorPrimaryDark">#0A3A6E</color>
     <color name="colorAccent">#2B7FD3</color>
+
+    <!-- The notification accent, referenced from AndroidManifest.xml. Lowercase on purpose: the
+         .NET Android resource pipeline lowercases the names it resolves manifest references
+         against, so a camelCase name here fails the build with "resource color/... not found"
+         even though it is sitting in this file. -->
+    <color name="notification_accent">#135497</color>
 </resources>

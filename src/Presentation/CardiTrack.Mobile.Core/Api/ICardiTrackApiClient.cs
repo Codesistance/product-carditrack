@@ -93,6 +93,12 @@ public interface ICardiTrackApiClient
     /// <summary>Marks one alert as handled (M1-10 card action).</summary>
     Task<AlertAcknowledgementResponse> AcknowledgeAlertAsync(Guid alertId, CancellationToken ct = default);
 
+    /// <summary>
+    /// Puts an acknowledged alert back to unhandled — the undo behind M1-11's Undo button.
+    /// Rejected for an alert the system has already resolved.
+    /// </summary>
+    Task<AlertAcknowledgementResponse> UnacknowledgeAlertAsync(Guid alertId, CancellationToken ct = default);
+
     /// <summary>One alert for the detail screen (M1-11 / M1-12 / M1-16).</summary>
     Task<AlertDetailResponse> GetAlertAsync(Guid alertId, CancellationToken ct = default);
 

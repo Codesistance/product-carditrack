@@ -1,0 +1,9 @@
+<!-- icon_metric_steps in white, for the alert detail banner, whose ground is the severity colour.
+     A second file rather than a tint on the original: the metric icons carry a fixed identity
+     colour everywhere else they appear, and recolouring them at the call site would put that
+     identity one careless binding away from changing on the cards too. -->
+<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+<path d="M4 17h6l2-4 2 4h6" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M3 20h18" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round"/>
+<path d="M7 13l3-8 3 5" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentView xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="CardiTrack.Mobile.Controls.QuickActionRow">
+
+    <!-- The four ways to act on a CardiMember, lifted out of DashboardPage so the alert detail
+         screen offers the same four rather than a second, differently-worded set of its own.
+
+         Quick actions (issue #162): Call and Message reach the CardiMember's own phone directly.
+         SOS is visually distinct (tinted, not a plain white tile) precisely because it dials
+         someone else, not the member this row is about — its label dropped the member's name
+         (issue: names vary in length once more than one CardiMember can appear). Each tile dims
+         independently when its own number is missing (issue #67's dim-not-hide pattern) — they
+         stay tappable so the tap can explain why, the only affordance a dimmed tile has on touch.
+         SOS leads the row: it is the one action with a deadline on it, and the first tile is where
+         a thumb lands and where the eye starts. The others are reachable in the seconds that
+         emergency is not.
+
+         Inset from the container's content box by the shadow's own radius. The Dashboard's card
+         Border clips its content, and the row was flush with that edge — so the outer tiles'
+         shadows were sliced off vertically on the left of SOS and the right of Details, which read
+         as a rendering fault rather than as depth. The tiles lose five points of width each and
+         the row keeps its shadow whole. -->
+
+    <Grid ColumnDefinitions="*,*,*,*" ColumnSpacing="10" Margin="10,0">
+        <Border x:Name="EmergencyCallAction"
+                Grid.Column="0"
+                Style="{StaticResource QuickActionTile}"
+                BackgroundColor="{StaticResource QuickActionTintRed}"
+                SemanticProperties.Description="SOS: call emergency contact"
+                SemanticProperties.Hint="Dials the emergency contact number, not the CardiMember directly">
+            <Border.GestureRecognizers>
+                <TapGestureRecognizer Tapped="OnEmergencyCallTapped"/>
+            </Border.GestureRecognizers>
+            <VerticalStackLayout Spacing="10">
+                <Image Source="icon_action_call.svg"
+                       WidthRequest="22" HeightRequest="22"
+                       HorizontalOptions="Center"/>
+                <Label Text="SOS"
+                       Style="{StaticResource QuickActionLabel}"
+                       TextColor="{StaticResource StatusRed}"
+                       LineBreakMode="TailTruncation"/>
+            </VerticalStackLayout>
+        </Border>
+        <Border x:Name="CallAction"
+                Grid.Column="1"
+                Style="{StaticResource QuickActionTile}"
+                BackgroundColor="{StaticResource QuickActionTint}">
+            <Border.GestureRecognizers>
+                <TapGestureRecognizer Tapped="OnCallTapped"/>
+            </Border.GestureRecognizers>
+            <VerticalStackLayout Spacing="10">
+                <Image Source="icon_action_call.svg"
+                       WidthRequest="22" HeightRequest="22"
+                       HorizontalOptions="Center"/>
+                <Label Text="Call"
+                       Style="{StaticResource QuickActionLabel}"
+                       LineBreakMode="TailTruncation"/>
+            </VerticalStackLayout>
+        </Border>
+        <Border x:Name="MessageAction"
+                Grid.Column="2"
+                Style="{StaticResource QuickActionTile}"
+                BackgroundColor="{StaticResource QuickActionTint}">
+            <Border.GestureRecognizers>
+                <TapGestureRecognizer Tapped="OnMessageTapped"/>
+            </Border.GestureRecognizers>
+            <VerticalStackLayout Spacing="10">
+                <Image Source="icon_action_sms.svg"
+                       WidthRequest="22" HeightRequest="22"
+                       HorizontalOptions="Center"/>
+                <Label Text="Message" Style="{StaticResource QuickActionLabel}"/>
+            </VerticalStackLayout>
+        </Border>
+        <Border Grid.Column="3"
+                Style="{StaticResource QuickActionTile}"
+                BackgroundColor="{StaticResource QuickActionTint}">
+            <Border.GestureRecognizers>
+                <TapGestureRecognizer Tapped="OnViewDetailsTapped"/>
+            </Border.GestureRecognizers>
+            <VerticalStackLayout Spacing="10">
+                <Image Source="icon_action_details.svg"
+                       WidthRequest="22" HeightRequest="22"
+                       HorizontalOptions="Center"/>
+                <Label Text="Details" Style="{StaticResource QuickActionLabel}"/>
+            </VerticalStackLayout>
+        </Border>
+    </Grid>
+</ContentView>

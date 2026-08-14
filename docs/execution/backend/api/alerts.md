@@ -27,7 +27,7 @@ The one alert-related endpoint that exists: on-demand **MedGemma analysis** of a
 
 ### The M1-10 slice — `AlertsController`
 
-Five endpoints are live, serving the mobile Alerts List and the alert detail screen:
+Six endpoints are live, serving the mobile Alerts List and the alert detail screen:
 
 | Endpoint | Notes |
 |----------|-------|
@@ -35,6 +35,7 @@ Five endpoints are live, serving the mobile Alerts List and the alert detail scr
 | `GET /api/v1/cardimembers/{id}/alerts` | Same filters, single member. |
 | `GET /api/v1/alerts/{alertId}` | Detail for M1-11/12/16. Same view-access / 404-not-403 rule. Carries **one** chart series chosen from the alert's `rule` (steps for activity/trend/no-morning, resting HR for elevated HR, sleep hours for irregular sleep, granular HR for `realtime_hr`). `device_silence` has no chart. Does **not** return the dashboard's six-metric payload. |
 | `POST /api/v1/alerts/{alertId}/acknowledge` | No request body. Idempotent — re-acknowledging keeps the original timestamp and acknowledger, so a second family member tapping "handled" doesn't overwrite who dealt with it. |
+| `DELETE /api/v1/alerts/{alertId}/acknowledge` | The undo. Clears `acknowledgedAt`/`acknowledgedBy` and returns the same `AlertAcknowledgementResponse` with `status: "new"` and a refreshed `unreadCount`. Same view-access bar as acknowledging — this restores an alert to everyone's attention rather than taking it away. Idempotent, and **400** for an alert the system has already resolved: resolution is CardiTrack's judgement that the condition passed, and a caregiver toggle must not reopen it. |
 | `DELETE /api/v1/alerts/{alertId}` | Returns **204**. Removes the alert from the caregiver's lists — housekeeping, not a clinical action. **404** on an unreachable alert (unknown or not the caller's to see). |
 
 Response shape differs from the design below in three ways, all because the implemented `Alert` entity is what it is:
@@ -43,7 +44,7 @@ Response shape differs from the design below in three ways, all because the impl
 - `severity` is the lowercase `AlertSeverity` name (`green`/`yellow`/`orange`/`red`), and `status` is derived from `AcknowledgedDate` + `IsResolved` rather than stored — see `AlertStatus`.
 - Each summary carries `cardiMemberName`, `emergencyContactPhone` and `emergencyContactName` so the M1-10 card can render its avatar and Call action without a second round-trip. `cardiMemberPhotoUrl` is present but always null: no member photo storage exists yet.
 
-**Still not implemented:** status transitions (`PUT .../status`), notes, photos, and history. Per-CardiMember alert preferences remain unbuilt too, though quiet hours and per-category push muting now exist **at user scope** — see "Sensitivity and preferences" below. Acknowledgment takes no `note`/`actionTaken` — notes would need a schema change (`AlertNote`).
+**Still not implemented:** status transitions (`PUT .../status`), notes, photos, and history. The M1-11 "More Options" rows follow the same line: `View Detailed Activity Data` and `Share with Family` ship because they need no backend, while `Adjust Baseline`, `Add Note About This Alert` and `Book a Doctor Visit` are absent from the screen entirely — there is no baseline-override endpoint, no `AlertNote` store, and no clinician or consent architecture behind them. Per-CardiMember alert preferences remain unbuilt too, though quiet hours and per-category push muting now exist **at user scope** — see "Sensitivity and preferences" below. Acknowledgment takes no `note`/`actionTaken` — notes would need a schema change (`AlertNote`).
 
 Alert **summaries** also surface in the dashboard's `recentAlerts` array — see [health-data.md](health-data.md).
 
@@ -156,7 +157,17 @@ Same schema as `GET /api/v1/alerts`.
 
 ## GET `/api/v1/alerts/{alertId}`
 
-> **Implemented** — see "The M1-10 slice" above. The live payload is `AlertDetailResponse`: list fields plus `rule`, `phone`, `acknowledgedByName`, a single `chart` (or null), `comparison`, and silence/no-morning context. It does not return `recommendedActions`, `notes`, or `photos`.
+> **Implemented** — see "The M1-10 slice" above. The live payload is `AlertDetailResponse`: list fields plus `rule`, `reason`, `phone`, `acknowledgedByName`, a single `chart` (or null), `comparison`, and silence/no-morning context. It does not return `recommendedActions`, `notes`, or `photos`.
+
+`reason` is a coarse key for the detail screen's icon — `activity`, `heart`, `sleep`, `device` or `monitoring` — derived from `rule`, falling back to `AlertType` for rows written before rule markers. It is deliberately *not* the severity: the banner already carries that in colour, so an icon repeating it says nothing new. Clients should fall back to `monitoring` for an unrecognised value rather than rendering no icon.
+
+**The day in progress.** For the step rules (`activity_decline`, `no_morning_activity`, `long_term_trend`) the chart window runs up to today, which has not finished. Three things follow:
+
+- `chart.value` is the last **finished** day, and `chart.valueLabel` names it ("Yesterday") — so the chart header and the `comparison` block below it quote the same day. It used to be the latest reading outright, which meant a lunchtime step count in the header and the whole of yesterday in the comparison, with nothing on screen saying they were different days.
+- The trailing `chart.series` point carries `isPartial: true`. Clients must draw it apart from the completed days.
+- `chart.partialDayLabel` is the like-for-like sentence: "865 steps so far today, 22% below the 1,102 by this time yesterday". Both figures are summed from `MetricRollupsHourly` over the **same** run of whole hours since local midnight on the member's anchor clock (`MemberAnchorTimeZone` — the same clock `StatisticalAlertService` evaluated the rule on); rollups rather than minute vectors, because the two stretches together reach ~48 hours by late evening and this endpoint is re-polled the whole time the page is open. Null when the day in progress has too few covered hours to report, and the comparison clause is dropped when either day covers less than 75% of the elapsed hours — a day the watch spent off the wrist is not the same stretch as a day it was worn, and comparing them would only swap one unfair comparison for another.
+
+Heart-rate and sleep charts set none of these: a resting heart rate and a night's sleep are settled figures when reported, so the calendar day having hours left in it does not make them running totals.
 
 **Priority:** P0 | **Auth Required:** Yes
 

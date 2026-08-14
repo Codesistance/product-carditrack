@@ -40,6 +40,22 @@ public interface IAlertService
         Guid requestingUserId, Guid alertId, CancellationToken ct = default);
 
     /// <summary>
+    /// Puts an acknowledged alert back to unhandled. "Handled" is a claim a caregiver makes about
+    /// themselves, and they can be wrong about it — tapping the wrong row, or acknowledging on the
+    /// way to doing something they then could not do. Without this the mistake is permanent and
+    /// the alert is silently out of everyone's unread count.
+    /// </summary>
+    /// <remarks>
+    /// Idempotent like its opposite, and refuses a <see cref="Domain.Entities.Alert.IsResolved"/>
+    /// alert with <see cref="Exceptions.AlertStateException"/>: resolution is the system's
+    /// judgement that the underlying condition has passed, and a caregiver toggle must not reopen
+    /// it. Its own exception type rather than <see cref="InvalidOperationException"/> because the
+    /// API returns the message to the caregiver verbatim — see the type's own remarks.
+    /// </remarks>
+    Task<AlertAcknowledgementResponse> UnacknowledgeAsync(
+        Guid requestingUserId, Guid alertId, CancellationToken ct = default);
+
+    /// <summary>
     /// Removes an alert from every list it would otherwise appear in — a caregiver's own
     /// housekeeping, distinct from <see cref="AcknowledgeAsync"/>'s "handled" record. Soft
     /// delete (<see cref="Domain.Entities.Alert.IsActive"/>), same pattern

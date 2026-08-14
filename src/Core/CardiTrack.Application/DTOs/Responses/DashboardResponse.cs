@@ -228,6 +228,19 @@ public class MetricPoint
 {
     public DateOnly Date { get; set; }
     public decimal? Value { get; set; }
+
+    /// <summary>
+    /// The day is still in progress, so this value is a running total rather than a finished one.
+    /// Charts draw it apart from the completed days — plotting a half-finished step count on the
+    /// same footing as whole ones is what made the alert detail's activity graph read as a further
+    /// collapse when it was only lunchtime.
+    /// </summary>
+    /// <remarks>
+    /// Only <see cref="Services.AlertDetailComposer"/> sets this today, and only for step charts.
+    /// A metric whose daily figure is settled by the time it is reported (last night's sleep) is
+    /// not partial just because the calendar day it is filed under has not ended.
+    /// </remarks>
+    public bool IsPartial { get; set; }
 }
 
 public class DashboardAlertSummary
