@@ -161,6 +161,8 @@ jobs:
     outputs:
       version: ${{ steps.version.outputs.version }}
       build_number: ${{ steps.version.outputs.build_number }}
+      changelog_testflight: ${{ steps.version.outputs.changelog_testflight }}
+      changelog_play: ${{ steps.version.outputs.changelog_play }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -169,7 +171,7 @@ jobs:
         id: version
         run: |
           git fetch --tags
-          LATEST=$(git tag --sort=-version:refname | grep '^v[0-9]' | head -1)
+          LATEST=$(git tag --sort=-version:refname | grep '^v[0-9]' | head -1 || true)
           if [ -z "$LATEST" ]; then LATEST="v0.0.0"; fi
           MAJOR=$(echo ${LATEST#v} | cut -d. -f1)
           MINOR=$(echo ${LATEST#v} | cut -d. -f2)
@@ -181,6 +183,22 @@ jobs:
           BUILD_NUMBER=$(git rev-list --count HEAD)
           echo "build_number=${BUILD_NUMBER}" >> $GITHUB_OUTPUT
           echo "Build number: ${BUILD_NUMBER}"
+          python3 .github/scripts/mobile-build-changelog.py \
+            --since "$LATEST" \
+            --version "$NEXT" \
+            --build "$BUILD_NUMBER" \
+            --testflight-out /tmp/changelog-testflight.txt \
+            --play-out /tmp/changelog-play.txt
+          TF_DELIM="TF_CHANGELOG_EOF_$(openssl rand -hex 8)"
+          PLAY_DELIM="PLAY_CHANGELOG_EOF_$(openssl rand -hex 8)"
+          {
+            echo "changelog_testflight<<${TF_DELIM}"
+            cat /tmp/changelog-testflight.txt
+            echo "${TF_DELIM}"
+            echo "changelog_play<<${PLAY_DELIM}"
+            cat /tmp/changelog-play.txt
+            echo "${PLAY_DELIM}"
+          } >> $GITHUB_OUTPUT
 
   # ── API ─────────────────────────────────────────────────────────────────────
   build-api:
@@ -1000,11 +1018,21 @@ jobs:
           issuer-id: ${{ steps.secrets.outputs.issuer_id }}
           api-key-id: ${{ steps.secrets.outputs.api_key_id }}
           api-private-key: ${{ steps.secrets.outputs.api_private_key }}
+          # Notes attach only after App Store Connect has the build; skipping the
+          # wait drops the changelog. Testers see this as TestFlight "What to Test".
+          wait-for-processing: true
+          release-notes: ${{ needs.compute-version.outputs.changelog_testflight }}
 
       - name: Summary
         if: steps.gate.outputs.available == 'true'
+        env:
+          NOTES: ${{ needs.compute-version.outputs.changelog_testflight }}
         run: |
           echo "### TestFlight — uploaded \`${{ needs.compute-version.outputs.version }}\` (build ${{ needs.compute-version.outputs.build_number }})" >> $GITHUB_STEP_SUMMARY
+          echo >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          printf '%s\n' "$NOTES" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
 
   deploy-play-internal:
     name: Deploy → Play Console (internal)
@@ -1060,6 +1088,15 @@ jobs:
           echo "mapping=$(find artifacts/android -name 'mapping.txt' | head -1)" >> $GITHUB_OUTPUT
           echo "symbols=$(find artifacts/android -name 'native-debug-symbols.zip' | head -1)" >> $GITHUB_OUTPUT
 
+      - name: Write Play release notes
+        if: steps.gate.outputs.available == 'true'
+        env:
+          NOTES: ${{ needs.compute-version.outputs.changelog_play }}
+        run: |
+          mkdir -p play-whatsnew
+          printf '%s' "$NOTES" > play-whatsnew/whatsnew-en-US
+          printf '%s' "$NOTES" > play-whatsnew/whatsnew-en-GB
+
       - name: Upload to Play Console (internal track)
         if: steps.gate.outputs.available == 'true'
         uses: r0adkll/upload-google-play@v1
@@ -1071,11 +1108,18 @@ jobs:
           debugSymbols: ${{ steps.aab.outputs.symbols }}
           tracks: internal
           status: completed
+          whatsNewDirectory: play-whatsnew
 
       - name: Summary
         if: steps.gate.outputs.available == 'true'
+        env:
+          NOTES: ${{ needs.compute-version.outputs.changelog_play }}
         run: |
           echo "### Play Console (internal) — uploaded \`${{ needs.compute-version.outputs.version }}\` (versionCode ${{ needs.compute-version.outputs.build_number }})" >> $GITHUB_STEP_SUMMARY
+          echo >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          printf '%s\n' "$NOTES" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
 
   # ── Main only: Push images ───────────────────────────────────────────────────
   push-api-image:

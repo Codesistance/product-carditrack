@@ -273,6 +273,8 @@ Dev / internal-track mobile CI lives in `.github/workflows/deploy-apps-dev.yml` 
 
 Store versioning is stamped by CI: `ApplicationDisplayVersion` comes from the computed semver tag and `ApplicationVersion` (iOS build number / Android versionCode) from the monotonic commit count — the values in the csproj are placeholders.
 
+Each store upload includes a **changelog** generated from `git log` since the previous `v*` tag (commit subjects, no merges). Testers see it as TestFlight **What to Test** and Play internal **What's new** (Play is truncated to 500 characters). The same text is written to the Actions job summary.
+
 Signing material and store credentials live in GCP Secret Manager (`carditrack-common-*` secrets, defined in `infrastructure/common/secret_manager.tf`):
 
 | Secret | Content |
