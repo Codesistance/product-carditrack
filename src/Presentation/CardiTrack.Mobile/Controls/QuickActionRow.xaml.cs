@@ -141,9 +141,17 @@ public partial class QuickActionRow : ContentView
         {
             await Sms.Default.ComposeAsync(new SmsMessage(string.Empty, target.Phone));
         }
+        catch (FeatureNotSupportedException)
+        {
+            // The device genuinely has no SMS composer — a tablet without telephony, say.
+            await ShowWarningAsync("Messaging isn't supported on this device.");
+        }
         catch (Exception)
         {
-            await ShowWarningAsync("Messaging isn't supported on this device.");
+            // It is supported and the handoff still failed. Saying "not supported" here was the
+            // wrong diagnosis on a phone that can plainly text (see the manifest's <queries>
+            // note), and it left the caregiver with nothing to do about it.
+            await ShowWarningAsync("We couldn't open your messaging app. Try texting them from it directly.");
         }
     }
 

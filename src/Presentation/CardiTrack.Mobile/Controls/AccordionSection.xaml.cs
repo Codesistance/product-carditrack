@@ -26,6 +26,15 @@ public partial class AccordionSection : ContentView
         set => HeaderLabel.Text = value;
     }
 
+    /// <summary>
+    /// The header's type style, for pages whose section titles are not <c>Heading2</c> — the
+    /// default this control carries for the dashboard card it was written for.
+    /// </summary>
+    public Style HeaderStyle
+    {
+        set => HeaderLabel.Style = value;
+    }
+
     /// <summary>The collapsible content. Set once, declaratively, as this control's XAML children.</summary>
     public View? Body
     {
@@ -40,6 +49,24 @@ public partial class AccordionSection : ContentView
     public AccordionSection()
     {
         InitializeComponent();
+    }
+
+    /// <summary>
+    /// Re-fits an open body to content that arrived after it was opened. The clip is held at a
+    /// height measured once, when the body was empty or still a skeleton, so a body that fills
+    /// itself from a background load would otherwise be sliced off at whatever it was worth then.
+    /// A no-op while closed or mid-animation: both already end at the right height.
+    /// </summary>
+    public void RefreshHeight()
+    {
+        if (!IsExpanded || _isAnimating)
+            return;
+
+        var width = RootLayout.Width > 0 ? RootLayout.Width : Width;
+        if (width <= 0)
+            return;
+
+        BodyClip.HeightRequest = BodyHost.Measure(width, double.PositiveInfinity).Height;
     }
 
     private void OnHeaderTapped(object? sender, TappedEventArgs e)

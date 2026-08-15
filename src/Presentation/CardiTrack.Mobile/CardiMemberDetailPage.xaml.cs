@@ -290,9 +290,11 @@ public partial class CardiMemberDetailPage : ContentPage
 
         var hasPhone = !string.IsNullOrWhiteSpace(member.Phone);
         PhoneLabel.Text = hasPhone ? member.Phone : "No phone number yet";
-        // Call when a number exists; otherwise primary caregivers get an edit affordance so
-        // adding one is one tap from this card rather than hunting the header pencil (#280).
+        // Call and message when a number exists; otherwise primary caregivers get an edit
+        // affordance so adding one is one tap from this card rather than hunting the header
+        // pencil (#280).
         PhoneCallButton.IsVisible = hasPhone;
+        PhoneMessageButton.IsVisible = hasPhone;
         PhoneEditButton.IsVisible = !hasPhone && member.IsPrimaryCaregiver;
         PhoneEditTarget.InputTransparent = !member.IsPrimaryCaregiver;
 
@@ -656,6 +658,33 @@ public partial class CardiMemberDetailPage : ContentPage
         }
     }
 
+    /// <summary>
+    /// Opens the platform SMS composer on this CardiMember's own number. Same handoff and the same
+    /// two failure modes as the dashboard's Message quick action — see
+    /// <see cref="Controls.QuickActionRow"/>, and the <c>&lt;queries&gt;</c> note in the Android
+    /// manifest for why the composer has to be declared before it can be reached at all.
+    /// </summary>
+    private async void OnMessagePhoneTapped(object? sender, TappedEventArgs e)
+    {
+        var phone = _member?.Phone;
+        if (string.IsNullOrWhiteSpace(phone))
+            return;
+
+        try
+        {
+            await Sms.Default.ComposeAsync(new SmsMessage(string.Empty, phone));
+        }
+        catch (FeatureNotSupportedException)
+        {
+            await _popups.ShowWarningAsync("Messaging isn't supported on this device.");
+        }
+        catch (Exception)
+        {
+            await _popups.ShowWarningAsync(
+                "We couldn't open your messaging app. Try texting them from it directly.");
+        }
+    }
+
     private async void OnEditPhoneTapped(object? sender, TappedEventArgs e)
     {
         if (_member is not { IsPrimaryCaregiver: true })
@@ -674,7 +703,7 @@ public partial class CardiMemberDetailPage : ContentPage
             await _popups.ShowWeatherAsync(weather);
     }
 
-    private async void OnManageDevicesClicked(object? sender, EventArgs e) =>
+    private async void OnManageDevicesTapped(object? sender, TappedEventArgs e) =>
         await Shell.Current.GoToAsync($"{DeviceManagementPage.Route}?memberId={_memberId}");
 
     private async void OnQuestionsTapped(object? sender, EventArgs e)
@@ -937,7 +966,16 @@ public partial class CardiMemberDetailPage : ContentPage
         finally
         {
             if (_memberId == memberId)
+            {
                 AlertRulesSkeleton.IsVisible = false;
+
+                // The rules land after the page does, so a caregiver who opened the accordion
+                // while it was still a skeleton would be left with the clip held at the
+                // skeleton's height and the rules sliced off inside it. Dispatched rather than
+                // called straight away: the rows have only just been added, and the measurement
+                // has to happen after the layout pass that gives them a width.
+                Dispatcher.Dispatch(AlertRulesAccordion.RefreshHeight);
+            }
         }
     }
 
@@ -950,11 +988,20 @@ public partial class CardiMemberDetailPage : ContentPage
             var canManage = _member?.IsPrimaryCaregiver == true;
             var resources = App.Current!.Resources;
 
-            foreach (var cluster in prefs.Clusters)
+            // Ordered by availability, at both levels: rules that can actually be turned on or off
+            // come before the ones still marked "Soon", and a cluster with nothing available in it
+            // yet sinks below the clusters that have something. What the catalogue offers today is
+            // what a caregiver came here to change; the reserved ids are a roadmap, and reading
+            // past two of them to reach a switch made the list feel mostly unbuilt. OrderBy is a
+            // stable sort, so the catalogue's own editorial order survives within each group.
+            var clusters = prefs.Clusters
+                .OrderBy(c => c.Rules.Any(r => r.IsImplemented) ? 0 : 1);
+
+            foreach (var cluster in clusters)
             {
                 var rulesStack = new VerticalStackLayout { Spacing = 0 };
                 var first = true;
-                foreach (var rule in cluster.Rules)
+                foreach (var rule in cluster.Rules.OrderBy(r => r.IsImplemented ? 0 : 1))
                 {
                     if (!first)
                         rulesStack.Add(new BoxView { Style = (Style)resources["DividerLine"] });
