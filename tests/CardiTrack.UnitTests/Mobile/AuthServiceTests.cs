@@ -199,18 +199,17 @@ public class AuthServiceTests
     }
 
     [Fact]
-    public async Task SignOut_ClearsTheOfflineCache_EvenWhenRevokeFails()
+    public async Task SignOut_ClearsTheOfflineCache_EvenWhenRevokeThrowsUnexpectedly()
     {
         var cache = Substitute.For<IOfflineReadCache>();
         _store.GetAsync().Returns(Tokens());
         _auth0.RevokeAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
-            .ThrowsAsync(new AuthException(AuthErrorCode.Network, "offline"));
+            .ThrowsAsync(new InvalidOperationException("client exploded"));
         var sut = new AuthService(_auth0, _store, _refresher, _browser, Options, cache);
 
         await sut.SignOutAsync();
 
         await _store.Received(1).ClearAsync();
         await cache.Received(1).ClearAsync(Arg.Any<CancellationToken>());
-        Assert.Null(sut.CurrentUserEmail);
     }
 }

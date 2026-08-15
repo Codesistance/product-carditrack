@@ -173,9 +173,18 @@ public sealed class EncryptedFileOfflineReadCache : IOfflineReadCache
                 var existing = await _secure.GetAsync(DekKey);
                 if (!string.IsNullOrEmpty(existing))
                 {
-                    var decoded = Convert.FromBase64String(existing);
-                    if (decoded.Length == DekSize)
-                        return _dek = decoded;
+                    try
+                    {
+                        var decoded = Convert.FromBase64String(existing);
+                        if (decoded.Length == DekSize)
+                            return _dek = decoded;
+                    }
+                    catch (FormatException)
+                    {
+                        // Corrupt DEK: rotate rather than disabling the cache until someone
+                        // clears Keystore by hand. Existing blobs become unreadable, which is
+                        // the same outcome as a missing key.
+                    }
                 }
 
                 var dek = RandomNumberGenerator.GetBytes(DekSize);

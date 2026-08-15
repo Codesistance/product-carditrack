@@ -90,6 +90,19 @@ public sealed class EncryptedFileOfflineReadCacheTests : IDisposable
     }
 
     [Fact]
+    public async Task Save_RotatesACorruptDek_RatherThanDisablingTheCache()
+    {
+        _secure.Poison("offline-cache.dek", "not-valid-base64!!");
+        var sut = CreateSut();
+
+        await sut.SaveAsync("api/v1/dashboard", """{"name":"Margaret"}""");
+
+        var entry = await sut.TryGetAsync("api/v1/dashboard");
+        Assert.NotNull(entry);
+        Assert.Equal("""{"name":"Margaret"}""", entry!.Payload);
+    }
+
+    [Fact]
     public async Task Save_IsANoOp_WhenSecureStorageIsUnavailable()
     {
         _secure.FailEverything();
@@ -121,6 +134,8 @@ public sealed class EncryptedFileOfflineReadCacheTests : IDisposable
         private bool _fail;
 
         public bool HasAnything => _values.Count > 0;
+
+        public void Poison(string key, string raw) => _values[key] = raw;
 
         public void FailEverything() => _fail = true;
 

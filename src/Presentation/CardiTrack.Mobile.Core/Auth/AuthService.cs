@@ -148,10 +148,12 @@ public sealed class AuthService : IAuthService
             {
                 await _auth0.RevokeAsync(tokens.RefreshToken, ct);
             }
-            catch (AuthException ex)
+            catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                // Local sign-out must still happen offline — the next online launch will
-                // find the refresh token already gone from the device, and Auth0 expires it.
+                // Local sign-out must still happen offline. Revoke is best-effort — the
+                // live Auth0 client already swallows transport errors, but the interface
+                // does not promise AuthException-only, and a misconfigured build must not
+                // leave tokens and cached health data on the device.
                 _logger.LogWarning(ex, "Token revoke failed; clearing the local session anyway");
             }
         }
