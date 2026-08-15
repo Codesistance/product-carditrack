@@ -75,6 +75,9 @@ public partial class CardiMemberDetailPage : ContentPage
     /// <summary>Guards Switch.Toggled while we rebuild or roll back alert-rule rows.</summary>
     private bool _applyingAlertRules;
 
+    /// <summary>Rule id currently waiting on a PATCH — blocks overlapping toggles.</summary>
+    private string? _alertRuleToggleInFlight;
+
     /// <summary>
     /// Whether the last thing to take the screen from this page was one of our own popups — see
     /// <see cref="OnDisappearing"/>.
