@@ -88,6 +88,16 @@ public class StatisticalAlertService : IStatisticalAlertService
         var rulePrefs = AlertRuleOverrides.FromJson(
             (await _unitOfWork.AlertPreferences.GetByCardiMemberIdAsync(memberId, ct))?.DisabledRules);
 
+        // Prefer skipping timezone + activity-log fetches when every statistical rule is off.
+        if (!rulePrefs.IsEnabled(StatisticalAlertRules.ActivityDeclineRule)
+            && !rulePrefs.IsEnabled(StatisticalAlertRules.IrregularSleepRule)
+            && !rulePrefs.IsEnabled(StatisticalAlertRules.ElevatedHeartRateRule)
+            && !rulePrefs.IsEnabled(StatisticalAlertRules.NoMorningActivityRule)
+            && !rulePrefs.IsEnabled(StatisticalAlertRules.LongTermTrendRule))
+        {
+            return 0;
+        }
+
         var timeZone = await MemberAnchorTimeZone.ResolveAsync(_unitOfWork, memberId);
         var localNow = TimeZoneInfo.ConvertTimeFromUtc(utcNow, timeZone);
         var localToday = DateOnly.FromDateTime(localNow);

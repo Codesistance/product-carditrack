@@ -1037,16 +1037,6 @@ public partial class CardiMemberDetailPage : ContentPage
             {
                 if (_applyingAlertRules || _member is null)
                     return;
-                if (!canManage)
-                {
-                    _applyingAlertRules = true;
-                    toggle.IsToggled = !args.Value;
-                    _applyingAlertRules = false;
-                    await _popups.ShowInfoAsync(
-                        $"Only {NameFormatting.FirstName(_member.Name)}'s primary caregiver can change alert rules.",
-                        "Not your call to make");
-                    return;
-                }
 
                 var previous = !args.Value;
                 try
