@@ -8,7 +8,7 @@ namespace CardiTrack.Mobile.Core.Offline;
 public interface IOfflineReadCache
 {
     /// <summary>How long a snapshot stays eligible to show. Older entries are dropped on read.</summary>
-    static readonly TimeSpan Lifetime = TimeSpan.FromDays(7);
+    static TimeSpan Lifetime => TimeSpan.FromDays(7);
 
     Task SaveAsync(string key, string payload, CancellationToken ct = default);
 
