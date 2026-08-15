@@ -432,46 +432,34 @@ jobs:
           fi
 
   # ── Mobile ───────────────────────────────────────────────────────────────────
+  # PR-only compile gate. It used to run on main too, publishing a full Release
+  # APK and uploading it as `mobile-android` — but nothing ever downloaded that
+  # artifact (build-mobile-android-signed produces the one Play Console and GCS
+  # consume), so main was paying a second full Android build, and ~120MB of
+  # artifact storage per push, for a file with no reader. main keeps its coverage
+  # from build-mobile-android-signed, which compiles the same code with the
+  # trimmer, AOT and R8 all on.
   build-mobile-android:
     name: Build Mobile (Android)
     needs: changes
-    if: needs.changes.outputs.mobile == 'true'
+    if: needs.changes.outputs.mobile == 'true' && github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     permissions:
-      id-token: write
       contents: read
-      actions: write
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-dotnet@v5
         with:
           dotnet-version: ${{ needs.changes.outputs.dotnet_version }}
       - run: dotnet workload install maui-android
-      # Auth0 config is stamped from Secret Manager (carditrack-dev-auth0-*).
-      # PR builds skip the fetch (no WIF auth off main) and compile unstamped.
-      - uses: google-github-actions/auth@v3
-        if: github.event_name != 'pull_request'
-        with:
-          workload_identity_provider: ${{ needs.changes.outputs.gcp_wif_provider }}
-          service_account: ${{ needs.changes.outputs.gcp_service_account }}
-      - uses: google-github-actions/get-secretmanager-secrets@v3
-        if: github.event_name != 'pull_request'
-        id: auth0
-        with:
-          secrets: |
-            domain:${{ needs.changes.outputs.gcp_project_id }}/carditrack-dev-auth0-domain
-            audience:${{ needs.changes.outputs.gcp_project_id }}/carditrack-dev-auth0-audience
-            mobile_client_id:${{ needs.changes.outputs.gcp_project_id }}/carditrack-dev-auth0-mobile-client-id
-            apm_mobile_engine:${{ needs.changes.outputs.gcp_project_id }}/carditrack-dev-apm-mobile-engine
-            apm_mobile_data:${{ needs.changes.outputs.gcp_project_id }}/carditrack-dev-apm-mobile-data
       # A PR only needs to know the code and XAML compile. Release adds the ILLink
       # trimmer, AOT and R8 after compilation has already succeeded — measured at
       # ~3.4 min of the 4.3 min step — to produce an APK nothing downloads, so
-      # those three are switched off here; main still publishes in full below.
+      # those three are switched off here.
       # AndroidLinkTool= (empty) is what turns R8 off: the csproj turns it on for
       # every Release Android build to emit the mapping.txt Play Console needs,
-      # and neither AndroidLinkMode nor PublishTrimmed overrides it. Only main
-      # uploads a mapping, so only main needs to pay for one.
+      # and neither AndroidLinkMode nor PublishTrimmed overrides it. Only
+      # build-mobile-android-signed uploads a mapping, so only it pays for one.
       #
       # Release rather than Debug, though, because XamlC only reports on Release:
       # the MAUI targets force ValidateOnly for Debug, which downgrades XamlC
@@ -480,8 +468,7 @@ jobs:
       # main. -p:_MauiForceXamlCForDebug=true does not restore it; only the
       # configuration does. XamlC runs straight after the managed compile and well
       # before the trimmer, so this catches the same errors main would.
-      - name: Compile (PR)
-        if: github.event_name == 'pull_request'
+      - name: Compile
         run: |
           dotnet build src/Presentation/CardiTrack.Mobile/CardiTrack.Mobile.csproj \
             -f net10.0-android \
@@ -490,43 +477,22 @@ jobs:
             -p:AndroidLinkMode=None \
             -p:PublishTrimmed=false \
             -p:AndroidLinkTool=
-      - name: Publish (Release)
-        if: github.event_name != 'pull_request'
-        env:
-          APM_DATA: ${{ steps.auth0.outputs.apm_mobile_data }}
-        run: |
-          # Placeholder data => stamp empty => monitoring off; base64 survives the shell/MSBuild boundary
-          if [ "$APM_DATA" = "REPLACE_ME" ]; then APM_DATA=""; fi
-          dotnet publish src/Presentation/CardiTrack.Mobile/CardiTrack.Mobile.csproj \
-            -f net10.0-android \
-            -c Release \
-            -p:ApiBaseUrl=${{ needs.changes.outputs.api_url_dev }} \
-            -p:Auth0Domain=${{ steps.auth0.outputs.domain }} \
-            -p:Auth0ClientId=${{ steps.auth0.outputs.mobile_client_id }} \
-            -p:Auth0Audience=${{ steps.auth0.outputs.audience }} \
-            -p:ApmEngine=${{ steps.auth0.outputs.apm_mobile_engine }} \
-            -p:ApmData=$(printf '%s' "$APM_DATA" | base64 | tr -d '\n')
-      - id: storage
-        if: github.event_name != 'pull_request'
-        uses: ./.github/actions/artifact-storage-gate
-        with:
-          reserve-mb: '120'
-          budget-mb: ${{ vars.ARTIFACT_STORAGE_BUDGET_MB || '450' }}
-          label: mobile-android
-          token: ${{ github.token }}
-      - uses: actions/upload-artifact@v7
-        if: github.event_name != 'pull_request' && steps.storage.outputs.available == 'true'
-        continue-on-error: true
-        with:
-          name: mobile-android
-          path: '**/*.apk'
-          retention-days: 1
 
+  # PR-only, and the most expensive job in the workflow to get wrong: macOS bills
+  # at 10x. It used to run on main as well, where it did a full Release simulator
+  # build — measured at 542-604s, i.e. ~110 billed minutes per push — whose output
+  # no step uploads and no job `needs`. build-mobile-ios-device compiles the same
+  # code on the same push under stricter settings (ios-arm64, AOT, real signing)
+  # and produces the IPA that actually ships, so main's Release coverage was never
+  # coming from here. Only the simulator RID (iossimulator-arm64) goes uncovered
+  # on main now, and nothing ships from it.
   build-mobile-ios:
     name: Build Mobile (iOS)
     needs: changes
-    if: needs.changes.outputs.mobile == 'true'
+    if: needs.changes.outputs.mobile == 'true' && github.event_name == 'pull_request'
     runs-on: macos-26
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-dotnet@v5
@@ -536,27 +502,10 @@ jobs:
           sudo xcode-select -s /Applications/Xcode_26.4.1.app
           echo "DEVELOPER_DIR=$(xcode-select -p)" >> $GITHUB_ENV
       - run: dotnet workload install maui-ios --version 10.0.300.1
-      # Auth0 config is stamped from Secret Manager (carditrack-dev-auth0-*).
-      # PR builds skip the fetch (no WIF auth off main) and compile unstamped.
-      - uses: google-github-actions/auth@v3
-        if: github.event_name != 'pull_request'
-        with:
-          workload_identity_provider: ${{ needs.changes.outputs.gcp_wif_provider }}
-          service_account: ${{ needs.changes.outputs.gcp_service_account }}
-      - uses: google-github-actions/get-secretmanager-secrets@v3
-        if: github.event_name != 'pull_request'
-        id: auth0
-        with:
-          secrets: |
-            domain:${{ needs.changes.outputs.gcp_project_id }}/carditrack-dev-auth0-domain
-            audience:${{ needs.changes.outputs.gcp_project_id }}/carditrack-dev-auth0-audience
-            mobile_client_id:${{ needs.changes.outputs.gcp_project_id }}/carditrack-dev-auth0-mobile-client-id
-            apm_mobile_engine:${{ needs.changes.outputs.gcp_project_id }}/carditrack-dev-apm-mobile-engine
-            apm_mobile_data:${{ needs.changes.outputs.gcp_project_id }}/carditrack-dev-apm-mobile-data
       # Same trade as Android, and the reason PR CI took ~10 min: of a 10.5 min
       # Release step, the managed compile finished in 70 s and the remaining
       # ~9 min was the ILLink trimmer and AOT. Debug skips both. Release device
-      # builds (build-mobile-ios-device) still run on main before any upload.
+      # builds (build-mobile-ios-device) run on main before any upload.
       #
       # This one stays Debug even though Debug cannot report XAML errors, because
       # the Android job above already carries that gate and XamlC is platform
@@ -569,15 +518,14 @@ jobs:
       # and MtouchLink=None then makes the step slower than leaving the trimmer
       # on — measured at 26 min before it was cancelled, against ~1.5 min for
       # Debug. Untrimmed simply gives every later phase more assemblies to chew.
-      # -p:CodesignEntitlements= (empty) on both steps below: the SDK auto-detects
+      # -p:CodesignEntitlements= (empty): the SDK auto-detects
       # Platforms/iOS/Entitlements.plist by convention and wires it as CodesignEntitlements for
       # any build, which forces real codesigning — this job targets the simulator and has no
       # signing identity in its keychain, and never needs one. The device/store build
       # (build-mobile-ios-device, main-only) sets RuntimeIdentifier=ios-arm64 with its own
       # CodesignKey/CodesignProvision and is unaffected — it's the one that actually needs the
       # entitlements applied.
-      - name: Compile (PR)
-        if: github.event_name == 'pull_request'
+      - name: Compile
         run: |
           dotnet build src/Presentation/CardiTrack.Mobile/CardiTrack.Mobile.csproj \
             -f net10.0-ios \
@@ -585,24 +533,6 @@ jobs:
             -r iossimulator-arm64 \
             -p:ArchiveOnBuild=false \
             -p:CodesignEntitlements=
-      - name: Build (Release)
-        if: github.event_name != 'pull_request'
-        env:
-          APM_DATA: ${{ steps.auth0.outputs.apm_mobile_data }}
-        run: |
-          if [ "$APM_DATA" = "REPLACE_ME" ]; then APM_DATA=""; fi
-          dotnet build src/Presentation/CardiTrack.Mobile/CardiTrack.Mobile.csproj \
-            -f net10.0-ios \
-            -c Release \
-            -r iossimulator-arm64 \
-            -p:ArchiveOnBuild=false \
-            -p:CodesignEntitlements= \
-            -p:ApiBaseUrl=${{ needs.changes.outputs.api_url_dev }} \
-            -p:Auth0Domain=${{ steps.auth0.outputs.domain }} \
-            -p:Auth0ClientId=${{ steps.auth0.outputs.mobile_client_id }} \
-            -p:Auth0Audience=${{ steps.auth0.outputs.audience }} \
-            -p:ApmEngine=${{ steps.auth0.outputs.apm_mobile_engine }} \
-            -p:ApmData=$(printf '%s' "$APM_DATA" | base64 | tr -d '\n')
 
   # Main only. Nothing ships from the Windows target — there is no store upload
   # and deploy-apps-prod.yml never references it; the msix just lands in the GCS
@@ -717,12 +647,16 @@ jobs:
   # Signed device builds for TestFlight / Play Console. Each job gates on its
   # signing secrets being populated (not the REPLACE_ME placeholder) and skips
   # with a warning until the operator completes the one-time store setup.
+  # security-mobile is deliberately NOT in `needs`: it took 66s to complete
+  # before this 488s build was allowed to start, putting the scan on the
+  # critical path for no protective benefit — building an AAB is inert. The
+  # scan still blocks everything that *leaves* the runner (deploy-play-internal
+  # and upload-mobile-artifacts both require it), so nothing ships unscanned.
   build-mobile-android-signed:
     name: Build Mobile (Android, signed)
     needs:
       - changes
       - compute-version
-      - security-mobile
     if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && needs.changes.outputs.mobile == 'true'
     runs-on: ubuntu-latest
     permissions:
@@ -848,12 +782,16 @@ jobs:
             play-extras/*
           retention-days: 1
 
+  # As with the signed Android build, security-mobile is not in `needs`. This is
+  # the job that sets the whole run's wall-clock — 705s, and it was starting at
+  # +92s because a 66s scan ran in front of it. deploy-testflight and
+  # upload-mobile-artifacts still require the scan, so the IPA cannot leave the
+  # runner unscanned; it just no longer waits to be compiled.
   build-mobile-ios-device:
     name: Build Mobile (iOS, device)
     needs:
       - changes
       - compute-version
-      - security-mobile
     if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && needs.changes.outputs.mobile == 'true'
     runs-on: macos-26
     timeout-minutes: 40
@@ -989,6 +927,10 @@ jobs:
       - changes
       - compute-version
       - build-mobile-ios-device
+      # Moved here from build-mobile-ios-device: the scan gates shipping, not
+      # compiling. It finishes long before the 705s build does, so it adds
+      # nothing to the critical path from this position.
+      - security-mobile
     if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && needs.changes.outputs.mobile == 'true' && needs.build-mobile-ios-device.outputs.available == 'true'
     runs-on: ubuntu-latest
     steps:
@@ -1057,6 +999,8 @@ jobs:
       - changes
       - compute-version
       - build-mobile-android-signed
+      # Moved here from build-mobile-android-signed, same reasoning as TestFlight.
+      - security-mobile
     if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && needs.changes.outputs.mobile == 'true' && needs.build-mobile-android-signed.outputs.available == 'true'
     runs-on: ubuntu-latest
     steps:
