@@ -501,53 +501,74 @@
                             </Grid>
                         </Border>
 
-                        <!-- Medical information (collapsible). Wears the same row treatment as
-                             Questions & Answers above — icon, one line of Body1SemiBoldDark,
-                             chevron — because it is the same kind of thing: a way in to something
-                             kept rather than a section heading over content that is already on
-                             screen. It was set two points larger, which read as a heading for the
-                             card underneath it. -->
-                        <Border Style="{StaticResource ElevatedCard}" Padding="14,4">
-                            <VerticalStackLayout>
-                                <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12" HeightRequest="52"
-                                      SemanticProperties.Description="Medical Information"
-                                      SemanticProperties.Hint="Shows or hides the notes kept for this CardiMember">
-                                    <Grid.GestureRecognizers>
-                                        <TapGestureRecognizer Tapped="OnToggleMedicalTapped"/>
-                                    </Grid.GestureRecognizers>
-                                    <Image Grid.Column="0"
-                                           Source="icon_lock.svg"
-                                           WidthRequest="22" HeightRequest="22"
-                                           VerticalOptions="Center"/>
-                                    <Label Grid.Column="1"
-                                           Text="Medical Information"
-                                           Style="{StaticResource Body1SemiBoldDark}"
-                                           VerticalTextAlignment="Center"/>
-                                    <!-- Rotated rather than swapped for a second glyph, so the arrow
-                                         turns to point at what it opened. Matches AccordionSection,
-                                         which every other collapsible in the app is built on. -->
-                                    <Image x:Name="MedicalChevron"
-                                           Grid.Column="2"
-                                           Source="icon_chevron_down.svg"
-                                           WidthRequest="20" HeightRequest="20"
-                                           VerticalOptions="Center"/>
-                                </Grid>
-                                <Label x:Name="MedicalNotesLabel"
-                                       IsVisible="False"
-                                       Margin="0,0,0,12"
-                                       Style="{StaticResource Body2}"/>
-                            </VerticalStackLayout>
+                        <!-- Medical information. A way in rather than a drop down, now the same
+                             kind of row as Questions & Answers above it and pointing at the same
+                             kind of thing: something the family keeps, of no fixed length. As a
+                             drop down it pushed everything under it — the whole Management group —
+                             off the bottom of the screen for as long as it stayed open, which is
+                             the wrong trade for content nobody reads on their way past. -->
+                        <Border x:Name="MedicalRow"
+                                Style="{StaticResource ElevatedCard}"
+                                Padding="14,4">
+                            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12" HeightRequest="52"
+                                  SemanticProperties.Description="Medical Information"
+                                  SemanticProperties.Hint="Opens the medical notes kept for this CardiMember">
+                                <Grid.GestureRecognizers>
+                                    <TapGestureRecognizer Tapped="OnMedicalTapped"/>
+                                </Grid.GestureRecognizers>
+                                <Image Grid.Column="0"
+                                       Source="icon_lock.svg"
+                                       WidthRequest="22" HeightRequest="22"
+                                       VerticalOptions="Center"/>
+                                <Label Grid.Column="1"
+                                       Text="Medical Information"
+                                       Style="{StaticResource Body1SemiBoldDark}"
+                                       VerticalTextAlignment="Center"/>
+                                <Image Grid.Column="2" Source="icon_chevron.svg"
+                                       WidthRequest="20" HeightRequest="20" VerticalOptions="Center"/>
+                            </Grid>
                         </Border>
 
-                        <!-- Alert rules (per-CardiMember generation toggles; instant save).
-                             Directly under Medical Information and built the same way: a card row
-                             that opens in place. It used to be a section heading with the rules
-                             loose on the page ground underneath it, which made the longest thing
-                             on this screen also the loudest — it is a settings list, something a
-                             caregiver comes here to change on purpose, not something they need to
-                             scroll past every time they open the screen to see how someone is
-                             doing. As a row it is a peer of the two things above it, and the rules
-                             stay behind one tap. -->
+                        <!-- Management / danger zone -->
+                        <VerticalStackLayout Spacing="4" Margin="0,10,0,0">
+                            <Label Text="Management" Style="{StaticResource DashboardSectionTitle}"/>
+                            <Label Text="Devices, alerts, monitoring and removal"
+                                   Style="{StaticResource Body2}"/>
+                        </VerticalStackLayout>
+
+                        <!-- Manage Device, which used to be one of a pair of outline buttons
+                             halfway up the page. It is the same kind of thing as the two rows
+                             under it — a way in to managing this member rather than a fact about
+                             them — and it leads because it is the one that changes nothing on its
+                             own. -->
+                        <Border Style="{StaticResource ElevatedCard}" Padding="14,4">
+                            <Border.GestureRecognizers>
+                                <TapGestureRecognizer Tapped="OnManageDevicesTapped"/>
+                            </Border.GestureRecognizers>
+                            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12" HeightRequest="52">
+                                <Image Grid.Column="0" Source="icon_watch.svg"
+                                       WidthRequest="22" HeightRequest="22" VerticalOptions="Center"/>
+                                <Label Grid.Column="1"
+                                       Text="Manage Device"
+                                       Style="{StaticResource Body1SemiBoldDark}"
+                                       VerticalTextAlignment="Center"/>
+                                <Image Grid.Column="2" Source="icon_chevron.svg"
+                                       WidthRequest="20" HeightRequest="20" VerticalOptions="Center"/>
+                            </Grid>
+                        </Border>
+
+                        <!-- Alert rules (per-CardiMember generation toggles; instant save). In
+                             Management rather than up with the rows about the member: it is not a
+                             fact about them, it is a setting for how CardiTrack watches them,
+                             which is what this group already collects. It sits after Manage Device
+                             and before Pause for the same reason the three of them are in that
+                             order — consequence increasing down the group, from the row that
+                             changes nothing, through the ones that change what is watched and
+                             whether watching happens at all, to removal.
+
+                             Still a row that opens in place rather than a page: the switches are
+                             the content, there is no reading to do, and a caregiver changing two
+                             of them should not have to travel for it. -->
                         <Border Style="{StaticResource ElevatedCard}" Padding="14,4">
                             <VerticalStackLayout>
                                 <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12" HeightRequest="52"
@@ -567,6 +588,9 @@
                                            Text="Alert Rules"
                                            Style="{StaticResource Body1SemiBoldDark}"
                                            VerticalTextAlignment="Center"/>
+                                    <!-- Rotated rather than swapped for a second glyph, so the
+                                         arrow turns to point at what it opened. Matches
+                                         AccordionSection, which every other collapsible is on. -->
                                     <Image x:Name="AlertRulesChevron"
                                            Grid.Column="2"
                                            Source="icon_chevron_down.svg"
@@ -596,34 +620,6 @@
                                     </Border>
                                 </VerticalStackLayout>
                             </VerticalStackLayout>
-                        </Border>
-
-                        <!-- Management / danger zone -->
-                        <VerticalStackLayout Spacing="4" Margin="0,10,0,0">
-                            <Label Text="Management" Style="{StaticResource DashboardSectionTitle}"/>
-                            <Label Text="Devices, monitoring and removal"
-                                   Style="{StaticResource Body2}"/>
-                        </VerticalStackLayout>
-
-                        <!-- Manage Device, which used to be one of a pair of outline buttons
-                             halfway up the page. It is the same kind of thing as the two rows
-                             under it — a way in to managing this member rather than a fact about
-                             them — and it leads because it is the one that changes nothing on its
-                             own. -->
-                        <Border Style="{StaticResource ElevatedCard}" Padding="14,4">
-                            <Border.GestureRecognizers>
-                                <TapGestureRecognizer Tapped="OnManageDevicesTapped"/>
-                            </Border.GestureRecognizers>
-                            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12" HeightRequest="52">
-                                <Image Grid.Column="0" Source="icon_watch.svg"
-                                       WidthRequest="22" HeightRequest="22" VerticalOptions="Center"/>
-                                <Label Grid.Column="1"
-                                       Text="Manage Device"
-                                       Style="{StaticResource Body1SemiBoldDark}"
-                                       VerticalTextAlignment="Center"/>
-                                <Image Grid.Column="2" Source="icon_chevron.svg"
-                                       WidthRequest="20" HeightRequest="20" VerticalOptions="Center"/>
-                            </Grid>
                         </Border>
 
                         <Border Style="{StaticResource ElevatedCard}" Padding="14,4">

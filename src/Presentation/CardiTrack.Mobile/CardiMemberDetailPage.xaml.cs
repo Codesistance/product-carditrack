@@ -304,10 +304,6 @@ public partial class CardiMemberDetailPage : ContentPage
         PhoneEditButton.IsVisible = !hasPhone && member.IsPrimaryCaregiver;
         PhoneEditTarget.InputTransparent = !member.IsPrimaryCaregiver;
 
-        MedicalNotesLabel.Text = string.IsNullOrWhiteSpace(member.MedicalNotes)
-            ? "No medical notes yet."
-            : member.MedicalNotes;
-
         // Only a primary caregiver may edit, pause or remove — the API enforces this and
         // would answer 404, so showing the controls would just be a trap.
         EditButton.IsVisible = member.IsPrimaryCaregiver;
@@ -626,16 +622,13 @@ public partial class CardiMemberDetailPage : ContentPage
     private async void OnBackClicked(object? sender, EventArgs e) =>
         await this.GoBackAsync(AppShell.DashboardRoute);
 
-    private void OnToggleMedicalTapped(object? sender, TappedEventArgs e)
-    {
-        MedicalNotesLabel.IsVisible = !MedicalNotesLabel.IsVisible;
-        TurnChevron(MedicalChevron, MedicalNotesLabel.IsVisible);
-    }
+    private async void OnMedicalTapped(object? sender, TappedEventArgs e) =>
+        await Shell.Current.GoToAsync($"{MedicalInformationPage.Route}?memberId={_memberId}");
 
     /// <summary>
-    /// Alert rules open the same way medical notes do — the row above them is the same card, the
-    /// same header and the same chevron, and the rules are one tap behind it rather than loose on
-    /// the page under a section title.
+    /// The one thing on this page that still opens in place. Its content is switches rather than
+    /// reading, so there is nothing to travel for, and it is short enough not to bury the two rows
+    /// under it the way the medical notes could.
     /// </summary>
     private void OnToggleAlertRulesTapped(object? sender, TappedEventArgs e)
     {

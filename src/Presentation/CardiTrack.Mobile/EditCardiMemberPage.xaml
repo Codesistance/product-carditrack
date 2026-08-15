@@ -154,7 +154,7 @@
 
                     <Label Text="Medical &amp; Emergency" Style="{StaticResource DashboardSectionTitle}"/>
 
-                    <VerticalStackLayout Spacing="4">
+                    <VerticalStackLayout x:Name="MedicalNotesFieldSection" Spacing="4">
                         <Label Text="Medical Notes" Style="{StaticResource AuthFieldLabel}"/>
                         <Border Style="{StaticResource AuthEntryBorder}" HeightRequest="120" Padding="16,8">
                             <Editor x:Name="MedicalNotesEditor"

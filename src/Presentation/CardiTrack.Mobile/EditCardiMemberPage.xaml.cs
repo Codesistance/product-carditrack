@@ -22,6 +22,13 @@ public partial class EditCardiMemberPage : ContentPage
     /// <summary>Scrolls to and focuses the emergency contact number after the form loads.</summary>
     public const string FocusEmergencyPhone = "emergency";
 
+    /// <summary>
+    /// Scrolls to the medical notes after the form loads. Used by the Medical Information page,
+    /// whose whole subject is this one field — landing at the top of Basic Info would make the
+    /// caregiver hunt for the thing they tapped Edit on.
+    /// </summary>
+    public const string FocusMedical = "medical";
+
     // Same order and labels as the M1-04 add form, so a member's relationship doesn't
     // appear to change wording between the two screens.
     private static readonly (string Label, RelationshipType Value)[] Relationships =
@@ -171,6 +178,7 @@ public partial class EditCardiMemberPage : ContentPage
         {
             FocusPhone => PhoneFieldSection,
             FocusEmergencyPhone => EmergencyPhoneFieldSection,
+            FocusMedical => MedicalNotesFieldSection,
             _ => null,
         };
         if (section is null)
@@ -181,13 +189,16 @@ public partial class EditCardiMemberPage : ContentPage
         await Task.Yield();
         await FormScroller.ScrollToAsync(section, ScrollToPosition.MakeVisible, animated: true);
 
-        Entry? entry = _focusField switch
+        // VisualElement rather than Entry: the medical notes are a multi-line Editor, and both
+        // carry Focus() from here.
+        VisualElement? field = _focusField switch
         {
             FocusPhone => PhoneEntry,
             FocusEmergencyPhone => EmergencyPhoneEntry,
+            FocusMedical => MedicalNotesEditor,
             _ => null,
         };
-        entry?.Focus();
+        field?.Focus();
     }
 
     /// <summary>Keeps the avatar in step with the name as it is typed.</summary>
