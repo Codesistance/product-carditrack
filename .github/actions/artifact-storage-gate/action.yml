@@ -51,6 +51,19 @@ runs:
       run: |
         set -uo pipefail
 
+        # budget-mb usually arrives from a repo variable, so it can be anything
+        # a human typed. A non-numeric value would make the comparison below
+        # error and fall through to available=false, silently suppressing every
+        # upload in the workflow — so fail soft to the default and say so.
+        if ! printf '%s' "$BUDGET_MB" | grep -Eq '^[0-9]+$'; then
+          echo "::warning::ARTIFACT_STORAGE_BUDGET_MB is not a positive integer ('$BUDGET_MB'); falling back to 450MB."
+          BUDGET_MB=450
+        fi
+        if ! printf '%s' "$RESERVE_MB" | grep -Eq '^[0-9]+$'; then
+          echo "::warning::reserve-mb is not a positive integer ('$RESERVE_MB') for $LABEL; falling back to 50MB."
+          RESERVE_MB=50
+        fi
+
         # Only this repo's artifacts are counted. The quota is actually
         # account-wide across all Codesistance repos, but GITHUB_TOKEN is
         # repo-scoped and this repo has historically held >99% of the total,

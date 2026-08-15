@@ -206,7 +206,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      actions: read
+      actions: write
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-dotnet@v5
@@ -246,7 +246,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      actions: read
+      actions: write
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-dotnet@v5
@@ -378,7 +378,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      actions: read
+      actions: write
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-dotnet@v5
@@ -440,7 +440,7 @@ jobs:
     permissions:
       id-token: write
       contents: read
-      actions: read
+      actions: write
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-dotnet@v5
@@ -623,11 +623,15 @@ jobs:
     permissions:
       id-token: write
       contents: read
-      actions: read
+      actions: write
     # New output: upload-mobile-artifacts downloaded mobile-windows
     # unconditionally, which a storage skip would turn into a hard failure.
+    # `outcome` rather than the gate results: continue-on-error masks a rejected
+    # upload as a successful step, so the gates alone would advertise an artifact
+    # that never landed. A skipped upload reports 'skipped', so this covers the
+    # gate-closed case too.
     outputs:
-      available: ${{ steps.storage.outputs.available }}
+      available: ${{ steps.upload.outcome == 'success' }}
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-dotnet@v5
@@ -676,7 +680,8 @@ jobs:
           budget-mb: ${{ vars.ARTIFACT_STORAGE_BUDGET_MB || '450' }}
           label: mobile-windows
           token: ${{ github.token }}
-      - uses: actions/upload-artifact@v7
+      - id: upload
+        uses: actions/upload-artifact@v7
         if: steps.storage.outputs.available == 'true'
         continue-on-error: true
         with:
@@ -723,13 +728,14 @@ jobs:
     permissions:
       id-token: write
       contents: read
-      actions: read
-    # deploy-play and upload-mobile-artifacts download this artifact, so a
-    # storage skip has to reach them too — otherwise they fail looking for an
-    # artifact that was never uploaded. Folding storage into the same output the
-    # secrets gate already feeds keeps both skip reasons on one wire.
+      actions: write
+    # deploy-play and upload-mobile-artifacts download this artifact, so every
+    # reason it might be absent has to reach them — otherwise they fail looking
+    # for something that was never uploaded. The upload's own outcome is the one
+    # signal that covers all of them: 'skipped' when either gate closed, and
+    # 'failure' when the upload was rejected despite continue-on-error.
     outputs:
-      available: ${{ steps.gate.outputs.available == 'true' && steps.storage.outputs.available == 'true' }}
+      available: ${{ steps.upload.outcome == 'success' }}
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-dotnet@v5
@@ -831,7 +837,8 @@ jobs:
           budget-mb: ${{ vars.ARTIFACT_STORAGE_BUDGET_MB || '450' }}
           label: mobile-android-signed
           token: ${{ github.token }}
-      - uses: actions/upload-artifact@v7
+      - id: upload
+        uses: actions/upload-artifact@v7
         if: steps.gate.outputs.available == 'true' && steps.storage.outputs.available == 'true'
         continue-on-error: true
         with:
@@ -853,10 +860,10 @@ jobs:
     permissions:
       id-token: write
       contents: read
-      actions: read
+      actions: write
     # As above: deploy-testflight and upload-mobile-artifacts consume this IPA.
     outputs:
-      available: ${{ steps.gate.outputs.available == 'true' && steps.storage.outputs.available == 'true' }}
+      available: ${{ steps.upload.outcome == 'success' }}
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-dotnet@v5
@@ -966,7 +973,8 @@ jobs:
           budget-mb: ${{ vars.ARTIFACT_STORAGE_BUDGET_MB || '450' }}
           label: mobile-ios-ipa
           token: ${{ github.token }}
-      - uses: actions/upload-artifact@v7
+      - id: upload
+        uses: actions/upload-artifact@v7
         if: steps.gate.outputs.available == 'true' && steps.storage.outputs.available == 'true'
         continue-on-error: true
         with:
