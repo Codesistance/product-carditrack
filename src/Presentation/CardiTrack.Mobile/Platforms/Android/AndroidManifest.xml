@@ -21,6 +21,29 @@
 			</intent-filter>
 		</receiver>
 	</application>
+	<!-- Package visibility (Android 11 / API 30 and up, so every device we support — minSdk is
+	     31). An app can no longer see which other apps handle an implicit intent unless it says
+	     which intents it cares about here, and the handoff fails before it starts: the messaging
+	     tile threw and reported "Messaging isn't supported on this device" on phones that plainly
+	     do support it. These are the two handoffs the quick actions and the CardiMember detail
+	     screen make — composing an SMS and opening the dialer — and nothing more: this element is
+	     a declaration of what we look for, so it stays as narrow as what we actually launch.
+	     ACTION_VIEW and ACTION_SENDTO are both declared for smsto because the SMS composer is
+	     reached by either verb depending on which app handles it. -->
+	<queries>
+		<intent>
+			<action android:name="android.intent.action.VIEW" />
+			<data android:scheme="smsto" />
+		</intent>
+		<intent>
+			<action android:name="android.intent.action.SENDTO" />
+			<data android:scheme="smsto" />
+		</intent>
+		<intent>
+			<action android:name="android.intent.action.DIAL" />
+			<data android:scheme="tel" />
+		</intent>
+	</queries>
 	<uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 	<uses-permission android:name="android.permission.INTERNET" />
 	<!-- Runtime permission on API 33+; PushRegistrationCoordinator requests it via

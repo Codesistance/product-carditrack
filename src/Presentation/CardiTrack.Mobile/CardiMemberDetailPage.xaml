@@ -34,20 +34,44 @@
                        TextColor="{StaticResource White}"
                        VerticalTextAlignment="Center"/>
 
-                <Border Grid.Column="2"
-                        WidthRequest="40" HeightRequest="40"
-                        StrokeThickness="0"
-                        BackgroundColor="{StaticResource White}"
-                        VerticalOptions="Center">
-                    <Border.StrokeShape>
-                        <RoundRectangle CornerRadius="12"/>
-                    </Border.StrokeShape>
-                    <ImageButton x:Name="EditButton"
-                                 Source="icon_edit.svg"
-                                 WidthRequest="20" HeightRequest="20"
-                                 BackgroundColor="Transparent"
-                                 Clicked="OnEditClicked"/>
-                </Border>
+                <!-- Alerts and Edit, icon-only. Alerts was a full-width "View Alerts" button
+                     halfway down the page; it is navigation, not a setting, and it belongs beside
+                     the other way out of this screen rather than competing with the member's own
+                     details for the middle of the page. -->
+                <HorizontalStackLayout Grid.Column="2" Spacing="10" VerticalOptions="Center">
+                    <Border WidthRequest="40" HeightRequest="40"
+                            StrokeThickness="0"
+                            BackgroundColor="{StaticResource White}"
+                            VerticalOptions="Center">
+                        <Border.StrokeShape>
+                            <RoundRectangle CornerRadius="12"/>
+                        </Border.StrokeShape>
+                        <ImageButton Source="icon_bell.svg"
+                                     WidthRequest="20" HeightRequest="20"
+                                     BackgroundColor="Transparent"
+                                     SemanticProperties.Description="View alerts"
+                                     SemanticProperties.Hint="Opens the alerts list"
+                                     Clicked="OnViewAlertsClicked"/>
+                    </Border>
+
+                    <!-- Named on the Border, not the button inside it: hiding the button alone
+                         left its white chip behind as an empty square for everyone who isn't the
+                         primary caregiver. -->
+                    <Border x:Name="EditButton"
+                            WidthRequest="40" HeightRequest="40"
+                            StrokeThickness="0"
+                            BackgroundColor="{StaticResource White}"
+                            VerticalOptions="Center">
+                        <Border.StrokeShape>
+                            <RoundRectangle CornerRadius="12"/>
+                        </Border.StrokeShape>
+                        <ImageButton Source="icon_edit.svg"
+                                     WidthRequest="20" HeightRequest="20"
+                                     BackgroundColor="Transparent"
+                                     SemanticProperties.Description="Edit member"
+                                     Clicked="OnEditClicked"/>
+                    </Border>
+                </HorizontalStackLayout>
             </Grid>
         </controls:HeaderBand>
 
@@ -321,9 +345,12 @@
                                         <Label x:Name="EmergencyPhoneLabel"
                                                Style="{StaticResource Body2}"/>
                                     </VerticalStackLayout>
+                                    <!-- 40, matching the header's own icon buttons and the phone
+                                         card below, so the two contact cards stand the same
+                                         height as each other. -->
                                     <Border x:Name="EmergencyCallButton"
                                             Grid.Column="1"
-                                            WidthRequest="44" HeightRequest="44"
+                                            WidthRequest="40" HeightRequest="40"
                                             StrokeThickness="0"
                                             BackgroundColor="{StaticResource SelectedOptionBackground}"
                                             VerticalOptions="Center">
@@ -344,8 +371,14 @@
                         <!-- Personal phone (issue #162) — distinct from the emergency contact
                              above; same graceful-absence treatment. Primary caregivers can tap
                              the number column (or the edit affordance when empty) to jump
-                             straight to the phone field on M1-14 — #280. The call/edit button
-                             stays outside that tap target so the gestures cannot collide. -->
+                             straight to the phone field on M1-14 — #280. The action buttons stay
+                             outside that tap target so the gestures cannot collide.
+
+                             Deliberately the same shape as the emergency contact card above:
+                             title, one line of dark text, 40dp action buttons on the right. The
+                             number used to be muted body copy floating in the middle of a 44dp
+                             row, which left the card visibly baggier than its neighbour for the
+                             same one line of content. -->
                         <Border x:Name="PhoneCard"
                                 Style="{StaticResource ElevatedCard}">
                             <VerticalStackLayout Spacing="10">
@@ -359,64 +392,93 @@
                                             <TapGestureRecognizer Tapped="OnEditPhoneTapped"/>
                                         </VerticalStackLayout.GestureRecognizers>
                                         <Label x:Name="PhoneLabel"
-                                               Style="{StaticResource Body2}"
+                                               Style="{StaticResource Body1SemiBoldDark}"
                                                VerticalOptions="Center"/>
                                     </VerticalStackLayout>
-                                    <Border x:Name="PhoneCallButton"
-                                            Grid.Column="1"
-                                            WidthRequest="44" HeightRequest="44"
-                                            StrokeThickness="0"
-                                            BackgroundColor="{StaticResource SelectedOptionBackground}"
-                                            VerticalOptions="Center"
-                                            SemanticProperties.Description="Call"
-                                            SemanticProperties.Hint="Dials their phone number">
-                                        <Border.StrokeShape>
-                                            <RoundRectangle CornerRadius="12"/>
-                                        </Border.StrokeShape>
-                                        <Border.GestureRecognizers>
-                                            <TapGestureRecognizer Tapped="OnCallPhoneTapped"/>
-                                        </Border.GestureRecognizers>
-                                        <Image Source="icon_action_call.svg"
-                                               WidthRequest="20" HeightRequest="20"
-                                               HorizontalOptions="Center" VerticalOptions="Center"/>
-                                    </Border>
-                                    <Border x:Name="PhoneEditButton"
-                                            Grid.Column="1"
-                                            WidthRequest="44" HeightRequest="44"
-                                            StrokeThickness="0"
-                                            BackgroundColor="{StaticResource SelectedOptionBackground}"
-                                            VerticalOptions="Center"
-                                            IsVisible="False"
-                                            SemanticProperties.Description="Edit phone number"
-                                            SemanticProperties.Hint="Opens the profile form on their phone number">
-                                        <Border.StrokeShape>
-                                            <RoundRectangle CornerRadius="12"/>
-                                        </Border.StrokeShape>
-                                        <Border.GestureRecognizers>
-                                            <TapGestureRecognizer Tapped="OnEditPhoneTapped"/>
-                                        </Border.GestureRecognizers>
-                                        <Image Source="icon_edit.svg"
-                                               WidthRequest="20" HeightRequest="20"
-                                               HorizontalOptions="Center" VerticalOptions="Center"/>
-                                    </Border>
+
+                                    <!-- Call and message sit side by side: a caregiver checking in
+                                         reaches for one or the other, and only calling was
+                                         reachable from here. The stack collapses whichever button
+                                         does not apply, so the row is the same height either way. -->
+                                    <HorizontalStackLayout Grid.Column="1"
+                                                           Spacing="10"
+                                                           VerticalOptions="Center">
+                                        <Border x:Name="PhoneCallButton"
+                                                WidthRequest="40" HeightRequest="40"
+                                                StrokeThickness="0"
+                                                BackgroundColor="{StaticResource SelectedOptionBackground}"
+                                                VerticalOptions="Center"
+                                                SemanticProperties.Description="Call"
+                                                SemanticProperties.Hint="Dials their phone number">
+                                            <Border.StrokeShape>
+                                                <RoundRectangle CornerRadius="12"/>
+                                            </Border.StrokeShape>
+                                            <Border.GestureRecognizers>
+                                                <TapGestureRecognizer Tapped="OnCallPhoneTapped"/>
+                                            </Border.GestureRecognizers>
+                                            <Image Source="icon_action_call.svg"
+                                                   WidthRequest="20" HeightRequest="20"
+                                                   HorizontalOptions="Center" VerticalOptions="Center"/>
+                                        </Border>
+                                        <Border x:Name="PhoneMessageButton"
+                                                WidthRequest="40" HeightRequest="40"
+                                                StrokeThickness="0"
+                                                BackgroundColor="{StaticResource SelectedOptionBackground}"
+                                                VerticalOptions="Center"
+                                                SemanticProperties.Description="Message"
+                                                SemanticProperties.Hint="Opens a text message to their phone number">
+                                            <Border.StrokeShape>
+                                                <RoundRectangle CornerRadius="12"/>
+                                            </Border.StrokeShape>
+                                            <Border.GestureRecognizers>
+                                                <TapGestureRecognizer Tapped="OnMessagePhoneTapped"/>
+                                            </Border.GestureRecognizers>
+                                            <Image Source="icon_action_sms.svg"
+                                                   WidthRequest="20" HeightRequest="20"
+                                                   HorizontalOptions="Center" VerticalOptions="Center"/>
+                                        </Border>
+                                        <Border x:Name="PhoneEditButton"
+                                                WidthRequest="40" HeightRequest="40"
+                                                StrokeThickness="0"
+                                                BackgroundColor="{StaticResource SelectedOptionBackground}"
+                                                VerticalOptions="Center"
+                                                IsVisible="False"
+                                                SemanticProperties.Description="Edit phone number"
+                                                SemanticProperties.Hint="Opens the profile form on their phone number">
+                                            <Border.StrokeShape>
+                                                <RoundRectangle CornerRadius="12"/>
+                                            </Border.StrokeShape>
+                                            <Border.GestureRecognizers>
+                                                <TapGestureRecognizer Tapped="OnEditPhoneTapped"/>
+                                            </Border.GestureRecognizers>
+                                            <Image Source="icon_edit.svg"
+                                                   WidthRequest="20" HeightRequest="20"
+                                                   HorizontalOptions="Center" VerticalOptions="Center"/>
+                                        </Border>
+                                    </HorizontalStackLayout>
                                 </Grid>
                             </VerticalStackLayout>
                         </Border>
 
-                        <!-- Medical information (collapsible) -->
-                        <Border Style="{StaticResource ElevatedCard}">
-                            <VerticalStackLayout Spacing="10">
-                                <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8">
+                        <!-- Medical information (collapsible). Wears the same row treatment as
+                             Questions & Answers below — icon, one line of Body1SemiBoldDark,
+                             chevron — because it is the same kind of thing: a way in to something
+                             kept rather than a section heading over content that is already on
+                             screen. It was set two points larger, which read as a heading for the
+                             card underneath it. -->
+                        <Border Style="{StaticResource ElevatedCard}" Padding="14,4">
+                            <VerticalStackLayout>
+                                <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12" HeightRequest="52">
                                     <Grid.GestureRecognizers>
                                         <TapGestureRecognizer Tapped="OnToggleMedicalTapped"/>
                                     </Grid.GestureRecognizers>
                                     <Image Grid.Column="0"
                                            Source="icon_lock.svg"
-                                           WidthRequest="20" HeightRequest="20"
+                                           WidthRequest="22" HeightRequest="22"
                                            VerticalOptions="Center"/>
                                     <Label Grid.Column="1"
                                            Text="Medical Information"
-                                           Style="{StaticResource DashboardSectionTitle}"
+                                           Style="{StaticResource Body1SemiBoldDark}"
                                            VerticalTextAlignment="Center"/>
                                     <Image x:Name="MedicalChevron"
                                            Grid.Column="2"
@@ -426,25 +488,10 @@
                                 </Grid>
                                 <Label x:Name="MedicalNotesLabel"
                                        IsVisible="False"
+                                       Margin="0,0,0,12"
                                        Style="{StaticResource Body2}"/>
                             </VerticalStackLayout>
                         </Border>
-
-                        <!-- Actions. "View Dashboard" was removed (issue #188): the back-link on
-                             the profile card above and the header's back arrow both already go
-                             there — a third, bigger button to the same place was redundant. -->
-                        <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
-                            <Button Grid.Column="0"
-                                    Text="View Alerts"
-                                    FontSize="15"
-                                    Style="{StaticResource SecondaryOutlineButton}"
-                                    Clicked="OnViewAlertsClicked"/>
-                            <Button Grid.Column="1"
-                                    Text="Manage Device"
-                                    FontSize="15"
-                                    Style="{StaticResource SecondaryOutlineButton}"
-                                    Clicked="OnManageDevicesClicked"/>
-                        </Grid>
 
                         <!-- Questions and answers, once any have been asked. A row rather than a
                              section: the answers are worth keeping and worth editing, but they are
@@ -468,27 +515,65 @@
                             </Grid>
                         </Border>
 
-                        <!-- Alert rules (per-CardiMember generation toggles; instant save) -->
-                        <VerticalStackLayout Spacing="4" Margin="0,6,0,0">
-                            <Label Text="Alert rules" Style="{StaticResource DashboardSectionTitle}"/>
-                            <Label Text="Turn a rule off and CardiTrack will not check for it"
-                                   Style="{StaticResource Body2}"/>
-                        </VerticalStackLayout>
+                        <!-- Alert rules (per-CardiMember generation toggles; instant save).
+                             Collapsed behind the same accordion the dashboard's Key Metrics uses:
+                             five clusters of rules is the longest thing on this page by some way,
+                             and it is a settings list — something a caregiver comes here to change
+                             on purpose, not something they need to scroll past every time they
+                             open the screen to see how someone is doing. -->
+                        <controls:AccordionSection x:Name="AlertRulesAccordion"
+                                                   HeaderText="Alert rules"
+                                                   HeaderStyle="{StaticResource DashboardSectionTitle}"
+                                                   Margin="0,6,0,0">
+                            <controls:AccordionSection.Body>
+                                <!-- The accordion opens by growing a Border that clips to its own
+                                     bounds, so the trailing padding is what keeps the last card's
+                                     drop shadow from being sliced off along the fold. -->
+                                <VerticalStackLayout Spacing="10" Padding="0,0,0,6">
+                                    <!-- Inside the body rather than under the header: it explains
+                                         what the switches do, so it is only worth reading once
+                                         they are on screen. -->
+                                    <Label Text="Turn a rule off and CardiTrack will not check for it"
+                                           Style="{StaticResource Body2}"/>
 
-                        <VerticalStackLayout x:Name="AlertRulesHost" Spacing="10"/>
+                                    <VerticalStackLayout x:Name="AlertRulesHost" Spacing="10"/>
 
-                        <Border x:Name="AlertRulesSkeleton"
-                                Style="{StaticResource ElevatedCard}"
-                                IsVisible="False">
-                            <controls:SkeletonView HeightRequest="120"/>
-                        </Border>
+                                    <Border x:Name="AlertRulesSkeleton"
+                                            Style="{StaticResource ElevatedCard}"
+                                            IsVisible="False">
+                                        <controls:SkeletonView HeightRequest="120"/>
+                                    </Border>
+                                </VerticalStackLayout>
+                            </controls:AccordionSection.Body>
+                        </controls:AccordionSection>
 
                         <!-- Management / danger zone -->
                         <VerticalStackLayout Spacing="4" Margin="0,10,0,0">
                             <Label Text="Management" Style="{StaticResource DashboardSectionTitle}"/>
-                            <Label Text="Critical settings"
+                            <Label Text="Devices, monitoring and removal"
                                    Style="{StaticResource Body2}"/>
                         </VerticalStackLayout>
+
+                        <!-- Manage Device, which used to be one of a pair of outline buttons
+                             halfway up the page. It is the same kind of thing as the two rows
+                             under it — a way in to managing this member rather than a fact about
+                             them — and it leads because it is the one that changes nothing on its
+                             own. -->
+                        <Border Style="{StaticResource ElevatedCard}" Padding="14,4">
+                            <Border.GestureRecognizers>
+                                <TapGestureRecognizer Tapped="OnManageDevicesTapped"/>
+                            </Border.GestureRecognizers>
+                            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12" HeightRequest="52">
+                                <Image Grid.Column="0" Source="icon_watch.svg"
+                                       WidthRequest="22" HeightRequest="22" VerticalOptions="Center"/>
+                                <Label Grid.Column="1"
+                                       Text="Manage Device"
+                                       Style="{StaticResource Body1SemiBoldDark}"
+                                       VerticalTextAlignment="Center"/>
+                                <Image Grid.Column="2" Source="icon_chevron.svg"
+                                       WidthRequest="20" HeightRequest="20" VerticalOptions="Center"/>
+                            </Grid>
+                        </Border>
 
                         <Border Style="{StaticResource ElevatedCard}" Padding="14,4">
                             <VerticalStackLayout x:Name="PauseRowLayout">
