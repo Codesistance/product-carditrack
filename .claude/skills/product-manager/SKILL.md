@@ -149,7 +149,7 @@ Match the house style of the existing specs — story numbering (`Story 1.1`), `
 
 The mobile M1 design file is the arbiter of UI scope: **https://www.figma.com/design/ux4slk0SA3BsAxFpGzv4NB** (frames M1-01 … M1-17). Only screens that exist in Figma get built, and only screens in Figma get M1 IDs — do not invent frame IDs for shipped screens that lack a frame.
 
-Known state: **16 of 17 frames built** — M1-01 … M1-16. Alert detail is one page (`AlertDetailPage`) covering M1-11/12/16. The only unbuilt Figma frame is **M1-17 Health Data Export**. Seven shipped screens have **no Figma frame and need design sync**: SignIn, ForgotPassword, VerifyEmail, AccountSetup, plus Notifications, Questionnaires, and QuestionCard.
+Known state: **16 of 17 frames built** — M1-01 … M1-16. Alert detail is one page (`AlertDetailPage`) covering M1-11/12/16. The only unbuilt Figma frame is **M1-17 Health Data Export**. Eight shipped surfaces have **no Figma frame and need design sync**: SignIn, ForgotPassword, VerifyEmail, AccountSetup, plus Notifications, Questionnaires, QuestionCard, and AskCard.
 
 > The count moved 9 → 12 (M1-13/14/15) → 13 (M1-10 list) → 16 (alert detail, 2026-08-14). Verify against `src/Presentation/CardiTrack.Mobile` and [references/figma.md](references/figma.md), not an older snapshot.
 

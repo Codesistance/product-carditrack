@@ -274,6 +274,12 @@ public class InsightsController : BaseApiController
                 UserContext.UserId, cardiMemberId, request.Question, ct);
             return Success(result);
         }
+        catch (ArgumentException ex)
+        {
+            // The validator is the usual gate; this is the same empty-after-flatten case if a
+            // caller bypasses it. 400, not 500 — there is nothing to ask.
+            return Error(ex.Message, StatusCodes.Status400BadRequest);
+        }
         catch (KeyNotFoundException ex)
         {
             return Error(ex.Message, StatusCodes.Status404NotFound);

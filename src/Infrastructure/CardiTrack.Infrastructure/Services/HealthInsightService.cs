@@ -473,7 +473,7 @@ public class HealthInsightService : IHealthInsightService
 
         var flattened = MedicalPromptBlocks.Flatten(question);
         if (string.IsNullOrWhiteSpace(flattened))
-            throw new ArgumentException("Type a question about the readings", nameof(question));
+            throw new ArgumentException("Type a question about the readings");
 
         // Sequential, not Task.WhenAll — these lookups share the request's DbContext. Same
         // invariant as AnalyzeBaselineAsync.
