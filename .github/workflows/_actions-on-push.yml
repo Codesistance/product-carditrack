@@ -30,8 +30,8 @@ jobs:
           OVERRIDE: ${{ vars.ACTIONS_ON_PUSH }}
         run: |
           set -euo pipefail
-          if [ -n "${OVERRIDE}" ]; then
-            raw="$(printf '%s' "${OVERRIDE}" | tr -d ' \t\r\n')"
+          raw="$(printf '%s' "${OVERRIDE}" | tr -d ' \t\r\n')"
+          if [ -n "${raw}" ]; then
             echo "Using vars.ACTIONS_ON_PUSH=${raw}"
           else
             raw="$(grep -v '^[[:space:]]*#' .github/ACTIONS_ON_PUSH | tr -d ' \t\r\n')"
