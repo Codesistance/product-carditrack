@@ -395,6 +395,23 @@ public class InactivityDetectionServiceTests
             Arg.Any<Guid>(), Arg.Any<DateTime>(), Arg.Any<DateTime>(), Arg.Any<CancellationToken>());
     }
 
+    [Fact]
+    public async Task DisabledDeviceSilenceRule_IsNotChecked()
+    {
+        _alertPreferences.GetByCardiMemberIdAsync(_memberId).Returns(new AlertPreference
+        {
+            CardiMemberId = _memberId,
+            DisabledRules = """["device_silence"]""",
+        });
+
+        var raised = await CreateSut().DetectAsync(UtcNow, Rules);
+
+        Assert.Equal(0, raised);
+        await _granular.DidNotReceive().GetWindowAsync(
+            Arg.Any<Guid>(), Arg.Any<DateTime>(), Arg.Any<DateTime>(), Arg.Any<CancellationToken>());
+        await _alerts.DidNotReceive().AddAsync(Arg.Any<Alert>());
+    }
+
     // Cancellation during a member's check is shutdown, not a member failure — the pass must
     // stop, not log an error and stumble to the next member.
     [Fact]

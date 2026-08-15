@@ -443,6 +443,24 @@ public class RealtimeAssessmentServiceTests
     }
 
     [Fact]
+    public async Task DisabledRealtimeHeartRateRule_IsNotAssessed()
+    {
+        _alertPreferences.GetByCardiMemberIdAsync(_memberId).Returns(new AlertPreference
+        {
+            CardiMemberId = _memberId,
+            DisabledRules = """["realtime_hr"]""",
+        });
+
+        var assessed = await CreateSut().AssessDueMembersAsync(UtcNow);
+
+        Assert.Equal(0, assessed);
+        await _granular.DidNotReceive().GetWindowAsync(
+            Arg.Any<Guid>(), Arg.Any<DateTime>(), Arg.Any<DateTime>(), Arg.Any<CancellationToken>());
+        await _medicalAi.DidNotReceive().GenerateStructuredAsync<RealtimeAssessmentService.AssessmentAiResponse>(
+            Arg.Any<string>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
     public async Task OneMemberFailure_DoesNotCostTheRestThePass()
     {
         var otherId = Guid.NewGuid();
