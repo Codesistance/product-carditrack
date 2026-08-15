@@ -78,9 +78,11 @@ public sealed class MetricTrendCard : ContentView
     private readonly Grid _dates;
     private readonly Label _baselineKey = new();
     private readonly Label _referenceKey = new();
+    private readonly Label _noDataKey = new();
     private readonly TrendLegendSwatch _baselineSwatch = new(TrendLegendMark.Baseline);
     private readonly HorizontalStackLayout _baselineLegend;
     private readonly HorizontalStackLayout _referenceLegend;
+    private readonly HorizontalStackLayout _noDataLegend;
     private readonly Grid _legend;
     private readonly Label _footer = new();
 
@@ -207,13 +209,23 @@ public sealed class MetricTrendCard : ContentView
         _baselineLegend = BuildLegendEntry(_baselineSwatch, _baselineKey);
         _referenceLegend = BuildLegendEntry(new TrendLegendSwatch(TrendLegendMark.Reference), _referenceKey);
 
+        // The break marks get named on a line of their own rather than squeezed in beside the other
+        // two: they appear only on a window with a gap in it, and a third column would cost the
+        // published range its width on every window that has none.
+        _noDataLegend = BuildLegendEntry(new TrendLegendSwatch(TrendLegendMark.NoData), _noDataKey);
+        _noDataKey.Text = "No data recorded";
+
         _legend = new Grid
         {
             ColumnDefinitions = [new ColumnDefinition(GridLength.Auto), new ColumnDefinition(GridLength.Star)],
+            RowDefinitions = [new RowDefinition(GridLength.Auto), new RowDefinition(GridLength.Auto)],
             ColumnSpacing = 14,
+            RowSpacing = 4,
         };
         _legend.Add(_baselineLegend);
         _legend.Add(_referenceLegend, 1);
+        _legend.Add(_noDataLegend, 0, 1);
+        Grid.SetColumnSpan(_noDataLegend, 2);
 
         // The key names the two marks; this says what they mean. Naming is not explaining — that a
         // member's own normal matters more than the published one, or that a wrist wearable is not
@@ -360,9 +372,16 @@ public sealed class MetricTrendCard : ContentView
         _referenceLegend.IsVisible = _trend.ReferenceText is not null;
         _referenceKey.Text = _trend.ReferenceText ?? string.Empty;
 
+        // Named only on a window that has them, and read off the same points the chart is handed so
+        // the key can never claim a mark the plot did not draw.
+        var hasGap = TrendChart.HasBridgedGap(points);
+        _noDataLegend.IsVisible = hasGap;
+
         // A hidden entry leaves its column empty rather than absent, and the gap either side of it
-        // would read as an indent on a key that starts with its swatch.
+        // would read as an indent on a key that starts with its swatch. Its row costs the spacing
+        // the same way, so that goes with it.
         _legend.ColumnSpacing = _baselineLegend.IsVisible && _referenceLegend.IsVisible ? 14 : 0;
+        _legend.RowSpacing = hasGap ? 4 : 0;
 
         var (footer, explanation) = MetricExplanations.For(_trend.Name, _trend.Metric, _trend.AxisFormat, _trend.MemberFirstName);
         _footer.Text = footer;
@@ -370,7 +389,14 @@ public sealed class MetricTrendCard : ContentView
 
         // The chart itself is a canvas with nothing for a screen reader to walk, so what it plots
         // besides the readings has to reach one through the card's own description.
-        var comparisons = string.Join(", ", new[] { _trend.BaselineText, _trend.ReferenceText }.Where(t => t is not null));
+        var comparisons = string.Join(", ", new[]
+        {
+            _trend.BaselineText,
+            _trend.ReferenceText,
+            // The break marks say this on the plot. A reader who cannot see them would otherwise be
+            // told a run of days held steady when nothing was recorded on any of them.
+            hasGap ? "some days in this window have no reading" : null,
+        }.Where(t => t is not null));
         if (comparisons.Length > 0)
             SemanticProperties.SetDescription(
                 this, $"{_trend.Name}, {_trend.ValueText}, last {_trend.Days} days. {comparisons}");

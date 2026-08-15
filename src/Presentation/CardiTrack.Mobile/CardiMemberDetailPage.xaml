@@ -462,47 +462,22 @@
                             </VerticalStackLayout>
                         </Border>
 
-                        <!-- Medical information (collapsible). Wears the same row treatment as
-                             Questions & Answers below — icon, one line of Body1SemiBoldDark,
-                             chevron — because it is the same kind of thing: a way in to something
-                             kept rather than a section heading over content that is already on
-                             screen. It was set two points larger, which read as a heading for the
-                             card underneath it. -->
-                        <Border Style="{StaticResource ElevatedCard}" Padding="14,4">
-                            <VerticalStackLayout>
-                                <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12" HeightRequest="52">
-                                    <Grid.GestureRecognizers>
-                                        <TapGestureRecognizer Tapped="OnToggleMedicalTapped"/>
-                                    </Grid.GestureRecognizers>
-                                    <Image Grid.Column="0"
-                                           Source="icon_lock.svg"
-                                           WidthRequest="22" HeightRequest="22"
-                                           VerticalOptions="Center"/>
-                                    <Label Grid.Column="1"
-                                           Text="Medical Information"
-                                           Style="{StaticResource Body1SemiBoldDark}"
-                                           VerticalTextAlignment="Center"/>
-                                    <Image x:Name="MedicalChevron"
-                                           Grid.Column="2"
-                                           Source="icon_chevron_down.svg"
-                                           WidthRequest="20" HeightRequest="20"
-                                           VerticalOptions="Center"/>
-                                </Grid>
-                                <Label x:Name="MedicalNotesLabel"
-                                       IsVisible="False"
-                                       Margin="0,0,0,12"
-                                       Style="{StaticResource Body2}"/>
-                            </VerticalStackLayout>
-                        </Border>
-
                         <!-- Questions and answers, once any have been asked. A row rather than a
                              section: the answers are worth keeping and worth editing, but they are
-                             not what a caregiver opens this page to read. -->
+                             not what a caregiver opens this page to read. It leads the two rows
+                             under it because it is the only one that goes somewhere: those two
+                             open in place, so leaving this one below them would have put a
+                             navigation row wherever the open one happened to end. -->
                         <Border x:Name="QuestionsRow"
                                 Style="{StaticResource ElevatedCard}"
                                 Padding="14,4"
                                 IsVisible="False">
-                            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12" HeightRequest="52">
+                            <!-- Described on the Grid, which is the tap target: a layout carrying
+                                 nothing but a gesture recognizer is not an accessibility node, so
+                                 without this the row is neither announced nor reachable. -->
+                            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12" HeightRequest="52"
+                                  SemanticProperties.Description="Questions and answers"
+                                  SemanticProperties.Hint="Opens the answers saved for this CardiMember">
                                 <Grid.GestureRecognizers>
                                     <TapGestureRecognizer Tapped="OnQuestionsTapped"/>
                                 </Grid.GestureRecognizers>
@@ -517,37 +492,102 @@
                             </Grid>
                         </Border>
 
+                        <!-- Medical information (collapsible). Wears the same row treatment as
+                             Questions & Answers above — icon, one line of Body1SemiBoldDark,
+                             chevron — because it is the same kind of thing: a way in to something
+                             kept rather than a section heading over content that is already on
+                             screen. It was set two points larger, which read as a heading for the
+                             card underneath it. -->
+                        <Border Style="{StaticResource ElevatedCard}" Padding="14,4">
+                            <VerticalStackLayout>
+                                <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12" HeightRequest="52"
+                                      SemanticProperties.Description="Medical Information"
+                                      SemanticProperties.Hint="Shows or hides the notes kept for this CardiMember">
+                                    <Grid.GestureRecognizers>
+                                        <TapGestureRecognizer Tapped="OnToggleMedicalTapped"/>
+                                    </Grid.GestureRecognizers>
+                                    <Image Grid.Column="0"
+                                           Source="icon_lock.svg"
+                                           WidthRequest="22" HeightRequest="22"
+                                           VerticalOptions="Center"/>
+                                    <Label Grid.Column="1"
+                                           Text="Medical Information"
+                                           Style="{StaticResource Body1SemiBoldDark}"
+                                           VerticalTextAlignment="Center"/>
+                                    <!-- Rotated rather than swapped for a second glyph, so the arrow
+                                         turns to point at what it opened. Matches AccordionSection,
+                                         which every other collapsible in the app is built on. -->
+                                    <Image x:Name="MedicalChevron"
+                                           Grid.Column="2"
+                                           Source="icon_chevron_down.svg"
+                                           WidthRequest="20" HeightRequest="20"
+                                           VerticalOptions="Center"/>
+                                </Grid>
+                                <Label x:Name="MedicalNotesLabel"
+                                       IsVisible="False"
+                                       Margin="0,0,0,12"
+                                       Style="{StaticResource Body2}"/>
+                            </VerticalStackLayout>
+                        </Border>
+
                         <!-- Alert rules (per-CardiMember generation toggles; instant save).
-                             Collapsed behind the same accordion the dashboard's Key Metrics uses:
-                             five clusters of rules is the longest thing on this page by some way,
-                             and it is a settings list — something a caregiver comes here to change
-                             on purpose, not something they need to scroll past every time they
-                             open the screen to see how someone is doing. -->
-                        <controls:AccordionSection x:Name="AlertRulesAccordion"
-                                                   HeaderText="Alert rules"
-                                                   HeaderStyle="{StaticResource DashboardSectionTitle}"
-                                                   Margin="0,6,0,0">
-                            <controls:AccordionSection.Body>
-                                <!-- The accordion opens by growing a Border that clips to its own
-                                     bounds, so the trailing padding is what keeps the last card's
-                                     drop shadow from being sliced off along the fold. -->
-                                <VerticalStackLayout Spacing="10" Padding="0,0,0,6">
+                             Directly under Medical Information and built the same way: a card row
+                             that opens in place. It used to be a section heading with the rules
+                             loose on the page ground underneath it, which made the longest thing
+                             on this screen also the loudest — it is a settings list, something a
+                             caregiver comes here to change on purpose, not something they need to
+                             scroll past every time they open the screen to see how someone is
+                             doing. As a row it is a peer of the two things above it, and the rules
+                             stay behind one tap. -->
+                        <Border Style="{StaticResource ElevatedCard}" Padding="14,4">
+                            <VerticalStackLayout>
+                                <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12" HeightRequest="52"
+                                      SemanticProperties.Description="Alert Rules"
+                                      SemanticProperties.Hint="Shows or hides which alerts CardiTrack checks for">
+                                    <Grid.GestureRecognizers>
+                                        <TapGestureRecognizer Tapped="OnToggleAlertRulesTapped"/>
+                                    </Grid.GestureRecognizers>
+                                    <!-- Sliders, not the bell the header already uses for the
+                                         alerts inbox: this opens what CardiTrack watches for, not
+                                         what it has found. -->
+                                    <Image Grid.Column="0"
+                                           Source="icon_sliders.svg"
+                                           WidthRequest="22" HeightRequest="22"
+                                           VerticalOptions="Center"/>
+                                    <Label Grid.Column="1"
+                                           Text="Alert Rules"
+                                           Style="{StaticResource Body1SemiBoldDark}"
+                                           VerticalTextAlignment="Center"/>
+                                    <Image x:Name="AlertRulesChevron"
+                                           Grid.Column="2"
+                                           Source="icon_chevron_down.svg"
+                                           WidthRequest="20" HeightRequest="20"
+                                           VerticalOptions="Center"/>
+                                </Grid>
+
+                                <VerticalStackLayout x:Name="AlertRulesBody"
+                                                     IsVisible="False"
+                                                     Spacing="10"
+                                                     Margin="0,0,0,12">
                                     <!-- Inside the body rather than under the header: it explains
                                          what the switches do, so it is only worth reading once
                                          they are on screen. -->
                                     <Label Text="Turn a rule off and CardiTrack will not check for it"
                                            Style="{StaticResource Body2}"/>
 
+                                    <!-- Cluster cards are built in code-behind as OutlinedCards:
+                                         they sit on this card now rather than on the page ground,
+                                         and a second elevation there reads as clutter. -->
                                     <VerticalStackLayout x:Name="AlertRulesHost" Spacing="10"/>
 
                                     <Border x:Name="AlertRulesSkeleton"
-                                            Style="{StaticResource ElevatedCard}"
+                                            Style="{StaticResource OutlinedCard}"
                                             IsVisible="False">
                                         <controls:SkeletonView HeightRequest="120"/>
                                     </Border>
                                 </VerticalStackLayout>
-                            </controls:AccordionSection.Body>
-                        </controls:AccordionSection>
+                            </VerticalStackLayout>
+                        </Border>
 
                         <!-- Management / danger zone -->
                         <VerticalStackLayout Spacing="4" Margin="0,10,0,0">
@@ -588,10 +628,16 @@
                                     </Grid.GestureRecognizers>
                                     <Image Grid.Column="0" Source="icon_pause.svg"
                                            WidthRequest="22" HeightRequest="22" VerticalOptions="Center"/>
+                                    <!-- Amber, and the icon with it: pausing is the one row here
+                                         that stops CardiTrack watching, so it should not read as
+                                         another neutral way in. Amber rather than red because it
+                                         is reversible from this same row — red is kept for the
+                                         removal below it. -->
                                     <Label x:Name="PauseRowLabel"
                                            Grid.Column="1"
                                            Text="Pause Monitoring"
                                            Style="{StaticResource Body1SemiBoldDark}"
+                                           TextColor="{StaticResource CautionAmber}"
                                            VerticalTextAlignment="Center"/>
                                     <Image x:Name="PauseRowChevron"
                                            Grid.Column="2" Source="icon_chevron.svg"
@@ -617,6 +663,11 @@
                             </VerticalStackLayout>
                         </Border>
 
+                        <!-- The destructive one: removal takes the member, the caregiver links to
+                             them and their device connections off this account, and the confirm
+                             step behind it should not be the first hint of that. A deeper red than
+                             the severity token (#E53E3E) — that one is drawn as a fill or a dot,
+                             this is 16px label text on white and has to clear 4.5:1 against it. -->
                         <Border Style="{StaticResource ElevatedCard}" Padding="14,4">
                             <Border.GestureRecognizers>
                                 <TapGestureRecognizer Tapped="OnRemoveMemberTapped"/>
@@ -627,6 +678,7 @@
                                 <Label Grid.Column="1"
                                        Text="Remove CardiMember"
                                        Style="{StaticResource Body1SemiBoldDark}"
+                                       TextColor="{StaticResource DangerRed}"
                                        VerticalTextAlignment="Center"/>
                                 <Image Grid.Column="2" Source="icon_chevron.svg"
                                        WidthRequest="20" HeightRequest="20" VerticalOptions="Center"/>

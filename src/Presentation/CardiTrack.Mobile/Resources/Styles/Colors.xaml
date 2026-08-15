@@ -70,6 +70,11 @@
     <Color x:Key="ChartReferenceBand">#5C6672</Color>
     <Color x:Key="ChartBaselineRule">#343434</Color>
 
+    <!-- The break marks bounding days with no reading. Neutral like the two above, and for the
+         same reason: an absence is not a severity. Lighter than the reference band so that a gap
+         inside the band does not read as a second edge of it. -->
+    <Color x:Key="ChartNoDataMark">#8592A3</Color>
+
     <!-- ── Per-metric ink ──
          Each one is the stroke colour of that metric's own glyph, lifted out of the SVG so the
          trend line and the icon above it are the same colour rather than two things that happen to
@@ -142,6 +147,14 @@
          the caution tint the NEEDS RECONNECT status chip uses rather than the grey "other" pair. -->
     <Color x:Key="DatasetWarningBackground">#FFF3DE</Color>
     <Color x:Key="DatasetWarningText">#A9741A</Color>
+
+    <!-- ── Management row ink (M1-13) ──
+         The two rows on a CardiMember's page that change monitoring rather than describe it:
+         pausing (amber, reversible from the same row) and removal (red, not). Deliberately
+         darker than StatusYellow/StatusRed — those are severities drawn as fills or dots, these
+         are 16px label text on white and have to clear 4.5:1 against it. -->
+    <Color x:Key="CautionAmber">#B45309</Color>
+    <Color x:Key="DangerRed">#C42F2F</Color>
 
     <!-- ── Solid colour brushes ── -->
     <SolidColorBrush x:Key="CardShadowBrush" Color="{StaticResource CardShadow}"/>

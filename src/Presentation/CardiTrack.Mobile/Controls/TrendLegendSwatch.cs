@@ -1,6 +1,6 @@
 namespace CardiTrack.Mobile.Controls;
 
-/// <summary>Which of a <see cref="TrendChart"/>'s two comparison marks a swatch stands for.</summary>
+/// <summary>Which of a <see cref="TrendChart"/>'s non-reading marks a swatch stands for.</summary>
 internal enum TrendLegendMark
 {
     /// <summary>The dashed rule at this member's own learned normal.</summary>
@@ -8,6 +8,9 @@ internal enum TrendLegendMark
 
     /// <summary>The shaded band of the published typical-adult range.</summary>
     Reference,
+
+    /// <summary>The zigzag break marks bounding a run of days with no reading.</summary>
+    NoData,
 }
 
 /// <summary>
@@ -68,6 +71,20 @@ internal sealed class TrendLegendSwatchDrawable(TrendLegendMark mark) : IDrawabl
             canvas.StrokeDashPattern = TrendChartInk.BaselineDashes;
             canvas.DrawLine(dirtyRect.Left, middle, dirtyRect.Right, middle);
             canvas.StrokeDashPattern = null;
+            return;
+        }
+
+        if (mark == TrendLegendMark.NoData)
+        {
+            // Both bounds, not one: what the chart draws is a pair, and a single zigzag in the key
+            // would have the reader looking for a mark that never appears alone. The 16dp stands in
+            // for the missing run between them.
+            canvas.StrokeColor = TrendChartInk.NoData;
+            canvas.StrokeSize = TrendChartInk.NoDataThickness;
+            canvas.StrokeLineCap = LineCap.Round;
+            canvas.StrokeLineJoin = LineJoin.Round;
+            TrendChartInk.DrawBreak(canvas, dirtyRect.Left + TrendChartInk.NoDataAmplitude, dirtyRect.Top, dirtyRect.Bottom);
+            TrendChartInk.DrawBreak(canvas, dirtyRect.Right - TrendChartInk.NoDataAmplitude, dirtyRect.Top, dirtyRect.Bottom);
             return;
         }
 
