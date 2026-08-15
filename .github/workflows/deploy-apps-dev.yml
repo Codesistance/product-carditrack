@@ -171,7 +171,7 @@ jobs:
         id: version
         run: |
           git fetch --tags
-          LATEST=$(git tag --sort=-version:refname | grep '^v[0-9]' | head -1)
+          LATEST=$(git tag --sort=-version:refname | grep '^v[0-9]' | head -1 || true)
           if [ -z "$LATEST" ]; then LATEST="v0.0.0"; fi
           MAJOR=$(echo ${LATEST#v} | cut -d. -f1)
           MINOR=$(echo ${LATEST#v} | cut -d. -f2)
@@ -189,13 +189,15 @@ jobs:
             --build "$BUILD_NUMBER" \
             --testflight-out /tmp/changelog-testflight.txt \
             --play-out /tmp/changelog-play.txt
+          TF_DELIM="TF_CHANGELOG_EOF_$(openssl rand -hex 8)"
+          PLAY_DELIM="PLAY_CHANGELOG_EOF_$(openssl rand -hex 8)"
           {
-            echo "changelog_testflight<<TF_CHANGELOG_EOF"
+            echo "changelog_testflight<<${TF_DELIM}"
             cat /tmp/changelog-testflight.txt
-            echo "TF_CHANGELOG_EOF"
-            echo "changelog_play<<PLAY_CHANGELOG_EOF"
+            echo "${TF_DELIM}"
+            echo "changelog_play<<${PLAY_DELIM}"
             cat /tmp/changelog-play.txt
-            echo "PLAY_CHANGELOG_EOF"
+            echo "${PLAY_DELIM}"
           } >> $GITHUB_OUTPUT
 
   # ── API ─────────────────────────────────────────────────────────────────────
