@@ -99,7 +99,7 @@ jobs:
           path: |
             ${{ needs.env.outputs.tf_working_dir }}/prod.tfplan
             ${{ needs.env.outputs.tf_working_dir }}/plan.txt
-          retention-days: 3
+          retention-days: 1
       - name: Plan summary
         run: |
           echo "### Terraform Plan — Prod @ \`${{ needs.validate-tag.outputs.tag }}\`" >> $GITHUB_STEP_SUMMARY

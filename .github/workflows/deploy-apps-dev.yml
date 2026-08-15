@@ -222,7 +222,7 @@ jobs:
         with:
           name: unit-test-results
           path: '**/*.trx'
-          retention-days: 7
+          retention-days: 1
 
   test-integration:
     name: Integration Tests
@@ -246,7 +246,7 @@ jobs:
         with:
           name: integration-test-results
           path: '**/*.trx'
-          retention-days: 7
+          retention-days: 1
 
   check-migrations:
     name: EF Migration Check
@@ -367,7 +367,7 @@ jobs:
         with:
           name: worker-test-results
           path: '**/*.trx'
-          retention-days: 7
+          retention-days: 1
 
   security-worker:
     name: Security Scan (Worker)
@@ -468,7 +468,7 @@ jobs:
         with:
           name: mobile-android
           path: '**/*.apk'
-          retention-days: 7
+          retention-days: 1
 
   build-mobile-ios:
     name: Build Mobile (iOS)
@@ -613,7 +613,7 @@ jobs:
         with:
           name: mobile-windows
           path: '**/*.msix'
-          retention-days: 7
+          retention-days: 1
 
   security-mobile:
     name: Security Scan (Mobile)
@@ -753,7 +753,7 @@ jobs:
           path: |
             **/publish/*-Signed.*
             play-extras/*
-          retention-days: 7
+          retention-days: 1
 
   build-mobile-ios-device:
     name: Build Mobile (iOS, device)
@@ -872,7 +872,7 @@ jobs:
         with:
           name: mobile-ios-ipa
           path: '**/*.ipa'
-          retention-days: 7
+          retention-days: 1
 
   # ── Main only: Store uploads (internal testing) ─────────────────────────────
   deploy-testflight:
