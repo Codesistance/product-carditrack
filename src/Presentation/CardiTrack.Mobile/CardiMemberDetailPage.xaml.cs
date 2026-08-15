@@ -219,6 +219,8 @@ public partial class CardiMemberDetailPage : ContentPage
 
     private void Apply(CardiMemberDetailResponse member)
     {
+        OfflineBanner.ApplyFrom(_api);
+
         Avatar.Apply(member.Name, member.PhotoUrl);
         NameLabel.Text = member.Name;
         AgeRelationshipLabel.Text = $"{member.Age} years old • {member.Relationship.GetDisplayName()}";

@@ -53,6 +53,8 @@
 
                     <VerticalStackLayout x:Name="ContentPanel" Spacing="14" IsVisible="False">
 
+                        <controls:OfflineStatusBanner x:Name="OfflineBanner"/>
+
                         <!-- Owned items: the things this caregiver is being asked to do. -->
                         <VerticalStackLayout x:Name="OwnedList" Spacing="14"/>
 

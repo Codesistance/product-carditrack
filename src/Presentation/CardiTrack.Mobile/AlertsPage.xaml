@@ -146,6 +146,8 @@
                            when a filter empties the list ── -->
                     <VerticalStackLayout x:Name="ContentPanel" Spacing="20" IsVisible="False">
 
+                        <controls:OfflineStatusBanner x:Name="OfflineBanner"/>
+
                         <!-- M1-10b empty / M1-10c filtered empty. One card, two sets of copy:
                              which one shows depends on whether a filter is doing the emptying. -->
                         <Border x:Name="EmptyPanel"

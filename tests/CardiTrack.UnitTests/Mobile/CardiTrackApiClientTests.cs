@@ -2,19 +2,12 @@ using System.Net;
 using CardiTrack.Application.DTOs.Requests;
 using CardiTrack.Domain.Enums;
 using CardiTrack.Mobile.Core.Api;
+using CardiTrack.Mobile.Core.Offline;
 
 namespace CardiTrack.UnitTests.Mobile;
 
 public class CardiTrackApiClientTests
 {
-    private static (CardiTrackApiClient Client, FakeHttpMessageHandler Http) CreateSut()
-    {
-        var http = new FakeHttpMessageHandler();
-        var client = new CardiTrackApiClient(
-            new HttpClient(http) { BaseAddress = new Uri("https://api.test") });
-        return (client, http);
-    }
-
     [Fact]
     public async Task ResendVerification_PostsToAuthRoute()
     {
@@ -640,5 +633,119 @@ public class CardiTrackApiClientTests
         var ex = await Assert.ThrowsAsync<ApiException>(() => client.ResetNotificationMutesAsync());
 
         Assert.True(ex.IsSessionExpired);
+    }
+
+    [Fact]
+    public async Task Get_WritesTheEnvelopeToTheOfflineCache()
+    {
+        var cache = new MemoryOfflineCache();
+        var (client, http) = CreateSut(cache);
+        http.Enqueue(HttpStatusCode.OK, """
+            {"success":true,"message":"ok","data":{"hasOrganization":true,"hasUserAccount":true,
+             "hasCardiMember":true,"currentStep":7,"totalSteps":7},"timestamp":"2026-08-01T00:00:00Z"}
+            """);
+
+        await client.GetOnboardingStatusAsync();
+
+        Assert.False(client.LastGetWasCached);
+        Assert.True(cache.Items.ContainsKey("api/Onboarding/status"));
+    }
+
+    private const string OnboardingEnvelope =
+        """{"success":true,"message":"ok","data":{"hasOrganization":true,"hasUserAccount":true,"hasCardiMember":true,"currentStep":7,"totalSteps":7},"timestamp":"2026-08-01T00:00:00Z"}""";
+
+    [Fact]
+    public async Task Get_ServesTheCachedEnvelope_WhenTheCallCannotReachTheApi()
+    {
+        var cache = new MemoryOfflineCache();
+        cache.Items["api/Onboarding/status"] = new OfflineCacheEntry(
+            OnboardingEnvelope, DateTimeOffset.UtcNow.AddMinutes(-12));
+        var (client, http) = CreateSut(cache);
+        http.Throws(new HttpRequestException("offline"));
+
+        var status = await client.GetOnboardingStatusAsync();
+
+        Assert.True(status.HasCardiMember);
+        Assert.True(client.LastGetWasCached);
+        Assert.Equal(DateTimeOffset.UtcNow.AddMinutes(-12).ToUnixTimeSeconds(),
+            client.LastCachedAt!.Value.ToUnixTimeSeconds());
+    }
+
+    [Fact]
+    public async Task Get_DoesNotServeCache_WhenTheCallerCancelled()
+    {
+        var cache = new MemoryOfflineCache();
+        cache.Items["api/Onboarding/status"] = new OfflineCacheEntry(
+            """{"success":true,"message":"ok","data":{"hasUserAccount":true},"timestamp":"2026-08-01T00:00:00Z"}""",
+            DateTimeOffset.UtcNow);
+        var (client, http) = CreateSut(cache);
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+        http.Throws(new TaskCanceledException());
+
+        var ex = await Assert.ThrowsAsync<ApiException>(() => client.GetOnboardingStatusAsync(cts.Token));
+
+        Assert.True(ex.IsNetworkFailure);
+        Assert.False(client.LastGetWasCached);
+    }
+
+    [Fact]
+    public async Task Get_Throws_WhenOfflineAndNothingIsCached()
+    {
+        var (client, http) = CreateSut(new MemoryOfflineCache());
+        http.Throws(new HttpRequestException("offline"));
+
+        var ex = await Assert.ThrowsAsync<ApiException>(() => client.GetOnboardingStatusAsync());
+
+        Assert.True(ex.IsNetworkFailure);
+        Assert.False(client.LastGetWasCached);
+        Assert.Equal("No connection. Check your internet and try again.", ex.Message);
+    }
+
+    [Fact]
+    public async Task Get_DoesNotFallBackToCache_OnHttpError()
+    {
+        var cache = new MemoryOfflineCache();
+        cache.Items["api/Onboarding/status"] = new OfflineCacheEntry(
+            """{"success":true,"message":"ok","data":{"hasUserAccount":true},"timestamp":"2026-08-01T00:00:00Z"}""",
+            DateTimeOffset.UtcNow);
+        var (client, http) = CreateSut(cache);
+        http.Enqueue(HttpStatusCode.Unauthorized, """
+            {"success":false,"message":"expired","timestamp":"2026-08-01T00:00:00Z"}
+            """);
+
+        var ex = await Assert.ThrowsAsync<ApiException>(() => client.GetOnboardingStatusAsync());
+
+        Assert.True(ex.IsSessionExpired);
+        Assert.False(client.LastGetWasCached);
+    }
+
+    private static (CardiTrackApiClient Client, FakeHttpMessageHandler Http) CreateSut(
+        IOfflineReadCache? cache = null)
+    {
+        var http = new FakeHttpMessageHandler();
+        var client = new CardiTrackApiClient(
+            new HttpClient(http) { BaseAddress = new Uri("https://api.test") }, cache);
+        return (client, http);
+    }
+
+    private sealed class MemoryOfflineCache : IOfflineReadCache
+    {
+        public Dictionary<string, OfflineCacheEntry> Items { get; } = new(StringComparer.Ordinal);
+
+        public Task SaveAsync(string key, string payload, CancellationToken ct = default)
+        {
+            Items[key] = new OfflineCacheEntry(payload, DateTimeOffset.UtcNow);
+            return Task.CompletedTask;
+        }
+
+        public Task<OfflineCacheEntry?> TryGetAsync(string key, CancellationToken ct = default) =>
+            Task.FromResult(Items.TryGetValue(key, out var entry) ? entry : null);
+
+        public Task ClearAsync(CancellationToken ct = default)
+        {
+            Items.Clear();
+            return Task.CompletedTask;
+        }
     }
 }

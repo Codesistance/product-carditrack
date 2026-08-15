@@ -163,6 +163,10 @@
                                    TextColor="{StaticResource HeadingText}"/>
                         </Border>
 
+                        <!-- Offline last-known-good (M4-03a, brought forward). Replaces the
+                             stale "pull down" copy while the live call cannot reach the API. -->
+                        <controls:OfflineStatusBanner x:Name="OfflineBanner"/>
+
                         <!-- Stale data banner (M1-09c) -->
                         <Border x:Name="StaleBanner"
                                 IsVisible="False"

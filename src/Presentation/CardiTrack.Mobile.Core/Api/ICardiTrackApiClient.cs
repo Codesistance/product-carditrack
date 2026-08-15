@@ -5,6 +5,15 @@ namespace CardiTrack.Mobile.Core.Api;
 
 public interface ICardiTrackApiClient
 {
+    /// <summary>
+    /// True when the most recent successful GET was served from the on-device cache because
+    /// the live call could not reach the API. Pages use this to show the offline banner.
+    /// </summary>
+    bool LastGetWasCached { get; }
+
+    /// <summary>When the cached snapshot was written, if <see cref="LastGetWasCached"/>.</summary>
+    DateTimeOffset? LastCachedAt { get; }
+
     Task<OnboardingStatusResponse> GetOnboardingStatusAsync(CancellationToken ct = default);
 
     /// <summary>

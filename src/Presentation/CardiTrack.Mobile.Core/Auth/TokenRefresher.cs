@@ -72,9 +72,11 @@ public sealed class TokenRefresher : ITokenRefresher
             }
             catch (AuthException ex) when (ex.Code == AuthErrorCode.Network)
             {
-                // Transient: keep the session, caller just fails this request.
+                // Transient: keep the session and hand back the stored bearer. Offline GETs
+                // then fail on the wire and the API client serves the last-known-good cache;
+                // an access token that is only just past our skew may still be accepted.
                 _logger.LogWarning("Token refresh failed with a network error; keeping the session");
-                return null;
+                return latest.AccessToken;
             }
             catch (AuthException ex)
             {

@@ -115,6 +115,7 @@ public partial class AlertsPage : ContentPage
             _lastData = data;
             _lastLoadedUtc = DateTime.UtcNow;
             Render(data);
+            OfflineBanner.ApplyFrom(_api);
             SetState(AlertsState.Loaded);
             loadNudges = true;
         }

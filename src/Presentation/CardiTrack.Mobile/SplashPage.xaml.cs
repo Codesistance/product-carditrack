@@ -63,7 +63,8 @@ public partial class SplashPage : ContentPage
 
         if (!hasSession)
         {
-            // Signed out (or the session couldn't be restored offline) — normal first-run path.
+            // Signed out — first-run, or the refresh token was rejected. A network miss
+            // during refresh keeps the stored session so this branch is not the offline path.
             await MainThread.InvokeOnMainThreadAsync(() =>
                 WindowNavigation.SetRootPage(this, new WelcomePage()));
             return;

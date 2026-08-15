@@ -97,7 +97,7 @@ public class TokenRefresherTests
         var expired = false;
         sut.SessionExpired += () => expired = true;
 
-        Assert.Null(await sut.GetValidAccessTokenAsync());
+        Assert.Equal("access-0", await sut.GetValidAccessTokenAsync());
         Assert.False(expired);
         await _store.DidNotReceive().ClearAsync();
     }

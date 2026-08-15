@@ -117,6 +117,7 @@ public partial class NotificationsPage : ContentPage
             FamilyList.Add(BuildCard(notification));
 
         FamilySection.IsVisible = family.Count > 0;
+        OfflineBanner.ApplyFrom(_api);
         SubtitleLabel.Text = owned.Count switch
         {
             0 => "You're all set",

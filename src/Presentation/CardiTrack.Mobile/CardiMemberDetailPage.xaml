@@ -113,6 +113,8 @@
                     <!-- ── Loaded ── -->
                     <VerticalStackLayout x:Name="ContentPanel" Spacing="14" IsVisible="False">
 
+                        <controls:OfflineStatusBanner x:Name="OfflineBanner"/>
+
                         <!-- Profile -->
                         <Border Style="{StaticResource ElevatedCard}">
                             <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="14">

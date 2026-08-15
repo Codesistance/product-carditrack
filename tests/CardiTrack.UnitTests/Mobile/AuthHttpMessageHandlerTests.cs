@@ -84,4 +84,20 @@ public class AuthHttpMessageHandlerTests
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
         Assert.Single(inner.Requests);
     }
+
+    [Fact]
+    public async Task DoesNotRetry_WhenRefreshReturnsTheSameToken()
+    {
+        // Offline refresh hands back the stored bearer rather than null. Retrying with it
+        // would just 401 again.
+        _refresher.GetValidAccessTokenAsync(false, Arg.Any<CancellationToken>()).Returns("stale");
+        _refresher.GetValidAccessTokenAsync(true, Arg.Any<CancellationToken>()).Returns("stale");
+        var (client, inner) = CreateSut();
+        inner.Enqueue(HttpStatusCode.Unauthorized, "{}");
+
+        var response = await client.GetAsync("/x");
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+        Assert.Single(inner.Requests);
+    }
 }
