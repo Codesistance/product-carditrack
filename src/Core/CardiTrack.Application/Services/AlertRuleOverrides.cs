@@ -48,7 +48,7 @@ public sealed class AlertRuleOverrides
 
     public bool IsEnabled(string ruleId) => !_disabled.Contains(ruleId);
 
-    public IReadOnlyCollection<string> DisabledRuleIds => _disabled;
+    public IReadOnlyCollection<string> DisabledRuleIds => _disabled.ToArray();
 
     public string ToJson()
     {

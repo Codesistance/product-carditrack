@@ -33,37 +33,38 @@ public static class AlertRuleCatalogue
     public const string ClusterDigests = "digests_trends";
 
     private static readonly IReadOnlyList<AlertRuleClusterDefinition> ClustersInternal =
-    [
-        new(ClusterSleep, "Sleep", "Bedtime, sleep quality, and unusual daytime rest",
+        new List<AlertRuleClusterDefinition>
         [
-            new(LateBedtime, "Late or missed bedtime", "Still active past their usual bedtime", IsImplemented: false),
-            new(FragmentedSleep, "Restless night", "More wake-ups or awake time than usual", IsImplemented: false),
-            new(IrregularSleep, "Unusual sleep length", "Last night was much shorter or longer than usual", IsImplemented: true),
-            new(DaytimeInactivityBlock, "Long daytime rest", "An unusually long inactive stretch in waking hours", IsImplemented: false),
-        ]),
-        new(ClusterHeart, "Heart & overnight", "Resting heart rate and overnight vitals",
-        [
-            new(ElevatedHeartRate, "Elevated resting heart rate", "Yesterday's resting rate was higher than usual", IsImplemented: true),
-            new(OvernightVitals, "Unusual overnight vitals", "Heart rate or SpO₂ looked off during sleep", IsImplemented: false),
-            new(RealtimeHeartRate, "Sudden heart-rate change", "A sharp change in the last hour of heart-rate data", IsImplemented: true),
-        ]),
-        new(ClusterActivity, "Activity & mobility", "Steps, morning movement, and a quiet device",
-        [
-            new(ActivityDecline, "Activity decline", "Yesterday's steps were well below their usual", IsImplemented: true),
-            new(LowMorningMobility, "Low morning mobility", "Awake but barely moving for longer than usual", IsImplemented: false),
-            new(NoMorningActivity, "No morning activity", "No steps well after their usual wake time", IsImplemented: true),
-            new(LongTermTrend, "Declining activity trend", "Several weeks of steadily fewer steps", IsImplemented: true),
-            new(DeviceSilence, "Device gone quiet", "No readings from the wearable for several waking hours", IsImplemented: true),
-        ]),
-        new(ClusterPattern, "Pattern", "Several signals off at once",
-        [
-            new(MultiSignalCluster, "Several things off together", "More than one unusual reading on the same day", IsImplemented: false),
-        ]),
-        new(ClusterDigests, "Digests & trends", "Slow shifts, usually in the daily summary",
-        [
-            new(BaselineShift, "Baseline shift", "Their usual bedtime or activity level has drifted", IsImplemented: false),
-        ]),
-    ];
+            new(ClusterSleep, "Sleep", "Bedtime, sleep quality, and unusual daytime rest",
+            [
+                new(LateBedtime, "Late or missed bedtime", "Still active past their usual bedtime", IsImplemented: false),
+                new(FragmentedSleep, "Restless night", "More wake-ups or awake time than usual", IsImplemented: false),
+                new(IrregularSleep, "Unusual sleep length", "Last night was much shorter or longer than usual", IsImplemented: true),
+                new(DaytimeInactivityBlock, "Long daytime rest", "An unusually long inactive stretch in waking hours", IsImplemented: false),
+            ]),
+            new(ClusterHeart, "Heart & overnight", "Resting heart rate and overnight vitals",
+            [
+                new(ElevatedHeartRate, "Elevated resting heart rate", "Yesterday's resting rate was higher than usual", IsImplemented: true),
+                new(OvernightVitals, "Unusual overnight vitals", "Heart rate or SpO₂ looked off during sleep", IsImplemented: false),
+                new(RealtimeHeartRate, "Sudden heart-rate change", "A sharp change in the last hour of heart-rate data", IsImplemented: true),
+            ]),
+            new(ClusterActivity, "Activity & mobility", "Steps, morning movement, and a quiet device",
+            [
+                new(ActivityDecline, "Activity decline", "Yesterday's steps were well below their usual", IsImplemented: true),
+                new(LowMorningMobility, "Low morning mobility", "Awake but barely moving for longer than usual", IsImplemented: false),
+                new(NoMorningActivity, "No morning activity", "No steps well after their usual wake time", IsImplemented: true),
+                new(LongTermTrend, "Declining activity trend", "Several weeks of steadily fewer steps", IsImplemented: true),
+                new(DeviceSilence, "Device gone quiet", "No readings from the wearable for several waking hours", IsImplemented: true),
+            ]),
+            new(ClusterPattern, "Pattern", "Several signals off at once",
+            [
+                new(MultiSignalCluster, "Several things off together", "More than one unusual reading on the same day", IsImplemented: false),
+            ]),
+            new(ClusterDigests, "Digests & trends", "Slow shifts, usually in the daily summary",
+            [
+                new(BaselineShift, "Baseline shift", "Their usual bedtime or activity level has drifted", IsImplemented: false),
+            ]),
+        ].AsReadOnly();
 
     public static IReadOnlyList<AlertRuleClusterDefinition> Clusters => ClustersInternal;
 
