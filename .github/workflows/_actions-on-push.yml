@@ -31,8 +31,8 @@ jobs:
         run: |
           set -euo pipefail
           if [ -n "${OVERRIDE}" ]; then
-            raw="${OVERRIDE}"
-            echo "Using vars.ACTIONS_ON_PUSH=${OVERRIDE}"
+            raw="$(printf '%s' "${OVERRIDE}" | tr -d ' \t\r\n')"
+            echo "Using vars.ACTIONS_ON_PUSH=${raw}"
           else
             raw="$(grep -v '^[[:space:]]*#' .github/ACTIONS_ON_PUSH | tr -d ' \t\r\n')"
             echo "Using .github/ACTIONS_ON_PUSH=${raw}"

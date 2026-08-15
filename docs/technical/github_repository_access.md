@@ -47,7 +47,8 @@ Repo variable `ACTIONS_ON_PUSH` overrides the file when set.
 | `0` or `false` (current) | Skip expensive jobs (flag reader only) | Runs |
 | `1` or `true` | Full apps-dev / infra CI | Runs |
 
-Copilot review and auto-merge always run on the PR; they are short ubuntu jobs.
+Copilot review runs on non-draft, same-repo PRs (short ubuntu job). Auto-merge
+runs only when the `automerge` label and its review/check gates are met.
 
 | Workflow | When it runs |
 |---|---|
