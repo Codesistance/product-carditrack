@@ -234,6 +234,21 @@ public partial class CardiMemberDetailPage : ContentPage
                 await _popups.ShowWarningAsync(ex.Message, "Couldn't refresh");
             }
         }
+        catch (Exception ex)
+        {
+            // The same hole this branch closed on DashboardPage and the medical notes page: a
+            // fault while putting the data on screen escapes into a fire-and-forget OnAppearing
+            // or an async void pull handler, nothing observes it, and the page keeps its skeleton
+            // for the rest of the session with nothing to tap. This one is the busiest Apply in
+            // the app — six trend cards, a digest, banners and the rule list — so it is the most
+            // worth admitting a failure on rather than the least.
+            ScreenRefresh.LogFailure(ex, this, "while loading");
+            if (_member is null)
+            {
+                ErrorDetailLabel.Text = "Something went wrong while showing this page.";
+                SetState(error: true);
+            }
+        }
         finally
         {
             _isLoading = false;

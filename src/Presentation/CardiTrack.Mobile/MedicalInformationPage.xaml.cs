@@ -96,6 +96,21 @@ public partial class MedicalInformationPage : ContentPage
                 SetState(error: true);
             }
         }
+        catch (Exception ex)
+        {
+            // Anything that is not the API answering badly — a fault while putting the notes on
+            // screen. Without this it is silent and permanent: the callers are an async void pull
+            // handler and a fire-and-forget OnAppearing, so nothing observes the throw, the page
+            // never leaves its skeleton, and every retry meets the same data and fails the same
+            // way. The same hole was fixed on DashboardPage in this branch; this page inherited it
+            // by being written from the same shape.
+            ScreenRefresh.LogFailure(ex, this, "while loading");
+            if (_member is null)
+            {
+                ErrorDetailLabel.Text = "Something went wrong while showing this.";
+                SetState(error: true);
+            }
+        }
         finally
         {
             _isLoading = false;
