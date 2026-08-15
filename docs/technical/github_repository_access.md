@@ -64,9 +64,11 @@ GitHub to build.
 3. **Settings → Actions → General → Fork pull request workflows** from
    first-time contributors: require approval (Copilot-review workflow already
    skips forks).
-4. **Settings → Rules → Rulesets** (or classic branch protection) on `main`:
-   require a pull request, and require review from Code Owners
-   (`.github/CODEOWNERS` is `* @marigbede`).
+4. **Do not** enable **Require review from Code Owners** as a required check.
+   `.github/CODEOWNERS` is `* @marigbede`; the author's approval does not
+   count, so that setting would block every PR this owner opens. Auto-merge
+   already waits on Copilot. Use a ruleset to require a pull request before
+   merging if you want `main` protected, with an admin bypass for this owner.
 
 ## What this repository enforces in code
 

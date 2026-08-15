@@ -1,6 +1,7 @@
 # Single human writer for every path. The repository stays public so GitHub
 # Actions minutes remain free (private repos share a 2,000 min/month Free quota
 # that is already exhausted). Reads cannot be restricted on a public repo.
-# Enable "Require review from Code Owners" on the default branch so write via PR
-# also routes through this owner. See docs/technical/github_repository_access.md.
+# Enable "Require review from Code Owners" only if a second reviewer exists.
+# With a single owner who authors every PR, that setting deadlocks merges
+# (the author's approval does not count). See docs/technical/github_repository_access.md.
 * @marigbede
