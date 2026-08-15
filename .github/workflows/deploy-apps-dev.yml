@@ -371,6 +371,20 @@ jobs:
       - run: dotnet restore src/Worker/CardiTrack.Worker/CardiTrack.Worker.csproj
       - run: dotnet build src/Worker/CardiTrack.Worker/CardiTrack.Worker.csproj -c Release --no-restore
 
+  # Gates push-worker-image, and for a Worker-only change it is the *only* test job
+  # that runs: the `api` path filter does not include src/Worker/**, so test-unit
+  # and test-integration both skip. That made the previous `--filter
+  # "Category=Worker"` actively dangerous rather than merely wasteful — no test in
+  # this repo has ever carried a Category trait, so the runner reported
+  #   No test matches the given testcase filter `Category=Worker`
+  # and passed, and a Worker-only change shipped with zero tests executed.
+  #
+  # It now runs the whole unit suite (1903 tests). Filtering by name instead was
+  # considered and rejected: `FullyQualifiedName~Worker` matches 15 tests, and one
+  # of those only because DeviceSyncServiceTests has a method ending
+  # "OnWorkerCadence" — it would drift silently as tests are renamed. When a change
+  # touches both api and worker this duplicates test-unit for ~114s, which is the
+  # cheaper mistake.
   test-unit-worker:
     name: Unit Tests (Worker)
     needs: changes
@@ -388,8 +402,7 @@ jobs:
       - run: |
           dotnet test tests/CardiTrack.UnitTests/CardiTrack.UnitTests.csproj \
             -c Release \
-            --logger trx \
-            --filter "Category=Worker"
+            --logger trx
         env:
           TESTCONTAINERS_RYUK_DISABLED: 'true'
       - id: storage
