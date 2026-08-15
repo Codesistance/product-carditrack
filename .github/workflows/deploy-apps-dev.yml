@@ -1,10 +1,11 @@
 name: CI / Deploy Apps → Dev
 
+# Builds run in Cursor cloud agents, not as a side-effect of git push. A push to
+# a PR branch used to fire pull_request/synchronize (macOS at 10×); a merge used
+# to fire on.push and rebuild+deploy. Both burned the Free-plan minute quota.
+# Run this workflow from Actions → Run workflow when you want GitHub to CI or
+# deploy to dev. See docs/technical/github_repository_access.md.
 on:
-  push:
-    branches: [main]
-  pull_request:
-    types: [opened, synchronize, reopened]
   workflow_dispatch:
     inputs:
       api:
@@ -46,11 +47,7 @@ concurrency:
 
 jobs:
   # ── Shared config (single source of truth via _env.yml) ─────────────────────
-  # Public repo → free Actions minutes. Skip fork PRs so only the one human
-  # writer (and installed GitHub Apps pushing to this repo) consume runners.
-  # See docs/technical/github_repository_access.md.
   env:
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     uses: ./.github/workflows/_env.yml
 
   # ── Detect changed paths ─────────────────────────────────────────────────────

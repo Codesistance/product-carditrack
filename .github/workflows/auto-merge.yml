@@ -22,11 +22,13 @@ name: Auto-merge
 #     (recursion guard), so each PR-triggered workflow must be listed by name here.
 #     Add any new PR-triggered workflow to this list or auto-merge will not fire
 #     when it is the last check to finish.
+#     Apps-dev and infra workflows are workflow_dispatch only (no push / no PR),
+#     so they are not in this list.
 #
-# Note: merges performed with GITHUB_TOKEN do not trigger the push-to-main deploy
-# workflows. Provision an AUTOMERGE_TOKEN secret (fine-grained PAT or GitHub App
-# token with contents:write + pull-requests:write) to restore that behaviour; the
-# workflow falls back to GITHUB_TOKEN when the secret is absent.
+# Note: AUTOMERGE_TOKEN (fine-grained PAT or GitHub App token with
+# contents:write + pull-requests:write) is still required to request Copilot
+# review and to merge. Dev deploys no longer start on merge — run
+# "CI / Deploy Apps → Dev" (and the infra workflows) from Actions → Run workflow.
 
 on:
   pull_request:
@@ -38,9 +40,6 @@ on:
   workflow_dispatch:
   workflow_run:
     workflows:
-      - 'CI / Deploy Apps → Dev'
-      - 'Deploy Infrastructure → Dev'
-      - 'Deploy Infrastructure → Common'
       - 'Request Copilot review'
     types: [completed]
 

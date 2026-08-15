@@ -1,20 +1,8 @@
 name: Deploy Infrastructure → Dev
 
+# Not on push or pull_request — cloud agents build; this workflow is opt-in.
+# Run from Actions → Run workflow. See docs/technical/github_repository_access.md.
 on:
-  push:
-    branches: [main]
-    paths:
-      - '.github/workflows/deploy-infra-dev.yml'
-      - '.github/workflows/deploy-infra-prod.yml'
-      - 'infrastructure/*.tf'
-      - 'infrastructure/deployments/**'
-      - 'infrastructure/environments/dev.tfvars'
-  pull_request:
-    types: [opened, synchronize, reopened]
-    paths:
-      - 'infrastructure/*.tf'
-      - 'infrastructure/deployments/**'
-      - 'infrastructure/environments/dev.tfvars'
   workflow_dispatch:
     inputs:
       environment:
@@ -34,9 +22,7 @@ concurrency:
 
 jobs:
   # ── Shared config ────────────────────────────────────────────────────────────
-  # Skip fork PRs — public repo, one human writer. See github_repository_access.md.
   env:
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     uses: ./.github/workflows/_env.yml
 
   validate:

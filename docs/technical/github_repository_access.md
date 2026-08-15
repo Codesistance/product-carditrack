@@ -35,8 +35,25 @@ Do not add collaborators, teams, or outside collaborators. Invite a person only
 when this policy is explicitly changed.
 
 Same-repo PRs (this owner, Cursor cloud agents, GitHub Apps already installed)
-still run CI. Fork PRs from other accounts do not — the `env` job `if` on the
-apps-dev and infra workflows.
+can write. Fork PRs from other accounts do not run Copilot review.
+
+## CI triggers
+
+Cloud agents build and test. GitHub Actions does **not** start on `push` or on
+PR synchronize — that was the minute leak (macOS at 10× on every cloud-agent
+commit, then again on merge to `main`).
+
+| Workflow | When it runs |
+|---|---|
+| CI / Deploy Apps → Dev | **workflow_dispatch only** (Actions → Run workflow) |
+| Deploy Infrastructure → Dev / Common | **workflow_dispatch only** |
+| Deploy Apps / Infra → Prod | **workflow_dispatch only** (unchanged) |
+| Request Copilot review | `pull_request` opened / synchronize / reopened |
+| Auto-merge | label, review, schedule |
+
+Dev Cloud Run / TestFlight / Play uploads therefore no longer start on merge.
+Ship to dev by dispatching **CI / Deploy Apps → Dev** on `main` when you want
+GitHub to build.
 
 ## Operator steps (console)
 
@@ -44,8 +61,8 @@ apps-dev and infra workflows.
    Actions quota is exhausted.
 2. **Settings → Collaborators and teams.** Only `@marigbede`. Remove team grants.
 3. **Settings → Actions → General → Fork pull request workflows** from
-   first-time contributors: require approval (defence in depth; the workflow
-   `if` already skips forks).
+   first-time contributors: require approval (Copilot-review workflow already
+   skips forks).
 4. **Settings → Rules → Rulesets** (or classic branch protection) on `main`:
    require a pull request, and require review from Code Owners
    (`.github/CODEOWNERS` is `* @marigbede`).
@@ -55,7 +72,8 @@ apps-dev and infra workflows.
 | Control | Where |
 |---|---|
 | Default code owner is `@marigbede` | [`.github/CODEOWNERS`](../../.github/CODEOWNERS) |
-| Fork PRs do not run apps-dev or infra CI | `deploy-apps-dev.yml`, `deploy-infra-dev.yml`, `deploy-infra-common.yml` |
+| Apps-dev and infra CI not on push or PR | `deploy-apps-dev.yml`, `deploy-infra-dev.yml`, `deploy-infra-common.yml` |
+| Fork PRs do not get Copilot review requested | [`.github/workflows/request-copilot-review.yml`](../../.github/workflows/request-copilot-review.yml) |
 
 ## Machine identities that must keep access
 
