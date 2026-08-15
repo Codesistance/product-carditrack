@@ -61,7 +61,7 @@ public partial class DigestGenerationService : IDigestGenerationService
           words. It must answer something in the readings or computed observations above closely enough that a reader could tell what it came
           from — a suggestion equally true for any person on any day is not this one. It may
           reference an already-known routine fact.
-          If a computed observation describes a still day with a raised rate, the suggestion must answer that pairing.
+          If a computed observation describes a still day, the suggestion must answer that pairing.
           It must never invent a diagnosis, never name or guess at a medical condition, never
           suggest starting, stopping or changing any medication or dose, and never tell the
           family to interpret a reading themselves. If something concerning continues, say they

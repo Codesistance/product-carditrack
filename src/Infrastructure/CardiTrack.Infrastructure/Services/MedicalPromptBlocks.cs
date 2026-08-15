@@ -292,8 +292,9 @@ internal static partial class MedicalPromptBlocks
 
     /// <summary>
     /// The family-digest daily rows: steps first (the movement yardstick the vitals are read
-    /// against), then the extra columns the shared three-metric line omits, each only when
-    /// present so a device that does not report oxygen does not pad the prompt with blanks.
+    /// against — always named, including a measured zero and an explicit "not measured"), then
+    /// every other figure only when the device reported it, so a missing sleep night does not
+    /// show up as <c>sleep(...)=min</c>.
     /// </summary>
     internal static string FamilyDigestDailyLines(IEnumerable<ActivityLog> logs, DateOnly today)
     {
@@ -309,20 +310,21 @@ internal static partial class MedicalPromptBlocks
     {
         var parts = new List<string>
         {
-            $"steps={log.Steps}",
+            log.Steps is { } steps ? $"steps={steps}" : "steps=not measured",
         };
 
         if (log.ActiveMinutes is { } active)
             parts.Add($"activeMinutes={active}");
 
-        parts.Add($"HR={log.RestingHeartRate}");
-
+        if (log.RestingHeartRate is { } resting)
+            parts.Add($"HR={resting}");
         if (log.AvgHeartRate is { } avg)
             parts.Add($"HR_avg={avg}");
         if (log.MaxHeartRate is { } max)
             parts.Add($"HR_max={max}");
 
-        parts.Add($"sleep(night ending that morning)={log.SleepMinutes}min");
+        if (log.SleepMinutes is { } sleep)
+            parts.Add($"sleep(night ending that morning)={sleep}min");
 
         var stages = new List<string>();
         if (log.DeepSleepMinutes is { } deep)

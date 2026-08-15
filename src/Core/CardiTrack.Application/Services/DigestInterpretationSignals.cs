@@ -79,7 +79,7 @@ public static class DigestInterpretationSignals
         {
             lines.Add(
                 $"- {label}: {string.Join(", ", raised)} with {StepsAgainstUsual(baseline, log)} "
-                + "— a raised rate on a still day, not a day of walking.");
+                + "— these findings on a still day, not a day of walking.");
             return;
         }
 

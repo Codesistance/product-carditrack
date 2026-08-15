@@ -53,7 +53,7 @@ public class DigestInterpretationSignalsTests
         Assert.Contains("--- Computed observations ---", section);
         Assert.Contains(
             "Yesterday: resting heart rate 88 bpm (usual 71) with 1,200 steps (usual 6,000) "
-            + "— a raised rate on a still day, not a day of walking.",
+            + "— these findings on a still day, not a day of walking.",
             section);
         Assert.DoesNotContain("Today so far", section);
     }
@@ -82,7 +82,7 @@ public class DigestInterpretationSignalsTests
             Afternoon);
 
         Assert.Contains("Today so far: resting heart rate 88 bpm (usual 71) with 900 steps (usual 6,000)", section);
-        Assert.Contains("a raised rate on a still day, not a day of walking.", section);
+        Assert.Contains("these findings on a still day, not a day of walking.", section);
         Assert.DoesNotContain("Yesterday:", section);
     }
 
@@ -110,7 +110,7 @@ public class DigestInterpretationSignalsTests
             Morning);
 
         Assert.Contains("average heart rate 95 bpm (usual resting 71)", section);
-        Assert.Contains("a raised rate on a still day, not a day of walking.", section);
+        Assert.Contains("these findings on a still day, not a day of walking.", section);
         Assert.DoesNotContain("resting heart rate 72", section);
     }
 

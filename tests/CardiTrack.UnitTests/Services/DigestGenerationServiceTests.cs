@@ -740,7 +740,7 @@ public class DigestGenerationServiceTests
         Assert.Contains("--- Computed observations ---", prompt);
         Assert.Contains(
             "Yesterday: resting heart rate 88 bpm (usual 71) with 1,200 steps (usual 6,000) "
-            + "— a raised rate on a still day, not a day of walking.",
+            + "— these findings on a still day, not a day of walking.",
             prompt);
         Assert.DoesNotContain("Today so far: resting heart rate", prompt);
     }
@@ -791,6 +791,9 @@ public class DigestGenerationServiceTests
         Assert.Contains("HR_avg=84", prompt);
         Assert.Contains("HR_max=108", prompt);
         Assert.Contains("SpO2=96.4", prompt);
+        Assert.DoesNotContain("sleep(night ending that morning)=min", prompt);
+        Assert.DoesNotContain("steps=,", prompt);
+        Assert.DoesNotContain("HR=,", prompt);
     }
 
     [Fact]
