@@ -57,6 +57,30 @@ public sealed class TrendChart : GraphicsView
         _drawable.ReferenceHigh = reference is not null ? (double)reference.High : null;
         Invalidate();
     }
+
+    /// <summary>
+    /// Whether this window contains days the line will bridge rather than measure — the runs
+    /// <see cref="TrendChartDrawable"/> bounds with break marks. Days before the member's first
+    /// reading do not count: the line starts where the data does, so nothing there is bridged.
+    /// </summary>
+    /// <remarks>
+    /// Asked by <see cref="MetricTrendCard"/> so the key names the marks only on a window that has
+    /// them. It reads the same points the chart is handed, on the same rule, so the two cannot
+    /// disagree about whether the chart has a gap on it.
+    /// </remarks>
+    public static bool HasBridgedGap(IReadOnlyList<MetricPoint> points)
+    {
+        var reported = false;
+        foreach (var point in points)
+        {
+            if (point.Value is not null)
+                reported = true;
+            else if (reported)
+                return true;
+        }
+
+        return false;
+    }
 }
 
 /// <summary>
@@ -98,7 +122,50 @@ internal static class TrendChartInk
     /// </summary>
     public static readonly float[] PartialDayDashes = [2f, 2f];
 
+    /// <summary>
+    /// The break mark bounding a run of days with no reading. A zigzag rather than another dashed
+    /// rule: the two marks above are values the line is read <em>against</em> and run with the
+    /// axis, while this one cuts across it to say the line here was drawn, not measured. It is the
+    /// same symbol a broken axis wears in print, which is the one convention a reader is likely to
+    /// arrive already holding.
+    /// </summary>
+    public const float NoDataThickness = 1.5f;
+
+    /// <summary>How far the zigzag swings either side of its line, and how tall one swing is.</summary>
+    public const float NoDataAmplitude = 3f;
+
+    public const float NoDataSegment = 7f;
+
     public static Color Reference => MetricStatus.Resource("ChartReferenceBand", Colors.Gray);
+
+    public static Color NoData => MetricStatus.Resource("ChartNoDataMark", Colors.Gray);
+
+    /// <summary>
+    /// One break mark: a zigzag down the given span, meeting the top and bottom on its own centre
+    /// line so a pair of them reads as two straight bounds rather than as two wandering ones. Here
+    /// rather than on the drawable because the key has to draw the identical mark at 16×10 — see
+    /// <see cref="TrendLegendSwatch"/>.
+    /// </summary>
+    public static void DrawBreak(ICanvas canvas, float x, float top, float bottom)
+    {
+        // At least one swing each way, however short the span — a mark that came out as a plain
+        // vertical line would be indistinguishable from a gridline stood on its end.
+        var swings = Math.Max(2, (int)Math.Round((bottom - top) / NoDataSegment));
+        var step = (bottom - top) / swings;
+
+        var path = new PathF();
+        path.MoveTo(x, top);
+
+        var side = 1f;
+        for (var n = 1; n < swings; n++)
+        {
+            path.LineTo(x + NoDataAmplitude * side, top + step * n);
+            side = -side;
+        }
+
+        path.LineTo(x, bottom);
+        canvas.DrawPath(path);
+    }
 
     /// <summary>
     /// The baseline rule in a metric's own ink. Taken from the caller rather than resolved here so
@@ -173,6 +240,7 @@ internal sealed class TrendChartDrawable : IDrawable
 
         DrawReferenceBand(canvas, dirtyRect, scale, Y);
         DrawBaseline(canvas, dirtyRect, scale, Y);
+        DrawNoDataBounds(canvas, dirtyRect, left, plotWidth);
 
         var line = new PathF();
         // The run into a day that has not finished yet, drawn apart from the rest — see
@@ -344,6 +412,70 @@ internal sealed class TrendChartDrawable : IDrawable
         if (scale.Contains(low))
             canvas.DrawLine(dirtyRect.Left, bandBottom, dirtyRect.Right, bandBottom);
         canvas.StrokeDashPattern = null;
+    }
+
+    /// <summary>
+    /// Bounds each run of days with no reading with a vertical break mark, so the flat run the line
+    /// draws through them is legible as a bridge rather than as a week the member's heart rate
+    /// genuinely held still.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The line itself is left alone. Breaking it was the other option and is worse: a gap in a
+    /// stroke reads as a rendering fault, and the caregiver would be left deciding whether the app
+    /// was broken before they could read the chart. Marking the boundary says the same thing
+    /// without asking that question.
+    /// </para>
+    /// <para>
+    /// The marks bound the missing days themselves, halfway to the reported day either side, rather
+    /// than standing on those readings: a one-day gap would otherwise put both marks on the same
+    /// pixel, and a mark drawn on a reported day would sit on top of its own marker. A run still
+    /// missing at the end of the window gets an opening mark only — it has no closing reading, and
+    /// running off the edge is exactly what it does.
+    /// </para>
+    /// <para>
+    /// Days before this member's first reading are not marked: the line starts where the data does
+    /// (see <see cref="Draw"/>), so there is no bridged run there to explain.
+    /// </para>
+    /// </remarks>
+    private void DrawNoDataBounds(ICanvas canvas, RectF dirtyRect, float left, float plotWidth)
+    {
+        var first = -1;
+        for (var i = 0; i < Points.Count && first < 0; i++)
+        {
+            if (Points[i].Value is not null)
+                first = i;
+        }
+
+        if (first < 0)
+            return;
+
+        canvas.StrokeColor = TrendChartInk.NoData;
+        canvas.StrokeSize = TrendChartInk.NoDataThickness;
+        canvas.StrokeDashPattern = null;
+        canvas.StrokeLineCap = LineCap.Round;
+        canvas.StrokeLineJoin = LineJoin.Round;
+
+        float X(int index) => left + plotWidth * index / (Points.Count - 1);
+
+        var at = first + 1;
+        while (at < Points.Count)
+        {
+            if (Points[at].Value is not null)
+            {
+                at++;
+                continue;
+            }
+
+            var runStart = at;
+            while (at < Points.Count && Points[at].Value is null)
+                at++;
+            var runEnd = at - 1;
+
+            TrendChartInk.DrawBreak(canvas, (X(runStart - 1) + X(runStart)) / 2f, dirtyRect.Top, dirtyRect.Bottom);
+            if (runEnd < Points.Count - 1)
+                TrendChartInk.DrawBreak(canvas, (X(runEnd) + X(runEnd + 1)) / 2f, dirtyRect.Top, dirtyRect.Bottom);
+        }
     }
 
     /// <summary>

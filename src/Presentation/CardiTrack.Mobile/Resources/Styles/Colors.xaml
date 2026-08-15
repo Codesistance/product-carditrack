@@ -70,6 +70,11 @@
     <Color x:Key="ChartReferenceBand">#5C6672</Color>
     <Color x:Key="ChartBaselineRule">#343434</Color>
 
+    <!-- The break marks bounding days with no reading. Neutral like the two above, and for the
+         same reason: an absence is not a severity. Lighter than the reference band so that a gap
+         inside the band does not read as a second edge of it. -->
+    <Color x:Key="ChartNoDataMark">#8592A3</Color>
+
     <!-- ── Per-metric ink ──
          Each one is the stroke colour of that metric's own glyph, lifted out of the SVG so the
          trend line and the icon above it are the same colour rather than two things that happen to
