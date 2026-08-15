@@ -544,6 +544,7 @@ public class DigestGenerationServiceTests
         PeriodDays = 30,
         AvgSteps = 6000,
         AvgRestingHeartRate = 62,
+        StdDevHeartRate = 10.0m,
         AvgSleepMinutes = 420,
     };
 
@@ -575,6 +576,7 @@ public class DigestGenerationServiceTests
         Assert.Contains("a resting heart rate around 62 bpm", prompt);
         Assert.Contains("about 7.0 hours of sleep a night", prompt);
         Assert.Contains("read each reading against it", prompt);
+        Assert.DoesNotContain("Computed observations", prompt);
     }
 
     [Fact]
@@ -700,6 +702,107 @@ public class DigestGenerationServiceTests
         var prompt = await CapturePromptAsync();
 
         Assert.DoesNotContain("Last night's sleep,", prompt);
+    }
+
+    /// <summary>
+    /// The failure this section exists to prevent: a raised resting rate on a day of almost no
+    /// steps was recited as "heart rate is this, steps are that" instead of named as a still-day
+    /// finding. The pairing is computed here, same thresholds as the alert rules.
+    /// </summary>
+    [Fact]
+    public async Task Prompt_NamesQuietAndRaised_WhenYesterdayWasStillWithARaisedRate()
+    {
+        _baselines.GetLatestByCardiMemberAsync(_memberId, 30).Returns(new PatternBaseline
+        {
+            PeriodDays = 30,
+            AvgSteps = 6000,
+            AvgRestingHeartRate = 71,
+            StdDevHeartRate = 2.0m,
+            AvgSleepMinutes = 420,
+        });
+        _activityLogs.GetByCardiMemberAndDateRangeAsync(_memberId, Arg.Any<DateOnly>(), Arg.Any<DateOnly>())
+            .Returns(
+            [
+                new ActivityLog
+                {
+                    CardiMemberId = _memberId, Date = Today.AddDays(-1), Steps = 1200,
+                    RestingHeartRate = 88, CreatedDate = DataLandedAt,
+                },
+                new ActivityLog
+                {
+                    CardiMemberId = _memberId, Date = Today, Steps = 4350,
+                    RestingHeartRate = 71, CreatedDate = DataLandedAt,
+                },
+            ]);
+
+        var prompt = await CapturePromptAsync();
+
+        Assert.Contains("--- Computed observations ---", prompt);
+        Assert.Contains(
+            "Yesterday: resting heart rate 88 bpm (usual 71) with 1,200 steps (usual 6,000) "
+            + "— a raised rate on a still day, not a day of walking.",
+            prompt);
+        Assert.DoesNotContain("Today so far: resting heart rate", prompt);
+    }
+
+    /// <summary>
+    /// A morning's few thousand against a 6,000-step usual is not stillness. The digest job
+    /// runs at 06:30 local in this suite, well before the afternoon floor.
+    /// </summary>
+    [Fact]
+    public async Task Prompt_DoesNotCallAMorningShortfallAStillDay()
+    {
+        _baselines.GetLatestByCardiMemberAsync(_memberId, 30).Returns(EstablishedBaseline());
+        _activityLogs.GetByCardiMemberAndDateRangeAsync(_memberId, Arg.Any<DateOnly>(), Arg.Any<DateOnly>())
+            .Returns(
+            [
+                new ActivityLog
+                {
+                    CardiMemberId = _memberId, Date = Today, Steps = 900,
+                    RestingHeartRate = 62, CreatedDate = DataLandedAt,
+                },
+            ]);
+
+        var prompt = await CapturePromptAsync();
+
+        Assert.DoesNotContain("Computed observations", prompt);
+        Assert.DoesNotContain("not a day of walking", prompt);
+    }
+
+    [Fact]
+    public async Task Prompt_CarriesActiveMinutesAndMaxHeartRate_WhenTheDeviceReportedThem()
+    {
+        _activityLogs.GetByCardiMemberAndDateRangeAsync(_memberId, Arg.Any<DateOnly>(), Arg.Any<DateOnly>())
+            .Returns(
+            [
+                new ActivityLog
+                {
+                    CardiMemberId = _memberId, Date = Today, Steps = 4350,
+                    ActiveMinutes = 42, RestingHeartRate = 71, AvgHeartRate = 84,
+                    MaxHeartRate = 108, SpO2Average = 96.4m, CreatedDate = DataLandedAt,
+                },
+            ]);
+
+        var prompt = await CapturePromptAsync();
+
+        Assert.Contains("steps=4350", prompt);
+        Assert.Contains("activeMinutes=42", prompt);
+        Assert.Contains("HR=71", prompt);
+        Assert.Contains("HR_avg=84", prompt);
+        Assert.Contains("HR_max=108", prompt);
+        Assert.Contains("SpO2=96.4", prompt);
+    }
+
+    [Fact]
+    public async Task Prompt_CarriesUsualActiveMinutes_WhenTheBaselineHasThem()
+    {
+        var baseline = EstablishedBaseline();
+        baseline.AvgActiveMinutes = 48;
+        _baselines.GetLatestByCardiMemberAsync(_memberId, 30).Returns(baseline);
+
+        var prompt = await CapturePromptAsync();
+
+        Assert.Contains("about 48 active minutes a day", prompt);
     }
 
     // ---- A summary cannot credit today with steps the member has not walked ----
@@ -974,7 +1077,7 @@ public class DigestGenerationServiceTests
         await CreateSut().GenerateDueDigestsAsync(UtcNow);
 
         Assert.NotNull(prompt);
-        Assert.Contains("must answer something in the readings above", prompt);
+        Assert.Contains("must answer something in the readings or computed observations above", prompt);
         Assert.Contains("equally true for any person on any day", prompt);
         Assert.DoesNotContain("suggest checking in", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("change of routine", prompt, StringComparison.OrdinalIgnoreCase);

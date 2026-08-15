@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.RegularExpressions;
 using CardiTrack.Domain.Entities;
 using CardiTrack.Domain.Enums;
@@ -287,6 +288,58 @@ internal static partial class MedicalPromptBlocks
             .ToList();
 
         return lines.Count > 0 ? string.Join("\n", lines) : "No recent activity data.";
+    }
+
+    /// <summary>
+    /// The family-digest daily rows: steps first (the movement yardstick the vitals are read
+    /// against), then the extra columns the shared three-metric line omits, each only when
+    /// present so a device that does not report oxygen does not pad the prompt with blanks.
+    /// </summary>
+    internal static string FamilyDigestDailyLines(IEnumerable<ActivityLog> logs, DateOnly today)
+    {
+        var lines = logs
+            .TakeLast(2)
+            .Select(l => $"  {DayLabel(l.Date, today)}: {DigestDayFigures(l)}")
+            .ToList();
+
+        return lines.Count > 0 ? string.Join("\n", lines) : "No recent activity data.";
+    }
+
+    private static string DigestDayFigures(ActivityLog log)
+    {
+        var parts = new List<string>
+        {
+            $"steps={log.Steps}",
+        };
+
+        if (log.ActiveMinutes is { } active)
+            parts.Add($"activeMinutes={active}");
+
+        parts.Add($"HR={log.RestingHeartRate}");
+
+        if (log.AvgHeartRate is { } avg)
+            parts.Add($"HR_avg={avg}");
+        if (log.MaxHeartRate is { } max)
+            parts.Add($"HR_max={max}");
+
+        parts.Add($"sleep(night ending that morning)={log.SleepMinutes}min");
+
+        var stages = new List<string>();
+        if (log.DeepSleepMinutes is { } deep)
+            stages.Add($"deep={deep}");
+        if (log.LightSleepMinutes is { } light)
+            stages.Add($"light={light}");
+        if (log.RemSleepMinutes is { } rem)
+            stages.Add($"rem={rem}");
+        if (stages.Count > 0)
+            parts.Add($"sleepStages={string.Join("/", stages)}");
+
+        if (log.SpO2Average is { } spo2)
+            parts.Add(string.Create(CultureInfo.InvariantCulture, $"SpO2={spo2:0.#}"));
+        if (log.BreathingRate is { } breathing)
+            parts.Add(string.Create(CultureInfo.InvariantCulture, $"breathing={breathing:0.#}"));
+
+        return string.Join(", ", parts);
     }
 
     /// <summary>
