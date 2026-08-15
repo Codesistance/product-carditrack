@@ -204,6 +204,9 @@ jobs:
     needs: changes
     if: needs.changes.outputs.api == 'true'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: write
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-dotnet@v5
@@ -217,8 +220,20 @@ jobs:
             --collect:"XPlat Code Coverage"
         env:
           TESTCONTAINERS_RYUK_DISABLED: 'true'
-      - uses: actions/upload-artifact@v7
+      # always(), like the upload it guards — a failing test must still reach the
+      # gate, or the upload would be skipped for want of an output rather than
+      # for want of storage.
+      - id: storage
         if: always()
+        uses: ./.github/actions/artifact-storage-gate
+        with:
+          reserve-mb: '10'
+          budget-mb: ${{ vars.ARTIFACT_STORAGE_BUDGET_MB || '450' }}
+          label: unit-test-results
+          token: ${{ github.token }}
+      - uses: actions/upload-artifact@v7
+        if: always() && steps.storage.outputs.available == 'true'
+        continue-on-error: true
         with:
           name: unit-test-results
           path: '**/*.trx'
@@ -229,6 +244,9 @@ jobs:
     needs: changes
     if: needs.changes.outputs.api == 'true'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: write
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-dotnet@v5
@@ -241,8 +259,17 @@ jobs:
             --logger trx
         env:
           TESTCONTAINERS_RYUK_DISABLED: 'true'
-      - uses: actions/upload-artifact@v7
+      - id: storage
         if: always()
+        uses: ./.github/actions/artifact-storage-gate
+        with:
+          reserve-mb: '10'
+          budget-mb: ${{ vars.ARTIFACT_STORAGE_BUDGET_MB || '450' }}
+          label: integration-test-results
+          token: ${{ github.token }}
+      - uses: actions/upload-artifact@v7
+        if: always() && steps.storage.outputs.available == 'true'
+        continue-on-error: true
         with:
           name: integration-test-results
           path: '**/*.trx'
@@ -349,6 +376,9 @@ jobs:
     needs: changes
     if: needs.changes.outputs.worker == 'true'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: write
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-dotnet@v5
@@ -362,8 +392,17 @@ jobs:
             --filter "Category=Worker"
         env:
           TESTCONTAINERS_RYUK_DISABLED: 'true'
-      - uses: actions/upload-artifact@v7
+      - id: storage
         if: always()
+        uses: ./.github/actions/artifact-storage-gate
+        with:
+          reserve-mb: '10'
+          budget-mb: ${{ vars.ARTIFACT_STORAGE_BUDGET_MB || '450' }}
+          label: worker-test-results
+          token: ${{ github.token }}
+      - uses: actions/upload-artifact@v7
+        if: always() && steps.storage.outputs.available == 'true'
+        continue-on-error: true
         with:
           name: worker-test-results
           path: '**/*.trx'
@@ -398,6 +437,10 @@ jobs:
     needs: changes
     if: needs.changes.outputs.mobile == 'true'
     runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+      actions: write
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-dotnet@v5
@@ -463,8 +506,17 @@ jobs:
             -p:Auth0Audience=${{ steps.auth0.outputs.audience }} \
             -p:ApmEngine=${{ steps.auth0.outputs.apm_mobile_engine }} \
             -p:ApmData=$(printf '%s' "$APM_DATA" | base64 | tr -d '\n')
-      - uses: actions/upload-artifact@v7
+      - id: storage
         if: github.event_name != 'pull_request'
+        uses: ./.github/actions/artifact-storage-gate
+        with:
+          reserve-mb: '120'
+          budget-mb: ${{ vars.ARTIFACT_STORAGE_BUDGET_MB || '450' }}
+          label: mobile-android
+          token: ${{ github.token }}
+      - uses: actions/upload-artifact@v7
+        if: github.event_name != 'pull_request' && steps.storage.outputs.available == 'true'
+        continue-on-error: true
         with:
           name: mobile-android
           path: '**/*.apk'
@@ -568,6 +620,18 @@ jobs:
     needs: changes
     if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && needs.changes.outputs.mobile == 'true'
     runs-on: windows-latest
+    permissions:
+      id-token: write
+      contents: read
+      actions: write
+    # New output: upload-mobile-artifacts downloaded mobile-windows
+    # unconditionally, which a storage skip would turn into a hard failure.
+    # `outcome` rather than the gate results: continue-on-error masks a rejected
+    # upload as a successful step, so the gates alone would advertise an artifact
+    # that never landed. A skipped upload reports 'skipped', so this covers the
+    # gate-closed case too.
+    outputs:
+      available: ${{ steps.upload.outcome == 'success' }}
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-dotnet@v5
@@ -609,7 +673,17 @@ jobs:
             -p:Auth0ClientId=${{ steps.auth0.outputs.mobile_client_id }} `
             -p:Auth0Audience=${{ steps.auth0.outputs.audience }}
       # Consumed by upload-mobile-artifacts → GCS.
-      - uses: actions/upload-artifact@v7
+      - id: storage
+        uses: ./.github/actions/artifact-storage-gate
+        with:
+          reserve-mb: '10'
+          budget-mb: ${{ vars.ARTIFACT_STORAGE_BUDGET_MB || '450' }}
+          label: mobile-windows
+          token: ${{ github.token }}
+      - id: upload
+        uses: actions/upload-artifact@v7
+        if: steps.storage.outputs.available == 'true'
+        continue-on-error: true
         with:
           name: mobile-windows
           path: '**/*.msix'
@@ -651,8 +725,17 @@ jobs:
       - security-mobile
     if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && needs.changes.outputs.mobile == 'true'
     runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+      actions: write
+    # deploy-play and upload-mobile-artifacts download this artifact, so every
+    # reason it might be absent has to reach them — otherwise they fail looking
+    # for something that was never uploaded. The upload's own outcome is the one
+    # signal that covers all of them: 'skipped' when either gate closed, and
+    # 'failure' when the upload was rejected despite continue-on-error.
     outputs:
-      available: ${{ steps.gate.outputs.available }}
+      available: ${{ steps.upload.outcome == 'success' }}
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-dotnet@v5
@@ -746,8 +829,18 @@ jobs:
           cp "$OUT_DIR/mapping.txt" play-extras/mapping.txt
           (cd "$OBJ_DIR/app_shared_libraries" && zip -r "$GITHUB_WORKSPACE/play-extras/native-debug-symbols.zip" . -i '*.so')
 
-      - uses: actions/upload-artifact@v7
+      - id: storage
         if: steps.gate.outputs.available == 'true'
+        uses: ./.github/actions/artifact-storage-gate
+        with:
+          reserve-mb: '140'
+          budget-mb: ${{ vars.ARTIFACT_STORAGE_BUDGET_MB || '450' }}
+          label: mobile-android-signed
+          token: ${{ github.token }}
+      - id: upload
+        uses: actions/upload-artifact@v7
+        if: steps.gate.outputs.available == 'true' && steps.storage.outputs.available == 'true'
+        continue-on-error: true
         with:
           name: mobile-android-signed
           path: |
@@ -764,8 +857,13 @@ jobs:
     if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && needs.changes.outputs.mobile == 'true'
     runs-on: macos-26
     timeout-minutes: 40
+    permissions:
+      id-token: write
+      contents: read
+      actions: write
+    # As above: deploy-testflight and upload-mobile-artifacts consume this IPA.
     outputs:
-      available: ${{ steps.gate.outputs.available }}
+      available: ${{ steps.upload.outcome == 'success' }}
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-dotnet@v5
@@ -867,8 +965,18 @@ jobs:
             -p:ApmEngine=${{ steps.secrets.outputs.apm_mobile_engine }} \
             -p:ApmData=$(printf '%s' "$APM_DATA" | base64 | tr -d '\n')
 
-      - uses: actions/upload-artifact@v7
+      - id: storage
         if: steps.gate.outputs.available == 'true'
+        uses: ./.github/actions/artifact-storage-gate
+        with:
+          reserve-mb: '50'
+          budget-mb: ${{ vars.ARTIFACT_STORAGE_BUDGET_MB || '450' }}
+          label: mobile-ios-ipa
+          token: ${{ github.token }}
+      - id: upload
+        uses: actions/upload-artifact@v7
+        if: steps.gate.outputs.available == 'true' && steps.storage.outputs.available == 'true'
+        continue-on-error: true
         with:
           name: mobile-ios-ipa
           path: '**/*.ipa'
@@ -1240,6 +1348,7 @@ jobs:
           name: mobile-ios-ipa
           path: artifacts/ios
       - uses: actions/download-artifact@v8
+        if: needs.build-mobile-windows.outputs.available == 'true'
         with:
           name: mobile-windows
           path: artifacts/windows
@@ -1248,10 +1357,11 @@ jobs:
           TAG: ${{ needs.compute-version.outputs.version }}
           BUCKET: gs://${{ needs.changes.outputs.gcs_builds_bucket }}
         run: |
-          # Android / iOS are absent until the store signing secrets are populated
+          # Android / iOS are absent until the store signing secrets are populated,
+          # and any of the three can be absent if its upload was skipped for storage.
           if [ -d artifacts/android ]; then gcloud storage cp -r artifacts/android/** $BUCKET/$TAG/android/; fi
           if [ -d artifacts/ios ];     then gcloud storage cp -r artifacts/ios/**     $BUCKET/$TAG/ios/; fi
-          gcloud storage cp -r artifacts/windows/** $BUCKET/$TAG/windows/
+          if [ -d artifacts/windows ]; then gcloud storage cp -r artifacts/windows/** $BUCKET/$TAG/windows/; fi
 
   # ── Main only: DB Migrations + Deploy Dev ───────────────────────────────────
   run-db-migrations:

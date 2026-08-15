@@ -1,0 +1,103 @@
+name: Artifact storage gate
+description: >-
+  Checks remaining GitHub Actions artifact storage before an upload and reports
+  whether there is room. Lets callers skip an upload cleanly instead of failing
+  the job on a server-side quota rejection.
+
+inputs:
+  reserve-mb:
+    description: >-
+      Approximate size of the upload this gate is guarding, in MB. Counted as
+      already-spent so the gate closes *before* the upload would breach the
+      budget rather than after.
+    required: false
+    default: '50'
+  budget-mb:
+    description: >-
+      Total artifact storage to stay within, in MB. The Codesistance org is on
+      the GitHub Free plan, whose combined artifact + package allowance is
+      500 MB, so the default leaves a small margin under that ceiling.
+    required: false
+    default: '450'
+  label:
+    description: Name of the upload being guarded, used in the skip warning.
+    required: false
+    default: 'artifact'
+  token:
+    description: "Token used to list artifacts. Needs `actions: read` on this repo."
+    required: true
+
+outputs:
+  available:
+    description: "'true' when the upload fits inside the budget, 'false' when it should be skipped."
+    value: ${{ steps.check.outputs.available }}
+  used-mb:
+    description: Live (unexpired) artifact storage currently held by this repo, in MB.
+    value: ${{ steps.check.outputs.used_mb }}
+
+runs:
+  using: composite
+  steps:
+    # bash explicitly: this action is called from macos-26 and windows-latest
+    # jobs as well as ubuntu ones.
+    - id: check
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+        REPO: ${{ github.repository }}
+        RESERVE_MB: ${{ inputs.reserve-mb }}
+        BUDGET_MB: ${{ inputs.budget-mb }}
+        LABEL: ${{ inputs.label }}
+      run: |
+        set -uo pipefail
+
+        # budget-mb usually arrives from a repo variable, so it can be anything
+        # a human typed. A non-numeric value would make the comparison below
+        # error and fall through to available=false, silently suppressing every
+        # upload in the workflow — so fail soft to the default and say so.
+        if ! printf '%s' "$BUDGET_MB" | grep -Eq '^[0-9]+$'; then
+          echo "::warning::ARTIFACT_STORAGE_BUDGET_MB is not a positive integer ('$BUDGET_MB'); falling back to 450MB."
+          BUDGET_MB=450
+        fi
+        if ! printf '%s' "$RESERVE_MB" | grep -Eq '^[0-9]+$'; then
+          echo "::warning::reserve-mb is not a positive integer ('$RESERVE_MB') for $LABEL; falling back to 50MB."
+          RESERVE_MB=50
+        fi
+
+        # Only this repo's artifacts are counted. The quota is actually
+        # account-wide across all Codesistance repos, but GITHUB_TOKEN is
+        # repo-scoped and this repo has historically held >99% of the total,
+        # so the under-count is small and the budget margin absorbs it.
+        #
+        # The API call is kept separate from the summing so a failure is
+        # distinguishable from a genuine zero: awk prints 0 for empty input
+        # either way, so piping straight into it would turn a 403 into
+        # "no artifacts" and open the gate on bad data.
+        if ! RAW=$(gh api "repos/$REPO/actions/artifacts" --paginate \
+              --jq '.artifacts[] | select(.expired==false) | .size_in_bytes' 2>&1); then
+          echo "::warning::Could not read artifact storage usage ($LABEL): $RAW"
+          echo "available=true" >> "$GITHUB_OUTPUT"
+          echo "used_mb=unknown" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+
+        USED_BYTES=$(printf '%s\n' "$RAW" | awk '{ total += $1 } END { print total + 0 }')
+        USED_MB=$(( USED_BYTES / 1048576 ))
+        PROJECTED_MB=$(( USED_MB + RESERVE_MB ))
+
+        echo "available=$([ "$PROJECTED_MB" -le "$BUDGET_MB" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+        echo "used_mb=$USED_MB" >> "$GITHUB_OUTPUT"
+
+        if [ "$PROJECTED_MB" -gt "$BUDGET_MB" ]; then
+          echo "::warning::Skipping $LABEL upload — artifact storage at ${USED_MB}MB, +${RESERVE_MB}MB would exceed the ${BUDGET_MB}MB budget."
+          {
+            echo "### Artifact upload skipped — $LABEL"
+            echo ""
+            echo "Storage in use: **${USED_MB}MB** of a **${BUDGET_MB}MB** budget; this upload needs ~${RESERVE_MB}MB."
+            echo ""
+            echo "The job itself is unaffected. Free space by deleting old artifacts, or raise"
+            echo "\`ARTIFACT_STORAGE_BUDGET_MB\` if the account's storage limit has been increased."
+          } >> "$GITHUB_STEP_SUMMARY"
+        else
+          echo "Artifact storage: ${USED_MB}MB used, +${RESERVE_MB}MB for $LABEL, budget ${BUDGET_MB}MB."
+        fi
