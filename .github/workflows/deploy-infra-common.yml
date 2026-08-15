@@ -1,5 +1,7 @@
 name: Deploy Infrastructure → Common
 
+# Push/PR CI is gated by .github/ACTIONS_ON_PUSH (0/false off, 1/true on).
+# workflow_dispatch always runs. See docs/technical/github_repository_access.md.
 on:
   push:
     branches: [main]
@@ -7,11 +9,13 @@ on:
       - '.github/workflows/deploy-infra-common.yml'
       - 'infrastructure/common/**'
       - 'infrastructure/environments/common.tfvars'
+      - '.github/ACTIONS_ON_PUSH'
   pull_request:
     types: [opened, synchronize, reopened]
     paths:
       - 'infrastructure/common/**'
       - 'infrastructure/environments/common.tfvars'
+      - '.github/ACTIONS_ON_PUSH'
   workflow_dispatch:
 
 permissions:
@@ -23,8 +27,19 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # ── ACTIONS_ON_PUSH flag (0/false skips the rest on push and pull_request) ──
+  actions-on-push:
+    if: github.event_name != 'workflow_dispatch' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    uses: ./.github/workflows/_actions-on-push.yml
+
   # ── Shared config ────────────────────────────────────────────────────────────
   env:
+    needs: [actions-on-push]
+    if: >-
+      always()
+      && !cancelled()
+      && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+      && (github.event_name == 'workflow_dispatch' || needs.actions-on-push.outputs.enabled == 'true')
     uses: ./.github/workflows/_env.yml
 
   validate:

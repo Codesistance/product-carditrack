@@ -1,0 +1,48 @@
+name: Read ACTIONS_ON_PUSH
+
+# Shared flag for whether apps-dev / infra CI runs on push and pull_request.
+# Source: .github/ACTIONS_ON_PUSH (0/1 or true/false). Repo variable
+# ACTIONS_ON_PUSH overrides the file when set.
+
+on:
+  workflow_call:
+    outputs:
+      enabled:
+        description: 'true when push/PR CI should run the expensive workflows'
+        value: ${{ jobs.read.outputs.enabled }}
+
+jobs:
+  read:
+    name: Read ACTIONS_ON_PUSH
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      enabled: ${{ steps.parse.outputs.enabled }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          sparse-checkout: |
+            .github/ACTIONS_ON_PUSH
+          sparse-checkout-cone-mode: false
+      - id: parse
+        env:
+          OVERRIDE: ${{ vars.ACTIONS_ON_PUSH }}
+        run: |
+          set -euo pipefail
+          raw="$(printf '%s' "${OVERRIDE}" | tr -d ' \t\r\n')"
+          if [ -n "${raw}" ]; then
+            echo "Using vars.ACTIONS_ON_PUSH=${raw}"
+          else
+            raw="$(grep -v '^[[:space:]]*#' .github/ACTIONS_ON_PUSH | tr -d ' \t\r\n')"
+            echo "Using .github/ACTIONS_ON_PUSH=${raw}"
+          fi
+          v="$(printf '%s' "${raw}" | tr '[:upper:]' '[:lower:]')"
+          case "${v}" in
+            1|true|yes|on)  echo "enabled=true"  >> "${GITHUB_OUTPUT}" ;;
+            0|false|no|off) echo "enabled=false" >> "${GITHUB_OUTPUT}" ;;
+            *)
+              echo "::error::ACTIONS_ON_PUSH must be 0, 1, true, or false (got '${raw}')"
+              exit 1
+              ;;
+          esac

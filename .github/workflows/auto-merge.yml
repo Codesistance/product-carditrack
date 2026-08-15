@@ -21,12 +21,17 @@ name: Auto-merge
 #     GitHub does not deliver check_suite events for suites created by Actions
 #     (recursion guard), so each PR-triggered workflow must be listed by name here.
 #     Add any new PR-triggered workflow to this list or auto-merge will not fire
-#     when it is the last check to finish.
+#     when it is the last check to finish. Apps-dev and infra still belong here:
+#     when ACTIONS_ON_PUSH is 1 they run on the PR; when it is 0 they skip and
+#     this trigger is a no-op.
 #
-# Note: merges performed with GITHUB_TOKEN do not trigger the push-to-main deploy
-# workflows. Provision an AUTOMERGE_TOKEN secret (fine-grained PAT or GitHub App
-# token with contents:write + pull-requests:write) to restore that behaviour; the
-# workflow falls back to GITHUB_TOKEN when the secret is absent.
+# Note: AUTOMERGE_TOKEN (fine-grained PAT or GitHub App token with
+# contents:write + pull-requests:write) is preferred so Copilot review can be
+# requested and so a merge still triggers other workflows. The job falls back
+# to GITHUB_TOKEN when the secret is absent (merge still works; Copilot request
+# and push-triggered workflows may not). Push-to-main deploys run only when
+# ACTIONS_ON_PUSH is 1/true (see .github/ACTIONS_ON_PUSH); otherwise dispatch
+# CI / Deploy Apps → Dev.
 
 on:
   pull_request:

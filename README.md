@@ -123,7 +123,7 @@ dotnet test  CardiTrack.Server.slnf
 
 ### Local Development
 
-1. **Clone the repository**
+1. **Clone the repository** (public for free Actions minutes; write is limited to one owner — [docs/technical/github_repository_access.md](docs/technical/github_repository_access.md))
    ```bash
    git clone https://github.com/Codesistance/product-carditrack.git
    cd product-carditrack
