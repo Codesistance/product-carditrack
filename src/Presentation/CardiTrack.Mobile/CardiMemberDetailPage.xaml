@@ -376,14 +376,23 @@
                              straight to the phone field on M1-14 — #280. The action buttons stay
                              outside that tap target so the gestures cannot collide.
 
-                             Deliberately the same shape as the emergency contact card above:
-                             title, one line of dark text, 40dp action buttons on the right. The
-                             number used to be muted body copy floating in the middle of a 44dp
-                             row, which left the card visibly baggier than its neighbour for the
-                             same one line of content. -->
+                             The same shape as the emergency contact card above: title, one line of
+                             dark text, 40dp action buttons on the right. The number used to be
+                             muted body copy floating in the middle of a 44dp row, which left the
+                             card visibly baggier than its neighbour for the same one line of
+                             content.
+
+                             It rides a little tighter than that card rather than exactly as tall.
+                             The 40dp buttons set the row height and stay 40 — they match the
+                             header's icon buttons and the emergency card's, and shrinking them
+                             here would break that everywhere it is read — so the height comes off
+                             the padding and the title gap instead. The emergency card carries two
+                             lines of text in the same frame; matching its height around one line
+                             is what made this one read as slack. -->
                         <Border x:Name="PhoneCard"
-                                Style="{StaticResource ElevatedCard}">
-                            <VerticalStackLayout Spacing="10">
+                                Style="{StaticResource ElevatedCard}"
+                                Padding="14,12,13,12">
+                            <VerticalStackLayout Spacing="6">
                                 <Label Text="Phone"
                                        Style="{StaticResource DashboardSectionTitle}"/>
                                 <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">

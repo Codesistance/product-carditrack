@@ -29,12 +29,24 @@ internal static class BackNavigation
     /// Where the arrow goes with no history behind it — an absolute route, so it selects its tab
     /// rather than pushing another copy of the page onto wherever the user happens to be.
     /// </param>
-    public static Task GoBackAsync(this Page page, string destination) =>
-        Shell.Current is not { } shell
-            ? Task.CompletedTask
-            : HasPageBehind(shell)
-                ? shell.GoToAsync("..")
-                : shell.GoToAsync(destination);
+    /// <remarks>
+    /// The middle case is a tab root the caregiver was <em>sent</em> to: the stack is empty because
+    /// an absolute route emptied it, not because they started here. <see cref="TabNavigation"/>
+    /// kept what that jump dropped, and returning there beats the named destination, which would
+    /// send someone who arrived from Member Detail to the dashboard instead of back.
+    /// </remarks>
+    public static Task GoBackAsync(this Page page, string destination)
+    {
+        if (Shell.Current is not { } shell)
+            return Task.CompletedTask;
+
+        if (HasPageBehind(shell))
+            return shell.GoToAsync("..");
+
+        return TabNavigation.Origin.TryTake(out var origin)
+            ? shell.GoToAsync(origin)
+            : shell.GoToAsync(destination);
+    }
 
     /// <summary>
     /// Whether anything of the app's own sits under the current page. Shell's navigation stack

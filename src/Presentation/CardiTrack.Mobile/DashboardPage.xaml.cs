@@ -101,7 +101,7 @@ public partial class DashboardPage : ContentPage
     }
 
     private async void OnSleepConcernTapped(object? sender, TappedEventArgs e) =>
-        await Shell.Current.GoToAsync(AppShell.AlertsRoute);
+        await Shell.Current.GoToTabAsync(AppShell.AlertsRoute);
 
     /// <summary>
     /// Short, quiet time-of-day line under the caregiver's own name — describes the caregiver's
@@ -484,7 +484,7 @@ public partial class DashboardPage : ContentPage
     /// interleaved, so scanning for a health event does not mean wading through housekeeping.
     /// </summary>
     private async void OnBellClicked(object? sender, EventArgs e) =>
-        await Shell.Current.GoToAsync(AppShell.AlertsRoute);
+        await Shell.Current.GoToTabAsync(AppShell.AlertsRoute);
 
     /// <summary>
     /// Lands on M1-10, which is still a placeholder. The link renders anyway: hiding it would
@@ -492,7 +492,7 @@ public partial class DashboardPage : ContentPage
     /// placeholder is the more honest signal that alerting is not finished.
     /// </summary>
     private async void OnViewAllAlertsTapped(object? sender, TappedEventArgs e) =>
-        await Shell.Current.GoToAsync(AppShell.AlertsRoute);
+        await Shell.Current.GoToTabAsync(AppShell.AlertsRoute);
 
     /// <summary>A dashboard recent-alert tile opens the matching detail screen.</summary>
     private async void OnAlertTapped(object? sender, Guid alertId)

@@ -2,6 +2,7 @@ using CardiTrack.Application.DTOs.Requests;
 using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Domain.Extensions;
 using CardiTrack.Mobile.Controls;
+using CardiTrack.Mobile.Core.Alerts;
 using CardiTrack.Mobile.Core.Api;
 using CardiTrack.Mobile.Services;
 
@@ -741,7 +742,9 @@ public partial class CardiMemberDetailPage : ContentPage
     }
 
     private async void OnViewAlertsClicked(object? sender, EventArgs e) =>
-        await Shell.Current.GoToAsync(AppShell.AlertsRoute);
+        // Naming the member is what lets back come back to *this* page rather than to whichever
+        // member the dashboard would resolve on its own.
+        await Shell.Current.GoToTabAsync(AppShell.AlertsRoute, $"memberId={_memberId}");
 
     /// <summary>
     /// The row does one of two things depending on where monitoring stands: while it is live the
@@ -951,6 +954,11 @@ public partial class CardiMemberDetailPage : ContentPage
             // The dashboard resolves the primary member from scratch, so clearing the cached
             // id keeps it from asking for someone who no longer exists.
             Preferences.Default.Remove(DashboardPage.PrimaryMemberIdKey);
+            // Not GoToTabAsync: this page is the one thing back must not return to. The member it
+            // describes has just been removed, so the route that names them would resolve to
+            // nothing — and offering to go back to a person the caregiver has deleted would be
+            // wrong even if it worked.
+            TabNavigation.Origin.Clear();
             await Shell.Current.GoToAsync(AppShell.DashboardRoute);
         }
         catch (ApiException ex) when (!ex.IsSessionExpired)
@@ -1013,8 +1021,13 @@ public partial class CardiMemberDetailPage : ContentPage
             // come before the ones still marked "Soon", and a cluster with nothing available in it
             // yet sinks below the clusters that have something. What the catalogue offers today is
             // what a caregiver came here to change; the reserved ids are a roadmap, and reading
-            // past two of them to reach a switch made the list feel mostly unbuilt. OrderBy is a
-            // stable sort, so the catalogue's own editorial order survives within each group.
+            // past two of them to reach a switch made the list feel mostly unbuilt.
+            //
+            // Within a cluster the tie is broken by title rather than by the catalogue's order.
+            // That order was editorial — the sequence the rules were written in — which is a
+            // reasonable default for a list somebody reads through once and a poor one for a list
+            // of switches somebody returns to for a specific rule. Alphabetical is the order a
+            // reader can predict without knowing the catalogue.
             var clusters = prefs.Clusters
                 .OrderBy(c => c.Rules.Any(r => r.IsImplemented) ? 0 : 1);
 
@@ -1022,7 +1035,7 @@ public partial class CardiMemberDetailPage : ContentPage
             {
                 var rulesStack = new VerticalStackLayout { Spacing = 0 };
                 var first = true;
-                foreach (var rule in cluster.Rules.OrderBy(r => r.IsImplemented ? 0 : 1))
+                foreach (var rule in AlertRuleOrder.ForDisplay(cluster.Rules))
                 {
                     if (!first)
                         rulesStack.Add(new BoxView { Style = (Style)resources["DividerLine"] });
