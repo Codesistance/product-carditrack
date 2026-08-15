@@ -27,6 +27,7 @@ public class InactivityDetectionServiceTests
     private readonly IUserRepository _users = Substitute.For<IUserRepository>();
     private readonly IGranularMetricRepository _granular = Substitute.For<IGranularMetricRepository>();
     private readonly IAlertRepository _alerts = Substitute.For<IAlertRepository>();
+    private readonly IAlertPreferenceRepository _alertPreferences = Substitute.For<IAlertPreferenceRepository>();
     private readonly IDeviceConnectionRepository _connections = Substitute.For<IDeviceConnectionRepository>();
     private readonly IDeviceSyncService _deviceSync = Substitute.For<IDeviceSyncService>();
 
@@ -48,6 +49,7 @@ public class InactivityDetectionServiceTests
         _unitOfWork.CardiMembers.Returns(_members);
         _unitOfWork.UserCardiMembers.Returns(_links);
         _unitOfWork.Users.Returns(_users);
+        _unitOfWork.AlertPreferences.Returns(_alertPreferences);
         _unitOfWork.GranularMetrics.Returns(_granular);
         _unitOfWork.Alerts.Returns(_alerts);
         _unitOfWork.DeviceConnections.Returns(_connections);

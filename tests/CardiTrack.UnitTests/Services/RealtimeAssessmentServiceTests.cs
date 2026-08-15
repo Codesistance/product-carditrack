@@ -26,6 +26,7 @@ public class RealtimeAssessmentServiceTests
     private readonly IRealtimeAssessmentRepository _assessments = Substitute.For<IRealtimeAssessmentRepository>();
     private readonly IEnvironmentalReadingRepository _environmentalReadings = Substitute.For<IEnvironmentalReadingRepository>();
     private readonly IAlertRepository _alerts = Substitute.For<IAlertRepository>();
+    private readonly IAlertPreferenceRepository _alertPreferences = Substitute.For<IAlertPreferenceRepository>();
     private readonly IMedicalAiService _medicalAi = Substitute.For<IMedicalAiService>();
     private readonly IDistributedCache _cache = Substitute.For<IDistributedCache>();
     private readonly IAlertNotificationEnqueue _enqueue = Substitute.For<IAlertNotificationEnqueue>();
@@ -49,6 +50,7 @@ public class RealtimeAssessmentServiceTests
         _unitOfWork.RealtimeAssessments.Returns(_assessments);
         _unitOfWork.EnvironmentalReadings.Returns(_environmentalReadings);
         _unitOfWork.Alerts.Returns(_alerts);
+        _unitOfWork.AlertPreferences.Returns(_alertPreferences);
 
         // Defaults: one active member with a full, never-assessed heart-rate hour ending 14:30,
         // no unresolved alerts, and a model that answers "low".

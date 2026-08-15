@@ -106,7 +106,7 @@ Current tables (25 DbSets):
 - `AddDeviceAuthRecoveryBackoff` (2026-08-13) — per-connection widening backoff for `DeviceAuthRecoveryWorker`
 - `RetireOtherGender` (2026-08-13) — retires the `Other` gender value (pre-form members map to `PreferNotToSay`)
 
-**Planned tables (designed in the API spec, not yet implemented):** `EmergencyContacts`, `ConsentRecords`, `FamilyInvitations`, `SharedNotes`, `CardiMemberNotes`, `AlertNotes`, `AlertPhotos`, `AlertPreferences`, `Reports`. These back API features defined in [/execution/backend/api/](./execution/backend/api/readme.md) and will be added via EF migrations as the features land. (The formerly planned push-token and notification-preference tables shipped as `PushDeviceTokens` and `NotificationPreferences`.)
+**Planned tables (designed in the API spec, not yet implemented):** `EmergencyContacts`, `ConsentRecords`, `FamilyInvitations`, `SharedNotes`, `CardiMemberNotes`, `AlertNotes`, `AlertPhotos`, `Reports`. These back API features defined in [/execution/backend/api/](./execution/backend/api/readme.md) and will be added via EF migrations as the features land. (The formerly planned push-token and notification-preference tables shipped as `PushDeviceTokens` and `NotificationPreferences`; `AlertPreferences` shipped as the per-CardiMember rule enablement table.)
 
 > **Biometric login:** no server-side table. Under the Auth0-only auth model, biometrics are a **local device gate** that unlocks the securely stored Auth0 refresh token — see [auth.md](./execution/backend/api/auth.md).
 

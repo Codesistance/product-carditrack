@@ -12,7 +12,7 @@ CardiTrack computes every number in-process. MedGemma only interprets numbers it
 | Per-metric floor | Each metric needs 7 samples of its own (scaled to the window’s coverage bar on windows shorter than 9 days); a thin metric is left null | `BaselineCalculator` |
 | Established window only | Statistical alerts fetch the **30-day** baseline. 7- and 14-day *provisional* rows colour the dashboard and never page | `StatisticalAlertService` |
 | Null ≠ zero | A missing reading is “not measured”, not “did nothing”. The one red no-morning rule requires a **measured** zero steps | `StatisticalAlertRules` |
-| No tunable sensitivity | Only the hard-coded “medium” profile exists (30%). `AlertPreferences` (low/high) is unbuilt. A notice that implied a slider would be false | `StatisticalAlertRules.DeviationFraction` |
+| No tunable sensitivity | Only the hard-coded “medium” profile exists (30%). `AlertSensitivity` (low/high) is stored but unused. Per-CardiMember **rule enablement** (on by default; off skips evaluation) is separate — see `AlertPreference` / `AlertRuleCatalogue` | `StatisticalAlertRules.DeviationFraction`; `AlertPreferenceService` |
 
 Mean and sample σ (n−1) are computed in `BaselineCalculator` (package-free Application). Median and unscaled MAD are computed via `IDescriptiveStatistics` (Math.NET in Infrastructure) and **persisted on the same `PatternBaseline` row**. Live R1 rules still threshold on the mean / σ. Median/MAD exist so G2 (MAD/IQR fences for steps and sleep) can be shadow-evaluated without retuning production.
 

@@ -43,6 +43,7 @@ public class CardiTrackDbContext : DbContext
     public DbSet<NotificationDelivery> NotificationDeliveries => Set<NotificationDelivery>();
     public DbSet<PushDeviceToken> PushDeviceTokens => Set<PushDeviceToken>();
     public DbSet<NotificationPreference> NotificationPreferences => Set<NotificationPreference>();
+    public DbSet<AlertPreference> AlertPreferences => Set<AlertPreference>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

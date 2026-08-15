@@ -68,7 +68,9 @@ The implemented `AlertType` enum (integers on the wire) differs from the string 
 
 ### Sensitivity and preferences
 
-**Alert sensitivity is fixed constants only.** The only thresholds that exist are the fixed dashboard-coloring constants (deviation > 30% → yellow, > 50% → orange — the "medium" profile below, hard-coded). There are no per-member sensitivity settings.
+**Alert sensitivity is fixed constants only.** The only thresholds that exist are the fixed dashboard-coloring constants (deviation > 30% → yellow, > 50% → orange — the "medium" profile below, hard-coded). There are no per-member sensitivity settings that change thresholds yet (`CardiMember.AlertSensitivity` is stored end-to-end but unused by producers).
+
+**Per-CardiMember alert-rule enablement is shipped.** `GET /api/v1/cardimembers/{id}/alert-preferences` returns clustered rules with effective on/off state (missing preference row = all on). `PATCH .../alert-preferences/rules/{ruleId}` toggles one rule immediately. Off means the producer **skips evaluation entirely** for that rule — no `Alert` row. Primary caregiver only for writes; any viewer of the member may read. Future A–G rules appear in the catalogue with `isImplemented: false` until their producers land.
 
 **Quiet hours and per-category push muting do exist** — but on the **user**, not per CardiMember: `GET`/`PUT /api/v1/notifications/preferences` carries quiet hours, lock-screen detail, and muted categories, with Safety-category pushes always piercing both quiet hours and mutes. See [notifications.md](notifications.md).
 
@@ -369,50 +371,36 @@ Get historical frequency data for the same alert type on this CardiMember. Provi
 
 ## GET `/api/v1/cardimembers/{id}/alert-preferences`
 
-Get the alert notification preferences configured for a specific CardiMember.
+Get the clustered alert-rule catalogue for a CardiMember, with effective enablement. Missing preference rows mean every rule is **on**.
 
-**Priority:** P1 | **Auth Required:** Yes
+**Priority:** P1 | **Auth Required:** Yes (view access)
 
 ### Response `200 OK`
 
 ```json
 {
-  "cardiMemberId": "cm_01J8K2...",
-  "sensitivity": "medium",
-  "channels": {
-    "push": true,
-    "email": true,
-    "sms": false
-  },
-  "quietHours": {
-    "enabled": true,
-    "from": "22:00",
-    "to": "07:00",
-    "timezone": "America/New_York",
-    "overrideForSeverity": ["red"]
-  },
-  "alertTypeSettings": [
+  "cardiMemberId": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+  "clusters": [
     {
-      "type": "activity_decline",
-      "enabled": true,
-      "minSeverity": "yellow"
-    },
-    {
-      "type": "elevated_heart_rate",
-      "enabled": true,
-      "minSeverity": "orange"
-    },
-    {
-      "type": "no_morning_activity",
-      "enabled": true,
-      "minSeverity": "yellow"
-    }
-  ],
-  "familyRoutingRules": [
-    {
-      "userId": "usr_sibling123",
-      "name": "Tom Doe",
-      "receivesSeverity": ["red"]
+      "id": "sleep",
+      "title": "Sleep",
+      "description": "Bedtime, sleep quality, and unusual daytime rest",
+      "rules": [
+        {
+          "id": "irregular_sleep",
+          "title": "Unusual sleep length",
+          "description": "Last night was much shorter or longer than usual",
+          "enabled": true,
+          "isImplemented": true
+        },
+        {
+          "id": "late_bedtime",
+          "title": "Late or missed bedtime",
+          "description": "Still active past their usual bedtime",
+          "enabled": true,
+          "isImplemented": false
+        }
+      ]
     }
   ]
 }
@@ -420,44 +408,29 @@ Get the alert notification preferences configured for a specific CardiMember.
 
 ---
 
-## PUT `/api/v1/cardimembers/{id}/alert-preferences`
+## PATCH `/api/v1/cardimembers/{id}/alert-preferences/rules/{ruleId}`
 
-Update alert notification preferences for a CardiMember.
+Instant toggle for one rule. Off skips producer evaluation entirely. Unimplemented catalogue ids (`isImplemented: false`) cannot be toggled.
 
-**Priority:** P1 | **Auth Required:** Yes | **Required Role:** Admin, Staff
+**Priority:** P1 | **Auth Required:** Yes | **Required:** primary caregiver (manage access)
 
-### Request Body (partial update supported)
+### Request Body
 
 ```json
 {
-  "sensitivity": "high",
-  "channels": {
-    "push": true,
-    "email": false,
-    "sms": true
-  },
-  "quietHours": {
-    "enabled": true,
-    "from": "22:00",
-    "to": "07:00",
-    "timezone": "America/New_York",
-    "overrideForSeverity": ["red"]
-  },
-  "alertTypeSettings": [
-    {
-      "type": "activity_decline",
-      "enabled": true,
-      "minSeverity": "orange"
-    }
-  ],
-  "familyRoutingRules": [
-    {
-      "userId": "usr_sibling123",
-      "receivesSeverity": ["orange", "red"]
-    }
-  ]
+  "enabled": false
 }
 ```
+
+### Response `200 OK`
+
+Returns the updated `AlertRuleSettingResponse` for that rule.
+
+---
+
+## ~~PUT `/api/v1/cardimembers/{id}/alert-preferences`~~ (superseded)
+
+The bulk PUT that carried channels / quiet hours / family routing is superseded by the GET + per-rule PATCH above, plus user-scoped quiet hours on [notifications.md](notifications.md). SMS/email channels remain out of scope.
 
 **Sensitivity Values** (design intent — today only the `medium` thresholds exist, as fixed constants; see "Implemented today"):
 
@@ -469,12 +442,8 @@ Update alert notification preferences for a CardiMember.
 
 > **Provisional baselines never fire alerts.** The dashboard may colour metrics against a 7- or 14-day *provisional* baseline (`baseline.isProvisional` in [health-data.md](./health-data.md)) so the first weeks are not silent, but deviation alerts threshold only against the **established 30-day** `PatternBaseline` — a statistically thin window would trade the product's <5% false-positive target for early noise, and false alarms erode trust faster than a missed one builds it.
 
-### Response `200 OK`
-
-Returns updated preferences object (same schema as GET).
-
 ---
 
 **Related:** [readme.md](readme.md) | [notifications.md](notifications.md) | [family.md](family.md) | [User Stories 3.1, 3.2, 3.3, 11.1–11.3](../../ui/mobile/user_stories.md)
 
-**Last Updated:** August 14, 2026
+**Last Updated:** August 15, 2026

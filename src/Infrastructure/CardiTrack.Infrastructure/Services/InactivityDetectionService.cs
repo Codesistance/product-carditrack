@@ -180,6 +180,11 @@ public class InactivityDetectionService : IInactivityDetectionService
         if (member is null || !member.IsActive || member.IsMonitoringPaused(utcNow))
             return false;
 
+        var rulePrefs = AlertRuleOverrides.FromJson(
+            (await _unitOfWork.AlertPreferences.GetByCardiMemberIdAsync(memberId, ct))?.DisabledRules);
+        if (!rulePrefs.IsEnabled(AlertRuleCatalogue.DeviceSilence))
+            return false;
+
         var timeZone = await MemberAnchorTimeZone.ResolveAsync(_unitOfWork, memberId);
         var localNow = TimeZoneInfo.ConvertTimeFromUtc(utcNow, timeZone);
 

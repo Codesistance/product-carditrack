@@ -34,6 +34,13 @@ public interface ICardiTrackApiClient
 
     Task<MonitoringPauseResponse> ResumeMonitoringAsync(Guid cardiMemberId, CancellationToken ct = default);
 
+    /// <summary>Per-CardiMember alert-rule clusters with effective on/off state (M1-13).</summary>
+    Task<AlertPreferencesResponse> GetAlertPreferencesAsync(Guid cardiMemberId, CancellationToken ct = default);
+
+    /// <summary>Instant toggle for one alert rule. Off skips producer evaluation entirely.</summary>
+    Task<AlertRuleSettingResponse> SetAlertRuleEnabledAsync(
+        Guid cardiMemberId, string ruleId, bool enabled, CancellationToken ct = default);
+
     Task<DashboardResponse> GetDashboardAsync(Guid cardiMemberId, CancellationToken ct = default);
 
     /// <summary>

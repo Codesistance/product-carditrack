@@ -17,8 +17,8 @@ public sealed record StatisticalAlertCandidate(
 /// The R1 statistical alert rules (docs/execution/backend/api/alerts.md taxonomy) — pure
 /// functions from baseline + daily readings to an alert candidate or null, deliberately free of
 /// I/O so every threshold is unit-testable to its boundary. Thresholds are the hard-coded
-/// "medium" sensitivity profile (deviation &gt; 30%); the low/high profiles wait on the
-/// unbuilt <c>AlertPreferences</c> table.
+/// "medium" sensitivity profile (deviation &gt; 30%); the low/high profiles wait on wiring
+/// <c>CardiMember.AlertSensitivity</c>. Per-rule on/off lives in <c>AlertPreference</c>.
 /// <para>
 /// Every rule takes the <b>established 30-day</b> baseline only — provisional 7/14-day
 /// baselines never alert (a statistically thin window would trade the &lt;5% false-positive

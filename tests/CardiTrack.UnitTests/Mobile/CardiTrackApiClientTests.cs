@@ -268,6 +268,47 @@ public class CardiTrackApiClientTests
     }
 
     [Fact]
+    public async Task GetAlertPreferences_UnwrapsClusters()
+    {
+        var (client, http) = CreateSut();
+        http.Enqueue(HttpStatusCode.OK, $$"""
+            {"success":true,"message":"ok","data":{"cardiMemberId":"{{MemberId}}",
+             "clusters":[{"id":"sleep","title":"Sleep","description":"Bedtime",
+             "rules":[{"id":"irregular_sleep","title":"Unusual sleep length",
+             "description":"Last night","enabled":true,"isImplemented":true}]}]},
+             "timestamp":"2026-08-14T00:00:00Z"}
+            """);
+
+        var prefs = await client.GetAlertPreferencesAsync(MemberId);
+
+        Assert.Equal($"/api/v1/cardimembers/{MemberId}/alert-preferences", http.Requests.Single().Uri!.AbsolutePath);
+        Assert.Equal(MemberId, prefs.CardiMemberId);
+        Assert.Equal("irregular_sleep", prefs.Clusters.Single().Rules.Single().Id);
+        Assert.True(prefs.Clusters.Single().Rules.Single().Enabled);
+    }
+
+    [Fact]
+    public async Task SetAlertRuleEnabled_PatchesRuleId()
+    {
+        var (client, http) = CreateSut();
+        http.Enqueue(HttpStatusCode.OK, """
+            {"success":true,"message":"ok","data":{"id":"activity_decline","title":"Activity decline",
+             "description":"Yesterday","enabled":false,"isImplemented":true},
+             "timestamp":"2026-08-14T00:00:00Z"}
+            """);
+
+        var rule = await client.SetAlertRuleEnabledAsync(MemberId, "activity_decline", enabled: false);
+
+        var request = http.Requests.Single();
+        Assert.Equal(HttpMethod.Patch, request.Method);
+        Assert.Equal(
+            $"/api/v1/cardimembers/{MemberId}/alert-preferences/rules/activity_decline",
+            request.Uri!.AbsolutePath);
+        Assert.Contains("false", request.Body, StringComparison.OrdinalIgnoreCase);
+        Assert.False(rule.Enabled);
+    }
+
+    [Fact]
     public async Task ResumeMonitoring_DeletesPauseAndUnwrapsEnvelope()
     {
         var (client, http) = CreateSut();

@@ -23,6 +23,7 @@ public interface IUnitOfWork : IDisposable
     INotificationDeliveryRepository NotificationDeliveries { get; }
     IPushDeviceTokenRepository PushDeviceTokens { get; }
     INotificationPreferenceRepository NotificationPreferences { get; }
+    IAlertPreferenceRepository AlertPreferences { get; }
 
     Task<int> SaveChangesAsync();
     Task BeginTransactionAsync();

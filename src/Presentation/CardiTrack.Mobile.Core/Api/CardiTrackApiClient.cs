@@ -65,6 +65,18 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
         SendAsync<MonitoringPauseResponse>(
             HttpMethod.Delete, $"api/v1/cardimembers/{cardiMemberId}/pause", ct);
 
+    public Task<AlertPreferencesResponse> GetAlertPreferencesAsync(
+        Guid cardiMemberId, CancellationToken ct = default) =>
+        GetAsync<AlertPreferencesResponse>($"api/v1/cardimembers/{cardiMemberId}/alert-preferences", ct);
+
+    public Task<AlertRuleSettingResponse> SetAlertRuleEnabledAsync(
+        Guid cardiMemberId, string ruleId, bool enabled, CancellationToken ct = default) =>
+        SendAsync<SetAlertRuleEnabledRequest, AlertRuleSettingResponse>(
+            HttpMethod.Patch,
+            $"api/v1/cardimembers/{cardiMemberId}/alert-preferences/rules/{Uri.EscapeDataString(ruleId)}",
+            new SetAlertRuleEnabledRequest { Enabled = enabled },
+            ct);
+
     public Task<DashboardResponse> GetDashboardAsync(Guid cardiMemberId, CancellationToken ct = default) =>
         GetAsync<DashboardResponse>($"api/v1/cardimembers/{cardiMemberId}/dashboard", ct);
 

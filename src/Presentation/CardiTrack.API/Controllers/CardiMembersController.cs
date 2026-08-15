@@ -24,6 +24,7 @@ namespace CardiTrack.API.Controllers;
 public class CardiMembersController : BaseApiController
 {
     private readonly ICardiMemberService _cardiMembers;
+    private readonly IAlertPreferenceService _alertPreferences;
     private readonly IValidator<UpdateCardiMemberRequest> _updateValidator;
     private readonly IValidator<PauseMonitoringRequest> _pauseValidator;
 
@@ -31,11 +32,13 @@ public class CardiMembersController : BaseApiController
         IUserContext userContext,
         ILogger<CardiMembersController> logger,
         ICardiMemberService cardiMembers,
+        IAlertPreferenceService alertPreferences,
         IValidator<UpdateCardiMemberRequest> updateValidator,
         IValidator<PauseMonitoringRequest> pauseValidator)
         : base(userContext, logger)
     {
         _cardiMembers = cardiMembers;
+        _alertPreferences = alertPreferences;
         _updateValidator = updateValidator;
         _pauseValidator = pauseValidator;
     }
@@ -166,6 +169,71 @@ public class CardiMembersController : BaseApiController
         catch (KeyNotFoundException ex)
         {
             return Error(ex.Message, StatusCodes.Status404NotFound);
+        }
+    }
+
+    /// <summary>
+    /// Per-CardiMember alert-rule catalogue with effective on/off state (M1-13). Missing
+    /// preference rows mean every rule is on.
+    /// </summary>
+    [HttpGet("cardimembers/{cardiMemberId:guid}/alert-preferences")]
+    [ProducesResponseType(typeof(ApiResponse<AlertPreferencesResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<ApiResponse<AlertPreferencesResponse>>> GetAlertPreferences(
+        Guid cardiMemberId, CancellationToken ct)
+    {
+        if (NotSignedIn(out var error))
+            return error;
+
+        try
+        {
+            return Success(await _alertPreferences.GetAsync(UserContext.UserId, cardiMemberId, ct));
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return Error(ex.Message, StatusCodes.Status404NotFound);
+        }
+    }
+
+    /// <summary>
+    /// Instant toggle for one alert rule on a CardiMember. Off means the producer skips that
+    /// rule entirely. Primary caregiver only.
+    /// </summary>
+    [HttpPatch("cardimembers/{cardiMemberId:guid}/alert-preferences/rules/{ruleId}")]
+    [ProducesResponseType(typeof(ApiResponse<AlertRuleSettingResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<ApiResponse<AlertRuleSettingResponse>>> SetAlertRuleEnabled(
+        Guid cardiMemberId,
+        string ruleId,
+        [FromBody] SetAlertRuleEnabledRequest request,
+        CancellationToken ct)
+    {
+        if (NotSignedIn(out var error))
+            return error;
+
+        if (request is null)
+            return Error("Request body is required.", StatusCodes.Status400BadRequest);
+
+        try
+        {
+            var updated = await _alertPreferences.SetRuleEnabledAsync(
+                UserContext.UserId, cardiMemberId, ruleId, request.Enabled, ct);
+            return Success(updated, updated.Enabled ? "Alert rule is on." : "Alert rule is off.");
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return Error(ex.Message, StatusCodes.Status404NotFound);
+        }
+        catch (ArgumentException ex)
+        {
+            return Error(ex.Message, StatusCodes.Status400BadRequest);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return Error(ex.Message, StatusCodes.Status400BadRequest);
         }
     }
 
