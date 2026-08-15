@@ -69,6 +69,9 @@ public partial class CardiMemberDetailPage : ContentPage
 
     private const string PauseDropdownAnimation = "pauseDropdown";
 
+    /// <summary>How long the Medical Information / Alert Rules chevrons take to turn over.</summary>
+    private const uint ChevronTurnMs = 200;
+
     private bool _pauseDurationsOpen;
     private bool _pauseDurationsAnimating;
 
@@ -623,8 +626,30 @@ public partial class CardiMemberDetailPage : ContentPage
     private void OnToggleMedicalTapped(object? sender, TappedEventArgs e)
     {
         MedicalNotesLabel.IsVisible = !MedicalNotesLabel.IsVisible;
-        MedicalChevron.Source = MedicalNotesLabel.IsVisible ? "icon_chevron.svg" : "icon_chevron_down.svg";
+        TurnChevron(MedicalChevron, MedicalNotesLabel.IsVisible);
     }
+
+    /// <summary>
+    /// Alert rules open the same way medical notes do — the row above them is the same card, the
+    /// same header and the same chevron, and the rules are one tap behind it rather than loose on
+    /// the page under a section title.
+    /// </summary>
+    private void OnToggleAlertRulesTapped(object? sender, TappedEventArgs e)
+    {
+        AlertRulesBody.IsVisible = !AlertRulesBody.IsVisible;
+        TurnChevron(AlertRulesChevron, AlertRulesBody.IsVisible);
+    }
+
+    /// <summary>
+    /// Turns a collapsible row's chevron to point at what it opened. Same glyph rotated rather
+    /// than a swap for a second one, and the same duration and easing
+    /// <see cref="Controls.AccordionSection"/> uses, so every collapsible in the app moves alike.
+    /// </summary>
+    private static void TurnChevron(View chevron, bool isExpanded) =>
+        _ = chevron.RotateToAsync(
+            isExpanded ? 180 : 0,
+            ChevronTurnMs,
+            isExpanded ? Easing.CubicOut : Easing.CubicIn);
 
     private async void OnCallEmergencyContactTapped(object? sender, TappedEventArgs e)
     {
@@ -965,17 +990,11 @@ public partial class CardiMemberDetailPage : ContentPage
         }
         finally
         {
+            // The rules land after the page does, and the row they open into grows to them:
+            // nothing is measured or clipped here, so a caregiver who opened the row while it
+            // was still a skeleton simply watches it fill.
             if (_memberId == memberId)
-            {
                 AlertRulesSkeleton.IsVisible = false;
-
-                // The rules land after the page does, so a caregiver who opened the accordion
-                // while it was still a skeleton would be left with the clip held at the
-                // skeleton's height and the rules sliced off inside it. Dispatched rather than
-                // called straight away: the rows have only just been added, and the measurement
-                // has to happen after the layout pass that gives them a width.
-                Dispatcher.Dispatch(AlertRulesAccordion.RefreshHeight);
-            }
         }
     }
 
@@ -1009,9 +1028,11 @@ public partial class CardiMemberDetailPage : ContentPage
                     rulesStack.Add(BuildAlertRuleRow(rule, canManage, resources));
                 }
 
+                // Outlined, not elevated: these sit inside the Alert Rules card now rather than
+                // on the page ground, and a shadow only reads as depth against the ground.
                 AlertRulesHost.Add(new Border
                 {
-                    Style = (Style)resources["ElevatedCard"],
+                    Style = (Style)resources["OutlinedCard"],
                     Padding = new Thickness(14, 10),
                     Content = new VerticalStackLayout
                     {
