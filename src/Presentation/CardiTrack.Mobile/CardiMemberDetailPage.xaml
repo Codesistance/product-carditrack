@@ -470,7 +470,12 @@
                                 Style="{StaticResource ElevatedCard}"
                                 Padding="14,4"
                                 IsVisible="False">
-                            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12" HeightRequest="52">
+                            <!-- Described on the Grid, which is the tap target: a layout carrying
+                                 nothing but a gesture recognizer is not an accessibility node, so
+                                 without this the row is neither announced nor reachable. -->
+                            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12" HeightRequest="52"
+                                  SemanticProperties.Description="Questions and answers"
+                                  SemanticProperties.Hint="Opens the answers saved for this CardiMember">
                                 <Grid.GestureRecognizers>
                                     <TapGestureRecognizer Tapped="OnQuestionsTapped"/>
                                 </Grid.GestureRecognizers>
@@ -493,7 +498,9 @@
                              card underneath it. -->
                         <Border Style="{StaticResource ElevatedCard}" Padding="14,4">
                             <VerticalStackLayout>
-                                <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12" HeightRequest="52">
+                                <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12" HeightRequest="52"
+                                      SemanticProperties.Description="Medical Information"
+                                      SemanticProperties.Hint="Shows or hides the notes kept for this CardiMember">
                                     <Grid.GestureRecognizers>
                                         <TapGestureRecognizer Tapped="OnToggleMedicalTapped"/>
                                     </Grid.GestureRecognizers>
@@ -532,7 +539,9 @@
                              stay behind one tap. -->
                         <Border Style="{StaticResource ElevatedCard}" Padding="14,4">
                             <VerticalStackLayout>
-                                <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12" HeightRequest="52">
+                                <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12" HeightRequest="52"
+                                      SemanticProperties.Description="Alert Rules"
+                                      SemanticProperties.Hint="Shows or hides which alerts CardiTrack checks for">
                                     <Grid.GestureRecognizers>
                                         <TapGestureRecognizer Tapped="OnToggleAlertRulesTapped"/>
                                     </Grid.GestureRecognizers>
