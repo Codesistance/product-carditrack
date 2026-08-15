@@ -348,6 +348,9 @@ public class MedicalPromptToneTests
 
         Assert.Contains(MedicalPromptBlocks.CaregiverRegister.Trim(), digest, StringComparison.Ordinal);
         Assert.Contains("Summarise {{NAME}}'s recent readings for their family", digest);
+        Assert.Contains("read the vitals against the steps walked", digest);
+        Assert.Contains("do not recap every listed figure", digest);
+        Assert.DoesNotContain("Cover each kind of reading", digest);
         Assert.DoesNotContain("non-medical family member", digest, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("Avoid clinical jargon", digest, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("suggest checking in", digest, StringComparison.OrdinalIgnoreCase);

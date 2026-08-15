@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.RegularExpressions;
 using CardiTrack.Domain.Entities;
 using CardiTrack.Domain.Enums;
@@ -287,6 +288,60 @@ internal static partial class MedicalPromptBlocks
             .ToList();
 
         return lines.Count > 0 ? string.Join("\n", lines) : "No recent activity data.";
+    }
+
+    /// <summary>
+    /// The family-digest daily rows: steps first (the movement yardstick the vitals are read
+    /// against — always named, including a measured zero and an explicit "not measured"), then
+    /// every other figure only when the device reported it, so a missing sleep night does not
+    /// show up as <c>sleep(...)=min</c>.
+    /// </summary>
+    internal static string FamilyDigestDailyLines(IEnumerable<ActivityLog> logs, DateOnly today)
+    {
+        var lines = logs
+            .TakeLast(2)
+            .Select(l => $"  {DayLabel(l.Date, today)}: {DigestDayFigures(l)}")
+            .ToList();
+
+        return lines.Count > 0 ? string.Join("\n", lines) : "No recent activity data.";
+    }
+
+    private static string DigestDayFigures(ActivityLog log)
+    {
+        var parts = new List<string>
+        {
+            log.Steps is { } steps ? $"steps={steps}" : "steps=not measured",
+        };
+
+        if (log.ActiveMinutes is { } active)
+            parts.Add($"activeMinutes={active}");
+
+        if (log.RestingHeartRate is { } resting)
+            parts.Add($"HR={resting}");
+        if (log.AvgHeartRate is { } avg)
+            parts.Add($"HR_avg={avg}");
+        if (log.MaxHeartRate is { } max)
+            parts.Add($"HR_max={max}");
+
+        if (log.SleepMinutes is { } sleep)
+            parts.Add($"sleep(night ending that morning)={sleep}min");
+
+        var stages = new List<string>();
+        if (log.DeepSleepMinutes is { } deep)
+            stages.Add($"deep={deep}");
+        if (log.LightSleepMinutes is { } light)
+            stages.Add($"light={light}");
+        if (log.RemSleepMinutes is { } rem)
+            stages.Add($"rem={rem}");
+        if (stages.Count > 0)
+            parts.Add($"sleepStages={string.Join("/", stages)}");
+
+        if (log.SpO2Average is { } spo2)
+            parts.Add(string.Create(CultureInfo.InvariantCulture, $"SpO2={spo2:0.#}"));
+        if (log.BreathingRate is { } breathing)
+            parts.Add(string.Create(CultureInfo.InvariantCulture, $"breathing={breathing:0.#}"));
+
+        return string.Join(", ", parts);
     }
 
     /// <summary>

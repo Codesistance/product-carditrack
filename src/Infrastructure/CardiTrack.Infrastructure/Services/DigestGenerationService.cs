@@ -45,28 +45,30 @@ public partial class DigestGenerationService : IDigestGenerationService
         Write {{NAME}} exactly as it appears wherever you would name the person; it stands in
         for their real name, which you are not given.
         """ + MedicalPromptBlocks.CaregiverRegister + """
-        Do not quote a figure that is not in the readings below.
-        Where a usual pattern is given, read each reading against it before concluding;
+        Do not quote a figure that is not in the readings or computed observations below.
+        Where a usual pattern is given, read each reading against it, and read the vitals against the steps walked that day, before concluding.
         when a reading is off the usual, say so plainly and let at least one suggestion respond to it.
+        If a computed observation is present, lead with it; do not recap every listed figure. An ordinary day can be short.
         If "Recent monitoring context" shows an unresolved alert or an observation that is suspicious, say so plainly in your own words and let the suggestion answer it; when that section is absent, never mention monitoring, alerts or observations at all.
 
         Respond with:
-        - summary: 4-6 sentences written to the family member about the readings below, naming
-          the person as {{NAME}} — never a relationship stand-in. Cover each kind of reading below, and say plainly
+        - summary: 2-5 sentences written to the family member about what the readings mean for {{NAME}} today, naming
+          the person as {{NAME}} — never a relationship stand-in. Interpret against the usual pattern and against how much they moved. Say plainly
           when a reading is missing instead of padding with reassurance.
         - headline: a three-to-six-word label for the summary you just wrote — sentence case, no
           full stop, no name and no {{NAME}}, not a sentence.
         - suggestion: one supportive, specific action the family could take today, at most 25
-          words. It must answer something in the readings above closely enough that a reader could tell what it came
+          words. It must answer something in the readings or computed observations above closely enough that a reader could tell what it came
           from — a suggestion equally true for any person on any day is not this one. It may
           reference an already-known routine fact.
+          If a computed observation describes a still day, the suggestion must answer that pairing.
           It must never invent a diagnosis, never name or guess at a medical condition, never
           suggest starting, stopping or changing any medication or dose, and never tell the
           family to interpret a reading themselves. If something concerning continues, say they
           should not act on it alone, and never worded as something the family has failed to do.
         - urgency: how soon the family should act on today's readings — one of watch (nothing
           pressing), check-in (worth a call today), concerning (worth prompt attention), or
-          act-now (worth acting on right away). Judge only from the readings below; never invent
+          act-now (worth acting on right away). Judge only from the readings and computed observations below; never invent
           urgency the data does not show, and never let this contradict the summary's own tone.
 
         Only if something in the readings would be clearer if the family explained it, also respond with:
@@ -102,6 +104,8 @@ public partial class DigestGenerationService : IDigestGenerationService
         "never diagnose",
         "caregiver-reported context",
         "read each reading against it",
+        "read the vitals against the steps walked",
+        "do not recap every listed figure",
         "recent monitoring context",
         "never mention monitoring",
         "most days there is nothing worth asking",
@@ -423,8 +427,9 @@ public partial class DigestGenerationService : IDigestGenerationService
 
             {memberContext}
             {UsualPatternSection(baseline, logs, describedDate)}
+            {DigestInterpretationSignals.Section(baseline, today, yesterday, localNow)}
             --- Recent activity (oldest first; the summary is about today) ---
-            {MedicalPromptBlocks.DailyLines(logs, take: 2, describedDate)}
+            {MedicalPromptBlocks.FamilyDigestDailyLines(logs, describedDate)}
             """;
 
         var aiResponse = await _medicalAi.GenerateStructuredAsync<DigestAiResponse>(prompt, ct);
@@ -512,6 +517,8 @@ public partial class DigestGenerationService : IDigestGenerationService
         var usuals = new List<string>();
         if (baseline.AvgSteps is { } steps)
             usuals.Add(string.Create(CultureInfo.InvariantCulture, $"about {steps:N0} steps a day"));
+        if (baseline.AvgActiveMinutes is { } active)
+            usuals.Add(string.Create(CultureInfo.InvariantCulture, $"about {active:N0} active minutes a day"));
         if (baseline.AvgRestingHeartRate is { } restingHr)
             usuals.Add(string.Create(CultureInfo.InvariantCulture, $"a resting heart rate around {restingHr} bpm"));
         if (baseline.AvgSleepMinutes is { } sleepMinutes)
@@ -1066,8 +1073,9 @@ public partial class DigestGenerationService : IDigestGenerationService
         /// model reads last, right beside the field it is about to fill.
         /// </remarks>
         [Description(
-            "4-6 sentences telling the family member how {{NAME}} is doing, naming them as "
-            + "{{NAME}} exactly. Not a restatement of the instructions.")]
+            "2-5 sentences interpreting what today's readings mean for {{NAME}}, against the "
+            + "usual pattern and against how much they moved. Not a recap of every figure. "
+            + "Not a restatement of the instructions.")]
         public required string Summary { get; init; }
 
         /// <summary>The card title this summary is shown under — see
@@ -1108,7 +1116,7 @@ public partial class DigestGenerationService : IDigestGenerationService
         /// </remarks>
         [Description(
             "One specific, supportive, actionable suggestion in plain language, at most 25 words, "
-            + "with respect to the readings. Never a diagnosis or a guess at a medical condition.")]
+            + "with respect to the readings and any computed observation. Never a diagnosis or a guess at a medical condition.")]
         public string? Suggestion { get; init; }
 
         /// <summary>
