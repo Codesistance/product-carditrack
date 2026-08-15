@@ -39,22 +39,26 @@ can write. Fork PRs from other accounts do not run Copilot review.
 
 ## CI triggers
 
-Cloud agents build and test. The expensive apps-dev and infra workflows do
-**not** start on `push` or on PR synchronize — that was the minute leak
-(macOS at 10× on every cloud-agent commit, then again on merge to `main`).
-Copilot review still runs on PR synchronize; it is a short ubuntu job.
+`.github/ACTIONS_ON_PUSH` is the flag (`0` / `false` / `1` / `true`).
+Repo variable `ACTIONS_ON_PUSH` overrides the file when set.
+
+| Value | Push to `main` and pull_request | workflow_dispatch |
+|---|---|---|
+| `0` or `false` (current) | Skip expensive jobs (flag reader only) | Runs |
+| `1` or `true` | Full apps-dev / infra CI | Runs |
+
+Copilot review and auto-merge always run on the PR; they are short ubuntu jobs.
 
 | Workflow | When it runs |
 |---|---|
-| CI / Deploy Apps → Dev | **workflow_dispatch only** (Actions → Run workflow) |
-| Deploy Infrastructure → Dev / Common | **workflow_dispatch only** |
+| CI / Deploy Apps → Dev | `ACTIONS_ON_PUSH` plus **workflow_dispatch** |
+| Deploy Infrastructure → Dev / Common | `ACTIONS_ON_PUSH` plus **workflow_dispatch** |
 | Deploy Apps / Infra → Prod | **workflow_dispatch only** (unchanged) |
 | Request Copilot review | `pull_request` opened / synchronize / reopened / ready_for_review |
 | Auto-merge | label, review, schedule, `workflow_run`, `workflow_dispatch` |
 
-Dev Cloud Run / TestFlight / Play uploads therefore no longer start on merge.
-Ship to dev by dispatching **CI / Deploy Apps → Dev** on `main` when you want
-GitHub to build.
+With the flag at `0`, Dev Cloud Run / TestFlight / Play do not start on merge.
+Dispatch **CI / Deploy Apps → Dev** on `main`, or set the flag to `1`.
 
 ## Operator steps (console)
 
@@ -75,7 +79,7 @@ GitHub to build.
 | Control | Where |
 |---|---|
 | Default code owner is `@marigbede` | [`.github/CODEOWNERS`](../../.github/CODEOWNERS) |
-| Apps-dev and infra CI not on push or PR | `deploy-apps-dev.yml`, `deploy-infra-dev.yml`, `deploy-infra-common.yml` |
+| Push/PR CI gated by `0`/`1` flag | [`.github/ACTIONS_ON_PUSH`](../../.github/ACTIONS_ON_PUSH) |
 | Fork PRs do not get Copilot review requested | [`.github/workflows/request-copilot-review.yml`](../../.github/workflows/request-copilot-review.yml) |
 
 ## Machine identities that must keep access

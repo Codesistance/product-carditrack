@@ -1,0 +1,7 @@
+# Run apps-dev and infra GitHub Actions on git push and pull_request?
+#
+# 0 or false — no. workflow_dispatch only (cloud agents already build).
+# 1 or true  — yes. Same as before: push to main + PR synchronize.
+#
+# Override without a commit: repo variable ACTIONS_ON_PUSH (same 0/1/true/false).
+0

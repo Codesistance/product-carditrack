@@ -1,8 +1,24 @@
 name: Deploy Infrastructure → Dev
 
-# Not on push or pull_request — cloud agents build; this workflow is opt-in.
-# Run from Actions → Run workflow. See docs/technical/github_repository_access.md.
+# Push/PR CI is gated by .github/ACTIONS_ON_PUSH (0/false off, 1/true on).
+# workflow_dispatch always runs. See docs/technical/github_repository_access.md.
 on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/deploy-infra-dev.yml'
+      - '.github/workflows/deploy-infra-prod.yml'
+      - 'infrastructure/*.tf'
+      - 'infrastructure/deployments/**'
+      - 'infrastructure/environments/dev.tfvars'
+      - '.github/ACTIONS_ON_PUSH'
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - 'infrastructure/*.tf'
+      - 'infrastructure/deployments/**'
+      - 'infrastructure/environments/dev.tfvars'
+      - '.github/ACTIONS_ON_PUSH'
   workflow_dispatch:
     inputs:
       environment:
@@ -21,8 +37,19 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # ── ACTIONS_ON_PUSH flag (0/false skips the rest on push and pull_request) ──
+  actions-on-push:
+    if: github.event_name != 'workflow_dispatch' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    uses: ./.github/workflows/_actions-on-push.yml
+
   # ── Shared config ────────────────────────────────────────────────────────────
   env:
+    needs: [actions-on-push]
+    if: >-
+      always()
+      && !cancelled()
+      && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+      && (github.event_name == 'workflow_dispatch' || needs.actions-on-push.outputs.enabled == 'true')
     uses: ./.github/workflows/_env.yml
 
   validate:
@@ -146,6 +173,21 @@ jobs:
           echo '```' >> $GITHUB_STEP_SUMMARY
           cat ${{ needs.env.outputs.tf_working_dir }}/plan.txt >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
+      - name: Post plan to PR
+        if: github.event_name == 'pull_request' && matrix.tf_version == needs.env.outputs.tf_version
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const fs = require('fs');
+            const plan = fs.readFileSync('${{ needs.env.outputs.tf_working_dir }}/plan.txt', 'utf8');
+            const truncated = plan.length > 60000 ? plan.slice(0, 60000) + '\n\n... (truncated)' : plan;
+            const body = `### Terraform Plan — Dev (${{ needs.env.outputs.tf_version }})\n\`\`\`hcl\n${truncated}\n\`\`\``;
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body
+            });
 
   apply-dev:
     name: Apply (Dev)
