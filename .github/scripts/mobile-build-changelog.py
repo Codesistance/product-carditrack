@@ -37,16 +37,18 @@ def fit(header: str, bullets: list[str], limit: int) -> str:
         return body if len(body) <= limit else header[:limit]
 
     kept: list[str] = []
-    # Reserve one character for the ellipsis if we have to stop early.
     for bullet in bullets:
         candidate = "\n".join([header, *kept, bullet])
         if len(candidate) <= limit:
             kept.append(bullet)
             continue
-        overflow = "\n".join([header, *kept, "…"])
-        if kept and len(overflow) <= limit:
-            return overflow
-        # Header plus first bullet still too long — hard-cut.
+        if kept:
+            # Everything already in `kept` fits by construction, so the "…" is the
+            # only part that might not. Drop the marker rather than the bullets it
+            # stands in for — losing a truncation hint beats losing the changelog.
+            overflow = "\n".join([header, *kept, "…"])
+            return overflow if len(overflow) <= limit else "\n".join([header, *kept])
+        # Header plus the very first bullet is already too long — hard-cut.
         hard = f"{header}\n{bullet}"
         return hard[: limit - 1] + "…" if len(hard) > limit else hard
     return "\n".join([header, *kept])
