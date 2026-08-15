@@ -754,7 +754,7 @@ Heart Rate, Sleep, Skin Temp, Steps, SpO2, and Breathing Rate — the last three
 **Card 1: Activity**
 - Icon: shoe
 - Large value: "4,250 steps"
-- Visual progress bar (current vs. goal)
+- Visual progress bar (today vs the previous calendar day's total; the track's max is yesterday until today exceeds it, then it is today's total — one fill, no overflow colour). Hidden when day n−1 is missing.
 - Comparison text: "85% of normal" with trend arrow (up/down)
 - Star rating (1-5) — the shortfall against normal; walking further than usual is not marked down
 

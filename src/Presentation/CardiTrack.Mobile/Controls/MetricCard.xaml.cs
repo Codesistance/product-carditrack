@@ -1,4 +1,5 @@
 using CardiTrack.Application.DTOs.Responses;
+using CardiTrack.Mobile.Core.Charts;
 
 namespace CardiTrack.Mobile.Controls;
 
@@ -37,29 +38,7 @@ public partial class MetricCard : ContentView
         // This card carries a trend arrow rather than a pill, so there is nothing on it for the
         // star row to match and the rating colours itself.
         ApplyStars(metric, matchPill: false);
-
-        if (metric is { Value: { } value, Goal: > 0 })
-        {
-            ProgressTrackBorder.IsVisible = true;
-            MarkerGrid.IsVisible = false;
-            ProgressFill.Background = (Brush)Microsoft.Maui.Controls.Application.Current!.Resources["GradientButtonBrush"];
-            SetProgress((double)(value / metric.Goal!.Value));
-            // "Usual", not "Goal". The figure is this member's own average day, which nobody set
-            // as a target — and the Member Detail screen's own explainer says of this same number
-            // that it "is not a target", so calling it a goal here had the two screens
-            // contradicting each other about what the bar is measuring.
-            if (!TrendLabel.IsVisible)
-                CaptionLabel.Text = $"Usual {metric.Goal:N0}";
-        }
-        else
-        {
-            // No bar for a member whose usual day is not known yet, rather than one drawn against
-            // a made-up round number. See MemberInsightsCalculator, which no longer supplies one.
-            ProgressTrackBorder.IsVisible = false;
-            MarkerGrid.IsVisible = false;
-            if (!TrendLabel.IsVisible)
-                CaptionLabel.Text = "Daily activity";
-        }
+        ApplyActivityTrack(metric);
     }
 
     public void ApplyHeartRate(DashboardMetric metric)
@@ -112,15 +91,46 @@ public partial class MetricCard : ContentView
     }
 
     /// <summary>
+    /// The bar under activity: filled against the previous calendar day's total, with the track
+    /// max growing to today once today is ahead. See <see cref="ActivityDayProgress"/>.
+    /// </summary>
+    /// <remarks>
+    /// One fill, the same gradient the card already used. An overflow colour for the steps past
+    /// yesterday would be a second target, which is the fitness-goal reading this comparison
+    /// exists to avoid. Hidden when day n−1 is missing or both days are zero — a gap is not a
+    /// yesterday, and a zero max is not a track.
+    /// </remarks>
+    private void ApplyActivityTrack(DashboardMetric metric)
+    {
+        if (ActivityDayProgress.For(metric) is not { } progress)
+        {
+            ProgressTrackBorder.IsVisible = false;
+            MarkerGrid.IsVisible = false;
+            SemanticProperties.SetDescription(ProgressTrackBorder, null);
+            if (!TrendLabel.IsVisible)
+                CaptionLabel.Text = "Daily activity";
+            return;
+        }
+
+        ProgressTrackBorder.IsVisible = true;
+        MarkerGrid.IsVisible = false;
+        ProgressFill.Background = (Brush)Microsoft.Maui.Controls.Application.Current!.Resources["GradientButtonBrush"];
+        SetProgress(progress.Fill);
+        SemanticProperties.SetDescription(ProgressTrackBorder, progress.Description);
+        if (!TrendLabel.IsVisible)
+            CaptionLabel.Text = progress.Caption;
+    }
+
+    /// <summary>
     /// The bar under skin temperature: filled to the previous reading, marked at today's.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// Activity's bar fills against a goal; this one has no goal to fill against, so it fills
-    /// against the last reading instead and puts today's on top of it as a tick. What it shows is
-    /// therefore a movement, not an achievement: how far today sits from the night before, and
-    /// which side of it. The two together answer the question the number alone cannot — 34°C is
-    /// meaningless in isolation, "a little above where it was last night" is not.
+    /// Activity's bar fills against yesterday's total; this one has no day-total to fill against,
+    /// so it fills against the last reading instead and puts today's on top of it as a tick. What
+    /// it shows is therefore a movement, not an achievement: how far today sits from the night
+    /// before, and which side of it. The two together answer the question the number alone cannot
+    /// — 34°C is meaningless in isolation, "a little above where it was last night" is not.
     /// </para>
     /// <para>
     /// The axis is fixed at <see cref="SkinTempAxisLow"/>–<see cref="SkinTempAxisHigh"/>°C rather
@@ -155,7 +165,7 @@ public partial class MetricCard : ContentView
 
         ProgressTrackBorder.IsVisible = true;
         // Its own colour, not activity's gradient: the same chrome filled to two different kinds
-        // of thing (a goal there, a previous reading here) should not look identical.
+        // of thing (yesterday's total there, a previous reading here) should not look identical.
         ProgressFill.Background = new SolidColorBrush(
             (Color)Microsoft.Maui.Controls.Application.Current!.Resources["MetricTemperatureInk"]);
         SetProgress((double)((previous - floor) / scale));

@@ -52,12 +52,13 @@
                        Style="{StaticResource MetricRowCaption}"/>
             </VerticalStackLayout>
 
-            <!-- Progress track. Activity has a real denominator (the daily step goal) and fills
-                 against it; skin temperature has no denominator but does have a previous
-                 reading, so it fills to that and marks today against it (see ApplyTemperature).
-                 Heart rate and sleep draw no bar at all — a bar there would need a percentage
-                 the contract does not carry, and inventing one on a health screen is exactly the
-                 sort of implied reading the product must not make. -->
+            <!-- Progress track. Activity fills against the previous calendar day's total (the
+                 max grows to today once today is ahead — one fill, not an overflow colour).
+                 Skin temperature has no day-total but does have a previous reading, so it fills
+                 to that and marks today against it (see ApplyTemperature). Heart rate and sleep
+                 draw no bar at all — a bar there would need a percentage the contract does not
+                 carry, and inventing one on a health screen is exactly the sort of implied
+                 reading the product must not make. -->
             <Border x:Name="ProgressTrackBorder"
                     IsVisible="False"
                     HeightRequest="7"

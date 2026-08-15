@@ -149,12 +149,18 @@ public class DashboardMetric
     public string Unit { get; set; } = string.Empty;
     public string Status { get; set; } = "unknown";
     /// <summary>
-    /// The denominator a client fills a bar against — for steps, this member's own average day
-    /// from their <c>PatternBaseline</c>. Not a target anyone set for them and not a published
-    /// figure: null until their own normal is known, because no standards body publishes a daily
-    /// step count (see <see cref="CardiTrack.Application.Services.HealthReferenceRanges"/>) and a
-    /// round number in its place would be ours wearing nobody's authority.
+    /// This member's own usual day from their <c>PatternBaseline</c> — not a target anyone set
+    /// for them and not a published figure. Null until their own normal is known, because no
+    /// standards body publishes a daily step count (see
+    /// <see cref="CardiTrack.Application.Services.HealthReferenceRanges"/>) and a round number
+    /// in its place would be ours wearing nobody's authority.
     /// </summary>
+    /// <remarks>
+    /// The dashboard Activity bar does <em>not</em> fill against this. It compares day n to the
+    /// previous calendar day on <see cref="Series"/>, so a member still being learned still has
+    /// a bar once two consecutive days exist. This field remains the usual-day figure for
+    /// captions and explainers that talk about their own normal.
+    /// </remarks>
     public decimal? Goal { get; set; }
     public int? RangeLow { get; set; }
     public int? RangeHigh { get; set; }

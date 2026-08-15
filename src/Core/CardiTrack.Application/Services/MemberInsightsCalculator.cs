@@ -69,18 +69,19 @@ public static class MemberInsightsCalculator
             series: BuildSeries(byDate, today, l => l.Steps),
             // Steps accumulate through the day, so a day still in progress has nothing to compare
             // against a whole-day average — at breakfast every member alive would read as a
-            // catastrophic drop. The bar carries the partial day instead, which is honest about
-            // being partway through by construction.
+            // catastrophic drop. The dashboard bar compares today to yesterday's total instead,
+            // which is honest about a running count without scoring it against their usual day.
             comparable: latestSteps?.Date != today);
         // This member's own usual day and nothing else. It used to fall back to a flat 10,000 for
         // a member with no baseline yet, which is a pedometer brand's name from 1965 rather than
         // anybody's guidance — the same invention HealthReferenceRanges refuses to make for steps,
-        // made here instead. A member still being learned now gets no denominator at all, and the
-        // clients draw no bar rather than one measuring them against a marketing figure.
+        // made here instead. A member still being learned now gets no usual-day figure; the
+        // dashboard bar does not need one, because it fills against the previous calendar day.
         steps.Goal = baseline?.AvgSteps;
         // Direction counts here: a member who walked half again as far as usual has not earned a
         // worse rating for it, so only a shortfall costs stars. Null for a day still in progress
-        // for the same reason ChangePercent is — the goal bar carries the partial day instead.
+        // for the same reason ChangePercent is — the bar compares that running total to yesterday
+        // rather than rating it against a finished usual day.
         steps.QualityScore = RateAgainstNormal(steps.ChangePercent, shortfallOnly: true);
 
         // Resting heart rate and sleep are daily summary values, not running totals: the provider

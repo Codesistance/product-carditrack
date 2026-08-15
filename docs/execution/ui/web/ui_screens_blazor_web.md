@@ -625,7 +625,7 @@ Each device card:
 **Key Metrics (3-column grid):**
 
 **Card 1: Activity**
-- Icon: shoe | Value: "4,250 steps" | Progress bar (current vs. goal)
+- Icon: shoe | Value: "4,250 steps" | Progress bar (today vs previous calendar day; max grows to today once today is ahead)
 - Comparison: "85% of normal" + trend arrow | Mini 7-day sparkline
 
 **Card 2: Heart Rate**
