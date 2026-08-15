@@ -12,7 +12,11 @@ namespace CardiTrack.Application.Services.Notifications;
 public static class NotificationChannels
 {
     public const string Safety = "carditrack.safety.v2";
-    public const string Health = "carditrack.health.v3";
+    /// <summary>
+    /// Health alerts (red/orange vitals). v4 = IMPORTANCE_HIGH so the OS actually plays sound and
+    /// heads-up; v3 was DEFAULT and on many devices arrived silently in the shade.
+    /// </summary>
+    public const string Health = "carditrack.health.v4";
     public const string Nudges = "carditrack.nudges.v2";
 
     /// <summary>Ids from earlier releases. Deleted on upgrade so the OS settings screen
@@ -20,6 +24,7 @@ public static class NotificationChannels
     public const string SafetyLegacy = "carditrack.safety";
     public const string HealthLegacy = "carditrack.health";
     public const string HealthLegacyV2 = "carditrack.health.v2";
+    public const string HealthLegacyV3 = "carditrack.health.v3";
     public const string NudgesLegacy = "carditrack.nudges";
 
     /// <summary>Android <c>res/raw</c> name for Safety/Health — no extension.</summary>

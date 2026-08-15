@@ -162,7 +162,7 @@ channel it lands in, whether it escalates, and whether the user may silence it.
 | Quiet hours | **Overridden** | Red overrides; orange defers | Always respected |
 | Escalates (§6.3) | Yes | Red only | No |
 | Silenceable | No — snooze ≤72h with logged acknowledgement | Sensitivity tuning (R2) | Yes — snooze, mute forever |
-| OS channel | `carditrack.safety.v2` (sound + vibration) | `carditrack.health.v3` (sound, no vibration) | `carditrack.nudges.v2` (ding, no vibration) |
+| OS channel | `carditrack.safety.v2` (sound + vibration) | `carditrack.health.v4` (HIGH, sound, no vibration) | `carditrack.nudges.v2` (ding, no vibration) |
 
 Health alerts keep their own `Alert` table and lifecycle (New → Acknowledged → Resolved). Nudges get
 the `Notification` table. **Both produce `NotificationDelivery` rows** — that shared outbox is what
@@ -208,7 +208,7 @@ the user knows what the app does is the reliable way to get denied permanently.
 items can be delivered quietly to Notification Center without a prompt. Two entitlements matter:
 
 - **Time Sensitive** (`com.apple.developer.usernotifications.time-sensitive`, self-granted) —
-  breaks through Focus modes. Applied to Safety and red Health.
+  breaks through Focus modes. Applied to Safety and red/orange Health.
 - **Critical Alerts** (`com.apple.developer.usernotifications.critical`) — bypasses silent mode and Do
   Not Disturb entirely. Requires written approval from Apple, and an elderly-monitoring app with
   red alerts is squarely the use case they grant it for. **Worth applying for early** — approval is
@@ -217,9 +217,9 @@ items can be delivered quietly to Notification Center without a prompt. Two enti
 
 **Android** — `POST_NOTIFICATIONS` runtime permission (13+). Three notification channels registered at
 first launch so the OS settings screen gives per-category control that mirrors ours; `carditrack.safety.v2`
-at `IMPORTANCE_HIGH` with the bundled alert sound and vibration, `carditrack.health.v3` at
-`IMPORTANCE_DEFAULT` with the same sound and no vibration, `carditrack.nudges.v2` at
-`IMPORTANCE_DEFAULT` with a shorter ding and no vibration.
+at `IMPORTANCE_HIGH` with the bundled alert sound and vibration, `carditrack.health.v4` at
+`IMPORTANCE_HIGH` with the same sound and no vibration (v3 was DEFAULT and often silent on OEMs),
+`carditrack.nudges.v2` at `IMPORTANCE_DEFAULT` with a shorter ding and no vibration.
 High-priority FCM messages wake the app from Doze. Channel ids are versioned because Android freezes
 a channel's sound the first time it is created — bumping the id is how a later release can change
 sound or vibration. Safety/Health share `carditrack_alert.wav`; Nudges use `carditrack_nudge.wav`
@@ -388,19 +388,17 @@ is a projection of server state, not a log of received events (§10.2).
 *"Margaret hasn't moved today"* on a lock screen in a shared home is a disclosure, and it is PHI in
 transit through Apple's and Google's infrastructure.
 
-**Default: content-free payloads.** The push carries identifiers and a deep link; the title is
-CardiTrack, the body a category-level teaser. The iOS notification service extension (and Android's
-data-message handler) fetches the real copy over authenticated HTTPS and rewrites the notification
-before it displays. The user sees rich content; APNs and FCM never do.
+**Default: content-free (PHI-free) payloads.** The push carries identifiers and a deep link; titles
+and bodies come from `PushTeaser` — they name the *kind* of alert (heart / sleep / activity / …)
+and always ask the caregiver to open CardiTrack, but never include names or metric values.
+The iOS notification service extension (and Android's data-message handler) can later fetch the
+real `Alert.Message` over authenticated HTTPS when lock-screen details are opted in; until then
+APNs and FCM only see the teaser.
 
-The live teasers are `"Urgent — open CardiTrack now"` for Safety and
-`"Something needs your attention — open CardiTrack"` for everything else. They replaced
-`"Urgent — tap to view"` / `"Tap to view"`, which were content-free and also close to contentless:
-on a lock screen they read as a system message with nothing behind them, and a caregiver who did not
-open one had been told nothing at all. Naming the app and asking for the app is the most these
-strings can carry without carrying the alert, and it is the difference between a notification that
-gets dismissed and one that gets opened. Both are pinned by `FcmPayloadPrivacyTests` — for the
-privacy invariant *and* for the shape, so a future edit cannot quietly go back to saying nothing.
+Examples: Safety → `"Urgent — open CardiTrack now"`; Health heart/orange → title `"Heart rate alert"`,
+body `"Open CardiTrack to check on this."`; Health red → urgent open body; Nudges →
+`"Something needs your attention — open CardiTrack"`. Earlier `"Tap to view"` teasers were PHI-free
+but contentless on a lock screen. Shape and privacy are pinned by `FcmPayloadPrivacyTests`.
 
 **Small icon.** `AndroidNotification.icon` names `icon_notification`, a white-on-transparent
 silhouette generated from the mobile app's `Resources/Images/icon_notification.svg`; the same

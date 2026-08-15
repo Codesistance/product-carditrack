@@ -277,9 +277,9 @@ public sealed class PushRegistrationCoordinator : IDisposable
 #if ANDROID
     /// <summary>
     /// Registered once at app start — Android requires a channel to exist before any
-    /// notification can be posted to it. Safety at IMPORTANCE_HIGH wakes the device from Doze
-    /// and plays the bundled alert sound with vibration. Health at DEFAULT plays the same
-    /// sound with no vibration. Nudges at DEFAULT play the shorter ding, also without vibration.
+    /// notification can be posted to it. Safety and Health at IMPORTANCE_HIGH wake the device
+    /// from Doze and play the bundled alert sound (Safety also vibrates). Nudges at DEFAULT
+    /// play the shorter ding without vibration.
     /// </summary>
     private static void RegisterAndroidChannels()
     {
@@ -296,6 +296,7 @@ public sealed class PushRegistrationCoordinator : IDisposable
         manager.DeleteNotificationChannel(NotificationChannels.SafetyLegacy);
         manager.DeleteNotificationChannel(NotificationChannels.HealthLegacy);
         manager.DeleteNotificationChannel(NotificationChannels.HealthLegacyV2);
+        manager.DeleteNotificationChannel(NotificationChannels.HealthLegacyV3);
         manager.DeleteNotificationChannel(NotificationChannels.NudgesLegacy);
 
         var alertSound = RawSoundUri(context, NotificationChannels.AlertSound);
@@ -315,8 +316,11 @@ public sealed class PushRegistrationCoordinator : IDisposable
         safety.SetSound(alertSound, audio);
         manager.CreateNotificationChannel(safety);
 
+        // HIGH (not Default): red/orange health alerts must make sound. Default importance on
+        // many OEMs lands quietly in the shade with no chime — the exact failure caregivers
+        // reported after a push arrived without audio.
         var health = new global::Android.App.NotificationChannel(
-            HealthChannelId, "Health alerts", global::Android.App.NotificationImportance.Default)
+            HealthChannelId, "Health alerts", global::Android.App.NotificationImportance.High)
         {
             Description = "A red or orange anomaly in a wearer's data."
         };

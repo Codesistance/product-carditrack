@@ -39,6 +39,13 @@ public class NotificationDelivery : BaseEntity
     /// </summary>
     public AlertSeverity? Severity { get; set; }
 
+    /// <summary>
+    /// Set only for <see cref="DeliveryCategory.Health"/>. Lets the push teaser name the kind of
+    /// alert (heart / sleep / activity) without loading the <see cref="Alert"/> row — and without
+    /// putting its message (which can carry metric numbers) on the lock screen.
+    /// </summary>
+    public AlertType? AlertType { get; set; }
+
     public DeliveryChannel Channel { get; set; }
     public DeliveryState State { get; set; } = DeliveryState.Pending;
 
