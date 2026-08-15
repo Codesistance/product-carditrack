@@ -46,7 +46,11 @@ concurrency:
 
 jobs:
   # ── Shared config (single source of truth via _env.yml) ─────────────────────
+  # Public repo → free Actions minutes. Skip fork PRs so only the one human
+  # writer (and installed GitHub Apps pushing to this repo) consume runners.
+  # See docs/technical/github_repository_access.md.
   env:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     uses: ./.github/workflows/_env.yml
 
   # ── Detect changed paths ─────────────────────────────────────────────────────

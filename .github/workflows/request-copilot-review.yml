@@ -20,7 +20,7 @@ concurrency:
 jobs:
   request-copilot:
     name: Request Copilot review
-    if: github.event.pull_request.draft == false
+    if: github.event.pull_request.draft == false && github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     steps:
       - name: Request Copilot as reviewer

@@ -42,7 +42,6 @@ on:
       - 'Deploy Infrastructure → Dev'
       - 'Deploy Infrastructure → Common'
       - 'Request Copilot review'
-      - 'Repository access gate'
     types: [completed]
 
 permissions:
