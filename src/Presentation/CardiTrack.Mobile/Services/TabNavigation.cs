@@ -66,13 +66,23 @@ internal static class TabNavigation
     /// were sent to, and back would otherwise leave the app. Returns whether it took the press.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// Shared by the platform back button and anything else that has to answer the same question.
     /// The navigation is started, not awaited — callers answer a synchronous "did you handle this".
+    /// </para>
+    /// <para>
+    /// A popup owns the screen while it is up, and back belongs to it: modals sit in their own
+    /// stack, so a page under one still reports a navigation stack of one and would otherwise look
+    /// exactly like a tab root worth leaving. Taking that press would navigate out from under an
+    /// open popup and leave the caregiver looking at a different page with it still on top. Same
+    /// test <see cref="ScreenRefresh.IsOnScreen"/> makes, for the same reason.
+    /// </para>
     /// </remarks>
     public static bool TryReturnToOrigin()
     {
         if (Shell.Current is not { } shell
             || shell.Navigation.NavigationStack.Count > 1
+            || shell.Navigation.ModalStack.Count > 0
             || !Origin.TryTake(out var origin))
         {
             return false;
