@@ -25,6 +25,7 @@ public class StatisticalAlertServiceTests
     private readonly IUserRepository _users = Substitute.For<IUserRepository>();
     private readonly IActivityLogRepository _activityLogs = Substitute.For<IActivityLogRepository>();
     private readonly IAlertRepository _alerts = Substitute.For<IAlertRepository>();
+    private readonly IAlertPreferenceRepository _alertPreferences = Substitute.For<IAlertPreferenceRepository>();
 
     private readonly Guid _memberId = Guid.NewGuid();
     private readonly Guid _userId = Guid.NewGuid();
@@ -41,6 +42,7 @@ public class StatisticalAlertServiceTests
         _unitOfWork.Users.Returns(_users);
         _unitOfWork.ActivityLogs.Returns(_activityLogs);
         _unitOfWork.Alerts.Returns(_alerts);
+        _unitOfWork.AlertPreferences.Returns(_alertPreferences);
 
         // Defaults: one active London-anchored member with an established baseline, a sharp
         // step decline yesterday, and no standing alerts.
@@ -127,6 +129,21 @@ public class StatisticalAlertServiceTests
 
         Assert.Equal(3, raised);
         await _unitOfWork.Received(1).SaveChangesAsync();
+    }
+
+    [Fact]
+    public async Task DisabledRule_IsNotEvaluatedAtAll()
+    {
+        _alertPreferences.GetByCardiMemberIdAsync(_memberId).Returns(new AlertPreference
+        {
+            CardiMemberId = _memberId,
+            DisabledRules = """["activity_decline"]""",
+        });
+
+        var raised = await CreateSut().EvaluateAsync(UtcNow);
+
+        Assert.Equal(0, raised);
+        await _alerts.DidNotReceive().AddAsync(Arg.Any<Alert>());
     }
 
     [Fact]

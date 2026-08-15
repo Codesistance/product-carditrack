@@ -26,6 +26,7 @@ public class RealtimeAssessmentServiceTests
     private readonly IRealtimeAssessmentRepository _assessments = Substitute.For<IRealtimeAssessmentRepository>();
     private readonly IEnvironmentalReadingRepository _environmentalReadings = Substitute.For<IEnvironmentalReadingRepository>();
     private readonly IAlertRepository _alerts = Substitute.For<IAlertRepository>();
+    private readonly IAlertPreferenceRepository _alertPreferences = Substitute.For<IAlertPreferenceRepository>();
     private readonly IMedicalAiService _medicalAi = Substitute.For<IMedicalAiService>();
     private readonly IDistributedCache _cache = Substitute.For<IDistributedCache>();
     private readonly IAlertNotificationEnqueue _enqueue = Substitute.For<IAlertNotificationEnqueue>();
@@ -49,6 +50,7 @@ public class RealtimeAssessmentServiceTests
         _unitOfWork.RealtimeAssessments.Returns(_assessments);
         _unitOfWork.EnvironmentalReadings.Returns(_environmentalReadings);
         _unitOfWork.Alerts.Returns(_alerts);
+        _unitOfWork.AlertPreferences.Returns(_alertPreferences);
 
         // Defaults: one active member with a full, never-assessed heart-rate hour ending 14:30,
         // no unresolved alerts, and a model that answers "low".
@@ -438,6 +440,24 @@ public class RealtimeAssessmentServiceTests
         var assessed = await CreateSut().AssessDueMembersAsync(UtcNow);
 
         Assert.Equal(0, assessed);
+    }
+
+    [Fact]
+    public async Task DisabledRealtimeHeartRateRule_IsNotAssessed()
+    {
+        _alertPreferences.GetByCardiMemberIdAsync(_memberId).Returns(new AlertPreference
+        {
+            CardiMemberId = _memberId,
+            DisabledRules = """["realtime_hr"]""",
+        });
+
+        var assessed = await CreateSut().AssessDueMembersAsync(UtcNow);
+
+        Assert.Equal(0, assessed);
+        await _granular.DidNotReceive().GetWindowAsync(
+            Arg.Any<Guid>(), Arg.Any<DateTime>(), Arg.Any<DateTime>(), Arg.Any<CancellationToken>());
+        await _medicalAi.DidNotReceive().GenerateStructuredAsync<RealtimeAssessmentService.AssessmentAiResponse>(
+            Arg.Any<string>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]

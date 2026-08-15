@@ -63,6 +63,7 @@ try
     builder.Services.AddScoped<IEnvironmentalReadingRepository, EnvironmentalReadingRepository>();
     builder.Services.AddScoped<INotificationRepository, NotificationRepository>();
     builder.Services.AddScoped<INotificationMuteRepository, NotificationMuteRepository>();
+    builder.Services.AddScoped<IAlertPreferenceRepository, AlertPreferenceRepository>();
     builder.Services.AddPushRepositories();
     builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
     builder.Services.AddScoped<IUserService, UserService>();

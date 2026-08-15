@@ -468,6 +468,21 @@
                             </Grid>
                         </Border>
 
+                        <!-- Alert rules (per-CardiMember generation toggles; instant save) -->
+                        <VerticalStackLayout Spacing="4" Margin="0,6,0,0">
+                            <Label Text="Alert rules" Style="{StaticResource DashboardSectionTitle}"/>
+                            <Label Text="Turn a rule off and CardiTrack will not check for it"
+                                   Style="{StaticResource Body2}"/>
+                        </VerticalStackLayout>
+
+                        <VerticalStackLayout x:Name="AlertRulesHost" Spacing="10"/>
+
+                        <Border x:Name="AlertRulesSkeleton"
+                                Style="{StaticResource ElevatedCard}"
+                                IsVisible="False">
+                            <controls:SkeletonView HeightRequest="120"/>
+                        </Border>
+
                         <!-- Management / danger zone -->
                         <VerticalStackLayout Spacing="4" Margin="0,10,0,0">
                             <Label Text="Management" Style="{StaticResource DashboardSectionTitle}"/>

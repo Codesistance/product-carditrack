@@ -85,6 +85,19 @@ public class StatisticalAlertService : IStatisticalAlertService
         if (baseline is null)
             return 0;
 
+        var rulePrefs = AlertRuleOverrides.FromJson(
+            (await _unitOfWork.AlertPreferences.GetByCardiMemberIdAsync(memberId, ct))?.DisabledRules);
+
+        // Prefer skipping timezone + activity-log fetches when every statistical rule is off.
+        if (!rulePrefs.IsEnabled(StatisticalAlertRules.ActivityDeclineRule)
+            && !rulePrefs.IsEnabled(StatisticalAlertRules.IrregularSleepRule)
+            && !rulePrefs.IsEnabled(StatisticalAlertRules.ElevatedHeartRateRule)
+            && !rulePrefs.IsEnabled(StatisticalAlertRules.NoMorningActivityRule)
+            && !rulePrefs.IsEnabled(StatisticalAlertRules.LongTermTrendRule))
+        {
+            return 0;
+        }
+
         var timeZone = await MemberAnchorTimeZone.ResolveAsync(_unitOfWork, memberId);
         var localNow = TimeZoneInfo.ConvertTimeFromUtc(utcNow, timeZone);
         var localToday = DateOnly.FromDateTime(localNow);
@@ -105,14 +118,19 @@ public class StatisticalAlertService : IStatisticalAlertService
         // dedup below is what keeps that fallback from re-judging a night that already alerted.
         var lastNightLog = todayLog?.SleepMinutes is not null ? todayLog : yesterdayLog;
 
-        var candidates = new[]
-        {
-            StatisticalAlertRules.ActivityDecline(baseline, yesterdayLog),
-            StatisticalAlertRules.IrregularSleep(baseline, lastNightLog),
-            StatisticalAlertRules.ElevatedHeartRate(baseline, yesterdayLog),
-            StatisticalAlertRules.NoMorningActivity(baseline, todayLog, localNow),
-            StatisticalAlertRules.LongTermTrend(logsByDate, yesterday),
-        }.OfType<StatisticalAlertCandidate>().ToList();
+        // Off = do not evaluate at all (not merely suppress the raise). Absence of a preference
+        // row means every rule is on.
+        var candidates = new List<StatisticalAlertCandidate>();
+        if (rulePrefs.IsEnabled(StatisticalAlertRules.ActivityDeclineRule))
+            AddIfPresent(candidates, StatisticalAlertRules.ActivityDecline(baseline, yesterdayLog));
+        if (rulePrefs.IsEnabled(StatisticalAlertRules.IrregularSleepRule))
+            AddIfPresent(candidates, StatisticalAlertRules.IrregularSleep(baseline, lastNightLog));
+        if (rulePrefs.IsEnabled(StatisticalAlertRules.ElevatedHeartRateRule))
+            AddIfPresent(candidates, StatisticalAlertRules.ElevatedHeartRate(baseline, yesterdayLog));
+        if (rulePrefs.IsEnabled(StatisticalAlertRules.NoMorningActivityRule))
+            AddIfPresent(candidates, StatisticalAlertRules.NoMorningActivity(baseline, todayLog, localNow));
+        if (rulePrefs.IsEnabled(StatisticalAlertRules.LongTermTrendRule))
+            AddIfPresent(candidates, StatisticalAlertRules.LongTermTrend(logsByDate, yesterday));
 
         // NOTE: this engine's alerts are not auto-resolved, and so still latch — see
         // AlertResolution for what that costs. Closing them needs each rule to say whether it was
@@ -199,5 +217,11 @@ public class StatisticalAlertService : IStatisticalAlertService
         }
 
         return created.Count;
+    }
+
+    private static void AddIfPresent(List<StatisticalAlertCandidate> into, StatisticalAlertCandidate? candidate)
+    {
+        if (candidate is not null)
+            into.Add(candidate);
     }
 }

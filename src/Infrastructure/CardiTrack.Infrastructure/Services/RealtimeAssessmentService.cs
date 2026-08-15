@@ -138,6 +138,11 @@ public class RealtimeAssessmentService : IRealtimeAssessmentService
         if (member is null || !member.IsActive || member.IsMonitoringPaused(utcNow))
             return false;
 
+        var rulePrefs = AlertRuleOverrides.FromJson(
+            (await _unitOfWork.AlertPreferences.GetByCardiMemberIdAsync(memberId, ct))?.DisabledRules);
+        if (!rulePrefs.IsEnabled(AlertRuleCatalogue.RealtimeHeartRate))
+            return false;
+
         // Whole-hour bounds, per the granular read contract: up through the in-progress hour,
         // back far enough that a full window can end at any minute inside the lookback.
         var rangeEnd = new DateTime(utcNow.Year, utcNow.Month, utcNow.Day, utcNow.Hour, 0, 0, DateTimeKind.Utc)

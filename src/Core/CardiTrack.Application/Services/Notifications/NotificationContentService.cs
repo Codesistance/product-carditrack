@@ -42,10 +42,7 @@ public class NotificationContentService : INotificationContentService
                 return new NotificationContentResponse { Title = alert.Title, Body = alert.Message };
         }
 
-        return new NotificationContentResponse
-        {
-            Title = "CardiTrack",
-            Body = delivery.Category == DeliveryCategory.Safety ? "Urgent — tap to view" : "Tap to view"
-        };
+        var (title, body) = PushTeaser.For(delivery.Category, delivery.Severity, delivery.AlertType);
+        return new NotificationContentResponse { Title = title, Body = body };
     }
 }

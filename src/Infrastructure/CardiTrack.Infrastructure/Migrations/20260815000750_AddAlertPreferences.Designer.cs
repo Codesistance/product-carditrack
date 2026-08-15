@@ -3,6 +3,7 @@ using System;
 using CardiTrack.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace CardiTrack.Infrastructure.Migrations
 {
     [DbContext(typeof(CardiTrackDbContext))]
-    partial class CardiTrackDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260815000750_AddAlertPreferences")]
+    partial class AddAlertPreferences
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -1248,10 +1251,6 @@ namespace CardiTrack.Infrastructure.Migrations
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
-
-                    b.Property<string>("AlertType")
-                        .HasMaxLength(50)
-                        .HasColumnType("character varying(50)");
 
                     b.Property<int>("Attempts")
                         .ValueGeneratedOnAdd()

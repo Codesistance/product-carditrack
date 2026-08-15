@@ -265,7 +265,7 @@ The device-silence failsafe (llm_design's `InactivityDetector` — placed here a
 The R1 statistical alert engine: five deterministic rules (`docs/execution/backend/api/alerts.md` taxonomy — activity decline, irregular sleep, elevated resting HR, no morning activity, long-term trend) evaluated against each member's **established 30-day baseline** — fetching only that baseline is how "provisional baselines never alert" is enforced. Pure rules in `StatisticalAlertRules` (Application, I/O-free, boundary-tested); orchestration in `StatisticalAlertService`.
 
 - Runs **every 15 minutes**, offset from the inactivity worker (`0 7-59/15 * * * *`) — the cadence exists for the one intraday rule (`no_morning_activity`, red: measured-zero steps past typical wake + 2 h while the device reports); daily-grain rules are held to once per local day by the same-day dedup.
-- Thresholds are the hard-coded **medium** sensitivity profile (>30% deviation; HR margin max(2σ, 5 bpm); trend ≥5%/week × 4 weeks). Low/high profiles wait on the unbuilt `AlertPreferences` table.
+- Thresholds are the hard-coded **medium** sensitivity profile (>30% deviation; HR margin max(2σ, 5 bpm); trend ≥5%/week × 4 weeks). Low/high profiles wait on wiring `CardiMember.AlertSensitivity`. Per-rule on/off is gated by `AlertPreference` (default on).
 - **Null-vs-zero discipline holds**: a null reading (not measured) never fires anything — most critically in `no_morning_activity`, where an HR-only device's absent steps field must never page a family red.
 - **Cooldowns follow the family's remedy** (`AlertRuleMarkers`): rule-scoped everywhere except `HeartRate`, which is type-scoped across this engine and the AI assessor.
 

@@ -115,7 +115,7 @@ This document provides an overview of all domain entities in the CardiTrack syst
 - **CardiMemberNote** — self-authored notes by the monitored person (max 1000 chars)
 - **AlertNote** — follow-up notes on an alert, with optional actionTaken analytics key
 - **AlertPhoto** — photo attachments on alerts (blob URL, caption)
-- **AlertPreference** — one per CardiMember: sensitivity, channels, quiet hours, per-type settings, routing rules (JSON columns)
+- **AlertPreference** — one per CardiMember: sparse JSON disable-list of alert rule ids (`DisabledRules`). Missing row = all rules on. Producers skip evaluation for disabled ids.
 - ~~**PushNotificationToken**~~ — **shipped** as `PushDeviceToken` (APNS/FCM tokens per user device, token encrypted with a SHA-256 fingerprint for lookup), part of the push delivery spine (with Notification, NotificationDelivery, NotificationMute)
 - ~~**NotificationPreference**~~ — **shipped**: a per-User NotificationPreference table (the old per-relationship `NotificationPreferences` JSON column on UserCardiMember was dropped by `AddPushDeliverySpine`)
 - **Report** — async report generation state (format, parameters, status, download expiry). *Today: report state lives in the distributed cache only (fire-and-forget, lost on restart) — no entity or table.*

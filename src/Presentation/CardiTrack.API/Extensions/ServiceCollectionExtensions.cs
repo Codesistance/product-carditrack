@@ -39,6 +39,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<CardiTrack.Application.Interfaces.Services.IDigestQueryService, CardiTrack.Application.Services.DigestQueryService>();
         services.AddScoped<CardiTrack.Application.Interfaces.Services.IQuestionnaireService, CardiTrack.Application.Services.QuestionnaireService>();
         services.AddScoped<CardiTrack.Application.Interfaces.Services.IAlertService, CardiTrack.Application.Services.AlertService>();
+        services.AddScoped<CardiTrack.Application.Interfaces.Services.IAlertPreferenceService, CardiTrack.Application.Services.AlertPreferenceService>();
         services.AddScoped<CardiTrack.Application.Interfaces.Services.IActivityLogAggregationService, CardiTrack.Application.Services.ActivityLogAggregationService>();
         services.AddScoped<CardiTrack.Application.Interfaces.Services.IOnboardingService, CardiTrack.Application.Services.OnboardingService>();
         services.AddScoped<CardiTrack.Application.Interfaces.Services.INotificationService, CardiTrack.Application.Services.Notifications.NotificationService>();
@@ -84,6 +85,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IAuditLogRepository, CardiTrack.Infrastructure.Repositories.AuditLogRepository>();
         services.AddScoped<INotificationRepository, CardiTrack.Infrastructure.Repositories.NotificationRepository>();
         services.AddScoped<INotificationMuteRepository, CardiTrack.Infrastructure.Repositories.NotificationMuteRepository>();
+        services.AddScoped<IAlertPreferenceRepository, CardiTrack.Infrastructure.Repositories.AlertPreferenceRepository>();
         services.AddScoped<INotificationSnapshotQueries, CardiTrack.Infrastructure.Repositories.NotificationSnapshotQueries>();
 
         // Push delivery spine (notification_engine.md Phase 3) — the API both issues the

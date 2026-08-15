@@ -30,6 +30,10 @@ public class NotificationDeliveryConfiguration : IEntityTypeConfiguration<Notifi
             .HasConversion<string>()
             .HasMaxLength(50);
 
+        builder.Property(d => d.AlertType)
+            .HasConversion<string>()
+            .HasMaxLength(50);
+
         builder.Property(d => d.Channel)
             .IsRequired()
             .HasConversion<string>()

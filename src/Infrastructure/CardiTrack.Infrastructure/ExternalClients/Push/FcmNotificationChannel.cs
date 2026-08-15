@@ -16,9 +16,9 @@ namespace CardiTrack.Infrastructure.ExternalClients.Push;
 /// <c>roles/firebasecloudmessaging.admin</c>, granted in #108/PR176) — no service-account key
 /// file, no <see cref="FirebaseAdmin.AppOptions"/> credential override.
 ///
-/// Privacy invariant (§7.1): payload titles/bodies built here are always the generic content-free
-/// pair ("CardiTrack" / a category-level teaser) — never a notification's real title or body. No
-/// delivery content may reach a log, span attribute, or exception message this class produces.
+/// Privacy invariant (§7.1): payload titles/bodies built here are always PHI-free teasers from
+/// <see cref="PushTeaser"/> (kind of alert + "open the app") — never Alert.Message or a name.
+/// No delivery content may reach a log, span attribute, or exception message this class produces.
 /// </summary>
 public class FcmNotificationChannel : INotificationChannel
 {
@@ -154,12 +154,18 @@ public class FcmNotificationChannel : INotificationChannel
         // abuse surface: the flag must never depend on where in the pipeline you ask).
         var allowsCritical = DeliveryPlanner.AllowsCritical(delivery.Category, delivery.Severity);
 
-        // Design assumes Time Sensitive; Critical Alerts is an upgrade the code is ready to flip
-        // on per-category once the entitlement (#106) is granted — until then "critical" is
-        // capped at "time-sensitive" even where the allowlist would permit it, since actually
-        // requesting apns interruption-level=critical without the entitlement gets the whole
-        // payload rejected by APNs (§4).
-        var interruptionLevel = allowsCritical ? "time-sensitive" : "active";
+        // Design assumes Time Sensitive for anything that pages a caregiver (Safety + Health
+        // red/orange). Critical Alerts is an upgrade the code is ready to flip on per-category
+        // once the entitlement (#106) is granted — until then "critical" is capped at
+        // "time-sensitive" even where the allowlist would permit it, since actually requesting
+        // aps interruption-level=critical without the entitlement gets the whole payload
+        // rejected by APNs (§4). Orange used to land as "active", which Focus modes swallow —
+        // a silent health alert is the failure mode this widens past.
+        var interruptionLevel = allowsCritical
+            || (delivery.Category == DeliveryCategory.Health
+                && delivery.Severity is AlertSeverity.Red or AlertSeverity.Orange)
+            ? "time-sensitive"
+            : "active";
 
         var expirationSeconds = new DateTimeOffset(delivery.ExpiresAt).ToUnixTimeSeconds();
 
@@ -204,22 +210,11 @@ public class FcmNotificationChannel : INotificationChannel
                 ["ackToken"] = ackToken,
                 ["fetchToken"] = fetchToken
             },
-            // Content-free by default (§7.1): identifiers and a category-level teaser only. The
-            // notification service extension (or Android's data-message handler) fetches the real
-            // copy over authenticated HTTPS and rewrites it before display.
-            //
-            // "Tap to view" was content-free and also close to contentless: on a lock screen it
-            // reads as a system message with nothing behind it, and a caregiver who does not open
-            // it has been told nothing at all. Naming the app and asking for the app is the most
-            // these strings can carry without carrying the alert — and it is the difference
-            // between a notification that gets dismissed and one that gets opened.
-            Notification = new FirebaseAdmin.Messaging.Notification
-            {
-                Title = "CardiTrack",
-                Body = delivery.Category == DeliveryCategory.Safety
-                    ? "Urgent — open CardiTrack now"
-                    : "Something needs your attention — open CardiTrack"
-            },
+            // Content-free of PHI (§7.1): no names, no metrics. Title/body still vary by what
+            // kind of alert this is so a lock screen is worth opening — and always ask for the app.
+            // The notification service extension (or Android's data-message handler) can fetch
+            // richer copy later when ShowDetailsOnLockScreen is on; until then this is what shows.
+            Notification = BuildTeaser(delivery),
             Android = new AndroidConfig
             {
                 Priority = Priority.High,
@@ -263,6 +258,12 @@ public class FcmNotificationChannel : INotificationChannel
                 }
             }
         };
+    }
+
+    private static FirebaseAdmin.Messaging.Notification BuildTeaser(NotificationDelivery delivery)
+    {
+        var (title, body) = PushTeaser.For(delivery.Category, delivery.Severity, delivery.AlertType);
+        return new FirebaseAdmin.Messaging.Notification { Title = title, Body = body };
     }
 
     /// <summary>Safety/Health share the unlock chime; Nudges use the shorter ding.</summary>

@@ -27,6 +27,7 @@ public class InactivityDetectionServiceTests
     private readonly IUserRepository _users = Substitute.For<IUserRepository>();
     private readonly IGranularMetricRepository _granular = Substitute.For<IGranularMetricRepository>();
     private readonly IAlertRepository _alerts = Substitute.For<IAlertRepository>();
+    private readonly IAlertPreferenceRepository _alertPreferences = Substitute.For<IAlertPreferenceRepository>();
     private readonly IDeviceConnectionRepository _connections = Substitute.For<IDeviceConnectionRepository>();
     private readonly IDeviceSyncService _deviceSync = Substitute.For<IDeviceSyncService>();
 
@@ -48,6 +49,7 @@ public class InactivityDetectionServiceTests
         _unitOfWork.CardiMembers.Returns(_members);
         _unitOfWork.UserCardiMembers.Returns(_links);
         _unitOfWork.Users.Returns(_users);
+        _unitOfWork.AlertPreferences.Returns(_alertPreferences);
         _unitOfWork.GranularMetrics.Returns(_granular);
         _unitOfWork.Alerts.Returns(_alerts);
         _unitOfWork.DeviceConnections.Returns(_connections);
@@ -391,6 +393,23 @@ public class InactivityDetectionServiceTests
         Assert.Equal(0, raised);
         await _granular.DidNotReceive().GetWindowAsync(
             Arg.Any<Guid>(), Arg.Any<DateTime>(), Arg.Any<DateTime>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task DisabledDeviceSilenceRule_IsNotChecked()
+    {
+        _alertPreferences.GetByCardiMemberIdAsync(_memberId).Returns(new AlertPreference
+        {
+            CardiMemberId = _memberId,
+            DisabledRules = """["device_silence"]""",
+        });
+
+        var raised = await CreateSut().DetectAsync(UtcNow, Rules);
+
+        Assert.Equal(0, raised);
+        await _granular.DidNotReceive().GetWindowAsync(
+            Arg.Any<Guid>(), Arg.Any<DateTime>(), Arg.Any<DateTime>(), Arg.Any<CancellationToken>());
+        await _alerts.DidNotReceive().AddAsync(Arg.Any<Alert>());
     }
 
     // Cancellation during a member's check is shutdown, not a member failure — the pass must

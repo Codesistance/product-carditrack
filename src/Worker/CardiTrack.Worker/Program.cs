@@ -71,6 +71,7 @@ builder.Services.AddScoped<IMemberQuestionnaireRepository, MemberQuestionnaireRe
 builder.Services.AddScoped<IEnvironmentalReadingRepository, EnvironmentalReadingRepository>();
 builder.Services.AddScoped<INotificationRepository, NotificationRepository>();
 builder.Services.AddScoped<INotificationMuteRepository, NotificationMuteRepository>();
+builder.Services.AddScoped<IAlertPreferenceRepository, AlertPreferenceRepository>();
 builder.Services.AddScoped<INotificationSnapshotQueries, NotificationSnapshotQueries>();
 builder.Services.AddPushServices(configuration);
 builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();

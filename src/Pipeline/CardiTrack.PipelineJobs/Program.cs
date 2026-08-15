@@ -77,6 +77,7 @@ builder.Services.AddScoped<IMemberQuestionnaireRepository, MemberQuestionnaireRe
 builder.Services.AddScoped<IEnvironmentalReadingRepository, EnvironmentalReadingRepository>();
 builder.Services.AddScoped<INotificationRepository, NotificationRepository>();
 builder.Services.AddScoped<INotificationMuteRepository, NotificationMuteRepository>();
+builder.Services.AddScoped<IAlertPreferenceRepository, AlertPreferenceRepository>();
 // Repositories only, not AddPushServices — the pipeline gets a transport (the internal enqueue
 // endpoint, wired below for the assessor), not a copy of the send stack. See
 // PushServiceExtensions.AddPushServices' remarks.

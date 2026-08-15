@@ -39,7 +39,8 @@ public class FcmPayloadPrivacyTests
         DeliveryCategory category = DeliveryCategory.Nudge,
         AlertSeverity? severity = null,
         DeliverySourceType sourceType = DeliverySourceType.Notification,
-        string? collapseKey = null) => new()
+        string? collapseKey = null,
+        AlertType? alertType = null) => new()
         {
             Id = Guid.NewGuid(),
             SourceType = sourceType,
@@ -47,6 +48,7 @@ public class FcmPayloadPrivacyTests
             UserId = Guid.NewGuid(),
             Category = category,
             Severity = severity,
+            AlertType = alertType,
             CollapseKey = collapseKey,
             ExpiresAt = DateTime.UtcNow.AddMinutes(30)
         };
@@ -63,16 +65,44 @@ public class FcmPayloadPrivacyTests
     // ── Content-free by default ───────────────────────────────────────────────
 
     [Theory]
-    [InlineData(DeliveryCategory.Safety, "Urgent — open CardiTrack now")]
-    [InlineData(DeliveryCategory.Health, "Something needs your attention — open CardiTrack")]
-    [InlineData(DeliveryCategory.Nudge, "Something needs your attention — open CardiTrack")]
-    public void Notification_IsAlwaysTheGenericContentFreeTeaser_NeverDeliverySpecificText(
-        DeliveryCategory category, string expectedBody)
+    [InlineData(DeliveryCategory.Safety, "CardiTrack", "Urgent — open CardiTrack now")]
+    [InlineData(DeliveryCategory.Health, "Health alert", "Open CardiTrack to check on this.")]
+    [InlineData(DeliveryCategory.Nudge, "CardiTrack", "Something needs your attention — open CardiTrack")]
+    public void Notification_IsAlwaysThePhiFreeTeaser_NeverDeliverySpecificText(
+        DeliveryCategory category, string expectedTitle, string expectedBody)
     {
         var message = CreateSut().BuildMessage(Delivery(category), Token());
 
-        Assert.Equal("CardiTrack", message.Notification.Title);
+        Assert.Equal(expectedTitle, message.Notification.Title);
         Assert.Equal(expectedBody, message.Notification.Body);
+    }
+
+    [Theory]
+    [InlineData(AlertType.HeartRate, "Heart rate alert")]
+    [InlineData(AlertType.Sleep, "Sleep alert")]
+    [InlineData(AlertType.Inactivity, "Activity alert")]
+    [InlineData(AlertType.PatternBreak, "Pattern alert")]
+    [InlineData(AlertType.Trend, "Trend alert")]
+    public void HealthNotification_TitleVariesByAlertType_WithoutMetricsOrNames(
+        AlertType alertType, string expectedTitle)
+    {
+        var message = CreateSut().BuildMessage(
+            Delivery(DeliveryCategory.Health, AlertSeverity.Orange, alertType: alertType), Token());
+
+        Assert.Equal(expectedTitle, message.Notification.Title);
+        Assert.Equal("Open CardiTrack to check on this.", message.Notification.Body);
+        Assert.DoesNotContain("bpm", message.Notification.Body, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Margaret", message.Notification.Title, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void HealthNotification_RedSeverity_UsesUrgentOpenBody()
+    {
+        var message = CreateSut().BuildMessage(
+            Delivery(DeliveryCategory.Health, AlertSeverity.Red, alertType: AlertType.HeartRate), Token());
+
+        Assert.Equal("Heart rate alert", message.Notification.Title);
+        Assert.Equal("Urgent — open CardiTrack to check.", message.Notification.Body);
     }
 
     /// <summary>
@@ -179,7 +209,7 @@ public class FcmPayloadPrivacyTests
     [Theory]
     [InlineData(DeliveryCategory.Safety, null, "time-sensitive")]
     [InlineData(DeliveryCategory.Health, AlertSeverity.Red, "time-sensitive")]
-    [InlineData(DeliveryCategory.Health, AlertSeverity.Orange, "active")]
+    [InlineData(DeliveryCategory.Health, AlertSeverity.Orange, "time-sensitive")]
     [InlineData(DeliveryCategory.Health, AlertSeverity.Yellow, "active")]
     [InlineData(DeliveryCategory.Health, null, "active")]
     [InlineData(DeliveryCategory.Nudge, null, "active")]

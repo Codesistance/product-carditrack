@@ -72,6 +72,12 @@ public partial class CardiMemberDetailPage : ContentPage
     private bool _pauseDurationsOpen;
     private bool _pauseDurationsAnimating;
 
+    /// <summary>Guards Switch.Toggled while we rebuild or roll back alert-rule rows.</summary>
+    private bool _applyingAlertRules;
+
+    /// <summary>Rule id currently waiting on a PATCH — blocks overlapping toggles.</summary>
+    private string? _alertRuleToggleInFlight;
+
     /// <summary>
     /// Whether the last thing to take the screen from this page was one of our own popups — see
     /// <see cref="OnDisappearing"/>.
@@ -190,6 +196,7 @@ public partial class CardiMemberDetailPage : ContentPage
             // rest of the screen or the pull-to-refresh spinner.
             _ = LoadDigestAsync(_memberId);
             _ = LoadQuestionnairesAsync(_memberId);
+            _ = LoadAlertPreferencesAsync(_memberId);
         }
         catch (ApiException ex)
         {
@@ -902,5 +909,184 @@ public partial class CardiMemberDetailPage : ContentPage
         {
             _isBusy = false;
         }
+    }
+
+    private async Task LoadAlertPreferencesAsync(Guid memberId)
+    {
+        AlertRulesSkeleton.IsVisible = AlertRulesHost.Children.Count == 0;
+        try
+        {
+            var prefs = await _api.GetAlertPreferencesAsync(memberId);
+            if (_memberId != memberId)
+                return;
+            RenderAlertRules(prefs);
+        }
+        catch (ApiException)
+        {
+            // Leave whatever was already rendered; a failed background load must not blank the card.
+            if (AlertRulesHost.Children.Count == 0 && _memberId == memberId)
+            {
+                AlertRulesHost.Clear();
+                AlertRulesHost.Add(new Label
+                {
+                    Text = "Couldn't load alert rules. Pull to refresh.",
+                    Style = (Style)App.Current!.Resources["Body2"],
+                });
+            }
+        }
+        finally
+        {
+            if (_memberId == memberId)
+                AlertRulesSkeleton.IsVisible = false;
+        }
+    }
+
+    private void RenderAlertRules(AlertPreferencesResponse prefs)
+    {
+        _applyingAlertRules = true;
+        try
+        {
+            AlertRulesHost.Clear();
+            var canManage = _member?.IsPrimaryCaregiver == true;
+            var resources = App.Current!.Resources;
+
+            foreach (var cluster in prefs.Clusters)
+            {
+                var rulesStack = new VerticalStackLayout { Spacing = 0 };
+                var first = true;
+                foreach (var rule in cluster.Rules)
+                {
+                    if (!first)
+                        rulesStack.Add(new BoxView { Style = (Style)resources["DividerLine"] });
+                    first = false;
+                    rulesStack.Add(BuildAlertRuleRow(rule, canManage, resources));
+                }
+
+                AlertRulesHost.Add(new Border
+                {
+                    Style = (Style)resources["ElevatedCard"],
+                    Padding = new Thickness(14, 10),
+                    Content = new VerticalStackLayout
+                    {
+                        Spacing = 8,
+                        Children =
+                        {
+                            new Label
+                            {
+                                Text = cluster.Title,
+                                Style = (Style)resources["Body1SemiBoldDark"],
+                            },
+                            new Label
+                            {
+                                Text = cluster.Description,
+                                Style = (Style)resources["Body2"],
+                            },
+                            rulesStack,
+                        },
+                    },
+                });
+            }
+        }
+        finally
+        {
+            _applyingAlertRules = false;
+        }
+    }
+
+    private View BuildAlertRuleRow(AlertRuleSettingResponse rule, bool canManage, ResourceDictionary resources)
+    {
+        var title = new Label
+        {
+            Text = rule.Title,
+            Style = (Style)resources["Body1SemiBoldDark"],
+            LineBreakMode = LineBreakMode.WordWrap,
+        };
+        var subtitle = new Label
+        {
+            Text = rule.IsImplemented ? rule.Description : $"{rule.Description} — coming soon",
+            Style = (Style)resources["Body2"],
+            LineBreakMode = LineBreakMode.WordWrap,
+        };
+
+        var textStack = new VerticalStackLayout
+        {
+            Spacing = 2,
+            VerticalOptions = LayoutOptions.Center,
+            Children = { title, subtitle },
+        };
+
+        var grid = new Grid
+        {
+            ColumnDefinitions = new ColumnDefinitionCollection
+            {
+                new(GridLength.Star),
+                new(GridLength.Auto),
+            },
+            ColumnSpacing = 12,
+            Padding = new Thickness(0, 8),
+        };
+        grid.Add(textStack, 0);
+
+        if (rule.IsImplemented)
+        {
+            var toggle = new Switch
+            {
+                IsToggled = rule.Enabled,
+                IsEnabled = canManage,
+                OnColor = (Color)resources["Primary"],
+                VerticalOptions = LayoutOptions.Center,
+            };
+            toggle.Toggled += async (_, args) =>
+            {
+                if (_applyingAlertRules || _member is null)
+                    return;
+
+                if (_alertRuleToggleInFlight is not null)
+                {
+                    // Another PATCH is in flight — put the switch back and wait.
+                    _applyingAlertRules = true;
+                    toggle.IsToggled = !args.Value;
+                    _applyingAlertRules = false;
+                    return;
+                }
+
+                var previous = !args.Value;
+                _alertRuleToggleInFlight = rule.Id;
+                toggle.IsEnabled = false;
+                try
+                {
+                    await _api.SetAlertRuleEnabledAsync(_memberId, rule.Id, args.Value);
+                }
+                catch (ApiException ex) when (!ex.IsSessionExpired)
+                {
+                    _applyingAlertRules = true;
+                    toggle.IsToggled = previous;
+                    _applyingAlertRules = false;
+                    await _popups.ShowErrorAsync(ex.Message, "Couldn't update alert rule");
+                }
+                catch (ApiException)
+                {
+                    // Session gone — the app is already on its way back to sign-in.
+                }
+                finally
+                {
+                    _alertRuleToggleInFlight = null;
+                    toggle.IsEnabled = canManage;
+                }
+            };
+            grid.Add(toggle, 1);
+        }
+        else
+        {
+            grid.Add(new Label
+            {
+                Text = "Soon",
+                Style = (Style)resources["Body2"],
+                VerticalTextAlignment = TextAlignment.Center,
+                VerticalOptions = LayoutOptions.Center,
+            }, 1);
+        }
+
+        return grid;
     }
 }

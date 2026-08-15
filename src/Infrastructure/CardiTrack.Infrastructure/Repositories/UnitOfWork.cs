@@ -30,6 +30,7 @@ public class UnitOfWork : IUnitOfWork
     public INotificationDeliveryRepository NotificationDeliveries { get; }
     public IPushDeviceTokenRepository PushDeviceTokens { get; }
     public INotificationPreferenceRepository NotificationPreferences { get; }
+    public IAlertPreferenceRepository AlertPreferences { get; }
 
     public UnitOfWork(
         CardiTrackDbContext context,
@@ -53,7 +54,8 @@ public class UnitOfWork : IUnitOfWork
         INotificationMuteRepository notificationMutes,
         INotificationDeliveryRepository notificationDeliveries,
         IPushDeviceTokenRepository pushDeviceTokens,
-        INotificationPreferenceRepository notificationPreferences)
+        INotificationPreferenceRepository notificationPreferences,
+        IAlertPreferenceRepository alertPreferences)
     {
         _context = context;
         Organizations = organizations;
@@ -77,6 +79,7 @@ public class UnitOfWork : IUnitOfWork
         NotificationDeliveries = notificationDeliveries;
         PushDeviceTokens = pushDeviceTokens;
         NotificationPreferences = notificationPreferences;
+        AlertPreferences = alertPreferences;
     }
 
     public async Task<int> SaveChangesAsync()
