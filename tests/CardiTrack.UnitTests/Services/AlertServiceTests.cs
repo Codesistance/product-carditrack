@@ -24,6 +24,16 @@ public class AlertServiceTests
     private readonly Guid _memberId = Guid.NewGuid();
     private readonly Guid _otherMemberId = Guid.NewGuid();
 
+    /// <summary>
+    /// Mid-afternoon, so the day in progress has whole elapsed hours behind it. Pinned rather than
+    /// read off the wall clock because <see cref="AlertService"/> fetches different windows in the
+    /// first hour of the local day — a real clock made the elapsed-match assertions depend on what
+    /// time CI happened to start.
+    /// </summary>
+    private static readonly DateTimeOffset Now = new(2026, 8, 14, 15, 0, 0, TimeSpan.Zero);
+
+    private readonly FixedTimeProvider _timeProvider = new(Now);
+
     public AlertServiceTests()
     {
         _unitOfWork.UserCardiMembers.Returns(_links);
@@ -50,7 +60,12 @@ public class AlertServiceTests
 
     // Composed with the real access service, for the same reason DashboardServiceTests is: the
     // link rules being asserted live there, so substituting it away would leave the scoping untested.
-    private AlertService CreateSut() => new(_unitOfWork, new CardiMemberAccessService(_unitOfWork));
+    private AlertService CreateSut() =>
+        new(_unitOfWork, new CardiMemberAccessService(_unitOfWork), _timeProvider);
+
+    /// <summary>A SUT on a clock this test moved — used where the hour itself is the subject.</summary>
+    private AlertService CreateSutAt(DateTimeOffset now) =>
+        new(_unitOfWork, new CardiMemberAccessService(_unitOfWork), new FixedTimeProvider(now));
 
     private void SetupMember(params CardiMember[] members) =>
         _members.FindAsync(Arg.Any<Expression<Func<CardiMember, bool>>>())
@@ -84,7 +99,7 @@ public class AlertServiceTests
             Severity = severity,
             Title = "No Movement Detected",
             Message = "Dad hasn't moved this morning.",
-            TriggeredDate = DateTime.UtcNow.AddMinutes(-30),
+            TriggeredDate = Now.UtcDateTime.AddMinutes(-30),
             AcknowledgedDate = acknowledgedAt,
             IsResolved = isResolved,
             IsActive = true,
@@ -237,7 +252,7 @@ public class AlertServiceTests
         _alerts.QueryAsync(Arg.Any<AlertQuery>(), Arg.Any<CancellationToken>()).Returns(
         [
             MakeAlert(
-                acknowledgedAt: acknowledged ? DateTime.UtcNow : null,
+                acknowledgedAt: acknowledged ? Now.UtcDateTime : null,
                 isResolved: resolved),
         ]);
 
@@ -290,7 +305,7 @@ public class AlertServiceTests
     public async Task Acknowledge_IsIdempotentAndKeepsTheOriginalAcknowledger()
     {
         var firstResponder = Guid.NewGuid();
-        var acknowledgedAt = DateTime.UtcNow.AddMinutes(-10);
+        var acknowledgedAt = Now.UtcDateTime.AddMinutes(-10);
         var alert = MakeAlert(acknowledgedAt: acknowledgedAt);
         alert.AcknowledgedByUserId = firstResponder;
         _alerts.GetByIdWithCardiMemberAsync(alert.Id).Returns(alert);
@@ -339,7 +354,7 @@ public class AlertServiceTests
     [Fact]
     public async Task Unacknowledge_ClearsTheStampAndSaves()
     {
-        var alert = MakeAlert(acknowledgedAt: DateTime.UtcNow.AddMinutes(-5));
+        var alert = MakeAlert(acknowledgedAt: Now.UtcDateTime.AddMinutes(-5));
         alert.AcknowledgedByUserId = Guid.NewGuid();
         _alerts.GetByIdWithCardiMemberAsync(alert.Id).Returns(alert);
 
@@ -371,7 +386,7 @@ public class AlertServiceTests
     [Fact]
     public async Task Unacknowledge_ForAResolvedAlert_Refuses()
     {
-        var alert = MakeAlert(acknowledgedAt: DateTime.UtcNow.AddHours(-2), isResolved: true);
+        var alert = MakeAlert(acknowledgedAt: Now.UtcDateTime.AddHours(-2), isResolved: true);
         _alerts.GetByIdWithCardiMemberAsync(alert.Id).Returns(alert);
 
         await Assert.ThrowsAsync<AlertStateException>(
@@ -384,7 +399,7 @@ public class AlertServiceTests
     [Fact]
     public async Task Unacknowledge_ForAnAlertOnAnUnreadableMember_Throws()
     {
-        var alert = MakeAlert(memberId: _otherMemberId, acknowledgedAt: DateTime.UtcNow);
+        var alert = MakeAlert(memberId: _otherMemberId, acknowledgedAt: Now.UtcDateTime);
         _alerts.GetByIdWithCardiMemberAsync(alert.Id).Returns(alert);
 
         await Assert.ThrowsAsync<KeyNotFoundException>(
@@ -503,7 +518,7 @@ public class AlertServiceTests
         Assert.Equal(alert.Id, detail.AlertId);
         Assert.Equal("activity_decline", detail.Rule);
         // No caregiver link carries a timezone in this fixture, so the anchor clock is UTC.
-        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        var today = DateOnly.FromDateTime(Now.UtcDateTime);
         await _logs.Received(1).GetByCardiMemberAndDateRangeAsync(
             _memberId,
             today.AddDays(-(AlertDetailComposer.ActivityDays - 1)),
@@ -515,6 +530,32 @@ public class AlertServiceTests
         // GetWindowAsync would return every metric's full minute grid for them.
         await _granular.DidNotReceive().GetWindowAsync(
             Arg.Any<Guid>(), Arg.Any<DateTime>(), Arg.Any<DateTime>(), Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// Inside the first hour of the local day there is no whole elapsed hour to compare, so the
+    /// rollup ladder is not read at all — the daily chart still is. Asserted explicitly because
+    /// this is the hour the wall-clock version of the test above silently swapped itself for.
+    /// </summary>
+    [Fact]
+    public async Task GetById_ForActivityDeclineBeforeTheFirstWholeHour_SkipsTheElapsedMatch()
+    {
+        var alert = MakeAlert(type: AlertType.Inactivity);
+        alert.MetricValues = """{"rule":"activity_decline","steps":2500,"baselineAvgSteps":5000}""";
+        _alerts.GetByIdWithCardiMemberAsync(alert.Id).Returns(alert);
+        _members.GetByIdAsync(_memberId).Returns(new CardiMember { Id = _memberId, Name = "Margaret Doe" });
+        _logs.GetByCardiMemberAndDateRangeAsync(Arg.Any<Guid>(), Arg.Any<DateOnly>(), Arg.Any<DateOnly>())
+            .Returns([]);
+
+        var justAfterMidnight = new DateTimeOffset(2026, 8, 14, 0, 57, 0, TimeSpan.Zero);
+        var detail = await CreateSutAt(justAfterMidnight).GetByIdAsync(_userId, alert.Id);
+
+        Assert.Equal("activity_decline", detail.Rule);
+        await _logs.Received(1).GetByCardiMemberAndDateRangeAsync(
+            Arg.Any<Guid>(), Arg.Any<DateOnly>(), Arg.Any<DateOnly>());
+        await _granular.DidNotReceive().GetRollupsAsync(
+            Arg.Any<Guid>(), Arg.Any<GranularMetric>(),
+            Arg.Any<DateTime>(), Arg.Any<DateTime>(), Arg.Any<CancellationToken>());
     }
 
     /// <summary>
@@ -597,5 +638,10 @@ public class AlertServiceTests
 
         await Assert.ThrowsAsync<KeyNotFoundException>(
             () => CreateSut().GetByIdAsync(_userId, alert.Id));
+    }
+
+    private sealed class FixedTimeProvider(DateTimeOffset now) : TimeProvider
+    {
+        public override DateTimeOffset GetUtcNow() => now;
     }
 }

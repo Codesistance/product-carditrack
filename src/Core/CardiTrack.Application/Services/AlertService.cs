@@ -14,11 +14,22 @@ public class AlertService : IAlertService
 {
     private readonly IUnitOfWork _unitOfWork;
     private readonly ICardiMemberAccessService _access;
+    private readonly TimeProvider _timeProvider;
 
-    public AlertService(IUnitOfWork unitOfWork, ICardiMemberAccessService access)
+    /// <param name="timeProvider">
+    /// The clock the elapsed match is anchored to. Injectable because which windows
+    /// <see cref="GetByIdAsync"/> fetches depends on the hour it is called in — before the first
+    /// whole local hour of the day there is no elapsed stretch to compare, so a test that cannot
+    /// pin the clock asserts a different thing when it runs just after midnight.
+    /// </param>
+    public AlertService(
+        IUnitOfWork unitOfWork,
+        ICardiMemberAccessService access,
+        TimeProvider? timeProvider = null)
     {
         _unitOfWork = unitOfWork;
         _access = access;
+        _timeProvider = timeProvider ?? TimeProvider.System;
     }
 
     public async Task<AlertListResponse> GetAlertsAsync(
@@ -86,7 +97,7 @@ public class AlertService : IAlertService
             acknowledger = await _unitOfWork.Users.GetByIdAsync(userId);
 
         var rule = AlertDetailComposer.ReadRule(alert.MetricValues);
-        var utcNow = DateTime.UtcNow;
+        var utcNow = _timeProvider.GetUtcNow().UtcDateTime;
 
         // Fetch only the window the chart will plot. A sleep alert must not pay for six
         // dashboard metrics, and device-silence has no health series at all.
@@ -175,7 +186,7 @@ public class AlertService : IAlertService
         // expected case, and the second tap must not overwrite who actually dealt with it.
         if (alert.AcknowledgedDate is null)
         {
-            alert.AcknowledgedDate = DateTime.UtcNow;
+            alert.AcknowledgedDate = _timeProvider.GetUtcNow().UtcDateTime;
             alert.AcknowledgedByUserId = requestingUserId;
             _unitOfWork.Alerts.Update(alert);
             await _unitOfWork.SaveChangesAsync();
