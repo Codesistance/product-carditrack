@@ -1,4 +1,6 @@
 using CardiTrack.Application.DTOs.Responses;
+using CardiTrack.Mobile.Core.Charts;
+using Microsoft.Maui.Controls.Shapes;
 
 namespace CardiTrack.Mobile.Controls;
 
@@ -37,29 +39,7 @@ public partial class MetricCard : ContentView
         // This card carries a trend arrow rather than a pill, so there is nothing on it for the
         // star row to match and the rating colours itself.
         ApplyStars(metric, matchPill: false);
-
-        if (metric is { Value: { } value, Goal: > 0 })
-        {
-            ProgressTrackBorder.IsVisible = true;
-            MarkerGrid.IsVisible = false;
-            ProgressFill.Background = (Brush)Microsoft.Maui.Controls.Application.Current!.Resources["GradientButtonBrush"];
-            SetProgress((double)(value / metric.Goal!.Value));
-            // "Usual", not "Goal". The figure is this member's own average day, which nobody set
-            // as a target — and the Member Detail screen's own explainer says of this same number
-            // that it "is not a target", so calling it a goal here had the two screens
-            // contradicting each other about what the bar is measuring.
-            if (!TrendLabel.IsVisible)
-                CaptionLabel.Text = $"Usual {metric.Goal:N0}";
-        }
-        else
-        {
-            // No bar for a member whose usual day is not known yet, rather than one drawn against
-            // a made-up round number. See MemberInsightsCalculator, which no longer supplies one.
-            ProgressTrackBorder.IsVisible = false;
-            MarkerGrid.IsVisible = false;
-            if (!TrendLabel.IsVisible)
-                CaptionLabel.Text = "Daily activity";
-        }
+        ApplyActivityTrack(metric);
     }
 
     public void ApplyHeartRate(DashboardMetric metric)
@@ -112,15 +92,48 @@ public partial class MetricCard : ContentView
     }
 
     /// <summary>
+    /// The bar under activity: filled against the previous calendar day's total, with the track
+    /// max growing to today once today is ahead. See <see cref="ActivityDayProgress"/>.
+    /// </summary>
+    /// <remarks>
+    /// Two stacked fills when today is ahead — yesterday's share, then the extra — so beating
+    /// yesterday is visible rather than a full bar that looks like matching it. One fill while
+    /// still behind or level. Hidden when day n−1 is missing or both days are zero.
+    /// </remarks>
+    private void ApplyActivityTrack(DashboardMetric metric)
+    {
+        if (ActivityDayProgress.For(metric) is not { } progress)
+        {
+            ProgressTrackBorder.IsVisible = false;
+            MarkerGrid.IsVisible = false;
+            OverflowFill.IsVisible = false;
+            SemanticProperties.SetDescription(ProgressTrackBorder, null);
+            if (!TrendLabel.IsVisible)
+                CaptionLabel.Text = "Daily activity";
+            return;
+        }
+
+        ProgressTrackBorder.IsVisible = true;
+        MarkerGrid.IsVisible = false;
+        var resources = Microsoft.Maui.Controls.Application.Current!.Resources;
+        ProgressFill.Background = new SolidColorBrush((Color)resources["MetricStepsInk"]);
+        OverflowFill.BackgroundColor = (Color)resources["MetricStepsAhead"];
+        SetStack(progress.Compared, progress.Overflow);
+        SemanticProperties.SetDescription(ProgressTrackBorder, progress.Description);
+        if (!TrendLabel.IsVisible)
+            CaptionLabel.Text = progress.Caption;
+    }
+
+    /// <summary>
     /// The bar under skin temperature: filled to the previous reading, marked at today's.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// Activity's bar fills against a goal; this one has no goal to fill against, so it fills
-    /// against the last reading instead and puts today's on top of it as a tick. What it shows is
-    /// therefore a movement, not an achievement: how far today sits from the night before, and
-    /// which side of it. The two together answer the question the number alone cannot — 34°C is
-    /// meaningless in isolation, "a little above where it was last night" is not.
+    /// Activity's bar fills against yesterday's total; this one has no day-total to fill against,
+    /// so it fills against the last reading instead and puts today's on top of it as a tick. What
+    /// it shows is therefore a movement, not an achievement: how far today sits from the night
+    /// before, and which side of it. The two together answer the question the number alone cannot
+    /// — 34°C is meaningless in isolation, "a little above where it was last night" is not.
     /// </para>
     /// <para>
     /// The axis is fixed at <see cref="SkinTempAxisLow"/>–<see cref="SkinTempAxisHigh"/>°C rather
@@ -147,6 +160,7 @@ public partial class MetricCard : ContentView
         {
             ProgressTrackBorder.IsVisible = false;
             MarkerGrid.IsVisible = false;
+            OverflowFill.IsVisible = false;
             return;
         }
 
@@ -154,8 +168,10 @@ public partial class MetricCard : ContentView
         const decimal scale = SkinTempAxisHigh - SkinTempAxisLow;
 
         ProgressTrackBorder.IsVisible = true;
-        // Its own colour, not activity's gradient: the same chrome filled to two different kinds
-        // of thing (a goal there, a previous reading here) should not look identical.
+        OverflowFill.IsVisible = false;
+        // Its own colour, not activity's stacked pair: the same chrome filled to two different
+        // kinds of thing (yesterday vs the extra there, a previous reading here) should not look
+        // identical.
         ProgressFill.Background = new SolidColorBrush(
             (Color)Microsoft.Maui.Controls.Application.Current!.Resources["MetricTemperatureInk"]);
         SetProgress((double)((previous - floor) / scale));
@@ -363,14 +379,46 @@ public partial class MetricCard : ContentView
         });
 
     /// <summary>
-    /// Fills the track proportionally with two star columns, which avoids having to measure the
-    /// track — a ProgressBar can't carry the design's gradient fill.
+    /// Fills the track with one segment (temperature, or activity still behind yesterday).
     /// </summary>
     private void SetProgress(double fraction)
     {
-        var filled = Math.Clamp(fraction, 0, 1);
-        ProgressGrid.ColumnDefinitions[0].Width = new GridLength(filled, GridUnitType.Star);
-        ProgressGrid.ColumnDefinitions[1].Width = new GridLength(1 - filled, GridUnitType.Star);
+        SetStack(Math.Clamp(fraction, 0, 1), 0);
+        OverflowFill.IsVisible = false;
+        ProgressFill.StrokeShape = new RoundRectangle { CornerRadius = 12 };
+    }
+
+    /// <summary>
+    /// Stacks yesterday's share and today's extra as two star columns, with the empty remainder
+    /// in a third. A platform ProgressBar cannot do this — it is one fill — which is why the
+    /// track is already a Grid.
+    /// </summary>
+    private void SetStack(double compared, double overflow)
+    {
+        compared = Math.Clamp(compared, 0, 1);
+        overflow = Math.Clamp(overflow, 0, 1);
+        if (compared + overflow > 1)
+            overflow = 1 - compared;
+
+        ProgressGrid.ColumnDefinitions[0].Width = new GridLength(compared, GridUnitType.Star);
+        ProgressGrid.ColumnDefinitions[1].Width = new GridLength(overflow, GridUnitType.Star);
+        ProgressGrid.ColumnDefinitions[2].Width = new GridLength(1 - compared - overflow, GridUnitType.Star);
+
+        var stacked = overflow > 0;
+        OverflowFill.IsVisible = stacked;
+        if (!stacked)
+        {
+            ProgressFill.StrokeShape = new RoundRectangle { CornerRadius = 12 };
+            return;
+        }
+
+        // Yesterday was zero: the extra is the whole bar, so it wears both rounded ends.
+        OverflowFill.StrokeShape = compared <= 0
+            ? new RoundRectangle { CornerRadius = 12 }
+            : new RoundRectangle { CornerRadius = new CornerRadius(0, 12, 12, 0) };
+        ProgressFill.StrokeShape = compared <= 0
+            ? new RoundRectangle { CornerRadius = 12 }
+            : new RoundRectangle { CornerRadius = new CornerRadius(12, 0, 0, 12) };
     }
 
     /// <summary>
