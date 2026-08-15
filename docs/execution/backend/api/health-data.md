@@ -319,6 +319,44 @@ A short, empathetic line describing the member's current status — what the das
 
 **Priority:** P1 | **Auth Required:** Yes
 
+## POST `/api/v1/insights/members/{id}/ask` — implemented (AI narrative)
+
+A caregiver's free-text question about this CardiMember, answered by **in-project MedGemma** from the readings already on file (last 7 days plus the 30-day baseline, and the same member-context block the other insight prompts use). The question is flattened to a single line, framed as untrusted text, **never persisted**, and cannot set or change an alert. Name and id are never sent to the model.
+
+This is not `POST /api/v1/chat`. Chat goes to Gemini with three de-identified days and no member context. Ask is the medical path: the same private model as insights, digest, and assessment.
+
+**Priority:** P1 | **Auth Required:** Yes
+
+### Request
+
+```json
+{ "question": "How did she sleep last night?" }
+```
+
+Non-empty, at most 500 characters. Blank — including whitespace-only — is **400**.
+
+### Response `200 OK` (wrapped in `ApiResponse<T>`)
+
+```json
+{
+  "cardiMemberId": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+  "question": "How did she sleep last night?",
+  "answer": "Margaret slept a shorter night than usual.",
+  "generatedAt": "2026-08-15T21:00:00Z"
+}
+```
+
+`question` is the flattened text that reached the model, so the client can render the pair without keeping a parallel copy of what it sent. Rate-limited separately (6/minute and 30/hour per IP) because every call is a live inference.
+
+### Errors
+
+| Status | When |
+|--------|------|
+| 400 | Empty or over-long question |
+| 403 | JWT valid but no local user row |
+| 404 | No active, view-permitted link between the caller and this CardiMember |
+| 429 | Ask-specific rate limit |
+
 ---
 
 ## GET `/api/v1/cardimembers/{id}/health/summary`

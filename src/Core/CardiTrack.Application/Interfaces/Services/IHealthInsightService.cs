@@ -27,4 +27,13 @@ public interface IHealthInsightService
     /// </summary>
     Task<CurrentStatusMessageResponse> GetCurrentStatusMessageAsync(
         Guid requestingUserId, Guid cardiMemberId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Answers a caregiver's free-text question about a CardiMember from the readings already
+    /// on file. The model cannot look anything else up, set an alert, or follow instructions
+    /// in the question. Throws <see cref="KeyNotFoundException"/> when the user may not view
+    /// that member's health data. The exchange is not stored.
+    /// </summary>
+    Task<MemberAskResponse> AskAboutMemberAsync(
+        Guid requestingUserId, Guid cardiMemberId, string question, CancellationToken ct = default);
 }

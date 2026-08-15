@@ -306,6 +306,11 @@
                              dismiss something first. -->
                         <controls:QuestionCard x:Name="PendingQuestionCard" IsVisible="False"/>
 
+                        <!-- The family's own questions about this member, answered from the
+                             readings on file. Always on the page — unlike the pending
+                             QuestionCard, this is something a caregiver came here to do. -->
+                        <controls:AskCard x:Name="MemberAskCard"/>
+
                         <!-- Key metric trends (issue #188): one swipeable card per metric, over the
                              same daily Series the dashboard's Key Metrics already carry, across a
                              caregiver-chosen 7/14/30-day window. Deliberately not wrapped in a card

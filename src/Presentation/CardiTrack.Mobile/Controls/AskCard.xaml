@@ -1,0 +1,105 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentView xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="CardiTrack.Mobile.Controls.AskCard">
+
+    <!-- A caregiver's own question about this member, answered from the readings on file.
+
+         Same card chrome as QuestionCard (the invitation the service asks): radius on the
+         card, never on the page. No severity rail — asking is not "something is wrong". -->
+    <Border BackgroundColor="{StaticResource White}"
+            StrokeThickness="0"
+            Padding="16,14,14,16">
+        <Border.StrokeShape>
+            <RoundRectangle CornerRadius="20"/>
+        </Border.StrokeShape>
+        <Border.Shadow>
+            <Shadow Brush="{StaticResource CardShadowBrush}" Opacity="0.12" Radius="12" Offset="0,3"/>
+        </Border.Shadow>
+
+        <VerticalStackLayout Spacing="8">
+
+            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
+                <Label Grid.Column="0"
+                       Text="💬"
+                       FontSize="16"
+                       VerticalOptions="Start"
+                       Margin="0,2,0,0"
+                       AutomationProperties.IsInAccessibleTree="False"/>
+                <Label x:Name="TitleLabel"
+                       Grid.Column="1"
+                       Style="{StaticResource DashboardSectionTitle}"
+                       LineBreakMode="WordWrap"/>
+            </Grid>
+
+            <Label x:Name="HintLabel"
+                   Style="{StaticResource Body2}"
+                   FontSize="12"
+                   LineBreakMode="WordWrap"
+                   Text="Questions about the readings, in your own words. Answers cannot change alerts or look anything else up."/>
+
+            <Border Style="{StaticResource AuthEntryBorder}"
+                    HeightRequest="88"
+                    Padding="16,8">
+                <Editor x:Name="QuestionEditor"
+                        FontFamily="Quicksand"
+                        FontSize="14"
+                        PlaceholderColor="{StaticResource BodyText}"
+                        TextColor="{StaticResource HeadingText}"
+                        BackgroundColor="Transparent"
+                        Placeholder="How did they sleep last night?"
+                        AutoSize="Disabled"
+                        TextChanged="OnQuestionChanged"/>
+            </Border>
+
+            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                <Button x:Name="AskButton"
+                        Grid.Column="0"
+                        Text="Ask"
+                        Style="{StaticResource PrimaryGradientButton}"
+                        HeightRequest="40"
+                        FontSize="14"
+                        IsEnabled="False"
+                        Clicked="OnAskClicked"/>
+                <ActivityIndicator x:Name="BusyIndicator"
+                                   Grid.Column="1"
+                                   Color="{StaticResource Primary}"
+                                   IsRunning="False"
+                                   IsVisible="False"
+                                   WidthRequest="24"
+                                   HeightRequest="24"
+                                   VerticalOptions="Center"/>
+            </Grid>
+
+            <Label x:Name="ErrorLabel"
+                   Style="{StaticResource Body2}"
+                   TextColor="{StaticResource StatusRed}"
+                   IsVisible="False"
+                   LineBreakMode="WordWrap"/>
+
+            <Border x:Name="AnswerCard"
+                    IsVisible="False"
+                    BackgroundColor="{StaticResource SelectedOptionBackground}"
+                    StrokeThickness="0"
+                    Padding="12,10">
+                <Border.StrokeShape>
+                    <RoundRectangle CornerRadius="12"/>
+                </Border.StrokeShape>
+                <VerticalStackLayout Spacing="6">
+                    <Label x:Name="AskedLabel"
+                           Style="{StaticResource Body2}"
+                           FontSize="12"
+                           LineBreakMode="WordWrap"/>
+                    <Label x:Name="AnswerLabel"
+                           Style="{StaticResource Body2Dark}"
+                           LineBreakMode="WordWrap"/>
+                </VerticalStackLayout>
+            </Border>
+
+            <Label Style="{StaticResource Body2}"
+                   FontSize="11"
+                   LineBreakMode="WordWrap"
+                   Text="Not medical advice — based on the readings we already have."/>
+        </VerticalStackLayout>
+    </Border>
+</ContentView>

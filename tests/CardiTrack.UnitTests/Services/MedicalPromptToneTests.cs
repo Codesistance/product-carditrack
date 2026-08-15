@@ -328,6 +328,34 @@ public class MedicalPromptToneTests
     }
 
     [Fact]
+    public void The_ask_prompt_frames_the_question_as_untrusted()
+    {
+        var ask = AllPrompts().Single(p => p.Field == "AskInstructions").Prompt;
+
+        Assert.Contains(MedicalPromptBlocks.CaregiverRegister.Trim(), ask, StringComparison.Ordinal);
+        Assert.Contains(MedicalPromptBlocks.ContextGuardrailAsk.Trim(), ask, StringComparison.Ordinal);
+        Assert.Contains($"\"{MedicalPromptBlocks.CaregiverQuestionLabel}\"", ask);
+        Assert.Contains("Never invent a number", ask);
+        Assert.Contains("Never set or change an alert", ask);
+        Assert.DoesNotContain("medical AI assistant", ask, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("flag for review", ask, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void The_ask_guardrail_quotes_the_question_heading()
+    {
+        Assert.Contains(
+            $"\"{MedicalPromptBlocks.CaregiverQuestionLabel}\"",
+            MedicalPromptBlocks.ContextGuardrailAsk);
+        Assert.Contains(
+            $"\"{DemographicsContextSource.CaregiverContextLabel}\"",
+            MedicalPromptBlocks.ContextGuardrailAsk);
+        Assert.Contains(
+            $"\"{QuestionnaireAnswersContextSource.SectionLabel}\"",
+            MedicalPromptBlocks.ContextGuardrailAsk);
+    }
+
+    [Fact]
     public void The_digest_keeps_monitoring_context_as_signal_not_background()
     {
         var digest = AllPrompts().Single(p => p.Field == "FamilyDigestInstructions").Prompt;

@@ -122,6 +122,14 @@ public interface ICardiTrackApiClient
         DateOnly localDate,
         CancellationToken ct = default);
 
+    /// <summary>
+    /// Asks MedGemma a free-text question about this CardiMember, answered from the readings
+    /// already on file. Not cached: every question is a live model call. Throws
+    /// <see cref="ApiException"/> with 404 when the caller may not view the member.
+    /// </summary>
+    Task<MemberAskResponse> AskAboutMemberAsync(
+        Guid cardiMemberId, AskMemberQuestionRequest request, CancellationToken ct = default);
+
     // ---- Questions the service asks the family ----
 
     /// <summary>

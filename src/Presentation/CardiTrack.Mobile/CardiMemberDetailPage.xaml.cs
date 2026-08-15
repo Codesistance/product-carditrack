@@ -96,6 +96,7 @@ public partial class CardiMemberDetailPage : ContentPage
         BuildPauseDurations();
         PendingQuestionCard.AnswerSubmitted += OnQuestionAnswered;
         PendingQuestionCard.DismissRequested += OnQuestionDismissed;
+        MemberAskCard.QuestionSubmitted += OnMemberQuestionAsked;
         this.RefreshWhenAppResumes(RefreshUnattendedAsync);
 
         // Same reason and the same cadence as the dashboard: this screen is one CardiMember's
@@ -121,6 +122,7 @@ public partial class CardiMemberDetailPage : ContentPage
             _digestRendered = false;
             PendingQuestionCard.IsVisible = false;
             QuestionsRow.IsVisible = false;
+            MemberAskCard.Reset();
         }
     }
 
@@ -368,6 +370,7 @@ public partial class CardiMemberDetailPage : ContentPage
 
         Avatar.Apply(member.Name, member.PhotoUrl);
         NameLabel.Text = member.Name;
+        MemberAskCard.SetMember(NameFormatting.FirstName(member.Name));
         AgeRelationshipLabel.Text = $"{member.Age} years old • {member.Relationship.GetDisplayName()}";
 
         WeatherChip.IsVisible = member.Weather is not null;
@@ -530,6 +533,37 @@ public partial class CardiMemberDetailPage : ContentPage
         catch (ApiException)
         {
             // No card, no row, no error state: the page is complete without either.
+        }
+    }
+
+    private async void OnMemberQuestionAsked(object? sender, string question)
+    {
+        if (_memberId == Guid.Empty || _isBusy)
+            return;
+
+        _isBusy = true;
+        MemberAskCard.SetBusy(true);
+        try
+        {
+            var result = await _api.AskAboutMemberAsync(
+                _memberId, new AskMemberQuestionRequest { Question = question });
+
+            if (string.IsNullOrWhiteSpace(result.Answer))
+            {
+                MemberAskCard.ShowError("We couldn't put that into words just then. Try asking again.");
+                return;
+            }
+
+            MemberAskCard.ShowAnswer(result.Question, result.Answer);
+        }
+        catch (ApiException ex) when (!ex.IsSessionExpired)
+        {
+            MemberAskCard.ShowError(ex.Message);
+        }
+        finally
+        {
+            _isBusy = false;
+            MemberAskCard.SetBusy(false);
         }
     }
 

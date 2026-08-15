@@ -19,6 +19,7 @@ public class HealthInsightServiceAccessTests
     private readonly IMedicalAiService _medicalAi = Substitute.For<IMedicalAiService>();
     private readonly IUnitOfWork _unitOfWork = Substitute.For<IUnitOfWork>();
     private readonly IUserCardiMemberRepository _links = Substitute.For<IUserCardiMemberRepository>();
+    private readonly ICardiMemberRepository _members = Substitute.For<ICardiMemberRepository>();
     private readonly IAlertRepository _alerts = Substitute.For<IAlertRepository>();
     private readonly IActivityLogRepository _activityLogs = Substitute.For<IActivityLogRepository>();
     private readonly IPatternBaselineRepository _baselines = Substitute.For<IPatternBaselineRepository>();
@@ -32,6 +33,7 @@ public class HealthInsightServiceAccessTests
     public HealthInsightServiceAccessTests()
     {
         _unitOfWork.UserCardiMembers.Returns(_links);
+        _unitOfWork.CardiMembers.Returns(_members);
         _unitOfWork.Alerts.Returns(_alerts);
         _unitOfWork.ActivityLogs.Returns(_activityLogs);
         _unitOfWork.PatternBaselines.Returns(_baselines);
@@ -56,6 +58,13 @@ public class HealthInsightServiceAccessTests
             },
         ]);
 
+        _members.GetByIdAsync(_memberId).Returns(new CardiMember
+        {
+            Id = _memberId,
+            Name = "Margaret Doe",
+            DateOfBirth = new DateOnly(1948, 3, 15),
+            IsActive = true,
+        });
         _alerts.GetByIdWithCardiMemberAsync(_alertId).Returns(new Alert
         {
             Id = _alertId,
@@ -245,5 +254,54 @@ public class HealthInsightServiceAccessTests
 
         await Assert.ThrowsAsync<KeyNotFoundException>(() =>
             CreateSut().AnalyzeBaselineAsync(_userId, _memberId));
+    }
+
+    // ── AskAboutMemberAsync ─────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task AskAboutMember_Succeeds_ForALinkedUser()
+    {
+        _medicalAi.GenerateStructuredAsync<HealthInsightService.MemberAskAiResponse>(
+                Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new HealthInsightService.MemberAskAiResponse { Answer = "She slept well." });
+
+        var result = await CreateSut().AskAboutMemberAsync(_userId, _memberId, "How did she sleep?");
+
+        Assert.Equal(_memberId, result.CardiMemberId);
+        Assert.Equal("She slept well.", result.Answer);
+    }
+
+    [Fact]
+    public async Task AskAboutMember_Throws_ForAUserNotLinkedToTheMember()
+    {
+        await Assert.ThrowsAsync<KeyNotFoundException>(() =>
+            CreateSut().AskAboutMemberAsync(_outsiderId, _memberId, "How did she sleep?"));
+    }
+
+    [Fact]
+    public async Task AskAboutMember_SendsNothingToTheModel_WhenAccessIsRefused()
+    {
+        await Assert.ThrowsAsync<KeyNotFoundException>(() =>
+            CreateSut().AskAboutMemberAsync(_outsiderId, _memberId, "How did she sleep?"));
+
+        await _medicalAi.DidNotReceive().GenerateStructuredAsync<HealthInsightService.MemberAskAiResponse>(
+            Arg.Any<string>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task AskAboutMember_Throws_WhenTheLinkForbidsHealthData()
+    {
+        _links.GetByUserIdAsync(_userId).Returns([
+            new UserCardiMember
+            {
+                UserId = _userId,
+                CardiMemberId = _memberId,
+                IsActive = true,
+                CanViewHealthData = false,
+            },
+        ]);
+
+        await Assert.ThrowsAsync<KeyNotFoundException>(() =>
+            CreateSut().AskAboutMemberAsync(_userId, _memberId, "How did she sleep?"));
     }
 }

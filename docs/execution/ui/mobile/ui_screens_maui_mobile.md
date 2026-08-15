@@ -9,17 +9,17 @@
 **Orientation:** Portrait primary, landscape supported
 **Target Users:** Family caregivers across the US & EU monitoring elderly relatives' wearable health data
 **Document Version:** 3.1
-**Last Updated:** August 14, 2026
+**Last Updated:** August 15, 2026
 
 ---
 
-## Build Status (as of August 14, 2026)
+## Build Status (as of August 15, 2026)
 
 > **16 of 17 Figma M1 screens are built** in `CardiTrack.Mobile`: M1-01 Splash, M1-02 Welcome, M1-03 Sign Up (CreateAccountPage), M1-04 Add First CardiMember, M1-05 Device Selection, M1-06 Fitbit Connection, M1-07 Connection Success, M1-08 Baseline Learning, M1-09 Dashboard, M1-10 Alerts List (AlertsPage), M1-11/M1-12/M1-16 Alert Detail (`AlertDetailPage`), M1-13 CardiMember Detail (CardiMemberDetailPage), M1-14 Edit CardiMember (EditCardiMemberPage), M1-15 Device Management (DeviceManagementPage). Unbuilt: M1-17 Health Data Export.
 >
 > **M1-17 is not built** — its entry points show "Coming soon" dialogs in the shipped app.
 >
-> **Nine shipped surfaces have no Figma M1 frame** and need design sync: SignInPage, ForgotPasswordPage, VerifyEmailPage, Onboarding/AccountSetupPage, NotificationsPage, JournalPage, JournalEntryPage, and — built from the existing design system by explicit decision rather than by oversight — the QuestionCard on the CardiMember detail page and the Questions & Answers page. See [Shipped Screens Without Figma M1 Frames](#shipped-screens-without-figma-m1-frames). Per project convention, only screens that exist in the Figma file get M1 IDs — no IDs have been invented for these.
+> **Nine shipped surfaces have no Figma M1 frame** and need design sync: SignInPage, ForgotPasswordPage, VerifyEmailPage, Onboarding/AccountSetupPage, NotificationsPage, JournalPage, JournalEntryPage, and — built from the existing design system by explicit decision rather than by oversight — the QuestionCard on the CardiMember detail page and the Questions & Answers page. The AskCard on M1-13 is a further as-built component without a frame. See [Shipped Screens Without Figma M1 Frames](#shipped-screens-without-figma-m1-frames). Per project convention, only screens that exist in the Figma file get M1 IDs — no IDs have been invented for these.
 >
 > Unbuilt screens below remain documented as design intent, each marked with a status line.
 
@@ -103,6 +103,7 @@ Full specs in [Shipped Screens Without Figma M1 Frames](#shipped-screens-without
 - **QuestionCard** — `ElevatedCard` anatomy with no severity rail (the rail is the grammar for "something is wrong"; this is an invitation): 💬 glyph + heading, the question, a rationale sentence in `SelectedOptionBackground` (the model's everyday reason, not an "Asked because …" prefix), a scope footnote ("Just for the moment" on time-scoped questions; "We'll keep this here" on standing ones), an optional-by-design softener, and an "Answer" gradient button that expands an `AuthEntryBorder` editor in place (200 ms, the pause-drop-down animation) with Save/Cancel. A "✕" skips a pending question after a soft confirm. An answered card keeps the same chrome and puts a trash control in that header slot (the same 28px tinted action as alert-list delete) plus an "Answered …" caption inside the card; tapping trash asks for a warning confirm before the answer is removed.
 - **QuestionnairesPage** — standard full-bleed scaffold (HeaderBand, RefreshView, skeleton/error/content panels, BottomNavBar): the pending question at the top, then standing answers and still-current momentary ones, newest first. Expired momentary answers are omitted. Empty state when nothing lasting is on the list. **As built:** debounced search, lazy page size 20, delete-on-card with a warning confirm.
 - **Both surfaces check the question is still worth asking before drawing it** (`IQuestionValidityService`). A momentary question is about the day it was generated in, so it stops making sense once that day ends — and a card held on screen across midnight, or a page served from the seven-day offline read cache after a night with no signal, will otherwise ask "did he feel tired at all today?" on a different today. The app hides such a card and tells the server to retire it; the same check runs again on save, so an answer typed after the day ended is never filed against the wrong one (the caregiver is told the question has passed rather than seeing the save fail). The server refuses to serve a lapsed question regardless, so this is how the app is prompt, not how the rule is enforced.
+- **AskCard** — same card chrome as QuestionCard, inverted: the family types a question about the readings and MedGemma answers from data already on file. Always visible on M1-13. Session-only (nothing stored). "Not medical advice" footnote. Cannot set alerts or look anything else up. Needs a Figma frame.
 
 ## User Flows
 
@@ -1017,7 +1018,7 @@ This is the most safety-critical screen in the app. Design for urgency and immed
 - "Manage Device" → M1-15
 - "Questions & Answers" row → QuestionnairesPage
 
-**As-built additions beyond the comp:** an AI summary card with suggestions, an inline `QuestionCard` when a question is waiting, a paused-monitoring banner, a looping **Key Metric Trends** carousel (`MetricTrendCard` + 7/14/30-day `TrendWindowSelector`), and a looping Emergency Contact / Phone carousel. The profile's connection-status dot is as-built (the Figma frame has no freshness indicator).
+**As-built additions beyond the comp:** an AI summary card with suggestions, an inline `QuestionCard` when a question is waiting, an `AskCard` for the family's own questions about the readings (MedGemma; session-only, no Figma frame — needs design sync), a paused-monitoring banner, a looping **Key Metric Trends** carousel (`MetricTrendCard` + 7/14/30-day `TrendWindowSelector`), and a looping Emergency Contact / Phone carousel. The profile's connection-status dot is as-built (the Figma frame has no freshness indicator).
 
 **Danger Zone (separated — "Management" / "Critical settings" as built):**
 - "Pause Monitoring" (warning treatment; expands an inline duration picker: 24h / 48h / 3 days / 1 week)
@@ -2018,6 +2019,7 @@ The shipped app already includes these reusable controls — designs should map 
 | `NudgeCard` | XAML component | One notification in the inbox, with its comply / not-now / mute affordances |
 | `NudgeMiniRow` | C# control | Compact nudge for the dashboard's "Complete the picture" slots and safety banners |
 | `PopupCard` | C# control | Sizes the card `AppPopupPage` and `AppChooserPage` both draw themselves in |
+| `AskCard` | XAML component | The family's own question about this member, answered from the readings on file |
 | `QuestionCard` | XAML component | One question the service is asking a family, with its inline answer editor |
 | `SkeletonView` | C# drawn control | Loading placeholder block with a gentle opacity pulse |
 | `StarRatingView` | C# drawn control | A metric's rating against the member's own normal, drawn as five stars |

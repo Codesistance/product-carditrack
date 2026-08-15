@@ -140,6 +140,11 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
             $"api/v1/insights/members/{cardiMemberId}/digest?date={localDate:yyyy-MM-dd}"
             + $"&audience={cadence.WireValue()}", ct);
 
+    public Task<MemberAskResponse> AskAboutMemberAsync(
+        Guid cardiMemberId, AskMemberQuestionRequest request, CancellationToken ct = default) =>
+        PostAsync<AskMemberQuestionRequest, MemberAskResponse>(
+            $"api/v1/insights/members/{cardiMemberId}/ask", request, ct);
+
     public Task<QuestionnairesPageResponse> GetQuestionnairesAsync(
         Guid cardiMemberId,
         string? search = null,

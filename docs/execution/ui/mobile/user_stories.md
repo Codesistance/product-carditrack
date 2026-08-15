@@ -1,6 +1,6 @@
 # CardiTrack User Stories for UI/UX Design
 
-> **Build status (August 14, 2026):** 16 of 17 Figma M1 screens are built in `CardiTrack.Mobile` (M1-01 through M1-16). Alert detail is one page (`AlertDetailPage`) covering M1-11/12/16, charted from the single series that caused the alert. Unbuilt: M1-17 Health Data Export. **Seven** shipped surfaces have **no Figma M1 frame — needs design sync**: SignInPage, ForgotPasswordPage, VerifyEmailPage, Onboarding/AccountSetupPage (see Stories 1.5–1.8), plus NotificationsPage, QuestionnairesPage, and QuestionCard. Release waves re-baselined: MVP 1 (R1) → Q4 2026, MVP 2 (R2) → Q1 2027, MVP 3 (R3) → Q2 2027. Release sequencing is governed by the [release matrix](../../../release_matrix.md).
+> **Build status (August 15, 2026):** 16 of 17 Figma M1 screens are built in `CardiTrack.Mobile` (M1-01 through M1-16). Alert detail is one page (`AlertDetailPage`) covering M1-11/12/16, charted from the single series that caused the alert. Unbuilt: M1-17 Health Data Export. **Seven** shipped surfaces have **no Figma M1 frame — needs design sync**: SignInPage, ForgotPasswordPage, VerifyEmailPage, Onboarding/AccountSetupPage (see Stories 1.5–1.8), plus NotificationsPage, QuestionnairesPage, and QuestionCard. `AskCard` on M1-13 is a further as-built component without a frame (Story 2.4). Release waves re-baselined: MVP 1 (R1) → Q4 2026, MVP 2 (R2) → Q1 2027, MVP 3 (R3) → Q2 2027. Release sequencing is governed by the [release matrix](../../../release_matrix.md).
 
 Based on the solution manifest, market analysis, and README, here are comprehensive user stories organized by user persona and platform:
 
@@ -134,6 +134,21 @@ Based on the solution manifest, market analysis, and README, here are comprehens
   - Hover tooltips with exact values and dates
   - Export to PDF/CSV for doctor visits
   - Annotations for alerts and significant events
+
+**Story 2.4: Ask about this CardiMember** _(P1 — Should Have)_
+- **As a** caregiver who has a specific question about today's readings
+- **I want to** type it on the member's page and get a plain-language answer from the readings we already have
+- **So that** I do not have to infer from the summary card or wait for the next digest
+- **Acceptance Criteria:**
+  - Composer on M1-13 (as-built `AskCard`; no Figma frame — needs design sync), not a new chat page
+  - Answered by in-project MedGemma from last 7 days + baseline + member context — not Gemini chat
+  - Cannot set or change alerts, look anything else up, or invent a number
+  - Question is never stored; last exchange stays on screen for this visit
+  - Empty/whitespace question is rejected; over-long question (500 chars) is rejected
+  - "Not medical advice" line visible on the card
+  - 404 when the caller cannot view the member (same non-disclosure as other insights)
+- **Screens:** M1-13 (CardiMember Detail) — as-built card
+- **Out of Scope:** speech-to-text, search beyond injected readings, custom alert creation, conversation history, web UI (web is still template-stage)
 
 ### Alert Management
 
@@ -656,6 +671,7 @@ Based on the solution manifest, market analysis, and README, here are comprehens
 - [x] Story 1.4: CardiMember profile management
 - [x] Story 1.5-1.8: Sign In, Forgot Password, Verify Email, Account-Type Setup (shipped; need Figma frames)
 - [x] Story 2.1: Daily health overview
+- [x] Story 2.4: Ask about this CardiMember (as-built on M1-13; needs Figma frame)
 - [x] Story 3.1: Critical alert display (`AlertDetailPage`)
 - [ ] Story 6.3: Health data export (PDF, CSV, FHIR R4)
 

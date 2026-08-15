@@ -106,7 +106,9 @@ public static class MauiProgram
             client.BaseAddress = new Uri(AppConfig.ApiBaseUrl);
             client.DefaultRequestHeaders.Add("Accept", "application/json");
             AddClientIdentityHeaders(client.DefaultRequestHeaders);
-            client.Timeout = TimeSpan.FromSeconds(30);
+            // Ask-about-member is an on-demand MedGemma call (often 15–45 s on CPU). Status
+            // still budgets itself to 25 s so a dashboard load does not wait the full window.
+            client.Timeout = TimeSpan.FromSeconds(60);
         }).AddHttpMessageHandler<AuthHttpMessageHandler>();
 
         builder.Services.AddSingleton<IBrowserAuthenticator, WebBrowserAuthenticator>();

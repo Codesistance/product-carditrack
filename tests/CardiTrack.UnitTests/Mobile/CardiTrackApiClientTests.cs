@@ -281,6 +281,29 @@ public class CardiTrackApiClientTests
     }
 
     [Fact]
+    public async Task AskAboutMember_PostsTheQuestion_AndUnwrapsTheAnswer()
+    {
+        var (client, http) = CreateSut();
+        http.Enqueue(HttpStatusCode.OK, $$"""
+            {"success":true,"message":"ok","data":{"cardiMemberId":"{{MemberId}}",
+             "question":"How did she sleep last night?",
+             "answer":"She slept a shorter night than usual.",
+             "generatedAt":"2026-08-15T21:00:00Z"},
+             "timestamp":"2026-08-15T21:00:00Z"}
+            """);
+
+        var result = await client.AskAboutMemberAsync(
+            MemberId, new AskMemberQuestionRequest { Question = "How did she sleep last night?" });
+
+        var request = http.Requests.Single();
+        Assert.Equal(HttpMethod.Post, request.Method);
+        Assert.Equal($"/api/v1/insights/members/{MemberId}/ask", request.Uri!.AbsolutePath);
+        Assert.Contains("How did she sleep last night?", request.Body);
+        Assert.Equal(MemberId, result.CardiMemberId);
+        Assert.Equal("She slept a shorter night than usual.", result.Answer);
+    }
+
+    [Fact]
     public async Task SetAlertRuleEnabled_PatchesRuleId()
     {
         var (client, http) = CreateSut();

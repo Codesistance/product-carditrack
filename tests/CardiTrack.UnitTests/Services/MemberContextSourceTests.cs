@@ -283,6 +283,14 @@ public class MemberContextSourceTests
     }
 
     [Fact]
+    public void Answers_ReachTheAskPrompt()
+    {
+        var source = new QuestionnaireAnswersContextSource(_unitOfWork, PromptContextFactory.Encryption);
+        Assert.True(source.Purposes.HasFlag(PromptPurpose.MemberAsk));
+        Assert.False(source.Purposes.HasFlag(PromptPurpose.CurrentStatus));
+    }
+
+    [Fact]
     public async Task Answers_CarryAtMostThree_NewestFirst()
     {
         GivenQuestionnaires(Enumerable.Range(0, 6)

@@ -143,6 +143,7 @@ The full implemented surface is 56 endpoints across 13 controllers:
 | `GET /api/v1/insights/members/{id}/status` | Short AI status line for the dashboard hero card | [health-data.md](health-data.md) |
 | `GET /api/v1/insights/members/{id}/digest` | The member's current family digest | [health-data.md](health-data.md) |
 | `GET /api/v1/insights/members/{id}/digests` | Digest history, newest first | [health-data.md](health-data.md) |
+| `POST /api/v1/insights/members/{id}/ask` | Caregiver question about a member, answered from readings on file (MedGemma) | [health-data.md](health-data.md) |
 | `GET /api/v1/alerts` | List alerts across all accessible members | [alerts.md](alerts.md) |
 | `GET /api/v1/cardimembers/{id}/alerts` | List one member's alerts | [alerts.md](alerts.md) |
 | `GET /api/v1/alerts/{alertId}` | Alert detail for M1-11/12/16 (one rule-specific chart) | [alerts.md](alerts.md) |

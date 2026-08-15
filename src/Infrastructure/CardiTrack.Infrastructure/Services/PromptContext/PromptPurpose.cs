@@ -47,7 +47,10 @@ public enum PromptPurpose
     /// </summary>
     Monthbook = 128,
 
+    /// <summary>A caregiver's on-demand question about the member, answered from readings on file.</summary>
+    MemberAsk = 256,
+
     /// <summary>Everything a member-context source could contribute to.</summary>
     All = Digest | RealtimeAssessment | AlertInsight | BaselineInsight | CurrentStatus | Daybook
-        | Weekbook | Monthbook,
+        | Weekbook | Monthbook | MemberAsk,
 }

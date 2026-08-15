@@ -194,6 +194,7 @@ live in the `IpRateLimiting` section of `appsettings.json`:
 
 - **Global**: 100 requests/minute **and** 1,000 requests/hour per IP (all endpoints)
 - **`/api/v1/auth/resend-verification`**: 5 requests/hour per IP
+- **`/api/v1/insights/members/*/ask`**: 6 requests/minute **and** 30 requests/hour per IP (live MedGemma inference)
 
 Throttled requests get `429` with AspNetCoreRateLimit's standard headers:
 

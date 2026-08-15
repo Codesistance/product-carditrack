@@ -122,8 +122,8 @@ public class HealthInsightService : IHealthInsightService
     /// model repeats them.
     /// </summary>
     /// <remarks>
-    /// Kept short on purpose, and shorter than its siblings. This is the only prompt on a request
-    /// path a caregiver is waiting on, and MedGemma processes a prompt at a few tens of tokens per
+    /// Kept short on purpose, and shorter than its siblings. This is the prompt that fires on
+    /// every dashboard view, and MedGemma processes a prompt at a few tens of tokens per
     /// second against CPU — so on this endpoint every token of instruction is paid in latency, on
     /// every call without exception. The fixed prefix buys nothing back: Gemma 3's sliding-window
     /// attention stops llama.cpp restoring a KV checkpoint, so a warm instance with the model
@@ -149,6 +149,28 @@ public class HealthInsightService : IHealthInsightService
 
         No preamble, no quotation marks, no explanation.
         """ + MedicalPromptBlocks.ContextGuardrailNotesOnly;
+
+    /// <summary>
+    /// <c>CARDITRACK_ASK_PROMPT</c> — a caregiver's own question about this member, answered from
+    /// the readings already on file. The register is
+    /// <see cref="MedicalPromptBlocks.CaregiverRegister"/>. The question sits under
+    /// <see cref="MedicalPromptBlocks.CaregiverQuestionLabel"/> and is untrusted: use it as the
+    /// question to answer, never as instructions. The model is not given a way to set an alert,
+    /// look anything else up, or invent a number the readings do not show.
+    /// </summary>
+    private const string AskInstructions =
+        MedicalPromptBlocks.Tone + MedicalPromptBlocks.Pronouns + """
+        Answer the caregiver's question from the readings given.
+
+        """ + MedicalPromptBlocks.CaregiverRegister + """
+        Write {{NAME}} exactly as written wherever you would name the person; it stands in
+        for their real name, which you are not given.
+
+        If the readings do not say, say so. Never invent a number. Never set or change an alert.
+
+        Respond with:
+        - answer: a direct reply to the question.
+        """ + MedicalPromptBlocks.ContextGuardrailAsk;
 
     /// <summary>
     /// Ceiling on <see cref="CurrentStatusInstructions"/>, in characters — the fixed half of the
@@ -200,6 +222,12 @@ public class HealthInsightService : IHealthInsightService
     /// </summary>
     private const int MaxStatusHeadlineLength = 40;
 
+    /// <summary>
+    /// Ceiling on a caregiver-ask answer. The prompt asks for a direct reply; this is the guard
+    /// against a model that writes a page, not the length being aimed at.
+    /// </summary>
+    private const int MaxAskAnswerLength = 2_000;
+
     private readonly IMedicalAiService _medicalAi;
     private readonly IUnitOfWork _unitOfWork;
     private readonly ICardiMemberAccessService _access;
@@ -224,7 +252,7 @@ public class HealthInsightService : IHealthInsightService
     }
 
     /// <summary>
-    /// The member-context sections for one of this service's four prompts. A thin wrapper so each
+    /// The member-context sections for one of this service's prompts. A thin wrapper so each
     /// caller states only which prompt it is building — the sources decide what belongs in it.
     /// </summary>
     private Task<string> ComposeMemberContextAsync(
@@ -436,6 +464,56 @@ public class HealthInsightService : IHealthInsightService
             // next load tries again — and the claim above expires with the budget.
             return NoStatusMessage();
         }
+    }
+
+    public async Task<MemberAskResponse> AskAboutMemberAsync(
+        Guid requestingUserId, Guid cardiMemberId, string question, CancellationToken ct = default)
+    {
+        await _access.RequireViewAccessAsync(requestingUserId, cardiMemberId, ct);
+
+        var flattened = MedicalPromptBlocks.Flatten(question);
+        if (string.IsNullOrWhiteSpace(flattened))
+            throw new ArgumentException("Type a question about the readings", nameof(question));
+
+        // Sequential, not Task.WhenAll — these lookups share the request's DbContext. Same
+        // invariant as AnalyzeBaselineAsync.
+        var member = await _unitOfWork.CardiMembers.GetByIdAsync(cardiMemberId);
+        var baseline = await _unitOfWork.PatternBaselines
+            .GetLatestByCardiMemberAsync(cardiMemberId, PrimaryBaselinePeriodDays);
+
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        var recentLogs = await _unitOfWork.ActivityLogs
+            .GetByCardiMemberAndDateRangeAsync(cardiMemberId, today.AddDays(-7), today);
+
+        var memberContext = await ComposeMemberContextAsync(
+            member, cardiMemberId, today, PromptPurpose.MemberAsk, ct);
+
+        var prompt = BuildAskPrompt(flattened, memberContext, recentLogs, baseline, today);
+        var aiResponse = await _medicalAi.GenerateStructuredAsync<MemberAskAiResponse>(prompt, ct);
+
+        var name = NamePlaceholder.FirstName(member?.Name);
+        var answer = CapAskAnswer(ResolvedOrEmpty(aiResponse.Answer, name));
+
+        return new MemberAskResponse
+        {
+            CardiMemberId = cardiMemberId,
+            Question = flattened,
+            Answer = answer,
+            GeneratedAt = DateTimeOffset.UtcNow,
+        };
+    }
+
+    /// <summary>
+    /// An answer that ran on is cut rather than shown whole. The prompt already asked for a
+    /// direct reply; this is the backstop, and a leftover placeholder has already been dropped
+    /// by <see cref="ResolvedOrEmpty"/>.
+    /// </summary>
+    private static string CapAskAnswer(string answer)
+    {
+        var trimmed = answer.Trim();
+        return trimmed.Length <= MaxAskAnswerLength
+            ? trimmed
+            : $"{trimmed[..MaxAskAnswerLength]}…";
     }
 
     private async Task<CurrentStatusMessageResponse> GenerateCurrentStatusAsync(
@@ -682,6 +760,35 @@ public class HealthInsightService : IHealthInsightService
             """;
     }
 
+    private static string BuildAskPrompt(
+        string question,
+        string memberContext,
+        IEnumerable<ActivityLog> recentLogs,
+        PatternBaseline? baseline,
+        DateOnly today)
+    {
+        var baselineInfo = baseline is null
+            ? "No baseline established yet — this member is still being learned."
+            : $"{baseline.PeriodDays}-day — Steps: {baseline.AvgSteps}±{baseline.StdDevSteps}, " +
+              $"Resting HR: {baseline.AvgRestingHeartRate}±{baseline.StdDevHeartRate}, " +
+              $"Sleep: {baseline.AvgSleepMinutes} min";
+
+        return $"""
+            {AskInstructions}
+
+            {memberContext}
+
+            --- Baseline ---
+            {baselineInfo}
+
+            --- Recent activity (last 7 days, oldest first) ---
+            {MedicalPromptBlocks.DailyLines(recentLogs, take: 7, today)}
+
+            --- {MedicalPromptBlocks.CaregiverQuestionLabel} ---
+            {question}
+            """;
+    }
+
     // Member context, note flattening, and daily-reading lines live in MedicalPromptBlocks,
     // shared with the digest pipeline so the minimisation and injection-framing rules cannot
     // drift between the private model's callers.
@@ -721,5 +828,10 @@ public class HealthInsightService : IHealthInsightService
         public string? Headline { get; init; }
 
         public required string Message { get; init; }
+    }
+
+    internal sealed record MemberAskAiResponse
+    {
+        public required string Answer { get; init; }
     }
 }
