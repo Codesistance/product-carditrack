@@ -647,12 +647,16 @@ jobs:
   # Signed device builds for TestFlight / Play Console. Each job gates on its
   # signing secrets being populated (not the REPLACE_ME placeholder) and skips
   # with a warning until the operator completes the one-time store setup.
+  # security-mobile is deliberately NOT in `needs`: it took 66s to complete
+  # before this 488s build was allowed to start, putting the scan on the
+  # critical path for no protective benefit — building an AAB is inert. The
+  # scan still blocks everything that *leaves* the runner (deploy-play-internal
+  # and upload-mobile-artifacts both require it), so nothing ships unscanned.
   build-mobile-android-signed:
     name: Build Mobile (Android, signed)
     needs:
       - changes
       - compute-version
-      - security-mobile
     if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && needs.changes.outputs.mobile == 'true'
     runs-on: ubuntu-latest
     permissions:
@@ -778,12 +782,16 @@ jobs:
             play-extras/*
           retention-days: 1
 
+  # As with the signed Android build, security-mobile is not in `needs`. This is
+  # the job that sets the whole run's wall-clock — 705s, and it was starting at
+  # +92s because a 66s scan ran in front of it. deploy-testflight and
+  # upload-mobile-artifacts still require the scan, so the IPA cannot leave the
+  # runner unscanned; it just no longer waits to be compiled.
   build-mobile-ios-device:
     name: Build Mobile (iOS, device)
     needs:
       - changes
       - compute-version
-      - security-mobile
     if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && needs.changes.outputs.mobile == 'true'
     runs-on: macos-26
     timeout-minutes: 40
@@ -919,6 +927,10 @@ jobs:
       - changes
       - compute-version
       - build-mobile-ios-device
+      # Moved here from build-mobile-ios-device: the scan gates shipping, not
+      # compiling. It finishes long before the 705s build does, so it adds
+      # nothing to the critical path from this position.
+      - security-mobile
     if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && needs.changes.outputs.mobile == 'true' && needs.build-mobile-ios-device.outputs.available == 'true'
     runs-on: ubuntu-latest
     steps:
@@ -987,6 +999,8 @@ jobs:
       - changes
       - compute-version
       - build-mobile-android-signed
+      # Moved here from build-mobile-android-signed, same reasoning as TestFlight.
+      - security-mobile
     if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && needs.changes.outputs.mobile == 'true' && needs.build-mobile-android-signed.outputs.available == 'true'
     runs-on: ubuntu-latest
     steps:
