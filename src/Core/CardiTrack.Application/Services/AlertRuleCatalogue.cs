@@ -33,8 +33,8 @@ public static class AlertRuleCatalogue
     public const string ClusterDigests = "digests_trends";
 
     private static readonly IReadOnlyList<AlertRuleClusterDefinition> ClustersInternal =
-        new List<AlertRuleClusterDefinition>
-        [
+        Array.AsReadOnly(new AlertRuleClusterDefinition[]
+        {
             new(ClusterSleep, "Sleep", "Bedtime, sleep quality, and unusual daytime rest",
             [
                 new(LateBedtime, "Late or missed bedtime", "Still active past their usual bedtime", IsImplemented: false),
@@ -64,7 +64,7 @@ public static class AlertRuleCatalogue
             [
                 new(BaselineShift, "Baseline shift", "Their usual bedtime or activity level has drifted", IsImplemented: false),
             ]),
-        ].AsReadOnly();
+        });
 
     public static IReadOnlyList<AlertRuleClusterDefinition> Clusters => ClustersInternal;
 
