@@ -89,7 +89,7 @@ public readonly record struct ActivityDayProgress
     /// with the previous day — "vs 5,000 yesterday" — not a remainder against a target.
     /// </summary>
     public string Caption =>
-        PreviousIsYesterday ? $"vs {Previous:N0} yesterday" : $"vs {Previous:N0} previous day";
+        PreviousIsYesterday ? $"vs {Previous:N0} yesterday" : $"vs previous day's {Previous:N0}";
 
     /// <summary>
     /// What a screen reader hears in place of a fill width. The same comparison as

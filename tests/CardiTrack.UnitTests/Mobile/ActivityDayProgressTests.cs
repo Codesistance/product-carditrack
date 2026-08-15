@@ -94,7 +94,7 @@ public class ActivityDayProgressTests
         Assert.Equal(4000m, progress.Value.Previous);
         Assert.Equal(0.75, progress.Value.Fill, 6);
         Assert.False(progress.Value.PreviousIsYesterday);
-        Assert.Equal($"vs {4000m:N0} previous day", progress.Value.Caption);
+        Assert.Equal($"vs previous day's {4000m:N0}", progress.Value.Caption);
         Assert.Equal($"{3000m:N0} steps vs {4000m:N0} the previous day", progress.Value.Description);
     }
 
