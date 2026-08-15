@@ -319,8 +319,18 @@ public partial class CardiMemberDetailPage : ContentPage
 
         var target = Math.Max(0, held.Section.Y + held.PastTop);
 
-        // A pixel or two of drift is not worth a scroll call that could fight a caregiver who has
-        // started moving the page themselves while the refresh was in flight.
+        // Already there: skip the call rather than issue a scroll that moves nothing. This is the
+        // common case, since the anchor is re-asserted after each follow-up load and usually only
+        // the first one has anything to do.
+        //
+        // It is not a test for whether the caregiver has taken over. A caregiver who starts
+        // scrolling while a refresh is in flight will still be moved back when it lands. Telling
+        // their scrolling apart from the page's own is the problem: the content above shifts under
+        // a reload and the offset changes on its own — measured moving 1158 to 889 with nobody
+        // touching the screen — so a "has it moved unexpectedly" heuristic reads those as the
+        // caregiver and abandons the restore, which is the bug this exists to fix. Left as is
+        // deliberately: the window is the second or two a refresh takes, and being put back where
+        // you were is the behaviour that was asked for.
         if (Math.Abs(target - DetailScroller.ScrollY) < 2)
             return;
 
