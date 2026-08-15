@@ -123,7 +123,7 @@ dotnet test  CardiTrack.Server.slnf
 
 ### Local Development
 
-1. **Clone the repository**
+1. **Clone the repository** (private — GitHub authentication required; see [docs/technical/github_repository_access.md](docs/technical/github_repository_access.md))
    ```bash
    git clone https://github.com/Codesistance/product-carditrack.git
    cd product-carditrack

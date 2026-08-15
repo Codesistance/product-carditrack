@@ -1,0 +1,31 @@
+name: Repository access gate
+
+# GitHub public repositories are readable by anyone. This gate fails until the
+# repository is private, which is the only way to limit who can read or write.
+# Operator steps: docs/technical/github_repository_access.md
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  private-only:
+    name: Repository must be private
+    runs-on: ubuntu-latest
+    steps:
+      - name: Reject public visibility
+        env:
+          IS_PRIVATE: ${{ github.event.repository.private }}
+        run: |
+          set -euo pipefail
+          if [ "${IS_PRIVATE}" = "true" ]; then
+            echo "Repository is private. Access gate passed."
+            exit 0
+          fi
+          echo "::error::This repository must be private so only the designated owner can read or write. GitHub cannot restrict reads on a public repo. Settings → General → Danger Zone → Change visibility → Private. See docs/technical/github_repository_access.md."
+          exit 1

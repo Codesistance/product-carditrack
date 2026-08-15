@@ -1,0 +1,5 @@
+# Single human owner for every path. GitHub cannot restrict reads on a public
+# repository; visibility must be private (see docs/technical/github_repository_access.md).
+# Enable "Require review from Code Owners" on the default branch so write via PR
+# also routes through this owner.
+* @marigbede
