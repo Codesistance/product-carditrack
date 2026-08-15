@@ -39,17 +39,18 @@ can write. Fork PRs from other accounts do not run Copilot review.
 
 ## CI triggers
 
-Cloud agents build and test. GitHub Actions does **not** start on `push` or on
-PR synchronize — that was the minute leak (macOS at 10× on every cloud-agent
-commit, then again on merge to `main`).
+Cloud agents build and test. The expensive apps-dev and infra workflows do
+**not** start on `push` or on PR synchronize — that was the minute leak
+(macOS at 10× on every cloud-agent commit, then again on merge to `main`).
+Copilot review still runs on PR synchronize; it is a short ubuntu job.
 
 | Workflow | When it runs |
 |---|---|
 | CI / Deploy Apps → Dev | **workflow_dispatch only** (Actions → Run workflow) |
 | Deploy Infrastructure → Dev / Common | **workflow_dispatch only** |
 | Deploy Apps / Infra → Prod | **workflow_dispatch only** (unchanged) |
-| Request Copilot review | `pull_request` opened / synchronize / reopened |
-| Auto-merge | label, review, schedule |
+| Request Copilot review | `pull_request` opened / synchronize / reopened / ready_for_review |
+| Auto-merge | label, review, schedule, `workflow_run`, `workflow_dispatch` |
 
 Dev Cloud Run / TestFlight / Play uploads therefore no longer start on merge.
 Ship to dev by dispatching **CI / Deploy Apps → Dev** on `main` when you want
