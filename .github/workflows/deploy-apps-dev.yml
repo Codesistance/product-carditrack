@@ -56,6 +56,14 @@ jobs:
     name: Detect changes
     needs: env
     runs-on: ubuntu-latest
+    # paths-filter reads the PR's file list from GET /repos/:o/:r/pulls/:n/files,
+    # which needs pull-requests:read. The workflow-level grant does not carry it,
+    # so every PR run failed with "Resource not accessible by integration".
+    # Scoped here rather than widened at the top: no other job calls that API,
+    # and this job needs no id-token.
+    permissions:
+      contents: read
+      pull-requests: read
     outputs:
       api:            ${{ steps.manual.outputs.api      || steps.filter.outputs.api }}
       web:            ${{ steps.manual.outputs.web      || steps.filter.outputs.web }}
