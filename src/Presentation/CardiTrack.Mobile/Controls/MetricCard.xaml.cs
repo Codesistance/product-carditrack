@@ -383,7 +383,8 @@ public partial class MetricCard : ContentView
     /// </summary>
     private void SetProgress(double fraction)
     {
-        SetStack(Math.Clamp(fraction, 0, 1), 0);
+        // No clamp here: StackedTrack keeps the width inside 0–1 for both callers.
+        SetStack(fraction, 0);
         OverflowFill.IsVisible = false;
         ProgressFill.StrokeShape = new RoundRectangle { CornerRadius = 12 };
     }
@@ -395,28 +396,26 @@ public partial class MetricCard : ContentView
     /// </summary>
     private void SetStack(double compared, double overflow)
     {
-        compared = Math.Clamp(compared, 0, 1);
-        overflow = Math.Clamp(overflow, 0, 1);
-        if (compared + overflow > 1)
-            overflow = 1 - compared;
+        // The widths are worked out in StackedTrack, which guarantees all three are non-negative
+        // numbers — GridLength throws on anything else, and a throw here strands the dashboard.
+        var track = StackedTrack.For(compared, overflow);
 
-        ProgressGrid.ColumnDefinitions[0].Width = new GridLength(compared, GridUnitType.Star);
-        ProgressGrid.ColumnDefinitions[1].Width = new GridLength(overflow, GridUnitType.Star);
-        ProgressGrid.ColumnDefinitions[2].Width = new GridLength(1 - compared - overflow, GridUnitType.Star);
+        ProgressGrid.ColumnDefinitions[0].Width = new GridLength(track.Compared, GridUnitType.Star);
+        ProgressGrid.ColumnDefinitions[1].Width = new GridLength(track.Overflow, GridUnitType.Star);
+        ProgressGrid.ColumnDefinitions[2].Width = new GridLength(track.Remainder, GridUnitType.Star);
 
-        var stacked = overflow > 0;
-        OverflowFill.IsVisible = stacked;
-        if (!stacked)
+        OverflowFill.IsVisible = track.IsStacked;
+        if (!track.IsStacked)
         {
             ProgressFill.StrokeShape = new RoundRectangle { CornerRadius = 12 };
             return;
         }
 
         // Yesterday was zero: the extra is the whole bar, so it wears both rounded ends.
-        OverflowFill.StrokeShape = compared <= 0
+        OverflowFill.StrokeShape = track.Compared <= 0
             ? new RoundRectangle { CornerRadius = 12 }
             : new RoundRectangle { CornerRadius = new CornerRadius(0, 12, 12, 0) };
-        ProgressFill.StrokeShape = compared <= 0
+        ProgressFill.StrokeShape = track.Compared <= 0
             ? new RoundRectangle { CornerRadius = 12 }
             : new RoundRectangle { CornerRadius = new CornerRadius(12, 0, 0, 12) };
     }
