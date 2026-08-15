@@ -532,39 +532,23 @@
                         <!-- Management / danger zone -->
                         <VerticalStackLayout Spacing="4" Margin="0,10,0,0">
                             <Label Text="Management" Style="{StaticResource DashboardSectionTitle}"/>
-                            <Label Text="Devices, alerts, monitoring and removal"
+                            <Label Text="Alerts, devices, monitoring and removal"
                                    Style="{StaticResource Body2}"/>
                         </VerticalStackLayout>
-
-                        <!-- Manage Device, which used to be one of a pair of outline buttons
-                             halfway up the page. It is the same kind of thing as the two rows
-                             under it — a way in to managing this member rather than a fact about
-                             them — and it leads because it is the one that changes nothing on its
-                             own. -->
-                        <Border Style="{StaticResource ElevatedCard}" Padding="14,4">
-                            <Border.GestureRecognizers>
-                                <TapGestureRecognizer Tapped="OnManageDevicesTapped"/>
-                            </Border.GestureRecognizers>
-                            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12" HeightRequest="52">
-                                <Image Grid.Column="0" Source="icon_watch.svg"
-                                       WidthRequest="22" HeightRequest="22" VerticalOptions="Center"/>
-                                <Label Grid.Column="1"
-                                       Text="Manage Device"
-                                       Style="{StaticResource Body1SemiBoldDark}"
-                                       VerticalTextAlignment="Center"/>
-                                <Image Grid.Column="2" Source="icon_chevron.svg"
-                                       WidthRequest="20" HeightRequest="20" VerticalOptions="Center"/>
-                            </Grid>
-                        </Border>
 
                         <!-- Alert rules (per-CardiMember generation toggles; instant save). In
                              Management rather than up with the rows about the member: it is not a
                              fact about them, it is a setting for how CardiTrack watches them,
-                             which is what this group already collects. It sits after Manage Device
-                             and before Pause for the same reason the three of them are in that
-                             order — consequence increasing down the group, from the row that
-                             changes nothing, through the ones that change what is watched and
-                             whether watching happens at all, to removal.
+                             which is what this group already collects.
+
+                             It leads the group. What a caregiver comes to Management to change is
+                             usually what CardiTrack watches for; the three rows under it are a
+                             device they will set up once, a pause they will use rarely, and a
+                             removal they will use never. Ordering by consequence — the harmless
+                             row first, the destructive one last — put the most-used row second
+                             behind the least-used one, which is a tidy rule and the wrong outcome.
+                             Pause and Remove keep their places at the bottom, which is what that
+                             rule was really protecting.
 
                              Still a row that opens in place rather than a page: the switches are
                              the content, there is no reading to do, and a caregiver changing two
@@ -620,6 +604,27 @@
                                     </Border>
                                 </VerticalStackLayout>
                             </VerticalStackLayout>
+                        </Border>
+
+                        <!-- Manage Device, which used to be one of a pair of outline buttons
+                             halfway up the page. It is the same kind of thing as the rows either
+                             side of it — a way in to managing this member rather than a fact about
+                             them — and like the alert rules above it, it changes nothing on its
+                             own. The two rows below do. -->
+                        <Border Style="{StaticResource ElevatedCard}" Padding="14,4">
+                            <Border.GestureRecognizers>
+                                <TapGestureRecognizer Tapped="OnManageDevicesTapped"/>
+                            </Border.GestureRecognizers>
+                            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12" HeightRequest="52">
+                                <Image Grid.Column="0" Source="icon_watch.svg"
+                                       WidthRequest="22" HeightRequest="22" VerticalOptions="Center"/>
+                                <Label Grid.Column="1"
+                                       Text="Manage Device"
+                                       Style="{StaticResource Body1SemiBoldDark}"
+                                       VerticalTextAlignment="Center"/>
+                                <Image Grid.Column="2" Source="icon_chevron.svg"
+                                       WidthRequest="20" HeightRequest="20" VerticalOptions="Center"/>
+                            </Grid>
                         </Border>
 
                         <Border Style="{StaticResource ElevatedCard}" Padding="14,4">

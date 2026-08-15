@@ -155,6 +155,14 @@ public partial class CardiMemberDetailPage : ContentPage
     {
         base.OnDisappearing();
         _returningFromPopup = _popups.IsShowing;
+
+        // Where the caregiver was reading on the way out, so returning can put them back. Taken
+        // here and not in the reload because by then the reading is already wrong: popping back
+        // re-attaches and re-measures this page, and whatever the content above has done in the
+        // meantime has already moved the scroll. Measured on device — a caregiver who left from
+        // the Management rows was, by the first line of the reload, three sections higher. On the
+        // way out the layout is still the one they were looking at.
+        _anchorOnLeaving = CaptureScrollAnchor();
     }
 
     private async void OnPullToRefresh(object? sender, EventArgs e)
@@ -192,15 +200,26 @@ public partial class CardiMemberDetailPage : ContentPage
         {
             _member = await _api.GetCardiMemberAsync(_memberId);
             _lastLoadedUtc = DateTime.UtcNow;
+
+            // Taken when the caregiver left if they left, and only otherwise from where the page
+            // sits now. By the time this runs the pop has already re-measured the page, so a
+            // reading taken here is of a scroll position that has moved.
+            var anchor = _anchorOnLeaving ?? CaptureScrollAnchor();
+            _anchorOnLeaving = null;
             Apply(_member);
             SetState(loaded: true);
+            _ = RestoreScrollAnchorAsync(anchor);
 
             // Fire-and-forget, not awaited: Apply already rendered the placeholder summary
             // copy, and the digest read is a separate round trip that shouldn't hold up the
             // rest of the screen or the pull-to-refresh spinner.
-            _ = LoadDigestAsync(_memberId);
-            _ = LoadQuestionnairesAsync(_memberId);
-            _ = LoadAlertPreferencesAsync(_memberId);
+            // Each of these lands above or around where the caregiver is reading and changes the
+            // height of it — the digest rewrites the summary, the questionnaires add or remove a
+            // whole card — so the anchor is re-asserted as each one finishes rather than only
+            // after Apply. Restoring is a no-op when nothing moved.
+            _ = LoadThenRestoreAsync(LoadDigestAsync(_memberId), anchor);
+            _ = LoadThenRestoreAsync(LoadQuestionnairesAsync(_memberId), anchor);
+            _ = LoadThenRestoreAsync(LoadAlertPreferencesAsync(_memberId), anchor);
         }
         catch (ApiException ex)
         {
@@ -218,6 +237,85 @@ public partial class CardiMemberDetailPage : ContentPage
         finally
         {
             _isLoading = false;
+        }
+    }
+
+    /// <summary>
+    /// Runs one of the page's follow-up loads and puts the caregiver's place back afterwards.
+    /// </summary>
+    private async Task LoadThenRestoreAsync(Task load, ScrollAnchor? anchor)
+    {
+        await load;
+        await RestoreScrollAnchorAsync(anchor);
+    }
+
+    /// <summary>
+    /// The section that was under the top of the viewport, and how far past its own top the
+    /// viewport had gone.
+    /// </summary>
+    private readonly record struct ScrollAnchor(View Section, double PastTop);
+
+    /// <summary>Where the caregiver was reading when they navigated away. See <see cref="OnDisappearing"/>.</summary>
+    private ScrollAnchor? _anchorOnLeaving;
+
+    /// <summary>
+    /// Notes where the caregiver is reading, in terms of the content rather than a pixel offset.
+    /// </summary>
+    /// <remarks>
+    /// A pixel offset is what Shell already preserves, and preserving it is the bug: this page
+    /// refetches whenever it is returned to — coming back from Device Management or the edit form,
+    /// what changed is exactly what was edited — and <see cref="Apply"/> is then free to re-measure
+    /// the summary copy, the trend cards and the banners above wherever the caregiver had scrolled
+    /// to. Keep the offset and everything under it slides; someone who left from the Management
+    /// rows came back to the middle of the page, which is the "it jumped" complaint. Anchoring to a
+    /// section instead means the thing they were looking at is still where they left it, however
+    /// much the content above it grew or shrank.
+    /// </remarks>
+    private ScrollAnchor? CaptureScrollAnchor()
+    {
+        var scrolled = DetailScroller.ScrollY;
+        if (scrolled <= 0)
+            return null;
+
+        foreach (var section in ContentPanel.Children.OfType<View>())
+        {
+            if (section is { IsVisible: true, Height: > 0 } && section.Y + section.Height > scrolled)
+                return new ScrollAnchor(section, scrolled - section.Y);
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Puts the anchored section back under the top of the viewport.
+    /// </summary>
+    /// <remarks>
+    /// The yield is load-bearing: the section's new Y means nothing until the layout pass that
+    /// followed <see cref="Apply"/> has run, and without it this scrolls to where the section used
+    /// to be. Unanimated, because this is meant to look like nothing happened — a visible glide
+    /// would announce the very movement it exists to hide.
+    /// </remarks>
+    private async Task RestoreScrollAnchorAsync(ScrollAnchor? anchor)
+    {
+        if (anchor is not { } held)
+            return;
+
+        await Task.Yield();
+
+        var target = Math.Max(0, held.Section.Y + held.PastTop);
+
+        // A pixel or two of drift is not worth a scroll call that could fight a caregiver who has
+        // started moving the page themselves while the refresh was in flight.
+        if (Math.Abs(target - DetailScroller.ScrollY) < 2)
+            return;
+
+        try
+        {
+            await DetailScroller.ScrollToAsync(0, target, animated: false);
+        }
+        catch (Exception)
+        {
+            // The page went away mid-refresh. Nothing to restore it to.
         }
     }
 
