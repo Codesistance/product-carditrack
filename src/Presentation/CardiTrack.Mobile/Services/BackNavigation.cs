@@ -44,8 +44,30 @@ internal static class BackNavigation
             return shell.GoToAsync("..");
 
         return TabNavigation.Origin.TryTake(out var origin)
-            ? shell.GoToAsync(origin)
+            ? GoToOriginAsync(shell, origin, destination)
             : shell.GoToAsync(destination);
+    }
+
+    /// <summary>
+    /// Returns to a recorded origin, falling back to <paramref name="destination"/> when that route
+    /// no longer resolves — the member it named has since been removed, say.
+    /// </summary>
+    /// <remarks>
+    /// The fallback matters more here than on the platform back button, which can afford to leave
+    /// the caregiver where they are: this is a back arrow they tapped, and an arrow that visibly
+    /// does nothing reads as a broken screen. Callers are <c>async void</c> tap handlers, so an
+    /// exception let out of here would be unobserved rather than handled.
+    /// </remarks>
+    private static async Task GoToOriginAsync(Shell shell, string origin, string destination)
+    {
+        try
+        {
+            await shell.GoToAsync(origin);
+        }
+        catch (Exception)
+        {
+            await shell.GoToAsync(destination);
+        }
     }
 
     /// <summary>

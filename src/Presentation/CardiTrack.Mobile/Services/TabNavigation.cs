@@ -27,10 +27,21 @@ internal static class TabNavigation
     /// no idea who it is for. Pages that take no parameters pass nothing.
     /// </param>
     /// <remarks>
+    /// <para>
     /// Only a jump from a pushed page records anything. Shell's stack always holds the section
     /// root at index 0, so a count above one means there is a page here that the jump is about to
     /// throw away — the Member Detail a caregiver was reading when they tapped the bell. From a
     /// tab root the jump costs nothing, and back should keep Android's own meaning.
+    /// </para>
+    /// <para>
+    /// Deliberately not used by <see cref="Controls.BottomNavBar"/>, which drops the stack the
+    /// same way and records nothing. The difference is who decided to leave. A bell is a content
+    /// affordance: it answers a question about the page you are on and takes the page away as a
+    /// side effect nobody asked for, so back owes you the page. The nav bar is the caregiver
+    /// saying "take me to that tab" — and from a pushed page its whole documented job is to take
+    /// them down to the root, so returning them to the page they just used it to leave would undo
+    /// the tap. Back from a tab root the caregiver chose exits, as Android expects.
+    /// </para>
     /// </remarks>
     public static Task GoToTabAsync(this Shell shell, string absoluteRoute, string? returnQuery = null)
     {
@@ -67,7 +78,7 @@ internal static class TabNavigation
             return false;
         }
 
-        ReturnTo(shell, origin);
+        _ = ReturnTo(shell, origin);
         return true;
     }
 
@@ -76,7 +87,13 @@ internal static class TabNavigation
     /// caregiver on the tab they are already looking at, which is somewhere real. The origin has
     /// been taken either way, so the next back press behaves as it would have before.
     /// </summary>
-    private static async void ReturnTo(Shell shell, string origin)
+    /// <remarks>
+    /// Returns a Task discarded by the caller rather than being <c>async void</c>. The two behave
+    /// the same while the catch below is total, and differently the moment it is not: an escaping
+    /// exception from <c>async void</c> is raised on the synchronisation context and takes the app
+    /// down, which is the failure this whole file exists to prevent.
+    /// </remarks>
+    private static async Task ReturnTo(Shell shell, string origin)
     {
         try
         {
