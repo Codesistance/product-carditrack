@@ -69,25 +69,22 @@ public readonly record struct ActivityDayProgress
         CurrentDate == SeriesEnd && PreviousDate == SeriesEnd.AddDays(-1);
 
     /// <summary>
-    /// The caption under the bar when the card is not already showing "% of normal". Names the
-    /// previous day's total, which is what the empty part of the track is.
+    /// The caption under the bar when the card is not already showing "% of normal". A comparison
+    /// with the previous day — "vs 5,000 yesterday" — not a remainder against a target.
     /// </summary>
     public string Caption =>
-        PreviousIsYesterday ? $"Yesterday {Previous:N0}" : $"Previous day {Previous:N0}";
+        PreviousIsYesterday ? $"vs {Previous:N0} yesterday" : $"vs {Previous:N0} previous day";
 
     /// <summary>
-    /// What a screen reader hears in place of a fill width. The track has no text of its own.
+    /// What a screen reader hears in place of a fill width. The same comparison as
+    /// <see cref="Caption"/>, with both days named, and no "of" that would read as a goal.
     /// </summary>
     public string Description
     {
         get
         {
             var against = PreviousIsYesterday ? "yesterday" : "the previous day";
-            if (Current > Previous)
-                return $"{Current:N0} steps, more than {against}'s {Previous:N0}";
-            if (Current == Previous)
-                return $"{Current:N0} steps, matching {against}";
-            return $"{Current:N0} of {against}'s {Previous:N0} steps";
+            return $"{Current:N0} steps vs {Previous:N0} {against}";
         }
     }
 

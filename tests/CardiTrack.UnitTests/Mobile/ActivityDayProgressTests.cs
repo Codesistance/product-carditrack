@@ -21,8 +21,8 @@ public class ActivityDayProgressTests
         Assert.Equal(5000m, progress.Value.Previous);
         Assert.Equal(0.4, progress.Value.Fill, 6);
         Assert.True(progress.Value.PreviousIsYesterday);
-        Assert.Equal($"Yesterday {5000m:N0}", progress.Value.Caption);
-        Assert.Equal($"{2000m:N0} of yesterday's {5000m:N0} steps", progress.Value.Description);
+        Assert.Equal($"vs {5000m:N0} yesterday", progress.Value.Caption);
+        Assert.Equal($"{2000m:N0} steps vs {5000m:N0} yesterday", progress.Value.Description);
     }
 
     [Fact]
@@ -33,7 +33,7 @@ public class ActivityDayProgressTests
         Assert.NotNull(progress);
         Assert.Equal(1d, progress.Value.Fill);
         Assert.Equal(5000m, progress.Value.Previous);
-        Assert.Equal($"{5000m:N0} steps, matching yesterday", progress.Value.Description);
+        Assert.Equal($"{5000m:N0} steps vs {5000m:N0} yesterday", progress.Value.Description);
     }
 
     [Fact]
@@ -47,7 +47,7 @@ public class ActivityDayProgressTests
         Assert.Equal(1d, progress.Value.Fill);
         Assert.Equal(6200m, progress.Value.Current);
         Assert.Equal(5000m, progress.Value.Previous);
-        Assert.Equal($"{6200m:N0} steps, more than yesterday's {5000m:N0}", progress.Value.Description);
+        Assert.Equal($"{6200m:N0} steps vs {5000m:N0} yesterday", progress.Value.Description);
     }
 
     [Fact]
@@ -57,7 +57,7 @@ public class ActivityDayProgressTests
 
         Assert.NotNull(progress);
         Assert.Equal(1d, progress.Value.Fill);
-        Assert.Equal($"Yesterday {0m:N0}", progress.Value.Caption);
+        Assert.Equal($"vs {0m:N0} yesterday", progress.Value.Caption);
     }
 
     [Fact]
@@ -85,8 +85,8 @@ public class ActivityDayProgressTests
         Assert.Equal(4000m, progress.Value.Previous);
         Assert.Equal(0.75, progress.Value.Fill, 6);
         Assert.False(progress.Value.PreviousIsYesterday);
-        Assert.Equal($"Previous day {4000m:N0}", progress.Value.Caption);
-        Assert.Equal($"{3000m:N0} of the previous day's {4000m:N0} steps", progress.Value.Description);
+        Assert.Equal($"vs {4000m:N0} previous day", progress.Value.Caption);
+        Assert.Equal($"{3000m:N0} steps vs {4000m:N0} the previous day", progress.Value.Description);
     }
 
     [Fact]
@@ -103,8 +103,8 @@ public class ActivityDayProgressTests
         Assert.Equal(5000m, progress.Value.Previous);
         Assert.Equal(0d, progress.Value.Fill);
         Assert.True(progress.Value.PreviousIsYesterday);
-        Assert.Equal($"Yesterday {5000m:N0}", progress.Value.Caption);
-        Assert.Equal($"{0m:N0} of yesterday's {5000m:N0} steps", progress.Value.Description);
+        Assert.Equal($"vs {5000m:N0} yesterday", progress.Value.Caption);
+        Assert.Equal($"{0m:N0} steps vs {5000m:N0} yesterday", progress.Value.Description);
     }
 
     [Fact]
@@ -115,7 +115,7 @@ public class ActivityDayProgressTests
 
         Assert.NotNull(progress);
         Assert.Equal(1d, progress.Value.Fill);
-        Assert.Equal($"{5500m:N0} steps, more than the previous day's {4000m:N0}", progress.Value.Description);
+        Assert.Equal($"{5500m:N0} steps vs {4000m:N0} the previous day", progress.Value.Description);
     }
 
     [Fact]
