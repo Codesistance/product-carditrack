@@ -5,6 +5,9 @@ name: CI / Deploy Apps → Dev
 # to fire on.push and rebuild+deploy. Both burned the Free-plan minute quota.
 # Run this workflow from Actions → Run workflow when you want GitHub to CI or
 # deploy to dev. See docs/technical/github_repository_access.md.
+# Jobs still gated on github.event_name == 'pull_request' are dormant; they stay
+# so restoring PR CI is an on: change, not a rewrite of the iOS/Android compile
+# trade-offs those jobs document.
 on:
   workflow_dispatch:
     inputs:

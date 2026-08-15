@@ -135,21 +135,6 @@ jobs:
           echo '```' >> $GITHUB_STEP_SUMMARY
           cat ${{ needs.env.outputs.tf_working_dir_common }}/plan.txt >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
-      - name: Post plan to PR
-        if: github.event_name == 'pull_request' && matrix.tf_version == needs.env.outputs.tf_version
-        uses: actions/github-script@v8
-        with:
-          script: |
-            const fs = require('fs');
-            const plan = fs.readFileSync('${{ needs.env.outputs.tf_working_dir_common }}/plan.txt', 'utf8');
-            const truncated = plan.length > 60000 ? plan.slice(0, 60000) + '\n\n... (truncated)' : plan;
-            const body = `### Terraform Plan — Common (${{ needs.env.outputs.tf_version }})\n\`\`\`hcl\n${truncated}\n\`\`\``;
-            github.rest.issues.createComment({
-              issue_number: context.issue.number,
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              body
-            });
 
   apply:
     name: Apply (Common)
