@@ -20,9 +20,11 @@ namespace CardiTrack.Mobile.Core.Charts;
 /// is also full: the max only grows once today is strictly ahead.
 /// </para>
 /// <para>
-/// Day n is the latest series point that actually has a value, so a morning with no steps yet
-/// compares the last finished day to the day before it rather than drawing an empty bar under
-/// yesterday's count. A missing day n−1 hides the bar rather than skipping back to an older
+/// Day n is the latest series point that actually has a value, so a morning with no
+/// row yet (value <c>null</c>) compares the last finished day to the day before it
+/// rather than drawing an empty bar under yesterday's count. An explicit <c>0</c> is
+/// a reading — they have been counted today and have not moved — and fills 0 against
+/// yesterday. A missing day n−1 hides the bar rather than skipping back to an older
 /// day: a gap is not yesterday.
 /// </para>
 /// </remarks>

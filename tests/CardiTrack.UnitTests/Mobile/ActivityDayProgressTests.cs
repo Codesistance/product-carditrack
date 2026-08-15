@@ -90,6 +90,24 @@ public class ActivityDayProgressTests
     }
 
     [Fact]
+    public void An_explicit_zero_today_is_an_empty_bar_against_yesterday()
+    {
+        // A provider that has already written today's row as 0 is not "no steps yet" — that is
+        // a null, above. Zero is a reading: they have been counted and have not moved. Falling
+        // back to yesterday would hide that, and would put yesterday's total on a bar labelled
+        // as today.
+        var progress = ActivityDayProgress.For(Series((Today.AddDays(-1), 5000m), (Today, 0m)));
+
+        Assert.NotNull(progress);
+        Assert.Equal(0m, progress.Value.Current);
+        Assert.Equal(5000m, progress.Value.Previous);
+        Assert.Equal(0d, progress.Value.Fill);
+        Assert.True(progress.Value.PreviousIsYesterday);
+        Assert.Equal($"Yesterday {5000m:N0}", progress.Value.Caption);
+        Assert.Equal($"{0m:N0} of yesterday's {5000m:N0} steps", progress.Value.Description);
+    }
+
+    [Fact]
     public void A_finished_day_that_beat_the_day_before_is_full()
     {
         var progress = ActivityDayProgress.For(Series(
