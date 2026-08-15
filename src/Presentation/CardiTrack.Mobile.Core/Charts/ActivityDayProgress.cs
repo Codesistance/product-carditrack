@@ -15,9 +15,10 @@ namespace CardiTrack.Mobile.Core.Charts;
 /// </para>
 /// <para>
 /// The track's max is yesterday's total until today exceeds it; then the max becomes today's
-/// total and the bar sits full. That is one fill, not two colours — an overflow segment would
-/// look like a second target, which is the metaphor this exists to avoid. Matching yesterday
-/// is also full: the max only grows once today is strictly ahead.
+/// total. When today is ahead, the extra is a second stacked fill — yesterday's share in one
+/// colour, the overflow in another — so beating yesterday is not indistinguishable from
+/// matching it. Matching yesterday is a single full fill: the max only grows once today is
+/// strictly ahead.
 /// </para>
 /// <para>
 /// Day n is the latest series point that actually has a value, so a morning with no
@@ -57,9 +58,24 @@ public readonly record struct ActivityDayProgress
 
     /// <summary>
     /// <see cref="Current"/> as a fraction of <c>max(current, previous)</c>. Always in 0–1: once
-    /// today leads, the max is today and this is 1.
+    /// today leads, the max is today and this is 1. Equal to <see cref="Compared"/> +
+    /// <see cref="Overflow"/>.
     /// </summary>
-    public double Fill => (double)(Current / Math.Max(Current, Previous));
+    public double Fill => Compared + Overflow;
+
+    /// <summary>
+    /// The share of the track that is the previous day's total (or today's running count, when
+    /// that is still behind). The first stacked colour.
+    /// </summary>
+    public double Compared => (double)(Math.Min(Current, Previous) / Scale);
+
+    /// <summary>
+    /// The share of the track that is today past yesterday. Zero until today is strictly ahead;
+    /// then it is the second stacked colour. Matching yesterday is not overflow.
+    /// </summary>
+    public double Overflow => (double)(Math.Max(0m, Current - Previous) / Scale);
+
+    private decimal Scale => Math.Max(Current, Previous);
 
     /// <summary>
     /// True when the bar is today's running total against calendar yesterday. Any other pairing

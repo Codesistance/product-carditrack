@@ -53,12 +53,13 @@
             </VerticalStackLayout>
 
             <!-- Progress track. Activity fills against the previous calendar day's total (the
-                 max grows to today once today is ahead — one fill, not an overflow colour).
-                 Skin temperature has no day-total but does have a previous reading, so it fills
-                 to that and marks today against it (see ApplyTemperature). Heart rate and sleep
-                 draw no bar at all — a bar there would need a percentage the contract does not
-                 carry, and inventing one on a health screen is exactly the sort of implied
-                 reading the product must not make. -->
+                 max grows to today once today is ahead). Two stacked fills when today is ahead:
+                 yesterday's share, then the extra — the Grid already stacks; a ProgressBar
+                 cannot. Skin temperature has no day-total but does have a previous reading, so
+                 it fills to that and marks today against it (see ApplyTemperature). Heart rate
+                 and sleep draw no bar at all — a bar there would need a percentage the contract
+                 does not carry, and inventing one on a health screen is exactly the sort of
+                 implied reading the product must not make. -->
             <Border x:Name="ProgressTrackBorder"
                     IsVisible="False"
                     HeightRequest="7"
@@ -69,13 +70,22 @@
                     <RoundRectangle CornerRadius="12"/>
                 </Border.StrokeShape>
                 <Grid>
-                    <Grid x:Name="ProgressGrid" ColumnDefinitions="0*,1*">
+                    <Grid x:Name="ProgressGrid" ColumnDefinitions="0*,0*,1*">
                         <Border x:Name="ProgressFill"
                                 Grid.Column="0"
                                 Background="{StaticResource GradientButtonBrush}"
                                 StrokeThickness="0">
                             <Border.StrokeShape>
                                 <RoundRectangle CornerRadius="12"/>
+                            </Border.StrokeShape>
+                        </Border>
+                        <Border x:Name="OverflowFill"
+                                Grid.Column="1"
+                                IsVisible="False"
+                                BackgroundColor="{StaticResource MetricStepsAhead}"
+                                StrokeThickness="0">
+                            <Border.StrokeShape>
+                                <RoundRectangle CornerRadius="0,12,12,0"/>
                             </Border.StrokeShape>
                         </Border>
                     </Grid>

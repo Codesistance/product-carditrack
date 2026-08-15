@@ -78,6 +78,9 @@
          they were looking at every time it moved. Skin temperature and blood oxygen share an ink
          because their glyphs do — they never appear on the same card, so nothing is ambiguous. -->
     <Color x:Key="MetricStepsInk">#1884DC</Color>
+    <!-- Stacked Activity bar overflow — today past yesterday. A lighter sibling of
+         MetricStepsInk so it stays the same metric, not a success/goal colour. -->
+    <Color x:Key="MetricStepsAhead">#7EC4F5</Color>
     <Color x:Key="MetricHeartInk">#E53E3E</Color>
     <Color x:Key="MetricSleepInk">#7C6FDC</Color>
     <Color x:Key="MetricTemperatureInk">#1F8A72</Color>

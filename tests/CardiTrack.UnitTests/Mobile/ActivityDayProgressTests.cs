@@ -5,7 +5,8 @@ namespace CardiTrack.UnitTests.Mobile;
 
 /// <summary>
 /// The Activity Key Metrics bar fills against the previous calendar day, and its max grows to
-/// today only once today is strictly ahead — one fill, not an overflow colour.
+/// today only once today is strictly ahead. Beating yesterday is a second stacked colour so it
+/// is not indistinguishable from matching it.
 /// </summary>
 public class ActivityDayProgressTests
 {
@@ -20,6 +21,8 @@ public class ActivityDayProgressTests
         Assert.Equal(2000m, progress.Value.Current);
         Assert.Equal(5000m, progress.Value.Previous);
         Assert.Equal(0.4, progress.Value.Fill, 6);
+        Assert.Equal(0.4, progress.Value.Compared, 6);
+        Assert.Equal(0d, progress.Value.Overflow);
         Assert.True(progress.Value.PreviousIsYesterday);
         Assert.Equal($"vs {5000m:N0} yesterday", progress.Value.Caption);
         Assert.Equal($"{2000m:N0} steps vs {5000m:N0} yesterday", progress.Value.Description);
@@ -32,6 +35,8 @@ public class ActivityDayProgressTests
 
         Assert.NotNull(progress);
         Assert.Equal(1d, progress.Value.Fill);
+        Assert.Equal(1d, progress.Value.Compared);
+        Assert.Equal(0d, progress.Value.Overflow);
         Assert.Equal(5000m, progress.Value.Previous);
         Assert.Equal($"{5000m:N0} steps vs {5000m:N0} yesterday", progress.Value.Description);
     }
@@ -39,12 +44,14 @@ public class ActivityDayProgressTests
     [Fact]
     public void Exceeding_yesterday_grows_the_max_to_today_and_stays_full()
     {
-        // 6,200 / 6,200, not 6,200 / 5,000 clamped. Growing the max is what keeps the bar one
-        // colour instead of painting the extra 1,200 as a second target.
+        // 6,200 / 6,200, not 6,200 / 5,000 clamped. Growing the max is what keeps the extra
+        // visible as a second stacked colour instead of painting past 100% or looking like a match.
         var progress = ActivityDayProgress.For(Series((Today.AddDays(-1), 5000m), (Today, 6200m)));
 
         Assert.NotNull(progress);
         Assert.Equal(1d, progress.Value.Fill);
+        Assert.Equal(5000d / 6200d, progress.Value.Compared, 6);
+        Assert.Equal(1200d / 6200d, progress.Value.Overflow, 6);
         Assert.Equal(6200m, progress.Value.Current);
         Assert.Equal(5000m, progress.Value.Previous);
         Assert.Equal($"{6200m:N0} steps vs {5000m:N0} yesterday", progress.Value.Description);
@@ -57,6 +64,8 @@ public class ActivityDayProgressTests
 
         Assert.NotNull(progress);
         Assert.Equal(1d, progress.Value.Fill);
+        Assert.Equal(0d, progress.Value.Compared);
+        Assert.Equal(1d, progress.Value.Overflow);
         Assert.Equal($"vs {0m:N0} yesterday", progress.Value.Caption);
     }
 
@@ -102,6 +111,8 @@ public class ActivityDayProgressTests
         Assert.Equal(0m, progress.Value.Current);
         Assert.Equal(5000m, progress.Value.Previous);
         Assert.Equal(0d, progress.Value.Fill);
+        Assert.Equal(0d, progress.Value.Compared);
+        Assert.Equal(0d, progress.Value.Overflow);
         Assert.True(progress.Value.PreviousIsYesterday);
         Assert.Equal($"vs {5000m:N0} yesterday", progress.Value.Caption);
         Assert.Equal($"{0m:N0} steps vs {5000m:N0} yesterday", progress.Value.Description);
@@ -115,6 +126,8 @@ public class ActivityDayProgressTests
 
         Assert.NotNull(progress);
         Assert.Equal(1d, progress.Value.Fill);
+        Assert.Equal(4000d / 5500d, progress.Value.Compared, 6);
+        Assert.Equal(1500d / 5500d, progress.Value.Overflow, 6);
         Assert.Equal($"{5500m:N0} steps vs {4000m:N0} the previous day", progress.Value.Description);
     }
 

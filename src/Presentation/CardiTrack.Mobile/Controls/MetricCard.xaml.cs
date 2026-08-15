@@ -1,5 +1,6 @@
 using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Mobile.Core.Charts;
+using Microsoft.Maui.Controls.Shapes;
 
 namespace CardiTrack.Mobile.Controls;
 
@@ -95,10 +96,9 @@ public partial class MetricCard : ContentView
     /// max growing to today once today is ahead. See <see cref="ActivityDayProgress"/>.
     /// </summary>
     /// <remarks>
-    /// One fill, the same gradient the card already used. An overflow colour for the steps past
-    /// yesterday would be a second target, which is the fitness-goal reading this comparison
-    /// exists to avoid. Hidden when day n−1 is missing or both days are zero — a gap is not a
-    /// yesterday, and a zero max is not a track.
+    /// Two stacked fills when today is ahead — yesterday's share, then the extra — so beating
+    /// yesterday is visible rather than a full bar that looks like matching it. One fill while
+    /// still behind or level. Hidden when day n−1 is missing or both days are zero.
     /// </remarks>
     private void ApplyActivityTrack(DashboardMetric metric)
     {
@@ -106,6 +106,7 @@ public partial class MetricCard : ContentView
         {
             ProgressTrackBorder.IsVisible = false;
             MarkerGrid.IsVisible = false;
+            OverflowFill.IsVisible = false;
             SemanticProperties.SetDescription(ProgressTrackBorder, null);
             if (!TrendLabel.IsVisible)
                 CaptionLabel.Text = "Daily activity";
@@ -114,8 +115,10 @@ public partial class MetricCard : ContentView
 
         ProgressTrackBorder.IsVisible = true;
         MarkerGrid.IsVisible = false;
-        ProgressFill.Background = (Brush)Microsoft.Maui.Controls.Application.Current!.Resources["GradientButtonBrush"];
-        SetProgress(progress.Fill);
+        var resources = Microsoft.Maui.Controls.Application.Current!.Resources;
+        ProgressFill.Background = new SolidColorBrush((Color)resources["MetricStepsInk"]);
+        OverflowFill.BackgroundColor = (Color)resources["MetricStepsAhead"];
+        SetStack(progress.Compared, progress.Overflow);
         SemanticProperties.SetDescription(ProgressTrackBorder, progress.Description);
         if (!TrendLabel.IsVisible)
             CaptionLabel.Text = progress.Caption;
@@ -157,6 +160,7 @@ public partial class MetricCard : ContentView
         {
             ProgressTrackBorder.IsVisible = false;
             MarkerGrid.IsVisible = false;
+            OverflowFill.IsVisible = false;
             return;
         }
 
@@ -164,8 +168,10 @@ public partial class MetricCard : ContentView
         const decimal scale = SkinTempAxisHigh - SkinTempAxisLow;
 
         ProgressTrackBorder.IsVisible = true;
-        // Its own colour, not activity's gradient: the same chrome filled to two different kinds
-        // of thing (yesterday's total there, a previous reading here) should not look identical.
+        OverflowFill.IsVisible = false;
+        // Its own colour, not activity's stacked pair: the same chrome filled to two different
+        // kinds of thing (yesterday vs the extra there, a previous reading here) should not look
+        // identical.
         ProgressFill.Background = new SolidColorBrush(
             (Color)Microsoft.Maui.Controls.Application.Current!.Resources["MetricTemperatureInk"]);
         SetProgress((double)((previous - floor) / scale));
@@ -373,14 +379,46 @@ public partial class MetricCard : ContentView
         });
 
     /// <summary>
-    /// Fills the track proportionally with two star columns, which avoids having to measure the
-    /// track — a ProgressBar can't carry the design's gradient fill.
+    /// Fills the track with one segment (temperature, or activity still behind yesterday).
     /// </summary>
     private void SetProgress(double fraction)
     {
-        var filled = Math.Clamp(fraction, 0, 1);
-        ProgressGrid.ColumnDefinitions[0].Width = new GridLength(filled, GridUnitType.Star);
-        ProgressGrid.ColumnDefinitions[1].Width = new GridLength(1 - filled, GridUnitType.Star);
+        SetStack(Math.Clamp(fraction, 0, 1), 0);
+        OverflowFill.IsVisible = false;
+        ProgressFill.StrokeShape = new RoundRectangle { CornerRadius = 12 };
+    }
+
+    /// <summary>
+    /// Stacks yesterday's share and today's extra as two star columns, with the empty remainder
+    /// in a third. A platform ProgressBar cannot do this — it is one fill — which is why the
+    /// track is already a Grid.
+    /// </summary>
+    private void SetStack(double compared, double overflow)
+    {
+        compared = Math.Clamp(compared, 0, 1);
+        overflow = Math.Clamp(overflow, 0, 1);
+        if (compared + overflow > 1)
+            overflow = 1 - compared;
+
+        ProgressGrid.ColumnDefinitions[0].Width = new GridLength(compared, GridUnitType.Star);
+        ProgressGrid.ColumnDefinitions[1].Width = new GridLength(overflow, GridUnitType.Star);
+        ProgressGrid.ColumnDefinitions[2].Width = new GridLength(1 - compared - overflow, GridUnitType.Star);
+
+        var stacked = overflow > 0;
+        OverflowFill.IsVisible = stacked;
+        if (!stacked)
+        {
+            ProgressFill.StrokeShape = new RoundRectangle { CornerRadius = 12 };
+            return;
+        }
+
+        // Yesterday was zero: the extra is the whole bar, so it wears both rounded ends.
+        OverflowFill.StrokeShape = compared <= 0
+            ? new RoundRectangle { CornerRadius = 12 }
+            : new RoundRectangle { CornerRadius = new CornerRadius(0, 12, 12, 0) };
+        ProgressFill.StrokeShape = compared <= 0
+            ? new RoundRectangle { CornerRadius = 12 }
+            : new RoundRectangle { CornerRadius = new CornerRadius(12, 0, 0, 12) };
     }
 
     /// <summary>
