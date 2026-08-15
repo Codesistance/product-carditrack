@@ -64,9 +64,11 @@ def main() -> int:
     header = f"CardiTrack {args.version} (build {args.build})"
     bullets = git_log(args.since)
 
-    testflight = fit(header, bullets, TESTFLIGHT_LIMIT)
-    play = fit(header, bullets, PLAY_LIMIT)
+    testflight = fit(header, bullets, TESTFLIGHT_LIMIT - 1)
+    play = fit(header, bullets, PLAY_LIMIT - 1)
 
+    # Trailing newline is required so GITHUB_OUTPUT delimiters stay on their own
+    # line. Fit to limit-1 so the serialized value stays inside the store caps.
     with open(args.testflight_out, "w", encoding="utf-8") as handle:
         handle.write(testflight)
         handle.write("\n")

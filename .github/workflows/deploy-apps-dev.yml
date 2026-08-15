@@ -1092,8 +1092,8 @@ jobs:
           NOTES: ${{ needs.compute-version.outputs.changelog_play }}
         run: |
           mkdir -p play-whatsnew
-          printf '%s\n' "$NOTES" > play-whatsnew/whatsnew-en-US
-          printf '%s\n' "$NOTES" > play-whatsnew/whatsnew-en-GB
+          printf '%s' "$NOTES" > play-whatsnew/whatsnew-en-US
+          printf '%s' "$NOTES" > play-whatsnew/whatsnew-en-GB
 
       - name: Upload to Play Console (internal track)
         if: steps.gate.outputs.available == 'true'
