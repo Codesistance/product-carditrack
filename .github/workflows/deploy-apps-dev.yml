@@ -48,8 +48,17 @@ concurrency:
 
 jobs:
   # ── ACTIONS_ON_PUSH flag (0/false skips the rest on push and pull_request) ──
+  #
+  # Runs on workflow_dispatch too, even though `env` below ignores its answer there. That is not
+  # redundancy: a skipped job poisons the whole chain beneath it, past any `always()` in between.
+  # This job was originally skipped on workflow_dispatch, `env` survived that skip via `always()`
+  # and succeeded — and `changes`, whose only dependency was that successful `env` and which
+  # carries no `if:` of its own, was skipped anyway, taking all 36 downstream jobs with it. The
+  # run reported success having built and deployed nothing, which is the worst way to fail.
+  # So: never skip the root of the chain. Fifteen seconds of checkout-and-parse on a manual run
+  # is the price of a dependency graph with nothing skipped in it.
   actions-on-push:
-    if: github.event_name != 'workflow_dispatch' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     uses: ./.github/workflows/_actions-on-push.yml
 
   # ── Shared config (single source of truth via _env.yml) ─────────────────────
@@ -1850,3 +1859,39 @@ jobs:
             -f ref="refs/tags/${TAG}" \
             -f sha="${{ github.sha }}"
           echo "### Tagged: \`$TAG\`" >> $GITHUB_STEP_SUMMARY
+
+  # ── Did the manual run actually do anything? ────────────────────────────────
+  #
+  # A dispatch whose job graph collapses is indistinguishable from a successful one: everything
+  # skips, and GitHub scores a run of nothing as a green tick. That is exactly how the broken
+  # ACTIONS_ON_PUSH gate above went unnoticed — the run was ✓ and had built and deployed nothing.
+  # This makes that state red.
+  #
+  # Dispatch-only on purpose. On push and pull_request a fully-skipped run is the *intended*
+  # outcome whenever the flag is off, so asserting there would fail on the normal case.
+  dispatch-sanity:
+    name: Dispatch ran something
+    needs: changes
+    if: always() && github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Assert the dispatch resolved its components
+        env:
+          CHANGES_RESULT: ${{ needs.changes.result }}
+          SELECTED: >-
+            ${{ needs.changes.outputs.api }} ${{ needs.changes.outputs.web }}
+            ${{ needs.changes.outputs.worker }} ${{ needs.changes.outputs.mobile }}
+            ${{ needs.changes.outputs.medgemma }} ${{ needs.changes.outputs.pipeline }}
+            ${{ needs.changes.outputs.webhook }}
+        run: |
+          set -euo pipefail
+          if [ "${CHANGES_RESULT}" != "success" ]; then
+            echo "::error::Manual dispatch resolved no components — 'Detect changes' was ${CHANGES_RESULT}, so every build and deploy job skipped. Nothing was built or deployed."
+            exit 1
+          fi
+          # Unticking every box is a legitimate no-op, but it is almost never intended; say so
+          # without failing, since the graph itself is healthy.
+          case "${SELECTED}" in
+            *true*) echo "Components selected: ${SELECTED}" ;;
+            *) echo "::warning::Dispatch ran with every component unticked — nothing to build or deploy." ;;
+          esac

@@ -47,6 +47,17 @@ Repo variable `ACTIONS_ON_PUSH` overrides the file when set.
 | `0` or `false` (current) | Skip expensive jobs (flag reader only) | Runs |
 | `1` or `true` | Full apps-dev / infra CI | Runs |
 
+The flag-reader job (`actions-on-push`) runs on **every** trigger, including
+`workflow_dispatch` where its answer is ignored. That is deliberate: a skipped
+job skips everything beneath it in the graph, past any `always()` in between.
+While the job was skipped on dispatch, `env` survived via `always()` and
+succeeded, but the job after it — which has no `if:` of its own — was skipped
+anyway, taking every build, deploy and Terraform job with it. The runs reported
+success having done nothing (2026-08-15, run 31904971393). Do not re-add a
+`github.event_name != 'workflow_dispatch'` term to that job. Each of the three
+gated workflows also carries a dispatch-only `dispatch-sanity` job that fails
+the run if the chain collapses that way again.
+
 Copilot review runs on non-draft, same-repo PRs (short ubuntu job). Auto-merge
 runs only when the `automerge` label and its review/check gates are met.
 

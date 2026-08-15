@@ -38,8 +38,14 @@ concurrency:
 
 jobs:
   # ── ACTIONS_ON_PUSH flag (0/false skips the rest on push and pull_request) ──
+  #
+  # Runs on workflow_dispatch too, even though `env` ignores its answer there: a skipped job
+  # poisons everything beneath it in the graph, past any `always()` in between. Skipping this one
+  # on workflow_dispatch skipped `validate` — whose only dependency, `env`, had succeeded — and
+  # with it the entire plan/apply chain, while the run still reported success. See the longer
+  # account in deploy-apps-dev.yml, which failed the same way on 2026-08-15.
   actions-on-push:
-    if: github.event_name != 'workflow_dispatch' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     uses: ./.github/workflows/_actions-on-push.yml
 
   # ── Shared config ────────────────────────────────────────────────────────────
@@ -221,3 +227,24 @@ jobs:
         run: |
           echo "### Terraform Applied — Dev" >> $GITHUB_STEP_SUMMARY
           terraform output -no-color >> $GITHUB_STEP_SUMMARY
+
+  # ── Did the manual run actually do anything? ────────────────────────────────
+  #
+  # A dispatch whose job graph collapses is indistinguishable from a successful one: everything
+  # skips, and GitHub scores a run of nothing as a green tick. Dispatch-only, because on push and
+  # pull_request a fully-skipped run is the intended outcome whenever ACTIONS_ON_PUSH is off.
+  dispatch-sanity:
+    name: Dispatch ran something
+    needs: validate
+    if: always() && github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Assert the dispatch reached Terraform
+        env:
+          VALIDATE_RESULT: ${{ needs.validate.result }}
+        run: |
+          set -euo pipefail
+          if [ "${VALIDATE_RESULT}" != "success" ]; then
+            echo "::error::Manual dispatch never reached Terraform — 'Validate' was ${VALIDATE_RESULT}, so plan and apply skipped. No infrastructure was changed."
+            exit 1
+          fi
