@@ -217,10 +217,13 @@ public class CardiMembersController : BaseApiController
         if (request is null)
             return Error("Request body is required.", StatusCodes.Status400BadRequest);
 
+        if (request.Enabled is not { } enabled)
+            return Error("enabled is required.", StatusCodes.Status400BadRequest);
+
         try
         {
             var updated = await _alertPreferences.SetRuleEnabledAsync(
-                UserContext.UserId, cardiMemberId, ruleId, request.Enabled, ct);
+                UserContext.UserId, cardiMemberId, ruleId, enabled, ct);
             return Success(updated, updated.Enabled ? "Alert rule is on." : "Alert rule is off.");
         }
         catch (KeyNotFoundException ex)
