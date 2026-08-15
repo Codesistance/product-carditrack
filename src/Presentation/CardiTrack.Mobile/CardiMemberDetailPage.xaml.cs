@@ -1041,7 +1041,18 @@ public partial class CardiMemberDetailPage : ContentPage
                 if (_applyingAlertRules || _member is null)
                     return;
 
+                if (_alertRuleToggleInFlight is not null)
+                {
+                    // Another PATCH is in flight — put the switch back and wait.
+                    _applyingAlertRules = true;
+                    toggle.IsToggled = !args.Value;
+                    _applyingAlertRules = false;
+                    return;
+                }
+
                 var previous = !args.Value;
+                _alertRuleToggleInFlight = rule.Id;
+                toggle.IsEnabled = false;
                 try
                 {
                     await _api.SetAlertRuleEnabledAsync(_memberId, rule.Id, args.Value);
@@ -1056,6 +1067,11 @@ public partial class CardiMemberDetailPage : ContentPage
                 catch (ApiException)
                 {
                     // Session gone — the app is already on its way back to sign-in.
+                }
+                finally
+                {
+                    _alertRuleToggleInFlight = null;
+                    toggle.IsEnabled = canManage;
                 }
             };
             grid.Add(toggle, 1);
