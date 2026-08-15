@@ -36,9 +36,9 @@ public sealed class AuthHttpMessageHandler : DelegatingHandler
             request.RequestUri?.AbsolutePath);
 
         var refreshed = await _refresher.GetValidAccessTokenAsync(forceRefresh: true, ct);
-        if (refreshed is null)
+        if (refreshed is null || refreshed == token)
         {
-            _logger.LogWarning("Token refresh after 401 failed for {Path}; session is expired",
+            _logger.LogWarning("Token refresh after 401 did not produce a new token for {Path}",
                 request.RequestUri?.AbsolutePath);
             return response;
         }

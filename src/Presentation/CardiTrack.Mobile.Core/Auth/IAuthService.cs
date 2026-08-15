@@ -14,7 +14,11 @@ public interface IAuthService
 
     Task RequestPasswordResetAsync(string email, CancellationToken ct = default);
 
-    /// <summary>Restores the session from the stored refresh token. False = show login.</summary>
+    /// <summary>
+    /// Restores the session from stored tokens. True when a session still exists locally —
+    /// including when a token refresh could not reach the network, so the app can open onto
+    /// cached data. False means show login.
+    /// </summary>
     Task<bool> TrySilentSignInAsync(CancellationToken ct = default);
 
     Task SignOutAsync(CancellationToken ct = default);

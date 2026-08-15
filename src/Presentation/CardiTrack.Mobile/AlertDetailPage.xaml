@@ -67,6 +67,8 @@
 
                     <VerticalStackLayout x:Name="ContentPanel" Spacing="14" IsVisible="False">
 
+                        <controls:OfflineStatusBanner x:Name="OfflineBanner"/>
+
                         <Border x:Name="SeverityBanner"
                                 StrokeThickness="0"
                                 Padding="16,14">

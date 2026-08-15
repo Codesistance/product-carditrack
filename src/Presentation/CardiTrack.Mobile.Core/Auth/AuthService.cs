@@ -1,4 +1,5 @@
 using CardiTrack.Mobile.Core.Configuration;
+using CardiTrack.Mobile.Core.Offline;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -11,6 +12,7 @@ public sealed class AuthService : IAuthService
     private readonly ITokenRefresher _refresher;
     private readonly IBrowserAuthenticator _browser;
     private readonly Auth0Options _options;
+    private readonly IOfflineReadCache? _cache;
     private readonly ILogger<AuthService> _logger;
 
     private IReadOnlyDictionary<string, string> _claims =
@@ -22,6 +24,7 @@ public sealed class AuthService : IAuthService
         ITokenRefresher refresher,
         IBrowserAuthenticator browser,
         Auth0Options options,
+        IOfflineReadCache? cache = null,
         ILogger<AuthService>? logger = null)
     {
         _auth0 = auth0;
@@ -29,6 +32,7 @@ public sealed class AuthService : IAuthService
         _refresher = refresher;
         _browser = browser;
         _options = options;
+        _cache = cache;
         _logger = logger ?? NullLogger<AuthService>.Instance;
     }
 
@@ -123,12 +127,15 @@ public sealed class AuthService : IAuthService
 
     public async Task<bool> TrySilentSignInAsync(CancellationToken ct = default)
     {
-        var accessToken = await _refresher.GetValidAccessTokenAsync(forceRefresh: false, ct);
-        if (accessToken is null)
+        // Refresh if the access token is stale; a network miss leaves the store alone, while
+        // a rejected refresh token clears it. The store — not the access token — is the
+        // session: an expired bearer is still a signed-in caregiver who can read cached data.
+        _ = await _refresher.GetValidAccessTokenAsync(forceRefresh: false, ct);
+        var tokens = await _store.GetAsync();
+        if (tokens is null)
             return false;
 
-        var tokens = await _store.GetAsync();
-        _claims = JwtPayloadReader.ReadClaims(tokens?.IdToken);
+        _claims = JwtPayloadReader.ReadClaims(tokens.IdToken);
         return true;
     }
 
@@ -136,8 +143,24 @@ public sealed class AuthService : IAuthService
     {
         var tokens = await _store.GetAsync();
         if (!string.IsNullOrEmpty(tokens?.RefreshToken))
-            await _auth0.RevokeAsync(tokens.RefreshToken, ct);
+        {
+            try
+            {
+                await _auth0.RevokeAsync(tokens.RefreshToken, ct);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                // Local sign-out must still happen offline. Revoke is best-effort — the
+                // live Auth0 client already swallows transport errors, but the interface
+                // does not promise AuthException-only, and a misconfigured build must not
+                // leave tokens and cached health data on the device.
+                _logger.LogWarning(ex, "Token revoke failed; clearing the local session anyway");
+            }
+        }
+
         await _store.ClearAsync();
+        if (_cache is not null)
+            await _cache.ClearAsync(ct);
         _claims = new Dictionary<string, string>(StringComparer.Ordinal);
     }
 }

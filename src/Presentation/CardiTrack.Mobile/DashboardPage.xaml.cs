@@ -221,7 +221,7 @@ public partial class DashboardPage : ContentPage
             _isSyncing = false;
         }
 
-        if (syncError is not null)
+        if (syncError is not null && !_api.LastGetWasCached)
             await _popups.ShowInfoAsync(syncError, "Couldn't check in");
     }
 
@@ -318,9 +318,13 @@ public partial class DashboardPage : ContentPage
             PausedBannerLabel.Text = $"Monitoring is paused until {until} — we're not collecting data or raising alerts.";
         }
 
+        OfflineBanner.ApplyFrom(_api);
+
         // Stale banner (M1-09c). Suppressed while paused: data is meant to be stale then,
-        // and "pull down to check in" would be advice we can't honour.
+        // and "pull down to check in" would be advice we can't honour. Also suppressed while
+        // offline — the offline banner already says the data is last-known-good.
         var isStale = !data.MonitoringPaused
+            && !OfflineBanner.IsVisible
             && data.LastSyncedAt is { } synced
             && DateTime.UtcNow - DateTime.SpecifyKind(synced, DateTimeKind.Utc) > StaleThreshold;
         var wasStale = StaleBanner.IsVisible;

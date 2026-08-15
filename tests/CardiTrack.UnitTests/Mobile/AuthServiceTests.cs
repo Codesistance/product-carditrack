@@ -1,6 +1,7 @@
 using System.Text;
 using CardiTrack.Mobile.Core.Auth;
 using CardiTrack.Mobile.Core.Configuration;
+using CardiTrack.Mobile.Core.Offline;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
 
@@ -160,5 +161,55 @@ public class AuthServiceTests
             () => sut.SignInWithProviderAsync(Auth0Options.GoogleConnection));
 
         await _store.DidNotReceiveWithAnyArgs().SaveAsync(default!);
+    }
+
+    [Fact]
+    public async Task SilentSignIn_RestoresClaims_WhenTokensAreStillInTheStore()
+    {
+        _store.GetAsync().Returns(Tokens(Jwt("""{"name":"Ada","email":"a@b.com"}""")));
+        _refresher.GetValidAccessTokenAsync(false, Arg.Any<CancellationToken>()).Returns("access");
+        var sut = CreateSut();
+
+        Assert.True(await sut.TrySilentSignInAsync());
+        Assert.Equal("Ada", sut.CurrentUserName);
+    }
+
+    [Fact]
+    public async Task SilentSignIn_StillRestoresSession_WhenRefreshMissesTheNetwork()
+    {
+        // TokenRefresher keeps the store on AuthErrorCode.Network; the access token it
+        // returns may be expired. The session is the stored tokens, not a live bearer.
+        _store.GetAsync().Returns(Tokens(Jwt("""{"name":"Ada","email":"a@b.com"}""")));
+        _refresher.GetValidAccessTokenAsync(false, Arg.Any<CancellationToken>()).Returns((string?)null);
+        var sut = CreateSut();
+
+        Assert.True(await sut.TrySilentSignInAsync());
+        Assert.Equal("a@b.com", sut.CurrentUserEmail);
+    }
+
+    [Fact]
+    public async Task SilentSignIn_ReturnsFalse_WhenTheStoreIsEmpty()
+    {
+        _store.GetAsync().Returns((AuthTokens?)null);
+        _refresher.GetValidAccessTokenAsync(false, Arg.Any<CancellationToken>()).Returns((string?)null);
+        var sut = CreateSut();
+
+        Assert.False(await sut.TrySilentSignInAsync());
+        Assert.Null(sut.CurrentUserEmail);
+    }
+
+    [Fact]
+    public async Task SignOut_ClearsTheOfflineCache_EvenWhenRevokeThrowsUnexpectedly()
+    {
+        var cache = Substitute.For<IOfflineReadCache>();
+        _store.GetAsync().Returns(Tokens());
+        _auth0.RevokeAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(new InvalidOperationException("client exploded"));
+        var sut = new AuthService(_auth0, _store, _refresher, _browser, Options, cache);
+
+        await sut.SignOutAsync();
+
+        await _store.Received(1).ClearAsync();
+        await cache.Received(1).ClearAsync(Arg.Any<CancellationToken>());
     }
 }

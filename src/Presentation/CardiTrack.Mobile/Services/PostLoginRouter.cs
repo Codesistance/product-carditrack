@@ -1,3 +1,4 @@
+using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Mobile.Core.Api;
 using CardiTrack.Mobile.Core.Onboarding;
 using CardiTrack.Mobile.Onboarding;
@@ -27,7 +28,32 @@ public sealed class PostLoginRouter
 
     public async Task RouteAsync(Page current, CancellationToken ct = default)
     {
-        var status = await _api.GetOnboardingStatusAsync(ct);
+        OnboardingStatusResponse status;
+        try
+        {
+            status = await _api.GetOnboardingStatusAsync(ct);
+        }
+        catch (ApiException ex) when (ex.IsNetworkFailure)
+        {
+            // Last-known-good GET cache is the usual path; this is the upgrade/first-offline
+            // case where onboarding status was never snapshotted but a previous session
+            // already chose a CardiMember. Don't resume the device wizard — it needs the
+            // network, and the dashboard's connect card is still there.
+            if (!Guid.TryParse(Preferences.Default.Get("PrimaryCardiMemberId", string.Empty), out _))
+                throw;
+
+            _logger?.LogInformation(
+                "Onboarding status unreachable; opening the dashboard from the remembered CardiMember");
+            status = new OnboardingStatusResponse
+            {
+                HasOrganization = true,
+                HasUserAccount = true,
+                HasCardiMember = true,
+                HasDeviceConnected = true,
+                IsOnboardingComplete = true,
+            };
+        }
+
         var route = PostLoginRouteResolver.Resolve(
             status, Preferences.Default.Get(WizardLauncher.ResumeDismissedKey, false));
 

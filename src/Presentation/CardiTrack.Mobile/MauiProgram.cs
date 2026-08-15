@@ -4,6 +4,7 @@ using CardiTrack.Mobile.Core.Auth;
 using CardiTrack.Mobile.Core.Configuration;
 using CardiTrack.Mobile.Core.Http;
 using CardiTrack.Mobile.Core.Notifications;
+using CardiTrack.Mobile.Core.Offline;
 using CardiTrack.Mobile.Core.Onboarding;
 using CardiTrack.Mobile.Services;
 using CardiTrack.Shared.Http;
@@ -78,6 +79,10 @@ public static class MauiProgram
 
         builder.Services.AddSingleton<ITokenStore, SecureTokenStore>();
         builder.Services.AddSingleton<ISecureKeyValueStore, SecureStorageKeyValueStore>();
+        builder.Services.AddSingleton<IOfflineReadCache>(sp =>
+            new EncryptedFileOfflineReadCache(
+                Path.Combine(FileSystem.AppDataDirectory, "offline-cache"),
+                sp.GetRequiredService<ISecureKeyValueStore>()));
         builder.Services.AddSingleton<IDraftPhotoStore>(_ => new FileDraftPhotoStore(FileSystem.AppDataDirectory));
         builder.Services.AddSingleton<CardiMemberDraftStore>();
         builder.Services.AddSingleton<ITokenRefresher, TokenRefresher>();

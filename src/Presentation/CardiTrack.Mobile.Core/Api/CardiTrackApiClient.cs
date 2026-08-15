@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using CardiTrack.Application.DTOs.Requests;
 using CardiTrack.Application.DTOs.Responses;
+using CardiTrack.Mobile.Core.Offline;
 using CardiTrack.Shared.Json;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -18,11 +19,19 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
     private readonly HttpClient _http;
+    private readonly IOfflineReadCache? _cache;
     private readonly ILogger<CardiTrackApiClient> _logger;
 
-    public CardiTrackApiClient(HttpClient http, ILogger<CardiTrackApiClient>? logger = null)
+    public bool LastGetWasCached { get; private set; }
+    public DateTimeOffset? LastCachedAt { get; private set; }
+
+    public CardiTrackApiClient(
+        HttpClient http,
+        IOfflineReadCache? cache = null,
+        ILogger<CardiTrackApiClient>? logger = null)
     {
         _http = http;
+        _cache = cache;
         _logger = logger ?? NullLogger<CardiTrackApiClient>.Instance;
     }
 
@@ -281,6 +290,9 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
 
     private async Task<T> GetAsync<T>(string path, CancellationToken ct)
     {
+        LastGetWasCached = false;
+        LastCachedAt = null;
+
         HttpResponseMessage response;
         try
         {
@@ -288,9 +300,22 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
         }
         catch (Exception ex) when (IsTransport(ex))
         {
+            if (ex is OperationCanceledException && ct.IsCancellationRequested)
+                throw NetworkError("GET", path, ex, ct);
+
+            if (await TryReadCacheAsync<T>(path, ct) is { } cached)
+                return cached;
+
             throw NetworkError("GET", path, ex, ct);
         }
-        return await ReadEnvelopeAsync<T>("GET", path, response, ct);
+
+        if (!response.IsSuccessStatusCode)
+            throw await MapErrorAsync("GET", path, response, ct);
+
+        var body = await response.Content.ReadAsStringAsync(ct);
+        var value = UnwrapEnvelope<T>("GET", path, body, response.StatusCode);
+        await TrySaveCacheAsync(path, body, ct);
+        return value;
     }
 
     private async Task<TResponse> PostAsync<TRequest, TResponse>(string path, TRequest body, CancellationToken ct)
@@ -364,16 +389,69 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
             throw await MapErrorAsync(method, path, response, ct);
 
         var body = await response.Content.ReadAsStringAsync(ct);
+        return UnwrapEnvelope<T>(method, path, body, response.StatusCode);
+    }
+
+    private T UnwrapEnvelope<T>(string method, string path, string body, HttpStatusCode statusCode)
+    {
         if (!JsonUtility.TryDeserialize<ApiResponse<T>>(body, out var envelope, out var jsonErrors)
             || envelope!.Data is null)
         {
             _logger.LogError("API {Method} {Path} returned {StatusCode} with an empty or unreadable envelope: {JsonErrors}. Payload: {Payload}",
-                method, path, (int)response.StatusCode,
+                method, path, (int)statusCode,
                 jsonErrors.Count == 0 ? "no data in envelope" : string.Join("; ", jsonErrors),
                 JsonUtility.PreviewOf(body));
-            throw new ApiException(response.StatusCode, "The server returned an empty response.");
+            throw new ApiException(statusCode, "The server returned an empty response.");
         }
         return envelope.Data;
+    }
+
+    private async Task<T?> TryReadCacheAsync<T>(string path, CancellationToken ct)
+    {
+        if (_cache is null)
+            return default;
+
+        OfflineCacheEntry? entry;
+        try
+        {
+            entry = await _cache.TryGetAsync(path, ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Offline cache read failed for GET {Path}", path);
+            return default;
+        }
+
+        if (entry is null)
+            return default;
+
+        if (!JsonUtility.TryDeserialize<ApiResponse<T>>(entry.Payload, out var envelope, out _)
+            || envelope!.Data is null)
+        {
+            _logger.LogWarning("Offline cache entry for GET {Path} was unreadable; ignoring it", path);
+            return default;
+        }
+
+        LastGetWasCached = true;
+        LastCachedAt = entry.CachedAt;
+        _logger.LogInformation("Serving GET {Path} from the on-device cache (saved {CachedAt:o})",
+            path, entry.CachedAt);
+        return envelope.Data;
+    }
+
+    private async Task TrySaveCacheAsync(string path, string body, CancellationToken ct)
+    {
+        if (_cache is null)
+            return;
+
+        try
+        {
+            await _cache.SaveAsync(path, body, ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Offline cache write failed for GET {Path}", path);
+        }
     }
 
     private async Task<ApiException> MapErrorAsync(string method, string path, HttpResponseMessage response, CancellationToken ct)
