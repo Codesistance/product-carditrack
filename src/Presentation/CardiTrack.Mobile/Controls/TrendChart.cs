@@ -76,7 +76,7 @@ public sealed class TrendChart : GraphicsView
     /// are, and it is what explains a line that starts partway across the window.
     /// </para>
     /// </remarks>
-    public static bool HasBridgedGap(IReadOnlyList<MetricPoint> points)
+    public static bool HasMissingDays(IReadOnlyList<MetricPoint> points)
     {
         var reported = false;
         var missing = false;

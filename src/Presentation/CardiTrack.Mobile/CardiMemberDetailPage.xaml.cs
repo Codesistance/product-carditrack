@@ -240,10 +240,26 @@ public partial class CardiMemberDetailPage : ContentPage
     /// <summary>
     /// Runs one of the page's follow-up loads and puts the caregiver's place back afterwards.
     /// </summary>
+    /// <remarks>
+    /// The restore is in a finally, and the load's failure is swallowed here rather than left to
+    /// fault a discarded task. Each of these already handles the API refusing; what is left is the
+    /// unexpected, and losing the caregiver's place is not the right response to it — the reading
+    /// position is worth restoring precisely when something went wrong above it.
+    /// </remarks>
     private async Task LoadThenRestoreAsync(Task load, ScrollAnchor? anchor)
     {
-        await load;
-        await RestoreScrollAnchorAsync(anchor);
+        try
+        {
+            await load;
+        }
+        catch (Exception ex)
+        {
+            ScreenRefresh.LogFailure(ex, this, "loading a follow-up section");
+        }
+        finally
+        {
+            await RestoreScrollAnchorAsync(anchor);
+        }
     }
 
     /// <summary>

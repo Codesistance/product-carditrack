@@ -396,7 +396,7 @@ public sealed class MetricTrendCard : ContentView
 
         // Named only on a window that has them, and read off the same points the chart is handed so
         // the key can never claim a mark the plot did not draw.
-        var hasGap = TrendChart.HasBridgedGap(points);
+        var hasGap = TrendChart.HasMissingDays(points);
         _noDataLegend.IsVisible = hasGap;
 
         // A hidden entry leaves its column empty rather than absent, and the gap either side of it
