@@ -59,27 +59,39 @@ public sealed class TrendChart : GraphicsView
     }
 
     /// <summary>
-    /// Whether this window contains days the line will bridge rather than measure — the runs
-    /// <see cref="TrendChartDrawable"/> bounds with break marks. Days before the member's first
-    /// reading do not count: the line starts where the data does, so nothing there is bridged.
+    /// Whether this window has any day with no reading, given at least one day that has — the runs
+    /// <see cref="TrendChartDrawable"/> shades.
     /// </summary>
     /// <remarks>
-    /// Asked by <see cref="MetricTrendCard"/> so the key names the marks only on a window that has
-    /// them. It reads the same points the chart is handed, on the same rule, so the two cannot
-    /// disagree about whether the chart has a gap on it.
+    /// <para>
+    /// Asked by <see cref="MetricTrendCard"/> so the key names the shade only on a window that
+    /// carries one. It reads the same points the chart is handed, on the same rule, so the two
+    /// cannot disagree about whether the chart has a gap on it — and if they did, the key would be
+    /// the one that was wrong, since the chart draws from the geometry.
+    /// </para>
+    /// <para>
+    /// Days before the member's first reading count. They did not when the marks were break marks
+    /// bounding a bridge — the line starts where the data does, so there was no bridge there to
+    /// explain — but the shade means "nothing was recorded here", which is exactly what those days
+    /// are, and it is what explains a line that starts partway across the window.
+    /// </para>
     /// </remarks>
     public static bool HasBridgedGap(IReadOnlyList<MetricPoint> points)
     {
         var reported = false;
+        var missing = false;
+
         foreach (var point in points)
         {
             if (point.Value is not null)
                 reported = true;
-            else if (reported)
-                return true;
+            else
+                missing = true;
         }
 
-        return false;
+        // No reading at all is not a window with gaps in it; the card shows its own "not enough
+        // readings" copy and never draws a chart to key.
+        return reported && missing;
     }
 
     /// <summary>
@@ -106,7 +118,8 @@ public sealed class TrendChart : GraphicsView
 /// <summary>
 /// One shaded run of days with no reading: where it was drawn, and which days it covers.
 /// </summary>
-internal readonly record struct NoDataSpan(float Left, float Right, DateOnly From, DateOnly To, int Days)
+internal readonly record struct NoDataSpan(
+    float Left, float Right, DateOnly From, DateOnly To, int Days, bool Bridged)
 {
     /// <summary>
     /// What a tap on the run says. Names the days rather than counting them alone: "no readings
@@ -114,11 +127,28 @@ internal readonly record struct NoDataSpan(float Left, float Right, DateOnly Fro
     /// thing they want — a weekend the watch was off the wrist reads differently from three days
     /// mid-week.
     /// </summary>
-    public string Description =>
-        Days == 1
-            ? $"No readings on {From:MMM d}. The line is drawn straight across it."
-            : $"No readings from {From:MMM d} to {To:MMM d} — {Days} days. The line is drawn "
-              + "straight across them.";
+    /// <remarks>
+    /// The second sentence differs because the drawing does. A run inside the window is bridged:
+    /// the line is carried flat across it, and saying so is what stops that flat stretch being
+    /// read as a genuinely steady week. A run before the first reading is not bridged — the line
+    /// starts where the data does — so telling the caregiver it was drawn across would describe a
+    /// stroke that is not on their screen.
+    /// </remarks>
+    public string Description
+    {
+        get
+        {
+            var days = Days == 1
+                ? $"No readings on {From:MMM d}."
+                : $"No readings from {From:MMM d} to {To:MMM d} — {Days} days.";
+
+            var line = Bridged
+                ? Days == 1 ? " The line is drawn straight across it." : " The line is drawn straight across them."
+                : " The line starts where the readings do.";
+
+            return days + line;
+        }
+    }
 }
 
 /// <summary>
@@ -503,6 +533,30 @@ internal sealed class TrendChartDrawable : IDrawable
 
         float X(int index) => left + plotWidth * index / (Points.Count - 1);
 
+        // The days before the member's first reading. The old break marks skipped these on the
+        // grounds that the line starts where the data does, so there was no bridged run to fence —
+        // true of a mark that meant "the line here was drawn, not measured", and false of a shade
+        // that means "nothing was recorded here". They are days with no readings like any other,
+        // and shading them is what explains why the line starts partway across the window instead
+        // of at the left edge. Open at the left for the same reason a run still missing at the end
+        // is open at the right: it runs off the window, which is what it does.
+        if (first > 0)
+        {
+            var opensAt = (X(first - 1) + X(first)) / 2f;
+            canvas.FillColor = shade.WithAlpha(TrendChartInk.NoDataFillAlpha);
+            canvas.FillRectangle(dirtyRect.Left, dirtyRect.Top, opensAt - dirtyRect.Left, dirtyRect.Height);
+
+            canvas.StrokeColor = shade.WithAlpha(TrendChartInk.NoDataBoundAlpha);
+            canvas.StrokeSize = TrendChartInk.NoDataThickness;
+            canvas.StrokeDashPattern = TrendChartInk.NoDataBoundDashes;
+            canvas.StrokeLineCap = LineCap.Butt;
+            canvas.DrawLine(opensAt, dirtyRect.Top, opensAt, dirtyRect.Bottom);
+            canvas.StrokeDashPattern = null;
+
+            _noDataSpans.Add(new NoDataSpan(
+                dirtyRect.Left, opensAt, Points[0].Date, Points[first - 1].Date, first, Bridged: false));
+        }
+
         var at = first + 1;
         while (at < Points.Count)
         {
@@ -536,7 +590,7 @@ internal sealed class TrendChartDrawable : IDrawable
             canvas.StrokeDashPattern = null;
 
             _noDataSpans.Add(new NoDataSpan(
-                from, to, Points[runStart].Date, Points[runEnd].Date, runEnd - runStart + 1));
+                from, to, Points[runStart].Date, Points[runEnd].Date, runEnd - runStart + 1, Bridged: true));
         }
     }
 
