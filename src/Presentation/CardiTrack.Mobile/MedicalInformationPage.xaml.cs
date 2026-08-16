@@ -49,7 +49,7 @@ public partial class MedicalInformationPage : ContentPage
     }
 
     private async void OnBackTapped(object? sender, EventArgs e) =>
-        await this.GoBackAsync($"{CardiMemberDetailPage.Route}?memberId={_memberId}");
+        await this.GoBackAsync($"{AppShell.DashboardRoute}/{CardiMemberDetailPage.Route}?memberId={_memberId}");
 
     private void OnRetryClicked(object? sender, EventArgs e) => _ = LoadAsync();
 
