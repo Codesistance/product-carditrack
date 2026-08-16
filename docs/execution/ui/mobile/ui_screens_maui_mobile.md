@@ -994,10 +994,10 @@ This is the most safety-critical screen in the app. Design for urgency and immed
 **Exit:** ← Previous screen (back) | → M1-14 Edit CardiMember (edit button) | → M1-15 Device Management ("Manage Device") | → M1-10 Alerts ("View Alerts")
 
 **Profile Section (as built):**
-- Display picture (`MemberAvatar`, 80dp) — photo, or initials when there isn't one
+- Display picture (`MemberAvatar`, 80dp) — initials as built (`PhotoUrl` is always null; there is no photo storage or upload path). The control already renders a photo when one exists.
 - Name
 - Age & relationship: "78 years old • Dad"
-- Connection status on the third row: a red / amber / blue / green dot (the same data-pipeline freshness as the dashboard — no sync in 12 h / 4 h / synced / processed) in front of the last-contact age ("Updated 4 minutes ago"). Hidden while monitoring is paused; the paused banner is the status then. Device count lives on M1-15, not here.
+- Connection status on the third row: a red / amber / blue / green dot (the same data-pipeline freshness as the dashboard — no sync in 12 h / 4 h / synced / processed) in front of the last-contact age ("Updated 4 minutes ago"). The whole row is hidden while monitoring is paused — a freshness colour would misread a deliberate pause as a connection gap, and the paused banner is the status then. Device count lives on M1-15, not here.
 
 **Contact Info Card:**
 - Emergency contact: name, phone (tappable to call) — plus the member's own phone row, also tappable to call
