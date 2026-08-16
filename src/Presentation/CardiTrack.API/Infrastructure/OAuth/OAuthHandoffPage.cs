@@ -12,11 +12,19 @@ namespace CardiTrack.API.Infrastructure.OAuth;
 /// http(s). When it is dropped nothing fires the deep link, so the in-app browser is never
 /// dismissed and the user is left looking at the provider's consent page with the app still
 /// waiting behind it. Performing the scheme navigation from the page, with a tappable
-/// fallback, is the portable form and gives us somewhere to say the tab is finished with.
+/// fallback, is the portable form. The page then closes itself so the tab cannot sit in
+/// the Android task for "Go to Dashboard" to walk back into.
 /// </summary>
 internal static class OAuthHandoffPage
 {
-    /// <summary>Sends the browser into the app deep link, falling back to a tappable link.</summary>
+    /// <summary>
+    /// Android application id. Chrome Custom Tabs honour an <c>intent://</c> URL with this
+    /// package by launching the app and dropping the tab; a bare custom-scheme replace often
+    /// leaves the tab in the task.
+    /// </summary>
+    internal const string AndroidPackage = "com.codesistance.carditrack.mobile";
+
+    /// <summary>Sends the browser into the app deep link, then closes this tab.</summary>
     public static ContentResult Handoff(HttpResponse response, string appUri)
     {
         // Both encoders are needed: the same URI is emitted once into markup and once into a
@@ -24,14 +32,30 @@ internal static class OAuthHandoffPage
         // percent-encoded by the caller.
         var href = HtmlEncoder.Default.Encode(appUri);
         var literal = JavaScriptEncoder.Default.Encode(appUri);
+        var intentLiteral = JavaScriptEncoder.Default.Encode(ToAndroidIntentUri(appUri));
 
         return Render(response, StatusCodes.Status200OK, $$"""
             <h1>Taking you back to CardiTrack…</h1>
-            <p>You can close this tab once the app reopens.</p>
+            <p>This tab closes once the app reopens.</p>
             <a class="cta" href="{{href}}">Open CardiTrack</a>
-            <noscript><p class="note">Tap <strong>Open CardiTrack</strong> to finish connecting.</p></noscript>
+            <noscript><p class="note">Tap <strong>Open CardiTrack</strong> to finish connecting, then close this tab.</p></noscript>
             <script>
-              try { location.replace("{{literal}}"); } catch (e) { /* the link below is the fallback */ }
+              (function () {
+                var app = "{{literal}}";
+                var intent = "{{intentLiteral}}";
+                try {
+                  if (intent && /Android/i.test(navigator.userAgent))
+                    location.replace(intent);
+                  else
+                    location.replace(app);
+                } catch (e) {
+                  try { location.replace(app); } catch (e2) { /* the link below is the fallback */ }
+                }
+                // Custom Tabs honour the deep link but often keep this document in the task.
+                // Close after a beat so the app has taken the foreground; a tab that stays
+                // open is what "Go to Dashboard" used to walk back into.
+                setTimeout(function () { try { window.close(); } catch (e) {} }, 400);
+              })();
             </script>
             """);
     }
@@ -46,6 +70,19 @@ internal static class OAuthHandoffPage
             <p>{{HtmlEncoder.Default.Encode(message)}}</p>
             <p class="note">Head back to CardiTrack and start the connection again. You can close this tab.</p>
             """);
+
+    /// <summary>
+    /// <c>carditrack://oauth/callback?…</c> → Chrome's intent URL that names our package, so
+    /// the Custom Tab hands off and can close. Unparseable input is returned unchanged so the
+    /// page still has a deep link to try.
+    /// </summary>
+    internal static string ToAndroidIntentUri(string appUri)
+    {
+        if (!Uri.TryCreate(appUri, UriKind.Absolute, out var uri) || string.IsNullOrEmpty(uri.Scheme))
+            return appUri;
+
+        return $"intent://{uri.Host}{uri.PathAndQuery}#Intent;scheme={uri.Scheme};package={AndroidPackage};end";
+    }
 
     private static ContentResult Render(HttpResponse response, int statusCode, string body)
     {

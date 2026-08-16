@@ -1,4 +1,5 @@
 using CardiTrack.Application.DTOs.Responses;
+using CardiTrack.Mobile.Services;
 
 namespace CardiTrack.Mobile.Onboarding;
 
@@ -60,20 +61,72 @@ public sealed class WizardContext
         : current.Navigation.PopModalAsync();
 
     /// <summary>
-    /// Terminal exit for the steps whose button names the dashboard. <see cref="FinishAsync"/>
-    /// alone would only unwind the modal, landing back on whatever launched the wizard —
-    /// device management, say — which is not what the button offered. As onboarding root the
-    /// fresh shell opens on the dashboard tab already, so only the modal case has to navigate.
+    /// Terminal exit for the step whose button names the dashboard. Always lands on the
+    /// dashboard tab — never on the OAuth browser that authorized the device, and never on
+    /// whatever launched the wizard (device management, a post-login resume).
     /// </summary>
     public async Task GoToDashboardAsync(Page current)
     {
         ExitedToDashboard = true;
-        await FinishAsync(current);
 
-        // Shell.Current is null for the onboarding-root path until the swap settles, and the
-        // shell it would resolve to is already showing the dashboard, so this is modal-only.
-        if (Origin == WizardOrigin.Modal && Shell.Current is { } shell)
-            await shell.GoToAsync(AppShell.DashboardRoute);
+        // Custom Tabs left in the Android task would otherwise become the activity "Go to
+        // Dashboard" walks back into. Dismiss them before we swap the root or pop the modal.
+        AppForeground.BringToFront();
+
+        if (Origin == WizardOrigin.OnboardingRoot)
+        {
+            var shell = new AppShell();
+            await MainThread.InvokeOnMainThreadAsync(() =>
+            {
+                WindowNavigation.SetRootPage(current, shell);
+            });
+            await GoToDashboardTabAsync(shell);
+            return;
+        }
+
+        await current.Navigation.PopModalAsync();
+        if (Shell.Current is { } currentShell)
+            await GoToDashboardTabAsync(currentShell);
+    }
+
+    /// <summary>
+    /// Absolute tab route, not ".." and not a coincidence of which page is underneath the
+    /// modal. Waits for the shell to load when this is a freshly rooted AppShell, so we do
+    /// not race handler creation the way a same-breath GoToAsync would on Android.
+    /// </summary>
+    private static async Task GoToDashboardTabAsync(Shell shell)
+    {
+        if (!shell.IsLoaded)
+        {
+            var loaded = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            void OnLoaded(object? sender, EventArgs e)
+            {
+                shell.Loaded -= OnLoaded;
+                loaded.TrySetResult();
+            }
+            shell.Loaded += OnLoaded;
+            if (shell.IsLoaded)
+            {
+                shell.Loaded -= OnLoaded;
+                loaded.TrySetResult();
+            }
+            else
+            {
+                // No window (tests, a failed root swap) would leave this waiting forever.
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(3));
+                try
+                {
+                    await loaded.Task.WaitAsync(cts.Token);
+                }
+                catch (OperationCanceledException)
+                {
+                    shell.Loaded -= OnLoaded;
+                    return;
+                }
+            }
+        }
+
+        await shell.GoToAsync(AppShell.DashboardRoute);
     }
 
     /// <summary>Back out from the bottom of the wizard stack. As onboarding root there is nowhere to go.</summary>

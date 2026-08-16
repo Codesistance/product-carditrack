@@ -1,4 +1,5 @@
 using CardiTrack.API.Controllers;
+using CardiTrack.API.Infrastructure.OAuth;
 using CardiTrack.API.Infrastructure.UserContext;
 using CardiTrack.Application.DTOs.Requests;
 using CardiTrack.Application.Interfaces.Services;
@@ -60,6 +61,12 @@ public class DeviceOAuthBounceTests
         // A Location header naming a custom scheme is dropped by browsers that only forward
         // http(s), so the navigation has to happen from the page itself.
         Assert.Contains("location.replace", page.Content);
+        // The tab that ran this page used to stay in the Android task, so "Go to Dashboard"
+        // walked back into it. Close it after the deep link fires; on Android prefer the
+        // intent:// form Chrome Custom Tabs honour by dropping the tab.
+        Assert.Contains("window.close", page.Content);
+        Assert.Contains("scheme=carditrack", page.Content);
+        Assert.Contains("package=com.codesistance.carditrack.mobile", page.Content);
         Assert.Equal("no-store", sut.Response.Headers.CacheControl);
         Assert.Equal("no-referrer", sut.Response.Headers["Referrer-Policy"]);
     }
@@ -113,5 +120,15 @@ public class DeviceOAuthBounceTests
         // Nothing to hand off to, and nothing that could leak the code onwards.
         Assert.DoesNotContain("carditrack://", page.Content!);
         Assert.DoesNotContain("auth_code", page.Content);
+        // A failed bounce has no deep link — don't auto-close the tab over the error.
+        Assert.DoesNotContain("window.close", page.Content);
     }
+
+    [Theory]
+    [InlineData(
+        "carditrack://oauth/callback?state=s&code=c",
+        "intent://oauth/callback?state=s&code=c#Intent;scheme=carditrack;package=com.codesistance.carditrack.mobile;end")]
+    [InlineData("not-a-uri", "not-a-uri")]
+    public void AndroidIntentUri_NamesTheAppPackage(string appUri, string expected) =>
+        Assert.Equal(expected, OAuthHandoffPage.ToAndroidIntentUri(appUri));
 }

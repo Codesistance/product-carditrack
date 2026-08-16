@@ -1,6 +1,7 @@
 using CardiTrack.Application.DTOs.Requests;
 using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Mobile.Core.Api;
+using CardiTrack.Mobile.Core.Auth;
 using CardiTrack.Mobile.Core.Devices;
 using CardiTrack.Mobile.Services;
 using Microsoft.Extensions.Logging;
@@ -19,6 +20,7 @@ public partial class DeviceConnectionPage : ContentPage
     public const string CallbackUri = "carditrack://oauth/callback";
 
     private readonly ICardiTrackApiClient _api;
+    private readonly IBrowserAuthenticator _browser;
     private readonly IPopupService _popups;
     private readonly ILogger<DeviceConnectionPage> _logger;
     private readonly WizardContext _ctx;
@@ -29,6 +31,7 @@ public partial class DeviceConnectionPage : ContentPage
     {
         InitializeComponent();
         _api = ServiceHelper.GetRequiredService<ICardiTrackApiClient>();
+        _browser = ServiceHelper.GetRequiredService<IBrowserAuthenticator>();
         _popups = ServiceHelper.GetRequiredService<IPopupService>();
         _logger = ServiceHelper.GetRequiredService<ILogger<DeviceConnectionPage>>();
         _ctx = ctx;
@@ -56,15 +59,13 @@ public partial class DeviceConnectionPage : ContentPage
                 RedirectUri = CallbackUri,
             });
 
-            var authResult = await WebAuthenticator.Default.AuthenticateAsync(new WebAuthenticatorOptions
-            {
-                Url = new Uri(initiation.AuthorizationUrl),
-                CallbackUrl = new Uri(CallbackUri),
-            });
+            var authResult = await _browser.AuthenticateAsync(
+                new Uri(initiation.AuthorizationUrl),
+                new Uri(CallbackUri));
 
             // The state token is the CSRF binding, so it is checked before anything else is
             // trusted — including which error the callback claims to be reporting.
-            authResult.Properties.TryGetValue("state", out var state);
+            authResult.TryGetValue("state", out var state);
             if (!string.Equals(state, initiation.State, StringComparison.Ordinal))
             {
                 _logger.LogWarning("Device OAuth callback carried a state token we didn't issue.");
@@ -74,16 +75,16 @@ public partial class DeviceConnectionPage : ContentPage
 
             // The bounce endpoint forwards a denied or failed authorization rather than ending
             // the response in the browser, so the app is the only place these are surfaced.
-            if (authResult.Properties.TryGetValue("error", out var error) && !string.IsNullOrEmpty(error))
+            if (authResult.TryGetValue("error", out var error) && !string.IsNullOrEmpty(error))
             {
-                authResult.Properties.TryGetValue("error_description", out var description);
+                authResult.TryGetValue("error_description", out var description);
                 _logger.LogInformation(
                     "Device OAuth was not granted: {Error} {Description}", error, description);
                 ShowError(DescribeAuthorizationError(error));
                 return;
             }
 
-            if (!authResult.Properties.TryGetValue("code", out var code) || string.IsNullOrEmpty(code))
+            if (!authResult.TryGetValue("code", out var code) || string.IsNullOrEmpty(code))
             {
                 _logger.LogWarning("Device OAuth callback arrived without an authorization code.");
                 ShowError();
@@ -103,9 +104,12 @@ public partial class DeviceConnectionPage : ContentPage
             Preferences.Default.Remove(WizardLauncher.ResumeDismissedKey);
             await ShowSuccessAsync(device);
         }
-        catch (TaskCanceledException)
+        catch (OperationCanceledException)
         {
-            // User closed the browser sheet — back to the default state, no error banner.
+            // Browser sheet dismissed — back to the default state, no error banner.
+            // Covers both WebAuthenticator's own TaskCanceledException and the resume-triggered
+            // cancellation WebBrowserAuthenticator raises when Android dismisses the Custom Tab
+            // without a callback.
         }
         catch (ApiException ex)
         {

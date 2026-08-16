@@ -2,6 +2,7 @@ using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Mobile.Controls;
 using CardiTrack.Mobile.Core.Api;
 using CardiTrack.Mobile.Core.Auth;
+using CardiTrack.Mobile.Core.Navigation;
 using CardiTrack.Mobile.Core.Onboarding;
 using CardiTrack.Mobile.Onboarding;
 using CardiTrack.Mobile.Services;
@@ -56,6 +57,13 @@ public partial class DashboardPage : ContentPage
         // the app was edge-triggered — a caregiver watching the dashboard saw nothing move until
         // they pulled it down themselves.
         this.RefreshEvery(PeriodicRefresh.LiveDataInterval, RefreshUnattendedAsync);
+
+        TabNavigation.DashboardExitArmed += OnDashboardExitArmed;
+        Unloaded += (_, _) =>
+        {
+            TabNavigation.DashboardExitArmed -= OnDashboardExitArmed;
+            _exitHintCts?.Cancel();
+        };
     }
 
     protected override void OnAppearing()
@@ -72,6 +80,44 @@ public partial class DashboardPage : ContentPage
         // repeated: Android raises OnAppearing again on its way back to the foreground, where iOS
         // does not, so without it a resume would fetch twice on one platform and once on the other.
         _ = RefreshUnattendedAsync();
+    }
+
+    protected override void OnDisappearing()
+    {
+        base.OnDisappearing();
+        HideExitHint();
+        TabNavigation.DisarmDashboardExit();
+    }
+
+    private CancellationTokenSource? _exitHintCts;
+
+    private void OnDashboardExitArmed(object? sender, EventArgs e)
+    {
+        ExitHintBanner.IsVisible = true;
+        _exitHintCts?.Cancel();
+        _exitHintCts = new CancellationTokenSource();
+        var ct = _exitHintCts.Token;
+        _ = HideExitHintAfterAsync(ct);
+    }
+
+    private async Task HideExitHintAfterAsync(CancellationToken ct)
+    {
+        try
+        {
+            await Task.Delay(ExitConfirmation.Window, ct);
+        }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
+
+        HideExitHint();
+    }
+
+    private void HideExitHint()
+    {
+        _exitHintCts?.Cancel();
+        ExitHintBanner.IsVisible = false;
     }
 
     // Soft email-verification capture: nudge only, never a gate. Claim comes from the

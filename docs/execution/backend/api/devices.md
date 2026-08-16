@@ -124,9 +124,10 @@ Anonymous provider-facing redirect target (the "bounce"). Google redirects the w
 
 ```
 200 text/html   →  location.replace("carditrack://oauth/callback?state=...&code=...")
+                 →  Android: intent://…#Intent;scheme=carditrack;package=…;end, then window.close()
 ```
 
-A `Location:` header naming a custom scheme is honoured by Chrome Custom Tabs and `ASWebAuthenticationSession` but dropped by browsers and proxies that only forward http(s), so the navigation is done from the page, with a tappable fallback link. Responses are `Cache-Control: no-store` and `Referrer-Policy: no-referrer` — the URL carries an authorization code.
+A `Location:` header naming a custom scheme is honoured by Chrome Custom Tabs and `ASWebAuthenticationSession` but dropped by browsers and proxies that only forward http(s), so the navigation is done from the page, with a tappable fallback link. After the deep link fires the page calls `window.close()` (and on Android prefers Chrome's `intent://` form that names the app package) so the tab does not stay in the task for a later "Go to Dashboard" to walk back into. Responses are `Cache-Control: no-store` and `Referrer-Policy: no-referrer` — the URL carries an authorization code.
 
 **Every outcome hands off to the app**, because the deep link is the only thing that dismisses the in-app browser. When the provider returns no `code`, its `error`/`error_description` are forwarded (`error=invalid_request` when it names none):
 
