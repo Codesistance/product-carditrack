@@ -503,10 +503,10 @@ public partial class DigestGenerationService : IDigestGenerationService
     /// The division of labour is the pipeline's standing rule (docs/llm_design.md): deterministic
     /// code computes every number, the model only phrases them. The averages give the model the
     /// yardstick it never had — a summary once called a member's short night "a good night's
-    /// sleep" because nothing in the prompt said what a normal night was for them — and the
-    /// computed note in <see cref="LastNightAgainstUsual"/> goes further for the one reading a
-    /// family most needs said plainly, so flagging a poor night never rests on the model doing
-    /// its own arithmetic.
+    /// sleep" because nothing in the prompt said what a normal night was for them. The verdict on
+    /// last night goes further still, and now lives with the other computed findings in
+    /// <see cref="DigestInterpretationSignals"/>: this section is the yardstick, that one is what
+    /// was measured against it.
     /// </remarks>
     private static string UsualPatternSection(
         PatternBaseline? baseline, IReadOnlyList<ActivityLog> logs, DateOnly today)
@@ -526,43 +526,17 @@ public partial class DigestGenerationService : IDigestGenerationService
         if (usuals.Count == 0)
             return string.Empty;
 
+        // Only what "usual" means for this member. The verdict on last night used to sit here too,
+        // and has moved into the computed observations — see DigestInterpretationSignals.AddLastNight.
+        // A finding here competes with the ones the prompt tells the model to lead with, and loses;
+        // stating it in both places would just have it said twice.
         var lines = new List<string> { $"Usually: {string.Join("; ", usuals)}." };
-        if (LastNightAgainstUsual(baseline, logs, today) is { } note)
-            lines.Add(note);
 
         return $"""
 
             --- Usual pattern (30-day average) ---
             {string.Join("\n", lines)}
             """ + "\n";
-    }
-
-    /// <summary>
-    /// The computed verdict on last night's sleep against the member's own usual — or null when
-    /// the night sits within the ordinary band, is not on record yet, or there is no sleep
-    /// baseline to read it against. Judged by the same threshold as
-    /// <see cref="StatisticalAlertRules.IrregularSleep"/>, so the summary can never soothe over a
-    /// night the alert engine pages about. Last night is <em>today's</em> row: sleep sessions are
-    /// attributed to the civil day they ended on.
-    /// </summary>
-    private static string? LastNightAgainstUsual(
-        PatternBaseline baseline, IReadOnlyList<ActivityLog> logs, DateOnly today)
-    {
-        if (baseline.AvgSleepMinutes is not > 0
-            || logs.FirstOrDefault(l => l.Date == today)?.SleepMinutes is not { } lastNight)
-        {
-            return null;
-        }
-
-        var average = baseline.AvgSleepMinutes.Value;
-        if (Math.Abs(lastNight - average) <= average * StatisticalAlertRules.DeviationFraction)
-            return null;
-
-        return lastNight < average
-            ? $"Last night's sleep, {Hours(lastNight)} hours, was well short of the usual "
-              + $"{Hours(average)} — a poor night, worth saying plainly."
-            : $"Last night's sleep, {Hours(lastNight)} hours, was well past the usual "
-              + $"{Hours(average)} — noticeably more than usual.";
     }
 
     /// <summary>

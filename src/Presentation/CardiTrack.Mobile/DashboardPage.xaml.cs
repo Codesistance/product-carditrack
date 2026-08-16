@@ -101,7 +101,7 @@ public partial class DashboardPage : ContentPage
     }
 
     private async void OnSleepConcernTapped(object? sender, TappedEventArgs e) =>
-        await Shell.Current.GoToAsync(AppShell.AlertsRoute);
+        await Shell.Current.GoToTabAsync(AppShell.AlertsRoute);
 
     /// <summary>
     /// Short, quiet time-of-day line under the caregiver's own name — describes the caregiver's
@@ -244,9 +244,15 @@ public partial class DashboardPage : ContentPage
             }
 
             var data = await _api.GetDashboardAsync(memberId.Value);
+            Apply(data);
+
+            // Committed only once it is actually on screen. Both catches below read _lastData as
+            // "there is already a dashboard here worth keeping", which is only true after Apply
+            // has run: assigning it first meant a fault part-way through Apply left the field set
+            // over a screen that had never been filled in, and the error paths then protected a
+            // skeleton instead of replacing it.
             _lastData = data;
             _lastLoadedUtc = DateTime.UtcNow;
-            Apply(data);
             SetState(DashboardState.Loaded);
 
             // Fire-and-forget, not awaited: the hero card already shows its static per-tier
@@ -268,6 +274,21 @@ public partial class DashboardPage : ContentPage
             }
             // With data already on screen, keep it — pull-to-refresh failing quietly
             // beats blanking the dashboard.
+        }
+        catch (Exception ex)
+        {
+            // Anything that is not the API answering badly — a fault while putting the data on
+            // screen, most likely. This catch exists because without it such a fault is silent and
+            // permanent: it escapes into a fire-and-forget task with nothing observing it, the page
+            // never reaches Loaded, and every retry meets the same data and fails the same way, so
+            // the caregiver is left watching loading placeholders for the rest of the session with
+            // nothing to tap. A monitoring screen may fail, but it has to admit that it failed.
+            ScreenRefresh.LogFailure(ex, this, "while loading");
+            if (_lastData is null)
+            {
+                ErrorDetailLabel.Text = "Something went wrong while showing this dashboard.";
+                SetState(DashboardState.Error);
+            }
         }
         finally
         {
@@ -484,7 +505,7 @@ public partial class DashboardPage : ContentPage
     /// interleaved, so scanning for a health event does not mean wading through housekeeping.
     /// </summary>
     private async void OnBellClicked(object? sender, EventArgs e) =>
-        await Shell.Current.GoToAsync(AppShell.AlertsRoute);
+        await Shell.Current.GoToTabAsync(AppShell.AlertsRoute);
 
     /// <summary>
     /// Lands on M1-10, which is still a placeholder. The link renders anyway: hiding it would
@@ -492,7 +513,7 @@ public partial class DashboardPage : ContentPage
     /// placeholder is the more honest signal that alerting is not finished.
     /// </summary>
     private async void OnViewAllAlertsTapped(object? sender, TappedEventArgs e) =>
-        await Shell.Current.GoToAsync(AppShell.AlertsRoute);
+        await Shell.Current.GoToTabAsync(AppShell.AlertsRoute);
 
     /// <summary>A dashboard recent-alert tile opens the matching detail screen.</summary>
     private async void OnAlertTapped(object? sender, Guid alertId)

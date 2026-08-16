@@ -2,6 +2,7 @@ using CardiTrack.Application.DTOs.Requests;
 using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Domain.Extensions;
 using CardiTrack.Mobile.Controls;
+using CardiTrack.Mobile.Core.Alerts;
 using CardiTrack.Mobile.Core.Api;
 using CardiTrack.Mobile.Services;
 
@@ -25,26 +26,8 @@ public partial class CardiMemberDetailPage : ContentPage
         ("1 week", 168),
     ];
 
-    /// <summary>
-    /// Every metric the trends carousel can show, in the order it swipes: icon, the colour key of
-    /// that icon's own stroke, name, the format its headline reading takes, and the barer format
-    /// its chart's own min/max labels take.
-    /// </summary>
-    /// <remarks>
-    /// The ink is paired with the icon here rather than derived inside the card, because this is
-    /// the one place that already knows a metric is the steps one — matching them anywhere else
-    /// would mean a second table of metric identities to keep in step with this one.
-    /// </remarks>
-    private static readonly (string Icon, string Ink, string Name, string Value, string Axis,
-        Func<DashboardMetrics, DashboardMetric> Select)[] TrendCards =
-    [
-        ("icon_metric_steps.svg", "MetricStepsInk", "Activity", "{0:N0} steps", "{0:N0}", m => m.Steps),
-        ("icon_metric_heart.svg", "MetricHeartInk", "Heart Rate", "{0:N0} bpm", "{0:N0}", m => m.RestingHeartRate),
-        ("icon_metric_sleep.svg", "MetricSleepInk", "Sleep", "{0:0.#} hours", "{0:0.#}", m => m.Sleep),
-        ("icon_metric_temperature.svg", "MetricTemperatureInk", "Skin Temp", "{0:0.#}°C", "{0:0.#}", m => m.Temperature),
-        ("icon_metric_spo2.svg", "MetricSpO2Ink", "Blood Oxygen", "{0:0.#}%", "{0:0.#}", m => m.SpO2),
-        ("icon_metric_breathing.svg", "MetricBreathingInk", "Breathing Rate", "{0:0.#} brpm", "{0:0.#}", m => m.BreathingRate),
-    ];
+    /// <summary>Every metric the carousel swipes through — see <see cref="TrendMetricCatalogue"/>.</summary>
+    private static IReadOnlyList<TrendMetricCatalogue.Entry> TrendCards => TrendMetricCatalogue.All;
 
     private readonly ICardiTrackApiClient _api;
     private readonly IPopupService _popups;
@@ -154,6 +137,14 @@ public partial class CardiMemberDetailPage : ContentPage
     {
         base.OnDisappearing();
         _returningFromPopup = _popups.IsShowing;
+
+        // Where the caregiver was reading on the way out, so returning can put them back. Taken
+        // here and not in the reload because by then the reading is already wrong: popping back
+        // re-attaches and re-measures this page, and whatever the content above has done in the
+        // meantime has already moved the scroll. Measured on device — a caregiver who left from
+        // the Management rows was, by the first line of the reload, three sections higher. On the
+        // way out the layout is still the one they were looking at.
+        _anchorOnLeaving = CaptureScrollAnchor();
     }
 
     private async void OnPullToRefresh(object? sender, EventArgs e)
@@ -191,15 +182,26 @@ public partial class CardiMemberDetailPage : ContentPage
         {
             _member = await _api.GetCardiMemberAsync(_memberId);
             _lastLoadedUtc = DateTime.UtcNow;
+
+            // Taken when the caregiver left if they left, and only otherwise from where the page
+            // sits now. By the time this runs the pop has already re-measured the page, so a
+            // reading taken here is of a scroll position that has moved.
+            var anchor = _anchorOnLeaving ?? CaptureScrollAnchor();
+            _anchorOnLeaving = null;
             Apply(_member);
             SetState(loaded: true);
+            _ = RestoreScrollAnchorAsync(anchor);
 
             // Fire-and-forget, not awaited: Apply already rendered the placeholder summary
             // copy, and the digest read is a separate round trip that shouldn't hold up the
             // rest of the screen or the pull-to-refresh spinner.
-            _ = LoadDigestAsync(_memberId);
-            _ = LoadQuestionnairesAsync(_memberId);
-            _ = LoadAlertPreferencesAsync(_memberId);
+            // Each of these lands above or around where the caregiver is reading and changes the
+            // height of it — the digest rewrites the summary, the questionnaires add or remove a
+            // whole card — so the anchor is re-asserted as each one finishes rather than only
+            // after Apply. Restoring is a no-op when nothing moved.
+            _ = LoadThenRestoreAsync(LoadDigestAsync(_memberId), anchor);
+            _ = LoadThenRestoreAsync(LoadQuestionnairesAsync(_memberId), anchor);
+            _ = LoadThenRestoreAsync(LoadAlertPreferencesAsync(_memberId), anchor);
         }
         catch (ApiException ex)
         {
@@ -214,9 +216,129 @@ public partial class CardiMemberDetailPage : ContentPage
                 await _popups.ShowWarningAsync(ex.Message, "Couldn't refresh");
             }
         }
+        catch (Exception ex)
+        {
+            // The same hole this branch closed on DashboardPage and the medical notes page: a
+            // fault while putting the data on screen escapes into a fire-and-forget OnAppearing
+            // or an async void pull handler, nothing observes it, and the page keeps its skeleton
+            // for the rest of the session with nothing to tap. This one is the busiest Apply in
+            // the app — six trend cards, a digest, banners and the rule list — so it is the most
+            // worth admitting a failure on rather than the least.
+            ScreenRefresh.LogFailure(ex, this, "while loading");
+            if (_member is null)
+            {
+                ErrorDetailLabel.Text = "Something went wrong while showing this page.";
+                SetState(error: true);
+            }
+        }
         finally
         {
             _isLoading = false;
+        }
+    }
+
+    /// <summary>
+    /// Runs one of the page's follow-up loads and puts the caregiver's place back afterwards.
+    /// </summary>
+    /// <remarks>
+    /// The restore is in a finally, and the load's failure is swallowed here rather than left to
+    /// fault a discarded task. Each of these already handles the API refusing; what is left is the
+    /// unexpected, and losing the caregiver's place is not the right response to it — the reading
+    /// position is worth restoring precisely when something went wrong above it.
+    /// </remarks>
+    private async Task LoadThenRestoreAsync(Task load, ScrollAnchor? anchor)
+    {
+        try
+        {
+            await load;
+        }
+        catch (Exception ex)
+        {
+            ScreenRefresh.LogFailure(ex, this, "loading a follow-up section");
+        }
+        finally
+        {
+            await RestoreScrollAnchorAsync(anchor);
+        }
+    }
+
+    /// <summary>
+    /// The section that was under the top of the viewport, and how far past its own top the
+    /// viewport had gone.
+    /// </summary>
+    private readonly record struct ScrollAnchor(View Section, double PastTop);
+
+    /// <summary>Where the caregiver was reading when they navigated away. See <see cref="OnDisappearing"/>.</summary>
+    private ScrollAnchor? _anchorOnLeaving;
+
+    /// <summary>
+    /// Notes where the caregiver is reading, in terms of the content rather than a pixel offset.
+    /// </summary>
+    /// <remarks>
+    /// A pixel offset is what Shell already preserves, and preserving it is the bug: this page
+    /// refetches whenever it is returned to — coming back from Device Management or the edit form,
+    /// what changed is exactly what was edited — and <see cref="Apply"/> is then free to re-measure
+    /// the summary copy, the trend cards and the banners above wherever the caregiver had scrolled
+    /// to. Keep the offset and everything under it slides; someone who left from the Management
+    /// rows came back to the middle of the page, which is the "it jumped" complaint. Anchoring to a
+    /// section instead means the thing they were looking at is still where they left it, however
+    /// much the content above it grew or shrank.
+    /// </remarks>
+    private ScrollAnchor? CaptureScrollAnchor()
+    {
+        var scrolled = DetailScroller.ScrollY;
+        if (scrolled <= 0)
+            return null;
+
+        foreach (var section in ContentPanel.Children.OfType<View>())
+        {
+            if (section is { IsVisible: true, Height: > 0 } && section.Y + section.Height > scrolled)
+                return new ScrollAnchor(section, scrolled - section.Y);
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Puts the anchored section back under the top of the viewport.
+    /// </summary>
+    /// <remarks>
+    /// The yield is load-bearing: the section's new Y means nothing until the layout pass that
+    /// followed <see cref="Apply"/> has run, and without it this scrolls to where the section used
+    /// to be. Unanimated, because this is meant to look like nothing happened — a visible glide
+    /// would announce the very movement it exists to hide.
+    /// </remarks>
+    private async Task RestoreScrollAnchorAsync(ScrollAnchor? anchor)
+    {
+        if (anchor is not { } held)
+            return;
+
+        await Task.Yield();
+
+        var target = Math.Max(0, held.Section.Y + held.PastTop);
+
+        // Already there: skip the call rather than issue a scroll that moves nothing. This is the
+        // common case, since the anchor is re-asserted after each follow-up load and usually only
+        // the first one has anything to do.
+        //
+        // It is not a test for whether the caregiver has taken over. A caregiver who starts
+        // scrolling while a refresh is in flight will still be moved back when it lands. Telling
+        // their scrolling apart from the page's own is the problem: the content above shifts under
+        // a reload and the offset changes on its own — measured moving 1158 to 889 with nobody
+        // touching the screen — so a "has it moved unexpectedly" heuristic reads those as the
+        // caregiver and abandons the restore, which is the bug this exists to fix. Left as is
+        // deliberately: the window is the second or two a refresh takes, and being put back where
+        // you were is the behaviour that was asked for.
+        if (Math.Abs(target - DetailScroller.ScrollY) < 2)
+            return;
+
+        try
+        {
+            await DetailScroller.ScrollToAsync(0, target, animated: false);
+        }
+        catch (Exception)
+        {
+            // The page went away mid-refresh. Nothing to restore it to.
         }
     }
 
@@ -302,10 +424,6 @@ public partial class CardiMemberDetailPage : ContentPage
         PhoneMessageButton.IsVisible = hasPhone;
         PhoneEditButton.IsVisible = !hasPhone && member.IsPrimaryCaregiver;
         PhoneEditTarget.InputTransparent = !member.IsPrimaryCaregiver;
-
-        MedicalNotesLabel.Text = string.IsNullOrWhiteSpace(member.MedicalNotes)
-            ? "No medical notes yet."
-            : member.MedicalNotes;
 
         // Only a primary caregiver may edit, pause or remove — the API enforces this and
         // would answer 404, so showing the controls would just be a trap.
@@ -552,7 +670,10 @@ public partial class CardiMemberDetailPage : ContentPage
         {
             _trends.Add(new MetricTrend(
                 icon, ink, name, value, axis, select(metrics!), TrendWindowPicker.SelectedDays,
-                firstName));
+                firstName)
+            {
+                MemberId = _memberId,
+            });
         }
 
         // Assigning the same list instance back would not re-run the carousel's own diffing, so
@@ -625,16 +746,13 @@ public partial class CardiMemberDetailPage : ContentPage
     private async void OnBackClicked(object? sender, EventArgs e) =>
         await this.GoBackAsync(AppShell.DashboardRoute);
 
-    private void OnToggleMedicalTapped(object? sender, TappedEventArgs e)
-    {
-        MedicalNotesLabel.IsVisible = !MedicalNotesLabel.IsVisible;
-        TurnChevron(MedicalChevron, MedicalNotesLabel.IsVisible);
-    }
+    private async void OnMedicalTapped(object? sender, TappedEventArgs e) =>
+        await Shell.Current.GoToAsync($"{MedicalInformationPage.Route}?memberId={_memberId}");
 
     /// <summary>
-    /// Alert rules open the same way medical notes do — the row above them is the same card, the
-    /// same header and the same chevron, and the rules are one tap behind it rather than loose on
-    /// the page under a section title.
+    /// The one thing on this page that still opens in place. Its content is switches rather than
+    /// reading, so there is nothing to travel for, and it is short enough not to bury the two rows
+    /// under it the way the medical notes could.
     /// </summary>
     private void OnToggleAlertRulesTapped(object? sender, TappedEventArgs e)
     {
@@ -741,7 +859,9 @@ public partial class CardiMemberDetailPage : ContentPage
     }
 
     private async void OnViewAlertsClicked(object? sender, EventArgs e) =>
-        await Shell.Current.GoToAsync(AppShell.AlertsRoute);
+        // Naming the member is what lets back come back to *this* page rather than to whichever
+        // member the dashboard would resolve on its own.
+        await Shell.Current.GoToTabAsync(AppShell.AlertsRoute, $"memberId={_memberId}");
 
     /// <summary>
     /// The row does one of two things depending on where monitoring stands: while it is live the
@@ -951,6 +1071,11 @@ public partial class CardiMemberDetailPage : ContentPage
             // The dashboard resolves the primary member from scratch, so clearing the cached
             // id keeps it from asking for someone who no longer exists.
             Preferences.Default.Remove(DashboardPage.PrimaryMemberIdKey);
+            // Not GoToTabAsync: this page is the one thing back must not return to. The member it
+            // describes has just been removed, so the route that names them would resolve to
+            // nothing — and offering to go back to a person the caregiver has deleted would be
+            // wrong even if it worked.
+            TabNavigation.Origin.Clear();
             await Shell.Current.GoToAsync(AppShell.DashboardRoute);
         }
         catch (ApiException ex) when (!ex.IsSessionExpired)
@@ -1013,8 +1138,13 @@ public partial class CardiMemberDetailPage : ContentPage
             // come before the ones still marked "Soon", and a cluster with nothing available in it
             // yet sinks below the clusters that have something. What the catalogue offers today is
             // what a caregiver came here to change; the reserved ids are a roadmap, and reading
-            // past two of them to reach a switch made the list feel mostly unbuilt. OrderBy is a
-            // stable sort, so the catalogue's own editorial order survives within each group.
+            // past two of them to reach a switch made the list feel mostly unbuilt.
+            //
+            // Within a cluster the tie is broken by title rather than by the catalogue's order.
+            // That order was editorial — the sequence the rules were written in — which is a
+            // reasonable default for a list somebody reads through once and a poor one for a list
+            // of switches somebody returns to for a specific rule. Alphabetical is the order a
+            // reader can predict without knowing the catalogue.
             var clusters = prefs.Clusters
                 .OrderBy(c => c.Rules.Any(r => r.IsImplemented) ? 0 : 1);
 
@@ -1022,7 +1152,7 @@ public partial class CardiMemberDetailPage : ContentPage
             {
                 var rulesStack = new VerticalStackLayout { Spacing = 0 };
                 var first = true;
-                foreach (var rule in cluster.Rules.OrderBy(r => r.IsImplemented ? 0 : 1))
+                foreach (var rule in AlertRuleOrder.ForDisplay(cluster.Rules))
                 {
                     if (!first)
                         rulesStack.Add(new BoxView { Style = (Style)resources["DividerLine"] });

@@ -89,6 +89,13 @@ public partial class BottomNavBar : ContentView
         var isTabRoot = Shell.Current.Navigation.NavigationStack.Count <= 1;
         if (Tab == tab && isTabRoot)
             return;
+
+        // Choosing a tab ends whatever journey a content affordance had started. The bar
+        // deliberately records no origin of its own (see TabNavigation), but it must cancel one
+        // still pending, or a back press at the tab the caregiver just chose would return them to
+        // a page they left two navigations ago and undo the tap that brought them here.
+        Services.TabNavigation.Origin.Clear();
+
         _ = Shell.Current.GoToAsync(route);
     }
 }

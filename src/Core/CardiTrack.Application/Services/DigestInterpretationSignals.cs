@@ -48,6 +48,7 @@ public static class DigestInterpretationSignals
             return string.Empty;
 
         var lines = new List<string>();
+        AddLastNight(lines, baseline, today);
         AddDay(lines, baseline, yesterday, complete: true, localNow, "Yesterday");
         AddDay(lines, baseline, today, complete: false, localNow, "Today so far");
 
@@ -60,6 +61,52 @@ public static class DigestInterpretationSignals
             {string.Join("\n", lines)}
             """ + "\n";
     }
+
+    /// <summary>
+    /// Last night against this member's own usual, when it was far enough off to be worth saying.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A computed observation rather than a line in the usual-pattern block, which is where this
+    /// lived. The prompt tells the model to lead with what is in here and not to recap every listed
+    /// figure, so a finding outside it competes with one inside it and loses — measured on a member
+    /// whose sleep card read 2.9 hours against a usual of about seven, whose summaries led with
+    /// heart rate and never mentioned the night at all. Sleep is not a lesser signal than a resting
+    /// heart rate a few beats up, and the block the model is told to lead with is where the things
+    /// worth leading with belong.
+    /// </para>
+    /// <para>
+    /// Judged by <see cref="StatisticalAlertRules.IrregularSleep"/>'s own threshold, for the reason
+    /// the rest of this file reuses those thresholds: a summary must not soothe over a night the
+    /// alert engine pages about.
+    /// </para>
+    /// <para>
+    /// Read off <paramref name="today"/> because a sleep session is attributed to the civil day it
+    /// ended on — last night is today's row, not yesterday's. It is stated once, on its own line,
+    /// rather than per-day: "today so far" has no night in it yet, and the night before last is not
+    /// something a caregiver is being asked to act on this morning.
+    /// </para>
+    /// </remarks>
+    private static void AddLastNight(List<string> lines, PatternBaseline baseline, ActivityLog? today)
+    {
+        if (baseline.AvgSleepMinutes is not > 0 || today?.SleepMinutes is not { } lastNight)
+            return;
+
+        var usual = baseline.AvgSleepMinutes.Value;
+        if (Math.Abs(lastNight - usual) <= usual * StatisticalAlertRules.DeviationFraction)
+            return;
+
+        var direction = lastNight < usual ? "well short of" : "well past";
+        lines.Add(
+            $"- Last night: {Hours(lastNight)} hours of sleep (usual {Hours(usual)}) — {direction} their usual.");
+    }
+
+    /// <summary>
+    /// Minutes as hours to one decimal, always invariant: the prompt is model input and a cacheable
+    /// fixed-prefix construction, so nothing in it may vary with the host's ambient culture.
+    /// </summary>
+    private static string Hours(int minutes) =>
+        (minutes / 60.0).ToString("F1", CultureInfo.InvariantCulture);
 
     private static void AddDay(
         List<string> lines,

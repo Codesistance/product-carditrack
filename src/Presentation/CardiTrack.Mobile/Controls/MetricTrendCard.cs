@@ -80,6 +80,7 @@ public sealed class MetricTrendCard : ContentView
     private readonly Label _referenceKey = new();
     private readonly Label _noDataKey = new();
     private readonly TrendLegendSwatch _baselineSwatch = new(TrendLegendMark.Baseline);
+    private readonly TrendLegendSwatch _noDataSwatch = new(TrendLegendMark.NoData);
     private readonly HorizontalStackLayout _baselineLegend;
     private readonly HorizontalStackLayout _referenceLegend;
     private readonly HorizontalStackLayout _noDataLegend;
@@ -88,6 +89,20 @@ public sealed class MetricTrendCard : ContentView
 
     /// <summary>The "i" itself — the thing the hint pulse scales. Assigned by BuildFooter.</summary>
     private Border _hintDisc = null!;
+
+    /// <summary>The expand control's padded target. Assigned by BuildFooter.</summary>
+    private Grid _expand = null!;
+
+    /// <summary>
+    /// Whether this card offers the full-screen view. False on the card that <em>is</em> the
+    /// full-screen view: expanding what is already expanded would push a second copy of this page
+    /// onto the stack for every tap.
+    /// </summary>
+    public bool ShowExpand
+    {
+        get => _expand.IsVisible;
+        set => _expand.IsVisible = value;
+    }
 
     /// <summary>
     /// Large enough to be seen as a control rather than a full stop, at the 44dp effective target
@@ -182,6 +197,14 @@ public sealed class MetricTrendCard : ContentView
         _plot.Add(axis);
         _plot.Add(_chart, 1);
 
+        // A tap on a shaded run says what is missing from it. Only the runs answer — a tap on the
+        // data does nothing, so this cannot become a gesture the caregiver has to avoid to read
+        // the chart, and the carousel keeps its swipe.
+        var gapTap = new TapGestureRecognizer();
+        gapTap.Tapped += OnChartTapped;
+        _chart.GestureRecognizers.Add(gapTap);
+        SemanticProperties.SetHint(_chart, "Tap a shaded stretch to see which days have no readings");
+
         ApplyStyle(_empty, "Body2");
         _empty.Text = "Not enough readings in this window yet.";
         _empty.HorizontalTextAlignment = TextAlignment.Center;
@@ -212,7 +235,7 @@ public sealed class MetricTrendCard : ContentView
         // The break marks get named on a line of their own rather than squeezed in beside the other
         // two: they appear only on a window with a gap in it, and a third column would cost the
         // published range its width on every window that has none.
-        _noDataLegend = BuildLegendEntry(new TrendLegendSwatch(TrendLegendMark.NoData), _noDataKey);
+        _noDataLegend = BuildLegendEntry(_noDataSwatch, _noDataKey);
         _noDataKey.Text = "No data recorded";
 
         _legend = new Grid
@@ -341,6 +364,10 @@ public sealed class MetricTrendCard : ContentView
         // it, and looking it up three times is three chances for them to disagree.
         var ink = MetricStatus.Resource(_trend.InkKey, MetricStatus.Accent(_trend.Metric.Status));
         _baselineSwatch.Ink = ink;
+        // The key has to be the colour the caregiver is about to look for. Without this the
+        // swatch falls back to a neutral grey while the chart shades in the metric's opposing
+        // hue, and the key sends them hunting for a mark that is not on the plot.
+        _noDataSwatch.Ink = ink;
 
         // The axis labels name the extent the chart actually plots over, which the baseline and
         // the reference band get a say in — so both are read off the one scale rather than the
@@ -374,7 +401,7 @@ public sealed class MetricTrendCard : ContentView
 
         // Named only on a window that has them, and read off the same points the chart is handed so
         // the key can never claim a mark the plot did not draw.
-        var hasGap = TrendChart.HasBridgedGap(points);
+        var hasGap = TrendChart.HasMissingDays(points);
         _noDataLegend.IsVisible = hasGap;
 
         // A hidden entry leaves its column empty rather than absent, and the gap either side of it
@@ -545,13 +572,53 @@ public sealed class MetricTrendCard : ContentView
         SemanticProperties.SetHint(button, "Explains what this reading is compared against");
         button.GestureRecognizers.Add(new TapGestureRecognizer { Command = new Command(ShowExplanation) });
 
+        // Beside the explanation rather than up in the header: both are things you do to the chart
+        // rather than facts about the reading, and the header's three columns are already carrying
+        // the icon, the name and the number.
+        var expandDisc = new Border
+        {
+            WidthRequest = HintDiscSize,
+            HeightRequest = HintDiscSize,
+            StrokeThickness = 0,
+            BackgroundColor = MetricStatus.Resource("MetricTileTint", Colors.LightGray),
+            VerticalOptions = LayoutOptions.Center,
+            Content = new Image
+            {
+                Source = "icon_expand.svg",
+                WidthRequest = 16,
+                HeightRequest = 16,
+                HorizontalOptions = LayoutOptions.Center,
+                VerticalOptions = LayoutOptions.Center,
+            },
+        };
+        expandDisc.StrokeShape = new Microsoft.Maui.Controls.Shapes.RoundRectangle
+        {
+            CornerRadius = HintDiscSize / 2,
+        };
+
+        _expand = new Grid
+        {
+            Padding = new Thickness(10, 6, 0, 6),
+            VerticalOptions = LayoutOptions.Center,
+            Children = { expandDisc },
+        };
+        SemanticProperties.SetDescription(_expand, "Open full screen");
+        SemanticProperties.SetHint(_expand, "Shows this trend on its own screen, still by window");
+        _expand.GestureRecognizers.Add(new TapGestureRecognizer { Command = new Command(Expand) });
+
         var row = new Grid
         {
-            ColumnDefinitions = [new ColumnDefinition(GridLength.Star), new ColumnDefinition(GridLength.Auto)],
+            ColumnDefinitions =
+            [
+                new ColumnDefinition(GridLength.Star),
+                new ColumnDefinition(GridLength.Auto),
+                new ColumnDefinition(GridLength.Auto),
+            ],
             ColumnSpacing = 6,
         };
         row.Add(_footer);
-        row.Add(button, 1);
+        row.Add(_expand, 1);
+        row.Add(button, 2);
 
         var block = new Grid
         {
@@ -588,6 +655,56 @@ public sealed class MetricTrendCard : ContentView
         {
             // async void, reached from a gesture: an explanation that will not open is not worth
             // taking the app down for.
+        }
+    }
+
+    /// <summary>
+    /// Answers a tap on a shaded run of missing days, and ignores every other tap on the chart.
+    /// </summary>
+    /// <remarks>
+    /// The shading says a stretch was not measured; this says which stretch. Naming the days is
+    /// the part a caregiver can act on — a weekend the watch sat on the dresser reads differently
+    /// from three days mid-week — and it is not something a legend key can carry, because it is
+    /// different for every run on every chart.
+    /// </remarks>
+    private async void OnChartTapped(object? sender, TappedEventArgs e)
+    {
+        if (e.GetPosition(_chart) is not { } at || _chart.NoDataSpanAt(at.X) is not { } span)
+            return;
+
+        try
+        {
+            await Services.ServiceHelper.GetRequiredService<Services.IPopupService>()
+                .ShowInfoAsync(span.Description, "No readings");
+        }
+        catch (Exception)
+        {
+            // async void, reached from a gesture: the same stance as ShowExplanation above.
+        }
+    }
+
+    /// <summary>
+    /// Opens this metric on its own screen, on the window the card is currently showing.
+    /// </summary>
+    /// <remarks>
+    /// The route names the member, the metric and the window rather than handing the item over:
+    /// the card is realised inside a <c>DataTemplate</c>, so there is no page to pass state
+    /// through, and a route that carries what it needs is also the one a deep link could use later.
+    /// </remarks>
+    private async void Expand()
+    {
+        if (_trend is null || _trend.MemberId == Guid.Empty)
+            return;
+
+        try
+        {
+            await Shell.Current.GoToAsync(
+                $"{MetricTrendPage.Route}?memberId={_trend.MemberId}"
+                + $"&metric={Uri.EscapeDataString(_trend.Name)}&days={_trend.Days}");
+        }
+        catch (Exception)
+        {
+            // async void, reached from a gesture: the same stance as ShowExplanation.
         }
     }
 

@@ -38,6 +38,13 @@ public sealed class MetricTrend : INotifyPropertyChanged
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
+    /// <summary>
+    /// Whose readings these are. Carried on the item because the card is realised inside a
+    /// <c>DataTemplate</c> and has no page to ask — see <see cref="MetricTrendCard"/>, which needs
+    /// it to open the full-screen view of this same metric.
+    /// </summary>
+    public Guid MemberId { get; set; }
+
     public string IconSource { get; }
 
     /// <summary>

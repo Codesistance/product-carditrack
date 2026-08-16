@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:controls="clr-namespace:CardiTrack.Mobile.Controls"
+             x:Class="CardiTrack.Mobile.MetricTrendPage"
+             Shell.NavBarIsVisible="False"
+             Shell.TabBarIsVisible="False"
+             BackgroundColor="{StaticResource PageGround}">
+
+    <!-- One metric's trend, given the whole screen. The carousel card is 330dp tall and carries
+         six metrics side by side, which is right for a glance and wrong for reading a month: a
+         30-day window there puts a point every 11dp, and the gaps and the line compete for the
+         same few pixels. Here the same card gets every row the screen has left.
+
+         The window selector comes with it rather than being fixed at whatever the caregiver had
+         open. Arriving on a bigger chart is exactly when someone wants to widen it, and sending
+         them back to the card to do that would make the full screen a dead end.
+
+         The card itself is the one from the carousel, not a second chart built to look like it:
+         the shaded gaps, their tooltips, the legend and the baseline rule are all its own, and a
+         copy would be a second thing to keep in step. Full-bleed, like every page. -->
+
+    <Grid RowDefinitions="Auto,Auto,*">
+
+        <controls:HeaderBand Grid.Row="0" ContentPadding="20,14,20,26">
+            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
+                <Border Grid.Column="0"
+                        WidthRequest="40" HeightRequest="40"
+                        StrokeThickness="0"
+                        BackgroundColor="{StaticResource HeaderButtonTint}"
+                        VerticalOptions="Center">
+                    <Border.StrokeShape>
+                        <RoundRectangle CornerRadius="20"/>
+                    </Border.StrokeShape>
+                    <Border.GestureRecognizers>
+                        <TapGestureRecognizer Tapped="OnBackTapped"/>
+                    </Border.GestureRecognizers>
+                    <Image Source="icon_back_white.svg" WidthRequest="20" HeightRequest="20"
+                           SemanticProperties.Description="Back"/>
+                </Border>
+
+                <Label x:Name="TitleLabel"
+                       Grid.Column="1"
+                       Style="{StaticResource Heading3}"
+                       TextColor="{StaticResource White}"
+                       VerticalTextAlignment="Center"/>
+            </Grid>
+        </controls:HeaderBand>
+
+        <controls:TrendWindowSelector x:Name="WindowPicker"
+                                      Grid.Row="1"
+                                      Margin="20,16,20,0"/>
+
+        <Grid Grid.Row="2" Padding="20,14,20,20">
+            <VerticalStackLayout x:Name="SkeletonPanel" IsVisible="False" VerticalOptions="Fill">
+                <controls:SkeletonView HeightRequest="320"/>
+            </VerticalStackLayout>
+
+            <VerticalStackLayout x:Name="ErrorPanel" Spacing="12" Padding="0,60,0,0" IsVisible="False">
+                <Label Text="We couldn't load this trend"
+                       Style="{StaticResource Heading3}"
+                       HorizontalTextAlignment="Center"/>
+                <Label x:Name="ErrorDetailLabel"
+                       Style="{StaticResource Body2}"
+                       TextColor="{StaticResource BodyText}"
+                       HorizontalTextAlignment="Center"/>
+                <Button Text="Try again"
+                        Style="{StaticResource SecondaryOutlineButton}"
+                        HorizontalOptions="Center"
+                        Clicked="OnRetryClicked"/>
+            </VerticalStackLayout>
+
+            <controls:MetricTrendCard x:Name="Card" IsVisible="False" VerticalOptions="Fill"/>
+        </Grid>
+    </Grid>
+</ContentPage>

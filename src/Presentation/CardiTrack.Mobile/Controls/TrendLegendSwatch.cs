@@ -76,15 +76,24 @@ internal sealed class TrendLegendSwatchDrawable(TrendLegendMark mark) : IDrawabl
 
         if (mark == TrendLegendMark.NoData)
         {
-            // Both bounds, not one: what the chart draws is a pair, and a single zigzag in the key
-            // would have the reader looking for a mark that never appears alone. The 16dp stands in
-            // for the missing run between them.
-            canvas.StrokeColor = TrendChartInk.NoData;
+            // The whole swatch is the run: shaded body, ruled ends. The same three strokes the
+            // chart draws, with the 16dp standing in for the missing days. In the metric's own
+            // opposing shade, so the key is the colour the caregiver is about to look for — a key
+            // drawn in a neutral grey would have them hunting for a mark that is not on the chart.
+            var shade = Ink is { } noDataInk
+                ? TrendChartInk.NoDataShadeFor(noDataInk)
+                : TrendChartInk.NoData;
+
+            canvas.FillColor = shade.WithAlpha(TrendChartInk.NoDataFillAlpha);
+            canvas.FillRectangle(dirtyRect);
+
+            canvas.StrokeColor = shade.WithAlpha(TrendChartInk.NoDataBoundAlpha);
             canvas.StrokeSize = TrendChartInk.NoDataThickness;
-            canvas.StrokeLineCap = LineCap.Round;
-            canvas.StrokeLineJoin = LineJoin.Round;
-            TrendChartInk.DrawBreak(canvas, dirtyRect.Left + TrendChartInk.NoDataAmplitude, dirtyRect.Top, dirtyRect.Bottom);
-            TrendChartInk.DrawBreak(canvas, dirtyRect.Right - TrendChartInk.NoDataAmplitude, dirtyRect.Top, dirtyRect.Bottom);
+            canvas.StrokeLineCap = LineCap.Butt;
+            canvas.StrokeDashPattern = TrendChartInk.NoDataBoundDashes;
+            canvas.DrawLine(dirtyRect.Left, dirtyRect.Top, dirtyRect.Left, dirtyRect.Bottom);
+            canvas.DrawLine(dirtyRect.Right, dirtyRect.Top, dirtyRect.Right, dirtyRect.Bottom);
+            canvas.StrokeDashPattern = null;
             return;
         }
 

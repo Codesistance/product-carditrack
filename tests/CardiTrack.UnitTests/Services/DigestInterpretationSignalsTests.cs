@@ -31,7 +31,8 @@ public class DigestInterpretationSignalsTests
         int? restingHr = null,
         int? avgHr = null,
         decimal? spo2 = null,
-        decimal? breathing = null) => new()
+        decimal? breathing = null,
+        int? sleepMinutes = null) => new()
     {
         Date = date,
         Steps = steps,
@@ -39,7 +40,89 @@ public class DigestInterpretationSignalsTests
         AvgHeartRate = avgHr,
         SpO2Average = spo2,
         BreathingRate = breathing,
+        SleepMinutes = sleepMinutes,
     };
+
+    /// <summary>
+    /// A night well short of this member's own usual is a computed observation, so it lands in the
+    /// block the prompt tells the model to lead with. It used to sit in the usual-pattern section,
+    /// where it competed with the findings inside this block and lost — a member sleeping 2.9 hours
+    /// against a usual of seven had summaries that led with heart rate and never named the night.
+    /// </summary>
+    [Fact]
+    public void AShortNight_IsAComputedObservation()
+    {
+        var section = DigestInterpretationSignals.Section(
+            Baseline(),
+            today: Log(Today, sleepMinutes: 216),
+            yesterday: null,
+            Morning);
+
+        Assert.Contains("- Last night: 3.6 hours of sleep (usual 7.0) — well short of their usual.", section);
+    }
+
+    [Fact]
+    public void ALongNight_IsAlsoWorthSaying()
+    {
+        var section = DigestInterpretationSignals.Section(
+            Baseline(),
+            today: Log(Today, sleepMinutes: 620),
+            yesterday: null,
+            Morning);
+
+        Assert.Contains("- Last night: 10.3 hours of sleep (usual 7.0) — well past their usual.", section);
+    }
+
+    /// <summary>
+    /// The same threshold the alert engine fires on, so a summary can never soothe over a night it
+    /// pages about — and, in the other direction, never make an ordinary night sound like an event.
+    /// </summary>
+    [Theory]
+    [InlineData(420)]
+    [InlineData(300)]
+    [InlineData(540)]
+    public void ANightInsideTheOrdinaryBand_EarnsNoObservation(int sleepMinutes)
+    {
+        var section = DigestInterpretationSignals.Section(
+            Baseline(),
+            today: Log(Today, sleepMinutes: sleepMinutes),
+            yesterday: null,
+            Morning);
+
+        Assert.DoesNotContain("Last night", section);
+    }
+
+    [Fact]
+    public void NoSleepBaseline_MeansNothingToJudgeTheNightAgainst()
+    {
+        var baseline = Baseline();
+        baseline.AvgSleepMinutes = null;
+
+        var section = DigestInterpretationSignals.Section(
+            baseline,
+            today: Log(Today, sleepMinutes: 216),
+            yesterday: null,
+            Morning);
+
+        Assert.DoesNotContain("Last night", section);
+    }
+
+    /// <summary>
+    /// Sleep is attributed to the civil day it ended on, so last night is today's row. Yesterday's
+    /// own sleep figure is the night before last, which is not what the caregiver is being asked to
+    /// act on this morning.
+    /// </summary>
+    [Fact]
+    public void OnlyLastNightIsReported_NotTheNightBefore()
+    {
+        var section = DigestInterpretationSignals.Section(
+            Baseline(),
+            today: null,
+            yesterday: Log(Yesterday, sleepMinutes: 216),
+            Morning);
+
+        Assert.DoesNotContain("Last night", section);
+    }
 
     [Fact]
     public void QuietAndRaised_OnACompleteStillDay_WithRestingRateAboveUsual()

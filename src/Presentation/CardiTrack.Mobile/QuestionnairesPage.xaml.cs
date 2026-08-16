@@ -94,7 +94,7 @@ public partial class QuestionnairesPage : ContentPage
     private void OnRetryClicked(object? sender, EventArgs e) => _ = LoadAsync(showSkeleton: true);
 
     private async void OnBackTapped(object? sender, EventArgs e) =>
-        await this.GoBackAsync($"{CardiMemberDetailPage.Route}?memberId={_memberId}");
+        await this.GoBackAsync($"{AppShell.DashboardRoute}/{CardiMemberDetailPage.Route}?memberId={_memberId}");
 
     private void OnSearchTextChanged(object? sender, TextChangedEventArgs e)
     {
