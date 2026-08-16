@@ -179,7 +179,7 @@ Wearable (Fitbit / Google Health API) OAuth returns to the app via the **`cardit
 - **Android**: `WebAuthenticationCallbackActivity` (intent filter with `DataScheme = "carditrack"`).
 - Google's web OAuth clients cannot redirect to a custom scheme, so the provider first redirects to the API's **https bounce endpoint** (`GET /api/v1/oauth/redirect/fitbit`), which hands off into the deep link.
 - **The deep link is the only thing that dismisses the in-app browser.** Whatever the provider returns — grant, denial or malformed callback — the bounce endpoint hands off into `carditrack://oauth/callback`, carrying `error`/`error_description` when there is no code. An endpoint that ends the response in the browser instead strands the user on the consent page with the app still waiting behind it.
-- The hand-off is an **HTML page that calls `location.replace()`**, not a bare 302: a `Location` header naming a custom scheme is honoured by Chrome Custom Tabs and `ASWebAuthenticationSession` but dropped by browsers and proxies that only forward http(s). The page carries a tappable fallback link and tells the user the tab can be closed.
+- The hand-off is an **HTML page that calls `location.replace()`**, not a bare 302: a `Location` header naming a custom scheme is honoured by Chrome Custom Tabs and `ASWebAuthenticationSession` but dropped by browsers and proxies that only forward http(s). The page then **closes the tab** (`window.close()`, and on Android an `intent://` URL naming `com.codesistance.carditrack.mobile`) so it cannot sit in the task for "Go to Dashboard" to walk back into. A tappable fallback remains for browsers that block scripted close.
 
 ### Running against a locally-hosted API
 

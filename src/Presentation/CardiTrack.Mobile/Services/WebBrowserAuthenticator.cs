@@ -48,6 +48,7 @@ public sealed class WebBrowserAuthenticator(IAppResumeNotifier resumeNotifier) :
                 cts.Token.ThrowIfCancellationRequested();
 
             var result = await authenticateTask;
+            AppForeground.BringToFront();
             return new Dictionary<string, string>(result.Properties, StringComparer.Ordinal);
         }
         finally

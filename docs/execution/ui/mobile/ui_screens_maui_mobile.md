@@ -642,10 +642,10 @@ Each device card:
 **Status:** Built (`Onboarding/ConnectionSuccessPage`)
 **User Story:** 1.3 Connection Success
 **Entry:** ← M1-06 OAuth (authorization complete)
-**Exit:** → M1-08 Baseline Info ("Continue to Dashboard", first device only) | → wizard exit ("Done", additional device) | → M1-05 Device Selection ("Add Another Device")
+**Exit:** → M1-08 Baseline Info ("Continue", first device only) | → wizard exit ("Done", additional device) | → M1-05 Device Selection ("Add Another Device")
 
 **Checkmark:**
-- **Static green circle with ✓** (no entry animation shipped)
+- **`icon_status_check` on the status-green tile** (same glyph as the dashboard hero's "all steady"; no entry animation)
 
 **Success Message:**
 - Heading: "You're all set!"
@@ -660,10 +660,10 @@ Each device card:
   - Heart Rate: 72 bpm
 
 **Options:**
-- Outlined button: "+ Add Another Device"
+- Outlined button: "Add Another Device" with `icon_plus` (same glyph as Device Management)
 
 **CTA:**
-- Primary button: "Continue to Dashboard" — connecting the member's **first** device; continues to M1-08
+- Primary button: **"Continue"** — connecting the member's **first** device; continues to M1-08. Does **not** name the dashboard: that is M1-08's job, and promising it here sent caregivers into the OAuth browser that was still sitting behind the wizard.
 - Primary button: **"Done"** — connecting an **additional** device (launched from M1-15 for a member who already had one); exits the wizard straight back to where it was launched from. M1-08 is the 30-day learning story, which is news once per member, not once per device; the label changes with it because this exit does not land on the dashboard.
 - Which of the two shows is fixed when the wizard opens, by whether the member had a device then — so a run that starts from none and connects two via "Add Another Device" still ends on M1-08.
 - Helper text **below the button**: "You can sync multiple devices to get a more accurate picture of their health."
@@ -686,7 +686,7 @@ Each device card:
 - Progress indicator: "Step 4 of 4"
 
 **Illustration:**
-- Static emoji glyphs: 🧠⚙ (no Lottie animation shipped)
+- Static `icon_monitoring` glyph in the app's tinted icon tile (not emoji).
 
 **Explanation:**
 - Heading: `$"Getting to know {_member.Name}"` (name interpolated)
@@ -706,7 +706,7 @@ Each device card:
 - **As built: the switch has no handler.** Statistical rules stay silent until a **30-day** baseline exists. The toggle is dead chrome.
 
 **CTA:**
-- Primary button: "Go to Dashboard"
+- Primary button: "Go to Dashboard" — always `GoToAsync("//dashboard")` on a rooted `AppShell`. Must not pop back into the system-browser tab that authorized the device.
 - Text link: "Invite Family Member First" — **ships now in MVP 1** (unconditional), but the invite flow (M3-02) does not exist yet, so the link is currently a dead end. Not an MVP 2 addition.
 
 ---
@@ -2073,10 +2073,10 @@ Icons use **SF Symbols** (iOS) and **Material Symbols** (Android) — no custom 
 
 | # | Animation | Screen | Source |
 |---|-----------|--------|--------|
-| 1 | Success checkmark | M1-07 | LottieFiles — search "success checkmark" (free options available). **As built:** static green circle + ✓ glyph, no animation. |
+| 1 | Success checkmark | M1-07 | LottieFiles — search "success checkmark" (free options available). **As built:** `icon_status_check` on the status-green tile the dashboard uses, no animation. |
 | 2 | Shimmer / skeleton loading | M1-09, M1-10, M2-03 | **As built:** custom `SkeletonView` control (M1-09). |
 | 3 | Critical alert pulse | M1-12 | XAML/CSS animation — opacity + scale loop on severity banner |
-| 4 | Learning phase brain/gears | M1-08 | LottieFiles — search "machine learning" or "brain processing." **As built:** static 🧠⚙ emoji glyphs, no Lottie. |
+| 4 | Learning phase brain/gears | M1-08 | LottieFiles — search "machine learning" or "brain processing." **As built:** `icon_monitoring` in the app's tinted icon tile, no Lottie. |
 
 #### Third-Party Logos (vendor-provided, no design needed)
 

@@ -24,6 +24,15 @@ public partial class WizardHeader : ContentView
         BindableProperty.Create(nameof(IsBackVisible), typeof(bool), typeof(WizardHeader), true,
             propertyChanged: (b, _, v) => ((WizardHeader)b).BackButton.IsVisible = (bool)v);
 
+    /// <summary>
+    /// Inset inside the gradient band. Defaults to the status-bar-clearing padding the
+    /// in-scroller wizard pages still use. Pages that claim the top safe-area themselves
+    /// pass the compact Alerts/Dashboard inset so this chrome matches the rest of the app.
+    /// </summary>
+    public static readonly BindableProperty ContentPaddingProperty =
+        BindableProperty.Create(nameof(ContentPadding), typeof(Thickness), typeof(WizardHeader),
+            new Thickness(20, 48, 20, 24));
+
     public event EventHandler? BackRequested;
 
     public WizardHeader()
@@ -62,6 +71,12 @@ public partial class WizardHeader : ContentView
     {
         get => (bool)GetValue(IsBackVisibleProperty);
         set => SetValue(IsBackVisibleProperty, value);
+    }
+
+    public Thickness ContentPadding
+    {
+        get => (Thickness)GetValue(ContentPaddingProperty);
+        set => SetValue(ContentPaddingProperty, value);
     }
 
     private async void OnBackTapped(object? sender, EventArgs e)

@@ -8,100 +8,108 @@
              NavigationPage.HasNavigationBar="False"
              BackgroundColor="{StaticResource PageGround}">
 
-    <ScrollView>
-        <Grid RowDefinitions="Auto,*">
+    <!-- Same scaffold as Dashboard/Alerts: pinned HeaderBand, compact inset, body scrolls. -->
+    <Grid RowDefinitions="Auto,*"
+          SafeAreaEdges="None, Container, None, None">
 
-            <controls:WizardHeader x:Name="Header"
-                                   Grid.Row="0"
-                                   Title="Learning Phase"
-                                   Step="Step 4 of 4"
-                                   Progress="1.0"
-                                   IsBackVisible="False"/>
+        <controls:WizardHeader x:Name="Header"
+                               Grid.Row="0"
+                               Title="Learning Phase"
+                               Step="Step 4 of 4"
+                               Progress="1.0"
+                               IsBackVisible="False"
+                               ContentPadding="20,14,20,26"/>
 
-            <Grid Grid.Row="1"
-                  Padding="20,28,20,36">
-                <VerticalStackLayout Spacing="0">
+        <ScrollView Grid.Row="1">
+            <VerticalStackLayout Padding="20,24,20,36" Spacing="0">
 
-                    <!-- Learning illustration (M1-08): brain-in-gear -->
-                    <Label Text="&#x1F9E0;&#x2699;"
-                           FontSize="56"
-                           HorizontalOptions="Center"/>
+                <!-- Device-card icon tile, not emoji: the rest of the app speaks in those
+                     tinted rounded squares and the monitoring glyph, not platform emoji. -->
+                <Border WidthRequest="96" HeightRequest="96"
+                        BackgroundColor="{StaticResource SelectedOptionBackground}"
+                        StrokeThickness="0"
+                        HorizontalOptions="Center">
+                    <Border.StrokeShape>
+                        <RoundRectangle CornerRadius="24"/>
+                    </Border.StrokeShape>
+                    <Image Source="icon_monitoring.svg"
+                           WidthRequest="48" HeightRequest="48"
+                           HorizontalOptions="Center" VerticalOptions="Center"/>
+                </Border>
 
-                    <Label x:Name="TitleLabel"
-                           Text="Getting to know them"
-                           Style="{StaticResource Heading2}"
-                           Margin="0,24,0,0"/>
-                    <Label x:Name="IntroLabel"
-                           Text="Over the next 30 days, CardiTrack will learn what a normal day looks like for them:"
-                           Style="{StaticResource Body2}"
-                           FontSize="15"
-                           Margin="0,8,0,0"/>
+                <Label x:Name="TitleLabel"
+                       Text="Getting to know them"
+                       Style="{StaticResource Heading3}"
+                       HorizontalTextAlignment="Center"
+                       Margin="0,24,0,0"/>
+                <Label x:Name="IntroLabel"
+                       Text="Over the next 30 days, CardiTrack will learn what a normal day looks like for them:"
+                       Style="{StaticResource Body2}"
+                       HorizontalTextAlignment="Center"
+                       Margin="0,8,0,0"/>
 
-                    <VerticalStackLayout Spacing="12" Margin="0,18,0,0">
-                        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
-                            <Label Text="&#x2713;" TextColor="{StaticResource Primary}" FontAttributes="Bold" FontSize="15" VerticalOptions="Start"/>
-                            <Label Grid.Column="1" Text="When they usually wake up and go to sleep" Style="{StaticResource Body2Medium}" FontSize="15"/>
-                        </Grid>
-                        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
-                            <Label Text="&#x2713;" TextColor="{StaticResource Primary}" FontAttributes="Bold" FontSize="15" VerticalOptions="Start"/>
-                            <Label Grid.Column="1" Text="How active they are day to day" Style="{StaticResource Body2Medium}" FontSize="15"/>
-                        </Grid>
-                        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
-                            <Label Text="&#x2713;" TextColor="{StaticResource Primary}" FontAttributes="Bold" FontSize="15" VerticalOptions="Start"/>
-                            <Label Grid.Column="1" Text="What their resting heart rate looks like" Style="{StaticResource Body2Medium}" FontSize="15"/>
-                        </Grid>
-                    </VerticalStackLayout>
-
-                    <!-- Progress card -->
-                    <Border Style="{StaticResource ElevatedCard}" Margin="0,22,0,0">
-                        <VerticalStackLayout Spacing="10">
-                            <Grid ColumnDefinitions="*,Auto">
-                                <Label x:Name="DayLabel" Text="Day 1 of 30" Style="{StaticResource Body1SemiBoldDark}"/>
-                                <Label x:Name="PercentLabel" Grid.Column="1"
-                                       Text="3% Complete"
-                                       FontFamily="QuicksandSemiBold" FontSize="15"
-                                       TextColor="{StaticResource Primary}"/>
-                            </Grid>
-                            <ProgressBar x:Name="LearningProgress" Progress="0.03"/>
-                        </VerticalStackLayout>
-                    </Border>
-
-                    <!-- Alerts-while-learning toggle -->
-                    <Border Style="{StaticResource ElevatedCard}" Margin="0,14,0,0">
-                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
-                            <VerticalStackLayout Spacing="6">
-                                <Label Text="Keep me posted while CardiTrack is learning"
-                                       Style="{StaticResource Body1SemiBoldDark}"/>
-                                <Label Text="You'll get basic alerts right away (like heart rate over 100)"
-                                       Style="{StaticResource Body2}"/>
-                            </VerticalStackLayout>
-                            <Switch x:Name="LearningAlertsSwitch"
-                                    Grid.Column="1"
-                                    IsToggled="True"
-                                    OnColor="{StaticResource Primary}"
-                                    VerticalOptions="Start"/>
-                        </Grid>
-                    </Border>
-
-                    <Button Text="Go to Dashboard"
-                            Style="{StaticResource AuthGradientButton}"
-                            HorizontalOptions="Fill"
-                            Margin="0,26,0,0"
-                            Clicked="OnGoToDashboardClicked"/>
-
-                    <Label Text="Invite Family Member First"
-                           Style="{StaticResource PrimaryLink}"
-                           TextDecorations="None"
-                           FontSize="16"
-                           HorizontalOptions="Center"
-                           Margin="0,18,0,0">
-                        <Label.GestureRecognizers>
-                            <TapGestureRecognizer Tapped="OnInviteFamilyTapped"/>
-                        </Label.GestureRecognizers>
-                    </Label>
-
+                <VerticalStackLayout Spacing="12" Margin="0,18,0,0">
+                    <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
+                        <Image Source="icon_action_check.svg" WidthRequest="20" HeightRequest="20" VerticalOptions="Start" Margin="0,2,0,0"/>
+                        <Label Grid.Column="1" Text="When they usually wake up and go to sleep" Style="{StaticResource Body2Medium}" FontSize="15"/>
+                    </Grid>
+                    <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
+                        <Image Source="icon_action_check.svg" WidthRequest="20" HeightRequest="20" VerticalOptions="Start" Margin="0,2,0,0"/>
+                        <Label Grid.Column="1" Text="How active they are day to day" Style="{StaticResource Body2Medium}" FontSize="15"/>
+                    </Grid>
+                    <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
+                        <Image Source="icon_action_check.svg" WidthRequest="20" HeightRequest="20" VerticalOptions="Start" Margin="0,2,0,0"/>
+                        <Label Grid.Column="1" Text="What their resting heart rate looks like" Style="{StaticResource Body2Medium}" FontSize="15"/>
+                    </Grid>
                 </VerticalStackLayout>
-            </Grid>
-        </Grid>
-    </ScrollView>
+
+                <Border Style="{StaticResource ElevatedCard}" Margin="0,22,0,0">
+                    <VerticalStackLayout Spacing="10">
+                        <Grid ColumnDefinitions="*,Auto">
+                            <Label x:Name="DayLabel" Text="Day 1 of 30" Style="{StaticResource Body1SemiBoldDark}"/>
+                            <Label x:Name="PercentLabel" Grid.Column="1"
+                                   Text="3% Complete"
+                                   FontFamily="QuicksandSemiBold" FontSize="15"
+                                   TextColor="{StaticResource Primary}"/>
+                        </Grid>
+                        <ProgressBar x:Name="LearningProgress" Progress="0.03"/>
+                    </VerticalStackLayout>
+                </Border>
+
+                <Border Style="{StaticResource ElevatedCard}" Margin="0,14,0,0">
+                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+                        <VerticalStackLayout Spacing="6">
+                            <Label Text="Keep me posted while CardiTrack is learning"
+                                   Style="{StaticResource Body1SemiBoldDark}"/>
+                            <Label Text="You'll get basic alerts right away (like heart rate over 100)"
+                                   Style="{StaticResource Body2}"/>
+                        </VerticalStackLayout>
+                        <Switch x:Name="LearningAlertsSwitch"
+                                Grid.Column="1"
+                                IsToggled="True"
+                                OnColor="{StaticResource Primary}"
+                                VerticalOptions="Start"/>
+                    </Grid>
+                </Border>
+
+                <Button Text="Go to Dashboard"
+                        Style="{StaticResource AuthGradientButton}"
+                        HorizontalOptions="Fill"
+                        Margin="0,26,0,0"
+                        Clicked="OnGoToDashboardClicked"/>
+
+                <Label Text="Invite Family Member First"
+                       Style="{StaticResource PrimaryLink}"
+                       TextDecorations="None"
+                       FontSize="16"
+                       HorizontalOptions="Center"
+                       Margin="0,18,0,0">
+                    <Label.GestureRecognizers>
+                        <TapGestureRecognizer Tapped="OnInviteFamilyTapped"/>
+                    </Label.GestureRecognizers>
+                </Label>
+
+            </VerticalStackLayout>
+        </ScrollView>
+    </Grid>
 </ContentPage>

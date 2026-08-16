@@ -7,9 +7,11 @@
 
     <!-- Onboarding header shared by M1-04..M1-08: back button, title, step indicator, and a
          progress bar sitting on the gradient. The gradient itself is HeaderBand's, the same one
-         the dashboard and the auth screens use. Top padding clears the status bar; the band
+         the dashboard and the auth screens use. Default padding clears the status bar when the
+         host page does not claim a top safe-area; pages that pin this header outside the
+         scroller (M1-07 / M1-08) pass the compact Alerts/Dashboard inset instead. The band
          sizes to its content rather than to a fixed height, so a wrapped title can't clip. -->
-    <controls:HeaderBand ContentPadding="20,48,20,24">
+    <controls:HeaderBand ContentPadding="{Binding ContentPadding, Source={x:Reference Root}}">
         <Grid RowDefinitions="Auto,Auto" RowSpacing="22">
 
             <Grid Grid.Row="0"
@@ -19,7 +21,7 @@
                 <Border x:Name="BackButton"
                         Grid.Column="0"
                         WidthRequest="40" HeightRequest="40"
-                        BackgroundColor="#33FFFFFF"
+                        BackgroundColor="{StaticResource HeaderButtonTint}"
                         StrokeThickness="0"
                         VerticalOptions="Start"
                         SemanticProperties.Description="Go back">
@@ -29,11 +31,9 @@
                     <Border.GestureRecognizers>
                         <TapGestureRecognizer Tapped="OnBackTapped"/>
                     </Border.GestureRecognizers>
-                    <Label Text="&#x2190;"
-                           FontSize="20"
-                           TextColor="{StaticResource White}"
-                           HorizontalOptions="Center"
-                           VerticalOptions="Center"/>
+                    <Image Source="icon_back_white.svg"
+                           WidthRequest="20" HeightRequest="20"
+                           HorizontalOptions="Center" VerticalOptions="Center"/>
                 </Border>
 
                 <VerticalStackLayout Grid.Column="1" Spacing="4">

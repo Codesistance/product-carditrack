@@ -14,6 +14,10 @@
     <NoWarn>$(NoWarn);1591</NoWarn>
   </PropertyGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="CardiTrack.IntegrationTests" />
+  </ItemGroup>
+
   <!-- AutoMapper GHSA-rvv3-g6hj-g44x: design-level issue with user-controlled lambda expressions.
        Mapping profiles in this project are developer-controlled; not an exploitable path. -->
   <ItemGroup>

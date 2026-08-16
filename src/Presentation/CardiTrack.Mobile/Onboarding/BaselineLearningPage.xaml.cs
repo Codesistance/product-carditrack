@@ -22,8 +22,10 @@ public partial class BaselineLearningPage : ContentPage
 
         if (ctx.Origin == WizardOrigin.Modal)
         {
-            // Mid-flow entry: the onboarding "Step N of 4" story doesn't apply.
-            Header.Step = string.Empty;
+            // Mid-flow entry: the onboarding "Step N of 4" story doesn't apply, but the
+            // header still needs a second line so it matches SignIn / Alerts rather than
+            // a title floating in an empty gradient band.
+            Header.Step = "Building their baseline";
             Header.Progress = 0;
         }
     }
