@@ -23,12 +23,22 @@ public sealed class DeviceStaleLongRule : INudgeRule
     public string RuleCode => Code;
     public int Version => 1;
 
+    /// <remarks>
+    /// The first pushing rule that is not safety-category, which §6.2 had described as the only
+    /// kind. Two days of silence does mean monitoring is not working, so the push is warranted —
+    /// but promoting the rule to Safety to earn it would also override quiet hours and remove the
+    /// mute, and a condition that has already stood for forty-eight hours does not justify waking
+    /// a household at 3am. Staying Blocking keeps the nudge channel's short ding and the
+    /// quiet-hours deferral, which is the right volume for "this has been wrong for two days" as
+    /// against "something is happening now".
+    /// </remarks>
     public NudgeSpec Spec { get; } = new()
     {
         Category = NotificationCategory.Blocking,
         Priority = NotificationPriority.High,
         DefaultSnooze = TimeSpan.FromDays(3),
-        MaxSnooze = TimeSpan.FromDays(14)
+        MaxSnooze = TimeSpan.FromDays(14),
+        PushesWhenOpen = true
     };
 
     public NudgeVerdict Evaluate(NudgeContext context)
@@ -43,8 +53,15 @@ public sealed class DeviceStaleLongRule : INudgeRule
 
         // A broken grant is a different, louder gap. Reporting both would have the caregiver fix
         // the battery on a watch whose real problem is that we lost permission to read it.
+        //
+        // SyncError is not one of those: the grant is intact and the provider simply failed to
+        // answer. Testing for Connected alone excluded it, so a watch stuck failing for days
+        // raised nothing here at all — a silent hole between this rule and DEVICE_AUTH_BROKEN,
+        // which only covers TokenExpired and AuthError. The staleness test below is what decides
+        // whether it matters: a connection that errored once and recovered has a fresh
+        // LastSyncDate and still returns NoGap.
         var connected = context.Connections
-            .Where(c => c.Status == ConnectionStatus.Connected)
+            .Where(c => c.Status is ConnectionStatus.Connected or ConnectionStatus.SyncError)
             .ToList();
 
         if (connected.Count == 0)

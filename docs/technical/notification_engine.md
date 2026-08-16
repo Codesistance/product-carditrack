@@ -158,7 +158,7 @@ channel it lands in, whether it escalates, and whether the user may silence it.
 |---|---|---|---|
 | Content | Monitoring is down; nobody is listening | Red/orange anomaly in the wearer's data | A data gap the user can close |
 | Source | `DataCompletenessWorker` | Alert generation (R1) / AI pipeline (R2) | `DataCompletenessWorker` |
-| Push | Yes, immediate | Yes — red/orange; yellow is in-app + digest card | **In-app only**, except the two safety rules |
+| Push | Yes, immediate | Yes — red/orange; yellow is in-app + digest card | **In-app only**, except the rules that opt in (§6.2) |
 | Quiet hours | **Overridden** | Red overrides; orange defers | Always respected |
 | Escalates (§6.3) | Yes | Red only | No |
 | Silenceable | No — snooze ≤72h with logged acknowledgement | Sensitivity tuning (R2) | Yes — snooze, mute forever |
@@ -171,9 +171,24 @@ about almost everything else.
 
 Nudges play a short ding at default importance, not the Safety/Health chime. A caregiver who
 gets pushed about an empty medical-notes field should not hear the same pager as a safety alert.
-The exceptions
+Most of the pushing rules
 (`DEVICE_AUTH_BROKEN`, `DEVICE_BATTERY_LOW`, and `NO_ALERT_RECIPIENT` when it ships) are
 safety-category precisely because they mean monitoring is not working.
+
+`DEVICE_STALE_LONG` pushes without being one of them, and is the reason this is now framed as
+"the rules that opt in" rather than "the safety rules". Forty-eight hours of silence does mean
+monitoring is not working, so the push is earned; what it does not earn is the safety class's
+volume. Promoting it would override quiet hours and remove the mute, and a condition that has
+already stood for two days does not justify waking a household at 3am — it needs to survive the
+night and be there in the morning. So it keeps the nudge channel and the quiet-hours deferral and
+pushes anyway. **Category and push are independent decisions**: the class sets how loud, the flag
+sets whether it leaves the app. Reading one off the other is what `PushesWhenOpen` exists to avoid,
+in this direction as much as in `PUSH_UNREACHABLE`'s.
+
+This rule matters disproportionately because it is the only device signal for members
+`InactivityDetectionWorker` cannot see — one with no granular series at all, whose silence never
+registers as silence there. For them it was, until now, possible for monitoring to be dark for two
+days with nothing ever leaving the app.
 
 A rule opts in by declaring `NudgeSpec.PushesWhenOpen`, and `NotificationDispatchWorker`'s
 enqueue sweep turns its open rows into `NotificationDelivery` rows on the next 30-second tick.
