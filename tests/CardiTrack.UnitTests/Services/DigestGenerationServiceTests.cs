@@ -614,9 +614,10 @@ public class DigestGenerationServiceTests
 
         var prompt = await CapturePromptAsync();
 
+        // In the computed observations now, not the usual-pattern block — that is the section the
+        // prompt tells the model to lead with, and a finding outside it loses to one inside it.
         Assert.Contains(
-            "Last night's sleep, 3.6 hours, was well short of the usual 7.0 — a poor night, "
-            + "worth saying plainly.",
+            "- Last night: 3.6 hours of sleep (usual 7.0) — well short of their usual.",
             prompt);
     }
 
@@ -648,7 +649,7 @@ public class DigestGenerationServiceTests
 
             Assert.Contains("about 6,000 steps a day", prompt);
             Assert.Contains("about 7.0 hours of sleep a night", prompt);
-            Assert.Contains("Last night's sleep, 3.6 hours, was well short of the usual 7.0", prompt);
+            Assert.Contains("- Last night: 3.6 hours of sleep (usual 7.0)", prompt);
         }
         finally
         {
@@ -675,7 +676,7 @@ public class DigestGenerationServiceTests
         var prompt = await CapturePromptAsync();
 
         Assert.Contains("--- Usual pattern (30-day average) ---", prompt);
-        Assert.DoesNotContain("Last night's sleep,", prompt);
+        Assert.DoesNotContain("- Last night:", prompt);
     }
 
     // The note reads the night off today's row only: yesterday's row is the night before last,
@@ -701,7 +702,7 @@ public class DigestGenerationServiceTests
 
         var prompt = await CapturePromptAsync();
 
-        Assert.DoesNotContain("Last night's sleep,", prompt);
+        Assert.DoesNotContain("- Last night:", prompt);
     }
 
     /// <summary>
