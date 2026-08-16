@@ -539,10 +539,12 @@ internal sealed class TrendChartDrawable : IDrawable
         // that means "nothing was recorded here". They are days with no readings like any other,
         // and shading them is what explains why the line starts partway across the window instead
         // of at the left edge. Open at the left for the same reason a run still missing at the end
-        // is open at the right: it runs off the window, which is what it does.
+        // is open at the right: it runs off the window, which is what it does. It closes on the
+        // first reading rather than short of it, the same rule the runs below follow — the shade
+        // ends where the measuring starts.
         if (first > 0)
         {
-            var opensAt = (X(first - 1) + X(first)) / 2f;
+            var opensAt = X(first);
             canvas.FillColor = shade.WithAlpha(TrendChartInk.NoDataFillAlpha);
             canvas.FillRectangle(dirtyRect.Left, dirtyRect.Top, opensAt - dirtyRect.Left, dirtyRect.Height);
 
@@ -571,11 +573,19 @@ internal sealed class TrendChartDrawable : IDrawable
                 at++;
             var runEnd = at - 1;
 
-            var from = (X(runStart - 1) + X(runStart)) / 2f;
+            // Reading to reading, not midpoint to midpoint. What is being marked is the stretch of
+            // line that was interpolated, and that stretch runs from the last real reading to the
+            // next one — the whole segment between them was drawn rather than measured, so the
+            // whole segment is what the shade covers. The midpoints were inherited from the break
+            // marks this replaced, which bounded the missing days themselves because a mark
+            // standing on a reported day would have sat on top of its own marker; a shaded region
+            // has no such problem, and stopping halfway left the two segments either side of a gap
+            // looking measured when they were not.
+            var from = X(runStart - 1);
             // A run still missing at the end of the window has no closing reading to meet, so it
             // runs to the edge — which is what it does.
             var openEnded = runEnd >= Points.Count - 1;
-            var to = openEnded ? dirtyRect.Right : (X(runEnd) + X(runEnd + 1)) / 2f;
+            var to = openEnded ? dirtyRect.Right : X(runEnd + 1);
 
             canvas.FillColor = shade.WithAlpha(TrendChartInk.NoDataFillAlpha);
             canvas.FillRectangle(from, dirtyRect.Top, to - from, dirtyRect.Height);
