@@ -46,6 +46,13 @@ public class DeviceConnectionRepository : Repository<DeviceConnection>, IDeviceC
     /// <see cref="AnyActiveForCardiMembersAsync"/> below — this method was the one place that fix
     /// was never applied, and the sibling's warning describes exactly what it cost here.
     /// <para>
+    /// Three statuses ride on that difference. <see cref="ConnectionStatus.TokenExpired"/> and
+    /// <see cref="ConnectionStatus.AuthError"/> mean the provider refused our credentials and
+    /// re-consent is needed; <see cref="ConnectionStatus.SyncError"/> means the grant is intact and
+    /// a pull simply failed. All three are still paired devices the user can see and act on, and
+    /// the auth-recovery pass exists precisely because the first two are often temporary.
+    /// </para>
+    /// <para>
     /// A single provider timeout parks a connection in <see cref="ConnectionStatus.SyncError"/>
     /// (<c>DeviceSyncService</c>), and testing for <see cref="ConnectionStatus.Connected"/> made
     /// that row vanish from every caller at once: the dashboard reported no device at all, the

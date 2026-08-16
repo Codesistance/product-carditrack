@@ -58,9 +58,11 @@ public class DeviceConnectionRepositoryTests(TestDatabaseFixture fixture)
     }
 
     /// <summary>
-    /// A device the provider failed to serve is still a paired device. Excluding these made the
-    /// dashboard report no device at all, refused the manual retry with "no connected device", and
-    /// skipped the probe that stands between a slow provider and a false device-silence alert.
+    /// A device that failed to sync, and one whose credentials the provider refused, are both
+    /// still paired devices — only a disconnected row means the user no longer has one. Excluding
+    /// them made the dashboard report no device at all, refused the manual retry with "no
+    /// connected device", and skipped the probe that stands between a slow provider and a false
+    /// device-silence alert.
     /// </summary>
     [Theory]
     [InlineData(ConnectionStatus.SyncError)]

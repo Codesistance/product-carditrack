@@ -60,18 +60,18 @@ public sealed class DeviceStaleLongRule : INudgeRule
         // which only covers TokenExpired and AuthError. The staleness test below is what decides
         // whether it matters: a connection that errored once and recovered has a fresh
         // LastSyncDate and still returns NoGap.
-        var connected = context.Connections
+        var pairedAndPullable = context.Connections
             .Where(c => c.Status is ConnectionStatus.Connected or ConnectionStatus.SyncError)
             .ToList();
 
-        if (connected.Count == 0)
+        if (pairedAndPullable.Count == 0)
             return NudgeVerdict.NoGap;
 
         // Any one device still reporting means data is flowing; only a wholly silent member counts.
-        var mostRecent = connected.Max(c => c.LastSyncDate);
+        var mostRecent = pairedAndPullable.Max(c => c.LastSyncDate);
         if (mostRecent is null || context.UtcNow - mostRecent >= StaleAfter)
         {
-            var stalest = connected.OrderBy(c => c.LastSyncDate ?? DateTime.MinValue).First();
+            var stalest = pairedAndPullable.OrderBy(c => c.LastSyncDate ?? DateTime.MinValue).First();
 
             // A connection can be Connected with no LastSyncDate at all — never having synced once
             // is a different fact than an "{hours} ago" gap, and gets its own variant rather than a
