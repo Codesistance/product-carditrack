@@ -403,6 +403,79 @@ public class DigestGenerationServiceTests
         await _digests.DidNotReceive().AddAsync(Arg.Any<DigestEntry>(), Arg.Any<CancellationToken>());
     }
 
+    /// <summary>
+    /// The questionnaire loop exists so the next summary can read the day against what the family
+    /// said. A summary that is those answers read back is the loop failing, and the Member Detail
+    /// screen would show the caregiver their own words as if the service had noticed something.
+    /// </summary>
+    [Fact]
+    public async Task DiscardsTheSummary_WhenItIsTheFamilyAnswersReadBack()
+    {
+        GivenAnsweredQuestion(
+            "Has anything changed at home recently?", "She moved bedrooms last week.");
+        _medicalAi.GenerateStructuredAsync<DigestGenerationService.DigestAiResponse>(
+                Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new DigestGenerationService.DigestAiResponse
+            {
+                Headline = "A bedroom move",
+                Summary = "She moved bedrooms last week.",
+            });
+
+        var generated = await CreateSut().GenerateDueDigestsAsync(UtcNow);
+
+        Assert.Equal(0, generated);
+        await _digests.DidNotReceive().AddAsync(Arg.Any<DigestEntry>(), Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// Using an answer to interpret a reading is the point. Verbatim overlap is allowed when the
+    /// leftover wording is still a reading of the day, not a recap with a clause glued on.
+    /// </summary>
+    [Fact]
+    public async Task StoresTheSummary_WhenAFamilyAnswerIsUsedToReadTheDay()
+    {
+        GivenAnsweredQuestion(
+            "Has anything changed at home recently?", "She moved bedrooms last week.");
+        _medicalAi.GenerateStructuredAsync<DigestGenerationService.DigestAiResponse>(
+                Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new DigestGenerationService.DigestAiResponse
+            {
+                Headline = "A shorter night",
+                Summary = "She moved bedrooms last week, so last night was unsettled "
+                    + "and her resting rate sat above usual.",
+            });
+
+        var generated = await CreateSut().GenerateDueDigestsAsync(UtcNow);
+
+        Assert.Equal(1, generated);
+        await _digests.Received(1).AddAsync(
+            Arg.Is<DigestEntry>(d => d.Text.Contains("resting rate", StringComparison.Ordinal)),
+            Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// A quiz transcript in the prompt is what MedGemma recites. The family already knows the
+    /// exchange; the model needs the fact.
+    /// </summary>
+    [Fact]
+    public async Task PromptCarriesFamilyAnswersAsFacts_NotAsAQuizTranscript()
+    {
+        GivenAnsweredQuestion(
+            "Has anything changed at home recently?", "She moved bedrooms last week.");
+
+        string? prompt = null;
+        await _medicalAi.GenerateStructuredAsync<DigestGenerationService.DigestAiResponse>(
+            Arg.Do<string>(p => prompt = p), Arg.Any<CancellationToken>());
+
+        await CreateSut().GenerateDueDigestsAsync(UtcNow);
+
+        Assert.NotNull(prompt);
+        Assert.Contains("She moved bedrooms last week.", prompt);
+        Assert.Contains("never retell them", prompt);
+        Assert.DoesNotContain("Q:", prompt);
+        Assert.DoesNotContain("Has anything changed at home recently?", prompt);
+    }
+
     [Fact]
     public async Task StoresTheModelsSummary_Trimmed()
     {
@@ -1709,6 +1782,24 @@ public class DigestGenerationServiceTests
             ]);
         _questionnaires.GetLatestGeneratedAtAsync(_memberId, Arg.Any<CancellationToken>())
             .Returns(askedAt);
+    }
+
+    private void GivenAnsweredQuestion(
+        string question, string answer, QuestionnaireScope scope = QuestionnaireScope.TimeScoped)
+    {
+        _questionnaires.GetByCardiMemberAsync(_memberId, Arg.Any<CancellationToken>())
+            .Returns(
+            [
+                new MemberQuestionnaire
+                {
+                    CardiMemberId = _memberId,
+                    QuestionText = PromptContextFactory.Encryption.Encrypt(question),
+                    AnswerText = PromptContextFactory.Encryption.Encrypt(answer),
+                    Status = QuestionnaireStatus.Answered,
+                    GeneratedAtUtc = UtcNow.AddDays(-1),
+                    Scope = scope,
+                },
+            ]);
     }
 
     private void ReturnsQuestion(string question, string? rationale = null, string? questionScope = null) =>
