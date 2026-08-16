@@ -325,6 +325,29 @@
             </ScrollView>
         </RefreshView>
 
+        <!-- First back-swipe at this tab root: sit above the nav bar so it is visible
+             without scrolling. A second swipe within two seconds leaves the app. -->
+        <Border x:Name="ExitHintBanner"
+                Grid.Row="2"
+                VerticalOptions="End"
+                HorizontalOptions="Fill"
+                IsVisible="False"
+                InputTransparent="True"
+                BackgroundColor="{StaticResource White}"
+                StrokeThickness="0"
+                Margin="20,0,20,16"
+                Padding="16,12">
+            <Border.StrokeShape>
+                <RoundRectangle CornerRadius="16"/>
+            </Border.StrokeShape>
+            <Border.Shadow>
+                <Shadow Brush="{StaticResource CardShadowBrush}" Opacity="0.15" Radius="14" Offset="0,4"/>
+            </Border.Shadow>
+            <Label Text="Go back again to leave CardiTrack"
+                   Style="{StaticResource Body1SemiBoldDark}"
+                   HorizontalTextAlignment="Center"/>
+        </Border>
+
         <controls:BottomNavBar Grid.Row="3" Tab="Dashboard"/>
     </Grid>
 </ContentPage>

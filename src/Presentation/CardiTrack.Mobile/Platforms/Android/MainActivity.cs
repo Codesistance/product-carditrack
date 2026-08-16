@@ -33,7 +33,8 @@ public class MainActivity : MauiAppCompatActivity
     }
 
     /// <summary>
-    /// Registers the back-press callback that returns a caregiver to the page a tab jump dropped.
+    /// Registers the back-press callback that returns a caregiver to the page a tab jump dropped,
+    /// and that asks twice before finishing from the dashboard.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -68,6 +69,9 @@ public class MainActivity : MauiAppCompatActivity
         public override void HandleOnBackPressed()
         {
             if (TabNavigation.TryReturnToOrigin())
+                return;
+
+            if (TabNavigation.TryHoldDashboardExit())
                 return;
 
             // Not a press we have an answer for. Step out of the way and hand it back to the

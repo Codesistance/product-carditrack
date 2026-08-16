@@ -792,6 +792,7 @@ Heart Rate, Sleep, Skin Temp, Steps, SpO2, and Breathing Rate — the last three
 
 **Interactions:**
 - Pull-to-refresh triggers data sync; manual refresh icon sits in the page **header**
+- Android back / gesture-nav at this tab root: first swipe shows "Go back again to leave CardiTrack"; a second swipe within two seconds leaves the app. One swipe is not enough — this is home, and a single back used to finish the activity as if the app had crashed.
 - ~~Swipe left on metric card → see detail view~~ (not shipped — no metric-card swipe gesture)
 - ~~Long-press on photo → change photo option~~ (not shipped — no photo long-press gesture)
 

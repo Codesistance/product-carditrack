@@ -123,6 +123,8 @@ The **platform tab bar is hidden** (`Shell.TabBarIsVisible="False"` on each tab 
 
 > Figma's bar reads Home / Health / Alerts / Profile, but the M1 file has no Health or Profile screen, so the tab set is unchanged. Dashboard and Alerts use the exported Figma glyphs; Family and Settings keep their hand-authored ones, with `_active` variants that apply the tab-bar gradient to the existing stroke rather than inventing a filled glyph.
 
+Android back at a **tab root** finishes the activity, except on the dashboard: the first swipe shows "Go back again to leave CardiTrack" and a second swipe within two seconds is what actually leaves (`TabNavigation.TryHoldDashboardExit`, armed in `MainActivity`'s back callback alongside the origin return). Other tabs keep the one-press exit. iOS has no system-back-to-exit, so this is Android-only.
+
 ### Auth & onboarding flow
 
 ```

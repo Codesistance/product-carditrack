@@ -17,6 +17,18 @@ internal static class TabNavigation
     public static readonly NavigationOrigin Origin = new();
 
     /// <summary>
+    /// Armed by the first back swipe at the dashboard tab root. A second swipe inside
+    /// <see cref="ExitConfirmation.Window"/> lets Android finish; anything else disarms.
+    /// </summary>
+    public static readonly ExitConfirmation DashboardExit = new();
+
+    /// <summary>
+    /// Raised when the first back swipe at the dashboard is held. The dashboard shows the
+    /// "go back again" hint; this type stays MAUI-free of that chrome.
+    /// </summary>
+    public static event EventHandler? DashboardExitArmed;
+
+    /// <summary>
     /// Goes to an absolute tab route the way <see cref="Shell.GoToAsync(ShellNavigationState)"/>
     /// does, first recording the page it drops so back can return there.
     /// </summary>
@@ -91,6 +103,37 @@ internal static class TabNavigation
         _ = ReturnTo(shell, origin);
         return true;
     }
+
+    /// <summary>
+    /// Holds a back press at the dashboard tab root so the first swipe confirms and the
+    /// second (within two seconds) is what actually leaves. Returns whether it took the press.
+    /// </summary>
+    /// <remarks>
+    /// Other tab roots still finish on one press, matching Android. The dashboard is home —
+    /// the screen onboarding and "Go to Dashboard" land on — and a single swipe there used
+    /// to close the app as if it had crashed.
+    /// </remarks>
+    public static bool TryHoldDashboardExit()
+    {
+        if (Shell.Current is not { } shell
+            || !DashboardExitGate.IsDashboardTabRoot(
+                shell.CurrentState?.Location?.ToString(),
+                shell.Navigation.NavigationStack.Count,
+                shell.Navigation.ModalStack.Count))
+        {
+            DashboardExit.Disarm();
+            return false;
+        }
+
+        if (DashboardExit.Confirm())
+            return false;
+
+        DashboardExitArmed?.Invoke(null, EventArgs.Empty);
+        return true;
+    }
+
+    /// <summary>Forgets a pending dashboard exit — leaving the tab cancels the confirmation.</summary>
+    public static void DisarmDashboardExit() => DashboardExit.Disarm();
 
     /// <summary>
     /// A route that no longer resolves — the member it named has since been removed — leaves the
