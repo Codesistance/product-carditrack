@@ -182,6 +182,14 @@ public sealed class MetricTrendCard : ContentView
         _plot.Add(axis);
         _plot.Add(_chart, 1);
 
+        // A tap on a shaded run says what is missing from it. Only the runs answer — a tap on the
+        // data does nothing, so this cannot become a gesture the caregiver has to avoid to read
+        // the chart, and the carousel keeps its swipe.
+        var gapTap = new TapGestureRecognizer();
+        gapTap.Tapped += OnChartTapped;
+        _chart.GestureRecognizers.Add(gapTap);
+        SemanticProperties.SetHint(_chart, "Tap a shaded stretch to see which days have no readings");
+
         ApplyStyle(_empty, "Body2");
         _empty.Text = "Not enough readings in this window yet.";
         _empty.HorizontalTextAlignment = TextAlignment.Center;
@@ -588,6 +596,31 @@ public sealed class MetricTrendCard : ContentView
         {
             // async void, reached from a gesture: an explanation that will not open is not worth
             // taking the app down for.
+        }
+    }
+
+    /// <summary>
+    /// Answers a tap on a shaded run of missing days, and ignores every other tap on the chart.
+    /// </summary>
+    /// <remarks>
+    /// The shading says a stretch was not measured; this says which stretch. Naming the days is
+    /// the part a caregiver can act on — a weekend the watch sat on the dresser reads differently
+    /// from three days mid-week — and it is not something a legend key can carry, because it is
+    /// different for every run on every chart.
+    /// </remarks>
+    private async void OnChartTapped(object? sender, TappedEventArgs e)
+    {
+        if (e.GetPosition(_chart) is not { } at || _chart.NoDataSpanAt(at.X) is not { } span)
+            return;
+
+        try
+        {
+            await Services.ServiceHelper.GetRequiredService<Services.IPopupService>()
+                .ShowInfoAsync(span.Description, "No readings");
+        }
+        catch (Exception)
+        {
+            // async void, reached from a gesture: the same stance as ShowExplanation above.
         }
     }
 

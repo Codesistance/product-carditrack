@@ -81,6 +81,44 @@ public sealed class TrendChart : GraphicsView
 
         return false;
     }
+
+    /// <summary>
+    /// The shaded run of missing days under <paramref name="x"/>, or null if the tap landed on the
+    /// data. In the chart's own coordinates — the caller converts from the gesture.
+    /// </summary>
+    /// <remarks>
+    /// Answered from the geometry the last draw actually produced rather than recomputed from the
+    /// points, so what a tap hits is by construction what the caregiver sees. A chart that has not
+    /// been drawn yet has no spans and answers null.
+    /// </remarks>
+    internal NoDataSpan? NoDataSpanAt(double x)
+    {
+        foreach (var span in _drawable.NoDataSpans)
+        {
+            if (x >= span.Left && x <= span.Right)
+                return span;
+        }
+
+        return null;
+    }
+}
+
+/// <summary>
+/// One shaded run of days with no reading: where it was drawn, and which days it covers.
+/// </summary>
+internal readonly record struct NoDataSpan(float Left, float Right, DateOnly From, DateOnly To, int Days)
+{
+    /// <summary>
+    /// What a tap on the run says. Names the days rather than counting them alone: "no readings
+    /// for 3 days" leaves the caregiver working out which three, and the answer is usually the
+    /// thing they want — a weekend the watch was off the wrist reads differently from three days
+    /// mid-week.
+    /// </summary>
+    public string Description =>
+        Days == 1
+            ? $"No readings on {From:MMM d}. The line is drawn straight across it."
+            : $"No readings from {From:MMM d} to {To:MMM d} — {Days} days. The line is drawn "
+              + "straight across them.";
 }
 
 /// <summary>
@@ -123,49 +161,47 @@ internal static class TrendChartInk
     public static readonly float[] PartialDayDashes = [2f, 2f];
 
     /// <summary>
-    /// The break mark bounding a run of days with no reading. A zigzag rather than another dashed
-    /// rule: the two marks above are values the line is read <em>against</em> and run with the
-    /// axis, while this one cuts across it to say the line here was drawn, not measured. It is the
-    /// same symbol a broken axis wears in print, which is the one convention a reader is likely to
-    /// arrive already holding.
+    /// The bounds of a run of days with no reading: a light dashed rule at each end of the run,
+    /// with the days between them shaded.
     /// </summary>
-    public const float NoDataThickness = 1.5f;
+    /// <remarks>
+    /// This was a zigzag — the broken-axis symbol from print — drawn at each end. It said the right
+    /// thing and said it too loudly: two full-height marks cutting across the plot competed with
+    /// the line for the eye on a chart whose whole subject is that line, and on a 30-day window
+    /// with two or three gaps the chart read as mostly marks. Shading the run instead puts the
+    /// absence behind the data where it belongs — the region is the statement, and the rules only
+    /// bound it.
+    /// </remarks>
+    public const float NoDataThickness = 1f;
 
-    /// <summary>How far the zigzag swings either side of its line, and how tall one swing is.</summary>
-    public const float NoDataAmplitude = 3f;
+    /// <summary>Light and open, so the bound reads as an edge rather than as another reading.</summary>
+    public static readonly float[] NoDataBoundDashes = [3f, 3f];
 
-    public const float NoDataSegment = 7f;
+    /// <summary>
+    /// How strongly the missing run is shaded, and how strongly its edges are ruled. Low enough
+    /// that the gridlines still show through it: the shade marks a region, it does not black it out.
+    /// </summary>
+    public const float NoDataFillAlpha = 0.13f;
+
+    public const float NoDataBoundAlpha = 0.5f;
 
     public static Color Reference => MetricStatus.Resource("ChartReferenceBand", Colors.Gray);
 
     public static Color NoData => MetricStatus.Resource("ChartNoDataMark", Colors.Gray);
 
     /// <summary>
-    /// One break mark: a zigzag down the given span, meeting the top and bottom on its own centre
-    /// line so a pair of them reads as two straight bounds rather than as two wandering ones. Here
-    /// rather than on the drawable because the key has to draw the identical mark at 16×10 — see
-    /// <see cref="TrendLegendSwatch"/>.
+    /// The shade for a missing run, opposite the metric's own ink on the colour wheel.
     /// </summary>
-    public static void DrawBreak(ICanvas canvas, float x, float top, float bottom)
-    {
-        // At least one swing each way, however short the span — a mark that came out as a plain
-        // vertical line would be indistinguishable from a gridline stood on its end.
-        var swings = Math.Max(2, (int)Math.Round((bottom - top) / NoDataSegment));
-        var step = (bottom - top) / swings;
-
-        var path = new PathF();
-        path.MoveTo(x, top);
-
-        var side = 1f;
-        for (var n = 1; n < swings; n++)
-        {
-            path.LineTo(x + NoDataAmplitude * side, top + step * n);
-            side = -side;
-        }
-
-        path.LineTo(x, bottom);
-        canvas.DrawPath(path);
-    }
+    /// <remarks>
+    /// Derived from the ink rather than fixed, because the six metrics run blue, red, purple,
+    /// green and two more, and any one fixed shade would sit near one of them: a wash that reads
+    /// as "no data" on the steps chart would read as a second heart-rate series on the heart one.
+    /// Rotating the hue half a turn guarantees the largest separation from whatever ink it is
+    /// drawn under, for every metric, including the ones not added yet. Saturation and lightness
+    /// are pinned rather than carried over so a pale ink cannot produce a shade too faint to see.
+    /// </remarks>
+    public static Color NoDataShadeFor(Color metricInk) =>
+        Color.FromHsla((metricInk.GetHue() + 0.5f) % 1f, 0.5f, 0.5f);
 
     /// <summary>
     /// The baseline rule in a metric's own ink. Taken from the caller rather than resolved here so
@@ -187,6 +223,15 @@ internal sealed class TrendChartDrawable : IDrawable
 {
     /// <summary>Keeps the 3dp stroke and the markers clear of the top and bottom edges.</summary>
     private const float VerticalInset = 6f;
+
+    private readonly List<NoDataSpan> _noDataSpans = [];
+
+    /// <summary>
+    /// Where each shaded run of missing days landed on the canvas, in the order they were drawn.
+    /// Recorded during <see cref="Draw"/> because that is where the geometry exists — the caller
+    /// needs it to answer a tap on one. See <see cref="TrendChart.NoDataSpanAt"/>.
+    /// </summary>
+    public IReadOnlyList<NoDataSpan> NoDataSpans => _noDataSpans;
 
     /// <summary>
     /// Same, for the first and last day: they sit at the very ends of the axis, so without this the
@@ -216,6 +261,10 @@ internal sealed class TrendChartDrawable : IDrawable
 
     public void Draw(ICanvas canvas, RectF dirtyRect)
     {
+        // Rebuilt every pass: the spans are canvas geometry, so a resize or a new window makes the
+        // ones from last time wrong rather than stale.
+        _noDataSpans.Clear();
+
         if (dirtyRect.Width <= 0 || dirtyRect.Height <= 0 || Points.Count < 2)
             return;
 
@@ -415,9 +464,9 @@ internal sealed class TrendChartDrawable : IDrawable
     }
 
     /// <summary>
-    /// Bounds each run of days with no reading with a vertical break mark, so the flat run the line
-    /// draws through them is legible as a bridge rather than as a week the member's heart rate
-    /// genuinely held still.
+    /// Shades each run of days with no reading and rules its ends, so the flat run the line draws
+    /// through them is legible as a bridge rather than as a week the member's heart rate genuinely
+    /// held still.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -450,11 +499,7 @@ internal sealed class TrendChartDrawable : IDrawable
         if (first < 0)
             return;
 
-        canvas.StrokeColor = TrendChartInk.NoData;
-        canvas.StrokeSize = TrendChartInk.NoDataThickness;
-        canvas.StrokeDashPattern = null;
-        canvas.StrokeLineCap = LineCap.Round;
-        canvas.StrokeLineJoin = LineJoin.Round;
+        var shade = TrendChartInk.NoDataShadeFor(LineColor);
 
         float X(int index) => left + plotWidth * index / (Points.Count - 1);
 
@@ -472,9 +517,26 @@ internal sealed class TrendChartDrawable : IDrawable
                 at++;
             var runEnd = at - 1;
 
-            TrendChartInk.DrawBreak(canvas, (X(runStart - 1) + X(runStart)) / 2f, dirtyRect.Top, dirtyRect.Bottom);
-            if (runEnd < Points.Count - 1)
-                TrendChartInk.DrawBreak(canvas, (X(runEnd) + X(runEnd + 1)) / 2f, dirtyRect.Top, dirtyRect.Bottom);
+            var from = (X(runStart - 1) + X(runStart)) / 2f;
+            // A run still missing at the end of the window has no closing reading to meet, so it
+            // runs to the edge — which is what it does.
+            var openEnded = runEnd >= Points.Count - 1;
+            var to = openEnded ? dirtyRect.Right : (X(runEnd) + X(runEnd + 1)) / 2f;
+
+            canvas.FillColor = shade.WithAlpha(TrendChartInk.NoDataFillAlpha);
+            canvas.FillRectangle(from, dirtyRect.Top, to - from, dirtyRect.Height);
+
+            canvas.StrokeColor = shade.WithAlpha(TrendChartInk.NoDataBoundAlpha);
+            canvas.StrokeSize = TrendChartInk.NoDataThickness;
+            canvas.StrokeDashPattern = TrendChartInk.NoDataBoundDashes;
+            canvas.StrokeLineCap = LineCap.Butt;
+            canvas.DrawLine(from, dirtyRect.Top, from, dirtyRect.Bottom);
+            if (!openEnded)
+                canvas.DrawLine(to, dirtyRect.Top, to, dirtyRect.Bottom);
+            canvas.StrokeDashPattern = null;
+
+            _noDataSpans.Add(new NoDataSpan(
+                from, to, Points[runStart].Date, Points[runEnd].Date, runEnd - runStart + 1));
         }
     }
 
