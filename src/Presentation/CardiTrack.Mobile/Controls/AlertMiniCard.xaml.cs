@@ -37,6 +37,7 @@ public partial class AlertMiniCard : ContentView
             "red" => ("AlertTileRed", "PillRedBackground", "StatusRed"),
             "orange" => ("AlertTileOrange", "PillOrangeBackground", "StatusOrange"),
             "yellow" => ("AlertTileYellow", "PillYellowBackground", "StatusYellow"),
+            "green" => ("AlertTileGreen", "PillGreenBackground", "StatusGreen"),
             _ => ("AlertTileNeutral", "PillNeutralBackground", "StatusUnknown"),
         };
 

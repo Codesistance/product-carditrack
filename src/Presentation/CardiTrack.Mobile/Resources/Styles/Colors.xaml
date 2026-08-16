@@ -126,6 +126,11 @@
     <Color x:Key="AlertTileRed">#24E53E3E</Color>
     <Color x:Key="AlertTileOrange">#24ED7B2F</Color>
     <Color x:Key="AlertTileYellow">#24F0A92E</Color>
+    <!-- Green completes the severity set. It is not decoration: the sleep rule grades a longer
+         night that has not overshot the recommendation as informational, and without this the tile
+         fell through to AlertTileNeutral — an unknown-severity grey standing in for a severity we
+         do know. -->
+    <Color x:Key="AlertTileGreen">#2436C09B</Color>
     <Color x:Key="AlertTileNeutral">#24939DAA</Color>
 
     <!-- Alert card quick actions (M1-10) — Figma rgba(24,132,220,0.18). Distinct from the

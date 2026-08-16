@@ -3,6 +3,7 @@ using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Application.Services;
 using CardiTrack.Application.Services.Notifications;
 using CardiTrack.Domain.Entities;
+using CardiTrack.Domain.Extensions;
 using Microsoft.Extensions.Caching.Distributed;
 using Microsoft.Extensions.Logging;
 
@@ -124,7 +125,12 @@ public class StatisticalAlertService : IStatisticalAlertService
         if (rulePrefs.IsEnabled(StatisticalAlertRules.ActivityDeclineRule))
             AddIfPresent(candidates, StatisticalAlertRules.ActivityDecline(baseline, yesterdayLog));
         if (rulePrefs.IsEnabled(StatisticalAlertRules.IrregularSleepRule))
-            AddIfPresent(candidates, StatisticalAlertRules.IrregularSleep(baseline, lastNightLog));
+        {
+            // Age against the member's own local today, the same day the readings are dated in —
+            // the sleep rule grades the night on the published band for their age bracket.
+            AddIfPresent(candidates, StatisticalAlertRules.IrregularSleep(
+                baseline, lastNightLog, member.DateOfBirth.ToAgeInYears(localToday)));
+        }
         if (rulePrefs.IsEnabled(StatisticalAlertRules.ElevatedHeartRateRule))
             AddIfPresent(candidates, StatisticalAlertRules.ElevatedHeartRate(baseline, yesterdayLog));
         if (rulePrefs.IsEnabled(StatisticalAlertRules.NoMorningActivityRule))

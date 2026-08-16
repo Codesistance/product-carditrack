@@ -84,34 +84,96 @@ public static class StatisticalAlertRules
     }
 
     /// <summary>
+    /// Whether the night departs from the baseline average far enough to be worth a word — the
+    /// trigger on its own, without the grading <see cref="IrregularSleep"/> puts on it. Split out
+    /// for the digest, which asks only whether today's readings would fire a rule and has no
+    /// business knowing the member's age to find out.
+    /// </summary>
+    public static bool SleepDepartsFromBaseline(PatternBaseline baseline, ActivityLog? lastNight)
+    {
+        if (baseline.AvgSleepMinutes is not > 0 || lastNight?.SleepMinutes is not { } sleep)
+            return false;
+
+        var average = baseline.AvgSleepMinutes.Value;
+        return Math.Abs(sleep - average) > average * DeviationFraction;
+    }
+
+    /// <summary>
     /// The most recent night's sleep more than 30% off the baseline average, in either direction.
     /// Sleep sessions are attributed to the civil day they <b>ended</b> on, so last night lives on
     /// <em>today's</em> log — the same row the dashboard's sleep card rates — and the orchestrator
     /// passes the freshest log that carries a sleep reading. The candidate names the night it
     /// judged (<see cref="StatisticalAlertCandidate.NightOf"/>) so one night alerts at most once
     /// however late its data arrived.
+    /// <para>
+    /// The trigger is symmetric; the <b>severity is not</b>. A departure from the member's own
+    /// usual cannot say on its own whether the night was a problem, because the usual it is
+    /// measured against may itself be far short of what anyone should be getting: a member who
+    /// normally manages 3.8 hours and slept 5.2 is 37% off their baseline and closer to the
+    /// published recommendation than they have been all fortnight. Grading that the same amber as
+    /// a night that collapsed to 2.4 asks a caregiver to worry about an improvement. So a longer
+    /// night is <see cref="AlertSeverity.Green"/> — informational, still on the list, but not
+    /// dressed as a warning — right up until it overshoots the recommended band, which is the one
+    /// direction in which more sleep is the reading worth flagging. A shorter night keeps its
+    /// <see cref="AlertSeverity.Yellow"/> whatever the absolute figure, because a sudden loss of a
+    /// third of someone's sleep is a pattern break in its own right.
+    /// </para>
     /// </summary>
-    public static StatisticalAlertCandidate? IrregularSleep(PatternBaseline baseline, ActivityLog? lastNight)
+    /// <param name="ageYears">
+    /// The member's age, for the published band the night is graded against — see
+    /// <see cref="HealthReferenceRanges.Sleep"/>. Only the ceiling moves with it, and the ceiling
+    /// is exactly what decides whether a longer night is a concern, so a default here would quietly
+    /// grant every older adult an hour of oversleep the recommendation does not give them.
+    /// </param>
+    public static StatisticalAlertCandidate? IrregularSleep(
+        PatternBaseline baseline, ActivityLog? lastNight, int ageYears)
     {
-        if (baseline.AvgSleepMinutes is not > 0 || lastNight?.SleepMinutes is not { } sleep)
+        if (lastNight?.SleepMinutes is not { } sleep
+            || baseline.AvgSleepMinutes is not { } average
+            || !SleepDepartsFromBaseline(baseline, lastNight))
+        {
             return null;
+        }
 
-        var average = baseline.AvgSleepMinutes.Value;
-        if (Math.Abs(sleep - average) <= average * DeviationFraction)
-            return null;
+        var recommended = HealthReferenceRanges.Sleep(ageYears);
+        var hours = sleep / 60m;
+        var longer = sleep > average;
+        var overshot = hours > recommended.High;
 
-        var direction = sleep < average ? "less" : "more";
+        // A longer night that has not overshot is the one departure this rule can positively
+        // establish was benign — every other shape it fires on stays a warning.
+        var benign = longer && !overshot;
+
+        // The clause that says where the night landed against the recommendation, which is the
+        // fact the deviation from their own usual leaves the caregiver to infer.
+        var tail = longer
+            ? hours < recommended.Low
+                ? $"still under the {recommended.Low:0.#} hours recommended, but a night in the "
+                  + "right direction."
+                : overshot
+                    ? $"and past the {recommended.High:0.#} hours recommended at their age. One "
+                      + "night is rarely a worry, but it may be worth mentioning."
+                    : $"a night inside the {recommended.Low:0.#}–{recommended.High:0.#} hours "
+                      + "recommended at their age."
+            : "one night is rarely a worry, but it may be worth mentioning.";
+
         return new StatisticalAlertCandidate(
-            IrregularSleepRule, AlertType.Sleep, AlertSeverity.Yellow,
-            "Sleep was well off the usual",
-            $"Around {sleep / 60.0:F1} hours of sleep, noticeably {direction} than the usual "
-            + $"{average / 60.0:F1} — one night is rarely a worry, but it may be worth mentioning.",
+            IrregularSleepRule, AlertType.Sleep,
+            benign ? AlertSeverity.Green : AlertSeverity.Yellow,
+            benign ? "A longer night than usual" : "Sleep was well off the usual",
+            $"Around {sleep / 60.0:F1} hours of sleep, noticeably {(longer ? "more" : "less")} "
+            + $"than the usual {average / 60.0:F1} — {tail}",
             Serialize(new
             {
                 rule = IrregularSleepRule,
                 night = lastNight.Date.ToString("O"),
                 sleepMinutes = sleep,
                 baselineAvgSleepMinutes = average,
+                // The band this night was judged against, stored rather than re-derived later: a
+                // member who crosses OlderAdultAge after the fact must not have the alert's copy
+                // quoting one ceiling while the chart beside it draws another.
+                recommendedLowHours = recommended.Low,
+                recommendedHighHours = recommended.High,
             }),
             NightOf: lastNight.Date);
     }

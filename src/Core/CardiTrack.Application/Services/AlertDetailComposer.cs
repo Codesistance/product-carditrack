@@ -303,7 +303,7 @@ public static class AlertDetailComposer
             AcknowledgedByUserId = alert.AcknowledgedByUserId,
             AcknowledgedByName = acknowledger?.Name,
             Comparison = Comparison(rule, metrics, baseline, today, aboutDate),
-            Chart = Chart(rule, logs, today, granular, baseline, metrics, elapsedSteps),
+            Chart = Chart(rule, logs, today, granular, baseline, metrics, member, elapsedSteps),
             LastActivityOn = LastMeasuredStepsDay(logs),
             TypicalWakeTime = ReadString(metrics, "typicalWakeTime")
                 ?? baseline?.TypicalWakeTime?.ToString("HH:mm", CultureInfo.InvariantCulture),
@@ -477,6 +477,7 @@ public static class AlertDetailComposer
         GranularWindow? granular,
         PatternBaseline? baseline,
         JsonElement metrics,
+        CardiMember? member,
         ElapsedSteps? elapsedSteps)
     {
         // Only the step windows run up to the day in progress — see NeedsElapsedMatch.
@@ -506,7 +507,8 @@ public static class AlertDetailComposer
                 => DailyChart(
                     "sleep", "Sleep", "hours", SleepDays, today, logs,
                     l => l.SleepMinutes is { } minutes ? minutes / 60m : null,
-                    Hours(baseline?.AvgSleepMinutes) ?? Hours(ReadDecimal(metrics, "baselineAvgSleepMinutes"))),
+                    Hours(baseline?.AvgSleepMinutes) ?? Hours(ReadDecimal(metrics, "baselineAvgSleepMinutes")),
+                    reference: SleepReference(metrics, member, today)),
 
             RealtimeHeartRateRule => GranularHeartChart(granular, baseline?.AvgRestingHeartRate),
 
@@ -514,8 +516,38 @@ public static class AlertDetailComposer
         };
     }
 
+    /// <summary>
+    /// The published band the sleep chart shades behind the line. The figures the rule stored win
+    /// over anything re-derived from the member's date of birth, so an alert raised before they
+    /// crossed <see cref="HealthReferenceRanges.OlderAdultAge"/> keeps drawing the band its own
+    /// copy quotes — the same reason the rule writes them down in the first place. Rows from
+    /// before the band was stored fall back to the member's age today, and an alert composed
+    /// without a member gets no band rather than a guessed one.
+    /// </summary>
+    private static MetricReference? SleepReference(JsonElement metrics, CardiMember? member, DateOnly today)
+    {
+        if (ReadDecimal(metrics, "recommendedLowHours") is { } low
+            && ReadDecimal(metrics, "recommendedHighHours") is { } high)
+        {
+            return new MetricReference
+            {
+                Low = low,
+                High = high,
+                Source = HealthReferenceRanges.SleepSource,
+            };
+        }
+
+        return member is null
+            ? null
+            : HealthReferenceRanges.Sleep(member.DateOfBirth.ToAgeInYears(today));
+    }
+
     /// <param name="partialDay">
     /// The day still in progress, or null for a metric whose daily figure is settled when reported.
+    /// </param>
+    /// <param name="reference">
+    /// The published typical-adult band, or null for a metric that has none — see
+    /// <see cref="AlertChartResponse.Reference"/>.
     /// </param>
     private static AlertChartResponse? DailyChart(
         string metric,
@@ -527,7 +559,8 @@ public static class AlertDetailComposer
         Func<ActivityLog, decimal?> selector,
         decimal? baseline,
         DateOnly? partialDay = null,
-        ElapsedSteps? elapsedSteps = null)
+        ElapsedSteps? elapsedSteps = null,
+        MetricReference? reference = null)
     {
         var byDate = logs
             .GroupBy(l => l.Date)
@@ -563,6 +596,7 @@ public static class AlertDetailComposer
             Value = settled?.Value,
             ValueLabel = partialDay is null ? null : DayLabel(settled?.Date, today),
             Baseline = baseline,
+            Reference = reference,
             Series = series,
             PartialDayLabel = PartialDayLabel(elapsedSteps),
         };

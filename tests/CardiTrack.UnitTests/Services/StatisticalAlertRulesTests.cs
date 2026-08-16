@@ -72,17 +72,122 @@ public class StatisticalAlertRulesTests
 
     // ── irregular_sleep ──────────────────────────────────────────────────────────────────
 
+    /// <summary>An adult under the NSF's older-adult split, so the recommended band is 7–9 hours.</summary>
+    private const int AdultAge = 60;
+
+    /// <summary>Past <see cref="HealthReferenceRanges.OlderAdultAge"/>, so the band is 7–8.</summary>
+    private const int OlderAdultAge = 70;
+
+    /// <summary>A baseline whose usual night is far short of the recommendation — the case the
+    /// severity split exists for. 30% of 228 min (3.8 h) is 68.4.</summary>
+    private static PatternBaseline ShortSleeperBaseline()
+    {
+        var baseline = Baseline();
+        baseline.AvgSleepMinutes = 228;
+        return baseline;
+    }
+
     // 30% of 420 min is 126 — both directions past it are irregular.
     [Theory]
     [InlineData(293, "less")]
     [InlineData(547, "more")]
     public void IrregularSleep_Fires_InEitherDirection(int sleep, string direction)
     {
-        var candidate = StatisticalAlertRules.IrregularSleep(Baseline(), Log(sleepMinutes: sleep));
+        var candidate = StatisticalAlertRules.IrregularSleep(Baseline(), Log(sleepMinutes: sleep), AdultAge);
 
         Assert.NotNull(candidate);
         Assert.Equal(AlertType.Sleep, candidate.Type);
         Assert.Contains(direction, candidate.Message);
+    }
+
+    /// <summary>
+    /// The screenshot case: someone who normally manages 3.8 hours slept 5.2. That is 37% off
+    /// their own usual and fires, but it is movement toward the recommendation rather than away
+    /// from it, so it must not be graded as a warning — and the copy has to say where the night
+    /// actually landed, which the deviation from their usual cannot.
+    /// </summary>
+    [Fact]
+    public void IrregularSleep_IsInformational_WhenALongerNightIsStillShortOfTheRecommendedFloor()
+    {
+        var candidate = StatisticalAlertRules.IrregularSleep(
+            ShortSleeperBaseline(), Log(sleepMinutes: 312), AdultAge);
+
+        Assert.NotNull(candidate);
+        Assert.Equal(AlertSeverity.Green, candidate.Severity);
+        Assert.Contains("5.2 hours", candidate.Message);
+        Assert.Contains("still under the 7 hours recommended", candidate.Message);
+    }
+
+    /// <summary>A longer night that reaches the recommended band is the best reading this rule
+    /// can produce, and is graded accordingly whichever side of the age split the member is on —
+    /// only the ceiling moves, and this lands under both.</summary>
+    [Theory]
+    [InlineData(AdultAge)]
+    [InlineData(OlderAdultAge)]
+    public void IrregularSleep_IsInformational_WhenALongerNightLandsInsideTheRecommendedBand(int age)
+    {
+        var candidate = StatisticalAlertRules.IrregularSleep(
+            ShortSleeperBaseline(), Log(sleepMinutes: 450), age);
+
+        Assert.NotNull(candidate);
+        Assert.Equal(AlertSeverity.Green, candidate.Severity);
+        Assert.Contains("recommended at their age", candidate.Message);
+    }
+
+    /// <summary>
+    /// The one direction in which more sleep is the reading worth flagging — and the one place
+    /// the member's age changes the verdict rather than only the wording: 8.5 hours sits inside
+    /// the adult band and past the older-adult ceiling.
+    /// </summary>
+    [Theory]
+    [InlineData(AdultAge, AlertSeverity.Green)]
+    [InlineData(OlderAdultAge, AlertSeverity.Yellow)]
+    public void IrregularSleep_WarnsOnlyOnceALongerNightOvershootsTheBandForTheirAge(
+        int age, AlertSeverity expected)
+    {
+        var baseline = Baseline();
+        baseline.AvgSleepMinutes = 360;
+
+        var candidate = StatisticalAlertRules.IrregularSleep(baseline, Log(sleepMinutes: 510), age);
+
+        Assert.NotNull(candidate);
+        Assert.Equal(expected, candidate.Severity);
+    }
+
+    /// <summary>
+    /// The asymmetry is deliberate. A shorter night keeps its warning even when the absolute
+    /// figure is perfectly healthy, because losing a third of someone's sleep overnight is a
+    /// pattern break in its own right — 8 hours against a 12-hour usual is still a warning.
+    /// </summary>
+    [Fact]
+    public void IrregularSleep_WarnsOnAShorterNight_EvenOneInsideTheRecommendedBand()
+    {
+        var baseline = Baseline();
+        baseline.AvgSleepMinutes = 720;
+
+        var candidate = StatisticalAlertRules.IrregularSleep(baseline, Log(sleepMinutes: 480), AdultAge);
+
+        Assert.NotNull(candidate);
+        Assert.Equal(AlertSeverity.Yellow, candidate.Severity);
+        Assert.Contains("less", candidate.Message);
+    }
+
+    /// <summary>
+    /// The band the night was judged against is written down, not left to be re-derived when the
+    /// detail screen draws it — a member who crosses the older-adult split later must not get an
+    /// alert quoting one ceiling beside a chart shading another.
+    /// </summary>
+    [Fact]
+    public void IrregularSleep_RecordsTheBandItJudgedAgainst()
+    {
+        var adult = StatisticalAlertRules.IrregularSleep(Baseline(), Log(sleepMinutes: 293), AdultAge);
+        var older = StatisticalAlertRules.IrregularSleep(Baseline(), Log(sleepMinutes: 293), OlderAdultAge);
+
+        Assert.NotNull(adult);
+        Assert.NotNull(older);
+        Assert.Contains("\"recommendedLowHours\":7", adult.MetricValues);
+        Assert.Contains("\"recommendedHighHours\":9", adult.MetricValues);
+        Assert.Contains("\"recommendedHighHours\":8", older.MetricValues);
     }
 
     /// <summary>
@@ -93,7 +198,7 @@ public class StatisticalAlertRulesTests
     [Fact]
     public void IrregularSleep_NamesTheNightItJudged()
     {
-        var candidate = StatisticalAlertRules.IrregularSleep(Baseline(), Log(sleepMinutes: 200));
+        var candidate = StatisticalAlertRules.IrregularSleep(Baseline(), Log(sleepMinutes: 200), AdultAge);
 
         Assert.NotNull(candidate);
         Assert.Equal(new DateOnly(2026, 8, 9), candidate.NightOf);
@@ -106,7 +211,21 @@ public class StatisticalAlertRulesTests
     [InlineData(546)]
     public void IrregularSleep_StaysQuiet_WithinTheBand(int sleep)
     {
-        Assert.Null(StatisticalAlertRules.IrregularSleep(Baseline(), Log(sleepMinutes: sleep)));
+        Assert.Null(StatisticalAlertRules.IrregularSleep(Baseline(), Log(sleepMinutes: sleep), AdultAge));
+        Assert.False(StatisticalAlertRules.SleepDepartsFromBaseline(Baseline(), Log(sleepMinutes: sleep)));
+    }
+
+    /// <summary>
+    /// The trigger the digest asks on its own. It has to stay symmetric — the grading is what
+    /// changed, not what counts as a departure — or a longer night would stop refreshing a
+    /// summary that is about to describe it.
+    /// </summary>
+    [Theory]
+    [InlineData(293)]
+    [InlineData(547)]
+    public void SleepDepartsFromBaseline_IsSymmetric(int sleep)
+    {
+        Assert.True(StatisticalAlertRules.SleepDepartsFromBaseline(Baseline(), Log(sleepMinutes: sleep)));
     }
 
     // ── elevated_heart_rate ──────────────────────────────────────────────────────────────
