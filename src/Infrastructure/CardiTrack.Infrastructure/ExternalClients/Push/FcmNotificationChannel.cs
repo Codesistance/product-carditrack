@@ -222,12 +222,7 @@ public class FcmNotificationChannel : INotificationChannel
                 CollapseKey = delivery.CollapseKey,
                 Notification = new AndroidNotification
                 {
-                    ChannelId = delivery.Category switch
-                    {
-                        DeliveryCategory.Safety => NotificationChannels.Safety,
-                        DeliveryCategory.Health => NotificationChannels.Health,
-                        _ => NotificationChannels.Nudges
-                    },
+                    ChannelId = NotificationChannels.ForCategory(delivery.Category),
                     // Named here as well as in the manifest default. Android's small icon has to be
                     // a white-on-transparent silhouette; with neither this nor the manifest
                     // meta-data set it falls back to the adaptive launcher icon, which the system

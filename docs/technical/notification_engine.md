@@ -227,6 +227,12 @@ sound or vibration. Safety/Health share `carditrack_alert.wav`; Nudges use `card
 byte-identical to the matching Android `res/raw/` copy; APNs takes the filename with extension,
 Android the resource name without.
 
+The payload's `channel_id` is only read on the background path, where the FCM SDK renders the
+notification. A push arriving with the app in the foreground is rendered by Plugin.Firebase's local
+builder, which must be told the channel per message (`NotificationBuilderProvider`, resolved from
+the payload's `category` data key via the same category→channel mapping the server stamps with) —
+a single static channel there sends every foreground push through one sound regardless of category.
+
 **Detecting denial.** On every foreground the app reads the OS notification settings (authorization
 status on iOS; `areNotificationsEnabled` plus per-channel importance on Android) and reports them with
 the token registration. Denied, revoked, or the safety channel muted at OS level → the server arms
