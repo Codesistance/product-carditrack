@@ -14,8 +14,8 @@ public partial class MemberAvatar : ContentView
         InitializeComponent();
     }
 
-    /// <summary>How big the square box is. Member Detail keeps the default; the dashboard hero
-    /// sizes it up to sit in proportion with the taller text block beside it.</summary>
+    /// <summary>How big the square box is. Member Detail sizes it to 80 against the three-line
+    /// name / age / last-contact block; the dashboard hero uses 76.</summary>
     public double BoxWidth
     {
         get => Box.WidthRequest;

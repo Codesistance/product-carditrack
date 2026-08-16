@@ -19,6 +19,7 @@ public class CardiMemberServiceTests
     private readonly IActivityLogRepository _activityLogs = Substitute.For<IActivityLogRepository>();
     private readonly IPatternBaselineRepository _baselines = Substitute.For<IPatternBaselineRepository>();
     private readonly IAlertRepository _alerts = Substitute.For<IAlertRepository>();
+    private readonly IRealtimeAssessmentRepository _realtimeAssessments = Substitute.For<IRealtimeAssessmentRepository>();
     private readonly ICardiMemberAccessService _access = Substitute.For<ICardiMemberAccessService>();
     private readonly IEncryptionService _encryption = Substitute.For<IEncryptionService>();
 
@@ -33,7 +34,10 @@ public class CardiMemberServiceTests
         _unitOfWork.ActivityLogs.Returns(_activityLogs);
         _unitOfWork.PatternBaselines.Returns(_baselines);
         _unitOfWork.Alerts.Returns(_alerts);
+        _unitOfWork.RealtimeAssessments.Returns(_realtimeAssessments);
         _alerts.GetUnresolvedByCardiMemberAsync(Arg.Any<Guid>()).Returns([]);
+        _realtimeAssessments.GetLatestAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>())
+            .Returns((RealtimeAssessment?)null);
 
         // Reversible stand-in for AES so tests can assert that notes are stored encrypted
         // and read back in the clear without pulling in a real key.
@@ -294,6 +298,28 @@ public class CardiMemberServiceTests
 
         Assert.Null(detail.LastSyncedAt);
         Assert.Equal(0, detail.ConnectedDeviceCount);
+        Assert.Equal("red", detail.DataFreshness);
+        Assert.Contains("Margaret", detail.DataFreshnessMessage);
+    }
+
+    [Fact]
+    public async Task GetDetail_ReportsGreenFreshness_WhenAssessmentCoversLatestSync()
+    {
+        var synced = DateTime.UtcNow.AddMinutes(-20);
+        var member = SeedMember();
+        member.LastSyncDate = synced;
+        _realtimeAssessments.GetLatestAsync(member.Id, Arg.Any<CancellationToken>())
+            .Returns(new RealtimeAssessment
+            {
+                CardiMemberId = member.Id,
+                GeneratedAtUtc = synced.AddMinutes(5),
+            });
+
+        var detail = await CreateSut().GetDetailAsync(_userId, member.Id);
+
+        Assert.Equal(synced, detail.LastSyncedAt);
+        Assert.Equal("green", detail.DataFreshness);
+        Assert.Equal("Data processed", detail.DataFreshnessMessage);
     }
 
     [Fact]

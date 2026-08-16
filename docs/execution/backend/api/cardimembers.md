@@ -83,6 +83,8 @@ Full detail for one CardiMember — the payload behind mobile M1-13. Requires **
   "monitoringSince": "2026-01-15T09:00:00Z",
   "lastSyncedAt": "2026-03-09T08:30:00Z",
   "connectedDeviceCount": 2,
+  "dataFreshness": "green",
+  "dataFreshnessMessage": "Data processed",
   "baseline": { "isLearning": true, "daysCaptured": 15, "daysRequired": 30, "percentComplete": 50 },
   "healthStatus": "green",
   "metrics": { "steps": { "…": "…" }, "restingHeartRate": { "…": "…" }, "sleep": { "…": "…" }, "temperature": { "…": "…" }, "spO2": { "…": "…" }, "breathingRate": { "…": "…" } }
@@ -90,6 +92,7 @@ Full detail for one CardiMember — the payload behind mobile M1-13. Requires **
 ```
 
 - `relationship` is the **requesting caregiver's own** link, not the first link stored against the member.
+- `dataFreshness` / `dataFreshnessMessage` are the same deterministic pipeline-freshness pair as the dashboard (`red` / `amber` / `blue` / `green`) — see [health-data.md](health-data.md). M1-13 renders them as a coloured dot in front of the last-contact age.
 - `healthStatus` is the same lowercase string, computed the same way, as the dashboard's — see [health-data.md](health-data.md).
 - `metrics` is the full `DashboardMetrics` block (each metric with its 30-day series) so the detail screen's trend cards need no second round-trip; it is **`null`** when the member has no activity history yet, the same condition the dashboard uses.
 - `medicalNotes` is stored AES-256-GCM encrypted and decrypted on read. Rows written before encryption was introduced are returned as-is rather than failing the request.

@@ -301,6 +301,10 @@ public class CardiMemberService : ICardiMemberService
         var pause = PauseStateOf(member, now);
         var age = CalculateAge(member.DateOfBirth);
         var metrics = logs.Count == 0 ? null : MemberInsightsCalculator.BuildMetrics(logs, baseline, today, age);
+        var lastSyncedAt = member.LastSyncDate ?? connections.Max(c => c.LastSyncDate);
+        var latestAssessment = await _unitOfWork.RealtimeAssessments.GetLatestAsync(member.Id, ct);
+        var (freshnessTier, freshnessMessage) = MemberInsightsCalculator.ComputeDataFreshness(
+            lastSyncedAt, latestAssessment?.GeneratedAtUtc, now, FirstNameOf(member.Name));
 
         // Consent checked before the query, not after — same stance as EnvironmentalContextSource:
         // only a consented member can ever have a row, so the common case skips the roundtrip.
@@ -328,8 +332,10 @@ public class CardiMemberService : ICardiMemberService
             MonitoringPausedUntil = pause.MonitoringPausedUntil,
             MonitoringPauseReason = pause.MonitoringPauseReason,
             MonitoringSince = member.CreatedDate,
-            LastSyncedAt = member.LastSyncDate ?? connections.Max(c => c.LastSyncDate),
+            LastSyncedAt = lastSyncedAt,
             ConnectedDeviceCount = connections.Count,
+            DataFreshness = freshnessTier,
+            DataFreshnessMessage = freshnessMessage,
             Baseline = BaselineProgress.From(logs, baseline),
             HealthStatus = MemberInsightsCalculator.ComputeHealthStatus(unresolvedAlerts, baseline is null, metrics),
             Metrics = metrics,
@@ -393,4 +399,12 @@ public class CardiMemberService : ICardiMemberService
         }
         return age;
     }
+
+    /// <summary>
+    /// Same first-token split <c>DashboardService</c> uses for the freshness caption, so a
+    /// member named "Margaret Doe" is "Margaret" on both screens rather than the full name on
+    /// one and the first on the other.
+    /// </summary>
+    private static string FirstNameOf(string name) =>
+        name.Split(' ', StringSplitOptions.RemoveEmptyEntries) is [var first, ..] ? first : name;
 }
