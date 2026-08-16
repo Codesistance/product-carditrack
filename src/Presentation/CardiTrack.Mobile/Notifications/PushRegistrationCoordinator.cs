@@ -337,7 +337,15 @@ public sealed class PushRegistrationCoordinator : IDisposable
         nudges.SetSound(nudgeSound, audio);
         manager.CreateNotificationChannel(nudges);
 
+        // Plugin.Firebase renders a push that arrives in the foreground itself, and its default
+        // builder posts to whatever this static names — the payload's channel_id only steers the
+        // background path, where the FCM SDK renders. With only the static set, every foreground
+        // push landed on the Safety channel: a nudge played the full pager chime and the safety
+        // vibration pattern, and a caregiver's per-category channel settings were bypassed. The
+        // provider below routes each foreground notification to its own category's channel; the
+        // static remains as the plugin's fallback for the provider-is-null path only.
         FirebaseCloudMessagingImplementation.ChannelId = SafetyChannelId;
+        FirebaseCloudMessagingImplementation.NotificationBuilderProvider = BuildForegroundNotification;
 
         // The manifest's default_notification_icon covers the notifications the FCM SDK renders;
         // this covers the ones Plugin.Firebase builds itself, which read this static instead and
@@ -354,6 +362,28 @@ public sealed class PushRegistrationCoordinator : IDisposable
             Log.Warning("Notification small icon '{Name}' did not resolve to a drawable.", NotificationSmallIconName);
         else
             FirebaseCloudMessagingImplementation.SmallIconRef = iconRef;
+        _smallIconRef = iconRef;
+    }
+
+    /// <summary>Resolved once in <see cref="RegisterAndroidChannels"/> — the plugin's
+    /// <c>SmallIconRef</c> is write-only, so the foreground builder keeps its own copy.</summary>
+    private static int _smallIconRef;
+
+    /// <summary>
+    /// Builds the foreground copy of a push on its own category's channel. Must not throw: the
+    /// plugin's catch drops the notification instead of falling back to its default builder.
+    /// </summary>
+    private static global::AndroidX.Core.App.NotificationCompat.Builder BuildForegroundNotification(
+        FCMNotification notification)
+    {
+        var context = global::Android.App.Application.Context;
+        var builder = new global::AndroidX.Core.App.NotificationCompat.Builder(
+            context, ForegroundChannelResolver.Resolve(notification.Data));
+        builder.SetSmallIcon(_smallIconRef != 0 ? _smallIconRef : global::Android.Resource.Drawable.SymDefAppIcon);
+        builder.SetContentTitle(notification.Title);
+        builder.SetContentText(notification.Body);
+        builder.SetAutoCancel(true);
+        return builder;
     }
 
     private static global::Android.Net.Uri RawSoundUri(

@@ -1,3 +1,5 @@
+using CardiTrack.Domain.Enums;
+
 namespace CardiTrack.Application.Services.Notifications;
 
 /// <summary>
@@ -38,4 +40,17 @@ public static class NotificationChannels
 
     /// <summary>iOS main-bundle filename for Nudges. APNs <c>sound</c> takes this.</summary>
     public const string NudgeSoundFile = "carditrack_nudge.wav";
+
+    /// <summary>
+    /// The one category→channel mapping, used by the server when it stamps
+    /// <c>android.notification.channel_id</c> on the FCM payload and by the app when it posts
+    /// the foreground copy of the same push — so the two can't route the same delivery to
+    /// different channels.
+    /// </summary>
+    public static string ForCategory(DeliveryCategory category) => category switch
+    {
+        DeliveryCategory.Safety => Safety,
+        DeliveryCategory.Health => Health,
+        _ => Nudges
+    };
 }
