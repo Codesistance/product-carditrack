@@ -156,6 +156,102 @@ public class AlertDetailComposerTests
         Assert.Contains("hours", detail.Comparison!.CurrentValue);
     }
 
+    /// <summary>
+    /// Hours reach the wire at the tenth the sleep card is read to, the same rounding
+    /// <c>MemberInsightsCalculator</c> gives the dashboard's series. An unrounded quotient put 200
+    /// minutes on the wire as 3.3333333333333333333333333333 — 28 significant figures of a
+    /// wearable's nearest minute, in a payload the detail screen re-polls the whole time it is open.
+    /// </summary>
+    [Fact]
+    public void IrregularSleep_RoundsPlottedHoursToATenth()
+    {
+        var alert = MakeAlert(
+            AlertType.Sleep,
+            """{"rule":"irregular_sleep","sleepMinutes":200,"baselineAvgSleepMinutes":410}""");
+        var logs = new[] { Log(_today, sleepMinutes: 200), Log(_today.AddDays(-1), sleepMinutes: 250) };
+
+        var detail = AlertDetailComposer.Compose(alert, Member(), null, logs, _today, null, null);
+
+        Assert.Equal(3.3m, detail.Chart!.Value);
+        Assert.Contains(4.2m, detail.Chart.Series.Select(p => p.Value));
+        Assert.Equal(6.8m, detail.Chart.Baseline);
+        Assert.All(
+            detail.Chart.Series.Where(p => p.Value is not null),
+            p => Assert.Equal(p.Value, Math.Round(p.Value!.Value, 1)));
+    }
+
+    /// <summary>
+    /// The dashed baseline is the member's own usual, and on a chronic short sleeper that number
+    /// is no guide to whether a night was any good. The published band is the only thing on this
+    /// chart that is not relative to them.
+    /// </summary>
+    [Fact]
+    public void IrregularSleep_ShadesTheRecommendedBandBehindTheLine()
+    {
+        var alert = MakeAlert(
+            AlertType.Sleep,
+            """{"rule":"irregular_sleep","sleepMinutes":312,"baselineAvgSleepMinutes":228}""");
+        var logs = new[] { Log(_today, sleepMinutes: 312) };
+
+        var detail = AlertDetailComposer.Compose(alert, Member(), null, logs, _today, null, null);
+
+        Assert.NotNull(detail.Chart!.Reference);
+        Assert.Equal(7m, detail.Chart.Reference!.Low);
+        Assert.Equal(8m, detail.Chart.Reference.High);
+        Assert.Equal("NSF", detail.Chart.Reference.Source);
+    }
+
+    /// <summary>
+    /// The band the rule wrote down wins over the member's age today, so an alert raised the year
+    /// before they turned 65 cannot quote one ceiling in its copy and shade another on its chart.
+    /// </summary>
+    [Fact]
+    public void IrregularSleep_ShadesTheBandItWasJudgedAgainst_NotTodaysAge()
+    {
+        var alert = MakeAlert(
+            AlertType.Sleep,
+            """
+            {"rule":"irregular_sleep","sleepMinutes":312,"baselineAvgSleepMinutes":228,
+             "recommendedLowHours":7,"recommendedHighHours":9}
+            """);
+        var logs = new[] { Log(_today, sleepMinutes: 312) };
+
+        // The member reads as 76 today; the alert was judged against the under-65 band.
+        var detail = AlertDetailComposer.Compose(alert, Member(), null, logs, _today, null, null);
+
+        Assert.Equal(9m, detail.Chart!.Reference!.High);
+    }
+
+    /// <summary>No standards body publishes a daily step count, so that chart gets no band —
+    /// the same refusal <see cref="HealthReferenceRanges"/> makes on the dashboard.</summary>
+    [Fact]
+    public void ActivityDecline_HasNoReferenceBand()
+    {
+        var alert = MakeAlert(
+            AlertType.Inactivity,
+            """{"rule":"activity_decline","steps":2500,"baselineAvgSteps":5000}""");
+        var logs = new[] { Log(_today.AddDays(-1), steps: 2500) };
+
+        var detail = AlertDetailComposer.Compose(alert, Member(), null, logs, _today, null, null);
+
+        Assert.Null(detail.Chart!.Reference);
+    }
+
+    /// <summary>An alert composed without a member gets no band rather than a guessed one — the
+    /// ceiling is age-split, and defaulting it would draw every older adult an extra hour.</summary>
+    [Fact]
+    public void IrregularSleep_HasNoReferenceBand_WithoutAMemberOrAStoredOne()
+    {
+        var alert = MakeAlert(
+            AlertType.Sleep,
+            """{"rule":"irregular_sleep","sleepMinutes":312,"baselineAvgSleepMinutes":228}""");
+        var logs = new[] { Log(_today, sleepMinutes: 312) };
+
+        var detail = AlertDetailComposer.Compose(alert, null, null, logs, _today, null, null);
+
+        Assert.Null(detail.Chart!.Reference);
+    }
+
     [Fact]
     public void DeviceSilence_HasNoChart()
     {
@@ -576,10 +672,15 @@ public class AlertDetailComposerTests
         IsActive = true,
     };
 
-    private CardiMember Member() => new()
+    /// <param name="dateOfBirth">
+    /// 76 as of <see cref="_today"/> by default — past the NSF's older-adult split, which is where
+    /// most CardiMembers sit and which band the sleep chart shades.
+    /// </param>
+    private CardiMember Member(DateOnly? dateOfBirth = null) => new()
     {
         Id = _memberId,
         Name = "Margaret Doe",
+        DateOfBirth = dateOfBirth ?? new DateOnly(1950, 6, 1),
         Phone = "+15550001111",
         EmergencyContactName = "Jane",
         EmergencyContactPhone = "+15550002222",

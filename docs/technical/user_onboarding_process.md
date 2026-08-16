@@ -287,7 +287,7 @@ Unverified apps are capped at 100 connected users — enough for dev and beta, b
 **Alert types (implemented — the `StatisticalAlertWorker` R1 rules, see Step 8):**
 1. **Activity decline** (`activity_decline` → Yellow): steps well below baseline
 2. **Elevated heart rate** (`elevated_heart_rate` → Orange): resting HR above baseline
-3. **Irregular sleep** (`irregular_sleep` → Yellow): sleep pattern deviation
+3. **Irregular sleep** (`irregular_sleep` → Yellow, or Green for a longer night that has not passed the recommended ceiling): sleep pattern deviation
 4. **No morning activity** (`no_morning_activity` → Red): no activity by late morning
 5. **Long-term trend** (`long_term_trend` → Orange): sustained decline over weeks
 

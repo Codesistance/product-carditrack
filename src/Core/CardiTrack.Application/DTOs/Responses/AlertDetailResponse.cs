@@ -143,6 +143,21 @@ public class AlertChartResponse
     public string? ValueLabel { get; set; }
 
     public decimal? Baseline { get; set; }
+
+    /// <summary>
+    /// The published typical-adult band for this metric, shaded behind the line — the same
+    /// <see cref="DashboardMetric.Reference"/> the dashboard's trend card draws. Null for a metric
+    /// no standards body publishes a range for.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="Baseline"/> alone is the member's own usual, and on its own it cannot answer the
+    /// question a sleep alert raises: a night plotted against a dashed 3.8 says nothing about
+    /// whether 3.8 is anywhere near enough. The band is the only thing on the chart that is not
+    /// relative to the member, which is what makes "well off the usual" readable as better or
+    /// worse rather than merely different.
+    /// </remarks>
+    public MetricReference? Reference { get; set; }
+
     public List<MetricPoint> Series { get; set; } = new();
 
     /// <summary>

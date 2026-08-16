@@ -70,7 +70,9 @@ public static class DigestRefreshRules
             return false;
 
         return StatisticalAlertRules.ActivityDecline(baseline, yesterday) is not null
-            || StatisticalAlertRules.IrregularSleep(baseline, today) is not null
+            // The trigger, not the graded candidate: this asks whether the readings diverge, and
+            // the severity that grading would put on the divergence is not part of the question.
+            || StatisticalAlertRules.SleepDepartsFromBaseline(baseline, today)
             || StatisticalAlertRules.ElevatedHeartRate(baseline, yesterday) is not null
             || StatisticalAlertRules.ElevatedHeartRate(baseline, today) is not null;
     }

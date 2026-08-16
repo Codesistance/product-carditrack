@@ -132,6 +132,11 @@ public partial class AlertDetailPage : ContentPage
             "red" => ("CRITICAL", "StatusRed"),
             "orange" => ("URGENT", "StatusOrange"),
             "yellow" => ("NOTICE", "StatusYellow"),
+            // Green is a severity the rules now actually produce — the sleep rule grades a longer
+            // night that has not overshot the recommendation as informational — so it gets its own
+            // colour rather than the unknown-severity grey the fallback hands out. Same word and
+            // same ink as AlertListCard, so a card and the screen it opens agree.
+            "green" => ("INFO", "StatusGreen"),
             _ => ("INFO", "StatusUnknown"),
         };
 
@@ -219,18 +224,27 @@ public partial class AlertDetailPage : ContentPage
         }
 
         var baseline = chart.Baseline is { } b ? (double)b : (double?)null;
-        var scale = TrendScale.For(values.Min(), values.Max(), baseline, null, null);
+        var reference = chart.Reference;
+        // Both lines get a say in the extent, on the same rule and in the same order of priority
+        // the dashboard's trend card uses, so the band cannot end up drawn off a chart it exists
+        // to be read against.
+        var scale = TrendScale.For(
+            values.Min(),
+            values.Max(),
+            baseline,
+            reference is not null ? (double)reference.Low : null,
+            reference is not null ? (double)reference.High : null);
         Chart.Render(
             chart.Series,
             scale,
             ink,
             showMarkers: chart.Series.Count <= MarkerPointLimit,
-            baseline: chart.Baseline);
+            baseline: chart.Baseline,
+            reference: reference);
 
-        ChartBaselineLabel.IsVisible = chart.Baseline is not null;
-        ChartBaselineLabel.Text = chart.Baseline is { } usual
-            ? $"Dashed: their usual {string.Format(AxisFormat(chart.Metric), usual)}"
-            : string.Empty;
+        var key = AlertChartKey.For(chart);
+        ChartBaselineLabel.IsVisible = key is not null;
+        ChartBaselineLabel.Text = key ?? string.Empty;
     }
 
     private void ApplyComparison(AlertComparisonResponse? comparison, string severity)
@@ -262,6 +276,7 @@ public partial class AlertDetailPage : ContentPage
             "red" => ("PillRedBackground", "StatusRed"),
             "orange" => ("PillOrangeBackground", "StatusOrange"),
             "yellow" => ("PillYellowBackground", "StatusYellow"),
+            "green" => ("PillGreenBackground", "StatusGreen"),
             _ => ("PillNeutralBackground", "StatusUnknown"),
         };
 
@@ -372,12 +387,6 @@ public partial class AlertDetailPage : ContentPage
         "steps" => "{0:N0} steps",
         "sleep" => "{0:0.#} hours",
         _ => "{0:N0} bpm",
-    };
-
-    private static string AxisFormat(string metric) => metric switch
-    {
-        "sleep" => "{0:0.#}",
-        _ => "{0:N0}",
     };
 
     private void SetState(bool loading = false, bool loaded = false, bool error = false)

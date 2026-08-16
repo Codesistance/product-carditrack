@@ -37,6 +37,14 @@ public static class HealthReferenceRanges
     public const int OlderAdultAge = 65;
 
     /// <summary>
+    /// Who publishes the sleep band. Named once because the band now reaches a caregiver by three
+    /// routes — <see cref="Sleep"/> on the dashboard card, the alert copy that grades a night
+    /// against it, and the alert chart's own legend — and three literals could attribute one
+    /// recommendation to three bodies.
+    /// </summary>
+    public const string SleepSource = "NSF";
+
+    /// <summary>
     /// The floor of the National Sleep Foundation's recommended nightly sleep, in hours. The one
     /// figure of <see cref="Sleep"/> that is the same either side of <see cref="OlderAdultAge"/> —
     /// only the ceiling moves.
@@ -60,7 +68,7 @@ public static class HealthReferenceRanges
     {
         Low = RecommendedSleepFloorHours,
         High = ageYears >= OlderAdultAge ? 8m : 9m,
-        Source = "NSF",
+        Source = SleepSource,
     };
 
     /// <summary>
