@@ -928,6 +928,16 @@ jobs:
     if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && needs.changes.outputs.mobile == 'true' && needs.build-mobile-ios-device.outputs.available == 'true'
     runs-on: ubuntu-latest
     steps:
+      # First on purpose: checkout wipes untracked files from the workspace, so
+      # anything it runs after loses its output — the downloaded IPA, and the
+      # gha-creds-*.json the auth step leaves there for every later gcloud call.
+      # Only here for .github/scripts/testflight-release-notes.py.
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.13'
+      - run: python -m pip install 'pyjwt[crypto]==2.13.0'
+
       - uses: google-github-actions/auth@v3
         with:
           workload_identity_provider: ${{ needs.changes.outputs.gcp_wif_provider }}
@@ -973,6 +983,14 @@ jobs:
         if: steps.gate.outputs.available == 'true'
         run: echo "path=$(find artifacts/ios -name '*.ipa' | head -1)" >> $GITHUB_OUTPUT
 
+      # release-notes is deliberately not passed. The action attaches them by
+      # editing a beta build localization App Store Connect has already created,
+      # polls ten minutes for one, and fails the step when none appears — which
+      # is what a build gets before Test Information exists, and what sank a run
+      # whose binary had already shipped. Without the input the step ends at the
+      # upload, so its outcome means the binary and nothing else. The changelog
+      # is attached below instead. Processing is still waited on: that step
+      # needs a build App Store Connect can see.
       - name: Upload to TestFlight
         if: steps.gate.outputs.available == 'true'
         uses: apple-actions/upload-testflight-build@v5
@@ -981,10 +999,39 @@ jobs:
           issuer-id: ${{ steps.secrets.outputs.issuer_id }}
           api-key-id: ${{ steps.secrets.outputs.api_key_id }}
           api-private-key: ${{ steps.secrets.outputs.api_private_key }}
-          # Notes attach only after App Store Connect has the build; skipping the
-          # wait drops the changelog. Testers see this as TestFlight "What to Test".
           wait-for-processing: true
-          release-notes: ${{ needs.compute-version.outputs.changelog_testflight }}
+
+      # Testers see this as TestFlight "What to Test". continue-on-error because
+      # a build on TestFlight without its changelog is a worse build, not a
+      # failed deploy — the step still goes red in the log, and Summary says so.
+      - name: Attach release notes
+        id: notes
+        if: steps.gate.outputs.available == 'true'
+        continue-on-error: true
+        env:
+          NOTES: ${{ needs.compute-version.outputs.changelog_testflight }}
+          BUILD_NUMBER: ${{ needs.compute-version.outputs.build_number }}
+          ISSUER_ID: ${{ steps.secrets.outputs.issuer_id }}
+          API_KEY_ID: ${{ steps.secrets.outputs.api_key_id }}
+          API_PRIVATE_KEY: ${{ steps.secrets.outputs.api_private_key }}
+        run: |
+          KEY_FILE="$RUNNER_TEMP/appstore-connect.p8"
+          trap 'rm -f "$KEY_FILE"' EXIT
+          printf '%s' "$API_PRIVATE_KEY" > "$KEY_FILE"
+          printf '%s\n' "$NOTES" > "$RUNNER_TEMP/notes.txt"
+          # The bundle id has to match the uploaded IPA, so read it from the same
+          # place the build did rather than restating it here.
+          BUNDLE_ID=$(sed -n 's|.*<ApplicationId>\(.*\)</ApplicationId>.*|\1|p' \
+            src/Presentation/CardiTrack.Mobile/CardiTrack.Mobile.csproj | head -1)
+          # `python`, not `python3`: the setup-python interpreter above is the
+          # one holding PyJWT.
+          python .github/scripts/testflight-release-notes.py \
+            --bundle-id "$BUNDLE_ID" \
+            --build "$BUILD_NUMBER" \
+            --notes-file "$RUNNER_TEMP/notes.txt" \
+            --issuer-id "$ISSUER_ID" \
+            --key-id "$API_KEY_ID" \
+            --private-key-file "$KEY_FILE"
 
       - name: Summary
         if: steps.gate.outputs.available == 'true'
@@ -993,6 +1040,11 @@ jobs:
         run: |
           echo "### TestFlight — uploaded \`${{ needs.compute-version.outputs.version }}\` (build ${{ needs.compute-version.outputs.build_number }})" >> $GITHUB_STEP_SUMMARY
           echo >> $GITHUB_STEP_SUMMARY
+          if [ "${{ steps.notes.outcome }}" != "success" ]; then
+            echo "::warning::Build ${{ needs.compute-version.outputs.build_number }} uploaded, but its release notes did not attach."
+            echo "Release notes did not attach — testers see this build without them:" >> $GITHUB_STEP_SUMMARY
+            echo >> $GITHUB_STEP_SUMMARY
+          fi
           echo '```' >> $GITHUB_STEP_SUMMARY
           printf '%s\n' "$NOTES" >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
