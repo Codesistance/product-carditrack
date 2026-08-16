@@ -115,9 +115,11 @@ public class NotificationDispatchWorker : CronBackgroundService
     }
 
     /// <summary>
-    /// Turns an open Safety-class nudge into a push (§6.2). The rules that qualify declare it
-    /// themselves via <c>NudgeSpec.PushesWhenOpen</c> — <c>DEVICE_BATTERY_LOW</c> and
-    /// <c>DEVICE_AUTH_BROKEN</c> today.
+    /// Turns an open pushing nudge into a push (§6.2). The rules that qualify declare it
+    /// themselves via <c>NudgeSpec.PushesWhenOpen</c> — <c>DEVICE_BATTERY_LOW</c>,
+    /// <c>DEVICE_AUTH_BROKEN</c> and <c>DEVICE_STALE_LONG</c> today. The first two are
+    /// Safety-class; the third is not, which is why this sweep keys off the flag rather than the
+    /// category.
     /// </summary>
     /// <remarks>
     /// <para>

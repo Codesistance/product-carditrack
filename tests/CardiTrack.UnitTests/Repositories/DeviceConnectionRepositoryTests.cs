@@ -57,6 +57,33 @@ public class DeviceConnectionRepositoryTests(TestDatabaseFixture fixture)
         Assert.DoesNotContain(result, c => c.Id == inactive.Id);
     }
 
+    /// <summary>
+    /// A device that failed to sync, and one whose credentials the provider refused, are both
+    /// still paired devices — only a disconnected row means the user no longer has one. Excluding
+    /// them made the dashboard report no device at all, refused the manual retry with "no
+    /// connected device", and skipped the probe that stands between a slow provider and a false
+    /// device-silence alert.
+    /// </summary>
+    [Theory]
+    [InlineData(ConnectionStatus.SyncError)]
+    [InlineData(ConnectionStatus.TokenExpired)]
+    [InlineData(ConnectionStatus.AuthError)]
+    public async Task GetActiveByCardiMemberIdAsync_IncludesUnhealthyButPairedConnections(
+        ConnectionStatus status)
+    {
+        using var scope = fixture.CreateScope();
+        var repo = scope.ServiceProvider.GetRequiredService<IDeviceConnectionRepository>();
+
+        var org = await TestDataSeeder.SeedOrganizationAsync(scope);
+        var member = await TestDataSeeder.SeedCardiMemberAsync(scope, org.Id);
+        var connection = await TestDataSeeder.SeedDeviceConnectionAsync(
+            scope, member.Id, status: status);
+
+        var result = await repo.GetActiveByCardiMemberIdAsync(member.Id);
+
+        Assert.Contains(result, c => c.Id == connection.Id);
+    }
+
     // ── AnyActiveForCardiMembersAsync ────────────────────────────────────────────
 
     [Fact]

@@ -327,6 +327,63 @@ public class NudgeRuleTests
     }
 
     [Fact]
+    public void DeviceStaleLong_CoversAConnectionStuckInSyncError()
+    {
+        // The grant is intact and the provider simply keeps failing. Testing for Connected alone
+        // left this in a hole between here and DEVICE_AUTH_BROKEN, which only covers TokenExpired
+        // and AuthError — so a watch failing for days raised nothing at all.
+        var context = new NudgeContextBuilder()
+            .WithConnections(NudgeContextBuilder.Connection(
+                status: ConnectionStatus.SyncError,
+                lastSync: NudgeContextBuilder.Now.AddDays(-9)))
+            .Build();
+
+        Assert.True(new DeviceStaleLongRule().Evaluate(context).HasGap);
+    }
+
+    [Fact]
+    public void DeviceStaleLong_IsQuietWhenASyncErrorRecoveredInTime()
+    {
+        // A transient provider failure parks the connection in SyncError for minutes and leaves a
+        // fresh LastSyncDate behind. Staleness, not status, is what this rule reports on — firing
+        // on the error itself would push on every upstream blip.
+        var context = new NudgeContextBuilder()
+            .WithConnections(NudgeContextBuilder.Connection(
+                status: ConnectionStatus.SyncError,
+                lastSync: NudgeContextBuilder.Now.AddMinutes(-20)))
+            .Build();
+
+        Assert.False(new DeviceStaleLongRule().Evaluate(context).HasGap);
+    }
+
+    [Fact]
+    public void DeviceStaleLong_LeavesABrokenGrantToTheLouderRule()
+    {
+        // Unchanged by admitting SyncError: TokenExpired and AuthError belong to
+        // DEVICE_AUTH_BROKEN, and telling a caregiver to charge a watch we have lost permission to
+        // read is worse than saying nothing.
+        var context = new NudgeContextBuilder()
+            .WithConnections(NudgeContextBuilder.Connection(
+                status: ConnectionStatus.TokenExpired,
+                lastSync: NudgeContextBuilder.Now.AddDays(-9)))
+            .Build();
+
+        Assert.False(new DeviceStaleLongRule().Evaluate(context).HasGap);
+    }
+
+    [Fact]
+    public void DeviceStaleLong_PushesWithoutBeingSafetyClass()
+    {
+        // Both halves matter. The push is what reaches a caregiver whose app is closed; staying
+        // Blocking is what keeps a two-day-old condition off the safety channel, which overrides
+        // quiet hours and cannot be muted.
+        var spec = new DeviceStaleLongRule().Spec;
+
+        Assert.True(spec.PushesWhenOpen);
+        Assert.Equal(NotificationCategory.Blocking, spec.Category);
+    }
+
+    [Fact]
     public void DeviceStaleLong_CarriesTheNeverSyncedVariantWhenNoReadingHasEverArrived()
     {
         // A connection can sit at Connected with a null LastSyncDate — no {hours} value exists to
@@ -533,14 +590,32 @@ public class NudgeRuleTests
     // ── Which rules push ──────────────────────────────────────────────────────
 
     [Fact]
-    public void OnlyTheTwoShippedSafetyDeviceRulesPush()
+    public void OnlyTheThreeShippedDeviceRulesPush()
     {
-        // §6: "Nudges never push", with the Safety-class exceptions. Pinned as an exact set rather
+        // §6: "Nudges never push", with the opted-in exceptions. Pinned as an exact set rather
         // than a contains-check — a new rule quietly acquiring PushesWhenOpen is a decision that
         // should fail a test and be made on purpose, not arrive with someone's copy-paste.
+        //
+        // DEVICE_STALE_LONG joined deliberately. It is the only device signal for a member
+        // InactivityDetectionWorker cannot see, so without it monitoring could be dark for two
+        // days with nothing ever leaving the app.
         Assert.Equal(
-            ["DEVICE_AUTH_BROKEN", "DEVICE_BATTERY_LOW"],
+            ["DEVICE_AUTH_BROKEN", "DEVICE_BATTERY_LOW", "DEVICE_STALE_LONG"],
             NudgeRuleCatalogue.PushableRuleCodes.Order());
+    }
+
+    [Fact]
+    public void PushingIsNotTheSameDecisionAsSafetyClass()
+    {
+        // The two were coincident until DEVICE_STALE_LONG, and reading either off the other would
+        // be wrong in both directions: PUSH_UNREACHABLE is Safety and must never push, and
+        // DEVICE_STALE_LONG pushes without earning the safety channel's overridden quiet hours.
+        var pushers = NudgeRuleCatalogue.All.Where(r => r.Spec.PushesWhenOpen).ToList();
+
+        Assert.Contains(pushers, r => r.Spec.Category != NotificationCategory.Safety);
+        Assert.Contains(
+            NudgeRuleCatalogue.All,
+            r => r.Spec.Category == NotificationCategory.Safety && !r.Spec.PushesWhenOpen);
     }
 
     [Fact]

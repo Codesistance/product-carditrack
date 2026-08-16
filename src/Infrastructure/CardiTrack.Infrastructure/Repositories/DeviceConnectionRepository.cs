@@ -41,12 +41,38 @@ public class DeviceConnectionRepository : Repository<DeviceConnection>, IDeviceC
     {
     }
 
+    /// <remarks>
+    /// "Not disconnected" rather than "connected", for the same reason as
+    /// <see cref="AnyActiveForCardiMembersAsync"/> below — this method was the one place that fix
+    /// was never applied, and the sibling's warning describes exactly what it cost here.
+    /// <para>
+    /// Three statuses ride on that difference. <see cref="ConnectionStatus.TokenExpired"/> and
+    /// <see cref="ConnectionStatus.AuthError"/> mean the provider refused our credentials and
+    /// re-consent is needed; <see cref="ConnectionStatus.SyncError"/> means the grant is intact and
+    /// a pull simply failed. All three are still paired devices the user can see and act on, and
+    /// the auth-recovery pass exists precisely because the first two are often temporary.
+    /// </para>
+    /// <para>
+    /// A single provider timeout parks a connection in <see cref="ConnectionStatus.SyncError"/>
+    /// (<c>DeviceSyncService</c>), and testing for <see cref="ConnectionStatus.Connected"/> made
+    /// that row vanish from every caller at once: the dashboard reported no device at all, the
+    /// manual sync refused with "no connected device" — the retry the caregiver had just reached
+    /// for — and <c>InactivityDetectionService.ProbedIntoLifeAsync</c> skipped the probe and raised
+    /// the device-silence alert. That last one is the reversal that matters: the probe exists
+    /// precisely so "a provider that was briefly slow" does not send a family to check on someone
+    /// who is fine, and the filter disabled it in the one case it was written for.
+    /// </para>
+    /// <para>
+    /// Callers wanting healthy-only connections must say so themselves. <c>GetRandomSyncableSampleAsync</c>
+    /// does, and documents why; it is deliberately not routed through here.
+    /// </para>
+    /// </remarks>
     public async Task<IEnumerable<DeviceConnection>> GetActiveByCardiMemberIdAsync(Guid cardiMemberId)
     {
         return await _dbSet
             .Where(dc => dc.CardiMemberId == cardiMemberId
                          && dc.IsActive
-                         && dc.ConnectionStatus == ConnectionStatus.Connected)
+                         && dc.ConnectionStatus != ConnectionStatus.Disconnected)
             .ToListAsync();
     }
 
