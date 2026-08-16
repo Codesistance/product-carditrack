@@ -80,6 +80,7 @@ public sealed class MetricTrendCard : ContentView
     private readonly Label _referenceKey = new();
     private readonly Label _noDataKey = new();
     private readonly TrendLegendSwatch _baselineSwatch = new(TrendLegendMark.Baseline);
+    private readonly TrendLegendSwatch _noDataSwatch = new(TrendLegendMark.NoData);
     private readonly HorizontalStackLayout _baselineLegend;
     private readonly HorizontalStackLayout _referenceLegend;
     private readonly HorizontalStackLayout _noDataLegend;
@@ -234,7 +235,7 @@ public sealed class MetricTrendCard : ContentView
         // The break marks get named on a line of their own rather than squeezed in beside the other
         // two: they appear only on a window with a gap in it, and a third column would cost the
         // published range its width on every window that has none.
-        _noDataLegend = BuildLegendEntry(new TrendLegendSwatch(TrendLegendMark.NoData), _noDataKey);
+        _noDataLegend = BuildLegendEntry(_noDataSwatch, _noDataKey);
         _noDataKey.Text = "No data recorded";
 
         _legend = new Grid
@@ -363,6 +364,10 @@ public sealed class MetricTrendCard : ContentView
         // it, and looking it up three times is three chances for them to disagree.
         var ink = MetricStatus.Resource(_trend.InkKey, MetricStatus.Accent(_trend.Metric.Status));
         _baselineSwatch.Ink = ink;
+        // The key has to be the colour the caregiver is about to look for. Without this the
+        // swatch falls back to a neutral grey while the chart shades in the metric's opposing
+        // hue, and the key sends them hunting for a mark that is not on the plot.
+        _noDataSwatch.Ink = ink;
 
         // The axis labels name the extent the chart actually plots over, which the baseline and
         // the reference band get a say in — so both are read off the one scale rather than the
