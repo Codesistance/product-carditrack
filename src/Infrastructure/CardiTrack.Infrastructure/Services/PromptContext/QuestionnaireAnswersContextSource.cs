@@ -11,9 +11,9 @@ namespace CardiTrack.Infrastructure.Services.PromptContext;
 /// </summary>
 /// <remarks>
 /// The other end of the questionnaire loop: the digest proposes a question, a caregiver answers it,
-/// and the answer comes back here to inform every later generation. Without this the questions
-/// would be a survey — the point is that the next summary is written by a model that knows the
-/// answer.
+/// and the answer comes back here so later generations can <em>read the day against it</em>.
+/// Without this the questions would be a survey. The section is a list of facts, not a quiz
+/// transcript: a <c>Q: … A: …</c> pairing is what MedGemma recites instead of using.
 /// <para>
 /// Excluded from the hero status line, which is one sentence under fifteen words: there is nothing
 /// it could do with this that would fit, and it is generated on every dashboard view. Adding it
@@ -48,6 +48,13 @@ internal sealed class QuestionnaireAnswersContextSource : IMemberContextSource
     /// <summary>Per-answer cap. A caregiver writing at length is answering more than was asked.</summary>
     private const int MaxAnswerLength = 300;
 
+    /// <summary>
+    /// Below this, an answer like "Yes" or "Her sister." is unreadable without the question it
+    /// answered. A longer sentence already carries the fact, so the question stays out of the
+    /// prompt — that is what stopped it being a transcript the model recites.
+    /// </summary>
+    private const int StandaloneAnswerLength = 24;
+
     private readonly IUnitOfWork _unitOfWork;
     private readonly IEncryptionService _encryption;
 
@@ -68,6 +75,25 @@ internal sealed class QuestionnaireAnswersContextSource : IMemberContextSource
         var questionnaires = await _unitOfWork.MemberQuestionnaires
             .GetByCardiMemberAsync(request.CardiMemberId, ct);
 
+        var lines = VisibleFacts(questionnaires, _encryption, request.UtcNow)
+            .Select(FormatLine)
+            .ToList();
+        if (lines.Count == 0)
+            return null;
+
+        return new MemberContextSection(SectionLabel, string.Join("\n", lines));
+    }
+
+    /// <summary>
+    /// The question/answer pairs this source would put in front of the model — same filter and
+    /// truncation as the prompt section. The digest uses this to refuse a summary that recites
+    /// those facts instead of reading the day against them, so the two cannot drift.
+    /// </summary>
+    internal static IReadOnlyList<(string Question, string Answer)> VisibleFacts(
+        IReadOnlyList<MemberQuestionnaire> questionnaires,
+        IEncryptionService encryption,
+        DateTime utcNow)
+    {
         // Newest-first from the repository, which both Take calls below rely on.
         var answered = questionnaires
             .Where(q => q.Status == QuestionnaireStatus.Answered && !string.IsNullOrWhiteSpace(q.AnswerText))
@@ -83,26 +109,47 @@ internal sealed class QuestionnaireAnswersContextSource : IMemberContextSource
             .Take(MaxPermanentAnswers);
         var timeScoped = answered
             .Where(q => q.Scope == QuestionnaireScope.TimeScoped
-                        && (q.ExpiresAtUtc is null || q.ExpiresAtUtc > request.UtcNow))
+                        && (q.ExpiresAtUtc is null || q.ExpiresAtUtc > utcNow))
             .Take(MaxAnswers);
 
-        var lines = permanent.Concat(timeScoped).Select(FormatLine).ToList();
-        if (lines.Count == 0)
-            return null;
-
-        return new MemberContextSection(SectionLabel, string.Join("\n", lines));
+        return permanent.Concat(timeScoped)
+            .Select(q =>
+            {
+                var question = MedicalPromptBlocks.Flatten(
+                    EncryptedFieldReader.Reveal(encryption, q.QuestionText) ?? string.Empty);
+                var answer = MedicalPromptBlocks.Flatten(
+                    EncryptedFieldReader.Reveal(encryption, q.AnswerText) ?? string.Empty);
+                if (answer.Length > MaxAnswerLength)
+                    answer = $"{answer[..MaxAnswerLength]}…";
+                return (Question: question, Answer: answer);
+            })
+            .Where(fact => fact.Answer.Length > 0)
+            .ToList();
     }
 
-    private string FormatLine(MemberQuestionnaire questionnaire)
+    /// <summary>
+    /// A fact about the person, not a quiz transcript. <c>Q: … A: …</c> is the shape MedGemma
+    /// recites as the summary; the family already knows the exchange. A short yes/no still needs
+    /// the question as a topic or it is unreadable.
+    /// </summary>
+    private static string FormatLine((string Question, string Answer) fact)
     {
-        var question = MedicalPromptBlocks.Flatten(
-            EncryptedFieldReader.Reveal(_encryption, questionnaire.QuestionText) ?? string.Empty);
-        var answer = MedicalPromptBlocks.Flatten(
-            EncryptedFieldReader.Reveal(_encryption, questionnaire.AnswerText) ?? string.Empty);
+        if (AnswerStandsAlone(fact.Answer))
+            return $"- {fact.Answer}";
 
-        if (answer.Length > MaxAnswerLength)
-            answer = $"{answer[..MaxAnswerLength]}…";
+        var topic = fact.Question.TrimEnd('?', ' ').Trim();
+        return string.IsNullOrEmpty(topic) ? $"- {fact.Answer}" : $"- {topic}: {fact.Answer}";
+    }
 
-        return $"- Q: {question} A: {answer}";
+    private static bool AnswerStandsAlone(string answer)
+    {
+        if (answer.Length < StandaloneAnswerLength)
+            return false;
+
+        // "Yes, fitted in 2020." is long enough to look like a sentence and still names nothing
+        // without the question it answered.
+        var trimmed = answer.TrimStart();
+        return !trimmed.StartsWith("yes", StringComparison.OrdinalIgnoreCase)
+            && !trimmed.StartsWith("no", StringComparison.OrdinalIgnoreCase);
     }
 }

@@ -240,7 +240,7 @@ public class MemberContextSourceTests
     }
 
     [Fact]
-    public async Task Answers_CarryTheQuestionAndTheAnswer_Decrypted()
+    public async Task Answers_CarryTheFact_NotAQuizTranscript()
     {
         GivenQuestionnaires(
             Questionnaire(QuestionnaireStatus.Answered, "Has anything changed at home recently?", "She moved bedrooms last week."),
@@ -251,11 +251,33 @@ public class MemberContextSourceTests
             .BuildAsync(Request(), default);
 
         Assert.NotNull(section);
-        Assert.Contains("Q: Has anything changed at home recently? A: She moved bedrooms last week.", section.Body);
+        Assert.Contains("She moved bedrooms last week.", section.Body);
+        Assert.DoesNotContain("Q:", section.Body);
+        Assert.DoesNotContain("Has anything changed at home recently?", section.Body);
         Assert.DoesNotContain("v1:", section.Body);
         // Only the answered one: an unanswered question tells the model nothing, and a dismissed
         // one is the family having declined to say.
         Assert.Single(section.Body.Split('\n'));
+    }
+
+    /// <summary>
+    /// A short yes/no is unreadable without the question it answered, so the question stays as a
+    /// topic. Still not a <c>Q: … A: …</c> transcript — that is the shape the model recites.
+    /// </summary>
+    [Fact]
+    public async Task Answers_KeepTheQuestionAsATopic_WhenTheAnswerCannotStandAlone()
+    {
+        GivenQuestionnaires(
+            Questionnaire(QuestionnaireStatus.Answered, "Does she have a pacemaker?", "Yes, fitted in 2020.",
+                scope: QuestionnaireScope.Permanent));
+
+        var section = await new QuestionnaireAnswersContextSource(_unitOfWork, PromptContextFactory.Encryption)
+            .BuildAsync(Request(), default);
+
+        Assert.NotNull(section);
+        Assert.Contains("Does she have a pacemaker: Yes, fitted in 2020.", section.Body);
+        Assert.DoesNotContain("Q:", section.Body);
+        Assert.DoesNotContain("A:", section.Body);
     }
 
     [Fact]

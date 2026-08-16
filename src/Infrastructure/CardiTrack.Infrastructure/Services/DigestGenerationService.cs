@@ -50,6 +50,7 @@ public partial class DigestGenerationService : IDigestGenerationService
         when a reading is off the usual, say so plainly and let at least one suggestion respond to it.
         If a computed observation is present, lead with it; do not recap every listed figure. An ordinary day can be short.
         If "Recent monitoring context" shows an unresolved alert or an observation that is suspicious, say so plainly in your own words and let the suggestion answer it; when that section is absent, never mention monitoring, alerts or observations at all.
+        When family answers are present, use them to make sense of the readings; never retell them.
 
         Respond with:
         - summary: 2-5 sentences written to the family member about what the readings mean for {{NAME}} today, naming
@@ -75,7 +76,7 @@ public partial class DigestGenerationService : IDigestGenerationService
         - question: one short question to the family about {{NAME}}'s life, at most twenty
           words, ending in a question mark, about ordinary things that would explain the
           readings. Never ask them to measure, check or observe anything, nor about medication, symptoms or a diagnosis.
-          Never repeat a question already listed under Family answers to earlier questions.
+          Never ask about something the family answers already cover.
         - questionRationale: one everyday sentence in a caregiver's words, so the family can see why this is worth asking. Never name a reading as a reading, never quote a figure, never restate the question.
         - questionScope: permanent if the answer would be a standing fact about {{NAME}} that
           stays true regardless of the day and should inform every future summary; time-scoped if it only explains the
@@ -106,6 +107,7 @@ public partial class DigestGenerationService : IDigestGenerationService
         "read each reading against it",
         "read the vitals against the steps walked",
         "do not recap every listed figure",
+        "never retell them",
         "recent monitoring context",
         "never mention monitoring",
         "most days there is nothing worth asking",
@@ -445,6 +447,21 @@ public partial class DigestGenerationService : IDigestGenerationService
                 "Discarded the generated summary for CardiMember {CardiMemberId} on {LocalDate}: the "
                 + "model returned empty text or restated its own instructions.",
                 memberId, describedDate);
+            return false;
+        }
+
+        // Same "written but rejected" stance as the instruction-echo check: a summary that is the
+        // family's own answers read back is worse than the previous card, and the prompt asking
+        // the model not to retell them is a request, not a guarantee. The facts compared here are
+        // exactly the ones that went into this generation's prompt.
+        var familyFacts = QuestionnaireAnswersContextSource.VisibleFacts(
+            await _unitOfWork.MemberQuestionnaires.GetByCardiMemberAsync(memberId, ct),
+            _encryption, utcNow);
+        if (RestatesFamilyAnswers(text, familyFacts) is { } recap)
+        {
+            _logger.LogWarning(
+                "Discarded the generated summary for CardiMember {CardiMemberId} on {LocalDate}: {Reason}.",
+                memberId, describedDate, recap);
             return false;
         }
 
@@ -1032,6 +1049,66 @@ public partial class DigestGenerationService : IDigestGenerationService
         return InstructionEchoes.Any(echo => flattened.Contains(echo, StringComparison.OrdinalIgnoreCase));
     }
 
+    /// <summary>
+    /// True when the summary is the family's answers (or the questions they answered) read back,
+    /// rather than a reading of the day that used those facts. A mention woven into an
+    /// interpretation leaves enough leftover wording to survive; a recap does not.
+    /// </summary>
+    /// <remarks>
+    /// Short answers ("Yes") are ignored: they would match almost any sentence. Compared on
+    /// letter-and-digit wording so a trailing full stop cannot sneak the same sentence through.
+    /// </remarks>
+    private static string? RestatesFamilyAnswers(
+        string text, IReadOnlyList<(string Question, string Answer)> facts)
+    {
+        if (facts.Count == 0)
+            return null;
+
+        var leftover = NormalizeRecap(text);
+        if (leftover.Length == 0)
+            return null;
+
+        var copied = false;
+        foreach (var (question, answer) in facts)
+        {
+            var answerPhrase = NormalizeRecap(answer);
+            if (answerPhrase.Length >= 12 && leftover.Contains(answerPhrase, StringComparison.Ordinal))
+            {
+                leftover = leftover.Replace(answerPhrase, " ", StringComparison.Ordinal);
+                copied = true;
+            }
+
+            var questionPhrase = NormalizeRecap(question);
+            if (questionPhrase.Length >= 20 && leftover.Contains(questionPhrase, StringComparison.Ordinal))
+            {
+                leftover = leftover.Replace(questionPhrase, " ", StringComparison.Ordinal);
+                copied = true;
+            }
+        }
+
+        if (!copied)
+            return null;
+
+        var remainingWords = leftover.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
+        return remainingWords.Length >= 8
+            ? null
+            : "it restated family answers rather than using them to read the day";
+    }
+
+    /// <summary>
+    /// Letter-and-digit wording, lowercased, so punctuation cannot dodge a recap match. Same
+    /// shape as <see cref="NormalizeQuestion"/>, kept separate because that one is about
+    /// whether two questions are the same ask, and this one is about whether a summary is a
+    /// family's own words read back.
+    /// </summary>
+    private static string NormalizeRecap(string text)
+    {
+        var chars = MedicalPromptBlocks.Flatten(text).ToLowerInvariant()
+            .Select(c => char.IsLetterOrDigit(c) ? c : ' ')
+            .ToArray();
+        return string.Join(' ', new string(chars).Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+    }
+
     /// <summary>MedGemma's reply shape for this prompt. Internal, not Application/DTOs — this
     /// describes the private model's reply, not the public API contract; internal rather than
     /// private so IMedicalAiService.GenerateStructuredAsync&lt;T&gt; can be exercised in tests.</summary>
@@ -1048,7 +1125,8 @@ public partial class DigestGenerationService : IDigestGenerationService
         /// </remarks>
         [Description(
             "2-5 sentences interpreting what today's readings mean for {{NAME}}, against the "
-            + "usual pattern and against how much they moved. Not a recap of every figure. "
+            + "usual pattern and against how much they moved. Use family answers to read those "
+            + "readings; never retell them. Not a recap of every figure. "
             + "Not a restatement of the instructions.")]
         public required string Summary { get; init; }
 

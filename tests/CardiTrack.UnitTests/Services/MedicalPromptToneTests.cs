@@ -362,7 +362,8 @@ public class MedicalPromptToneTests
         // invite that register again.
         Assert.DoesNotContain("prompted", digest, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("everyday sentence in a caregiver's words", digest, StringComparison.Ordinal);
-        Assert.Contains("Never repeat a question already listed", digest, StringComparison.Ordinal);
+        Assert.Contains("never retell them", digest, StringComparison.Ordinal);
+        Assert.Contains("Never ask about something the family answers already cover", digest, StringComparison.Ordinal);
     }
 
     [Fact]
