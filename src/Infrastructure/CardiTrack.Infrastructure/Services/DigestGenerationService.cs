@@ -452,8 +452,9 @@ public partial class DigestGenerationService : IDigestGenerationService
 
         // Same "written but rejected" stance as the instruction-echo check: a summary that is the
         // family's own answers read back is worse than the previous card, and the prompt asking
-        // the model not to retell them is a request, not a guarantee. The facts compared here are
-        // exactly the ones that went into this generation's prompt.
+        // the model not to retell them is a request, not a guarantee. Same questionnaire rows and
+        // truncation as the prompt section (a standalone answer may omit the question in the
+        // prompt; the recap check still sees both halves).
         var familyFacts = QuestionnaireAnswersContextSource.VisibleFacts(
             await _unitOfWork.MemberQuestionnaires.GetByCardiMemberAsync(memberId, ct),
             _encryption, utcNow);

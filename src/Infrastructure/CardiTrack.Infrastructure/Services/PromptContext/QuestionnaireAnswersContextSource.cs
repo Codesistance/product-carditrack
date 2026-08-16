@@ -85,9 +85,10 @@ internal sealed class QuestionnaireAnswersContextSource : IMemberContextSource
     }
 
     /// <summary>
-    /// The question/answer pairs this source would put in front of the model — same filter and
-    /// truncation as the prompt section. The digest uses this to refuse a summary that recites
-    /// those facts instead of reading the day against them, so the two cannot drift.
+    /// The decrypted, truncated question/answer pairs this source would consider for the prompt.
+    /// <see cref="FormatLine"/> may then drop the question when the answer stands alone, so this
+    /// is the fact set, not the rendered lines. The digest uses the same set to refuse a summary
+    /// that recites those facts instead of reading the day against them.
     /// </summary>
     internal static IReadOnlyList<(string Question, string Answer)> VisibleFacts(
         IReadOnlyList<MemberQuestionnaire> questionnaires,
