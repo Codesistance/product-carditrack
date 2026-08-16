@@ -617,8 +617,8 @@ public sealed class MetricTrendCard : ContentView
             ColumnSpacing = 6,
         };
         row.Add(_footer);
-        row.Add(_expand, 1);
-        row.Add(button, 2);
+        row.Add(button, 1);
+        row.Add(_expand, 2);
 
         var block = new Grid
         {
