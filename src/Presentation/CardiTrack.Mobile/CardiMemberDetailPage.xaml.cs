@@ -375,15 +375,18 @@ public partial class CardiMemberDetailPage : ContentPage
         if (member.MonitoringPaused)
             ResetPauseDurations();
 
-        DeviceCountLabel.Text = member.ConnectedDeviceCount switch
-        {
-            0 => "None yet",
-            1 => "1 Device",
-            var n => $"{n} Devices",
-        };
+        // Same four-tier pipeline freshness as the dashboard (red / amber / blue / green). Hidden
+        // while paused: collection is deliberately stopped, so a coloured dot would misreport a
+        // pause as a connection gap. The paused banner above is the status in that case.
+        ConnectionStatusRow.IsVisible = !member.MonitoringPaused;
+        var freshnessColor = (Color)Microsoft.Maui.Controls.Application.Current!.Resources[
+            FreshnessColorKey(member.DataFreshness)];
+        ConnectionStatusDot.Fill = freshnessColor;
         LastContactLabel.Text = member.LastSyncedAt is { } lastSynced
-            ? RelativeTime.Format(lastSynced)
+            ? $"Updated {RelativeTime.Format(lastSynced)}"
             : "Not synced yet";
+        SemanticProperties.SetDescription(
+            LastContactLabel, $"{member.DataFreshnessMessage}. {LastContactLabel.Text}");
 
         // The digest loads on its own round trip (LoadDigestAsync) and lands after this method has
         // returned, so writing the placeholder every time meant every refresh — including the
@@ -632,6 +635,19 @@ public partial class CardiMemberDetailPage : ContentPage
         UrgencyLabel.TextColor = color;
         UrgencyLabel.Text = text;
     }
+
+    /// <summary>
+    /// Color token for each <see cref="CardiMemberDetailResponse.DataFreshness"/> tier. Same map
+    /// as the dashboard: an unrecognised value falls back to unknown, not green.
+    /// </summary>
+    private static string FreshnessColorKey(string tier) => tier switch
+    {
+        "red" => "StatusRed",
+        "amber" => "StatusYellow",
+        "blue" => "StatusBlue",
+        "green" => "StatusGreen",
+        _ => "StatusUnknown",
+    };
 
     /// <summary>
     /// Rebuilds the trends carousel, one card per metric this member actually reports. The

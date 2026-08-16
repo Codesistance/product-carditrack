@@ -6,8 +6,8 @@
     <!-- The one box a CardiMember is shown in — the dashboard hero and Member Detail both use
          this, so the same person can't be shown two different ways depending on the screen.
          Member Detail's treatment is the one both adopt: the gradient tile with white initials.
-         Always square — size is a knob only because the hero's row is roomier than Member
-         Detail's; the shape and treatment never vary. -->
+         Always square — size is a knob because Member Detail's three-line block (80) and the
+         hero's status block (76) need different boxes; the shape and treatment never vary. -->
     <!-- Named "Box", not "Frame": a generated field called Frame would hide VisualElement.Frame
          (the element's bounds), which the compiler flags and anyone reading it would misread. -->
     <Border x:Name="Box"

@@ -41,6 +41,15 @@ public class CardiMemberDetailResponse
     public DateTime? LastSyncedAt { get; set; }
     public int ConnectedDeviceCount { get; set; }
 
+    /// <summary>Same deterministic data-pipeline freshness as
+    /// <see cref="DashboardResponse.DataFreshness"/> — red / amber / blue / green — so M1-13
+    /// can show a connection-status dot without a second round-trip.</summary>
+    public string DataFreshness { get; set; } = "red";
+
+    /// <summary>Human-readable caption for <see cref="DataFreshness"/>; screen readers use it
+    /// because a colour alone is not a status.</summary>
+    public string DataFreshnessMessage { get; set; } = string.Empty;
+
     public DashboardBaselineState Baseline { get; set; } = new();
 
     /// <summary>green/yellow/orange/red/unknown — same field and meaning as

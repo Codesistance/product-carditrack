@@ -87,7 +87,7 @@
 
                     <!-- ── Loading ── -->
                     <VerticalStackLayout x:Name="SkeletonPanel" Spacing="14" IsVisible="False">
-                        <controls:SkeletonView HeightRequest="88"/>
+                        <controls:SkeletonView HeightRequest="110"/>
                         <controls:SkeletonView HeightRequest="150"/>
                         <controls:SkeletonView HeightRequest="110"/>
                         <controls:SkeletonView HeightRequest="60"/>
@@ -115,20 +115,33 @@
 
                         <controls:OfflineStatusBanner x:Name="OfflineBanner"/>
 
-                        <!-- Profile -->
+                        <!-- Profile: name, age/relationship, then the data-pipeline freshness
+                             dot + last-contact age. Three rows next to the avatar, so the
+                             display picture is a step larger than the default 64 so it still
+                             sits against the block rather than floating in leftover space.
+                             The Monitoring Status card used to carry device count and last
+                             contact; last contact lives here, and devices stay on M1-15. -->
                         <Border Style="{StaticResource ElevatedCard}">
                             <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="14">
-                                <!-- This screen's own display image box, lifted into a shared
-                                     control so the dashboard hero can wear it too — and it now
-                                     shows the member's photo when there is one, not just their
-                                     initials. -->
                                 <controls:MemberAvatar x:Name="Avatar"
                                                        Grid.Column="0"
+                                                       BoxWidth="80"
                                                        VerticalOptions="Center"/>
 
                                 <VerticalStackLayout Grid.Column="1" Spacing="2" VerticalOptions="Center">
                                     <Label x:Name="NameLabel" Style="{StaticResource Heading2}"/>
                                     <Label x:Name="AgeRelationshipLabel" Style="{StaticResource Body2}"/>
+                                    <HorizontalStackLayout x:Name="ConnectionStatusRow"
+                                                           Spacing="6">
+                                        <Ellipse x:Name="ConnectionStatusDot"
+                                                 WidthRequest="10" HeightRequest="10"
+                                                 VerticalOptions="Center"
+                                                 AutomationProperties.IsInAccessibleTree="False"/>
+                                        <Label x:Name="LastContactLabel"
+                                               Style="{StaticResource Body2}"
+                                               VerticalOptions="Center"
+                                               LineBreakMode="TailTruncation"/>
+                                    </HorizontalStackLayout>
                                 </VerticalStackLayout>
 
                                 <!-- Last-session weather (EnvironmentalReading — not live, no
@@ -162,40 +175,6 @@
                             </Border.StrokeShape>
                             <Label x:Name="PausedBannerLabel"
                                    Style="{StaticResource Body2Medium}"/>
-                        </Border>
-
-                        <!-- Monitoring status -->
-                        <Border Style="{StaticResource ElevatedCard}">
-                            <VerticalStackLayout Spacing="12">
-                                <HorizontalStackLayout Spacing="8">
-                                    <Image Source="icon_monitoring.svg"
-                                           WidthRequest="20" HeightRequest="20"
-                                           VerticalOptions="Center"/>
-                                    <Label Text="Monitoring Status"
-                                           Style="{StaticResource DashboardSectionTitle}"
-                                           VerticalTextAlignment="Center"/>
-                                </HorizontalStackLayout>
-
-                                <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto" RowSpacing="8">
-                                    <Label Grid.Row="0" Grid.Column="0"
-                                           Text="Connected Devices"
-                                           Style="{StaticResource Body2}"/>
-                                    <Label x:Name="DeviceCountLabel"
-                                           Grid.Row="0" Grid.Column="1"
-                                           Style="{StaticResource Body2Medium}"
-                                           TextColor="{StaticResource Primary}"/>
-
-                                    <!-- Replaces "Monitoring Since" (issue #188) — when the
-                                         member was added is less useful than whether their
-                                         device is actually still talking to us. -->
-                                    <Label Grid.Row="1" Grid.Column="0"
-                                           Text="Time of Last Contact"
-                                           Style="{StaticResource Body2}"/>
-                                    <Label x:Name="LastContactLabel"
-                                           Grid.Row="1" Grid.Column="1"
-                                           Style="{StaticResource Body2Medium}"/>
-                                </Grid>
-                            </VerticalStackLayout>
                         </Border>
 
                         <!-- Summary (issue #188): replaces "Baseline Status: Learning" with the

@@ -859,12 +859,9 @@ This is the most safety-critical screen in the app. Design for urgency and immed
 Backed by a single `GET /api/v1/cardimembers/{id}` round trip — see [cardimembers.md](../../../backend/api/cardimembers.md).
 
 **Profile Section:**
-- ~~Large photo~~ — **initials avatar as built.** No photo storage exists server-side (`PhotoUrl` is always null and there is no upload path), so a photo would have nothing to render.
+- ~~Large photo~~ — **initials avatar as built** (80dp, sized to the three-line block beside it). No photo storage exists server-side (`PhotoUrl` is always null and there is no upload path), so a photo would have nothing to render.
 - Name and "78 years old • Dad" (the *requesting caregiver's* relationship, not the first link on the member)
-
-**Monitoring Info Card:**
-- Connected devices: "2 Devices" · Monitoring since: "Jan 1, 2026"
-- Baseline status: "Learning" / "Established" with a `daysCaptured`/`daysRequired` progress bar
+- Connection-status dot (red / amber / blue / green — same `dataFreshness` as the dashboard) in front of last-contact age ("Updated 4 minutes ago"). The Monitoring Info card is gone; device count lives on M1-15.
 
 **Key Metric Trends (carousel, one swipeable card per metric):**
 - Activity, Heart Rate, Sleep, Skin Temp, Blood Oxygen and Breathing Rate, over a caregiver-chosen **7 / 14 / 30-day** window. The API always sends 30 days of `series`, so switching windows is a client-side slice rather than another round trip.
