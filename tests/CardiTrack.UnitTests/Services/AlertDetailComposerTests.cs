@@ -157,6 +157,30 @@ public class AlertDetailComposerTests
     }
 
     /// <summary>
+    /// Hours reach the wire at the tenth the sleep card is read to, the same rounding
+    /// <c>MemberInsightsCalculator</c> gives the dashboard's series. An unrounded quotient put 200
+    /// minutes on the wire as 3.3333333333333333333333333333 — 28 significant figures of a
+    /// wearable's nearest minute, in a payload the detail screen re-polls the whole time it is open.
+    /// </summary>
+    [Fact]
+    public void IrregularSleep_RoundsPlottedHoursToATenth()
+    {
+        var alert = MakeAlert(
+            AlertType.Sleep,
+            """{"rule":"irregular_sleep","sleepMinutes":200,"baselineAvgSleepMinutes":410}""");
+        var logs = new[] { Log(_today, sleepMinutes: 200), Log(_today.AddDays(-1), sleepMinutes: 250) };
+
+        var detail = AlertDetailComposer.Compose(alert, Member(), null, logs, _today, null, null);
+
+        Assert.Equal(3.3m, detail.Chart!.Value);
+        Assert.Contains(4.2m, detail.Chart.Series.Select(p => p.Value));
+        Assert.Equal(6.8m, detail.Chart.Baseline);
+        Assert.All(
+            detail.Chart.Series.Where(p => p.Value is not null),
+            p => Assert.Equal(p.Value, Math.Round(p.Value!.Value, 1)));
+    }
+
+    /// <summary>
     /// The dashed baseline is the member's own usual, and on a chronic short sleeper that number
     /// is no guide to whether a night was any good. The published band is the only thing on this
     /// chart that is not relative to them.

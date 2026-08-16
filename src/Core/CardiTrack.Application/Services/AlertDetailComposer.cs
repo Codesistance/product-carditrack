@@ -506,7 +506,7 @@ public static class AlertDetailComposer
             StatisticalAlertRules.IrregularSleepRule
                 => DailyChart(
                     "sleep", "Sleep", "hours", SleepDays, today, logs,
-                    l => l.SleepMinutes is { } minutes ? minutes / 60m : null,
+                    l => Hours(l.SleepMinutes),
                     Hours(baseline?.AvgSleepMinutes) ?? Hours(ReadDecimal(metrics, "baselineAvgSleepMinutes")),
                     reference: SleepReference(metrics, member, today)),
 
@@ -730,9 +730,17 @@ public static class AlertDetailComposer
     }
 
     private static string HoursLabel(decimal? minutes) =>
-        minutes is { } m ? $"{m / 60m:0.#} hours" : "—";
+        minutes is { } m ? $"{Hours(m):0.#} hours" : "—";
 
-    private static decimal? Hours(decimal? minutes) => minutes is { } m ? m / 60m : null;
+    /// <summary>
+    /// Minutes as hours, at the tenth the sleep card is read to. Rounded here rather than left to
+    /// whatever formats it: <c>MemberInsightsCalculator</c> rounds the dashboard's series the same
+    /// way, and an unrounded quotient put 200 minutes on the wire as
+    /// <c>3.3333333333333333333333333333</c> — 28 significant figures of a wearable's nearest
+    /// minute, in a payload the detail screen re-polls the whole time it is open.
+    /// </summary>
+    private static decimal? Hours(decimal? minutes) =>
+        minutes is { } m ? Math.Round(m / 60m, 1) : null;
 
     private static bool TryParse(string? json, out JsonElement root)
     {

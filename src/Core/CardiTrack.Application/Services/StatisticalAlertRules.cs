@@ -136,7 +136,11 @@ public static class StatisticalAlertRules
         }
 
         var recommended = HealthReferenceRanges.Sleep(ageYears);
+        // Exact, never rounded: this is what the band comparisons below threshold on, and
+        // MemberInsightsCalculator documents the trap — 418 minutes is 6.97 hours and rounds to
+        // 7.0, clearing a floor it is three minutes short of. Rounding happens at format time only.
         var hours = sleep / 60m;
+        var usualHours = average / 60m;
         var longer = sleep > average;
         var overshot = hours > recommended.High;
 
@@ -161,8 +165,8 @@ public static class StatisticalAlertRules
             IrregularSleepRule, AlertType.Sleep,
             benign ? AlertSeverity.Green : AlertSeverity.Yellow,
             benign ? "A longer night than usual" : "Sleep was well off the usual",
-            $"Around {sleep / 60.0:F1} hours of sleep, noticeably {(longer ? "more" : "less")} "
-            + $"than the usual {average / 60.0:F1} — {tail}",
+            $"Around {hours:0.#} hours of sleep, noticeably {(longer ? "more" : "less")} "
+            + $"than the usual {usualHours:0.#} — {tail}",
             Serialize(new
             {
                 rule = IrregularSleepRule,

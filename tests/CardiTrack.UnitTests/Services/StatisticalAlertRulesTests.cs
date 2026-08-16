@@ -173,6 +173,45 @@ public class StatisticalAlertRulesTests
     }
 
     /// <summary>
+    /// The sentence quotes hours the way every surface around it does. It used to use F1 while the
+    /// comparison card, the chart key and the recommended band beside it all used 0.#, so a
+    /// six-hour night read "the usual 6.0" in the message and "6 hours" in the card directly under
+    /// it — one figure, two spellings, on one screen.
+    /// </summary>
+    [Fact]
+    public void IrregularSleep_QuotesWholeHoursWithoutATrailingZero()
+    {
+        var baseline = Baseline();
+        baseline.AvgSleepMinutes = 360;
+
+        var candidate = StatisticalAlertRules.IrregularSleep(baseline, Log(sleepMinutes: 510), AdultAge);
+
+        Assert.NotNull(candidate);
+        Assert.Contains("the usual 6 ", candidate.Message);
+        Assert.DoesNotContain("6.0", candidate.Message);
+        Assert.Contains("8.5 hours of sleep", candidate.Message);
+    }
+
+    /// <summary>
+    /// The band comparisons threshold on exact minutes, never on the rounded figure the message
+    /// prints — <c>MemberInsightsCalculator</c> documents the trap this avoids. 418 minutes is
+    /// 6.97 hours: it prints as "7" and is still under the 7-hour floor.
+    /// </summary>
+    [Fact]
+    public void IrregularSleep_ThresholdsOnExactMinutes_NotTheRoundedFigureItPrints()
+    {
+        var baseline = Baseline();
+        baseline.AvgSleepMinutes = 240;
+
+        var candidate = StatisticalAlertRules.IrregularSleep(baseline, Log(sleepMinutes: 418), AdultAge);
+
+        Assert.NotNull(candidate);
+        Assert.Equal(AlertSeverity.Green, candidate.Severity);
+        Assert.Contains("Around 7 hours", candidate.Message);
+        Assert.Contains("still under the 7 hours recommended", candidate.Message);
+    }
+
+    /// <summary>
     /// The band the night was judged against is written down, not left to be re-derived when the
     /// detail screen draws it — a member who crosses the older-adult split later must not get an
     /// alert quoting one ceiling beside a chart shading another.
