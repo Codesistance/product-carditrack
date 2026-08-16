@@ -999,9 +999,10 @@ This is the most safety-critical screen in the app. Design for urgency and immed
 - Age & relationship: "78 years old • Dad"
 - Connection status on the third row: a red / amber / blue / green dot (the same data-pipeline freshness as the dashboard — no sync in 12 h / 4 h / synced / processed) in front of the last-contact age ("Updated 4 minutes ago"). The whole row is hidden while monitoring is paused — a freshness colour would misread a deliberate pause as a connection gap, and the paused banner is the status then. Device count lives on M1-15, not here.
 
-**Contact Info Card:**
-- Emergency contact: name, phone (tappable to call) — plus the member's own phone row, also tappable to call
-- **As built:** primary caregivers can tap the Phone number column (or its edit affordance when empty) to open M1-14 scrolled to the Phone Number field (`focus=phone`) — same save path as the header pencil; the call button is a separate hit target
+**Contact Info (as built):**
+- Emergency contact and the member's own phone are **two looping carousel slides** (same wrap-around as Key Metric Trends): swipe past Phone and Emergency Contact is next. Indicators under the row.
+- Emergency slide: name + number, call when a number exists
+- Phone slide: number, call + message when a number exists; primary caregivers can tap the number column (or the edit affordance when empty) to open M1-14 scrolled to the Phone Number field (`focus=phone`)
 
 **Medical Info Card (encrypted):**
 - Lock icon in card header
@@ -1013,7 +1014,7 @@ This is the most safety-critical screen in the app. Design for urgency and immed
 - "Manage Device" → M1-15
 - "Questions & Answers" row → QuestionnairesPage
 
-**As-built additions beyond the comp:** an AI summary card with suggestions, an inline `QuestionCard` when a question is waiting, a paused-monitoring banner, and a **Key Metric Trends** carousel (`MetricTrendCard` + 7/14/30-day `TrendWindowSelector`). The profile's connection-status dot is as-built (the Figma frame has no freshness indicator).
+**As-built additions beyond the comp:** an AI summary card with suggestions, an inline `QuestionCard` when a question is waiting, a paused-monitoring banner, a looping **Key Metric Trends** carousel (`MetricTrendCard` + 7/14/30-day `TrendWindowSelector`), and a looping Emergency Contact / Phone carousel. The profile's connection-status dot is as-built (the Figma frame has no freshness indicator).
 
 **Danger Zone (separated — "Management" / "Critical settings" as built):**
 - "Pause Monitoring" (warning treatment; expands an inline duration picker: 24h / 48h / 3 days / 1 week)
@@ -1961,6 +1962,7 @@ The shipped app already includes these reusable controls — designs should map 
 |---------|------|---------|
 | `AccordionSection` | XAML component | Generic collapsible section (header + expand hint + chevron); tucks the dashboard's Key Metrics behind a tap |
 | `AlertListCard` | XAML component | One alert row on M1-10 (severity treatment, expand, acknowledge, call) |
+| `ContactCardItem` | C# model | One slide of the Member Detail Emergency Contact / Phone carousel |
 | `AlertMiniCard` | XAML component | M1-09 recent-alerts strip card |
 | `AlertSkeletonCard` | XAML component | Loading placeholder for M1-10 alert rows |
 | `AppChooserPage` | XAML component | App-styled list-of-choices sheet replacing `DisplayActionSheet` |

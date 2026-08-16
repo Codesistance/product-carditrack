@@ -864,15 +864,17 @@ Backed by a single `GET /api/v1/cardimembers/{id}` round trip — see [cardimemb
 - Connection-status dot (red / amber / blue / green — same `dataFreshness` as the dashboard) in front of last-contact age ("Updated 4 minutes ago"). The Monitoring Info card is gone; device count lives on M1-15.
 
 **Key Metric Trends (carousel, one swipeable card per metric):**
+- **Loops:** a swipe past the last metric returns to the first.
 - Activity, Heart Rate, Sleep, Skin Temp, Blood Oxygen and Breathing Rate, over a caregiver-chosen **7 / 14 / 30-day** window. The API always sends 30 days of `series`, so switching windows is a client-side slice rather than another round trip.
 - Each chart draws the daily line over **the two things the reading is compared against**: a dashed rule at this member's own learned `baseline`, and a shaded band at the published `reference` range for an adult of this member's age (60–100 bpm AHA, 7–9 h NSF — 7–8 from age 65, 94–100 % WHO, 12–20 brpm WHO — see [health-data.md](../../../backend/api/health-data.md)). A key under the chart names both and quotes their numbers; steps and skin temp have no published range, so they show the baseline alone.
 - Both are drawn in neutral ink, never the status accent — they are context, not a verdict. The band is **presentational only**: the card's pill still reads this member against their own normal, not against the population. The one exception is the **sleep band**, which caps the sleep card's stars at both ends — a 4.5-hour night cannot be five stars however efficiently it was slept, nor can a 12-hour one, and a member whose own normal is 4.5 hours is the reason the cap cannot come off. It only ever lowers the rating; see [health-data.md](../../../backend/api/health-data.md).
 - The chart's axis makes room for them, but not at any price: where admitting the band or the baseline would flatten the readings into a straight line, the readings keep the scale and the band is drawn clipped to the plot edge. The baseline rule is dropped instead — a rule pinned to the edge would read as a baseline sitting exactly there — and its key loses the dash and reads "Baseline 9,000 (off chart)". The number stays: a window that far from the member's own normal is why the rule would not fit, which makes it the thing most worth reading.
 - Fewer than two readings in the window shows "Not enough readings in this window yet." instead of an empty grid.
 
-**Contact Info Card:**
-- Emergency contact name and phone, with a call button (hidden when no number is stored)
-- Falls back to "No emergency contact yet" rather than rendering an empty card
+**Contact Info (as built):**
+- Emergency contact and the member's own phone are two looping carousel slides — swipe past Phone and Emergency Contact is next
+- Emergency slide: name + number, call when a number exists; empty copy rather than a missing slide
+- Phone slide: number, call + message when a number exists
 
 **Medical Info Card (encrypted):**
 - Lock icon in card header; collapsible notes, collapsed by default

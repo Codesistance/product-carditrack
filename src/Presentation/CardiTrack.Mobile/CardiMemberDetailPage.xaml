@@ -293,10 +293,11 @@
                             <controls:TrendWindowSelector x:Name="TrendWindowPicker"/>
 
                             <!-- Margin cancels the page's own 20dp gutter so a card can slide the
-                                 full width of the screen; the cards carry their own inset. -->
+                                 full width of the screen; the cards carry their own inset.
+                                 Loop so a swipe past the last metric lands on the first. -->
                             <CarouselView x:Name="TrendsCarousel"
                                           Margin="-20,0"
-                                          Loop="False"
+                                          Loop="True"
                                           IsScrollAnimated="True"
                                           HorizontalScrollBarVisibility="Never"
                                           PeekAreaInsets="20,0"
@@ -314,141 +315,109 @@
                                                    Spacing="6"/>
                         </VerticalStackLayout>
 
-                        <!-- Emergency contact -->
-                        <Border Style="{StaticResource ElevatedCard}">
-                            <VerticalStackLayout Spacing="10">
-                                <Label Text="Emergency Contact"
-                                       Style="{StaticResource DashboardSectionTitle}"/>
-                                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
-                                    <VerticalStackLayout Grid.Column="0" Spacing="2" VerticalOptions="Center">
-                                        <Label x:Name="EmergencyNameLabel"
-                                               Style="{StaticResource Body1SemiBoldDark}"/>
-                                        <Label x:Name="EmergencyPhoneLabel"
-                                               Style="{StaticResource Body2}"/>
-                                    </VerticalStackLayout>
-                                    <!-- 40, matching the header's own icon buttons and the phone
-                                         card below, so the two contact cards stand the same
-                                         height as each other. -->
-                                    <Border x:Name="EmergencyCallButton"
-                                            Grid.Column="1"
-                                            WidthRequest="40" HeightRequest="40"
-                                            StrokeThickness="0"
-                                            BackgroundColor="{StaticResource SelectedOptionBackground}"
-                                            VerticalOptions="Center">
-                                        <Border.StrokeShape>
-                                            <RoundRectangle CornerRadius="12"/>
-                                        </Border.StrokeShape>
-                                        <Border.GestureRecognizers>
-                                            <TapGestureRecognizer Tapped="OnCallEmergencyContactTapped"/>
-                                        </Border.GestureRecognizers>
-                                        <Image Source="icon_action_call.svg"
-                                               WidthRequest="20" HeightRequest="20"
-                                               HorizontalOptions="Center" VerticalOptions="Center"/>
-                                    </Border>
-                                </Grid>
-                            </VerticalStackLayout>
-                        </Border>
-
-                        <!-- Personal phone (issue #162) — distinct from the emergency contact
-                             above; same graceful-absence treatment. Primary caregivers can tap
-                             the number column (or the edit affordance when empty) to jump
-                             straight to the phone field on M1-14 — #280. The action buttons stay
-                             outside that tap target so the gestures cannot collide.
-
-                             The same shape as the emergency contact card above: title, one line of
-                             dark text, 40dp action buttons on the right. The number used to be
-                             muted body copy floating in the middle of a 44dp row, which left the
-                             card visibly baggier than its neighbour for the same one line of
-                             content.
-
-                             It rides a little tighter than that card rather than exactly as tall.
-                             The 40dp buttons set the row height and stay 40 — they match the
-                             header's icon buttons and the emergency card's, and shrinking them
-                             here would break that everywhere it is read — so the height comes off
-                             the padding and the title gap instead. The emergency card carries two
-                             lines of text in the same frame; matching its height around one line
-                             is what made this one read as slack. -->
-                        <Border x:Name="PhoneCard"
-                                Style="{StaticResource ElevatedCard}"
-                                Padding="14,12,13,12">
-                            <VerticalStackLayout Spacing="6">
-                                <Label Text="Phone"
-                                       Style="{StaticResource DashboardSectionTitle}"/>
-                                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
-                                    <VerticalStackLayout x:Name="PhoneEditTarget"
-                                                         Grid.Column="0"
-                                                         VerticalOptions="Center">
-                                        <VerticalStackLayout.GestureRecognizers>
-                                            <TapGestureRecognizer Tapped="OnEditPhoneTapped"/>
-                                        </VerticalStackLayout.GestureRecognizers>
-                                        <Label x:Name="PhoneLabel"
-                                               Style="{StaticResource Body1SemiBoldDark}"
-                                               VerticalOptions="Center"/>
-                                    </VerticalStackLayout>
-
-                                    <!-- Call and message sit side by side: a caregiver checking in
-                                         reaches for one or the other, and only calling was
-                                         reachable from here. The stack collapses whichever button
-                                         does not apply, so the row is the same height either way. -->
-                                    <HorizontalStackLayout Grid.Column="1"
-                                                           Spacing="10"
-                                                           VerticalOptions="Center">
-                                        <Border x:Name="PhoneCallButton"
-                                                WidthRequest="40" HeightRequest="40"
-                                                StrokeThickness="0"
-                                                BackgroundColor="{StaticResource SelectedOptionBackground}"
-                                                VerticalOptions="Center"
-                                                SemanticProperties.Description="Call"
-                                                SemanticProperties.Hint="Dials their phone number">
-                                            <Border.StrokeShape>
-                                                <RoundRectangle CornerRadius="12"/>
-                                            </Border.StrokeShape>
-                                            <Border.GestureRecognizers>
-                                                <TapGestureRecognizer Tapped="OnCallPhoneTapped"/>
-                                            </Border.GestureRecognizers>
-                                            <Image Source="icon_action_call.svg"
-                                                   WidthRequest="20" HeightRequest="20"
-                                                   HorizontalOptions="Center" VerticalOptions="Center"/>
-                                        </Border>
-                                        <Border x:Name="PhoneMessageButton"
-                                                WidthRequest="40" HeightRequest="40"
-                                                StrokeThickness="0"
-                                                BackgroundColor="{StaticResource SelectedOptionBackground}"
-                                                VerticalOptions="Center"
-                                                SemanticProperties.Description="Message"
-                                                SemanticProperties.Hint="Opens a text message to their phone number">
-                                            <Border.StrokeShape>
-                                                <RoundRectangle CornerRadius="12"/>
-                                            </Border.StrokeShape>
-                                            <Border.GestureRecognizers>
-                                                <TapGestureRecognizer Tapped="OnMessagePhoneTapped"/>
-                                            </Border.GestureRecognizers>
-                                            <Image Source="icon_action_sms.svg"
-                                                   WidthRequest="20" HeightRequest="20"
-                                                   HorizontalOptions="Center" VerticalOptions="Center"/>
-                                        </Border>
-                                        <Border x:Name="PhoneEditButton"
-                                                WidthRequest="40" HeightRequest="40"
-                                                StrokeThickness="0"
-                                                BackgroundColor="{StaticResource SelectedOptionBackground}"
-                                                VerticalOptions="Center"
-                                                IsVisible="False"
-                                                SemanticProperties.Description="Edit phone number"
-                                                SemanticProperties.Hint="Opens the profile form on their phone number">
-                                            <Border.StrokeShape>
-                                                <RoundRectangle CornerRadius="12"/>
-                                            </Border.StrokeShape>
-                                            <Border.GestureRecognizers>
-                                                <TapGestureRecognizer Tapped="OnEditPhoneTapped"/>
-                                            </Border.GestureRecognizers>
-                                            <Image Source="icon_edit.svg"
-                                                   WidthRequest="20" HeightRequest="20"
-                                                   HorizontalOptions="Center" VerticalOptions="Center"/>
-                                        </Border>
-                                    </HorizontalStackLayout>
-                                </Grid>
-                            </VerticalStackLayout>
-                        </Border>
+                        <!-- Emergency contact and the member's own phone as looping slides —
+                             same wrap-around as Key Metric Trends, so a swipe past Phone
+                             returns to Emergency Contact. Peek of the page gutter matches
+                             the cards' own inset. -->
+                        <VerticalStackLayout x:Name="ContactsSection" Spacing="12">
+                            <CarouselView x:Name="ContactsCarousel"
+                                          Margin="-20,0"
+                                          Loop="True"
+                                          IsScrollAnimated="True"
+                                          HorizontalScrollBarVisibility="Never"
+                                          PeekAreaInsets="20,0"
+                                          HorizontalOptions="Fill"
+                                          HeightRequest="132">
+                                <CarouselView.ItemTemplate>
+                                    <DataTemplate x:DataType="controls:ContactCardItem">
+                                        <Grid>
+                                            <Border Style="{StaticResource ElevatedCard}"
+                                                    Margin="3,3,3,10">
+                                                <VerticalStackLayout Spacing="10">
+                                                    <Label Text="{Binding Title}"
+                                                           Style="{StaticResource DashboardSectionTitle}"/>
+                                                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+                                                        <VerticalStackLayout Grid.Column="0"
+                                                                             Spacing="2"
+                                                                             VerticalOptions="Center">
+                                                            <VerticalStackLayout.GestureRecognizers>
+                                                                <TapGestureRecognizer Tapped="OnContactPrimaryTapped"/>
+                                                            </VerticalStackLayout.GestureRecognizers>
+                                                            <Label Text="{Binding Primary}"
+                                                                   Style="{StaticResource Body1SemiBoldDark}"/>
+                                                            <Label Text="{Binding Secondary}"
+                                                                   Style="{StaticResource Body2}"
+                                                                   IsVisible="{Binding HasSecondary}"/>
+                                                        </VerticalStackLayout>
+                                                        <HorizontalStackLayout Grid.Column="1"
+                                                                               Spacing="10"
+                                                                               VerticalOptions="Center">
+                                                            <Border WidthRequest="40" HeightRequest="40"
+                                                                    StrokeThickness="0"
+                                                                    BackgroundColor="{StaticResource SelectedOptionBackground}"
+                                                                    VerticalOptions="Center"
+                                                                    IsVisible="{Binding ShowCall}"
+                                                                    SemanticProperties.Description="Call"
+                                                                    SemanticProperties.Hint="Dials this number">
+                                                                <Border.StrokeShape>
+                                                                    <RoundRectangle CornerRadius="12"/>
+                                                                </Border.StrokeShape>
+                                                                <Border.GestureRecognizers>
+                                                                    <TapGestureRecognizer Tapped="OnContactCallTapped"/>
+                                                                </Border.GestureRecognizers>
+                                                                <Image Source="icon_action_call.svg"
+                                                                       WidthRequest="20" HeightRequest="20"
+                                                                       HorizontalOptions="Center"
+                                                                       VerticalOptions="Center"/>
+                                                            </Border>
+                                                            <Border WidthRequest="40" HeightRequest="40"
+                                                                    StrokeThickness="0"
+                                                                    BackgroundColor="{StaticResource SelectedOptionBackground}"
+                                                                    VerticalOptions="Center"
+                                                                    IsVisible="{Binding ShowMessage}"
+                                                                    SemanticProperties.Description="Message"
+                                                                    SemanticProperties.Hint="Opens a text message to this number">
+                                                                <Border.StrokeShape>
+                                                                    <RoundRectangle CornerRadius="12"/>
+                                                                </Border.StrokeShape>
+                                                                <Border.GestureRecognizers>
+                                                                    <TapGestureRecognizer Tapped="OnContactMessageTapped"/>
+                                                                </Border.GestureRecognizers>
+                                                                <Image Source="icon_action_sms.svg"
+                                                                       WidthRequest="20" HeightRequest="20"
+                                                                       HorizontalOptions="Center"
+                                                                       VerticalOptions="Center"/>
+                                                            </Border>
+                                                            <Border WidthRequest="40" HeightRequest="40"
+                                                                    StrokeThickness="0"
+                                                                    BackgroundColor="{StaticResource SelectedOptionBackground}"
+                                                                    VerticalOptions="Center"
+                                                                    IsVisible="{Binding ShowEdit}"
+                                                                    SemanticProperties.Description="Edit phone number"
+                                                                    SemanticProperties.Hint="Opens the profile form on their phone number">
+                                                                <Border.StrokeShape>
+                                                                    <RoundRectangle CornerRadius="12"/>
+                                                                </Border.StrokeShape>
+                                                                <Border.GestureRecognizers>
+                                                                    <TapGestureRecognizer Tapped="OnContactPrimaryTapped"/>
+                                                                </Border.GestureRecognizers>
+                                                                <Image Source="icon_edit.svg"
+                                                                       WidthRequest="20" HeightRequest="20"
+                                                                       HorizontalOptions="Center"
+                                                                       VerticalOptions="Center"/>
+                                                            </Border>
+                                                        </HorizontalStackLayout>
+                                                    </Grid>
+                                                </VerticalStackLayout>
+                                            </Border>
+                                        </Grid>
+                                    </DataTemplate>
+                                </CarouselView.ItemTemplate>
+                            </CarouselView>
+                            <HorizontalStackLayout x:Name="ContactIndicatorPanel"
+                                                   HorizontalOptions="Center"
+                                                   Spacing="6"/>
+                        </VerticalStackLayout>
 
                         <!-- Questions and answers, once any have been asked. A row rather than a
                              section: the answers are worth keeping and worth editing, but they are

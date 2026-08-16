@@ -34,6 +34,13 @@ public partial class CardiMemberDetailPage : ContentPage
 
     private readonly List<MetricTrend> _trends = [];
     private readonly List<BoxView> _trendIndicators = [];
+    private readonly List<BoxView> _contactIndicators = [];
+    private readonly List<ContactCardItem> _contacts =
+    [
+        new() { Kind = ContactCardItem.Emergency, Title = "Emergency Contact" },
+        new() { Kind = ContactCardItem.Phone, Title = "Phone" },
+    ];
+    private bool _contactsBound;
 
     private Guid _memberId;
     private bool _isLoading;
@@ -87,6 +94,7 @@ public partial class CardiMemberDetailPage : ContentPage
 
         TrendsCarousel.HeightRequest = MetricTrendCard.CardHeight;
         TrendsCarousel.PositionChanged += OnTrendPositionChanged;
+        ContactsCarousel.PositionChanged += OnContactPositionChanged;
         TrendWindowPicker.WindowChanged += OnTrendWindowChanged;
     }
 
@@ -407,26 +415,7 @@ public partial class CardiMemberDetailPage : ContentPage
         }
 
         ApplyTrends(member.Metrics);
-
-        var hasEmergencyContact = !string.IsNullOrWhiteSpace(member.EmergencyContactName)
-            || !string.IsNullOrWhiteSpace(member.EmergencyContactPhone);
-        EmergencyNameLabel.Text = hasEmergencyContact
-            ? member.EmergencyContactName ?? "Not named"
-            : "No emergency contact yet";
-        EmergencyPhoneLabel.Text = hasEmergencyContact
-            ? member.EmergencyContactPhone ?? "No number"
-            : "Add one so help is one tap away";
-        EmergencyCallButton.IsVisible = !string.IsNullOrWhiteSpace(member.EmergencyContactPhone);
-
-        var hasPhone = !string.IsNullOrWhiteSpace(member.Phone);
-        PhoneLabel.Text = hasPhone ? member.Phone : "No phone number yet";
-        // Call and message when a number exists; otherwise primary caregivers get an edit
-        // affordance so adding one is one tap from this card rather than hunting the header
-        // pencil (#280).
-        PhoneCallButton.IsVisible = hasPhone;
-        PhoneMessageButton.IsVisible = hasPhone;
-        PhoneEditButton.IsVisible = !hasPhone && member.IsPrimaryCaregiver;
-        PhoneEditTarget.InputTransparent = !member.IsPrimaryCaregiver;
+        ApplyContacts(member);
 
         // Only a primary caregiver may edit, pause or remove — the API enforces this and
         // would answer 404, so showing the controls would just be a trap.
@@ -698,15 +687,52 @@ public partial class CardiMemberDetailPage : ContentPage
         TrendsSection.IsVisible = _trends.Count > 0;
         if (_trends.Count == 0)
         {
-            BuildTrendIndicators(0);
+            BuildIndicators(TrendIndicatorPanel, _trendIndicators, 0);
             return;
         }
 
-        BuildTrendIndicators(_trends.Count);
+        BuildIndicators(TrendIndicatorPanel, _trendIndicators, _trends.Count);
         TrendsCarousel.Position = Math.Clamp(position, 0, _trends.Count - 1);
         // Read back rather than trusting the write: a carousel that has not been laid out yet keeps
         // the position it had, and the dots must say whatever the carousel actually settled on.
-        PaintTrendIndicators(TrendsCarousel.Position);
+        PaintIndicators(_trendIndicators, TrendsCarousel.Position);
+    }
+
+    /// <summary>
+    /// Emergency contact and the member's own phone as two looping slides. Always both: an
+    /// empty card is the graceful-absence copy, not a reason to drop the slide.
+    /// </summary>
+    private void ApplyContacts(CardiMemberDetailResponse member)
+    {
+        var hasEmergencyContact = !string.IsNullOrWhiteSpace(member.EmergencyContactName)
+            || !string.IsNullOrWhiteSpace(member.EmergencyContactPhone);
+        var hasPhone = !string.IsNullOrWhiteSpace(member.Phone);
+
+        var emergency = _contacts[0];
+        emergency.Primary = hasEmergencyContact
+            ? member.EmergencyContactName ?? "Not named"
+            : "No emergency contact yet";
+        emergency.Secondary = hasEmergencyContact
+            ? member.EmergencyContactPhone ?? "No number"
+            : "Add one so help is one tap away";
+        emergency.ShowCall = !string.IsNullOrWhiteSpace(member.EmergencyContactPhone);
+
+        var phone = _contacts[1];
+        phone.Primary = hasPhone ? member.Phone! : "No phone number yet";
+        phone.ShowCall = hasPhone;
+        phone.ShowMessage = hasPhone;
+        phone.ShowEdit = !hasPhone && member.IsPrimaryCaregiver;
+        phone.CanEditPrimary = member.IsPrimaryCaregiver;
+
+        // Bind once: a new ItemsSource re-realises the slides and snaps the carousel back to
+        // the first card, which is the same jolt ApplyTrends already refuses to cause.
+        if (_contactsBound)
+            return;
+
+        ContactsCarousel.ItemsSource = _contacts;
+        BuildIndicators(ContactIndicatorPanel, _contactIndicators, _contacts.Count);
+        PaintIndicators(_contactIndicators, ContactsCarousel.Position);
+        _contactsBound = true;
     }
 
     private void OnTrendWindowChanged(object? sender, int days)
@@ -718,33 +744,42 @@ public partial class CardiMemberDetailPage : ContentPage
     }
 
     private void OnTrendPositionChanged(object? sender, PositionChangedEventArgs e) =>
-        PaintTrendIndicators(e.CurrentPosition);
+        PaintIndicators(_trendIndicators, e.CurrentPosition);
 
-    private void BuildTrendIndicators(int count)
+    private void OnContactPositionChanged(object? sender, PositionChangedEventArgs e) =>
+        PaintIndicators(_contactIndicators, e.CurrentPosition);
+
+    private static void BuildIndicators(HorizontalStackLayout panel, List<BoxView> dots, int count)
     {
-        TrendIndicatorPanel.Clear();
-        _trendIndicators.Clear();
-        // A single metric is not a carousel; dots under it would promise a swipe that goes nowhere.
-        TrendIndicatorPanel.IsVisible = count > 1;
+        panel.Clear();
+        dots.Clear();
+        // A single slide is not a carousel; dots under it would promise a swipe that goes nowhere.
+        panel.IsVisible = count > 1;
         if (count <= 1)
             return;
 
         for (var i = 0; i < count; i++)
         {
             var dot = new BoxView { WidthRequest = 8, HeightRequest = 8, CornerRadius = 4 };
-            _trendIndicators.Add(dot);
-            TrendIndicatorPanel.Add(dot);
+            dots.Add(dot);
+            panel.Add(dot);
         }
     }
 
-    private void PaintTrendIndicators(int position)
+    private static void PaintIndicators(IReadOnlyList<BoxView> dots, int position)
     {
+        var count = dots.Count;
+        if (count == 0)
+            return;
+
+        // Loop wraps the carousel; the reported position still sits in 0..count-1, but a wrap
+        // that overshoots is folded back so the pill cannot light a slot that is not there.
+        var active = ((position % count) + count) % count;
         var resources = Microsoft.Maui.Controls.Application.Current!.Resources;
-        for (var i = 0; i < _trendIndicators.Count; i++)
+        for (var i = 0; i < count; i++)
         {
-            // Active pill widens, same treatment as the welcome carousel's indicators.
-            _trendIndicators[i].WidthRequest = i == position ? 24 : 8;
-            _trendIndicators[i].Color = (Color)resources[i == position ? "ActiveIndicator" : "InactiveIndicator"];
+            dots[i].WidthRequest = i == active ? 24 : 8;
+            dots[i].Color = (Color)resources[i == active ? "ActiveIndicator" : "InactiveIndicator"];
         }
     }
 
@@ -787,25 +822,9 @@ public partial class CardiMemberDetailPage : ContentPage
             ChevronTurnMs,
             isExpanded ? Easing.CubicOut : Easing.CubicIn);
 
-    private async void OnCallEmergencyContactTapped(object? sender, TappedEventArgs e)
+    private async void OnContactCallTapped(object? sender, TappedEventArgs e)
     {
-        var phone = _member?.EmergencyContactPhone;
-        if (string.IsNullOrWhiteSpace(phone))
-            return;
-
-        try
-        {
-            PhoneDialer.Default.Open(phone);
-        }
-        catch (Exception)
-        {
-            await _popups.ShowWarningAsync("Phone calls aren't supported on this device.");
-        }
-    }
-
-    private async void OnCallPhoneTapped(object? sender, TappedEventArgs e)
-    {
-        var phone = _member?.Phone;
+        var phone = PhoneFor(ItemOf(sender));
         if (string.IsNullOrWhiteSpace(phone))
             return;
 
@@ -825,8 +844,11 @@ public partial class CardiMemberDetailPage : ContentPage
     /// <see cref="Controls.QuickActionRow"/>, and the <c>&lt;queries&gt;</c> note in the Android
     /// manifest for why the composer has to be declared before it can be reached at all.
     /// </summary>
-    private async void OnMessagePhoneTapped(object? sender, TappedEventArgs e)
+    private async void OnContactMessageTapped(object? sender, TappedEventArgs e)
     {
+        if (ItemOf(sender) is not { Kind: ContactCardItem.Phone })
+            return;
+
         var phone = _member?.Phone;
         if (string.IsNullOrWhiteSpace(phone))
             return;
@@ -846,14 +868,37 @@ public partial class CardiMemberDetailPage : ContentPage
         }
     }
 
-    private async void OnEditPhoneTapped(object? sender, TappedEventArgs e)
+    /// <summary>
+    /// Primary caregivers can tap the Phone slide's number column (or its edit affordance when
+    /// empty) to jump straight to the phone field on M1-14 — #280. The emergency slide is
+    /// display-only here; editing that contact is the header pencil.
+    /// </summary>
+    private async void OnContactPrimaryTapped(object? sender, TappedEventArgs e)
     {
-        if (_member is not { IsPrimaryCaregiver: true })
+        if (ItemOf(sender) is not { Kind: ContactCardItem.Phone, CanEditPrimary: true })
             return;
 
         await Shell.Current.GoToAsync(
             $"{EditCardiMemberPage.Route}?memberId={_memberId}&focus={Uri.EscapeDataString(EditCardiMemberPage.FocusPhone)}");
     }
+
+    private static ContactCardItem? ItemOf(object? sender)
+    {
+        for (var current = sender as Element; current is not null; current = current.Parent)
+        {
+            if (current.BindingContext is ContactCardItem item)
+                return item;
+        }
+
+        return null;
+    }
+
+    private string? PhoneFor(ContactCardItem? item) => item?.Kind switch
+    {
+        ContactCardItem.Emergency => _member?.EmergencyContactPhone,
+        ContactCardItem.Phone => _member?.Phone,
+        _ => null,
+    };
 
     private async void OnEditClicked(object? sender, EventArgs e) =>
         await Shell.Current.GoToAsync($"{EditCardiMemberPage.Route}?memberId={_memberId}");
