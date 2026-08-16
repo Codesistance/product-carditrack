@@ -128,6 +128,7 @@ public static class MauiProgram
         builder.Services.AddTransient<DeviceManagementPage>();
         builder.Services.AddTransient<QuestionnairesPage>();
         builder.Services.AddTransient<MedicalInformationPage>();
+        builder.Services.AddTransient<MetricTrendPage>();
         builder.Services.AddTransient<NotificationsPage>();
         builder.Services.AddTransient<AlertDetailPage>();
 

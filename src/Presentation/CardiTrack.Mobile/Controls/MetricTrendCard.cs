@@ -89,6 +89,20 @@ public sealed class MetricTrendCard : ContentView
     /// <summary>The "i" itself — the thing the hint pulse scales. Assigned by BuildFooter.</summary>
     private Border _hintDisc = null!;
 
+    /// <summary>The expand control's padded target. Assigned by BuildFooter.</summary>
+    private Grid _expand = null!;
+
+    /// <summary>
+    /// Whether this card offers the full-screen view. False on the card that <em>is</em> the
+    /// full-screen view: expanding what is already expanded would push a second copy of this page
+    /// onto the stack for every tap.
+    /// </summary>
+    public bool ShowExpand
+    {
+        get => _expand.IsVisible;
+        set => _expand.IsVisible = value;
+    }
+
     /// <summary>
     /// Large enough to be seen as a control rather than a full stop, at the 44dp effective target
     /// its padded wrapper already gave it.
@@ -553,13 +567,53 @@ public sealed class MetricTrendCard : ContentView
         SemanticProperties.SetHint(button, "Explains what this reading is compared against");
         button.GestureRecognizers.Add(new TapGestureRecognizer { Command = new Command(ShowExplanation) });
 
+        // Beside the explanation rather than up in the header: both are things you do to the chart
+        // rather than facts about the reading, and the header's three columns are already carrying
+        // the icon, the name and the number.
+        var expandDisc = new Border
+        {
+            WidthRequest = HintDiscSize,
+            HeightRequest = HintDiscSize,
+            StrokeThickness = 0,
+            BackgroundColor = MetricStatus.Resource("MetricTileTint", Colors.LightGray),
+            VerticalOptions = LayoutOptions.Center,
+            Content = new Image
+            {
+                Source = "icon_expand.svg",
+                WidthRequest = 16,
+                HeightRequest = 16,
+                HorizontalOptions = LayoutOptions.Center,
+                VerticalOptions = LayoutOptions.Center,
+            },
+        };
+        expandDisc.StrokeShape = new Microsoft.Maui.Controls.Shapes.RoundRectangle
+        {
+            CornerRadius = HintDiscSize / 2,
+        };
+
+        _expand = new Grid
+        {
+            Padding = new Thickness(10, 6, 0, 6),
+            VerticalOptions = LayoutOptions.Center,
+            Children = { expandDisc },
+        };
+        SemanticProperties.SetDescription(_expand, "Open full screen");
+        SemanticProperties.SetHint(_expand, "Shows this trend on its own screen, still by window");
+        _expand.GestureRecognizers.Add(new TapGestureRecognizer { Command = new Command(Expand) });
+
         var row = new Grid
         {
-            ColumnDefinitions = [new ColumnDefinition(GridLength.Star), new ColumnDefinition(GridLength.Auto)],
+            ColumnDefinitions =
+            [
+                new ColumnDefinition(GridLength.Star),
+                new ColumnDefinition(GridLength.Auto),
+                new ColumnDefinition(GridLength.Auto),
+            ],
             ColumnSpacing = 6,
         };
         row.Add(_footer);
-        row.Add(button, 1);
+        row.Add(_expand, 1);
+        row.Add(button, 2);
 
         var block = new Grid
         {
@@ -621,6 +675,31 @@ public sealed class MetricTrendCard : ContentView
         catch (Exception)
         {
             // async void, reached from a gesture: the same stance as ShowExplanation above.
+        }
+    }
+
+    /// <summary>
+    /// Opens this metric on its own screen, on the window the card is currently showing.
+    /// </summary>
+    /// <remarks>
+    /// The route names the member, the metric and the window rather than handing the item over:
+    /// the card is realised inside a <c>DataTemplate</c>, so there is no page to pass state
+    /// through, and a route that carries what it needs is also the one a deep link could use later.
+    /// </remarks>
+    private async void Expand()
+    {
+        if (_trend is null || _trend.MemberId == Guid.Empty)
+            return;
+
+        try
+        {
+            await Shell.Current.GoToAsync(
+                $"{MetricTrendPage.Route}?memberId={_trend.MemberId}"
+                + $"&metric={Uri.EscapeDataString(_trend.Name)}&days={_trend.Days}");
+        }
+        catch (Exception)
+        {
+            // async void, reached from a gesture: the same stance as ShowExplanation.
         }
     }
 

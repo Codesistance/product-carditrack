@@ -35,6 +35,7 @@ public partial class AppShell : Shell
         Routing.RegisterRoute(DeviceManagementPage.Route, typeof(DeviceManagementPage));
         Routing.RegisterRoute(QuestionnairesPage.Route, typeof(QuestionnairesPage));
         Routing.RegisterRoute(MedicalInformationPage.Route, typeof(MedicalInformationPage));
+        Routing.RegisterRoute(MetricTrendPage.Route, typeof(MetricTrendPage));
         Routing.RegisterRoute(NotificationsPage.Route, typeof(NotificationsPage));
         Routing.RegisterRoute(AlertDetailPage.Route, typeof(AlertDetailPage));
 
