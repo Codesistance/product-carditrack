@@ -541,12 +541,19 @@ public partial class CardiMemberDetailPage : ContentPage
         if (_memberId == Guid.Empty || _isBusy)
             return;
 
+        // The longest-running call on this page — MedGemma is given a minute. Long enough for a
+        // caregiver to move to another CardiMember before it lands, and an answer about one
+        // person's readings must never render under another's name.
+        var memberId = _memberId;
+
         _isBusy = true;
         MemberAskCard.SetBusy(true);
         try
         {
             var result = await _api.AskAboutMemberAsync(
-                _memberId, new AskMemberQuestionRequest { Question = question });
+                memberId, new AskMemberQuestionRequest { Question = question });
+            if (memberId != _memberId)
+                return;
 
             if (string.IsNullOrWhiteSpace(result.Answer))
             {
@@ -558,7 +565,8 @@ public partial class CardiMemberDetailPage : ContentPage
         }
         catch (ApiException ex) when (!ex.IsSessionExpired)
         {
-            MemberAskCard.ShowError(ex.Message);
+            if (memberId == _memberId)
+                MemberAskCard.ShowError(ex.Message);
         }
         finally
         {
