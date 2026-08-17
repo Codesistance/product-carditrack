@@ -325,6 +325,118 @@ public class DigestGenerationServiceTests
         Assert.Equal(1, generated);
     }
 
+    // ---- What the member's own day allows ----
+    //
+    // The floor above assumes that data moving means the wording should move. Early in a member's
+    // day that inverts: the readings move because the day is filling up from nothing, so every pass
+    // found new data and bought a generation to say the same thing about the same near-empty running
+    // total. One member's morning produced a summary roughly every twenty minutes from local
+    // midnight, each re-deriving that a just-woken person had not walked far.
+
+    /// <summary>05:00 in London — the member is not up, so there is no today to describe yet.</summary>
+    private static readonly DateTime BeforeWake = new(2026, 8, 10, 4, 0, 0, DateTimeKind.Utc);
+
+    /// <summary>08:00 in London — up an hour, inside the early-day window.</summary>
+    private static readonly DateTime JustAfterWake = new(2026, 8, 10, 7, 0, 0, DateTimeKind.Utc);
+
+    [Fact]
+    public async Task Skips_BeforeTheMemberIsUp_LeavingYesterdaysSummaryStanding()
+    {
+        GivenPreviousSummary(BeforeWake.AddHours(-8));
+        SetupActivity(BeforeWake.AddMinutes(-2));
+
+        var generated = await CreateSut().GenerateDueDigestsAsync(BeforeWake);
+
+        Assert.Equal(0, generated);
+        await _medicalAi.DidNotReceive().GenerateStructuredAsync<DigestGenerationService.DigestAiResponse>(
+            Arg.Any<string>(), Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// The gate above bounds regeneration, never the first summary — a member with nothing on file
+    /// gets one whatever the hour, the same stance the 20-minute floor takes.
+    /// </summary>
+    [Fact]
+    public async Task Generates_BeforeWake_ForAMemberWithNoSummaryYet()
+    {
+        SetupActivity(BeforeWake.AddMinutes(-2));
+
+        Assert.Equal(1, await CreateSut().GenerateDueDigestsAsync(BeforeWake));
+    }
+
+    /// <summary>
+    /// A new local day is new information by itself, so the first summary of one is not held back —
+    /// the widened floor only applies once the day in progress already has a summary. Without this
+    /// a caregiver's morning card would still be describing yesterday.
+    /// </summary>
+    [Fact]
+    public async Task Generates_TheFirstSummaryOfANewDay_EvenEarly()
+    {
+        _digests.GetLatestAsync(_memberId, DigestAudience.Family, Arg.Any<CancellationToken>())
+            .Returns(new DigestEntry
+            {
+                CardiMemberId = _memberId,
+                LocalDate = Today.AddDays(-1),
+                GeneratedAtUtc = JustAfterWake.AddHours(-10),
+            });
+        SetupActivity(JustAfterWake.AddMinutes(-2));
+
+        Assert.Equal(1, await CreateSut().GenerateDueDigestsAsync(JustAfterWake));
+    }
+
+    /// <summary>
+    /// The one that costs the dozen inferences: today already has a summary, the member has been up
+    /// an hour, and new readings keep landing because the day is filling up.
+    /// </summary>
+    [Fact]
+    public async Task Skips_EarlyInTheDay_WhenTodayAlreadyHasASummary()
+    {
+        GivenPreviousSummary(JustAfterWake.AddMinutes(-25));
+        SetupActivity(JustAfterWake.AddMinutes(-2));
+
+        var generated = await CreateSut().GenerateDueDigestsAsync(JustAfterWake);
+
+        Assert.Equal(0, generated);
+        await _medicalAi.DidNotReceive().GenerateStructuredAsync<DigestGenerationService.DigestAiResponse>(
+            Arg.Any<string>(), Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>A floor, not a freeze: the widened one is past, so the ordinary cycle resumes.</summary>
+    [Fact]
+    public async Task Regenerates_EarlyInTheDay_OnceTheWidenedFloorHasPassed()
+    {
+        GivenPreviousSummary(JustAfterWake.AddHours(-2));
+        SetupActivity(JustAfterWake.AddMinutes(-2));
+
+        Assert.Equal(1, await CreateSut().GenerateDueDigestsAsync(JustAfterWake));
+    }
+
+    /// <summary>
+    /// A bad morning is still a morning a caregiver hears about at once. The same waivers that cut
+    /// through the 20-minute floor cut through the widened one — this is what keeps the cost gate
+    /// from becoming a safety gate.
+    /// </summary>
+    [Fact]
+    public async Task Regenerates_EarlyInTheDay_WhenAnAlertIsRaised()
+    {
+        GivenPreviousSummary(JustAfterWake.AddMinutes(-5));
+        GivenAlerts(AnAlert(triggeredAt: JustAfterWake.AddMinutes(-2), resolved: false));
+        SetupActivity(JustAfterWake.AddMinutes(-2));
+
+        Assert.Equal(1, await CreateSut().GenerateDueDigestsAsync(JustAfterWake));
+    }
+
+    /// <summary>And before the member is even up, for the same reason.</summary>
+    [Fact]
+    public async Task Regenerates_BeforeWake_WhenAnAlertIsRaised()
+    {
+        GivenPreviousSummary(BeforeWake.AddMinutes(-5));
+        GivenAlerts(AnAlert(triggeredAt: BeforeWake.AddMinutes(-2), resolved: false));
+        SetupActivity(BeforeWake.AddMinutes(-2));
+
+        Assert.Equal(1, await CreateSut().GenerateDueDigestsAsync(BeforeWake));
+    }
+
     [Fact]
     public async Task Prompt_CarriesTheFramingAndTheReadings_NeverTheName()
     {
@@ -1544,6 +1656,62 @@ public class DigestGenerationServiceTests
 
         await _questionnaires.Received(1).AddAsync(Arg.Is<MemberQuestionnaire>(q =>
             q.Scope == QuestionnaireScope.TimeScoped && q.ExpiresAtUtc == UtcNow + TimeSpan.FromDays(30)));
+    }
+
+    // ---- How long a question stays worth asking ----
+    //
+    // A second clock, and genuinely different from the one above: ExpiresAtUtc is how long an answer
+    // keeps informing prompts, AskableUntilUtc is how long the question is still worth putting in
+    // front of anybody. Conflating them is what put "did he feel tired at all today?" on a
+    // caregiver's screen at 07:15 the following morning.
+
+    /// <summary>
+    /// The end of the member's own day plus the grace, not a fixed span from now. UtcNow is 10:30
+    /// in London, so the local day ends 13.5 hours later and the grace carries it to 03:00.
+    /// </summary>
+    [Fact]
+    public async Task StoresATimeScopedQuestion_AskableUntilTheEndOfTheMembersOwnDay()
+    {
+        ReturnsQuestion("Did he have visitors today?", questionScope: "time-scoped");
+
+        await CreateSut().GenerateDueDigestsAsync(UtcNow);
+
+        await _questionnaires.Received(1).AddAsync(Arg.Is<MemberQuestionnaire>(q =>
+            q.AskableUntilUtc == UtcNow.AddHours(13.5).AddHours(3)));
+    }
+
+    /// <summary>
+    /// A standing fact is as answerable next week as it is tonight, so nothing retires it — the
+    /// same null the listing and the sweep both read as "never lapses".
+    /// </summary>
+    [Fact]
+    public async Task StoresAPermanentQuestion_WithNoAskDeadline()
+    {
+        ReturnsQuestion("Does she have a pacemaker?", questionScope: "permanent");
+
+        await CreateSut().GenerateDueDigestsAsync(UtcNow);
+
+        await _questionnaires.Received(1).AddAsync(Arg.Is<MemberQuestionnaire>(q =>
+            q.AskableUntilUtc == null));
+    }
+
+    /// <summary>
+    /// The arithmetic allows a question generated at 23:58 to lapse three hours and two minutes
+    /// later, which is not a fair chance to see one. The floor is what the product owes a caregiver
+    /// who happens to be asked something late.
+    /// </summary>
+    [Fact]
+    public async Task GivesALateQuestionAFullWindow_RatherThanTheMinutesLeftInItsDay()
+    {
+        // 22:50 in London, so the local day plus the grace has only 4h10m left in it.
+        var lateAtNight = new DateTime(2026, 8, 10, 21, 50, 0, DateTimeKind.Utc);
+        SetupActivity(lateAtNight.AddMinutes(-2));
+        ReturnsQuestion("Did he have visitors today?", questionScope: "time-scoped");
+
+        await CreateSut().GenerateDueDigestsAsync(lateAtNight);
+
+        await _questionnaires.Received(1).AddAsync(Arg.Is<MemberQuestionnaire>(q =>
+            q.AskableUntilUtc == lateAtNight.AddHours(6)));
     }
 
     [Fact]

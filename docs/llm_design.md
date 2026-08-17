@@ -422,9 +422,43 @@ Four are registered:
 | `DemographicsContextSource` | all five | Age, sex, and the caregiver note — **decrypted**. `MedicalNotes` is encrypted at rest, and until this source existed every prompt passed the stored column straight through, so the model read a `v1:…` ciphertext envelope where the conditions and medication were meant to be |
 | `EnvironmentalContextSource` | all five | Temperature, described conditions, humidity and air quality from the member's last GPS-tagged session, consent-gated, with a per-prompt staleness rule (3 h for the assessor, up to 48 h for a trend analysis) |
 | `MonitoringContextSource` | digest | Yellow-and-above assessments from the last 24 h and unresolved alerts — the medium-severity route this document has always specified |
-| `QuestionnaireAnswersContextSource` | all but the hero status line | The family's three most recent answers, as facts about the person — not a quiz transcript. The digest must use them to read the day, not retell them |
+| `QuestionnaireAnswersContextSource` | all but the hero status line | The family's three most recent answers, as facts about the person — not a quiz transcript. The digest must use them to read the day, not retell them. A momentary answer is stamped with when the family gave it, because undated it reads as current and is not: "he had a busy day with chores", given about one day, came back the next morning as the explanation for a day the member had barely started. Standing facts stay undated — a date beside one invites the model to weigh it as news |
 
 A source with nothing to say produces no heading at all, which is a stronger guarantee than instructing the model not to mention it: on a calm member the words are not in the prompt to be echoed.
+
+`EnvironmentalContextSource` names its section differently for the assessor than for everything else. The assessor reads one hour and must not attribute this hour's heart rate to a session that ended two hours ago, so for it the heading stays "conditions during a recent exercise session". A digest describes a whole day and reads the same row as **the weather the person has been out in**; calling that a detail of the exercise invited the model to treat it as one. The family digest's instructions now ask for that reading explicitly — heat, cold, close air or poor air quality account for a harder-working heart or a quieter day, and are worth saying plainly when they do. Note that the `enrich` job that writes these rows is [not yet provisioned](#pipeline-components-role-breakdown-target-design), so for most members this section is still absent.
+
+### Telling the model what time it is (built today)
+
+Every prompt that describes "today" is describing a day still in progress, and the day rows carried exactly one word about that: `partial`. That is equally true at 07:00 and at 23:00, and it is not enough. Handed a running step total, a whole-day usual to read it against, and no clock, MedGemma drew the obvious wrong conclusion — one caregiver's 07:14 summary said their father's steps and active minutes had *decreased against his usual pattern*, on 26 steps taken since waking, while the dashboard hero above it read "Steps are lower today".
+
+The deterministic layer was already careful here: `DigestInterpretationSignals.IsQuiet` refuses to call a partial day quiet before 16:00 local, and `DigestRefreshRules` keeps steps-decline on yesterday for the same reason. But the raw figures and the yardstick were both still in the prompt, side by side, so the model made the comparison the code declines to make. Guarding the computed observation and leaving the ingredients out in the open is not a guard.
+
+`DigestDayProgress` closes it, in the pipeline's standing division of labour — .NET computes, the model only phrases. From the member's local clock and their baseline's own waking hours it produces the phrase that now qualifies today's row:
+
+```
+Today so far (2026-08-17, 07:14 local, about 0.2 hours since their usual waking time
+of 07:00 — roughly 2% of their waking day has passed, so today's running totals cover
+only that much of it and will keep rising; still in progress — activity totals are
+partial; the sleep figure is last night's and complete): steps=26, HR_max=122
+```
+
+Both instruction blocks say the rest outright: today's steps and active minutes are a running total, to be read against how much of the waking day has gone and never against a whole-day usual, and never called low unless a computed observation says so. The hero prompt gets a one-line version of the same rule — it is the only prompt on a request path a caregiver waits on, and `StatusPromptBudget` went up by 50 characters to hold it, which is the budget working rather than failing.
+
+The hero line also stopped anchoring "today" to UTC. `HealthInsightService` resolved a UTC civil day while the digest resolved the member's own through `MemberAnchorTimeZone`, so for a caregiver far enough east or west the two surfaces disagreed about which row was today.
+
+### Not paying for a summary the day cannot support (built today)
+
+The same value gates regeneration, because "there is not enough of this day yet" is one fact and stating it twice is how two rules drift apart.
+
+`MinimumRegenerationInterval` assumes that data moving means the wording should move. Early in a member's day that inverts: the readings move because the day is filling up from nothing, so every pass finds new data and buys an inference to say the same thing about the same near-empty running total. With the half-hourly digest job and the assessor's immediate re-run, one member's morning produced a summary roughly every twenty minutes from local midnight — around twenty inferences before breakfast, each re-deriving that a just-woken person had not walked far.
+
+Two gates now sit in front of that, both waived by everything that already waives the floor (an alert raised or resolved, a Yellow+ window, an SSA jump, a baseline divergence, a jump from yesterday) so a bad morning still reaches a caregiver at once:
+
+- **Before the member's usual waking time**, a member who already has a summary gets no new one. There is no today to describe; yesterday's card is about yesterday and reads correctly as such at 03:00.
+- **In the first three hours after waking**, a member who already has a summary *for the day in progress* falls under a two-hour floor instead of twenty minutes. The first summary of a new local day is never held back — a new day is new information by itself.
+
+Neither gate applies to a member with no summary on file, the same stance the ordinary floor takes.
 
 ### Learning-phase and provisional prompts (built today)
 
