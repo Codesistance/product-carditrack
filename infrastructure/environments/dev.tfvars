@@ -163,6 +163,17 @@ enable_redis         = true
 redis_tier           = "BASIC"
 redis_memory_size_gb = 1
 
+# Dev test-push endpoint (notification_engine.md §13). Provisions Dev:PushTokenKey and binds
+# it to the API, which is the only thing that makes POST /api/v1/dev/push exist. On here
+# because reproducing a push or notification-sound problem otherwise means waiting for a real
+# alert — PushCanaryWorker, the only other trigger, has never run anywhere.
+#
+# The endpoint is anonymous by necessity (the point is to send without a signed-in caller), so
+# the HMAC key is its whole authorization. Read that as: anyone holding this secret can send a
+# Safety push to any user in dev. That is an acceptable trade for dev data and no real
+# caregivers; it is why the root variable refuses to pair this with prod at all.
+enable_dev_push_token = true
+
 # Pub/Sub — on since the webhook receiver landed: the realtime topic is its publish target.
 enable_pubsub = true
 

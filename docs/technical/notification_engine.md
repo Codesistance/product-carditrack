@@ -963,14 +963,18 @@ a real alert — no way to reproduce a delivery or sound problem on a device. `P
 sends one on demand:
 
 ```powershell
-# once: generate a key, give it to the API, keep a copy for the caller
+# against deployed dev — Terraform already generated the key
+$env:Dev__PushTokenKey = gcloud secrets versions access latest `
+    --secret=carditrack-dev-dev-push-token-key --project=carditrack-490120
+./scripts/dev-push.ps1 -UserId <caregiver-user-id> -Category Safety `
+    -ApiBaseUrl https://api.dev.carditrack.com
+
+# against a local API — nothing provisions a key for you, so make one
 $bytes = New-Object byte[] 32
 [System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($bytes)
 $key = [Convert]::ToBase64String($bytes)
 dotnet user-secrets set "Dev:PushTokenKey" $key --project src/Presentation/CardiTrack.API
 $env:Dev__PushTokenKey = $key
-
-# then, per push
 ./scripts/dev-push.ps1 -UserId <caregiver-user-id> -Category Safety
 ```
 
@@ -988,15 +992,25 @@ domain prefix. Target and payload shape are inside the MAC, so a token is good f
 category and cannot be re-pointed or escalated; expiry is capped at 10 minutes at both ends.
 
 **Two independent locks keep it off everywhere else**, and either alone is sufficient: `Dev:PushTokenKey`
-must be configured *and usable* — it is in no `appsettings.json` and no Terraform secret map, so it
-exists only where a developer put it, and a present-but-invalid value (the `REPLACE_ME` placeholder,
-a mistyped key, the wrong length) disables the endpoint rather than routing it into a 500 on first
-call — and the environment must not be prod. `DevPushControllerProvider` evaluates
+must be configured *and usable* — it is in no `appsettings.json`, and a present-but-invalid value (the
+`REPLACE_ME` placeholder, a mistyped key, the wrong length) disables the endpoint rather than routing
+it into a 500 on first call — and the environment must not be prod. `DevPushControllerProvider` evaluates
 both at startup and drops the controller from MVC's discovered set when either fails, so a disabled
 endpoint has no route rather than a filter that declines. The environment check reads
 `DeploymentInfo.EnvironmentName`, not `IHostEnvironment`: Terraform sets `ASPNETCORE_ENVIRONMENT` to
 `Dev`/`Prod`, so `IsDevelopment()` is false on deployed dev and `IsProduction()` is false on deployed
 prod. When it *is* enabled, startup logs a warning.
+
+**Where the key comes from.** Locally, `dotnet user-secrets` or a `Dev__PushTokenKey` environment
+variable — nothing provisions it for you. On deployed dev, Terraform generates one
+(`carditrack-dev-dev-push-token-key`, a 256-bit `random_bytes`) and binds it to the API, gated on
+`enable_dev_push_token`, which `dev.tfvars` sets and `prod.tfvars` states as false. That variable
+carries a validation rejecting `true` alongside `environment = "prod"`, and the secret is `count`ed
+out of existence there, so prod has nothing to bind and nothing to leak — the app's own
+`DeploymentInfo` refusal is a second, independent guard rather than the only one. Read the dev
+posture plainly: anyone holding that secret can send a Safety push to any user in dev.
+Retrieve it with
+`gcloud secrets versions access latest --secret=carditrack-dev-dev-push-token-key`.
 
 The response is the diagnostic surface — the resolved channel id and both platforms' sound names,
 plus every device it fanned out to with the provider's verdict. It also names the three cases where

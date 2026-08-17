@@ -156,6 +156,15 @@ resource "google_secret_manager_secret_iam_member" "api_ack_token_key" {
   member    = local.api_sa
 }
 
+# Dev-only, and the API is the only reader — the endpoint this key authorizes exists nowhere
+# else (notification_engine.md §13). Counted off in prod alongside the secret itself.
+resource "google_secret_manager_secret_iam_member" "api_dev_push_token_key" {
+  count     = var.enable_dev_push_token ? 1 : 0
+  secret_id = google_secret_manager_secret.dev_push_token_key[0].id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = local.api_sa
+}
+
 resource "google_secret_manager_secret_iam_member" "api_health_token" {
   secret_id = google_secret_manager_secret.health_token.id
   role      = "roles/secretmanager.secretAccessor"
@@ -273,6 +282,7 @@ resource "time_sleep" "api_iam_propagation" {
       google_project_iam_member.api_fcm_sender[*].id,
       google_secret_manager_secret_iam_member.api_redis_connection_string[*].id,
       google_secret_manager_secret_iam_member.api_redis_ca[*].id,
+      google_secret_manager_secret_iam_member.api_dev_push_token_key[*].id,
     ))))
   }
 
@@ -288,6 +298,7 @@ resource "time_sleep" "api_iam_propagation" {
     google_secret_manager_secret_iam_member.api_medgemma_url,
     google_secret_manager_secret_iam_member.api_redis_connection_string,
     google_secret_manager_secret_iam_member.api_redis_ca,
+    google_secret_manager_secret_iam_member.api_dev_push_token_key,
   ]
 }
 

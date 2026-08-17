@@ -394,6 +394,21 @@ variable "redis_tier" {
   default     = "BASIC"
 }
 
+# Dev-only test-push endpoint (notification_engine.md §13)
+variable "enable_dev_push_token" {
+  description = "Provision Dev:PushTokenKey and bind it to the API, which is what makes POST /api/v1/dev/push exist at all. An explicit opt-in rather than a derived `environment != prod`: the endpoint sends a real push to any user with no authenticated caller, so turning it on should be a reviewable line in one tfvars file, not a consequence of how an environment happens to be named"
+  type        = bool
+  default     = false
+
+  validation {
+    # Belt and braces alongside the app's own DeploymentInfo check, which already refuses to
+    # route the controller in prod. This stops the secret and its binding from ever being
+    # created there, so the two guards fail independently rather than sharing one assumption.
+    condition     = !(var.enable_dev_push_token && var.environment == "prod")
+    error_message = "enable_dev_push_token must stay false in prod — the dev test-push endpoint is never provisioned there."
+  }
+}
+
 variable "redis_memory_size_gb" {
   description = "Memorystore capacity in GB"
   type        = number
