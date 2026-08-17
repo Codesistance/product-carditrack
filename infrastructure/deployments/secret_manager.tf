@@ -338,15 +338,16 @@ resource "google_secret_manager_secret_version" "dev_push_token_key" {
   secret_data = random_bytes.dev_push_token_key[0].base64
 }
 
-# API only. The Worker retries sends off the outbox but never accepts a dev push
-# request, so it has no use for this key — the same least-privilege split the
-# ack token key comment above argues for.
-resource "google_secret_manager_secret_iam_member" "dev_push_token_key_accessor" {
-  count     = var.enable_dev_push_token ? 1 : 0
-  secret_id = google_secret_manager_secret.dev_push_token_key[0].id
-  role      = "roles/secretmanager.secretAccessor"
-  member    = "serviceAccount:${data.google_project.current.number}-compute@developer.gserviceaccount.com"
-}
+# The accessor grant is deliberately NOT here. Every other secret in this file
+# grants the default compute service account, which is the Worker's runtime
+# identity — the API has run under google_service_account.api since it gained a
+# dedicated one, and Cloud Run resolves secret_key_ref with the *runtime*
+# account. Only the API reads this key (the Worker retries sends off the outbox
+# but never accepts a dev push request), so the single grant it needs lives with
+# the other API grants in service_accounts.tf, where it can also join the
+# api_iam_propagation barrier. Granting the compute SA here would have been both
+# wrong and useless: the API still could not read it, and the revision would
+# fail to start.
 
 # ── Mobile APM engine (Terraform-owned — the mobile monitoring switch) ────────
 # Mirrors the server's Apm__Engine env var: flip apm_mobile_engine in tfvars and
