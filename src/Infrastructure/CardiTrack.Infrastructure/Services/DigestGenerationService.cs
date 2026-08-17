@@ -49,6 +49,7 @@ public partial class DigestGenerationService : IDigestGenerationService
         Where a usual pattern is given, read each reading against it, and read the vitals against the steps walked that day, before concluding.
         Steps and active minutes accumulate as a day passes, so today's are a running total, not a day's worth: read them against how much of the waking day has gone, which today's label states, and never against a whole-day usual.
         Never call today's movement low, down or short of anything unless a computed observation below says it is; early in their day a small total is the hour, not the person.
+        When the conditions they were out in are given, weigh the temperature, humidity and air against the readings before concluding: heat, cold, close air or poor air quality account for a harder-working heart or a quieter day, and are worth saying plainly when they do.
         when a reading is off the usual, say so plainly and let at least one suggestion respond to it.
         If a computed observation is present, lead with it; do not recap every listed figure. An ordinary day can be short.
         If "Recent monitoring context" shows an unresolved alert or an observation that is suspicious, say so plainly in your own words and let the suggestion answer it; when that section is absent, never mention monitoring, alerts or observations at all.
@@ -112,6 +113,8 @@ public partial class DigestGenerationService : IDigestGenerationService
         "steps and active minutes accumulate",
         "against how much of the waking day has gone",
         "a small total is the hour, not the person",
+        "the conditions they were out in are given",
+        "account for a harder-working heart",
         "do not recap every listed figure",
         "never retell them",
         "never carry it forward as though it were about today",

@@ -63,8 +63,25 @@ internal sealed class EnvironmentalContextSource : IMemberContextSource
             return null;
 
         var body = Describe(reading, age);
-        return body is null ? null : new MemberContextSection("Conditions during a recent exercise session", body);
+        return body is null ? null : new MemberContextSection(SectionLabel(request.Purpose), body);
     }
+
+    /// <summary>
+    /// What to call this section, which is not the same thing to every prompt.
+    /// </summary>
+    /// <remarks>
+    /// The assessor reads one hour and needs to know these conditions belong to a session, because
+    /// attributing this hour's heart rate to a session that ended two hours ago is exactly the
+    /// mistake it must not make. A digest describes a whole day and reads the same row as the
+    /// weather the person has been out in — labelling that "during a recent exercise session" invited
+    /// the model to treat it as a detail of the exercise rather than as the conditions the day's
+    /// readings happened in, which is the one thing it is there to be.
+    /// </remarks>
+    private static string SectionLabel(PromptPurpose purpose) => purpose switch
+    {
+        PromptPurpose.RealtimeAssessment => "Conditions during a recent exercise session",
+        _ => "Conditions they have recently been out in",
+    };
 
     /// <summary>
     /// One line, or null when the enrichment pass found nothing at all. Every field is independently

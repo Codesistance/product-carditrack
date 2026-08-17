@@ -38,8 +38,17 @@ public class DigestGenerationServiceTests
     private readonly Guid _memberId = Guid.NewGuid();
     private readonly Guid _userId = Guid.NewGuid();
 
-    /// <summary>05:30 UTC on a BST date — 06:30 in London, so the member's local day is the 10th.</summary>
-    private static readonly DateTime UtcNow = new(2026, 8, 10, 5, 30, 0, DateTimeKind.Utc);
+    /// <summary>
+    /// 09:30 UTC on a BST date — 10:30 in London, so the member's local day is the 10th.
+    /// </summary>
+    /// <remarks>
+    /// Mid-morning rather than dawn, and deliberately so: the member is comfortably past
+    /// <see cref="DigestDayProgress.DefaultWakeTime"/> and past
+    /// <see cref="DigestDayProgress.EarlyDayHours"/>, which is the ordinary case the regeneration
+    /// rules below are written about. The gates that hold before someone is up, and in the first
+    /// hours after, get their own clocks — see the early-day tests.
+    /// </remarks>
+    private static readonly DateTime UtcNow = new(2026, 8, 10, 9, 30, 0, DateTimeKind.Utc);
 
     /// <summary>The member's local day at <see cref="UtcNow"/>: the day a summary now describes.</summary>
     private static readonly DateOnly Today = new(2026, 8, 10);
@@ -326,8 +335,9 @@ public class DigestGenerationServiceTests
         Assert.Contains("Age: 78", prompt);
         // Today's reading line, formatted the way the prompt builder formats dates (DateOnly's
         // default is culture-dependent, so the expectation goes through it too).
+        Assert.Contains($"Today so far ({Today}, 10:30 local", prompt);
         Assert.Contains(
-            $"Today so far ({Today}, still in progress — activity totals are partial; "
+            "still in progress — activity totals are partial; "
             + "the sleep figure is last night's and complete): steps=5000",
             prompt);
         Assert.DoesNotContain("Margaret", prompt);  // minimisation, same as insights
@@ -372,7 +382,7 @@ public class DigestGenerationServiceTests
         var generated = await CreateSut().GenerateDueDigestsAsync(UtcNow);
 
         Assert.Equal(1, generated);
-        // 05:30 UTC is still the 10th, so the described day doesn't move — only the zone did.
+        // 09:30 UTC is still the 10th, so the described day doesn't move — only the zone did.
         await _digests.Received(1).AddAsync(
             Arg.Is<DigestEntry>(d => d.LocalDate == Today), Arg.Any<CancellationToken>());
     }
@@ -587,8 +597,12 @@ public class DigestGenerationServiceTests
         Assert.NotNull(prompt);
 
         Assert.Contains($"Yesterday ({Today.AddDays(-1)}, complete day): steps=3835", prompt);
+        // Today's label also carries the clock — see DigestDayProgress and the tests below for why
+        // "partial" on its own was not enough. Asserted in two halves so those words are pinned
+        // without this test also owning the wording of the clock phrase.
+        Assert.Contains($"Today so far ({Today}, 10:30 local", prompt);
         Assert.Contains(
-            $"Today so far ({Today}, still in progress — activity totals are partial; "
+            "still in progress — activity totals are partial; "
             + "the sleep figure is last night's and complete): steps=3442",
             prompt);
 

@@ -162,8 +162,17 @@ public class HealthInsightService : IHealthInsightService
     /// clarification at a time, each defensible and none alone worth a second. Prompt length is
     /// latency on this path in a way it is not on the digest or assess jobs, and the test that
     /// pins this is the only thing that will notice.
+    /// <para>
+    /// Raised once, from 1,050, for the running-count line. That is the budget doing its job rather
+    /// than failing at it: the line was weighed against roughly a second of latency and bought
+    /// something worth more than a second, which is a hero card that does not tell a caregiver at
+    /// breakfast that their father's steps are down. Without it this prompt's only two comparable
+    /// rows are a finished yesterday and a partial today, and the model drew the obvious wrong
+    /// conclusion from them. The ceiling stays, and the next clarification has to argue for itself
+    /// the same way.
+    /// </para>
     /// </remarks>
-    internal const int StatusPromptBudget = 1_050;
+    internal const int StatusPromptBudget = 1_100;
 
     /// <summary>Exposed for the budget test — the instructions themselves stay private.</summary>
     internal static int CurrentStatusInstructionsLength => CurrentStatusInstructions.Length;
