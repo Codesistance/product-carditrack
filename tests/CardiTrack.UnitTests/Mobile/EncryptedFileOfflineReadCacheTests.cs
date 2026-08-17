@@ -115,6 +115,27 @@ public sealed class EncryptedFileOfflineReadCacheTests : IDisposable
     }
 
     [Fact]
+    public async Task Remove_DropsOneEntry_AndLeavesTheRest()
+    {
+        var sut = CreateSut();
+        await sut.SaveAsync("api/v1/dashboard", "{}");
+        await sut.SaveAsync("api/v1/status", "{}");
+
+        await sut.RemoveAsync("api/v1/dashboard");
+
+        Assert.Null(await sut.TryGetAsync("api/v1/dashboard"));
+        Assert.NotNull(await sut.TryGetAsync("api/v1/status"));
+        // Unlike Clear, the key survives — the remaining entry has to stay readable.
+        Assert.True(_secure.HasAnything);
+    }
+
+    [Fact]
+    public async Task Remove_DoesNotThrow_WhenTheEntryIsAlreadyGone()
+    {
+        await CreateSut().RemoveAsync("never-saved");
+    }
+
+    [Fact]
     public async Task Clear_DropsEntries_AndRotatesTheKey()
     {
         var sut = CreateSut();

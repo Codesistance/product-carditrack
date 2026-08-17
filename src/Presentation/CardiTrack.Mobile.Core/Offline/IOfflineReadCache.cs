@@ -14,6 +14,13 @@ public interface IOfflineReadCache
 
     Task<OfflineCacheEntry?> TryGetAsync(string key, CancellationToken ct = default);
 
+    /// <summary>
+    /// Drops a single entry. Distinct from <see cref="ClearAsync"/>, which is sign-out — that
+    /// wipes every snapshot and rotates the key, far too much for a caller that has merely
+    /// learned one entry is no longer worth keeping.
+    /// </summary>
+    Task RemoveAsync(string key, CancellationToken ct = default);
+
     Task ClearAsync(CancellationToken ct = default);
 }
 

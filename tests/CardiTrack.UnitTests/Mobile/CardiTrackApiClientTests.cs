@@ -742,6 +742,12 @@ public class CardiTrackApiClientTests
         public Task<OfflineCacheEntry?> TryGetAsync(string key, CancellationToken ct = default) =>
             Task.FromResult(Items.TryGetValue(key, out var entry) ? entry : null);
 
+        public Task RemoveAsync(string key, CancellationToken ct = default)
+        {
+            Items.Remove(key);
+            return Task.CompletedTask;
+        }
+
         public Task ClearAsync(CancellationToken ct = default)
         {
             Items.Clear();

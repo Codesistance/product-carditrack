@@ -84,6 +84,7 @@ public static class MauiProgram
             new EncryptedFileOfflineReadCache(
                 Path.Combine(FileSystem.AppDataDirectory, "offline-cache"),
                 sp.GetRequiredService<ISecureKeyValueStore>()));
+        builder.Services.AddSingleton<IStatusLineStore, OfflineStatusLineStore>();
         builder.Services.AddSingleton<IDraftPhotoStore>(_ => new FileDraftPhotoStore(FileSystem.AppDataDirectory));
         builder.Services.AddSingleton<CardiMemberDraftStore>();
         builder.Services.AddSingleton<ITokenRefresher, TokenRefresher>();
