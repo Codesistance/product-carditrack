@@ -99,6 +99,11 @@ builder.Services.AddWorker<PartitionMaintenanceWorker>(configuration, nameof(Par
 builder.Services.AddWorker<InactivityDetectionWorker>(configuration, nameof(InactivityDetectionWorker));
 builder.Services.AddWorker<StatisticalAlertWorker>(configuration, nameof(StatisticalAlertWorker));
 
+// Ages out questions nobody got to before the day they asked about ended. The read paths already
+// refuse to serve those; this is what stops one becoming a permanent placeholder for the member
+// whose family never opened the app.
+builder.Services.AddWorker<QuestionnaireExpiryWorker>(configuration, nameof(QuestionnaireExpiryWorker));
+
 // Self-heal: a connection the provider refused is out of the sync rotation for good, so it needs
 // a pass of its own to find out whether it can come back (DeviceAuthRecoveryService).
 builder.Services.AddWorker<DeviceAuthRecoveryWorker>(configuration, nameof(DeviceAuthRecoveryWorker));

@@ -63,4 +63,40 @@ public class MemberQuestionnaire : BaseEntity
     /// <see cref="QuestionnaireScope.Permanent"/>, which never expires on its own.
     /// </summary>
     public DateTime? ExpiresAtUtc { get; set; }
+
+    /// <summary>
+    /// The last moment this is still worth <em>asking</em>, as opposed to
+    /// <see cref="ExpiresAtUtc"/>, which is how long the answer keeps informing prompts once given.
+    /// Null for <see cref="QuestionnaireScope.Permanent"/> questions and for rows written before
+    /// this distinction existed, both of which stay askable indefinitely.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The two clocks are genuinely different and conflating them is what produced the failure this
+    /// column exists for. A time-scoped question asks about the present moment — "did he feel tired
+    /// at all today?" — and stops making sense the instant that day ends, while the answer to it
+    /// stays useful for weeks. With only the answer's clock, a question generated one evening was
+    /// still <see cref="QuestionnaireStatus.Pending"/> the next morning and still on the member's
+    /// screen, asking a caregiver about a "today" that was already over.
+    /// </para>
+    /// <para>
+    /// Held as a UTC instant rather than a local date so no reader needs the member's timezone to
+    /// judge it: the pipeline resolves the anchor zone once, at generation, and every consumer after
+    /// that — the API, the expiry job, the phone — compares against its own clock.
+    /// </para>
+    /// </remarks>
+    public DateTime? AskableUntilUtc { get; set; }
+
+    /// <summary>
+    /// Whether this is a question that has stopped being worth asking: still waiting on the family,
+    /// and past the moment it was about.
+    /// </summary>
+    /// <remarks>
+    /// On the entity rather than in one service because four places need the same verdict — the
+    /// listing endpoint refusing to serve it, the endpoint that retires it, the worker that sweeps
+    /// members whose family never opened the app, and the phone deciding not to draw the card. A
+    /// rule this small, restated four times, is a rule that will eventually disagree with itself.
+    /// </remarks>
+    public bool HasLapsed(DateTime utcNow) =>
+        Status == QuestionnaireStatus.Pending && AskableUntilUtc is { } until && until <= utcNow;
 }

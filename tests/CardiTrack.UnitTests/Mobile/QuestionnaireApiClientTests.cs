@@ -120,6 +120,30 @@ public class QuestionnaireApiClientTests
         Assert.Equal("dismissed", result.Status);
     }
 
+    [Fact]
+    public async Task ExpireQuestionnaire_PutsToTheExpireRoute_WithNoBody()
+    {
+        var (client, http) = CreateSut();
+        var questionnaireId = Guid.NewGuid();
+        http.Enqueue(HttpStatusCode.OK, $$"""
+            {"success":true,"message":"ok","data":{"id":"{{questionnaireId}}",
+             "cardiMemberId":"{{Guid.NewGuid()}}","questionText":"Did he feel tired at all today?",
+             "answerText":null,"triggerContext":null,"status":"expired",
+             "generatedAtUtc":"2026-08-16T18:00:00Z","answeredAtUtc":null,"answeredByUserId":null,
+             "askableUntilUtc":"2026-08-17T02:00:00Z"},
+             "timestamp":"2026-08-17T07:15:00Z"}
+            """);
+
+        var result = await client.ExpireQuestionnaireAsync(questionnaireId);
+
+        var request = http.Requests.Single();
+        Assert.Equal(HttpMethod.Put, request.Method);
+        Assert.Equal($"/api/v1/questionnaires/{questionnaireId}/expire", request.Uri!.AbsolutePath);
+        Assert.True(string.IsNullOrEmpty(request.Body));
+        Assert.Equal("expired", result.Status);
+        Assert.Equal(new DateTime(2026, 8, 17, 2, 0, 0, DateTimeKind.Utc), result.AskableUntilUtc);
+    }
+
     /// <summary>Delete answers 204 with no envelope, so this exercises the no-content path.</summary>
     [Fact]
     public async Task DeleteQuestionnaire_SendsDelete()

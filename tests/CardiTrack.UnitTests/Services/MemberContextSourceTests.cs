@@ -38,8 +38,10 @@ public class MemberContextSourceTests
     }
 
     private MemberContextRequest Request(
-        CardiMember? member = null, PromptPurpose purpose = PromptPurpose.Digest) =>
-        new(member ?? new CardiMember { Id = _memberId }, _memberId, Today, UtcNow, purpose);
+        CardiMember? member = null,
+        PromptPurpose purpose = PromptPurpose.Digest,
+        DateTime? utcNow = null) =>
+        new(member ?? new CardiMember { Id = _memberId }, _memberId, Today, utcNow ?? UtcNow, purpose);
 
     // ---- Demographics ----
 
@@ -349,6 +351,92 @@ public class MemberContextSourceTests
         Assert.Contains("travelling", section.Body);
     }
 
+    // ---- When the family told us ----
+    //
+    // A time-scoped answer informs prompts for thirty days and used to arrive undated, so "he had a
+    // busy day with chores" — given about one day — came back the next morning as the explanation
+    // for a day the member had barely started.
+
+    [Theory]
+    [InlineData(0, "told to us today")]
+    [InlineData(1, "told to us yesterday")]
+    [InlineData(3, "told to us 3 days ago")]
+    [InlineData(9, "told to us about 1 week ago")]
+    [InlineData(20, "told to us about 2 weeks ago")]
+    public async Task Answers_SayWhenAMomentaryOneWasGiven(int daysAgo, string expected)
+    {
+        GivenQuestionnaires(
+            Questionnaire(QuestionnaireStatus.Answered, "Did he feel tired at all today?",
+                "Yes, he had a busy day with chores.", answeredAtUtc: UtcNow.AddDays(-daysAgo)));
+
+        var section = await new QuestionnaireAnswersContextSource(_unitOfWork, PromptContextFactory.Encryption)
+            .BuildAsync(Request(), default);
+
+        Assert.NotNull(section);
+        Assert.Contains(expected, section.Body);
+        Assert.Contains("about that time and not since", section.Body);
+    }
+
+    /// <summary>
+    /// Crossing a UTC midnight must not flip "today" to "yesterday" for an answer that is still
+    /// only a few hours old — the section has no member zone, so age is elapsed time, not the UTC
+    /// calendar date.
+    /// </summary>
+    [Fact]
+    public async Task Answers_StayDatedToday_AcrossAUtcMidnight_WhenStillOnlyHoursOld()
+    {
+        // Answered at 22:00 UTC; read at 02:00 UTC the next calendar day — under four hours later.
+        var answeredAt = new DateTime(2026, 8, 12, 22, 0, 0, DateTimeKind.Utc);
+        var readAt = new DateTime(2026, 8, 13, 2, 0, 0, DateTimeKind.Utc);
+        GivenQuestionnaires(
+            Questionnaire(QuestionnaireStatus.Answered, "Did he feel tired at all today?",
+                "Yes, he had a busy day with chores.", answeredAtUtc: answeredAt));
+
+        var section = await new QuestionnaireAnswersContextSource(_unitOfWork, PromptContextFactory.Encryption)
+            .BuildAsync(Request(utcNow: readAt), default);
+
+        Assert.NotNull(section);
+        Assert.Contains("told to us today", section.Body);
+        Assert.DoesNotContain("yesterday", section.Body);
+    }
+
+    /// <summary>
+    /// A pacemaker fitted in 2020 is no less true this morning, and a date beside it invites the
+    /// model to weigh a standing fact as news.
+    /// </summary>
+    [Fact]
+    public async Task Answers_LeaveAStandingFactUndated()
+    {
+        GivenQuestionnaires(
+            Questionnaire(QuestionnaireStatus.Answered, "Does she have a pacemaker?", "Yes, fitted in 2020.",
+                scope: QuestionnaireScope.Permanent, answeredAtUtc: UtcNow.AddDays(-40)));
+
+        var section = await new QuestionnaireAnswersContextSource(_unitOfWork, PromptContextFactory.Encryption)
+            .BuildAsync(Request(), default);
+
+        Assert.NotNull(section);
+        Assert.DoesNotContain("told to us", section.Body);
+        Assert.Contains("Does she have a pacemaker: Yes, fitted in 2020.", section.Body);
+    }
+
+    /// <summary>
+    /// Rows written before every save stamped an answered-at fall back to when the question was
+    /// asked, which is within a day of when it could have been answered.
+    /// </summary>
+    [Fact]
+    public async Task Answers_DateAnUnstampedRowFromWhenItWasAsked()
+    {
+        GivenQuestionnaires(
+            Questionnaire(QuestionnaireStatus.Answered, "Did he have visitors today?", "Yes, his sister came round.",
+                answeredAtUtc: null));
+
+        var section = await new QuestionnaireAnswersContextSource(_unitOfWork, PromptContextFactory.Encryption)
+            .BuildAsync(Request(), default);
+
+        // GeneratedAtUtc on the helper is a day back.
+        Assert.Contains("told to us yesterday", section!.Body);
+    }
+
     // ---- Arrangement helpers ----
 
     private CardiMember ConsentedMember() => new()
@@ -397,7 +485,8 @@ public class MemberContextSourceTests
 
     private MemberQuestionnaire Questionnaire(
         QuestionnaireStatus status, string question, string? answer,
-        QuestionnaireScope scope = QuestionnaireScope.TimeScoped, DateTime? expiresAtUtc = null) => new()
+        QuestionnaireScope scope = QuestionnaireScope.TimeScoped, DateTime? expiresAtUtc = null,
+        DateTime? answeredAtUtc = null) => new()
     {
         Id = Guid.NewGuid(),
         CardiMemberId = _memberId,
@@ -405,6 +494,7 @@ public class MemberContextSourceTests
         AnswerText = answer is null ? null : PromptContextFactory.Encryption.Encrypt(answer),
         Status = status,
         GeneratedAtUtc = UtcNow.AddDays(-1),
+        AnsweredAtUtc = answeredAtUtc,
         Scope = scope,
         ExpiresAtUtc = expiresAtUtc,
     };

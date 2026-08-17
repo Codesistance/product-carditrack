@@ -39,9 +39,15 @@ public class QuestionnaireService : IQuestionnaireService
         // paid; this only changes how much of the result crosses the wire afterwards.
         var all = await _unitOfWork.MemberQuestionnaires.GetByCardiMemberAsync(cardiMemberId, ct);
 
-        var pendingRow = all.FirstOrDefault(q => q.Status == QuestionnaireStatus.Pending);
-
         var utcNow = DateTime.UtcNow;
+
+        // Never the lapsed one, whatever its status column still says. The sweep that retires those
+        // rows runs on a cadence and the phone retires them on sight, but neither is what makes this
+        // safe — this is: a question about a day that has ended does not reach a caregiver because
+        // no read path will serve it, not because something got there first.
+        var pendingRow = all.FirstOrDefault(
+            q => q.Status == QuestionnaireStatus.Pending && !q.HasLapsed(utcNow));
+
         IEnumerable<MemberQuestionnaire> answeredRows = all
             .Where(q => q.Status == QuestionnaireStatus.Answered && StillOnTheList(q, utcNow))
             .OrderByDescending(q => q.AnsweredAtUtc ?? q.GeneratedAtUtc);
@@ -111,6 +117,25 @@ public class QuestionnaireService : IQuestionnaireService
         return ToResponse(questionnaire);
     }
 
+    public async Task<QuestionnaireResponse> ExpireAsync(
+        Guid requestingUserId, Guid questionnaireId, CancellationToken ct = default)
+    {
+        var questionnaire = await RequireAccessibleAsync(requestingUserId, questionnaireId, ct);
+
+        // Idempotent, and the server's own clock decides. The apps call this because they noticed a
+        // question had outlived its day, but "the client says it has lapsed" is not a fact the
+        // server takes on trust — a wrong device clock would otherwise let one caregiver retire a
+        // question the rest of the family still has in front of them.
+        if (questionnaire.HasLapsed(DateTime.UtcNow))
+        {
+            questionnaire.Status = QuestionnaireStatus.Expired;
+            _unitOfWork.MemberQuestionnaires.Update(questionnaire);
+            await _unitOfWork.SaveChangesAsync();
+        }
+
+        return ToResponse(questionnaire);
+    }
+
     public async Task DeleteAsync(
         Guid requestingUserId, Guid questionnaireId, CancellationToken ct = default)
     {
@@ -166,6 +191,7 @@ public class QuestionnaireService : IQuestionnaireService
         AnsweredAtUtc = questionnaire.AnsweredAtUtc,
         AnsweredByUserId = questionnaire.AnsweredByUserId,
         Scope = questionnaire.Scope.ToString().ToLowerInvariant(),
+        AskableUntilUtc = questionnaire.AskableUntilUtc,
     };
 
     /// <summary>

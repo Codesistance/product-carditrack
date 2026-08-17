@@ -41,7 +41,8 @@ public class QuestionnaireServiceTests
 
     private MemberQuestionnaire Questionnaire(
         QuestionnaireStatus status = QuestionnaireStatus.Pending, string? answer = null,
-        QuestionnaireScope scope = QuestionnaireScope.TimeScoped, DateTime? expiresAtUtc = null) => new()
+        QuestionnaireScope scope = QuestionnaireScope.TimeScoped, DateTime? expiresAtUtc = null,
+        DateTime? askableUntilUtc = null) => new()
         {
             Id = _questionnaireId,
             CardiMemberId = _memberId,
@@ -52,6 +53,7 @@ public class QuestionnaireServiceTests
             GeneratedAtUtc = new DateTime(2026, 8, 12, 9, 0, 0, DateTimeKind.Utc),
             Scope = scope,
             ExpiresAtUtc = expiresAtUtc,
+            AskableUntilUtc = askableUntilUtc,
         };
 
     [Fact]
@@ -300,6 +302,129 @@ public class QuestionnaireServiceTests
         await _unitOfWork.Received(1).SaveChangesAsync();
     }
 
+    // ---- Questions that outlived the day they asked about ----
+
+    /// <summary>
+    /// The failure, in one test: a question generated one evening, still Pending the next morning,
+    /// and served to a caregiver as "did he feel tired at all today?" about a day already over.
+    /// </summary>
+    [Fact]
+    public async Task Listing_NeverServesAPendingQuestionPastItsDay()
+    {
+        _questionnaires.GetByCardiMemberAsync(_memberId, Arg.Any<CancellationToken>())
+            .Returns([Questionnaire(askableUntilUtc: DateTime.UtcNow.AddMinutes(-1))]);
+
+        var result = await CreateSut().GetForMemberAsync(_userId, _memberId, search: null, page: 1, pageSize: 20);
+
+        Assert.Null(result.Pending);
+        // Still on file, and the page still knows there is history — only the card is gone.
+        Assert.True(result.HasAny);
+    }
+
+    [Fact]
+    public async Task Listing_StillServesAPendingQuestionInsideItsDay()
+    {
+        _questionnaires.GetByCardiMemberAsync(_memberId, Arg.Any<CancellationToken>())
+            .Returns([Questionnaire(askableUntilUtc: DateTime.UtcNow.AddHours(2))]);
+
+        var result = await CreateSut().GetForMemberAsync(_userId, _memberId, search: null, page: 1, pageSize: 20);
+
+        Assert.NotNull(result.Pending);
+        Assert.Equal("Has anything changed at home recently?", result.Pending.QuestionText);
+    }
+
+    /// <summary>
+    /// Rows written before questions carried a validity, and standing-fact questions, both stay
+    /// askable — a null deadline is "never lapses", not "lapsed at the epoch".
+    /// </summary>
+    [Fact]
+    public async Task Listing_TreatsAQuestionWithNoDeadline_AsStillWorthAsking()
+    {
+        _questionnaires.GetByCardiMemberAsync(_memberId, Arg.Any<CancellationToken>())
+            .Returns([Questionnaire(askableUntilUtc: null)]);
+
+        var result = await CreateSut().GetForMemberAsync(_userId, _memberId, search: null, page: 1, pageSize: 20);
+
+        Assert.NotNull(result.Pending);
+    }
+
+    [Fact]
+    public async Task Expiring_RetiresAQuestionWhoseDayHasEnded()
+    {
+        var stored = Questionnaire(askableUntilUtc: DateTime.UtcNow.AddMinutes(-1));
+        _questionnaires.GetByIdAsync(_questionnaireId).Returns(stored);
+
+        var result = await CreateSut().ExpireAsync(_userId, _questionnaireId);
+
+        Assert.Equal(QuestionnaireStatus.Expired, stored.Status);
+        Assert.Equal("expired", result.Status);
+        await _unitOfWork.Received(1).SaveChangesAsync();
+    }
+
+    /// <summary>
+    /// The server's clock decides, not the caller's claim. A device running fast would otherwise
+    /// retire a question the rest of the family still has in front of them.
+    /// </summary>
+    [Fact]
+    public async Task Expiring_LeavesAQuestionStillInsideItsDayAlone()
+    {
+        var stored = Questionnaire(askableUntilUtc: DateTime.UtcNow.AddHours(2));
+        _questionnaires.GetByIdAsync(_questionnaireId).Returns(stored);
+
+        var result = await CreateSut().ExpireAsync(_userId, _questionnaireId);
+
+        Assert.Equal(QuestionnaireStatus.Pending, stored.Status);
+        Assert.Equal("pending", result.Status);
+        await _unitOfWork.DidNotReceive().SaveChangesAsync();
+    }
+
+    /// <summary>
+    /// Two caregivers can open the same member at once, and the sweep runs alongside both. A second
+    /// call answers with the row as it stands rather than failing.
+    /// </summary>
+    [Fact]
+    public async Task Expiring_IsIdempotent()
+    {
+        var stored = Questionnaire(
+            QuestionnaireStatus.Expired, askableUntilUtc: DateTime.UtcNow.AddMinutes(-1));
+        _questionnaires.GetByIdAsync(_questionnaireId).Returns(stored);
+
+        var result = await CreateSut().ExpireAsync(_userId, _questionnaireId);
+
+        Assert.Equal("expired", result.Status);
+        await _unitOfWork.DidNotReceive().SaveChangesAsync();
+    }
+
+    /// <summary>
+    /// Unlike dismissing, which is the family's decision and a promise never to ask that again.
+    /// Nobody decided this, so an answered or dismissed row is never quietly overwritten by it.
+    /// </summary>
+    [Theory]
+    [InlineData(QuestionnaireStatus.Answered)]
+    [InlineData(QuestionnaireStatus.Dismissed)]
+    public async Task Expiring_NeverOverwritesAQuestionSomeoneSettled(QuestionnaireStatus status)
+    {
+        var stored = Questionnaire(status, askableUntilUtc: DateTime.UtcNow.AddDays(-3));
+        _questionnaires.GetByIdAsync(_questionnaireId).Returns(stored);
+
+        await CreateSut().ExpireAsync(_userId, _questionnaireId);
+
+        Assert.Equal(status, stored.Status);
+        await _unitOfWork.DidNotReceive().SaveChangesAsync();
+    }
+
+    [Fact]
+    public async Task Listing_CarriesTheAskDeadline_SoTheAppsCanTellWithoutARoundTrip()
+    {
+        var until = DateTime.UtcNow.AddHours(2);
+        _questionnaires.GetByCardiMemberAsync(_memberId, Arg.Any<CancellationToken>())
+            .Returns([Questionnaire(askableUntilUtc: until)]);
+
+        var result = await CreateSut().GetForMemberAsync(_userId, _memberId, search: null, page: 1, pageSize: 20);
+
+        Assert.Equal(until, result.Pending!.AskableUntilUtc);
+    }
+
     /// <summary>
     /// "No such questionnaire" and "not your questionnaire" report the same not-found, so the id
     /// space cannot be probed for which questions exist about whom.
@@ -320,5 +445,7 @@ public class QuestionnaireServiceTests
             () => CreateSut().DeleteAsync(requestingUserId, _questionnaireId));
         await Assert.ThrowsAsync<KeyNotFoundException>(
             () => CreateSut().DismissAsync(requestingUserId, _questionnaireId));
+        await Assert.ThrowsAsync<KeyNotFoundException>(
+            () => CreateSut().ExpireAsync(requestingUserId, _questionnaireId));
     }
 }

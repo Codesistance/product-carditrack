@@ -6,6 +6,7 @@ using CardiTrack.Mobile.Core.Http;
 using CardiTrack.Mobile.Core.Notifications;
 using CardiTrack.Mobile.Core.Offline;
 using CardiTrack.Mobile.Core.Onboarding;
+using CardiTrack.Mobile.Core.Questionnaires;
 using CardiTrack.Mobile.Services;
 using CardiTrack.Shared.Http;
 #if ANDROID || IOS
@@ -109,6 +110,11 @@ public static class MauiProgram
         builder.Services.AddSingleton<IPushDeviceRegistrationService, PushDeviceRegistrationService>();
         builder.Services.AddSingleton<IAuthService, AuthService>();
         builder.Services.AddSingleton<IPopupService, PopupService>();
+
+        // Singleton so the "already reported" set outlives the pages that consult it — the member
+        // detail page and the questions page both load the same pending question, and a lapsed one
+        // should be reported to the server once, not once per screen that notices.
+        builder.Services.AddSingleton<IQuestionValidityService, QuestionValidityService>();
 
         // One instance behind both types: App raises the foreground signal on the concrete
         // class, pages listen through the interface.

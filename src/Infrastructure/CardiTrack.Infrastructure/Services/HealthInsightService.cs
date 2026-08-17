@@ -2,6 +2,7 @@ using System.Text.Json;
 using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Interfaces.Services;
+using CardiTrack.Application.Services;
 using CardiTrack.Domain.Entities;
 using CardiTrack.Infrastructure.Services.PromptContext;
 using CardiTrack.Infrastructure.Settings;
@@ -140,6 +141,7 @@ public class HealthInsightService : IHealthInsightService
         """ + MedicalPromptBlocks.CaregiverRegister + """
         Match the given tier: green settled, yellow a mention,
         orange or red more attentive.
+        Today's steps are a running count, not a day's worth: never call them low or down.
 
         Respond with:
         - headline: two to five words, sentence case, no full stop, no name
@@ -160,8 +162,17 @@ public class HealthInsightService : IHealthInsightService
     /// clarification at a time, each defensible and none alone worth a second. Prompt length is
     /// latency on this path in a way it is not on the digest or assess jobs, and the test that
     /// pins this is the only thing that will notice.
+    /// <para>
+    /// Raised once, from 1,050, for the running-count line. That is the budget doing its job rather
+    /// than failing at it: the line was weighed against roughly a second of latency and bought
+    /// something worth more than a second, which is a hero card that does not tell a caregiver at
+    /// breakfast that their father's steps are down. Without it this prompt's only two comparable
+    /// rows are a finished yesterday and a partial today, and the model drew the obvious wrong
+    /// conclusion from them. The ceiling stays, and the next clarification has to argue for itself
+    /// the same way.
+    /// </para>
     /// </remarks>
-    internal const int StatusPromptBudget = 1_050;
+    internal const int StatusPromptBudget = 1_100;
 
     /// <summary>Exposed for the budget test — the instructions themselves stay private.</summary>
     internal static int CurrentStatusInstructionsLength => CurrentStatusInstructions.Length;
@@ -433,14 +444,28 @@ public class HealthInsightService : IHealthInsightService
             ? "green"
             : unresolvedAlerts.Max(a => a.Severity).ToString().ToLowerInvariant();
 
-        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        // The member's own civil day, not the host's. "Today so far" on a caregiver's dashboard
+        // means the day the person wearing the device is having, and a UTC anchor labels the wrong
+        // row as today for anyone far enough east or west — the same anchor the digest resolves.
+        var timeZone = await MemberAnchorTimeZone.ResolveAsync(_unitOfWork, cardiMemberId);
+        var localNow = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, timeZone);
+        var today = DateOnly.FromDateTime(localNow);
+
         var recentLogs = await _unitOfWork.ActivityLogs
             .GetByCardiMemberAndDateRangeAsync(cardiMemberId, today.AddDays(-2), today);
+
+        // Only for the member's own waking hours, which is what makes today's running totals
+        // readable as a fraction of a day rather than as a shortfall. One indexed point-lookup
+        // against a call that spends seconds in the model.
+        var baseline = await _unitOfWork.PatternBaselines
+            .GetLatestByCardiMemberAsync(cardiMemberId, PrimaryBaselinePeriodDays);
+        var progress = DigestDayProgress.For(localNow, baseline, timeZone);
 
         var memberContext = await ComposeMemberContextAsync(
             member, cardiMemberId, today, PromptPurpose.CurrentStatus, ct);
 
-        var prompt = BuildCurrentStatusPrompt(memberContext, severity, unresolvedAlerts, recentLogs, today);
+        var prompt = BuildCurrentStatusPrompt(
+            memberContext, severity, unresolvedAlerts, recentLogs, today, progress);
         var aiResponse = await _medicalAi.GenerateStructuredAsync<CurrentStatusAiResponse>(prompt, ct);
 
         // Resolved before the cache, not after: the cached copy is what the next fifteen minutes
@@ -485,7 +510,8 @@ public class HealthInsightService : IHealthInsightService
         string severity,
         IReadOnlyCollection<Alert> unresolvedAlerts,
         IEnumerable<ActivityLog> recentLogs,
-        DateOnly today)
+        DateOnly today,
+        DigestDayProgress progress)
     {
         // Titles only. The type and severity of each alert are what the tier above is computed
         // from, so repeating them per alert tells the model nothing it has not been told — and on
@@ -506,7 +532,7 @@ public class HealthInsightService : IHealthInsightService
             {alertContext}
 
             --- Recent activity (last 3 days, oldest first) ---
-            {StatusActivityLines(recentLogs, today)}
+            {StatusActivityLines(recentLogs, today, progress)}
             """;
     }
 
@@ -522,7 +548,14 @@ public class HealthInsightService : IHealthInsightService
     /// last three days is context rather than something to be quoted back. So the labels shrink to
     /// what still has to be unambiguous: which day, and that today is not finished yet.
     /// </remarks>
-    private static string StatusActivityLines(IEnumerable<ActivityLog> logs, DateOnly today)
+    /// <param name="progress">
+    /// How far into their day the member is. The one place this prompt spends extra words on a
+    /// label, because "(partial)" alone is what let a hero line read "Steps are lower today" at
+    /// 07:14 — the model comparing a just-woken member's running total against yesterday's
+    /// finished one, the only two rows it had. See <see cref="DigestDayProgress"/>.
+    /// </param>
+    private static string StatusActivityLines(
+        IEnumerable<ActivityLog> logs, DateOnly today, DigestDayProgress progress)
     {
         var lines = logs
             .TakeLast(3)
@@ -530,7 +563,7 @@ public class HealthInsightService : IHealthInsightService
             {
                 var label = (today.DayNumber - l.Date.DayNumber) switch
                 {
-                    <= 0 => "Today so far (partial)",
+                    <= 0 => $"Today so far ({progress.Describe()})",
                     1 => "Yesterday",
                     var days => $"{days} days ago",
                 };

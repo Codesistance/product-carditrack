@@ -46,6 +46,11 @@ public class MemberQuestionnaireConfiguration : IEntityTypeConfiguration<MemberQ
         // The pending probe runs for every member the digest job considers, every pass.
         builder.HasIndex(q => new { q.CardiMemberId, q.Status });
 
+        // The expiry sweep asks the opposite question of the probe above: not "is this member
+        // holding one" but "which rows anywhere have lapsed". Status leads, because pending is a
+        // small and shrinking slice of the table while AskableUntilUtc is set on almost every row.
+        builder.HasIndex(q => new { q.Status, q.AskableUntilUtc });
+
         // Serves both the interval probe and the newest-first list the apps read.
         builder.HasIndex(q => new { q.CardiMemberId, q.GeneratedAtUtc });
     }

@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text.RegularExpressions;
+using CardiTrack.Application.Services;
 using CardiTrack.Domain.Entities;
 using CardiTrack.Domain.Enums;
 using CardiTrack.Domain.Extensions;
@@ -296,11 +297,16 @@ internal static partial class MedicalPromptBlocks
     /// every other figure only when the device reported it, so a missing sleep night does not
     /// show up as <c>sleep(...)=min</c>.
     /// </summary>
-    internal static string FamilyDigestDailyLines(IEnumerable<ActivityLog> logs, DateOnly today)
+    /// <param name="progress">
+    /// Where the member is in their own day, which qualifies today's label — see
+    /// <see cref="DayLabel"/>.
+    /// </param>
+    internal static string FamilyDigestDailyLines(
+        IEnumerable<ActivityLog> logs, DateOnly today, DigestDayProgress? progress = null)
     {
         var lines = logs
             .TakeLast(2)
-            .Select(l => $"  {DayLabel(l.Date, today)}: {DigestDayFigures(l)}")
+            .Select(l => $"  {DayLabel(l.Date, today, progress)}: {DigestDayFigures(l)}")
             .ToList();
 
         return lines.Count > 0 ? string.Join("\n", lines) : "No recent activity data.";
@@ -350,12 +356,23 @@ internal static partial class MedicalPromptBlocks
     /// what today's date is except by being told. Today's label scopes "partial" to the activity
     /// totals only, because its sleep figure — last night's — is already a whole reading.
     /// </summary>
-    private static string DayLabel(DateOnly date, DateOnly today) =>
-        (today.DayNumber - date.DayNumber) switch
+    /// <param name="progress">
+    /// How far into their day the member is, folded into today's label when the caller knows it.
+    /// "Partial" alone is equally true at 07:00 and 23:00, and a model handed a running step total,
+    /// a whole-day usual to compare it against and no clock reads a just-woken member as having
+    /// collapsed. See <see cref="DigestDayProgress"/>. Absent on the prompts that anchor to a UTC
+    /// day rather than the member's own, which have no local clock to state.
+    /// </param>
+    private static string DayLabel(DateOnly date, DateOnly today, DigestDayProgress? progress = null)
+    {
+        var clock = progress is null ? string.Empty : $"{progress.Describe()}; ";
+
+        return (today.DayNumber - date.DayNumber) switch
         {
-            <= 0 => $"Today so far ({date}, still in progress — activity totals are partial; "
+            <= 0 => $"Today so far ({date}, {clock}still in progress — activity totals are partial; "
                     + "the sleep figure is last night's and complete)",
             1 => $"Yesterday ({date}, complete day)",
             var days => $"{days} days ago ({date}, complete day)",
         };
+    }
 }

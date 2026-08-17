@@ -18,7 +18,10 @@ public class QuestionnaireResponse
     /// <summary>Why it was asked, for the apps to show beneath it. Null when the model gave no reason worth showing.</summary>
     public string? TriggerContext { get; set; }
 
-    /// <summary>pending / answered / dismissed, lowercase — the same string convention as alert severity.</summary>
+    /// <summary>
+    /// pending / answered / dismissed / expired, lowercase — the same string convention as alert
+    /// severity.
+    /// </summary>
     public string Status { get; set; } = "pending";
 
     public DateTime GeneratedAtUtc { get; set; }
@@ -36,4 +39,17 @@ public class QuestionnaireResponse
     /// way the family can delete this answer outright — see the delete endpoint.
     /// </summary>
     public string Scope { get; set; } = "timescoped";
+
+    /// <summary>
+    /// The last moment this question is still worth asking, or null when it never stops being — a
+    /// standing-fact question, or a row written before questions carried a validity at all.
+    /// </summary>
+    /// <remarks>
+    /// Sent so an app can tell, without a round trip, that the question in front of it has outlived
+    /// the day it asked about — a card cached on the device, or one held on screen while the day
+    /// rolled over, is a real "did they feel tired today?" arriving on a different today. The apps
+    /// stop drawing it and call the expire endpoint; the server filters it out regardless, so this
+    /// field is how a client is prompt rather than how the rule is enforced.
+    /// </remarks>
+    public DateTime? AskableUntilUtc { get; set; }
 }

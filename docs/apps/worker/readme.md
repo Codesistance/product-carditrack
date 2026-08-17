@@ -4,7 +4,7 @@
 
 `CardiTrack.Worker` hosts the platform's **non-AI scheduled background jobs**, driven by cron expressions and the [Cronos](https://github.com/HangfireIO/Cronos) library. Although it is a background service, the project uses the **`Microsoft.NET.Sdk.Web` SDK with `Exe` output** — Cloud Run requires an HTTP listener for startup probes, so the worker binds Kestrel to the `PORT` env var (default 8080) and exposes a minimal `GET /healthz` endpoint alongside its hosted services.
 
-The 11 workers registered today (crons from `appsettings.json`):
+The 12 workers registered today (crons from `appsettings.json`):
 
 | Worker | Default cron (UTC) | Purpose |
 |---|---|---|
@@ -15,6 +15,7 @@ The 11 workers registered today (crons from `appsettings.json`):
 | `DeviceSyncAuditWorker` | `0 0 4 * * 0` (Sunday 04:00) | Re-fetches a small random sample over a 14-day window to measure how far back each provider revises data |
 | `InactivityDetectionWorker` | `0 */15 * * * *` (every 15 min) | Device-silence failsafe — one yellow `Inactivity` alert when a member has no granular readings for >2 h in waking hours |
 | `StatisticalAlertWorker` | `0 7-59/15 * * * *` (every 15 min, offset) | R1 statistical alert engine — five deterministic rules vs the established 30-day baseline |
+| `QuestionnaireExpiryWorker` | `0 12-59/20 * * * *` (every 20 min, offset) | Retires family questions that outlived the day they asked about |
 | `DeviceAuthRecoveryWorker` | `0 3-59/15 * * * *` (every 15 min, offset) | Retries provider-refused refresh tokens on a per-connection widening backoff |
 | `DataCompletenessWorker` | `0 0 6 * * *` (daily 06:00) | Reconciles data-completeness nudges per caregiver against what each account supplies |
 | `NotificationDispatchWorker` | `*/30 * * * * *` (every 30 s) | The push spine's pump — claims due outbox rows, retries, escalates, expires |
@@ -45,6 +46,7 @@ src/Worker/CardiTrack.Worker/
 │   ├── DeviceSyncAuditWorker.cs             # Wide-window re-fetch over a sample, to measure revisions
 │   ├── InactivityDetectionWorker.cs         # Device-silence failsafe (yellow Inactivity alert)
 │   ├── StatisticalAlertWorker.cs            # R1 statistical alert engine (five rules)
+│   ├── QuestionnaireExpiryWorker.cs         # Retires family questions past the day they asked about
 │   ├── DeviceAuthRecoveryWorker.cs          # Retries provider-refused refresh tokens (backoff)
 │   ├── DataCompletenessWorker.cs            # Reconciles data-completeness nudges per caregiver
 │   ├── NotificationDispatchWorker.cs        # Push outbox pump: claim, retry, escalate, expire
@@ -269,6 +271,15 @@ The R1 statistical alert engine: five deterministic rules (`docs/execution/backe
 - **Null-vs-zero discipline holds**: a null reading (not measured) never fires anything — most critically in `no_morning_activity`, where an HR-only device's absent steps field must never page a family red.
 - **Cooldowns follow the family's remedy** (`AlertRuleMarkers`): rule-scoped everywhere except `HeartRate`, which is type-scoped across this engine and the AI assessor.
 
+### QuestionnaireExpiryWorker
+
+Retires the family questions that outlived the day they asked about (`MemberQuestionnaire.AskableUntilUtc`, see [questionnaires.md](../../execution/backend/api/questionnaires.md)).
+
+- Runs **every 20 minutes**, offset from the quarter-hour jobs (`0 12-59/20 * * * *`).
+- **Not what keeps a stale card off a caregiver's screen** — the listing endpoint already refuses to serve a lapsed question and the apps retire one on sight. What this is for is the member whose family has not opened the app: their question sits `Pending` against a day that ended, and a pending row blocks every future question for that member.
+- Worker-hosted per CLAUDE.md: no AI call, and DB polling belongs here. The pipeline writes questions; this only ages them out, on a timestamp comparison with no model near it.
+- Retires at most **500** rows a pass, oldest lapse first. Generously above the fleet's real rate (at most one question per member per week, and only the unanswered ones reach here) — the cap guards against one long outage's backlog arriving as a single unbounded write, not against ordinary days.
+
 ### DeviceSyncAuditWorker
 
 Measures something `WearableSyncWorker` structurally cannot see. A routine sync only ever looks inside its own trailing window, so with `SyncLookbackDays: 3` a provider that amends day 5 is not merely unmeasured — it is *unmeasurable*, and any picture of "how far back data changes" built from routine syncs alone would be an artefact of our own schedule rather than a fact about the provider.
@@ -347,7 +358,7 @@ public static IServiceCollection AddWorker<T>(
     return services;
 }
 
-// Program.cs — one line per job, all 11:
+// Program.cs — one line per job, all 12:
 builder.Services.AddWorker<WearableSyncWorker>(configuration, nameof(WearableSyncWorker));
 builder.Services.AddWorker<OrphanedOrganizationCleanupWorker>(configuration, nameof(OrphanedOrganizationCleanupWorker));
 builder.Services.AddWorker<BaselineCalculationWorker>(configuration, nameof(BaselineCalculationWorker));
@@ -355,6 +366,7 @@ builder.Services.AddWorker<DeviceSyncAuditWorker>(configuration, nameof(DeviceSy
 builder.Services.AddWorker<PartitionMaintenanceWorker>(configuration, nameof(PartitionMaintenanceWorker));
 builder.Services.AddWorker<InactivityDetectionWorker>(configuration, nameof(InactivityDetectionWorker));
 builder.Services.AddWorker<StatisticalAlertWorker>(configuration, nameof(StatisticalAlertWorker));
+builder.Services.AddWorker<QuestionnaireExpiryWorker>(configuration, nameof(QuestionnaireExpiryWorker));
 builder.Services.AddWorker<DeviceAuthRecoveryWorker>(configuration, nameof(DeviceAuthRecoveryWorker));
 builder.Services.AddWorker<DataCompletenessWorker>(configuration, nameof(DataCompletenessWorker));
 builder.Services.AddWorker<NotificationDispatchWorker>(configuration, nameof(NotificationDispatchWorker));
@@ -422,6 +434,9 @@ Cron schedules bind per worker class name under the `Workers` section, consumed 
     },
     "StatisticalAlertWorker": {
       "CronExpression": "0 7-59/15 * * * *"
+    },
+    "QuestionnaireExpiryWorker": {
+      "CronExpression": "0 12-59/20 * * * *"
     },
     "DeviceAuthRecoveryWorker": {
       "CronExpression": "0 3-59/15 * * * *"

@@ -157,4 +157,53 @@ public class QuestionnaireEndpointTests
         await _questionnaires.Received(1).GetForMemberAsync(
             _userId, _memberId, "bedrooms", 1, 20, Arg.Any<CancellationToken>());
     }
+
+    // ---- Retiring a question whose day has ended ----
+
+    [Fact]
+    public async Task Expire_PassesThroughAsTheSignedInCaller()
+    {
+        _questionnaires.ExpireAsync(_userId, _questionnaireId, Arg.Any<CancellationToken>())
+            .Returns(new QuestionnaireResponse
+            {
+                Id = _questionnaireId,
+                QuestionText = "Did he feel tired at all today?",
+                Status = "expired",
+            });
+
+        var result = await CreateSut().Expire(_questionnaireId, CancellationToken.None);
+
+        var objectResult = Assert.IsAssignableFrom<ObjectResult>(result.Result);
+        Assert.Equal(StatusCodes.Status200OK, objectResult.StatusCode);
+        await _questionnaires.Received(1).ExpireAsync(
+            _userId, _questionnaireId, Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// An app can hold a question about a member it has since lost access to. The service reports
+    /// not-found either way, and the endpoint must surface that rather than a 500.
+    /// </summary>
+    [Fact]
+    public async Task Expire_ReportsNotFound_ForAQuestionThisCallerCannotReach()
+    {
+        _questionnaires.ExpireAsync(_userId, _questionnaireId, Arg.Any<CancellationToken>())
+            .Returns<QuestionnaireResponse>(_ => throw new KeyNotFoundException("nope"));
+
+        var result = await CreateSut().Expire(_questionnaireId, CancellationToken.None);
+
+        var objectResult = Assert.IsAssignableFrom<ObjectResult>(result.Result);
+        Assert.Equal(StatusCodes.Status404NotFound, objectResult.StatusCode);
+    }
+
+    [Fact]
+    public async Task Expire_RefusesASignedOutCaller()
+    {
+        var result = await CreateSut(authenticated: false)
+            .Expire(_questionnaireId, CancellationToken.None);
+
+        var objectResult = Assert.IsAssignableFrom<ObjectResult>(result.Result);
+        Assert.Equal(StatusCodes.Status403Forbidden, objectResult.StatusCode);
+        await _questionnaires.DidNotReceive().ExpireAsync(
+            Arg.Any<Guid>(), Arg.Any<Guid>(), Arg.Any<CancellationToken>());
+    }
 }

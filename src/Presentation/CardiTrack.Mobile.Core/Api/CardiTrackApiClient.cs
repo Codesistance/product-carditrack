@@ -120,6 +120,11 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
         SendAsync<QuestionnaireResponse>(
             HttpMethod.Put, $"api/v1/questionnaires/{questionnaireId}/dismiss", ct);
 
+    public Task<QuestionnaireResponse> ExpireQuestionnaireAsync(
+        Guid questionnaireId, CancellationToken ct = default) =>
+        SendAsync<QuestionnaireResponse>(
+            HttpMethod.Put, $"api/v1/questionnaires/{questionnaireId}/expire", ct);
+
     public Task DeleteQuestionnaireAsync(Guid questionnaireId, CancellationToken ct = default) =>
         SendNoDataAsync(HttpMethod.Delete, $"api/v1/questionnaires/{questionnaireId}", ct);
 

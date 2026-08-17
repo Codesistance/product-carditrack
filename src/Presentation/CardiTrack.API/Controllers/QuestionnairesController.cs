@@ -133,6 +133,40 @@ public class QuestionnairesController : BaseApiController
     }
 
     /// <summary>
+    /// Retires a question that has outlived the moment it asked about. What an app calls when it
+    /// finds a card whose day has ended — see <see cref="IQuestionnaireService.ExpireAsync"/>.
+    /// </summary>
+    /// <remarks>
+    /// Idempotent, and the server's clock is what decides: a question still inside its window comes
+    /// back unchanged rather than as an error, because a client racing the boundary is doing nothing
+    /// wrong. Not a caregiver's decision, so unlike dismiss it promises nothing about never asking
+    /// that again.
+    /// </remarks>
+    [HttpPut("questionnaires/{questionnaireId:guid}/expire")]
+    [AuditHealthDataAccess("ExpireQuestionnaire")]
+    [ProducesResponseType(typeof(ApiResponse<QuestionnaireResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<ApiResponse<QuestionnaireResponse>>> Expire(
+        Guid questionnaireId, CancellationToken ct)
+    {
+        if (!UserContext.IsAuthenticated || UserContext.UserId == Guid.Empty)
+        {
+            return Error("We couldn't find your account — please sign in again.", StatusCodes.Status403Forbidden);
+        }
+
+        try
+        {
+            var result = await _questionnaires.ExpireAsync(UserContext.UserId, questionnaireId, ct);
+            return Success(result);
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return Error(ex.Message, StatusCodes.Status404NotFound);
+        }
+    }
+
+    /// <summary>
     /// Removes the question and its answer. A real delete, not an archive — see
     /// <see cref="IQuestionnaireService.DeleteAsync"/>.
     /// </summary>

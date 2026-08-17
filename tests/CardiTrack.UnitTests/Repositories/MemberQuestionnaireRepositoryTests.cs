@@ -18,7 +18,8 @@ public class MemberQuestionnaireRepositoryTests(TestDatabaseFixture fixture)
 {
     private static MemberQuestionnaire Questionnaire(
         Guid memberId, DateTime generatedAtUtc, QuestionnaireStatus status = QuestionnaireStatus.Pending,
-        string question = "Has anything changed at home recently?", string? answer = null) => new()
+        string question = "Has anything changed at home recently?", string? answer = null,
+        DateTime? askableUntilUtc = null) => new()
         {
             Id = Guid.NewGuid(),
             CardiMemberId = memberId,
@@ -27,6 +28,7 @@ public class MemberQuestionnaireRepositoryTests(TestDatabaseFixture fixture)
             TriggerContext = "Sleep has been shorter all week.",
             Status = status,
             GeneratedAtUtc = generatedAtUtc,
+            AskableUntilUtc = askableUntilUtc,
         };
 
     private static async Task<IMemberQuestionnaireRepository> SaveAsync(
@@ -99,9 +101,86 @@ public class MemberQuestionnaireRepositoryTests(TestDatabaseFixture fixture)
             Questionnaire(settled, DateTime.UtcNow, QuestionnaireStatus.Answered, answer: "Yes."),
             Questionnaire(settled, DateTime.UtcNow.AddDays(-9), QuestionnaireStatus.Dismissed));
 
-        Assert.True(await repo.HasPendingAsync(waiting));
-        Assert.False(await repo.HasPendingAsync(settled));
-        Assert.False(await repo.HasPendingAsync(Guid.NewGuid()));
+        Assert.True(await repo.HasPendingAsync(waiting, DateTime.UtcNow));
+        Assert.False(await repo.HasPendingAsync(settled, DateTime.UtcNow));
+        Assert.False(await repo.HasPendingAsync(Guid.NewGuid(), DateTime.UtcNow));
+    }
+
+    /// <summary>
+    /// A question nobody got to before its day ended is not a question this family is being asked.
+    /// Without this, one lapsed row would gag the feature for that member until the sweep next ran.
+    /// </summary>
+    [Fact]
+    public async Task HasPendingAsync_IgnoresAQuestionThatOutlivedItsDay()
+    {
+        using var scope = fixture.CreateScope();
+        var lapsed = Guid.NewGuid();
+        var live = Guid.NewGuid();
+        var timeless = Guid.NewGuid();
+        var now = DateTime.UtcNow;
+
+        var repo = await SaveAsync(scope,
+            Questionnaire(lapsed, now.AddDays(-1), askableUntilUtc: now.AddHours(-5)),
+            Questionnaire(live, now.AddHours(-2), askableUntilUtc: now.AddHours(5)),
+            // A standing-fact question, and every row written before questions carried a deadline.
+            Questionnaire(timeless, now.AddHours(-2), askableUntilUtc: null));
+
+        Assert.False(await repo.HasPendingAsync(lapsed, now));
+        Assert.True(await repo.HasPendingAsync(live, now));
+        Assert.True(await repo.HasPendingAsync(timeless, now));
+    }
+
+    /// <summary>What the expiry sweep retires, across every member rather than one.</summary>
+    /// <remarks>
+    /// This query is fleet-wide by design, so the shared container's other rows are in scope for
+    /// it. The assertions are therefore about this test's own five rows: which of them came back,
+    /// not how many rows exist.
+    /// </remarks>
+    [Fact]
+    public async Task GetLapsedPendingAsync_FindsOnlyWaitingQuestionsPastTheirDay()
+    {
+        using var scope = fixture.CreateScope();
+        var now = DateTime.UtcNow;
+
+        var lapsedPending = Questionnaire(Guid.NewGuid(), now.AddDays(-1), askableUntilUtc: now.AddHours(-5));
+        var stillAskable = Questionnaire(Guid.NewGuid(), now.AddHours(-2), askableUntilUtc: now.AddHours(5));
+        var noDeadline = Questionnaire(Guid.NewGuid(), now.AddHours(-2), askableUntilUtc: null);
+        // Settled rows are nobody's to retire, however far past their day they sit.
+        var answered = Questionnaire(Guid.NewGuid(), now.AddDays(-9), QuestionnaireStatus.Answered,
+            answer: "Yes.", askableUntilUtc: now.AddDays(-8));
+        var dismissed = Questionnaire(Guid.NewGuid(), now.AddDays(-9), QuestionnaireStatus.Dismissed,
+            askableUntilUtc: now.AddDays(-8));
+
+        var repo = await SaveAsync(scope, lapsedPending, stillAskable, noDeadline, answered, dismissed);
+
+        var found = (await repo.GetLapsedPendingAsync(now, limit: 1_000)).Select(q => q.Id).ToHashSet();
+
+        Assert.Contains(lapsedPending.Id, found);
+        Assert.DoesNotContain(stillAskable.Id, found);
+        Assert.DoesNotContain(noDeadline.Id, found);
+        Assert.DoesNotContain(answered.Id, found);
+        Assert.DoesNotContain(dismissed.Id, found);
+    }
+
+    /// <summary>
+    /// A bounded batch, so one long outage's backlog does not arrive as a single unbounded write —
+    /// oldest first, so nothing starves behind a steady trickle of newer lapses.
+    /// </summary>
+    [Fact]
+    public async Task GetLapsedPendingAsync_TakesTheOldestUpToTheLimit()
+    {
+        using var scope = fixture.CreateScope();
+        var now = DateTime.UtcNow;
+
+        var repo = await SaveAsync(scope, Enumerable.Range(1, 5)
+            .Select(i => Questionnaire(
+                Guid.NewGuid(), now.AddDays(-i), askableUntilUtc: now.AddHours(-i)))
+            .ToArray());
+
+        var lapsed = await repo.GetLapsedPendingAsync(now, limit: 2);
+
+        Assert.Equal(2, lapsed.Count);
+        Assert.True(lapsed[0].AskableUntilUtc <= lapsed[1].AskableUntilUtc);
     }
 
     /// <summary>

@@ -27,11 +27,32 @@ public class MemberQuestionnaireRepository : Repository<MemberQuestionnaire>, IM
             .ToListAsync(ct);
     }
 
-    public async Task<bool> HasPendingAsync(Guid cardiMemberId, CancellationToken ct = default)
+    public async Task<bool> HasPendingAsync(
+        Guid cardiMemberId, DateTime utcNow, CancellationToken ct = default)
     {
+        // HasLapsed's condition, written out: EF has to translate this into SQL, and a call to a
+        // method on the entity is not something it can translate.
         return await _dbSet
             .AsNoTracking()
-            .AnyAsync(q => q.CardiMemberId == cardiMemberId && q.Status == QuestionnaireStatus.Pending, ct);
+            .AnyAsync(
+                q => q.CardiMemberId == cardiMemberId
+                     && q.Status == QuestionnaireStatus.Pending
+                     && (q.AskableUntilUtc == null || q.AskableUntilUtc > utcNow),
+                ct);
+    }
+
+    public async Task<IReadOnlyList<MemberQuestionnaire>> GetLapsedPendingAsync(
+        DateTime utcNow, int limit, CancellationToken ct = default)
+    {
+        // Tracked, unlike everything else here: the caller's next move is to retire these rows, and
+        // a no-tracking read would only have to be attached again to do it.
+        return await _dbSet
+            .Where(q => q.Status == QuestionnaireStatus.Pending
+                        && q.AskableUntilUtc != null
+                        && q.AskableUntilUtc <= utcNow)
+            .OrderBy(q => q.AskableUntilUtc)
+            .Take(limit)
+            .ToListAsync(ct);
     }
 
     public async Task<DateTime?> GetLatestGeneratedAtAsync(
