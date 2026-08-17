@@ -198,22 +198,31 @@ public partial class DigestGenerationService : IDigestGenerationService
     /// inference and a history row every half hour for wording that barely moves.
     /// <para>
     /// This bounds cost and keeps the history list legible for the ordinary cycle: at this
-    /// floor a continuously-uploading member writes at most three summaries an hour. Waivers
+    /// floor a continuously-uploading member writes at most one summary an hour. Waivers
     /// (a problem window, a jump, a baseline divergence, an alert) can write more, which is
     /// the point — those are the hours a caregiver should see densely. It is a floor on
     /// <em>regeneration of wording that barely moves</em>, not on freshness — the first pass
     /// after new data on a member with no recent summary is never delayed by it.
     /// </para>
     /// <para>
+    /// Twenty minutes until 2026-08-17, when the pipeline's own numbers argued it down. Measured
+    /// across a full day in dev, 269 of 289 MedGemma calls were ordinary summary regeneration
+    /// sitting on this ceiling around the clock, against 13 calls a caregiver was actually waiting
+    /// on and 7 real-time assessments. Three summaries an hour was not buying a family three
+    /// hours' worth of news; it was buying the same day re-narrated, at roughly three quarters of
+    /// the pipeline's entire inference budget. An hour is still well inside the window a caregiver
+    /// would call current, and every way a day can genuinely change still waives it.
+    /// </para>
+    /// <para>
     /// What the wording should say waives it (see <see cref="GenerateForMemberAsync"/>): an alert
     /// raised or resolved, a yellow-or-above real-time window or an SSA jump since the last
     /// summary, or new daily readings that diverge from the baseline or jumped from yesterday.
     /// The floor exists because a summary whose wording barely moves is not worth an inference —
-    /// making a caregiver wait twenty minutes to read that someone is in a bad way would be the
+    /// making a caregiver wait it out to read that someone is in a bad way would be the
     /// floor working against the thing it protects.
     /// </para>
     /// </summary>
-    private static readonly TimeSpan MinimumRegenerationInterval = TimeSpan.FromMinutes(20);
+    private static readonly TimeSpan MinimumRegenerationInterval = TimeSpan.FromHours(1);
 
     /// <summary>
     /// The floor that replaces <see cref="MinimumRegenerationInterval"/> in the first
@@ -393,7 +402,7 @@ public partial class DigestGenerationService : IDigestGenerationService
         // the alert did: a summary still hedging about an episode that ended reads as a service
         // that has not noticed, which is the same failure in the other direction. A yellow
         // observation that has not become an alert is the same kind of change; it used to ride
-        // the ordinary cycle, which is how a dire hour could sit behind a twenty-minute-old
+        // the ordinary cycle, which is how a dire hour could sit behind a stale
         // "settled day" card.
         var forceRefresh = previous is not null
             && (await AlertStateChangedSinceAsync(memberId, previous, ct)
@@ -448,8 +457,8 @@ public partial class DigestGenerationService : IDigestGenerationService
             if (progress.IsBeforeWake)
                 return false;
 
-            // The floor widens while the day is young. Once the day is under way the readings can
-            // genuinely move within twenty minutes; in the first hours after waking they mostly
+            // The floor widens further while the day is young. Once the day is under way the
+            // readings can genuinely move within the hour; in the first hours after waking they mostly
             // move because the day is filling up, and every one of those passes used to buy a
             // regeneration that said the same thing about the same near-empty running total.
             // Same-day only: the first summary of a new local day is new information by itself.
@@ -457,7 +466,24 @@ public partial class DigestGenerationService : IDigestGenerationService
                 ? EarlyDayRegenerationInterval
                 : MinimumRegenerationInterval;
 
-            if (utcNow - previous.GeneratedAtUtc < floor
+            // Past their bedtime the floor stops lifting at all. IsBeforeWake above already
+            // declines the small hours outright; this closes the other end of the night, the
+            // stretch between bedtime and midnight that no threshold here covered — the ordinary
+            // cycle ran there at full rate, rewriting a finished day for a household in bed.
+            //
+            // A floor rather than a refusal, because unlike the pre-dawn hours there is a real day
+            // here and it has just ended: the waivers below still cut through, so an evening that
+            // goes wrong reaches a caregiver at 22:30 rather than at breakfast.
+            //
+            // Same-day only, for the same reason the early-day floor is: the first summary of a
+            // new local day is new information by itself. Without that guard a member whose first
+            // readings land at 22:30 would be held here, then held by IsBeforeWake until morning —
+            // by which point the day this would have described is over and never got a summary at
+            // all. Holding a finished day's wording steady is the intent; skipping the day is not.
+            var floorHolds = (progress.IsAfterBedtime && previous.LocalDate == describedDate)
+                || utcNow - previous.GeneratedAtUtc < floor;
+
+            if (floorHolds
                 && !DigestRefreshRules.ReadingsDivergeFromBaseline(baseline, today, yesterday)
                 && !DigestRefreshRules.ReadingsJumpedFromPrevious(today, yesterday))
             {

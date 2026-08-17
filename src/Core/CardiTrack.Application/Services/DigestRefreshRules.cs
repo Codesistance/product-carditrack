@@ -4,7 +4,7 @@ using CardiTrack.Domain.Enums;
 namespace CardiTrack.Application.Services;
 
 /// <summary>
-/// When a family summary may regenerate inside the 20-minute floor. The floor exists so a
+/// When a family summary may regenerate inside the hourly floor. The floor exists so a
 /// continuously-uploading device does not buy an inference every pass for wording that barely
 /// moves; these are the cases where the wording <em>should</em> move, and making a caregiver
 /// wait the floor out would be the floor working against the thing it protects.
@@ -39,7 +39,7 @@ public static class DigestRefreshRules
     /// green window with an ordinary score is more of the same readings — that is what the
     /// floor is for. A yellow window that has not (yet) become an alert is exactly the gap
     /// the alert-only waiver used to leave: medium observations rode the ordinary cycle, and
-    /// a caregiver watching someone in a bad way waited twenty minutes to read it.
+    /// a caregiver watching someone in a bad way waited the floor out to read it.
     /// </summary>
     public static bool SamplesIndicateAProblem(RealtimeAssessment? latest, DateTime previousSummaryAt)
     {

@@ -166,8 +166,10 @@ try
             // The digest job still runs at :00/:30; this pass runs every 5 minutes, two minutes
             // after the aggregator. An hour the assessor has just called a problem would otherwise
             // sit behind a summary written on the half-hour until the next digest tick. Generation
-            // still no-ops members whose readings have not become worth rewriting (the 20-minute
-            // floor, waived for problem samples, baseline divergence and jumps).
+            // still no-ops members whose readings have not become worth rewriting (the hourly
+            // floor — wider early in the day, and never lifting overnight — waived throughout for
+            // problem samples, baseline divergence and jumps). That no-op is the common case by a
+            // wide margin: this pass runs 288 times a day and writes single-digit assessments.
             var digestAfterAssess = scope.ServiceProvider.GetRequiredService<IDigestGenerationService>();
             var generatedAfterAssess = await digestAfterAssess.GenerateDueDigestsAsync(DateTime.UtcNow);
             Log.Information(

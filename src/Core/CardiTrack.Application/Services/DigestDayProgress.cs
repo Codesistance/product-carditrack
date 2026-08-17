@@ -107,6 +107,28 @@ public sealed class DigestDayProgress
     public bool IsEarlyInTheDay => HoursSinceWake < EarlyDayHours;
 
     /// <summary>
+    /// The evening counterpart to <see cref="IsBeforeWake"/>: past their usual bedtime, but not yet
+    /// past midnight. Between the two, the pair covers the whole night on the member's own clock.
+    /// <para>
+    /// The distinction matters because the two ends of the night are not the same fact.
+    /// <see cref="IsBeforeWake"/> says there is no day here to describe, so the digest declines
+    /// outright. This says the day is over and its summary is written — a weaker claim, so it
+    /// widens the regeneration floor rather than replacing it, and readings that diverge from the
+    /// baseline or jumped from yesterday still cut through. An evening that goes wrong is one a
+    /// family should hear about at 22:30, not at breakfast.
+    /// </para>
+    /// <para>
+    /// False whenever the baseline puts bedtime past midnight (a night worker, or a member whose
+    /// sleep the device reads as starting after 00:00). The wrapped case has no evening stretch on
+    /// this side of midnight to gate, and <see cref="IsBeforeWake"/> already covers the small hours
+    /// for them — treating "23:00 is after a 01:00 bedtime" as quiet would silence the one member
+    /// most likely to still be up.
+    /// </para>
+    /// </summary>
+    public bool IsAfterBedtime =>
+        Bedtime > WakeTime && !IsBeforeWake && LocalNow.TimeOfDay >= Bedtime.ToTimeSpan();
+
+    /// <summary>
     /// Where the member is in their own day, given their local clock and — when their baseline has
     /// established one — their own waking hours.
     /// </summary>

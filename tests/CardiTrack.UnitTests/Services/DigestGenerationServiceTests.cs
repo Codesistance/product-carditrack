@@ -199,7 +199,9 @@ public class DigestGenerationServiceTests
             {
                 CardiMemberId = _memberId,
                 LocalDate = Today,
-                GeneratedAtUtc = DataLandedAt.AddMinutes(-5),
+                // An hour before the data landed, so this exercises the data-moved trigger rather
+                // than the regeneration floor, which would otherwise hold a summary this recent.
+                GeneratedAtUtc = DataLandedAt.AddHours(-1),
             });
 
         var generated = await CreateSut().GenerateDueDigestsAsync(UtcNow);
@@ -254,7 +256,8 @@ public class DigestGenerationServiceTests
             {
                 CardiMemberId = _memberId,
                 LocalDate = Today,
-                GeneratedAtUtc = UtcNow.AddMinutes(-45),
+                // Clear of the regeneration floor: the edit is what should trigger this, not age.
+                GeneratedAtUtc = UtcNow.AddHours(-2),
             });
 
         var generated = await CreateSut().GenerateDueDigestsAsync(UtcNow);
@@ -301,7 +304,7 @@ public class DigestGenerationServiceTests
             {
                 CardiMemberId = _memberId,
                 LocalDate = Today,
-                GeneratedAtUtc = UtcNow.AddMinutes(-20),
+                GeneratedAtUtc = UtcNow.AddHours(-1),
             });
         SetupActivity(UtcNow.AddMinutes(-2));
 
@@ -413,7 +416,7 @@ public class DigestGenerationServiceTests
 
     /// <summary>
     /// A bad morning is still a morning a caregiver hears about at once. The same waivers that cut
-    /// through the 20-minute floor cut through the widened one — this is what keeps the cost gate
+    /// through the hourly floor cut through the widened one — this is what keeps the cost gate
     /// from becoming a safety gate.
     /// </summary>
     [Fact]
@@ -424,6 +427,98 @@ public class DigestGenerationServiceTests
         SetupActivity(JustAfterWake.AddMinutes(-2));
 
         Assert.Equal(1, await CreateSut().GenerateDueDigestsAsync(JustAfterWake));
+    }
+
+    // ---- The other end of the night ----
+    //
+    // IsBeforeWake above declines the small hours outright. Between a member's bedtime and
+    // midnight there is a real day, and it has just finished — so the floor stops lifting there
+    // rather than the generator refusing, and every waiver still cuts through. Measured over a
+    // full day in dev, ordinary regeneration running around the clock was 269 of 289 MedGemma
+    // calls; this closes the stretch no threshold covered.
+
+    /// <summary>22:30 in London — past the default 22:00 bedtime, before midnight.</summary>
+    private static readonly DateTime AfterBedtime = new(2026, 8, 10, 21, 30, 0, DateTimeKind.Utc);
+
+    /// <summary>
+    /// The floor does not lift after bedtime however old the last summary is. Without this the
+    /// ordinary cycle ran at full rate until midnight, rewriting a finished day for a household
+    /// that had gone to bed.
+    /// </summary>
+    [Fact]
+    public async Task Skips_AfterBedtime_EvenWhenTheFloorHasLongPassed()
+    {
+        GivenPreviousSummary(AfterBedtime.AddHours(-3));
+        SetupActivity(AfterBedtime.AddMinutes(-2));
+
+        var generated = await CreateSut().GenerateDueDigestsAsync(AfterBedtime);
+
+        Assert.Equal(0, generated);
+        await _medicalAi.DidNotReceive().GenerateStructuredAsync<DigestGenerationService.DigestAiResponse>(
+            Arg.Any<string>(), Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// An evening that goes wrong reaches a caregiver at 22:30, not at breakfast. This is the
+    /// difference between the two ends of the night: before waking there is no day to describe, so
+    /// the generator declines outright, whereas here the day is real and only its wording is being
+    /// held back — which a jump from yesterday overrides like any other floor.
+    /// </summary>
+    [Fact]
+    public async Task Regenerates_AfterBedtime_WhenReadingsJumpedFromYesterday()
+    {
+        GivenPreviousSummary(AfterBedtime.AddMinutes(-5));
+        SetupTodayAndYesterday(
+            todayLandedAt: AfterBedtime.AddMinutes(-2),
+            todayRestingHr: 80,
+            yesterdayRestingHr: 60);
+
+        Assert.Equal(1, await CreateSut().GenerateDueDigestsAsync(AfterBedtime));
+    }
+
+    /// <summary>And an alert raised after bedtime, for the same reason.</summary>
+    [Fact]
+    public async Task Regenerates_AfterBedtime_WhenAnAlertIsRaised()
+    {
+        GivenPreviousSummary(AfterBedtime.AddMinutes(-5));
+        GivenAlerts(AnAlert(triggeredAt: AfterBedtime.AddMinutes(-2), resolved: false));
+        SetupActivity(AfterBedtime.AddMinutes(-2));
+
+        Assert.Equal(1, await CreateSut().GenerateDueDigestsAsync(AfterBedtime));
+    }
+
+    /// <summary>
+    /// The floor bounds regeneration, never the first summary — after bedtime as much as before
+    /// waking. A member who has been quiet all day and starts uploading at 22:30 still gets one.
+    /// </summary>
+    [Fact]
+    public async Task Generates_AfterBedtime_ForAMemberWithNoSummaryYet()
+    {
+        SetupActivity(AfterBedtime.AddMinutes(-2));
+
+        Assert.Equal(1, await CreateSut().GenerateDueDigestsAsync(AfterBedtime));
+    }
+
+    /// <summary>
+    /// And the first summary of a new local day is not held either, however late it lands. The
+    /// gate is meant to hold a finished day's wording steady, not to skip the day: without the
+    /// same-day guard, a member whose first readings arrive at 22:30 would be held here and then
+    /// by <c>IsBeforeWake</c> until morning, by which point the day this would have described is
+    /// over and never got a summary at all.
+    /// </summary>
+    [Fact]
+    public async Task Generates_AfterBedtime_TheFirstSummaryOfANewDay()
+    {
+        _digests.GetLatestAsync(_memberId, DigestAudience.Family, Arg.Any<CancellationToken>())
+            .Returns(new DigestEntry
+            {
+                CardiMemberId = _memberId,
+                LocalDate = Today.AddDays(-1),
+                GeneratedAtUtc = AfterBedtime.AddHours(-20),
+            });
+        SetupActivity(AfterBedtime.AddMinutes(-2));
+
+        Assert.Equal(1, await CreateSut().GenerateDueDigestsAsync(AfterBedtime));
     }
 
     /// <summary>And before the member is even up, for the same reason.</summary>
