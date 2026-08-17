@@ -850,9 +850,16 @@ variable "pipeline_jobs_secret_env_vars" {
   default     = {}
 }
 
-# Half-hourly, matching DigestGenerationService's MinimumRegenerationInterval (20 minutes).
-# The old quarter-hourly value could not produce output any faster than that interval allows,
-# so the extra passes bought nothing.
+# Half-hourly. This used to match DigestGenerationService's MinimumRegenerationInterval, which
+# was 20 minutes; that floor is an hour as of 2026-08-17, so a half-hourly pass now outruns what
+# a member's summary can produce and every other one can only no-op or catch a waiver.
+#
+# Deliberately not moved to hourly in the same change. The floor is not the only thing this
+# cadence answers to — the waivers (a problem window, a jump, a baseline divergence, an alert)
+# cut through it, and this job is the fallback path that catches them for a member the */5
+# assessor has not. Slowing it trades waiver latency for instance cost, and that trade belongs
+# with the medgemma_min_instances crossover, which the comment on that variable says to revisit
+# alongside the scheduler cadences, never one alone.
 #
 # The cadence does not multiply *inference* cost — the job skips members whose data has not
 # moved (DigestGenerationService's dataChangedAtUtc gate). It does multiply *instance* cost,
@@ -862,7 +869,7 @@ variable "pipeline_jobs_secret_env_vars" {
 # the full CPU allocation. The number of passes per hour is therefore a direct cost lever
 # whatever the per-member gating does.
 variable "pipeline_jobs_schedule" {
-  description = "Cloud Scheduler cron for the digest job. Half-hourly: matches MinimumRegenerationInterval, so it is as fast as a member's summary can actually catch up, without paying a MedGemma cold start for a pass that cannot produce new output"
+  description = "Cloud Scheduler cron for the digest job. Half-hourly: faster than the hourly regeneration floor on purpose, so a waiver (problem window, jump, baseline divergence, alert) is caught for members the */5 assessor pass has not, without paying a MedGemma cold start every quarter hour"
   type        = string
   default     = "*/30 * * * *"
 }

@@ -53,6 +53,48 @@ public class DigestDayProgressTests
     }
 
     /// <summary>
+    /// The evening half of the night, which no threshold covered until the pipeline's own call
+    /// volume made the gap visible. Pairs with <see cref="DigestDayProgress.IsBeforeWake"/>:
+    /// between them the two cover bedtime through to waking, and neither claims the small hours
+    /// the other owns.
+    /// </summary>
+    [Theory]
+    [InlineData(12, 0, false)]
+    [InlineData(21, 59, false)]
+    [InlineData(22, 0, true)]     // the boundary itself: bedtime counts as past it
+    [InlineData(23, 59, true)]
+    [InlineData(3, 0, false)]     // the small hours are IsBeforeWake's, not this one's
+    [InlineData(6, 59, false)]
+    public void IsAfterBedtime_CoversBedtimeToMidnight(int hour, int minute, bool expected)
+    {
+        Assert.Equal(expected, DigestDayProgress.For(Local(hour, minute), baseline: null).IsAfterBedtime);
+    }
+
+    /// <summary>
+    /// A baseline bedtime past midnight — a night worker, or a device that reads sleep as starting
+    /// after 00:00 — has no evening stretch on this side of midnight to gate. Treating 23:00 as
+    /// "after a 01:00 bedtime" would silence the one member most likely to still be up.
+    /// </summary>
+    [Fact]
+    public void IsAfterBedtime_IsFalse_WhenBedtimeWrapsPastMidnight()
+    {
+        var progress = DigestDayProgress.For(
+            Local(23), Baseline(wake: new TimeOnly(07, 00), bed: new TimeOnly(01, 00)));
+
+        Assert.False(progress.IsAfterBedtime);
+    }
+
+    /// <summary>A member's own early bedtime moves the window with them.</summary>
+    [Fact]
+    public void IsAfterBedtime_FollowsTheMembersOwnBedtime()
+    {
+        var baseline = Baseline(wake: new TimeOnly(06, 00), bed: new TimeOnly(20, 00));
+
+        Assert.False(DigestDayProgress.For(Local(19, 30), baseline).IsAfterBedtime);
+        Assert.True(DigestDayProgress.For(Local(20, 30), baseline).IsAfterBedtime);
+    }
+
+    /// <summary>
     /// The window the regeneration floor widens in. Someone up three hours has had a morning worth
     /// describing; before that the readings move because the day is filling up from nothing.
     /// </summary>
