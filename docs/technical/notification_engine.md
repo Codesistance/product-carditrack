@@ -958,6 +958,58 @@ For the primary objective of this engine, a canary is not optional.
 > by reading logs, not by the canary. Configuring a test-device fleet is the cheapest reliability
 > work outstanding in this document.
 
+**Firing a push by hand.** With the canary dormant, the only way to see a real push was to wait for
+a real alert — no way to reproduce a delivery or sound problem on a device. `POST /api/v1/dev/push`
+sends one on demand:
+
+```powershell
+# once: generate a key, give it to the API, keep a copy for the caller
+$bytes = New-Object byte[] 32
+[System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($bytes)
+$key = [Convert]::ToBase64String($bytes)
+dotnet user-secrets set "Dev:PushTokenKey" $key --project src/Presentation/CardiTrack.API
+$env:Dev__PushTokenKey = $key
+
+# then, per push
+./scripts/dev-push.ps1 -UserId <caregiver-user-id> -Category Safety
+```
+
+It goes through `IDispatchService.EnqueueAsync` — the same call `PushCanaryWorker` makes, for the
+same reason: a test push with its own send path can look healthy while the real one is broken. What
+arrives is byte-identical to a production alert. It differs from the canary in two places only: a
+millisecond-resolution dedup key, so two pushes seconds apart don't collapse into one, and no
+collapse key, so the second doesn't replace the first on the device.
+
+**Authorization is the `X-Dev-Push-Token` header and nothing else** — the endpoint is anonymous by
+necessity, since the point is to send without a signed-in caller. `DevPushTokenService` computes it
+as `{expiresAtUnixSeconds}.{base64url(HMAC-SHA256(key, "devpush|{userId:N}|{category}|{severity or
+-}|{expiresAtUnixSeconds}"))}`, the same construction as the ack token (§7.2 C3) with its own key and
+domain prefix. Target and payload shape are inside the MAC, so a token is good for one user and one
+category and cannot be re-pointed or escalated; expiry is capped at 10 minutes at both ends.
+
+**Two independent locks keep it off everywhere else**, and either alone is sufficient: `Dev:PushTokenKey`
+must be configured — it is in no `appsettings.json` and no Terraform secret map, so it exists only
+where a developer put it — and the environment must not be prod. `DevPushControllerProvider` evaluates
+both at startup and drops the controller from MVC's discovered set when either fails, so a disabled
+endpoint has no route rather than a filter that declines. The environment check reads
+`DeploymentInfo.EnvironmentName`, not `IHostEnvironment`: Terraform sets `ASPNETCORE_ENVIRONMENT` to
+`Dev`/`Prod`, so `IsDevelopment()` is false on deployed dev and `IsProduction()` is false on deployed
+prod. When it *is* enabled, startup logs a warning.
+
+The response is the diagnostic surface — the resolved channel id and both platforms' sound names,
+plus every device it fanned out to with the provider's verdict. It also names the three cases where
+a 200 means nothing was sent, each of which is otherwise invisible in the data:
+
+| `hint` | Why |
+|---|---|
+| No live device token | The user has no reachable token — not registered, disabled, OS authorization not `Granted`/`Provisional`, or Safety channel muted at the OS level |
+| Nudge deliveries never push | `DeliveryPlanner` routes every `Nudge` row to in-app (§6.2). Only Safety, and Health at Red/Orange, produce a push at all — so `carditrack_nudge` is unreachable via push today |
+| Quiet hours deferred this | Orange Health waits for the window to close; Safety and Red Health override it |
+
+If it arrives but is silent, the payload is not the suspect — the Android channel's sound is frozen
+at first creation (§4), so a channel created on a build where the raw resource was missing keeps the
+fallback sound until the app is uninstalled or the channel id is bumped.
+
 **Anti-nag gate, quarterly:** any nudge rule with comply rate <15% or mute rate >30% over 500+
 impressions goes to **rework — copy, timing, or deep-link target — not automatic deletion.** The
 engine is required scope, so a failing rule is evidence the prompt is wrong, not that the gap stopped
@@ -1139,4 +1191,4 @@ them back to something worse.
 ---
 
 **Owner:** Engineering
-**Last Updated:** August 14, 2026
+**Last Updated:** August 17, 2026

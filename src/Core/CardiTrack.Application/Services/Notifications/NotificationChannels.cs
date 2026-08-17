@@ -53,4 +53,22 @@ public static class NotificationChannels
         DeliveryCategory.Health => Health,
         _ => Nudges
     };
+
+    /// <summary>
+    /// Android <c>res/raw</c> sound name for a category — Safety/Health share the unlock chime,
+    /// Nudges use the shorter ding.
+    /// </summary>
+    /// <remarks>
+    /// Sits beside <see cref="ForCategory"/> rather than inside the FCM client because the
+    /// dev-only test-push endpoint reports the resolved sound back to the caller, and a second
+    /// copy of this switch is exactly the kind that drifts silently: a wrong answer there would
+    /// send someone hunting a device-side sound bug that does not exist. The value only takes
+    /// effect on a channel's *first* creation — see the versioning note above.
+    /// </remarks>
+    public static string AndroidSoundFor(DeliveryCategory category) =>
+        category is DeliveryCategory.Safety or DeliveryCategory.Health ? AlertSound : NudgeSound;
+
+    /// <summary>iOS main-bundle sound filename for a category, for the APNs <c>aps.sound</c> field.</summary>
+    public static string IosSoundFor(DeliveryCategory category) =>
+        category is DeliveryCategory.Safety or DeliveryCategory.Health ? AlertSoundFile : NudgeSoundFile;
 }

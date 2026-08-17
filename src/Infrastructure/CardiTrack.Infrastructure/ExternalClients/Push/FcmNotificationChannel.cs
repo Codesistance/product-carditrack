@@ -230,7 +230,7 @@ public class FcmNotificationChannel : INotificationChannel
                     // on it to say who was calling.
                     Icon = SmallIconName,
                     Color = SmallIconColor,
-                    Sound = AndroidSound(delivery.Category),
+                    Sound = NotificationChannels.AndroidSoundFor(delivery.Category),
                     DefaultVibrateTimings = delivery.Category == DeliveryCategory.Safety
                 }
             },
@@ -247,7 +247,7 @@ public class FcmNotificationChannel : INotificationChannel
                     .ToDictionary(kv => kv.Key, kv => kv.Value),
                 Aps = new Aps
                 {
-                    Sound = IosSound(delivery.Category),
+                    Sound = NotificationChannels.IosSoundFor(delivery.Category),
                     MutableContent = true,
                     CustomData = new Dictionary<string, object> { ["interruption-level"] = interruptionLevel }
                 }
@@ -260,15 +260,4 @@ public class FcmNotificationChannel : INotificationChannel
         var (title, body) = PushTeaser.For(delivery.Category, delivery.Severity, delivery.AlertType);
         return new FirebaseAdmin.Messaging.Notification { Title = title, Body = body };
     }
-
-    /// <summary>Safety/Health share the unlock chime; Nudges use the shorter ding.</summary>
-    private static string AndroidSound(DeliveryCategory category) =>
-        category is DeliveryCategory.Safety or DeliveryCategory.Health
-            ? NotificationChannels.AlertSound
-            : NotificationChannels.NudgeSound;
-
-    private static string IosSound(DeliveryCategory category) =>
-        category is DeliveryCategory.Safety or DeliveryCategory.Health
-            ? NotificationChannels.AlertSoundFile
-            : NotificationChannels.NudgeSoundFile;
 }
