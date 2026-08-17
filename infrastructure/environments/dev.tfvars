@@ -37,14 +37,28 @@ worker_cloud_run_memory = "1Gi"
 # 512 Mi default with no VPC attachment, and Terraform would then collide with it.
 medgemma_image = "us-docker.pkg.dev/cloudrun/container/hello"
 
-# Kept warm, which the default (0) does not do. MedGemma is on a latency-sensitive path now —
+# Kept warm, which the default (0) does not do. MedGemma is on a latency-sensitive path —
 # the Dashboard's status line is generated inside the request a caregiver is waiting on — and
-# scaling to zero costs that path twice: a cold start pays the image pull and model load, and a
-# dead instance takes its prefix cache with it, so the fixed instruction block is re-read at
-# ~68 tokens/sec on every call instead of being reused. Set here rather than on the variable's
-# default so prod, which has no MedGemma service yet, does not silently inherit a warm 4 vCPU /
-# 16 Gi instance the day it gets one — with cpu_idle = false that bills continuously and is the
-# largest single line item on this estate.
+# scaling to zero makes that path pay a cold start: the image pull plus the ~59s model load.
+#
+# It buys nothing beyond that, and the second half of this comment used to claim otherwise: that
+# a dead instance "takes its prefix cache with it". There is no prefix cache to lose. Gemma 3
+# uses sliding-window attention and llama.cpp will not restore a KV checkpoint under SWA, so the
+# fixed instruction block is reprocessed from token zero on every call, warm or cold
+# (`cached n_tokens = 0` measured on every generation, 2026-08-13; the container now sets
+# LLAMA_ARG_CACHE_RAM=0 because the cache could only ever cost). See the rationale on
+# medgemma_min_instances in deployments/cloud_run.tf, which has the measurements.
+#
+# What warmth actually protects, measured over 24h on 2026-08-16/17: 13 API calls a day. The
+# other ~276 were background generation (assessor and digest jobs), which waits happily. That
+# is the trade to weigh when the digest cadence question is settled — at today's arrival rate
+# of roughly one call every five minutes there is no idle window for min=0 to exploit anyway,
+# so this stays 1 until a quiet window exists. Revisit it and the scheduler cadences together,
+# never one alone.
+#
+# Set here rather than on the variable's default so prod, which has no MedGemma service yet,
+# does not silently inherit a warm 4 vCPU / 16 Gi instance the day it gets one — with
+# cpu_idle = false that bills continuously and is the largest single line item on this estate.
 medgemma_min_instances = 1
 
 # The AI pipeline's scheduled job (digest generation) — on in dev, where MedGemma runs.

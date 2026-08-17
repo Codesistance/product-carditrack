@@ -304,16 +304,33 @@ public static class ApmExtensions
     public static ValueTask FlushLogsAsync() => Log.CloseAndFlushAsync();
 
     /// <summary>
-    /// Force-flushes the OTel tracer provider. Only needed by hosts that never call
-    /// <c>Run()</c>/<c>RunAsync()</c> — e.g. a Cloud Run *Job* that does one pass and
+    /// Force-flushes the OTel tracer <em>and</em> meter providers. Only needed by hosts that
+    /// never call <c>Run()</c>/<c>RunAsync()</c> — e.g. a Cloud Run *Job* that does one pass and
     /// exits. A long-running host's graceful shutdown already disposes (and thereby
-    /// flushes) the DI-registered <see cref="TracerProvider"/> as part of disposing the
-    /// host itself; calling this afterward would hit an already-disposed instance. A job
-    /// has nothing that triggers that disposal, so this is the only thing standing
-    /// between a span and being silently dropped on process exit.
+    /// flushes) the DI-registered providers as part of disposing the host itself; calling
+    /// this afterward would hit an already-disposed instance. A job has nothing that triggers
+    /// that disposal, so this is the only thing standing between a signal and being silently
+    /// dropped on process exit.
+    /// <para>
+    /// Both signals in one call on purpose. This was <c>ForceFlushTraces</c>, flushing spans
+    /// only, and the meter provider was left to a disposal that never came — so every metric a
+    /// job recorded was dropped, the same silent loss PR #194 fixed for spans one layer up.
+    /// The gap was invisible because a job's spans looked healthy; it surfaced only when
+    /// <c>gen_ai.client.operation.duration</c> turned out to carry <c>service:api</c> and
+    /// nothing else, hiding ~95% of MedGemma's call volume. A single method that does both
+    /// cannot be half-called by the next host added here.
+    /// </para>
+    /// <para>
+    /// A metric reader also exports on its own periodic timer (60s by default), which is why
+    /// long-running hosts never needed this — and why a job outliving one interval could leak
+    /// a partial signal, making the loss look intermittent rather than total.
+    /// </para>
     /// </summary>
-    public static void ForceFlushTraces(this IServiceProvider services) =>
+    public static void ForceFlushTelemetry(this IServiceProvider services)
+    {
         services.GetService<TracerProvider>()?.ForceFlush();
+        services.GetService<MeterProvider>()?.ForceFlush();
+    }
 
     /// <summary>
     /// Says why nothing will ship. An entirely empty Apm section is the intended local
