@@ -669,7 +669,7 @@ public partial class DashboardPage : ContentPage
         // load and sent a caregiver reopening the app to the placeholder even though the answer
         // was already on the device. Restoring first means the gate below sees a live line and
         // leaves it alone; the refresh already in flight replaces it in place a moment later.
-        if (!HeroCard.HasLiveStatusFor(data.HealthStatus))
+        if (!HeroCard.HasLiveStatusFor(data.CardiMemberId, data.HealthStatus))
             await RestoreStatusLineAsync(data);
 
         // Only say "Loading" once the wait is long enough to be worth admitting to.
@@ -687,9 +687,9 @@ public partial class DashboardPage : ContentPage
         // the live one with no placeholder in between, and a generation still says what it is
         // doing rather than leaving a stale-looking sentence to be replaced without warning.
         //
-        // Skipped when the card already shows a live line for this tier — an unattended tick
-        // would otherwise blank a good line to re-fetch the same words.
-        if (!HeroCard.HasLiveStatusFor(data.HealthStatus)
+        // Skipped when the card already shows a live line for this member and tier — an unattended
+        // tick would otherwise blank a good line to re-fetch the same words.
+        if (!HeroCard.HasLiveStatusFor(data.CardiMemberId, data.HealthStatus)
             && await Task.WhenAny(pending, Task.Delay(StatusLoadingThreshold)) != pending)
         {
             HeroCard.ShowStatusLoading();
@@ -700,7 +700,8 @@ public partial class DashboardPage : ContentPage
             var status = await pending;
             if (status.Message is { } message)
             {
-                HeroCard.ApplyDynamicMessage(status.Headline, message, data.HealthStatus);
+                HeroCard.ApplyDynamicMessage(
+                    status.Headline, message, data.CardiMemberId, data.HealthStatus);
 
                 // Kept with the tier it describes, so the next cold start can tell whether it is
                 // still about the day on screen.
@@ -753,7 +754,10 @@ public partial class DashboardPage : ContentPage
         }
 
         if (stored is not null)
-            HeroCard.ApplyDynamicMessage(stored.Headline, stored.Message, data.HealthStatus);
+        {
+            HeroCard.ApplyDynamicMessage(
+                stored.Headline, stored.Message, data.CardiMemberId, data.HealthStatus);
+        }
     }
 
     // ------------------------------------------------------------------ data-completeness nudges
