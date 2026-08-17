@@ -1,8 +1,11 @@
 using AspNetCoreRateLimit;
+using CardiTrack.API.Controllers.Dev;
 using CardiTrack.API.Extensions;
 using CardiTrack.API.Middleware;
+using CardiTrack.Application.Interfaces.Security;
 using CardiTrack.Infrastructure.Extensions;
 using CardiTrack.Infrastructure.Persistence;
+using CardiTrack.Infrastructure.Security;
 using CardiTrack.Observability;
 using CardiTrack.Shared;
 using Microsoft.AspNetCore.HttpOverrides;
@@ -47,8 +50,46 @@ try
     builder.Services.AddAuth0Authorization();
 
     // 3. CONTROLLERS & VALIDATION
-    builder.Services.AddControllers();
+    // The dev-only test-push endpoint (notification_engine.md §13) is discovered only when a
+    // developer has opted in on this machine AND the environment is not prod — otherwise
+    // DevPushControllerProvider drops the controller before routing ever sees it.
+    var devPushKey = configLoader.Get(ConfigurationKeys.Dev.PushTokenKey);
+
+    // The key is validated here, not inside a DI factory. A present-but-unusable key — the
+    // REPLACE_ME placeholder, a mistyped value, the wrong length — would otherwise pass the
+    // presence check, route the controller, and only fail when someone called it, as a 500 from
+    // an anonymous endpoint. Validating at the gate turns that into the same outcome as no key
+    // at all: no route, and a warning saying why.
+    DevPushTokenService? devPushTokens = null;
+    var devPushEnabled =
+        DevPushControllerProvider.IsEnabled(devPushKey, DeploymentInfo.EnvironmentName)
+        && DevPushTokenService.TryCreate(devPushKey, null, out devPushTokens);
+
+    builder.Services
+        .AddControllers()
+        .ConfigureApplicationPartManager(manager =>
+            manager.FeatureProviders.Add(new DevPushControllerProvider(devPushEnabled)));
     builder.Services.AddValidators();
+
+    if (devPushEnabled)
+    {
+        // Warning, not Information: an unauthenticated send-a-push route is worth seeing in a log
+        // scan of any environment it turns up in, including a developer's own.
+        Log.Warning(
+            "Dev push endpoint is ENABLED at POST /api/v1/dev/push (environment '{Environment}'). " +
+            "It is authorized solely by the {Key} HMAC token.",
+            DeploymentInfo.EnvironmentName ?? "unset", ConfigurationKeys.Dev.PushTokenKey);
+
+        builder.Services.AddSingleton<IDevPushTokenService>(devPushTokens!);
+    }
+    else if (!string.IsNullOrWhiteSpace(devPushKey))
+    {
+        // Distinguished from silence on purpose: someone set the key and expects the endpoint.
+        Log.Warning(
+            "Dev push endpoint is DISABLED despite {Key} being set — either the environment is " +
+            "prod ('{Environment}'), or the key is not a valid base64-encoded 256-bit value.",
+            ConfigurationKeys.Dev.PushTokenKey, DeploymentInfo.EnvironmentName ?? "unset");
+    }
 
     // 4. API VERSIONING
     builder.Services.AddApiVersioning(options =>

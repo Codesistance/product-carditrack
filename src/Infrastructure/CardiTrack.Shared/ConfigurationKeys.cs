@@ -85,6 +85,23 @@ public static class ConfigurationKeys
         public const string Token = "Health:Token";
     }
 
+    /// <summary>
+    /// Local-development affordances. Everything here is absent-by-default: no key is declared in
+    /// any appsettings.json and none is injected by Terraform, so the surfaces these unlock exist
+    /// only on a machine that opted in explicitly (user-secrets or an environment variable).
+    /// </summary>
+    public static class Dev
+    {
+        /// <summary>
+        /// Base64-encoded 256-bit HMAC key authorizing the dev-only test-push endpoint
+        /// (notification_engine.md §13). Its absence is the endpoint's primary off switch — the
+        /// route is never mapped without it — which is why, unlike every other key here, it must
+        /// never be given a placeholder value in configuration: a placeholder would turn the
+        /// endpoint on everywhere with a publicly-known key.
+        /// </summary>
+        public const string PushTokenKey = "Dev:PushTokenKey";
+    }
+
     public static class Webhook
     {
         /// <summary>
