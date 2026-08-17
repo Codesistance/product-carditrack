@@ -185,48 +185,98 @@ public sealed class OfflineStatusLineStoreTests
         await CreateSut().ClearAsync(_member);
     }
 
+    // A cancelled caller is not a store failure: swallowing it would report success for work
+    // that never happened and leave the store doing I/O for a load that has been abandoned.
+
+    [Fact]
+    public async Task Save_PropagatesCallerCancellation()
+    {
+        using var cts = new CancellationTokenSource();
+        await cts.CancelAsync();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            () => CreateSut().SaveAsync(_member, Line(), cts.Token));
+    }
+
+    [Fact]
+    public async Task TryGet_PropagatesCallerCancellation()
+    {
+        using var cts = new CancellationTokenSource();
+        await cts.CancelAsync();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            () => CreateSut().TryGetAsync(_member, "green", Window, cts.Token));
+    }
+
+    [Fact]
+    public async Task Clear_PropagatesCallerCancellation()
+    {
+        using var cts = new CancellationTokenSource();
+        await cts.CancelAsync();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            () => CreateSut().ClearAsync(_member, cts.Token));
+    }
+
+    /// <summary>
+    /// The other half of the rule: a cancellation the caller never asked for is an ordinary
+    /// failure, and the card should fall back to its static copy rather than take the screen down.
+    /// </summary>
+    [Fact]
+    public async Task TryGet_ReturnsNull_WhenTheCacheCancelsOnItsOwn()
+    {
+        _cache.FailWith(new OperationCanceledException("internal timeout"));
+
+        Assert.Null(await CreateSut().TryGetAsync(_member, "green", Window));
+    }
+
     private sealed class MemoryOfflineCache : IOfflineReadCache
     {
-        private bool _fail;
+        private Exception? _failure;
 
         public Dictionary<string, OfflineCacheEntry> Items { get; } = new(StringComparer.Ordinal);
 
-        public void FailEverything() => _fail = true;
+        public void FailEverything() => FailWith(new InvalidOperationException("cache unavailable"));
+
+        public void FailWith(Exception failure) => _failure = failure;
 
         public void Overwrite(string key, string payload) =>
             Items[key] = new OfflineCacheEntry(payload, Items[key].CachedAt);
 
         public Task SaveAsync(string key, string payload, CancellationToken ct = default)
         {
-            Throw();
+            Throw(ct);
             Items[key] = new OfflineCacheEntry(payload, Now);
             return Task.CompletedTask;
         }
 
         public Task<OfflineCacheEntry?> TryGetAsync(string key, CancellationToken ct = default)
         {
-            Throw();
+            Throw(ct);
             return Task.FromResult(Items.TryGetValue(key, out var entry) ? entry : null);
         }
 
         public Task RemoveAsync(string key, CancellationToken ct = default)
         {
-            Throw();
+            Throw(ct);
             Items.Remove(key);
             return Task.CompletedTask;
         }
 
         public Task ClearAsync(CancellationToken ct = default)
         {
-            Throw();
+            Throw(ct);
             Items.Clear();
             return Task.CompletedTask;
         }
 
-        private void Throw()
+        // Honours the token like the real cache does, so the store's cancellation rule is
+        // exercised rather than simulated.
+        private void Throw(CancellationToken ct)
         {
-            if (_fail)
-                throw new InvalidOperationException("cache unavailable");
+            ct.ThrowIfCancellationRequested();
+            if (_failure is not null)
+                throw _failure;
         }
     }
 

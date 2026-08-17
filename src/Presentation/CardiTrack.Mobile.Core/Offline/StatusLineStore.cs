@@ -75,7 +75,7 @@ public sealed class OfflineStatusLineStore : IStatusLineStore
         {
             await _cache.SaveAsync(KeyFor(cardiMemberId), JsonSerializer.Serialize(line, Json), ct);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (!IsCallerCancellation(ex, ct))
         {
             _logger.LogWarning(ex, "Status line write failed for member {CardiMemberId}", cardiMemberId);
         }
@@ -91,7 +91,7 @@ public sealed class OfflineStatusLineStore : IStatusLineStore
         {
             entry = await _cache.TryGetAsync(key, ct);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (!IsCallerCancellation(ex, ct))
         {
             _logger.LogWarning(ex, "Status line read failed for member {CardiMemberId}", cardiMemberId);
             return null;
@@ -135,11 +135,21 @@ public sealed class OfflineStatusLineStore : IStatusLineStore
         {
             await _cache.RemoveAsync(key, ct);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (!IsCallerCancellation(ex, ct))
         {
             _logger.LogWarning(ex, "Status line delete failed for {CacheKey}", key);
         }
     }
+
+    /// <summary>
+    /// Whether an exception is the caller withdrawing the request rather than the store failing.
+    /// Swallowing everything would turn a cancelled load into a silent no-op that then keeps
+    /// doing I/O; a cancellation the caller did not ask for — an internal timeout, say — is a
+    /// real failure and stays swallowed, the same distinction
+    /// <c>CardiTrackApiClient.GetAsync</c> draws on its own transport catch.
+    /// </summary>
+    private static bool IsCallerCancellation(Exception ex, CancellationToken ct) =>
+        ex is OperationCanceledException && ct.IsCancellationRequested;
 
     /// <summary>
     /// Prefixed so it cannot collide with the request paths the cache is otherwise keyed by —
