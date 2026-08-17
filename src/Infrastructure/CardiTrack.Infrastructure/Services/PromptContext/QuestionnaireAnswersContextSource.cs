@@ -76,7 +76,7 @@ internal sealed class QuestionnaireAnswersContextSource : IMemberContextSource
             .GetByCardiMemberAsync(request.CardiMemberId, ct);
 
         var lines = VisibleFacts(questionnaires, _encryption, request.UtcNow)
-            .Select(FormatLine)
+            .Select(fact => FormatLine(fact, request.UtcNow))
             .ToList();
         if (lines.Count == 0)
             return null;
@@ -90,7 +90,7 @@ internal sealed class QuestionnaireAnswersContextSource : IMemberContextSource
     /// is the fact set, not the rendered lines. The digest uses the same set to refuse a summary
     /// that recites those facts instead of reading the day against them.
     /// </summary>
-    internal static IReadOnlyList<(string Question, string Answer)> VisibleFacts(
+    internal static IReadOnlyList<FamilyFact> VisibleFacts(
         IReadOnlyList<MemberQuestionnaire> questionnaires,
         IEncryptionService encryption,
         DateTime utcNow)
@@ -122,25 +122,67 @@ internal sealed class QuestionnaireAnswersContextSource : IMemberContextSource
                     EncryptedFieldReader.Reveal(encryption, q.AnswerText) ?? string.Empty);
                 if (answer.Length > MaxAnswerLength)
                     answer = $"{answer[..MaxAnswerLength]}…";
-                return (Question: question, Answer: answer);
+                return new FamilyFact(question, answer, q.Scope, q.AnsweredAtUtc ?? q.GeneratedAtUtc);
             })
             .Where(fact => fact.Answer.Length > 0)
             .ToList();
     }
 
     /// <summary>
+    /// One thing the family has told us, with what the prompt needs to date it.
+    /// </summary>
+    /// <param name="Scope">
+    /// Whether this is a standing fact or something that was only true around when it was given —
+    /// see <see cref="FormatLine"/> for why only one of those two gets a date.
+    /// </param>
+    /// <param name="ToldAtUtc">
+    /// When the family gave this answer. Falls back to when the question was asked, for the rows
+    /// that predate <see cref="MemberQuestionnaire.AnsweredAtUtc"/> being stamped on every save.
+    /// </param>
+    internal sealed record FamilyFact(
+        string Question, string Answer, QuestionnaireScope Scope, DateTime ToldAtUtc);
+
+    /// <summary>
     /// A fact about the person, not a quiz transcript. <c>Q: … A: …</c> is the shape MedGemma
     /// recites as the summary; the family already knows the exchange. A short yes/no still needs
     /// the question as a topic or it is unreadable.
     /// </summary>
-    private static string FormatLine((string Question, string Answer) fact)
+    /// <remarks>
+    /// A <see cref="QuestionnaireScope.TimeScoped"/> answer is dated, because undated it reads as
+    /// current and is not. "Did he feel tired at all today?" answered "he had a busy day with
+    /// chores" describes the day it was asked about; the next morning's summary put that same
+    /// sentence in front of a caregiver as the explanation for a day the member had barely started,
+    /// and would have gone on doing so for the full thirty days these answers inform prompts for.
+    /// Permanent answers are left undated on purpose — a pacemaker fitted in 2020 is no less true
+    /// this morning, and a date beside it invites the model to weigh it as news.
+    /// </remarks>
+    private static string FormatLine(FamilyFact fact, DateTime utcNow)
     {
-        if (AnswerStandsAlone(fact.Answer))
-            return $"- {fact.Answer}";
+        var body = AnswerStandsAlone(fact.Answer)
+            ? fact.Answer
+            : fact.Question.TrimEnd('?', ' ').Trim() is { Length: > 0 } topic
+                ? $"{topic}: {fact.Answer}"
+                : fact.Answer;
 
-        var topic = fact.Question.TrimEnd('?', ' ').Trim();
-        return string.IsNullOrEmpty(topic) ? $"- {fact.Answer}" : $"- {topic}: {fact.Answer}";
+        return fact.Scope == QuestionnaireScope.Permanent
+            ? $"- {body}"
+            : $"- (told to us {WhenTold(fact.ToldAtUtc, utcNow)}, about that time and not since) {body}";
     }
+
+    /// <summary>
+    /// How long ago the family said this, in the coarse terms a summary should weigh it by. Whole
+    /// days rather than hours: an answer given eleven hours ago may be yesterday's or this
+    /// morning's, and this section is read alongside day-labelled readings where the distinction
+    /// that matters is which day, not which hour.
+    /// </summary>
+    private static string WhenTold(DateTime toldAtUtc, DateTime utcNow) =>
+        (int)(utcNow.Date - toldAtUtc.Date).TotalDays switch
+        {
+            <= 0 => "today",
+            1 => "yesterday",
+            var days and < 7 => $"{days} days ago",
+            var days => $"about {days / 7} week{(days / 7 == 1 ? string.Empty : "s")} ago",
+        };
 
     private static bool AnswerStandsAlone(string answer)
     {

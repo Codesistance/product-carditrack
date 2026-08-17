@@ -53,6 +53,7 @@ public partial class DigestGenerationService : IDigestGenerationService
         If a computed observation is present, lead with it; do not recap every listed figure. An ordinary day can be short.
         If "Recent monitoring context" shows an unresolved alert or an observation that is suspicious, say so plainly in your own words and let the suggestion answer it; when that section is absent, never mention monitoring, alerts or observations at all.
         When family answers are present, use them to make sense of the readings; never retell them.
+        A family answer marked with when it was told explains that day only — never carry it forward as though it were about today.
 
         Respond with:
         - summary: 2-5 sentences written to the family member about what the readings mean for {{NAME}} today, naming
@@ -113,6 +114,7 @@ public partial class DigestGenerationService : IDigestGenerationService
         "a small total is the hour, not the person",
         "do not recap every listed figure",
         "never retell them",
+        "never carry it forward as though it were about today",
         "recent monitoring context",
         "never mention monitoring",
         "most days there is nothing worth asking",
@@ -1105,7 +1107,7 @@ public partial class DigestGenerationService : IDigestGenerationService
     /// letter-and-digit wording so a trailing full stop cannot sneak the same sentence through.
     /// </remarks>
     private static string? RestatesFamilyAnswers(
-        string text, IReadOnlyList<(string Question, string Answer)> facts)
+        string text, IReadOnlyList<QuestionnaireAnswersContextSource.FamilyFact> facts)
     {
         if (facts.Count == 0)
             return null;
@@ -1115,7 +1117,7 @@ public partial class DigestGenerationService : IDigestGenerationService
             return null;
 
         var copied = false;
-        foreach (var (question, answer) in facts)
+        foreach (var (question, answer, _, _) in facts)
         {
             var answerPhrase = NormalizeRecap(answer);
             if (answerPhrase.Length >= 12 && leftover.Contains(answerPhrase, StringComparison.Ordinal))
