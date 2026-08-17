@@ -56,8 +56,9 @@ public class QuestionnaireExpiryWorker : CronBackgroundService
 
         foreach (var questionnaire in lapsed)
         {
+            // Already tracked by GetLapsedPendingAsync — setting Status is enough. Calling Update
+            // would mark every column modified and risk overwriting a concurrent answer.
             questionnaire.Status = QuestionnaireStatus.Expired;
-            unitOfWork.MemberQuestionnaires.Update(questionnaire);
         }
 
         await unitOfWork.SaveChangesAsync();
