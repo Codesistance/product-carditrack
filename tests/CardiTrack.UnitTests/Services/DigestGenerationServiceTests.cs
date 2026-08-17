@@ -1666,8 +1666,9 @@ public class DigestGenerationServiceTests
     // caregiver's screen at 07:15 the following morning.
 
     /// <summary>
-    /// The end of the member's own day plus the grace, not a fixed span from now. UtcNow is 10:30
-    /// in London, so the local day ends 13.5 hours later and the grace carries it to 03:00.
+    /// The end of the member's own day plus the grace, converted through their zone — not a fixed
+    /// span from now. UtcNow is 10:30 in London on a mid-BST day, so local midnight + grace is
+    /// 03:00 BST the next morning = 02:00 UTC.
     /// </summary>
     [Fact]
     public async Task StoresATimeScopedQuestion_AskableUntilTheEndOfTheMembersOwnDay()
@@ -1677,7 +1678,7 @@ public class DigestGenerationServiceTests
         await CreateSut().GenerateDueDigestsAsync(UtcNow);
 
         await _questionnaires.Received(1).AddAsync(Arg.Is<MemberQuestionnaire>(q =>
-            q.AskableUntilUtc == UtcNow.AddHours(13.5).AddHours(3)));
+            q.AskableUntilUtc == new DateTime(2026, 8, 11, 2, 0, 0, DateTimeKind.Utc)));
     }
 
     /// <summary>
@@ -1693,6 +1694,48 @@ public class DigestGenerationServiceTests
 
         await _questionnaires.Received(1).AddAsync(Arg.Is<MemberQuestionnaire>(q =>
             q.AskableUntilUtc == null));
+    }
+
+    /// <summary>
+    /// Across the spring-forward night the wall-clock hours left in the local day are one hour
+    /// longer than those hours in UTC. Adding that delta to utcNow would retire the question an
+    /// hour late; converting the local end-of-day through the zone lands on the real instant.
+    /// </summary>
+    [Fact]
+    public async Task AskDeadline_UsesTheZonesConversion_AcrossSpringForward()
+    {
+        // The day before clocks jump forward in London (01:00 GMT → 02:00 BST on 29 Mar 2026).
+        // 10:30 GMT; local midnight + grace is 03:00 the next morning, which is already BST → 02:00 UTC.
+        // A wall-clock delta would have said 03:00 UTC.
+        var beforeSpringForward = new DateTime(2026, 3, 28, 10, 30, 0, DateTimeKind.Utc);
+        SetupActivity(beforeSpringForward.AddMinutes(-30));
+        ReturnsQuestion("Did he have visitors today?", questionScope: "time-scoped");
+
+        await CreateSut().GenerateDueDigestsAsync(beforeSpringForward);
+
+        await _questionnaires.Received(1).AddAsync(Arg.Is<MemberQuestionnaire>(q =>
+            q.AskableUntilUtc == new DateTime(2026, 3, 29, 2, 0, 0, DateTimeKind.Utc)));
+    }
+
+    /// <summary>
+    /// The autumn reverse of <see cref="AskDeadline_UsesTheZonesConversion_AcrossSpringForward"/>:
+    /// the wall-clock delta would retire an hour early; the zone conversion keeps the question
+    /// askable through the repeated hour.
+    /// </summary>
+    [Fact]
+    public async Task AskDeadline_UsesTheZonesConversion_AcrossFallBack()
+    {
+        // The day before clocks fall back in London (02:00 BST → 01:00 GMT on 25 Oct 2026).
+        // 10:30 BST = 09:30 UTC; local midnight + grace is 03:00 GMT the next morning → 03:00 UTC.
+        // A wall-clock delta would have said 02:00 UTC.
+        var beforeFallBack = new DateTime(2026, 10, 24, 9, 30, 0, DateTimeKind.Utc);
+        SetupActivity(beforeFallBack.AddMinutes(-30));
+        ReturnsQuestion("Did he have visitors today?", questionScope: "time-scoped");
+
+        await CreateSut().GenerateDueDigestsAsync(beforeFallBack);
+
+        await _questionnaires.Received(1).AddAsync(Arg.Is<MemberQuestionnaire>(q =>
+            q.AskableUntilUtc == new DateTime(2026, 10, 25, 3, 0, 0, DateTimeKind.Utc)));
     }
 
     /// <summary>

@@ -557,7 +557,7 @@ public partial class DigestGenerationService : IDigestGenerationService
         // generation that was good enough to keep. Every discard path above has already returned,
         // so a member whose summary was rejected is never asked anything on the strength of it.
         await StoreQuestionIfWorthAskingAsync(
-            memberId, aiResponse, name, utcNow, localNow, describedDate, ct);
+            memberId, aiResponse, name, utcNow, localNow, timeZone, describedDate, ct);
 
         return true;
     }
@@ -649,7 +649,7 @@ public partial class DigestGenerationService : IDigestGenerationService
     /// </remarks>
     private async Task StoreQuestionIfWorthAskingAsync(
         Guid memberId, DigestAiResponse aiResponse, string? name, DateTime utcNow, DateTime localNow,
-        DateOnly describedDate, CancellationToken ct)
+        TimeZoneInfo timeZone, DateOnly describedDate, CancellationToken ct)
     {
         if (CleanQuestion(aiResponse.Question, memberId, describedDate) is not { } question)
             return;
@@ -700,7 +700,7 @@ public partial class DigestGenerationService : IDigestGenerationService
             GeneratedAtUtc = utcNow,
             Scope = scope,
             ExpiresAtUtc = scope == QuestionnaireScope.Permanent ? null : utcNow + TimeScopedAnswerLifetime,
-            AskableUntilUtc = AskableUntil(scope, utcNow, localNow),
+            AskableUntilUtc = AskableUntil(scope, utcNow, localNow, timeZone),
         });
 
         // The base repository stages rather than executes, unlike the digest's own raw-SQL insert
@@ -736,14 +736,24 @@ public partial class DigestGenerationService : IDigestGenerationService
     /// generation that lands at 23:58 would otherwise ask something that lapses two minutes later
     /// plus the grace, which is a question nobody has a fair chance to see.
     /// </para>
+    /// <para>
+    /// Converted through <paramref name="timeZone"/> rather than by adding a wall-clock delta to
+    /// <paramref name="utcNow"/>: across a DST transition the hours left in the local day are not
+    /// the same length as those hours in UTC, and the naive sum would retire the question an hour
+    /// early or late on those two days of the year.
+    /// </para>
     /// </remarks>
-    private static DateTime? AskableUntil(QuestionnaireScope scope, DateTime utcNow, DateTime localNow)
+    private static DateTime? AskableUntil(
+        QuestionnaireScope scope, DateTime utcNow, DateTime localNow, TimeZoneInfo timeZone)
     {
         if (scope == QuestionnaireScope.Permanent)
             return null;
 
-        var endOfLocalDay = localNow.Date.AddDays(1) + AskGraceAfterMidnight;
-        var untilUtc = utcNow + (endOfLocalDay - localNow);
+        // Unspecified: ConvertTimeToUtc treats it as a wall clock in the given zone. Kind.Local
+        // would be the host's zone, which is not the member's.
+        var endOfLocalDay = DateTime.SpecifyKind(
+            localNow.Date.AddDays(1) + AskGraceAfterMidnight, DateTimeKind.Unspecified);
+        var untilUtc = TimeZoneInfo.ConvertTimeToUtc(endOfLocalDay, timeZone);
 
         return untilUtc < utcNow + MinimumAskWindow ? utcNow + MinimumAskWindow : untilUtc;
     }
