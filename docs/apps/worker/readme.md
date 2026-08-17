@@ -4,7 +4,7 @@
 
 `CardiTrack.Worker` hosts the platform's **non-AI scheduled background jobs**, driven by cron expressions and the [Cronos](https://github.com/HangfireIO/Cronos) library. Although it is a background service, the project uses the **`Microsoft.NET.Sdk.Web` SDK with `Exe` output** — Cloud Run requires an HTTP listener for startup probes, so the worker binds Kestrel to the `PORT` env var (default 8080) and exposes a minimal `GET /healthz` endpoint alongside its hosted services.
 
-The 11 workers registered today (crons from `appsettings.json`):
+The 12 workers registered today (crons from `appsettings.json`):
 
 | Worker | Default cron (UTC) | Purpose |
 |---|---|---|
