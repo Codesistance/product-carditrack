@@ -104,6 +104,42 @@ public class DigestDayProgressTests
     }
 
     /// <summary>
+    /// Baseline wake/bed are UTC clock faces (<c>BaselineCalculator</c>). Against a London member
+    /// at 07:14 BST, a stored 06:00 UTC wake is their actual 07:00 local wake — without converting
+    /// through the zone, the class would think they had already been up an hour.
+    /// </summary>
+    [Fact]
+    public void ConvertsBaselineWakeTimesFromUtc_IntoTheMembersLocalClock()
+    {
+        var london = TimeZoneInfo.FindSystemTimeZoneById("Europe/London");
+        // 07:14 BST on a mid-summer morning = 06:14 UTC; baseline wake stored as 06:00 UTC.
+        var localNow = Local(07, 14);
+        var progress = DigestDayProgress.For(
+            localNow,
+            Baseline(wake: new TimeOnly(06, 00), bed: new TimeOnly(21, 00)),
+            london);
+
+        Assert.Equal(new TimeOnly(07, 00), progress.WakeTime);
+        Assert.Equal(new TimeOnly(22, 00), progress.Bedtime);
+        Assert.Equal(14.0 / 60.0, progress.HoursSinceWake, precision: 2);
+        Assert.True(progress.IsEarlyInTheDay);
+    }
+
+    /// <summary>
+    /// Without a zone the stored faces are used as-is — the path unit fixtures that already speak
+    /// in local hours take, and the only safe stance when the anchor cannot be resolved.
+    /// </summary>
+    [Fact]
+    public void LeavesBaselineTimesAsWallClocks_WhenNoZoneIsGiven()
+    {
+        var progress = DigestDayProgress.For(
+            Local(12), Baseline(wake: new TimeOnly(05, 30), bed: new TimeOnly(21, 30)));
+
+        Assert.Equal(new TimeOnly(05, 30), progress.WakeTime);
+        Assert.Equal(6.5, progress.HoursSinceWake, precision: 2);
+    }
+
+    /// <summary>
     /// The phrase goes into a prompt, so what it actually says is the contract — a model handed
     /// "partial" and nothing else is the thing being fixed.
     /// </summary>

@@ -437,7 +437,7 @@ public partial class DigestGenerationService : IDigestGenerationService
         // turns their local clock into how much of a day the running totals can account for.
         var baseline = await _unitOfWork.PatternBaselines
             .GetLatestByCardiMemberAsync(memberId, periodDays: 30);
-        var progress = DigestDayProgress.For(localNow, baseline);
+        var progress = DigestDayProgress.For(localNow, baseline, timeZone);
 
         if (!forceRefresh && previous is not null)
         {

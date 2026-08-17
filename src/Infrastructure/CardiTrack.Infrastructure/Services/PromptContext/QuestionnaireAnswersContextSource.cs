@@ -171,12 +171,13 @@ internal sealed class QuestionnaireAnswersContextSource : IMemberContextSource
 
     /// <summary>
     /// How long ago the family said this, in the coarse terms a summary should weigh it by. Whole
-    /// days rather than hours: an answer given eleven hours ago may be yesterday's or this
-    /// morning's, and this section is read alongside day-labelled readings where the distinction
-    /// that matters is which day, not which hour.
+    /// elapsed days rather than UTC calendar dates: an answer given eleven hours ago may still be
+    /// "today" across a midnight the member never lived through, and this section has no member
+    /// timezone to label by their civil day. Elapsed days keep "yesterday" meaning roughly a day
+    /// old, not "the UTC date flipped while they slept".
     /// </summary>
     private static string WhenTold(DateTime toldAtUtc, DateTime utcNow) =>
-        (int)(utcNow.Date - toldAtUtc.Date).TotalDays switch
+        (int)(utcNow - toldAtUtc).TotalDays switch
         {
             <= 0 => "today",
             1 => "yesterday",

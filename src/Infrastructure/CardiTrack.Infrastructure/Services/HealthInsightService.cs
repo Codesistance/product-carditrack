@@ -459,7 +459,7 @@ public class HealthInsightService : IHealthInsightService
         // against a call that spends seconds in the model.
         var baseline = await _unitOfWork.PatternBaselines
             .GetLatestByCardiMemberAsync(cardiMemberId, PrimaryBaselinePeriodDays);
-        var progress = DigestDayProgress.For(localNow, baseline);
+        var progress = DigestDayProgress.For(localNow, baseline, timeZone);
 
         var memberContext = await ComposeMemberContextAsync(
             member, cardiMemberId, today, PromptPurpose.CurrentStatus, ct);

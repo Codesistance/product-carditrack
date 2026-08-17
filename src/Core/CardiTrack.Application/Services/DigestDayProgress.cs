@@ -119,10 +119,17 @@ public sealed class DigestDayProgress
     /// The established baseline, for the member's own waking hours. Null while they are still being
     /// learned, which falls back to <see cref="DefaultWakeTime"/> and <see cref="DefaultBedtime"/>.
     /// </param>
-    public static DigestDayProgress For(DateTime localNow, PatternBaseline? baseline)
+    /// <param name="timeZone">
+    /// The member's anchor zone. Baseline wake/bed times are stored as UTC clock faces
+    /// (<see cref="BaselineCalculator"/>); without the zone they cannot be compared to
+    /// <paramref name="localNow"/>. Null keeps the defaults (and any already-local test fixtures)
+    /// as wall-clock values.
+    /// </param>
+    public static DigestDayProgress For(
+        DateTime localNow, PatternBaseline? baseline, TimeZoneInfo? timeZone = null)
     {
-        var wake = baseline?.TypicalWakeTime ?? DefaultWakeTime;
-        var bed = baseline?.TypicalBedtime ?? DefaultBedtime;
+        var wake = LocalClock(baseline?.TypicalWakeTime, localNow, timeZone) ?? DefaultWakeTime;
+        var bed = LocalClock(baseline?.TypicalBedtime, localNow, timeZone) ?? DefaultBedtime;
 
         var wakingHours = (bed.ToTimeSpan() - wake.ToTimeSpan()).TotalHours;
         // A bedtime past midnight comes back negative against the same civil day; a bedtime the
@@ -135,6 +142,25 @@ public sealed class DigestDayProgress
         var elapsed = Math.Clamp(sinceWake / wakingHours, 0, 1);
 
         return new DigestDayProgress(localNow, wake, bed, sinceWake, elapsed);
+    }
+
+    /// <summary>
+    /// The baseline's UTC time-of-day, as the member's local wall clock on the day
+    /// <paramref name="localNow"/> falls in. Null in stays null; without a zone the stored face
+    /// is returned unchanged so unit fixtures that already speak in local hours keep working.
+    /// </summary>
+    private static TimeOnly? LocalClock(TimeOnly? utcTimeOfDay, DateTime localNow, TimeZoneInfo? timeZone)
+    {
+        if (utcTimeOfDay is not { } utcClock)
+            return null;
+        if (timeZone is null)
+            return utcClock;
+
+        var utcNow = TimeZoneInfo.ConvertTimeToUtc(
+            DateTime.SpecifyKind(localNow, DateTimeKind.Unspecified), timeZone);
+        var utcInstant = DateTime.SpecifyKind(
+            utcNow.Date.Add(utcClock.ToTimeSpan()), DateTimeKind.Utc);
+        return TimeOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(utcInstant, timeZone));
     }
 
     /// <summary>

@@ -38,8 +38,10 @@ public class MemberContextSourceTests
     }
 
     private MemberContextRequest Request(
-        CardiMember? member = null, PromptPurpose purpose = PromptPurpose.Digest) =>
-        new(member ?? new CardiMember { Id = _memberId }, _memberId, Today, UtcNow, purpose);
+        CardiMember? member = null,
+        PromptPurpose purpose = PromptPurpose.Digest,
+        DateTime? utcNow = null) =>
+        new(member ?? new CardiMember { Id = _memberId }, _memberId, Today, utcNow ?? UtcNow, purpose);
 
     // ---- Demographics ----
 
@@ -373,6 +375,29 @@ public class MemberContextSourceTests
         Assert.NotNull(section);
         Assert.Contains(expected, section.Body);
         Assert.Contains("about that time and not since", section.Body);
+    }
+
+    /// <summary>
+    /// Crossing a UTC midnight must not flip "today" to "yesterday" for an answer that is still
+    /// only a few hours old — the section has no member zone, so age is elapsed time, not the UTC
+    /// calendar date.
+    /// </summary>
+    [Fact]
+    public async Task Answers_StayDatedToday_AcrossAUtcMidnight_WhenStillOnlyHoursOld()
+    {
+        // Answered at 22:00 UTC; read at 02:00 UTC the next calendar day — under four hours later.
+        var answeredAt = new DateTime(2026, 8, 12, 22, 0, 0, DateTimeKind.Utc);
+        var readAt = new DateTime(2026, 8, 13, 2, 0, 0, DateTimeKind.Utc);
+        GivenQuestionnaires(
+            Questionnaire(QuestionnaireStatus.Answered, "Did he feel tired at all today?",
+                "Yes, he had a busy day with chores.", answeredAtUtc: answeredAt));
+
+        var section = await new QuestionnaireAnswersContextSource(_unitOfWork, PromptContextFactory.Encryption)
+            .BuildAsync(Request(utcNow: readAt), default);
+
+        Assert.NotNull(section);
+        Assert.Contains("told to us today", section.Body);
+        Assert.DoesNotContain("yesterday", section.Body);
     }
 
     /// <summary>
