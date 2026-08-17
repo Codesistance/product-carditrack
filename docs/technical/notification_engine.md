@@ -1022,9 +1022,24 @@ a 200 means nothing was sent, each of which is otherwise invisible in the data:
 | Nudge deliveries never push | `DeliveryPlanner` routes every `Nudge` row to in-app (§6.2). Only Safety, and Health at Red/Orange, produce a push at all — so `carditrack_nudge` is unreachable via push today |
 | Quiet hours deferred this | Orange Health waits for the window to close; Safety and Red Health override it |
 
-If it arrives but is silent, the payload is not the suspect — the Android channel's sound is frozen
-at first creation (§4), so a channel created on a build where the raw resource was missing keeps the
-fallback sound until the app is uninstalled or the channel id is bumped.
+If it arrives but is silent, the payload is not the suspect. An Android channel's sound is frozen at
+first creation (§4) and no later change or app update can alter it, so what matters is the state of
+the device at the moment the channel was first made. Two ways that goes wrong, both fixed but only
+for channels created after the fix:
+
+- **A channel created before the app was first opened.** Channel registration runs in
+  `MainApplication.OnCreate` as well as `PushRegistrationCoordinator`'s constructor, precisely so a
+  push that starts the process on a background delivery cannot beat it. Before that, a device that
+  installed the app and received a Safety alert before its first launch could keep a channel these
+  ids never configured.
+- **A channel created with no sound at all.** `RawSoundUri` can return null — the raw-resource
+  lookup and the `RingtoneManager` fallback are both nullable — and `SetSound(null, …)` does not
+  mean "no preference", it means silent forever. Registration now skips the call instead, leaving
+  the platform default: a sound nobody chose, but a sound.
+
+An install already in either state cannot be repaired by an update. Verify with
+`adb shell dumpsys notification | grep -A2 carditrack.safety` — `mSound=` names the resource if the
+channel is healthy — and recover by reinstalling, or ship a channel-id bump.
 
 **Anti-nag gate, quarterly:** any nudge rule with comply rate <15% or mute rate >30% over 500+
 impressions goes to **rework — copy, timing, or deep-link target — not automatic deletion.** The
