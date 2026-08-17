@@ -218,7 +218,7 @@ public partial class DigestGenerationService : IDigestGenerationService
     /// raised or resolved, a yellow-or-above real-time window or an SSA jump since the last
     /// summary, or new daily readings that diverge from the baseline or jumped from yesterday.
     /// The floor exists because a summary whose wording barely moves is not worth an inference —
-    /// making a caregiver wait twenty minutes to read that someone is in a bad way would be the
+    /// making a caregiver wait it out to read that someone is in a bad way would be the
     /// floor working against the thing it protects.
     /// </para>
     /// </summary>
@@ -474,7 +474,14 @@ public partial class DigestGenerationService : IDigestGenerationService
             // A floor rather than a refusal, because unlike the pre-dawn hours there is a real day
             // here and it has just ended: the waivers below still cut through, so an evening that
             // goes wrong reaches a caregiver at 22:30 rather than at breakfast.
-            var floorHolds = progress.IsAfterBedtime || utcNow - previous.GeneratedAtUtc < floor;
+            //
+            // Same-day only, for the same reason the early-day floor is: the first summary of a
+            // new local day is new information by itself. Without that guard a member whose first
+            // readings land at 22:30 would be held here, then held by IsBeforeWake until morning —
+            // by which point the day this would have described is over and never got a summary at
+            // all. Holding a finished day's wording steady is the intent; skipping the day is not.
+            var floorHolds = (progress.IsAfterBedtime && previous.LocalDate == describedDate)
+                || utcNow - previous.GeneratedAtUtc < floor;
 
             if (floorHolds
                 && !DigestRefreshRules.ReadingsDivergeFromBaseline(baseline, today, yesterday)

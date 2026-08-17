@@ -499,6 +499,28 @@ public class DigestGenerationServiceTests
         Assert.Equal(1, await CreateSut().GenerateDueDigestsAsync(AfterBedtime));
     }
 
+    /// <summary>
+    /// And the first summary of a new local day is not held either, however late it lands. The
+    /// gate is meant to hold a finished day's wording steady, not to skip the day: without the
+    /// same-day guard, a member whose first readings arrive at 22:30 would be held here and then
+    /// by <c>IsBeforeWake</c> until morning, by which point the day this would have described is
+    /// over and never got a summary at all.
+    /// </summary>
+    [Fact]
+    public async Task Generates_AfterBedtime_TheFirstSummaryOfANewDay()
+    {
+        _digests.GetLatestAsync(_memberId, DigestAudience.Family, Arg.Any<CancellationToken>())
+            .Returns(new DigestEntry
+            {
+                CardiMemberId = _memberId,
+                LocalDate = Today.AddDays(-1),
+                GeneratedAtUtc = AfterBedtime.AddHours(-20),
+            });
+        SetupActivity(AfterBedtime.AddMinutes(-2));
+
+        Assert.Equal(1, await CreateSut().GenerateDueDigestsAsync(AfterBedtime));
+    }
+
     /// <summary>And before the member is even up, for the same reason.</summary>
     [Fact]
     public async Task Regenerates_BeforeWake_WhenAnAlertIsRaised()
