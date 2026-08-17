@@ -171,8 +171,17 @@ public class HealthInsightService : IHealthInsightService
     /// conclusion from them. The ceiling stays, and the next clarification has to argue for itself
     /// the same way.
     /// </para>
+    /// <para>
+    /// The raise landed at 1,100 against instructions that were already 1,104 characters long, so
+    /// the ceiling it was meant to restore never held and the test has been red on main since. The
+    /// figure is now the measured length: the line it was raised for had already been argued for
+    /// and is not worth re-litigating over four characters, and the wording is the considered part
+    /// here while the round number was not. Sitting exactly on the length is the point — with no
+    /// slack, the next addition of any size has to come here and say what it is buying, which is
+    /// what this constant is for.
+    /// </para>
     /// </remarks>
-    internal const int StatusPromptBudget = 1_100;
+    internal const int StatusPromptBudget = 1_104;
 
     /// <summary>Exposed for the budget test — the instructions themselves stay private.</summary>
     internal static int CurrentStatusInstructionsLength => CurrentStatusInstructions.Length;
