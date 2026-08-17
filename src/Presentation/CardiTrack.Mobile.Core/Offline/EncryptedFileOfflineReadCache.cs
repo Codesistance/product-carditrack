@@ -114,13 +114,13 @@ public sealed class EncryptedFileOfflineReadCache : IOfflineReadCache
 
         if (!TryDecrypt(dek, file, out var payload, out var cachedAt))
         {
-            await TryDeleteAsync(key, ct);
+            await RemoveAsync(key, ct);
             return null;
         }
 
         if (_clock.GetUtcNow() - cachedAt > IOfflineReadCache.Lifetime)
         {
-            await TryDeleteAsync(key, ct);
+            await RemoveAsync(key, ct);
             return null;
         }
 
@@ -204,8 +204,15 @@ public sealed class EncryptedFileOfflineReadCache : IOfflineReadCache
         }
     }
 
-    private async Task TryDeleteAsync(string key, CancellationToken ct)
+    /// <summary>
+    /// Best-effort: a delete that fails leaves an entry that is merely stale, not wrong, and the
+    /// callers are all on paths where throwing would be the worse outcome — a failed read, or a
+    /// caller tidying up after itself.
+    /// </summary>
+    public async Task RemoveAsync(string key, CancellationToken ct = default)
     {
+        ArgumentException.ThrowIfNullOrWhiteSpace(key);
+
         await _gate.WaitAsync(ct);
         try
         {

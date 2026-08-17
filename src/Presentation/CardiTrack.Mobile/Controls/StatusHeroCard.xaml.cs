@@ -14,10 +14,17 @@ public partial class StatusHeroCard : ContentView
     private WeatherSnapshotResponse? _weather;
 
     /// <summary>
-    /// Which tier <see cref="Apply"/> last rendered, so a late-arriving
+    /// Who and which tier <see cref="Apply"/> last rendered, so a late-arriving
     /// <see cref="ApplyDynamicMessage"/> can tell whether it's still describing the status
     /// actually on screen.
     /// </summary>
+    /// <remarks>
+    /// The member is half of that identity, not a formality. The dashboard re-resolves its primary
+    /// member on every attended refresh, so one page instance can render a different person — and
+    /// with the tier alone as the test, a line written about one member survived onto another's
+    /// card whenever the two happened to share a tier.
+    /// </remarks>
+    private Guid _cardiMemberId;
     private string? _healthStatus;
 
     /// <summary>
@@ -66,17 +73,18 @@ public partial class StatusHeroCard : ContentView
             _ => ("StatusUnknown", null, null, TodaySoFar(data.Metrics, firstName)),
         };
 
-        // A reload that lands on the same tier keeps the live line the card already earned; one
-        // that changes tier throws it away, since it described a status no longer on screen.
-        // Without this every unattended reload would drop back to the static copy and swap the
-        // live line in again a moment later — a flicker nobody asked for on a screen that now
+        // A reload that lands on the same member and tier keeps the live line the card already
+        // earned; one that changes either throws it away, since it described a state no longer on
+        // screen. Without this every unattended reload would drop back to the static copy and swap
+        // the live line in again a moment later — a flicker nobody asked for on a screen that now
         // reloads itself every 30 seconds.
-        if (data.HealthStatus != _healthStatus)
+        if (data.CardiMemberId != _cardiMemberId || data.HealthStatus != _healthStatus)
             ClearLiveStatus();
         else if (_liveMessage is { } live)
             line = (line.ColorKey, line.Icon, _liveHeadline ?? line.Headline, live);
 
         SetStatusLine(line.ColorKey, line.Icon, line.Headline, line.Detail);
+        _cardiMemberId = data.CardiMemberId;
         _healthStatus = data.HealthStatus;
 
         ApplyWeather(data.Weather);
@@ -110,12 +118,13 @@ public partial class StatusHeroCard : ContentView
     public void ClearLiveStatus() => (_liveHeadline, _liveMessage) = (null, null);
 
     /// <summary>
-    /// Whether the card is already showing a live status line for <paramref name="healthStatus"/>.
-    /// The dashboard asks before putting the card into <see cref="ShowStatusLoading"/>: a refetch
-    /// that will almost certainly return the same cached line should not blank a good line first.
+    /// Whether the card is already showing a live status line for this member and tier. The
+    /// dashboard asks before putting the card into <see cref="ShowStatusLoading"/>, and before
+    /// restoring a saved line: a refetch that will almost certainly return the same cached line
+    /// should not blank a good line first, and a line about somebody else is not a good line.
     /// </summary>
-    public bool HasLiveStatusFor(string healthStatus) =>
-        healthStatus == _healthStatus && _liveMessage is not null;
+    public bool HasLiveStatusFor(Guid cardiMemberId, string healthStatus) =>
+        cardiMemberId == _cardiMemberId && healthStatus == _healthStatus && _liveMessage is not null;
 
     /// <summary>
     /// Renders the status block, collapsing the headline row for a tier that has no headline to
@@ -144,17 +153,22 @@ public partial class StatusHeroCard : ContentView
     /// <summary>
     /// Swaps in the live, MedGemma-generated pair over the static per-tier copy
     /// <see cref="Apply"/> already rendered. Ignored if the card has since moved to a different
-    /// status — a refresh landing while the call was still in flight — since the message would
-    /// describe a tier that's no longer showing.
+    /// member or status — a refresh landing while the call was still in flight — since the message
+    /// would describe someone, or something, no longer showing.
     /// </summary>
     /// <param name="headline">
     /// The punchy note. Optional on its own: a generation that produced a sentence but no usable
     /// headline keeps the tier's static headline rather than leaving the row headless.
     /// </param>
-    public void ApplyDynamicMessage(string? headline, string message, string forHealthStatus)
+    public void ApplyDynamicMessage(
+        string? headline, string message, Guid forCardiMemberId, string forHealthStatus)
     {
-        if (forHealthStatus != _healthStatus || string.IsNullOrWhiteSpace(message))
+        if (forCardiMemberId != _cardiMemberId
+            || forHealthStatus != _healthStatus
+            || string.IsNullOrWhiteSpace(message))
+        {
             return;
+        }
 
         // The server caches this line for minutes at a time, so most ticks re-deliver what is
         // already on the card. Re-fading it would pulse the row every 30 seconds for no change.

@@ -3,6 +3,7 @@ using CardiTrack.Mobile.Controls;
 using CardiTrack.Mobile.Core.Api;
 using CardiTrack.Mobile.Core.Auth;
 using CardiTrack.Mobile.Core.Navigation;
+using CardiTrack.Mobile.Core.Offline;
 using CardiTrack.Mobile.Core.Onboarding;
 using CardiTrack.Mobile.Onboarding;
 using CardiTrack.Mobile.Services;
@@ -24,12 +25,21 @@ public partial class DashboardPage : ContentPage
     /// </summary>
     private static readonly TimeSpan StatusLoadingThreshold = TimeSpan.FromMilliseconds(1500);
 
+    /// <summary>
+    /// How old a stored status line may be and still be put back on the card instead of the
+    /// loading placeholder — see <see cref="RestoreStatusLineAsync"/>. Wide enough to cover a
+    /// caregiver reopening the app through the day, short enough that what they read is still
+    /// about today.
+    /// </summary>
+    private static readonly TimeSpan StatusLineRestoreWindow = TimeSpan.FromHours(6);
+
     /// <summary>Columns in the Key Metrics grid; see <see cref="LayoutMetricCards"/>.</summary>
     private const int MetricsPerRow = 2;
 
     private readonly ICardiTrackApiClient _api;
     private readonly IAuthService _authService;
     private readonly IPopupService _popups;
+    private readonly IStatusLineStore _statusLines;
 
     private enum DashboardState { Loading, Loaded, NoMember, Error }
 
@@ -40,12 +50,17 @@ public partial class DashboardPage : ContentPage
     private DashboardResponse? _lastData;
     private Guid? _currentSleepAlertId;
 
-    public DashboardPage(ICardiTrackApiClient api, IAuthService authService, IPopupService popups)
+    public DashboardPage(
+        ICardiTrackApiClient api,
+        IAuthService authService,
+        IPopupService popups,
+        IStatusLineStore statusLines)
     {
         InitializeComponent();
         _api = api;
         _authService = authService;
         _popups = popups;
+        _statusLines = statusLines;
         HeroCard.MemberTapped += (_, _) => OpenMemberDetails();
         HeroCard.WeatherTapped += async (_, weather) => await _popups.ShowWeatherAsync(weather);
         Header.RefreshRequested += OnRefreshClicked;
@@ -648,6 +663,15 @@ public partial class DashboardPage : ContentPage
 
         var pending = _api.GetCurrentStatusAsync(data.CardiMemberId);
 
+        // Put back the line this member last had before deciding whether to admit to waiting.
+        // The card's live line lives in fields on the control, so it dies with the page — and the
+        // page is transient behind a tab template, which made every cold start look like a first
+        // load and sent a caregiver reopening the app to the placeholder even though the answer
+        // was already on the device. Restoring first means the gate below sees a live line and
+        // leaves it alone; the refresh already in flight replaces it in place a moment later.
+        if (!HeroCard.HasLiveStatusFor(data.CardiMemberId, data.HealthStatus))
+            await RestoreStatusLineAsync(data);
+
         // Only say "Loading" once the wait is long enough to be worth admitting to.
         //
         // This used to blank the card the moment the call started, on the reasoning that showing
@@ -663,9 +687,9 @@ public partial class DashboardPage : ContentPage
         // the live one with no placeholder in between, and a generation still says what it is
         // doing rather than leaving a stale-looking sentence to be replaced without warning.
         //
-        // Skipped when the card already shows a live line for this tier — an unattended tick
-        // would otherwise blank a good line to re-fetch the same words.
-        if (!HeroCard.HasLiveStatusFor(data.HealthStatus)
+        // Skipped when the card already shows a live line for this member and tier — an unattended
+        // tick would otherwise blank a good line to re-fetch the same words.
+        if (!HeroCard.HasLiveStatusFor(data.CardiMemberId, data.HealthStatus)
             && await Task.WhenAny(pending, Task.Delay(StatusLoadingThreshold)) != pending)
         {
             HeroCard.ShowStatusLoading();
@@ -676,12 +700,22 @@ public partial class DashboardPage : ContentPage
             var status = await pending;
             if (status.Message is { } message)
             {
-                HeroCard.ApplyDynamicMessage(status.Headline, message, data.HealthStatus);
+                HeroCard.ApplyDynamicMessage(
+                    status.Headline, message, data.CardiMemberId, data.HealthStatus);
+
+                // Kept with the tier it describes, so the next cold start can tell whether it is
+                // still about the day on screen.
+                await _statusLines.SaveAsync(
+                    data.CardiMemberId,
+                    new StoredStatusLine(data.HealthStatus, status.Headline, message, status.GeneratedAt));
             }
             else
             {
                 // Nothing to say after all — back to the tier's own copy, and forget any live
                 // line first so the re-apply doesn't just restore the one we were told is gone.
+                // That includes the stored copy: leaving it would put a sentence the server has
+                // just retired back on the card at the next launch.
+                await _statusLines.ClearAsync(data.CardiMemberId);
                 HeroCard.ClearLiveStatus();
                 HeroCard.Apply(data);
             }
@@ -690,10 +724,39 @@ public partial class DashboardPage : ContentPage
         {
             // Put the static copy back: the card may be showing "Loading", and leaving it there
             // would turn a failed side-call into a screen that never resolves. Harmless when it
-            // isn't — Apply re-renders the same tier, and restores the live line if one survived.
+            // isn't — Apply re-renders the same tier, and restores the live line if one survived,
+            // which now includes a line restored from the device a moment ago.
             HeroCard.Apply(data);
             // Static per-tier copy stays. Nothing to show the caregiver about this failure —
             // it isn't actionable and isn't worth interrupting them for.
+        }
+    }
+
+    /// <summary>
+    /// Shows the last status line saved for this member, if one is recent enough and was written
+    /// about the tier now on screen. Best-effort in every direction: no stored line, a stale one,
+    /// or a store that cannot be read all leave the card exactly as <see cref="Apply"/> rendered it.
+    /// </summary>
+    private async Task RestoreStatusLineAsync(DashboardResponse data)
+    {
+        StoredStatusLine? stored;
+        try
+        {
+            stored = await _statusLines.TryGetAsync(
+                data.CardiMemberId, data.HealthStatus, StatusLineRestoreWindow);
+        }
+        catch (Exception ex)
+        {
+            // The store swallows its own I/O failures; this is the belt-and-braces catch for
+            // anything it doesn't. A dashboard must not fail over a cosmetic read.
+            ScreenRefresh.LogFailure(ex, this, "while restoring the saved status line");
+            return;
+        }
+
+        if (stored is not null)
+        {
+            HeroCard.ApplyDynamicMessage(
+                stored.Headline, stored.Message, data.CardiMemberId, data.HealthStatus);
         }
     }
 
