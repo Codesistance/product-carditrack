@@ -28,18 +28,22 @@ namespace CardiTrack.Infrastructure.Migrations
             // tired at all today?" the morning after, which is the failure the column answers.
             // Leaving them null would leave them askable forever.
             //
-            // 27 hours because this cannot see the member's timezone and must not retire anything
-            // early: the end of the local day a question was generated in is at most 24 hours after
-            // it (generated just past local midnight) in any zone, and the grace the pipeline gives
-            // is 3 more. An upper bound, so the sweep retires only questions that are genuinely
-            // past their day whatever zone the member is in.
+            // Without the member's timezone this cannot land on their local midnight, so the
+            // approximation is the UTC day's end plus the same three-hour grace the live path
+            // uses, floored at the same six-hour minimum window. A flat "+ 27 hours from
+            // GeneratedAtUtc" would leave an evening question askable through the following
+            // evening — past the morning the screenshot failed on. New rows get a proper
+            // zone-aware deadline from DigestGenerationService; this only cleans up what is
+            // already pending when the column lands.
             //
             // Permanent questions are left null on purpose — they ask after a standing fact and
             // stay answerable indefinitely, which is exactly what null means here.
             migrationBuilder.Sql(
                 """
                 UPDATE "MemberQuestionnaires"
-                SET "AskableUntilUtc" = "GeneratedAtUtc" + INTERVAL '27 hours'
+                SET "AskableUntilUtc" = GREATEST(
+                    date_trunc('day', "GeneratedAtUtc") + INTERVAL '1 day 3 hours',
+                    "GeneratedAtUtc" + INTERVAL '6 hours')
                 WHERE "Status" = 'Pending' AND "Scope" <> 'Permanent';
                 """);
         }

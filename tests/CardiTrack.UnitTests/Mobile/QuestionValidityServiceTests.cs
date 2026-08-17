@@ -97,6 +97,29 @@ public class QuestionValidityServiceTests
     }
 
     /// <summary>
+    /// Fire-and-forget must observe every failure, not only the typed transport ones — an
+    /// unexpected exception would otherwise be unobserved and never clear the "already reported"
+    /// set for a retry.
+    /// </summary>
+    [Fact]
+    public async Task SwallowsAnUnexpectedRetirementFailure_AndRetriesItNextTime()
+    {
+        var lapsed = Question(Now.UtcDateTime.AddHours(-5));
+        _api.ExpireQuestionnaireAsync(lapsed.Id)
+            .Returns(Task.FromException<QuestionnaireResponse>(
+                new InvalidOperationException("Unexpected client fault.")));
+
+        var sut = CreateSut();
+
+        Assert.Null(sut.Verify(lapsed));
+        await Task.Yield();
+        Assert.Null(sut.Verify(lapsed));
+        await Task.Yield();
+
+        await _api.Received(2).ExpireQuestionnaireAsync(lapsed.Id);
+    }
+
+    /// <summary>
     /// The one case that decides between a card the family can still answer and one they cannot:
     /// the question is live when the screen opens and lapses while the editor is open.
     /// </summary>

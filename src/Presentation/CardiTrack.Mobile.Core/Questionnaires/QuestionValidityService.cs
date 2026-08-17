@@ -61,9 +61,12 @@ public sealed class QuestionValidityService : IQuestionValidityService
         {
             await _api.ExpireQuestionnaireAsync(questionnaireId);
         }
-        catch (ApiException)
+        catch (Exception)
         {
             // Retried on the next load — the id stays in _reported only for this attempt.
+            // ApiException covers the transport and HTTP failures we expect; anything else that
+            // escapes a fire-and-forget task would otherwise be unobserved, which is worse than
+            // treating it as "try again when this page next draws".
             lock (_reported)
             {
                 _reported.Remove(questionnaireId);
