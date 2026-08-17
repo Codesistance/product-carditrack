@@ -3,6 +3,7 @@ using CardiTrack.Application.DTOs.Requests;
 using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Mobile.Controls;
 using CardiTrack.Mobile.Core.Api;
+using CardiTrack.Mobile.Core.Questionnaires;
 using CardiTrack.Mobile.Services;
 
 namespace CardiTrack.Mobile;
@@ -33,6 +34,7 @@ public partial class QuestionnairesPage : ContentPage
 
     private readonly ICardiTrackApiClient _api;
     private readonly IPopupService _popups;
+    private readonly IQuestionValidityService _questionValidity;
     private readonly ObservableCollection<AnsweredQuestionnaireItem> _answeredItems = [];
 
     private Guid _memberId;
@@ -50,11 +52,13 @@ public partial class QuestionnairesPage : ContentPage
     /// refresh, or pending answer.</summary>
     private int _loadGeneration;
 
-    public QuestionnairesPage(ICardiTrackApiClient api, IPopupService popups)
+    public QuestionnairesPage(
+        ICardiTrackApiClient api, IPopupService popups, IQuestionValidityService questionValidity)
     {
         InitializeComponent();
         _api = api;
         _popups = popups;
+        _questionValidity = questionValidity;
 
         AnsweredList.ItemsSource = _answeredItems;
         PendingCard.AnswerSubmitted += OnPendingAnswered;
@@ -223,9 +227,12 @@ public partial class QuestionnairesPage : ContentPage
             $"Things we've asked about {name}, and what you told us. Your answers help us read "
             + "their readings properly.";
 
-        PendingCard.IsVisible = result.Pending is not null;
-        if (result.Pending is not null)
-            PendingCard.Apply(result.Pending, _memberName);
+        // Same check the member's page makes before drawing this card, and for the same reasons —
+        // see CardiMemberDetailPage.LoadQuestionnairesAsync.
+        var pending = _questionValidity.Verify(result.Pending);
+        PendingCard.IsVisible = pending is not null;
+        if (pending is not null)
+            PendingCard.Apply(pending, _memberName);
 
         // HasAny covers every status, including a pending-only or dismissed-only member with
         // nothing answered yet — visible once there's answered history to search, or while a
@@ -258,6 +265,19 @@ public partial class QuestionnairesPage : ContentPage
     {
         if (_isBusy || PendingCard.Questionnaire is not { } questionnaire)
             return;
+
+        // Same guard as the member's page: an answer about "today" filed after that day ended is
+        // filed against the wrong one.
+        if (_questionValidity.Verify(questionnaire) is null)
+        {
+            PendingCard.CloseEditor();
+            PendingCard.IsVisible = false;
+            await _popups.ShowWarningAsync(
+                "That one was about a day that's now over, so we've let it go. We'll ask again if "
+                + "it still matters.",
+                "This question has passed");
+            return;
+        }
 
         _isBusy = true;
         PendingCard.SetBusy(true);

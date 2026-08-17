@@ -99,9 +99,9 @@ public class MemberQuestionnaireRepositoryTests(TestDatabaseFixture fixture)
             Questionnaire(settled, DateTime.UtcNow, QuestionnaireStatus.Answered, answer: "Yes."),
             Questionnaire(settled, DateTime.UtcNow.AddDays(-9), QuestionnaireStatus.Dismissed));
 
-        Assert.True(await repo.HasPendingAsync(waiting));
-        Assert.False(await repo.HasPendingAsync(settled));
-        Assert.False(await repo.HasPendingAsync(Guid.NewGuid()));
+        Assert.True(await repo.HasPendingAsync(waiting, DateTime.UtcNow));
+        Assert.False(await repo.HasPendingAsync(settled, DateTime.UtcNow));
+        Assert.False(await repo.HasPendingAsync(Guid.NewGuid(), DateTime.UtcNow));
     }
 
     /// <summary>

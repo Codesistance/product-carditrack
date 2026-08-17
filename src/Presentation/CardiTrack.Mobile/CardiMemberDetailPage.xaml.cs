@@ -4,6 +4,7 @@ using CardiTrack.Domain.Extensions;
 using CardiTrack.Mobile.Controls;
 using CardiTrack.Mobile.Core.Alerts;
 using CardiTrack.Mobile.Core.Api;
+using CardiTrack.Mobile.Core.Questionnaires;
 using CardiTrack.Mobile.Services;
 
 namespace CardiTrack.Mobile;
@@ -31,6 +32,7 @@ public partial class CardiMemberDetailPage : ContentPage
 
     private readonly ICardiTrackApiClient _api;
     private readonly IPopupService _popups;
+    private readonly IQuestionValidityService _questionValidity;
 
     private readonly List<MetricTrend> _trends = [];
     private readonly List<BoxView> _trendIndicators = [];
@@ -77,11 +79,13 @@ public partial class CardiMemberDetailPage : ContentPage
     /// </summary>
     private bool _returningFromPopup;
 
-    public CardiMemberDetailPage(ICardiTrackApiClient api, IPopupService popups)
+    public CardiMemberDetailPage(
+        ICardiTrackApiClient api, IPopupService popups, IQuestionValidityService questionValidity)
     {
         InitializeComponent();
         _api = api;
         _popups = popups;
+        _questionValidity = questionValidity;
         BuildPauseDurations();
         PendingQuestionCard.AnswerSubmitted += OnQuestionAnswered;
         PendingQuestionCard.DismissRequested += OnQuestionDismissed;
@@ -491,7 +495,11 @@ public partial class CardiMemberDetailPage : ContentPage
 
             QuestionsRow.IsVisible = result.HasAny;
 
-            var pending = result.Pending;
+            // Checked before it is drawn, not trusted because the API sent it. A card held on
+            // screen across midnight, or a page served from the offline cache after a night with no
+            // signal, both hand us a "did they feel tired today?" about a day that has ended. The
+            // service also tells the server, so the row stops blocking the next question.
+            var pending = _questionValidity.Verify(result.Pending);
             if (pending is null)
             {
                 PendingQuestionCard.IsVisible = false;
@@ -521,6 +529,20 @@ public partial class CardiMemberDetailPage : ContentPage
     {
         if (PendingQuestionCard.Questionnaire is not { } questionnaire || _isBusy)
             return;
+
+        // The editor may have been open a while. An answer to "how was their day today?" filed
+        // after that day ended is filed against the wrong one, so the question goes rather than the
+        // answer landing somewhere it does not belong.
+        if (_questionValidity.Verify(questionnaire) is null)
+        {
+            PendingQuestionCard.CloseEditor();
+            PendingQuestionCard.IsVisible = false;
+            await _popups.ShowWarningAsync(
+                "That one was about a day that's now over, so we've let it go. We'll ask again if "
+                + "it still matters.",
+                "This question has passed");
+            return;
+        }
 
         _isBusy = true;
         PendingQuestionCard.SetBusy(true);

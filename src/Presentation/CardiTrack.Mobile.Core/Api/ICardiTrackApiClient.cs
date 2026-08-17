@@ -89,6 +89,16 @@ public interface ICardiTrackApiClient
     Task<QuestionnaireResponse> DismissQuestionnaireAsync(
         Guid questionnaireId, CancellationToken ct = default);
 
+    /// <summary>
+    /// Retires a question that has outlived the day it asked about, so it stops waiting on this
+    /// family and stops blocking the next one. Called by the app when
+    /// <see cref="Questionnaires.QuestionValidity"/> finds a card past its validity; the server
+    /// checks the same thing against its own clock before acting, so a question still inside its
+    /// window comes back unchanged rather than as an error.
+    /// </summary>
+    Task<QuestionnaireResponse> ExpireQuestionnaireAsync(
+        Guid questionnaireId, CancellationToken ct = default);
+
     /// <summary>Removes the question and its answer outright.</summary>
     Task DeleteQuestionnaireAsync(Guid questionnaireId, CancellationToken ct = default);
 

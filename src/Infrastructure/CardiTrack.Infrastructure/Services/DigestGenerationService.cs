@@ -553,7 +553,8 @@ public partial class DigestGenerationService : IDigestGenerationService
         // Strictly after the summary is stored, and only then: a question is a by-product of a
         // generation that was good enough to keep. Every discard path above has already returned,
         // so a member whose summary was rejected is never asked anything on the strength of it.
-        await StoreQuestionIfWorthAskingAsync(memberId, aiResponse, name, utcNow, describedDate, ct);
+        await StoreQuestionIfWorthAskingAsync(
+            memberId, aiResponse, name, utcNow, localNow, describedDate, ct);
 
         return true;
     }
@@ -644,7 +645,7 @@ public partial class DigestGenerationService : IDigestGenerationService
     /// </para>
     /// </remarks>
     private async Task StoreQuestionIfWorthAskingAsync(
-        Guid memberId, DigestAiResponse aiResponse, string? name, DateTime utcNow,
+        Guid memberId, DigestAiResponse aiResponse, string? name, DateTime utcNow, DateTime localNow,
         DateOnly describedDate, CancellationToken ct)
     {
         if (CleanQuestion(aiResponse.Question, memberId, describedDate) is not { } question)
@@ -656,7 +657,7 @@ public partial class DigestGenerationService : IDigestGenerationService
         if (resolved is null || NamePlaceholder.IsPresentIn(resolved))
             return;
 
-        if (await _unitOfWork.MemberQuestionnaires.HasPendingAsync(memberId, ct))
+        if (await _unitOfWork.MemberQuestionnaires.HasPendingAsync(memberId, utcNow, ct))
             return;
 
         var scope = ParseScope(aiResponse.QuestionScope);
@@ -696,6 +697,7 @@ public partial class DigestGenerationService : IDigestGenerationService
             GeneratedAtUtc = utcNow,
             Scope = scope,
             ExpiresAtUtc = scope == QuestionnaireScope.Permanent ? null : utcNow + TimeScopedAnswerLifetime,
+            AskableUntilUtc = AskableUntil(scope, utcNow, localNow),
         });
 
         // The base repository stages rather than executes, unlike the digest's own raw-SQL insert
@@ -706,6 +708,54 @@ public partial class DigestGenerationService : IDigestGenerationService
             "Asked the family a new question about CardiMember {CardiMemberId} (scope: {Scope}).",
             memberId, scope);
     }
+
+    /// <summary>
+    /// The last moment a question is still worth asking — see
+    /// <see cref="MemberQuestionnaire.AskableUntilUtc"/>. Null for a
+    /// <see cref="QuestionnaireScope.Permanent"/> question, which asks after a standing fact and is
+    /// as answerable next week as it is tonight.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A time-scoped question is about the day the generation described, so it lapses at the end of
+    /// that day in the member's own timezone — computed here, where the anchor zone is already
+    /// resolved, and stored as an instant so nothing downstream needs the zone again.
+    /// </para>
+    /// <para>
+    /// <see cref="AskGraceAfterMidnight"/> is added because midnight is a boundary in the data, not
+    /// in anybody's evening. A caregiver reading at 23:50 and choosing to answer in the morning
+    /// should find the question there; a caregiver opening the app after breakfast should not be
+    /// asked how the person's day went on a day that has ended. The grace covers the first and not
+    /// the second, which is the whole distinction the failing screenshot showed at 07:15.
+    /// </para>
+    /// <para>
+    /// The floor guards the degenerate case the arithmetic allows and the product should not: a
+    /// generation that lands at 23:58 would otherwise ask something that lapses two minutes later
+    /// plus the grace, which is a question nobody has a fair chance to see.
+    /// </para>
+    /// </remarks>
+    private static DateTime? AskableUntil(QuestionnaireScope scope, DateTime utcNow, DateTime localNow)
+    {
+        if (scope == QuestionnaireScope.Permanent)
+            return null;
+
+        var endOfLocalDay = localNow.Date.AddDays(1) + AskGraceAfterMidnight;
+        var untilUtc = utcNow + (endOfLocalDay - localNow);
+
+        return untilUtc < utcNow + MinimumAskWindow ? utcNow + MinimumAskWindow : untilUtc;
+    }
+
+    /// <summary>
+    /// How far past the member's local midnight a question about that day stays askable. See
+    /// <see cref="AskableUntil"/>.
+    /// </summary>
+    private static readonly TimeSpan AskGraceAfterMidnight = TimeSpan.FromHours(3);
+
+    /// <summary>
+    /// The shortest window a question is ever given, however late in the local day it was asked.
+    /// See <see cref="AskableUntil"/>.
+    /// </summary>
+    private static readonly TimeSpan MinimumAskWindow = TimeSpan.FromHours(6);
 
     /// <summary>
     /// The rationale the family sees under the question, or null when there is nothing worth

@@ -79,7 +79,8 @@ public class DigestGenerationServiceTests
         _realtimeAssessments.GetLatestAsync(_memberId, Arg.Any<CancellationToken>())
             .Returns((RealtimeAssessment?)null);
         _questionnaires.GetByCardiMemberAsync(_memberId, Arg.Any<CancellationToken>()).Returns([]);
-        _questionnaires.HasPendingAsync(_memberId, Arg.Any<CancellationToken>()).Returns(false);
+        _questionnaires.HasPendingAsync(_memberId, Arg.Any<DateTime>(), Arg.Any<CancellationToken>())
+            .Returns(false);
         _questionnaires.GetLatestGeneratedAtAsync(_memberId, Arg.Any<CancellationToken>())
             .Returns((DateTime?)null);
         _medicalAi.GenerateStructuredAsync<DigestGenerationService.DigestAiResponse>(
@@ -1414,7 +1415,8 @@ public class DigestGenerationServiceTests
     public async Task AsksNothing_WhileAQuestionIsAlreadyWaiting()
     {
         ReturnsQuestion("Has anything changed at home recently?");
-        _questionnaires.HasPendingAsync(_memberId, Arg.Any<CancellationToken>()).Returns(true);
+        _questionnaires.HasPendingAsync(_memberId, Arg.Any<DateTime>(), Arg.Any<CancellationToken>())
+            .Returns(true);
 
         await CreateSut().GenerateDueDigestsAsync(UtcNow);
 

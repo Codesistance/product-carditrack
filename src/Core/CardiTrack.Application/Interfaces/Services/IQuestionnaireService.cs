@@ -40,6 +40,20 @@ public interface IQuestionnaireService
         Guid requestingUserId, Guid questionnaireId, CancellationToken ct = default);
 
     /// <summary>
+    /// Retires a question that has outlived the moment it asked about, so it stops waiting on a
+    /// family and stops blocking the next one — see
+    /// <see cref="Domain.Entities.MemberQuestionnaire.AskableUntilUtc"/>.
+    /// </summary>
+    /// <remarks>
+    /// Idempotent, and judged against the server's clock rather than the caller's claim: an app that
+    /// asks to retire a question still inside its window is answered with the question unchanged.
+    /// Not the same act as <see cref="DismissAsync"/> — nobody decided anything here, and no promise
+    /// is made about never covering that ground again.
+    /// </remarks>
+    Task<QuestionnaireResponse> ExpireAsync(
+        Guid requestingUserId, Guid questionnaireId, CancellationToken ct = default);
+
+    /// <summary>
     /// Removes the question and its answer outright.
     /// </summary>
     /// <remarks>
