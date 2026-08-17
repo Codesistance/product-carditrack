@@ -47,6 +47,8 @@ public partial class DigestGenerationService : IDigestGenerationService
         """ + MedicalPromptBlocks.CaregiverRegister + """
         Do not quote a figure that is not in the readings or computed observations below.
         Where a usual pattern is given, read each reading against it, and read the vitals against the steps walked that day, before concluding.
+        Steps and active minutes accumulate as a day passes, so today's are a running total, not a day's worth: read them against how much of the waking day has gone, which today's label states, and never against a whole-day usual.
+        Never call today's movement low, down or short of anything unless a computed observation below says it is; early in their day a small total is the hour, not the person.
         when a reading is off the usual, say so plainly and let at least one suggestion respond to it.
         If a computed observation is present, lead with it; do not recap every listed figure. An ordinary day can be short.
         If "Recent monitoring context" shows an unresolved alert or an observation that is suspicious, say so plainly in your own words and let the suggestion answer it; when that section is absent, never mention monitoring, alerts or observations at all.
@@ -106,6 +108,9 @@ public partial class DigestGenerationService : IDigestGenerationService
         "caregiver-reported context",
         "read each reading against it",
         "read the vitals against the steps walked",
+        "steps and active minutes accumulate",
+        "against how much of the waking day has gone",
+        "a small total is the hour, not the person",
         "do not recap every listed figure",
         "never retell them",
         "recent monitoring context",
@@ -204,6 +209,30 @@ public partial class DigestGenerationService : IDigestGenerationService
     /// </para>
     /// </summary>
     private static readonly TimeSpan MinimumRegenerationInterval = TimeSpan.FromMinutes(20);
+
+    /// <summary>
+    /// The floor that replaces <see cref="MinimumRegenerationInterval"/> in the first
+    /// <see cref="DigestDayProgress.EarlyDayHours"/> after the member wakes, once they already have
+    /// a summary for the day in progress.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The ordinary floor assumes that data moving means the wording should move. Early in a
+    /// member's day that assumption inverts: the readings move because the day is filling up from
+    /// nothing, so every pass finds new data and buys a regeneration to say the same thing about
+    /// the same near-empty running total. Measured on one member's morning, the half-hourly digest
+    /// job and the assessor's immediate re-run between them produced a summary roughly every twenty
+    /// minutes from local midnight, each one re-deriving that a just-woken person had not walked
+    /// far — the failure this and <see cref="DigestDayProgress"/> were written for.
+    /// </para>
+    /// <para>
+    /// It is a floor, not a freeze, and the same waivers cut through it: an alert raised or
+    /// resolved, a Yellow+ window, a jump from yesterday, or readings that diverge from the
+    /// baseline all still regenerate immediately. A bad morning is still a morning a caregiver
+    /// hears about at once; an ordinary one stops costing a dozen inferences before breakfast.
+    /// </para>
+    /// </remarks>
+    private static readonly TimeSpan EarlyDayRegenerationInterval = TimeSpan.FromHours(2);
 
     /// <summary>
     /// How long a family is left alone between questions, measured from the last one <em>asked</em>
@@ -384,36 +413,52 @@ public partial class DigestGenerationService : IDigestGenerationService
         var today = logs.FirstOrDefault(l => l.Date == describedDate);
         var yesterday = logs.FirstOrDefault(l => l.Date == describedDate.AddDays(-1));
 
-        PatternBaseline? baseline = null;
         if (!forceRefresh && previous is not null)
         {
             // Every summary is written after the readings it describes, so data stamped later
             // than the last generation is data that generation did not see — and data that has
             // not moved is a member whose summary already says everything there is to say,
-            // unless forceRefresh already named a change the daily rows do not.
+            // unless forceRefresh already named a change the daily rows do not. The cheapest
+            // gate, and the one that keeps the baseline read below off the fleet's common path.
             var dataChangedAtUtc = logs.Max(l => l.UpdatedDate ?? l.CreatedDate);
             if (dataChangedAtUtc <= previous.GeneratedAtUtc)
                 return false;
-
-            if (utcNow - previous.GeneratedAtUtc < MinimumRegenerationInterval)
-            {
-                // The yardstick the readings are read against — fetched here only because the
-                // floor decision needs it. A member whose data has not moved never reaches this.
-                baseline = await _unitOfWork.PatternBaselines
-                    .GetLatestByCardiMemberAsync(memberId, periodDays: 30);
-                if (!DigestRefreshRules.ReadingsDivergeFromBaseline(baseline, today, yesterday)
-                    && !DigestRefreshRules.ReadingsJumpedFromPrevious(today, yesterday))
-                {
-                    return false;
-                }
-            }
         }
 
         // Same 30-day baseline the statistical alert engine judges by, so the summary and the
         // alerts cannot disagree about what "usual" means. Absent while the member is still
         // being learned, which leaves the prompt exactly as it was: raw readings with no
-        // normal to compare them to.
-        baseline ??= await _unitOfWork.PatternBaselines.GetLatestByCardiMemberAsync(memberId, periodDays: 30);
+        // normal to compare them to. Also carries the member's own waking hours, which is what
+        // turns their local clock into how much of a day the running totals can account for.
+        var baseline = await _unitOfWork.PatternBaselines
+            .GetLatestByCardiMemberAsync(memberId, periodDays: 30);
+        var progress = DigestDayProgress.For(localNow, baseline);
+
+        if (!forceRefresh && previous is not null)
+        {
+            // Nothing of today has happened yet, so there is no today to describe. The previous
+            // summary is about yesterday and reads correctly as such; replacing it at 03:00 with
+            // one written about a day holding a sleep session and nothing else buys a caregiver
+            // no information and the fleet an inference per member per pass all night.
+            if (progress.IsBeforeWake)
+                return false;
+
+            // The floor widens while the day is young. Once the day is under way the readings can
+            // genuinely move within twenty minutes; in the first hours after waking they mostly
+            // move because the day is filling up, and every one of those passes used to buy a
+            // regeneration that said the same thing about the same near-empty running total.
+            // Same-day only: the first summary of a new local day is new information by itself.
+            var floor = progress.IsEarlyInTheDay && previous.LocalDate == describedDate
+                ? EarlyDayRegenerationInterval
+                : MinimumRegenerationInterval;
+
+            if (utcNow - previous.GeneratedAtUtc < floor
+                && !DigestRefreshRules.ReadingsDivergeFromBaseline(baseline, today, yesterday)
+                && !DigestRefreshRules.ReadingsJumpedFromPrevious(today, yesterday))
+            {
+                return false;
+            }
+        }
 
         // Everything the model is told about the member, from every registered source — see
         // MemberContextComposer. What used to be a single hand-built "--- Member ---" block here is
@@ -431,7 +476,7 @@ public partial class DigestGenerationService : IDigestGenerationService
             {UsualPatternSection(baseline, logs, describedDate)}
             {DigestInterpretationSignals.Section(baseline, today, yesterday, localNow)}
             --- Recent activity (oldest first; the summary is about today) ---
-            {MedicalPromptBlocks.FamilyDigestDailyLines(logs, describedDate)}
+            {MedicalPromptBlocks.FamilyDigestDailyLines(logs, describedDate, progress)}
             """;
 
         var aiResponse = await _medicalAi.GenerateStructuredAsync<DigestAiResponse>(prompt, ct);
