@@ -109,6 +109,11 @@ enable_redis         = false
 redis_tier           = "STANDARD_HA"
 redis_memory_size_gb = 1
 
+# Dev test-push endpoint — never in prod. Stated rather than left to the default so the answer
+# is visible in the file people read to find out what prod runs; the root variable's validation
+# rejects `true` here regardless, and the app refuses to route the controller in prod anyway.
+enable_dev_push_token = false
+
 # Pub/Sub — enabled in prod for real-time messaging
 enable_pubsub = true
 

@@ -23,6 +23,12 @@ variable "deploy_service_account" {
   type        = string
 }
 
+variable "enable_dev_push_token" {
+  description = "Provision the dev test-push key. Guarded against prod by a validation on the root variable of the same name"
+  type        = bool
+  default     = false
+}
+
 # Locals
 locals {
   # Cloud Run connects via the Cloud SQL Auth Proxy Unix socket — no public IP needed.
@@ -287,6 +293,57 @@ resource "google_secret_manager_secret_version" "ack_token_key" {
 
 resource "google_secret_manager_secret_iam_member" "ack_token_key_accessor" {
   secret_id = google_secret_manager_secret.ack_token_key.id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${data.google_project.current.number}-compute@developer.gserviceaccount.com"
+}
+
+# ── Dev test-push key (Terraform-owned, non-prod only) ────────────────────────
+# Authorizes POST /api/v1/dev/push (notification_engine.md §13), which fires a
+# real Safety/Health push at a chosen user so a delivery problem can be
+# reproduced on a device instead of waiting for a real alert.
+#
+# Generated, not a placeholder, for the same reason as the ack token key: the
+# app rejects a REPLACE_ME value, so a placeholder would provision the endpoint
+# and leave it permanently unusable.
+#
+# count, not a prod-safe default: this key is the *only* thing standing in front
+# of an endpoint that sends push to any user with no authenticated caller. Not
+# creating the secret in prod means there is nothing to bind, nothing to leak,
+# and nothing an accidental env var could point at — the app's own
+# DeploymentInfo check is then a second, independent refusal rather than the
+# only one.
+#
+# No ignore_changes, unlike ack_token_key. Nothing durable is encrypted with it
+# and no in-flight delivery depends on it, so rotating is free — and a key that
+# rotates on apply is the safer default for a developer affordance.
+
+resource "random_bytes" "dev_push_token_key" {
+  count  = var.enable_dev_push_token ? 1 : 0
+  length = 32 # 256 bits
+}
+
+resource "google_secret_manager_secret" "dev_push_token_key" {
+  count     = var.enable_dev_push_token ? 1 : 0
+  secret_id = "${var.secret_id_prefix}-dev-push-token-key"
+  replication {
+    auto {}
+  }
+  labels     = var.secret_labels
+  depends_on = [google_project_service.secretmanager]
+}
+
+resource "google_secret_manager_secret_version" "dev_push_token_key" {
+  count       = var.enable_dev_push_token ? 1 : 0
+  secret      = google_secret_manager_secret.dev_push_token_key[0].id
+  secret_data = random_bytes.dev_push_token_key[0].base64
+}
+
+# API only. The Worker retries sends off the outbox but never accepts a dev push
+# request, so it has no use for this key — the same least-privilege split the
+# ack token key comment above argues for.
+resource "google_secret_manager_secret_iam_member" "dev_push_token_key_accessor" {
+  count     = var.enable_dev_push_token ? 1 : 0
+  secret_id = google_secret_manager_secret.dev_push_token_key[0].id
   role      = "roles/secretmanager.secretAccessor"
   member    = "serviceAccount:${data.google_project.current.number}-compute@developer.gserviceaccount.com"
 }

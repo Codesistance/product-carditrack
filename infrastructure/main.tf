@@ -181,6 +181,14 @@ module "deployments" {
     var.enable_redis ? {
       "ConnectionStrings__Redis" = "${var.project_name}-${local.environment}-redis-connection-string"
       "Redis__CaCertificate"     = "${var.project_name}-${local.environment}-redis-ca"
+    } : {},
+    # Binding this key is what makes POST /api/v1/dev/push exist — the API drops the
+    # controller from MVC discovery entirely when it is absent (notification_engine.md §13),
+    # so the endpoint's presence is decided here rather than by a runtime flag. Never set in
+    # prod: the root variable's validation refuses the combination, and the secret it names
+    # is not created there either.
+    var.enable_dev_push_token ? {
+      "Dev__PushTokenKey" = "${var.project_name}-${local.environment}-dev-push-token-key"
     } : {}
   )
 
@@ -326,6 +334,7 @@ module "deployments" {
   secret_labels          = local.common_labels
   deploy_service_account = "carditrack-deploy@${var.project_id}.iam.gserviceaccount.com"
   apm_mobile_engine      = var.apm_mobile_engine
+  enable_dev_push_token  = var.enable_dev_push_token
 
   # Memorystore for Redis (distributed cache — API only; the Worker has no IDistributedCache consumer)
   redis_instance_name  = local.redis_instance_name
