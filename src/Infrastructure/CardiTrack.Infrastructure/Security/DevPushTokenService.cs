@@ -64,6 +64,31 @@ public class DevPushTokenService : IDevPushTokenService
         _timeProvider = timeProvider ?? TimeProvider.System;
     }
 
+    /// <summary>
+    /// Builds the service if <paramref name="base64Key"/> is usable, returning false rather than
+    /// throwing if it is not.
+    /// </summary>
+    /// <remarks>
+    /// The gate needs to distinguish "no key, stay off" from "a key that cannot work" *before*
+    /// deciding whether to route the endpoint. Presence alone is not enough: a placeholder or a
+    /// mistyped key is non-empty, so a presence check would route the controller and then fail
+    /// only when someone called it. Disabling on an unusable key is the honest outcome — the
+    /// endpoint cannot authorize anything without a valid key, so it has nothing to offer.
+    /// </remarks>
+    public static bool TryCreate(string? base64Key, TimeProvider? timeProvider, out DevPushTokenService? service)
+    {
+        try
+        {
+            service = new DevPushTokenService(base64Key!, timeProvider);
+            return true;
+        }
+        catch (ArgumentException)
+        {
+            service = null;
+            return false;
+        }
+    }
+
     public string Issue(Guid userId, DeliveryCategory category, AlertSeverity? severity, DateTime expiresAt)
     {
         var expiresAtUnixSeconds = new DateTimeOffset(DateTime.SpecifyKind(expiresAt, DateTimeKind.Utc)).ToUnixTimeSeconds();

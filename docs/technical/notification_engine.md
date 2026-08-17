@@ -988,8 +988,10 @@ domain prefix. Target and payload shape are inside the MAC, so a token is good f
 category and cannot be re-pointed or escalated; expiry is capped at 10 minutes at both ends.
 
 **Two independent locks keep it off everywhere else**, and either alone is sufficient: `Dev:PushTokenKey`
-must be configured — it is in no `appsettings.json` and no Terraform secret map, so it exists only
-where a developer put it — and the environment must not be prod. `DevPushControllerProvider` evaluates
+must be configured *and usable* — it is in no `appsettings.json` and no Terraform secret map, so it
+exists only where a developer put it, and a present-but-invalid value (the `REPLACE_ME` placeholder,
+a mistyped key, the wrong length) disables the endpoint rather than routing it into a 500 on first
+call — and the environment must not be prod. `DevPushControllerProvider` evaluates
 both at startup and drops the controller from MVC's discovered set when either fails, so a disabled
 endpoint has no route rather than a filter that declines. The environment check reads
 `DeploymentInfo.EnvironmentName`, not `IHostEnvironment`: Terraform sets `ASPNETCORE_ENVIRONMENT` to

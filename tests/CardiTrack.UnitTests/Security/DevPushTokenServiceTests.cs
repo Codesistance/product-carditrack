@@ -52,6 +52,39 @@ public class DevPushTokenServiceTests
         Assert.Throws<ArgumentException>(() => new DevPushTokenService("not base64 at all!!"));
     }
 
+    // ── TryCreate: the gate's usable-key check ────────────────────────────────────
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    [InlineData("REPLACE_ME")]
+    [InlineData("not base64 at all!!")]
+    public void TryCreate_ReturnsFalseForAnUnusableKey(string? key)
+    {
+        // Each of these is non-empty enough to pass a presence check but cannot authorize
+        // anything — the gate has to treat them as "off", not as "on and broken".
+        Assert.False(DevPushTokenService.TryCreate(key, null, out var service));
+        Assert.Null(service);
+    }
+
+    [Fact]
+    public void TryCreate_ReturnsFalseForAWrongLengthKey()
+    {
+        Assert.False(DevPushTokenService.TryCreate(Convert.ToBase64String(new byte[16]), null, out var service));
+        Assert.Null(service);
+    }
+
+    [Fact]
+    public void TryCreate_ReturnsAWorkingServiceForAValidKey()
+    {
+        Assert.True(DevPushTokenService.TryCreate(GenerateKey(), _time, out var service));
+        Assert.NotNull(service);
+
+        var token = service.Issue(UserId, DeliveryCategory.Safety, null, ExpiresIn(TimeSpan.FromMinutes(2)));
+        Assert.True(service.Validate(token, UserId, DeliveryCategory.Safety, null));
+    }
+
     // ── Happy path ────────────────────────────────────────────────────────────────
 
     [Fact]
