@@ -281,7 +281,20 @@ public sealed class PushRegistrationCoordinator : IDisposable
     /// from Doze and play the bundled alert sound (Safety also vibrates). Nudges at DEFAULT
     /// play the shorter ding without vibration.
     /// </summary>
-    private static void RegisterAndroidChannels()
+    /// <remarks>
+    /// Called from <c>MainApplication.OnCreate</c> as well as this type's constructor, and safe
+    /// to run twice — re-creating an existing channel updates only its name and description.
+    /// <para>
+    /// The Application hook is the one that matters. This coordinator is a DI singleton,
+    /// constructed only when something resolves it, so a push delivered to a process the system
+    /// had killed reaches <c>FirebaseMessagingService</c> without this code ever running. The
+    /// sharpest case is the first delivery after an update that introduces a new channel id — as
+    /// Health's <c>v3 → v4</c> did — where the id the payload names exists nowhere yet. Because
+    /// Android freezes a channel's configuration at creation, "registered late" and "registered
+    /// wrong" are the same bug.
+    /// </para>
+    /// </remarks>
+    internal static void RegisterAndroidChannels()
     {
         // The API 26 guard that used to stand here is gone with the floor: notification channels
         // arrived in 26 and SupportedOSPlatformVersion is now 31, so there is no build this can
@@ -301,9 +314,13 @@ public sealed class PushRegistrationCoordinator : IDisposable
 
         var alertSound = RawSoundUri(context, NotificationChannels.AlertSound);
         var nudgeSound = RawSoundUri(context, NotificationChannels.NudgeSound);
+        // Null-conditional through the chain: every binding on the Java builder is
+        // nullable-returning, and a null slipping out the end used to be a warning nobody read.
+        // Null here is survivable — SetSound takes null attributes and the platform applies its
+        // own notification defaults — unlike a null sound, which is permanent silence.
         var audio = new global::Android.Media.AudioAttributes.Builder()
-            .SetUsage(global::Android.Media.AudioUsageKind.Notification)
-            .SetContentType(global::Android.Media.AudioContentType.Sonification)
+            .SetUsage(global::Android.Media.AudioUsageKind.Notification)?
+            .SetContentType(global::Android.Media.AudioContentType.Sonification)?
             .Build();
 
         var safety = new global::Android.App.NotificationChannel(
@@ -313,7 +330,7 @@ public sealed class PushRegistrationCoordinator : IDisposable
         };
         safety.EnableVibration(true);
         safety.SetVibrationPattern([0L, 500L, 200L, 500L]);
-        safety.SetSound(alertSound, audio);
+        SetChannelSound(safety, alertSound, audio);
         manager.CreateNotificationChannel(safety);
 
         // HIGH (not Default): red/orange health alerts must make sound. Default importance on
@@ -325,7 +342,7 @@ public sealed class PushRegistrationCoordinator : IDisposable
             Description = "A red or orange anomaly in a wearer's data."
         };
         health.EnableVibration(false);
-        health.SetSound(alertSound, audio);
+        SetChannelSound(health, alertSound, audio);
         manager.CreateNotificationChannel(health);
 
         var nudges = new global::Android.App.NotificationChannel(
@@ -334,7 +351,7 @@ public sealed class PushRegistrationCoordinator : IDisposable
             Description = "Data-completeness nudges."
         };
         nudges.EnableVibration(false);
-        nudges.SetSound(nudgeSound, audio);
+        SetChannelSound(nudges, nudgeSound, audio);
         manager.CreateNotificationChannel(nudges);
 
         // Plugin.Firebase renders a push that arrives in the foreground itself, and its default
@@ -386,7 +403,18 @@ public sealed class PushRegistrationCoordinator : IDisposable
         return builder;
     }
 
-    private static global::Android.Net.Uri RawSoundUri(
+    /// <summary>
+    /// The bundled sound's URI, the system notification sound if it will not resolve, or
+    /// <c>null</c> if neither is available.
+    /// </summary>
+    /// <remarks>
+    /// Nullable on purpose, and callers must respect it — see <see cref="SetChannelSound"/>. Both
+    /// fallbacks here can genuinely produce null (<c>Uri.Parse</c> and <c>GetDefaultUri</c> are
+    /// both nullable-returning), and this method previously declared a non-null return while
+    /// being able to hand one back. That is the CS8603 pair this file used to carry, and it was
+    /// not cosmetic: the null flowed into <c>SetSound</c> and made the channel permanently silent.
+    /// </remarks>
+    private static global::Android.Net.Uri? RawSoundUri(
         global::Android.Content.Context context, string resourceName)
     {
         var resId = context.Resources?.GetIdentifier(resourceName, "raw", context.PackageName) ?? 0;
@@ -398,6 +426,32 @@ public sealed class PushRegistrationCoordinator : IDisposable
         }
 
         return global::Android.Net.Uri.Parse($"android.resource://{context.PackageName}/{resId}");
+    }
+
+    /// <summary>
+    /// Sets a channel's sound, or leaves it alone when there is no usable URI.
+    /// </summary>
+    /// <remarks>
+    /// Never <c>SetSound(null, …)</c>. Android freezes a channel's sound at the moment of
+    /// creation and ignores every later change, so a null there does not mean "no preference" —
+    /// it means this install is silent for that category forever, and no app update can undo it.
+    /// Skipping the call instead leaves the channel on the platform default, which is a sound
+    /// nobody chose but is still a sound. The wrong chime beats a safety alert that never makes
+    /// one.
+    /// </remarks>
+    private static void SetChannelSound(
+        global::Android.App.NotificationChannel channel,
+        global::Android.Net.Uri? sound,
+        global::Android.Media.AudioAttributes? audio)
+    {
+        if (sound is null)
+        {
+            Log.Error("No usable sound URI for channel '{Channel}' — leaving the platform default rather than " +
+                      "creating a permanently silent channel.", channel.Id);
+            return;
+        }
+
+        channel.SetSound(sound, audio);
     }
 #endif
 

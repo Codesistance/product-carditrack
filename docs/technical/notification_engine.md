@@ -1022,9 +1022,27 @@ a 200 means nothing was sent, each of which is otherwise invisible in the data:
 | Nudge deliveries never push | `DeliveryPlanner` routes every `Nudge` row to in-app (§6.2). Only Safety, and Health at Red/Orange, produce a push at all — so `carditrack_nudge` is unreachable via push today |
 | Quiet hours deferred this | Orange Health waits for the window to close; Safety and Red Health override it |
 
-If it arrives but is silent, the payload is not the suspect — the Android channel's sound is frozen
-at first creation (§4), so a channel created on a build where the raw resource was missing keeps the
-fallback sound until the app is uninstalled or the channel id is bumped.
+If it arrives but is silent, the payload is not the suspect. An Android channel's sound is frozen at
+first creation (§4) and no later change or app update can alter it, so what matters is the state of
+the device at the moment the channel was first made. Two ways that goes wrong, both fixed but only
+for channels created after the fix:
+
+- **A channel created by a background delivery rather than by app start.** Registration runs in
+  `MainApplication.OnCreate` as well as `PushRegistrationCoordinator`'s constructor, so any process
+  start covers it. The constructor alone did not: that coordinator is a DI singleton, constructed
+  only when something resolves it, so a push arriving at a process the system had killed — or at a
+  process restarted after an update that introduced a *new* channel id, as Health's `v3 → v4` did —
+  reaches `FirebaseMessagingService` before any of these ids exist. (A never-opened install is not
+  the case: a stopped-state app receives no FCM at API 31+, and no token is registered before
+  sign-in anyway.)
+- **A channel created with no sound at all.** `RawSoundUri` can return null — the raw-resource
+  lookup and the `RingtoneManager` fallback are both nullable — and `SetSound(null, …)` does not
+  mean "no preference", it means silent forever. Registration now skips the call instead, leaving
+  the platform default: a sound nobody chose, but a sound.
+
+An install already in either state cannot be repaired by an update. Verify with
+`adb shell dumpsys notification | grep -A2 carditrack.safety` — `mSound=` names the resource if the
+channel is healthy — and recover by reinstalling, or ship a channel-id bump.
 
 **Anti-nag gate, quarterly:** any nudge rule with comply rate <15% or mute rate >30% over 500+
 impressions goes to **rework — copy, timing, or deep-link target — not automatic deletion.** The
