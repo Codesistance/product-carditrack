@@ -285,13 +285,13 @@ public sealed class PushRegistrationCoordinator : IDisposable
     /// Called from <c>MainApplication.OnCreate</c> as well as this type's constructor, and safe
     /// to run twice — re-creating an existing channel updates only its name and description.
     /// <para>
-    /// The Application hook is the one that matters. This coordinator is a DI singleton, so it is
-    /// constructed when something first resolves it; a push that arrives before then starts the
-    /// process without ever reaching this code, and the FCM SDK posts to a channel these ids do
-    /// not name. Because Android freezes a channel's configuration at creation, whatever exists
-    /// at that moment is what the install keeps — so "registered late" and "registered wrong"
-    /// are the same bug, and it lands hardest on a device that installs the app and receives a
-    /// Safety alert before the user first opens it.
+    /// The Application hook is the one that matters. This coordinator is a DI singleton,
+    /// constructed only when something resolves it, so a push delivered to a process the system
+    /// had killed reaches <c>FirebaseMessagingService</c> without this code ever running. The
+    /// sharpest case is the first delivery after an update that introduces a new channel id — as
+    /// Health's <c>v3 → v4</c> did — where the id the payload names exists nowhere yet. Because
+    /// Android freezes a channel's configuration at creation, "registered late" and "registered
+    /// wrong" are the same bug.
     /// </para>
     /// </remarks>
     internal static void RegisterAndroidChannels()

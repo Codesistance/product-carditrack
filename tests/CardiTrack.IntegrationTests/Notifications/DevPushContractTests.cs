@@ -1,6 +1,7 @@
 using System.Text.Json;
 using CardiTrack.API.Controllers.Dev;
 using CardiTrack.Domain.Enums;
+using Microsoft.AspNetCore.Mvc;
 
 namespace CardiTrack.IntegrationTests.Notifications;
 
@@ -13,7 +14,20 @@ namespace CardiTrack.IntegrationTests.Notifications;
 /// </summary>
 public class DevPushContractTests
 {
-    private static readonly JsonSerializerOptions Web = new(JsonSerializerDefaults.Web);
+    /// <summary>
+    /// MVC's own defaults, taken from <see cref="JsonOptions"/> rather than hand-rolled as
+    /// <c>new JsonSerializerOptions(JsonSerializerDefaults.Web)</c> — the bug under test was a
+    /// *model binding* failure, so a test that invents its own options is testing something the
+    /// endpoint does not use.
+    /// </summary>
+    /// <remarks>
+    /// This tracks the framework defaults, which is what the API currently runs on: it registers
+    /// no <c>AddJsonOptions</c> or <c>AddNewtonsoftJson</c> anywhere. It does not track a future
+    /// one — a custom formatter could still re-break the endpoint with these green. Closing that
+    /// last gap needs a request through the real pipeline, and booting this API in-process pulls
+    /// in Auth0, Redis and Cloud SQL configuration for a JSON-shape assertion.
+    /// </remarks>
+    private static readonly JsonSerializerOptions Web = new JsonOptions().JsonSerializerOptions;
 
     // ── Requests by name, as documented ───────────────────────────────────────────
 

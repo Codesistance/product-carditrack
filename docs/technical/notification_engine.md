@@ -1027,11 +1027,14 @@ first creation (§4) and no later change or app update can alter it, so what mat
 the device at the moment the channel was first made. Two ways that goes wrong, both fixed but only
 for channels created after the fix:
 
-- **A channel created before the app was first opened.** Channel registration runs in
-  `MainApplication.OnCreate` as well as `PushRegistrationCoordinator`'s constructor, precisely so a
-  push that starts the process on a background delivery cannot beat it. Before that, a device that
-  installed the app and received a Safety alert before its first launch could keep a channel these
-  ids never configured.
+- **A channel created by a background delivery rather than by app start.** Registration runs in
+  `MainApplication.OnCreate` as well as `PushRegistrationCoordinator`'s constructor, so any process
+  start covers it. The constructor alone did not: that coordinator is a DI singleton, constructed
+  only when something resolves it, so a push arriving at a process the system had killed — or at a
+  process restarted after an update that introduced a *new* channel id, as Health's `v3 → v4` did —
+  reaches `FirebaseMessagingService` before any of these ids exist. (A never-opened install is not
+  the case: a stopped-state app receives no FCM at API 31+, and no token is registered before
+  sign-in anyway.)
 - **A channel created with no sound at all.** `RawSoundUri` can return null — the raw-resource
   lookup and the `RingtoneManager` fallback are both nullable — and `SetSound(null, …)` does not
   mean "no preference", it means silent forever. Registration now skips the call instead, leaving
