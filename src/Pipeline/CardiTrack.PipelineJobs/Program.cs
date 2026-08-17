@@ -194,6 +194,6 @@ catch (Exception ex)
 }
 finally
 {
-    app.Services.ForceFlushTraces();
+    app.Services.ForceFlushTelemetry();
     await ApmExtensions.FlushLogsAsync();
 }
