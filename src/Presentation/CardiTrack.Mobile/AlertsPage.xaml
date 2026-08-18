@@ -24,9 +24,8 @@
         <controls:HeaderBand Grid.Row="0" ContentPadding="20,14,20,26">
             <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
 
-                <Border x:Name="HeaderIcon"
+                <controls:SquareBorder x:Name="HeaderIcon"
                         Grid.Column="0"
-                        WidthRequest="{Binding Height, Source={x:Reference HeaderIcon}}"
                         MinimumHeightRequest="40"
                         StrokeThickness="0"
                         BackgroundColor="{StaticResource HeaderButtonTint}"
@@ -35,14 +34,14 @@
                          the description's bottom and stays square at whatever that is, so every
                          header's icon matches its own text block exactly. The 40 floor keeps the
                          back button a real tap target; 99 clamps to a circle at any size. -->
-                    <Border.StrokeShape>
+                    <controls:SquareBorder.StrokeShape>
                         <RoundRectangle CornerRadius="99"/>
-                    </Border.StrokeShape>
-                    <Border.GestureRecognizers>
+                    </controls:SquareBorder.StrokeShape>
+                    <controls:SquareBorder.GestureRecognizers>
                         <TapGestureRecognizer Tapped="OnBackTapped"/>
-                    </Border.GestureRecognizers>
+                    </controls:SquareBorder.GestureRecognizers>
                     <Image Source="icon_back_white.svg" WidthRequest="20" HeightRequest="20"/>
-                </Border>
+                </controls:SquareBorder>
 
                 <!-- Title with what the page is tight beneath it — one stack, top-aligned
                      with the icon. The description is declared after the title, so screen
