@@ -9,14 +9,15 @@
          the same control; the chevron is the affordance, the way it is on Alert Rules. The body
          is animated open/closed by growing/shrinking a clipping Border's height (Border clips
          its content to its bounds; a plain layout wouldn't) rather than snapping IsVisible. -->
-    <!-- OutlinedCard rather than the dropdowns' ElevatedCard: this control sits inside the
-         member card, where the metric tiles already set outlined as the nested-card idiom, and
-         a shadow stacked on a shadow is chrome, not depth. The row inside is the dropdowns'
-         exactly — icon at 22, Body1SemiBoldDark, chevron at 20, 52 high, 14,4 padding. -->
-    <Border Style="{StaticResource OutlinedCard}" Padding="14,4">
+    <!-- Bare: no card, no tint, no border. This control sits inside the member card among
+         surfaces that already carry their own chrome, and every version that gave it some of its
+         own — elevated card, outlined card, tinted tile — read as another thing stacked on the
+         card rather than as the card's own last row. The icon, the label and the chevron are the
+         control; the height is the dropdowns' 52 less its card padding. -->
+    <Grid x:Name="HeaderShell" Padding="0">
         <VerticalStackLayout x:Name="RootLayout" Spacing="10">
 
-            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12" HeightRequest="52">
+            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12" HeightRequest="44">
                 <Grid.GestureRecognizers>
                     <TapGestureRecognizer Tapped="OnHeaderTapped"/>
                 </Grid.GestureRecognizers>
@@ -49,5 +50,5 @@
             </Border>
 
         </VerticalStackLayout>
-    </Border>
+    </Grid>
 </ContentView>
