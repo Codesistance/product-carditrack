@@ -201,7 +201,10 @@
                              actions and Key Metrics all in one card so a second/third CardiMember
                              can be another instance of the same card, stacked, once multi-member
                              support lands. -->
-                        <Border Style="{StaticResource ElevatedCard}" Padding="16,15">
+                        <!-- Bottom padding tighter than the top: the collapsed Key Metrics
+                             header is the card's last row, and symmetric padding under its
+                             one-line caption read as empty space. -->
+                        <Border Style="{StaticResource ElevatedCard}" Padding="16,15,16,6">
                             <VerticalStackLayout Spacing="16">
 
                                 <controls:StatusHeroCard x:Name="HeroCard"/>
@@ -299,17 +302,6 @@
                                         </Grid>
                                     </controls:AccordionSection.Body>
                                 </controls:AccordionSection>
-
-                                <!-- The member card's way into their finished days — the Daybook
-                                     tab, already filtered to this member. -->
-                                <Label Text="View Daybook"
-                                       Style="{StaticResource SectionLink}"
-                                       Margin="0,2,0,0"
-                                       SemanticProperties.Hint="Opens this CardiMember's daybook">
-                                    <Label.GestureRecognizers>
-                                        <TapGestureRecognizer Tapped="OnDaybookTapped"/>
-                                    </Label.GestureRecognizers>
-                                </Label>
 
                             </VerticalStackLayout>
                         </Border>

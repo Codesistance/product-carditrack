@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8" ?>
+﻿<?xml version="1.0" encoding="utf-8" ?>
 <ContentView xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              xmlns:controls="clr-namespace:CardiTrack.Mobile.Controls"
@@ -21,7 +21,7 @@
         </Grid.GestureRecognizers>
 
         <Grid Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="2"
-              ColumnDefinitions="*,Auto" ColumnSpacing="8">
+              ColumnDefinitions="*,Auto,Auto,Auto" ColumnSpacing="8">
             <Label x:Name="NameLabel"
                    Grid.Column="0"
                    Style="{StaticResource Heading2}"
@@ -44,6 +44,46 @@
                        Style="{StaticResource Body2Dark}"
                        VerticalOptions="Center"/>
             </HorizontalStackLayout>
+
+            <!-- The card's two ways onward, at its top right: this member's daybook and the
+                 alerts. Buttons here rather than links at the card's foot — the foot is where
+                 the card's own content ends, not where journeys start. Their taps must win over
+                 the card's own M1-13 tap, which they do the same way the weather chip's does. -->
+            <Border Grid.Column="2"
+                    WidthRequest="36" HeightRequest="36"
+                    StrokeThickness="0"
+                    BackgroundColor="{StaticResource SelectedOptionBackground}"
+                    VerticalOptions="Center"
+                    SemanticProperties.Description="Daybook"
+                    SemanticProperties.Hint="Opens this CardiMember's daybook">
+                <Border.StrokeShape>
+                    <RoundRectangle CornerRadius="18"/>
+                </Border.StrokeShape>
+                <Border.GestureRecognizers>
+                    <TapGestureRecognizer Tapped="OnDaybookTapped"/>
+                </Border.GestureRecognizers>
+                <Image Source="icon_tab_daybook.svg"
+                       WidthRequest="20" HeightRequest="20"
+                       HorizontalOptions="Center" VerticalOptions="Center"/>
+            </Border>
+
+            <Border Grid.Column="3"
+                    WidthRequest="36" HeightRequest="36"
+                    StrokeThickness="0"
+                    BackgroundColor="{StaticResource SelectedOptionBackground}"
+                    VerticalOptions="Center"
+                    SemanticProperties.Description="Alerts"
+                    SemanticProperties.Hint="Opens the alerts list">
+                <Border.StrokeShape>
+                    <RoundRectangle CornerRadius="18"/>
+                </Border.StrokeShape>
+                <Border.GestureRecognizers>
+                    <TapGestureRecognizer Tapped="OnAlertsTapped"/>
+                </Border.GestureRecognizers>
+                <Image Source="icon_tab_alerts.svg"
+                       WidthRequest="20" HeightRequest="20"
+                       HorizontalOptions="Center" VerticalOptions="Center"/>
+            </Border>
         </Grid>
 
         <!-- Member Detail's display image box, not one of this card's own: the same person must

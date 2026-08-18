@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 
 namespace CardiTrack.Mobile.Controls;
 
@@ -66,6 +66,28 @@ internal static class DaybookPresentation
                 TextColor = (Color)resources["White"],
             },
         };
+    }
+
+    /// <summary>
+    /// The list card's rail colour for an urgency, or null for none — the same left-edge
+    /// colouring the alert tiles wear, which says how soon the day asked for attention without
+    /// spending a pill on it. Same vocabulary as <see cref="UrgencyPill"/>, kept beside it so
+    /// the two cannot drift.
+    /// </summary>
+    internal static Color? UrgencyRailColor(string? urgency)
+    {
+        var key = urgency switch
+        {
+            "watch" => "StatusGreen",
+            "check-in" => "StatusYellow",
+            "concerning" => "StatusOrange",
+            "act-now" => "StatusRed",
+            _ => null,
+        };
+
+        return key is null
+            ? null
+            : (Color)Microsoft.Maui.Controls.Application.Current!.Resources[key];
     }
 
     /// <summary>

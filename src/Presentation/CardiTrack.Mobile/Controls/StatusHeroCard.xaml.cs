@@ -1,4 +1,4 @@
-using CardiTrack.Application.DTOs.Responses;
+﻿using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Mobile.Services;
 
 namespace CardiTrack.Mobile.Controls;
@@ -104,6 +104,18 @@ public partial class StatusHeroCard : ContentView
             ? $"{temperature:F0}°C"
             : string.Empty;
     }
+
+    /// <summary>Raised by the card's top-right Daybook button; the page decides the journey.</summary>
+    public event EventHandler? DaybookTapped;
+
+    /// <summary>Raised by the card's top-right Alerts button.</summary>
+    public event EventHandler? AlertsTapped;
+
+    private void OnDaybookTapped(object? sender, TappedEventArgs e) =>
+        DaybookTapped?.Invoke(this, EventArgs.Empty);
+
+    private void OnAlertsTapped(object? sender, TappedEventArgs e) =>
+        AlertsTapped?.Invoke(this, EventArgs.Empty);
 
     private void OnWeatherTapped(object? sender, TappedEventArgs e)
     {

@@ -1,4 +1,4 @@
-namespace CardiTrack.Mobile.Controls;
+﻿namespace CardiTrack.Mobile.Controls;
 
 /// <summary>
 /// M1-09 gradient header band (Figma 101:2872): greeting, presence line, refresh and the
@@ -6,7 +6,6 @@ namespace CardiTrack.Mobile.Controls;
 /// </summary>
 public partial class DashboardHeader : ContentView
 {
-    public event EventHandler? RefreshRequested;
     public event EventHandler? BellTapped;
 
     public DashboardHeader()
@@ -15,11 +14,6 @@ public partial class DashboardHeader : ContentView
     }
 
     /// <summary>Disabled while a sync is in flight so the tap can't be queued twice.</summary>
-    public bool IsRefreshEnabled
-    {
-        get => RefreshButton.IsEnabled;
-        set => RefreshButton.IsEnabled = value;
-    }
 
     /// <param name="name">The caregiver's first name, or a time-of-day greeting when it isn't known.</param>
     /// <param name="context">A short, quiet time-of-day line under the name — never blank in
@@ -51,9 +45,6 @@ public partial class DashboardHeader : ContentView
             _ => $"Alerts, {count} unread",
         });
     }
-
-    private void OnRefreshClicked(object? sender, EventArgs e) =>
-        RefreshRequested?.Invoke(this, EventArgs.Empty);
 
     private void OnBellClicked(object? sender, EventArgs e) =>
         BellTapped?.Invoke(this, EventArgs.Empty);

@@ -65,8 +65,9 @@ public partial class DashboardPage : ContentPage
         _popups = popups;
         _statusLines = statusLines;
         HeroCard.MemberTapped += (_, _) => OpenMemberDetails();
+        HeroCard.DaybookTapped += OnDaybookTapped;
+        HeroCard.AlertsTapped += OnHeroAlertsTapped;
         HeroCard.WeatherTapped += async (_, weather) => await _popups.ShowWeatherAsync(weather);
-        Header.RefreshRequested += OnRefreshClicked;
         Header.BellTapped += OnBellClicked;
 
         this.RefreshWhenAppResumes(RefreshUnattendedAsync);
@@ -256,7 +257,6 @@ public partial class DashboardPage : ContentPage
         if (_isSyncing)
             return;
         _isSyncing = true;
-        Header.IsRefreshEnabled = false;
         Refresher.IsRefreshing = true;
 
         string? syncError = null;
@@ -281,7 +281,6 @@ public partial class DashboardPage : ContentPage
         finally
         {
             Refresher.IsRefreshing = false;
-            Header.IsRefreshEnabled = true;
             _isSyncing = false;
         }
 
@@ -577,12 +576,17 @@ public partial class DashboardPage : ContentPage
     /// make the screen diverge from the design for a reason no caregiver can see, and the
     /// placeholder is the more honest signal that alerting is not finished.
     /// </summary>
+
+    /// <summary>The hero card's Alerts button — the same origin-remembering jump as View All.</summary>
+    private async void OnHeroAlertsTapped(object? sender, EventArgs e) =>
+        await Shell.Current.GoToTabAsync(AppShell.AlertsRoute);
+
     private async void OnViewAllAlertsTapped(object? sender, TappedEventArgs e) =>
         await Shell.Current.GoToTabAsync(AppShell.AlertsRoute);
 
     /// <summary>The member card's link to their finished days — the Daybook tab, filtered to
     /// them, arriving through the same origin-remembering jump every content affordance uses.</summary>
-    private async void OnDaybookTapped(object? sender, TappedEventArgs e)
+    private async void OnDaybookTapped(object? sender, EventArgs e)
     {
         if (_memberId == Guid.Empty)
             return;
