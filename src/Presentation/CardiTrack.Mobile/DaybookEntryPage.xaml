@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8" ?>
+﻿<?xml version="1.0" encoding="utf-8" ?>
 <ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              xmlns:controls="clr-namespace:CardiTrack.Mobile.Controls"
@@ -56,7 +56,7 @@
                     <VerticalStackLayout x:Name="ErrorPanel" IsVisible="False" Spacing="12">
                         <Border Style="{StaticResource ElevatedCard}">
                             <VerticalStackLayout Spacing="6">
-                                <Label Text="Couldn't load this review"
+                                <Label Text="Couldn't load this entry"
                                        Style="{StaticResource Body1SemiBoldDark}"/>
                                 <Label x:Name="ErrorDetailLabel"
                                        Style="{StaticResource Body2}"

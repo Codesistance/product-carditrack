@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Mobile.Controls;
 using CardiTrack.Mobile.Core.Api;
@@ -128,7 +128,7 @@ public partial class DaybookEntryPage : ContentPage
             if (!_hasLoadedOnce)
             {
                 ErrorDetailLabel.Text = ex.IsNotFound
-                    ? "No review was written for this day."
+                    ? "No daybook entry was written for this day."
                     : ex.Message;
                 SetState(error: true);
             }
@@ -148,7 +148,7 @@ public partial class DaybookEntryPage : ContentPage
     {
         DayLabel.Text = DaybookPresentation.DayLabel(review.LocalDate);
         HeadlineLabel.Text = string.IsNullOrWhiteSpace(review.Headline)
-            ? "A day in review"
+            ? "The day in full"
             : review.Headline;
         TextLabel.Text = review.Text;
 

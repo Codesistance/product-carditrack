@@ -1,4 +1,4 @@
-using CardiTrack.Application.DTOs.Responses;
+﻿using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Mobile.Controls;
 using CardiTrack.Mobile.Core.Api;
 using CardiTrack.Mobile.Core.Onboarding;
@@ -221,7 +221,7 @@ public partial class DaybookPage : ContentPage
             {
                 if (HasActiveFilter)
                 {
-                    EmptyTitleLabel.Text = "No reviews match";
+                    EmptyTitleLabel.Text = "No entries match";
                     EmptyDetailLabel.Text =
                         "Nothing in their history matches these filters — clear one and look again.";
                 }
@@ -232,7 +232,7 @@ public partial class DaybookPage : ContentPage
                         : $"{_memberFirstName}'s";
                     EmptyTitleLabel.Text = "No daybook entries yet";
                     EmptyDetailLabel.Text =
-                        $"The first review is written after {who} first full day of readings.";
+                        $"The first entry is written after {who} first full day of readings.";
                 }
                 SetState(empty: true);
                 return;
@@ -336,7 +336,7 @@ public partial class DaybookPage : ContentPage
             // The review's own headline names what that day was about. Falling back to a fixed
             // label rather than leaving the row empty: entries written before headlines existed
             // have none, and the apps have always titled themselves in that case.
-            Text = string.IsNullOrWhiteSpace(review.Headline) ? "A day in review" : review.Headline,
+            Text = string.IsNullOrWhiteSpace(review.Headline) ? "The day in full" : review.Headline,
             Style = Styled("Body2"),
             TextColor = Tinted("BodyText"),
         });
