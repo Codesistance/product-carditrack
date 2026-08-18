@@ -201,10 +201,7 @@
                              actions and Key Metrics all in one card so a second/third CardiMember
                              can be another instance of the same card, stacked, once multi-member
                              support lands. -->
-                        <!-- Bottom padding tighter than the top: the collapsed Key Metrics
-                             header is the card's last row, and symmetric padding under its
-                             one-line caption read as empty space. -->
-                        <Border Style="{StaticResource ElevatedCard}" Padding="16,15,16,6">
+                        <Border Style="{StaticResource ElevatedCard}" Padding="16,15,16,16">
                             <VerticalStackLayout Spacing="16">
 
                                 <controls:StatusHeroCard x:Name="HeroCard"/>
