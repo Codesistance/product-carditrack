@@ -63,6 +63,11 @@ public class CardiMemberConfiguration : IEntityTypeConfiguration<CardiMember>
             .HasSentinel(default(Domain.Enums.AlertSensitivity))
             .HasDefaultValue(Domain.Enums.AlertSensitivity.Medium);
 
+        // Object name in the member-photos bucket, never a URL. members/{guid}/{guid:N}.jpg is
+        // 82 chars today; 256 leaves room without inviting arbitrary paths into the column.
+        builder.Property(c => c.PhotoObjectName)
+            .HasMaxLength(256);
+
         builder.Property(c => c.IsActive)
             .IsRequired()
             .HasDefaultValue(true);
