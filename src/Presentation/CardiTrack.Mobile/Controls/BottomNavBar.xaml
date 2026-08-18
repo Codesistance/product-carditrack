@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8" ?>
+﻿<?xml version="1.0" encoding="utf-8" ?>
 <ContentView xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              x:Class="CardiTrack.Mobile.Controls.BottomNavBar">
@@ -57,19 +57,19 @@
                        Style="{StaticResource TabBarLabel}"/>
             </VerticalStackLayout>
 
-            <!-- Family and Settings render at 24: their glyphs fill their own 24-unit box,
+            <!-- Summaries and Settings render at 24: their glyphs fill their own 24-unit box,
                  where the Figma pair sits inset in a 28 one. Same optical size either way. -->
-            <VerticalStackLayout x:Name="FamilyTab" Grid.Column="2" Spacing="4">
+            <VerticalStackLayout x:Name="DaybookTab" Grid.Column="2" Spacing="4">
                 <VerticalStackLayout.GestureRecognizers>
-                    <TapGestureRecognizer Tapped="OnFamilyTapped"/>
+                    <TapGestureRecognizer Tapped="OnSummariesTapped"/>
                 </VerticalStackLayout.GestureRecognizers>
-                <Image x:Name="FamilyIcon"
-                       Source="icon_tab_family.svg"
+                <Image x:Name="DaybookIcon"
+                       Source="icon_tab_daybook.svg"
                        WidthRequest="24" HeightRequest="24"
                        Margin="0,2"
                        HorizontalOptions="Center"/>
-                <Label x:Name="FamilyLabel"
-                       Text="Family"
+                <Label x:Name="DaybookLabel"
+                       Text="Daybook"
                        Style="{StaticResource TabBarLabel}"/>
             </VerticalStackLayout>
 

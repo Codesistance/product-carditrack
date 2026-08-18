@@ -39,7 +39,7 @@ public static class AlertRuleCatalogue
             [
                 new(LateBedtime, "Late or missed bedtime", "Still active past their usual bedtime", IsImplemented: false),
                 new(FragmentedSleep, "Restless night", "More wake-ups or awake time than usual", IsImplemented: false),
-                new(IrregularSleep, "Unusual sleep length", "Last night was much shorter or longer than usual", IsImplemented: true),
+                new(IrregularSleep, "Unusual sleep length", "Last night was much shorter than usual, or well past the recommended hours", IsImplemented: true),
                 new(DaytimeInactivityBlock, "Long daytime rest", "An unusually long inactive stretch in waking hours", IsImplemented: false),
             ]),
             new(ClusterHeart, "Heart & overnight", "Resting heart rate and overnight vitals",

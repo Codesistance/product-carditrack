@@ -106,15 +106,18 @@ public static class StatisticalAlertRules
     /// judged (<see cref="StatisticalAlertCandidate.NightOf"/>) so one night alerts at most once
     /// however late its data arrived.
     /// <para>
-    /// The trigger is symmetric; the <b>severity is not</b>. A departure from the member's own
-    /// usual cannot say on its own whether the night was a problem, because the usual it is
+    /// The trigger is symmetric; <b>what it alerts on is not</b>. A departure from the member's
+    /// own usual cannot say on its own whether the night was a problem, because the usual it is
     /// measured against may itself be far short of what anyone should be getting: a member who
     /// normally manages 3.8 hours and slept 5.2 is 37% off their baseline and closer to the
-    /// published recommendation than they have been all fortnight. Grading that the same amber as
-    /// a night that collapsed to 2.4 asks a caregiver to worry about an improvement. So a longer
-    /// night is <see cref="AlertSeverity.Green"/> — informational, still on the list, but not
-    /// dressed as a warning — right up until it overshoots the recommended band, which is the one
-    /// direction in which more sleep is the reading worth flagging. A shorter night keeps its
+    /// published recommendation than they have been all fortnight. That is an improvement, and it
+    /// is <em>retrospective</em> — the night is over by the time anyone reads about it, and there
+    /// is nothing a caregiver can do in the morning about sleep that has already happened. So a
+    /// longer night that has not overshot the recommended band now raises <b>no alert at all</b>:
+    /// the fact belongs in the daybook entry, which describes the finished day, rather than on a
+    /// screen whose job is to say what needs attention now. It stays an alert in the one
+    /// direction where more sleep is worth flagging — past the recommended ceiling at their age.
+    /// A shorter night keeps its
     /// <see cref="AlertSeverity.Yellow"/> whatever the absolute figure, because a sudden loss of a
     /// third of someone's sleep is a pattern break in its own right.
     /// </para>
@@ -145,26 +148,25 @@ public static class StatisticalAlertRules
         var overshot = hours > recommended.High;
 
         // A longer night that has not overshot is the one departure this rule can positively
-        // establish was benign — every other shape it fires on stays a warning.
-        var benign = longer && !overshot;
+        // establish was benign — and a benign departure from a night that is already over is not
+        // an alert, it is a line in the daybook entry. Returning null here rather than grading it
+        // Green is what stops a caregiver being paged about an improvement they cannot act on.
+        if (longer && !overshot)
+            return null;
 
         // The clause that says where the night landed against the recommendation, which is the
-        // fact the deviation from their own usual leaves the caregiver to infer.
+        // fact the deviation from their own usual leaves the caregiver to infer. Past the guard
+        // above, a longer night is necessarily one that overshot the ceiling, so the two benign
+        // sub-cases this expression used to carry went with the alert they described.
         var tail = longer
-            ? hours < recommended.Low
-                ? $"still under the {recommended.Low:0.#} hours recommended, but a night in the "
-                  + "right direction."
-                : overshot
-                    ? $"and past the {recommended.High:0.#} hours recommended at their age. One "
-                      + "night is rarely a worry, but it may be worth mentioning."
-                    : $"a night inside the {recommended.Low:0.#}–{recommended.High:0.#} hours "
-                      + "recommended at their age."
+            ? $"and past the {recommended.High:0.#} hours recommended at their age. One night is "
+              + "rarely a worry, but it may be worth mentioning."
             : "one night is rarely a worry, but it may be worth mentioning.";
 
         return new StatisticalAlertCandidate(
             IrregularSleepRule, AlertType.Sleep,
-            benign ? AlertSeverity.Green : AlertSeverity.Yellow,
-            benign ? "A longer night than usual" : "Sleep was well off the usual",
+            AlertSeverity.Yellow,
+            "Sleep was well off the usual",
             $"Around {hours:0.#} hours of sleep, noticeably {(longer ? "more" : "less")} "
             + $"than the usual {usualHours:0.#} — {tail}",
             Serialize(new

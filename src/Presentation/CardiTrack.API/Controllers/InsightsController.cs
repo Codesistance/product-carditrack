@@ -1,7 +1,8 @@
-using CardiTrack.API.Infrastructure.Auditing;
+﻿using CardiTrack.API.Infrastructure.Auditing;
 using CardiTrack.API.Infrastructure.UserContext;
 using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Application.Interfaces.Services;
+using CardiTrack.Application.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -122,19 +123,27 @@ public class InsightsController : BaseApiController
     /// </summary>
     [HttpGet("members/{cardiMemberId:guid}/digest")]
     [ProducesResponseType(typeof(ApiResponse<DigestResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status403Forbidden)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
     public async Task<ActionResult<ApiResponse<DigestResponse>>> GetDigest(
-        Guid cardiMemberId, [FromQuery] DateOnly? date, CancellationToken ct)
+        Guid cardiMemberId,
+        [FromQuery] DateOnly? date,
+        [FromQuery] string? audience,
+        CancellationToken ct)
     {
         if (!UserContext.IsAuthenticated || UserContext.UserId == Guid.Empty)
         {
             return Error("We couldn't find your account — please sign in again.", StatusCodes.Status403Forbidden);
         }
 
+        if (DigestQueryService.ParseAudience(audience) is not { } parsedAudience)
+            return Error("That summary type isn't one we recognise — use family or daybook.");
+
         try
         {
-            var result = await _digests.GetDigestAsync(UserContext.UserId, cardiMemberId, date, ct);
+            var result = await _digests.GetDigestAsync(
+                UserContext.UserId, cardiMemberId, date, parsedAudience, ct);
             return result is null
                 ? Error("No summary has been generated for this member yet.", StatusCodes.Status404NotFound)
                 : Success(result);
@@ -157,18 +166,54 @@ public class InsightsController : BaseApiController
     /// required by the API explorer and by client generators reading it, which would misdescribe an
     /// endpoint that is perfectly happy without one.
     /// </param>
+    /// <param name="audience">
+    /// Which series to read: <c>family</c> (the default) for the running summary and its
+    /// recomputations, or <c>daybook</c> for one entry per finished day. Optional, and a value
+    /// outside those two is refused rather than ignored.
+    /// </param>
+    /// <param name="search">
+    /// Optional case-insensitive text filter over the summary, its headline and its suggestion.
+    /// Applied before <paramref name="limit"/>, so it searches the history rather than the page.
+    /// </param>
+    /// <param name="from">Optional earliest local day, inclusive.</param>
+    /// <param name="to">Optional latest local day, inclusive; must not precede <paramref name="from"/>.</param>
+    /// <param name="urgency">
+    /// Optional filter to one urgency tier — <c>watch</c>, <c>check-in</c>, <c>concerning</c> or
+    /// <c>act-now</c>. A value outside those is refused rather than ignored.
+    /// </param>
     /// <param name="ct">Cancels the read when the caller disconnects.</param>
     [HttpGet("members/{cardiMemberId:guid}/digests")]
     [ProducesResponseType(typeof(ApiResponse<IReadOnlyList<DigestResponse>>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status403Forbidden)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
     public async Task<ActionResult<ApiResponse<IReadOnlyList<DigestResponse>>>> GetDigestHistory(
-        Guid cardiMemberId, [FromQuery] int? limit, CancellationToken ct)
+        Guid cardiMemberId,
+        [FromQuery] int? limit,
+        [FromQuery] string? audience,
+        [FromQuery] string? search,
+        [FromQuery] DateOnly? from,
+        [FromQuery] DateOnly? to,
+        [FromQuery] string? urgency,
+        CancellationToken ct)
     {
         if (!UserContext.IsAuthenticated || UserContext.UserId == Guid.Empty)
         {
             return Error("We couldn't find your account — please sign in again.", StatusCodes.Status403Forbidden);
         }
+
+        // Refused rather than ignored, the same way the alert filters are: a typo'd audience that
+        // silently returned the family list would show a caregiver one kind of summary under the
+        // heading of another, which on this screen is worse than an error.
+        if (DigestQueryService.ParseAudience(audience) is not { } parsedAudience)
+            return Error("That summary type isn't one we recognise — use family or daybook.");
+
+        // Same stance for the urgency filter: a typo must not silently return the unfiltered list.
+        if (!DigestQueryService.TryParseUrgency(urgency, out var parsedUrgency))
+            return Error("That urgency isn't one we recognise — use watch, check-in, concerning or act-now.");
+
+        if (from is not null && to is not null && from > to)
+            return Error("The start date needs to come before the end date.");
 
         try
         {
@@ -176,7 +221,15 @@ public class InsightsController : BaseApiController
             // service clamps into range, so there is no value of `limit` that can ask for more
             // than a page.
             var result = await _digests.GetHistoryAsync(
-                UserContext.UserId, cardiMemberId, limit is > 0 ? limit.Value : DefaultHistoryLimit, ct);
+                UserContext.UserId,
+                cardiMemberId,
+                limit is > 0 ? limit.Value : DefaultHistoryLimit,
+                parsedAudience,
+                string.IsNullOrWhiteSpace(search) ? null : search,
+                from,
+                to,
+                parsedUrgency,
+                ct);
             return Success(result);
         }
         catch (KeyNotFoundException ex)

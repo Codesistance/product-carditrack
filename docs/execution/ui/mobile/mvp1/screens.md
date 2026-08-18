@@ -183,14 +183,14 @@ Push notification (any time) ─────────────────
 │                                    │
 │          Content Area              │
 │                                    │
-├──────────┬──────────┬─────┬────────┤
-│ Dashboard│  Alerts  │Family│Settings│
-└──────────┴──────────┴─────┴────────┘
+├──────────┬──────────┬────────┬────────┤
+│ Dashboard│  Alerts  │Daybook │Settings│
+└──────────┴──────────┴────────┴────────┘
 ```
 
 - Badge count on Alerts tab for unread alerts
-- Family tab shows placeholder / "Coming Soon" in MVP 1, or can be hidden
-- As built, the Shell defines a **TabBar only** (Dashboard / Alerts / Family / Settings, SVG icons). Alerts opens the real M1-10 list; the Family tab is still a stub; Settings is minimal (account card, "More settings (M2-01) coming soon", Sign out). Onboarding pages hide the tab bar via `Shell.TabBarIsVisible=False`.
+- **The third tab is Daybook, not Family.** The Family tab held a "coming soon" stub for invitations that are R3 work; `FamilyPage` is deleted and `DaybookPage` (daybook entries) took the slot. When family sharing lands it belongs under Settings or scoped to a member, not back in the bar
+- As built, the Shell defines a **TabBar only** (Dashboard / Alerts / Daybook / Settings, SVG icons). Alerts opens the real M1-10 list; Daybook lists the entries; Settings is minimal (account card, "More settings (M2-01) coming soon", Sign out). Onboarding pages hide the tab bar via `Shell.TabBarIsVisible=False`.
 
 ### Flyout Menu
 

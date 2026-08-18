@@ -1,0 +1,137 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:controls="clr-namespace:CardiTrack.Mobile.Controls"
+             x:Class="CardiTrack.Mobile.DaybookEntryPage"
+             Shell.NavBarIsVisible="False"
+             Shell.TabBarIsVisible="False"
+             BackgroundColor="{StaticResource PageGround}">
+
+    <!-- One day's review in full, pushed above the Daybook tab the way an alert's detail is
+         pushed above the Alerts list. A page rather than an in-card expansion because the account
+         runs to a dozen sentences and now carries the trend charts beneath it — content that
+         would make the list unscannable expanded in place.
+
+         No Figma frame, like DaybookPage — see the design-sync backlog. -->
+
+    <Grid RowDefinitions="Auto,*,Auto" SafeAreaEdges="None, Container, None, None">
+
+        <controls:HeaderBand Grid.Row="0" ContentPadding="20,14,20,26">
+            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
+
+                <Border Grid.Column="0"
+                        WidthRequest="40" HeightRequest="40"
+                        StrokeThickness="0"
+                        BackgroundColor="{StaticResource HeaderButtonTint}"
+                        VerticalOptions="Center">
+                    <Border.StrokeShape>
+                        <RoundRectangle CornerRadius="20"/>
+                    </Border.StrokeShape>
+                    <Border.GestureRecognizers>
+                        <TapGestureRecognizer Tapped="OnBackTapped"/>
+                    </Border.GestureRecognizers>
+                    <Image Source="icon_back_white.svg" WidthRequest="20" HeightRequest="20"/>
+                </Border>
+
+                <Label Grid.Column="1"
+                       Text="Daybook"
+                       Style="{StaticResource Heading3}"
+                       TextColor="{StaticResource White}"
+                       VerticalTextAlignment="Center"/>
+            </Grid>
+        </controls:HeaderBand>
+
+        <RefreshView x:Name="Refresher"
+                     Grid.Row="1"
+                     RefreshColor="{StaticResource Primary}"
+                     Refreshing="OnPullToRefresh">
+            <ScrollView>
+                <Grid Padding="20,20,20,24">
+
+                    <VerticalStackLayout x:Name="SkeletonPanel" Spacing="14" IsVisible="False">
+                        <Border Style="{StaticResource ElevatedCard}" HeightRequest="220"/>
+                        <Border Style="{StaticResource ElevatedCard}" HeightRequest="260"/>
+                    </VerticalStackLayout>
+
+                    <VerticalStackLayout x:Name="ErrorPanel" IsVisible="False" Spacing="12">
+                        <Border Style="{StaticResource ElevatedCard}">
+                            <VerticalStackLayout Spacing="6">
+                                <Label Text="Couldn't load this review"
+                                       Style="{StaticResource Body1SemiBoldDark}"/>
+                                <Label x:Name="ErrorDetailLabel"
+                                       Style="{StaticResource Body2}"
+                                       TextColor="{StaticResource BodyText}"/>
+                            </VerticalStackLayout>
+                        </Border>
+                        <Button Text="Try again"
+                                Style="{StaticResource SecondaryOutlineButton}"
+                                Clicked="OnRetryClicked"/>
+                    </VerticalStackLayout>
+
+                    <VerticalStackLayout x:Name="ContentPanel" Spacing="14" IsVisible="False">
+
+                        <!-- The review itself: when, what it was about, how soon it asks for
+                             attention, the account, and the suggestion beneath it. -->
+                        <Border Style="{StaticResource ElevatedCard}">
+                            <VerticalStackLayout Spacing="10">
+                                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
+                                    <VerticalStackLayout Spacing="2">
+                                        <Label x:Name="DayLabel"
+                                               Style="{StaticResource Heading2}"/>
+                                        <Label x:Name="HeadlineLabel"
+                                               Style="{StaticResource Body2}"
+                                               TextColor="{StaticResource BodyText}"/>
+                                    </VerticalStackLayout>
+                                    <VerticalStackLayout x:Name="PillHost"
+                                                         Grid.Column="1"
+                                                         VerticalOptions="Start"/>
+                                </Grid>
+
+                                <Label x:Name="TextLabel"
+                                       Style="{StaticResource Body2Dark}"
+                                       LineBreakMode="WordWrap"/>
+
+                                <BoxView x:Name="SuggestionDivider"
+                                         HeightRequest="1"
+                                         Color="{StaticResource Divider}"/>
+                                <Label Text="One thing you could do"
+                                       x:Name="SuggestionTitle"
+                                       Style="{StaticResource DashboardSectionTitle}"/>
+                                <Label x:Name="SuggestionLabel"
+                                       Style="{StaticResource Body2}"
+                                       TextColor="{StaticResource BodyText}"/>
+
+                                <Label x:Name="GeneratedLabel"
+                                       Style="{StaticResource MetricRowCaption}"
+                                       TextColor="{StaticResource MutedText}"/>
+                            </VerticalStackLayout>
+                        </Border>
+
+                        <!-- The trends the review can be read against. Deliberately the CURRENT
+                             fortnight, whatever day the review describes, and titled to say so:
+                             a chart quietly scoped to an old review's own window would draw data
+                             the series no longer carries, and the awareness lines below count the
+                             same days the chart draws. -->
+                        <Label Text="The last 14 days"
+                               Style="{StaticResource DashboardSectionTitle}"
+                               Margin="0,6,0,0"/>
+
+                        <VerticalStackLayout x:Name="TrendsHost" Spacing="14"/>
+
+                        <!-- The regulatory footing, on the screen rather than in a policy: these
+                             are counts a caregiver can check against the charts above, not a
+                             finding about the person. -->
+                        <Label x:Name="AwarenessFooter"
+                               Text="For awareness, not medical advice — CardiTrack never diagnoses. Talk to a clinician about anything that worries you."
+                               Style="{StaticResource MetricRowCaption}"
+                               TextColor="{StaticResource MutedText}"
+                               LineBreakMode="WordWrap"/>
+
+                    </VerticalStackLayout>
+                </Grid>
+            </ScrollView>
+        </RefreshView>
+
+        <controls:BottomNavBar Grid.Row="2" Tab="Daybook"/>
+    </Grid>
+</ContentPage>

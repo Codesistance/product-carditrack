@@ -1,10 +1,10 @@
-namespace CardiTrack.Mobile.Controls;
+﻿namespace CardiTrack.Mobile.Controls;
 
 public enum NavTab
 {
     Dashboard,
     Alerts,
-    Family,
+    Daybook,
     Settings,
 }
 
@@ -47,7 +47,7 @@ public partial class BottomNavBar : ContentView
 
         Style(DashboardIcon, DashboardLabel, "icon_tab_home", Tab == NavTab.Dashboard);
         Style(AlertsIcon, AlertsLabel, "icon_tab_alerts", Tab == NavTab.Alerts);
-        Style(FamilyIcon, FamilyLabel, "icon_tab_family", Tab == NavTab.Family);
+        Style(DaybookIcon, DaybookLabel, "icon_tab_daybook", Tab == NavTab.Daybook);
         Style(SettingsIcon, SettingsLabel, "icon_tab_settings", Tab == NavTab.Settings);
 
         void Style(Image icon, Label label, string iconStem, bool isSelected)
@@ -75,7 +75,7 @@ public partial class BottomNavBar : ContentView
 
     private void OnAlertsTapped(object? sender, TappedEventArgs e) => GoTo(NavTab.Alerts, AppShell.AlertsRoute);
 
-    private void OnFamilyTapped(object? sender, TappedEventArgs e) => GoTo(NavTab.Family, AppShell.FamilyRoute);
+    private void OnSummariesTapped(object? sender, TappedEventArgs e) => GoTo(NavTab.Daybook, AppShell.DaybookRoute);
 
     private void OnSettingsTapped(object? sender, TappedEventArgs e) => GoTo(NavTab.Settings, AppShell.SettingsRoute);
 

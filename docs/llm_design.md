@@ -466,6 +466,59 @@ Before a member has any `PatternBaseline` there is no normal to compare against,
 
 From about the first week, a **provisional** 7- or 14-day baseline exists before the 30-day one does. `CARDITRACK_PROVISIONAL_PROMPT` sits between the two framings: there is an early picture to compare against, so a comparison is an impression, not an established pattern, and a short window is not treated as settled. Sample hedges are not listed. The response carries `isProvisional`, again mirroring the dashboard. Provisional baselines colour dashboards and soften insight phrasing only — **they never feed alert thresholds** (see [alerts.md](./execution/backend/api/alerts.md)).
 
+### The Daybook (built today)
+
+`CARDITRACK_DAYBOOK_PROMPT` — the account of one **finished** day, written once and never
+recomputed. Everything else on this platform describes a day still in progress and is rewritten as
+it moves; the Daybook is the opposite, and the difference drives every design choice below. It is
+a **separate series** from the rolling family digest: the digest stays on member detail answering
+"how are they doing right now", the Daybook is the finished-day record the Daybook tab lists.
+
+- **Storage.** `DigestAudience.Daybook`, alongside `Family` in the same partitioned
+  `DigestEntries` table. The audience is part of the composite key and is persisted as its name,
+  so the value cost no migration; a **partial unique index** (`EnforceOneDaybookPerDay`) holds the
+  written-once contract against overlapping executions, with the insert absorbing the collision
+  via a bare `ON CONFLICT DO NOTHING`.
+- **Scheduling.** No job and no Cloud Scheduler entry of its own. `GenerateDueDaybooksAsync` runs
+  inside the existing half-hourly `--job digest` execution, which already resolves each member's
+  timezone: an entry is due when that member's local clock has passed **02:00** and none exists
+  for the day before. 02:00 rather than midnight because a watch syncs on its own schedule and the
+  last hours of a day routinely arrive after it — and what a Daybook misses it misses for good.
+- **Cost.** One MedGemma call per member per day, on an instance already warm from the digest
+  pass; the existence probe is one indexed read on the other 47 passes. The prompt is the largest
+  the platform sends (~4–8KB with a full day of rollups) — an accepted, explicit trade for
+  completeness on the one generation that is asked to be complete.
+
+**The whole day, assembled.** One pass gathers everything the platform holds about the reviewed
+day, every fetch bounded by that day's own UTC window:
+
+| Section | Source | Notes |
+|---|---|---|
+| The day in full | `ActivityLog` daily rollup vs the 30-day `PatternBaseline` and the published bands (NSF/AHA/WHO named) | absent readings say "not measured" |
+| Devices line | `DeviceActivityLog` per-device day rows | which watch the readings came from |
+| Hour by hour | `MetricRollupHourly` via the all-metrics range read | **quoted verbatim by explicit product decision** — the one exception to "code computes, model phrases"; the instructions bind the model to quote only figures that appear. Whole hours no metric covered are stated as gaps — computed deterministically, and only between hours that have data, so an unpopulated granular store is not mistaken for a day of silence |
+| The day's monitoring | `Alert` rows attributed to the day via `AlertDetailComposer.AboutDate` + the day's Yellow+ `RealtimeAssessment` verdicts via the new range read | replaces `MonitoringContextSource` for this purpose — that source answers "the last 24h from now", the wrong clock for yesterday. The injection guardrail names the day-scoped label |
+| Conditions during the day | `EnvironmentalReading` sessions overlapping the day, via the new overlap read | **consent-gated before the fetch** — withdrawing consent means the rows are not even read. Replaces `EnvironmentalContextSource` for this purpose |
+| Family answers, demographics | `MemberContextComposer` as before | unchanged |
+
+Every section degrades to absence rather than gating the entry, and the instructions turn absence
+into "never mention it" rather than an invitation to invent.
+
+**The register, and the line it turns on.** The Daybook is the one prompt allowed clinical
+vocabulary, and the allowance is bounded by a rule that is regulatory rather than stylistic: *a
+precise term may name a measurement; it may never name a condition.* A term must also **explain
+what it measures in plain words in the sentence that first uses it** — judged on first use only.
+Both halves are enforced in code as well as asked for (`DaybookPrompt.NamesACondition`,
+`.UnglossedTerm`; the sentence split ignores a full stop with a digit on both sides, so "95.4%"
+cannot strand a gloss); a reply that trips either is discarded whole — nothing rather than
+something wrong, and with more behind it here, since a discarded entry is not replaced half an
+hour later. The condition list logs the phrase that tripped it, and deliberately excludes
+**"consistent with"**: the prompt instructs the model to say where each reading sat against the
+member's own usual, and that is one of the natural ways to answer it.
+
+No question is asked off a Daybook. Questions exist to explain readings while they still matter,
+and the answer would arrive a day after the day it was about.
+
 ---
 
 ## Family Sharing: When and How to Push Data

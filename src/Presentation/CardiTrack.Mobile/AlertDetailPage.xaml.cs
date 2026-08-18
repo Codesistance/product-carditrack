@@ -132,10 +132,11 @@ public partial class AlertDetailPage : ContentPage
             "red" => ("CRITICAL", "StatusRed"),
             "orange" => ("URGENT", "StatusOrange"),
             "yellow" => ("NOTICE", "StatusYellow"),
-            // Green is a severity the rules now actually produce — the sleep rule grades a longer
-            // night that has not overshot the recommendation as informational — so it gets its own
-            // colour rather than the unknown-severity grey the fallback hands out. Same word and
-            // same ink as AlertListCard, so a card and the screen it opens agree.
+            // Green still reaches this screen two ways — the AI assessor grades its mildest
+            // findings green (AssessmentSeverityParser), and alerts raised before the sleep rule's
+            // benign branch was retired are still on file — so it keeps its own colour rather than
+            // the unknown-severity grey the fallback hands out. Same word and same ink as
+            // AlertListCard, so a card and the screen it opens agree.
             "green" => ("INFO", "StatusGreen"),
             _ => ("INFO", "StatusUnknown"),
         };
@@ -441,6 +442,63 @@ public partial class AlertDetailPage : ContentPage
             AcknowledgeButton.IsEnabled = true;
             UndoAcknowledgeButton.IsEnabled = true;
         }
+    }
+
+    /// <summary>
+    /// Removes the alert from the caregiver's lists — the same housekeeping the Alerts list offers
+    /// on a swipe, offered again here because the screen a caregiver opened to decide about an
+    /// alert is where they finish deciding.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Confirmed first: there is no undo, and unlike acknowledging — which this page lets them
+    /// take back on the row above — a removal cannot be walked back from the app at all.
+    /// </para>
+    /// <para>
+    /// On success it leaves for the Alerts list rather than staying: the page is a view of a thing
+    /// that no longer belongs on any list, and refreshing in place would either redraw an alert the
+    /// caregiver just removed or blank the screen under them. It names the list explicitly rather
+    /// than popping, for the reason <see cref="AppShell.AlertsRoute"/> gives — a pop lands wherever
+    /// they happened to arrive from, which is the Alerts list only by coincidence and is the
+    /// dashboard or a tapped notification often enough to matter.
+    /// </para>
+    /// <para>
+    /// A 404 is treated as success. It means the row is already gone — another caregiver removed
+    /// it, or an earlier attempt wrote before its response was lost — and the outcome they asked
+    /// for has happened either way. Every other failure keeps them on the page with the alert
+    /// intact, because a card that vanished on an error the caregiver never saw is the worse half
+    /// of the two.
+    /// </para>
+    /// </remarks>
+    private async void OnDeleteAlertTapped(object? sender, TappedEventArgs e)
+    {
+        if (_alert is not { } alert)
+            return;
+
+        var confirmed = await _popups.ConfirmWarningAsync(
+            "This removes the alert from your list — it can't be undone.",
+            "Remove this alert?", "Remove", "Cancel");
+        if (!confirmed)
+            return;
+
+        try
+        {
+            await _api.DeleteAlertAsync(alert.AlertId);
+        }
+        catch (ApiException ex) when (ex.IsNotFound)
+        {
+            // Already gone — that is the outcome they asked for.
+        }
+        catch (ApiException ex)
+        {
+            // The expired session included: the shared handler turns that into its own journey,
+            // and a warning first would put a popup in front of a sign-in screen.
+            if (!ex.IsSessionExpired)
+                await _popups.ShowWarningAsync(ex.Message, "Couldn't remove it");
+            return;
+        }
+
+        await this.GoBackAsync(AppShell.AlertsRoute);
     }
 
     private async void OnViewActivityDataTapped(object? sender, TappedEventArgs e)

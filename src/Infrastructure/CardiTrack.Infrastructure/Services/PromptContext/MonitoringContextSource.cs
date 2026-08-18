@@ -1,4 +1,4 @@
-using CardiTrack.Application.Interfaces.Repositories;
+﻿using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Domain.Entities;
 using CardiTrack.Domain.Enums;
 
@@ -57,6 +57,9 @@ internal sealed class MonitoringContextSource : IMemberContextSource
 
     public MonitoringContextSource(IUnitOfWork unitOfWork) => _unitOfWork = unitOfWork;
 
+    // Not the daybook: this source is anchored on "the last 24 hours from now", which is the
+    // wrong day for an account of yesterday — the daybook builds its own day-scoped monitoring
+    // section from the alerts and assessments of the reviewed day itself (DaybookPrompt).
     public PromptPurpose Purposes => PromptPurpose.Digest;
 
     public int Order => 20;

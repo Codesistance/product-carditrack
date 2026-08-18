@@ -1,4 +1,4 @@
-using CardiTrack.Application.Interfaces.Repositories;
+﻿using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Domain.Entities;
 using CardiTrack.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -69,5 +69,19 @@ public class EnvironmentalReadingRepository : IEnvironmentalReadingRepository
             .Where(r => r.CardiMemberId == cardiMemberId)
             .OrderByDescending(r => r.SessionStartUtc)
             .FirstOrDefaultAsync(ct);
+    }
+
+    public async Task<IReadOnlyList<EnvironmentalReading>> GetOverlappingAsync(
+        Guid cardiMemberId, DateTime fromUtc, DateTime toUtc, CancellationToken ct = default)
+    {
+        // Overlap, not containment: a session that started before local midnight and ended after
+        // it belongs to both days it touched.
+        return await _context.EnvironmentalReadings
+            .AsNoTracking()
+            .Where(r => r.CardiMemberId == cardiMemberId
+                        && r.SessionStartUtc < toUtc
+                        && r.SessionEndUtc >= fromUtc)
+            .OrderBy(r => r.SessionStartUtc)
+            .ToListAsync(ct);
     }
 }

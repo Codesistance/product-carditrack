@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 using System.Text.RegularExpressions;
 using CardiTrack.Application.Services;
 using CardiTrack.Domain.Entities;
@@ -128,6 +128,44 @@ internal static partial class MedicalPromptBlocks
         Write as a caregiver would. Everyday words for the readings are fine.
         A lay mention of what they can mean is fine — enough to be informed and react, not to treat or fix.
         Not clinic-speak.
+
+        """;
+
+    /// <summary>
+    /// The register the daybook entry writes in: the same family reader as
+    /// <see cref="CaregiverRegister"/>, but reading back a day that has finished and willing to
+    /// meet a precise word for a reading — provided the word explains itself.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The boundary is between <em>naming a measurement</em> and <em>naming a condition</em>, and
+    /// it is a regulatory line rather than a stylistic one: CardiTrack is not a medical device and
+    /// does not diagnose (docs/solution_manifest.md). A term for something the watch recorded
+    /// describes what was measured; a term for something the body is doing is an inference about
+    /// the person, and that is diagnosis whoever writes it. So the first is allowed and the second
+    /// is refused — in the prompt here, and again in code afterwards, because a prompt is a
+    /// request and not a guarantee (<c>DaybookPrompt.NamesACondition</c>).
+    /// </para>
+    /// <para>
+    /// The gloss rule is what keeps the allowance from quietly becoming clinic-speak. A precise
+    /// term is worth having because it is the word a GP would use, and it is worth explaining
+    /// because the reader is a family member at the end of a long day. Requiring the explanation
+    /// in the same sentence — rather than a glossary, or a first paragraph of definitions — is
+    /// what makes it survive being read once.
+    /// </para>
+    /// <para>
+    /// Rules only, no sample phrases, for the reason <see cref="CaregiverRegister"/> gives at
+    /// length: an illustration of a glossed term is exactly the kind of text this model returns
+    /// verbatim, and it would come back as the same sentence about the same measurement for every
+    /// member on every day.
+    /// </para>
+    /// </remarks>
+    internal const string DaybookRegister = """
+        Write as a caregiver would to another. Everyday words for the readings are fine.
+        A precise term for something that was measured is also fine, if you explain what it measures in plain words in the same sentence you first use it in.
+        Never name, suggest or guess at a medical condition, and never say a reading is a sign of one.
+        Never propose starting, stopping or changing any treatment or medication.
+        Say what was measured, what their own usual is, and where the reading sat against it.
 
         """;
 

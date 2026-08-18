@@ -1,4 +1,4 @@
-using CardiTrack.Domain.Entities;
+﻿using CardiTrack.Domain.Entities;
 
 namespace CardiTrack.Application.Interfaces.Repositories;
 
@@ -35,4 +35,12 @@ public interface IRealtimeAssessmentRepository
     /// </remarks>
     Task<IReadOnlyList<RealtimeAssessment>> GetSinceAsync(
         Guid cardiMemberId, DateTime sinceUtc, CancellationToken ct = default);
+
+    /// <summary>
+    /// The member's assessments whose window starts inside [<paramref name="fromUtc"/>,
+    /// <paramref name="toUtc"/>), oldest first — a finished day read in the order it happened,
+    /// where <see cref="GetSinceAsync"/> has no upper bound and answers "recently", not "that day".
+    /// </summary>
+    Task<IReadOnlyList<RealtimeAssessment>> GetBetweenAsync(
+        Guid cardiMemberId, DateTime fromUtc, DateTime toUtc, CancellationToken ct = default);
 }

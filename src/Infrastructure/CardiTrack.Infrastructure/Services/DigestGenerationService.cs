@@ -1,4 +1,4 @@
-using System.ComponentModel;
+﻿using System.ComponentModel;
 using System.Globalization;
 using System.Text.RegularExpressions;
 using CardiTrack.Application.Interfaces.Repositories;
@@ -7,6 +7,7 @@ using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Application.Services;
 using CardiTrack.Domain.Entities;
 using CardiTrack.Domain.Enums;
+using CardiTrack.Domain.Extensions;
 using CardiTrack.Infrastructure.Security;
 using CardiTrack.Infrastructure.Services.PromptContext;
 using Microsoft.Extensions.Logging;
@@ -382,6 +383,230 @@ public partial class DigestGenerationService : IDigestGenerationService
             "Summary generation complete. Candidates: {Candidates}, summaries written: {Generated}.",
             memberIds.Count, generated);
         return generated;
+    }
+
+    /// <summary>
+    /// The earliest local time a member's previous day is reviewed. Not midnight: a watch syncs on
+    /// its own schedule and the last hours of a day routinely arrive after it, so a review written
+    /// at 00:01 would describe a day whose evening had not landed yet — and unlike the live summary
+    /// it is written once and never revisited, so what it misses it misses for good.
+    /// </summary>
+    private static readonly TimeOnly DaybookEarliestLocalTime = new(2, 0);
+
+    public async Task<int> GenerateDueDaybooksAsync(DateTime utcNow, CancellationToken ct = default)
+    {
+        // The same candidate filter as the family summary. A member with nothing in two days has
+        // no yesterday worth reviewing, and the per-member check below declines them again on the
+        // stronger ground that the day itself holds no readings.
+        var windowStart = DateOnly.FromDateTime(utcNow).AddDays(-2);
+        var memberIds = (await _unitOfWork.CardiMembers.GetActiveIdsWithActivitySinceAsync(windowStart)).ToList();
+
+        var generated = 0;
+        foreach (var memberId in memberIds)
+        {
+            ct.ThrowIfCancellationRequested();
+            try
+            {
+                if (await GenerateDaybookForMemberAsync(memberId, utcNow, ct))
+                    generated++;
+            }
+            catch (Exception ex)
+            {
+                // Per member, like the summary pass: one bad timezone id or one model hiccup must
+                // not cost every other family their review of the day.
+                _logger.LogError(ex, "Day review generation failed for CardiMember {CardiMemberId}.", memberId);
+            }
+        }
+
+        if (generated > 0)
+        {
+            _logger.LogInformation(
+                "Day review generation complete. Candidates: {Candidates}, reviews written: {Generated}.",
+                memberIds.Count, generated);
+        }
+
+        return generated;
+    }
+
+    /// <summary>
+    /// One member's review of yesterday, or false when it is not due, not possible, or the reply
+    /// did not survive its guards.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Written once per day, never recomputed — the opposite of the family summary above, and for
+    /// the reason that separates them: that one describes a day still happening and is rewritten as
+    /// it does, this one describes a day that cannot change any more. So the existence of a review
+    /// for the date is the whole due-check, and it is what keeps a pass every half hour from
+    /// costing a member more than one inference a day.
+    /// </para>
+    /// <para>
+    /// A member whose monitoring is paused now gets no review of yesterday, even if yesterday was
+    /// monitored. That is the same stance the summary takes and the conservative one of the two:
+    /// pausing is the wearer withdrawing from being watched, and reaching back a day to write about
+    /// them anyway is the reading of that they would least expect.
+    /// </para>
+    /// </remarks>
+    private async Task<bool> GenerateDaybookForMemberAsync(
+        Guid memberId, DateTime utcNow, CancellationToken ct)
+    {
+        var member = await _unitOfWork.CardiMembers.GetByIdAsync(memberId);
+        if (member is null || !member.IsActive || member.IsMonitoringPaused(utcNow))
+            return false;
+
+        var timeZone = await MemberAnchorTimeZone.ResolveAsync(_unitOfWork, memberId);
+        var localNow = TimeZoneInfo.ConvertTimeFromUtc(utcNow, timeZone);
+        if (TimeOnly.FromDateTime(localNow) < DaybookEarliestLocalTime)
+            return false;
+
+        var reviewedDate = DateOnly.FromDateTime(localNow).AddDays(-1);
+
+        // The cheapest gate first, and the one that runs on nearly every pass: a member reviewed
+        // at 02:00 is asked about again 45 times before the day rolls over, and each of those has
+        // to cost one indexed read and nothing else. It is a fast path, not the contract — two
+        // overlapping executions can both pass this probe before either writes. The partial
+        // unique index (one daybook entry per member per day, EnforceOneDaybookPerDay) is what
+        // holds the written-once promise; the second writer's insert lands on ON CONFLICT DO
+        // NOTHING and the run moves on.
+        var existing = await _unitOfWork.Digests.GetLatestByDateAsync(
+            memberId, reviewedDate, DigestAudience.Daybook, ct);
+        if (existing is not null)
+            return false;
+
+        var log = (await _unitOfWork.ActivityLogs
+                .GetByCardiMemberAndDateRangeAsync(memberId, reviewedDate, reviewedDate))
+            .FirstOrDefault(l => l.Date == reviewedDate);
+
+        // A day with no row at all is not a quiet day, it is an unmeasured one, and there is
+        // nothing to review. The apps show their own "no review" copy, which says that honestly
+        // where a generated account of an empty day would have to invent the day.
+        if (log is null)
+            return false;
+
+        // Same 30-day baseline the alert engine and the summary judge by, so all three agree about
+        // what this member's usual is. Absent while they are still being learned, which renders the
+        // readings without their comparison clauses rather than against a made-up normal.
+        var baseline = await _unitOfWork.PatternBaselines
+            .GetLatestByCardiMemberAsync(memberId, periodDays: 30);
+
+        // The reviewed civil day as a UTC window, computed once for every fetch below.
+        // GetUtcOffset never throws on a DST-shifted local midnight, unlike ConvertTimeToUtc,
+        // and a boundary an hour adrift on two days a year costs one hour of rollups, not a run.
+        var dayStartLocal = reviewedDate.ToDateTime(TimeOnly.MinValue);
+        var dayEndLocal = reviewedDate.AddDays(1).ToDateTime(TimeOnly.MinValue);
+        var dayStartUtc = new DateTimeOffset(dayStartLocal, timeZone.GetUtcOffset(dayStartLocal)).UtcDateTime;
+        var dayEndUtc = new DateTimeOffset(dayEndLocal, timeZone.GetUtcOffset(dayEndLocal)).UtcDateTime;
+
+        // Everything the platform holds about the day. Each read degrades to an empty section
+        // rather than gating the entry: a member with no granular ingestion still gets their
+        // daybook from the daily rollup, and the prompt's conditionals turn an absent section
+        // into "never mention it" rather than into an invitation to invent.
+        var rollups = await _unitOfWork.GranularMetrics.GetRollupsAsync(
+            memberId, dayStartUtc, dayEndUtc, ct);
+        var assessments = await _unitOfWork.RealtimeAssessments.GetBetweenAsync(
+            memberId, dayStartUtc, dayEndUtc, ct);
+        var deviceLogs = await _unitOfWork.DeviceActivityLogs.GetByCardiMemberAndDateAsync(
+            memberId, reviewedDate);
+
+        // Alerts ABOUT the reviewed day, wherever their firing instant fell — a quieter-yesterday
+        // alert fires this afternoon and still belongs to yesterday's account. Same attribution
+        // the alerts list groups by (AlertDetailComposer.AboutDate).
+        var dayAlerts = (await _unitOfWork.Alerts.GetByCardiMemberAsync(memberId, activeOnly: false))
+            .Where(a => AlertDetailComposer.AboutDate(
+                AlertDetailComposer.ReadRule(a.MetricValues),
+                a.MetricValues,
+                DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(a.TriggeredDate, timeZone))) == reviewedDate)
+            .ToList();
+
+        // Consent-gated before the fetch, the same bar EnvironmentalContextSource applies —
+        // withdrawing consent must mean the readings are not even read, not merely not shown.
+        IReadOnlyList<EnvironmentalReading> conditions = member.EnvironmentalContextConsentGranted
+            ? await _unitOfWork.EnvironmentalReadings.GetOverlappingAsync(
+                memberId, dayStartUtc, dayEndUtc, ct)
+            : [];
+
+        var memberContext = await _memberContext.ComposeAsync(
+            new MemberContextRequest(member, memberId, reviewedDate, utcNow, PromptPurpose.Daybook), ct);
+
+        var prompt = $"""
+            {DaybookPrompt.Instructions}
+
+            {memberContext}
+            {DaybookPrompt.ReadingsSection(log, baseline, member.DateOfBirth.ToAgeInYears(reviewedDate))}
+            {DaybookPrompt.DevicesLine(deviceLogs)}
+            {DaybookPrompt.IntradaySection(rollups, dayStartUtc, dayEndUtc, timeZone)}
+            {DaybookPrompt.MonitoringSection(dayAlerts, assessments, timeZone)}
+            {DaybookPrompt.ConditionsSection(conditions, timeZone)}
+            """;
+
+        var aiResponse = await _medicalAi.GenerateStructuredAsync<DaybookAiResponse>(prompt, ct);
+        var text = aiResponse.Summary.Trim();
+
+        // Nothing is written rather than something wrong — the same stance as the family summary,
+        // and with more behind it here. A daybook entry is written once, so a bad one is not replaced
+        // half an hour later by a better one; it is what that day says until the member's data is
+        // regenerated by hand. Discarding costs the member that day's review and nothing else.
+        if (text.Length == 0 || DaybookPrompt.ReadsLikeTheInstructions(text))
+        {
+            _logger.LogWarning(
+                "Discarded the daybook entry for CardiMember {CardiMemberId} on {LocalDate}: the model "
+                + "returned empty text or restated its own instructions.",
+                memberId, reviewedDate);
+            return false;
+        }
+
+        // The regulatory guard, and the reason the register can allow precise words at all: naming
+        // what was measured is description, naming what the body is doing is diagnosis, and this
+        // product does not diagnose. Logged with the phrase that tripped it — the list is a line
+        // drawn by hand and can only be kept honest by what it actually catches.
+        if (DaybookPrompt.NamesACondition(text) is { } condition)
+        {
+            _logger.LogWarning(
+                "Discarded the daybook entry for CardiMember {CardiMemberId} on {LocalDate}: it names a "
+                + "condition or a treatment ({Marker}).",
+                memberId, reviewedDate, condition);
+            return false;
+        }
+
+        // The readability half of the same allowance. A precise term earns its place by explaining
+        // itself where it is first used; one that does not has quietly turned the review into the
+        // clinic-speak the register rules out.
+        if (DaybookPrompt.UnglossedTerm(text) is { } term)
+        {
+            _logger.LogWarning(
+                "Discarded the daybook entry for CardiMember {CardiMemberId} on {LocalDate}: it uses "
+                + "'{Term}' without explaining it where it is first used.",
+                memberId, reviewedDate, term);
+            return false;
+        }
+
+        var name = NamePlaceholder.FirstName(member.Name);
+        if (name is null && NamePlaceholder.IsPresentIn(text))
+        {
+            _logger.LogWarning(
+                "Discarded the daybook entry for CardiMember {CardiMemberId} on {LocalDate}: it names the "
+                + "member through the placeholder, but no name is on file to resolve it to.",
+                memberId, reviewedDate);
+            return false;
+        }
+
+        await _unitOfWork.Digests.AddAsync(new DigestEntry
+        {
+            CardiMemberId = memberId,
+            LocalDate = reviewedDate,
+            Audience = DigestAudience.Daybook,
+            Headline = NamePlaceholder.Resolve(CleanHeadline(aiResponse.Headline, memberId, reviewedDate), name),
+            Text = NamePlaceholder.Resolve(text, name)!,
+            Suggestion = NamePlaceholder.Resolve(
+                CleanSuggestion(aiResponse.Suggestion, memberId, reviewedDate), name),
+            Urgency = ParseUrgency(aiResponse.Urgency, memberId, reviewedDate),
+            GeneratedAtUtc = utcNow,
+        }, ct);
+
+        // No question is asked off a daybook entry. Questions exist to explain readings while they
+        // still matter, and the answer would arrive a day after the day it was about — the same
+        // reasoning that stops a time-scoped answer being carried forward.
+        return true;
     }
 
     private async Task<bool> GenerateForMemberAsync(Guid memberId, DateTime utcNow, CancellationToken ct)
@@ -1356,6 +1581,43 @@ public partial class DigestGenerationService : IDigestGenerationService
             + "about {{NAME}}; \"time-scoped\" if it only explains the present moment. Most "
             + "questions are time-scoped.")]
         public string? QuestionScope { get; init; }
+    }
+
+    /// <summary>
+    /// MedGemma's reply shape for the daybook entry. Four fields, where the family summary has seven:
+    /// a review asks no question, so it carries none of the question machinery.
+    /// </summary>
+    /// <remarks>
+    /// Declaration order is generation order — the schema is the model's grammar constraint — so
+    /// <see cref="Summary"/> comes first and <see cref="Headline"/> is required and second, for the
+    /// reason <see cref="DigestAiResponse.Headline"/> documents at length: a label asked for before
+    /// any prose exists is a label for something not yet written, and an optional one in that
+    /// position is simply declined.
+    /// </remarks>
+    internal sealed record DaybookAiResponse
+    {
+        [Description(
+            "6-12 sentences giving the family an account of {{NAME}}'s whole day, in the past "
+            + "tense, grouped as the readings are grouped. Says what was measured, what their "
+            + "usual is, and where each reading sat against it and against any published band. "
+            + "Not a restatement of the instructions.")]
+        public required string Summary { get; init; }
+
+        [Description(
+            "A three-to-six-word label for the day described above, in sentence case. No full "
+            + "stop, no quotation marks, no name and no {{NAME}}. A label, not a sentence.")]
+        public required string Headline { get; init; }
+
+        [Description(
+            "One specific, supportive, actionable suggestion in plain language, at most 25 words, "
+            + "answering something in the day's readings. Never a diagnosis, never a medical "
+            + "condition, never a change to any treatment.")]
+        public string? Suggestion { get; init; }
+
+        [Description(
+            "One of: watch, check-in, concerning, act-now — how soon the family should act on this "
+            + "day's readings, judged only from the readings given.")]
+        public string? Urgency { get; init; }
     }
 
 }

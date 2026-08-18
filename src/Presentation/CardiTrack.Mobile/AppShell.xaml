@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="UTF-8" ?>
+﻿<?xml version="1.0" encoding="UTF-8" ?>
 <Shell
     x:Class="CardiTrack.Mobile.AppShell"
     xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
@@ -21,9 +21,9 @@
             ContentTemplate="{DataTemplate local:AlertsPage}"
             Route="alerts" />
         <ShellContent
-            Title="Family"
-            ContentTemplate="{DataTemplate local:FamilyPage}"
-            Route="family" />
+            Title="Daybook"
+            ContentTemplate="{DataTemplate local:DaybookPage}"
+            Route="daybook" />
         <ShellContent
             Title="Settings"
             ContentTemplate="{DataTemplate local:SettingsPage}"

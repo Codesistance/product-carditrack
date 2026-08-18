@@ -1,4 +1,4 @@
-using CardiTrack.Application.Interfaces.Repositories;
+﻿using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Services;
 using CardiTrack.Domain.Entities;
 using CardiTrack.Domain.Enums;
@@ -189,7 +189,55 @@ public class DigestQueryServiceTests
         await CreateSut().GetHistoryAsync(_userId, _memberId, requested);
 
         await _digests.Received(1).GetHistoryAsync(
-            _memberId, DigestAudience.Family, expected, Arg.Any<CancellationToken>());
+            _memberId, DigestAudience.Family, expected,
+            null, null, null, null, Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// The filters reach the repository as given — they are the repository's to apply, since only
+    /// a filter that runs before the page cap searches the history rather than the page.
+    /// </summary>
+    [Fact]
+    public async Task GetHistory_PassesTheFiltersThrough()
+    {
+        var from = new DateOnly(2026, 8, 1);
+        var to = new DateOnly(2026, 8, 17);
+
+        await CreateSut().GetHistoryAsync(
+            _userId, _memberId, 10, DigestAudience.Daybook,
+            "oxygen", from, to, DigestUrgency.CheckIn);
+
+        await _digests.Received(1).GetHistoryAsync(
+            _memberId, DigestAudience.Daybook, 10,
+            "oxygen", from, to, DigestUrgency.CheckIn, Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>The wire vocabulary, exactly — the same words ToUrgencyWireValue writes out.</summary>
+    [Theory]
+    [InlineData("watch", DigestUrgency.Watch)]
+    [InlineData("check-in", DigestUrgency.CheckIn)]
+    [InlineData("concerning", DigestUrgency.Concerning)]
+    [InlineData("act-now", DigestUrgency.ActNow)]
+    [InlineData("  ACT-NOW  ", DigestUrgency.ActNow)]
+    public void TryParseUrgency_ReadsTheWireVocabulary(string value, DigestUrgency expected)
+    {
+        Assert.True(DigestQueryService.TryParseUrgency(value, out var urgency));
+        Assert.Equal(expected, urgency);
+    }
+
+    /// <summary>A blank filter is no filter; an unknown word is a refusal, never "no filter" —
+    /// a typo silently returning the unfiltered list is the failure the alert filters already
+    /// guard against.</summary>
+    [Theory]
+    [InlineData(null, true)]
+    [InlineData("", true)]
+    [InlineData("   ", true)]
+    [InlineData("checkin", false)]
+    [InlineData("urgent", false)]
+    public void TryParseUrgency_BlankMeansNoFilter_UnknownIsRefused(string? value, bool accepted)
+    {
+        Assert.Equal(accepted, DigestQueryService.TryParseUrgency(value, out var urgency));
+        Assert.Null(urgency);
     }
 
     [Fact]
@@ -199,6 +247,8 @@ public class DigestQueryServiceTests
             CreateSut().GetHistoryAsync(_outsiderId, _memberId, 10));
 
         await _digests.DidNotReceive().GetHistoryAsync(
-            Arg.Any<Guid>(), Arg.Any<DigestAudience>(), Arg.Any<int>(), Arg.Any<CancellationToken>());
+            Arg.Any<Guid>(), Arg.Any<DigestAudience>(), Arg.Any<int>(),
+            Arg.Any<string?>(), Arg.Any<DateOnly?>(), Arg.Any<DateOnly?>(),
+            Arg.Any<DigestUrgency?>(), Arg.Any<CancellationToken>());
     }
 }

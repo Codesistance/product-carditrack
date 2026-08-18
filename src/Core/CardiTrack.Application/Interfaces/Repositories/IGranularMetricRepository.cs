@@ -1,4 +1,4 @@
-using CardiTrack.Domain.Entities;
+﻿using CardiTrack.Domain.Entities;
 using CardiTrack.Domain.Enums;
 
 namespace CardiTrack.Application.Interfaces.Repositories;
@@ -36,4 +36,11 @@ public interface IGranularMetricRepository
     Task<IReadOnlyList<MetricRollupHourly>> GetRollupsAsync(
         Guid cardiMemberId, GranularMetric metric, DateTime fromUtc, DateTime toUtc,
         CancellationToken ct = default);
+
+    /// <summary>
+    /// Every metric's hourly rollups over [from, to), ordered by metric then hour — one read for
+    /// the daybook's whole day, where the per-metric overload above would cost four.
+    /// </summary>
+    Task<IReadOnlyList<MetricRollupHourly>> GetRollupsAsync(
+        Guid cardiMemberId, DateTime fromUtc, DateTime toUtc, CancellationToken ct = default);
 }

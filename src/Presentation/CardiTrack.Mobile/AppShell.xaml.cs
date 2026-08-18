@@ -1,4 +1,4 @@
-#if ANDROID || IOS
+﻿#if ANDROID || IOS
 using CardiTrack.Mobile.Core.Notifications;
 using CardiTrack.Mobile.Notifications;
 using CardiTrack.Mobile.Services;
@@ -20,7 +20,7 @@ public partial class AppShell : Shell
 
     public const string AlertsRoute = "//alerts";
 
-    public const string FamilyRoute = "//family";
+    public const string DaybookRoute = "//daybook";
 
     public const string SettingsRoute = "//settings";
 
@@ -38,6 +38,7 @@ public partial class AppShell : Shell
         Routing.RegisterRoute(MetricTrendPage.Route, typeof(MetricTrendPage));
         Routing.RegisterRoute(NotificationsPage.Route, typeof(NotificationsPage));
         Routing.RegisterRoute(AlertDetailPage.Route, typeof(AlertDetailPage));
+        Routing.RegisterRoute(DaybookEntryPage.Route, typeof(DaybookEntryPage));
 
 #if ANDROID || IOS
         WirePush();

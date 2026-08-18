@@ -1,4 +1,4 @@
-using CardiTrack.Domain.Entities;
+﻿using CardiTrack.Domain.Entities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
@@ -49,5 +49,16 @@ public class DigestEntryConfiguration : IEntityTypeConfiguration<DigestEntry>
 
         builder.Property(d => d.GeneratedAtUtc)
             .IsRequired();
+
+        // One daybook entry per member per day, enforced where it can actually be enforced. The
+        // service's "already reviewed?" probe is a fast path two overlapping executions can both
+        // pass before either writes; this index is the written-once contract itself. Partial, so
+        // the family series keeps its many-generations-per-day history; legal on this partitioned
+        // table because LocalDate is the partition key. The insert absorbs the violation with a
+        // bare ON CONFLICT DO NOTHING — see DigestRepository.AddAsync.
+        builder.HasIndex(d => new { d.CardiMemberId, d.LocalDate })
+            .IsUnique()
+            .HasFilter("\"Audience\" = 'Daybook'")
+            .HasDatabaseName("IX_DigestEntries_OneDaybookPerDay");
     }
 }

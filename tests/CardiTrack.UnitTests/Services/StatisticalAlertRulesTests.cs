@@ -1,4 +1,4 @@
-using CardiTrack.Application.Services;
+﻿using CardiTrack.Application.Services;
 using CardiTrack.Domain.Entities;
 using CardiTrack.Domain.Enums;
 
@@ -101,57 +101,54 @@ public class StatisticalAlertRulesTests
     }
 
     /// <summary>
-    /// The screenshot case: someone who normally manages 3.8 hours slept 5.2. That is 37% off
-    /// their own usual and fires, but it is movement toward the recommendation rather than away
-    /// from it, so it must not be graded as a warning — and the copy has to say where the night
-    /// actually landed, which the deviation from their usual cannot.
+    /// The screenshot case, and the reason the benign branch was retired: someone who normally
+    /// manages 3.8 hours slept 5.2. That is 37% off their own usual, but it is movement toward
+    /// the recommendation rather than away from it, and the night is over by the time anyone
+    /// reads about it. It raises nothing — the fact belongs in the daybook entry, which describes
+    /// the finished day, not on a screen whose job is to say what needs attention now.
     /// </summary>
     [Fact]
-    public void IrregularSleep_IsInformational_WhenALongerNightIsStillShortOfTheRecommendedFloor()
+    public void IrregularSleep_RaisesNothing_WhenALongerNightIsStillShortOfTheRecommendedFloor()
     {
         var candidate = StatisticalAlertRules.IrregularSleep(
             ShortSleeperBaseline(), Log(sleepMinutes: 312), AdultAge);
 
-        Assert.NotNull(candidate);
-        Assert.Equal(AlertSeverity.Green, candidate.Severity);
-        Assert.Contains("5.2 hours", candidate.Message);
-        Assert.Contains("still under the 7 hours recommended", candidate.Message);
+        Assert.Null(candidate);
     }
 
     /// <summary>A longer night that reaches the recommended band is the best reading this rule
-    /// can produce, and is graded accordingly whichever side of the age split the member is on —
-    /// only the ceiling moves, and this lands under both.</summary>
+    /// could produce, and so is not a reading worth paging anyone about — whichever side of the
+    /// age split the member is on. Only the ceiling moves, and this lands under both.</summary>
     [Theory]
     [InlineData(AdultAge)]
     [InlineData(OlderAdultAge)]
-    public void IrregularSleep_IsInformational_WhenALongerNightLandsInsideTheRecommendedBand(int age)
+    public void IrregularSleep_RaisesNothing_WhenALongerNightLandsInsideTheRecommendedBand(int age)
     {
         var candidate = StatisticalAlertRules.IrregularSleep(
             ShortSleeperBaseline(), Log(sleepMinutes: 450), age);
 
-        Assert.NotNull(candidate);
-        Assert.Equal(AlertSeverity.Green, candidate.Severity);
-        Assert.Contains("recommended at their age", candidate.Message);
+        Assert.Null(candidate);
     }
 
     /// <summary>
-    /// The one direction in which more sleep is the reading worth flagging — and the one place
-    /// the member's age changes the verdict rather than only the wording: 8.5 hours sits inside
-    /// the adult band and past the older-adult ceiling.
+    /// The one direction in which more sleep is still worth flagging — and the one place the
+    /// member's age changes the verdict rather than only the wording: 8.5 hours sits inside the
+    /// adult band, where it is now silent, and past the older-adult ceiling, where it warns.
+    /// The age split is therefore what decides whether anything is raised at all, which is why
+    /// <c>ageYears</c> has no default.
     /// </summary>
     [Theory]
-    [InlineData(AdultAge, AlertSeverity.Green)]
+    [InlineData(AdultAge, null)]
     [InlineData(OlderAdultAge, AlertSeverity.Yellow)]
     public void IrregularSleep_WarnsOnlyOnceALongerNightOvershootsTheBandForTheirAge(
-        int age, AlertSeverity expected)
+        int age, AlertSeverity? expected)
     {
         var baseline = Baseline();
         baseline.AvgSleepMinutes = 360;
 
         var candidate = StatisticalAlertRules.IrregularSleep(baseline, Log(sleepMinutes: 510), age);
 
-        Assert.NotNull(candidate);
-        Assert.Equal(expected, candidate.Severity);
+        Assert.Equal(expected, candidate?.Severity);
     }
 
     /// <summary>
@@ -184,7 +181,11 @@ public class StatisticalAlertRulesTests
         var baseline = Baseline();
         baseline.AvgSleepMinutes = 360;
 
-        var candidate = StatisticalAlertRules.IrregularSleep(baseline, Log(sleepMinutes: 510), AdultAge);
+        // Older adult: 8.5 hours is inside the adult band, where a longer night now raises
+        // nothing at all, and past the older-adult ceiling, where it still warns. The subject
+        // here is how the figures are spelled, so it has to be a night that still produces a
+        // message to spell them in.
+        var candidate = StatisticalAlertRules.IrregularSleep(baseline, Log(sleepMinutes: 510), OlderAdultAge);
 
         Assert.NotNull(candidate);
         Assert.Contains("the usual 6 ", candidate.Message);
@@ -193,22 +194,36 @@ public class StatisticalAlertRulesTests
     }
 
     /// <summary>
-    /// The band comparisons threshold on exact minutes, never on the rounded figure the message
-    /// prints — <c>MemberInsightsCalculator</c> documents the trap this avoids. 418 minutes is
-    /// 6.97 hours: it prints as "7" and is still under the 7-hour floor.
+    /// The band comparison thresholds on exact minutes, never on the rounded figure the message
+    /// prints — <c>MemberInsightsCalculator</c> documents the trap this avoids. Both nights here
+    /// print as "8" against an older adult's 8-hour ceiling; only one of them is actually past it.
+    /// 481 minutes is 8.02 hours and overshoots, 479 is 7.98 and does not, so a rule reading the
+    /// printed figure would grade the pair identically and be wrong about one of them.
     /// </summary>
-    [Fact]
-    public void IrregularSleep_ThresholdsOnExactMinutes_NotTheRoundedFigureItPrints()
+    /// <remarks>
+    /// The floor no longer appears here because nothing thresholds on it any more: a longer night
+    /// short of the recommendation was the benign shape, and retiring it took the only comparison
+    /// against <c>recommended.Low</c> with it. The ceiling is now the rule's one band boundary,
+    /// which makes it the one place this trap can still bite.
+    /// </remarks>
+    [Theory]
+    [InlineData(481, AlertSeverity.Yellow)]
+    [InlineData(479, null)]
+    public void IrregularSleep_ThresholdsOnExactMinutes_NotTheRoundedFigureItPrints(
+        int sleepMinutes, AlertSeverity? expected)
     {
         var baseline = Baseline();
         baseline.AvgSleepMinutes = 240;
 
-        var candidate = StatisticalAlertRules.IrregularSleep(baseline, Log(sleepMinutes: 418), AdultAge);
+        var candidate = StatisticalAlertRules.IrregularSleep(
+            baseline, Log(sleepMinutes: sleepMinutes), OlderAdultAge);
 
-        Assert.NotNull(candidate);
-        Assert.Equal(AlertSeverity.Green, candidate.Severity);
-        Assert.Contains("Around 7 hours", candidate.Message);
-        Assert.Contains("still under the 7 hours recommended", candidate.Message);
+        Assert.Equal(expected, candidate?.Severity);
+        if (candidate is not null)
+        {
+            Assert.Contains("Around 8 hours", candidate.Message);
+            Assert.Contains("past the 8 hours recommended", candidate.Message);
+        }
     }
 
     /// <summary>

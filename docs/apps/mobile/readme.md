@@ -2,7 +2,7 @@
 
 ## Overview
 
-The CardiTrack Mobile App is a cross-platform **.NET 10 MAUI** application for family members and caregivers. What exists today is **16 of 17 Figma M1 screens** plus several shipped surfaces that have no M1 frame: native Auth0 email/password and social login with a hard email-verification gate, the M1 onboarding wizard (account setup → add CardiMember → device selection → device connection (brand-agnostic) → baseline learning), Dashboard, Alerts list, **Alert detail** (`AlertDetailPage` covering M1-11/12/16), CardiMember detail/edit, device management, Questionnaires, Notifications, a weather popup, and a minimal Settings page. Only Family remains a stub. **Push notifications are wired up** — see [Push notifications](#push-notifications). HealthKit/Health Connect and offline storage are **planned** — see [Planned](#planned).
+The CardiTrack Mobile App is a cross-platform **.NET 10 MAUI** application for family members and caregivers. What exists today is **16 of 17 Figma M1 screens** plus several shipped surfaces that have no M1 frame: native Auth0 email/password and social login with a hard email-verification gate, the M1 onboarding wizard (account setup → add CardiMember → device selection → device connection (brand-agnostic) → baseline learning), Dashboard, Alerts list, **Alert detail** (`AlertDetailPage` covering M1-11/12/16), CardiMember detail/edit, device management, Questionnaires, Notifications, a weather popup, and a minimal Settings page. **Summaries** (daybook entries) replaced the Family stub; no tab is a stub any more. **Push notifications are wired up** — see [Push notifications](#push-notifications). HealthKit/Health Connect and offline storage are **planned** — see [Planned](#planned).
 
 The app is built **code-behind first (XAML + `.xaml.cs`) — there is no MVVM layer**, no ViewModels folder, and no data-binding framework. Platform-independent logic (API client, Auth0 client, token handling, localization) lives in the separate plain-`net10.0` library **`CardiTrack.Mobile.Core`**, which is what the unit tests target.
 
@@ -48,7 +48,7 @@ src/Presentation/CardiTrack.Mobile/
 ├── ForgotPasswordPage / VerifyEmailPage      # Reset flow; hard email-verification gate
 ├── DashboardPage                             # Main tab — hero, quick actions, key metrics, nudges
 ├── AlertsPage                                # Real M1-10 alerts list (API-backed)
-├── FamilyPage                                # Tab stub (family sharing is MVP 2)
+├── DaybookPage                             # Tab — daybook entries, newest first, expand in place
 ├── SettingsPage                              # Minimal (account card, silenced reminders, sign-out)
 ├── CardiMemberDetailPage                     # M1-13 (routed page)
 ├── EditCardiMemberPage                       # M1-14 (routed page)
@@ -117,11 +117,13 @@ src/Presentation/CardiTrack.Mobile.Core/
 
 ### Shell
 
-`AppShell.xaml` is a **TabBar-only Shell** — four tabs (Dashboard, Alerts, Family, Settings); there is no flyout. Tab pages resolve through DI (`AddTransient` in `MauiProgram`).
+`AppShell.xaml` is a **TabBar-only Shell** — four tabs (Dashboard, Alerts, Summaries, Settings); there is no flyout. Tab pages resolve through DI (`AddTransient` in `MauiProgram`).
 
 The **platform tab bar is hidden** (`Shell.TabBarIsVisible="False"` on each tab page) and `Controls/BottomNavBar` draws the Figma bar (node `101:2949`) instead — the native bar cannot swap an icon on selection or carry the design's upward shadow. Shell still owns routing: each item navigates `GoToAsync("//route")`, and a tap on the tab you are already on is swallowed so it can't pop a page pushed above it. Each host page sets `Tab="…"`, which picks the gradient `_active` glyph and the `PrimaryDark` label.
 
-> Figma's bar reads Home / Health / Alerts / Profile, but the M1 file has no Health or Profile screen, so the tab set is unchanged. Dashboard and Alerts use the exported Figma glyphs; Family and Settings keep their hand-authored ones, with `_active` variants that apply the tab-bar gradient to the existing stroke rather than inventing a filled glyph.
+> Figma's bar reads Home / Health / Alerts / Profile, but the M1 file has no Health or Profile screen, so the tab set does not follow it. Dashboard and Alerts use the exported Figma glyphs; Summaries and Settings keep hand-authored ones, with `_active` variants that apply the tab-bar gradient to the existing stroke rather than inventing a filled glyph.
+>
+> **Summaries replaced Family.** The Family tab was a stub for family invitations, which are R3 work — a permanent quarter of the bar spent on a "coming soon" card, while the daybook entries had no surface. `FamilyPage` is deleted; when family sharing lands it belongs under Settings or scoped to a member, not back in the bar. `DaybookPage` has **no Figma frame** and therefore no M1 ID — a design-sync gap, not a built frame.
 
 Android back at a **tab root** finishes the activity, except on the dashboard: the first swipe shows "Go back again to leave CardiTrack" and a second swipe within two seconds is what actually leaves (`TabNavigation.TryHoldDashboardExit`, armed in `MainActivity`'s back callback alongside the origin return). Other tabs keep the one-press exit. iOS has no system-back-to-exit, so this is Android-only.
 

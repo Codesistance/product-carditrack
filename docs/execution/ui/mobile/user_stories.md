@@ -507,6 +507,65 @@ Based on the solution manifest, market analysis, and README, here are comprehens
 
 ---
 
+## 📖 Daybook entries & Alert Housekeeping
+
+**Story 12.1: Read back the whole of yesterday** _(P1 — Should Have)_
+- **As a** caregiver who was busy all day
+- **I want to** read one full account of how yesterday actually went
+- **So that** I can catch what a glance at the dashboard missed, and take something concrete to their next appointment
+- **Acceptance Criteria:**
+  - Given the member's local day has ended and they have readings for it, when I open the **Daybook** tab, then I see one card for that day, newest first
+  - Each card shows the day ("Yesterday", then the weekday, then the date), the review's own headline, an urgency pill, and the first three lines; tapping expands it in place to the full account and the suggestion
+  - The account covers sleep, heart, oxygen and breathing, and movement — each against what is usual **for them** and against the published band where one exists, with the publisher named
+  - A precise clinical term may be used **only if the same sentence explains what it measures**; a review that names a condition, calls a reading a sign of one, or proposes a treatment is never shown at all
+  - **Edge — no reviews yet:** a member in their first days sees "No daybook entries yet" and a line saying the first review is written after their first full day, not a bare empty state
+  - **Edge — a reading was not measured:** the review says so plainly. Silence must never read as "healthy"
+  - **Edge — refresh fails with a list already on screen:** the list stays and the failure is shown over it; finished days do not go stale, so they are still worth reading
+  - **Screens:** DaybookPage, DaybookEntryPage (no Figma M1 frames — need design sync)
+
+**Story 12.4: Find the day I half-remember** _(P1 — Should Have)_
+- **As a** caregiver who remembers "there was a day his oxygen dipped"
+- **I want to** search the reviews by words, narrow by urgency, and bound by date
+- **So that** I can find that day without re-reading a month of cards
+- **Acceptance Criteria:**
+  - Given reviews exist, when I type in the search box, then after a pause the list shows only reviews whose text, headline or suggestion contains my words — searched over the whole history, not just the loaded page
+  - The urgency chip narrows to one tier; the window chip narrows to the last 7/30/90 days; the filters combine
+  - **Edge — nothing matches:** the empty state says "No reviews match … clear one and look again", and the filter controls stay on screen so I can
+  - **Edge — I type a % or _:** it is searched as the character I typed, not as a wildcard
+
+**Story 12.5: See the trend behind the words** _(P1 — Should Have)_
+- **As a** caregiver reading a review that says "fewer steps than usual"
+- **I want to** see the last fortnight charted, with what "usual" and "recommended" mean marked and sourced
+- **So that** I have awareness of the direction — without anyone scoring or diagnosing
+- **Acceptance Criteria:**
+  - Given I open a review, when it loads, then Sleep, Resting heart rate and Steps are charted for the last 14 days, with the member's own usual dashed and any published band shaded
+  - Every chart's key names its source ("recommended 7–8 (NSF)"); a chart with no published band shows none rather than an unattributed one
+  - Under each chart a counted line — "Under their usual on 10 of the last 14 nights" — counting only finished, measured days; no line at all without a baseline or under 7 measured days
+  - The screen states plainly: for awareness, not medical advice; CardiTrack never diagnoses
+  - **Edge — the charts fetch fails:** the review still shows; the trends section hides rather than costing the caregiver the account they came to read
+
+**Story 12.2: Stop being paged about a night that was already better** _(P0 — Must Have)_
+- **As a** caregiver
+- **I want to** not be alerted when my relative simply slept *longer* than usual
+- **So that** the alerts I do get keep meaning something
+- **Acceptance Criteria:**
+  - Given last night was longer than their usual but did not pass the recommended hours for their age, when the rules run, then **no alert is raised** — the fact appears in that day's review instead
+  - A night past the recommended ceiling still alerts (yellow), and a much *shorter* night still alerts (yellow) whatever the absolute figure
+  - **Edge — alerts already raised by the retired branch:** these are marked resolved rather than deleted, so they leave the dashboard strip and the unread count but stay in the archive as history
+
+**Story 12.3: Remove an alert I have finished with** _(P1 — Should Have)_
+- **As a** caregiver who opened an alert to decide about it
+- **I want to** remove it from that same screen
+- **So that** I do not have to go back and find the row again to act on the decision I just made
+- **Acceptance Criteria:**
+  - Given I am on an alert's detail screen, when I tap "Remove this alert" and confirm, then it is removed and I am returned to the Alerts list
+  - The confirm says plainly that it cannot be undone — unlike acknowledging, which the same screen lets me take back
+  - **Edge — already removed elsewhere:** if the alert is already gone (another caregiver, or a lost response to an earlier attempt), the removal is treated as successful rather than as an error
+  - **Edge — removal fails:** I stay on the screen with the alert intact and am told why; a card that vanished on an error I never saw would be the worse outcome
+  - **Screens:** AlertDetailPage (M1-11 / M1-12 / M1-16)
+
+---
+
 ## 🧪 Onboarding Flow UX
 
 ### Step 1: Value Proposition (30 seconds)
