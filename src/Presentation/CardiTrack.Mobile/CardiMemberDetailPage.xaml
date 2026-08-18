@@ -142,9 +142,12 @@
                                                        BoxWidth="80"
                                                        VerticalOptions="Center"/>
 
+                                <!-- The name and who they are lead by a step; the "Updated"
+                                     line is bookkeeping and drops a step — the card reads
+                                     person first, freshness last. -->
                                 <VerticalStackLayout Grid.Column="1" Spacing="2" VerticalOptions="Center">
-                                    <Label x:Name="NameLabel" Style="{StaticResource Heading2}"/>
-                                    <Label x:Name="AgeRelationshipLabel" Style="{StaticResource Body2}"/>
+                                    <Label x:Name="NameLabel" Style="{StaticResource Heading2}" FontSize="24"/>
+                                    <Label x:Name="AgeRelationshipLabel" Style="{StaticResource Body2}" FontSize="15"/>
                                     <HorizontalStackLayout x:Name="ConnectionStatusRow"
                                                            Spacing="6">
                                         <Ellipse x:Name="ConnectionStatusDot"
@@ -153,6 +156,7 @@
                                                  AutomationProperties.IsInAccessibleTree="False"/>
                                         <Label x:Name="LastContactLabel"
                                                Style="{StaticResource Body2}"
+                                               FontSize="12"
                                                VerticalOptions="Center"
                                                LineBreakMode="TailTruncation"/>
                                     </HorizontalStackLayout>

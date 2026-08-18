@@ -1247,7 +1247,8 @@ The following screens exist in the shipped app but have **no Figma M1 frame — 
 **Entry:** ← DaybookPage ("Read the full day")
 **Exit:** ← DaybookPage (back arrow, or the Daybook tab)
 
-- The review in full: day, headline, urgency pill, the whole account, "One thing you could do" (the suggestion, hidden when the generation produced none), and when it was written
+- The entry in full: day, headline, the whole account, "One thing you could do" (the suggestion, hidden when the generation produced none), and when it was written
+- The urgency is the card's **left rail**, the same construction as the list tiles and the alert tiles; no pill
 - **Header names the member** — "Dad's Daybook": the list passes the first name so the header is right from the first frame; a deep link without one falls back to "Daybook" until the member fetch fills it in
 - **"The last 14 days"** — trend charts for Sleep, Resting heart rate, Blood oxygen, Breathing rate, Steps and Skin temperature, drawn with the same `TrendChart` the alert detail uses: the member's own usual dashed, the published band shaded, per-day markers. Skin temperature carries only the wearer's own nightly baseline (no published band, no counted line); Steps carries only the usual (no body publishes a daily step count)
 - **Every chart's key names its sources**: "Dashed: their usual 4.1 · Shaded: recommended 7–8 (NSF)". The key names only marks the chart actually drew
