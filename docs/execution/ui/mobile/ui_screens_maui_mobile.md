@@ -351,7 +351,7 @@ Visible on tab roots (Dashboard / Alerts / Daybook / Settings). Onboarding hides
 | Swipe right | List items | Reveal secondary actions | Planned (no list-item swipes shipped) |
 | Pinch | Chart views | Zoom in/out | Planned (no chart gestures shipped) |
 | Long press | Chart data points | Show tooltip | Planned (no chart gestures shipped) |
-| Long press | CardiMember photo | Change photo | Planned (not shipped) |
+| Long press | CardiMember photo | Change photo | Superseded — shipped as a **tap** on the M1-04 / M1-14 avatar, opening the photo action sheet |
 
 There is no edge-swipe flyout gesture (no flyout exists).
 
@@ -510,7 +510,7 @@ A single user can sign up, add a CardiMember, connect devices, manage CardiMembe
 **Photo Section:**
 - Circular photo placeholder (large)
 - "Add Photo" button below
-- **Gallery only** (`MediaPicker.PickPhotosAsync`) — no camera option shipped
+- Tapping either opens the photo action sheet: "Take a photo" (`MediaPicker.CapturePhotoAsync`; hidden where capture isn't supported), "Choose from library" (`MediaPicker.PickPhotosAsync`), and "Remove photo" once one is set. The photo is downscaled on device (longest edge ≤ 1280 px, JPEG) and sent as `photoBase64` on submit; if it can't be prepared the form offers "Continue without photo" rather than blocking the member.
 
 **Required Fields:**
 - "Full Name *" — text input
@@ -796,7 +796,7 @@ Heart Rate, Sleep, Skin Temp, Steps, SpO2, and Breathing Rate — the last three
 - Pull-to-refresh triggers data sync; manual refresh icon sits in the page **header**
 - Android back / gesture-nav at this tab root: first swipe shows "Go back again to leave CardiTrack"; a second swipe within two seconds leaves the app. One swipe is not enough — this is home, and a single back used to finish the activity as if the app had crashed.
 - ~~Swipe left on metric card → see detail view~~ (not shipped — no metric-card swipe gesture)
-- ~~Long-press on photo → change photo option~~ (not shipped — no photo long-press gesture)
+- ~~Long-press on photo → change photo option~~ (shipped as a tap on the Edit Profile (M1-14) avatar instead — no dashboard long-press gesture)
 
 **States (8 as built):**
 - **M1-09a — Loading:** Skeleton/shimmer cards
@@ -868,7 +868,7 @@ Heart rate alerts tap → M1-16
 - **Severity badges are severity-coloured.** Wording follows this spec (CRITICAL / URGENT / INFO); the colour follows the app's own scale, so a yellow alert can't show a yellow rail beside Figma's blue "Info" chip.
 - **The title opens M1-11 / M1-12 / M1-16** (`AlertDetailPage`). The chevron still expands the card in place so the full message can be read without leaving the list.
 - **"View Archived Alerts" switches this list to resolved alerts** rather than pushing an archive screen, and flips back the same way. The chip row hides while archived — it is a different list, not a narrower one.
-- **Avatars are initials.** No member photo storage exists yet; `cardiMemberPhotoUrl` is on the wire and the tile keeps its designed box.
+- **Avatars show the member's photo when one is set** (`cardiMemberPhotoUrl`, a short-lived signed URL), falling back to initials.
 - **Swipe actions are not implemented.** The card's inline Call and Acknowledge buttons cover both gestures.
 
 
@@ -997,7 +997,7 @@ This is the most safety-critical screen in the app. Design for urgency and immed
 **Exit:** ← Previous screen (back) | → M1-14 Edit CardiMember (edit button) | → M1-15 Device Management ("Manage Device") | → M1-10 Alerts ("View Alerts")
 
 **Profile Section (as built):**
-- Display picture (`MemberAvatar`, 80dp) — initials as built (`PhotoUrl` is always null; there is no photo storage or upload path). The control already renders a photo when one exists.
+- Display picture (`MemberAvatar`, 80dp) — the member's photo when one is set (`photoUrl`, a short-lived signed URL), initials otherwise. Photos are added on M1-04 or changed on M1-14.
 - Name
 - Age & relationship: "78 years old • Dad"
 - Connection status on the third row: a red / amber / blue / green dot (the same data-pipeline freshness as the dashboard — no sync in 12 h / 4 h / synced / processed) in front of the last-contact age ("Updated 4 minutes ago"). The whole row is hidden while monitoring is paused — a freshness colour would misread a deliberate pause as a connection gap, and the paused banner is the status then. Device count lives on M1-15, not here.
@@ -1038,7 +1038,7 @@ This is the most safety-critical screen in the app. Design for urgency and immed
 
 **Form (scrollable):**
 
-**Photo:** Large circular avatar (photo or initials)
+**Photo:** Large circular avatar (photo or initials). Tapping it — or the "Change Photo" link beneath — opens the photo action sheet (take / choose from library / remove); a replacement or removal is applied when the form saves (`photoBase64` / `removePhoto`, never both).
 
 **Basic Info:**
 - "Full Name*" — text input
