@@ -12,15 +12,38 @@ public partial class WelcomePage : ContentPage
     private const double ReferenceWidth = 440;
     private const double ReferenceHeight = 610;
 
+    /// <summary>How long each slide holds before the carousel advances on its own.</summary>
+    private static readonly TimeSpan AutoAdvanceInterval = TimeSpan.FromSeconds(5);
+
     public IReadOnlyList<WelcomeSlide> Slides { get; } = WelcomeSlide.DefaultSlides;
 
     private readonly BoxView[] _indicators;
+    private readonly IDispatcherTimer _autoAdvance;
+
+    // The title/subtitle live outside the CarouselView (the wave backdrop is a fixed overlay,
+    // so the text can't ride inside the item template without dragging the wave along). They
+    // crossfade in sync with slide changes instead; the sequence number lets a newer change
+    // abandon an older one mid-flight.
+    private int _textSwapSeq;
+    private bool _textShown;
 
     public WelcomePage()
     {
         InitializeComponent();
         _indicators = [Ind0, Ind1, Ind2];
-        SlideCarousel.CurrentItemChanged += (_, _) => UpdateSlideState();
+
+        _autoAdvance = Dispatcher.CreateTimer();
+        _autoAdvance.Interval = AutoAdvanceInterval;
+        _autoAdvance.Tick += (_, _) =>
+            SlideCarousel.Position = (SlideCarousel.Position + 1) % Slides.Count;
+
+        // Manual swipes land here too, so every change — user or timer — restarts the clock
+        // and the user never has the carousel yanked away right after they touched it.
+        SlideCarousel.CurrentItemChanged += (_, _) =>
+        {
+            RestartAutoAdvance();
+            UpdateSlideState();
+        };
     }
 
     private void OnHeroSizeChanged(object? sender, EventArgs e)
@@ -81,6 +104,22 @@ public partial class WelcomePage : ContentPage
     {
         base.OnAppearing();
         UpdateSlideState();
+        _autoAdvance.Start();
+    }
+
+    protected override void OnDisappearing()
+    {
+        base.OnDisappearing();
+        _autoAdvance.Stop();
+    }
+
+    private void RestartAutoAdvance()
+    {
+        // Fires during construction before the page appears; only reset a running clock.
+        if (!_autoAdvance.IsRunning)
+            return;
+        _autoAdvance.Stop();
+        _autoAdvance.Start();
     }
 
     private void UpdateSlideState()
@@ -90,11 +129,6 @@ public partial class WelcomePage : ContentPage
 
         var idx = IndexOf(current);
 
-        SlideTitle.Text = current.Title;
-        SlideSubtitle.Text = current.Subtitle;
-        SlideSubtitle.Margin = new Thickness(24, current.SubtitleTopMargin, 24, 0);
-        SlideSubtitle.MaximumWidthRequest = current.SubtitleMaxWidth;
-
         for (var i = 0; i < _indicators.Length; i++)
         {
             _indicators[i].WidthRequest = i == idx ? 32 : 8;
@@ -102,6 +136,52 @@ public partial class WelcomePage : ContentPage
                 ? (Color)App.Current!.Resources["ActiveIndicator"]
                 : (Color)App.Current!.Resources["InactiveIndicator"];
         }
+
+        // First display renders instantly; later changes crossfade alongside the photo.
+        _ = SwapTextAsync(current, animate: _textShown);
+        _textShown = true;
+    }
+
+    private async Task SwapTextAsync(WelcomeSlide slide, bool animate)
+    {
+        var seq = ++_textSwapSeq;
+
+        if (!animate)
+        {
+            ApplyText(slide);
+            return;
+        }
+
+        SlideTitle.CancelAnimations();
+        SlideSubtitle.CancelAnimations();
+
+        await Task.WhenAll(
+            SlideTitle.FadeTo(0, 110, Easing.CubicIn),
+            SlideTitle.TranslateTo(0, -10, 110, Easing.CubicIn),
+            SlideSubtitle.FadeTo(0, 110, Easing.CubicIn),
+            SlideSubtitle.TranslateTo(0, -10, 110, Easing.CubicIn));
+
+        // A newer slide change took over while we faded out — let it own the fade-in.
+        if (seq != _textSwapSeq)
+            return;
+
+        ApplyText(slide);
+        SlideTitle.TranslationY = 14;
+        SlideSubtitle.TranslationY = 14;
+
+        await Task.WhenAll(
+            SlideTitle.FadeTo(1, 220, Easing.CubicOut),
+            SlideTitle.TranslateTo(0, 0, 220, Easing.CubicOut),
+            SlideSubtitle.FadeTo(1, 220, Easing.CubicOut),
+            SlideSubtitle.TranslateTo(0, 0, 220, Easing.CubicOut));
+    }
+
+    private void ApplyText(WelcomeSlide slide)
+    {
+        SlideTitle.Text = slide.Title;
+        SlideSubtitle.Text = slide.Subtitle;
+        SlideSubtitle.Margin = new Thickness(24, slide.SubtitleTopMargin, 24, 0);
+        SlideSubtitle.MaximumWidthRequest = slide.SubtitleMaxWidth;
     }
 
     private int IndexOf(WelcomeSlide slide)
