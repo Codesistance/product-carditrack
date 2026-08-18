@@ -195,6 +195,21 @@ public class OrphanedPhotoCleanupWorker : CronBackgroundService
             ct.ThrowIfCancellationRequested();
 
             var objectName = member.PhotoObjectName!;
+
+            // Never delete what the upload scheme did not name (the same stance
+            // PartitionMaintenanceWorker takes on partitions): the listing pass is scoped to
+            // members/ by construction, and this DB-driven pass must not be the one path that
+            // can reach outside it if the column ever carries unexpected data. Left for a
+            // human, loudly — nulling the column here would orphan whatever it points at.
+            if (!objectName.StartsWith("members/", StringComparison.Ordinal))
+            {
+                _logger.LogWarning(
+                    "OrphanedPhotoCleanup skipped soft-deleted member {CardiMemberId}: its " +
+                    "PhotoObjectName {ObjectName} is outside the members/ upload scheme.",
+                    member.Id, objectName);
+                continue;
+            }
+
             onOrphaned();
 
             if (dryRun)
@@ -229,6 +244,10 @@ public class OrphanedPhotoCleanupWorker : CronBackgroundService
             catch (Exception ex)
             {
                 onFailed();
+                // Still handled for this run: the row keeps its PhotoObjectName so the next run
+                // retries — letting the listing pass retry it minutes later would only double-log
+                // and double-count the same failure.
+                handled.Add(objectName);
                 _logger.LogWarning(ex,
                     "OrphanedPhotoCleanup failed to clear the photo of soft-deleted member " +
                     "{CardiMemberId} (object {ObjectName}); the next run retries it.",

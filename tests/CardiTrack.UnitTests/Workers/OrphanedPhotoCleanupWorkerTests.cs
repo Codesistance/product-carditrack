@@ -128,13 +128,18 @@ public class OrphanedPhotoCleanupWorkerTests
     }
 
     [Fact]
-    public async Task Sweep_SoftDeletedClearFailure_DoesNotStopTheListingSweep()
+    public async Task Sweep_SoftDeletedClearFailure_DoesNotStopTheListingSweep_OrGetRetriedByIt()
     {
         var member = InactiveMemberWithPhoto(SecondOrphanName);
         _members.GetInactiveWithPhotoAsync().Returns([member]);
         _storage.DeleteAsync(SecondOrphanName, Arg.Any<CancellationToken>())
             .Throws(new InvalidOperationException("bucket unavailable for this object"));
-        StageListing((OrphanName, Now.AddDays(-2)));
+        // The failed object is also old enough for the listing pass — which must not retry it
+        // this run (double-logged, double-counted failure); the row keeps its PhotoObjectName,
+        // so the next run is the retry.
+        StageListing(
+            (OrphanName, Now.AddDays(-2)),
+            (SecondOrphanName, Now.AddDays(-2)));
 
         var thrown = await Record.ExceptionAsync(
             () => CreateWorker().RunSweepAsync(CancellationToken.None));
@@ -142,6 +147,23 @@ public class OrphanedPhotoCleanupWorkerTests
         Assert.Null(thrown);
         Assert.Equal(SecondOrphanName, member.PhotoObjectName); // column kept: blob-first ordering
         await _storage.Received(1).DeleteAsync(OrphanName, Arg.Any<CancellationToken>());
+        await _storage.Received(1).DeleteAsync(SecondOrphanName, Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task Sweep_LeavesASoftDeletedMembersPhotoAlone_WhenItsNameIsOutsideTheUploadScheme()
+    {
+        // The listing pass is scoped to members/ by construction; the DB-driven pass must hold
+        // the same line if the column ever carries unexpected data. Blob and column both kept —
+        // a human's problem, flagged loudly, not a delete.
+        var member = InactiveMemberWithPhoto("backups/postgres/2026-08-17.dump");
+        _members.GetInactiveWithPhotoAsync().Returns([member]);
+
+        await CreateWorker().RunSweepAsync(CancellationToken.None);
+
+        await _storage.DidNotReceive().DeleteAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
+        Assert.Equal("backups/postgres/2026-08-17.dump", member.PhotoObjectName);
+        await _unitOfWork.DidNotReceive().SaveChangesAsync();
     }
 
     private static CardiMember InactiveMemberWithPhoto(string objectName) => new()
