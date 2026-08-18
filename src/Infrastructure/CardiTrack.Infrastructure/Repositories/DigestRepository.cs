@@ -26,6 +26,12 @@ public class DigestRepository : IDigestRepository
         // the same member at the same instant, and the second has nothing to add — but an ordinary
         // recomputation carries a later GeneratedAtUtc and lands as its own row, which is what
         // makes the day's history a history.
+        // No conflict target, deliberately: the primary key absorbs the same-instant collision
+        // above, and the partial unique index on day reviews (one per member per day — see
+        // EnforceOneDayReviewPerDay) absorbs the overlapping-runs one, where two executions probe
+        // "already reviewed?" before either has written and would otherwise both insert with
+        // different GeneratedAtUtc stamps. Naming only the PK as the target would turn the second
+        // case into a raised unique violation instead of the quiet no-op both cases deserve.
         // Every mapped column is listed explicitly, and a new one has to be added here by hand —
         // this insert is raw SQL, so EF cannot notice a property it does not mention. "Suggestions"
         // was added to the entity, the configuration and a migration without reaching this list,
@@ -40,8 +46,7 @@ public class DigestRepository : IDigestRepository
                 ("CardiMemberId", "LocalDate", "Audience", "Headline", "Text", "Suggestion", "Urgency", "GeneratedAtUtc")
             VALUES ({entry.CardiMemberId}, {entry.LocalDate}, {entry.Audience.ToString()},
                     {entry.Headline}, {entry.Text}, {entry.Suggestion}, {entry.Urgency?.ToString()}, {entry.GeneratedAtUtc})
-            ON CONFLICT ("CardiMemberId", "LocalDate", "Audience", "GeneratedAtUtc")
-            DO NOTHING
+            ON CONFLICT DO NOTHING
             """, ct);
     }
 

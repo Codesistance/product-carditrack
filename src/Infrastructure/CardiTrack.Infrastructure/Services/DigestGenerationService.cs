@@ -463,7 +463,11 @@ public partial class DigestGenerationService : IDigestGenerationService
 
         // The cheapest gate first, and the one that runs on nearly every pass: a member reviewed
         // at 02:00 is asked about again 45 times before the day rolls over, and each of those has
-        // to cost one indexed read and nothing else.
+        // to cost one indexed read and nothing else. It is a fast path, not the contract — two
+        // overlapping executions can both pass this probe before either writes. The partial
+        // unique index (one day review per member per day, EnforceOneDayReviewPerDay) is what
+        // holds the written-once promise; the second writer's insert lands on ON CONFLICT DO
+        // NOTHING and the run moves on.
         var existing = await _unitOfWork.Digests.GetLatestByDateAsync(
             memberId, reviewedDate, DigestAudience.DayReview, ct);
         if (existing is not null)

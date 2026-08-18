@@ -1,5 +1,6 @@
-using System.Globalization;
+﻿using System.Globalization;
 using System.Text;
+using System.Text.RegularExpressions;
 using CardiTrack.Application.Services;
 using CardiTrack.Domain.Entities;
 
@@ -27,7 +28,7 @@ namespace CardiTrack.Infrastructure.Services;
 /// detectable by reading it.
 /// </para>
 /// </remarks>
-internal static class DayReviewPrompt
+internal static partial class DayReviewPrompt
 {
     /// <summary>
     /// <c>CARDITRACK_DAY_REVIEW_PROMPT</c> — the finished-day account. Fixed prefix, member data
@@ -428,8 +429,9 @@ internal static class DayReviewPrompt
     /// </remarks>
     internal static string? UnglossedTerm(string text)
     {
-        var sentences = Flatten(text)
-            .Split(['.', '!', '?', ';'], StringSplitOptions.RemoveEmptyEntries);
+        var sentences = SentenceEnds().Split(Flatten(text))
+            .Where(s => !string.IsNullOrWhiteSpace(s))
+            .ToList();
 
         foreach (var term in TermsNeedingAGloss)
         {
@@ -443,6 +445,15 @@ internal static class DayReviewPrompt
 
         return null;
     }
+
+    /// <summary>
+    /// A sentence boundary: terminal punctuation, except a full stop with a digit on both sides —
+    /// this text quotes figures by design, and splitting "95.4%" in half moved a term and the
+    /// gloss that follows its figure into different fragments, discarding a compliant review. A
+    /// review is written once, so that false positive cost the caregiver the day for good.
+    /// </summary>
+    [GeneratedRegex(@"[!?;]|(?<!\d)\.|\.(?!\d)")]
+    private static partial Regex SentenceEnds();
 
     /// <summary>
     /// Lowercased with runs of whitespace collapsed, so a phrase the model wrapped across two

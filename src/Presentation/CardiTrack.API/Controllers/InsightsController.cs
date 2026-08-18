@@ -123,6 +123,7 @@ public class InsightsController : BaseApiController
     /// </summary>
     [HttpGet("members/{cardiMemberId:guid}/digest")]
     [ProducesResponseType(typeof(ApiResponse<DigestResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status403Forbidden)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
     public async Task<ActionResult<ApiResponse<DigestResponse>>> GetDigest(
@@ -183,6 +184,7 @@ public class InsightsController : BaseApiController
     /// <param name="ct">Cancels the read when the caller disconnects.</param>
     [HttpGet("members/{cardiMemberId:guid}/digests")]
     [ProducesResponseType(typeof(ApiResponse<IReadOnlyList<DigestResponse>>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status403Forbidden)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
     public async Task<ActionResult<ApiResponse<IReadOnlyList<DigestResponse>>>> GetDigestHistory(

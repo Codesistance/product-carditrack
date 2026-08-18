@@ -1,4 +1,4 @@
-using CardiTrack.Domain.Entities;
+﻿using CardiTrack.Domain.Entities;
 using CardiTrack.Infrastructure.Services;
 
 namespace CardiTrack.UnitTests.Services;
@@ -208,6 +208,31 @@ public class DayReviewPromptTests
     public void UnglossedTerm_AcceptsATermThatExplainsItself(string text)
     {
         Assert.Null(DayReviewPrompt.UnglossedTerm(text));
+    }
+
+    /// <summary>
+    /// A decimal point is not a sentence boundary. This text quotes figures by design, and
+    /// splitting "95.4%" in half used to move a term and the gloss that follows its figure into
+    /// different fragments — flagging a compliant review, which a caregiver loses for good since
+    /// a review is written once.
+    /// </summary>
+    [Theory]
+    [InlineData("Her SpO2 sat at 95.4% — the share of oxygen her blood was carrying.")]
+    [InlineData("Her oxygen saturation averaged 95.4%, meaning the share of oxygen in her blood, and held steady.")]
+    public void UnglossedTerm_DoesNotSplitASentenceAtADecimalPoint(string text)
+    {
+        Assert.Null(DayReviewPrompt.UnglossedTerm(text));
+    }
+
+    /// <summary>An ordinary full stop still ends the sentence — the gloss must not be allowed to
+    /// arrive one sentence late just because the split got laxer about decimals.</summary>
+    [Fact]
+    public void UnglossedTerm_StillSplitsOnAnOrdinaryFullStop()
+    {
+        var flagged = DayReviewPrompt.UnglossedTerm(
+            "Her sleep efficiency was 78%. That is how much of her time in bed she was asleep.");
+
+        Assert.Equal("sleep efficiency", flagged);
     }
 
     /// <summary>

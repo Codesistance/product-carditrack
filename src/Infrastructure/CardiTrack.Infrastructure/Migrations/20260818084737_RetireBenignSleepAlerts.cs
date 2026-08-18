@@ -44,7 +44,7 @@ namespace CardiTrack.Infrastructure.Migrations
                 """
                 UPDATE "Alerts"
                 SET "IsResolved" = TRUE,
-                    "UpdatedDate" = NOW() AT TIME ZONE 'UTC'
+                    "UpdatedDate" = NOW()
                 WHERE "IsResolved" = FALSE
                   AND "Severity" = 'Green'
                   AND "MetricValues" LIKE '%"rule":"irregular_sleep"%';
