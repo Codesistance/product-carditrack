@@ -1,5 +1,5 @@
-using System.Globalization;
 using CardiTrack.Application.DTOs.Responses;
+using CardiTrack.Mobile.Controls;
 using CardiTrack.Mobile.Core.Api;
 using CardiTrack.Mobile.Core.Onboarding;
 using CardiTrack.Mobile.Services;
@@ -7,7 +7,10 @@ using CardiTrack.Mobile.Services;
 namespace CardiTrack.Mobile;
 
 /// <summary>
-/// The Summaries tab: the member's day reviews, newest first, one per finished day.
+/// The Summaries tab: the member's day reviews, newest first, one per finished day — searchable
+/// over the whole history and narrowable by urgency and by how far back to look. A card opens the
+/// review's own page (<see cref="DayReviewDetailPage"/>), which carries the full account and the
+/// charts to read it against.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -15,6 +18,12 @@ namespace CardiTrack.Mobile;
 /// work — a permanent quarter of the bottom navigation spent on a card that said "coming soon",
 /// while the day reviews had no surface at all. When family sharing does land it belongs under
 /// Settings or scoped to a member, not back in the bar.
+/// </para>
+/// <para>
+/// Every filter is applied server-side, before the page cap — a caregiver searching "oxygen" is
+/// asking about their history, not about whichever page happened to load. The search is debounced
+/// the way the questionnaires archive's is, so a caregiver typing "breathing" costs one request,
+/// not nine.
 /// </para>
 /// <para>
 /// Refreshes on resume but does not poll. Every other live surface in the app carries
@@ -27,13 +36,28 @@ namespace CardiTrack.Mobile;
 public partial class SummariesPage : ContentPage
 {
     /// <summary>
-    /// How many days back the list reaches. A fortnight is the window the trend charts use and is
-    /// about as far back as a caregiver reads; the service clamps anything larger anyway.
+    /// How many reviews one load asks for. A month is a page a caregiver actually scrolls; the
+    /// service clamps anything larger anyway, and search narrows the history server-side rather
+    /// than needing a bigger page.
     /// </summary>
-    private const int HistoryLimit = 14;
+    private const int HistoryLimit = 31;
 
-    /// <summary>Lines of the review shown before it is opened.</summary>
-    private const int CollapsedLines = 3;
+    /// <summary>Lines of the review shown on the card before it is opened.</summary>
+    private const int PreviewLines = 3;
+
+    private static readonly TimeSpan SearchDebounce = TimeSpan.FromMilliseconds(350);
+
+    /// <summary>The window chooser's vocabulary, and what each choice means in days back.</summary>
+    private static readonly (string Label, int? Days)[] Windows =
+    [
+        ("All time", null),
+        ("Last 7 days", 7),
+        ("Last 30 days", 30),
+        ("Last 90 days", 90),
+    ];
+
+    private static readonly string[] UrgencyChoices =
+        ["Any urgency", "Watch", "Check in", "Concerning", "Act now"];
 
     private readonly ICardiTrackApiClient _api;
     private readonly IPopupService _popups;
@@ -42,6 +66,14 @@ public partial class SummariesPage : ContentPage
     private bool _returningFromPopup;
     private DateTime _lastLoadedUtc = DateTime.MinValue;
     private bool _hasLoadedOnce;
+    private bool _hasAnyReviews;
+    private CancellationTokenSource? _searchDebounceCts;
+
+    private Guid _memberId;
+    private string? _memberFirstName;
+    private string? _search;
+    private string? _urgency;
+    private int? _windowDays;
 
     public SummariesPage(ICardiTrackApiClient api, IPopupService popups)
     {
@@ -85,6 +117,63 @@ public partial class SummariesPage : ContentPage
     private async void OnBackTapped(object? sender, TappedEventArgs e) =>
         await this.GoBackAsync(AppShell.DashboardRoute);
 
+    // ── Filters ──────────────────────────────────────────────────────────────
+
+    private void OnSearchTextChanged(object? sender, TextChangedEventArgs e)
+    {
+        ClearSearchButton.IsVisible = !string.IsNullOrEmpty(e.NewTextValue);
+
+        _searchDebounceCts?.Cancel();
+        _searchDebounceCts?.Dispose();
+        var cts = new CancellationTokenSource();
+        _searchDebounceCts = cts;
+        _ = DebouncedSearchAsync(e.NewTextValue, cts.Token);
+    }
+
+    private async Task DebouncedSearchAsync(string? text, CancellationToken ct)
+    {
+        try
+        {
+            await Task.Delay(SearchDebounce, ct);
+        }
+        catch (TaskCanceledException)
+        {
+            return;
+        }
+
+        _search = string.IsNullOrWhiteSpace(text) ? null : text.Trim();
+        await LoadAsync();
+    }
+
+    private void OnClearSearchClicked(object? sender, EventArgs e) => SearchEntry.Text = string.Empty;
+
+    private async void OnUrgencyChipTapped(object? sender, TappedEventArgs e)
+    {
+        var choice = await _popups.ChooseAsync("How soon it asked you to act", "Cancel", UrgencyChoices);
+        if (choice is null)
+            return;
+
+        _urgency = DayReviewPresentation.UrgencyWireValue(choice);
+        UrgencyChipLabel.Text = _urgency is null ? "Any urgency" : choice;
+        await LoadAsync();
+    }
+
+    private async void OnWindowChipTapped(object? sender, TappedEventArgs e)
+    {
+        var choice = await _popups.ChooseAsync(
+            "How far back to look", "Cancel", Windows.Select(w => w.Label).ToArray());
+        if (choice is null)
+            return;
+
+        _windowDays = Windows.First(w => w.Label == choice).Days;
+        WindowChipLabel.Text = choice;
+        await LoadAsync();
+    }
+
+    private bool HasActiveFilter => _search is not null || _urgency is not null || _windowDays is not null;
+
+    // ── Loading ──────────────────────────────────────────────────────────────
+
     private async Task LoadAsync(bool silent = false)
     {
         if (_isLoading)
@@ -98,25 +187,53 @@ public partial class SummariesPage : ContentPage
         {
             // The same rule the dashboard and the device-setup launcher use for "which member",
             // so the three cannot drift apart about who the app means when it has not been told.
-            var member = PrimaryCardiMember.From(await _api.GetCardiMembersAsync());
-            if (member is null)
+            if (_memberId == Guid.Empty)
             {
-                EmptyDetailLabel.Text =
-                    "Add the person you care about, and their days will be summarised here.";
-                SetState(empty: true);
-                return;
+                var member = PrimaryCardiMember.From(await _api.GetCardiMembersAsync());
+                if (member is null)
+                {
+                    EmptyDetailLabel.Text =
+                        "Add the person you care about, and their days will be summarised here.";
+                    SetState(empty: true);
+                    return;
+                }
+
+                _memberId = member.Id;
+                _memberFirstName = NameFormatting.FirstName(member.Name);
             }
 
-            var reviews = await _api.GetDayReviewsAsync(member.Id, HistoryLimit);
+            var from = _windowDays is { } days
+                ? DateOnly.FromDateTime(DateTime.Now).AddDays(-(days - 1))
+                : (DateOnly?)null;
+
+            var reviews = await _api.GetDayReviewsAsync(
+                _memberId, HistoryLimit, _search, from, _urgency);
             _lastLoadedUtc = DateTime.UtcNow;
             _hasLoadedOnce = true;
+            _hasAnyReviews = _hasAnyReviews || reviews.Count > 0;
+
+            // The filter row appears once the member has ever had a review to filter, and then
+            // stays: hiding it on an empty *filtered* result would take away the one control
+            // that undoes the emptiness.
+            FilterPanel.IsVisible = _hasAnyReviews;
 
             if (reviews.Count == 0)
             {
-                var firstName = NameFormatting.FirstName(member.Name);
-                var who = string.IsNullOrWhiteSpace(firstName) ? "their" : $"{firstName}'s";
-                EmptyDetailLabel.Text =
-                    $"The first review is written after {who} first full day of readings.";
+                if (HasActiveFilter)
+                {
+                    EmptyTitleLabel.Text = "No reviews match";
+                    EmptyDetailLabel.Text =
+                        "Nothing in their history matches these filters — clear one and look again.";
+                }
+                else
+                {
+                    var who = string.IsNullOrWhiteSpace(_memberFirstName)
+                        ? "their"
+                        : $"{_memberFirstName}'s";
+                    EmptyTitleLabel.Text = "No day reviews yet";
+                    EmptyDetailLabel.Text =
+                        $"The first review is written after {who} first full day of readings.";
+                }
                 SetState(empty: true);
                 return;
             }
@@ -155,9 +272,9 @@ public partial class SummariesPage : ContentPage
     }
 
     /// <summary>
-    /// One day's card: when, what it was about, how soon it asks for attention, and the review
-    /// itself — clipped until it is opened, because a twelve-sentence account of every day at full
-    /// height is a list nobody can scan.
+    /// One day's card: when, what it was about, how soon it asks for attention, and the first
+    /// lines of the review. Opening it is a navigation, not an expansion — the full account now
+    /// carries the trend charts, which is more than a list row can hold and stay a list.
     /// </summary>
     private View BuildCard(DigestResponse review)
     {
@@ -165,19 +282,11 @@ public partial class SummariesPage : ContentPage
         {
             Text = review.Text,
             Style = Styled("Body2Dark"),
-            MaxLines = CollapsedLines,
+            MaxLines = PreviewLines,
             LineBreakMode = LineBreakMode.TailTruncation,
         };
 
-        var suggestion = new Label
-        {
-            Text = review.Suggestion,
-            Style = Styled("Body2"),
-            TextColor = Tinted("BodyText"),
-            IsVisible = false,
-        };
-
-        var more = new Label
+        var open = new Label
         {
             Text = "Read the full day",
             Style = Styled("SectionLink"),
@@ -193,29 +302,22 @@ public partial class SummariesPage : ContentPage
                 {
                     Heading(review),
                     body,
-                    suggestion,
-                    more,
+                    open,
                 },
             },
         };
 
         card.GestureRecognizers.Add(new TapGestureRecognizer
         {
-            Command = new Command(() =>
-            {
-                var opening = body.MaxLines == CollapsedLines;
-                body.MaxLines = opening ? -1 : CollapsedLines;
-                body.LineBreakMode = opening ? LineBreakMode.WordWrap : LineBreakMode.TailTruncation;
-                suggestion.IsVisible = opening && !string.IsNullOrWhiteSpace(review.Suggestion);
-                more.Text = opening ? "Show less" : "Read the full day";
-            }),
+            Command = new Command(async () => await Shell.Current.GoToAsync(
+                $"{DayReviewDetailPage.Route}?memberId={_memberId}&date={review.LocalDate:yyyy-MM-dd}")),
         });
 
         return card;
     }
 
     /// <summary>The date, the generated headline, and the urgency pill on one row.</summary>
-    private Grid Heading(DigestResponse review)
+    private static Grid Heading(DigestResponse review)
     {
         var heading = new Grid
         {
@@ -226,7 +328,7 @@ public partial class SummariesPage : ContentPage
         var titles = new VerticalStackLayout { Spacing = 2 };
         titles.Add(new Label
         {
-            Text = DayLabel(review.LocalDate),
+            Text = DayReviewPresentation.DayLabel(review.LocalDate),
             Style = Styled("Body1SemiBoldDark"),
         });
         titles.Add(new Label
@@ -240,70 +342,13 @@ public partial class SummariesPage : ContentPage
         });
         heading.Add(titles);
 
-        if (UrgencyPill(review.Urgency) is { } pill)
+        if (DayReviewPresentation.UrgencyPill(review.Urgency) is { } pill)
         {
             Grid.SetColumn(pill, 1);
             heading.Add(pill);
         }
 
         return heading;
-    }
-
-    /// <summary>
-    /// The model's own read of how soon the family should act, as a pill — or nothing at all when
-    /// it returned none, or one this app does not know. A pill is a claim about a member's health,
-    /// so an unrecognised value shows no pill rather than a grey one implying the service judged
-    /// the day and found it unremarkable.
-    /// </summary>
-    private static Border? UrgencyPill(string? urgency)
-    {
-        var (text, colourKey) = urgency switch
-        {
-            "watch" => ("WATCH", "StatusGreen"),
-            "check-in" => ("CHECK IN", "StatusYellow"),
-            "concerning" => ("CONCERNING", "StatusOrange"),
-            "act-now" => ("ACT NOW", "StatusRed"),
-            _ => (null, null),
-        };
-
-        if (text is null || colourKey is null)
-            return null;
-
-        return new Border
-        {
-            Style = Styled("StatusPill"),
-            BackgroundColor = Tinted(colourKey),
-            VerticalOptions = LayoutOptions.Start,
-            Content = new Label
-            {
-                Text = text,
-                Style = Styled("StatusPillText"),
-                TextColor = Tinted("White"),
-            },
-        };
-    }
-
-    /// <summary>
-    /// "Yesterday" for the day just gone, the weekday for the rest of the week, and the date
-    /// beyond that — the way someone talks about their own week rather than a row of dates.
-    /// </summary>
-    /// <remarks>
-    /// Against the device's today, not the member's: this is the reader's label for when they are
-    /// reading, and a caregiver in another timezone reading "Yesterday" about the day their own
-    /// yesterday was is the sentence they would have said themselves.
-    /// </remarks>
-    private static string DayLabel(DateOnly date)
-    {
-        var today = DateOnly.FromDateTime(DateTime.Now);
-        var age = today.DayNumber - date.DayNumber;
-
-        return age switch
-        {
-            0 => "Today",
-            1 => "Yesterday",
-            > 1 and < 7 => date.ToString("dddd", CultureInfo.CurrentCulture),
-            _ => date.ToString("d MMMM", CultureInfo.CurrentCulture),
-        };
     }
 
     /// <summary>

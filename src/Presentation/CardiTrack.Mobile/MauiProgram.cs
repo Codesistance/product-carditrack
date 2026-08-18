@@ -127,6 +127,7 @@ public static class MauiProgram
         builder.Services.AddTransient<DashboardPage>();
         builder.Services.AddTransient<AlertsPage>();
         builder.Services.AddTransient<SummariesPage>();
+        builder.Services.AddTransient<DayReviewDetailPage>();
         builder.Services.AddTransient<SettingsPage>();
 
         // Routed pages pushed over a tab (M1-11/12/16, M1-13 / M1-14 / M1-15).

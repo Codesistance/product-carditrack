@@ -96,9 +96,29 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
         GetAsync<DigestResponse>($"api/v1/insights/members/{cardiMemberId}/digest", ct);
 
     public Task<IReadOnlyList<DigestResponse>> GetDayReviewsAsync(
-        Guid cardiMemberId, int limit, CancellationToken ct = default) =>
-        GetAsync<IReadOnlyList<DigestResponse>>(
-            $"api/v1/insights/members/{cardiMemberId}/digests?limit={limit}&audience=day-review", ct);
+        Guid cardiMemberId,
+        int limit,
+        string? search = null,
+        DateOnly? from = null,
+        string? urgency = null,
+        CancellationToken ct = default)
+    {
+        var query = $"?limit={limit}&audience=day-review";
+        if (!string.IsNullOrWhiteSpace(search))
+            query += $"&search={Uri.EscapeDataString(search.Trim())}";
+        if (from is { } fromDay)
+            query += $"&from={fromDay:yyyy-MM-dd}";
+        if (!string.IsNullOrWhiteSpace(urgency))
+            query += $"&urgency={Uri.EscapeDataString(urgency)}";
+
+        return GetAsync<IReadOnlyList<DigestResponse>>(
+            $"api/v1/insights/members/{cardiMemberId}/digests{query}", ct);
+    }
+
+    public Task<DigestResponse> GetDayReviewAsync(
+        Guid cardiMemberId, DateOnly localDate, CancellationToken ct = default) =>
+        GetAsync<DigestResponse>(
+            $"api/v1/insights/members/{cardiMemberId}/digest?date={localDate:yyyy-MM-dd}&audience=day-review", ct);
 
     public Task<QuestionnairesPageResponse> GetQuestionnairesAsync(
         Guid cardiMemberId,

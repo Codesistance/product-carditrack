@@ -20,7 +20,7 @@
          on Android (verified on API 37). Top keeps the status-bar inset the header band is
          drawn against; bottom releases it, so BottomNavBar can run to the screen edge and pad
          itself instead — see that control. -->
-    <Grid RowDefinitions="Auto,*,Auto" SafeAreaEdges="None, Container, None, None">
+    <Grid RowDefinitions="Auto,Auto,*,Auto" SafeAreaEdges="None, Container, None, None">
 
         <!-- Back arrow, same treatment as Alerts and Settings — a tab root falls back to the
              dashboard when there is no history of its own to pop. -->
@@ -49,8 +49,87 @@
             </Grid>
         </controls:HeaderBand>
 
+        <!-- Search and the two filter chips sit outside the scroller so narrowing the list stays
+             reachable while it is scrolled — the same reason the alert chips do. Hidden until the
+             member has any review at all: a filter row over a first-days empty state is a control
+             with nothing to do. -->
+        <VerticalStackLayout x:Name="FilterPanel"
+                             Grid.Row="1"
+                             Spacing="12"
+                             Padding="20,20,20,0"
+                             IsVisible="False">
+
+            <!-- Same treatment as the questionnaires archive search. Server-side and debounced:
+                 the search runs over the whole history, not the loaded page. -->
+            <Border Style="{StaticResource AuthEntryBorder}" HeightRequest="48">
+                <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8">
+                    <Label Grid.Column="0"
+                           Text="🔍"
+                           FontSize="16"
+                           VerticalOptions="Center"
+                           AutomationProperties.IsInAccessibleTree="False"/>
+
+                    <Entry x:Name="SearchEntry"
+                           Grid.Column="1"
+                           FontFamily="Quicksand"
+                           FontSize="14"
+                           Placeholder="Search the day reviews"
+                           TextColor="{AppThemeBinding Light={StaticResource Gray900}, Dark={StaticResource White}}"
+                           PlaceholderColor="{StaticResource Gray500}"
+                           ReturnType="Search"
+                           TextChanged="OnSearchTextChanged"/>
+
+                    <Button x:Name="ClearSearchButton"
+                            Grid.Column="2"
+                            Text="✕"
+                            FontFamily="QuicksandSemiBold"
+                            FontSize="13"
+                            TextColor="{StaticResource MutedText}"
+                            BackgroundColor="Transparent"
+                            WidthRequest="32"
+                            HeightRequest="32"
+                            Padding="0"
+                            IsVisible="False"
+                            Clicked="OnClearSearchClicked"/>
+                </Grid>
+            </Border>
+
+            <!-- Two chooser chips rather than a row per option: five urgencies and four windows
+                 as flat chips is a control panel, and the popup chooser is the pattern the app
+                 already has (M1-13's pause durations). -->
+            <HorizontalStackLayout Spacing="9">
+                <Border x:Name="UrgencyChip" Style="{StaticResource OutlinedCard}" Padding="16,8">
+                    <Border.StrokeShape>
+                        <RoundRectangle CornerRadius="20"/>
+                    </Border.StrokeShape>
+                    <Border.GestureRecognizers>
+                        <TapGestureRecognizer Tapped="OnUrgencyChipTapped"/>
+                    </Border.GestureRecognizers>
+                    <Label x:Name="UrgencyChipLabel"
+                           Text="Any urgency"
+                           FontFamily="QuicksandSemiBold"
+                           FontSize="14"
+                           TextColor="{StaticResource HeadingText}"/>
+                </Border>
+
+                <Border x:Name="WindowChip" Style="{StaticResource OutlinedCard}" Padding="16,8">
+                    <Border.StrokeShape>
+                        <RoundRectangle CornerRadius="20"/>
+                    </Border.StrokeShape>
+                    <Border.GestureRecognizers>
+                        <TapGestureRecognizer Tapped="OnWindowChipTapped"/>
+                    </Border.GestureRecognizers>
+                    <Label x:Name="WindowChipLabel"
+                           Text="All time"
+                           FontFamily="QuicksandSemiBold"
+                           FontSize="14"
+                           TextColor="{StaticResource HeadingText}"/>
+                </Border>
+            </HorizontalStackLayout>
+        </VerticalStackLayout>
+
         <RefreshView x:Name="Refresher"
-                     Grid.Row="1"
+                     Grid.Row="2"
                      RefreshColor="{StaticResource Primary}"
                      Refreshing="OnPullToRefresh">
             <ScrollView>
@@ -64,13 +143,14 @@
                         <Border Style="{StaticResource ElevatedCard}" HeightRequest="112"/>
                     </VerticalStackLayout>
 
-                    <!-- Empty. Deliberately says why rather than only that: the first two days
-                         of a new member genuinely have no finished day to review yet, and a bare
-                         "nothing here" reads as a fault. -->
+                    <!-- Empty. Two distinct causes, said apart: a member whose first review has
+                         not been written yet, and a filter that matched nothing — a bare
+                         "nothing here" reads as a fault either way. -->
                     <VerticalStackLayout x:Name="EmptyPanel" IsVisible="False" Spacing="6">
                         <Border Style="{StaticResource ElevatedCard}">
                             <VerticalStackLayout Spacing="6">
-                                <Label Text="No day reviews yet"
+                                <Label x:Name="EmptyTitleLabel"
+                                       Text="No day reviews yet"
                                        Style="{StaticResource Body1SemiBoldDark}"/>
                                 <Label x:Name="EmptyDetailLabel"
                                        Style="{StaticResource Body2}"
@@ -100,6 +180,6 @@
             </ScrollView>
         </RefreshView>
 
-        <controls:BottomNavBar Grid.Row="2" Tab="Summaries"/>
+        <controls:BottomNavBar Grid.Row="3" Tab="Summaries"/>
     </Grid>
 </ContentPage>

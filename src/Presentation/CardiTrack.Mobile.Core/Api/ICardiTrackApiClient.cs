@@ -75,9 +75,31 @@ public interface ICardiTrackApiClient
     /// </summary>
     /// <param name="cardiMemberId">The member whose reviews are being read.</param>
     /// <param name="limit">How many to ask for. The service clamps this into range.</param>
+    /// <param name="search">
+    /// Optional text filter over the review, its headline and its suggestion — applied
+    /// server-side, before the limit, so it searches the history rather than the loaded page.
+    /// </param>
+    /// <param name="from">Optional earliest local day, inclusive.</param>
+    /// <param name="urgency">
+    /// Optional urgency tier in the wire vocabulary (watch / check-in / concerning / act-now).
+    /// </param>
     /// <param name="ct">Cancels the read.</param>
     Task<IReadOnlyList<DigestResponse>> GetDayReviewsAsync(
-        Guid cardiMemberId, int limit, CancellationToken ct = default);
+        Guid cardiMemberId,
+        int limit,
+        string? search = null,
+        DateOnly? from = null,
+        string? urgency = null,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// One day's review — the latest (and in practice only) day-review entry describing
+    /// <paramref name="localDate"/>. Throws <see cref="ApiException"/> with a 404 when that day
+    /// was never reviewed; the detail screen shows its error state rather than treating that as
+    /// a fault.
+    /// </summary>
+    Task<DigestResponse> GetDayReviewAsync(
+        Guid cardiMemberId, DateOnly localDate, CancellationToken ct = default);
 
     // ---- Questions the service asks the family ----
 

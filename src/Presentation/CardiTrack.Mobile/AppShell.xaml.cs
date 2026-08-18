@@ -38,6 +38,7 @@ public partial class AppShell : Shell
         Routing.RegisterRoute(MetricTrendPage.Route, typeof(MetricTrendPage));
         Routing.RegisterRoute(NotificationsPage.Route, typeof(NotificationsPage));
         Routing.RegisterRoute(AlertDetailPage.Route, typeof(AlertDetailPage));
+        Routing.RegisterRoute(DayReviewDetailPage.Route, typeof(DayReviewDetailPage));
 
 #if ANDROID || IOS
         WirePush();
