@@ -120,6 +120,17 @@ public sealed class CardiMemberDraftStore
         return path;
     }
 
+    /// <summary>
+    /// Drops a draft photo the user explicitly removed. Without this the file would sit in
+    /// app data until the whole draft cleared — and a draft saved without its path no longer
+    /// knows the file exists, so nothing else would ever delete it.
+    /// </summary>
+    public void RemovePhoto(string? path)
+    {
+        if (!string.IsNullOrEmpty(path))
+            DeletePhoto(path);
+    }
+
     private async Task<CardiMemberDraft?> ReadAsync()
     {
         try
