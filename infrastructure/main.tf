@@ -26,8 +26,8 @@ locals {
   redis_instance_name   = "${var.project_name}-${local.environment}-redis"
   cloud_sql_db_name     = "${var.project_name}-${local.environment}-db"
   storage_bucket_name   = "${var.project_id}-${var.project_name}-${local.environment}"
-  # One definition for a name two consumers need: the bucket resource (member_photos.tf) and the
-  # Storage__MemberPhotos__Bucket env var injected into the API and Worker below.
+  # Defined here rather than derived inside the module so api_env_vars below can name the
+  # bucket without a circular reference to the module's own outputs.
   member_photos_bucket_name = "${var.project_id}-${var.project_name}-${local.environment}-member-photos"
   pubsub_topic_name         = "${var.project_name}-${local.environment}-realtime"
   log_sink_name             = "${var.project_name}-${local.environment}-audit-sink"
@@ -128,8 +128,8 @@ module "deployments" {
       "Apm__MetricsEnabled"            = tostring(var.apm_metrics_enabled)
       "Apm__TracesSampleRatio"         = tostring(var.traces_sample_ratio.api)
       "Serilog__MinimumLevel__Default" = var.log_minimum_level.api
-      # Member profile photo bucket (member_photos.tf). Non-secret: it names a bucket only IAM
-      # can open. Absent locally, where the feature is off by design.
+      # CardiMember profile photos (member_photos.tf). Bucket name only — signed-URL TTL
+      # and upload limits are app config with appsettings defaults.
       "Storage__MemberPhotos__Bucket" = local.member_photos_bucket_name
     },
     # Transitional — DELETE once an image carrying the AI__Public/AI__Private settings is

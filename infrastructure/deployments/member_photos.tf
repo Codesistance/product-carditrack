@@ -1,26 +1,24 @@
 # CardiMember profile photos
 #
-# A private bucket for full-face member photos — Tier 1 data, Safe Harbor category 17
-# (docs/technical/data_protection_architecture.md §5). The apps hold opaque object names
-# (members/{cardiMemberId}/{guid}.jpg) and serve reads only as ≤15-minute V4 signed URLs; the
-# bucket itself is never publicly reachable. Who touches it and how:
+# Profile photos are full-face images of monitored persons — a Tier 1 direct identifier
+# under the data-protection ADR (HIPAA Safe Harbor category 17,
+# docs/technical/data_protection_architecture.md §4.2). That classification drives every
+# choice below that differs from the main bucket:
 #
-#   - The API (its own runtime identity, service_accounts.tf) uploads on photo save and
-#     best-effort-deletes on replace/remove/soft delete.
-#   - The Worker's OrphanedPhotoCleanupWorker is the enforcement backstop behind those
-#     best-effort deletes: it lists the bucket daily and reaps objects no active member
-#     references (24-hour crash-window grace).
-#
-# Access is a dedicated google_storage_bucket_iam_member per workload, never a widened shared
-# grant — the same rule the DP key-ring bucket records in cloud_storage.tf.
+#   - versioning off and soft-delete retention zero, deliberately inverting the main
+#     bucket's defaults: ADR finding #11 records that versioning defeats deletion claims,
+#     and erasing a member's photo must be immediate and unrecoverable, not a demotion to
+#     a noncurrent version.
+#   - the bucket stays fully private (public_access_prevention = "enforced"); clients see
+#     photos only through short-lived V4 signed GET URLs the API issues after its own
+#     authorization check. No CDN, no public URL, no bucket CORS — browsers never touch
+#     the bucket directly.
 
-# Variables
 variable "member_photos_bucket_name" {
-  description = "Name of the member profile photos GCS bucket"
+  description = "Name of the GCS bucket holding CardiMember profile photos"
   type        = string
 }
 
-# Resources
 resource "google_storage_bucket" "member_photos" {
   name          = var.member_photos_bucket_name
   location      = var.storage_location
@@ -30,9 +28,10 @@ resource "google_storage_bucket" "member_photos" {
   uniform_bucket_level_access = true
   public_access_prevention    = "enforced"
 
-  # No versioning, and no soft-delete grace, on purpose — the opposite of the main bucket. The
-  # retention matrix promises a *hard* delete of the blob on photo removal and member erasure; a
-  # noncurrent generation or a soft-deleted object would silently outlive that promise.
+  versioning {
+    enabled = false
+  }
+
   soft_delete_policy {
     retention_duration_seconds = 0
   }
@@ -41,32 +40,36 @@ resource "google_storage_bucket" "member_photos" {
   depends_on = [google_project_service.storage]
 }
 
-# The API's write path: upload on save, delete on replace/remove/soft delete. objectAdmin rather
-# than objectCreator+objectViewer because replace must delete the old object, and GCS has no
-# narrower role that covers create+get+delete on objects.
+# The API is the only identity on this bucket: it writes re-encoded uploads, deletes
+# replaced or removed photos, and signs read URLs. Same rule as the DP key ring in
+# cloud_storage.tf — if another workload ever needs photos (e.g. a Worker cleanup job),
+# give it its own binding rather than widening this one.
 resource "google_storage_bucket_iam_member" "api_member_photos" {
   bucket = google_storage_bucket.member_photos.name
   role   = "roles/storage.objectAdmin"
   member = local.api_sa
 }
 
-# Signed GET URLs are minted via the IAM Credentials signBlob API from the API's own identity
-# (see GcsProfilePhotoStorage), which requires the account to hold tokenCreator on itself.
-# Self-referential on purpose: it lets the API sign as itself and nothing else, unlike a
-# project-level tokenCreator grant, which would let it mint tokens for any account.
-resource "google_service_account_iam_member" "api_member_photos_url_signer" {
+# V4 signed URLs without an exported key: on Cloud Run the API has no private key
+# material, so UrlSigner signs via the IAM Credentials signBlob API — which requires the
+# account to hold tokenCreator on itself.
+resource "google_service_account_iam_member" "api_self_token_creator" {
   service_account_id = google_service_account.api.name
   role               = "roles/iam.serviceAccountTokenCreator"
   member             = local.api_sa
 }
 
-# The Worker runs as the default compute service account (like every other Cloud Run resource
-# here except the webhook receiver, web, the API and the pipeline jobs — a recorded, deliberate
-# state; see service_accounts.tf), so the cleanup worker's grant goes to it. Its own binding
-# rather than a widening of the API's, per the house rule above. objectAdmin because the sweep
-# both lists and deletes.
+# The Worker runs as the default compute service account (a recorded, deliberate state — see
+# the header comment in service_accounts.tf), so OrphanedPhotoCleanupWorker's grant goes to
+# that identity. Its own binding rather than a widening of the API's, per the house rule
+# above. objectAdmin because the sweep both lists and deletes.
 resource "google_storage_bucket_iam_member" "worker_member_photos" {
   bucket = google_storage_bucket.member_photos.name
   role   = "roles/storage.objectAdmin"
   member = "serviceAccount:${data.google_project.current.number}-compute@developer.gserviceaccount.com"
+}
+
+output "member_photos_bucket_name" {
+  description = "Name of the CardiMember profile photos bucket"
+  value       = google_storage_bucket.member_photos.name
 }
