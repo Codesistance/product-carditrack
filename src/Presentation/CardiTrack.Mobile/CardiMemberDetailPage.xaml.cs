@@ -1,4 +1,4 @@
-using CardiTrack.Application.DTOs.Requests;
+﻿using CardiTrack.Application.DTOs.Requests;
 using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Domain.Extensions;
 using CardiTrack.Mobile.Controls;
@@ -933,6 +933,11 @@ public partial class CardiMemberDetailPage : ContentPage
 
     private async void OnManageDevicesTapped(object? sender, TappedEventArgs e) =>
         await Shell.Current.GoToAsync($"{DeviceManagementPage.Route}?memberId={_memberId}");
+
+    /// <summary>This member's daybook — the tab, already filtered to them, with the origin
+    /// remembered so back returns here rather than to wherever the tab was last left.</summary>
+    private async void OnDaybookTapped(object? sender, EventArgs e) =>
+        await Shell.Current.GoToTabAsync($"{AppShell.DaybookRoute}?memberId={_memberId}");
 
     private async void OnQuestionsTapped(object? sender, EventArgs e)
     {

@@ -23,6 +23,7 @@ namespace CardiTrack.Mobile;
 /// </remarks>
 [QueryProperty(nameof(MemberId), "memberId")]
 [QueryProperty(nameof(Date), "date")]
+[QueryProperty(nameof(MemberName), "name")]
 public partial class DaybookEntryPage : ContentPage
 {
     public const string Route = "daybookentry";
@@ -51,6 +52,22 @@ public partial class DaybookEntryPage : ContentPage
         set => _memberId = Guid.TryParse(Uri.UnescapeDataString(value ?? string.Empty), out var id)
             ? id
             : Guid.Empty;
+    }
+
+    /// <summary>
+    /// The member's first name, passed by the list so the header can say whose daybook this is
+    /// from the first frame. Optional: a deep link without it keeps the bare "Daybook" until the
+    /// member fetch supplies the name.
+    /// </summary>
+    public string MemberName
+    {
+        set => ApplyHeaderName(Uri.UnescapeDataString(value ?? string.Empty));
+    }
+
+    private void ApplyHeaderName(string? firstName)
+    {
+        if (!string.IsNullOrWhiteSpace(firstName))
+            HeaderTitle.Text = $"{firstName}'s Daybook";
     }
 
     public string Date
@@ -110,6 +127,8 @@ public partial class DaybookEntryPage : ContentPage
             try
             {
                 var member = await _api.GetCardiMemberAsync(_memberId);
+                if (HeaderTitle.Text == "Daybook")
+                    ApplyHeaderName(NameFormatting.FirstName(member.Name));
                 ApplyTrends(member.Metrics);
             }
             catch (ApiException)
@@ -184,14 +203,29 @@ public partial class DaybookEntryPage : ContentPage
             return;
         }
 
+        // Every metric the dashboard series carries, each against whatever yardsticks it
+        // honestly has: the member's own usual where one is learned, and the published band where
+        // a standards body publishes one — never both invented. Steps has no published range (no
+        // body publishes a daily step count) and skin temperature has no published band and no
+        // single concerning direction, so each carries only the lines it has earned.
         var blocks = new[]
         {
             Block(metrics.Sleep, "Sleep", "MetricSleepInk", "{0:0.#}",
-                TrendAwareness.Direction.BelowUsual, "night"),
+                TrendAwareness.Direction.BelowUsual, "night",
+                new BandCount(TrendAwareness.Direction.BelowUsual, AgainstLow: true, "h")),
             Block(metrics.RestingHeartRate, "Resting heart rate", "MetricHeartInk", "{0:N0}",
-                TrendAwareness.Direction.AboveUsual, "day"),
+                TrendAwareness.Direction.AboveUsual, "day",
+                new BandCount(TrendAwareness.Direction.AboveUsual, AgainstLow: false, " bpm")),
+            Block(metrics.SpO2, "Blood oxygen", "MetricSpO2Ink", "{0:0.#}",
+                TrendAwareness.Direction.BelowUsual, "day",
+                new BandCount(TrendAwareness.Direction.BelowUsual, AgainstLow: true, "%")),
+            Block(metrics.BreathingRate, "Breathing rate", "MetricBreathingInk", "{0:0.#}",
+                TrendAwareness.Direction.AboveUsual, "day",
+                new BandCount(TrendAwareness.Direction.AboveUsual, AgainstLow: false, "/min")),
             Block(metrics.Steps, "Steps", "MetricStepsInk", "{0:N0}",
-                TrendAwareness.Direction.BelowUsual, "day"),
+                TrendAwareness.Direction.BelowUsual, "day", band: null),
+            Block(metrics.Temperature, "Skin temperature", "MetricTemperatureInk", "{0:0.#}",
+                usualDirection: null, "day", band: null),
         };
 
         foreach (var block in blocks)
@@ -205,13 +239,22 @@ public partial class DaybookEntryPage : ContentPage
         AwarenessFooter.IsVisible = any;
     }
 
+    /// <summary>
+    /// A counted claim against a published band — which side of which bound, and the unit the
+    /// sentence writes after the figure. The bound itself always comes from the metric's own
+    /// <see cref="MetricReference"/>, so the count can never cite a figure the chart does not
+    /// shade, and the sentence always names the publisher.
+    /// </summary>
+    private sealed record BandCount(TrendAwareness.Direction Direction, bool AgainstLow, string Unit);
+
     private static View? Block(
         DashboardMetric metric,
         string name,
         string inkKey,
         string axisFormat,
-        TrendAwareness.Direction direction,
-        string dayWord)
+        TrendAwareness.Direction? usualDirection,
+        string dayWord,
+        BandCount? band)
     {
         var window = metric.Series.TakeLast(ChartDays).ToList();
         var values = window.Where(p => p.Value is not null).Select(p => (double)p.Value!).ToList();
@@ -253,14 +296,34 @@ public partial class DaybookEntryPage : ContentPage
             });
         }
 
-        // A count the caregiver can check against the chart above it — never a score.
-        if (TrendAwareness.Line(window, metric.Baseline, direction, dayWord) is { } line)
+        // Counts the caregiver can check against the chart above them — never scores. Two
+        // possible lines: against the member's own usual, and against the published band the
+        // chart shades, each said only when its yardstick exists.
+        if (usualDirection is { } direction
+            && TrendAwareness.Line(window, metric.Baseline, direction, dayWord) is { } usualLine)
         {
             stack.Add(new Label
             {
-                Text = line,
+                Text = usualLine,
                 Style = Styled("Body2Dark"),
             });
+        }
+
+        if (band is not null && metric.Reference is { } published)
+        {
+            var bound = band.AgainstLow ? published.Low : published.High;
+            var boundText = string.Create(
+                System.Globalization.CultureInfo.CurrentCulture,
+                $"the recommended {string.Format(axisFormat, bound)}{band.Unit} ({published.Source})");
+
+            if (TrendAwareness.BandLine(window, bound, band.Direction, boundText, dayWord) is { } bandLine)
+            {
+                stack.Add(new Label
+                {
+                    Text = bandLine,
+                    Style = Styled("Body2Dark"),
+                });
+            }
         }
 
         return new Border { Style = Styled("ElevatedCard"), Content = stack };

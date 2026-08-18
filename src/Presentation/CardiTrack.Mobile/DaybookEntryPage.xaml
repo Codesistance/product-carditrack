@@ -33,7 +33,11 @@
                     <Image Source="icon_back_white.svg" WidthRequest="20" HeightRequest="20"/>
                 </Border>
 
-                <Label Grid.Column="1"
+                <!-- Whose daybook this is. The list passes the name so the header is right
+                     from the first frame; a deep link without one falls back to the bare word
+                     until the member fetch fills it in. -->
+                <Label x:Name="HeaderTitle"
+                       Grid.Column="1"
                        Text="Daybook"
                        Style="{StaticResource Heading3}"
                        TextColor="{StaticResource White}"
@@ -121,10 +125,14 @@
                         <!-- The regulatory footing, on the screen rather than in a policy: these
                              are counts a caregiver can check against the charts above, not a
                              finding about the person. -->
+        <!-- Start, overriding the caption style's End: the keys under the charts sit right,
+                             the way chart captions do, but this is a standing statement the page
+                             makes and it reads from the left like the prose above it. -->
                         <Label x:Name="AwarenessFooter"
                                Text="For awareness, not medical advice — CardiTrack never diagnoses. Talk to a clinician about anything that worries you."
                                Style="{StaticResource MetricRowCaption}"
                                TextColor="{StaticResource MutedText}"
+                               HorizontalTextAlignment="Start"
                                LineBreakMode="WordWrap"/>
 
                     </VerticalStackLayout>

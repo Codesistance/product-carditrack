@@ -33,6 +33,7 @@ namespace CardiTrack.Mobile;
 /// once a day.
 /// </para>
 /// </remarks>
+[QueryProperty(nameof(PreselectMemberId), "memberId")]
 public partial class DaybookPage : ContentPage
 {
     /// <summary>
@@ -69,11 +70,27 @@ public partial class DaybookPage : ContentPage
     private bool _hasAnyReviews;
     private CancellationTokenSource? _searchDebounceCts;
 
+    private IReadOnlyList<CardiMemberResponse> _members = [];
+    private Guid? _pendingMemberId;
     private Guid _memberId;
     private string? _memberFirstName;
     private string? _search;
     private string? _urgency;
     private int? _windowDays;
+
+    /// <summary>
+    /// A member to land filtered to, passed by the dashboard's member card and the member detail
+    /// page — "show me their daybook" should arrive already about them. Consumed on the next
+    /// load; an id not on the account (a stale deep link) falls through to the normal
+    /// primary-member rule rather than showing an empty page about nobody.
+    /// </summary>
+    public string PreselectMemberId
+    {
+        set => _pendingMemberId =
+            Guid.TryParse(Uri.UnescapeDataString(value ?? string.Empty), out var id) && id != Guid.Empty
+                ? id
+                : null;
+    }
 
     public DaybookPage(ICardiTrackApiClient api, IPopupService popups)
     {
@@ -172,6 +189,31 @@ public partial class DaybookPage : ContentPage
 
     private bool HasActiveFilter => _search is not null || _urgency is not null || _windowDays is not null;
 
+    /// <summary>
+    /// Which CardiMember's daybook to show. The chooser offers every member on the account; a
+    /// choice clears nothing else — a caregiver comparing two members' weeks wants the same
+    /// filters over both.
+    /// </summary>
+    private async void OnMemberChipTapped(object? sender, TappedEventArgs e)
+    {
+        var options = _members
+            .Select(m => NameFormatting.FirstName(m.Name) ?? "Unnamed")
+            .ToArray();
+
+        var choice = await _popups.ChooseAsync("Whose daybook", "Cancel", options);
+        if (choice is null)
+            return;
+
+        var index = Array.IndexOf(options, choice);
+        if (index < 0 || _members[index].Id == _memberId)
+            return;
+
+        _memberId = _members[index].Id;
+        _memberFirstName = NameFormatting.FirstName(_members[index].Name);
+        MemberChipLabel.Text = choice;
+        await LoadAsync();
+    }
+
     // ── Loading ──────────────────────────────────────────────────────────────
 
     private async Task LoadAsync(bool silent = false)
@@ -185,11 +227,32 @@ public partial class DaybookPage : ContentPage
 
         try
         {
+            // A deep link names the member; it wins over both the remembered selection and the
+            // primary-member rule below, because the affordance that sent the caregiver here
+            // promised them this member's daybook.
+            if (_pendingMemberId is { } pending)
+            {
+                _pendingMemberId = null;
+                if (_members.Count == 0)
+                    _members = await _api.GetCardiMembersAsync();
+
+                if (_members.FirstOrDefault(m => m.Id == pending) is { } chosen)
+                {
+                    _memberId = chosen.Id;
+                    _memberFirstName = NameFormatting.FirstName(chosen.Name);
+                    MemberChipLabel.Text = _memberFirstName ?? "Member";
+                    MemberChip.IsVisible = _members.Count > 1;
+                }
+            }
+
             // The same rule the dashboard and the device-setup launcher use for "which member",
-            // so the three cannot drift apart about who the app means when it has not been told.
+            // so the three cannot drift apart about who the app means when it has not been told —
+            // and the full list is kept, because the chooser above offers every member on the
+            // account once there is more than one to choose between.
             if (_memberId == Guid.Empty)
             {
-                var member = PrimaryCardiMember.From(await _api.GetCardiMembersAsync());
+                _members = await _api.GetCardiMembersAsync();
+                var member = PrimaryCardiMember.From(_members);
                 if (member is null)
                 {
                     EmptyDetailLabel.Text =
@@ -200,6 +263,8 @@ public partial class DaybookPage : ContentPage
 
                 _memberId = member.Id;
                 _memberFirstName = NameFormatting.FirstName(member.Name);
+                MemberChipLabel.Text = _memberFirstName ?? "Member";
+                MemberChip.IsVisible = _members.Count > 1;
             }
 
             var from = _windowDays is { } days
@@ -310,7 +375,8 @@ public partial class DaybookPage : ContentPage
         card.GestureRecognizers.Add(new TapGestureRecognizer
         {
             Command = new Command(async () => await Shell.Current.GoToAsync(
-                $"{DaybookEntryPage.Route}?memberId={_memberId}&date={review.LocalDate:yyyy-MM-dd}")),
+                $"{DaybookEntryPage.Route}?memberId={_memberId}&date={review.LocalDate:yyyy-MM-dd}"
+                + $"&name={Uri.EscapeDataString(_memberFirstName ?? string.Empty)}")),
         });
 
         return card;

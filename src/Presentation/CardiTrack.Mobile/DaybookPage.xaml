@@ -98,6 +98,24 @@
                  as flat chips is a control panel, and the popup chooser is the pattern the app
                  already has (M1-13's pause durations). -->
             <HorizontalStackLayout Spacing="9">
+                <!-- Which CardiMember's daybook. Hidden while the account has only one member —
+                     a chooser with one choice is a control with nothing to do. -->
+                <Border x:Name="MemberChip"
+                        Style="{StaticResource OutlinedCard}"
+                        Padding="16,8"
+                        IsVisible="False">
+                    <Border.StrokeShape>
+                        <RoundRectangle CornerRadius="20"/>
+                    </Border.StrokeShape>
+                    <Border.GestureRecognizers>
+                        <TapGestureRecognizer Tapped="OnMemberChipTapped"/>
+                    </Border.GestureRecognizers>
+                    <Label x:Name="MemberChipLabel"
+                           FontFamily="QuicksandSemiBold"
+                           FontSize="14"
+                           TextColor="{StaticResource HeadingText}"/>
+                </Border>
+
                 <Border x:Name="UrgencyChip" Style="{StaticResource OutlinedCard}" Padding="16,8">
                     <Border.StrokeShape>
                         <RoundRectangle CornerRadius="20"/>
