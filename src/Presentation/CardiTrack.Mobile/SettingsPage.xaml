@@ -17,13 +17,13 @@
              push notifications (notification preferences, timezone), so a caregiver can land here
              with nothing behind it in the app's own history and needs an obvious way back. -->
         <controls:HeaderBand Grid.Row="0" ContentPadding="20,14,20,26">
-            <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto" ColumnSpacing="12" RowSpacing="2">
+            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
 
                 <Border Grid.Column="0"
                         WidthRequest="40" HeightRequest="40"
                         StrokeThickness="0"
                         BackgroundColor="{StaticResource HeaderButtonTint}"
-                        VerticalOptions="Center">
+                        VerticalOptions="Start">
                     <Border.StrokeShape>
                         <RoundRectangle CornerRadius="20"/>
                     </Border.StrokeShape>
@@ -33,22 +33,20 @@
                     <Image Source="icon_back_white.svg" WidthRequest="20" HeightRequest="20"/>
                 </Border>
 
-                <Label Grid.Column="1"
-                       Text="Settings"
+                <!-- Title with what the page is tight beneath it — one stack, top-aligned
+                     with the icon. The description is declared after the title, so screen
+                     readers announce them in reading order. -->
+                <VerticalStackLayout Grid.Column="1" Spacing="1" VerticalOptions="Start">
+                    <Label Text="Settings"
                        Style="{StaticResource Heading3}"
-                       TextColor="{StaticResource White}"
-                       VerticalTextAlignment="Center"/>
-
-                <!-- What this page is, said once under the title — indented to the title's
-                     column, the shape the Dashboard header set. Declared last so screen
-                     readers announce back and title before it. -->
-                <Label Grid.Row="1" Grid.Column="1"
-                       Text="Your account, and how CardiTrack behaves"
-                       FontFamily="Quicksand"
-                       FontSize="14"
-                       TextColor="{StaticResource White}"
-                       Opacity="0.85"
-                       LineBreakMode="TailTruncation"/>
+                       TextColor="{StaticResource White}"/>
+                    <Label Text="Your account, and how CardiTrack behaves"
+                           FontFamily="Quicksand"
+                           FontSize="12"
+                           TextColor="{StaticResource White}"
+                           Opacity="0.85"
+                           LineBreakMode="TailTruncation"/>
+                </VerticalStackLayout>
             </Grid>
         </controls:HeaderBand>
 
