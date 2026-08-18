@@ -184,7 +184,17 @@ public partial class AddCardiMemberPage : ContentPage
         try
         {
             await using var picked = await photo.OpenReadAsync();
-            _photoPath = await _drafts.CapturePhotoAsync(picked, _photoPath) ?? photo.FullPath;
+            var saved = await _drafts.CapturePhotoAsync(picked, _photoPath);
+            if (saved is null)
+            {
+                // The durable copy failed; show the pick from the picker's own path for
+                // this session — the draft store already tolerates that path vanishing on
+                // restore. The previous draft file goes with the reference: nothing points
+                // at it any more, so leaving it would strand it in app data.
+                _drafts.RemovePhoto(_photoPath);
+                saved = photo.FullPath;
+            }
+            _photoPath = saved;
             PhotoImage.Source = ImageSource.FromFile(_photoPath);
             PhotoImage.IsVisible = true;
             PhotoPlaceholder.IsVisible = false;
