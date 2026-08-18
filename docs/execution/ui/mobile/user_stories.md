@@ -521,7 +521,28 @@ Based on the solution manifest, market analysis, and README, here are comprehens
   - **Edge — no reviews yet:** a member in their first days sees "No day reviews yet" and a line saying the first review is written after their first full day, not a bare empty state
   - **Edge — a reading was not measured:** the review says so plainly. Silence must never read as "healthy"
   - **Edge — refresh fails with a list already on screen:** the list stays and the failure is shown over it; finished days do not go stale, so they are still worth reading
-  - **Screens:** SummariesPage (no Figma M1 frame — needs design sync)
+  - **Screens:** SummariesPage, DayReviewDetailPage (no Figma M1 frames — need design sync)
+
+**Story 12.4: Find the day I half-remember** _(P1 — Should Have)_
+- **As a** caregiver who remembers "there was a day his oxygen dipped"
+- **I want to** search the reviews by words, narrow by urgency, and bound by date
+- **So that** I can find that day without re-reading a month of cards
+- **Acceptance Criteria:**
+  - Given reviews exist, when I type in the search box, then after a pause the list shows only reviews whose text, headline or suggestion contains my words — searched over the whole history, not just the loaded page
+  - The urgency chip narrows to one tier; the window chip narrows to the last 7/30/90 days; the filters combine
+  - **Edge — nothing matches:** the empty state says "No reviews match … clear one and look again", and the filter controls stay on screen so I can
+  - **Edge — I type a % or _:** it is searched as the character I typed, not as a wildcard
+
+**Story 12.5: See the trend behind the words** _(P1 — Should Have)_
+- **As a** caregiver reading a review that says "fewer steps than usual"
+- **I want to** see the last fortnight charted, with what "usual" and "recommended" mean marked and sourced
+- **So that** I have awareness of the direction — without anyone scoring or diagnosing
+- **Acceptance Criteria:**
+  - Given I open a review, when it loads, then Sleep, Resting heart rate and Steps are charted for the last 14 days, with the member's own usual dashed and any published band shaded
+  - Every chart's key names its source ("recommended 7–8 (NSF)"); a chart with no published band shows none rather than an unattributed one
+  - Under each chart a counted line — "Under their usual on 10 of the last 14 nights" — counting only finished, measured days; no line at all without a baseline or under 7 measured days
+  - The screen states plainly: for awareness, not medical advice; CardiTrack never diagnoses
+  - **Edge — the charts fetch fails:** the review still shows; the trends section hides rather than costing the caregiver the account they came to read
 
 **Story 12.2: Stop being paged about a night that was already better** _(P0 — Must Have)_
 - **As a** caregiver
