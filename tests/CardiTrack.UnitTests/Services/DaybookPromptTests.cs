@@ -1,4 +1,5 @@
 ﻿using CardiTrack.Domain.Entities;
+using CardiTrack.Domain.Enums;
 using CardiTrack.Infrastructure.Services;
 
 namespace CardiTrack.UnitTests.Services;
@@ -127,6 +128,198 @@ public class DaybookPromptTests
 
         Assert.Contains("This day is over.", section);
         Assert.Contains("none of it is still accumulating", section);
+    }
+
+    // ── The whole day: hour tables, monitoring, conditions ───────────────────
+
+    /// <summary>UTC+1 all year, so a conversion mistake cannot hide behind a UTC test box.</summary>
+    private static readonly TimeZoneInfo PlusOne =
+        TimeZoneInfo.CreateCustomTimeZone("T+1", TimeSpan.FromHours(1), "T+1", "T+1");
+
+    private static readonly DateTime DayStartUtc = new(2026, 8, 16, 23, 0, 0, DateTimeKind.Utc);
+    private static readonly DateTime DayEndUtc = new(2026, 8, 17, 23, 0, 0, DateTimeKind.Utc);
+
+    private static MetricRollupHourly Rollup(
+        GranularMetric metric, int utcHourOffset, float min, float max, float avg, float sum = 0) => new()
+    {
+        Metric = metric,
+        HourStartUtc = DayStartUtc.AddHours(utcHourOffset),
+        Min = min,
+        Max = max,
+        Avg = avg,
+        Sum = sum,
+        SampleCount = 12,
+    };
+
+    /// <summary>
+    /// The hour table is rendered in the member's local clock — the day the account is about —
+    /// never the UTC hour the row is stored under.
+    /// </summary>
+    [Fact]
+    public void IntradaySection_RendersHoursInTheMembersLocalTime()
+    {
+        var rollups = new List<MetricRollupHourly>
+        {
+            Rollup(GranularMetric.HeartRate, 7, 58, 71, 64.2f),
+        };
+
+        var section = DaybookPrompt.IntradaySection(rollups, DayStartUtc, DayEndUtc, PlusOne);
+
+        // The row is DayStart(23:00Z)+7h = 06:00Z, which is 07:00 on the member's +1 clock.
+        Assert.Contains("Heart rate: 07:00 avg 64 (58-71)", section);
+    }
+
+    [Fact]
+    public void IntradaySection_SumsStepsAndKeepsOxygenDecimals()
+    {
+        var rollups = new List<MetricRollupHourly>
+        {
+            Rollup(GranularMetric.Steps, 8, 0, 210, 20.1f, sum: 1204),
+            Rollup(GranularMetric.SpO2, 3, 94.0f, 96.4f, 95.4f),
+        };
+
+        var section = DaybookPrompt.IntradaySection(rollups, DayStartUtc, DayEndUtc, PlusOne);
+
+        Assert.Contains("Steps: 08:00 1204", section);
+        Assert.Contains("Blood oxygen: 03:00 avg 95.4 (94-96.4)", section);
+    }
+
+    /// <summary>
+    /// A silent stretch is said as a gap — but only between hours that do have data, so the watch
+    /// going quiet is stated and an unpopulated store is not mistaken for a day of silence.
+    /// </summary>
+    [Fact]
+    public void IntradaySection_StatesTheGapBetweenCoveredHours()
+    {
+        var rollups = new List<MetricRollupHourly>
+        {
+            Rollup(GranularMetric.HeartRate, 12, 60, 70, 65),
+            Rollup(GranularMetric.HeartRate, 16, 61, 69, 64),
+        };
+
+        var section = DaybookPrompt.IntradaySection(rollups, DayStartUtc, DayEndUtc, PlusOne);
+
+        // Offsets 13-15 from the 23:00Z day start are 12:00Z-14:00Z → local 13:00 to 16:00.
+        Assert.Contains("No readings at all between 13:00 and 16:00.", section);
+    }
+
+    /// <summary>An empty rollup store is absent plumbing, not a day of gaps.</summary>
+    [Fact]
+    public void IntradaySection_SaysNothing_WhenTheStoreIsEmpty()
+    {
+        Assert.Equal(string.Empty,
+            DaybookPrompt.IntradaySection([], DayStartUtc, DayEndUtc, PlusOne));
+    }
+
+    /// <summary>
+    /// An hour covered by any metric is not a gap — the gap claim is "no readings at all", and
+    /// a steps-only hour has readings.
+    /// </summary>
+    [Fact]
+    public void IntradaySection_AnHourCoveredByAnyMetricIsNotAGap()
+    {
+        var rollups = new List<MetricRollupHourly>
+        {
+            Rollup(GranularMetric.HeartRate, 12, 60, 70, 65),
+            Rollup(GranularMetric.Steps, 13, 0, 100, 10, sum: 350),
+            Rollup(GranularMetric.HeartRate, 14, 61, 69, 64),
+        };
+
+        var section = DaybookPrompt.IntradaySection(rollups, DayStartUtc, DayEndUtc, PlusOne);
+
+        Assert.DoesNotContain("between 13:00 and 14:00", section);
+    }
+
+    [Fact]
+    public void MonitoringSection_SaysTheAlertAndItsState()
+    {
+        var alert = new Alert
+        {
+            Severity = AlertSeverity.Yellow,
+            Title = "Sleep was well off the usual",
+            IsResolved = true,
+            AcknowledgedDate = new DateTime(2026, 8, 17, 9, 0, 0, DateTimeKind.Utc),
+        };
+
+        var section = DaybookPrompt.MonitoringSection([alert], [], PlusOne);
+
+        Assert.Contains("--- The day's monitoring ---", section);
+        Assert.Contains(
+            "Alert (yellow): Sleep was well off the usual — acknowledged and resolved.", section);
+    }
+
+    /// <summary>Only Yellow and above is worth the account's words — the same floor the digest's
+    /// monitoring context applies. Green verdicts are the assessor confirming an ordinary hour.</summary>
+    [Fact]
+    public void MonitoringSection_KeepsNotableAssessments_DropsGreenOnes()
+    {
+        var green = new RealtimeAssessment
+        {
+            WindowStartUtc = DayStartUtc.AddHours(10),
+            Severity = AlertSeverity.Green,
+            ModelOutput = "An ordinary hour.",
+        };
+        var orange = new RealtimeAssessment
+        {
+            WindowStartUtc = DayStartUtc.AddHours(15),
+            Severity = AlertSeverity.Orange,
+            ModelOutput = "Heart rate well above the usual for this hour.",
+        };
+
+        var section = DaybookPrompt.MonitoringSection([], [green, orange], PlusOne);
+
+        Assert.Contains("15:00 assessment (orange): Heart rate well above the usual", section);
+        Assert.DoesNotContain("ordinary hour", section);
+    }
+
+    [Fact]
+    public void MonitoringSection_SaysNothing_WhenTheDayHadNoMonitoringToReport()
+    {
+        Assert.Equal(string.Empty, DaybookPrompt.MonitoringSection([], [], PlusOne));
+    }
+
+    [Fact]
+    public void ConditionsSection_RendersEachSessionInLocalTime()
+    {
+        var reading = new EnvironmentalReading
+        {
+            SessionStartUtc = DayStartUtc.AddHours(14).AddMinutes(5),
+            SessionEndUtc = DayStartUtc.AddHours(14).AddMinutes(41),
+            TemperatureCelsius = 24.3,
+            WeatherCondition = "Clouds",
+            RelativeHumidityPercent = 61,
+            AirQualityCategory = "Moderate",
+        };
+
+        var section = DaybookPrompt.ConditionsSection([reading], PlusOne);
+
+        Assert.Contains("--- Conditions during the day ---", section);
+        Assert.Contains("14:05-14:41: 24.3°C, Clouds, humidity 61%, air quality Moderate", section);
+    }
+
+    [Fact]
+    public void ConditionsSection_SaysNothing_ForNoSessionsOrEmptyReadings()
+    {
+        Assert.Equal(string.Empty, DaybookPrompt.ConditionsSection([], PlusOne));
+        Assert.Equal(string.Empty, DaybookPrompt.ConditionsSection(
+            [new EnvironmentalReading
+            {
+                SessionStartUtc = DayStartUtc.AddHours(2),
+                SessionEndUtc = DayStartUtc.AddHours(3),
+            }], PlusOne));
+    }
+
+    [Fact]
+    public void DevicesLine_NamesEachReportingDeviceOnce()
+    {
+        var logs = new[]
+        {
+            new DeviceActivityLog { DataSource = DeviceType.Fitbit },
+            new DeviceActivityLog { DataSource = DeviceType.Fitbit },
+        };
+
+        Assert.Equal("Readings this day came from: Fitbit.", DaybookPrompt.DevicesLine(logs));
+        Assert.Equal(string.Empty, DaybookPrompt.DevicesLine([]));
     }
 
     // ── The line to diagnosis ────────────────────────────────────────────────

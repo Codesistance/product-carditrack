@@ -489,6 +489,42 @@ public partial class DigestGenerationService : IDigestGenerationService
         var baseline = await _unitOfWork.PatternBaselines
             .GetLatestByCardiMemberAsync(memberId, periodDays: 30);
 
+        // The reviewed civil day as a UTC window, computed once for every fetch below.
+        // GetUtcOffset never throws on a DST-shifted local midnight, unlike ConvertTimeToUtc,
+        // and a boundary an hour adrift on two days a year costs one hour of rollups, not a run.
+        var dayStartLocal = reviewedDate.ToDateTime(TimeOnly.MinValue);
+        var dayEndLocal = reviewedDate.AddDays(1).ToDateTime(TimeOnly.MinValue);
+        var dayStartUtc = new DateTimeOffset(dayStartLocal, timeZone.GetUtcOffset(dayStartLocal)).UtcDateTime;
+        var dayEndUtc = new DateTimeOffset(dayEndLocal, timeZone.GetUtcOffset(dayEndLocal)).UtcDateTime;
+
+        // Everything the platform holds about the day. Each read degrades to an empty section
+        // rather than gating the entry: a member with no granular ingestion still gets their
+        // daybook from the daily rollup, and the prompt's conditionals turn an absent section
+        // into "never mention it" rather than into an invitation to invent.
+        var rollups = await _unitOfWork.GranularMetrics.GetRollupsAsync(
+            memberId, dayStartUtc, dayEndUtc, ct);
+        var assessments = await _unitOfWork.RealtimeAssessments.GetBetweenAsync(
+            memberId, dayStartUtc, dayEndUtc, ct);
+        var deviceLogs = await _unitOfWork.DeviceActivityLogs.GetByCardiMemberAndDateAsync(
+            memberId, reviewedDate);
+
+        // Alerts ABOUT the reviewed day, wherever their firing instant fell — a quieter-yesterday
+        // alert fires this afternoon and still belongs to yesterday's account. Same attribution
+        // the alerts list groups by (AlertDetailComposer.AboutDate).
+        var dayAlerts = (await _unitOfWork.Alerts.GetByCardiMemberAsync(memberId, activeOnly: false))
+            .Where(a => AlertDetailComposer.AboutDate(
+                AlertDetailComposer.ReadRule(a.MetricValues),
+                a.MetricValues,
+                DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(a.TriggeredDate, timeZone))) == reviewedDate)
+            .ToList();
+
+        // Consent-gated before the fetch, the same bar EnvironmentalContextSource applies —
+        // withdrawing consent must mean the readings are not even read, not merely not shown.
+        IReadOnlyList<EnvironmentalReading> conditions = member.EnvironmentalContextConsentGranted
+            ? await _unitOfWork.EnvironmentalReadings.GetOverlappingAsync(
+                memberId, dayStartUtc, dayEndUtc, ct)
+            : [];
+
         var memberContext = await _memberContext.ComposeAsync(
             new MemberContextRequest(member, memberId, reviewedDate, utcNow, PromptPurpose.Daybook), ct);
 
@@ -497,6 +533,10 @@ public partial class DigestGenerationService : IDigestGenerationService
 
             {memberContext}
             {DaybookPrompt.ReadingsSection(log, baseline, member.DateOfBirth.ToAgeInYears(reviewedDate))}
+            {DaybookPrompt.DevicesLine(deviceLogs)}
+            {DaybookPrompt.IntradaySection(rollups, dayStartUtc, dayEndUtc, timeZone)}
+            {DaybookPrompt.MonitoringSection(dayAlerts, assessments, timeZone)}
+            {DaybookPrompt.ConditionsSection(conditions, timeZone)}
             """;
 
         var aiResponse = await _medicalAi.GenerateStructuredAsync<DaybookAiResponse>(prompt, ct);

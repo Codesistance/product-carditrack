@@ -57,10 +57,10 @@ internal sealed class MonitoringContextSource : IMemberContextSource
 
     public MonitoringContextSource(IUnitOfWork unitOfWork) => _unitOfWork = unitOfWork;
 
-    // The daybook entry too: what the monitoring engines made of the day is part of the account of
-    // it, and an alert that stood unresolved through the evening is exactly the thing a review of
-    // that evening must not omit.
-    public PromptPurpose Purposes => PromptPurpose.Digest | PromptPurpose.Daybook;
+    // Not the daybook: this source is anchored on "the last 24 hours from now", which is the
+    // wrong day for an account of yesterday — the daybook builds its own day-scoped monitoring
+    // section from the alerts and assessments of the reviewed day itself (DaybookPrompt).
+    public PromptPurpose Purposes => PromptPurpose.Digest;
 
     public int Order => 20;
 

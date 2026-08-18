@@ -1,4 +1,4 @@
-using CardiTrack.Application.Interfaces.Repositories;
+﻿using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Domain.Entities;
 using CardiTrack.Domain.Enums;
 using CardiTrack.Infrastructure.Persistence;
@@ -126,6 +126,19 @@ public class GranularMetricRepository : IGranularMetricRepository
                         && r.HourStartUtc >= fromUtc
                         && r.HourStartUtc < toUtc)
             .OrderBy(r => r.HourStartUtc)
+            .ToListAsync(ct);
+    }
+
+    public async Task<IReadOnlyList<MetricRollupHourly>> GetRollupsAsync(
+        Guid cardiMemberId, DateTime fromUtc, DateTime toUtc, CancellationToken ct = default)
+    {
+        return await _context.MetricRollupsHourly
+            .AsNoTracking()
+            .Where(r => r.CardiMemberId == cardiMemberId
+                        && r.HourStartUtc >= fromUtc
+                        && r.HourStartUtc < toUtc)
+            .OrderBy(r => r.Metric)
+            .ThenBy(r => r.HourStartUtc)
             .ToListAsync(ct);
     }
 

@@ -1,4 +1,4 @@
-using CardiTrack.Application.Interfaces.Repositories;
+﻿using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Domain.Entities;
 using CardiTrack.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -88,6 +88,19 @@ public class RealtimeAssessmentRepository : IRealtimeAssessmentRepository
             .AsNoTracking()
             .Where(a => a.CardiMemberId == cardiMemberId && a.WindowStartUtc >= sinceUtc)
             .OrderByDescending(a => a.WindowStartUtc)
+            .ToListAsync(ct);
+    }
+
+    public async Task<IReadOnlyList<RealtimeAssessment>> GetBetweenAsync(
+        Guid cardiMemberId, DateTime fromUtc, DateTime toUtc, CancellationToken ct = default)
+    {
+        // Both bounds on the partition column, so one day reads one or two partitions.
+        return await _context.RealtimeAssessments
+            .AsNoTracking()
+            .Where(a => a.CardiMemberId == cardiMemberId
+                        && a.WindowStartUtc >= fromUtc
+                        && a.WindowStartUtc < toUtc)
+            .OrderBy(a => a.WindowStartUtc)
             .ToListAsync(ct);
     }
 }

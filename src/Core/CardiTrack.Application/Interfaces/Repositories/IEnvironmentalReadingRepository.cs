@@ -1,4 +1,4 @@
-using CardiTrack.Domain.Entities;
+﻿using CardiTrack.Domain.Entities;
 
 namespace CardiTrack.Application.Interfaces.Repositories;
 
@@ -22,4 +22,13 @@ public interface IEnvironmentalReadingRepository
     /// <summary>The member's most recent reading by session start, or null — feeds the
     /// assessment/trend prompts' environmental context line.</summary>
     Task<EnvironmentalReading?> GetLatestAsync(Guid cardiMemberId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Every reading whose session overlaps [<paramref name="fromUtc"/>, <paramref name="toUtc"/>),
+    /// oldest first — the daybook's read: the conditions of one finished local day, not the latest
+    /// session wherever it happened to fall. Callers gate on the member's environmental consent
+    /// exactly as <c>EnvironmentalContextSource</c> does; this method does not re-check it.
+    /// </summary>
+    Task<IReadOnlyList<EnvironmentalReading>> GetOverlappingAsync(
+        Guid cardiMemberId, DateTime fromUtc, DateTime toUtc, CancellationToken ct = default);
 }

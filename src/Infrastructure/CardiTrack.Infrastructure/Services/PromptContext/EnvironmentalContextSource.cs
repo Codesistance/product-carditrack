@@ -1,4 +1,4 @@
-using CardiTrack.Application.Interfaces.Repositories;
+﻿using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Domain.Entities;
 
 namespace CardiTrack.Infrastructure.Services.PromptContext;
@@ -45,7 +45,10 @@ internal sealed class EnvironmentalContextSource : IMemberContextSource
 
     public EnvironmentalContextSource(IUnitOfWork unitOfWork) => _unitOfWork = unitOfWork;
 
-    public PromptPurpose Purposes => PromptPurpose.All;
+    // Everything except the daybook: this source renders the latest session against UtcNow,
+    // which for an account of yesterday is the wrong session on the wrong clock — the daybook
+    // fetches the reviewed day's own sessions instead (DaybookPrompt.ConditionsSection).
+    public PromptPurpose Purposes => PromptPurpose.All & ~PromptPurpose.Daybook;
 
     public int Order => 10;
 
