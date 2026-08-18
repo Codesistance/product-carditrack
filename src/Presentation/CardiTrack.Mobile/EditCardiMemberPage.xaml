@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8" ?>
+﻿<?xml version="1.0" encoding="utf-8" ?>
 <ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              xmlns:controls="clr-namespace:CardiTrack.Mobile.Controls"
@@ -12,25 +12,39 @@
         <!-- The app-wide gradient band (Controls/HeaderBand). -->
         <controls:HeaderBand Grid.Row="0" ContentPadding="20,16,20,26">
             <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="14">
-                <Border Grid.Column="0"
-                        WidthRequest="38" HeightRequest="38"
+                <controls:SquareBorder x:Name="HeaderIcon"
+                        Grid.Column="0"
+                        MinimumHeightRequest="40"
                         StrokeThickness="0"
                         BackgroundColor="#33FFFFFF"
-                        VerticalOptions="Center">
-                    <Border.StrokeShape>
-                        <RoundRectangle CornerRadius="19"/>
-                    </Border.StrokeShape>
+                        VerticalOptions="Fill">
+                    <!-- Fill + width-bound-to-height: the circle runs from the title's top to
+                         the description's bottom and stays square at whatever that is, so every
+                         header's icon matches its own text block exactly. The 40 floor keeps the
+                         back button a real tap target; 99 clamps to a circle at any size. -->
+                    <controls:SquareBorder.StrokeShape>
+                        <RoundRectangle CornerRadius="99"/>
+                    </controls:SquareBorder.StrokeShape>
                     <ImageButton Source="icon_back_white.svg"
                                  WidthRequest="20" HeightRequest="20"
                                  BackgroundColor="Transparent"
                                  Clicked="OnCancelClicked"/>
-                </Border>
+                </controls:SquareBorder>
 
-                <Label Grid.Column="1"
-                       Text="Edit Profile"
+                <!-- Title with what the page is tight beneath it — one stack, top-aligned
+                     with the icon. The description is declared after the title, so screen
+                     readers announce them in reading order. -->
+                <VerticalStackLayout Grid.Column="1" Spacing="1" VerticalOptions="Start">
+                    <Label Text="Edit Profile"
                        Style="{StaticResource Heading3}"
-                       TextColor="{StaticResource White}"
-                       VerticalTextAlignment="Center"/>
+                       TextColor="{StaticResource White}"/>
+                    <Label Text="Who they are and how to reach them"
+                           FontFamily="Quicksand"
+                           FontSize="12"
+                           TextColor="{StaticResource White}"
+                           Opacity="0.85"
+                           LineBreakMode="TailTruncation"/>
+                </VerticalStackLayout>
 
                 <Button x:Name="SaveButton"
                         Grid.Column="2"

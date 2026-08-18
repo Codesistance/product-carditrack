@@ -171,9 +171,11 @@ public partial class DaybookEntryPage : ContentPage
             : review.Headline;
         TextLabel.Text = review.Text;
 
-        PillHost.Clear();
-        if (DaybookPresentation.UrgencyPill(review.Urgency) is { } pill)
-            PillHost.Add(pill);
+        // The rail, not a pill — the same left-edge colouring the list tiles and the alert
+        // tiles wear. White when the model returned no urgency, so the card simply has no rail
+        // rather than a grey one implying a tier nobody judged.
+        EntryRail.BackgroundColor =
+            DaybookPresentation.UrgencyRailColor(review.Urgency) ?? Tinted("White");
 
         var hasSuggestion = !string.IsNullOrWhiteSpace(review.Suggestion);
         SuggestionDivider.IsVisible = hasSuggestion;

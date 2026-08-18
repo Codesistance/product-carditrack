@@ -1,0 +1,6 @@
+<!-- The tab bar's home outline in white, for the dashboard header's tinted logo circle —
+     the same glyph a caregiver already reads as "home" in the bar below it. -->
+<svg width="28" height="28" viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <path d="M2.33301 14.238C2.33301 11.5675 2.33301 10.2328 2.93967 9.12684C3.54401 8.01968 4.65117 7.33368 6.86434 5.95934L9.19767 4.51151C11.5368 3.05901 12.707 2.33334 13.9997 2.33334C15.2923 2.33334 16.4613 3.05901 18.8017 4.51151L21.135 5.95934C23.3482 7.33368 24.4553 8.01968 25.0608 9.12684C25.6663 10.234 25.6663 11.5675 25.6663 14.2368V16.0125C25.6663 20.5625 25.6663 22.8387 24.299 24.2527C22.9317 25.6667 20.7325 25.6667 16.333 25.6667H11.6663C7.26684 25.6667 5.06651 25.6667 3.70034 24.2527C2.33417 22.8387 2.33301 20.5637 2.33301 16.0125V14.238Z" stroke="#FFFFFF" stroke-width="1.5"/>
+  <path d="M14 17.5V21" stroke="#FFFFFF" stroke-width="1.5" stroke-linecap="round"/>
+</svg>

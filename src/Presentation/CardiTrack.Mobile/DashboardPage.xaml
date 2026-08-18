@@ -201,7 +201,7 @@
                              actions and Key Metrics all in one card so a second/third CardiMember
                              can be another instance of the same card, stacked, once multi-member
                              support lands. -->
-                        <Border Style="{StaticResource ElevatedCard}" Padding="16,15">
+                        <Border Style="{StaticResource ElevatedCard}" Padding="16,15,16,16">
                             <VerticalStackLayout Spacing="16">
 
                                 <controls:StatusHeroCard x:Name="HeroCard"/>
@@ -285,7 +285,7 @@
                                      at render time for one whose device reports less (skin
                                      temperature, SpO2 and breathing rate are each optional) so no
                                      tile is left beside a gap. -->
-                                <controls:AccordionSection x:Name="MetricsAccordion" HeaderText="Key Metrics">
+                                <controls:AccordionSection x:Name="MetricsAccordion" HeaderText="Key Metrics" IconSource="icon_action_details.svg">
                                     <controls:AccordionSection.Body>
                                         <Grid ColumnDefinitions="*,*"
                                               RowDefinitions="Auto,Auto,Auto"
@@ -299,17 +299,6 @@
                                         </Grid>
                                     </controls:AccordionSection.Body>
                                 </controls:AccordionSection>
-
-                                <!-- The member card's way into their finished days — the Daybook
-                                     tab, already filtered to this member. -->
-                                <Label Text="View Daybook"
-                                       Style="{StaticResource SectionLink}"
-                                       Margin="0,2,0,0"
-                                       SemanticProperties.Hint="Opens this CardiMember's daybook">
-                                    <Label.GestureRecognizers>
-                                        <TapGestureRecognizer Tapped="OnDaybookTapped"/>
-                                    </Label.GestureRecognizers>
-                                </Label>
 
                             </VerticalStackLayout>
                         </Border>

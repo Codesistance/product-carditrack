@@ -2,6 +2,7 @@
 using CardiTrack.Mobile.Controls;
 using CardiTrack.Mobile.Core.Api;
 using CardiTrack.Mobile.Core.Onboarding;
+using Microsoft.Maui.Controls.Shapes;
 using CardiTrack.Mobile.Services;
 
 namespace CardiTrack.Mobile;
@@ -351,15 +352,37 @@ public partial class DaybookPage : ContentPage
             LineBreakMode = LineBreakMode.TailTruncation,
         };
 
-        var open = new Label
+        // A small button, not a link line: "Read" is the card's one action said quietly, and
+        // the whole card is tappable anyway — this is the visible affordance, not the only one.
+        var read = new Border
         {
-            Text = "Read the full day",
-            Style = Styled("SectionLink"),
+            StrokeThickness = 0.5,
+            Stroke = Tinted("PrimaryDark"),
+            BackgroundColor = Colors.Transparent,
+            Padding = new Thickness(14, 5),
+            HorizontalOptions = LayoutOptions.Start,
+            StrokeShape = new RoundRectangle { CornerRadius = 13 },
+            Content = new Label
+            {
+                Text = "Read",
+                FontFamily = "QuicksandSemiBold",
+                FontSize = 12,
+                TextColor = Tinted("PrimaryDark"),
+            },
         };
+        SemanticProperties.SetDescription(read, "Read");
+        SemanticProperties.SetHint(read, "Opens this day's full entry");
 
-        var card = new Border
+        // The alert tiles' construction, borrowed whole: a coloured rounded rect underneath and
+        // the white card inset 4px from its left edge, so the urgency reads as a rail rounding
+        // into the corner rather than as a pill spending space in the heading. No urgency, no
+        // rail — the strip stays white rather than inventing a tier.
+        var inner = new Border
         {
-            Style = Styled("ElevatedCard"),
+            BackgroundColor = Tinted("White"),
+            StrokeThickness = 0,
+            Padding = new Thickness(15, 14, 14, 14),
+            StrokeShape = new RoundRectangle { CornerRadius = 20 },
             Content = new VerticalStackLayout
             {
                 Spacing = 8,
@@ -367,17 +390,35 @@ public partial class DaybookPage : ContentPage
                 {
                     Heading(review),
                     body,
-                    open,
+                    read,
                 },
             },
         };
 
-        card.GestureRecognizers.Add(new TapGestureRecognizer
+        var card = new Border
+        {
+            BackgroundColor = DaybookPresentation.UrgencyRailColor(review.Urgency) ?? Tinted("White"),
+            StrokeThickness = 0,
+            Padding = new Thickness(4, 0, 0, 0),
+            StrokeShape = new RoundRectangle { CornerRadius = 20 },
+            Shadow = new Shadow
+            {
+                Brush = (Brush)Microsoft.Maui.Controls.Application.Current!.Resources["CardShadowBrush"],
+                Opacity = 0.15f,
+                Radius = 14,
+                Offset = new Point(0, 4),
+            },
+            Content = inner,
+        };
+
+        var open = new TapGestureRecognizer
         {
             Command = new Command(async () => await Shell.Current.GoToAsync(
                 $"{DaybookEntryPage.Route}?memberId={_memberId}&date={review.LocalDate:yyyy-MM-dd}"
                 + $"&name={Uri.EscapeDataString(_memberFirstName ?? string.Empty)}")),
-        });
+        };
+        card.GestureRecognizers.Add(open);
+        read.GestureRecognizers.Add(open);
 
         return card;
     }
@@ -408,12 +449,7 @@ public partial class DaybookPage : ContentPage
         });
         heading.Add(titles);
 
-        if (DaybookPresentation.UrgencyPill(review.Urgency) is { } pill)
-        {
-            Grid.SetColumn(pill, 1);
-            heading.Add(pill);
-        }
-
+        // No pill: the card's left rail carries the urgency now, the way the alert tiles do.
         return heading;
     }
 

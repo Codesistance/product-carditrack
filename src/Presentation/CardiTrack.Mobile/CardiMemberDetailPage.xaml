@@ -14,25 +14,39 @@
              ════════════════════════════════════════ -->
         <controls:HeaderBand Grid.Row="0" ContentPadding="20,16,20,26">
             <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="14">
-                <Border Grid.Column="0"
-                        WidthRequest="38" HeightRequest="38"
+                <controls:SquareBorder x:Name="HeaderIcon"
+                        Grid.Column="0"
+                        MinimumHeightRequest="40"
                         StrokeThickness="0"
                         BackgroundColor="#33FFFFFF"
-                        VerticalOptions="Center">
-                    <Border.StrokeShape>
-                        <RoundRectangle CornerRadius="19"/>
-                    </Border.StrokeShape>
+                        VerticalOptions="Fill">
+                    <!-- Fill + width-bound-to-height: the circle runs from the title's top to
+                         the description's bottom and stays square at whatever that is, so every
+                         header's icon matches its own text block exactly. The 40 floor keeps the
+                         back button a real tap target; 99 clamps to a circle at any size. -->
+                    <controls:SquareBorder.StrokeShape>
+                        <RoundRectangle CornerRadius="99"/>
+                    </controls:SquareBorder.StrokeShape>
                     <ImageButton Source="icon_back_white.svg"
                                  WidthRequest="20" HeightRequest="20"
                                  BackgroundColor="Transparent"
                                  Clicked="OnBackClicked"/>
-                </Border>
+                </controls:SquareBorder>
 
-                <Label Grid.Column="1"
-                       Text="Member Details"
+                <!-- Title with what the page is tight beneath it — one stack, top-aligned
+                     with the icon. The description is declared after the title, so screen
+                     readers announce them in reading order. -->
+                <VerticalStackLayout Grid.Column="1" Spacing="1" VerticalOptions="Start">
+                    <Label Text="Member Details"
                        Style="{StaticResource Heading3}"
-                       TextColor="{StaticResource White}"
-                       VerticalTextAlignment="Center"/>
+                       TextColor="{StaticResource White}"/>
+                    <Label Text="Here is what we know"
+                           FontFamily="Quicksand"
+                           FontSize="12"
+                           TextColor="{StaticResource White}"
+                           Opacity="0.85"
+                           LineBreakMode="TailTruncation"/>
+                </VerticalStackLayout>
 
                 <!-- Alerts and Edit, icon-only. Alerts was a full-width "View Alerts" button
                      halfway down the page; it is navigation, not a setting, and it belongs beside
@@ -126,12 +140,22 @@
                                 <controls:MemberAvatar x:Name="Avatar"
                                                        Grid.Column="0"
                                                        BoxWidth="80"
-                                                       VerticalOptions="Center"/>
+                                                       VerticalOptions="Start"/>
 
-                                <VerticalStackLayout Grid.Column="1" Spacing="2" VerticalOptions="Center">
-                                    <Label x:Name="NameLabel" Style="{StaticResource Heading2}"/>
-                                    <Label x:Name="AgeRelationshipLabel" Style="{StaticResource Body2}"/>
+                                <!-- The identity spans the avatar's height. The name and who they
+                                     are lead by a step and sit at the box's top; the "Updated"
+                                     line is bookkeeping, drops a step, and is pushed to the box's
+                                     bottom by the star row between them — who they are and how
+                                     current we are on them are the two ends of the same box, and
+                                     what sits between just fills. -->
+                                <Grid Grid.Column="1"
+                                      RowDefinitions="Auto,Auto,*"
+                                      VerticalOptions="Fill">
+                                    <Label x:Name="NameLabel" Grid.Row="0" Style="{StaticResource Heading2}" FontSize="24"/>
+                                    <Label x:Name="AgeRelationshipLabel" Grid.Row="1" Style="{StaticResource Body2}" FontSize="15"/>
                                     <HorizontalStackLayout x:Name="ConnectionStatusRow"
+                                                           Grid.Row="2"
+                                                           VerticalOptions="End"
                                                            Spacing="6">
                                         <Ellipse x:Name="ConnectionStatusDot"
                                                  WidthRequest="10" HeightRequest="10"
@@ -139,10 +163,11 @@
                                                  AutomationProperties.IsInAccessibleTree="False"/>
                                         <Label x:Name="LastContactLabel"
                                                Style="{StaticResource Body2}"
+                                               FontSize="12"
                                                VerticalOptions="Center"
                                                LineBreakMode="TailTruncation"/>
                                     </HorizontalStackLayout>
-                                </VerticalStackLayout>
+                                </Grid>
 
                                 <!-- Last-session weather (EnvironmentalReading — not live, no
                                      stored coordinate). Same chip and popup as the dashboard hero

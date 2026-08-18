@@ -1,43 +1,54 @@
-<?xml version="1.0" encoding="utf-8" ?>
+﻿<?xml version="1.0" encoding="utf-8" ?>
 <ContentView xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              x:Class="CardiTrack.Mobile.Controls.AccordionSection">
 
     <!-- Generic collapsible section, collapsed by default so the body doesn't compete with the
-         card's action row for attention. "Tap to view" under the header is the only affordance
-         telling the user there's something to open — it disappears once expanded. The body is
-         animated open/closed by growing/shrinking a clipping Border's height (Border clips its
-         content to its bounds; a plain layout wouldn't) rather than snapping IsVisible. -->
-    <VerticalStackLayout x:Name="RootLayout" Spacing="10">
+         card's action row for attention. The header wears the Member Detail dropdowns' row —
+         52 high, Body1SemiBoldDark, chevron at 20 — so every collapsible in the app reads as
+         the same control; the chevron is the affordance, the way it is on Alert Rules. The body
+         is animated open/closed by growing/shrinking a clipping Border's height (Border clips
+         its content to its bounds; a plain layout wouldn't) rather than snapping IsVisible. -->
+    <!-- Bare: no card, no tint, no border. This control sits inside the member card among
+         surfaces that already carry their own chrome, and every version that gave it some of its
+         own — elevated card, outlined card, tinted tile — read as another thing stacked on the
+         card rather than as the card's own last row. The icon, the label and the chevron are the
+         control; the height is the dropdowns' 52 less its card padding. -->
+    <Grid x:Name="HeaderShell" Padding="0">
+        <VerticalStackLayout x:Name="RootLayout" Spacing="10">
 
-        <Grid ColumnDefinitions="*,Auto">
-            <Grid.GestureRecognizers>
-                <TapGestureRecognizer Tapped="OnHeaderTapped"/>
-            </Grid.GestureRecognizers>
+            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12" HeightRequest="44">
+                <Grid.GestureRecognizers>
+                    <TapGestureRecognizer Tapped="OnHeaderTapped"/>
+                </Grid.GestureRecognizers>
 
-            <VerticalStackLayout Grid.Column="0" Spacing="2">
-                <Label x:Name="HeaderLabel" Style="{StaticResource Heading2}"/>
-                <Label x:Name="HintLabel"
-                       Text="Tap to view"
-                       Style="{StaticResource Body2}"
-                       TextColor="{StaticResource BodyText}"/>
-            </VerticalStackLayout>
+                <Image x:Name="HeaderIconImage"
+                       Grid.Column="0"
+                       WidthRequest="22" HeightRequest="22"
+                       VerticalOptions="Center"
+                       IsVisible="False"/>
 
-            <Image x:Name="ChevronIcon"
-                   Grid.Column="1"
-                   Source="icon_chevron_down.svg"
-                   WidthRequest="20" HeightRequest="20"
-                   VerticalOptions="Center"
-                   SemanticProperties.Description="Expand"/>
-        </Grid>
+                <Label x:Name="HeaderLabel"
+                       Grid.Column="1"
+                       Style="{StaticResource Body1SemiBoldDark}"
+                       VerticalTextAlignment="Center"/>
 
-        <Border x:Name="BodyClip"
-                StrokeThickness="0"
-                BackgroundColor="Transparent"
-                Padding="0"
-                HeightRequest="0">
-            <ContentView x:Name="BodyHost" VerticalOptions="Start"/>
-        </Border>
+                <Image x:Name="ChevronIcon"
+                       Grid.Column="2"
+                       Source="icon_chevron_down.svg"
+                       WidthRequest="20" HeightRequest="20"
+                       VerticalOptions="Center"
+                       SemanticProperties.Description="Expand"/>
+            </Grid>
 
-    </VerticalStackLayout>
+            <Border x:Name="BodyClip"
+                    StrokeThickness="0"
+                    BackgroundColor="Transparent"
+                    Padding="0"
+                    HeightRequest="0">
+                <ContentView x:Name="BodyHost" VerticalOptions="Start"/>
+            </Border>
+
+        </VerticalStackLayout>
+    </Grid>
 </ContentView>
