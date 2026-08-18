@@ -19,7 +19,7 @@
 >
 > **M1-17 is not built** — its entry points show "Coming soon" dialogs in the shipped app.
 >
-> **Nine shipped surfaces have no Figma M1 frame** and need design sync: SignInPage, ForgotPasswordPage, VerifyEmailPage, Onboarding/AccountSetupPage, NotificationsPage, SummariesPage, DayReviewDetailPage, and — built from the existing design system by explicit decision rather than by oversight — the QuestionCard on the CardiMember detail page and the Questions & Answers page. See [Shipped Screens Without Figma M1 Frames](#shipped-screens-without-figma-m1-frames). Per project convention, only screens that exist in the Figma file get M1 IDs — no IDs have been invented for these.
+> **Nine shipped surfaces have no Figma M1 frame** and need design sync: SignInPage, ForgotPasswordPage, VerifyEmailPage, Onboarding/AccountSetupPage, NotificationsPage, DaybookPage, DaybookEntryPage, and — built from the existing design system by explicit decision rather than by oversight — the QuestionCard on the CardiMember detail page and the Questions & Answers page. See [Shipped Screens Without Figma M1 Frames](#shipped-screens-without-figma-m1-frames). Per project convention, only screens that exist in the Figma file get M1 IDs — no IDs have been invented for these.
 >
 > Unbuilt screens below remain documented as design intent, each marked with a status line.
 
@@ -88,8 +88,8 @@ These screens ship in the current app but have **no Figma M1 frame — needs des
 | VerifyEmailPage | Post-signup email verification gate (resend / open mail / checking / error) |
 | Onboarding/AccountSetupPage | "My Family" / "My Organization" account-type choice with conditional Org Name |
 | NotificationsPage | Data-completeness / nudge inbox — reached from the dashboard's "Complete the picture" section ("See all") |
-| SummariesPage | The **Summaries** tab — day reviews newest first, searchable and filterable; a card opens the review's page. Took the Family tab's slot |
-| DayReviewDetailPage | One review in full, with the fortnight's source-tagged trend charts and counted awareness lines beneath it |
+| DaybookPage | The **Daybook** tab — daybook entries newest first, searchable and filterable; a card opens the review's page. Took the Family tab's slot |
+| DaybookEntryPage | One review in full, with the fortnight's source-tagged trend charts and counted awareness lines beneath it |
 
 Full specs in [Shipped Screens Without Figma M1 Frames](#shipped-screens-without-figma-m1-frames-1) below.
 
@@ -320,21 +320,21 @@ Push notification (any time) ─────────────────
 
 ### Bottom Tab Bar
 
-Visible on tab roots (Dashboard / Alerts / Summaries / Settings). Onboarding hides it (`Shell.TabBarIsVisible=False`). Tab pages hide Shell's bar and seat `BottomNavBar` **full-bleed** (safe-area inset is padding inside the bar).
+Visible on tab roots (Dashboard / Alerts / Daybook / Settings). Onboarding hides it (`Shell.TabBarIsVisible=False`). Tab pages hide Shell's bar and seat `BottomNavBar` **full-bleed** (safe-area inset is padding inside the bar).
 
 ```
 ┌────────────────────────────────────┐
 │                                    │
 │          Content Area              │
 │                                    │
-├──────────┬──────────┬─────────┬────────┤
-│ Dashboard│  Alerts  │Summaries│Settings│
-└──────────┴──────────┴─────────┴────────┘
+├──────────┬──────────┬────────┬────────┤
+│ Dashboard│  Alerts  │Daybook │Settings│
+└──────────┴──────────┴────────┴────────┘
 ```
 
 - Badge count on Alerts tab for unread alerts
-- **The third tab is Summaries, not Family.** The Family tab held a stub ("Family sharing (MVP 2) is coming soon") for invitations that are R3 work, so a quarter of the bar did nothing while the day reviews had no surface at all. `FamilyPage` is deleted. When family sharing lands it belongs under Settings or scoped to a member — a badge for pending invites goes wherever that surface ends up, not back in the bar
-- As built, the Shell defines a **TabBar only** (Dashboard / Alerts / Summaries / Settings, SVG icons). Alerts opens the real M1-10 list; Summaries lists the day reviews; Settings is minimal (account card, a "Silenced reminders" card listing held notification mutes with a "Show me everything again" reset, "More settings (M2-01) coming soon", Sign out). Onboarding pages hide the tab bar via `Shell.TabBarIsVisible=False`.
+- **The third tab is Daybook, not Family.** The Family tab held a stub ("Family sharing (MVP 2) is coming soon") for invitations that are R3 work, so a quarter of the bar did nothing while the daybook entries had no surface at all. `FamilyPage` is deleted. When family sharing lands it belongs under Settings or scoped to a member — a badge for pending invites goes wherever that surface ends up, not back in the bar
+- As built, the Shell defines a **TabBar only** (Dashboard / Alerts / Daybook / Settings, SVG icons). Alerts opens the real M1-10 list; Daybook lists the entries; Settings is minimal (account card, a "Silenced reminders" card listing held notification mutes with a "Show me everything again" reset, "More settings (M2-01) coming soon", Sign out). Onboarding pages hide the tab bar via `Shell.TabBarIsVisible=False`.
 
 ### Flyout Menu
 
@@ -1224,13 +1224,13 @@ This is the most safety-critical screen in the app. Design for urgency and immed
 
 The following screens exist in the shipped app but have **no Figma M1 frame — needs design sync**. Per project convention, only screens present in the Figma file receive M1 IDs, so no IDs are assigned here.
 
-### SummariesPage
+### DaybookPage
 **Status:** Built — no Figma M1 frame, needs design sync. Replaced the Family tab stub.
 **Entry:** Bottom nav, third tab
 **Exit:** → M1-09 Dashboard (back arrow, or the Dashboard tab)
 
 - Gradient header band with back arrow and "Summaries", same treatment as Alerts and Settings
-- Pull-to-refresh; **no periodic poll** — a day review is written once, at 02:00 in the member's own local time, and cannot change afterwards. Refreshes on app resume only
+- Pull-to-refresh; **no periodic poll** — a daybook entry is written once, at 02:00 in the member's own local time, and cannot change afterwards. Refreshes on app resume only
 - **Search and two chooser chips** above the list, outside the scroller so narrowing stays reachable while scrolled (the alert chips' reasoning). The search is debounced 350ms and server-side over the whole history; the chips open the app's option popup — urgency (Any / Watch / Check in / Concerning / Act now) and window (All time / 7 / 30 / 90 days). The filter row appears once the member has ever had a review, then stays: hiding it on an empty *filtered* result would take away the one control that undoes the emptiness
 - One card per finished day, newest first, up to a month. Each card carries:
   - the day, said the way someone says it — "Yesterday", then the weekday within the week, then the date
@@ -1238,14 +1238,14 @@ The following screens exist in the shipped app but have **no Figma M1 frame — 
   - an urgency pill — WATCH / CHECK IN / CONCERNING / ACT NOW on the green/yellow/orange/red status colours. **No pill at all** when the model returned no urgency or one this app does not know: a pill is a claim about a member's health, and a grey one would imply the service judged the day and found it unremarkable
   - the review clipped to three lines and "Read the full day", which **opens the review's own page** (below) — a navigation, not an expansion: the full account carries the trend charts, which is more than a list row can hold and stay a list
 - **States:** loading (three placeholder cards, so the list does not jump when the real ones arrive) · empty · error with retry · loaded
-- **Two empty states, said apart:** an unfiltered "No day reviews yet" over "The first review is written after {Name}'s first full day of readings", and a filtered "No reviews match" over "clear one and look again" — a bare "nothing here" reads as a fault either way. A member-less account gets "Add the person you care about, and their days will be summarised here"
+- **Two empty states, said apart:** an unfiltered "No daybook entries yet" over "The first review is written after {Name}'s first full day of readings", and a filtered "No reviews match" over "clear one and look again" — a bare "nothing here" reads as a fault either way. A member-less account gets "Add the person you care about, and their days will be summarised here"
 - **Error while a list is already on screen** shows a popup over it rather than replacing it with an error panel: the reviews describe finished days and do not go stale, so taking them away costs the caregiver something still worth reading
-- Backed by `GET /api/v1/insights/members/{id}/digests?audience=day-review` with `limit`, `search`, `from` and `urgency`
+- Backed by `GET /api/v1/insights/members/{id}/digests?audience=daybook` with `limit`, `search`, `from` and `urgency`
 
-### DayReviewDetailPage
+### DaybookEntryPage
 **Status:** Built — no Figma M1 frame, needs design sync
-**Entry:** ← SummariesPage ("Read the full day")
-**Exit:** ← SummariesPage (back arrow, or the Summaries tab)
+**Entry:** ← DaybookPage ("Read the full day")
+**Exit:** ← DaybookPage (back arrow, or the Daybook tab)
 
 - The review in full: day, headline, urgency pill, the whole account, "One thing you could do" (the suggestion, hidden when the generation produced none), and when it was written
 - **"The last 14 days"** — trend charts for Sleep, Resting heart rate and Steps, drawn with the same `TrendChart` the alert detail uses: the member's own usual dashed, the published band shaded, per-day markers
@@ -1254,7 +1254,7 @@ The following screens exist in the shipped app but have **no Figma M1 frame — 
 - The charts are deliberately the **current** fortnight whatever day the review describes, and the section title says so — the dashboard series always runs to today
 - Footer, always visible with the charts: "For awareness, not medical advice — CardiTrack never diagnoses. Talk to a clinician about anything that worries you."
 - **Edge — charts fetch fails:** the review stands and the trends section hides; a loaded review must not be replaced by an error panel over its garnish. **Edge — no review for the date:** "No review was written for this day"
-- Backed by `GET .../digest?date=YYYY-MM-DD&audience=day-review` + `GET /api/v1/cardimembers/{id}` for the chart series
+- Backed by `GET .../digest?date=YYYY-MM-DD&audience=daybook` + `GET /api/v1/cardimembers/{id}` for the chart series
 
 ### SignInPage
 **Status:** Built — no Figma M1 frame, needs design sync

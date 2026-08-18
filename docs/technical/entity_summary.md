@@ -215,7 +215,7 @@ The 32 domain enums:
 - **DeliveryState**: Pending, Sent, Delivered, Suppressed, Failed, DeadLettered, Undelivered
 - **EscalationStage**: Initial, Repushed, FannedOut, UndeliveredCritical
 - **OsAuthorizationStatus**: NotDetermined, Denied, Granted, Provisional, Ephemeral (OS-level push permission)
-- **DigestAudience**: Family, Wearer, DayReview (Wearer generated only once wearer logins exist — currently never. DayReview is the once-daily account of a finished day: same family reader as Family, different reading-mode — see [llm_design.md](../llm_design.md))
+- **DigestAudience**: Family, Wearer, Daybook (Wearer generated only once wearer logins exist — currently never. Daybook is the once-daily account of a finished day: same family reader as Family, different reading-mode — see [llm_design.md](../llm_design.md))
 - **QuestionnaireStatus**: Pending, Answered, Dismissed
 - **QuestionnaireScope**: TimeScoped (1), Permanent (2) — standing facts stay in every future prompt until deleted; momentary ones age out
 - **DigestUrgency**: Watch (1), CheckIn, Concerning, ActNow — the model's read of how soon the family should act on a digest; never drives Alert rows
