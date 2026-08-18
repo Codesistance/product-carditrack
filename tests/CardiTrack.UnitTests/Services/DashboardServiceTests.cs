@@ -17,6 +17,8 @@ public class DashboardServiceTests
     private readonly IAlertRepository _alerts = Substitute.For<IAlertRepository>();
     private readonly IRealtimeAssessmentRepository _realtimeAssessments = Substitute.For<IRealtimeAssessmentRepository>();
     private readonly IEnvironmentalReadingRepository _environmentalReadings = Substitute.For<IEnvironmentalReadingRepository>();
+    private readonly CardiTrack.Application.Interfaces.Clients.IProfilePhotoStorage _photoStorage =
+        Substitute.For<CardiTrack.Application.Interfaces.Clients.IProfilePhotoStorage>();
 
     private readonly Guid _userId = Guid.NewGuid();
     private readonly Guid _memberId = Guid.NewGuid();
@@ -56,7 +58,8 @@ public class DashboardServiceTests
     // Composed with the real access service rather than a stub: the link rules under test here
     // (active + CanViewHealthData) now live in CardiMemberAccessService, so substituting it away
     // would leave nothing asserting that the dashboard is actually gated.
-    private DashboardService CreateSut() => new(_unitOfWork, new CardiMemberAccessService(_unitOfWork));
+    private DashboardService CreateSut() =>
+        new(_unitOfWork, new CardiMemberAccessService(_unitOfWork), _photoStorage);
 
     private void SetupLink(bool canViewHealthData, bool isActive = true)
     {

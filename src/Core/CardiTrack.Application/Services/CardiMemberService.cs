@@ -1,6 +1,8 @@
 using System.Security.Cryptography;
 using CardiTrack.Application.DTOs.Requests;
 using CardiTrack.Application.DTOs.Responses;
+using CardiTrack.Application.Exceptions;
+using CardiTrack.Application.Interfaces.Clients;
 using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Interfaces.Security;
 using CardiTrack.Application.Interfaces.Services;
@@ -15,17 +17,23 @@ public class CardiMemberService : ICardiMemberService
     private readonly ICardiMemberAccessService _access;
     private readonly IEncryptionService _encryption;
     private readonly INotificationGapResolver _gapResolver;
+    private readonly IProfilePhotoProcessor _photoProcessor;
+    private readonly IProfilePhotoStorage _photoStorage;
 
     public CardiMemberService(
         IUnitOfWork unitOfWork,
         ICardiMemberAccessService access,
         IEncryptionService encryption,
-        INotificationGapResolver gapResolver)
+        INotificationGapResolver gapResolver,
+        IProfilePhotoProcessor photoProcessor,
+        IProfilePhotoStorage photoStorage)
     {
         _unitOfWork = unitOfWork;
         _access = access;
         _encryption = encryption;
         _gapResolver = gapResolver;
+        _photoProcessor = photoProcessor;
+        _photoStorage = photoStorage;
     }
 
     public async Task<CardiMemberResponse> CreateCardiMemberAsync(
@@ -46,6 +54,14 @@ public class CardiMemberService : ICardiMemberService
             MedicalNotes = Protect(request.MedicalNotes),
             IsActive = true
         };
+
+        // Photo work happens BEFORE the insert: a refused or unstorable photo must not leave a
+        // member half-created — the caregiver would have no idea which parts of the form stuck.
+        if (!string.IsNullOrWhiteSpace(request.PhotoBase64))
+        {
+            var jpeg = ProcessPhotoOrThrow(request.PhotoBase64);
+            cardiMember.PhotoObjectName = await _photoStorage.UploadAsync(cardiMember.Id, jpeg);
+        }
 
         await _unitOfWork.CardiMembers.AddAsync(cardiMember);
         await _unitOfWork.SaveChangesAsync(); // Save to get ID
@@ -76,7 +92,8 @@ public class CardiMemberService : ICardiMemberService
             Relationship = Stated(request.RelationshipType),
             IsPrimaryCaregiver = request.IsPrimaryCaregiver,
             IsActive = cardiMember.IsActive,
-            CreatedDate = cardiMember.CreatedDate
+            CreatedDate = cardiMember.CreatedDate,
+            PhotoUrl = await PhotoUrlOf(cardiMember)
         };
     }
 
@@ -101,7 +118,8 @@ public class CardiMemberService : ICardiMemberService
             Relationship = primaryRelationship?.RelationshipType ?? Domain.Enums.RelationshipType.Other,
             IsPrimaryCaregiver = primaryRelationship?.IsPrimaryCaregiver ?? false,
             IsActive = cardiMember.IsActive,
-            CreatedDate = cardiMember.CreatedDate
+            CreatedDate = cardiMember.CreatedDate,
+            PhotoUrl = await PhotoUrlOf(cardiMember)
         };
     }
 
@@ -127,7 +145,10 @@ public class CardiMemberService : ICardiMemberService
                 Relationship = primaryRelationship?.RelationshipType ?? Domain.Enums.RelationshipType.Other,
                 IsPrimaryCaregiver = primaryRelationship?.IsPrimaryCaregiver ?? false,
                 IsActive = cm.IsActive,
-                CreatedDate = cm.CreatedDate
+                CreatedDate = cm.CreatedDate,
+                // Per-member rather than batched: the storage adapter caches signed URLs per
+                // object name, so a list re-signs only what no screen has asked for recently.
+                PhotoUrl = await PhotoUrlOf(cm)
             });
         }
 
@@ -147,6 +168,26 @@ public class CardiMemberService : ICardiMemberService
     {
         await _access.RequireManageAccessAsync(requestingUserId, cardiMemberId, ct);
         var member = await RequireActiveMemberAsync(cardiMemberId);
+
+        // Photo first, before any field is touched: a refused photo fails the whole edit with
+        // nothing half-applied. The new object is uploaded under a fresh name and the old one is
+        // deleted only AFTER the save succeeds — a failed save must not orphan the member's
+        // stored name against a blob that no longer exists. When both PhotoBase64 and RemovePhoto
+        // arrive (a client bug the validator rejects), the supplied photo wins.
+        string? replacedPhotoObjectName = null;
+        if (!string.IsNullOrWhiteSpace(request.PhotoBase64))
+        {
+            var jpeg = ProcessPhotoOrThrow(request.PhotoBase64);
+            var uploaded = await _photoStorage.UploadAsync(member.Id, jpeg, ct);
+            replacedPhotoObjectName = member.PhotoObjectName;
+            member.PhotoObjectName = uploaded;
+        }
+        else if (request.RemovePhoto)
+        {
+            replacedPhotoObjectName = member.PhotoObjectName;
+            member.PhotoObjectName = null;
+        }
+        // Neither supplied: the photo is left alone — same omitted-means-keep stance as Gender.
 
         member.Name = request.Name;
         member.DateOfBirth = request.DateOfBirth;
@@ -178,6 +219,10 @@ public class CardiMemberService : ICardiMemberService
 
         await _unitOfWork.SaveChangesAsync();
 
+        // Only now, with the new state durable, is the superseded blob deleted.
+        if (replacedPhotoObjectName is not null)
+            await TryDeletePhotoAsync(replacedPhotoObjectName, ct);
+
         // Saving may have closed a gap we are currently nagging about. Resolving here rather than
         // waiting for the nightly run is what stops a caregiver seeing the card they just actioned
         // still sitting there when the screen pops.
@@ -194,6 +239,12 @@ public class CardiMemberService : ICardiMemberService
         var now = DateTime.UtcNow;
         member.IsActive = false;
         member.UpdatedDate = now;
+
+        // The membership is soft-deleted but the photo is not: a full-face image is Tier 1 data
+        // and must not outlive the membership. Cleared here, blob deleted after the save lands.
+        var photoObjectName = member.PhotoObjectName;
+        member.PhotoObjectName = null;
+
         _unitOfWork.CardiMembers.Update(member);
 
         // Deactivate the links too, otherwise the member keeps passing access checks and
@@ -220,6 +271,9 @@ public class CardiMemberService : ICardiMemberService
         }
 
         await _unitOfWork.SaveChangesAsync();
+
+        if (photoObjectName is not null)
+            await TryDeletePhotoAsync(photoObjectName, ct);
 
         // Withdrawn rather than resolved: the gaps were not closed, they stopped applying. Counting
         // a removal as a success would flatter the comply rate the rule review depends on.
@@ -326,7 +380,7 @@ public class CardiMemberService : ICardiMemberService
             EmergencyContactName = member.EmergencyContactName,
             EmergencyContactPhone = member.EmergencyContactPhone,
             MedicalNotes = Reveal(member.MedicalNotes),
-            PhotoUrl = null,
+            PhotoUrl = await PhotoUrlOf(member, ct),
             AlertSensitivity = member.AlertSensitivity,
             MonitoringPaused = pause.MonitoringPaused,
             MonitoringPausedUntil = pause.MonitoringPausedUntil,
@@ -354,6 +408,42 @@ public class CardiMemberService : ICardiMemberService
             MonitoringPausedUntil = paused ? member.MonitoringPausedUntil : null,
             MonitoringPauseReason = paused ? member.MonitoringPauseReason : null,
         };
+    }
+
+    /// <summary>
+    /// Decode + normalise an uploaded photo, before anything is persisted. Bad base64 is the
+    /// same class of client fault as a bad image, so both surface as the 400-mapped
+    /// <see cref="InvalidProfilePhotoException"/> rather than two differently-shaped failures.
+    /// </summary>
+    private byte[] ProcessPhotoOrThrow(string photoBase64)
+    {
+        if (!ProfilePhotoBase64.TryDecode(photoBase64, out var uploadBytes))
+            throw new InvalidProfilePhotoException("The photo isn't valid base64 image data.");
+
+        return _photoProcessor.Process(uploadBytes);
+    }
+
+    private async Task<string?> PhotoUrlOf(CardiMember member, CancellationToken ct = default) =>
+        member.PhotoObjectName is null
+            ? null
+            : await _photoStorage.GetReadUrlAsync(member.PhotoObjectName, ct);
+
+    /// <summary>
+    /// Best-effort blob cleanup, only ever called AFTER the database save that superseded the
+    /// object has succeeded. A delete failure is swallowed — the adapter logs it — because the
+    /// caregiver's save already happened; failing their request over an orphaned blob would
+    /// report their edit as lost when it wasn't.
+    /// </summary>
+    private async Task TryDeletePhotoAsync(string objectName, CancellationToken ct)
+    {
+        try
+        {
+            await _photoStorage.DeleteAsync(objectName, ct);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // Swallowed by design; the storage adapter has already logged the object name.
+        }
     }
 
     private string? Protect(string? medicalNotes) =>

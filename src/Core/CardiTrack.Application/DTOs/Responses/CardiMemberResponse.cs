@@ -13,6 +13,14 @@ public class CardiMemberResponse
     public string? Phone { get; set; }
     public RelationshipType Relationship { get; set; }
     public bool IsPrimaryCaregiver { get; set; }
+
+    /// <summary>
+    /// Short-lived signed URL for the member's profile photo, or null when none is set or photo
+    /// storage is unavailable — clients fall back to an initials avatar. Expires within minutes:
+    /// fetch it, don't store it.
+    /// </summary>
+    public string? PhotoUrl { get; set; }
+
     public bool IsActive { get; set; }
     public DateTime CreatedDate { get; set; }
 }

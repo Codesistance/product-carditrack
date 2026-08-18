@@ -1,4 +1,6 @@
 using CardiTrack.Application.DTOs.Requests;
+using CardiTrack.Application.Exceptions;
+using CardiTrack.Application.Interfaces.Clients;
 using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Interfaces.Security;
 using CardiTrack.Application.Interfaces.Services;
@@ -22,6 +24,8 @@ public class CardiMemberServiceTests
     private readonly IRealtimeAssessmentRepository _realtimeAssessments = Substitute.For<IRealtimeAssessmentRepository>();
     private readonly ICardiMemberAccessService _access = Substitute.For<ICardiMemberAccessService>();
     private readonly IEncryptionService _encryption = Substitute.For<IEncryptionService>();
+    private readonly IProfilePhotoProcessor _photoProcessor = Substitute.For<IProfilePhotoProcessor>();
+    private readonly IProfilePhotoStorage _photoStorage = Substitute.For<IProfilePhotoStorage>();
 
     private readonly Guid _organizationId = Guid.NewGuid();
     private readonly Guid _userId = Guid.NewGuid();
@@ -53,7 +57,8 @@ public class CardiMemberServiceTests
         });
     }
 
-    private CardiMemberService CreateSut() => new(_unitOfWork, _access, _encryption, new NoOpNotificationGapResolver());
+    private CardiMemberService CreateSut() => new(
+        _unitOfWork, _access, _encryption, new NoOpNotificationGapResolver(), _photoProcessor, _photoStorage);
 
     private static CreateCardiMemberRequest BuildRequest() => new()
     {
