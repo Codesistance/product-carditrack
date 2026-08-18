@@ -277,6 +277,11 @@ resource "time_sleep" "api_iam_propagation" {
         google_secret_manager_secret_iam_member.api_health_token.id,
         google_secret_manager_secret_iam_member.api_gemini_api_key.id,
         google_secret_manager_secret_iam_member.api_medgemma_url.id,
+        # Not secret_key_refs, but still worth the barrier: ordering the revision after
+        # these means the first boot in a fresh environment can already sign photo URLs
+        # and reach the bucket, instead of 403ing until IAM catches up.
+        google_storage_bucket_iam_member.api_member_photos.id,
+        google_service_account_iam_member.api_self_token_creator.id,
       ],
       values(google_secret_manager_secret_iam_member.api_app_secrets)[*].id,
       google_project_iam_member.api_fcm_sender[*].id,
@@ -299,6 +304,8 @@ resource "time_sleep" "api_iam_propagation" {
     google_secret_manager_secret_iam_member.api_redis_connection_string,
     google_secret_manager_secret_iam_member.api_redis_ca,
     google_secret_manager_secret_iam_member.api_dev_push_token_key,
+    google_storage_bucket_iam_member.api_member_photos,
+    google_service_account_iam_member.api_self_token_creator,
   ]
 }
 
