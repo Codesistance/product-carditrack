@@ -331,6 +331,33 @@
                                 IsVisible="False"
                                 Clicked="OnUndoAcknowledgeClicked"/>
 
+                        <!-- Removal, in the same shape M1-13 gives its destructive row: its own
+                             card, red ink, and below the acknowledge pair rather than above it, so
+                             the irreversible action never sits where the primary one is expected.
+                             The same trash glyph the alert list's swipe action uses — one action
+                             reached two ways should not look like two.
+
+                             Deliberately not a row inside "More Options": those two navigate and
+                             carry a chevron, and this ends the screen. It repeats the list's swipe
+                             delete because a caregiver who opened an alert to decide about it
+                             should not have to go back and find the row again to act on it. -->
+                        <Border Style="{StaticResource ElevatedCard}"
+                                Padding="14,4"
+                                Margin="0,2,0,0">
+                            <Border.GestureRecognizers>
+                                <TapGestureRecognizer Tapped="OnDeleteAlertTapped"/>
+                            </Border.GestureRecognizers>
+                            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12" HeightRequest="52">
+                                <Image Grid.Column="0" Source="icon_trash.svg"
+                                       WidthRequest="20" HeightRequest="20" VerticalOptions="Center"/>
+                                <Label Grid.Column="1"
+                                       Text="Remove this alert"
+                                       Style="{StaticResource Body1SemiBoldDark}"
+                                       TextColor="{StaticResource DangerRed}"
+                                       VerticalTextAlignment="Center"/>
+                            </Grid>
+                        </Border>
+
                     </VerticalStackLayout>
                 </Grid>
             </ScrollView>
