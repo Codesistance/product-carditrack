@@ -27,15 +27,26 @@
              out from under the status bar. The header overlay below keeps the default, so it
              still clears the status bar on its own. -->
         <Grid Grid.Row="0" HorizontalOptions="Fill" MinimumHeightRequest="300" SafeAreaEdges="None">
-            <BoxView HorizontalOptions="Fill" VerticalOptions="Fill">
-                <BoxView.Background>
-                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
-                        <GradientStop Color="#174E86" Offset="0.0"/>
-                        <GradientStop Color="#1884DC" Offset="0.458"/>
-                        <GradientStop Color="#36C09B" Offset="1.0"/>
-                    </LinearGradientBrush>
-                </BoxView.Background>
-            </BoxView>
+            <!-- Figma stacks two different waves here (M1-02, frame 101:7448): the gradient
+                 shape "Vector 2" (101:7449) has its own wavy bottom edge, and the photo mask
+                 "Vector 1" (101:7451) is a second, higher wave. The ribbon is what shows of
+                 the gradient between the two curves, tapering to nothing at the bottom-left
+                 corner, and the page's white shows beneath the gradient's curve — there is
+                 no straight edge and no stroke anywhere in the seam. -->
+            <Border x:Name="GradientClipBorder"
+                    StrokeThickness="0"
+                    HorizontalOptions="Fill"
+                    VerticalOptions="Fill">
+                <BoxView HorizontalOptions="Fill" VerticalOptions="Fill">
+                    <BoxView.Background>
+                        <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                            <GradientStop Color="#174E86" Offset="0.0"/>
+                            <GradientStop Color="#1884DC" Offset="0.458"/>
+                            <GradientStop Color="#36C09B" Offset="1.0"/>
+                        </LinearGradientBrush>
+                    </BoxView.Background>
+                </BoxView>
+            </Border>
 
             <Border x:Name="HeroClipBorder"
                     StrokeThickness="0"
@@ -58,11 +69,6 @@
                     </CarouselView.ItemTemplate>
                 </CarouselView>
             </Border>
-
-            <Path x:Name="HeroWaveStroke"
-                  Stroke="{StaticResource White}"
-                  StrokeThickness="2"
-                  InputTransparent="True"/>
 
             <!-- ── Header overlay (logo + sign-in). Default safe-area padding clears the
                  status bar; this padding is the small margin below it. ── -->
