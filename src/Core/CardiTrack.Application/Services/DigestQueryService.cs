@@ -44,14 +44,48 @@ public class DigestQueryService : IDigestQueryService
         Guid cardiMemberId,
         int limit,
         DigestAudience audience = DigestAudience.Family,
+        string? search = null,
+        DateOnly? from = null,
+        DateOnly? to = null,
+        DigestUrgency? urgency = null,
         CancellationToken ct = default)
     {
         await _access.RequireViewAccessAsync(requestingUserId, cardiMemberId, ct);
 
         var entries = await _unitOfWork.Digests.GetHistoryAsync(
-            cardiMemberId, audience, Math.Clamp(limit, 1, MaxHistoryLimit), ct);
+            cardiMemberId,
+            audience,
+            Math.Clamp(limit, 1, MaxHistoryLimit),
+            search,
+            from,
+            to,
+            urgency,
+            ct);
 
         return entries.Select(ToResponse).ToList();
+    }
+
+    /// <summary>
+    /// The urgency a caller named in the wire vocabulary, or null when they named one that does
+    /// not exist. A blank filter means "no filter" and parses to no urgency with true; an
+    /// unrecognised word is false so the endpoint can refuse it rather than silently returning
+    /// everything — the same stance the alert filters take on a typo'd severity.
+    /// </summary>
+    public static bool TryParseUrgency(string? value, out DigestUrgency? urgency)
+    {
+        urgency = null;
+        if (string.IsNullOrWhiteSpace(value))
+            return true;
+
+        urgency = value.Trim().ToLowerInvariant() switch
+        {
+            "watch" => DigestUrgency.Watch,
+            "check-in" => DigestUrgency.CheckIn,
+            "concerning" => DigestUrgency.Concerning,
+            "act-now" => DigestUrgency.ActNow,
+            _ => null,
+        };
+        return urgency is not null;
     }
 
     /// <summary>

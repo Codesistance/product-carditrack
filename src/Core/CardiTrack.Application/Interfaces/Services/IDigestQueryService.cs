@@ -29,10 +29,25 @@ public interface IDigestQueryService
     /// all of which may describe the same day; for <see cref="DigestAudience.DayReview"/> it is one
     /// entry per day, because a review is written once. Empty when none has been generated yet.
     /// </summary>
+    /// <param name="requestingUserId">Whose access is being checked.</param>
+    /// <param name="cardiMemberId">The member whose summaries are being read.</param>
+    /// <param name="limit">Page cap; the service clamps it into range.</param>
+    /// <param name="audience">Which series to read.</param>
+    /// <param name="search">
+    /// Case-insensitive text filter over the summary, headline and suggestion; null for none.
+    /// </param>
+    /// <param name="from">Earliest local day, inclusive.</param>
+    /// <param name="to">Latest local day, inclusive.</param>
+    /// <param name="urgency">Only entries graded at exactly this urgency; null for all.</param>
+    /// <param name="ct">Cancels the read.</param>
     Task<IReadOnlyList<DigestResponse>> GetHistoryAsync(
         Guid requestingUserId,
         Guid cardiMemberId,
         int limit,
         DigestAudience audience = DigestAudience.Family,
+        string? search = null,
+        DateOnly? from = null,
+        DateOnly? to = null,
+        DigestUrgency? urgency = null,
         CancellationToken ct = default);
 }

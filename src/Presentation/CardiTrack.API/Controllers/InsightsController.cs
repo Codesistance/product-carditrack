@@ -170,6 +170,16 @@ public class InsightsController : BaseApiController
     /// recomputations, or <c>day-review</c> for one entry per finished day. Optional, and a value
     /// outside those two is refused rather than ignored.
     /// </param>
+    /// <param name="search">
+    /// Optional case-insensitive text filter over the summary, its headline and its suggestion.
+    /// Applied before <paramref name="limit"/>, so it searches the history rather than the page.
+    /// </param>
+    /// <param name="from">Optional earliest local day, inclusive.</param>
+    /// <param name="to">Optional latest local day, inclusive; must not precede <paramref name="from"/>.</param>
+    /// <param name="urgency">
+    /// Optional filter to one urgency tier — <c>watch</c>, <c>check-in</c>, <c>concerning</c> or
+    /// <c>act-now</c>. A value outside those is refused rather than ignored.
+    /// </param>
     /// <param name="ct">Cancels the read when the caller disconnects.</param>
     [HttpGet("members/{cardiMemberId:guid}/digests")]
     [ProducesResponseType(typeof(ApiResponse<IReadOnlyList<DigestResponse>>), StatusCodes.Status200OK)]
@@ -179,6 +189,10 @@ public class InsightsController : BaseApiController
         Guid cardiMemberId,
         [FromQuery] int? limit,
         [FromQuery] string? audience,
+        [FromQuery] string? search,
+        [FromQuery] DateOnly? from,
+        [FromQuery] DateOnly? to,
+        [FromQuery] string? urgency,
         CancellationToken ct)
     {
         if (!UserContext.IsAuthenticated || UserContext.UserId == Guid.Empty)
@@ -192,6 +206,13 @@ public class InsightsController : BaseApiController
         if (DigestQueryService.ParseAudience(audience) is not { } parsedAudience)
             return Error("That summary type isn't one we recognise — use family or day-review.");
 
+        // Same stance for the urgency filter: a typo must not silently return the unfiltered list.
+        if (!DigestQueryService.TryParseUrgency(urgency, out var parsedUrgency))
+            return Error("That urgency isn't one we recognise — use watch, check-in, concerning or act-now.");
+
+        if (from is not null && to is not null && from > to)
+            return Error("The start date needs to come before the end date.");
+
         try
         {
             // An omitted or nonsense limit takes the default rather than being refused: the
@@ -202,6 +223,10 @@ public class InsightsController : BaseApiController
                 cardiMemberId,
                 limit is > 0 ? limit.Value : DefaultHistoryLimit,
                 parsedAudience,
+                string.IsNullOrWhiteSpace(search) ? null : search,
+                from,
+                to,
+                parsedUrgency,
                 ct);
             return Success(result);
         }

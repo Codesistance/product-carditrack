@@ -1,4 +1,4 @@
-using CardiTrack.Application.Interfaces.Repositories;
+﻿using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Domain.Entities;
 using CardiTrack.Domain.Enums;
 using CardiTrack.Infrastructure.Persistence;
@@ -70,14 +70,53 @@ public class DigestRepository : IDigestRepository
     }
 
     public async Task<IReadOnlyList<DigestEntry>> GetHistoryAsync(
-        Guid cardiMemberId, DigestAudience audience, int limit, CancellationToken ct = default)
+        Guid cardiMemberId,
+        DigestAudience audience,
+        int limit,
+        string? search = null,
+        DateOnly? from = null,
+        DateOnly? to = null,
+        DigestUrgency? urgency = null,
+        CancellationToken ct = default)
     {
-        return await _context.DigestEntries
+        var query = _context.DigestEntries
             .AsNoTracking()
-            .Where(d => d.CardiMemberId == cardiMemberId && d.Audience == audience)
+            .Where(d => d.CardiMemberId == cardiMemberId && d.Audience == audience);
+
+        if (from is { } fromDay)
+            query = query.Where(d => d.LocalDate >= fromDay);
+        if (to is { } toDay)
+            query = query.Where(d => d.LocalDate <= toDay);
+        if (urgency is { } tier)
+            query = query.Where(d => d.Urgency == tier);
+
+        // In the database rather than in memory, unlike the questionnaire search — those answers
+        // are encrypted at rest and can only be matched after decryption, where this text is
+        // stored plain. Filtering here is what lets the search run before the page cap, which is
+        // the point of it: a caregiver searching "oxygen" is asking about their history, not
+        // about whichever page happened to load. ILIKE over a few hundred rows per member needs
+        // no index; the wildcard escaping is what stops a typed % or _ from quietly matching
+        // everything or almost nothing.
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var pattern = "%" + EscapeLikePattern(search.Trim()) + "%";
+            query = query.Where(d =>
+                EF.Functions.ILike(d.Text, pattern)
+                || (d.Headline != null && EF.Functions.ILike(d.Headline, pattern))
+                || (d.Suggestion != null && EF.Functions.ILike(d.Suggestion, pattern)));
+        }
+
+        return await query
             .OrderByDescending(d => d.LocalDate)
             .ThenByDescending(d => d.GeneratedAtUtc)
             .Take(limit)
             .ToListAsync(ct);
     }
+
+    /// <summary>
+    /// Escapes LIKE's wildcards in a caregiver's own search text, so "100%" searches for the
+    /// string "100%" rather than for "100" followed by anything.
+    /// </summary>
+    private static string EscapeLikePattern(string value) =>
+        value.Replace("\\", "\\\\").Replace("%", "\\%").Replace("_", "\\_");
 }

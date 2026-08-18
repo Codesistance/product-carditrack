@@ -1,4 +1,4 @@
-using CardiTrack.Domain.Entities;
+﻿using CardiTrack.Domain.Entities;
 using CardiTrack.Domain.Enums;
 
 namespace CardiTrack.Application.Interfaces.Repositories;
@@ -28,8 +28,27 @@ public interface IDigestRepository
 
     /// <summary>
     /// The member's summaries newest first, capped at <paramref name="limit"/> — the history
-    /// behind the current one.
+    /// behind the current one. Every filter applies <em>before</em> the cap: a search that only
+    /// read the first page would answer "not found" about a review it never looked at.
     /// </summary>
+    /// <param name="cardiMemberId">The member whose summaries are being read.</param>
+    /// <param name="audience">Which series to read.</param>
+    /// <param name="limit">Page cap, applied after the filters.</param>
+    /// <param name="search">
+    /// Case-insensitive text match over the summary, its headline and its suggestion; null means
+    /// no text filter.
+    /// </param>
+    /// <param name="from">Earliest local day to include, inclusive; null means unbounded.</param>
+    /// <param name="to">Latest local day to include, inclusive; null means unbounded.</param>
+    /// <param name="urgency">Only entries the model graded at exactly this urgency; null means all.</param>
+    /// <param name="ct">Cancels the read.</param>
     Task<IReadOnlyList<DigestEntry>> GetHistoryAsync(
-        Guid cardiMemberId, DigestAudience audience, int limit, CancellationToken ct = default);
+        Guid cardiMemberId,
+        DigestAudience audience,
+        int limit,
+        string? search = null,
+        DateOnly? from = null,
+        DateOnly? to = null,
+        DigestUrgency? urgency = null,
+        CancellationToken ct = default);
 }
