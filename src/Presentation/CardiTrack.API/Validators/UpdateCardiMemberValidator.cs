@@ -61,22 +61,18 @@ public class UpdateCardiMemberValidator : AbstractValidator<UpdateCardiMemberReq
             .MaximumLength(2000).WithMessage("Medical notes cannot exceed 2000 characters")
             .When(x => !string.IsNullOrEmpty(x.MedicalNotes));
 
-        // Same rules as CreateCardiMemberValidator: shape and size here, image-ness in the
-        // processor's content sniff.
-        RuleFor(x => x.PhotoBase64)
-            .Must(v => ProfilePhotoBase64.TryDecode(v, out _))
-                .WithMessage("Photo must be valid base64 image data")
-            .Must(v => !ProfilePhotoBase64.TryDecode(v, out var bytes)
-                || bytes.Length <= ProfilePhotoBase64.MaxDecodedBytes)
-                .WithMessage("Photos can be at most 5 MB")
-            .When(x => !string.IsNullOrEmpty(x.PhotoBase64));
+        // Same rule as CreateCardiMemberValidator: shape and size here (decoded once), image-ness
+        // in the processor's content sniff.
+        RuleFor(x => x.PhotoBase64).Custom(CreateCardiMemberValidator.ValidatePhotoBase64);
 
         // Contradictory intent, not a precedence puzzle: "here is a new photo" and "remove the
         // photo" in one request means the client is confused, and guessing which it meant would
         // be wrong for someone. The service resolves the race in the new photo's favour, but
         // only as defence in depth — this rule keeps the combination off the wire.
+        // IsNullOrWhiteSpace, matching the service: a whitespace-only photoBase64 is "no photo
+        // supplied" everywhere, so it must not block a removal here.
         RuleFor(x => x.RemovePhoto)
-            .Must((request, remove) => !remove || string.IsNullOrEmpty(request.PhotoBase64))
+            .Must((request, remove) => !remove || string.IsNullOrWhiteSpace(request.PhotoBase64))
             .WithMessage("Send either a new photo or removePhoto, not both");
     }
 

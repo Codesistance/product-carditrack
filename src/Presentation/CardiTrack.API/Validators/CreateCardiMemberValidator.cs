@@ -41,14 +41,22 @@ public class CreateCardiMemberValidator : AbstractValidator<CreateCardiMemberReq
 
         // Base64 shape and the 5 MB decoded cap only — whether the bytes are a real JPEG/PNG is
         // the processor's call (content sniffing), so image-ness is not re-judged here with a
-        // second, weaker opinion.
-        RuleFor(x => x.PhotoBase64)
-            .Must(v => ProfilePhotoBase64.TryDecode(v, out _))
-                .WithMessage("Photo must be valid base64 image data")
-            .Must(v => !ProfilePhotoBase64.TryDecode(v, out var bytes)
-                || bytes.Length <= ProfilePhotoBase64.MaxDecodedBytes)
-                .WithMessage("Photos can be at most 5 MB")
-            .When(x => !string.IsNullOrEmpty(x.PhotoBase64));
+        // second, weaker opinion. Custom rather than chained Musts so the payload is decoded
+        // exactly once, and IsNullOrWhiteSpace so what this skips is exactly what the service
+        // treats as "no photo supplied".
+        RuleFor(x => x.PhotoBase64).Custom(ValidatePhotoBase64);
+    }
+
+    /// <summary>Shared by <see cref="UpdateCardiMemberValidator"/> — one photo rule, two forms.</summary>
+    internal static void ValidatePhotoBase64<T>(string? value, FluentValidation.ValidationContext<T> context)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return;
+
+        if (!ProfilePhotoBase64.TryDecode(value, out var bytes))
+            context.AddFailure("Photo must be valid base64 image data");
+        else if (bytes.Length > ProfilePhotoBase64.MaxDecodedBytes)
+            context.AddFailure("Photos can be at most 5 MB");
     }
 
     private bool BeValidAge(DateOnly dob)

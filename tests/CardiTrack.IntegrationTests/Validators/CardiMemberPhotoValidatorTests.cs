@@ -119,4 +119,16 @@ public class CardiMemberPhotoValidatorTests
         Assert.False(result.IsValid);
         Assert.Contains(result.Errors, e => e.PropertyName == nameof(UpdateCardiMemberRequest.RemovePhoto));
     }
+
+    /// <summary>
+    /// Whitespace-only is "no photo supplied" to the service, so the validators must read it the
+    /// same way everywhere: not base64 to be judged, and no obstacle to a removal.
+    /// </summary>
+    [Fact]
+    public void WhitespacePhoto_IsTreatedAsOmitted()
+    {
+        Assert.True(_create.Validate(CreateRequest("   ")).IsValid);
+        Assert.True(_update.Validate(UpdateRequest("   ")).IsValid);
+        Assert.True(_update.Validate(UpdateRequest("   ", removePhoto: true)).IsValid);
+    }
 }
