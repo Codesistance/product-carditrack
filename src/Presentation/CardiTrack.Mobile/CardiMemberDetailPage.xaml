@@ -13,7 +13,17 @@
              GRADIENT HEADER — the app-wide band (Controls/HeaderBand).
              ════════════════════════════════════════ -->
         <controls:HeaderBand Grid.Row="0" ContentPadding="20,16,20,26">
-            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="14">
+            <Grid ColumnDefinitions="Auto,*,Auto" RowDefinitions="Auto,Auto" ColumnSpacing="14" RowSpacing="10">
+                <!-- What this page is, said once under the title. Spans the full
+                     header so it starts level with the icon, and wears the same
+                     treatment as the Dashboard header's greeting line. -->
+                <Label Grid.Row="1" Grid.ColumnSpan="3"
+                       Text="Their live picture — readings, trends, management"
+                       FontFamily="Quicksand"
+                       FontSize="14"
+                       TextColor="{StaticResource White}"
+                       Opacity="0.85"
+                       LineBreakMode="TailTruncation"/>
                 <Border Grid.Column="0"
                         WidthRequest="38" HeightRequest="38"
                         StrokeThickness="0"

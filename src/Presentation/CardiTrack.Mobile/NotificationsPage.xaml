@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8" ?>
+﻿<?xml version="1.0" encoding="utf-8" ?>
 <ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              xmlns:controls="clr-namespace:CardiTrack.Mobile.Controls"
@@ -12,7 +12,17 @@
     <Grid RowDefinitions="Auto,*">
 
         <controls:HeaderBand Grid.Row="0" ContentPadding="20,16,20,26">
-            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
+            <Grid ColumnDefinitions="Auto,*,Auto" RowDefinitions="Auto,Auto" ColumnSpacing="12" RowSpacing="10">
+                <!-- What this page is, said once under the title. Spans the full
+                     header so it starts level with the icon, and wears the same
+                     treatment as the Dashboard header's greeting line. -->
+                <Label Grid.Row="1" Grid.ColumnSpan="3"
+                       Text="Small things that make their readings say more"
+                       FontFamily="Quicksand"
+                       FontSize="14"
+                       TextColor="{StaticResource White}"
+                       Opacity="0.85"
+                       LineBreakMode="TailTruncation"/>
                 <Border Grid.Column="0"
                         WidthRequest="38" HeightRequest="38"
                         StrokeThickness="0"

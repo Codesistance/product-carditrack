@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8" ?>
+﻿<?xml version="1.0" encoding="utf-8" ?>
 <ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              xmlns:controls="clr-namespace:CardiTrack.Mobile.Controls"
@@ -22,7 +22,17 @@
              only disappear when there is nothing to filter (an unfiltered empty list, or the
              archive), so dropping the button strands no filtered state. -->
         <controls:HeaderBand Grid.Row="0" ContentPadding="20,14,20,26">
-            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
+            <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto" ColumnSpacing="12" RowSpacing="10">
+                <!-- What this page is, said once under the title. Spans the full
+                     header so it starts level with the icon, and wears the same
+                     treatment as the Dashboard header's greeting line. -->
+                <Label Grid.Row="1" Grid.ColumnSpan="2"
+                       Text="Everything that asked for your attention"
+                       FontFamily="Quicksand"
+                       FontSize="14"
+                       TextColor="{StaticResource White}"
+                       Opacity="0.85"
+                       LineBreakMode="TailTruncation"/>
 
                 <Border Grid.Column="0"
                         WidthRequest="40" HeightRequest="40"

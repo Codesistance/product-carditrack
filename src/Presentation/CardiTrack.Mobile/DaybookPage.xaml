@@ -25,7 +25,17 @@
         <!-- Back arrow, same treatment as Alerts and Settings — a tab root falls back to the
              dashboard when there is no history of its own to pop. -->
         <controls:HeaderBand Grid.Row="0" ContentPadding="20,14,20,26">
-            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
+            <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto" ColumnSpacing="12" RowSpacing="10">
+                <!-- What this page is, said once under the title. Spans the full
+                     header so it starts level with the icon, and wears the same
+                     treatment as the Dashboard header's greeting line. -->
+                <Label Grid.Row="1" Grid.ColumnSpan="2"
+                       Text="A full account of each of their finished days"
+                       FontFamily="Quicksand"
+                       FontSize="14"
+                       TextColor="{StaticResource White}"
+                       Opacity="0.85"
+                       LineBreakMode="TailTruncation"/>
 
                 <Border Grid.Column="0"
                         WidthRequest="40" HeightRequest="40"
