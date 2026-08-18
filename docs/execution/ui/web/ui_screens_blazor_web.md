@@ -301,7 +301,7 @@ A user can visit the public landing page, sign up, add one or more CardiMembers,
 - Left (50%):
   - Headline: "Know They're Okay"
   - Subheadline: "Monitor your elderly loved one's health from anywhere, using the device they already wear"
-  - Value proof: ✓ Works with Fitbit, Apple Watch, Garmin · ✓ AI-powered health alerts · ✓ $8/month — 70% less than medical alert systems
+  - Value proof: ✓ Works with Fitbit, Apple Watch, Garmin · ✓ AI-powered health alerts · ✓ From $7/month — 65-85% less than medical alert systems
   - Primary CTA: "Start Free 30-Day Trial" (large, brand color)
   - Trust line: "No credit card required. Cancel anytime."
 - Right (50%):
@@ -320,7 +320,7 @@ A user can visit the public landing page, sign up, add one or more CardiMembers,
 
 | Basic | Complete Care | Guardian Plus |
 |-------|--------------|---------------|
-| $8/mo | $15/mo ⭐ Popular | $30/mo |
+| $7/mo | $10/mo ⭐ Popular | $15/mo |
 - CTA under each: "Start Free Trial"
 
 **Footer:**
@@ -1060,7 +1060,7 @@ Extends MVP 1 with account management: view trends and historical data, configur
 - Button: "Manage Subscription"
 
 **Included Features (checklist):**
-- Up to 5 CardiMembers
+- Up to 3 CardiMembers
 - Advanced ML Alerts
 - Family Sharing
 - 90-day data retention

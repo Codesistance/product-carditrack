@@ -230,11 +230,11 @@ Stories mapped to MVP 1 screens (M1-01 through M1-17), plus the four shipped scr
 
 ### Step 1: Value Proposition (30 seconds)
 - Hero image: Happy elderly person with Fitbit, smiling family on phone
-- Headline: "Peace of Mind for Your Family. $8/month."
+- Headline: "Peace of Mind for Your Family. From $7/month."
 - 3 key benefits with icons:
   - Works with devices they already own (Fitbit, Apple Watch, etc.)
   - AI alerts you BEFORE health issues become emergencies
-  - 70% cheaper than medical alert systems ($8 vs $47/month)
+  - 65-85% cheaper than medical alert systems ($7-15 vs $47/month)
 - CTA: "Start Free 30-Day Trial"
 
 ### Step 2: Account Creation (1 minute)

@@ -173,7 +173,7 @@
             </Border>
 
             <!-- Pricing disclaimer (Figma y849) -->
-            <Label Text="Then $8/month - Cancel anytime"
+            <Label Text="Then from $7/month - Cancel anytime"
                    Style="{StaticResource Body2}"
                    HorizontalTextAlignment="Center"
                    Margin="0,16,0,0" />

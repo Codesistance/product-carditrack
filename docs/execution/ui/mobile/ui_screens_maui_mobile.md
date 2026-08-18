@@ -422,7 +422,7 @@ A single user can sign up, add a CardiMember, connect devices, manage CardiMembe
 
 **CTA Section (bottom 30%):**
 - Primary button (full width, bold): "Start Free 30-Day Trial"
-- Pricing text (small, muted): "Then $8/month - Cancel anytime"
+- Pricing text (small, muted): "Then from $7/month - Cancel anytime"
 - Legal link (small): "By continuing, you agree to Terms & Privacy"
 - **As built: no secondary bottom "Sign In" button** — Sign in is the header label.
 
@@ -1398,7 +1398,7 @@ Extends MVP 1 with account management, trend history, notification preferences, 
 - Button: "Manage Subscription"
 
 **Included Features (checklist):**
-- Up to 5 CardiMembers
+- Up to 3 CardiMembers
 - Advanced ML Alerts
 - Family Sharing
 - 90-day data retention

@@ -6,7 +6,7 @@ The elderly health monitoring market is experiencing rapid growth driven by agin
 
 **Market Opportunity**: $9B+ addressable market (150M+ elderly aged 65+ across the US & EU × $6-30/month average spend). The initial serviceable segment — US medical alert systems plus remote patient monitoring — is $3.8B+ today.
 
-**Key Competitive Advantage**: 50-70% cheaper than medical alert systems while providing preventive (not just reactive) monitoring across multiple device brands.
+**Key Competitive Advantage**: 65-85% cheaper than medical alert systems while providing preventive (not just reactive) monitoring across multiple device brands.
 
 ---
 
@@ -84,8 +84,8 @@ The elderly health monitoring market is experiencing rapid growth driven by agin
 
 **Trend 4: Subscription-Based Care**
 - Shift from hardware sales to recurring revenue
-- $8-30/month sweet spot for consumers
-- CardiTrack Alignment: ✅ **$8-15/month consumer pricing** (business tier post-MVP)
+- $7-30/month sweet spot for consumers
+- CardiTrack Alignment: ✅ **$7-15/month consumer pricing** across all three tiers
 
 ---
 
@@ -187,7 +187,7 @@ The elderly health monitoring market is experiencing rapid growth driven by agin
 - **Total Year 1**: $713
 
 **Weaknesses:**
-- ❌ Expensive ($47/month vs our $8-15)
+- ❌ Expensive ($47/month vs our $7-15)
 - ❌ Proprietary hardware (vendor lock-in)
 - ❌ Reactive only (no preventive monitoring)
 - ❌ Clunky medical device aesthetic
@@ -310,7 +310,7 @@ The elderly health monitoring market is experiencing rapid growth driven by agin
 - ✅ Modern AI anomaly detection (MedGemma 1.5 4B + SSA pre-processing)
 - ✅ Multi-device roadmap (Fitbit today; Garmin, Apple Watch, Samsung and more per release wave)
 - ✅ Active development & support
-- ✅ Better pricing ($8 vs $15+)
+- ✅ Better pricing ($7 vs $15+)
 - ✅ Proven market validation (concept worked, execution failed)
 
 **Key Insight:** Care|Mind proved the concept works but failed on execution. CardiTrack can succeed where they failed with better tech, multi-platform support, and modern AI.
@@ -422,7 +422,7 @@ The elderly health monitoring market is experiencing rapid growth driven by agin
 
 | Feature | CardiTrack | Medical Alert Watches | Fitbit Premium | Apple Health | Care\|Mind (defunct) |
 |---------|-----------|----------------------|----------------|-------------|---------------------|
-| **Pricing** | $8-15/mo consumer ($29.99 business tier post-MVP) | $47-68/mo | $10/mo | Free | ~$15/mo |
+| **Pricing** | $7-15/mo consumer, all three tiers | $47-68/mo | $10/mo | Free | ~$15/mo |
 | **Multi-Device Support** | 🔄 Fitbit shipped (Google Health API, incl. Pixel Watch); Garmin Q1 2027; Apple/Samsung Q2 2027; Withings/Oura/Whoop Q3 2027 | ❌ Proprietary only | ✅ Fitbit only | ✅ Apple only | ✅ Fitbit only |
 | **Preventive Monitoring** | ✅ AI pattern analysis | ❌ Reactive only | ⚠️ Basic insights | ❌ None | ✅ Basic patterns |
 | **Family Dashboard** | 🔄 Mobile shipped; web in development | ⚠️ Limited | ❌ No | ⚠️ Manual check | ✅ iOS only |
@@ -487,10 +487,10 @@ The elderly health monitoring market is experiencing rapid growth driven by agin
 
 ---
 
-#### 3. **Affordable Pricing ($8-15 vs $47-68)**
+#### 3. **Affordable Pricing ($7-15 vs $47-68)**
 
 **What It Means:**
-- 50-70% cheaper than medical alert systems
+- 65-85% cheaper than medical alert systems
 - No upfront hardware cost (BYOD model)
 - Scales to multiple family members affordably
 
@@ -555,7 +555,7 @@ The elderly health monitoring market is experiencing rapid growth driven by agin
 - Consumer wearable apps focused on individual use
 
 **Business Advantage:**
-- ✅ Higher revenue per family (Complete Care: 5 CardiMembers + 20 family members; larger limits in the post-MVP business tier)
+- ✅ Higher revenue per family (Complete Care: 3 CardiMembers + 20 family members; Guardian Plus: 6 CardiMembers)
 - ✅ Lower churn (monitoring multiple people = higher switching cost)
 - ✅ Network effects (add more family members over time)
 
@@ -582,7 +582,7 @@ The elderly health monitoring market is experiencing rapid growth driven by agin
  (Emergency Only)        │              (Pattern Analysis)
                          │
                          │     CardiTrack ★
-                         │     ($8-15/mo)
+                         │     ($7-15/mo)
                          │
                          │     Fitbit Premium
                          │     ($10/mo)
@@ -607,7 +607,7 @@ The elderly health monitoring market is experiencing rapid growth driven by agin
 **For Caregivers:**
 - "Stop worrying. Start knowing."
 - "Get early warnings, not emergency calls."
-- "$8/month for peace of mind (vs $47 for medical alerts)"
+- "$7/month for peace of mind (vs $47 for medical alerts)"
 
 **For Elderly:**
 - "Stay independent. Stay safe."
@@ -674,8 +674,8 @@ The elderly health monitoring market is experiencing rapid growth driven by agin
    - AARP magazine feature
 
 **Pricing:**
-- Basic: $8/month (2 CardiMembers, 5 family members, no export)
-- Complete Care: $15/month (5 CardiMembers, 20 family members, export)
+- Basic: $7/month (1 CardiMember, 5 family members, 30-day history, no export)
+- Complete Care: $10/month (3 CardiMembers, 20 family members, 90-day history, export)
 - Annual billing: 15% discount
 - 30-day free trial (provisions the Complete Care tier)
 
@@ -713,8 +713,8 @@ The elderly health monitoring market is experiencing rapid growth driven by agin
    - Staff training and onboarding support
 
 **Pricing:**
-- Basic $8 / Complete Care $15 (consumer tiers, limits as above)
-- Guardian Plus: $29.99/month — **post-MVP business tier (post-Q3 2027)**: larger member limits and API access for facilities/power users
+- Basic $7 / Complete Care $10 / Guardian Plus $15 (consumer tiers, limits as above)
+- Guardian Plus: $15/month — consumer tier: 6 CardiMembers, 180-day history, monthly Daybook, priority support
 - Device Bundle: +$100 upfront (Fitbit Charge 6)
 - Annual discount: 15% off
 
@@ -877,7 +877,7 @@ CardiTrack's data supply chain is single-vendor: Google owns the Health API, the
 
 ## Conclusion
 
-CardiTrack enters a growing market — $9B+ addressable across the US & EU, with a $3.8B+ initial serviceable segment (US medical alert + remote patient monitoring) — with a unique value proposition: **affordable, preventive, multi-device elderly health monitoring**. By combining AI-powered pattern analysis with consumer-grade wearables, CardiTrack offers 50-70% cost savings over medical alert systems while providing superior preventive insights.
+CardiTrack enters a growing market — $9B+ addressable across the US & EU, with a $3.8B+ initial serviceable segment (US medical alert + remote patient monitoring) — with a unique value proposition: **affordable, preventive, multi-device elderly health monitoring**. By combining AI-powered pattern analysis with consumer-grade wearables, CardiTrack offers 65-85% cost savings over medical alert systems while providing superior preventive insights.
 
 **Key Success Factors:**
 1. ✅ Proven market demand (Care|Mind validated concept)
