@@ -1,4 +1,4 @@
-#if ANDROID || IOS
+﻿#if ANDROID || IOS
 using CardiTrack.Mobile.Core.Notifications;
 using CardiTrack.Mobile.Notifications;
 using CardiTrack.Mobile.Services;
@@ -20,7 +20,7 @@ public partial class AppShell : Shell
 
     public const string AlertsRoute = "//alerts";
 
-    public const string FamilyRoute = "//family";
+    public const string SummariesRoute = "//summaries";
 
     public const string SettingsRoute = "//settings";
 

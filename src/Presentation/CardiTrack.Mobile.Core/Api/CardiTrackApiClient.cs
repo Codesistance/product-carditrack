@@ -1,4 +1,4 @@
-using System.Net;
+﻿using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using CardiTrack.Application.DTOs.Requests;
@@ -94,6 +94,11 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
 
     public Task<DigestResponse> GetDigestAsync(Guid cardiMemberId, CancellationToken ct = default) =>
         GetAsync<DigestResponse>($"api/v1/insights/members/{cardiMemberId}/digest", ct);
+
+    public Task<IReadOnlyList<DigestResponse>> GetDayReviewsAsync(
+        Guid cardiMemberId, int limit, CancellationToken ct = default) =>
+        GetAsync<IReadOnlyList<DigestResponse>>(
+            $"api/v1/insights/members/{cardiMemberId}/digests?limit={limit}&audience=day-review", ct);
 
     public Task<QuestionnairesPageResponse> GetQuestionnairesAsync(
         Guid cardiMemberId,

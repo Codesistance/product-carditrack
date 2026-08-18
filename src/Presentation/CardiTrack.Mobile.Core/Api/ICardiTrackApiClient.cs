@@ -1,4 +1,4 @@
-using CardiTrack.Application.DTOs.Requests;
+﻿using CardiTrack.Application.DTOs.Requests;
 using CardiTrack.Application.DTOs.Responses;
 
 namespace CardiTrack.Mobile.Core.Api;
@@ -66,6 +66,18 @@ public interface ICardiTrackApiClient
     /// callers show an empty state rather than treating that as a failure.
     /// </summary>
     Task<DigestResponse> GetDigestAsync(Guid cardiMemberId, CancellationToken ct = default);
+
+    /// <summary>
+    /// The member's day reviews, newest first — one per finished day, which is what the Summaries
+    /// tab lists. An empty list rather than a 404 when none has been written yet: "this member has
+    /// no reviews yet" is an ordinary answer to a history question, and the first two days of a new
+    /// member legitimately have none.
+    /// </summary>
+    /// <param name="cardiMemberId">The member whose reviews are being read.</param>
+    /// <param name="limit">How many to ask for. The service clamps this into range.</param>
+    /// <param name="ct">Cancels the read.</param>
+    Task<IReadOnlyList<DigestResponse>> GetDayReviewsAsync(
+        Guid cardiMemberId, int limit, CancellationToken ct = default);
 
     // ---- Questions the service asks the family ----
 

@@ -1,0 +1,105 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:controls="clr-namespace:CardiTrack.Mobile.Controls"
+             x:Class="CardiTrack.Mobile.SummariesPage"
+             Shell.NavBarIsVisible="False"
+             Shell.TabBarIsVisible="False"
+             BackgroundColor="{StaticResource PageGround}">
+
+    <!-- The day reviews, newest first — one per finished day. Replaces the Family tab, which
+         held a "coming soon" card for a feature in R3; a tab that does nothing is worse than
+         one fewer tab, and this is the surface the reviews had nowhere to live on.
+
+         No Figma frame: the M1 file's bar is Home/Health/Alerts/Profile and has no Summaries
+         screen, so this is a design-sync gap rather than a built frame — see the day review's
+         entry in the design-sync backlog. -->
+
+    <!-- Safe area is claimed per edge, and by this layout rather than by the ContentPage:
+         SafeAreaEdges is honoured on layouts, and setting it on the page above has no effect
+         on Android (verified on API 37). Top keeps the status-bar inset the header band is
+         drawn against; bottom releases it, so BottomNavBar can run to the screen edge and pad
+         itself instead — see that control. -->
+    <Grid RowDefinitions="Auto,*,Auto" SafeAreaEdges="None, Container, None, None">
+
+        <!-- Back arrow, same treatment as Alerts and Settings — a tab root falls back to the
+             dashboard when there is no history of its own to pop. -->
+        <controls:HeaderBand Grid.Row="0" ContentPadding="20,14,20,26">
+            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
+
+                <Border Grid.Column="0"
+                        WidthRequest="40" HeightRequest="40"
+                        StrokeThickness="0"
+                        BackgroundColor="{StaticResource HeaderButtonTint}"
+                        VerticalOptions="Center">
+                    <Border.StrokeShape>
+                        <RoundRectangle CornerRadius="20"/>
+                    </Border.StrokeShape>
+                    <Border.GestureRecognizers>
+                        <TapGestureRecognizer Tapped="OnBackTapped"/>
+                    </Border.GestureRecognizers>
+                    <Image Source="icon_back_white.svg" WidthRequest="20" HeightRequest="20"/>
+                </Border>
+
+                <Label Grid.Column="1"
+                       Text="Summaries"
+                       Style="{StaticResource Heading3}"
+                       TextColor="{StaticResource White}"
+                       VerticalTextAlignment="Center"/>
+            </Grid>
+        </controls:HeaderBand>
+
+        <RefreshView x:Name="Refresher"
+                     Grid.Row="1"
+                     RefreshColor="{StaticResource Primary}"
+                     Refreshing="OnPullToRefresh">
+            <ScrollView>
+                <Grid Padding="20,20,20,24">
+
+                    <!-- Loading: three quiet placeholder cards rather than a spinner, so the
+                         list does not jump when the real ones arrive. -->
+                    <VerticalStackLayout x:Name="SkeletonPanel" Spacing="14" IsVisible="False">
+                        <Border Style="{StaticResource ElevatedCard}" HeightRequest="112"/>
+                        <Border Style="{StaticResource ElevatedCard}" HeightRequest="112"/>
+                        <Border Style="{StaticResource ElevatedCard}" HeightRequest="112"/>
+                    </VerticalStackLayout>
+
+                    <!-- Empty. Deliberately says why rather than only that: the first two days
+                         of a new member genuinely have no finished day to review yet, and a bare
+                         "nothing here" reads as a fault. -->
+                    <VerticalStackLayout x:Name="EmptyPanel" IsVisible="False" Spacing="6">
+                        <Border Style="{StaticResource ElevatedCard}">
+                            <VerticalStackLayout Spacing="6">
+                                <Label Text="No day reviews yet"
+                                       Style="{StaticResource Body1SemiBoldDark}"/>
+                                <Label x:Name="EmptyDetailLabel"
+                                       Style="{StaticResource Body2}"
+                                       TextColor="{StaticResource BodyText}"/>
+                            </VerticalStackLayout>
+                        </Border>
+                    </VerticalStackLayout>
+
+                    <VerticalStackLayout x:Name="ErrorPanel" IsVisible="False" Spacing="12">
+                        <Border Style="{StaticResource ElevatedCard}">
+                            <VerticalStackLayout Spacing="6">
+                                <Label Text="Couldn't load the summaries"
+                                       Style="{StaticResource Body1SemiBoldDark}"/>
+                                <Label x:Name="ErrorDetailLabel"
+                                       Style="{StaticResource Body2}"
+                                       TextColor="{StaticResource BodyText}"/>
+                            </VerticalStackLayout>
+                        </Border>
+                        <Button Text="Try again"
+                                Style="{StaticResource SecondaryOutlineButton}"
+                                Clicked="OnRetryClicked"/>
+                    </VerticalStackLayout>
+
+                    <VerticalStackLayout x:Name="ReviewsHost" Spacing="14" IsVisible="False"/>
+
+                </Grid>
+            </ScrollView>
+        </RefreshView>
+
+        <controls:BottomNavBar Grid.Row="2" Tab="Summaries"/>
+    </Grid>
+</ContentPage>

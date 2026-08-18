@@ -1,4 +1,4 @@
-using System.Net.Http.Headers;
+﻿using System.Net.Http.Headers;
 using CardiTrack.Mobile.Core.Api;
 using CardiTrack.Mobile.Core.Auth;
 using CardiTrack.Mobile.Core.Configuration;
@@ -126,7 +126,7 @@ public static class MauiProgram
         // Shell tab pages resolve through DI (constructor injection).
         builder.Services.AddTransient<DashboardPage>();
         builder.Services.AddTransient<AlertsPage>();
-        builder.Services.AddTransient<FamilyPage>();
+        builder.Services.AddTransient<SummariesPage>();
         builder.Services.AddTransient<SettingsPage>();
 
         // Routed pages pushed over a tab (M1-11/12/16, M1-13 / M1-14 / M1-15).
