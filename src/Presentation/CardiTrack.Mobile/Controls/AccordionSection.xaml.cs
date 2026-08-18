@@ -85,6 +85,7 @@ public partial class AccordionSection : ContentView
         _isAnimating = true;
         IsExpanded = true;
         HintLabel.IsVisible = false;
+        SemanticProperties.SetDescription(ChevronIcon, "Collapse");
 
         var width = RootLayout.Width > 0 ? RootLayout.Width : Width;
         var targetHeight = BodyHost.Measure(width, double.PositiveInfinity).Height;
@@ -100,6 +101,7 @@ public partial class AccordionSection : ContentView
     {
         _isAnimating = true;
         IsExpanded = false;
+        SemanticProperties.SetDescription(ChevronIcon, "Expand");
 
         this.AbortAnimation("accordion");
         new Animation(v => BodyClip.HeightRequest = v, BodyClip.Height, 0)

@@ -48,6 +48,8 @@
                        HorizontalOptions="Center"
                        VerticalOptions="Center"
                        SemanticProperties.Description="Expand"/>
+                <!-- Description is kept in step with the state in code-behind: the same
+                     control collapses once open, and announcing "Expand" then is wrong. -->
             </Border>
         </Grid>
 
