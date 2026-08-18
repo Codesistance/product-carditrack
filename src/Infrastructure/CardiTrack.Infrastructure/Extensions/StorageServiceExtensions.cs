@@ -28,8 +28,8 @@ public static class StorageServiceExtensions
         // Backs the signed-URL cache. Idempotent — the API also registers it for rate limiting.
         services.AddMemoryCache();
 
-        // Singletons: the processor is stateless, and the storage adapter's StorageClient,
-        // UrlSigner and log-once flag are all meant to live for the process.
+        // Singletons: the processor is stateless, and the storage adapter's GCS client, URL
+        // signer and log-once flag are all meant to live for the process.
         services.AddSingleton<IProfilePhotoProcessor, ImageSharpProfilePhotoProcessor>();
         services.AddSingleton<IProfilePhotoStorage, GcsProfilePhotoStorage>();
 
