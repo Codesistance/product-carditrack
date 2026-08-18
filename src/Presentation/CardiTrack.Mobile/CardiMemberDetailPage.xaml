@@ -140,20 +140,22 @@
                                 <controls:MemberAvatar x:Name="Avatar"
                                                        Grid.Column="0"
                                                        BoxWidth="80"
-                                                       VerticalOptions="Center"/>
+                                                       VerticalOptions="Start"/>
 
-                                <!-- The name and who they are lead by a step; the "Updated"
-                                     line is bookkeeping and drops a step — the card reads
-                                     person first, freshness last. -->
-                                <!-- Start, not Center: the name's cap-height lines up with the
-                                     avatar's top edge, and the three lines hang from there — a
-                                     block centred against an 80pt box floated its first line
-                                     below the box's own top. Spacing 0 so they read as one
-                                     stacked identity rather than three separate lines. -->
-                                <VerticalStackLayout Grid.Column="1" Spacing="0" VerticalOptions="Start">
-                                    <Label x:Name="NameLabel" Style="{StaticResource Heading2}" FontSize="24"/>
-                                    <Label x:Name="AgeRelationshipLabel" Style="{StaticResource Body2}" FontSize="15"/>
+                                <!-- The identity spans the avatar's height. The name and who they
+                                     are lead by a step and sit at the box's top; the "Updated"
+                                     line is bookkeeping, drops a step, and is pushed to the box's
+                                     bottom by the star row between them — who they are and how
+                                     current we are on them are the two ends of the same box, and
+                                     what sits between just fills. -->
+                                <Grid Grid.Column="1"
+                                      RowDefinitions="Auto,Auto,*"
+                                      VerticalOptions="Fill">
+                                    <Label x:Name="NameLabel" Grid.Row="0" Style="{StaticResource Heading2}" FontSize="24"/>
+                                    <Label x:Name="AgeRelationshipLabel" Grid.Row="1" Style="{StaticResource Body2}" FontSize="15"/>
                                     <HorizontalStackLayout x:Name="ConnectionStatusRow"
+                                                           Grid.Row="2"
+                                                           VerticalOptions="End"
                                                            Spacing="6">
                                         <Ellipse x:Name="ConnectionStatusDot"
                                                  WidthRequest="10" HeightRequest="10"
@@ -165,7 +167,7 @@
                                                VerticalOptions="Center"
                                                LineBreakMode="TailTruncation"/>
                                     </HorizontalStackLayout>
-                                </VerticalStackLayout>
+                                </Grid>
 
                                 <!-- Last-session weather (EnvironmentalReading — not live, no
                                      stored coordinate). Same chip and popup as the dashboard hero
