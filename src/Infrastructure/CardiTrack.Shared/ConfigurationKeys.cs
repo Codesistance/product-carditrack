@@ -221,4 +221,17 @@ public static class ConfigurationKeys
         /// Object section: use with IConfiguration.GetSection(), not ConfigurationLoader.Get().
         public const string SectionName = "Environmental";
     }
+
+    /// <summary>Blob storage for user-supplied binary content — today, member profile photos.</summary>
+    public static class Storage
+    {
+        /// <summary>
+        /// Member profile photo storage (bucket name, signed-URL TTLs, upload cap) — see
+        /// <c>StorageServiceExtensions</c>. The bucket arrives from Terraform as
+        /// <c>Storage__MemberPhotos__Bucket</c>; empty (every local machine) disables the
+        /// feature rather than failing startup.
+        /// Object section: use with IConfiguration.GetSection(), not ConfigurationLoader.Get().
+        /// </summary>
+        public const string MemberPhotosSectionName = "Storage:MemberPhotos";
+    }
 }

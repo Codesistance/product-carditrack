@@ -1,4 +1,5 @@
 using CardiTrack.Application.DTOs.Requests;
+using CardiTrack.Application.Services;
 using FluentValidation;
 
 namespace CardiTrack.API.Validators;
@@ -59,6 +60,24 @@ public class UpdateCardiMemberValidator : AbstractValidator<UpdateCardiMemberReq
         RuleFor(x => x.MedicalNotes)
             .MaximumLength(2000).WithMessage("Medical notes cannot exceed 2000 characters")
             .When(x => !string.IsNullOrEmpty(x.MedicalNotes));
+
+        // Same rules as CreateCardiMemberValidator: shape and size here, image-ness in the
+        // processor's content sniff.
+        RuleFor(x => x.PhotoBase64)
+            .Must(v => ProfilePhotoBase64.TryDecode(v, out _))
+                .WithMessage("Photo must be valid base64 image data")
+            .Must(v => !ProfilePhotoBase64.TryDecode(v, out var bytes)
+                || bytes.Length <= ProfilePhotoBase64.MaxDecodedBytes)
+                .WithMessage("Photos can be at most 5 MB")
+            .When(x => !string.IsNullOrEmpty(x.PhotoBase64));
+
+        // Contradictory intent, not a precedence puzzle: "here is a new photo" and "remove the
+        // photo" in one request means the client is confused, and guessing which it meant would
+        // be wrong for someone. The service resolves the race in the new photo's favour, but
+        // only as defence in depth — this rule keeps the combination off the wire.
+        RuleFor(x => x.RemovePhoto)
+            .Must((request, remove) => !remove || string.IsNullOrEmpty(request.PhotoBase64))
+            .WithMessage("Send either a new photo or removePhoto, not both");
     }
 
     private bool BeValidAge(DateOnly dob)

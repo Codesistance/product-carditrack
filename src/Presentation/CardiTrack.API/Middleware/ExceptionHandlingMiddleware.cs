@@ -46,6 +46,8 @@ public class ExceptionHandlingMiddleware
             KeyNotFoundException => (HttpStatusCode.NotFound, "We couldn't find what you were looking for."),
             // Message is authored by the service layer for end users — safe to echo.
             DuplicateEmailException => (HttpStatusCode.Conflict, exception.Message),
+            // A refused profile photo upload — likewise authored for end users.
+            InvalidProfilePhotoException => (HttpStatusCode.BadRequest, exception.Message),
             _ => (HttpStatusCode.InternalServerError, "Something went wrong on our end. Please try again in a moment.")
         };
 

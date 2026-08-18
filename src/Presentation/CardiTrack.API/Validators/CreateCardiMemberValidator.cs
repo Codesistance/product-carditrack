@@ -1,4 +1,5 @@
 using CardiTrack.Application.DTOs.Requests;
+using CardiTrack.Application.Services;
 using FluentValidation;
 
 namespace CardiTrack.API.Validators;
@@ -37,6 +38,17 @@ public class CreateCardiMemberValidator : AbstractValidator<CreateCardiMemberReq
         RuleFor(x => x.MedicalNotes)
             .MaximumLength(2000).WithMessage("Medical notes cannot exceed 2000 characters")
             .When(x => !string.IsNullOrEmpty(x.MedicalNotes));
+
+        // Base64 shape and the 5 MB decoded cap only — whether the bytes are a real JPEG/PNG is
+        // the processor's call (content sniffing), so image-ness is not re-judged here with a
+        // second, weaker opinion.
+        RuleFor(x => x.PhotoBase64)
+            .Must(v => ProfilePhotoBase64.TryDecode(v, out _))
+                .WithMessage("Photo must be valid base64 image data")
+            .Must(v => !ProfilePhotoBase64.TryDecode(v, out var bytes)
+                || bytes.Length <= ProfilePhotoBase64.MaxDecodedBytes)
+                .WithMessage("Photos can be at most 5 MB")
+            .When(x => !string.IsNullOrEmpty(x.PhotoBase64));
     }
 
     private bool BeValidAge(DateOnly dob)
