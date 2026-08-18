@@ -22,7 +22,7 @@ namespace CardiTrack.Infrastructure.Migrations
     /// Resolved rather than deleted, and resolved rather than acknowledged. Resolution is the
     /// truthful statement — the condition has passed — and it is what the cooldown design means by
     /// an episode being over. Acknowledging would instead record that a caregiver looked at it,
-    /// which none of them did, and deleting would discard a record that a day review of that same
+    /// which none of them did, and deleting would discard a record that a daybook entry of that same
     /// night may well refer back to.
     /// </para>
     /// <para>

@@ -28,5 +28,5 @@ public interface IDigestGenerationService
     /// Unlike <see cref="GenerateDueDigestsAsync"/> this is written once and never recomputed: the
     /// day it describes is over, so there is no later reading that could change it.
     /// </remarks>
-    Task<int> GenerateDueDayReviewsAsync(DateTime utcNow, CancellationToken ct = default);
+    Task<int> GenerateDueDaybooksAsync(DateTime utcNow, CancellationToken ct = default);
 }

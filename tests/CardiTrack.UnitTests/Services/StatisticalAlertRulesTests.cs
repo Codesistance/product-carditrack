@@ -104,7 +104,7 @@ public class StatisticalAlertRulesTests
     /// The screenshot case, and the reason the benign branch was retired: someone who normally
     /// manages 3.8 hours slept 5.2. That is 37% off their own usual, but it is movement toward
     /// the recommendation rather than away from it, and the night is over by the time anyone
-    /// reads about it. It raises nothing — the fact belongs in the day review, which describes
+    /// reads about it. It raises nothing — the fact belongs in the daybook entry, which describes
     /// the finished day, not on a screen whose job is to say what needs attention now.
     /// </summary>
     [Fact]

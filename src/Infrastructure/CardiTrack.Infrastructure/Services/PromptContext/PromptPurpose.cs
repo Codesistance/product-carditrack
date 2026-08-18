@@ -33,8 +33,8 @@ public enum PromptPurpose
     /// from <see cref="Digest"/> in tense and in register — that one describes a day still
     /// running and is rewritten as it does.
     /// </summary>
-    DayReview = 32,
+    Daybook = 32,
 
     /// <summary>Everything a member-context source could contribute to.</summary>
-    All = Digest | RealtimeAssessment | AlertInsight | BaselineInsight | CurrentStatus | DayReview,
+    All = Digest | RealtimeAssessment | AlertInsight | BaselineInsight | CurrentStatus | Daybook,
 }

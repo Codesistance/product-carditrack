@@ -10,7 +10,7 @@ namespace CardiTrack.Mobile;
 /// <summary>
 /// One day's review in full: the account, the suggestion, and the trailing fortnight's charts to
 /// read it against — each with the member's own usual dashed, the published band shaded with its
-/// source named, and a counted awareness line. Pushed above the Summaries tab the way an alert's
+/// source named, and a counted awareness line. Pushed above the Daybook tab the way an alert's
 /// detail is pushed above the Alerts list.
 /// </summary>
 /// <remarks>
@@ -23,9 +23,9 @@ namespace CardiTrack.Mobile;
 /// </remarks>
 [QueryProperty(nameof(MemberId), "memberId")]
 [QueryProperty(nameof(Date), "date")]
-public partial class DayReviewDetailPage : ContentPage
+public partial class DaybookEntryPage : ContentPage
 {
-    public const string Route = "dayreview";
+    public const string Route = "daybookentry";
 
     /// <summary>The charts' window and the awareness count's — one number, so they cannot drift.</summary>
     private const int ChartDays = TrendAwareness.WindowDays;
@@ -39,7 +39,7 @@ public partial class DayReviewDetailPage : ContentPage
     private bool _returningFromPopup;
     private bool _hasLoadedOnce;
 
-    public DayReviewDetailPage(ICardiTrackApiClient api, IPopupService popups)
+    public DaybookEntryPage(ICardiTrackApiClient api, IPopupService popups)
     {
         InitializeComponent();
         _api = api;
@@ -88,7 +88,7 @@ public partial class DayReviewDetailPage : ContentPage
     private void OnRetryClicked(object? sender, EventArgs e) => _ = LoadAsync();
 
     private async void OnBackTapped(object? sender, TappedEventArgs e) =>
-        await this.GoBackAsync(AppShell.SummariesRoute);
+        await this.GoBackAsync(AppShell.DaybookRoute);
 
     private async Task LoadAsync()
     {
@@ -104,7 +104,7 @@ public partial class DayReviewDetailPage : ContentPage
             // The review is the page; the member detail is the charts. Sequential rather than
             // parallel so a failure has one story — and the charts degrade to absent rather than
             // costing the caregiver the review they came for.
-            var review = await _api.GetDayReviewAsync(_memberId, _date);
+            var review = await _api.GetDaybookAsync(_memberId, _date);
             Apply(review);
 
             try
@@ -146,14 +146,14 @@ public partial class DayReviewDetailPage : ContentPage
 
     private void Apply(DigestResponse review)
     {
-        DayLabel.Text = DayReviewPresentation.DayLabel(review.LocalDate);
+        DayLabel.Text = DaybookPresentation.DayLabel(review.LocalDate);
         HeadlineLabel.Text = string.IsNullOrWhiteSpace(review.Headline)
             ? "A day in review"
             : review.Headline;
         TextLabel.Text = review.Text;
 
         PillHost.Clear();
-        if (DayReviewPresentation.UrgencyPill(review.Urgency) is { } pill)
+        if (DaybookPresentation.UrgencyPill(review.Urgency) is { } pill)
             PillHost.Add(pill);
 
         var hasSuggestion = !string.IsNullOrWhiteSpace(review.Suggestion);

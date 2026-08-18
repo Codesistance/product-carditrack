@@ -114,7 +114,7 @@ public static class StatisticalAlertRules
     /// is <em>retrospective</em> — the night is over by the time anyone reads about it, and there
     /// is nothing a caregiver can do in the morning about sleep that has already happened. So a
     /// longer night that has not overshot the recommended band now raises <b>no alert at all</b>:
-    /// the fact belongs in the day review, which describes the finished day, rather than on a
+    /// the fact belongs in the daybook entry, which describes the finished day, rather than on a
     /// screen whose job is to say what needs attention now. It stays an alert in the one
     /// direction where more sleep is worth flagging — past the recommended ceiling at their age.
     /// A shorter night keeps its
@@ -149,7 +149,7 @@ public static class StatisticalAlertRules
 
         // A longer night that has not overshot is the one departure this rule can positively
         // establish was benign — and a benign departure from a night that is already over is not
-        // an alert, it is a line in the day review. Returning null here rather than grading it
+        // an alert, it is a line in the daybook entry. Returning null here rather than grading it
         // Green is what stops a caregiver being paged about an improvement they cannot act on.
         if (longer && !overshot)
             return null;

@@ -27,8 +27,8 @@ public class DigestRepository : IDigestRepository
         // recomputation carries a later GeneratedAtUtc and lands as its own row, which is what
         // makes the day's history a history.
         // No conflict target, deliberately: the primary key absorbs the same-instant collision
-        // above, and the partial unique index on day reviews (one per member per day — see
-        // EnforceOneDayReviewPerDay) absorbs the overlapping-runs one, where two executions probe
+        // above, and the partial unique index on daybook entries (one per member per day — see
+        // EnforceOneDaybookPerDay) absorbs the overlapping-runs one, where two executions probe
         // "already reviewed?" before either has written and would otherwise both insert with
         // different GeneratedAtUtc stamps. Naming only the PK as the target would turn the second
         // case into a raised unique violation instead of the quiet no-op both cases deserve.

@@ -4,7 +4,7 @@ using CardiTrack.Application.DTOs.Responses;
 namespace CardiTrack.Mobile.Core.Charts;
 
 /// <summary>
-/// The deterministic counting behind the day-review detail's trend lines — "under their usual on
+/// The deterministic counting behind the daybook detail's trend lines — "under their usual on
 /// 9 of the last 14 nights" — and the key line under each of its charts.
 /// </summary>
 /// <remarks>
@@ -92,7 +92,7 @@ public static class TrendAwareness
 }
 
 /// <summary>
-/// The one line under a day-review trend chart that says what its marks are — the same sentence
+/// The one line under a daybook trend chart that says what its marks are — the same sentence
 /// <see cref="AlertChartKey"/> writes for the alert detail, built from a <see cref="DashboardMetric"/>
 /// instead of an alert chart payload. The published band names its source (NSF, AHA, WHO), because
 /// a shaded band with nobody's name on it is a claim wearing no authority.

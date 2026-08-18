@@ -132,7 +132,7 @@ internal static partial class MedicalPromptBlocks
         """;
 
     /// <summary>
-    /// The register the day review writes in: the same family reader as
+    /// The register the daybook entry writes in: the same family reader as
     /// <see cref="CaregiverRegister"/>, but reading back a day that has finished and willing to
     /// meet a precise word for a reading — provided the word explains itself.
     /// </summary>
@@ -144,7 +144,7 @@ internal static partial class MedicalPromptBlocks
     /// describes what was measured; a term for something the body is doing is an inference about
     /// the person, and that is diagnosis whoever writes it. So the first is allowed and the second
     /// is refused — in the prompt here, and again in code afterwards, because a prompt is a
-    /// request and not a guarantee (<c>DayReviewPrompt.NamesACondition</c>).
+    /// request and not a guarantee (<c>DaybookPrompt.NamesACondition</c>).
     /// </para>
     /// <para>
     /// The gloss rule is what keeps the allowance from quietly becoming clinic-speak. A precise
@@ -160,7 +160,7 @@ internal static partial class MedicalPromptBlocks
     /// member on every day.
     /// </para>
     /// </remarks>
-    internal const string DayReviewRegister = """
+    internal const string DaybookRegister = """
         Write as a caregiver would to another. Everyday words for the readings are fine.
         A precise term for something that was measured is also fine, if you explain what it measures in plain words in the same sentence you first use it in.
         Never name, suggest or guess at a medical condition, and never say a reading is a sign of one.

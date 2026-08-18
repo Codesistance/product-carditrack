@@ -57,10 +57,10 @@ internal sealed class MonitoringContextSource : IMemberContextSource
 
     public MonitoringContextSource(IUnitOfWork unitOfWork) => _unitOfWork = unitOfWork;
 
-    // The day review too: what the monitoring engines made of the day is part of the account of
+    // The daybook entry too: what the monitoring engines made of the day is part of the account of
     // it, and an alert that stood unresolved through the evening is exactly the thing a review of
     // that evening must not omit.
-    public PromptPurpose Purposes => PromptPurpose.Digest | PromptPurpose.DayReview;
+    public PromptPurpose Purposes => PromptPurpose.Digest | PromptPurpose.Daybook;
 
     public int Order => 20;
 

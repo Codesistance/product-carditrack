@@ -8,7 +8,7 @@
 /// </summary>
 /// <remarks>
 /// <para>
-/// <see cref="DayReview"/> widened this from "who" to "who, reading how". It goes to the same
+/// <see cref="Daybook"/> widened this from "who" to "who, reading how". It goes to the same
 /// family as <see cref="Family"/>, but a family reading back a finished day is not the same
 /// reader as one glancing at a day still in progress: the first will sit with a fuller account
 /// and precise terms, the second wants to know whether anything needs them right now. That
@@ -21,7 +21,7 @@
 /// migration and gives a member a parallel series per day at no schema cost.
 /// </para>
 /// <para>
-/// <b>Revisit when</b> a value needs to vary both axes at once — a wearer-facing day review, say.
+/// <b>Revisit when</b> a value needs to vary both axes at once — a wearer-facing daybook entry, say.
 /// At that point "audience" and "kind" have genuinely come apart and belong in two columns, which
 /// is a key change and a partitioned-table migration. Until then a third column would be two
 /// values wide and empty.
@@ -42,5 +42,5 @@ public enum DigestAudience
     /// member's local day is over — never recomputed as data lands, because the day it describes
     /// cannot change any more.
     /// </summary>
-    DayReview = 3,
+    Daybook = 3,
 }

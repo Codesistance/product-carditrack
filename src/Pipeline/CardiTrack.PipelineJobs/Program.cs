@@ -148,16 +148,16 @@ try
             var digests = scope.ServiceProvider.GetRequiredService<IDigestGenerationService>();
             var generated = await digests.GenerateDueDigestsAsync(DateTime.UtcNow);
 
-            // The day review rides this job rather than owning one. It is due once per member per
+            // The daybook entry rides this job rather than owning one. It is due once per member per
             // day, at 02:00 in that member's own local time — so a job of its own would need either
             // a Cloud Scheduler entry per timezone the fleet spans, or exactly the same per-member
             // due-check this one already has to do, on top of a second Cloud Run job, a second
             // schedule and a second cold start. What it costs here is one indexed read per member
             // per pass, and one extra inference per member per day.
-            var reviews = await digests.GenerateDueDayReviewsAsync(DateTime.UtcNow);
+            var reviews = await digests.GenerateDueDaybooksAsync(DateTime.UtcNow);
 
             Log.Information(
-                "PipelineJobs run finished. Digests generated: {Generated}, day reviews written: {Reviews}.",
+                "PipelineJobs run finished. Digests generated: {Generated}, daybook entries written: {Reviews}.",
                 generated, reviews);
             return 0;
 

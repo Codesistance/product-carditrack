@@ -2,17 +2,17 @@
 <ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              xmlns:controls="clr-namespace:CardiTrack.Mobile.Controls"
-             x:Class="CardiTrack.Mobile.SummariesPage"
+             x:Class="CardiTrack.Mobile.DaybookPage"
              Shell.NavBarIsVisible="False"
              Shell.TabBarIsVisible="False"
              BackgroundColor="{StaticResource PageGround}">
 
-    <!-- The day reviews, newest first — one per finished day. Replaces the Family tab, which
+    <!-- The daybook entries, newest first — one per finished day. Replaces the Family tab, which
          held a "coming soon" card for a feature in R3; a tab that does nothing is worse than
          one fewer tab, and this is the surface the reviews had nowhere to live on.
 
          No Figma frame: the M1 file's bar is Home/Health/Alerts/Profile and has no Summaries
-         screen, so this is a design-sync gap rather than a built frame — see the day review's
+         screen, so this is a design-sync gap rather than a built frame — see the daybook entry's
          entry in the design-sync backlog. -->
 
     <!-- Safe area is claimed per edge, and by this layout rather than by the ContentPage:
@@ -42,7 +42,7 @@
                 </Border>
 
                 <Label Grid.Column="1"
-                       Text="Summaries"
+                       Text="Daybook"
                        Style="{StaticResource Heading3}"
                        TextColor="{StaticResource White}"
                        VerticalTextAlignment="Center"/>
@@ -73,7 +73,7 @@
                            Grid.Column="1"
                            FontFamily="Quicksand"
                            FontSize="14"
-                           Placeholder="Search the day reviews"
+                           Placeholder="Search the daybook entries"
                            TextColor="{AppThemeBinding Light={StaticResource Gray900}, Dark={StaticResource White}}"
                            PlaceholderColor="{StaticResource Gray500}"
                            ReturnType="Search"
@@ -150,7 +150,7 @@
                         <Border Style="{StaticResource ElevatedCard}">
                             <VerticalStackLayout Spacing="6">
                                 <Label x:Name="EmptyTitleLabel"
-                                       Text="No day reviews yet"
+                                       Text="No daybook entries yet"
                                        Style="{StaticResource Body1SemiBoldDark}"/>
                                 <Label x:Name="EmptyDetailLabel"
                                        Style="{StaticResource Body2}"
@@ -180,6 +180,6 @@
             </ScrollView>
         </RefreshView>
 
-        <controls:BottomNavBar Grid.Row="3" Tab="Summaries"/>
+        <controls:BottomNavBar Grid.Row="3" Tab="Daybook"/>
     </Grid>
 </ContentPage>

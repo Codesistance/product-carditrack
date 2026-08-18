@@ -204,11 +204,11 @@ public class DigestQueryServiceTests
         var to = new DateOnly(2026, 8, 17);
 
         await CreateSut().GetHistoryAsync(
-            _userId, _memberId, 10, DigestAudience.DayReview,
+            _userId, _memberId, 10, DigestAudience.Daybook,
             "oxygen", from, to, DigestUrgency.CheckIn);
 
         await _digests.Received(1).GetHistoryAsync(
-            _memberId, DigestAudience.DayReview, 10,
+            _memberId, DigestAudience.Daybook, 10,
             "oxygen", from, to, DigestUrgency.CheckIn, Arg.Any<CancellationToken>());
     }
 

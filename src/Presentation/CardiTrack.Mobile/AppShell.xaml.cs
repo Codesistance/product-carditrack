@@ -20,7 +20,7 @@ public partial class AppShell : Shell
 
     public const string AlertsRoute = "//alerts";
 
-    public const string SummariesRoute = "//summaries";
+    public const string DaybookRoute = "//daybook";
 
     public const string SettingsRoute = "//settings";
 
@@ -38,7 +38,7 @@ public partial class AppShell : Shell
         Routing.RegisterRoute(MetricTrendPage.Route, typeof(MetricTrendPage));
         Routing.RegisterRoute(NotificationsPage.Route, typeof(NotificationsPage));
         Routing.RegisterRoute(AlertDetailPage.Route, typeof(AlertDetailPage));
-        Routing.RegisterRoute(DayReviewDetailPage.Route, typeof(DayReviewDetailPage));
+        Routing.RegisterRoute(DaybookEntryPage.Route, typeof(DaybookEntryPage));
 
 #if ANDROID || IOS
         WirePush();

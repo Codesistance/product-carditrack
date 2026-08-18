@@ -68,7 +68,7 @@ public interface ICardiTrackApiClient
     Task<DigestResponse> GetDigestAsync(Guid cardiMemberId, CancellationToken ct = default);
 
     /// <summary>
-    /// The member's day reviews, newest first — one per finished day, which is what the Summaries
+    /// The member's daybook entries, newest first — one per finished day, which is what the Summaries
     /// tab lists. An empty list rather than a 404 when none has been written yet: "this member has
     /// no reviews yet" is an ordinary answer to a history question, and the first two days of a new
     /// member legitimately have none.
@@ -84,7 +84,7 @@ public interface ICardiTrackApiClient
     /// Optional urgency tier in the wire vocabulary (watch / check-in / concerning / act-now).
     /// </param>
     /// <param name="ct">Cancels the read.</param>
-    Task<IReadOnlyList<DigestResponse>> GetDayReviewsAsync(
+    Task<IReadOnlyList<DigestResponse>> GetDaybooksAsync(
         Guid cardiMemberId,
         int limit,
         string? search = null,
@@ -93,12 +93,12 @@ public interface ICardiTrackApiClient
         CancellationToken ct = default);
 
     /// <summary>
-    /// One day's review — the latest (and in practice only) day-review entry describing
+    /// One day's review — the latest (and in practice only) daybook entry describing
     /// <paramref name="localDate"/>. Throws <see cref="ApiException"/> with a 404 when that day
     /// was never reviewed; the detail screen shows its error state rather than treating that as
     /// a fault.
     /// </summary>
-    Task<DigestResponse> GetDayReviewAsync(
+    Task<DigestResponse> GetDaybookAsync(
         Guid cardiMemberId, DateOnly localDate, CancellationToken ct = default);
 
     // ---- Questions the service asks the family ----

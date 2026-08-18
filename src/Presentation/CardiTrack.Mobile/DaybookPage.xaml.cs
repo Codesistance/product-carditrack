@@ -7,16 +7,16 @@ using CardiTrack.Mobile.Services;
 namespace CardiTrack.Mobile;
 
 /// <summary>
-/// The Summaries tab: the member's day reviews, newest first, one per finished day — searchable
+/// The Summaries tab: the member's daybook entries, newest first, one per finished day — searchable
 /// over the whole history and narrowable by urgency and by how far back to look. A card opens the
-/// review's own page (<see cref="DayReviewDetailPage"/>), which carries the full account and the
+/// review's own page (<see cref="DaybookEntryPage"/>), which carries the full account and the
 /// charts to read it against.
 /// </summary>
 /// <remarks>
 /// <para>
 /// Took the Family tab's slot. That page was a placeholder for family invitations, which are R3
 /// work — a permanent quarter of the bottom navigation spent on a card that said "coming soon",
-/// while the day reviews had no surface at all. When family sharing does land it belongs under
+/// while the daybook entries had no surface at all. When family sharing does land it belongs under
 /// Settings or scoped to a member, not back in the bar.
 /// </para>
 /// <para>
@@ -28,12 +28,12 @@ namespace CardiTrack.Mobile;
 /// <para>
 /// Refreshes on resume but does not poll. Every other live surface in the app carries
 /// <c>RefreshEvery(PeriodicRefresh.LiveDataInterval)</c> because what it shows can change within
-/// the minute; a day review is written once, at 02:00 in the member's own local time, and cannot
+/// the minute; a daybook entry is written once, at 02:00 in the member's own local time, and cannot
 /// change afterwards. Polling it would be a request every thirty seconds for a list that moves
 /// once a day.
 /// </para>
 /// </remarks>
-public partial class SummariesPage : ContentPage
+public partial class DaybookPage : ContentPage
 {
     /// <summary>
     /// How many reviews one load asks for. A month is a page a caregiver actually scrolls; the
@@ -75,7 +75,7 @@ public partial class SummariesPage : ContentPage
     private string? _urgency;
     private int? _windowDays;
 
-    public SummariesPage(ICardiTrackApiClient api, IPopupService popups)
+    public DaybookPage(ICardiTrackApiClient api, IPopupService popups)
     {
         InitializeComponent();
         _api = api;
@@ -153,7 +153,7 @@ public partial class SummariesPage : ContentPage
         if (choice is null)
             return;
 
-        _urgency = DayReviewPresentation.UrgencyWireValue(choice);
+        _urgency = DaybookPresentation.UrgencyWireValue(choice);
         UrgencyChipLabel.Text = _urgency is null ? "Any urgency" : choice;
         await LoadAsync();
     }
@@ -206,7 +206,7 @@ public partial class SummariesPage : ContentPage
                 ? DateOnly.FromDateTime(DateTime.Now).AddDays(-(days - 1))
                 : (DateOnly?)null;
 
-            var reviews = await _api.GetDayReviewsAsync(
+            var reviews = await _api.GetDaybooksAsync(
                 _memberId, HistoryLimit, _search, from, _urgency);
             _lastLoadedUtc = DateTime.UtcNow;
             _hasLoadedOnce = true;
@@ -230,7 +230,7 @@ public partial class SummariesPage : ContentPage
                     var who = string.IsNullOrWhiteSpace(_memberFirstName)
                         ? "their"
                         : $"{_memberFirstName}'s";
-                    EmptyTitleLabel.Text = "No day reviews yet";
+                    EmptyTitleLabel.Text = "No daybook entries yet";
                     EmptyDetailLabel.Text =
                         $"The first review is written after {who} first full day of readings.";
                 }
@@ -310,7 +310,7 @@ public partial class SummariesPage : ContentPage
         card.GestureRecognizers.Add(new TapGestureRecognizer
         {
             Command = new Command(async () => await Shell.Current.GoToAsync(
-                $"{DayReviewDetailPage.Route}?memberId={_memberId}&date={review.LocalDate:yyyy-MM-dd}")),
+                $"{DaybookEntryPage.Route}?memberId={_memberId}&date={review.LocalDate:yyyy-MM-dd}")),
         });
 
         return card;
@@ -328,7 +328,7 @@ public partial class SummariesPage : ContentPage
         var titles = new VerticalStackLayout { Spacing = 2 };
         titles.Add(new Label
         {
-            Text = DayReviewPresentation.DayLabel(review.LocalDate),
+            Text = DaybookPresentation.DayLabel(review.LocalDate),
             Style = Styled("Body1SemiBoldDark"),
         });
         titles.Add(new Label
@@ -342,7 +342,7 @@ public partial class SummariesPage : ContentPage
         });
         heading.Add(titles);
 
-        if (DayReviewPresentation.UrgencyPill(review.Urgency) is { } pill)
+        if (DaybookPresentation.UrgencyPill(review.Urgency) is { } pill)
         {
             Grid.SetColumn(pill, 1);
             heading.Add(pill);

@@ -12,8 +12,8 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace CardiTrack.Infrastructure.Migrations
 {
     [DbContext(typeof(CardiTrackDbContext))]
-    [Migration("20260818111220_EnforceOneDayReviewPerDay")]
-    partial class EnforceOneDayReviewPerDay
+    [Migration("20260818113607_EnforceOneDaybookPerDay")]
+    partial class EnforceOneDaybookPerDay
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -949,8 +949,8 @@ namespace CardiTrack.Infrastructure.Migrations
 
                     b.HasIndex("CardiMemberId", "LocalDate")
                         .IsUnique()
-                        .HasDatabaseName("IX_DigestEntries_OneDayReviewPerDay")
-                        .HasFilter("\"Audience\" = 'DayReview'");
+                        .HasDatabaseName("IX_DigestEntries_OneDaybookPerDay")
+                        .HasFilter("\"Audience\" = 'Daybook'");
 
                     b.ToTable("DigestEntries", (string)null);
                 });

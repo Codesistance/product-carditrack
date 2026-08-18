@@ -66,7 +66,7 @@ internal sealed class QuestionnaireAnswersContextSource : IMemberContextSource
 
     public PromptPurpose Purposes =>
         PromptPurpose.Digest | PromptPurpose.RealtimeAssessment
-        | PromptPurpose.AlertInsight | PromptPurpose.BaselineInsight | PromptPurpose.DayReview;
+        | PromptPurpose.AlertInsight | PromptPurpose.BaselineInsight | PromptPurpose.Daybook;
 
     public int Order => 30;
 

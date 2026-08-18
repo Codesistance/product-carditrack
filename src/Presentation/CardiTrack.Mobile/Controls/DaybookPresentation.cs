@@ -3,12 +3,12 @@ using System.Globalization;
 namespace CardiTrack.Mobile.Controls;
 
 /// <summary>
-/// How a day review is presented wherever one appears — the day said the way a person says it,
-/// and the urgency pill. Shared by the Summaries list and the review's own detail page, which
+/// How a daybook entry is presented wherever one appears — the day said the way a person says it,
+/// and the urgency pill. Shared by the Daybook list and the review's own detail page, which
 /// must not disagree about either: the pill a caregiver tapped on the list is a promise about
 /// the screen it opens.
 /// </summary>
-internal static class DayReviewPresentation
+internal static class DaybookPresentation
 {
     /// <summary>
     /// "Yesterday" for the day just gone, the weekday for the rest of the week, and the date

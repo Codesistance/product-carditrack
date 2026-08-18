@@ -4,10 +4,10 @@ using CardiTrack.Infrastructure.Services;
 namespace CardiTrack.UnitTests.Services;
 
 /// <summary>
-/// Pins the day review's readings block and the two guards its register turns on: what a precise
+/// Pins the daybook entry's readings block and the two guards its register turns on: what a precise
 /// word is allowed to be, and where the line to diagnosis sits.
 /// </summary>
-public class DayReviewPromptTests
+public class DaybookPromptTests
 {
     private const int AdultAge = 60;
     private static readonly DateOnly Reviewed = new(2026, 8, 17);
@@ -66,7 +66,7 @@ public class DayReviewPromptTests
     [Fact]
     public void ReadingsSection_GivesEachReading_ItsUsualAndItsPublishedBand()
     {
-        var section = DayReviewPrompt.ReadingsSection(
+        var section = DaybookPrompt.ReadingsSection(
             Log(sleepMinutes: 372, restingHr: 64, spo2: 95.4m), Baseline(), AdultAge);
 
         Assert.Contains("total=6.2h (their usual 4.1h) [NSF recommend 7-9h]", section);
@@ -82,7 +82,7 @@ public class DayReviewPromptTests
     [Fact]
     public void ReadingsSection_SaysWhenAHeadlineReadingWasNotMeasured()
     {
-        var section = DayReviewPrompt.ReadingsSection(Log(steps: 4200), Baseline(), AdultAge);
+        var section = DaybookPrompt.ReadingsSection(Log(steps: 4200), Baseline(), AdultAge);
 
         Assert.Contains("total=not measured", section);
         Assert.Contains("resting=not measured", section);
@@ -95,7 +95,7 @@ public class DayReviewPromptTests
     [Fact]
     public void ReadingsSection_OmitsTheUsualClause_WhileThereIsNoBaseline()
     {
-        var section = DayReviewPrompt.ReadingsSection(
+        var section = DaybookPrompt.ReadingsSection(
             Log(sleepMinutes: 372, restingHr: 64), baseline: null, AdultAge);
 
         Assert.DoesNotContain("their usual", section);
@@ -111,7 +111,7 @@ public class DayReviewPromptTests
     [Fact]
     public void ReadingsSection_GivesSkinTemperature_OnlyAsADeviation()
     {
-        var section = DayReviewPrompt.ReadingsSection(
+        var section = DaybookPrompt.ReadingsSection(
             Log(temperature: 34.9m, temperatureBaseline: 34.4m), Baseline(), AdultAge);
 
         Assert.Contains("skinTemperatureVsTheirOwnNightlyUsual=+0.5C", section);
@@ -123,7 +123,7 @@ public class DayReviewPromptTests
     [Fact]
     public void ReadingsSection_StatesThatTheDayIsOver()
     {
-        var section = DayReviewPrompt.ReadingsSection(Log(steps: 4200), Baseline(), AdultAge);
+        var section = DaybookPrompt.ReadingsSection(Log(steps: 4200), Baseline(), AdultAge);
 
         Assert.Contains("This day is over.", section);
         Assert.Contains("none of it is still accumulating", section);
@@ -141,7 +141,7 @@ public class DayReviewPromptTests
     [InlineData("She walked 4,200 steps, well under her usual 6,000.")]
     public void NamesACondition_AllowsAReadingToBeNamedPrecisely(string text)
     {
-        Assert.Null(DayReviewPrompt.NamesACondition(text));
+        Assert.Null(DaybookPrompt.NamesACondition(text));
     }
 
     /// <summary>
@@ -159,7 +159,7 @@ public class DayReviewPromptTests
     [InlineData("The broken sleep points to a problem worth raising.")]
     public void NamesACondition_RefusesAnInferenceAboutTheBody(string text)
     {
-        Assert.NotNull(DayReviewPrompt.NamesACondition(text));
+        Assert.NotNull(DaybookPrompt.NamesACondition(text));
     }
 
     /// <summary>
@@ -174,7 +174,7 @@ public class DayReviewPromptTests
     [InlineData("A quiet day, consistent with her usual Sundays.")]
     public void NamesACondition_DoesNotFireOnTheComparisonThePromptAsksFor(string text)
     {
-        Assert.Null(DayReviewPrompt.NamesACondition(text));
+        Assert.Null(DaybookPrompt.NamesACondition(text));
     }
 
     /// <summary>Proposing a treatment is the other half of the same line.</summary>
@@ -183,7 +183,7 @@ public class DayReviewPromptTests
     [InlineData("He should take something to help him sleep.")]
     public void NamesACondition_RefusesATreatmentProposal(string text)
     {
-        Assert.NotNull(DayReviewPrompt.NamesACondition(text));
+        Assert.NotNull(DaybookPrompt.NamesACondition(text));
     }
 
     // ── The gloss rule ───────────────────────────────────────────────────────
@@ -196,7 +196,7 @@ public class DayReviewPromptTests
     [Fact]
     public void UnglossedTerm_FlagsAPreciseTermUsedBare()
     {
-        var flagged = DayReviewPrompt.UnglossedTerm("Her sleep efficiency was 78% last night.");
+        var flagged = DaybookPrompt.UnglossedTerm("Her sleep efficiency was 78% last night.");
 
         Assert.Equal("sleep efficiency", flagged);
     }
@@ -207,7 +207,7 @@ public class DayReviewPromptTests
     [InlineData("Her sleep efficiency, which measures how much of her time in bed she was asleep, was 78%.")]
     public void UnglossedTerm_AcceptsATermThatExplainsItself(string text)
     {
-        Assert.Null(DayReviewPrompt.UnglossedTerm(text));
+        Assert.Null(DaybookPrompt.UnglossedTerm(text));
     }
 
     /// <summary>
@@ -221,7 +221,7 @@ public class DayReviewPromptTests
     [InlineData("Her oxygen saturation averaged 95.4%, meaning the share of oxygen in her blood, and held steady.")]
     public void UnglossedTerm_DoesNotSplitASentenceAtADecimalPoint(string text)
     {
-        Assert.Null(DayReviewPrompt.UnglossedTerm(text));
+        Assert.Null(DaybookPrompt.UnglossedTerm(text));
     }
 
     /// <summary>An ordinary full stop still ends the sentence — the gloss must not be allowed to
@@ -229,7 +229,7 @@ public class DayReviewPromptTests
     [Fact]
     public void UnglossedTerm_StillSplitsOnAnOrdinaryFullStop()
     {
-        var flagged = DayReviewPrompt.UnglossedTerm(
+        var flagged = DaybookPrompt.UnglossedTerm(
             "Her sleep efficiency was 78%. That is how much of her time in bed she was asleep.");
 
         Assert.Equal("sleep efficiency", flagged);
@@ -245,7 +245,7 @@ public class DayReviewPromptTests
         var text = "Her sleep efficiency — how much of her time in bed she was asleep — was 78%. "
                    + "That sleep efficiency is close to her usual 71%.";
 
-        Assert.Null(DayReviewPrompt.UnglossedTerm(text));
+        Assert.Null(DaybookPrompt.UnglossedTerm(text));
     }
 
     /// <summary>
@@ -258,7 +258,7 @@ public class DayReviewPromptTests
     [InlineData("He recorded 4,200 steps and 18 active minutes.")]
     public void UnglossedTerm_DoesNotAskAPlainTermToExplainItself(string text)
     {
-        Assert.Null(DayReviewPrompt.UnglossedTerm(text));
+        Assert.Null(DaybookPrompt.UnglossedTerm(text));
     }
 
     // ── The echo guard ───────────────────────────────────────────────────────
@@ -270,7 +270,7 @@ public class DayReviewPromptTests
     [Fact]
     public void ReadsLikeTheInstructions_CatchesTheBriefReadBack()
     {
-        Assert.True(DayReviewPrompt.ReadsLikeTheInstructions(
+        Assert.True(DaybookPrompt.ReadsLikeTheInstructions(
             "Past tense throughout: this day has finished and nothing in it is still accumulating."));
     }
 
@@ -279,14 +279,14 @@ public class DayReviewPromptTests
     [Fact]
     public void ReadsLikeTheInstructions_MatchesAcrossAWrappedLine()
     {
-        Assert.True(DayReviewPrompt.ReadsLikeTheInstructions(
+        Assert.True(DaybookPrompt.ReadsLikeTheInstructions(
             "Past tense\n   throughout: this day has finished."));
     }
 
     [Fact]
     public void ReadsLikeTheInstructions_LeavesAnOrdinaryReviewAlone()
     {
-        Assert.False(DayReviewPrompt.ReadsLikeTheInstructions(
+        Assert.False(DaybookPrompt.ReadsLikeTheInstructions(
             "Dad slept 6.2 hours, noticeably more than his usual 4.1."));
     }
 }

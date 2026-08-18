@@ -4,7 +4,7 @@ using CardiTrack.Mobile.Core.Charts;
 namespace CardiTrack.UnitTests.Mobile;
 
 /// <summary>
-/// Pins which days the day-review detail's awareness lines count and what the sentence claims —
+/// Pins which days the daybook detail's awareness lines count and what the sentence claims —
 /// counts a caregiver can check against the chart beside them, never scores, per the release
 /// matrix's standing "no risk scores" decision.
 /// </summary>
@@ -91,7 +91,7 @@ public class TrendAwarenessTests
 }
 
 /// <summary>
-/// The key line under a day-review chart must name only marks the chart drew, and a published
+/// The key line under a daybook chart must name only marks the chart drew, and a published
 /// band must carry its publisher — a shaded band with nobody's name on it is a claim wearing no
 /// authority.
 /// </summary>

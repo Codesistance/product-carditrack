@@ -7,7 +7,7 @@ using CardiTrack.Domain.Entities;
 namespace CardiTrack.Infrastructure.Services;
 
 /// <summary>
-/// Everything specific to the day review: the brief, the day's readings as a deterministic prompt
+/// Everything specific to the daybook entry: the brief, the day's readings as a deterministic prompt
 /// section, and the guards its reply is held to.
 /// </summary>
 /// <remarks>
@@ -15,7 +15,7 @@ namespace CardiTrack.Infrastructure.Services;
 /// Separate from <see cref="DigestGenerationService"/>, which orchestrates both generations, so
 /// that the class already carrying the live summary's prompt, its four reply guards and its
 /// question machinery does not also carry a second prompt of comparable size. The split is
-/// content from orchestration rather than a second service: a day review is a
+/// content from orchestration rather than a second service: a daybook entry is a
 /// <see cref="Domain.Entities.DigestEntry"/> written from the same model by the same job, and
 /// giving it its own service would duplicate the due-scan, the storage path and the name
 /// resolution to gain nothing.
@@ -28,7 +28,7 @@ namespace CardiTrack.Infrastructure.Services;
 /// detectable by reading it.
 /// </para>
 /// </remarks>
-internal static partial class DayReviewPrompt
+internal static partial class DaybookPrompt
 {
     /// <summary>
     /// <c>CARDITRACK_DAY_REVIEW_PROMPT</c> — the finished-day account. Fixed prefix, member data
@@ -45,7 +45,7 @@ internal static partial class DayReviewPrompt
         Write the family's account of one day of {{NAME}}'s readings. The day is over.
         Write {{NAME}} exactly as it appears wherever you would name the person; it stands in
         for their real name, which you are not given.
-        """ + MedicalPromptBlocks.DayReviewRegister + """
+        """ + MedicalPromptBlocks.DaybookRegister + """
         Past tense throughout: this day has finished and nothing in it is still accumulating.
         Do not quote a figure that is not in the readings below, and do not round one that is.
         Cover the day's sleep, heart, oxygen and breathing, and movement — in that order, and only where each was measured.
@@ -104,7 +104,7 @@ internal static partial class DayReviewPrompt
 
     /// <summary>
     /// Terms that name something the body is doing rather than something the watch recorded. This
-    /// is the line the day review's whole allowance turns on: naming a measurement describes what
+    /// is the line the daybook entry's whole allowance turns on: naming a measurement describes what
     /// was measured, naming a condition is an inference about the person, and CardiTrack does not
     /// diagnose (docs/solution_manifest.md). A reply containing one of these is discarded whole.
     /// </summary>
@@ -138,14 +138,14 @@ internal static partial class DayReviewPrompt
     // "Consistent with" is deliberately absent, though it is the clinical inference phrase par
     // excellence. This prompt instructs the model to say where each reading sat against the
     // member's own usual, and "consistent with her usual 58" is a natural way to answer that —
-    // so the marker collides with the instruction directly above it. A day review is written
+    // so the marker collides with the instruction directly above it. A daybook entry is written
     // once and never retried, which makes a false discard cost the caregiver that day entirely,
     // and the phrasings left above catch the same claim when it is actually about the body.
 
     /// <summary>
     /// Phrasings that propose a treatment. Narrower than
     /// <c>DigestGenerationService.MedicalAdviceMarkers</c>, which guards a question and can ban
-    /// "measure" and "blood pressure" outright — words a day review says legitimately and often,
+    /// "measure" and "blood pressure" outright — words a daybook entry says legitimately and often,
     /// because saying what was measured is its whole job. These are the action shapes instead.
     /// </summary>
     private static readonly string[] TreatmentMarkers =

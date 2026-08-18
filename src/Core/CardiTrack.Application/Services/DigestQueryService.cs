@@ -102,7 +102,7 @@ public class DigestQueryService : IDigestQueryService
         return value.Trim().ToLowerInvariant() switch
         {
             "family" => DigestAudience.Family,
-            "dayreview" or "day-review" => DigestAudience.DayReview,
+            "daybook" => DigestAudience.Daybook,
             _ => null,
         };
     }

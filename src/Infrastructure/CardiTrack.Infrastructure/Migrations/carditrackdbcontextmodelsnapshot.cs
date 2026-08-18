@@ -946,8 +946,8 @@ namespace CardiTrack.Infrastructure.Migrations
 
                     b.HasIndex("CardiMemberId", "LocalDate")
                         .IsUnique()
-                        .HasDatabaseName("IX_DigestEntries_OneDayReviewPerDay")
-                        .HasFilter("\"Audience\" = 'DayReview'");
+                        .HasDatabaseName("IX_DigestEntries_OneDaybookPerDay")
+                        .HasFilter("\"Audience\" = 'Daybook'");
 
                     b.ToTable("DigestEntries", (string)null);
                 });

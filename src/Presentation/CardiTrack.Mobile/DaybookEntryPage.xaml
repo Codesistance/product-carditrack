@@ -2,17 +2,17 @@
 <ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              xmlns:controls="clr-namespace:CardiTrack.Mobile.Controls"
-             x:Class="CardiTrack.Mobile.DayReviewDetailPage"
+             x:Class="CardiTrack.Mobile.DaybookEntryPage"
              Shell.NavBarIsVisible="False"
              Shell.TabBarIsVisible="False"
              BackgroundColor="{StaticResource PageGround}">
 
-    <!-- One day's review in full, pushed above the Summaries tab the way an alert's detail is
+    <!-- One day's review in full, pushed above the Daybook tab the way an alert's detail is
          pushed above the Alerts list. A page rather than an in-card expansion because the account
          runs to a dozen sentences and now carries the trend charts beneath it — content that
          would make the list unscannable expanded in place.
 
-         No Figma frame, like SummariesPage — see the design-sync backlog. -->
+         No Figma frame, like DaybookPage — see the design-sync backlog. -->
 
     <Grid RowDefinitions="Auto,*,Auto" SafeAreaEdges="None, Container, None, None">
 
@@ -34,7 +34,7 @@
                 </Border>
 
                 <Label Grid.Column="1"
-                       Text="Day Review"
+                       Text="Daybook"
                        Style="{StaticResource Heading3}"
                        TextColor="{StaticResource White}"
                        VerticalTextAlignment="Center"/>
@@ -132,6 +132,6 @@
             </ScrollView>
         </RefreshView>
 
-        <controls:BottomNavBar Grid.Row="2" Tab="Summaries"/>
+        <controls:BottomNavBar Grid.Row="2" Tab="Daybook"/>
     </Grid>
 </ContentPage>
