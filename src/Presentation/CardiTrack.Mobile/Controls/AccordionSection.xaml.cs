@@ -1,4 +1,4 @@
-namespace CardiTrack.Mobile.Controls;
+﻿namespace CardiTrack.Mobile.Controls;
 
 /// <summary>
 /// Generic collapsible section — header (title + expand hint + chevron) toggling an arbitrary
@@ -84,7 +84,6 @@ public partial class AccordionSection : ContentView
     {
         _isAnimating = true;
         IsExpanded = true;
-        HintLabel.IsVisible = false;
 
         var width = RootLayout.Width > 0 ? RootLayout.Width : Width;
         var targetHeight = BodyHost.Measure(width, double.PositiveInfinity).Height;
@@ -106,7 +105,6 @@ public partial class AccordionSection : ContentView
             .Commit(this, "accordion", 16, AnimationLengthMs, Easing.CubicIn, (_, _) =>
             {
                 _isAnimating = false;
-                HintLabel.IsVisible = true;
             });
 
         _ = ChevronIcon.RotateToAsync(0, AnimationLengthMs, Easing.CubicIn);

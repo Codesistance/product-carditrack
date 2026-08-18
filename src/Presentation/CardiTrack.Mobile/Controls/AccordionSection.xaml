@@ -1,27 +1,25 @@
-<?xml version="1.0" encoding="utf-8" ?>
+﻿<?xml version="1.0" encoding="utf-8" ?>
 <ContentView xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              x:Class="CardiTrack.Mobile.Controls.AccordionSection">
 
     <!-- Generic collapsible section, collapsed by default so the body doesn't compete with the
-         card's action row for attention. "Tap to view" under the header is the only affordance
-         telling the user there's something to open — it disappears once expanded. The body is
-         animated open/closed by growing/shrinking a clipping Border's height (Border clips its
-         content to its bounds; a plain layout wouldn't) rather than snapping IsVisible. -->
+         card's action row for attention. The header wears the Member Detail dropdowns' row —
+         52 high, Body1SemiBoldDark, chevron at 20 — so every collapsible in the app reads as
+         the same control; the chevron is the affordance, the way it is on Alert Rules. The body
+         is animated open/closed by growing/shrinking a clipping Border's height (Border clips
+         its content to its bounds; a plain layout wouldn't) rather than snapping IsVisible. -->
     <VerticalStackLayout x:Name="RootLayout" Spacing="10">
 
-        <Grid ColumnDefinitions="*,Auto">
+        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12" HeightRequest="52">
             <Grid.GestureRecognizers>
                 <TapGestureRecognizer Tapped="OnHeaderTapped"/>
             </Grid.GestureRecognizers>
 
-            <VerticalStackLayout Grid.Column="0" Spacing="2">
-                <Label x:Name="HeaderLabel" Style="{StaticResource Heading2}"/>
-                <Label x:Name="HintLabel"
-                       Text="Tap to view"
-                       Style="{StaticResource Body2}"
-                       TextColor="{StaticResource BodyText}"/>
-            </VerticalStackLayout>
+            <Label x:Name="HeaderLabel"
+                   Grid.Column="0"
+                   Style="{StaticResource Body1SemiBoldDark}"
+                   VerticalTextAlignment="Center"/>
 
             <Image x:Name="ChevronIcon"
                    Grid.Column="1"
