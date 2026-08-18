@@ -466,6 +466,55 @@ Before a member has any `PatternBaseline` there is no normal to compare against,
 
 From about the first week, a **provisional** 7- or 14-day baseline exists before the 30-day one does. `CARDITRACK_PROVISIONAL_PROMPT` sits between the two framings: there is an early picture to compare against, so a comparison is an impression, not an established pattern, and a short window is not treated as settled. Sample hedges are not listed. The response carries `isProvisional`, again mirroring the dashboard. Provisional baselines colour dashboards and soften insight phrasing only — **they never feed alert thresholds** (see [alerts.md](./execution/backend/api/alerts.md)).
 
+### The day review (built today)
+
+`CARDITRACK_DAY_REVIEW_PROMPT` — the account of one **finished** day, written once and never
+recomputed. Everything else on this platform describes a day still in progress and is rewritten as
+it moves; this is the opposite, and the difference drives every design choice below.
+
+- **Storage.** `DigestAudience.DayReview`, alongside `Family` in the same partitioned
+  `DigestEntries` table. The audience is part of the composite key and is persisted as its name, so
+  the value cost no migration and gives each member a parallel series per day. The enum's own doc
+  comment records the trigger to split "audience" from "kind" if a wearer-facing review ever needs
+  both axes.
+- **Scheduling.** No job and no Cloud Scheduler entry of its own. `GenerateDueDayReviewsAsync` runs
+  inside the existing half-hourly `--job digest` execution, which already resolves each member's
+  timezone: a review is due when that member's local clock has passed **02:00** and no review exists
+  for the day before. A job of its own would have needed either one schedule per timezone the fleet
+  spans or exactly the same per-member check, on top of a second Cloud Run job and a second cold
+  start. 02:00 rather than midnight because a watch syncs on its own schedule and the last hours of a
+  day routinely arrive after it — and unlike the live summary, what this misses it misses for good.
+- **Cost.** One extra MedGemma call per member per day, on an instance already warm from the digest
+  pass. The existence probe is one indexed read, which is what a member costs on the other 47 passes.
+- **Readings.** `DayReviewPrompt.ReadingsSection` renders the whole `ActivityLog` row — sleep
+  architecture, the heart quartet, SpO₂, breathing rate, movement, skin-temperature deviation,
+  stress, VO₂ max — each against the member's own 30-day baseline and, where one exists, the
+  published band with its publisher named. Deterministic code computes every figure and every
+  comparison; the model only phrases them. A reading that is absent says "not measured" rather than
+  being omitted, because a section that simply drops sleep is one the model completes from nothing.
+  Skin temperature is given only as a deviation from the wearer's own nightly baseline — the
+  absolute wrist figure reads as a fever to anyone who takes it for a core temperature.
+
+**The register, and the line it turns on.** This is the one prompt allowed clinical vocabulary, and
+the allowance is bounded by a rule that is regulatory rather than stylistic: *a precise term may
+name a measurement; it may never name a condition.* Naming what the watch recorded is description;
+naming what the body is doing is an inference about the person, and that is diagnosis whoever writes
+it — CardiTrack is not a medical device. A precise term must also **explain what it measures in
+plain words in the sentence that first uses it**, which is what keeps the allowance from becoming
+clinic-speak; judged on first use only, so a term explained once may be used plainly afterwards.
+
+Both halves are enforced in code as well as asked for in the prompt, because a prompt is a request
+and not a guarantee (`DayReviewPrompt.NamesACondition`, `.UnglossedTerm`). A reply that trips either
+is discarded whole — the same "nothing rather than something wrong" stance the family summary takes,
+and with more behind it here, since a discarded review is not replaced half an hour later. The
+condition list logs the phrase that tripped it, because a line drawn by hand can only be kept honest
+by what it actually catches. It deliberately excludes **"consistent with"**, the clinical inference
+phrase par excellence: this prompt instructs the model to say where each reading sat against the
+member's own usual, and that is one of the natural ways to answer it.
+
+No question is asked off a day review. Questions exist to explain readings while they still matter,
+and the answer would arrive a day after the day it was about.
+
 ---
 
 ## Family Sharing: When and How to Push Data

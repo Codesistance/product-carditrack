@@ -280,6 +280,8 @@ Clients must not label either output as a trend assessment. The learning prompt 
 
 The member's **family digest**: a plain-language **rolling summary of the local day in progress**, regenerated whenever the member's readings move — with a **1-hour floor** between regenerations — widening to 2 hours early in the member's day, and not lifting at all between their bedtime and wake time — waived when samples indicate a problem, daily readings diverge from the baseline or jumped from yesterday, or an alert changed. The digest Cloud Scheduler is **half-hourly**; the assessor job re-runs generation immediately afterwards so a concerning hour is not stuck behind the next slot. It is *not* a fixed 06:00 previous-day snapshot: the text a caregiver reads at noon describes the day so far. Read-only — no model call happens on this path; `?date=YYYY-MM-DD` selects a specific local day, otherwise the most recent digest is returned.
 
+`?audience=` selects which series to read: `family` (the default, and what every caller got before day reviews existed) or `day-review`. Anything else is **400**, not silently ignored — a typo'd audience returning the family summary would show a caregiver one kind of summary under the heading of another.
+
 **Priority:** P1 | **Auth Required:** Yes
 
 ### Response `200 OK` (wrapped in `ApiResponse<T>`)
@@ -305,7 +307,7 @@ The prompt carries a member context block — age, sex, and caregiver-entered me
 
 ## GET `/api/v1/insights/members/{id}/digests` — implemented
 
-Digest **history**, newest first: the current digest and the regenerations behind it. `?limit=` caps the page (default 24; an omitted or nonsense value takes the default, and the service clamps into range). Returns an **empty list rather than 404** when the member has no digests yet — "no summaries yet" is an ordinary answer to a history question, where the single-digest endpoint above is asking for a thing that either exists or does not.
+Digest **history**, newest first. `?audience=family` (the default) returns the current digest and the regenerations behind it, several of which describe the same day; `?audience=day-review` returns **one entry per finished day**, because a review is written once and never recomputed — this is what the mobile **Summaries** tab lists. `?limit=` caps the page (default 24; an omitted or nonsense value takes the default, and the service clamps into range). Returns an **empty list rather than 404** when the member has no digests yet — "no summaries yet" is an ordinary answer to a history question, where the single-digest endpoint above is asking for a thing that either exists or does not.
 
 **Priority:** P1 | **Auth Required:** Yes
 

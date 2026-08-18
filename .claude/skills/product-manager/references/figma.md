@@ -49,7 +49,8 @@ Carry these into any PRD that touches the affected surface:
 
 | Item | Detail |
 |---|---|
-| **Seven shipped screens have no Figma frame** | `SignInPage`, `ForgotPasswordPage`, `VerifyEmailPage`, `Onboarding/AccountSetupPage`, plus `NotificationsPage`, `QuestionnairesPage`, and `QuestionCard` — built and shipped, specced only in [ui_screens_maui_mobile.md § Shipped Screens Without Figma M1 Frames](../../../../docs/execution/ui/mobile/ui_screens_maui_mobile.md), no M1 IDs assigned |
+| **Eight shipped screens have no Figma frame** | `SignInPage`, `ForgotPasswordPage`, `VerifyEmailPage`, `Onboarding/AccountSetupPage`, plus `NotificationsPage`, `QuestionnairesPage`, `QuestionCard`, and **`SummariesPage`** — built and shipped, specced only in [ui_screens_maui_mobile.md § Shipped Screens Without Figma M1 Frames](../../../../docs/execution/ui/mobile/ui_screens_maui_mobile.md), no M1 IDs assigned |
+| **The bottom bar's third tab changed** | Family → **Summaries**. `FamilyPage` was a stub for R3 family invitations and is deleted; `SummariesPage` lists the day reviews. The M1 file's bar reads Home/Health/Alerts/Profile and matches neither, so the tab set is now two steps from the design — worth resolving at the next sync rather than accumulating a third. The `icon_tab_summaries` pair is hand-authored in the style of the other unselected glyphs |
 | **M1-06 state-letter mismatch** | Shipped code maps **B = Error, C = Authorizing overlay** — the reverse of the frame's lettering. Figma is the arbiter; realign the code or update the frame at the next sync |
 | **Flyout menu retired** | The Shell is TabBar-only with no edge-swipe flyout. The flyout concept in older spec text is retired unless re-introduced through Figma — don't spec navigation that assumes it |
 | **Dashboard "as-built" states** | M1-09, M1-13, M1-14, M1-15 each have as-built states beyond the designed ones. Reconcile before adding new states |

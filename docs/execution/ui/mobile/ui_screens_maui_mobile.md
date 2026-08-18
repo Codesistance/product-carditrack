@@ -19,7 +19,7 @@
 >
 > **M1-17 is not built** — its entry points show "Coming soon" dialogs in the shipped app.
 >
-> **Seven shipped surfaces have no Figma M1 frame** and need design sync: SignInPage, ForgotPasswordPage, VerifyEmailPage, Onboarding/AccountSetupPage, NotificationsPage, and — built from the existing design system by explicit decision rather than by oversight — the QuestionCard on the CardiMember detail page and the Questions & Answers page. See [Shipped Screens Without Figma M1 Frames](#shipped-screens-without-figma-m1-frames). Per project convention, only screens that exist in the Figma file get M1 IDs — no IDs have been invented for these.
+> **Eight shipped surfaces have no Figma M1 frame** and need design sync: SignInPage, ForgotPasswordPage, VerifyEmailPage, Onboarding/AccountSetupPage, NotificationsPage, SummariesPage, and — built from the existing design system by explicit decision rather than by oversight — the QuestionCard on the CardiMember detail page and the Questions & Answers page. See [Shipped Screens Without Figma M1 Frames](#shipped-screens-without-figma-m1-frames). Per project convention, only screens that exist in the Figma file get M1 IDs — no IDs have been invented for these.
 >
 > Unbuilt screens below remain documented as design intent, each marked with a status line.
 
@@ -88,6 +88,7 @@ These screens ship in the current app but have **no Figma M1 frame — needs des
 | VerifyEmailPage | Post-signup email verification gate (resend / open mail / checking / error) |
 | Onboarding/AccountSetupPage | "My Family" / "My Organization" account-type choice with conditional Org Name |
 | NotificationsPage | Data-completeness / nudge inbox — reached from the dashboard's "Complete the picture" section ("See all") |
+| SummariesPage | The **Summaries** tab — day reviews newest first, one card per finished day, expanding in place. Took the Family tab's slot |
 
 Full specs in [Shipped Screens Without Figma M1 Frames](#shipped-screens-without-figma-m1-frames-1) below.
 
@@ -318,22 +319,21 @@ Push notification (any time) ─────────────────
 
 ### Bottom Tab Bar
 
-Visible on tab roots (Dashboard / Alerts / Family / Settings). Onboarding hides it (`Shell.TabBarIsVisible=False`). Tab pages hide Shell's bar and seat `BottomNavBar` **full-bleed** (safe-area inset is padding inside the bar).
+Visible on tab roots (Dashboard / Alerts / Summaries / Settings). Onboarding hides it (`Shell.TabBarIsVisible=False`). Tab pages hide Shell's bar and seat `BottomNavBar` **full-bleed** (safe-area inset is padding inside the bar).
 
 ```
 ┌────────────────────────────────────┐
 │                                    │
 │          Content Area              │
 │                                    │
-├──────────┬──────────┬─────┬────────┤
-│ Dashboard│  Alerts  │Family│Settings│
-└──────────┴──────────┴─────┴────────┘
+├──────────┬──────────┬─────────┬────────┤
+│ Dashboard│  Alerts  │Summaries│Settings│
+└──────────┴──────────┴─────────┴────────┘
 ```
 
 - Badge count on Alerts tab for unread alerts
-- Badge count on Family tab for pending invites (MVP 2)
-- Family tab shows a stub ("Family sharing (MVP 2) is coming soon") in MVP 1 — the tab is **always present**, never hidden
-- As built, the Shell defines a **TabBar only** (Dashboard / Alerts / Family / Settings, SVG icons). Alerts opens the real M1-10 list; the Family tab is still a stub; Settings is minimal (account card, a "Silenced reminders" card listing held notification mutes with a "Show me everything again" reset, "More settings (M2-01) coming soon", Sign out). Onboarding pages hide the tab bar via `Shell.TabBarIsVisible=False`.
+- **The third tab is Summaries, not Family.** The Family tab held a stub ("Family sharing (MVP 2) is coming soon") for invitations that are R3 work, so a quarter of the bar did nothing while the day reviews had no surface at all. `FamilyPage` is deleted. When family sharing lands it belongs under Settings or scoped to a member — a badge for pending invites goes wherever that surface ends up, not back in the bar
+- As built, the Shell defines a **TabBar only** (Dashboard / Alerts / Summaries / Settings, SVG icons). Alerts opens the real M1-10 list; Summaries lists the day reviews; Settings is minimal (account card, a "Silenced reminders" card listing held notification mutes with a "Show me everything again" reset, "More settings (M2-01) coming soon", Sign out). Onboarding pages hide the tab bar via `Shell.TabBarIsVisible=False`.
 
 ### Flyout Menu
 
@@ -1222,6 +1222,23 @@ This is the most safety-critical screen in the app. Design for urgency and immed
 ## Shipped Screens Without Figma M1 Frames
 
 The following screens exist in the shipped app but have **no Figma M1 frame — needs design sync**. Per project convention, only screens present in the Figma file receive M1 IDs, so no IDs are assigned here.
+
+### SummariesPage
+**Status:** Built — no Figma M1 frame, needs design sync. Replaced the Family tab stub.
+**Entry:** Bottom nav, third tab
+**Exit:** → M1-09 Dashboard (back arrow, or the Dashboard tab)
+
+- Gradient header band with back arrow and "Summaries", same treatment as Alerts and Settings
+- Pull-to-refresh; **no periodic poll** — a day review is written once, at 02:00 in the member's own local time, and cannot change afterwards. Refreshes on app resume only
+- One card per finished day, newest first, up to 14 days. Each card carries:
+  - the day, said the way someone says it — "Yesterday", then the weekday within the week, then the date
+  - the review's own generated headline, falling back to "A day in review" for entries written before headlines existed
+  - an urgency pill — WATCH / CHECK IN / CONCERNING / ACT NOW on the green/yellow/orange/red status colours. **No pill at all** when the model returned no urgency or one this app does not know: a pill is a claim about a member's health, and a grey one would imply the service judged the day and found it unremarkable
+  - the review clipped to three lines, expanding **in place** on tap to the full text plus the suggestion, with the link reading "Read the full day" / "Show less"
+- **States:** loading (three placeholder cards, so the list does not jump when the real ones arrive) · empty · error with retry · loaded
+- **Empty state says why, not just that:** "No day reviews yet" over "The first review is written after {Name}'s first full day of readings" — the first two days of a new member genuinely have none, and a bare "nothing here" reads as a fault. A member-less account gets "Add the person you care about, and their days will be summarised here"
+- **Error while a list is already on screen** shows a popup over it rather than replacing it with an error panel: the reviews describe finished days and do not go stale, so taking them away costs the caregiver something still worth reading
+- Backed by `GET /api/v1/insights/members/{id}/digests?audience=day-review&limit=14`
 
 ### SignInPage
 **Status:** Built — no Figma M1 frame, needs design sync
