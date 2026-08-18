@@ -503,6 +503,282 @@ public class CardiMemberServiceTests
         Assert.Null(connection.TokenExpiry);
     }
 
+    // ── Profile photos ──────────────────────────────────────────────────────────
+
+    private const string PhotoBase64 = "aGVsbG8="; // any valid base64 — the processor is faked
+    private static readonly byte[] ProcessedJpeg = [0xFF, 0xD8, 0xFF, 0x01];
+
+    private void SetupPhotoPipeline(string uploadedObjectName = "members/x/new.jpg")
+    {
+        _photoProcessor.Process(Arg.Any<ReadOnlyMemory<byte>>()).Returns(ProcessedJpeg);
+        _photoStorage.UploadAsync(Arg.Any<Guid>(), Arg.Any<ReadOnlyMemory<byte>>(), Arg.Any<CancellationToken>())
+            .Returns(uploadedObjectName);
+    }
+
+    [Fact]
+    public async Task Create_WithPhoto_ProcessesUploadsAndStoresObjectName()
+    {
+        CardiMember? savedMember = null;
+        await _members.AddAsync(Arg.Do<CardiMember>(m => savedMember = m));
+        SetupPhotoPipeline();
+        var request = BuildRequest();
+        request.PhotoBase64 = PhotoBase64;
+
+        await CreateSut().CreateCardiMemberAsync(_organizationId, _userId, request);
+
+        Assert.Equal("members/x/new.jpg", savedMember!.PhotoObjectName);
+        // Uploaded under the member's own id, and only the processed bytes — never the upload.
+        await _photoStorage.Received(1).UploadAsync(
+            savedMember.Id,
+            Arg.Is<ReadOnlyMemory<byte>>(m => m.ToArray().SequenceEqual(ProcessedJpeg)),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task Create_WithoutPhoto_NeverTouchesPhotoStorage()
+    {
+        await CreateSut().CreateCardiMemberAsync(_organizationId, _userId, BuildRequest());
+
+        await _photoStorage.DidNotReceiveWithAnyArgs().UploadAsync(default, default, default);
+        _photoProcessor.DidNotReceiveWithAnyArgs().Process(default);
+    }
+
+    [Fact]
+    public async Task Create_WhenPhotoProcessingFails_CreatesNoMember()
+    {
+        _photoProcessor.Process(Arg.Any<ReadOnlyMemory<byte>>())
+            .Returns(_ => throw new InvalidProfilePhotoException("Photos must be JPEG or PNG images."));
+        var request = BuildRequest();
+        request.PhotoBase64 = PhotoBase64;
+
+        await Assert.ThrowsAsync<InvalidProfilePhotoException>(
+            () => CreateSut().CreateCardiMemberAsync(_organizationId, _userId, request));
+
+        // The refusal must land before the insert: no member, no link, no save at all.
+        await _members.DidNotReceiveWithAnyArgs().AddAsync(default!);
+        await _unitOfWork.DidNotReceive().SaveChangesAsync();
+    }
+
+    [Fact]
+    public async Task Create_WithInvalidBase64_IsRefusedAsAnInvalidPhoto()
+    {
+        var request = BuildRequest();
+        request.PhotoBase64 = "not-base64!!!";
+
+        await Assert.ThrowsAsync<InvalidProfilePhotoException>(
+            () => CreateSut().CreateCardiMemberAsync(_organizationId, _userId, request));
+
+        await _members.DidNotReceiveWithAnyArgs().AddAsync(default!);
+    }
+
+    private UpdateCardiMemberRequest BuildUpdateRequest(CardiMember member) => new()
+    {
+        Name = member.Name,
+        DateOfBirth = member.DateOfBirth,
+        RelationshipType = RelationshipType.Parent,
+    };
+
+    [Fact]
+    public async Task Update_WithPhoto_UploadsNewThenDeletesOldOnlyAfterSave()
+    {
+        var member = SeedMember();
+        member.PhotoObjectName = "members/x/old.jpg";
+        SetupPhotoPipeline();
+        var request = BuildUpdateRequest(member);
+        request.PhotoBase64 = PhotoBase64;
+
+        await CreateSut().UpdateAsync(_userId, member.Id, request);
+
+        Assert.Equal("members/x/new.jpg", member.PhotoObjectName);
+        // The old blob may only die once the row pointing away from it is durable — deleting
+        // first would leave a failed save referencing an object that no longer exists.
+        Received.InOrder(() =>
+        {
+            _unitOfWork.SaveChangesAsync();
+            _photoStorage.DeleteAsync("members/x/old.jpg", Arg.Any<CancellationToken>());
+        });
+    }
+
+    [Fact]
+    public async Task Update_WithFirstPhoto_DeletesNothing()
+    {
+        var member = SeedMember();
+        SetupPhotoPipeline();
+        var request = BuildUpdateRequest(member);
+        request.PhotoBase64 = PhotoBase64;
+
+        await CreateSut().UpdateAsync(_userId, member.Id, request);
+
+        Assert.Equal("members/x/new.jpg", member.PhotoObjectName);
+        await _photoStorage.DidNotReceiveWithAnyArgs().DeleteAsync(default!, default);
+    }
+
+    [Fact]
+    public async Task Update_WhenOldBlobDeleteFails_StillSucceeds()
+    {
+        var member = SeedMember();
+        member.PhotoObjectName = "members/x/old.jpg";
+        SetupPhotoPipeline();
+        _photoStorage.DeleteAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromException(new InvalidOperationException("bucket outage")));
+        var request = BuildUpdateRequest(member);
+        request.PhotoBase64 = PhotoBase64;
+
+        var detail = await CreateSut().UpdateAsync(_userId, member.Id, request);
+
+        // The caregiver's save already landed; an orphaned blob is a cleanup problem, not theirs.
+        Assert.Equal("members/x/new.jpg", member.PhotoObjectName);
+        Assert.NotNull(detail);
+    }
+
+    [Fact]
+    public async Task Update_WhenPhotoProcessingFails_ChangesNothing()
+    {
+        var member = SeedMember();
+        member.PhotoObjectName = "members/x/old.jpg";
+        _photoProcessor.Process(Arg.Any<ReadOnlyMemory<byte>>())
+            .Returns(_ => throw new InvalidProfilePhotoException("Photos must be JPEG or PNG images."));
+        var request = BuildUpdateRequest(member);
+        request.Name = "Should Not Stick";
+        request.PhotoBase64 = PhotoBase64;
+
+        await Assert.ThrowsAsync<InvalidProfilePhotoException>(
+            () => CreateSut().UpdateAsync(_userId, member.Id, request));
+
+        Assert.Equal("Margaret Doe", member.Name);
+        Assert.Equal("members/x/old.jpg", member.PhotoObjectName);
+        await _unitOfWork.DidNotReceive().SaveChangesAsync();
+    }
+
+    [Fact]
+    public async Task Update_RemovePhoto_ClearsAndDeletesAfterSave()
+    {
+        var member = SeedMember();
+        member.PhotoObjectName = "members/x/old.jpg";
+        var request = BuildUpdateRequest(member);
+        request.RemovePhoto = true;
+
+        await CreateSut().UpdateAsync(_userId, member.Id, request);
+
+        Assert.Null(member.PhotoObjectName);
+        Received.InOrder(() =>
+        {
+            _unitOfWork.SaveChangesAsync();
+            _photoStorage.DeleteAsync("members/x/old.jpg", Arg.Any<CancellationToken>());
+        });
+    }
+
+    [Fact]
+    public async Task Update_RemovePhoto_WithNoStoredPhoto_DeletesNothing()
+    {
+        var member = SeedMember();
+        var request = BuildUpdateRequest(member);
+        request.RemovePhoto = true;
+
+        await CreateSut().UpdateAsync(_userId, member.Id, request);
+
+        Assert.Null(member.PhotoObjectName);
+        await _photoStorage.DidNotReceiveWithAnyArgs().DeleteAsync(default!, default);
+    }
+
+    [Fact]
+    public async Task Update_WithNeitherPhotoNorRemove_LeavesThePhotoAlone()
+    {
+        // The Gender precedent applied to the photo: an edit that never mentioned the photo
+        // must not clear it.
+        var member = SeedMember();
+        member.PhotoObjectName = "members/x/keep.jpg";
+
+        await CreateSut().UpdateAsync(_userId, member.Id, BuildUpdateRequest(member));
+
+        Assert.Equal("members/x/keep.jpg", member.PhotoObjectName);
+        await _photoStorage.DidNotReceiveWithAnyArgs().UploadAsync(default, default, default);
+        await _photoStorage.DidNotReceiveWithAnyArgs().DeleteAsync(default!, default);
+    }
+
+    [Fact]
+    public async Task Update_WhenPhotoAndRemoveBothArrive_TheNewPhotoWins()
+    {
+        // The validator rejects the combination; if one slips through anyway the service must
+        // pick deterministically, and "the photo they just chose" is the defensible reading.
+        var member = SeedMember();
+        member.PhotoObjectName = "members/x/old.jpg";
+        SetupPhotoPipeline();
+        var request = BuildUpdateRequest(member);
+        request.PhotoBase64 = PhotoBase64;
+        request.RemovePhoto = true;
+
+        await CreateSut().UpdateAsync(_userId, member.Id, request);
+
+        Assert.Equal("members/x/new.jpg", member.PhotoObjectName);
+    }
+
+    [Fact]
+    public async Task Remove_ClearsPhotoAndDeletesBlobAfterSave()
+    {
+        // Tier 1 data must not outlive the membership, even though the removal is a soft delete.
+        var member = SeedMember();
+        member.PhotoObjectName = "members/x/old.jpg";
+
+        await CreateSut().RemoveAsync(_userId, member.Id);
+
+        Assert.Null(member.PhotoObjectName);
+        Received.InOrder(() =>
+        {
+            _unitOfWork.SaveChangesAsync();
+            _photoStorage.DeleteAsync("members/x/old.jpg", Arg.Any<CancellationToken>());
+        });
+    }
+
+    [Fact]
+    public async Task Remove_WhenBlobDeleteFails_StillDeactivatesTheMember()
+    {
+        var member = SeedMember();
+        member.PhotoObjectName = "members/x/old.jpg";
+        _photoStorage.DeleteAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromException(new InvalidOperationException("bucket outage")));
+
+        await CreateSut().RemoveAsync(_userId, member.Id);
+
+        Assert.False(member.IsActive);
+        Assert.Null(member.PhotoObjectName);
+    }
+
+    [Fact]
+    public async Task Remove_WithoutPhoto_DeletesNothing()
+    {
+        var member = SeedMember();
+
+        await CreateSut().RemoveAsync(_userId, member.Id);
+
+        await _photoStorage.DidNotReceiveWithAnyArgs().DeleteAsync(default!, default);
+    }
+
+    [Fact]
+    public async Task GetDetail_ResolvesSignedPhotoUrl_WhenMemberHasPhoto()
+    {
+        var member = SeedMember();
+        member.PhotoObjectName = "members/x/photo.jpg";
+        _photoStorage.GetReadUrlAsync("members/x/photo.jpg", Arg.Any<CancellationToken>())
+            .Returns("https://signed.example/photo");
+
+        var detail = await CreateSut().GetDetailAsync(_userId, member.Id);
+
+        Assert.Equal("https://signed.example/photo", detail.PhotoUrl);
+    }
+
+    [Fact]
+    public async Task GetDetail_LeavesPhotoUrlNull_WhenMemberHasNoPhoto()
+    {
+        var member = SeedMember();
+
+        var detail = await CreateSut().GetDetailAsync(_userId, member.Id);
+
+        Assert.Null(detail.PhotoUrl);
+        // No object name means nothing to sign — the storage adapter isn't even consulted.
+        await _photoStorage.DidNotReceiveWithAnyArgs().GetReadUrlAsync(default!, default);
+    }
+
     [Fact]
     public async Task Remove_RequiresManageAccess()
     {
