@@ -21,7 +21,8 @@
              Figma-mask-composite PNGs: a mismatch between the photo's mask curve and the
              gradient's own curve left a strip of bare page background showing through near
              the edges, and the fixed 440×610 export cropped unevenly on non-440dp screens.
-             A single wave curve, recomputed to the real rendered size, can't produce either. ── -->
+             The two wave curves (photo mask and gradient bottom — see the Figma-stack note
+             below), recomputed to the real rendered size, can't produce either. ── -->
         <!-- SafeAreaEdges=None on this grid specifically: layouts pad by the safe area by
              default, and it was this grid — not the page or the window — that held the photo
              out from under the status bar. The header overlay below keeps the default, so it
@@ -101,7 +102,9 @@
                         StrokeThickness="0"
                         Padding="16,9"
                         HorizontalOptions="End"
-                        VerticalOptions="Start">
+                        VerticalOptions="Start"
+                        SemanticProperties.Description="Sign in"
+                        SemanticProperties.Hint="Opens the sign-in page">
                     <Border.StrokeShape>
                         <RoundRectangle CornerRadius="17"/>
                     </Border.StrokeShape>
@@ -161,7 +164,9 @@
                     WidthRequest="332"
                     HeightRequest="52"
                     HorizontalOptions="Center"
-                    Margin="0,24,0,0">
+                    Margin="0,24,0,0"
+                    SemanticProperties.Description="Start free 30-day trial"
+                    SemanticProperties.Hint="Opens account creation">
                 <Border.StrokeShape>
                     <RoundRectangle CornerRadius="25"/>
                 </Border.StrokeShape>
