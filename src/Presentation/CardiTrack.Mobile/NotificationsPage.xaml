@@ -12,7 +12,7 @@
     <Grid RowDefinitions="Auto,*">
 
         <controls:HeaderBand Grid.Row="0" ContentPadding="20,16,20,26">
-            <Grid ColumnDefinitions="Auto,*,Auto" RowDefinitions="Auto,Auto" ColumnSpacing="12" RowSpacing="10">
+            <Grid ColumnDefinitions="Auto,*,Auto" RowDefinitions="Auto,Auto" ColumnSpacing="12" RowSpacing="2">
                 <Border Grid.Column="0"
                         WidthRequest="38" HeightRequest="38"
                         StrokeThickness="0"
@@ -36,10 +36,10 @@
                            TextColor="#CCFFFFFF"/>
                 </VerticalStackLayout>
 
-                <!-- What this page is, said once under the title. Declared last so screen
-                     readers announce back and title before it; laid out on row 1, full
-                     width, so it starts level with the icon in the Dashboard greeting's treatment. -->
-                <Label Grid.Row="1" Grid.ColumnSpan="3"
+                <!-- What this page is, said once under the title — indented to the title's
+                     column, the shape the Dashboard header set. Declared last so screen
+                     readers announce back and title before it. -->
+                <Label Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2"
                        Text="Small things that make their readings say more"
                        FontFamily="Quicksand"
                        FontSize="14"
