@@ -1,4 +1,4 @@
-using CardiTrack.Application.DTOs.Responses;
+﻿using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Mobile.Controls;
 using CardiTrack.Mobile.Core.Api;
 using CardiTrack.Mobile.Core.Auth;
@@ -14,6 +14,9 @@ public partial class DashboardPage : ContentPage
 {
     /// <summary>Also cleared by M1-13 when the remembered member is removed.</summary>
     internal const string PrimaryMemberIdKey = "PrimaryCardiMemberId";
+
+    /// <summary>The member the dashboard currently shows — what the Daybook link filters to.</summary>
+    private Guid _memberId;
     private const string VerifyEmailDismissedKey = "VerifyEmailNudgeDismissed";
     private const string DismissedSleepAlertKey = "DismissedSleepAlertId";
     private static readonly TimeSpan StaleThreshold = TimeSpan.FromHours(2);
@@ -376,6 +379,7 @@ public partial class DashboardPage : ContentPage
 
     private void Apply(DashboardResponse data)
     {
+        _memberId = data.CardiMemberId;
         HeroCard.Apply(data);
 
         Header.SetUnreadCount(data.UnreadAlertCount);
@@ -575,6 +579,16 @@ public partial class DashboardPage : ContentPage
     /// </summary>
     private async void OnViewAllAlertsTapped(object? sender, TappedEventArgs e) =>
         await Shell.Current.GoToTabAsync(AppShell.AlertsRoute);
+
+    /// <summary>The member card's link to their finished days — the Daybook tab, filtered to
+    /// them, arriving through the same origin-remembering jump every content affordance uses.</summary>
+    private async void OnDaybookTapped(object? sender, TappedEventArgs e)
+    {
+        if (_memberId == Guid.Empty)
+            return;
+
+        await Shell.Current.GoToTabAsync($"{AppShell.DaybookRoute}?memberId={_memberId}");
+    }
 
     /// <summary>A dashboard recent-alert tile opens the matching detail screen.</summary>
     private async void OnAlertTapped(object? sender, Guid alertId)

@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8" ?>
+﻿<?xml version="1.0" encoding="utf-8" ?>
 <ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              xmlns:controls="clr-namespace:CardiTrack.Mobile.Controls"
@@ -442,6 +442,27 @@
                                        WidthRequest="22" HeightRequest="22" VerticalOptions="Center"/>
                                 <Label Grid.Column="1"
                                        Text="Questions &amp; Answers"
+                                       Style="{StaticResource Body1SemiBoldDark}"
+                                       VerticalTextAlignment="Center"/>
+                                <Image Grid.Column="2" Source="icon_chevron.svg"
+                                       WidthRequest="20" HeightRequest="20" VerticalOptions="Center"/>
+                            </Grid>
+                        </Border>
+
+                        <!-- Their daybook — the finished days this page's live view sits on
+                             top of. Same row shape as Questions & Answers: a way in, not a
+                             preview. -->
+                        <Border Style="{StaticResource ElevatedCard}" Padding="14,4">
+                            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12" HeightRequest="52"
+                                  SemanticProperties.Description="Daybook"
+                                  SemanticProperties.Hint="Opens this CardiMember's daybook of finished days">
+                                <Grid.GestureRecognizers>
+                                    <TapGestureRecognizer Tapped="OnDaybookTapped"/>
+                                </Grid.GestureRecognizers>
+                                <Image Grid.Column="0" Source="icon_tab_daybook.svg"
+                                       WidthRequest="22" HeightRequest="22" VerticalOptions="Center"/>
+                                <Label Grid.Column="1"
+                                       Text="Daybook"
                                        Style="{StaticResource Body1SemiBoldDark}"
                                        VerticalTextAlignment="Center"/>
                                 <Image Grid.Column="2" Source="icon_chevron.svg"

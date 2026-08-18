@@ -1,4 +1,4 @@
-using CardiTrack.Application.DTOs.Responses;
+﻿using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Mobile.Core.Charts;
 
 namespace CardiTrack.UnitTests.Mobile;
@@ -75,6 +75,42 @@ public class TrendAwarenessTests
 
         // Nine finished days counted; the partial tenth is not on either side of the sentence.
         Assert.Equal("Under their usual on 9 of the last 9 days", line);
+    }
+
+    /// <summary>
+    /// The band count is the entry page's one inferential claim beyond the member's own baseline,
+    /// and the sentence must carry the bound with its unit and its publisher — a count against an
+    /// unattributed figure is a claim wearing no authority.
+    /// </summary>
+    [Fact]
+    public void BandLine_CountsAgainstThePublishedBound_AndSaysWhoPublishesIt()
+    {
+        var series = Series(93.8m, 95.1m, 96.0m, 93.5m, 94.9m, 95.6m, 93.9m);
+
+        var line = TrendAwareness.BandLine(
+            series, 94m, TrendAwareness.Direction.BelowUsual, "the recommended 94% (WHO)", "day");
+
+        Assert.Equal("Under the recommended 94% (WHO) on 3 of the last 7 days", line);
+    }
+
+    /// <summary>Same floor as the usual-count: too few measured days is noise either way.</summary>
+    [Fact]
+    public void BandLine_SaysNothing_WithTooFewMeasuredDays()
+    {
+        Assert.Null(TrendAwareness.BandLine(
+            Series(90, null, 91, null, 92, null), 94m,
+            TrendAwareness.Direction.BelowUsual, "the recommended 94% (WHO)", "day"));
+    }
+
+    [Fact]
+    public void BandLine_CountsAboveTheCeiling_ForTheMetricsWhereHighIsTheConcern()
+    {
+        var series = Series(18, 21, 19, 22, 20, 17, 23);
+
+        var line = TrendAwareness.BandLine(
+            series, 20m, TrendAwareness.Direction.AboveUsual, "the recommended 20/min (WHO)", "day");
+
+        Assert.Equal("Above the recommended 20/min (WHO) on 3 of the last 7 days", line);
     }
 
     /// <summary>Only the chart's own fortnight is counted, however long the series runs.</summary>

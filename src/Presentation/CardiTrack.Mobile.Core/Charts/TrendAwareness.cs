@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 using CardiTrack.Application.DTOs.Responses;
 
 namespace CardiTrack.Mobile.Core.Charts;
@@ -61,13 +61,57 @@ public static class TrendAwareness
         Direction direction,
         string dayWord)
     {
-        if (series is null || baseline is not { } usual)
+        if (baseline is not { } usual)
             return null;
 
-        // Finished, measured days only, from the same fortnight the chart draws. A partial day is
-        // a running total and would count as "under their usual" every morning; an unmeasured day
-        // is silence, and counting silence as either side is the confusion this product exists to
-        // prevent.
+        return CountedLine(series, usual, direction, "their usual", dayWord);
+    }
+
+    /// <summary>
+    /// The same counted sentence against a <b>published</b> bound rather than the member's own
+    /// usual — "Under the recommended 7h (NSF) on 9 of the last 13 nights". Null under the same
+    /// conditions <see cref="Line"/> is.
+    /// </summary>
+    /// <remarks>
+    /// This is the entry page's only inferential claim beyond the member's own baseline, and it is
+    /// allowed exactly because the bound is not ours: every value that reaches
+    /// <paramref name="boundText"/> comes from <c>HealthReferenceRanges</c>, where each range
+    /// carries the body that publishes it (NSF, AHA, WHO) — and the sentence names that source, so
+    /// the reader can see whose recommendation is being counted against. A bound with nobody's
+    /// name on it does not belong here.
+    /// </remarks>
+    /// <param name="bound">The published figure to count against.</param>
+    /// <param name="direction">Which side of the bound is the side worth counting.</param>
+    /// <param name="boundText">
+    /// The bound as the sentence says it, with its unit and its publisher — "the recommended 7h
+    /// (NSF)". Built by the caller, which knows the metric's format.
+    /// </param>
+    /// <param name="dayWord">"day" or "night", as in <see cref="Line"/>.</param>
+    public static string? BandLine(
+        IReadOnlyList<MetricPoint>? series,
+        decimal bound,
+        Direction direction,
+        string boundText,
+        string dayWord)
+        => CountedLine(series, bound, direction, boundText, dayWord);
+
+    /// <summary>
+    /// The shared counting: finished, measured days only, from the same fortnight the chart
+    /// draws. A partial day is a running total and would count as "under" every morning; an
+    /// unmeasured day is silence, and counting silence as either side is the confusion this
+    /// product exists to prevent. Below <see cref="MinimumMeasuredDays"/> the sentence would be
+    /// counting noise, so nothing is said at all.
+    /// </summary>
+    private static string? CountedLine(
+        IReadOnlyList<MetricPoint>? series,
+        decimal threshold,
+        Direction direction,
+        string thresholdText,
+        string dayWord)
+    {
+        if (series is null)
+            return null;
+
         var counted = series
             .TakeLast(WindowDays)
             .Where(p => p.Value is not null && !p.IsPartial)
@@ -77,14 +121,14 @@ public static class TrendAwareness
             return null;
 
         var offSide = direction == Direction.BelowUsual
-            ? counted.Count(p => p.Value < usual)
-            : counted.Count(p => p.Value > usual);
+            ? counted.Count(p => p.Value < threshold)
+            : counted.Count(p => p.Value > threshold);
 
         var side = direction == Direction.BelowUsual ? "under" : "above";
         var days = string.Create(
             CultureInfo.CurrentCulture, $"{offSide} of the last {counted.Count} {dayWord}s");
 
-        return $"{Capitalize(side)} their usual on {days}";
+        return $"{Capitalize(side)} {thresholdText} on {days}";
     }
 
     private static string Capitalize(string word) =>
