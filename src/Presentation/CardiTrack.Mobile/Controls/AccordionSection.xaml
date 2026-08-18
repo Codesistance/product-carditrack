@@ -4,31 +4,51 @@
              x:Class="CardiTrack.Mobile.Controls.AccordionSection">
 
     <!-- Generic collapsible section, collapsed by default so the body doesn't compete with the
-         card's action row for attention. "Tap to view" under the header is the only affordance
-         telling the user there's something to open — it disappears once expanded. The body is
-         animated open/closed by growing/shrinking a clipping Border's height (Border clips its
-         content to its bounds; a plain layout wouldn't) rather than snapping IsVisible. -->
+         card's action row for attention. The body is animated open/closed by growing/shrinking a
+         clipping Border's height (Border clips its content to its bounds; a plain layout wouldn't)
+         rather than snapping IsVisible.
+
+         The header has to read as tappable on a card that is otherwise static text. Three things
+         carry that, since a bare grey chevron on white did not: the hint is in Primary rather than
+         body grey, so it reads as an action rather than a caption; the chevron sits on a tinted
+         round chip, which is the shape the rest of the app uses for something you press; and the
+         header sits a step down the type scale (Heading3, not Heading2) so the chip is not
+         out-shouted by 22px bold beside it. The hint still disappears once expanded — by then the
+         open body is its own affordance — but the chip stays and rotates. -->
     <VerticalStackLayout x:Name="RootLayout" Spacing="10">
 
-        <Grid ColumnDefinitions="*,Auto">
+        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
             <Grid.GestureRecognizers>
                 <TapGestureRecognizer Tapped="OnHeaderTapped"/>
             </Grid.GestureRecognizers>
 
-            <VerticalStackLayout Grid.Column="0" Spacing="2">
-                <Label x:Name="HeaderLabel" Style="{StaticResource Heading2}"/>
+            <VerticalStackLayout Grid.Column="0" Spacing="1" VerticalOptions="Center">
+                <Label x:Name="HeaderLabel" Style="{StaticResource Heading3}"/>
                 <Label x:Name="HintLabel"
                        Text="Tap to view"
-                       Style="{StaticResource Body2}"
-                       TextColor="{StaticResource BodyText}"/>
+                       FontFamily="QuicksandSemiBold"
+                       FontSize="12"
+                       TextColor="{StaticResource Primary}"/>
             </VerticalStackLayout>
 
-            <Image x:Name="ChevronIcon"
-                   Grid.Column="1"
-                   Source="icon_chevron_down.svg"
-                   WidthRequest="20" HeightRequest="20"
-                   VerticalOptions="Center"
-                   SemanticProperties.Description="Expand"/>
+            <Border x:Name="ChevronChip"
+                    Grid.Column="1"
+                    BackgroundColor="{StaticResource SelectedOptionBackground}"
+                    Stroke="{StaticResource Divider}"
+                    StrokeThickness="1"
+                    WidthRequest="32" HeightRequest="32"
+                    Padding="0"
+                    VerticalOptions="Center">
+                <Border.StrokeShape>
+                    <RoundRectangle CornerRadius="16"/>
+                </Border.StrokeShape>
+                <Image x:Name="ChevronIcon"
+                       Source="icon_chevron_down.svg"
+                       WidthRequest="16" HeightRequest="16"
+                       HorizontalOptions="Center"
+                       VerticalOptions="Center"
+                       SemanticProperties.Description="Expand"/>
+            </Border>
         </Grid>
 
         <Border x:Name="BodyClip"

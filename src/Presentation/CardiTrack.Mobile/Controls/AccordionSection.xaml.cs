@@ -27,7 +27,7 @@ public partial class AccordionSection : ContentView
     }
 
     /// <summary>
-    /// The header's type style, for pages whose section titles are not <c>Heading2</c> — the
+    /// The header's type style, for pages whose section titles are not <c>Heading3</c> — the
     /// default this control carries for the dashboard card it was written for.
     /// </summary>
     public Style HeaderStyle
