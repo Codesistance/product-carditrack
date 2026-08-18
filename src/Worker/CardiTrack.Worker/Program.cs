@@ -77,6 +77,11 @@ builder.Services.AddPushServices(configuration);
 builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
 builder.Services.AddScoped<ITimeSeriesPartitionService, TimeSeriesPartitionService>();
 
+// Member photo storage — the same registration the API makes, because OrphanedPhotoCleanupWorker
+// needs the bucket's list/delete port. An unset bucket is the supported local state: the adapter
+// lists nothing (with one warning), so the sweep is a no-op rather than a failure.
+builder.Services.AddMemberPhotoStorage(configuration);
+
 // Application services
 builder.Services.AddNumerics();
 builder.Services.AddScoped<IActivityLogAggregationService, ActivityLogAggregationService>();
@@ -112,6 +117,13 @@ builder.Services.AddWorker<DeviceAuthRecoveryWorker>(configuration, nameof(Devic
 builder.Services.Configure<InactivityDetectionOptions>(
     configuration.GetSection($"Workers:{nameof(InactivityDetectionWorker)}"));
 builder.Services.AddWorker<DataCompletenessWorker>(configuration, nameof(DataCompletenessWorker));
+
+// Enforcement backstop for member photo blobs: reaps bucket objects no active member references
+// (24h grace) and clears photos a crashed removal left on soft-deleted rows. DryRun shares the
+// worker's config section, like the audit sample.
+builder.Services.AddWorker<OrphanedPhotoCleanupWorker>(configuration, nameof(OrphanedPhotoCleanupWorker));
+builder.Services.Configure<OrphanedPhotoCleanupOptions>(
+    configuration.GetSection($"Workers:{nameof(OrphanedPhotoCleanupWorker)}"));
 
 // Push delivery spine (notification_engine.md Phase 3)
 builder.Services.AddWorker<NotificationDispatchWorker>(configuration, nameof(NotificationDispatchWorker));
