@@ -204,18 +204,22 @@ Device APIs (Fitbit, Apple, Garmin, Samsung, Withings, Oura, Whoop)
 
 **Supported Devices (Roadmap):**
 
-**Phase 1 (MVP - Months 1-3):**
-- ✅ Fitbit (Charge 6, Inspire 3, Sense 2, Versa 4)
+> **Waves, not months.** The Months 1–12 framing below was retired in the August 2026 re-baseline. Dates now follow [release_matrix.md](./release_matrix.md), which is canonical: R1 Q4 2026, R2 Q1 2027, R3 Q2 2027, R4 Q3 2027. These are the dates the public device roadmap on carditrack.com quotes.
 
-**Phase 2 (Months 3-6):**
-- 🔄 Apple Watch (Series 8+, Ultra)
-- 🔄 Garmin (Venu, Forerunner, Vivoactive)
-- 🔄 Samsung Galaxy Watch (5, 6)
+**R1 — Q4 2026 (shipped):**
+- ✅ Fitbit and Google Pixel Watch, both via the Google Health API — the only providers actually connectable, since GoogleHealth is the only engine registered in DI
 
-**Phase 3 (Months 6-12):**
-- ⏳ Withings (ScanWatch, Body+)
-- ⏳ Oura Ring (Gen 3)
-- ⏳ Whoop (4.0)
+**R2 — Q1 2027:**
+- ⬜ Garmin (Venu, Forerunner, Vivoactive) — config-only stub today; a connect attempt returns 400 "not configured for connections"
+
+**R3 — Q2 2027:**
+- ⬜ Apple Watch (Series 8+, Ultra) — on-device HealthKit bridge; HealthKit has no server-side OAuth and the batch ingestion endpoint is not built
+- ⬜ Samsung Galaxy Watch (5, 6) — stub, no config block
+
+**R4 — Q3 2027:**
+- ⬜ Withings (ScanWatch, Body+) — config-only stub
+- ⬜ Oura Ring (Gen 3) — config-only, no `provider` value, unreachable from the API
+- ⬜ Whoop (4.0) — config-only, no `provider` value, unreachable from the API
 
 **Device Capabilities Matrix:**
 
@@ -691,7 +695,7 @@ The Cloud Run pay-per-use model keeps pre-launch costs near zero and scales line
 
 ### R2 — Q1 2027: AI Pipeline & Multi-Device Start
 - 🔄 AI pipeline rollout — Pub/Sub ingestion, SSA pre-processing + deterministic trend features, MedGemma inference (running in dev ahead of schedule; prod enablement remains — see [llm_design.md](./llm_design.md))
-- ⏳ .NET MAUI mobile app (iOS & Android)
+- ✅ .NET MAUI mobile app (iOS & Android) — **shipped in R1**, 16 of 17 Figma M1 screens; distributed to Play internal testing and TestFlight, not public store availability
 - ⏳ Garmin integration
 - ⏳ Advanced dashboard features
 - ⏳ Apply for device intraday access
