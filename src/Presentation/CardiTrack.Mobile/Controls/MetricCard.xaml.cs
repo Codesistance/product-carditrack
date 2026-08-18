@@ -1,4 +1,4 @@
-using CardiTrack.Application.DTOs.Responses;
+﻿using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Mobile.Core.Charts;
 using Microsoft.Maui.Controls.Shapes;
 
@@ -253,7 +253,10 @@ public partial class MetricCard : ContentView
     public void ApplyBreathingRate(DashboardMetric metric)
     {
         MetricIcon.Source = "icon_metric_breathing.svg";
-        NameLabel.Text = "Breathing Rate";
+        // "Breathing", not "Breathing Rate": the full name clips at this tile's half-grid
+        // width, and the caption underneath already says "Breaths per minute" — the word "Rate"
+        // was the only casualty worth taking.
+        NameLabel.Text = "Breathing";
         ValueLabel.Text = metric.Value is { } v ? $"{v:0.#} brpm" : "—";
 
         // No baseline exists for this metric yet, same as SpO2 — a bare reading, not a trend.
