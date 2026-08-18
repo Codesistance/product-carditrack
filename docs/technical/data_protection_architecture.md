@@ -244,8 +244,10 @@ All 18 §164.514(b)(2) categories, mapped to CardiTrack fields:
 ```csharp
 public sealed record DeidentifiedDailyRecord(
     string AnalyticsId, int Year, string AgeBand, string Gender, string DeviceType,
-    int? Steps, int? RestingHeartRate, int? AvgHeartRate, int? HrvAverage,
+    int? Steps, int? RestingHeartRate, int? AvgHeartRate,
     int? SleepMinutes, int? SleepEfficiency, decimal? SpO2Average /* …metrics only */);
+// No HrvAverage: GoogleHealthApiClient never fetches HRV, so no such source
+// property exists to de-identify (phantom field removed 2026-08-18).
 
 public sealed class SafeHarborDeidentifier
 {
