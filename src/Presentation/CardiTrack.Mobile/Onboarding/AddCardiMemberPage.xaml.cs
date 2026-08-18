@@ -3,6 +3,7 @@ using CardiTrack.Application.DTOs.Requests;
 using CardiTrack.Domain.Enums;
 using CardiTrack.Mobile.Core.Api;
 using CardiTrack.Mobile.Core.Localization;
+using CardiTrack.Mobile.Core.Media;
 using CardiTrack.Mobile.Core.Onboarding;
 using CardiTrack.Mobile.Services;
 
@@ -36,6 +37,7 @@ public partial class AddCardiMemberPage : ContentPage
     private readonly ICardiTrackApiClient _api;
     private readonly IPopupService _popups;
     private readonly CardiMemberDraftStore _drafts;
+    private readonly IProfilePhotoTranscoder _photoTranscoder;
     private readonly WizardContext _ctx;
     private string? _photoPath;
     private bool _dobTouched;
@@ -49,6 +51,7 @@ public partial class AddCardiMemberPage : ContentPage
         _api = ServiceHelper.GetRequiredService<ICardiTrackApiClient>();
         _popups = ServiceHelper.GetRequiredService<IPopupService>();
         _drafts = ServiceHelper.GetRequiredService<CardiMemberDraftStore>();
+        _photoTranscoder = ServiceHelper.GetRequiredService<IProfilePhotoTranscoder>();
         _ctx = ctx;
 
         if (ctx.Origin == WizardOrigin.Modal)
@@ -161,30 +164,36 @@ public partial class AddCardiMemberPage : ContentPage
 
     private async void OnAddPhotoTapped(object? sender, EventArgs e)
     {
+        var outcome = await MemberPhotoChooser.ShowAsync(_popups, offerRemove: _photoPath is not null);
+        if (outcome.Removed)
+        {
+            // The file goes with the choice — a draft saved without its path would
+            // otherwise strand it in app data forever.
+            _drafts.RemovePhoto(_photoPath);
+            _photoPath = null;
+            PhotoImage.Source = null;
+            PhotoImage.IsVisible = false;
+            PhotoPlaceholder.IsVisible = true;
+            SaveDraft();
+            return;
+        }
+
+        if (outcome.Photo is not { } photo)
+            return; // Cancelled the sheet or the picker — nothing changes.
+
         try
         {
-            var photos = await MediaPicker.Default.PickPhotosAsync(
-                new MediaPickerOptions { Title = "Choose a photo" });
-            var photo = photos?.FirstOrDefault();
-            if (photo is null)
-                return;
-
             await using var picked = await photo.OpenReadAsync();
             _photoPath = await _drafts.CapturePhotoAsync(picked, _photoPath) ?? photo.FullPath;
             PhotoImage.Source = ImageSource.FromFile(_photoPath);
             PhotoImage.IsVisible = true;
             PhotoPlaceholder.IsVisible = false;
-            // The picker just backgrounded us — the likeliest moment to be killed.
+            // The picker/camera just backgrounded us — the likeliest moment to be killed.
             SaveDraft();
         }
-        catch (FeatureNotSupportedException)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            await _popups.ShowWarningAsync("Photo picking isn't supported on this device.");
-        }
-        catch (PermissionException)
-        {
-            await _popups.ShowWarningAsync(
-                "Allow photo access in Settings to add a photo.", "Permission needed");
+            await _popups.ShowWarningAsync("We couldn't read that photo. Try another one.");
         }
     }
 
@@ -226,6 +235,10 @@ public partial class AddCardiMemberPage : ContentPage
 
         try
         {
+            var (photoBase64, abandoned) = await PreparePhotoAsync();
+            if (abandoned)
+                return; // They chose to go back and sort the photo out first.
+
             var member = await _api.CreateCardiMemberAsync(new CreateCardiMemberRequest
             {
                 Name = NameEntry.Text!.Trim(),
@@ -235,6 +248,7 @@ public partial class AddCardiMemberPage : ContentPage
                 MedicalNotes = NullIfEmpty(MedicalNotesEditor.Text),
                 EmergencyContactName = NullIfEmpty(EmergencyNameEntry.Text),
                 EmergencyContactPhone = NullIfEmpty(EmergencyPhoneEntry.Text),
+                PhotoBase64 = photoBase64,
             });
 
             _submitted = true;
@@ -258,6 +272,40 @@ public partial class AddCardiMemberPage : ContentPage
 
     private async void OnSkipTapped(object? sender, EventArgs e) =>
         await _ctx.FinishAsync(this);
+
+    /// <summary>
+    /// The draft photo as the request's base64 payload, downscaled on device. A photo that
+    /// can't be prepared must not cost the member: the server refuses to half-save a form
+    /// with a bad photo, so the form offers to send itself without one instead —
+    /// <c>abandoned</c> is true only when the user declines that offer.
+    /// </summary>
+    private async Task<(string? PhotoBase64, bool Abandoned)> PreparePhotoAsync()
+    {
+        if (_photoPath is null)
+            return (null, false);
+
+        ProfilePhotoUploadResult result;
+        try
+        {
+            var original = await File.ReadAllBytesAsync(_photoPath);
+            result = await ProfilePhotoUpload.PrepareAsync(original, _photoTranscoder);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // The draft file evaporated under us (OS cache pressure between sessions).
+            result = ProfilePhotoUploadResult.Failed("We couldn't read the photo you added.");
+        }
+
+        if (result.Succeeded)
+            return (result.Base64, false);
+
+        var continueWithout = await _popups.ConfirmWarningAsync(
+            $"{result.Error} You can add one later from their profile.",
+            "That photo can't be uploaded",
+            "Continue without photo",
+            "Go back");
+        return (null, !continueWithout);
+    }
 
     /// <summary>
     /// Nothing picked means nothing stated, which is <see cref="RelationshipType.Other"/> — the

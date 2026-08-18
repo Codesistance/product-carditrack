@@ -3,6 +3,7 @@ using CardiTrack.Mobile.Core.Api;
 using CardiTrack.Mobile.Core.Auth;
 using CardiTrack.Mobile.Core.Configuration;
 using CardiTrack.Mobile.Core.Http;
+using CardiTrack.Mobile.Core.Media;
 using CardiTrack.Mobile.Core.Notifications;
 using CardiTrack.Mobile.Core.Offline;
 using CardiTrack.Mobile.Core.Onboarding;
@@ -87,6 +88,7 @@ public static class MauiProgram
         builder.Services.AddSingleton<IStatusLineStore, OfflineStatusLineStore>();
         builder.Services.AddSingleton<IDraftPhotoStore>(_ => new FileDraftPhotoStore(FileSystem.AppDataDirectory));
         builder.Services.AddSingleton<CardiMemberDraftStore>();
+        builder.Services.AddSingleton<IProfilePhotoTranscoder, MauiProfilePhotoTranscoder>();
         builder.Services.AddSingleton<ITokenRefresher, TokenRefresher>();
         builder.Services.AddTransient<AuthHttpMessageHandler>();
 
