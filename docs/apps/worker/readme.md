@@ -426,6 +426,10 @@ Cron schedules bind per worker class name under the `Workers` section, consumed 
     "OrphanedOrganizationCleanupWorker": {
       "CronExpression": "0 0 3 * * *"
     },
+    "OrphanedPhotoCleanupWorker": {
+      "CronExpression": "0 30 3 * * *",
+      "DryRun": false
+    },
     "BaselineCalculationWorker": {
       "CronExpression": "0 30 2 * * *"
     },
