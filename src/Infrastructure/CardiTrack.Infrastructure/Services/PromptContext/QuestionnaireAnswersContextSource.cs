@@ -1,4 +1,4 @@
-using CardiTrack.Application.Interfaces.Repositories;
+﻿using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Interfaces.Security;
 using CardiTrack.Domain.Entities;
 using CardiTrack.Domain.Enums;
@@ -66,7 +66,7 @@ internal sealed class QuestionnaireAnswersContextSource : IMemberContextSource
 
     public PromptPurpose Purposes =>
         PromptPurpose.Digest | PromptPurpose.RealtimeAssessment
-        | PromptPurpose.AlertInsight | PromptPurpose.BaselineInsight;
+        | PromptPurpose.AlertInsight | PromptPurpose.BaselineInsight | PromptPurpose.DayReview;
 
     public int Order => 30;
 

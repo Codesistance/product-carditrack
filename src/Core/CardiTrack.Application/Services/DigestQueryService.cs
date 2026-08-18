@@ -1,4 +1,4 @@
-using CardiTrack.Application.DTOs.Responses;
+﻿using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Domain.Entities;
@@ -24,26 +24,53 @@ public class DigestQueryService : IDigestQueryService
     }
 
     public async Task<DigestResponse?> GetDigestAsync(
-        Guid requestingUserId, Guid cardiMemberId, DateOnly? localDate, CancellationToken ct = default)
+        Guid requestingUserId,
+        Guid cardiMemberId,
+        DateOnly? localDate,
+        DigestAudience audience = DigestAudience.Family,
+        CancellationToken ct = default)
     {
         await _access.RequireViewAccessAsync(requestingUserId, cardiMemberId, ct);
 
         var entry = localDate is { } date
-            ? await _unitOfWork.Digests.GetLatestByDateAsync(cardiMemberId, date, DigestAudience.Family, ct)
-            : await _unitOfWork.Digests.GetLatestAsync(cardiMemberId, DigestAudience.Family, ct);
+            ? await _unitOfWork.Digests.GetLatestByDateAsync(cardiMemberId, date, audience, ct)
+            : await _unitOfWork.Digests.GetLatestAsync(cardiMemberId, audience, ct);
 
         return entry is null ? null : ToResponse(entry);
     }
 
     public async Task<IReadOnlyList<DigestResponse>> GetHistoryAsync(
-        Guid requestingUserId, Guid cardiMemberId, int limit, CancellationToken ct = default)
+        Guid requestingUserId,
+        Guid cardiMemberId,
+        int limit,
+        DigestAudience audience = DigestAudience.Family,
+        CancellationToken ct = default)
     {
         await _access.RequireViewAccessAsync(requestingUserId, cardiMemberId, ct);
 
         var entries = await _unitOfWork.Digests.GetHistoryAsync(
-            cardiMemberId, DigestAudience.Family, Math.Clamp(limit, 1, MaxHistoryLimit), ct);
+            cardiMemberId, audience, Math.Clamp(limit, 1, MaxHistoryLimit), ct);
 
         return entries.Select(ToResponse).ToList();
+    }
+
+    /// <summary>
+    /// The audience a caller named, or null when they named one that does not exist. Wearer is
+    /// rejected alongside a typo rather than returning an empty list: wearer summaries are not
+    /// generated yet, and an endpoint that answers "none" to a question it will one day answer
+    /// differently teaches a client the wrong thing about a member who simply has none.
+    /// </summary>
+    public static DigestAudience? ParseAudience(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return DigestAudience.Family;
+
+        return value.Trim().ToLowerInvariant() switch
+        {
+            "family" => DigestAudience.Family,
+            "dayreview" or "day-review" => DigestAudience.DayReview,
+            _ => null,
+        };
     }
 
     private static DigestResponse ToResponse(DigestEntry entry) => new()

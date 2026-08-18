@@ -1,4 +1,4 @@
-namespace CardiTrack.Infrastructure.Services.PromptContext;
+﻿namespace CardiTrack.Infrastructure.Services.PromptContext;
 
 /// <summary>
 /// Which generated text a member-context section is being built for. Every prompt this platform
@@ -28,6 +28,13 @@ public enum PromptPurpose
     /// <summary>The dashboard's ambient hero line.</summary>
     CurrentStatus = 16,
 
+    /// <summary>
+    /// The account of one finished day, written after the member's local day is over. Distinct
+    /// from <see cref="Digest"/> in tense and in register — that one describes a day still
+    /// running and is rewritten as it does.
+    /// </summary>
+    DayReview = 32,
+
     /// <summary>Everything a member-context source could contribute to.</summary>
-    All = Digest | RealtimeAssessment | AlertInsight | BaselineInsight | CurrentStatus,
+    All = Digest | RealtimeAssessment | AlertInsight | BaselineInsight | CurrentStatus | DayReview,
 }

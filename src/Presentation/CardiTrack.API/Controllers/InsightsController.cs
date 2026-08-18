@@ -1,7 +1,8 @@
-using CardiTrack.API.Infrastructure.Auditing;
+﻿using CardiTrack.API.Infrastructure.Auditing;
 using CardiTrack.API.Infrastructure.UserContext;
 using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Application.Interfaces.Services;
+using CardiTrack.Application.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -125,16 +126,23 @@ public class InsightsController : BaseApiController
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status403Forbidden)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
     public async Task<ActionResult<ApiResponse<DigestResponse>>> GetDigest(
-        Guid cardiMemberId, [FromQuery] DateOnly? date, CancellationToken ct)
+        Guid cardiMemberId,
+        [FromQuery] DateOnly? date,
+        [FromQuery] string? audience,
+        CancellationToken ct)
     {
         if (!UserContext.IsAuthenticated || UserContext.UserId == Guid.Empty)
         {
             return Error("We couldn't find your account — please sign in again.", StatusCodes.Status403Forbidden);
         }
 
+        if (DigestQueryService.ParseAudience(audience) is not { } parsedAudience)
+            return Error("That summary type isn't one we recognise — use family or day-review.");
+
         try
         {
-            var result = await _digests.GetDigestAsync(UserContext.UserId, cardiMemberId, date, ct);
+            var result = await _digests.GetDigestAsync(
+                UserContext.UserId, cardiMemberId, date, parsedAudience, ct);
             return result is null
                 ? Error("No summary has been generated for this member yet.", StatusCodes.Status404NotFound)
                 : Success(result);
@@ -157,18 +165,32 @@ public class InsightsController : BaseApiController
     /// required by the API explorer and by client generators reading it, which would misdescribe an
     /// endpoint that is perfectly happy without one.
     /// </param>
+    /// <param name="audience">
+    /// Which series to read: <c>family</c> (the default) for the running summary and its
+    /// recomputations, or <c>day-review</c> for one entry per finished day. Optional, and a value
+    /// outside those two is refused rather than ignored.
+    /// </param>
     /// <param name="ct">Cancels the read when the caller disconnects.</param>
     [HttpGet("members/{cardiMemberId:guid}/digests")]
     [ProducesResponseType(typeof(ApiResponse<IReadOnlyList<DigestResponse>>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status403Forbidden)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
     public async Task<ActionResult<ApiResponse<IReadOnlyList<DigestResponse>>>> GetDigestHistory(
-        Guid cardiMemberId, [FromQuery] int? limit, CancellationToken ct)
+        Guid cardiMemberId,
+        [FromQuery] int? limit,
+        [FromQuery] string? audience,
+        CancellationToken ct)
     {
         if (!UserContext.IsAuthenticated || UserContext.UserId == Guid.Empty)
         {
             return Error("We couldn't find your account — please sign in again.", StatusCodes.Status403Forbidden);
         }
+
+        // Refused rather than ignored, the same way the alert filters are: a typo'd audience that
+        // silently returned the family list would show a caregiver one kind of summary under the
+        // heading of another, which on this screen is worse than an error.
+        if (DigestQueryService.ParseAudience(audience) is not { } parsedAudience)
+            return Error("That summary type isn't one we recognise — use family or day-review.");
 
         try
         {
@@ -176,7 +198,11 @@ public class InsightsController : BaseApiController
             // service clamps into range, so there is no value of `limit` that can ask for more
             // than a page.
             var result = await _digests.GetHistoryAsync(
-                UserContext.UserId, cardiMemberId, limit is > 0 ? limit.Value : DefaultHistoryLimit, ct);
+                UserContext.UserId,
+                cardiMemberId,
+                limit is > 0 ? limit.Value : DefaultHistoryLimit,
+                parsedAudience,
+                ct);
             return Success(result);
         }
         catch (KeyNotFoundException ex)
