@@ -4,7 +4,7 @@
 
 **CardiTrack** is a multi-device elderly health monitoring platform that provides affordable, preventive health monitoring for families using existing wearable devices with AI-powered pattern analysis.
 
-**Core Value Proposition:** Family members get peace of mind and early warning of health issues at $8-15/month (vs $40-70/month for medical alert systems), using hardware their elderly parents likely already own.
+**Core Value Proposition:** Family members get peace of mind and early warning of health issues at $7-15/month (vs $40-70/month for medical alert systems), using hardware their elderly parents likely already own.
 
 **Target Market:** 150M+ adults aged 65+ across the US and EU, and their family caregivers — 53M in the US *(AARP/NAC, 2020)* and 44M in the EU *(Eurocarers)* — who bear primary responsibility for monitoring elderly relatives living independently.
 
@@ -19,7 +19,7 @@ To empower families with affordable, preventive health monitoring for their elde
 ### Core Differentiators
 
 1. **Preventive vs Reactive**: Catches health issues BEFORE emergencies (not just fall detection)
-2. **Affordable**: 50-70% cheaper than medical alert systems
+2. **Affordable**: 65-85% cheaper than medical alert systems
 3. **Non-Intrusive**: Uses existing devices, not new medical equipment
 4. **AI-Powered**: Learns individual baselines, reduces false alerts
 5. **Device-Agnostic**: Works with Fitbit, Apple Watch, Garmin, Samsung, and more
@@ -33,46 +33,62 @@ To empower families with affordable, preventive health monitoring for their elde
 
 > Plan limits below are canonical and match the [Subscription API](./execution/backend/api/subscriptions.md). All consumer plans start with a **30-day free trial**.
 
-#### Tier 1: "Basic" - $8/month ($81.60/year)
+> **Repriced 2026-08-18.** The ladder below replaces $8 / $15 / $29.99 with 2 / 5 / unlimited members and 90-day / 365-day / 2-year history. Each step now roughly doubles, and the Daybook cadence is the spine of the ladder. These figures match the published pricing page.
+
+#### Tier 1: "Basic" - $7/month ($71.40/year)
 - Bring your own wearable device
 - Daily activity dashboard
-- Email alerts for major deviations
-- Up to **2 CardiMembers**
+- Daily health summary and digests
+- **The Daybook — daily**
+- **1 CardiMember**
 - Up to **5 family members**
 - Standard alert types
-- **90-day** data history
+- **30-day** data history
 - No data export
 
-#### Tier 2: "Complete Care" - $15/month ($153/year)
+#### Tier 2: "Complete Care" - $10/month ($102/year)
 - Support for any supported device
-- Real-time SMS/email/push alerts
-- Weekly health reports
+- Smart alerts when readings depart from baseline
+- **The Daybook — daily, plus a weekly round-up**
 - Advanced AI alert types (pattern analysis)
-- Up to **5 CardiMembers**
+- Intraday heart rate, steps and sleep stages
+- Up to **3 CardiMembers**
 - Up to **20 family members**
-- **365-day** data history
+- **90-day** data history
 - Multi-device support per member
 - PDF, CSV, and FHIR R4 data export
 
-#### "Guardian Plus" - $29.99/month *(post-MVP — business tier)*
-- Not part of the consumer MVP; handled via a dedicated business account flow (assisted living facilities, care homes)
-- Everything in Complete Care, plus: 24/7 monitoring dashboard, unlimited family member access, unlimited CardiMembers, telemedicine integration, priority support, 2-year data history, API access
+#### Tier 3: "Guardian Plus" - $15/month ($153/year)
+- Everything in Complete Care, plus:
+- **The Daybook — daily, weekly and monthly**
+- Up to **6 CardiMembers**
+- Priority support
+- **180-day** data history
+
+> Guardian Plus was previously specified as a post-MVP business tier at $29.99 and excluded from the consumer MVP. It is now a consumer tier and is sold as one on the pricing page. The assisted-living offering is separate — see the Enterprise line below and `enterprise.html`, which now recruits design partners rather than selling a product.
+
+**Cadences that do not exist yet.** Only the **once-daily** Daybook is built (`DigestAudience.Daybook`, prod-gated). The **weekly** and **monthly** cadences above are sold on the pricing page and have no implementation — they are tracked in [release_matrix.md](./release_matrix.md).
+
+**Sync cadence is not a tier lever.** Both environments deploy `min_pull_interval_minutes = 10`, so every tier polls on the same 10-minute cadence. What the paid tiers buy is minute-grain intraday *storage* and retention length, not a faster poll. Earlier copy claiming "high-resolution sync (1-min)" on Complete Care was withdrawn on 2026-08-18.
 
 ### Device Bundle Option (Add-on)
 - **Fitbit Charge 6 Bundle**: +$100 upfront (includes device)
-- **Annual Subscription**: 15% discount on all consumer tiers (Complete Care: $153/year, saves $27)
+- **Annual Subscription**: 15% discount on all consumer tiers (Complete Care: $102/year, saves $18)
 
 ### Unit Economics (Tier 2 Example)
 
 ```
-Monthly revenue per user: $15
-Monthly costs per user: ~$2 (hosting, SMS, support)
-Monthly margin per user: $13
+Monthly revenue per user: $10
+Monthly costs per user: ~$2 (hosting, support — SMS is permanently out of scope)
+Monthly margin per user: $8
 
-Customer LTV (churn-derived, $13/month margin):
-  At 5% monthly churn (launch target):  avg lifetime ~20 months → LTV ≈ $260
-  At 3% monthly churn (growth target):  avg lifetime ~33 months → LTV ≈ $430
-  LTV target of >$300 therefore assumes churn below ~4%/month.
+Customer LTV (churn-derived, $8/month margin):
+  At 5% monthly churn (launch target):  avg lifetime ~20 months → LTV ≈ $160
+  At 3% monthly churn (growth target):  avg lifetime ~33 months → LTV ≈ $264
+  A >$300 LTV now needs churn below ~2.7%/month, which is a materially
+  harder target than the ~4% the old $15 price allowed. Re-derived after
+  the 2026-08-18 repricing — the CAC assumptions elsewhere in this doc
+  were set against the old margin and have NOT been revisited.
 
 With Device Bundle:
   Hardware cost (bulk): ~$100, covered by the +$100 upfront bundle price

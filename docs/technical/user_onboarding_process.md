@@ -68,7 +68,7 @@ Created automatically inside the atomic setup transaction (`SubscriptionService.
 - `BillingCycle = Monthly`, `Price = 0`, `Currency = "USD"`, `Features` JSON (all devices/alerts)
 - There is **no Stripe or billing code** — payment collection is planned (Step 9)
 
-**Tier names** (`SubscriptionTier`): `Basic`, `Complete`, `Plus`. Public pricing: Basic $8/mo (2 CardiMembers), Complete Care $15/mo (5 CardiMembers), annual billing −15%; Guardian Plus ($29.99) is a post-MVP business tier.
+**Tier names** (`SubscriptionTier`): `Basic`, `Complete`, `Plus`. Public pricing: Basic $7/mo (1 CardiMember), Complete Care $10/mo (3 CardiMembers), Guardian Plus $15/mo (6 CardiMembers); annual billing −15%.
 
 **Database:**
 - Unique index on `OrganizationId` (1 subscription per org); `Status` and `(Status, EndDate)` indexed
@@ -355,9 +355,9 @@ Each metric is gated on **min(7, ceil(days × 0.8)) samples of its own** — 6 f
 **Planned conversion flow:**
 ```
 1. User selects subscription tier
-   ├── Basic: $8/month (2 CardiMembers)
-   ├── Complete Care: $15/month (5 CardiMembers)
-   └── (annual billing −15%; Guardian Plus $29.99 is a post-MVP business tier)
+   ├── Basic: $7/month (1 CardiMember)
+   ├── Complete Care: $10/month (3 CardiMembers)
+   └── Guardian Plus: $15/month (6 CardiMembers); annual billing −15%
 
 2. Payment collection (PCI-DSS-compliant tokenization)
 

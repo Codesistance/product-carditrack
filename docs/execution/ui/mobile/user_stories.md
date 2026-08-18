@@ -232,7 +232,7 @@ Based on the solution manifest, market analysis, and README, here are comprehens
 - **I want to** easily understand my current plan and upgrade/downgrade options
 - **So that** I can make informed decisions about features vs cost
 - **Acceptance Criteria:**
-  - Current tier highlighted (Basic $8, Complete Care $15)
+  - Current tier highlighted (Basic $7, Complete Care $10, Guardian Plus $15)
   - Feature comparison table (what I get with each tier)
   - Usage metrics ("You're monitoring 2 CardiMembers, upgrade to add more")
   - One-click upgrade/downgrade
@@ -570,11 +570,11 @@ Based on the solution manifest, market analysis, and README, here are comprehens
 
 ### Step 1: Value Proposition (30 seconds)
 - Hero image: Happy elderly person with Fitbit, smiling family on phone
-- Headline: "Peace of Mind for Your Family. $8/month."
+- Headline: "Peace of Mind for Your Family. From $7/month."
 - 3 key benefits with icons:
   - ✅ Works with devices they already own (Fitbit, Apple Watch, etc.)
   - ✅ AI alerts you BEFORE health issues become emergencies
-  - ✅ 70% cheaper than medical alert systems ($8 vs $47/month)
+  - ✅ 65-85% cheaper than medical alert systems ($7-15 vs $47/month)
 - CTA: "Start Free 30-Day Trial"
 
 ### Step 2: Account Creation (1 minute)

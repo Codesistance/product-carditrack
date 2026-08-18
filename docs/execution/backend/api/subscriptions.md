@@ -34,8 +34,10 @@ Trial parameters (fixed in code):
 | Status | `Trial` (1) |
 | Duration | 30 days from signup |
 | Price | 0 USD, monthly billing cycle |
-| Limits — Family org | 5 CardiMembers / 1 user |
+| Limits — Family org | 5 CardiMembers / 1 user ⚠️ |
 | Limits — Business org | 50 CardiMembers / 20 users |
+
+> ⚠️ **The trial's hardcoded 5-CardiMember limit no longer matches any tier.** `CreateTrialSubscriptionAsync` provisions the `Complete` tier with 5 CardiMembers, which was correct when Complete Care allowed 5. After the 2026-08-18 repricing Complete Care allows **3**, so a trial currently grants more headroom than the tier it is a trial of. Harmless today — limits are not enforced anywhere — but it becomes a real downgrade cliff the moment enforcement or billing lands, because a triallist could add 5 members and then be unable to convert without removing 2. Fix alongside the enforcement work, not before.
 
 - `tier` and `status` are **integer enums**: `SubscriptionTier` Basic=1, Complete=2, Plus=3; `SubscriptionStatus` Trial=1, Active=2, PastDue=3, Cancelled=4, Suspended=5. (Note: `Trial` is the first enum member — there is no `trialing` string status.)
 - **Limits are not enforced anywhere** — `MaxCardiMembers`/`MaxUsers` exist on the entity but no endpoint checks them.
@@ -81,7 +83,7 @@ Get the authenticated user's current subscription plan, usage metrics, and next 
   },
   "annualSavingsAvailable": {
     "savingsPercent": 15,
-    "annualPrice": 81.60
+    "annualPrice": 71.40
   }
 }
 ```
@@ -111,36 +113,53 @@ List all available subscription plans with feature comparison. Used to render th
     {
       "planId": "plan_basic",
       "name": "Basic",
-      "monthlyPrice": 8.00,
-      "annualPrice": 81.60,
+      "monthlyPrice": 7.00,
+      "annualPrice": 71.40,
       "currency": "USD",
       "isCurrentPlan": true,
       "features": [
-        { "key": "cardiMemberLimit", "value": 2, "label": "Up to 2 CardiMembers" },
+        { "key": "cardiMemberLimit", "value": 1, "label": "1 CardiMember" },
         { "key": "familyMemberLimit", "value": 5, "label": "Up to 5 family members" },
         { "key": "alertTypes", "value": "standard", "label": "Standard alert types" },
-        { "key": "dataRetention", "value": 90, "label": "90 days data history" },
+        { "key": "dataRetention", "value": 30, "label": "30 days data history" },
         { "key": "export", "value": false, "label": "Data export" }
       ]
     },
     {
       "planId": "plan_complete_care",
       "name": "Complete Care",
+      "monthlyPrice": 10.00,
+      "annualPrice": 102.00,
+      "currency": "USD",
+      "isCurrentPlan": false,
+      "features": [
+        { "key": "cardiMemberLimit", "value": 3, "label": "Up to 3 CardiMembers" },
+        { "key": "familyMemberLimit", "value": 20, "label": "Up to 20 family members" },
+        { "key": "alertTypes", "value": "advanced", "label": "Advanced AI alert types" },
+        { "key": "dataRetention", "value": 90, "label": "90 days data history" },
+        { "key": "export", "value": true, "label": "PDF & CSV data export" }
+      ]
+    },
+    {
+      "planId": "plan_guardian_plus",
+      "name": "Guardian Plus",
       "monthlyPrice": 15.00,
       "annualPrice": 153.00,
       "currency": "USD",
       "isCurrentPlan": false,
       "features": [
-        { "key": "cardiMemberLimit", "value": 5, "label": "Up to 5 CardiMembers" },
+        { "key": "cardiMemberLimit", "value": 6, "label": "Up to 6 CardiMembers" },
         { "key": "familyMemberLimit", "value": 20, "label": "Up to 20 family members" },
         { "key": "alertTypes", "value": "advanced", "label": "Advanced AI alert types" },
-        { "key": "dataRetention", "value": 365, "label": "365 days data history" },
+        { "key": "dataRetention", "value": 180, "label": "180 days data history" },
         { "key": "export", "value": true, "label": "PDF & CSV data export" }
       ]
     }
   ]
 }
 ```
+
+> **Guardian Plus is now a consumer tier.** It was previously specified as a post-MVP business tier and was absent from this catalog; the published pricing page sells it to families alongside Basic and Complete Care, so it belongs here. Its differentiators over Complete Care are the member limit, the monthly Daybook, priority support and the longer history window.
 
 ---
 
@@ -225,7 +244,7 @@ Downgrade to a lower plan. Takes effect at the end of the current billing period
     "note": "Your Complete Care plan remains active until April 1, 2026."
   },
   "warnings": [
-    "You currently have 4 CardiMembers. Basic plan supports 2. You will need to remove 2 CardiMembers before the downgrade takes effect."
+    "You currently have 4 CardiMembers. Basic plan supports 1. You will need to remove 3 CardiMembers before the downgrade takes effect."
   ]
 }
 ```
