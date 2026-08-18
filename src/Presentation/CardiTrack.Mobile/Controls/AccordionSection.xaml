@@ -9,33 +9,45 @@
          the same control; the chevron is the affordance, the way it is on Alert Rules. The body
          is animated open/closed by growing/shrinking a clipping Border's height (Border clips
          its content to its bounds; a plain layout wouldn't) rather than snapping IsVisible. -->
-    <VerticalStackLayout x:Name="RootLayout" Spacing="10">
+    <!-- OutlinedCard rather than the dropdowns' ElevatedCard: this control sits inside the
+         member card, where the metric tiles already set outlined as the nested-card idiom, and
+         a shadow stacked on a shadow is chrome, not depth. The row inside is the dropdowns'
+         exactly — icon at 22, Body1SemiBoldDark, chevron at 20, 52 high, 14,4 padding. -->
+    <Border Style="{StaticResource OutlinedCard}" Padding="14,4">
+        <VerticalStackLayout x:Name="RootLayout" Spacing="10">
 
-        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12" HeightRequest="52">
-            <Grid.GestureRecognizers>
-                <TapGestureRecognizer Tapped="OnHeaderTapped"/>
-            </Grid.GestureRecognizers>
+            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12" HeightRequest="52">
+                <Grid.GestureRecognizers>
+                    <TapGestureRecognizer Tapped="OnHeaderTapped"/>
+                </Grid.GestureRecognizers>
 
-            <Label x:Name="HeaderLabel"
-                   Grid.Column="0"
-                   Style="{StaticResource Body1SemiBoldDark}"
-                   VerticalTextAlignment="Center"/>
+                <Image x:Name="HeaderIconImage"
+                       Grid.Column="0"
+                       WidthRequest="22" HeightRequest="22"
+                       VerticalOptions="Center"
+                       IsVisible="False"/>
 
-            <Image x:Name="ChevronIcon"
-                   Grid.Column="1"
-                   Source="icon_chevron_down.svg"
-                   WidthRequest="20" HeightRequest="20"
-                   VerticalOptions="Center"
-                   SemanticProperties.Description="Expand"/>
-        </Grid>
+                <Label x:Name="HeaderLabel"
+                       Grid.Column="1"
+                       Style="{StaticResource Body1SemiBoldDark}"
+                       VerticalTextAlignment="Center"/>
 
-        <Border x:Name="BodyClip"
-                StrokeThickness="0"
-                BackgroundColor="Transparent"
-                Padding="0"
-                HeightRequest="0">
-            <ContentView x:Name="BodyHost" VerticalOptions="Start"/>
-        </Border>
+                <Image x:Name="ChevronIcon"
+                       Grid.Column="2"
+                       Source="icon_chevron_down.svg"
+                       WidthRequest="20" HeightRequest="20"
+                       VerticalOptions="Center"
+                       SemanticProperties.Description="Expand"/>
+            </Grid>
 
-    </VerticalStackLayout>
+            <Border x:Name="BodyClip"
+                    StrokeThickness="0"
+                    BackgroundColor="Transparent"
+                    Padding="0"
+                    HeightRequest="0">
+                <ContentView x:Name="BodyHost" VerticalOptions="Start"/>
+            </Border>
+
+        </VerticalStackLayout>
+    </Border>
 </ContentView>

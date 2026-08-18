@@ -285,7 +285,7 @@
                                      at render time for one whose device reports less (skin
                                      temperature, SpO2 and breathing rate are each optional) so no
                                      tile is left beside a gap. -->
-                                <controls:AccordionSection x:Name="MetricsAccordion" HeaderText="Key Metrics">
+                                <controls:AccordionSection x:Name="MetricsAccordion" HeaderText="Key Metrics" IconSource="icon_action_details.svg">
                                     <controls:AccordionSection.Body>
                                         <Grid ColumnDefinitions="*,*"
                                               RowDefinitions="Auto,Auto,Auto"

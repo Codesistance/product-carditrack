@@ -46,6 +46,26 @@ public partial class AccordionSection : ContentView
         }
     }
 
+    public static readonly BindableProperty IconSourceProperty = BindableProperty.Create(
+        nameof(IconSource),
+        typeof(string),
+        typeof(AccordionSection),
+        null,
+        propertyChanged: (bindable, _, value) =>
+        {
+            var section = (AccordionSection)bindable;
+            section.HeaderIconImage.Source = value as string;
+            section.HeaderIconImage.IsVisible = !string.IsNullOrEmpty(value as string);
+        });
+
+    /// <summary>The header row's leading glyph — the dropdowns' 22-unit icon. Absent, the row
+    /// starts at the label, and the icon column collapses.</summary>
+    public string? IconSource
+    {
+        get => (string?)GetValue(IconSourceProperty);
+        set => SetValue(IconSourceProperty, value);
+    }
+
     public AccordionSection()
     {
         InitializeComponent();
