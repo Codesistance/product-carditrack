@@ -29,21 +29,49 @@ So the promise is not impossible — at current scale (under 100 connected weare
 
 Delete children before parents. There are almost no cascades, so nothing is removed for you.
 
-| Order | Table | Key to match on | Notes |
-|---|---|---|---|
-| 1 | `NotificationDeliveries` | via alert / member | Delivery outbox rows referencing the member's alerts |
-| 2 | `PushDeviceTokens` | `UserId` | Account-scoped, not member-scoped — only on full account closure |
-| 3 | `Alerts` | `CardiMemberId` | Includes acknowledged and resolved rows |
-| 4 | `PatternBaselines` | `CardiMemberId` | Append-only, roughly 1,825 rows per member per year |
-| 5 | `ActivityLogs` | `CardiMemberId` | The primary daily store. **No partition drop covers this table** — it is retained indefinitely unless deleted here |
-| 6 | Partitioned time-series | `CardiMemberId` | Granular readings, hourly rollups, digests, real-time assessments, environmental readings. `PartitionMaintenanceWorker` ages these out on its own schedule (90 d / 13 mo), but a deletion request must not wait for a partition to expire |
-| 7 | `Questionnaires` | `CardiMemberId` | Question text and free-text answers, AES-256-GCM encrypted at rest |
-| 8 | `Reports` | `CardiMemberId` | Generated report rows |
-| 9 | `DeviceConnections` | `CardiMemberId` | Revoke upstream **before** deleting the row, or the token is orphaned at Google rather than revoked |
-| 10 | `UserCardiMembers` | `CardiMemberId` | Cascades, but delete explicitly so the count is verifiable |
-| 11 | `CardiMembers` | `Id` | Emergency contacts and medical notes live on this row |
-| 12 | `Subscriptions` | `OrganizationId` | Full account closure only |
-| 13 | `Organizations`, `Users` | `Id` | Full account closure only. Retain billing records for 6 years per UK tax law — see policy §5 |
+**Derive the list, do not trust this table alone.** Before starting, enumerate every table carrying a `CardiMemberId` or `UserId` column and reconcile it against the list below. New subject-linked tables get added by ordinary feature work and will not announce themselves here — this is the same failure the `SubjectDataMap` exists to remove, and until that ships the query below is the map:
+
+```sql
+SELECT table_name, column_name
+FROM information_schema.columns
+WHERE column_name IN ('CardiMemberId', 'UserId')
+ORDER BY table_name;
+```
+
+Table names are **not** always the entity name — the questionnaire entity lives in `MemberQuestionnaires`, not `Questionnaires`. Take names from `ToTable(...)` in the persistence configuration, not from the domain class.
+
+### Member-scoped (`CardiMemberId`) — for a single CardiMember or a full closure
+
+| Order | Table | Notes |
+|---|---|---|
+| 1 | `NotificationDeliveries` | Delivery outbox rows; also carries `UserId` |
+| 2 | `NotificationMutes` | Also carries `UserId` |
+| 3 | `Notifications` | Also carries `UserId` |
+| 4 | `AlertPreferences` | Per-member alert configuration |
+| 5 | `Alerts` | Includes acknowledged and resolved rows |
+| 6 | `PatternBaselines` | Append-only, roughly 1,825 rows per member per year |
+| 7 | `RealtimeAssessments` | Partition-dropped at 90 days, but do not wait for it |
+| 8 | `DigestEntries` | Digests **and Daybook entries** — partition-dropped at 90 days |
+| 9 | `EnvironmentalReadings` | Feature is inert, so normally empty — check anyway |
+| 10 | `GranularMetricHours` | Minute-grain; partition-dropped at 90 days |
+| 11 | `MetricRollupsHourly` | Hour-grain; partition-dropped at 13 months |
+| 12 | `DeviceActivityLogs` | **Raw per-device rows.** Easy to miss — `ActivityLogs` is the merged view, this is the source |
+| 13 | `ActivityLogs` | The primary daily store. **No partition drop covers this table** — retained indefinitely unless deleted here |
+| 14 | `MemberQuestionnaires` | Question text and free-text answers, AES-256-GCM encrypted at rest |
+| 15 | `DeviceConnections` | Revoke upstream **before** deleting the row, or the token is orphaned at Google rather than revoked |
+| 16 | `UserCardiMembers` | Cascades, but delete explicitly so the count is verifiable |
+| 17 | `CardiMembers` | Emergency contacts and medical notes live on this row |
+
+### Account-scoped (`UserId`) — full closure only
+
+| Order | Table | Notes |
+|---|---|---|
+| 18 | `PushDeviceTokens` | Encrypted tokens; the designed 30-day post-disable hard delete is **not enforced** |
+| 19 | `NotificationPreferences` | Quiet hours, per-category mutes |
+| 20 | `Subscriptions` | Keyed on `OrganizationId` |
+| 21 | `Organizations`, `Users` | Retain billing records for 6 years per UK tax law — see policy §5 |
+
+Reports are cached with a 1-hour TTL and generated fire-and-forget in-process, so there is no durable report table to clear.
 
 **`AuditLogs` are retained, not deleted.** They are the record that the erasure happened and are needed to demonstrate compliance. This is a legitimate exception under Art. 17(3)(b), but note the unresolved conflict flagged in [dpia.md](../compliance/dpia.md): the policy implies a 6-year schedule, the deployed retention is 30/90 days, and the entity comment says 90 days. **Resolve that before quoting a figure to any data subject** — and note the deletion page currently points at "the retention schedule in the Privacy Policy" for audit logs, which has no audit-log row.
 
