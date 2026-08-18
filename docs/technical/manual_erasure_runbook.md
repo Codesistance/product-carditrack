@@ -60,7 +60,15 @@ Table names are **not** always the entity name — the questionnaire entity live
 | 14 | `MemberQuestionnaires` | Question text and free-text answers, AES-256-GCM encrypted at rest |
 | 15 | `DeviceConnections` | Revoke upstream **before** deleting the row, or the token is orphaned at Google rather than revoked |
 | 16 | `UserCardiMembers` | Cascades, but delete explicitly so the count is verifiable |
-| 17 | `CardiMembers` | Emergency contacts and medical notes live on this row |
+| 17 | `CardiMembers` | Emergency contacts, medical notes **and the profile-photo object name** live on this row |
+
+**Profile photo blob (GCS) — not a table, easy to miss.** The member's profile photo lives outside Postgres, in the private member-photos bucket, under `members/<cardiMemberId>/`. The app hard-deletes the blob on normal member removal, but an erasure must not trust that: delete the member's whole prefix explicitly (before or after the table sweep — nothing references it):
+
+```
+gcloud storage rm gs://<member-photos-bucket>/members/<cardiMemberId>/ --recursive
+```
+
+The bucket name is environment-specific (dev: `carditrack-490120-carditrack-dev-member-photos`) — take it from the `Storage__MemberPhotos__Bucket` env var on the API service. A "matched no objects" result is fine (member never had a photo, or removal already deleted it); include the command output in the verification record either way.
 
 ### Account-scoped (`UserId`) — full closure only
 
