@@ -17,21 +17,24 @@ locals {
   )
 
   # Resource naming
-  api_service_name         = "${var.project_name}-${local.environment}-api"
-  web_service_name         = "${var.project_name}-${local.environment}-web"
-  worker_service_name      = "${var.project_name}-${local.environment}-worker"
-  pipeline_jobs_name       = "${var.project_name}-${local.environment}-pipeline-jobs"
-  webhook_receiver_name    = "${var.project_name}-${local.environment}-webhook-receiver"
-  cloud_sql_name           = "${var.project_name}-${local.environment}-sql"
-  redis_instance_name      = "${var.project_name}-${local.environment}-redis"
-  cloud_sql_db_name        = "${var.project_name}-${local.environment}-db"
-  storage_bucket_name      = "${var.project_id}-${var.project_name}-${local.environment}"
-  pubsub_topic_name        = "${var.project_name}-${local.environment}-realtime"
-  log_sink_name            = "${var.project_name}-${local.environment}-audit-sink"
-  audit_bucket_name        = "${var.project_id}-${var.project_name}-${local.environment}-audit"
-  oom_alert_name           = "${var.project_name}-${local.environment}-cloud-run-oom"
-  oom_alert_service_prefix = "${var.project_name}-${local.environment}-"
-  medgemma_iam_alert_name  = "${var.project_name}-${local.environment}-medgemma-public-iam"
+  api_service_name      = "${var.project_name}-${local.environment}-api"
+  web_service_name      = "${var.project_name}-${local.environment}-web"
+  worker_service_name   = "${var.project_name}-${local.environment}-worker"
+  pipeline_jobs_name    = "${var.project_name}-${local.environment}-pipeline-jobs"
+  webhook_receiver_name = "${var.project_name}-${local.environment}-webhook-receiver"
+  cloud_sql_name        = "${var.project_name}-${local.environment}-sql"
+  redis_instance_name   = "${var.project_name}-${local.environment}-redis"
+  cloud_sql_db_name     = "${var.project_name}-${local.environment}-db"
+  storage_bucket_name   = "${var.project_id}-${var.project_name}-${local.environment}"
+  # One definition for a name two consumers need: the bucket resource (member_photos.tf) and the
+  # Storage__MemberPhotos__Bucket env var injected into the API and Worker below.
+  member_photos_bucket_name = "${var.project_id}-${var.project_name}-${local.environment}-member-photos"
+  pubsub_topic_name         = "${var.project_name}-${local.environment}-realtime"
+  log_sink_name             = "${var.project_name}-${local.environment}-audit-sink"
+  audit_bucket_name         = "${var.project_id}-${var.project_name}-${local.environment}-audit"
+  oom_alert_name            = "${var.project_name}-${local.environment}-cloud-run-oom"
+  oom_alert_service_prefix  = "${var.project_name}-${local.environment}-"
+  medgemma_iam_alert_name   = "${var.project_name}-${local.environment}-medgemma-public-iam"
 
   # Read rather than repeated: .model-version is what bakes a tag into the MedGemma image, and
   # AI__Private__Model below is the name the API then asks Ollama for. As two literals they
@@ -125,6 +128,9 @@ module "deployments" {
       "Apm__MetricsEnabled"            = tostring(var.apm_metrics_enabled)
       "Apm__TracesSampleRatio"         = tostring(var.traces_sample_ratio.api)
       "Serilog__MinimumLevel__Default" = var.log_minimum_level.api
+      # Member profile photo bucket (member_photos.tf). Non-secret: it names a bucket only IAM
+      # can open. Absent locally, where the feature is off by design.
+      "Storage__MemberPhotos__Bucket" = local.member_photos_bucket_name
     },
     # Transitional — DELETE once an image carrying the AI__Public/AI__Private settings is
     # deployed to every environment. Terraform sets env vars and CI sets the image
@@ -203,6 +209,8 @@ module "deployments" {
       "Apm__MetricsEnabled"            = tostring(var.apm_metrics_enabled)
       "Apm__TracesSampleRatio"         = tostring(var.traces_sample_ratio.worker)
       "Serilog__MinimumLevel__Default" = var.log_minimum_level.worker
+      # Same bucket as the API's entry above — OrphanedPhotoCleanupWorker's sweep target.
+      "Storage__MemberPhotos__Bucket" = local.member_photos_bucket_name
     },
     # The Worker hosts device pull and the audit pull today, so it is where the cadence
     # parameters land.
@@ -322,11 +330,12 @@ module "deployments" {
   migrator_container_image      = var.migrator_container_image
 
   # Cloud Storage
-  storage_bucket_name   = local.storage_bucket_name
-  storage_location      = var.storage_location
-  storage_class         = var.storage_class
-  storage_force_destroy = !local.is_prod
-  storage_labels        = local.common_labels
+  storage_bucket_name       = local.storage_bucket_name
+  member_photos_bucket_name = local.member_photos_bucket_name
+  storage_location          = var.storage_location
+  storage_class             = var.storage_class
+  storage_force_destroy     = !local.is_prod
+  storage_labels            = local.common_labels
 
   # Secret Manager
   db_password_secret_id  = "${var.project_name}-${local.environment}-db-password"
