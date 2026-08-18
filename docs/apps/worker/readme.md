@@ -4,12 +4,13 @@
 
 `CardiTrack.Worker` hosts the platform's **non-AI scheduled background jobs**, driven by cron expressions and the [Cronos](https://github.com/HangfireIO/Cronos) library. Although it is a background service, the project uses the **`Microsoft.NET.Sdk.Web` SDK with `Exe` output** — Cloud Run requires an HTTP listener for startup probes, so the worker binds Kestrel to the `PORT` env var (default 8080) and exposes a minimal `GET /healthz` endpoint alongside its hosted services.
 
-The 12 workers registered today (crons from `appsettings.json`):
+The 13 workers registered today (crons from `appsettings.json`):
 
 | Worker | Default cron (UTC) | Purpose |
 |---|---|---|
 | `WearableSyncWorker` | `0 */10 * * * *` (every 10 min) | Polls due device connections and syncs wearable data |
 | `OrphanedOrganizationCleanupWorker` | `0 0 3 * * *` (daily 03:00) | Deletes organizations stranded by a failed onboarding |
+| `OrphanedPhotoCleanupWorker` | `0 30 3 * * *` (daily 03:30) | Deletes member-photo blobs no active member references (24 h grace) and clears photos left on soft-deleted members — the enforcement backstop behind the API's best-effort deletes |
 | `BaselineCalculationWorker` | `0 30 2 * * *` (daily 02:30) | Recalculates each member's `PatternBaseline` rows — 7/14-day provisional and 30/60/90-day windows |
 | `PartitionMaintenanceWorker` | `0 15 * * * *` (hourly; `RunOnStartup: true`) | Pre-creates partitions for the partitioned time-series tables and drops the ones past retention — granular 90 d, hourly rollups 13 mo, **digests 3 mo, real-time assessments 90 d, environmental readings 90 d** |
 | `DeviceSyncAuditWorker` | `0 0 4 * * 0` (Sunday 04:00) | Re-fetches a small random sample over a 14-day window to measure how far back each provider revises data |
@@ -50,12 +51,14 @@ src/Worker/CardiTrack.Worker/
 │   ├── DeviceAuthRecoveryWorker.cs          # Retries provider-refused refresh tokens (backoff)
 │   ├── DataCompletenessWorker.cs            # Reconciles data-completeness nudges per caregiver
 │   ├── NotificationDispatchWorker.cs        # Push outbox pump: claim, retry, escalate, expire
-│   └── PushCanaryWorker.cs                  # End-to-end push liveness canary (incl. PushCanaryOptions)
+│   ├── PushCanaryWorker.cs                  # End-to-end push liveness canary (incl. PushCanaryOptions)
+│   └── OrphanedPhotoCleanupWorker.cs        # Reaps orphaned member-photo blobs (enforcement backstop)
 ├── CronBackgroundService.cs       # Abstract base — parses cron, loops on schedule (+ RunOnStartup)
 ├── WorkerOptions.cs               # { CronExpression, RunOnStartup } options record
 ├── DeviceSyncAuditOptions.cs      # { SampleSize } for the audit worker
 ├── InactivityDetectionOptions.cs  # Silence threshold + waking-hours window
 ├── PartitionMaintenanceOptions.cs # DaysAhead + the five per-table retention values
+├── OrphanedPhotoCleanupOptions.cs # DryRun switch for the photo-blob backstop sweep
 ├── WorkerServiceExtensions.cs     # Generic AddWorker<T> registration helper
 ├── Program.cs                     # Host setup, DI registration, /healthz endpoint
 ├── Dockerfile                     # Chiseled aspnet runtime image
@@ -221,6 +224,18 @@ Safety net behind the API's atomic `POST /api/Onboarding/setup` endpoint. The le
 - An organization is *orphaned* when it has **no users and no CardiMembers**; its trial subscription is removed with it via the `Subscription → Organization` FK cascade.
 - When anything is removed it logs at **Warning**, deliberately: orphans mean some client bypassed the atomic setup endpoint and failed mid-onboarding — worth investigating, not just cleaning. A no-op run logs at Information.
 
+### OrphanedPhotoCleanupWorker
+
+The enforcement backstop behind the member-photo blob deletes in `CardiMemberService` (photo replace/removal and member soft delete all delete the old blob best-effort, after the save lands). A full-face photo is Tier 1 data, and "the blob must not outlive the membership" ([data_protection_architecture.md](../../technical/data_protection_architecture.md) §5) holds only if something checks — this checks.
+
+- Runs daily at 03:30 UTC (`0 30 3 * * *` by default), offset from the organization cleanup.
+- Takes a **non-blocking Postgres advisory lock** (like `DataCompletenessWorker`): a second Cloud Run instance skips the run rather than sweeping the bucket again.
+- Diffs the bucket listing (`IProfilePhotoStorage.ListAsync`) against the set of active members' `PhotoObjectName` values; an object referenced by no active member **and older than 24 hours** is deleted. The grace window protects the upload-then-save crash window; since every upload gets a fresh GUID name, an unreferenced object past it can never become referenced again.
+- Also clears **soft-deleted members still carrying a `PhotoObjectName`** — normally none exist (the removal path clears the column before saving), so each hit logs at **Warning**: blob deleted, column nulled, worth investigating.
+- **`DryRun`** (`Workers:OrphanedPhotoCleanupWorker:DryRun`, default `false`) logs every would-be delete and touches nothing — blob and database alike.
+- Per-object error boundary: a failed delete is logged (object name only — never a signed URL) and the sweep continues; the summary line reports scanned/orphaned/deleted/failed counts.
+- An unset `Storage:MemberPhotos:Bucket` (every local machine) lists nothing, so the sweep is a quiet no-op.
+
 ### BaselineCalculationWorker
 
 Turns accumulated `ActivityLog` history into `PatternBaseline` rows — the statistical picture of "a normal day" that `DashboardService` colours today's metrics against, and the thing that ends a member's *"getting to know you"* phase (`DashboardService` treats a member with no baseline at all as still learning; a 7/14-day window serves as a **provisional** baseline until the 30-day one exists, and provisional baselines never fire alerts).
@@ -358,9 +373,10 @@ public static IServiceCollection AddWorker<T>(
     return services;
 }
 
-// Program.cs — one line per job, all 12:
+// Program.cs — one line per job, all 13:
 builder.Services.AddWorker<WearableSyncWorker>(configuration, nameof(WearableSyncWorker));
 builder.Services.AddWorker<OrphanedOrganizationCleanupWorker>(configuration, nameof(OrphanedOrganizationCleanupWorker));
+builder.Services.AddWorker<OrphanedPhotoCleanupWorker>(configuration, nameof(OrphanedPhotoCleanupWorker));
 builder.Services.AddWorker<BaselineCalculationWorker>(configuration, nameof(BaselineCalculationWorker));
 builder.Services.AddWorker<DeviceSyncAuditWorker>(configuration, nameof(DeviceSyncAuditWorker));
 builder.Services.AddWorker<PartitionMaintenanceWorker>(configuration, nameof(PartitionMaintenanceWorker));
