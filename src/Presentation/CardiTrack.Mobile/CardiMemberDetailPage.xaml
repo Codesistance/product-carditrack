@@ -145,7 +145,12 @@
                                 <!-- The name and who they are lead by a step; the "Updated"
                                      line is bookkeeping and drops a step — the card reads
                                      person first, freshness last. -->
-                                <VerticalStackLayout Grid.Column="1" Spacing="2" VerticalOptions="Center">
+                                <!-- Start, not Center: the name's cap-height lines up with the
+                                     avatar's top edge, and the three lines hang from there — a
+                                     block centred against an 80pt box floated its first line
+                                     below the box's own top. Spacing 0 so they read as one
+                                     stacked identity rather than three separate lines. -->
+                                <VerticalStackLayout Grid.Column="1" Spacing="0" VerticalOptions="Start">
                                     <Label x:Name="NameLabel" Style="{StaticResource Heading2}" FontSize="24"/>
                                     <Label x:Name="AgeRelationshipLabel" Style="{StaticResource Body2}" FontSize="15"/>
                                     <HorizontalStackLayout x:Name="ConnectionStatusRow"
