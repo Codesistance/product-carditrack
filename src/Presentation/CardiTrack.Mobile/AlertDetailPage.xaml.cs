@@ -28,6 +28,13 @@ public partial class AlertDetailPage : ContentPage
     private DateTime _lastLoadedUtc = DateTime.MinValue;
     private AlertDetailResponse? _alert;
 
+    /// <summary>
+    /// The load the offline banner speaks for, kept so the banner can ask where that call's
+    /// payload came from rather than reading the origin of whichever GET finished last —
+    /// see <see cref="CacheOrigin"/>.
+    /// </summary>
+    private Task<AlertDetailResponse>? _alertCall;
+
     public AlertDetailPage(ICardiTrackApiClient api, IPopupService popups)
     {
         InitializeComponent();
@@ -89,7 +96,8 @@ public partial class AlertDetailPage : ContentPage
 
         try
         {
-            _alert = await _api.GetAlertAsync(_alertId);
+            _alertCall = _api.GetAlertAsync(_alertId);
+            _alert = await _alertCall;
             _lastLoadedUtc = DateTime.UtcNow;
             Apply(_alert);
             SetState(loaded: true);
@@ -115,7 +123,7 @@ public partial class AlertDetailPage : ContentPage
 
     private void Apply(AlertDetailResponse alert)
     {
-        OfflineBanner.ApplyFrom(_api);
+        OfflineBanner.ApplyFrom(_api, _alertCall);
 
         var resources = Microsoft.Maui.Controls.Application.Current!.Resources;
         var firstName = NameFormatting.FirstName(alert.CardiMemberName);

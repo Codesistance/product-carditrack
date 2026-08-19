@@ -51,6 +51,13 @@ public partial class DashboardPage : ContentPage
     private bool _wizardActive;
     private DateTime _lastLoadedUtc = DateTime.MinValue;
     private DashboardResponse? _lastData;
+
+    /// <summary>
+    /// The load the offline banner speaks for, kept so the banner can ask where that call's
+    /// payload came from rather than reading the origin of whichever GET finished last —
+    /// see <see cref="CacheOrigin"/>.
+    /// </summary>
+    private Task<DashboardResponse>? _dashboardCall;
     private Guid? _currentSleepAlertId;
 
     public DashboardPage(
@@ -284,7 +291,11 @@ public partial class DashboardPage : ContentPage
             _isSyncing = false;
         }
 
-        if (syncError is not null && !_api.LastGetWasCached)
+        // Asks about the reload just above, not about whichever GET happened to finish
+        // last: the banner this defers to speaks for that same load. No load at all means
+        // nothing is standing in for the sync error, so it is said.
+        if (syncError is not null
+            && (_dashboardCall is null || _api.OriginOf(_dashboardCall) is not { WasCached: true }))
             await _popups.ShowInfoAsync(syncError, "Couldn't check in");
     }
 
@@ -306,7 +317,8 @@ public partial class DashboardPage : ContentPage
                 return;
             }
 
-            var data = await _api.GetDashboardAsync(memberId.Value);
+            _dashboardCall = _api.GetDashboardAsync(memberId.Value);
+            var data = await _dashboardCall;
             Apply(data);
 
             // Committed only once it is actually on screen. Both catches below read _lastData as
@@ -403,7 +415,7 @@ public partial class DashboardPage : ContentPage
             PausedBannerLabel.Text = $"Monitoring is paused until {until} — we're not collecting data or raising alerts.";
         }
 
-        OfflineBanner.ApplyFrom(_api);
+        OfflineBanner.ApplyFrom(_api, _dashboardCall);
 
         // Stale banner (M1-09c). Suppressed while paused: data is meant to be stale then,
         // and "pull down to check in" would be advice we can't honour. Also suppressed while

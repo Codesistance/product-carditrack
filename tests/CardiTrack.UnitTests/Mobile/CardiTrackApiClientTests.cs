@@ -645,9 +645,10 @@ public class CardiTrackApiClientTests
              "hasCardiMember":true,"currentStep":7,"totalSteps":7},"timestamp":"2026-08-01T00:00:00Z"}
             """);
 
-        await client.GetOnboardingStatusAsync();
+        var call = client.GetOnboardingStatusAsync();
+        await call;
 
-        Assert.False(client.LastGetWasCached);
+        Assert.False(client.OriginOf(call)!.WasCached);
         Assert.True(cache.Items.ContainsKey("api/Onboarding/status"));
     }
 
@@ -663,12 +664,13 @@ public class CardiTrackApiClientTests
         var (client, http) = CreateSut(cache);
         http.Throws(new HttpRequestException("offline"));
 
-        var status = await client.GetOnboardingStatusAsync();
+        var call = client.GetOnboardingStatusAsync();
+        var status = await call;
 
         Assert.True(status.HasCardiMember);
-        Assert.True(client.LastGetWasCached);
+        Assert.True(client.OriginOf(call)!.WasCached);
         Assert.Equal(DateTimeOffset.UtcNow.AddMinutes(-12).ToUnixTimeSeconds(),
-            client.LastCachedAt!.Value.ToUnixTimeSeconds());
+            client.OriginOf(call)!.CachedAt!.Value.ToUnixTimeSeconds());
     }
 
     [Fact]
@@ -683,10 +685,11 @@ public class CardiTrackApiClientTests
         cts.Cancel();
         http.Throws(new TaskCanceledException());
 
-        var ex = await Assert.ThrowsAsync<ApiException>(() => client.GetOnboardingStatusAsync(cts.Token));
+        var call = client.GetOnboardingStatusAsync(cts.Token);
+        var ex = await Assert.ThrowsAsync<ApiException>(() => call);
 
         Assert.True(ex.IsNetworkFailure);
-        Assert.False(client.LastGetWasCached);
+        Assert.False(client.OriginOf(call)!.WasCached);
     }
 
     [Fact]
@@ -695,10 +698,11 @@ public class CardiTrackApiClientTests
         var (client, http) = CreateSut(new MemoryOfflineCache());
         http.Throws(new HttpRequestException("offline"));
 
-        var ex = await Assert.ThrowsAsync<ApiException>(() => client.GetOnboardingStatusAsync());
+        var call = client.GetOnboardingStatusAsync();
+        var ex = await Assert.ThrowsAsync<ApiException>(() => call);
 
         Assert.True(ex.IsNetworkFailure);
-        Assert.False(client.LastGetWasCached);
+        Assert.False(client.OriginOf(call)!.WasCached);
         Assert.Equal("No connection. Check your internet and try again.", ex.Message);
     }
 
@@ -714,10 +718,48 @@ public class CardiTrackApiClientTests
             {"success":false,"message":"expired","timestamp":"2026-08-01T00:00:00Z"}
             """);
 
-        var ex = await Assert.ThrowsAsync<ApiException>(() => client.GetOnboardingStatusAsync());
+        var call = client.GetOnboardingStatusAsync();
+        var ex = await Assert.ThrowsAsync<ApiException>(() => call);
 
         Assert.True(ex.IsSessionExpired);
-        Assert.False(client.LastGetWasCached);
+        Assert.False(client.OriginOf(call)!.WasCached);
+    }
+
+    /// <summary>
+    /// The reason the origin is per call. Two GETs are in flight on the one client — five screens
+    /// refresh together when the app resumes, and a single screen can start two at once — and one
+    /// falls back to the cache while the other reaches the API. Read off the client as a whole,
+    /// whichever finished last answered for both, which put the offline banner over data that had
+    /// just arrived fresh and took it down over data that had not.
+    /// </summary>
+    [Fact]
+    public async Task Origin_IsPerCall_WhenOneGetIsCachedAndAnotherIsLive()
+    {
+        var cache = new MemoryOfflineCache();
+        cache.Items["api/Onboarding/status"] = new OfflineCacheEntry(
+            OnboardingEnvelope, DateTimeOffset.UtcNow.AddMinutes(-12));
+        var (client, http) = CreateSut(cache);
+
+        // The cached path first, so the live call is the one that finishes last — the ordering
+        // that used to leave the cached call reporting itself as fresh.
+        http.Throws(new HttpRequestException("offline"));
+        var cached = client.GetOnboardingStatusAsync();
+        await cached;
+
+        http.Enqueue(HttpStatusCode.OK, OnboardingEnvelope);
+        var live = client.GetOnboardingStatusAsync();
+        await live;
+
+        Assert.True(client.OriginOf(cached)!.WasCached);
+        Assert.False(client.OriginOf(live)!.WasCached);
+    }
+
+    [Fact]
+    public void OriginOf_IsNull_ForATaskThisClientDidNotProduce()
+    {
+        var (client, _) = CreateSut();
+
+        Assert.Null(client.OriginOf(Task.FromResult(0)));
     }
 
     private static (CardiTrackApiClient Client, FakeHttpMessageHandler Http) CreateSut(
