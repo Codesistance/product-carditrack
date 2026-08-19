@@ -521,12 +521,12 @@ day, every fetch bounded by that day's own UTC window:
 Every section degrades to absence rather than gating the entry, and the instructions turn absence
 into "never mention it" rather than an invitation to invent.
 
-**The register, and the line it turns on.** The Daybook is the one prompt allowed clinical
+**The register, and the line it turns on.** The journal's books are the prompts allowed clinical
 vocabulary, and the allowance is bounded by a rule that is regulatory rather than stylistic: *a
 precise term may name a measurement; it may never name a condition.* A term must also **explain
 what it measures in plain words in the sentence that first uses it** — judged on first use only.
-Both halves are enforced in code as well as asked for (`DaybookPrompt.NamesACondition`,
-`.UnglossedTerm`; the sentence split ignores a full stop with a digit on both sides, so "95.4%"
+Both halves are enforced in code as well as asked for (`JournalRegisterGuards.NamesACondition`,
+`.UnglossedTerm`, shared by every book so the line cannot drift between them; the sentence split ignores a full stop with a digit on both sides, so "95.4%"
 cannot strand a gloss); a reply that trips either is discarded whole — nothing rather than
 something wrong, and with more behind it here, since a discarded entry is not replaced half an
 hour later. The condition list logs the phrase that tripped it, and deliberately excludes
@@ -535,6 +535,53 @@ member's own usual, and that is one of the natural ways to answer it.
 
 No question is asked off a Daybook. Questions exist to explain readings while they still matter,
 and the answer would arrive a day after the day it was about.
+
+### The CardiJournal — the Weekbook (built today)
+
+`CARDITRACK_WEEKBOOK_PROMPT` — the account of one **finished week**, written once and never
+recomputed, in the same register as the Daybook and at a different altitude.
+
+- **A week is not a longer day.** The Daybook's job is completeness — every reading the day
+  produced, hour by hour. The Weekbook's is **trajectory**: what moved against the member's usual
+  across seven days, which day stood apart, what held steady. A prompt that listed seven days in
+  turn would be seven Daybooks in a trench coat, and the caregiver already has those.
+- **Raw reassessment, not a summary of summaries.** It is built from the week's own `ActivityLog`
+  rows, its `PatternBaseline`, and its alerts and Yellow+ assessments — **never** from the week's
+  Daybooks. Two payoffs, both load-bearing: an imprecise phrase in one Daybook cannot propagate
+  upward, and a week whose Daybooks were skipped or discarded still gets its Weekbook. Pinned by a
+  test that asserts the Daybook series is never read during a Weekbook run.
+- **Storage.** `DigestAudience.Weekbook`, in the same partitioned `DigestEntries` table, dated by
+  the week's **last day** — so one `LocalDate` identifies one week, and written-once is again a
+  partial unique index on `(CardiMemberId, LocalDate)`. It needs its **own** index rather than a
+  widened filter: a member has a Daybook and a Weekbook on the same date most weeks, so a single
+  index across both audiences would refuse the second write. (EF keys unnamed indexes by their
+  property set, so both are declared through the *named* `HasIndex` overload — the unnamed one
+  reconfigures the first rather than adding a second, which scaffolds as "drop the Daybook index".)
+- **Scheduling.** No job of its own, for the Daybook's reasons. `GenerateDueWeekbooksAsync` runs
+  in the same half-hourly `--job digest` pass, and costs less than the Daybook does: it is due on
+  one local weekday, so on six days in seven the per-member check stops at a date comparison
+  before touching the database.
+- **When.** Due on the member's own `JournalWeekStartsOn` (default Monday) once their local clock
+  passes `WeekbookLocalTime` (default 02:00), covering the seven days ending the evening before.
+  Both are per-member settings — see [cardimembers.md](./execution/backend/api/cardimembers.md).
+- **The coverage guard.** At least **4 of the 7 days** must carry readings. A week measured on
+  three days or fewer is not a quiet week, it is an unmeasured one, and an account of it would
+  have to speak for the days that are missing — which reads to a caregiver as a verdict on the
+  whole week. Silence must never read as healthy, so nothing is written and the gap is what the
+  list screens say. Where a week does qualify, the coverage line states how many days it covered,
+  and every average names the number of days behind it: an average of four nights and an average
+  of seven are different claims.
+- **Computed, not asked for.** Averages, the days-measured counts and the standout day are all
+  arithmetic done here — the model phrases them and nothing else. The standout is the day furthest
+  from the week's own average, claimed only where the week has ≥4 days of that reading and the day
+  sits a fifth of the average or more away; an ordinary week produces no standout at all, which is
+  the answer most weeks should give.
+- **Read.** `?audience=weekbook` on both insights digest endpoints, alongside `family` and
+  `daybook`, with the same `search`/`from`/`to`/`urgency` filters.
+
+The register, its guards and the "counts, never scores" rule are shared with the Daybook
+(`JournalRegisterGuards`); only the instruction-echo list is per-book, since it is drawn from the
+wording of one brief.
 
 ---
 

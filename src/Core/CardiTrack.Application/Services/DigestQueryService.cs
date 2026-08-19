@@ -103,6 +103,7 @@ public class DigestQueryService : IDigestQueryService
         {
             "family" => DigestAudience.Family,
             "daybook" => DigestAudience.Daybook,
+            "weekbook" => DigestAudience.Weekbook,
             _ => null,
         };
     }

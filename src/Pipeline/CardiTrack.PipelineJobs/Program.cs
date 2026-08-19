@@ -156,9 +156,15 @@ try
             // per pass, and one extra inference per member per day.
             var reviews = await digests.GenerateDueDaybooksAsync(DateTime.UtcNow);
 
+            // The Weekbook rides the same pass for the same reasons, and costs even less: it is
+            // due on one local weekday, so on six days in seven the per-member check stops at a
+            // date comparison without touching the database at all.
+            var weekbooks = await digests.GenerateDueWeekbooksAsync(DateTime.UtcNow);
+
             Log.Information(
-                "PipelineJobs run finished. Digests generated: {Generated}, daybook entries written: {Reviews}.",
-                generated, reviews);
+                "PipelineJobs run finished. Digests generated: {Generated}, daybook entries written: "
+                + "{Reviews}, weekbooks written: {Weekbooks}.",
+                generated, reviews, weekbooks);
             return 0;
 
         case "aggregate":

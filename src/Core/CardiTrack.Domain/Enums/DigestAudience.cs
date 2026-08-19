@@ -43,4 +43,17 @@ public enum DigestAudience
     /// cannot change any more.
     /// </summary>
     Daybook = 3,
+
+    /// <summary>
+    /// The family's account of one <em>finished</em> week, in the same register as
+    /// <see cref="Daybook"/> but at the week's own altitude: what moved against the member's
+    /// usual across the seven days, which day stood out, and what held steady.
+    /// </summary>
+    /// <remarks>
+    /// Written from the week's own measurements, <b>not</b> by summarising its Daybooks. Two
+    /// consequences that the generator depends on: an imprecise Daybook cannot propagate upward
+    /// into a week, and a week whose Daybooks were skipped or discarded still gets its Weekbook.
+    /// The week it covers ends the day before <c>JournalWeekStartsOn</c>, per member.
+    /// </remarks>
+    Weekbook = 4,
 }

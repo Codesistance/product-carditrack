@@ -45,10 +45,13 @@ internal sealed class EnvironmentalContextSource : IMemberContextSource
 
     public EnvironmentalContextSource(IUnitOfWork unitOfWork) => _unitOfWork = unitOfWork;
 
-    // Everything except the daybook: this source renders the latest session against UtcNow,
-    // which for an account of yesterday is the wrong session on the wrong clock — the daybook
-    // fetches the reviewed day's own sessions instead (DaybookPrompt.ConditionsSection).
-    public PromptPurpose Purposes => PromptPurpose.All & ~PromptPurpose.Daybook;
+    // Everything except the journal's books: this source renders the latest session against
+    // UtcNow, which for an account of a finished period is the wrong session on the wrong clock.
+    // The daybook fetches the reviewed day's own sessions instead
+    // (DaybookPrompt.ConditionsSection); the weekbook asks nothing of the weather at all, and a
+    // single session from today would be context its brief never mentions and cannot place.
+    public PromptPurpose Purposes =>
+        PromptPurpose.All & ~PromptPurpose.Daybook & ~PromptPurpose.Weekbook;
 
     public int Order => 10;
 

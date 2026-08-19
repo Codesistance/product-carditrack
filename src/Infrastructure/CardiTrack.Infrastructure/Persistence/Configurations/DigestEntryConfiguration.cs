@@ -56,9 +56,29 @@ public class DigestEntryConfiguration : IEntityTypeConfiguration<DigestEntry>
         // the family series keeps its many-generations-per-day history; legal on this partitioned
         // table because LocalDate is the partition key. The insert absorbs the violation with a
         // bare ON CONFLICT DO NOTHING — see DigestRepository.AddAsync.
-        builder.HasIndex(d => new { d.CardiMemberId, d.LocalDate })
+        // Both books' written-once contracts are partial unique indexes over the same two columns,
+        // separated only by their filter. They must be declared through the *named* HasIndex
+        // overload: the unnamed one is keyed on the property set, so a second call over the same
+        // properties reconfigures the first rather than adding another — which EF then scaffolds
+        // as "drop the Daybook index, create the Weekbook one", silently taking the Daybook's
+        // guarantee away. The model name is the second argument; HasDatabaseName is what the
+        // database sees.
+        builder.HasIndex(d => new { d.CardiMemberId, d.LocalDate }, "IX_DigestEntries_OneDaybookPerDay")
             .IsUnique()
             .HasFilter("\"Audience\" = 'Daybook'")
             .HasDatabaseName("IX_DigestEntries_OneDaybookPerDay");
+
+        // A member has a Daybook and a Weekbook on the same LocalDate most weeks — the Weekbook is
+        // dated by the last day of the week it covers, which is also a day with its own Daybook —
+        // so one index over both audiences would refuse the second write. Filtered per audience,
+        // each series is unique within itself and indifferent to the other.
+        //
+        // Uniqueness is on (member, date) alone because LocalDate already identifies the period:
+        // one week ends on any given date, so "one Weekbook per member per week" and "one per
+        // member per end-date" are the same statement.
+        builder.HasIndex(d => new { d.CardiMemberId, d.LocalDate }, "IX_DigestEntries_OneWeekbookPerWeek")
+            .IsUnique()
+            .HasFilter("\"Audience\" = 'Weekbook'")
+            .HasDatabaseName("IX_DigestEntries_OneWeekbookPerWeek");
     }
 }

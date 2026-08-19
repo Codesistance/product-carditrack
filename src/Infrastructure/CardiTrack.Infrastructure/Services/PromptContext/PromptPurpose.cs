@@ -35,6 +35,13 @@ public enum PromptPurpose
     /// </summary>
     Daybook = 32,
 
+    /// <summary>
+    /// The account of one finished week. Shares the Daybook's register and tense; differs in
+    /// altitude — trajectory across seven days rather than completeness within one.
+    /// </summary>
+    Weekbook = 64,
+
     /// <summary>Everything a member-context source could contribute to.</summary>
-    All = Digest | RealtimeAssessment | AlertInsight | BaselineInsight | CurrentStatus | Daybook,
+    All = Digest | RealtimeAssessment | AlertInsight | BaselineInsight | CurrentStatus | Daybook
+        | Weekbook,
 }

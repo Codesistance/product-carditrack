@@ -100,9 +100,10 @@ public class JournalSettingsService : IJournalSettingsService
             LatestSelectableTime = JournalSchedule.LatestLocalTime,
             StepMinutes = JournalSchedule.StepMinutes,
 
-            // Both generators are R2. The setting is stored and returned today so the app can
-            // offer it once, rather than shipping a second settings screen when they land.
-            WeekbookAvailable = false,
+            // The Weekbook generator exists; the Monthbook's does not yet. Its setting is still
+            // stored and returned so the app can offer it once, rather than shipping a second
+            // settings screen when it lands — but the row says it is coming, not that it runs.
+            WeekbookAvailable = true,
             MonthbookAvailable = false,
         };
     }
