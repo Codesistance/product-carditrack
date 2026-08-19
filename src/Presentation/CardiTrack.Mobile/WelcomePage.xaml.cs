@@ -160,10 +160,10 @@ public partial class WelcomePage : ContentPage
         SlideSubtitle.CancelAnimations();
 
         await Task.WhenAll(
-            SlideTitle.FadeTo(0, 110, Easing.CubicIn),
-            SlideTitle.TranslateTo(0, -10, 110, Easing.CubicIn),
-            SlideSubtitle.FadeTo(0, 110, Easing.CubicIn),
-            SlideSubtitle.TranslateTo(0, -10, 110, Easing.CubicIn));
+            SlideTitle.FadeToAsync(0, 110, Easing.CubicIn),
+            SlideTitle.TranslateToAsync(0, -10, 110, Easing.CubicIn),
+            SlideSubtitle.FadeToAsync(0, 110, Easing.CubicIn),
+            SlideSubtitle.TranslateToAsync(0, -10, 110, Easing.CubicIn));
 
         // A newer slide change took over while we faded out — let it own the fade-in.
         if (seq != _textSwapSeq)
@@ -174,10 +174,10 @@ public partial class WelcomePage : ContentPage
         SlideSubtitle.TranslationY = 14;
 
         await Task.WhenAll(
-            SlideTitle.FadeTo(1, 220, Easing.CubicOut),
-            SlideTitle.TranslateTo(0, 0, 220, Easing.CubicOut),
-            SlideSubtitle.FadeTo(1, 220, Easing.CubicOut),
-            SlideSubtitle.TranslateTo(0, 0, 220, Easing.CubicOut));
+            SlideTitle.FadeToAsync(1, 220, Easing.CubicOut),
+            SlideTitle.TranslateToAsync(0, 0, 220, Easing.CubicOut),
+            SlideSubtitle.FadeToAsync(1, 220, Easing.CubicOut),
+            SlideSubtitle.TranslateToAsync(0, 0, 220, Easing.CubicOut));
     }
 
     private void ApplyText(WelcomeSlide slide)
