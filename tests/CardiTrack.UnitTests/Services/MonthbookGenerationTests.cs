@@ -140,16 +140,60 @@ public class MonthbookGenerationTests
             Arg.Any<CancellationToken>());
     }
 
-    /// <summary>On the other thirty days the check stops before any database read.</summary>
     [Fact]
     public async Task Not_due_on_any_day_but_the_first()
     {
-        var secondOfMonth = new DateTime(2026, 8, 2, 9, 30, 0, DateTimeKind.Utc);
+        var midMonth = new DateTime(2026, 8, 15, 9, 30, 0, DateTimeKind.Utc);
 
-        Assert.Equal(0, await CreateSut().GenerateDueMonthbooksAsync(secondOfMonth));
+        Assert.Equal(0, await CreateSut().GenerateDueMonthbooksAsync(midMonth));
         await _digests.DidNotReceive().AddAsync(Arg.Any<DigestEntry>(), Arg.Any<CancellationToken>());
         await _medicalAi.DidNotReceive().GenerateStructuredAsync<DigestGenerationService.MonthbookAiResponse>(
             Arg.Any<string>(), Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// Mid-month no timezone can be on the first, so the pass answers without reading anything —
+    /// it runs 48 times a day and would otherwise fetch the candidate list, then a row and a
+    /// timezone per candidate, only to decline every one on a date comparison.
+    /// </summary>
+    [Fact]
+    public async Task Mid_month_the_pass_reads_nothing_at_all()
+    {
+        var midMonth = new DateTime(2026, 8, 15, 9, 30, 0, DateTimeKind.Utc);
+
+        Assert.Equal(0, await CreateSut().GenerateDueMonthbooksAsync(midMonth));
+
+        await _members.DidNotReceive().GetActiveIdsWithActivitySinceAsync(Arg.Any<DateOnly>());
+        await _members.DidNotReceive().GetByIdAsync(Arg.Any<Guid>());
+    }
+
+    /// <summary>
+    /// The guard is generous on purpose. Late on the 31st in UTC it is already the 1st east of the
+    /// line, and early on the 1st in UTC it is still the 31st west of it — a member is due on both
+    /// occasions, and a guard that trusted the UTC date alone would lose them their book for good.
+    /// </summary>
+    [Theory]
+    [InlineData(2026, 7, 31, 23, 0)]  // UTC still July; UTC+14 is already 1 August
+    [InlineData(2026, 8, 1, 0, 30)]   // UTC already August; UTC-12 is still 31 July
+    [InlineData(2026, 8, 1, 23, 30)]  // UTC still 1 August
+    public void The_offset_span_guard_admits_every_instant_some_timezone_is_on_the_first(
+        int year, int month, int day, int hour, int minute)
+    {
+        var utc = new DateTime(year, month, day, hour, minute, 0, DateTimeKind.Utc);
+
+        Assert.True(DigestGenerationService.AnyTimeZoneCouldBeOnDayOfMonth(utc, 1));
+    }
+
+    [Theory]
+    [InlineData(2026, 8, 15, 12, 0)]
+    [InlineData(2026, 8, 3, 12, 0)]   // two days past the 1st, outside the 26-hour span
+    [InlineData(2026, 8, 29, 0, 0)]   // three days short of the 1st
+    public void The_guard_refuses_instants_no_timezone_could_be_on_the_first(
+        int year, int month, int day, int hour, int minute)
+    {
+        var utc = new DateTime(year, month, day, hour, minute, 0, DateTimeKind.Utc);
+
+        Assert.False(DigestGenerationService.AnyTimeZoneCouldBeOnDayOfMonth(utc, 1));
     }
 
     [Fact]

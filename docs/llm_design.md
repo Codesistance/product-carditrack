@@ -603,8 +603,12 @@ the first of the next one.
   weeks carry at least three measured days each and one sits a fifth of the average or more out.
 - **Storage and scheduling.** `DigestAudience.Monthbook`, its own partial unique index
   (`IX_DigestEntries_OneMonthbookPerMonth`), dated by the month's last day, on the same half-hourly
-  `--job digest` pass. Cheapest of the three books: due on one local day in thirty, so its
-  per-member check almost always stops at a date comparison before any database read.
+  `--job digest` pass. Cheapest of the three books, and the only one that can skip a pass
+  outright: on the days when no timezone on earth is on the first of a month — about
+  twenty-nine in thirty — the job answers from an offset-span check without reading anything.
+  The span is deliberately generous (UTC-12 to UTC+14, so up to three calendar dates at once):
+  being wrong towards "possible" costs one pass that declines each member individually, while
+  being wrong towards "impossible" would lose a member their book for good.
 - **The coverage guard is 14 days** — about half a month, the same stance the Weekbook's
   four-of-seven takes at its own scale.
 - **Retention does not bite, by construction.** The month is composed on the first day of the next

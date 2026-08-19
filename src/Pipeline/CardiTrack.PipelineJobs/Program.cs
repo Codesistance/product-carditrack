@@ -156,13 +156,16 @@ try
             // per pass, and one extra inference per member per day.
             var reviews = await digests.GenerateDueDaybooksAsync(DateTime.UtcNow);
 
-            // The Weekbook rides the same pass for the same reasons, and costs even less: it is
-            // due on one local weekday, so on six days in seven the per-member check stops at a
-            // date comparison without touching the database at all.
+            // The Weekbook rides the same pass for the same reasons, and costs less: it is due on
+            // one local weekday, so on six days in seven each member is declined on a date
+            // comparison, before any week-scoped read. It cannot skip the pass wholesale the way
+            // the Monthbook does — members choose their own week start, so at any instant some
+            // weekday somewhere is a week start.
             var weekbooks = await digests.GenerateDueWeekbooksAsync(DateTime.UtcNow);
 
-            // And the Monthbook, cheapest of the three: due on one local day in thirty, so its
-            // per-member check almost always stops at a date comparison.
+            // And the Monthbook, cheapest of the three: on the days when no timezone on earth is
+            // on the first of a month — about twenty-nine in thirty — it answers without reading
+            // anything at all.
             var monthbooks = await digests.GenerateDueMonthbooksAsync(DateTime.UtcNow);
 
             Log.Information(
