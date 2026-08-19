@@ -59,16 +59,16 @@
 
             <!-- Summaries and Settings render at 24: their glyphs fill their own 24-unit box,
                  where the Figma pair sits inset in a 28 one. Same optical size either way. -->
-            <VerticalStackLayout x:Name="DaybookTab" Grid.Column="2" Spacing="4">
+            <VerticalStackLayout x:Name="JournalTab" Grid.Column="2" Spacing="4">
                 <VerticalStackLayout.GestureRecognizers>
                     <TapGestureRecognizer Tapped="OnSummariesTapped"/>
                 </VerticalStackLayout.GestureRecognizers>
-                <Image x:Name="DaybookIcon"
-                       Source="icon_tab_daybook.svg"
+                <Image x:Name="JournalIcon"
+                       Source="icon_tab_journal.svg"
                        WidthRequest="24" HeightRequest="24"
                        Margin="0,2"
                        HorizontalOptions="Center"/>
-                <Label x:Name="DaybookLabel"
+                <Label x:Name="JournalLabel"
                        Text="Journal"
                        Style="{StaticResource TabBarLabel}"/>
             </VerticalStackLayout>

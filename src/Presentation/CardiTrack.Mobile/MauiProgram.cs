@@ -128,8 +128,8 @@ public static class MauiProgram
         // Shell tab pages resolve through DI (constructor injection).
         builder.Services.AddTransient<DashboardPage>();
         builder.Services.AddTransient<AlertsPage>();
-        builder.Services.AddTransient<DaybookPage>();
-        builder.Services.AddTransient<DaybookEntryPage>();
+        builder.Services.AddTransient<JournalPage>();
+        builder.Services.AddTransient<JournalEntryPage>();
         builder.Services.AddTransient<JournalTimingPage>();
         builder.Services.AddTransient<SettingsPage>();
 

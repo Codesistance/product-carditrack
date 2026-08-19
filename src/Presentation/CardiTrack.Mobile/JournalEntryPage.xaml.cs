@@ -26,9 +26,10 @@ namespace CardiTrack.Mobile;
 [QueryProperty(nameof(MemberId), "memberId")]
 [QueryProperty(nameof(Date), "date")]
 [QueryProperty(nameof(MemberName), "name")]
-public partial class DaybookEntryPage : ContentPage
+[QueryProperty(nameof(Cadence), "cadence")]
+public partial class JournalEntryPage : ContentPage
 {
-    public const string Route = "daybookentry";
+    public const string Route = "journalentry";
 
     private readonly ICardiTrackApiClient _api;
     private readonly IPopupService _popups;
@@ -40,7 +41,13 @@ public partial class DaybookEntryPage : ContentPage
     private bool _hasLoadedOnce;
     private bool _headerPersonalised;
 
-    public DaybookEntryPage(ICardiTrackApiClient api, IPopupService popups)
+    /// <summary>
+    /// Which book this entry is. Defaults to the Daybook so a link that predates the cadence
+    /// parameter still opens the series it was written for.
+    /// </summary>
+    private JournalCadence _cadence = JournalCadence.Daybook;
+
+    public JournalEntryPage(ICardiTrackApiClient api, IPopupService popups)
     {
         InitializeComponent();
         _api = api;
@@ -55,8 +62,25 @@ public partial class DaybookEntryPage : ContentPage
     }
 
     /// <summary>
-    /// The member's first name, passed by the list so the header can say whose daybook this is
-    /// from the first frame. Optional: a deep link without it keeps the bare "Daybook" until the
+    /// Which book to read. Set before <see cref="MemberName"/> matters, since the header names the
+    /// book — Shell applies query properties in declaration order, and the cadence is declared
+    /// last so it must not be what the header waits on. Re-applying the name after it lands keeps
+    /// the two independent of that order.
+    /// </summary>
+    public string Cadence
+    {
+        set
+        {
+            _cadence = JournalCadenceExtensions.ParseCadence(Uri.UnescapeDataString(value ?? string.Empty));
+            HeaderTitle.Text = _headerPersonalised && _memberFirstName is { } name
+                ? $"{name}'s {_cadence.EntryName()}"
+                : _cadence.EntryName();
+        }
+    }
+
+    /// <summary>
+    /// The member's first name, passed by the list so the header can say whose entry this is
+    /// from the first frame. Optional: a deep link without it keeps the bare book name until the
     /// member fetch supplies the name.
     /// </summary>
     public string MemberName
@@ -64,12 +88,15 @@ public partial class DaybookEntryPage : ContentPage
         set => ApplyHeaderName(Uri.UnescapeDataString(value ?? string.Empty));
     }
 
+    private string? _memberFirstName;
+
     private void ApplyHeaderName(string? firstName)
     {
         if (string.IsNullOrWhiteSpace(firstName))
             return;
 
-        HeaderTitle.Text = $"{firstName}'s Daybook";
+        _memberFirstName = firstName;
+        HeaderTitle.Text = $"{firstName}'s {_cadence.EntryName()}";
         _headerPersonalised = true;
     }
 
@@ -108,7 +135,7 @@ public partial class DaybookEntryPage : ContentPage
     private void OnRetryClicked(object? sender, EventArgs e) => _ = LoadAsync();
 
     private async void OnBackTapped(object? sender, TappedEventArgs e) =>
-        await this.GoBackAsync(AppShell.DaybookRoute);
+        await this.GoBackAsync(AppShell.JournalRoute);
 
     private async Task LoadAsync()
     {
@@ -124,7 +151,7 @@ public partial class DaybookEntryPage : ContentPage
             // The review is the page; the member detail is the charts. Sequential rather than
             // parallel so a failure has one story — and the charts degrade to absent rather than
             // costing the caregiver the review they came for.
-            var review = await _api.GetDaybookAsync(_memberId, _date);
+            var review = await _api.GetJournalEntryAsync(_memberId, _cadence, _date);
             Apply(review);
 
             try
@@ -151,7 +178,7 @@ public partial class DaybookEntryPage : ContentPage
             if (!_hasLoadedOnce)
             {
                 ErrorDetailLabel.Text = ex.IsNotFound
-                    ? "No Daybook entry was written for this day."
+                    ? $"No {_cadence.EntryName()} was written for this {(_cadence == JournalCadence.Weekbook ? "week" : "day")}."
                     : ex.Message;
                 SetState(error: true);
             }
@@ -169,9 +196,12 @@ public partial class DaybookEntryPage : ContentPage
 
     private void Apply(DigestResponse review)
     {
-        DayLabel.Text = DaybookPresentation.DayLabel(review.LocalDate);
+        DayLabel.Text = JournalPresentation.PeriodLabel(_cadence, review.LocalDate);
+        // Entries written before headlines existed have none, and the page titles itself in that
+        // case — at its own cadence, or a Weekbook opened from the Weeks list would announce
+        // itself as a day.
         HeadlineLabel.Text = string.IsNullOrWhiteSpace(review.Headline)
-            ? "The day in full"
+            ? (_cadence == JournalCadence.Weekbook ? "The week in full" : "The day in full")
             : review.Headline;
         TextLabel.Text = review.Text;
 
@@ -179,7 +209,7 @@ public partial class DaybookEntryPage : ContentPage
         // tiles wear. White when the model returned no urgency, so the card simply has no rail
         // rather than a grey one implying a tier nobody judged.
         EntryRail.BackgroundColor =
-            DaybookPresentation.UrgencyRailColor(review.Urgency) ?? Tinted("White");
+            JournalPresentation.UrgencyRailColor(review.Urgency) ?? Tinted("White");
 
         var hasSuggestion = !string.IsNullOrWhiteSpace(review.Suggestion);
         SuggestionDivider.IsVisible = hasSuggestion;
@@ -210,12 +240,18 @@ public partial class DaybookEntryPage : ContentPage
             return;
         }
 
-        // The title names the window's end — the entry's own day, said the way the header says
-        // it — because the fortnight ends there whatever the calendar has done since.
-        var dayLabel = DaybookPresentation.DayLabel(_date);
-        TrendsTitle.Text = "The 14 days up to " + (dayLabel is "Today" or "Yesterday"
-            ? dayLabel.ToLowerInvariant()
-            : dayLabel);
+        // The title names the window's end — the entry's own last day, said the way the header
+        // says it — because the fortnight ends there whatever the calendar has done since.
+        //
+        // On a Weekbook that window is exactly this week and the one before it, since the entry is
+        // dated by its week's last day: the fortnight the Daybook uses for context happens to be
+        // the week-against-last-week comparison a week's account wants, at no extra cost.
+        var dayLabel = JournalPresentation.DayLabel(_date);
+        var endLabel = dayLabel is "Today" or "Yesterday" ? dayLabel.ToLowerInvariant() : dayLabel;
+
+        TrendsTitle.Text = _cadence == JournalCadence.Weekbook
+            ? $"This week and the one before, to {endLabel}"
+            : $"The 14 days up to {endLabel}";
 
         // Every metric the dashboard series carries, each against whatever yardsticks it
         // honestly has: the member's own usual where one is learned, and the published band where

@@ -62,7 +62,7 @@
                 <Border.GestureRecognizers>
                     <TapGestureRecognizer Tapped="OnDaybookTapped"/>
                 </Border.GestureRecognizers>
-                <Image Source="icon_tab_daybook.svg"
+                <Image Source="icon_tab_journal.svg"
                        WidthRequest="20" HeightRequest="20"
                        HorizontalOptions="Center" VerticalOptions="Center"/>
             </Border>

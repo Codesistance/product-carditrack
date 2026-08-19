@@ -19,7 +19,7 @@
 >
 > **M1-17 is not built** — its entry points show "Coming soon" dialogs in the shipped app.
 >
-> **Nine shipped surfaces have no Figma M1 frame** and need design sync: SignInPage, ForgotPasswordPage, VerifyEmailPage, Onboarding/AccountSetupPage, NotificationsPage, DaybookPage, DaybookEntryPage, and — built from the existing design system by explicit decision rather than by oversight — the QuestionCard on the CardiMember detail page and the Questions & Answers page. See [Shipped Screens Without Figma M1 Frames](#shipped-screens-without-figma-m1-frames). Per project convention, only screens that exist in the Figma file get M1 IDs — no IDs have been invented for these.
+> **Nine shipped surfaces have no Figma M1 frame** and need design sync: SignInPage, ForgotPasswordPage, VerifyEmailPage, Onboarding/AccountSetupPage, NotificationsPage, JournalPage, JournalEntryPage, and — built from the existing design system by explicit decision rather than by oversight — the QuestionCard on the CardiMember detail page and the Questions & Answers page. See [Shipped Screens Without Figma M1 Frames](#shipped-screens-without-figma-m1-frames). Per project convention, only screens that exist in the Figma file get M1 IDs — no IDs have been invented for these.
 >
 > Unbuilt screens below remain documented as design intent, each marked with a status line.
 
@@ -88,8 +88,8 @@ These screens ship in the current app but have **no Figma M1 frame — needs des
 | VerifyEmailPage | Post-signup email verification gate (resend / open mail / checking / error) |
 | Onboarding/AccountSetupPage | "My Family" / "My Organization" account-type choice with conditional Org Name |
 | NotificationsPage | Data-completeness / nudge inbox — reached from the dashboard's "Complete the picture" section ("See all") |
-| DaybookPage | The **Journal** tab (CardiJournal) — Daybook entries newest first, searchable and filterable; a card opens the review's page. Took the Family tab's slot |
-| DaybookEntryPage | One review in full, with the fortnight's source-tagged trend charts and counted awareness lines beneath it |
+| JournalPage | The **Journal** tab (CardiJournal) — a **Days / Weeks** control switches between the Daybook and Weekbook series, newest first, searchable and filterable; a card opens the entry's page. Took the Family tab's slot |
+| JournalEntryPage | One entry in full — Daybook or Weekbook, selected by `?cadence=` — with the fortnight's source-tagged trend charts and counted awareness lines beneath it |
 
 Full specs in [Shipped Screens Without Figma M1 Frames](#shipped-screens-without-figma-m1-frames-1) below.
 
@@ -1224,12 +1224,13 @@ This is the most safety-critical screen in the app. Design for urgency and immed
 
 The following screens exist in the shipped app but have **no Figma M1 frame — needs design sync**. Per project convention, only screens present in the Figma file receive M1 IDs, so no IDs are assigned here.
 
-### DaybookPage
+### JournalPage
 **Status:** Built — no Figma M1 frame, needs design sync. Replaced the Family tab stub.
 **Entry:** Bottom nav, third tab
 **Exit:** → M1-09 Dashboard (back arrow, or the Dashboard tab)
 
-- Gradient header band with back arrow, titled **"CardiJournal"** over "Daybooks of finished days", same treatment as Alerts and Settings
+- Gradient header band with back arrow, titled **"CardiJournal"** over a subtitle that follows the cadence ("Daybooks of finished days" / "Weekbooks of finished weeks"), same treatment as Alerts and Settings
+- **Days / Weeks segmented control** above the filters, in its own row and visible whether or not the member has any entries yet — a caregiver waiting on their first entries is the one who most needs to see that weeks exist. Switching keeps the search and chips (the same question at a different altitude) but resets the "has any entries" flag that gates the filter row, so a member with a year of Daybooks and no Weekbooks does not get a filter panel over an empty list. The in-flight cadence is captured before the fetch, so a fast tap cannot paint one series over the other. **Two segments, not three:** the Monthbook's generator does not exist, and a segment selecting a series nothing writes is an empty list with no honest explanation
 - Pull-to-refresh; **no periodic poll** — a Daybook entry is written once, at 02:00 in the member's own local time, and cannot change afterwards. Refreshes on app resume only
 - **Search and up to three chooser chips** above the list, outside the scroller so narrowing stays reachable while scrolled (the alert chips' reasoning). The member chip appears once the account has more than one CardiMember and filters the whole page to the chosen member; the tab also accepts `?memberId=` — the dashboard's member card and the member detail page's CardiJournal row both deep-link in already filtered, via the origin-remembering tab jump. The search is debounced 350ms and server-side over the whole history; the chips open the app's option popup — urgency (Any / Watch / Check in / Concerning / Act now) and window (All time / 7 / 30 / 90 days). The filter row appears once the member has ever had a review, then stays: hiding it on an empty *filtered* result would take away the one control that undoes the emptiness
 - One card per finished day, newest first, up to a month. Each card carries:
@@ -1238,25 +1239,25 @@ The following screens exist in the shipped app but have **no Figma M1 frame — 
   - the urgency worn as a **left rail** in the status colour — the alert tiles' own construction (coloured rect under a white card inset 4px) — rather than a pill in the heading. **No rail at all** when the model returned no urgency or one this app does not know: a rail is a claim about a member's health, and a grey one would imply the service judged the day and found it unremarkable
   - the review clipped to three lines and a small **Read** button, which **opens the entry's own page** (below) — a navigation, not an expansion: the full account carries the trend charts, which is more than a list row can hold and stay a list
 - **States:** loading (three placeholder cards, so the list does not jump when the real ones arrive) · empty · error with retry · loaded
-- **Two empty states, said apart:** an unfiltered "No Daybook entries yet" over "The first review is written after {Name}'s first full day of readings", and a filtered "No reviews match" over "clear one and look again" — a bare "nothing here" reads as a fault either way. A member-less account gets "Add the person you care about, and their days will be summarised here"
+- **Two empty states, said apart, and worded per cadence:** an unfiltered "No Daybook entries yet" / "No Weekbook entries yet" over "The first entry is written after {Name}'s first full day of readings" — or, for weeks, "The first is written when {Name}'s week turns, and needs most of the week's days to have carried readings", which is honest about the 4-of-7 coverage guard rather than leaving a caregiver to read the absence as a fault, and a filtered "No reviews match" over "clear one and look again" — a bare "nothing here" reads as a fault either way. A member-less account gets "Add the person you care about, and their days will be summarised here"
 - **Error while a list is already on screen** shows a popup over it rather than replacing it with an error panel: the reviews describe finished days and do not go stale, so taking them away costs the caregiver something still worth reading
-- Backed by `GET /api/v1/insights/members/{id}/digests?audience=daybook` with `limit`, `search`, `from` and `urgency`
+- Backed by `GET /api/v1/insights/members/{id}/digests?audience=daybook|weekbook` with `limit`, `search`, `from` and `urgency`
 
-### DaybookEntryPage
+### JournalEntryPage
 **Status:** Built — no Figma M1 frame, needs design sync
-**Entry:** ← DaybookPage ("Read the full day")
-**Exit:** ← DaybookPage (back arrow, or the Journal tab)
+**Entry:** ← JournalPage ("Read the full day")
+**Exit:** ← JournalPage (back arrow, or the Journal tab)
 
 - The entry in full: day, headline, the whole account, "One thing you could do" (the suggestion, hidden when the generation produced none), and when it was written
 - The urgency is the card's **left rail**, the same construction as the list tiles and the alert tiles; no pill
-- **Header names the member** — "Dad's Daybook": the list passes the first name so the header is right from the first frame; a deep link without one falls back to "Daybook" until the member fetch fills it in
+- **Header names the member and the book** — "Dad's Daybook", "Dad's Weekbook": the list passes the first name so the header is right from the first frame; a deep link without one falls back to "Daybook" until the member fetch fills it in
 - **"The last 14 days"** — trend charts for Sleep, Resting heart rate, Blood oxygen, Breathing rate, Steps and Skin temperature, drawn with the same `TrendChart` the alert detail uses: the member's own usual dashed, the published band shaded, per-day markers. Skin temperature carries only the wearer's own nightly baseline (no published band, no counted line); Steps carries only the usual (no body publishes a daily step count)
 - **Every chart's key names its sources**: "Dashed: their usual 4.1 · Shaded: recommended 7–8 (NSF)". The key names only marks the chart actually drew
 - **Up to two counted lines under each chart** (`TrendAwareness`): against the member's own usual — "Under their usual on 10 of the last 14 nights" — and against the published band with its publisher named — "Under the recommended 7h (NSF) on 12 of the last 13 nights" (`BandLine`). Counts, never scores, per the release matrix's standing no-risk-scores decision; every bound comes from `HealthReferenceRanges` so the sentence can never cite a figure the chart does not shade; partial and unmeasured days are on neither side; nothing is said below 7 measured days
 - The charts are deliberately the **current** fortnight whatever day the review describes, and the section title says so — the dashboard series always runs to today
 - Footer, always visible with the charts: "For awareness, not medical advice — CardiTrack never diagnoses. Talk to a clinician about anything that worries you."
 - **Edge — charts fetch fails:** the review stands and the trends section hides; a loaded review must not be replaced by an error panel over its garnish. **Edge — no review for the date:** "No review was written for this day"
-- Backed by `GET .../digest?date=YYYY-MM-DD&audience=daybook` + `GET /api/v1/cardimembers/{id}` for the chart series
+- Backed by `GET .../digest?date=YYYY-MM-DD&audience=daybook|weekbook` + `GET /api/v1/cardimembers/{id}` for the chart series. On a Weekbook the date is the week's **last day**, so the existing 14-day window renders as this week against the one before it — the comparison a week's account wants, at no extra cost
 
 ### SignInPage
 **Status:** Built — no Figma M1 frame, needs design sync

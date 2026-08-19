@@ -4,7 +4,7 @@ public enum NavTab
 {
     Dashboard,
     Alerts,
-    Daybook,
+    Journal,
     Settings,
 }
 
@@ -47,7 +47,7 @@ public partial class BottomNavBar : ContentView
 
         Style(DashboardIcon, DashboardLabel, "icon_tab_home", Tab == NavTab.Dashboard);
         Style(AlertsIcon, AlertsLabel, "icon_tab_alerts", Tab == NavTab.Alerts);
-        Style(DaybookIcon, DaybookLabel, "icon_tab_daybook", Tab == NavTab.Daybook);
+        Style(JournalIcon, JournalLabel, "icon_tab_journal", Tab == NavTab.Journal);
         Style(SettingsIcon, SettingsLabel, "icon_tab_settings", Tab == NavTab.Settings);
 
         void Style(Image icon, Label label, string iconStem, bool isSelected)
@@ -75,7 +75,7 @@ public partial class BottomNavBar : ContentView
 
     private void OnAlertsTapped(object? sender, TappedEventArgs e) => GoTo(NavTab.Alerts, AppShell.AlertsRoute);
 
-    private void OnSummariesTapped(object? sender, TappedEventArgs e) => GoTo(NavTab.Daybook, AppShell.DaybookRoute);
+    private void OnSummariesTapped(object? sender, TappedEventArgs e) => GoTo(NavTab.Journal, AppShell.JournalRoute);
 
     private void OnSettingsTapped(object? sender, TappedEventArgs e) => GoTo(NavTab.Settings, AppShell.SettingsRoute);
 
