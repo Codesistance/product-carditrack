@@ -197,8 +197,11 @@ public partial class JournalEntryPage : ContentPage
     private void Apply(DigestResponse review)
     {
         DayLabel.Text = JournalPresentation.PeriodLabel(_cadence, review.LocalDate);
+        // Entries written before headlines existed have none, and the page titles itself in that
+        // case — at its own cadence, or a Weekbook opened from the Weeks list would announce
+        // itself as a day.
         HeadlineLabel.Text = string.IsNullOrWhiteSpace(review.Headline)
-            ? "The day in full"
+            ? (_cadence == JournalCadence.Weekbook ? "The week in full" : "The day in full")
             : review.Headline;
         TextLabel.Text = review.Text;
 

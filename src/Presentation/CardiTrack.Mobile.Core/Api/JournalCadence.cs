@@ -5,7 +5,7 @@ namespace CardiTrack.Mobile.Core.Api;
 /// </summary>
 /// <remarks>
 /// The app's own name for a series, kept separate from the wire token so a screen switching
-/// cadence never has to hold a magic string. <see cref="Monthbook"/> is deliberately absent: its
+/// cadence never has to hold a magic string. A <c>Monthbook</c> value is deliberately absent: its
 /// generator does not exist yet, and a cadence the app can select but nothing writes would be an
 /// empty tab with no explanation. It arrives with the Monthbook itself.
 /// </remarks>

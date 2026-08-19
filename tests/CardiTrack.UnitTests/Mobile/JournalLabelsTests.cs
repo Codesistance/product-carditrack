@@ -1,3 +1,4 @@
+using System.Globalization;
 using CardiTrack.Mobile.Core.Api;
 using CardiTrack.Mobile.Core.Journal;
 
@@ -8,8 +9,21 @@ namespace CardiTrack.UnitTests.Mobile;
 /// says it; a Weekbook names both ends of its span, because its date is the week's last day and a
 /// caregiver should not have to do the arithmetic to know which week they are reading.
 /// </summary>
-public class JournalLabelsTests
+/// <remarks>
+/// The labels format against <see cref="CultureInfo.CurrentCulture"/> on purpose — a caregiver
+/// reading in French should get French weekday names — so these assertions about English wording
+/// only hold under a pinned culture. Set here and restored after, rather than asserting with
+/// <see cref="CultureInfo.InvariantCulture"/>, which would test a formatting path the app never
+/// takes.
+/// </remarks>
+public class JournalLabelsTests : IDisposable
 {
+    private readonly CultureInfo _originalCulture = CultureInfo.CurrentCulture;
+
+    public JournalLabelsTests() => CultureInfo.CurrentCulture = new CultureInfo("en-GB");
+
+    public void Dispose() => CultureInfo.CurrentCulture = _originalCulture;
+
     /// <summary>Monday 10 August 2026.</summary>
     private static readonly DateOnly Today = new(2026, 8, 10);
 
@@ -54,6 +68,23 @@ public class JournalLabelsTests
         Assert.Equal("Mon 3 – Sun 9 August", label);
         Assert.DoesNotContain("Last", label);
         Assert.DoesNotContain("Yesterday", label);
+    }
+
+    // ── Culture ─────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// The English wording above is a property of the pinned culture, not of the labels. A
+    /// caregiver reading in another language gets their own weekday and month names — which is
+    /// why the source formats against CurrentCulture and why these tests pin it rather than
+    /// asserting invariant output.
+    /// </summary>
+    [Fact]
+    public void The_labels_follow_the_readers_culture()
+    {
+        CultureInfo.CurrentCulture = new CultureInfo("fr-FR");
+
+        Assert.Equal("vendredi", JournalLabels.DayLabel(Today.AddDays(-3), Today));
+        Assert.Contains("août", JournalLabels.WeekLabel(new DateOnly(2026, 8, 9)));
     }
 
     // ── Dispatch ────────────────────────────────────────────────────────────
