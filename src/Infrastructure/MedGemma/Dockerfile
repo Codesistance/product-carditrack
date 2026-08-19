@@ -11,6 +11,8 @@ ARG REWRITE_MODEL_TAG
 # before shipping the image, so a resolution mismatch fails the build instead of every runtime
 # call. Both tags are pulled against the same server process rather than one each, since a
 # second `ollama serve` start/stop buys nothing.
+RUN test -n "${MODEL_TAG}" || { echo "FATAL: MODEL_TAG build arg is empty — pass --build-arg MODEL_TAG=<tag>." >&2; exit 1; }
+RUN test -n "${REWRITE_MODEL_TAG}" || { echo "FATAL: REWRITE_MODEL_TAG build arg is empty — pass --build-arg REWRITE_MODEL_TAG=<tag>." >&2; exit 1; }
 RUN ollama serve & SERVER_PID=$! && \
     sleep 5 && \
     for TAG in "${MODEL_TAG}" "${REWRITE_MODEL_TAG}"; do \

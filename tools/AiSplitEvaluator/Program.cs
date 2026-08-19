@@ -31,6 +31,19 @@ var sampleSize = ParseIntOption(args, "--sample-size") ?? 3;
 var scanLimit = ParseIntOption(args, "--scan-limit") ?? 50;
 var showRaw = args.Contains("--raw");
 
+// Zero or negative would make the scan loop below exit on its first check — a silent no-op
+// that reads as "no samples found" rather than the bad input it actually is.
+if (sampleSize <= 0)
+{
+    Console.Error.WriteLine($"--sample-size must be a positive integer (got {sampleSize}).");
+    return 1;
+}
+if (scanLimit <= 0)
+{
+    Console.Error.WriteLine($"--scan-limit must be a positive integer (got {scanLimit}).");
+    return 1;
+}
+
 var builder = Host.CreateApplicationBuilder(args);
 var configuration = builder.Configuration;
 var configLoader = new ConfigurationLoader(configuration);

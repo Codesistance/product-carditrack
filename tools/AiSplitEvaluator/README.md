@@ -69,7 +69,7 @@ dev Cloud Run MedGemma URL with `AI__Private__UseIdentityToken=true` /
 
 ```bash
 export ConnectionStrings__DefaultConnection='Host=localhost;Port=5432;Database=carditrack;Username=postgres;Password=postgres'
-export Encryption__Key='<the same key the target environment's API/PipelineJobs uses>'
+export Encryption__Key="<the same key the target environment's API/PipelineJobs uses>"
 
 dotnet run --project tools/AiSplitEvaluator -- --sample-size 5 --raw
 ```
