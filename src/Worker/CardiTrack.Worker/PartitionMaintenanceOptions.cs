@@ -21,10 +21,27 @@ public class PartitionMaintenanceOptions
     public int RollupRetentionMonths { get; set; } = 13;
 
     /// <summary>
-    /// Months the `DigestEntries` rows are kept — 3 (≈90 days), the llm_design retention for
-    /// digests. Derived data: regenerable in principle, though the source window ages out first.
+    /// Months the `DigestEntries` rows are kept — 7, covering the longest history window any plan
+    /// sells (Guardian Plus, 180 days) with a month of margin for the partition drop's whole-range
+    /// rule.
     /// </summary>
-    public int DigestRetentionMonths { get; set; } = 3;
+    /// <remarks>
+    /// <para>
+    /// Raised from 3 for the CardiJournal's Monthbook: at 3 months a subscriber sold 180 days of
+    /// history would watch their own monthly entries disappear after about three of them, which
+    /// is a promise the storage was quietly not keeping.
+    /// </para>
+    /// <para>
+    /// One value for every tier, rather than retention per plan. The drop is a whole-partition
+    /// operation keyed on `LocalDate` — it cannot tell one member's rows from another's inside a
+    /// partition — so per-tier retention would mean row-level deletion or per-tier partitions,
+    /// which is a great deal of machinery for a fleet still capped at 100 wearers. The cost of
+    /// the simpler choice is real and is recorded rather than hidden: a Basic subscriber sold
+    /// 30 days of history has their journal entries kept for seven months. Journal text is ~4 KB
+    /// an entry, so this is a data-minimisation question, not a storage one — see the DPIA.
+    /// </para>
+    /// </remarks>
+    public int DigestRetentionMonths { get; set; } = 7;
 
     /// <summary>
     /// Days the `RealtimeAssessments` rows are kept — 90, the llm_design retention for

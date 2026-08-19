@@ -51,7 +51,7 @@ Table names are **not** always the entity name — the questionnaire entity live
 | 5 | `Alerts` | Includes acknowledged and resolved rows |
 | 6 | `PatternBaselines` | Append-only, roughly 1,825 rows per member per year |
 | 7 | `RealtimeAssessments` | Partition-dropped at 90 days, but do not wait for it |
-| 8 | `DigestEntries` | Digests **and Daybook entries** — partition-dropped at 90 days |
+| 8 | `DigestEntries` | Digests **and CardiJournal entries** (Daybook, Weekbook) — partition-dropped at **7 months** |
 | 9 | `EnvironmentalReadings` | Feature is inert, so normally empty — check anyway |
 | 10 | `GranularMetricHours` | Minute-grain; partition-dropped at 90 days |
 | 11 | `MetricRollupsHourly` | Hour-grain; partition-dropped at 13 months |
