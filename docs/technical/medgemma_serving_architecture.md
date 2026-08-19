@@ -15,7 +15,7 @@ Read off the live service on 2026-08-19:
 | Setting | Value | Source |
 |---|---|---|
 | CPU / memory | 4 vCPU / 16 GiB, `cpu_idle = false` | Terraform + live revision |
-| Scaling | `min = 1`, `max = 1` | `medgemma_max_instances`, default 1 |
+| Scaling | `min = 1`, `max = 1` | `max` from `medgemma_max_instances` (default 1); `min` from `medgemma_min_instances`, whose default is **0** and which `environments/dev.tfvars` sets to 1 — the warm instance is a dev-only choice, not the variable's default |
 | Request concurrency | **640** | live revision — Terraform sets none, so this is a platform default, not a considered value |
 | Request timeout | **300s** | live revision — identical to the client's `PrivateAiSettings.TimeoutSeconds` |
 | Container image | unchanged since 2026-08-10 (same digest) | revision list |
@@ -102,7 +102,7 @@ Six call sites, three triggers. Everything below the line is per **CardiMember**
 
 Note what the two triggers do to the digest column: `GenerateDueDigestsAsync` is called by **both** the `*/30` digest job and the `*/5` assess job, so it is *attempted* 336 times a day and the per-member 1-hour interval is the only thing standing between that and 336 calls.
 
-**The observed rate does not reconcile with the ceiling.** Three members against a ceiling of ~23 each is ~69 calls/day; the service actually took **435**. Retries account for part of it — a failed call was three attempts — and the Weekbook and Monthbook passes were added on 08-18/08-19 and would have backfilled prior periods on first run. Neither has been confirmed as the full explanation, and until it is, no cadence change should be assumed to have the effect its interval implies (OI-6).
+**The observed rate does not reconcile with the ceiling.** Three members against a ceiling of ~23 each is ~69 calls/day; the service actually took **435**. Retries account for part of it — a failed call was three attempts — and the Weekbook and Monthbook passes were added on 08-18/08-19 and would have backfilled prior periods on first run. Neither has been confirmed as the full explanation, and until it is, no cadence change should be assumed to have the effect its interval implies (MS-6).
 
 ## 3. Why this shape is the expensive one
 
@@ -115,7 +115,7 @@ Faster inference removes the reason for the always-warm instance. That is the le
 
 ## 4. Options
 
-Cost figures are **list-price arithmetic, not read off the bill** — the Cloud Billing API is disabled on project `carditrack-490120`, so actual spend could not be verified (§6, OI-1). Treat the ratios as sound and the absolute numbers as ±30%.
+Cost figures are **list-price arithmetic, not read off the bill** — the Cloud Billing API is disabled on project `carditrack-490120`, so actual spend could not be verified (§6, MS-1). Treat the ratios as sound and the absolute numbers as ±30%.
 
 | Option | Region | Est. cost/mo | p50 | 429s | Notes |
 |---|---|---|---|---|---|
@@ -125,7 +125,7 @@ Cost figures are **list-price arithmetic, not read off the bill** — the Cloud 
 | **D. Compute Engine Spot L4** | europe-west2 | ~$170–200 | ~10s | none | Keeps residency; preemptible, adds a VM to run |
 | **E. Cut demand only** | europe-west2 | ~$300–350 | 124s | reduced | No migration; treats the symptom |
 
-**Option B in detail.** Split by who is waiting. Per the measured 24h split, ~95% of calls are background digest regeneration and only ~13/day are the caregiver-facing Dashboard status line. Move the background work to a **Cloud Run Job with one L4**, triggered on a schedule, processing all due members within one instance lifetime; serve the Dashboard line from the last batch output rather than generating inside the request. Billed GPU time falls to roughly 3,400 s/day against 86,400 s/day today — the same container and the same GGUF, with `--gpu 1`.
+**Option B in detail.** Split by who is waiting. Per the measured 24h split, ~95% of calls are background digest regeneration and only ~13/day are the caregiver-facing Dashboard status line. Move the background work to a **Cloud Run Job with one L4**, triggered on a schedule, processing all due members within one instance lifetime; serve the Dashboard line from the last batch output rather than generating inside the request. Billed GPU time falls to roughly 3,400 s/day against 86,400 s/day today, running the same container and the same GGUF with one L4 attached (a Cloud Run deploy-time setting — `--gpu`/`--gpu-type` on `gcloud run deploy`, or the equivalent Terraform block; nothing about the Ollama invocation changes).
 
 ### The region constraint
 
@@ -150,25 +150,27 @@ This is a compliance decision, not only a cost one. The DPIA pins hosting to `eu
 | Raise `medgemma_max_instances` above 1 | Rejected as the primary fix — multiplies the largest line item on the estate and inherits the "Ollama cannot safely multi-instance" concern. It buys capacity without addressing why a call costs 124s. |
 | Drop to 2 vCPU / 8 GiB | Already refuted by measurement: 7.2 GiB p99 with a 9 GiB peak would OOM, and >8 GiB requires 4 vCPU regardless. |
 | `min_instances = 0` on the current CPU service | Refuted at today's arrival rate — roughly one call every five minutes leaves no idle window, so it lands near the same 86,400 s/day while adding cold-start latency to the caregiver path. Becomes viable *only* once inference is fast enough to create idle windows, which is what a GPU does. |
-| Swap Ollama for vLLM | Deferred, not rejected — and the case for it is **stronger** than `llm_design.md` assumed. Sampled completion logs show a median of **513 input tokens against 18 output tokens**: this workload is almost entirely prompt evaluation, not generation. That is precisely what `--enable-prefix-caching` eliminates, and precisely what llama.cpp cannot avoid under Gemma 3's sliding-window attention (`cached n_tokens = 0` on every generation). Against a shared fixed instruction block, the saving is on the dominant cost, not a marginal one. Two caveats: the sample is 8 short calls (OI-3), and vLLM needs HuggingFace weights under Health AI Developer Foundations terms — a licensing dependency, not a container swap. vLLM is also a GPU-only proposition; it is not an improvement on CPU. Sequence it after the compute move, not instead of it. |
+| Swap Ollama for vLLM | Deferred, not rejected — and the case for it is **stronger** than `llm_design.md` assumed. Sampled completion logs show a median of **513 input tokens against 18 output tokens**: this workload is almost entirely prompt evaluation, not generation. That is precisely what `--enable-prefix-caching` eliminates, and precisely what llama.cpp cannot avoid under Gemma 3's sliding-window attention (`cached n_tokens = 0` on every generation). Against a shared fixed instruction block, the saving is on the dominant cost, not a marginal one. Two caveats: the sample is 8 short calls (MS-3), and vLLM needs HuggingFace weights under Health AI Developer Foundations terms — a licensing dependency, not a container swap. vLLM is also a GPU-only proposition; it is not an improvement on CPU. Sequence it after the compute move, not instead of it. |
 | A smaller or more aggressively quantised model | Excluded by standing decision: dev runs the real model so that an assessment made in dev means something. |
 | Vertex AI online endpoint | Rejected — always-on GPU billing, strictly worse than any batched option here. |
 
 ## 6. Open items
 
+Numbered `MS-n` rather than `OI-n`: the DPIA maintains its own `OI-n` sequence, and MS-2 below feeds DPIA OI-5. Any `OI-n` reference in this document means the DPIA's.
+
 | ID | Item | Owner |
 |---|---|---|
-| OI-1 | **Cloud Billing API is disabled** on `carditrack-490120`, so no option in §4 is priced against actual spend. Enable it (read-only use) and re-cost before committing. | Owner |
-| OI-2 | Residency decision: is moving MedGemma inference to `europe-west1`/`europe-west4` acceptable (option B), or must it stay in `europe-west2` (options C/D)? Feeds DPIA OI-5. | Owner + DPIA |
-| OI-3 | The ~10s GPU p50 in §4 is an estimate from model size and quantisation, not a benchmark, and the 513-in/18-out token shape in §5 rests on **8 sampled calls** — biased toward short ones, because most hosts log the completion line below their ship level. Raise `Serilog__MinimumLevel__Default` on `pipeline-jobs` in dev for a day to get a real per-operation prompt/latency breakdown, then benchmark one batch on an L4. Both the GPU cost model and the vLLM case depend on this. | Engineering |
-| OI-4 | Set `max_instance_request_concurrency` explicitly whatever else is decided. 640 on a single-instance inference service is a platform default nobody chose. | Engineering |
-| OI-5 | The Cloud Run request timeout (300s) equals the client's `HttpClient.Timeout`, so client and server give up simultaneously and the loser is arbitrary. Separate them. | Engineering |
-| OI-6 | Observed call volume (435/day) is ~6× the ceiling the per-member gates in §2a permit (~69/day). Retries and the new Weekbook/Monthbook backfills are the likely contributors but are unconfirmed. Reconcile before relying on any cadence interval to bound load. | Engineering |
+| MS-1 | **Cloud Billing API is disabled** on `carditrack-490120`, so no option in §4 is priced against actual spend. Enable it (read-only use) and re-cost before committing. | Owner |
+| MS-2 | Residency decision: is moving MedGemma inference to `europe-west1`/`europe-west4` acceptable (option B), or must it stay in `europe-west2` (options C/D)? Feeds DPIA OI-5. | Owner + DPIA |
+| MS-3 | The ~10s GPU p50 in §4 is an estimate from model size and quantisation, not a benchmark, and the 513-in/18-out token shape in §5 rests on **8 sampled calls** — biased toward short ones, because most hosts log the completion line below their ship level. Raise `Serilog__MinimumLevel__Default` on `pipeline-jobs` in dev for a day to get a real per-operation prompt/latency breakdown, then benchmark one batch on an L4. Both the GPU cost model and the vLLM case depend on this. | Engineering |
+| MS-4 | Set `max_instance_request_concurrency` explicitly whatever else is decided. 640 on a single-instance inference service is a platform default nobody chose. | Engineering |
+| MS-5 | The Cloud Run request timeout (300s) equals the client's `HttpClient.Timeout`, so client and server give up simultaneously and the loser is arbitrary. Separate them. | Engineering |
+| MS-6 | Observed call volume (435/day) is ~6× the ceiling the per-member gates in §2a permit (~69/day). Retries and the new Weekbook/Monthbook backfills are the likely contributors but are unconfirmed. Reconcile before relying on any cadence interval to bound load. | Engineering |
 
 ## 7. Recommendation
 
-Do **OI-4 and OI-5 now** — they are small, independent of the compute decision, and remove two configurations nobody chose.
+Do **MS-4 and MS-5 now** — they are small, independent of the compute decision, and remove two configurations nobody chose.
 
-Then resolve OI-2, because it selects the architecture. If inference may leave `europe-west2`, **option B** is materially the best on every axis measured here and should be taken. If it may not, **option C** is the next best and keeps residency intact.
+Then resolve MS-2, because it selects the architecture. If inference may leave `europe-west2`, **option B** is materially the best on every axis measured here and should be taken. If it may not, **option C** is the next best and keeps residency intact.
 
 Do not treat option E as sufficient on its own. Cutting cadence lowers the refusal rate but leaves the estate paying 24h/day for 42% utilisation of the wrong kind of compute, and leaves p50 at two minutes on a path a caregiver waits on.
