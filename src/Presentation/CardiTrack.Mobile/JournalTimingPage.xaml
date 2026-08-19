@@ -39,7 +39,7 @@
 
                 <VerticalStackLayout Grid.Column="1" Spacing="1" VerticalOptions="Start">
                     <Label x:Name="HeaderTitle"
-                           Text="When it's written"
+                           Text="Journal Settings"
                            Style="{StaticResource Heading3}"
                            TextColor="{StaticResource White}"/>
                     <Label x:Name="HeaderSubtitle"

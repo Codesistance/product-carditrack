@@ -495,28 +495,6 @@
                             </Grid>
                         </Border>
 
-                        <!-- When the journal is written. Its own row under the journal rather
-                             than a control inside it: the journal is something you read, and a
-                             time picker over a list of finished days is a setting sitting in a
-                             reading surface. -->
-                        <Border Style="{StaticResource ElevatedCard}" Padding="14,4">
-                            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12" HeightRequest="52"
-                                  SemanticProperties.Description="When their journal is written"
-                                  SemanticProperties.Hint="Choose what time of day each book is written up">
-                                <Grid.GestureRecognizers>
-                                    <TapGestureRecognizer Tapped="OnJournalTimingTapped"/>
-                                </Grid.GestureRecognizers>
-                                <Image Grid.Column="0" Source="icon_tab_journal.svg"
-                                       WidthRequest="22" HeightRequest="22" VerticalOptions="Center"/>
-                                <Label Grid.Column="1"
-                                       Text="When it's written"
-                                       Style="{StaticResource Body1SemiBoldDark}"
-                                       VerticalTextAlignment="Center"/>
-                                <Image Grid.Column="2" Source="icon_chevron.svg"
-                                       WidthRequest="20" HeightRequest="20" VerticalOptions="Center"/>
-                            </Grid>
-                        </Border>
-
                         <!-- Medical information. A way in rather than a drop down, now the same
                              kind of row as Questions & Answers above it and pointing at the same
                              kind of thing: something the family keeps, of no fixed length. As a
@@ -548,7 +526,7 @@
                         <!-- Management / danger zone -->
                         <VerticalStackLayout Spacing="4" Margin="0,10,0,0">
                             <Label Text="Management" Style="{StaticResource DashboardSectionTitle}"/>
-                            <Label Text="Alerts, devices, monitoring and removal"
+                            <Label Text="Alerts, the journal, devices, monitoring and removal"
                                    Style="{StaticResource Body2}"/>
                         </VerticalStackLayout>
 
@@ -558,13 +536,13 @@
                              which is what this group already collects.
 
                              It leads the group. What a caregiver comes to Management to change is
-                             usually what CardiTrack watches for; the three rows under it are a
-                             device they will set up once, a pause they will use rarely, and a
-                             removal they will use never. Ordering by consequence — the harmless
-                             row first, the destructive one last — put the most-used row second
-                             behind the least-used one, which is a tidy rule and the wrong outcome.
-                             Pause and Remove keep their places at the bottom, which is what that
-                             rule was really protecting.
+                             usually what CardiTrack watches for; the four rows under it are the
+                             journal's schedule they will set once, a device they will set up once,
+                             a pause they will use rarely, and a removal they will use never.
+                             Ordering by consequence — the harmless row first, the destructive one
+                             last — put the most-used row behind the least-used ones, which is a
+                             tidy rule and the wrong outcome. Pause and Remove keep their places at
+                             the bottom, which is what that rule was really protecting.
 
                              Still a row that opens in place rather than a page: the switches are
                              the content, there is no reading to do, and a caregiver changing two
@@ -620,6 +598,34 @@
                                     </Border>
                                 </VerticalStackLayout>
                             </VerticalStackLayout>
+                        </Border>
+
+                        <!-- When each book is written. In Management rather than under the
+                             CardiJournal row it used to sit beneath: the journal is something you
+                             read, and this is a setting for how CardiTrack behaves — which is what
+                             this group collects. It follows Alert Rules for the same reason that
+                             one leads: both are what CardiTrack does on its own, and neither
+                             changes anything about the member.
+
+                             Named for the whole setting rather than the one question on the page,
+                             so the row reads as a destination beside Manage Device rather than a
+                             sentence fragment beside it. -->
+                        <Border Style="{StaticResource ElevatedCard}" Padding="14,4">
+                            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12" HeightRequest="52"
+                                  SemanticProperties.Description="Journal Settings"
+                                  SemanticProperties.Hint="Choose what time of day each book is written up">
+                                <Grid.GestureRecognizers>
+                                    <TapGestureRecognizer Tapped="OnJournalTimingTapped"/>
+                                </Grid.GestureRecognizers>
+                                <Image Grid.Column="0" Source="icon_tab_journal.svg"
+                                       WidthRequest="22" HeightRequest="22" VerticalOptions="Center"/>
+                                <Label Grid.Column="1"
+                                       Text="Journal Settings"
+                                       Style="{StaticResource Body1SemiBoldDark}"
+                                       VerticalTextAlignment="Center"/>
+                                <Image Grid.Column="2" Source="icon_chevron.svg"
+                                       WidthRequest="20" HeightRequest="20" VerticalOptions="Center"/>
+                            </Grid>
                         </Border>
 
                         <!-- Manage Device, which used to be one of a pair of outline buttons
