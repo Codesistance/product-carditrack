@@ -54,8 +54,8 @@
                     StrokeThickness="0"
                     BackgroundColor="{StaticResource SelectedOptionBackground}"
                     VerticalOptions="Center"
-                    SemanticProperties.Description="Daybook"
-                    SemanticProperties.Hint="Opens this CardiMember's daybook">
+                    SemanticProperties.Description="CardiJournal"
+                    SemanticProperties.Hint="Opens this CardiMember's CardiJournal">
                 <Border.StrokeShape>
                     <RoundRectangle CornerRadius="18"/>
                 </Border.StrokeShape>

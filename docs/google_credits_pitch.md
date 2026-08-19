@@ -61,7 +61,7 @@ CardiTrack monitors the wearable data elderly users generate every day and appli
 |---|---|---|---|
 | Basic | $7/month | 1 CardiMember, 5 family members, 30-day history, no export | Budget-conscious families |
 | Complete Care | $10/month | 3 CardiMembers, 20 family members, 90-day history, data export | Core offering |
-| Guardian Plus | $15/month | 6 CardiMembers, 180-day history, monthly Daybook, priority support | Larger households |
+| Guardian Plus | $15/month | 6 CardiMembers, 180-day history, the CardiJournal's Monthbook, priority support | Larger households |
 | Enterprise | $5–10/resident/month | Custom | Assisted living facilities |
 
 Annual billing carries a 15% discount. The 30-day free trial provisions the Complete Care tier.

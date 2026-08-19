@@ -21,7 +21,7 @@
             ContentTemplate="{DataTemplate local:AlertsPage}"
             Route="alerts" />
         <ShellContent
-            Title="Daybook"
+            Title="Journal"
             ContentTemplate="{DataTemplate local:DaybookPage}"
             Route="daybook" />
         <ShellContent

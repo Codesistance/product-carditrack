@@ -38,6 +38,7 @@ public partial class DaybookEntryPage : ContentPage
     private bool _isLoading;
     private bool _returningFromPopup;
     private bool _hasLoadedOnce;
+    private bool _headerPersonalised;
 
     public DaybookEntryPage(ICardiTrackApiClient api, IPopupService popups)
     {
@@ -65,8 +66,11 @@ public partial class DaybookEntryPage : ContentPage
 
     private void ApplyHeaderName(string? firstName)
     {
-        if (!string.IsNullOrWhiteSpace(firstName))
-            HeaderTitle.Text = $"{firstName}'s Daybook";
+        if (string.IsNullOrWhiteSpace(firstName))
+            return;
+
+        HeaderTitle.Text = $"{firstName}'s Daybook";
+        _headerPersonalised = true;
     }
 
     public string Date
@@ -126,7 +130,7 @@ public partial class DaybookEntryPage : ContentPage
             try
             {
                 var member = await _api.GetCardiMemberAsync(_memberId);
-                if (HeaderTitle.Text == "Daybook")
+                if (!_headerPersonalised)
                     ApplyHeaderName(NameFormatting.FirstName(member.Name));
                 ApplyTrends(member.Metrics);
             }
@@ -147,7 +151,7 @@ public partial class DaybookEntryPage : ContentPage
             if (!_hasLoadedOnce)
             {
                 ErrorDetailLabel.Text = ex.IsNotFound
-                    ? "No daybook entry was written for this day."
+                    ? "No Daybook entry was written for this day."
                     : ex.Message;
                 SetState(error: true);
             }

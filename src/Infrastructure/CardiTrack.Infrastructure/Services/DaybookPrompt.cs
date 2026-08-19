@@ -33,7 +33,7 @@ namespace CardiTrack.Infrastructure.Services;
 internal static partial class DaybookPrompt
 {
     /// <summary>
-    /// <c>CARDITRACK_DAY_REVIEW_PROMPT</c> — the finished-day account. Fixed prefix, member data
+    /// <c>CARDITRACK_DAYBOOK_PROMPT</c> — the finished-day account. Fixed prefix, member data
     /// always after it, same as the family digest.
     /// </summary>
     /// <remarks>

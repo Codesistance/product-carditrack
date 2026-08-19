@@ -479,15 +479,15 @@
                              preview. -->
                         <Border Style="{StaticResource ElevatedCard}" Padding="14,4">
                             <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12" HeightRequest="52"
-                                  SemanticProperties.Description="Daybook"
-                                  SemanticProperties.Hint="Opens this CardiMember's daybook of finished days">
+                                  SemanticProperties.Description="CardiJournal"
+                                  SemanticProperties.Hint="Opens this CardiMember's CardiJournal of finished days">
                                 <Grid.GestureRecognizers>
                                     <TapGestureRecognizer Tapped="OnDaybookTapped"/>
                                 </Grid.GestureRecognizers>
                                 <Image Grid.Column="0" Source="icon_tab_daybook.svg"
                                        WidthRequest="22" HeightRequest="22" VerticalOptions="Center"/>
                                 <Label Grid.Column="1"
-                                       Text="Daybook"
+                                       Text="CardiJournal"
                                        Style="{StaticResource Body1SemiBoldDark}"
                                        VerticalTextAlignment="Center"/>
                                 <Image Grid.Column="2" Source="icon_chevron.svg"

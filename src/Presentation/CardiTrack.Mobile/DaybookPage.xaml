@@ -50,10 +50,10 @@
                      with the icon. The description is declared after the title, so screen
                      readers announce them in reading order. -->
                 <VerticalStackLayout Grid.Column="1" Spacing="1" VerticalOptions="Start">
-                    <Label Text="Daybook"
+                    <Label Text="CardiJournal"
                        Style="{StaticResource Heading3}"
                        TextColor="{StaticResource White}"/>
-                    <Label Text="Account of finished days"
+                    <Label Text="Daybooks of finished days"
                            FontFamily="Quicksand"
                            FontSize="12"
                            TextColor="{StaticResource White}"
@@ -87,7 +87,7 @@
                            Grid.Column="1"
                            FontFamily="Quicksand"
                            FontSize="14"
-                           Placeholder="Search the daybook entries"
+                           Placeholder="Search the journal"
                            TextColor="{AppThemeBinding Light={StaticResource Gray900}, Dark={StaticResource White}}"
                            PlaceholderColor="{StaticResource Gray500}"
                            ReturnType="Search"
@@ -182,7 +182,7 @@
                         <Border Style="{StaticResource ElevatedCard}">
                             <VerticalStackLayout Spacing="6">
                                 <Label x:Name="EmptyTitleLabel"
-                                       Text="No daybook entries yet"
+                                       Text="No Daybook entries yet"
                                        Style="{StaticResource Body1SemiBoldDark}"/>
                                 <Label x:Name="EmptyDetailLabel"
                                        Style="{StaticResource Body2}"
@@ -194,7 +194,7 @@
                     <VerticalStackLayout x:Name="ErrorPanel" IsVisible="False" Spacing="12">
                         <Border Style="{StaticResource ElevatedCard}">
                             <VerticalStackLayout Spacing="6">
-                                <Label Text="Couldn't load the daybook"
+                                <Label Text="Couldn't load the journal"
                                        Style="{StaticResource Body1SemiBoldDark}"/>
                                 <Label x:Name="ErrorDetailLabel"
                                        Style="{StaticResource Body2}"

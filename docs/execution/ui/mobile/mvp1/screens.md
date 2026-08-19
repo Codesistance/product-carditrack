@@ -184,13 +184,13 @@ Push notification (any time) ─────────────────
 │          Content Area              │
 │                                    │
 ├──────────┬──────────┬────────┬────────┤
-│ Dashboard│  Alerts  │Daybook │Settings│
+│ Dashboard│  Alerts  │Journal │Settings│
 └──────────┴──────────┴────────┴────────┘
 ```
 
 - Badge count on Alerts tab for unread alerts
-- **The third tab is Daybook, not Family.** The Family tab held a "coming soon" stub for invitations that are R3 work; `FamilyPage` is deleted and `DaybookPage` (daybook entries) took the slot. When family sharing lands it belongs under Settings or scoped to a member, not back in the bar
-- As built, the Shell defines a **TabBar only** (Dashboard / Alerts / Daybook / Settings, SVG icons). Alerts opens the real M1-10 list; Daybook lists the entries; Settings is minimal (account card, "More settings (M2-01) coming soon", Sign out). Onboarding pages hide the tab bar via `Shell.TabBarIsVisible=False`.
+- **The third tab is the Journal (CardiJournal), not Family.** The Family tab held a "coming soon" stub for invitations that are R3 work; `FamilyPage` is deleted and `DaybookPage` (the CardiJournal, listing Daybook entries) took the slot. When family sharing lands it belongs under Settings or scoped to a member, not back in the bar
+- As built, the Shell defines a **TabBar only** (Dashboard / Alerts / Journal / Settings, SVG icons). Alerts opens the real M1-10 list; the Journal lists the Daybook entries; Settings is minimal (account card, "More settings (M2-01) coming soon", Sign out). Onboarding pages hide the tab bar via `Shell.TabBarIsVisible=False`.
 
 ### Flyout Menu
 

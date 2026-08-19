@@ -466,13 +466,20 @@ Before a member has any `PatternBaseline` there is no normal to compare against,
 
 From about the first week, a **provisional** 7- or 14-day baseline exists before the 30-day one does. `CARDITRACK_PROVISIONAL_PROMPT` sits between the two framings: there is an early picture to compare against, so a comparison is an impression, not an established pattern, and a short window is not treated as settled. Sample hedges are not listed. The response carries `isProvisional`, again mirroring the dashboard. Provisional baselines colour dashboards and soften insight phrasing only — **they never feed alert thresholds** (see [alerts.md](./execution/backend/api/alerts.md)).
 
-### The Daybook (built today)
+### The CardiJournal — the Daybook (built today)
+
+The **CardiJournal** is the umbrella: the mobile tab, and the surface a tier buys more of. Inside it
+sit cadence-named entries — the **Daybook** (one finished day, built today), and the **Weekbook** and
+**Monthbook** (R2, sold and unbuilt; see [release_matrix.md](./release_matrix.md)). Each book is a
+raw reassessment of its own period, written from that period's measurements — a Weekbook is not a
+digest of seven Daybooks, so no imprecision propagates upward and a book still gets written for a
+period whose lower books were skipped or discarded.
 
 `CARDITRACK_DAYBOOK_PROMPT` — the account of one **finished** day, written once and never
 recomputed. Everything else on this platform describes a day still in progress and is rewritten as
 it moves; the Daybook is the opposite, and the difference drives every design choice below. It is
 a **separate series** from the rolling family digest: the digest stays on member detail answering
-"how are they doing right now", the Daybook is the finished-day record the Daybook tab lists.
+"how are they doing right now", the Daybook is the finished-day record the Journal tab lists.
 
 - **Storage.** `DigestAudience.Daybook`, alongside `Family` in the same partitioned
   `DigestEntries` table. The audience is part of the composite key and is persisted as its name,

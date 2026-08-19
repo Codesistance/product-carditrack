@@ -159,7 +159,7 @@ List all available subscription plans with feature comparison. Used to render th
 }
 ```
 
-> **Guardian Plus is now a consumer tier.** It was previously specified as a post-MVP business tier and was absent from this catalog; the published pricing page sells it to families alongside Basic and Complete Care, so it belongs here. Its differentiators over Complete Care are the member limit, the monthly Daybook, priority support and the longer history window.
+> **Guardian Plus is now a consumer tier.** It was previously specified as a post-MVP business tier and was absent from this catalog; the published pricing page sells it to families alongside Basic and Complete Care, so it belongs here. Its differentiators over Complete Care are the member limit, the CardiJournal's monthly Monthbook, priority support and the longer history window.
 
 ---
 

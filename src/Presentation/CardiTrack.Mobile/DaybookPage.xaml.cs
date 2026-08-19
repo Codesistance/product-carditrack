@@ -201,7 +201,7 @@ public partial class DaybookPage : ContentPage
             .Select(m => NameFormatting.FirstName(m.Name) ?? "Unnamed")
             .ToArray();
 
-        var choice = await _popups.ChooseAsync("Whose daybook", "Cancel", options);
+        var choice = await _popups.ChooseAsync("Whose journal", "Cancel", options);
         if (choice is null)
             return;
 
@@ -296,7 +296,7 @@ public partial class DaybookPage : ContentPage
                     var who = string.IsNullOrWhiteSpace(_memberFirstName)
                         ? "their"
                         : $"{_memberFirstName}'s";
-                    EmptyTitleLabel.Text = "No daybook entries yet";
+                    EmptyTitleLabel.Text = "No Daybook entries yet";
                     EmptyDetailLabel.Text =
                         $"The first entry is written after {who} first full day of readings.";
                 }
