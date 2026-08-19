@@ -306,9 +306,9 @@ public partial class DaybookEntryPage : ContentPage
         {
             RowDefinitions = [new RowDefinition(GridLength.Star), new RowDefinition(GridLength.Star)],
         };
-        var maxLabel = AxisLabel(string.Format(axisFormat, (decimal)scale.Max));
+        var maxLabel = AxisLabel(string.Format(axisFormat, scale.Max));
         maxLabel.VerticalOptions = LayoutOptions.Start;
-        var minLabel = AxisLabel(string.Format(axisFormat, (decimal)scale.Min));
+        var minLabel = AxisLabel(string.Format(axisFormat, scale.Min));
         minLabel.VerticalOptions = LayoutOptions.End;
         axis.Add(maxLabel);
         axis.Add(minLabel, 0, 1);
