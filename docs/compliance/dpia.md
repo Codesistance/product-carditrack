@@ -15,6 +15,7 @@
 | Changes since 0.6 (2026-08-14) | SSA eigen-decomposition moved from homemade Jacobi in Application to Math.NET Numerics symmetric EVD in Infrastructure (`SsaParameters.Engine = "MathNet.Numerics.Evd"`). In-process MIT library — **not a processor** (no data leaves the job). A10 notes that mean/σ baselines are outlier-sensitive; §13 now names numerical-engine / alerting-formula changes as a review trigger. See [mathnet_numerics.md](../technical/mathnet_numerics.md). |
 | Changes since 0.7 (2026-08-14) | Median and unscaled MAD persisted on `PatternBaseline` alongside mean/σ (additive; live R1 still uses the mean). `RealtimeAssessment.SsaEngine` stamped. Algorithm card and `/privacy` “how alerting works” shipped. Art. 22 V2 still unexecuted (needs stored assessments). See [mathnet_numerics.md](../technical/mathnet_numerics.md) increments 1–2 and [alerting_algorithm_card.md](alerting_algorithm_card.md). |
 | Changes since 0.8 (2026-08-14) | Digest retention **90 days** (was 12 months). Chat no longer sends the member GUID to Gemini (A4). Questionnaires row renumbered **A19** (was a duplicate A12 colliding with webhooks); standing vs momentary, gap-backed 12-hour ceiling, uniqueness. Audit logging is **eight** controllers + 15-minute GET coalescing. Battery freshness **12 h**, three-tier `DEVICE_BATTERY_LOW`. |
+| Changes since 0.9 (2026-08-19) | **Digest/journal retention raised to 7 months** (was 90 days) so the CardiJournal's Monthbook can serve the 180-day history Guardian Plus sells — see §6.3 and the new open item **OI-14** on the minimisation trade-off this makes. `DigestEntries` now carries three audiences (family, daybook, weekbook). |
 | Accountable owner | Moses Arigbede (founder/lead) |
 | Data Protection Officer | **Not appointed — open item OI-1.** Large-scale processing of special-category health data likely makes a DPO mandatory (EU/UK GDPR Art. 37(1)(c)). |
 | Legal regimes assessed | EU GDPR, UK GDPR, US state health-privacy laws (CCPA/CPRA; Washington My Health My Data Act) |
@@ -217,7 +218,7 @@ The hard problem: **the data subject may not be the consenting party.** The defa
 
 ### 6.3 Retention `[DECISION REQUIRED — OI-8]`
 
-Retention **is enforced in code for the partitioned time-series tables** — granular series 90 days, hourly rollups 13 months, **digests 90 days**, real-time assessments 90 days, environmental readings 90 days, all by hourly partition drop (`PartitionMaintenanceWorker`). **Nothing else has a purge path** — no purge exists for the transactional entities (members, activity logs, baselines, alerts, audit logs). Documented statements conflict. The table below records every conflict with a **proposed** value for sign-off; no value here is adopted policy yet.
+Retention **is enforced in code for the partitioned time-series tables** — granular series 90 days, hourly rollups 13 months, **digests and journal entries 7 months**, real-time assessments 90 days, environmental readings 90 days, all by hourly partition drop (`PartitionMaintenanceWorker`). **Nothing else has a purge path** — no purge exists for the transactional entities (members, activity logs, baselines, alerts, audit logs). Documented statements conflict. The table below records every conflict with a **proposed** value for sign-off; no value here is adopted policy yet.
 
 | Data | Documented statements | Proposed for sign-off |
 |---|---|---|
@@ -231,7 +232,8 @@ Retention **is enforced in code for the partitioned time-series tables** — gra
 | Environmental readings (`EnvironmentalReadings`, A16) | **Enforced in code today**: 90 days, partition drop (`PartitionMaintenanceWorker`) | Adopt as built — matches the `RealtimeAssessments` retention it was designed alongside |
 | Cloud Logging / Datadog / GCLB logs | None | 30 days operational logs; define Datadog retention explicitly |
 | DB backups | 7 backups (Terraform) vs 90 days (docs) | Decide and align — OI-8 |
-| AI pipeline stores (built: typed partitioned tables — `GranularMetricHours`, `MetricRollupsHourly`, `DigestEntries`, `RealtimeAssessments`) | **Enforced in code today**: 90d / 13mo / 12mo / 90d by hourly partition drop (`PartitionMaintenanceWorker`) | Adopt as built |
+| AI pipeline stores (built: typed partitioned tables — `GranularMetricHours`, `MetricRollupsHourly`, `DigestEntries`, `RealtimeAssessments`) | **Enforced in code today**: 90d / 13mo / **7mo** / 90d by hourly partition drop (`PartitionMaintenanceWorker`) | Adopt as built |
+| Digests and CardiJournal entries (`DigestEntries`) | **Enforced in code today**: 7 months, partition drop (raised from 3 months on 2026-08-19) | Adopt as built, **with OI-14 recorded**: 7 months is the longest history window any plan sells (Guardian Plus, 180 days) plus margin, applied uniformly. A Basic subscriber is sold 30 days of history and has their entries kept for seven. Purpose-limited retention would be per-tier; the drop is a whole-partition operation on `LocalDate` and cannot distinguish members inside a partition, so per-tier retention needs row-level deletion or per-tier partitions. Deliberate, and revisited when the RetentionWorker lands or the wearer cap lifts |
 
 The docs' "no hard deletions to preserve audit trail" policy is **irreconcilable with Art. 17 erasure** as an absolute rule and must be narrowed to the audit log itself.
 
@@ -360,6 +362,7 @@ With P0+P1 complete and OI-7 (consent architecture) resolved, residual risk for 
 | OI-8 | Adopt retention schedule (§6.3 proposals) | Owner |
 | OI-9 | US launch scope (CPRA/MHMD obligations) | Owner |
 | OI-10 | Interim containment for current test users (§9) | Owner |
+| OI-14 | **Uniform 7-month journal retention over-retains for lower tiers.** `DigestEntries` is kept 7 months for every member so the Monthbook can serve the 180 days Guardian Plus sells; Basic is sold 30 days. Purpose limitation (Art. 5(1)(e)) argues for per-tier retention, which the whole-partition drop cannot express today. Decide whether to accept, or to schedule row-level retention with the RetentionWorker | Owner |
 
 ## 13. Review triggers
 
