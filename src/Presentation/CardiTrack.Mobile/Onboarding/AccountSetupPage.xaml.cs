@@ -3,6 +3,7 @@ using CardiTrack.Domain.Enums;
 using CardiTrack.Mobile.Core.Api;
 using CardiTrack.Mobile.Core.Auth;
 using CardiTrack.Mobile.Services;
+using Microsoft.Extensions.Logging;
 
 namespace CardiTrack.Mobile.Onboarding;
 
@@ -18,6 +19,7 @@ public partial class AccountSetupPage : ContentPage
     private readonly ICardiTrackApiClient _api;
     private readonly IAuthService _authService;
     private readonly PostLoginRouter _router;
+    private readonly ILogger<AccountSetupPage> _logger;
 
     private bool _running;
 
@@ -27,6 +29,7 @@ public partial class AccountSetupPage : ContentPage
         _api = ServiceHelper.GetRequiredService<ICardiTrackApiClient>();
         _authService = ServiceHelper.GetRequiredService<IAuthService>();
         _router = ServiceHelper.GetRequiredService<PostLoginRouter>();
+        _logger = ServiceHelper.GetRequiredService<ILogger<AccountSetupPage>>();
     }
 
     protected override void OnAppearing()
@@ -78,16 +81,29 @@ public partial class AccountSetupPage : ContentPage
         }
         catch (ApiException ex)
         {
-            SetupSpinner.IsRunning = false;
-            SetupStatus.IsVisible = false;
-            SetupError.Text = ex.Message;
-            SetupError.IsVisible = true;
-            RetryBtn.IsVisible = true;
+            ShowFailure(ex.Message);
+        }
+        catch (Exception ex)
+        {
+            // Started fire-and-forget from OnAppearing, so anything escaping here becomes an
+            // unobserved task exception and leaves the spinner turning with no way out. The
+            // caregiver gets the same retryable state a failed call gets.
+            _logger.LogError(ex, "Setting up the account failed.");
+            ShowFailure("Something went wrong setting up your account.");
         }
         finally
         {
             _running = false;
         }
+    }
+
+    private void ShowFailure(string message)
+    {
+        SetupSpinner.IsRunning = false;
+        SetupStatus.IsVisible = false;
+        SetupError.Text = message;
+        SetupError.IsVisible = true;
+        RetryBtn.IsVisible = true;
     }
 
     private string FamilyOrgName()
