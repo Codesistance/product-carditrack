@@ -14,14 +14,14 @@ namespace CardiTrack.Mobile;
 /// detail is pushed above the Alerts list.
 /// </summary>
 /// <remarks>
-/// The charts draw the <em>current</em> fortnight of finished days whatever day the review
-/// describes — up to yesterday, never today — and the section title says so. Current, because a
-/// chart scoped to an old review's own window would be drawn from data the series no longer
-/// carries; finished, because a daybook reviews whole days and today's point is a running total
-/// that draws a quiet morning as a collapse. The awareness lines count exactly the days the chart
-/// draws, so a caregiver can check every claim against the picture beside it. Counts, never
-/// scores: the release matrix's standing decision is that trend interpretation carries no risk
-/// scores, and the footer states the register plainly.
+/// The charts draw the fortnight ending on the day the review describes, and the section title
+/// names that day. A daybook is a closure summary: days after its day — today's running totals
+/// included — are of no consequence to it and are never drawn. The dashboard series runs a fixed
+/// window back from today, so an entry old enough to have fallen off its reach shows no charts at
+/// all rather than a window quietly shifted toward the present. The awareness lines count exactly
+/// the days the chart draws, so a caregiver can check every claim against the picture beside it.
+/// Counts, never scores: the release matrix's standing decision is that trend interpretation
+/// carries no risk scores, and the footer states the register plainly.
 /// </remarks>
 [QueryProperty(nameof(MemberId), "memberId")]
 [QueryProperty(nameof(Date), "date")]
@@ -29,9 +29,6 @@ namespace CardiTrack.Mobile;
 public partial class DaybookEntryPage : ContentPage
 {
     public const string Route = "daybookentry";
-
-    /// <summary>The charts' window and the awareness count's — one number, so they cannot drift.</summary>
-    private const int ChartDays = TrendAwareness.WindowDays;
 
     private readonly ICardiTrackApiClient _api;
     private readonly IPopupService _popups;
@@ -137,6 +134,7 @@ public partial class DaybookEntryPage : ContentPage
             {
                 // The review stands on its own; a charts fetch that failed hides the section
                 // rather than replacing a loaded review with an error panel.
+                TrendsTitle.IsVisible = false;
                 TrendsHost.IsVisible = false;
                 AwarenessFooter.IsVisible = false;
             }
@@ -202,14 +200,18 @@ public partial class DaybookEntryPage : ContentPage
 
         if (metrics is null)
         {
+            TrendsTitle.IsVisible = false;
             TrendsHost.IsVisible = false;
             AwarenessFooter.IsVisible = false;
             return;
         }
 
-        // One "today" for all six blocks: each cuts its window against the reader's current day,
-        // and a render straddling local midnight must not window half the charts a day apart.
-        var today = DateOnly.FromDateTime(DateTime.Now);
+        // The title names the window's end — the entry's own day, said the way the header says
+        // it — because the fortnight ends there whatever the calendar has done since.
+        var dayLabel = DaybookPresentation.DayLabel(_date);
+        TrendsTitle.Text = "The 14 days up to " + (dayLabel is "Today" or "Yesterday"
+            ? dayLabel.ToLowerInvariant()
+            : dayLabel);
 
         // Every metric the dashboard series carries, each against whatever yardsticks it
         // honestly has: the member's own usual where one is learned, and the published band where
@@ -218,21 +220,21 @@ public partial class DaybookEntryPage : ContentPage
         // single concerning direction, so each carries only the lines it has earned.
         var blocks = new[]
         {
-            Block(metrics.Sleep, today, "Sleep", "MetricSleepInk", "{0:0.#}",
+            Block(metrics.Sleep, _date, "Sleep", "MetricSleepInk", "{0:0.#}",
                 TrendAwareness.Direction.BelowUsual, "night",
                 new BandCount(TrendAwareness.Direction.BelowUsual, AgainstLow: true, "h")),
-            Block(metrics.RestingHeartRate, today, "Resting heart rate", "MetricHeartInk", "{0:N0}",
+            Block(metrics.RestingHeartRate, _date, "Resting heart rate", "MetricHeartInk", "{0:N0}",
                 TrendAwareness.Direction.AboveUsual, "day",
                 new BandCount(TrendAwareness.Direction.AboveUsual, AgainstLow: false, " bpm")),
-            Block(metrics.SpO2, today, "Blood oxygen", "MetricSpO2Ink", "{0:0.#}",
+            Block(metrics.SpO2, _date, "Blood oxygen", "MetricSpO2Ink", "{0:0.#}",
                 TrendAwareness.Direction.BelowUsual, "day",
                 new BandCount(TrendAwareness.Direction.BelowUsual, AgainstLow: true, "%")),
-            Block(metrics.BreathingRate, today, "Breathing rate", "MetricBreathingInk", "{0:0.#}",
+            Block(metrics.BreathingRate, _date, "Breathing rate", "MetricBreathingInk", "{0:0.#}",
                 TrendAwareness.Direction.AboveUsual, "day",
                 new BandCount(TrendAwareness.Direction.AboveUsual, AgainstLow: false, "/min")),
-            Block(metrics.Steps, today, "Steps", "MetricStepsInk", "{0:N0}",
+            Block(metrics.Steps, _date, "Steps", "MetricStepsInk", "{0:N0}",
                 TrendAwareness.Direction.BelowUsual, "day", band: null),
-            Block(metrics.Temperature, today, "Skin temperature", "MetricTemperatureInk", "{0:0.#}",
+            Block(metrics.Temperature, _date, "Skin temperature", "MetricTemperatureInk", "{0:0.#}",
                 usualDirection: null, "day", band: null),
         };
 
@@ -243,6 +245,7 @@ public partial class DaybookEntryPage : ContentPage
         }
 
         var any = TrendsHost.Children.Count > 0;
+        TrendsTitle.IsVisible = any;
         TrendsHost.IsVisible = any;
         AwarenessFooter.IsVisible = any;
     }
@@ -257,7 +260,7 @@ public partial class DaybookEntryPage : ContentPage
 
     private static View? Block(
         DashboardMetric metric,
-        DateOnly today,
+        DateOnly reviewedDate,
         string name,
         string inkKey,
         string axisFormat,
@@ -265,10 +268,11 @@ public partial class DaybookEntryPage : ContentPage
         string dayWord,
         BandCount? band)
     {
-        var window = TrendAwareness
-            .ExcludingToday(metric.Series, today)
-            .TakeLast(ChartDays)
-            .ToList();
+        // The entry's own fortnight, or nothing at all: a window the series no longer reaches
+        // back to is an absent chart, never one shifted toward the present.
+        if (TrendAwareness.FortnightEndingOn(metric.Series, reviewedDate) is not { } window)
+            return null;
+
         var values = window.Where(p => p.Value is not null).Select(p => (double)p.Value!).ToList();
         if (values.Count == 0)
             return null;

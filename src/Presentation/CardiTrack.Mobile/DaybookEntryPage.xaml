@@ -141,13 +141,15 @@
                         </Border>
                         </Border>
 
-                        <!-- The trends the review can be read against. Deliberately the CURRENT
-                             fortnight of FINISHED days, whatever day the review describes, and
-                             titled to say so: a chart quietly scoped to an old review's own
-                             window would draw data the series no longer carries, today is a
-                             running total a daybook has no business drawing, and the awareness
-                             lines below count the same days the chart draws. -->
-                        <Label Text="The 14 days up to yesterday"
+                        <!-- The trends the review can be read against: the fortnight ending on
+                             the entry's own day, titled with that day. A daybook is a closure
+                             summary — days after its day, today included, are of no consequence
+                             to it — so an entry the series no longer reaches back to hides this
+                             whole section rather than drawing a window shifted toward the
+                             present. The awareness lines below count the same days the chart
+                             draws. Text is a fallback; ApplyTrends names the actual day. -->
+                        <Label x:Name="TrendsTitle"
+                               Text="The 14 days up to this day"
                                Style="{StaticResource DashboardSectionTitle}"
                                Margin="0,6,0,0"/>
 

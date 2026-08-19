@@ -126,44 +126,60 @@ public class TrendAwarenessTests
     }
 
     /// <summary>
-    /// The daybook window never carries the current day: today's point is a running total the
-    /// dashboard series does not flag as partial, so it is cut by date before the chart or the
-    /// counts ever see it.
+    /// A daybook is a closure summary: its charts end on the day the entry reviews, and days
+    /// after it — today's running total included — are of no consequence and never drawn.
     /// </summary>
     [Fact]
-    public void ExcludingToday_DropsTheCurrentDaysPoint()
+    public void FortnightEndingOn_EndsOnTheReviewedDay_AndDropsEveryDayAfterIt()
     {
-        // Fifteen points ending on Today; the cut keeps the fourteen finished days before it.
-        var series = Series(Enumerable.Range(1, 15).Select(v => (decimal?)v).ToArray());
+        // A 30-point series running to Today, reviewing yesterday: the window is the fortnight
+        // ending yesterday, and today's point is not in it.
+        var series = Series(Enumerable.Range(1, 30).Select(v => (decimal?)v).ToArray());
+        var reviewedDate = Today.AddDays(-1);
 
-        var window = TrendAwareness.ExcludingToday(series, Today);
+        var window = TrendAwareness.FortnightEndingOn(series, reviewedDate);
 
-        Assert.Equal(14, window.Count);
-        Assert.Equal(Today.AddDays(-1), window[^1].Date);
+        Assert.NotNull(window);
+        Assert.Equal(TrendAwareness.WindowDays, window.Count);
+        Assert.Equal(reviewedDate, window[^1].Date);
+        Assert.Equal(reviewedDate.AddDays(-(TrendAwareness.WindowDays - 1)), window[0].Date);
     }
 
     /// <summary>
-    /// Strictly before, not merely not-today: a member a timezone ahead of the reader can have
-    /// already filed a point under the reader's tomorrow, and that day is no more finished for
-    /// the reader than today is.
+    /// An old entry keeps its own fortnight for as long as the series still reaches it — the
+    /// window ends on the reviewed day, not on whatever day the reader opened the entry.
     /// </summary>
     [Fact]
-    public void ExcludingToday_AlsoDropsADayTheReaderHasNotReachedYet()
+    public void FortnightEndingOn_WindowsAnOldEntryToItsOwnDay()
     {
-        var series = Series(1, 2, 3);
-        series.Add(new MetricPoint { Date = Today.AddDays(1), Value = 4 });
+        var series = Series(Enumerable.Range(1, 30).Select(v => (decimal?)v).ToArray());
+        // The oldest entry a 30-day series still fully covers: 16 days back.
+        var reviewedDate = Today.AddDays(-16);
 
-        var window = TrendAwareness.ExcludingToday(series, Today);
+        var window = TrendAwareness.FortnightEndingOn(series, reviewedDate);
 
-        Assert.Equal(2, window.Count);
-        Assert.Equal(Today.AddDays(-1), window[^1].Date);
+        Assert.NotNull(window);
+        Assert.Equal(reviewedDate, window[^1].Date);
     }
 
-    /// <summary>A missing series is an empty window, not a crash on the charts' way out.</summary>
+    /// <summary>
+    /// When the series has moved on past an entry's fortnight, the answer is no window at all —
+    /// a chart truncated at the series' edge would shift the account toward the present, the one
+    /// direction a closed day must not drift.
+    /// </summary>
     [Fact]
-    public void ExcludingToday_TreatsANullSeriesAsEmpty()
+    public void FortnightEndingOn_SaysNothing_WhenTheSeriesNoLongerReachesTheEntry()
     {
-        Assert.Empty(TrendAwareness.ExcludingToday(null, Today));
+        var series = Series(Enumerable.Range(1, 30).Select(v => (decimal?)v).ToArray());
+
+        Assert.Null(TrendAwareness.FortnightEndingOn(series, Today.AddDays(-17)));
+    }
+
+    /// <summary>A missing series is no window, not a crash on the charts' way out.</summary>
+    [Fact]
+    public void FortnightEndingOn_TreatsANullSeriesAsNoWindow()
+    {
+        Assert.Null(TrendAwareness.FortnightEndingOn(null, Today));
     }
 }
 
