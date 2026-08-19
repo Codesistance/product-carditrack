@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text;
 using CardiTrack.Application.Services;
 using CardiTrack.Domain.Entities;
+using CardiTrack.Domain.Enums;
 
 namespace CardiTrack.Infrastructure.Services;
 
@@ -270,10 +271,22 @@ internal static class WeekbookPrompt
     /// The week's monitoring: what fired and what the assessor called, as counts. Counts, never
     /// scores — the standing no-risk-scores decision (release matrix).
     /// </summary>
+    /// <remarks>
+    /// Only <see cref="AlertSeverity.Yellow"/> and above count as observed, the same bar the
+    /// Daybook applies. <c>RealtimeAssessments</c> holds a row for every assessed window,
+    /// including ordinary ones and ones whose severity would not parse — counting those would
+    /// report a calm week as a heavily monitored one, which is the mirror image of the mistake
+    /// the coverage guard exists to prevent: there, silence must not read as health; here,
+    /// routine must not read as concern.
+    /// </remarks>
     internal static string MonitoringSection(
         IReadOnlyList<Alert> alerts, IReadOnlyList<RealtimeAssessment> assessments)
     {
-        if (alerts.Count == 0 && assessments.Count == 0)
+        var notable = assessments
+            .Where(a => a.Severity is { } severity && severity >= AlertSeverity.Yellow)
+            .ToList();
+
+        if (alerts.Count == 0 && notable.Count == 0)
             return string.Empty;
 
         var sb = new StringBuilder();
@@ -306,10 +319,10 @@ internal static class WeekbookPrompt
             }
         }
 
-        if (assessments.Count > 0)
+        if (notable.Count > 0)
         {
-            sb.Append(assessments.Count)
-              .Append(assessments.Count == 1
+            sb.Append(notable.Count)
+              .Append(notable.Count == 1
                   ? " hour was observed as worth noting"
                   : " hours were observed as worth noting")
               .AppendLine(" by the real-time monitoring during the week.");

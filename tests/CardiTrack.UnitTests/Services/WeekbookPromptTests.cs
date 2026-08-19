@@ -170,6 +170,39 @@ public class WeekbookPromptTests
         Assert.Equal(string.Empty, WeekbookPrompt.MonitoringSection([], []));
     }
 
+    /// <summary>
+    /// RealtimeAssessments holds a row for every assessed window. Counting the ordinary ones
+    /// would report a calm week as a heavily monitored one — the mirror of the mistake the
+    /// coverage guard prevents.
+    /// </summary>
+    [Fact]
+    public void Ordinary_assessments_are_not_counted_as_observed()
+    {
+        var assessments = new List<RealtimeAssessment>
+        {
+            new() { Severity = AlertSeverity.Green },
+            new() { Severity = null }, // severity would not parse
+        };
+
+        Assert.Equal(string.Empty, WeekbookPrompt.MonitoringSection([], assessments));
+    }
+
+    [Fact]
+    public void Only_yellow_and_above_are_counted_as_observed()
+    {
+        var assessments = new List<RealtimeAssessment>
+        {
+            new() { Severity = AlertSeverity.Green },
+            new() { Severity = AlertSeverity.Yellow },
+            new() { Severity = AlertSeverity.Red },
+            new() { Severity = null },
+        };
+
+        var section = WeekbookPrompt.MonitoringSection([], assessments);
+
+        Assert.Contains("2 hours were observed as worth noting", section);
+    }
+
     [Fact]
     public void Alerts_are_counted_never_scored()
     {
