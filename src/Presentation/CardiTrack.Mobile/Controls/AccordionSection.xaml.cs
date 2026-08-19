@@ -1,7 +1,7 @@
 ﻿namespace CardiTrack.Mobile.Controls;
 
 /// <summary>
-/// Generic collapsible section — header (title + expand hint + chevron) toggling an arbitrary
+/// Generic collapsible section — header (title + chevron) toggling an arbitrary
 /// body. Used to tuck Key Metrics behind a tap so a CardiMember card stays compact once more than
 /// one can appear on the dashboard.
 /// </summary>
@@ -104,6 +104,7 @@ public partial class AccordionSection : ContentView
     {
         _isAnimating = true;
         IsExpanded = true;
+        SemanticProperties.SetDescription(ChevronIcon, "Collapse");
 
         var width = RootLayout.Width > 0 ? RootLayout.Width : Width;
         var targetHeight = BodyHost.Measure(width, double.PositiveInfinity).Height;
@@ -119,6 +120,7 @@ public partial class AccordionSection : ContentView
     {
         _isAnimating = true;
         IsExpanded = false;
+        SemanticProperties.SetDescription(ChevronIcon, "Expand");
 
         this.AbortAnimation("accordion");
         new Animation(v => BodyClip.HeightRequest = v, BodyClip.Height, 0)
