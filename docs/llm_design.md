@@ -132,7 +132,7 @@ AI outputs are derived data in the **existing Cloud SQL instance** — regenerab
 | `digest_log` | `wearer_user_id`, `date`, `audience` | `digest_text` | **Built as the typed, day-partitioned `DigestEntries` table** (`CardiMemberId`, `LocalDate`, `Audience`, `GeneratedAtUtc` PK; family, daybook and weekbook audiences today) — 7 months by partition drop |
 | *(net-new)* | — | — | **Built as the typed, day-partitioned `EnvironmentalReadings` table** (`CardiMemberId`, `SessionStartUtc` PK; `TemperatureCelsius`, `AirQualityIndex`, `AirQualityCategory` as columns — no latitude/longitude column exists on this table, structurally) — 90 days by partition drop |
 
-Row expiry is a **partition drop performed hourly by `PartitionMaintenanceWorker`** in `CardiTrack.Worker` (digests 90 days, assessments 90 days, environmental readings 90 days) — PostgreSQL has no document TTL, and no other retention job exists.
+Row expiry is a **partition drop performed hourly by `PartitionMaintenanceWorker`** in `CardiTrack.Worker` (digests and CardiJournal entries 7 months, assessments 90 days, environmental readings 90 days) — PostgreSQL has no document TTL, and no other retention job exists.
 
 ---
 
