@@ -1606,8 +1606,9 @@ public partial class DigestGenerationService : IDigestGenerationService
 
         [Description(
             "A five-to-seven-word qualification of the day described above, in sentence case — "
-            + "what kind of day it was, never a generic label like day summary. No full stop, "
-            + "no quotation marks, no name and no {{NAME}}. A label, not a sentence.")]
+            + "what kind of day it was, never a generic label like day summary or day's "
+            + "readings. No full stop, no quotation marks, no name and no {{NAME}}. A label, "
+            + "not a sentence.")]
         public required string Headline { get; init; }
 
         [Description(
