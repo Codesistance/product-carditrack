@@ -20,14 +20,16 @@ public class TrendAwarenessTests
         }).ToList();
 
     [Fact]
-    public void CountsTheDaysBelowTheUsual()
+    public void CountsTheDaysBelowTheUsual_AndCarriesTheUsualsFigureInTheSentence()
     {
-        // 10 of 14 nights under a 420-minute usual; the four at 430-460 are the other side.
+        // 10 of 14 nights under a 420-minute usual; the four at 430-460 are the other side. The
+        // caller hands the usual in with its figure and unit, so the claim stands on its own.
         var series = Series(400, 410, 430, 390, 380, 440, 370, 360, 350, 450, 340, 330, 460, 320);
 
-        var line = TrendAwareness.Line(series, 420, TrendAwareness.Direction.BelowUsual, "night");
+        var line = TrendAwareness.Line(
+            series, 420, TrendAwareness.Direction.BelowUsual, "their usual 7h", "night");
 
-        Assert.Equal("Under their usual on 10 of the last 14 nights", line);
+        Assert.Equal("Under their usual 7h on 10 of the last 14 nights", line);
     }
 
     [Fact]
@@ -35,9 +37,10 @@ public class TrendAwarenessTests
     {
         var series = Series(70, 72, 68, 75, 74, 66, 71);
 
-        var line = TrendAwareness.Line(series, 69, TrendAwareness.Direction.AboveUsual, "day");
+        var line = TrendAwareness.Line(
+            series, 69, TrendAwareness.Direction.AboveUsual, "their usual 69 bpm", "day");
 
-        Assert.Equal("Above their usual on 5 of the last 7 days", line);
+        Assert.Equal("Above their usual 69 bpm on 5 of the last 7 days", line);
     }
 
     /// <summary>No baseline means no claim — a count against an invented usual would be the
@@ -46,7 +49,23 @@ public class TrendAwarenessTests
     public void SaysNothing_WithoutABaseline()
     {
         Assert.Null(TrendAwareness.Line(
-            Series(1, 2, 3, 4, 5, 6, 7), null, TrendAwareness.Direction.BelowUsual, "day"));
+            Series(1, 2, 3, 4, 5, 6, 7), null,
+            TrendAwareness.Direction.BelowUsual, "their usual", "day"));
+    }
+
+    /// <summary>
+    /// A count of zero is the sentence a caregiver most wants to take in at a glance, and "0 of
+    /// the last 14" buries it in arithmetic — so it is said the way a person would say it.
+    /// </summary>
+    [Fact]
+    public void SaysNotOnce_WhenNoDayIsOnTheCountedSide()
+    {
+        var series = Series(70, 72, 68, 75, 74, 66, 71);
+
+        var line = TrendAwareness.Line(
+            series, 80, TrendAwareness.Direction.AboveUsual, "their usual 80 bpm", "day");
+
+        Assert.Equal("Not once above their usual 80 bpm in the last 7 days", line);
     }
 
     /// <summary>
@@ -58,7 +77,8 @@ public class TrendAwarenessTests
     {
         var series = Series(100, null, null, 90, null, 80, null, null, null, 70, null, 60, 50, null);
 
-        Assert.Null(TrendAwareness.Line(series, 95, TrendAwareness.Direction.BelowUsual, "day"));
+        Assert.Null(TrendAwareness.Line(
+            series, 95, TrendAwareness.Direction.BelowUsual, "their usual", "day"));
     }
 
     /// <summary>
@@ -71,10 +91,12 @@ public class TrendAwarenessTests
         var series = Series(500, 510, 520, 490, 480, 470, 460, 450, 440);
         series.Add(new MetricPoint { Date = Today, Value = 12, IsPartial = true });
 
-        var line = TrendAwareness.Line(series, 600, TrendAwareness.Direction.BelowUsual, "day");
+        var line = TrendAwareness.Line(
+            series, 600, TrendAwareness.Direction.BelowUsual, "their usual", "day");
 
-        // Nine finished days counted; the partial tenth is not on either side of the sentence.
-        Assert.Equal("Under their usual on 9 of the last 9 days", line);
+        // Nine finished days counted, all of them under; the partial tenth is not on either side
+        // of the sentence. A full count is said as "every one" rather than "9 of the last 9".
+        Assert.Equal("Under their usual on every one of the last 9 days", line);
     }
 
     /// <summary>
@@ -113,6 +135,21 @@ public class TrendAwarenessTests
         Assert.Equal("Above the recommended 20/min (WHO) on 3 of the last 7 days", line);
     }
 
+    /// <summary>
+    /// The reassuring band count — a heart rate that never crossed the published ceiling — reads
+    /// as the good news it is, not as "0 of the last 14 days".
+    /// </summary>
+    [Fact]
+    public void BandLine_SaysNotOnce_WhenTheBoundWasNeverCrossed()
+    {
+        var series = Series(70, 72, 68, 75, 74, 66, 71);
+
+        var line = TrendAwareness.BandLine(
+            series, 100m, TrendAwareness.Direction.AboveUsual, "the recommended 100 bpm (AHA)", "day");
+
+        Assert.Equal("Not once above the recommended 100 bpm (AHA) in the last 7 days", line);
+    }
+
     /// <summary>Only the chart's own fortnight is counted, however long the series runs.</summary>
     [Fact]
     public void CountsOnlyTheFortnightTheChartDraws()
@@ -120,9 +157,10 @@ public class TrendAwarenessTests
         // 30 days, all under the usual — but only 14 are inside the window.
         var series = Series(Enumerable.Repeat<decimal?>(10, 30).ToArray());
 
-        var line = TrendAwareness.Line(series, 20, TrendAwareness.Direction.BelowUsual, "day");
+        var line = TrendAwareness.Line(
+            series, 20, TrendAwareness.Direction.BelowUsual, "their usual", "day");
 
-        Assert.Equal("Under their usual on 14 of the last 14 days", line);
+        Assert.Equal("Under their usual on every one of the last 14 days", line);
     }
 
     /// <summary>
@@ -191,7 +229,7 @@ public class TrendAwarenessTests
 public class MetricChartKeyTests
 {
     [Fact]
-    public void NamesTheUsualAndTheSourcedBand()
+    public void NamesTheUsualAndTheSourcedBand_EachFigureWithItsUnit()
     {
         var metric = new DashboardMetric
         {
@@ -200,14 +238,14 @@ public class MetricChartKeyTests
         };
 
         Assert.Equal(
-            "Dashed: their usual 68  ·  Shaded: recommended 60–100 (AHA)",
-            MetricChartKey.For(metric, "{0:N0}"));
+            "Dashed: their usual 68 bpm  ·  Shaded: recommended 60–100 bpm (AHA)",
+            MetricChartKey.For(metric, "{0:N0}", " bpm"));
     }
 
     [Fact]
     public void SaysNothing_WhenTheChartHasNeitherMark()
     {
-        Assert.Null(MetricChartKey.For(new DashboardMetric(), "{0:N0}"));
+        Assert.Null(MetricChartKey.For(new DashboardMetric(), "{0:N0}", " bpm"));
     }
 
     [Fact]
@@ -215,6 +253,7 @@ public class MetricChartKeyTests
     {
         var metric = new DashboardMetric { Baseline = 6000 };
 
-        Assert.Equal("Dashed: their usual 6,000", MetricChartKey.For(metric, "{0:N0}"));
+        Assert.Equal(
+            "Dashed: their usual 6,000 steps", MetricChartKey.For(metric, "{0:N0}", " steps"));
     }
 }
