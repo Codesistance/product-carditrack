@@ -53,6 +53,57 @@ Request concurrency of 640 is irrelevant to this: the rejection is the autoscale
 
 The duty cycle explains why there is no headroom: ~290 calls × ~124s ≈ **36,000s of real inference against 86,400s billed** — 42% busy, 100% paid for, and bursty enough that the overlaps are constant.
 
+## 2a. Who calls MedGemma, and how often
+
+Six call sites, three triggers. Everything below the line is per **CardiMember**; dev has three that actively generate.
+
+```
+                    ┌──────────────────────────────────────────────────────┐
+                    │  MedGemma — Ollama, medgemma-1.5-4b-it Q4_K_M        │
+                    │  Cloud Run · 4 vCPU / 16 GiB · CPU · europe-west2    │
+                    │  min = max = 1 · concurrency 640 · timeout 300s      │
+                    └───────────────────────▲──────────────────────────────┘
+                                            │
+                     435 hits/day observed  │  278 × 200   141 × 429   16 × 504
+                                            │
+        ┌───────────────────────────────────┼───────────────────────────────────┐
+        │                                   │                                   │
+┌───────┴────────┐                ┌─────────┴─────────┐              ┌──────────┴─────────┐
+│  REQUEST PATH  │                │   assess  job     │              │   digest  job      │
+│  CardiTrack.API│                │  2-59/5 * * * *   │              │   */30 * * * *     │
+│  on demand     │                │  288 runs/day     │              │   48 runs/day      │
+└───────┬────────┘                └─────────┬─────────┘              └──────────┬─────────┘
+        │                                   │                                   │
+        │                         ┌─────────┴─────────┐          ┌──────┬───────┼───────┬────────┐
+        │                         │                   │          │      │       │       │        │
+        ▼                         ▼                   ▼          ▼      ▼       ▼       ▼        ▼
+  HealthInsight            RealtimeAssessment    GenerateDue   Digest Daybook Weekbook Monthbook
+  Service                  Service               DigestsAsync   :1169  :973    :798     :609
+  :258 alert               :214 assessment       (same as ──────┘
+  :343 baseline            ▲                      digest col.)
+        ▲                  │                            ▲
+        │                  │                            │
+   IDistributedCache   SSA gate:                   ≥1h since last
+   (cache hit is       deviation ≥                 (≥2h early-day),
+    the common case)   SampleJumpScore             night-gated
+```
+
+**Frequency per CardiMember per day** — the ceiling each gate permits:
+
+| Call site | Gate | Per member/day |
+|---|---|---|
+| Digest narrative (`:1169`) | ≥1h since last, ≥2h early-day, night-gated | ≤ 16 |
+| Dashboard status (`:258`, `:343`) | cache miss on a caregiver request | ~ 4 |
+| Assessment (`:214`) | SSA deviation ≥ `SampleJumpScore` (~0.8% of windows pass) | ~ 2 |
+| Daybook (`:973`) | one per day, unique-indexed | 1 |
+| Weekbook (`:798`) | one per week, unique-indexed | 0.14 |
+| Monthbook (`:609`) | one per month, unique-indexed | 0.03 |
+| **Ceiling** | | **≈ 23** |
+
+Note what the two triggers do to the digest column: `GenerateDueDigestsAsync` is called by **both** the `*/30` digest job and the `*/5` assess job, so it is *attempted* 336 times a day and the per-member 1-hour interval is the only thing standing between that and 336 calls.
+
+**The observed rate does not reconcile with the ceiling.** Three members against a ceiling of ~23 each is ~69 calls/day; the service actually took **435**. Retries account for part of it — a failed call was three attempts — and the Weekbook and Monthbook passes were added on 08-18/08-19 and would have backfilled prior periods on first run. Neither has been confirmed as the full explanation, and until it is, no cadence change should be assumed to have the effect its interval implies (OI-6).
+
 ## 3. Why this shape is the expensive one
 
 The workload is GPU-shaped and is running on CPU. That costs twice:
@@ -99,7 +150,7 @@ This is a compliance decision, not only a cost one. The DPIA pins hosting to `eu
 | Raise `medgemma_max_instances` above 1 | Rejected as the primary fix — multiplies the largest line item on the estate and inherits the "Ollama cannot safely multi-instance" concern. It buys capacity without addressing why a call costs 124s. |
 | Drop to 2 vCPU / 8 GiB | Already refuted by measurement: 7.2 GiB p99 with a 9 GiB peak would OOM, and >8 GiB requires 4 vCPU regardless. |
 | `min_instances = 0` on the current CPU service | Refuted at today's arrival rate — roughly one call every five minutes leaves no idle window, so it lands near the same 86,400 s/day while adding cold-start latency to the caregiver path. Becomes viable *only* once inference is fast enough to create idle windows, which is what a GPU does. |
-| Swap Ollama for vLLM | Deferred, not rejected. `--enable-prefix-caching` would genuinely fix the "reprocess the prompt from token zero on every call" cost that llama.cpp cannot avoid under Gemma 3's sliding-window attention. But it needs HuggingFace weights under Health AI Developer Foundations terms — a licensing dependency, not a container swap. Worth doing after the compute move, not as part of it. |
+| Swap Ollama for vLLM | Deferred, not rejected — and the case for it is **stronger** than `llm_design.md` assumed. Sampled completion logs show a median of **513 input tokens against 18 output tokens**: this workload is almost entirely prompt evaluation, not generation. That is precisely what `--enable-prefix-caching` eliminates, and precisely what llama.cpp cannot avoid under Gemma 3's sliding-window attention (`cached n_tokens = 0` on every generation). Against a shared fixed instruction block, the saving is on the dominant cost, not a marginal one. Two caveats: the sample is 8 short calls (OI-3), and vLLM needs HuggingFace weights under Health AI Developer Foundations terms — a licensing dependency, not a container swap. vLLM is also a GPU-only proposition; it is not an improvement on CPU. Sequence it after the compute move, not instead of it. |
 | A smaller or more aggressively quantised model | Excluded by standing decision: dev runs the real model so that an assessment made in dev means something. |
 | Vertex AI online endpoint | Rejected — always-on GPU billing, strictly worse than any batched option here. |
 
@@ -109,9 +160,10 @@ This is a compliance decision, not only a cost one. The DPIA pins hosting to `eu
 |---|---|---|
 | OI-1 | **Cloud Billing API is disabled** on `carditrack-490120`, so no option in §4 is priced against actual spend. Enable it (read-only use) and re-cost before committing. | Owner |
 | OI-2 | Residency decision: is moving MedGemma inference to `europe-west1`/`europe-west4` acceptable (option B), or must it stay in `europe-west2` (options C/D)? Feeds DPIA OI-5. | Owner + DPIA |
-| OI-3 | The ~10s GPU p50 in §4 is an estimate from the model size and quantisation, not a benchmark. Measure one batch on an L4 before committing to the cost model. | Engineering |
+| OI-3 | The ~10s GPU p50 in §4 is an estimate from model size and quantisation, not a benchmark, and the 513-in/18-out token shape in §5 rests on **8 sampled calls** — biased toward short ones, because most hosts log the completion line below their ship level. Raise `Serilog__MinimumLevel__Default` on `pipeline-jobs` in dev for a day to get a real per-operation prompt/latency breakdown, then benchmark one batch on an L4. Both the GPU cost model and the vLLM case depend on this. | Engineering |
 | OI-4 | Set `max_instance_request_concurrency` explicitly whatever else is decided. 640 on a single-instance inference service is a platform default nobody chose. | Engineering |
 | OI-5 | The Cloud Run request timeout (300s) equals the client's `HttpClient.Timeout`, so client and server give up simultaneously and the loser is arbitrary. Separate them. | Engineering |
+| OI-6 | Observed call volume (435/day) is ~6× the ceiling the per-member gates in §2a permit (~69/day). Retries and the new Weekbook/Monthbook backfills are the likely contributors but are unconfirmed. Reconcile before relying on any cadence interval to bound load. | Engineering |
 
 ## 7. Recommendation
 
