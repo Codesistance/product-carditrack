@@ -729,13 +729,28 @@ public partial class DashboardPage : ContentPage
             }
             else
             {
-                // Nothing to say after all — back to the tier's own copy, and forget any live
-                // line first so the re-apply doesn't just restore the one we were told is gone.
-                // That includes the stored copy: leaving it would put a sentence the server has
-                // just retired back on the card at the next launch.
-                await _statusLines.ClearAsync(data.CardiMemberId);
-                HeroCard.ClearLiveStatus();
-                HeroCard.Apply(data);
+                // No answer right now — which is not the same as "the sentence is retired", and
+                // this branch used to read it as the latter: it cleared the live line, re-applied
+                // the static copy, and deleted the stored one.
+                //
+                // The server answers with a null Message for reasons that are all temporary. It
+                // damps fan-out with a per-member generation claim held for the whole 25-second
+                // budget, and every other caller inside that window is told there is nothing to
+                // say; a generation that runs past the budget answers the same way. The result is
+                // only cached at the very end, so the window is wide open — and the dashboard is
+                // entered from three places in quick succession (cold start, tab switch, resume
+                // fan-out), so one entry generates while the next loses the claim.
+                //
+                // Deleting the stored line on that answer emptied the store faster than a
+                // successful generation could fill it, which left the restore with nothing to put
+                // back and sent the card to "Loading — please wait" on every single entry: the
+                // exact placeholder the store exists to prevent.
+                //
+                // So: leave the card alone. It is already showing something correct — the line
+                // restored from the device, or the tier's own copy from Apply — and the stored
+                // line stays for the tier gate and the six-hour window to retire on their own
+                // terms. A member who has genuinely stopped having anything to say has moved to
+                // a tier this method returns on before the call is even made.
             }
         }
         catch (ApiException)
