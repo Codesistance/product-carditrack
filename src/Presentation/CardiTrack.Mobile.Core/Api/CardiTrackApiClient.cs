@@ -86,6 +86,15 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
             new SetAlertRuleEnabledRequest { Enabled = enabled },
             ct);
 
+    public Task<JournalSettingsResponse> GetJournalSettingsAsync(
+        Guid cardiMemberId, CancellationToken ct = default) =>
+        GetAsync<JournalSettingsResponse>($"api/v1/cardimembers/{cardiMemberId}/journal-settings", ct);
+
+    public Task<JournalSettingsResponse> UpdateJournalSettingsAsync(
+        Guid cardiMemberId, UpdateJournalSettingsRequest request, CancellationToken ct = default) =>
+        SendAsync<UpdateJournalSettingsRequest, JournalSettingsResponse>(
+            HttpMethod.Put, $"api/v1/cardimembers/{cardiMemberId}/journal-settings", request, ct);
+
     public Task<DashboardResponse> GetDashboardAsync(Guid cardiMemberId, CancellationToken ct = default) =>
         GetAsync<DashboardResponse>($"api/v1/cardimembers/{cardiMemberId}/dashboard", ct);
 

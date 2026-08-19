@@ -33,6 +33,17 @@ public class CardiMemberConfiguration : IEntityTypeConfiguration<CardiMember>
             .HasConversion<string>()
             .HasMaxLength(50);
 
+        // CardiJournal timings. All nullable — null is "use the default", not "unset and broken",
+        // so an existing member needs no backfill and the generator's fallback is the same code
+        // path for a member who has never opened the setting and one who cleared it.
+        builder.Property(c => c.DaybookLocalTime);
+        builder.Property(c => c.WeekbookLocalTime);
+        builder.Property(c => c.MonthbookLocalTime);
+
+        builder.Property(c => c.JournalWeekStartsOn)
+            .HasConversion<string>()
+            .HasMaxLength(20);
+
         builder.Property(c => c.EmergencyContactName)
             .HasMaxLength(200);
 

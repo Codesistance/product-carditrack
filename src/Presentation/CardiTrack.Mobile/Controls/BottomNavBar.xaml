@@ -69,7 +69,7 @@
                        Margin="0,2"
                        HorizontalOptions="Center"/>
                 <Label x:Name="DaybookLabel"
-                       Text="Daybook"
+                       Text="Journal"
                        Style="{StaticResource TabBarLabel}"/>
             </VerticalStackLayout>
 

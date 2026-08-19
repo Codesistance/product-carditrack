@@ -33,13 +33,13 @@ To empower families with affordable, preventive health monitoring for their elde
 
 > Plan limits below are canonical and match the [Subscription API](./execution/backend/api/subscriptions.md). All consumer plans start with a **30-day free trial**.
 
-> **Repriced 2026-08-18.** The ladder below replaces $8 / $15 / $29.99 with 2 / 5 / unlimited members and 90-day / 365-day / 2-year history. Each step now roughly doubles, and the Daybook cadence is the spine of the ladder. These figures match the published pricing page.
+> **Repriced 2026-08-18.** The ladder below replaces $8 / $15 / $29.99 with 2 / 5 / unlimited members and 90-day / 365-day / 2-year history. Each step now roughly doubles, and the CardiJournal cadence is the spine of the ladder. These figures match the published pricing page.
 
 #### Tier 1: "Basic" - $7/month ($71.40/year)
 - Bring your own wearable device
 - Daily activity dashboard
 - Daily health summary and digests
-- **The Daybook — daily**
+- **CardiJournal — the daily Daybook**
 - **1 CardiMember**
 - Up to **5 family members**
 - Standard alert types
@@ -49,7 +49,7 @@ To empower families with affordable, preventive health monitoring for their elde
 #### Tier 2: "Complete Care" - $10/month ($102/year)
 - Support for any supported device
 - Smart alerts when readings depart from baseline
-- **The Daybook — daily, plus a weekly round-up**
+- **CardiJournal — the daily Daybook, plus the weekly Weekbook**
 - Advanced AI alert types (pattern analysis)
 - Intraday heart rate, steps and sleep stages
 - Up to **3 CardiMembers**
@@ -60,14 +60,16 @@ To empower families with affordable, preventive health monitoring for their elde
 
 #### Tier 3: "Guardian Plus" - $15/month ($153/year)
 - Everything in Complete Care, plus:
-- **The Daybook — daily, weekly and monthly**
+- **CardiJournal — Daybook, Weekbook and Monthbook**
 - Up to **6 CardiMembers**
 - Priority support
 - **180-day** data history
 
 > Guardian Plus was previously specified as a post-MVP business tier at $29.99 and excluded from the consumer MVP. It is now a consumer tier and is sold as one on the pricing page. The assisted-living offering is separate — see the Enterprise line below and `enterprise.html`, which now recruits design partners rather than selling a product.
 
-**Cadences that do not exist yet.** Only the **once-daily** Daybook is built (`DigestAudience.Daybook`, prod-gated). The **weekly** and **monthly** cadences above are sold on the pricing page and have no implementation — they are tracked in [release_matrix.md](./release_matrix.md).
+**The CardiJournal and its books.** The CardiJournal is the umbrella surface — the mobile tab and the thing a tier buys more of. Inside it sit cadence-named entries: the **Daybook** (one finished day), the **Weekbook** (one finished Mon–Sun week) and the **Monthbook** (one finished calendar month). Each book is written from its own period's measurements, not by summarising the books below it.
+
+**Cadences that do not exist yet.** Only the **Daybook** is built (`DigestAudience.Daybook`, prod-gated). The **Weekbook** and **Monthbook** above are sold on the pricing page and have no implementation — they are tracked in [release_matrix.md](./release_matrix.md).
 
 **Sync cadence is not a tier lever.** Both environments deploy `min_pull_interval_minutes = 10`, so every tier polls on the same 10-minute cadence. What the paid tiers buy is minute-grain intraday *storage* and retention length, not a faster poll. Earlier copy claiming "high-resolution sync (1-min)" on Complete Care was withdrawn on 2026-08-18.
 

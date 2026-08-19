@@ -1,0 +1,157 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:controls="clr-namespace:CardiTrack.Mobile.Controls"
+             x:Class="CardiTrack.Mobile.JournalTimingPage"
+             Shell.NavBarIsVisible="False"
+             Shell.TabBarIsVisible="False"
+             BackgroundColor="{StaticResource PageGround}">
+
+    <!-- When each CardiJournal book is written, in the member's own local time. Rows save the
+         moment they are picked, the way the alert-rule toggles do — a Save button would imply
+         the choice could be half-made, and there is nothing here to lose by committing at once.
+
+         The Weekbook and Monthbook rows are settable before their generators exist (R2). They
+         say so on the row rather than being hidden: a caregiver who sets a time and is told
+         nothing has been misled, and one who cannot find the setting at all will ask for it
+         twice. The API returns the availability flags this reads, so the app never has to guess.
+
+         No Figma frame — see the design-sync backlog. -->
+
+    <Grid RowDefinitions="Auto,*" SafeAreaEdges="None, Container, None, None">
+
+        <controls:HeaderBand Grid.Row="0" ContentPadding="20,14,20,26">
+            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
+
+                <controls:SquareBorder Grid.Column="0"
+                        MinimumHeightRequest="40"
+                        StrokeThickness="0"
+                        BackgroundColor="{StaticResource HeaderButtonTint}"
+                        VerticalOptions="Fill">
+                    <controls:SquareBorder.StrokeShape>
+                        <RoundRectangle CornerRadius="99"/>
+                    </controls:SquareBorder.StrokeShape>
+                    <controls:SquareBorder.GestureRecognizers>
+                        <TapGestureRecognizer Tapped="OnBackTapped"/>
+                    </controls:SquareBorder.GestureRecognizers>
+                    <Image Source="icon_back_white.svg" WidthRequest="20" HeightRequest="20"/>
+                </controls:SquareBorder>
+
+                <VerticalStackLayout Grid.Column="1" Spacing="1" VerticalOptions="Start">
+                    <Label x:Name="HeaderTitle"
+                           Text="When it's written"
+                           Style="{StaticResource Heading3}"
+                           TextColor="{StaticResource White}"/>
+                    <Label x:Name="HeaderSubtitle"
+                           Text="Their CardiJournal"
+                           FontFamily="Quicksand"
+                           FontSize="12"
+                           TextColor="{StaticResource White}"
+                           Opacity="0.85"
+                           LineBreakMode="TailTruncation"/>
+                </VerticalStackLayout>
+            </Grid>
+        </controls:HeaderBand>
+
+        <ScrollView Grid.Row="1">
+            <VerticalStackLayout Padding="20" Spacing="12">
+
+                <ActivityIndicator x:Name="LoadingSpinner"
+                                   IsRunning="True"
+                                   IsVisible="True"
+                                   HorizontalOptions="Center"
+                                   Margin="0,24"/>
+
+                <VerticalStackLayout x:Name="SettingsPanel" IsVisible="False" Spacing="12">
+
+                    <Border Style="{StaticResource ElevatedCard}" Padding="14,4">
+                        <Grid x:Name="DaybookRow" ColumnDefinitions="*,Auto" ColumnSpacing="12" HeightRequest="60"
+                              SemanticProperties.Description="Daybook time"
+                              SemanticProperties.Hint="Choose what time each finished day is written up">
+                            <Grid.GestureRecognizers>
+                                <TapGestureRecognizer Tapped="OnDaybookTimeTapped"/>
+                            </Grid.GestureRecognizers>
+                            <VerticalStackLayout Grid.Column="0" Spacing="1" VerticalOptions="Center">
+                                <Label Text="Daybook" Style="{StaticResource Body1SemiBoldDark}"/>
+                                <Label x:Name="DaybookSubtitle" Style="{StaticResource Body2}"/>
+                            </VerticalStackLayout>
+                            <Label x:Name="DaybookValue"
+                                   Grid.Column="1"
+                                   Style="{StaticResource Body1SemiBoldDark}"
+                                   VerticalTextAlignment="Center"/>
+                        </Grid>
+                    </Border>
+
+                    <Border Style="{StaticResource ElevatedCard}" Padding="14,4">
+                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12" HeightRequest="60"
+                              SemanticProperties.Description="Week starts on"
+                              SemanticProperties.Hint="Choose which day a journal week begins">
+                            <Grid.GestureRecognizers>
+                                <TapGestureRecognizer Tapped="OnWeekStartTapped"/>
+                            </Grid.GestureRecognizers>
+                            <VerticalStackLayout Grid.Column="0" Spacing="1" VerticalOptions="Center">
+                                <Label Text="A week starts on" Style="{StaticResource Body1SemiBoldDark}"/>
+                                <Label x:Name="WeekStartSubtitle" Style="{StaticResource Body2}"/>
+                            </VerticalStackLayout>
+                            <Label x:Name="WeekStartValue"
+                                   Grid.Column="1"
+                                   Style="{StaticResource Body1SemiBoldDark}"
+                                   VerticalTextAlignment="Center"/>
+                        </Grid>
+                    </Border>
+
+                    <Border Style="{StaticResource ElevatedCard}" Padding="14,4">
+                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12" HeightRequest="60"
+                              SemanticProperties.Description="Weekbook time"
+                              SemanticProperties.Hint="Choose what time each finished week is written up">
+                            <Grid.GestureRecognizers>
+                                <TapGestureRecognizer Tapped="OnWeekbookTimeTapped"/>
+                            </Grid.GestureRecognizers>
+                            <VerticalStackLayout Grid.Column="0" Spacing="1" VerticalOptions="Center">
+                                <Label Text="Weekbook" Style="{StaticResource Body1SemiBoldDark}"/>
+                                <Label x:Name="WeekbookSubtitle" Style="{StaticResource Body2}"/>
+                            </VerticalStackLayout>
+                            <Label x:Name="WeekbookValue"
+                                   Grid.Column="1"
+                                   Style="{StaticResource Body1SemiBoldDark}"
+                                   VerticalTextAlignment="Center"/>
+                        </Grid>
+                    </Border>
+
+                    <Border Style="{StaticResource ElevatedCard}" Padding="14,4">
+                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12" HeightRequest="60"
+                              SemanticProperties.Description="Monthbook time"
+                              SemanticProperties.Hint="Choose what time each finished month is written up">
+                            <Grid.GestureRecognizers>
+                                <TapGestureRecognizer Tapped="OnMonthbookTimeTapped"/>
+                            </Grid.GestureRecognizers>
+                            <VerticalStackLayout Grid.Column="0" Spacing="1" VerticalOptions="Center">
+                                <Label Text="Monthbook" Style="{StaticResource Body1SemiBoldDark}"/>
+                                <Label x:Name="MonthbookSubtitle" Style="{StaticResource Body2}"/>
+                            </VerticalStackLayout>
+                            <Label x:Name="MonthbookValue"
+                                   Grid.Column="1"
+                                   Style="{StaticResource Body1SemiBoldDark}"
+                                   VerticalTextAlignment="Center"/>
+                        </Grid>
+                    </Border>
+
+                    <Label x:Name="FootnoteLabel"
+                           Style="{StaticResource Body2}"
+                           Margin="4,4,4,0"/>
+                </VerticalStackLayout>
+
+                <VerticalStackLayout x:Name="ErrorPanel" IsVisible="False" Spacing="12">
+                    <Border Style="{StaticResource ElevatedCard}">
+                        <VerticalStackLayout Spacing="6">
+                            <Label Text="Couldn't load these settings"
+                                   Style="{StaticResource Body1SemiBoldDark}"/>
+                            <Label x:Name="ErrorDetailLabel" Style="{StaticResource Body2}"/>
+                        </VerticalStackLayout>
+                    </Border>
+                </VerticalStackLayout>
+
+            </VerticalStackLayout>
+        </ScrollView>
+    </Grid>
+</ContentPage>

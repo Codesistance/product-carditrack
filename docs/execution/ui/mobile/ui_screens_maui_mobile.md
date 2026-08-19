@@ -88,7 +88,7 @@ These screens ship in the current app but have **no Figma M1 frame — needs des
 | VerifyEmailPage | Post-signup email verification gate (resend / open mail / checking / error) |
 | Onboarding/AccountSetupPage | "My Family" / "My Organization" account-type choice with conditional Org Name |
 | NotificationsPage | Data-completeness / nudge inbox — reached from the dashboard's "Complete the picture" section ("See all") |
-| DaybookPage | The **Daybook** tab — daybook entries newest first, searchable and filterable; a card opens the review's page. Took the Family tab's slot |
+| DaybookPage | The **Journal** tab (CardiJournal) — Daybook entries newest first, searchable and filterable; a card opens the review's page. Took the Family tab's slot |
 | DaybookEntryPage | One review in full, with the fortnight's source-tagged trend charts and counted awareness lines beneath it |
 
 Full specs in [Shipped Screens Without Figma M1 Frames](#shipped-screens-without-figma-m1-frames-1) below.
@@ -320,7 +320,7 @@ Push notification (any time) ─────────────────
 
 ### Bottom Tab Bar
 
-Visible on tab roots (Dashboard / Alerts / Daybook / Settings). Onboarding hides it (`Shell.TabBarIsVisible=False`). Tab pages hide Shell's bar and seat `BottomNavBar` **full-bleed** (safe-area inset is padding inside the bar).
+Visible on tab roots (Dashboard / Alerts / Journal / Settings). Onboarding hides it (`Shell.TabBarIsVisible=False`). Tab pages hide Shell's bar and seat `BottomNavBar` **full-bleed** (safe-area inset is padding inside the bar).
 
 ```
 ┌────────────────────────────────────┐
@@ -328,13 +328,13 @@ Visible on tab roots (Dashboard / Alerts / Daybook / Settings). Onboarding hides
 │          Content Area              │
 │                                    │
 ├──────────┬──────────┬────────┬────────┤
-│ Dashboard│  Alerts  │Daybook │Settings│
+│ Dashboard│  Alerts  │Journal │Settings│
 └──────────┴──────────┴────────┴────────┘
 ```
 
 - Badge count on Alerts tab for unread alerts
-- **The third tab is Daybook, not Family.** The Family tab held a stub ("Family sharing (MVP 2) is coming soon") for invitations that are R3 work, so a quarter of the bar did nothing while the daybook entries had no surface at all. `FamilyPage` is deleted. When family sharing lands it belongs under Settings or scoped to a member — a badge for pending invites goes wherever that surface ends up, not back in the bar
-- As built, the Shell defines a **TabBar only** (Dashboard / Alerts / Daybook / Settings, SVG icons). Alerts opens the real M1-10 list; Daybook lists the entries; Settings is minimal (account card, a "Silenced reminders" card listing held notification mutes with a "Show me everything again" reset, "More settings (M2-01) coming soon", Sign out). Onboarding pages hide the tab bar via `Shell.TabBarIsVisible=False`.
+- **The third tab is the Journal (CardiJournal), not Family.** The Family tab held a stub ("Family sharing (MVP 2) is coming soon") for invitations that are R3 work, so a quarter of the bar did nothing while the daybook entries had no surface at all. `FamilyPage` is deleted. When family sharing lands it belongs under Settings or scoped to a member — a badge for pending invites goes wherever that surface ends up, not back in the bar
+- As built, the Shell defines a **TabBar only** (Dashboard / Alerts / Journal / Settings, SVG icons). Alerts opens the real M1-10 list; the Journal lists the Daybook entries; Settings is minimal (account card, a "Silenced reminders" card listing held notification mutes with a "Show me everything again" reset, "More settings (M2-01) coming soon", Sign out). Onboarding pages hide the tab bar via `Shell.TabBarIsVisible=False`.
 
 ### Flyout Menu
 
@@ -1229,23 +1229,23 @@ The following screens exist in the shipped app but have **no Figma M1 frame — 
 **Entry:** Bottom nav, third tab
 **Exit:** → M1-09 Dashboard (back arrow, or the Dashboard tab)
 
-- Gradient header band with back arrow and "Summaries", same treatment as Alerts and Settings
-- Pull-to-refresh; **no periodic poll** — a daybook entry is written once, at 02:00 in the member's own local time, and cannot change afterwards. Refreshes on app resume only
-- **Search and up to three chooser chips** above the list, outside the scroller so narrowing stays reachable while scrolled (the alert chips' reasoning). The member chip appears once the account has more than one CardiMember and filters the whole page to the chosen member; the tab also accepts `?memberId=` — the dashboard's member card ("View Daybook") and the member detail page's Daybook row both deep-link in already filtered, via the origin-remembering tab jump. The search is debounced 350ms and server-side over the whole history; the chips open the app's option popup — urgency (Any / Watch / Check in / Concerning / Act now) and window (All time / 7 / 30 / 90 days). The filter row appears once the member has ever had a review, then stays: hiding it on an empty *filtered* result would take away the one control that undoes the emptiness
+- Gradient header band with back arrow, titled **"CardiJournal"** over "Daybooks of finished days", same treatment as Alerts and Settings
+- Pull-to-refresh; **no periodic poll** — a Daybook entry is written once, at 02:00 in the member's own local time, and cannot change afterwards. Refreshes on app resume only
+- **Search and up to three chooser chips** above the list, outside the scroller so narrowing stays reachable while scrolled (the alert chips' reasoning). The member chip appears once the account has more than one CardiMember and filters the whole page to the chosen member; the tab also accepts `?memberId=` — the dashboard's member card and the member detail page's CardiJournal row both deep-link in already filtered, via the origin-remembering tab jump. The search is debounced 350ms and server-side over the whole history; the chips open the app's option popup — urgency (Any / Watch / Check in / Concerning / Act now) and window (All time / 7 / 30 / 90 days). The filter row appears once the member has ever had a review, then stays: hiding it on an empty *filtered* result would take away the one control that undoes the emptiness
 - One card per finished day, newest first, up to a month. Each card carries:
   - the day, said the way someone says it — "Yesterday", then the weekday within the week, then the date
   - the review's own generated headline, falling back to "A day in review" for entries written before headlines existed
   - the urgency worn as a **left rail** in the status colour — the alert tiles' own construction (coloured rect under a white card inset 4px) — rather than a pill in the heading. **No rail at all** when the model returned no urgency or one this app does not know: a rail is a claim about a member's health, and a grey one would imply the service judged the day and found it unremarkable
   - the review clipped to three lines and a small **Read** button, which **opens the entry's own page** (below) — a navigation, not an expansion: the full account carries the trend charts, which is more than a list row can hold and stay a list
 - **States:** loading (three placeholder cards, so the list does not jump when the real ones arrive) · empty · error with retry · loaded
-- **Two empty states, said apart:** an unfiltered "No daybook entries yet" over "The first review is written after {Name}'s first full day of readings", and a filtered "No reviews match" over "clear one and look again" — a bare "nothing here" reads as a fault either way. A member-less account gets "Add the person you care about, and their days will be summarised here"
+- **Two empty states, said apart:** an unfiltered "No Daybook entries yet" over "The first review is written after {Name}'s first full day of readings", and a filtered "No reviews match" over "clear one and look again" — a bare "nothing here" reads as a fault either way. A member-less account gets "Add the person you care about, and their days will be summarised here"
 - **Error while a list is already on screen** shows a popup over it rather than replacing it with an error panel: the reviews describe finished days and do not go stale, so taking them away costs the caregiver something still worth reading
 - Backed by `GET /api/v1/insights/members/{id}/digests?audience=daybook` with `limit`, `search`, `from` and `urgency`
 
 ### DaybookEntryPage
 **Status:** Built — no Figma M1 frame, needs design sync
 **Entry:** ← DaybookPage ("Read the full day")
-**Exit:** ← DaybookPage (back arrow, or the Daybook tab)
+**Exit:** ← DaybookPage (back arrow, or the Journal tab)
 
 - The entry in full: day, headline, the whole account, "One thing you could do" (the suggestion, hidden when the generation produced none), and when it was written
 - The urgency is the card's **left rail**, the same construction as the list tiles and the alert tiles; no pill

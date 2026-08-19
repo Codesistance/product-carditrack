@@ -714,7 +714,7 @@ The elderly health monitoring market is experiencing rapid growth driven by agin
 
 **Pricing:**
 - Basic $7 / Complete Care $10 / Guardian Plus $15 (consumer tiers, limits as above)
-- Guardian Plus: $15/month — consumer tier: 6 CardiMembers, 180-day history, monthly Daybook, priority support
+- Guardian Plus: $15/month — consumer tier: 6 CardiMembers, 180-day history, the CardiJournal's Monthbook, priority support
 - Device Bundle: +$100 upfront (Fitbit Charge 6)
 - Annual discount: 15% off
 

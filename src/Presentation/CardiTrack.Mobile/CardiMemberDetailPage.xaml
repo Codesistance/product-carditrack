@@ -479,15 +479,37 @@
                              preview. -->
                         <Border Style="{StaticResource ElevatedCard}" Padding="14,4">
                             <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12" HeightRequest="52"
-                                  SemanticProperties.Description="Daybook"
-                                  SemanticProperties.Hint="Opens this CardiMember's daybook of finished days">
+                                  SemanticProperties.Description="CardiJournal"
+                                  SemanticProperties.Hint="Opens this CardiMember's CardiJournal of finished days">
                                 <Grid.GestureRecognizers>
                                     <TapGestureRecognizer Tapped="OnDaybookTapped"/>
                                 </Grid.GestureRecognizers>
                                 <Image Grid.Column="0" Source="icon_tab_daybook.svg"
                                        WidthRequest="22" HeightRequest="22" VerticalOptions="Center"/>
                                 <Label Grid.Column="1"
-                                       Text="Daybook"
+                                       Text="CardiJournal"
+                                       Style="{StaticResource Body1SemiBoldDark}"
+                                       VerticalTextAlignment="Center"/>
+                                <Image Grid.Column="2" Source="icon_chevron.svg"
+                                       WidthRequest="20" HeightRequest="20" VerticalOptions="Center"/>
+                            </Grid>
+                        </Border>
+
+                        <!-- When the journal is written. Its own row under the journal rather
+                             than a control inside it: the journal is something you read, and a
+                             time picker over a list of finished days is a setting sitting in a
+                             reading surface. -->
+                        <Border Style="{StaticResource ElevatedCard}" Padding="14,4">
+                            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12" HeightRequest="52"
+                                  SemanticProperties.Description="When their journal is written"
+                                  SemanticProperties.Hint="Choose what time of day each book is written up">
+                                <Grid.GestureRecognizers>
+                                    <TapGestureRecognizer Tapped="OnJournalTimingTapped"/>
+                                </Grid.GestureRecognizers>
+                                <Image Grid.Column="0" Source="icon_tab_daybook.svg"
+                                       WidthRequest="22" HeightRequest="22" VerticalOptions="Center"/>
+                                <Label Grid.Column="1"
+                                       Text="When it's written"
                                        Style="{StaticResource Body1SemiBoldDark}"
                                        VerticalTextAlignment="Center"/>
                                 <Image Grid.Column="2" Source="icon_chevron.svg"

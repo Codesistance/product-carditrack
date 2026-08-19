@@ -507,18 +507,18 @@ Based on the solution manifest, market analysis, and README, here are comprehens
 
 ---
 
-## 📖 Daybook entries & Alert Housekeeping
+## 📖 The CardiJournal (Daybook entries) & Alert Housekeeping
 
 **Story 12.1: Read back the whole of yesterday** _(P1 — Should Have)_
 - **As a** caregiver who was busy all day
 - **I want to** read one full account of how yesterday actually went
 - **So that** I can catch what a glance at the dashboard missed, and take something concrete to their next appointment
 - **Acceptance Criteria:**
-  - Given the member's local day has ended and they have readings for it, when I open the **Daybook** tab, then I see one card for that day, newest first
+  - Given the member's local day has ended and they have readings for it, when I open the **Journal** tab, then I see one Daybook card for that day, newest first
   - Each card shows the day ("Yesterday", then the weekday, then the date), the review's own headline, an urgency pill, and the first three lines; tapping expands it in place to the full account and the suggestion
   - The account covers sleep, heart, oxygen and breathing, and movement — each against what is usual **for them** and against the published band where one exists, with the publisher named
   - A precise clinical term may be used **only if the same sentence explains what it measures**; a review that names a condition, calls a reading a sign of one, or proposes a treatment is never shown at all
-  - **Edge — no reviews yet:** a member in their first days sees "No daybook entries yet" and a line saying the first review is written after their first full day, not a bare empty state
+  - **Edge — no reviews yet:** a member in their first days sees "No Daybook entries yet" and a line saying the first review is written after their first full day, not a bare empty state
   - **Edge — a reading was not measured:** the review says so plainly. Silence must never read as "healthy"
   - **Edge — refresh fails with a list already on screen:** the list stays and the failure is shown over it; finished days do not go stale, so they are still worth reading
   - **Screens:** DaybookPage, DaybookEntryPage (no Figma M1 frames — need design sync)

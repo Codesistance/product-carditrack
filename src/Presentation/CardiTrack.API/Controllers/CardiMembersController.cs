@@ -25,6 +25,7 @@ public class CardiMembersController : BaseApiController
 {
     private readonly ICardiMemberService _cardiMembers;
     private readonly IAlertPreferenceService _alertPreferences;
+    private readonly IJournalSettingsService _journalSettings;
     private readonly IValidator<UpdateCardiMemberRequest> _updateValidator;
     private readonly IValidator<PauseMonitoringRequest> _pauseValidator;
 
@@ -33,12 +34,14 @@ public class CardiMembersController : BaseApiController
         ILogger<CardiMembersController> logger,
         ICardiMemberService cardiMembers,
         IAlertPreferenceService alertPreferences,
+        IJournalSettingsService journalSettings,
         IValidator<UpdateCardiMemberRequest> updateValidator,
         IValidator<PauseMonitoringRequest> pauseValidator)
         : base(userContext, logger)
     {
         _cardiMembers = cardiMembers;
         _alertPreferences = alertPreferences;
+        _journalSettings = journalSettings;
         _updateValidator = updateValidator;
         _pauseValidator = pauseValidator;
     }
@@ -235,6 +238,67 @@ public class CardiMembersController : BaseApiController
             return Error(ex.Message, StatusCodes.Status400BadRequest);
         }
         catch (InvalidOperationException ex)
+        {
+            return Error(ex.Message, StatusCodes.Status400BadRequest);
+        }
+    }
+
+    /// <summary>
+    /// When this CardiMember's CardiJournal books are written, in their own local time, plus the
+    /// window and step a client must keep its picker inside.
+    /// </summary>
+    [HttpGet("cardimembers/{cardiMemberId:guid}/journal-settings")]
+    [ProducesResponseType(typeof(ApiResponse<JournalSettingsResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<ApiResponse<JournalSettingsResponse>>> GetJournalSettings(
+        Guid cardiMemberId, CancellationToken ct)
+    {
+        if (NotSignedIn(out var error))
+            return error;
+
+        try
+        {
+            return Success(await _journalSettings.GetAsync(UserContext.UserId, cardiMemberId, ct));
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return Error(ex.Message, StatusCodes.Status404NotFound);
+        }
+    }
+
+    /// <summary>
+    /// Moves when this CardiMember's books are written. Primary caregiver only — a book is written
+    /// once for the member, so the time is the member's, not each reader's. A null field restores
+    /// that book's default.
+    /// </summary>
+    [HttpPut("cardimembers/{cardiMemberId:guid}/journal-settings")]
+    [ProducesResponseType(typeof(ApiResponse<JournalSettingsResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<ApiResponse<JournalSettingsResponse>>> UpdateJournalSettings(
+        Guid cardiMemberId,
+        [FromBody] UpdateJournalSettingsRequest request,
+        CancellationToken ct)
+    {
+        if (NotSignedIn(out var error))
+            return error;
+
+        if (request is null)
+            return Error("Request body is required.", StatusCodes.Status400BadRequest);
+
+        try
+        {
+            var updated = await _journalSettings.UpdateAsync(
+                UserContext.UserId, cardiMemberId, request, ct);
+            return Success(updated, "Saved when their journal is written.");
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return Error(ex.Message, StatusCodes.Status404NotFound);
+        }
+        catch (ArgumentException ex)
         {
             return Error(ex.Message, StatusCodes.Status400BadRequest);
         }
