@@ -1,37 +1,24 @@
-﻿using System.Globalization;
+﻿using CardiTrack.Mobile.Core.Api;
+using CardiTrack.Mobile.Core.Journal;
 
 namespace CardiTrack.Mobile.Controls;
 
 /// <summary>
-/// How a daybook entry is presented wherever one appears — the day said the way a person says it,
-/// and the urgency pill. Shared by the Daybook list and the review's own detail page, which
-/// must not disagree about either: the pill a caregiver tapped on the list is a promise about
-/// the screen it opens.
+/// How a CardiJournal entry is presented wherever one appears — the period said the way a person
+/// says it, and the urgency pill. Shared by the journal list and an entry's own detail page,
+/// which must not disagree about either: the label a caregiver tapped on the list is a promise
+/// about the screen it opens.
 /// </summary>
-internal static class DaybookPresentation
+internal static class JournalPresentation
 {
-    /// <summary>
-    /// "Yesterday" for the day just gone, the weekday for the rest of the week, and the date
-    /// beyond that — the way someone talks about their own week rather than a row of dates.
-    /// </summary>
-    /// <remarks>
-    /// Against the device's today, not the member's: this is the reader's label for when they are
-    /// reading, and a caregiver in another timezone reading "Yesterday" about the day their own
-    /// yesterday was is the sentence they would have said themselves.
-    /// </remarks>
-    internal static string DayLabel(DateOnly date)
-    {
-        var today = DateOnly.FromDateTime(DateTime.Now);
-        var age = today.DayNumber - date.DayNumber;
+    /// <inheritdoc cref="JournalLabels.PeriodLabel"/>
+    /// <remarks>Reads the device clock for "today"; the logic itself lives in Core, where it is tested.</remarks>
+    internal static string PeriodLabel(JournalCadence cadence, DateOnly localDate) =>
+        JournalLabels.PeriodLabel(cadence, localDate, DateOnly.FromDateTime(DateTime.Now));
 
-        return age switch
-        {
-            0 => "Today",
-            1 => "Yesterday",
-            > 1 and < 7 => date.ToString("dddd", CultureInfo.CurrentCulture),
-            _ => date.ToString("d MMMM", CultureInfo.CurrentCulture),
-        };
-    }
+    /// <inheritdoc cref="JournalLabels.DayLabel"/>
+    internal static string DayLabel(DateOnly date) =>
+        JournalLabels.DayLabel(date, DateOnly.FromDateTime(DateTime.Now));
 
     /// <summary>
     /// The model's own read of how soon the family should act, as a pill — or nothing at all when

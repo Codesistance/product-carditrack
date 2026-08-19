@@ -521,7 +521,20 @@ Based on the solution manifest, market analysis, and README, here are comprehens
   - **Edge — no reviews yet:** a member in their first days sees "No Daybook entries yet" and a line saying the first review is written after their first full day, not a bare empty state
   - **Edge — a reading was not measured:** the review says so plainly. Silence must never read as "healthy"
   - **Edge — refresh fails with a list already on screen:** the list stays and the failure is shown over it; finished days do not go stale, so they are still worth reading
-  - **Screens:** DaybookPage, DaybookEntryPage (no Figma M1 frames — need design sync)
+  - **Screens:** JournalPage, JournalEntryPage (no Figma M1 frames — need design sync)
+
+**Story 12.6: Read the week, not just the days** _(P1 — Should Have)_
+- **As a** caregiver who checks in most days
+- **I want to** step back and read how a whole week went
+- **So that** I can see a drift that no single day made obvious
+- **Acceptance Criteria:**
+  - Given the member's journal week has turned and most of that week carried readings, when I switch the Journal tab to **Weeks**, then I see one card per finished week, newest first, each labelled by its span ("Mon 3 – Sun 9 August")
+  - The account is about the week as a whole — what moved against their usual, what held steady, and which day stood apart — not a list of the seven days
+  - Opening a week shows it in full, with the trend charts running over that week and the one before it
+  - **Edge — a week too thin to account for:** a week with fewer than four days of readings gets no entry at all, and the empty state says the first is written when the week turns and needs most of its days measured — never a partial week presented as a whole one
+  - **Edge — Daybooks discarded that week:** the Weekbook is still written; it is read from the week's measurements, not from its Daybooks
+  - **Edge — switching cadence mid-load:** the list that arrives is the one for the cadence now selected, never the previous series painted over it
+  - **Screens:** JournalPage, JournalEntryPage (no Figma M1 frames — need design sync)
 
 **Story 12.4: Find the day I half-remember** _(P1 — Should Have)_
 - **As a** caregiver who remembers "there was a day his oxygen dipped"

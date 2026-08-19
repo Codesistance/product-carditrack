@@ -98,8 +98,10 @@ public interface ICardiTrackApiClient
     /// Optional urgency tier in the wire vocabulary (watch / check-in / concerning / act-now).
     /// </param>
     /// <param name="ct">Cancels the read.</param>
-    Task<IReadOnlyList<DigestResponse>> GetDaybooksAsync(
+    /// <param name="cadence">Which book to read — the Daybook series or the Weekbook series.</param>
+    Task<IReadOnlyList<DigestResponse>> GetJournalEntriesAsync(
         Guid cardiMemberId,
+        JournalCadence cadence,
         int limit,
         string? search = null,
         DateOnly? from = null,
@@ -107,13 +109,16 @@ public interface ICardiTrackApiClient
         CancellationToken ct = default);
 
     /// <summary>
-    /// One day's review — the latest (and in practice only) daybook entry describing
-    /// <paramref name="localDate"/>. Throws <see cref="ApiException"/> with a 404 when that day
-    /// was never reviewed; the detail screen shows its error state rather than treating that as
-    /// a fault.
+    /// One entry — the latest (and in practice only) book of <paramref name="cadence"/> dated
+    /// <paramref name="localDate"/>. For a Weekbook that date is the week's <em>last day</em>.
+    /// Throws <see cref="ApiException"/> with a 404 when none was written; the detail screen shows
+    /// its error state rather than treating that as a fault.
     /// </summary>
-    Task<DigestResponse> GetDaybookAsync(
-        Guid cardiMemberId, DateOnly localDate, CancellationToken ct = default);
+    Task<DigestResponse> GetJournalEntryAsync(
+        Guid cardiMemberId,
+        JournalCadence cadence,
+        DateOnly localDate,
+        CancellationToken ct = default);
 
     // ---- Questions the service asks the family ----
 

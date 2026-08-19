@@ -937,7 +937,7 @@ public partial class CardiMemberDetailPage : ContentPage
     /// <summary>This member's daybook — the tab, already filtered to them, with the origin
     /// remembered so back returns here rather than to wherever the tab was last left.</summary>
     private async void OnDaybookTapped(object? sender, EventArgs e) =>
-        await Shell.Current.GoToTabAsync($"{AppShell.DaybookRoute}?memberId={_memberId}");
+        await Shell.Current.GoToTabAsync($"{AppShell.JournalRoute}?memberId={_memberId}");
 
     /// <summary>When this member's books are written. The name rides along so the page's
     /// subtitle is right from the first frame, the way the journal entry page takes it.</summary>

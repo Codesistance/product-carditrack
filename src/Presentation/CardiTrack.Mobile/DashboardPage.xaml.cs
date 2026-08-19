@@ -591,7 +591,7 @@ public partial class DashboardPage : ContentPage
         if (_memberId == Guid.Empty)
             return;
 
-        await Shell.Current.GoToTabAsync($"{AppShell.DaybookRoute}?memberId={_memberId}");
+        await Shell.Current.GoToTabAsync($"{AppShell.JournalRoute}?memberId={_memberId}");
     }
 
     /// <summary>A dashboard recent-alert tile opens the matching detail screen.</summary>

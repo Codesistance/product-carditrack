@@ -484,7 +484,7 @@
                                 <Grid.GestureRecognizers>
                                     <TapGestureRecognizer Tapped="OnDaybookTapped"/>
                                 </Grid.GestureRecognizers>
-                                <Image Grid.Column="0" Source="icon_tab_daybook.svg"
+                                <Image Grid.Column="0" Source="icon_tab_journal.svg"
                                        WidthRequest="22" HeightRequest="22" VerticalOptions="Center"/>
                                 <Label Grid.Column="1"
                                        Text="CardiJournal"
@@ -506,7 +506,7 @@
                                 <Grid.GestureRecognizers>
                                     <TapGestureRecognizer Tapped="OnJournalTimingTapped"/>
                                 </Grid.GestureRecognizers>
-                                <Image Grid.Column="0" Source="icon_tab_daybook.svg"
+                                <Image Grid.Column="0" Source="icon_tab_journal.svg"
                                        WidthRequest="22" HeightRequest="22" VerticalOptions="Center"/>
                                 <Label Grid.Column="1"
                                        Text="When it's written"

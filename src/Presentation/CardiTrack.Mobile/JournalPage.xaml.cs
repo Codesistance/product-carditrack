@@ -10,7 +10,7 @@ namespace CardiTrack.Mobile;
 /// <summary>
 /// The Summaries tab: the member's daybook entries, newest first, one per finished day — searchable
 /// over the whole history and narrowable by urgency and by how far back to look. A card opens the
-/// review's own page (<see cref="DaybookEntryPage"/>), which carries the full account and the
+/// review's own page (<see cref="JournalEntryPage"/>), which carries the full account and the
 /// charts to read it against.
 /// </summary>
 /// <remarks>
@@ -35,7 +35,7 @@ namespace CardiTrack.Mobile;
 /// </para>
 /// </remarks>
 [QueryProperty(nameof(PreselectMemberId), "memberId")]
-public partial class DaybookPage : ContentPage
+public partial class JournalPage : ContentPage
 {
     /// <summary>
     /// How many reviews one load asks for. A month is a page a caregiver actually scrolls; the
@@ -71,6 +71,12 @@ public partial class DaybookPage : ContentPage
     private bool _hasAnyReviews;
     private CancellationTokenSource? _searchDebounceCts;
 
+    /// <summary>
+    /// Which book the list is showing. Days by default — it is the cadence every plan writes and
+    /// the one a caregiver checks most.
+    /// </summary>
+    private JournalCadence _cadence = JournalCadence.Daybook;
+
     private IReadOnlyList<CardiMemberResponse> _members = [];
     private Guid? _pendingMemberId;
     private Guid _memberId;
@@ -93,11 +99,12 @@ public partial class DaybookPage : ContentPage
                 : null;
     }
 
-    public DaybookPage(ICardiTrackApiClient api, IPopupService popups)
+    public JournalPage(ICardiTrackApiClient api, IPopupService popups)
     {
         InitializeComponent();
         _api = api;
         _popups = popups;
+        RenderCadence();
         this.RefreshWhenAppResumes(RefreshUnattendedAsync);
     }
 
@@ -165,13 +172,62 @@ public partial class DaybookPage : ContentPage
 
     private void OnClearSearchClicked(object? sender, EventArgs e) => SearchEntry.Text = string.Empty;
 
+    private async void OnDaysSegmentTapped(object? sender, TappedEventArgs e) =>
+        await SwitchCadenceAsync(JournalCadence.Daybook);
+
+    private async void OnWeeksSegmentTapped(object? sender, TappedEventArgs e) =>
+        await SwitchCadenceAsync(JournalCadence.Weekbook);
+
+    /// <summary>
+    /// Moves the list to another book.
+    /// </summary>
+    /// <remarks>
+    /// The filters carry over deliberately — a caregiver who narrowed to "act now" and switched to
+    /// weeks asked the same question at a different altitude, and silently dropping their filter
+    /// would answer a question they did not ask. <c>_hasAnyReviews</c> does not carry over: it
+    /// gates the filter row, and a member with a year of Daybooks and no Weekbooks yet would
+    /// otherwise get a filter panel over an empty week list.
+    /// </remarks>
+    private async Task SwitchCadenceAsync(JournalCadence cadence)
+    {
+        if (_cadence == cadence || _isLoading)
+            return;
+
+        _cadence = cadence;
+        _hasAnyReviews = false;
+        RenderCadence();
+        await LoadAsync();
+    }
+
+    /// <summary>Paints the selected segment and re-words what the page says it is showing.</summary>
+    private void RenderCadence()
+    {
+        var days = _cadence == JournalCadence.Daybook;
+
+        DaysSegment.BackgroundColor = days ? Tinted("White") : Colors.Transparent;
+        WeeksSegment.BackgroundColor = days ? Colors.Transparent : Tinted("White");
+        DaysSegmentLabel.TextColor = days ? Tinted("PrimaryDark") : Tinted("BodyText");
+        WeeksSegmentLabel.TextColor = days ? Tinted("BodyText") : Tinted("PrimaryDark");
+
+        SemanticProperties.SetHint(
+            DaysSegment, days ? "Showing one entry for each finished day" : "Shows one entry for each finished day");
+        SemanticProperties.SetHint(
+            WeeksSegment, days ? "Shows one entry for each finished week" : "Showing one entry for each finished week");
+
+        HeaderSubtitle.Text = days
+            ? "Daybooks of finished days"
+            : "Weekbooks of finished weeks";
+
+        SearchEntry.Placeholder = days ? "Search the Daybooks" : "Search the Weekbooks";
+    }
+
     private async void OnUrgencyChipTapped(object? sender, TappedEventArgs e)
     {
         var choice = await _popups.ChooseAsync("How soon it asked you to act", "Cancel", UrgencyChoices);
         if (choice is null)
             return;
 
-        _urgency = DaybookPresentation.UrgencyWireValue(choice);
+        _urgency = JournalPresentation.UrgencyWireValue(choice);
         UrgencyChipLabel.Text = _urgency is null ? "Any urgency" : choice;
         await LoadAsync();
     }
@@ -272,8 +328,15 @@ public partial class DaybookPage : ContentPage
                 ? DateOnly.FromDateTime(DateTime.Now).AddDays(-(days - 1))
                 : (DateOnly?)null;
 
-            var reviews = await _api.GetDaybooksAsync(
-                _memberId, HistoryLimit, _search, from, _urgency);
+            // The cadence is captured before the await: a caregiver who taps Weeks while Days is
+            // still in flight must not have the day list painted over their week list when the
+            // slower call lands.
+            var cadence = _cadence;
+            var reviews = await _api.GetJournalEntriesAsync(
+                _memberId, cadence, HistoryLimit, _search, from, _urgency);
+
+            if (cadence != _cadence)
+                return;
             _lastLoadedUtc = DateTime.UtcNow;
             _hasLoadedOnce = true;
             _hasAnyReviews = _hasAnyReviews || reviews.Count > 0;
@@ -282,6 +345,10 @@ public partial class DaybookPage : ContentPage
             // stays: hiding it on an empty *filtered* result would take away the one control
             // that undoes the emptiness.
             FilterPanel.IsVisible = _hasAnyReviews;
+
+            // Shown as soon as there is a member to read about, empty history or not: a caregiver
+            // waiting on their first entries is the one who most needs to see that weeks exist.
+            CadencePanel.IsVisible = true;
 
             if (reviews.Count == 0)
             {
@@ -296,9 +363,15 @@ public partial class DaybookPage : ContentPage
                     var who = string.IsNullOrWhiteSpace(_memberFirstName)
                         ? "their"
                         : $"{_memberFirstName}'s";
-                    EmptyTitleLabel.Text = "No Daybook entries yet";
-                    EmptyDetailLabel.Text =
-                        $"The first entry is written after {who} first full day of readings.";
+
+                    EmptyTitleLabel.Text = $"No {_cadence.EntryName()} entries yet";
+
+                    // Said at the cadence's own scale, and honestly about what it waits for. A
+                    // week needs most of itself measured before it can be accounted for, so a
+                    // caregiver who has Daybooks but no Weekbook is not looking at a fault.
+                    EmptyDetailLabel.Text = _cadence == JournalCadence.Weekbook
+                        ? $"The first is written when {who} week turns, and needs most of the week's days to have carried readings."
+                        : $"The first entry is written after {who} first full day of readings.";
                 }
                 SetState(empty: true);
                 return;
@@ -371,7 +444,11 @@ public partial class DaybookPage : ContentPage
             },
         };
         SemanticProperties.SetDescription(read, "Read");
-        SemanticProperties.SetHint(read, "Opens this day's full entry");
+        SemanticProperties.SetHint(
+            read,
+            _cadence == JournalCadence.Weekbook
+                ? "Opens this week's full entry"
+                : "Opens this day's full entry");
 
         // The alert tiles' construction, borrowed whole: a coloured rounded rect underneath and
         // the white card inset 4px from its left edge, so the urgency reads as a rail rounding
@@ -397,7 +474,7 @@ public partial class DaybookPage : ContentPage
 
         var card = new Border
         {
-            BackgroundColor = DaybookPresentation.UrgencyRailColor(review.Urgency) ?? Tinted("White"),
+            BackgroundColor = JournalPresentation.UrgencyRailColor(review.Urgency) ?? Tinted("White"),
             StrokeThickness = 0,
             Padding = new Thickness(4, 0, 0, 0),
             StrokeShape = new RoundRectangle { CornerRadius = 20 },
@@ -414,7 +491,8 @@ public partial class DaybookPage : ContentPage
         var open = new TapGestureRecognizer
         {
             Command = new Command(async () => await Shell.Current.GoToAsync(
-                $"{DaybookEntryPage.Route}?memberId={_memberId}&date={review.LocalDate:yyyy-MM-dd}"
+                $"{JournalEntryPage.Route}?memberId={_memberId}&date={review.LocalDate:yyyy-MM-dd}"
+                + $"&cadence={_cadence.WireValue()}"
                 + $"&name={Uri.EscapeDataString(_memberFirstName ?? string.Empty)}")),
         };
         card.GestureRecognizers.Add(open);
@@ -424,7 +502,7 @@ public partial class DaybookPage : ContentPage
     }
 
     /// <summary>The date, the generated headline, and the urgency pill on one row.</summary>
-    private static Grid Heading(DigestResponse review)
+    private Grid Heading(DigestResponse review)
     {
         var heading = new Grid
         {
@@ -435,7 +513,7 @@ public partial class DaybookPage : ContentPage
         var titles = new VerticalStackLayout { Spacing = 2 };
         titles.Add(new Label
         {
-            Text = DaybookPresentation.DayLabel(review.LocalDate),
+            Text = JournalPresentation.PeriodLabel(_cadence, review.LocalDate),
             Style = Styled("Body1SemiBoldDark"),
         });
         titles.Add(new Label
@@ -443,7 +521,9 @@ public partial class DaybookPage : ContentPage
             // The review's own headline names what that day was about. Falling back to a fixed
             // label rather than leaving the row empty: entries written before headlines existed
             // have none, and the apps have always titled themselves in that case.
-            Text = string.IsNullOrWhiteSpace(review.Headline) ? "The day in full" : review.Headline,
+            Text = string.IsNullOrWhiteSpace(review.Headline)
+                ? (_cadence == JournalCadence.Weekbook ? "The week in full" : "The day in full")
+                : review.Headline,
             Style = Styled("Body2"),
             TextColor = Tinted("BodyText"),
         });

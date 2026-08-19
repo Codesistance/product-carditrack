@@ -2,7 +2,7 @@
 <ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              xmlns:controls="clr-namespace:CardiTrack.Mobile.Controls"
-             x:Class="CardiTrack.Mobile.DaybookEntryPage"
+             x:Class="CardiTrack.Mobile.JournalEntryPage"
              Shell.NavBarIsVisible="False"
              Shell.TabBarIsVisible="False"
              BackgroundColor="{StaticResource PageGround}">
@@ -12,7 +12,7 @@
          runs to a dozen sentences and now carries the trend charts beneath it — content that
          would make the list unscannable expanded in place.
 
-         No Figma frame, like DaybookPage — see the design-sync backlog. -->
+         No Figma frame, like JournalPage — see the design-sync backlog. -->
 
     <Grid RowDefinitions="Auto,*,Auto" SafeAreaEdges="None, Container, None, None">
 
@@ -173,6 +173,6 @@
             </ScrollView>
         </RefreshView>
 
-        <controls:BottomNavBar Grid.Row="2" Tab="Daybook"/>
+        <controls:BottomNavBar Grid.Row="2" Tab="Journal"/>
     </Grid>
 </ContentPage>
