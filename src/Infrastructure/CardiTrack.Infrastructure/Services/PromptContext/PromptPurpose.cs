@@ -41,7 +41,13 @@ public enum PromptPurpose
     /// </summary>
     Weekbook = 64,
 
+    /// <summary>
+    /// The account of one finished calendar month. Shares the register and tense of the books
+    /// below it; differs in altitude again — the month's shape rather than a week's trajectory.
+    /// </summary>
+    Monthbook = 128,
+
     /// <summary>Everything a member-context source could contribute to.</summary>
     All = Digest | RealtimeAssessment | AlertInsight | BaselineInsight | CurrentStatus | Daybook
-        | Weekbook,
+        | Weekbook | Monthbook,
 }

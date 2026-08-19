@@ -70,9 +70,8 @@
              which hides itself on an empty history — this is navigation between series, not a
              filter within one.
 
-             Two segments, not three. The Monthbook's generator does not exist yet, and a segment
-             that selects a series nothing writes is an empty list with no honest explanation.
-             It arrives with the Monthbook itself. -->
+             Three segments now the Monthbook writes: each one selects a series something
+             actually produces. -->
         <Border x:Name="CadencePanel"
                 Grid.Row="1"
                 Margin="20,16,20,0"
@@ -84,7 +83,7 @@
             <Border.StrokeShape>
                 <RoundRectangle CornerRadius="14"/>
             </Border.StrokeShape>
-            <Grid ColumnDefinitions="Auto,Auto" ColumnSpacing="4">
+            <Grid ColumnDefinitions="Auto,Auto,Auto" ColumnSpacing="4">
 
                 <Border x:Name="DaysSegment"
                         Grid.Column="0"
@@ -118,6 +117,24 @@
                     </Border.GestureRecognizers>
                     <Label x:Name="WeeksSegmentLabel"
                            Text="Weeks"
+                           FontFamily="QuicksandSemiBold"
+                           FontSize="13"/>
+                </Border>
+
+                <Border x:Name="MonthsSegment"
+                        Grid.Column="2"
+                        Padding="18,7"
+                        StrokeThickness="0"
+                        SemanticProperties.Description="Months"
+                        SemanticProperties.Hint="Shows one entry for each finished month">
+                    <Border.StrokeShape>
+                        <RoundRectangle CornerRadius="11"/>
+                    </Border.StrokeShape>
+                    <Border.GestureRecognizers>
+                        <TapGestureRecognizer Tapped="OnMonthsSegmentTapped"/>
+                    </Border.GestureRecognizers>
+                    <Label x:Name="MonthsSegmentLabel"
+                           Text="Months"
                            FontFamily="QuicksandSemiBold"
                            FontSize="13"/>
                 </Border>

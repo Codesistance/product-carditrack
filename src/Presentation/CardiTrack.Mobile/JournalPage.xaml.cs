@@ -178,6 +178,9 @@ public partial class JournalPage : ContentPage
     private async void OnWeeksSegmentTapped(object? sender, TappedEventArgs e) =>
         await SwitchCadenceAsync(JournalCadence.Weekbook);
 
+    private async void OnMonthsSegmentTapped(object? sender, TappedEventArgs e) =>
+        await SwitchCadenceAsync(JournalCadence.Monthbook);
+
     /// <summary>
     /// Moves the list to another book.
     /// </summary>
@@ -202,23 +205,37 @@ public partial class JournalPage : ContentPage
     /// <summary>Paints the selected segment and re-words what the page says it is showing.</summary>
     private void RenderCadence()
     {
-        var days = _cadence == JournalCadence.Daybook;
+        PaintSegment(DaysSegment, DaysSegmentLabel, JournalCadence.Daybook, "day");
+        PaintSegment(WeeksSegment, WeeksSegmentLabel, JournalCadence.Weekbook, "week");
+        PaintSegment(MonthsSegment, MonthsSegmentLabel, JournalCadence.Monthbook, "month");
 
-        DaysSegment.BackgroundColor = days ? Tinted("White") : Colors.Transparent;
-        WeeksSegment.BackgroundColor = days ? Colors.Transparent : Tinted("White");
-        DaysSegmentLabel.TextColor = days ? Tinted("PrimaryDark") : Tinted("BodyText");
-        WeeksSegmentLabel.TextColor = days ? Tinted("BodyText") : Tinted("PrimaryDark");
+        HeaderSubtitle.Text = _cadence switch
+        {
+            JournalCadence.Weekbook => "Weekbooks of finished weeks",
+            JournalCadence.Monthbook => "Monthbooks of finished months",
+            _ => "Daybooks of finished days",
+        };
+
+        SearchEntry.Placeholder = $"Search the {_cadence.EntryName()}s";
+    }
+
+    /// <summary>
+    /// One segment's selected state, in colour and in what a screen reader is told. The hint
+    /// switches between "Showing" and "Shows" so the selection is audible, not only visible —
+    /// colour alone would leave the control's whole state invisible to a screen reader.
+    /// </summary>
+    private void PaintSegment(Border segment, Label label, JournalCadence cadence, string period)
+    {
+        var selected = _cadence == cadence;
+
+        segment.BackgroundColor = selected ? Tinted("White") : Colors.Transparent;
+        label.TextColor = selected ? Tinted("PrimaryDark") : Tinted("BodyText");
 
         SemanticProperties.SetHint(
-            DaysSegment, days ? "Showing one entry for each finished day" : "Shows one entry for each finished day");
-        SemanticProperties.SetHint(
-            WeeksSegment, days ? "Shows one entry for each finished week" : "Showing one entry for each finished week");
-
-        HeaderSubtitle.Text = days
-            ? "Daybooks of finished days"
-            : "Weekbooks of finished weeks";
-
-        SearchEntry.Placeholder = days ? "Search the Daybooks" : "Search the Weekbooks";
+            segment,
+            selected
+                ? $"Showing one entry for each finished {period}"
+                : $"Shows one entry for each finished {period}");
     }
 
     private async void OnUrgencyChipTapped(object? sender, TappedEventArgs e)
@@ -369,9 +386,14 @@ public partial class JournalPage : ContentPage
                     // Said at the cadence's own scale, and honestly about what it waits for. A
                     // week needs most of itself measured before it can be accounted for, so a
                     // caregiver who has Daybooks but no Weekbook is not looking at a fault.
-                    EmptyDetailLabel.Text = _cadence == JournalCadence.Weekbook
-                        ? $"The first is written when {who} week turns, and needs most of the week's days to have carried readings."
-                        : $"The first entry is written after {who} first full day of readings.";
+                    EmptyDetailLabel.Text = _cadence switch
+                    {
+                        JournalCadence.Weekbook =>
+                            $"The first is written when {who} week turns, and needs most of the week's days to have carried readings.",
+                        JournalCadence.Monthbook =>
+                            $"The first is written when {who} month turns, and needs about half the month's days to have carried readings.",
+                        _ => $"The first entry is written after {who} first full day of readings.",
+                    };
                 }
                 SetState(empty: true);
                 return;
@@ -444,11 +466,7 @@ public partial class JournalPage : ContentPage
             },
         };
         SemanticProperties.SetDescription(read, "Read");
-        SemanticProperties.SetHint(
-            read,
-            _cadence == JournalCadence.Weekbook
-                ? "Opens this week's full entry"
-                : "Opens this day's full entry");
+        SemanticProperties.SetHint(read, $"Opens this {PeriodNoun(_cadence)}'s full entry");
 
         // The alert tiles' construction, borrowed whole: a coloured rounded rect underneath and
         // the white card inset 4px from its left edge, so the urgency reads as a rail rounding
@@ -501,6 +519,22 @@ public partial class JournalPage : ContentPage
         return card;
     }
 
+    /// <summary>What one entry of this cadence covers, as a caregiver would say it.</summary>
+    internal static string PeriodNoun(JournalCadence cadence) => cadence switch
+    {
+        JournalCadence.Weekbook => "week",
+        JournalCadence.Monthbook => "month",
+        _ => "day",
+    };
+
+    /// <summary>
+    /// What a card is titled when the generation produced no headline — entries written before
+    /// headlines existed have none, and a fixed label beats an empty row. At the cadence's own
+    /// scale, or a month would announce itself as a day.
+    /// </summary>
+    internal static string FallbackHeadline(JournalCadence cadence) =>
+        $"The {PeriodNoun(cadence)} in full";
+
     /// <summary>The date, the generated headline, and the urgency pill on one row.</summary>
     private Grid Heading(DigestResponse review)
     {
@@ -521,9 +555,7 @@ public partial class JournalPage : ContentPage
             // The review's own headline names what that day was about. Falling back to a fixed
             // label rather than leaving the row empty: entries written before headlines existed
             // have none, and the apps have always titled themselves in that case.
-            Text = string.IsNullOrWhiteSpace(review.Headline)
-                ? (_cadence == JournalCadence.Weekbook ? "The week in full" : "The day in full")
-                : review.Headline,
+            Text = string.IsNullOrWhiteSpace(review.Headline) ? FallbackHeadline(_cadence) : review.Headline,
             Style = Styled("Body2"),
             TextColor = Tinted("BodyText"),
         });

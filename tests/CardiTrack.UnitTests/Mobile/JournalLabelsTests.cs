@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 using CardiTrack.Mobile.Core.Api;
 using CardiTrack.Mobile.Core.Journal;
 
@@ -113,12 +113,14 @@ public class JournalCadenceTests
     [Theory]
     [InlineData(JournalCadence.Daybook, "daybook")]
     [InlineData(JournalCadence.Weekbook, "weekbook")]
+    [InlineData(JournalCadence.Monthbook, "monthbook")]
     public void Wire_values_match_the_audiences_the_api_accepts(JournalCadence cadence, string expected)
         => Assert.Equal(expected, cadence.WireValue());
 
     [Theory]
     [InlineData(JournalCadence.Daybook, "Daybook", "Days")]
     [InlineData(JournalCadence.Weekbook, "Weekbook", "Weeks")]
+    [InlineData(JournalCadence.Monthbook, "Monthbook", "Months")]
     public void An_entry_is_named_for_its_book_and_a_segment_for_its_period(
         JournalCadence cadence, string entryName, string segmentLabel)
     {
@@ -129,9 +131,19 @@ public class JournalCadenceTests
     [Theory]
     [InlineData("weekbook", JournalCadence.Weekbook)]
     [InlineData("WEEKBOOK", JournalCadence.Weekbook)]
+    [InlineData("monthbook", JournalCadence.Monthbook)]
+    [InlineData("Monthbook", JournalCadence.Monthbook)]
     [InlineData("daybook", JournalCadence.Daybook)]
     public void A_cadence_round_trips_through_its_wire_value(string wire, JournalCadence expected)
         => Assert.Equal(expected, JournalCadenceExtensions.ParseCadence(wire));
+
+    /// <summary>Every value, not just the ones spelled out above — a new book cannot slip past.</summary>
+    [Fact]
+    public void Every_cadence_round_trips()
+    {
+        foreach (var cadence in Enum.GetValues<JournalCadence>())
+            Assert.Equal(cadence, JournalCadenceExtensions.ParseCadence(cadence.WireValue()));
+    }
 
     /// <summary>
     /// A link written before the cadence parameter existed carries none, and must still open the
@@ -141,7 +153,7 @@ public class JournalCadenceTests
     [InlineData(null)]
     [InlineData("")]
     [InlineData("   ")]
-    [InlineData("monthbook")]
+    [InlineData("yearbook")]
     public void An_absent_or_unknown_cadence_falls_back_to_the_daybook(string? wire)
         => Assert.Equal(JournalCadence.Daybook, JournalCadenceExtensions.ParseCadence(wire));
 }

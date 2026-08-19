@@ -56,4 +56,17 @@ public enum DigestAudience
     /// The week it covers ends the day before <c>JournalWeekStartsOn</c>, per member.
     /// </remarks>
     Weekbook = 4,
+
+    /// <summary>
+    /// The family's account of one <em>finished</em> calendar month, in the same register as the
+    /// books below it and at the month's own altitude: the shape of the month, which weeks
+    /// differed from the others, and what held across all of them.
+    /// </summary>
+    /// <remarks>
+    /// Written from the month's own measurements, <b>not</b> by summarising its Weekbooks — the
+    /// same independence the Weekbook has from the Daybooks, and for the same two reasons: no
+    /// imprecision propagates upward, and a month whose Weekbooks were skipped still gets its
+    /// Monthbook. Dated by the month's last day.
+    /// </remarks>
+    Monthbook = 5,
 }

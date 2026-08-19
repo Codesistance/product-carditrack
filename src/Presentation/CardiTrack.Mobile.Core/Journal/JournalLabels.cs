@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 using CardiTrack.Mobile.Core.Api;
 
 namespace CardiTrack.Mobile.Core.Journal;
@@ -29,6 +29,7 @@ public static class JournalLabels
         cadence switch
         {
             JournalCadence.Weekbook => WeekLabel(localDate),
+            JournalCadence.Monthbook => MonthLabel(localDate),
             _ => DayLabel(localDate, today),
         };
 
@@ -65,6 +66,18 @@ public static class JournalLabels
     /// week" is ambiguous the moment a caregiver is reading a fortnight-old entry, where
     /// "Yesterday" on a day never is.
     /// </remarks>
+    /// <summary>
+    /// The month, named — "August 2026". The entry's date is the month's last day, and the month
+    /// it belongs to is the only thing about that date a reader needs.
+    /// </summary>
+    /// <remarks>
+    /// The year is always said. A month name alone reads as "this year's August", which is right
+    /// for eleven months and wrong for the twelfth — and a caregiver scrolling back through a
+    /// year of Monthbooks is exactly who would be misled by it.
+    /// </remarks>
+    public static string MonthLabel(DateOnly monthEnd) =>
+        monthEnd.ToString("MMMM yyyy", CultureInfo.CurrentCulture);
+
     public static string WeekLabel(DateOnly weekEnd)
     {
         var weekStart = weekEnd.AddDays(-6);

@@ -48,7 +48,7 @@ src/Presentation/CardiTrack.Mobile/
 ├── ForgotPasswordPage / VerifyEmailPage      # Reset flow; hard email-verification gate
 ├── DashboardPage                             # Main tab — hero, quick actions, key metrics, nudges
 ├── AlertsPage                                # Real M1-10 alerts list (API-backed)
-├── JournalPage                             # Tab — the CardiJournal; Days / Weeks segmented control
+├── JournalPage                             # Tab — the CardiJournal; Days / Weeks / Months control
 ├── SettingsPage                              # Minimal (account card, silenced reminders, sign-out)
 ├── CardiMemberDetailPage                     # M1-13 (routed page)
 ├── EditCardiMemberPage                       # M1-14 (routed page)
@@ -123,7 +123,7 @@ The **platform tab bar is hidden** (`Shell.TabBarIsVisible="False"` on each tab 
 
 > Figma's bar reads Home / Health / Alerts / Profile, but the M1 file has no Health or Profile screen, so the tab set does not follow it. Dashboard and Alerts use the exported Figma glyphs; Summaries and Settings keep hand-authored ones, with `_active` variants that apply the tab-bar gradient to the existing stroke rather than inventing a filled glyph.
 >
-> **The Journal tab replaced Family.** The Family tab was a stub for family invitations, which are R3 work — a permanent quarter of the bar spent on a "coming soon" card, while the Daybook entries had no surface. The tab is labelled **Journal** and titled **CardiJournal** in its header: the umbrella that holds the Daybook today, and the Weekbook and Monthbook when they land (R2). `FamilyPage` is deleted; when family sharing lands it belongs under Settings or scoped to a member, not back in the bar. The tab reads the Daybook and Weekbook series through one page, switched by a Days / Weeks control; `JournalPage` has **no Figma frame** and therefore no M1 ID — a design-sync gap, not a built frame.
+> **The Journal tab replaced Family.** The Family tab was a stub for family invitations, which are R3 work — a permanent quarter of the bar spent on a "coming soon" card, while the Daybook entries had no surface. The tab is labelled **Journal** and titled **CardiJournal** in its header: the umbrella that holds the Daybook today, and the Weekbook and Monthbook when they land (R2). `FamilyPage` is deleted; when family sharing lands it belongs under Settings or scoped to a member, not back in the bar. The tab reads the Daybook and Weekbook series through one page, switched by a Days / Weeks / Months control; `JournalPage` has **no Figma frame** and therefore no M1 ID — a design-sync gap, not a built frame.
 
 Android back at a **tab root** finishes the activity, except on the dashboard: the first swipe shows "Go back again to leave CardiTrack" and a second swipe within two seconds is what actually leaves (`TabNavigation.TryHoldDashboardExit`, armed in `MainActivity`'s back callback alongside the origin return). Other tabs keep the one-press exit. iOS has no system-back-to-exit, so this is Android-only.
 

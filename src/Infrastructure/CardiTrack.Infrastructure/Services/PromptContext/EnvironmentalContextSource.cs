@@ -51,7 +51,7 @@ internal sealed class EnvironmentalContextSource : IMemberContextSource
     // (DaybookPrompt.ConditionsSection); the weekbook asks nothing of the weather at all, and a
     // single session from today would be context its brief never mentions and cannot place.
     public PromptPurpose Purposes =>
-        PromptPurpose.All & ~PromptPurpose.Daybook & ~PromptPurpose.Weekbook;
+        PromptPurpose.All & ~PromptPurpose.Daybook & ~PromptPurpose.Weekbook & ~PromptPurpose.Monthbook;
 
     public int Order => 10;
 

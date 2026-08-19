@@ -28,6 +28,15 @@ public static class TrendAwareness
     public const int WindowDays = 14;
 
     /// <summary>
+    /// The window a Monthbook's charts draw and count over: the month it accounts for, near
+    /// enough. A calendar month is 28–31 days, but the window is cut from the series' own end
+    /// rather than the calendar's, so a fixed 30 keeps every month's chart the same width — a
+    /// February drawn narrower than a March would read as a quieter month rather than a shorter
+    /// one.
+    /// </summary>
+    public const int MonthWindowDays = 30;
+
+    /// <summary>
     /// The floor under a claim. Below this many measured days the sentence would be counting
     /// noise: "under their usual on 2 of the last 3 nights" reads as a pattern and is a long
     /// weekend.
@@ -63,11 +72,25 @@ public static class TrendAwareness
     /// <param name="reviewedDate">The day the daybook entry reviews — the window's last day.</param>
     public static List<MetricPoint>? FortnightEndingOn(
         IEnumerable<MetricPoint>? series, DateOnly reviewedDate)
+        => WindowEndingOn(series, reviewedDate, WindowDays);
+
+    /// <summary>
+    /// <inheritdoc cref="FortnightEndingOn" path="/summary"/>
+    /// </summary>
+    /// <remarks>
+    /// The general form, for the books whose period is not a day. Whatever window a caller draws,
+    /// it must pass the same <paramref name="windowDays"/> to <see cref="Line"/> and
+    /// <see cref="BandLine"/> — the counted sentence claims to describe the chart above it, and
+    /// two different windows would make that claim false while both still looking plausible.
+    /// </remarks>
+    /// <param name="windowDays">How many points the window holds.</param>
+    public static List<MetricPoint>? WindowEndingOn(
+        IEnumerable<MetricPoint>? series, DateOnly endDate, int windowDays)
     {
-        var finished = series?.Where(p => p.Date <= reviewedDate).ToList() ?? new();
-        return finished.Count < WindowDays
+        var finished = series?.Where(p => p.Date <= endDate).ToList() ?? new();
+        return finished.Count < windowDays
             ? null
-            : finished.TakeLast(WindowDays).ToList();
+            : finished.TakeLast(windowDays).ToList();
     }
 
     /// <summary>
@@ -92,12 +115,13 @@ public static class TrendAwareness
         decimal? baseline,
         Direction direction,
         string usualText,
-        string dayWord)
+        string dayWord,
+        int windowDays = WindowDays)
     {
         if (baseline is not { } usual)
             return null;
 
-        return CountedLine(series, usual, direction, usualText, dayWord);
+        return CountedLine(series, usual, direction, usualText, dayWord, windowDays);
     }
 
     /// <summary>
@@ -125,8 +149,9 @@ public static class TrendAwareness
         decimal bound,
         Direction direction,
         string boundText,
-        string dayWord)
-        => CountedLine(series, bound, direction, boundText, dayWord);
+        string dayWord,
+        int windowDays = WindowDays)
+        => CountedLine(series, bound, direction, boundText, dayWord, windowDays);
 
     /// <summary>
     /// The shared counting: finished, measured days only, from the same fortnight the chart
@@ -146,13 +171,14 @@ public static class TrendAwareness
         decimal threshold,
         Direction direction,
         string thresholdText,
-        string dayWord)
+        string dayWord,
+        int windowDays)
     {
         if (series is null)
             return null;
 
         var counted = series
-            .TakeLast(WindowDays)
+            .TakeLast(windowDays)
             .Where(p => p.Value is not null && !p.IsPartial)
             .ToList();
 

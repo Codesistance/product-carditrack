@@ -433,6 +433,235 @@ public partial class DigestGenerationService : IDigestGenerationService
     /// </remarks>
     private const int WeekbookMinimumDaysWithData = 4;
 
+    /// <summary>
+    /// The minimum days of the month that must carry readings before a Monthbook is written.
+    /// </summary>
+    /// <remarks>
+    /// Fourteen — about half a month, the same stance the Weekbook's four-of-seven takes at its
+    /// own scale. A month measured on a handful of days is an unmeasured month, and an account of
+    /// it would have to speak for the weeks that are missing.
+    /// </remarks>
+    private const int MonthbookMinimumDaysWithData = 14;
+
+    /// <summary>
+    /// Whether any timezone on earth could put a member's local calendar on
+    /// <paramref name="dayOfMonth"/> at this instant.
+    /// </summary>
+    /// <remarks>
+    /// Real UTC offsets run from -12:00 to +14:00, so the fleet's local clocks span 26 hours and
+    /// touch at most three calendar dates at once. Deliberately generous at both ends rather than
+    /// enumerating the timezone database: being wrong towards "possible" costs one pass that
+    /// declines every member individually, while being wrong towards "impossible" would lose a
+    /// member their book for good.
+    /// </remarks>
+    internal static bool AnyTimeZoneCouldBeOnDayOfMonth(DateTime utcNow, int dayOfMonth)
+    {
+        var earliest = DateOnly.FromDateTime(utcNow.AddHours(-12));
+        var latest = DateOnly.FromDateTime(utcNow.AddHours(14));
+
+        for (var date = earliest; date <= latest; date = date.AddDays(1))
+        {
+            if (date.Day == dayOfMonth)
+                return true;
+        }
+
+        return false;
+    }
+
+    public async Task<int> GenerateDueMonthbooksAsync(DateTime utcNow, CancellationToken ct = default)
+    {
+        // On roughly twenty-nine days in thirty, no timezone on earth is on the first of a month,
+        // so nobody can be due and the whole pass is answerable without touching the database.
+        // Worth the guard: this runs 48 times a day, and without it every one of those passes
+        // reads the candidate list and then a member row and a timezone per candidate, only to
+        // decline all of them on a date comparison.
+        if (!AnyTimeZoneCouldBeOnDayOfMonth(utcNow, 1))
+            return 0;
+
+        // Wide enough to catch a member whose readings stopped partway through the month just
+        // gone: 35 days covers any prior month plus the day it becomes due on, in any timezone.
+        var windowStart = DateOnly.FromDateTime(utcNow).AddDays(-35);
+        var memberIds = (await _unitOfWork.CardiMembers.GetActiveIdsWithActivitySinceAsync(windowStart)).ToList();
+
+        var generated = 0;
+        foreach (var memberId in memberIds)
+        {
+            ct.ThrowIfCancellationRequested();
+            try
+            {
+                if (await GenerateMonthbookForMemberAsync(memberId, utcNow, ct))
+                    generated++;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Monthbook generation failed for CardiMember {CardiMemberId}.", memberId);
+            }
+        }
+
+        if (generated > 0)
+        {
+            _logger.LogInformation(
+                "Monthbook generation complete. Candidates: {Candidates}, monthbooks written: {Generated}.",
+                memberIds.Count, generated);
+        }
+
+        return generated;
+    }
+
+    /// <summary>
+    /// One member's account of the calendar month just gone, or false when it is not due, not
+    /// possible, or the reply did not survive its guards.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Due on the first of the month, once the member's local clock passes their Monthbook time,
+    /// and dated by the previous month's last day — so one <c>LocalDate</c> identifies one month
+    /// and the partial unique index holds written-once on (member, date) alone.
+    /// </para>
+    /// <para>
+    /// Composed on the first day of the following month, which is what keeps the retention
+    /// interaction from biting: the whole month is still inside every retention window at that
+    /// point. A month composed later could not say the same.
+    /// </para>
+    /// <para>
+    /// Built from the month's own measurements, never from its Weekbooks — the same independence
+    /// the Weekbook has from the Daybooks.
+    /// </para>
+    /// </remarks>
+    private async Task<bool> GenerateMonthbookForMemberAsync(
+        Guid memberId, DateTime utcNow, CancellationToken ct)
+    {
+        var member = await _unitOfWork.CardiMembers.GetByIdAsync(memberId);
+        if (member is null || !member.IsActive || member.IsMonitoringPaused(utcNow))
+            return false;
+
+        var timeZone = await MemberAnchorTimeZone.ResolveAsync(_unitOfWork, memberId);
+        var localNow = TimeZoneInfo.ConvertTimeFromUtc(utcNow, timeZone);
+        var localToday = DateOnly.FromDateTime(localNow);
+
+        // Due on the first, and only once their chosen hour has passed. A member whose own local
+        // date is not the first stops here — before any month-scoped read, though their row and
+        // timezone have already been fetched above. The pass as a whole is spared entirely by the
+        // offset-span guard in the caller on the days when nobody can be due.
+        if (localToday.Day != 1)
+            return false;
+
+        if (TimeOnly.FromDateTime(localNow) < JournalSchedule.EffectiveTime(member.MonthbookLocalTime))
+            return false;
+
+        var monthEnd = localToday.AddDays(-1);
+        var monthStart = new DateOnly(monthEnd.Year, monthEnd.Month, 1);
+
+        var existing = await _unitOfWork.Digests.GetLatestByDateAsync(
+            memberId, monthEnd, DigestAudience.Monthbook, ct);
+        if (existing is not null)
+            return false;
+
+        var days = (await _unitOfWork.ActivityLogs
+                .GetByCardiMemberAndDateRangeAsync(memberId, monthStart, monthEnd))
+            .Where(l => l.Date >= monthStart && l.Date <= monthEnd)
+            .OrderBy(l => l.Date)
+            .ToList();
+
+        if (days.Count < MonthbookMinimumDaysWithData)
+        {
+            _logger.LogInformation(
+                "No Monthbook for CardiMember {CardiMemberId} for the month ending {MonthEnd}: only "
+                + "{DaysWithData} days carried readings, below the {Minimum}-day minimum.",
+                memberId, monthEnd, days.Count, MonthbookMinimumDaysWithData);
+            return false;
+        }
+
+        var baseline = await _unitOfWork.PatternBaselines
+            .GetLatestByCardiMemberAsync(memberId, periodDays: 30);
+
+        var monthStartLocal = monthStart.ToDateTime(TimeOnly.MinValue);
+        var monthEndLocal = monthEnd.AddDays(1).ToDateTime(TimeOnly.MinValue);
+        var monthStartUtc = new DateTimeOffset(monthStartLocal, timeZone.GetUtcOffset(monthStartLocal)).UtcDateTime;
+        var monthEndUtc = new DateTimeOffset(monthEndLocal, timeZone.GetUtcOffset(monthEndLocal)).UtcDateTime;
+
+        var assessments = await _unitOfWork.RealtimeAssessments.GetBetweenAsync(
+            memberId, monthStartUtc, monthEndUtc, ct);
+
+        var monthAlerts = (await _unitOfWork.Alerts.GetByCardiMemberAsync(memberId, activeOnly: false))
+            .Where(a =>
+            {
+                var about = AlertDetailComposer.AboutDate(
+                    AlertDetailComposer.ReadRule(a.MetricValues),
+                    a.MetricValues,
+                    DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(a.TriggeredDate, timeZone)));
+                return about >= monthStart && about <= monthEnd;
+            })
+            .ToList();
+
+        var memberContext = await _memberContext.ComposeAsync(
+            new MemberContextRequest(member, memberId, monthEnd, utcNow, PromptPurpose.Monthbook), ct);
+
+        var prompt = $"""
+            {MonthbookPrompt.Instructions}
+
+            {memberContext}
+            {MonthbookPrompt.CoverageLine(days, monthStart, monthEnd)}
+            {MonthbookPrompt.ReadingsSection(days, baseline, member.DateOfBirth.ToAgeInYears(monthEnd))}
+            {MonthbookPrompt.MonitoringSection(monthAlerts, assessments)}
+            """;
+
+        var aiResponse = await _medicalAi.GenerateStructuredAsync<MonthbookAiResponse>(prompt, ct);
+        var text = aiResponse.Summary.Trim();
+
+        if (text.Length == 0 || MonthbookPrompt.ReadsLikeTheInstructions(text))
+        {
+            _logger.LogWarning(
+                "Discarded the monthbook for CardiMember {CardiMemberId} for the month ending {MonthEnd}: "
+                + "the model returned empty text or restated its own instructions.",
+                memberId, monthEnd);
+            return false;
+        }
+
+        if (MonthbookPrompt.NamesACondition(text) is { } condition)
+        {
+            _logger.LogWarning(
+                "Discarded the monthbook for CardiMember {CardiMemberId} for the month ending {MonthEnd}: "
+                + "it names a condition or a treatment ({Marker}).",
+                memberId, monthEnd, condition);
+            return false;
+        }
+
+        if (MonthbookPrompt.UnglossedTerm(text) is { } term)
+        {
+            _logger.LogWarning(
+                "Discarded the monthbook for CardiMember {CardiMemberId} for the month ending {MonthEnd}: "
+                + "it uses '{Term}' without explaining it where it is first used.",
+                memberId, monthEnd, term);
+            return false;
+        }
+
+        var name = NamePlaceholder.FirstName(member.Name);
+        if (name is null && NamePlaceholder.IsPresentIn(text))
+        {
+            _logger.LogWarning(
+                "Discarded the monthbook for CardiMember {CardiMemberId} for the month ending {MonthEnd}: "
+                + "it names the member through the placeholder, but no name is on file to resolve it to.",
+                memberId, monthEnd);
+            return false;
+        }
+
+        await _unitOfWork.Digests.AddAsync(new DigestEntry
+        {
+            CardiMemberId = memberId,
+            LocalDate = monthEnd,
+            Audience = DigestAudience.Monthbook,
+            Headline = NamePlaceholder.Resolve(CleanHeadline(aiResponse.Headline, memberId, monthEnd), name),
+            Text = NamePlaceholder.Resolve(text, name)!,
+            Suggestion = NamePlaceholder.Resolve(
+                CleanSuggestion(aiResponse.Suggestion, memberId, monthEnd), name),
+            Urgency = ParseUrgency(aiResponse.Urgency, memberId, monthEnd),
+            GeneratedAtUtc = utcNow,
+        }, ct);
+
+        return true;
+    }
+
     public async Task<int> GenerateDueWeekbooksAsync(DateTime utcNow, CancellationToken ct = default)
     {
         // Wider than the Daybook's two-day window: a week is due on one local weekday, and a
@@ -1854,6 +2083,36 @@ public partial class DigestGenerationService : IDigestGenerationService
         [Description(
             "One of: watch, check-in, concerning, act-now — how soon the family should act on this "
             + "week's readings, judged only from the readings given.")]
+        public string? Urgency { get; init; }
+    }
+
+    /// <summary>The Monthbook's reply shape, described for a month.</summary>
+    internal sealed record MonthbookAiResponse
+    {
+        [Description(
+            "8-14 sentences giving the family an account of {{NAME}}'s whole month, in the past "
+            + "tense. Says what held across the month and what changed within it, which week "
+            + "differed from the others and how, and how much of the month each reading covered. "
+            + "An account of the month as a whole, not a list of its days or its weeks. Not a "
+            + "restatement of the instructions.")]
+        public required string Summary { get; init; }
+
+        [Description(
+            "A five-to-seven-word qualification of the month described above, in sentence case — "
+            + "what kind of month it was, never a generic label like monthly summary or month's "
+            + "readings. No full stop, no quotation marks, no name and no {{NAME}}. A label, "
+            + "not a sentence.")]
+        public required string Headline { get; init; }
+
+        [Description(
+            "One specific, supportive, actionable suggestion in plain language, at most 25 words, "
+            + "answering something in the month's readings. Never a diagnosis, never a medical "
+            + "condition, never a change to any treatment.")]
+        public string? Suggestion { get; init; }
+
+        [Description(
+            "One of: watch, check-in, concerning, act-now — how soon the family should act on this "
+            + "month's readings, judged only from the readings given.")]
         public string? Urgency { get; init; }
     }
 

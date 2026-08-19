@@ -80,5 +80,12 @@ public class DigestEntryConfiguration : IEntityTypeConfiguration<DigestEntry>
             .IsUnique()
             .HasFilter("\"Audience\" = 'Weekbook'")
             .HasDatabaseName("IX_DigestEntries_OneWeekbookPerWeek");
+
+        // And the Monthbook's, on the same terms: its date is the month's last day, which is also
+        // a day with a Daybook and — when the month ends on the week's last day — a Weekbook too.
+        builder.HasIndex(d => new { d.CardiMemberId, d.LocalDate }, "IX_DigestEntries_OneMonthbookPerMonth")
+            .IsUnique()
+            .HasFilter("\"Audience\" = 'Monthbook'")
+            .HasDatabaseName("IX_DigestEntries_OneMonthbookPerMonth");
     }
 }

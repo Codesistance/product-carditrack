@@ -583,6 +583,39 @@ The register, its guards and the "counts, never scores" rule are shared with the
 (`JournalRegisterGuards`); only the instruction-echo list is per-book, since it is drawn from the
 wording of one brief.
 
+### The CardiJournal — the Monthbook (built today)
+
+`CARDITRACK_MONTHBOOK_PROMPT` — the account of one **finished calendar month**, written once on
+the first of the next one.
+
+- **The third altitude.** A Daybook is asked for completeness, a Weekbook for trajectory; a
+  Monthbook is asked for **shape** — whether the month held together or came apart, which of its
+  weeks differed, and what was true across all of them. Thirty days recited one by one would be
+  unreadable, and four weeks recited one by one is a Weekbook the caregiver has already read.
+- **Raw reassessment again.** Built from the month's own `ActivityLog` rows, baseline, alerts and
+  Yellow+ assessments — never from its Weekbooks. The month's days are compressed to per-week
+  aggregates *in code*, which is arithmetic over readings rather than a reading of anything the
+  model wrote. Pinned by a test that neither the Weekbook nor the Daybook series is read.
+- **The standout is a week, not a day.** At month scale a single unusual day is noise the
+  caregiver has already seen in its Daybook. Weeks are cut from the month's first day in sevens
+  rather than by weekday, so the comparison does not depend on where the member's journal week
+  starts — this describes the month's own shape, not their week boundary. Claimed only where three
+  weeks carry at least three measured days each and one sits a fifth of the average or more out.
+- **Storage and scheduling.** `DigestAudience.Monthbook`, its own partial unique index
+  (`IX_DigestEntries_OneMonthbookPerMonth`), dated by the month's last day, on the same half-hourly
+  `--job digest` pass. Cheapest of the three books, and the only one that can skip a pass
+  outright: on the days when no timezone on earth is on the first of a month — about
+  twenty-nine in thirty — the job answers from an offset-span check without reading anything.
+  The span is deliberately generous (UTC-12 to UTC+14, so up to three calendar dates at once):
+  being wrong towards "possible" costs one pass that declines each member individually, while
+  being wrong towards "impossible" would lose a member their book for good.
+- **The coverage guard is 14 days** — about half a month, the same stance the Weekbook's
+  four-of-seven takes at its own scale.
+- **Retention does not bite, by construction.** The month is composed on the first day of the next
+  one, when all of it is still inside every retention window. A month composed later could not say
+  the same — and `DigestRetentionMonths` was raised 3 → 7 so the entries themselves survive the
+  180-day history the top plan is sold on (see the DPIA, open item OI-14).
+
 ---
 
 ## Family Sharing: When and How to Push Data
