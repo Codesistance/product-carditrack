@@ -60,6 +60,18 @@ services:
     restart: "no"
     profiles: ["full"]
 
+  # Plain, non-medical model — rewrites MedGemma's clinical output into caregiver language
+  # (docs/llm_design.md). Pulled into the same local Ollama instance as MedGemma, not a second
+  # container, matching how the two are packaged into one image in prod.
+  rewrite-init:
+    image: ollama/ollama:latest
+    entrypoint: ["/bin/sh", "-c", "OLLAMA_HOST=http://ollama:11434 ollama pull gemma3:4b-it-qat"]
+    depends_on:
+      ollama:
+        condition: service_healthy
+    restart: "no"
+    profiles: ["full"]
+
   api:
     build:
       context: .
@@ -87,6 +99,12 @@ services:
       AI__Private__BaseUrl: "http://host.docker.internal:11434"
       AI__Private__Model: "hf.co/unsloth/medgemma-1.5-4b-it-GGUF:Q4_K_M"
       AI__Private__TimeoutSeconds: "120"
+      # Rewrite provider — a plain non-medical model on the same local Ollama instance, used only
+      # to rewrite MedGemma's clinical output into caregiver language. Same in-project guarantee
+      # as Private; see rewrite-init above.
+      AI__Rewrite__BaseUrl: "http://host.docker.internal:11434"
+      AI__Rewrite__Model: "gemma3:4b-it-qat"
+      AI__Rewrite__TimeoutSeconds: "120"
     ports:
       - "8080:8080"
     depends_on:

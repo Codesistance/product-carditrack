@@ -1698,6 +1698,9 @@ jobs:
       - name: Read model version
         id: model
         run: echo "tag=$(cat src/Infrastructure/MedGemma/.model-version | tr -d '[:space:]')" >> $GITHUB_OUTPUT
+      - name: Read rewrite model version
+        id: rewrite_model
+        run: echo "tag=$(cat src/Infrastructure/MedGemma/.rewrite-model-version | tr -d '[:space:]')" >> $GITHUB_OUTPUT
       - name: Build and push
         env:
           IMAGE: ${{ needs.changes.outputs.registry }}/medgemma
@@ -1705,6 +1708,7 @@ jobs:
         run: |
           docker build \
             --build-arg MODEL_TAG=${{ steps.model.outputs.tag }} \
+            --build-arg REWRITE_MODEL_TAG=${{ steps.rewrite_model.outputs.tag }} \
             -t $IMAGE:$TAG \
             -f src/Infrastructure/MedGemma/Dockerfile .
           docker push $IMAGE:$TAG

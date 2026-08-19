@@ -53,14 +53,19 @@ public class MedGemmaClient : IExternalAiClient
     private static readonly TimeSpan MaxBackoff = TimeSpan.FromSeconds(60);
 
     private readonly IHttpClientFactory _httpClientFactory;
-    private readonly PrivateAiSettings _settings;
+    private readonly IMedGemmaModelSettings _settings;
     private readonly string _httpClientName;
     private readonly ILogger<MedGemmaClient> _logger;
     private readonly TimeProvider _timeProvider;
 
+    /// <remarks>
+    /// Takes <see cref="IMedGemmaModelSettings"/> rather than <see cref="PrivateAiSettings"/>
+    /// directly so the same client type serves both the Private and Rewrite slots — two model
+    /// tags on the same in-project Ollama host (see <c>AiServiceExtensions.AddMedicalAiServices</c>).
+    /// </remarks>
     public MedGemmaClient(
         IHttpClientFactory httpClientFactory,
-        PrivateAiSettings settings,
+        IMedGemmaModelSettings settings,
         string httpClientName,
         ILogger<MedGemmaClient> logger,
         TimeProvider? timeProvider = null)

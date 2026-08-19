@@ -54,6 +54,16 @@ public class AiServiceExtensionsTests
         Assert.IsType<MedGemmaClient>(client);
     }
 
+    // The rewrite slot is the same client type as the medical one — a different model tag on the
+    // same in-project host, never a switchable provider (see the class remarks).
+    [Fact]
+    public void AddAiServices_ResolvesTheRewriteProviderToMedGemmaToo()
+    {
+        var client = Resolve(Config()).GetRequiredKeyedService<IExternalAiClient>("RewriteProvider");
+
+        Assert.IsType<MedGemmaClient>(client);
+    }
+
     [Fact]
     public void AddAiServices_AppliesThePerKindBaseUrl_WhenNoneIsConfigured()
     {
@@ -97,6 +107,8 @@ public class AiServiceExtensionsTests
     [InlineData("AI:Public:ApiKey", "AI__Public__ApiKey")]
     [InlineData("AI:Private:Model", "AI__Private__Model")]
     [InlineData("AI:Private:BaseUrl", "AI__Private__BaseUrl")]
+    [InlineData("AI:Rewrite:Model", "AI__Rewrite__Model")]
+    [InlineData("AI:Rewrite:BaseUrl", "AI__Rewrite__BaseUrl")]
     public void AddAiServices_Throws_WhenARequiredValueIsBlank(string key, string expectedEnvVar)
     {
         var config = Config();
@@ -179,6 +191,43 @@ public class AiServiceExtensionsTests
         Assert.NotNull(Resolve(Config()).GetRequiredService<IHttpClientFactory>());
     }
 
+    // The rewrite slot validates its own identity-token coherence independently of Private — same
+    // rules, same reason (it lives on the same IAM-authorised Cloud Run host in every deployed
+    // environment), separate config key.
+    [Fact]
+    public void AddAiServices_Throws_WhenARewriteCloudRunBaseUrlHasNoIdentityToken()
+    {
+        var config = Config();
+        config["AI:Rewrite:BaseUrl"] = "https://carditrack-dev-medgemma-abcdef.a.run.app";
+        config["AI:Rewrite:UseIdentityToken"] = "false";
+
+        var ex = Assert.Throws<InvalidOperationException>(() => Resolve(config));
+
+        Assert.Contains("AI__Rewrite__UseIdentityToken", ex.Message);
+    }
+
+    [Fact]
+    public void AddAiServices_Succeeds_WhenARewriteCloudRunBaseUrlHasAnIdentityToken()
+    {
+        var config = Config();
+        config["AI:Rewrite:BaseUrl"] = "https://carditrack-dev-medgemma-abcdef.a.run.app";
+        config["AI:Rewrite:UseIdentityToken"] = "true";
+
+        Assert.NotNull(Resolve(config).GetRequiredService<IHttpClientFactory>());
+    }
+
+    [Fact]
+    public void AddAiServices_Throws_WhenARewriteIdentityTokenIsUsedOverPlainHttp()
+    {
+        var config = Config();
+        config["AI:Rewrite:BaseUrl"] = "http://localhost:11434";
+        config["AI:Rewrite:UseIdentityToken"] = "true";
+
+        var ex = Assert.Throws<InvalidOperationException>(() => Resolve(config));
+
+        Assert.Contains("AI__Rewrite__UseIdentityToken", ex.Message);
+    }
+
     private static Dictionary<string, string?> Config() => new()
     {
         ["AI:Public:Kind"] = "Gemini",
@@ -189,7 +238,10 @@ public class AiServiceExtensionsTests
         ["AI:Public:MaxOutputTokens"] = "16000",
         ["AI:Private:Model"] = "medgemma",
         ["AI:Private:BaseUrl"] = "http://localhost:11434",
-        ["AI:Private:TimeoutSeconds"] = "300"
+        ["AI:Private:TimeoutSeconds"] = "300",
+        ["AI:Rewrite:Model"] = "gemma3:4b-it-qat",
+        ["AI:Rewrite:BaseUrl"] = "http://localhost:11434",
+        ["AI:Rewrite:TimeoutSeconds"] = "300"
     };
 
     private static ServiceProvider Resolve(Dictionary<string, string?> settings)

@@ -60,7 +60,13 @@ public class RealtimeAssessmentService : IRealtimeAssessmentService
     /// The closing severity line is the machine-readable part of the answer — the
     /// parser accepts nothing else, so the instruction is explicit about its format.
     /// </summary>
-    private const string AssessmentInstructions =
+    /// <remarks>
+    /// Internal rather than private so <c>tools/AiSplitEvaluator</c> (an offline diagnostic, not
+    /// built by CI) can replay the real prompt instead of a hand-copied approximation that could
+    /// silently drift from it. <see cref="MedicalPromptToneTests"/>'s reflection already covers
+    /// non-public static fields, so this widening changes nothing about what that suite checks.
+    /// </remarks>
+    internal const string AssessmentInstructions =
         MedicalPromptBlocks.Tone + MedicalPromptBlocks.Pronouns + """
         Assess this hour of wearable readings for a family caregiver.
 
@@ -209,8 +215,8 @@ public class RealtimeAssessmentService : IRealtimeAssessmentService
                 member, memberId, DateOnly.FromDateTime(utcNow), utcNow, PromptPurpose.RealtimeAssessment),
             ct);
 
-        var prompt = BuildPrompt(memberContext, ssa.TrendLast, deviationScore, noiseRms,
-            series[^1], covered, steps, spo2);
+        var prompt = BuildPrompt(AssessmentInstructions, memberContext, ssa.TrendLast, deviationScore,
+            noiseRms, series[^1], covered, steps, spo2);
         var aiResponse = await _medicalAi.GenerateStructuredAsync<AssessmentAiResponse>(prompt, ct);
         var (rawSeverity, severity) = AssessmentSeverityParser.Map(aiResponse.Severity);
 
@@ -348,8 +354,16 @@ public class RealtimeAssessmentService : IRealtimeAssessmentService
         public required string Severity { get; init; }
     }
 
-    private static string BuildPrompt(
-        string memberContext, double trendLast, double deviationScore,
+    /// <remarks>
+    /// Takes <paramref name="instructions"/> as a parameter — rather than inlining
+    /// <see cref="AssessmentInstructions"/> — so <c>tools/AiSplitEvaluator</c> can reuse this exact
+    /// data-formatting code with its own clinical-only instructions block, without duplicating (and
+    /// risking drift in) the "--- Last hour of data ---" formatting. The production call site always
+    /// passes <see cref="AssessmentInstructions"/>, so this is a widening, not a behaviour change.
+    /// Internal for the same reason as <see cref="AssessmentInstructions"/>.
+    /// </remarks>
+    internal static string BuildPrompt(
+        string instructions, string memberContext, double trendLast, double deviationScore,
         double noiseRms, double lastReading, int coveredMinutes, double? steps, double? spo2)
     {
         var contextLines = new List<string>
@@ -364,7 +378,7 @@ public class RealtimeAssessmentService : IRealtimeAssessmentService
         };
 
         return $"""
-            {AssessmentInstructions}
+            {instructions}
 
             {memberContext}
 
@@ -378,7 +392,9 @@ public class RealtimeAssessmentService : IRealtimeAssessmentService
     /// (and the leading gap, if any, backfilled from the first). Interpolation exists only in
     /// this array — stored minutes stay exactly as measured.
     /// </summary>
-    private static double[] FillGaps(float?[] window)
+    /// <remarks>Internal for the same reason as <see cref="AssessmentInstructions"/> — replayed
+    /// verbatim by <c>tools/AiSplitEvaluator</c> rather than re-derived.</remarks>
+    internal static double[] FillGaps(float?[] window)
     {
         var series = new double[window.Length];
         var first = Array.FindIndex(window, v => v.HasValue);
@@ -393,7 +409,8 @@ public class RealtimeAssessmentService : IRealtimeAssessmentService
         return series;
     }
 
-    private static double? SumIfAny(
+    /// <remarks>Internal for the same reason as <see cref="FillGaps"/>.</remarks>
+    internal static double? SumIfAny(
         IReadOnlyDictionary<GranularMetric, float?[]> minuteSeries, GranularMetric metric,
         int lastIndex, int windowMinutes)
     {
@@ -404,7 +421,8 @@ public class RealtimeAssessmentService : IRealtimeAssessmentService
         return slice.Where(v => v.HasValue).Sum(v => (double)v!.Value);
     }
 
-    private static double? MeanIfAny(
+    /// <remarks>Internal for the same reason as <see cref="FillGaps"/>.</remarks>
+    internal static double? MeanIfAny(
         IReadOnlyDictionary<GranularMetric, float?[]> minuteSeries, GranularMetric metric,
         int lastIndex, int windowMinutes)
     {

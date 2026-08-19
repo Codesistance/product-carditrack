@@ -10,6 +10,11 @@
     <!-- FcmNotificationChannel's payload builder is internal — the privacy invariant (no PHI in
          the FCM request body) is worth testing directly rather than through the FirebaseAdmin SDK. -->
     <InternalsVisibleTo Include="CardiTrack.UnitTests" />
+    <!-- RealtimeAssessmentService.AssessmentInstructions/BuildPrompt — the offline split-evaluation
+         tool (tools/AiSplitEvaluator) replays the real assessor prompt against a rewrite-model
+         split and needs the production prompt itself, not a hand-copied approximation that could
+         silently drift from it. Diagnostic only: not built by CI, run by hand (see its README). -->
+    <InternalsVisibleTo Include="CardiTrack.Tools.AiSplitEvaluator" />
   </ItemGroup>
 
   <ItemGroup>
