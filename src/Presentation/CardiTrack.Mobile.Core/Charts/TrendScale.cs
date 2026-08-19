@@ -26,6 +26,21 @@ public readonly record struct TrendScale
     /// </remarks>
     public const double Headroom = 6d;
 
+    /// <summary>
+    /// How far the plot's floor sits below the lowest reading, as a fraction of the plotted
+    /// extent, when the readings themselves set that floor.
+    /// </summary>
+    /// <remarks>
+    /// Without it the smallest sample is drawn on the axis minimum itself — and now that the
+    /// charts write their extent on the axis, a reading sitting exactly on the bottom number
+    /// reads as a value pinned to a floor the chart imposed rather than one the member reached.
+    /// Only the readings' own floor is padded: a baseline or reference bound that reached lower
+    /// has already put clear air under the samples. Never taken below zero, which for every
+    /// metric drawn here — hours, beats, percent, steps — is a real bound rather than a
+    /// convention; a floor already at zero stays there.
+    /// </remarks>
+    public const double FloorPadding = 0.1;
+
     private TrendScale(double min, double max)
     {
         Min = min;
@@ -71,6 +86,12 @@ public readonly record struct TrendScale
             var high = referenceHigh is { } h ? Math.Max(h, max) : max;
             (min, max) = Admit(min, max, low, high, extent);
         }
+
+        // See FloorPadding. Applied last so the padding can never buy a rejected baseline or
+        // band its way in, and only when the lowest reading itself is what the plot bottoms
+        // out on.
+        if (max > min && min == Math.Min(dataMin, dataMax) && min > 0)
+            min = Math.Max(0, min - (max - min) * FloorPadding);
 
         return new TrendScale(min, max);
     }

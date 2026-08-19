@@ -220,21 +220,21 @@ public partial class DaybookEntryPage : ContentPage
         // single concerning direction, so each carries only the lines it has earned.
         var blocks = new[]
         {
-            Block(metrics.Sleep, _date, "Sleep", "MetricSleepInk", "{0:0.#}",
+            Block(metrics.Sleep, _date, "Sleep", "MetricSleepInk", "{0:0.#}", "h",
                 TrendAwareness.Direction.BelowUsual, "night",
-                new BandCount(TrendAwareness.Direction.BelowUsual, AgainstLow: true, "h")),
-            Block(metrics.RestingHeartRate, _date, "Resting heart rate", "MetricHeartInk", "{0:N0}",
+                new BandCount(TrendAwareness.Direction.BelowUsual, AgainstLow: true)),
+            Block(metrics.RestingHeartRate, _date, "Resting heart rate", "MetricHeartInk", "{0:N0}", " bpm",
                 TrendAwareness.Direction.AboveUsual, "day",
-                new BandCount(TrendAwareness.Direction.AboveUsual, AgainstLow: false, " bpm")),
-            Block(metrics.SpO2, _date, "Blood oxygen", "MetricSpO2Ink", "{0:0.#}",
+                new BandCount(TrendAwareness.Direction.AboveUsual, AgainstLow: false)),
+            Block(metrics.SpO2, _date, "Blood oxygen", "MetricSpO2Ink", "{0:0.#}", "%",
                 TrendAwareness.Direction.BelowUsual, "day",
-                new BandCount(TrendAwareness.Direction.BelowUsual, AgainstLow: true, "%")),
-            Block(metrics.BreathingRate, _date, "Breathing rate", "MetricBreathingInk", "{0:0.#}",
+                new BandCount(TrendAwareness.Direction.BelowUsual, AgainstLow: true)),
+            Block(metrics.BreathingRate, _date, "Breathing rate", "MetricBreathingInk", "{0:0.#}", "/min",
                 TrendAwareness.Direction.AboveUsual, "day",
-                new BandCount(TrendAwareness.Direction.AboveUsual, AgainstLow: false, "/min")),
-            Block(metrics.Steps, _date, "Steps", "MetricStepsInk", "{0:N0}",
+                new BandCount(TrendAwareness.Direction.AboveUsual, AgainstLow: false)),
+            Block(metrics.Steps, _date, "Steps", "MetricStepsInk", "{0:N0}", " steps",
                 TrendAwareness.Direction.BelowUsual, "day", band: null),
-            Block(metrics.Temperature, _date, "Skin temperature", "MetricTemperatureInk", "{0:0.#}",
+            Block(metrics.Temperature, _date, "Skin temperature", "MetricTemperatureInk", "{0:0.#}", "°C",
                 usualDirection: null, "day", band: null),
         };
 
@@ -251,12 +251,11 @@ public partial class DaybookEntryPage : ContentPage
     }
 
     /// <summary>
-    /// A counted claim against a published band — which side of which bound, and the unit the
-    /// sentence writes after the figure. The bound itself always comes from the metric's own
-    /// <see cref="MetricReference"/>, so the count can never cite a figure the chart does not
-    /// shade, and the sentence always names the publisher.
+    /// A counted claim against a published band — which side of which bound. The bound itself
+    /// always comes from the metric's own <see cref="MetricReference"/>, so the count can never
+    /// cite a figure the chart does not shade, and the sentence always names the publisher.
     /// </summary>
-    private sealed record BandCount(TrendAwareness.Direction Direction, bool AgainstLow, string Unit);
+    private sealed record BandCount(TrendAwareness.Direction Direction, bool AgainstLow);
 
     private static View? Block(
         DashboardMetric metric,
@@ -264,6 +263,7 @@ public partial class DaybookEntryPage : ContentPage
         string name,
         string inkKey,
         string axisFormat,
+        string unit,
         TrendAwareness.Direction? usualDirection,
         string dayWord,
         BandCount? band)
@@ -297,11 +297,34 @@ public partial class DaybookEntryPage : ContentPage
 
         var stack = new VerticalStackLayout { Spacing = 6 };
         stack.Add(new Label { Text = name, Style = Styled("Body1SemiBoldDark") });
-        stack.Add(chart);
+
+        // The extent written on the axis, top and bottom, beside the plot rather than over it —
+        // the same construction the member detail's trend cards use, so a caregiver moving
+        // between the two screens reads one kind of chart. Both numbers name the scale the line
+        // is actually drawn against, which the baseline and the band get a say in.
+        var axis = new Grid
+        {
+            RowDefinitions = [new RowDefinition(GridLength.Star), new RowDefinition(GridLength.Star)],
+        };
+        var maxLabel = AxisLabel(string.Format(axisFormat, (decimal)scale.Max));
+        maxLabel.VerticalOptions = LayoutOptions.Start;
+        var minLabel = AxisLabel(string.Format(axisFormat, (decimal)scale.Min));
+        minLabel.VerticalOptions = LayoutOptions.End;
+        axis.Add(maxLabel);
+        axis.Add(minLabel, 0, 1);
+
+        var plot = new Grid
+        {
+            ColumnDefinitions = [new ColumnDefinition(GridLength.Auto), new ColumnDefinition(GridLength.Star)],
+            ColumnSpacing = 8,
+        };
+        plot.Add(axis);
+        plot.Add(chart, 1);
+        stack.Add(plot);
 
         // The key names only marks the chart actually drew, and the band carries its publisher —
         // a shaded band with nobody's name on it is a claim wearing no authority.
-        if (MetricChartKey.For(metric, axisFormat) is { } key)
+        if (MetricChartKey.For(metric, axisFormat, unit) is { } key)
         {
             stack.Add(new Label
             {
@@ -315,14 +338,22 @@ public partial class DaybookEntryPage : ContentPage
         // Counts the caregiver can check against the chart above them — never scores. Two
         // possible lines: against the member's own usual, and against the published band the
         // chart shades, each said only when its yardstick exists.
-        if (usualDirection is { } direction
-            && TrendAwareness.Line(window, metric.Baseline, direction, dayWord) is { } usualLine)
+        if (usualDirection is { } direction && metric.Baseline is { } usual)
         {
-            stack.Add(new Label
+            // The figure rides in the sentence — "their usual 4h" — so the claim can be checked
+            // against the dashed rule without a round trip through the key line above it.
+            var usualText = string.Create(
+                System.Globalization.CultureInfo.CurrentCulture,
+                $"their usual {string.Format(axisFormat, usual)}{unit}");
+
+            if (TrendAwareness.Line(window, usual, direction, usualText, dayWord) is { } usualLine)
             {
-                Text = usualLine,
-                Style = Styled("Body2Dark"),
-            });
+                stack.Add(new Label
+                {
+                    Text = usualLine,
+                    Style = Styled("Body2Dark"),
+                });
+            }
         }
 
         if (band is not null && metric.Reference is { } published)
@@ -330,7 +361,7 @@ public partial class DaybookEntryPage : ContentPage
             var bound = band.AgainstLow ? published.Low : published.High;
             var boundText = string.Create(
                 System.Globalization.CultureInfo.CurrentCulture,
-                $"the recommended {string.Format(axisFormat, bound)}{band.Unit} ({published.Source})");
+                $"the recommended {string.Format(axisFormat, bound)}{unit} ({published.Source})");
 
             if (TrendAwareness.BandLine(window, bound, band.Direction, boundText, dayWord) is { } bandLine)
             {
@@ -344,6 +375,19 @@ public partial class DaybookEntryPage : ContentPage
 
         return new Border { Style = Styled("ElevatedCard"), Content = stack };
     }
+
+    /// <summary>
+    /// One axis number, dressed the way the member detail's trend cards dress theirs — muted,
+    /// annotation-sized, ranged right against the plot it measures.
+    /// </summary>
+    private static Label AxisLabel(string text) => new()
+    {
+        Text = text,
+        Style = Styled("Body2"),
+        FontSize = 12,
+        TextColor = Tinted("MutedText"),
+        HorizontalTextAlignment = TextAlignment.End,
+    };
 
     private static Style Styled(string key) =>
         (Style)Microsoft.Maui.Controls.Application.Current!.Resources[key];

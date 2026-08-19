@@ -77,6 +77,12 @@ public static class TrendAwareness
     /// <param name="series">The metric's series, oldest first, as the dashboard reports it.</param>
     /// <param name="baseline">The member's own usual for this metric.</param>
     /// <param name="direction">Which side of that usual gets counted.</param>
+    /// <param name="usualText">
+    /// The usual as the sentence says it, with its figure and unit — "their usual 4h". Built by
+    /// the caller, which knows the metric's format; the figure is in the sentence so the claim
+    /// stands on its own rather than sending the reader to the key line for the number it counted
+    /// against.
+    /// </param>
     /// <param name="dayWord">
     /// What one counted day is called in the sentence — "day" for steps, "night" for sleep — so
     /// the line reads the way a person would say it.
@@ -85,12 +91,13 @@ public static class TrendAwareness
         IReadOnlyList<MetricPoint>? series,
         decimal? baseline,
         Direction direction,
+        string usualText,
         string dayWord)
     {
         if (baseline is not { } usual)
             return null;
 
-        return CountedLine(series, usual, direction, "their usual", dayWord);
+        return CountedLine(series, usual, direction, usualText, dayWord);
     }
 
     /// <summary>
@@ -128,6 +135,12 @@ public static class TrendAwareness
     /// product exists to prevent. Below <see cref="MinimumMeasuredDays"/> the sentence would be
     /// counting noise, so nothing is said at all.
     /// </summary>
+    /// <remarks>
+    /// The two ends of the count get said the way a person would say them — "not once under" and
+    /// "every one of" rather than "0 of the last 14" and "14 of the last 14" — because those are
+    /// the two counts a caregiver most needs to take in at a glance, and the arithmetic phrasing
+    /// buries exactly them. Both remain counts the chart above can verify; no judgement is added.
+    /// </remarks>
     private static string? CountedLine(
         IReadOnlyList<MetricPoint>? series,
         decimal threshold,
@@ -151,8 +164,19 @@ public static class TrendAwareness
             : counted.Count(p => p.Value > threshold);
 
         var side = direction == Direction.BelowUsual ? "under" : "above";
-        var days = string.Create(
-            CultureInfo.CurrentCulture, $"{offSide} of the last {counted.Count} {dayWord}s");
+
+        if (offSide == 0)
+        {
+            return string.Create(
+                CultureInfo.CurrentCulture,
+                $"Not once {side} {thresholdText} in the last {counted.Count} {dayWord}s");
+        }
+
+        var days = offSide == counted.Count
+            ? string.Create(
+                CultureInfo.CurrentCulture, $"every one of the last {counted.Count} {dayWord}s")
+            : string.Create(
+                CultureInfo.CurrentCulture, $"{offSide} of the last {counted.Count} {dayWord}s");
 
         return $"{Capitalize(side)} {thresholdText} on {days}";
     }
@@ -174,18 +198,23 @@ public static class MetricChartKey
     /// </summary>
     /// <param name="metric">The metric the chart is rendered from — same object, nothing else.</param>
     /// <param name="axisFormat">The bare axis format the chart's own labels use.</param>
-    public static string? For(DashboardMetric metric, string axisFormat)
+    /// <param name="unit">
+    /// The unit written after each figure — "h", " bpm" — so "their usual 4" does not leave the
+    /// reader asking four of what. On a range it is written once, after the high end, the way a
+    /// person says "seven to eight hours".
+    /// </param>
+    public static string? For(DashboardMetric metric, string axisFormat, string unit)
     {
         var entries = new List<string>(2);
 
         if (metric.Baseline is { } usual)
-            entries.Add($"Dashed: their usual {string.Format(CultureInfo.CurrentCulture, axisFormat, usual)}");
+            entries.Add($"Dashed: their usual {string.Format(CultureInfo.CurrentCulture, axisFormat, usual)}{unit}");
 
         if (metric.Reference is { } reference)
         {
             entries.Add(
                 $"Shaded: recommended {string.Format(CultureInfo.CurrentCulture, axisFormat, reference.Low)}"
-                + $"–{string.Format(CultureInfo.CurrentCulture, axisFormat, reference.High)}"
+                + $"–{string.Format(CultureInfo.CurrentCulture, axisFormat, reference.High)}{unit}"
                 + $" ({reference.Source})");
         }
 

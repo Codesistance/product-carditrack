@@ -7,6 +7,11 @@ namespace CardiTrack.UnitTests.Mobile;
 /// the published reference range have been fitted around the readings — and the rule for when
 /// they are refused the room, which is the part a caregiver would notice going wrong.
 /// </summary>
+/// <remarks>
+/// Where the readings themselves set the floor, it is padded a step below the lowest of them —
+/// see <see cref="TrendScale.FloorPadding"/> — so the smallest sample never sits on the axis
+/// minimum the chart writes beside it. The expectations below spell that padding out.
+/// </remarks>
 public class TrendScaleTests
 {
     private static TrendScale For(
@@ -15,11 +20,11 @@ public class TrendScaleTests
         TrendScale.For(dataMin, dataMax, baseline, referenceLow, referenceHigh);
 
     [Fact]
-    public void Readings_alone_set_the_extent()
+    public void Readings_alone_set_the_extent_with_the_floor_a_step_below_them()
     {
         var scale = For(66, 74);
 
-        Assert.Equal(66, scale.Min);
+        Assert.Equal(66 - (74 - 66) * TrendScale.FloorPadding, scale.Min, 10);
         Assert.Equal(74, scale.Max);
         Assert.True(scale.HasExtent);
     }
@@ -28,20 +33,21 @@ public class TrendScaleTests
     public void A_baseline_outside_the_readings_widens_the_plot_to_reach_it()
     {
         // A fortnight spent below the member's own normal: the baseline is the whole point of the
-        // chart, so the plot makes room for it rather than leaving the rule off the top.
+        // chart, so the plot makes room for it rather than leaving the rule off the top. The
+        // readings still bottom the plot out, so the floor is padded against the widened extent.
         var scale = For(4000, 4800, baseline: 5200);
 
-        Assert.Equal(4000, scale.Min);
+        Assert.Equal(4000 - (5200 - 4000) * TrendScale.FloorPadding, scale.Min, 10);
         Assert.Equal(5200, scale.Max);
         Assert.True(scale.Contains(5200));
     }
 
     [Fact]
-    public void A_baseline_inside_the_readings_changes_nothing()
+    public void A_baseline_inside_the_readings_changes_nothing_but_the_floor()
     {
         var scale = For(60, 80, baseline: 70);
 
-        Assert.Equal(60, scale.Min);
+        Assert.Equal(60 - (80 - 60) * TrendScale.FloorPadding, scale.Min, 10);
         Assert.Equal(80, scale.Max);
     }
 
@@ -52,7 +58,7 @@ public class TrendScaleTests
         // plot, and where the member sits inside it is the comparison worth drawing.
         var scale = For(6.2, 8.4, referenceLow: 7, referenceHigh: 9);
 
-        Assert.Equal(6.2, scale.Min);
+        Assert.Equal(6.2 - (9 - 6.2) * TrendScale.FloorPadding, scale.Min, 10);
         Assert.Equal(9, scale.Max);
     }
 
@@ -64,7 +70,7 @@ public class TrendScaleTests
         // to draw clipped against the plot edges.
         var scale = For(68, 70, referenceLow: 60, referenceHigh: 100);
 
-        Assert.Equal(68, scale.Min);
+        Assert.Equal(68 - (70 - 68) * TrendScale.FloorPadding, scale.Min, 10);
         Assert.Equal(70, scale.Max);
         Assert.False(scale.Contains(60));
         Assert.False(scale.Contains(100));
@@ -74,7 +80,8 @@ public class TrendScaleTests
     public void A_reference_range_is_admitted_for_a_heart_rate_that_actually_moves()
     {
         // The case the headroom is set for: 10 bpm of movement is a readable trend even once the
-        // full 60–100 band has claimed the axis.
+        // full 60–100 band has claimed the axis. The band's low end is the floor here, already
+        // below every reading, so no padding is added on top of it.
         var scale = For(62, 72, referenceLow: 60, referenceHigh: 100);
 
         Assert.Equal(60, scale.Min);
@@ -88,7 +95,7 @@ public class TrendScaleTests
         // the shape of the readings entirely; the card names the number in its legend instead.
         var scale = For(200, 400, baseline: 9000);
 
-        Assert.Equal(200, scale.Min);
+        Assert.Equal(200 - (400 - 200) * TrendScale.FloorPadding, scale.Min, 10);
         Assert.Equal(400, scale.Max);
         Assert.False(scale.Contains(9000));
     }
@@ -121,7 +128,31 @@ public class TrendScaleTests
         // flatten by increments.
         var scale = For(20, 22, baseline: 30, referenceLow: 12, referenceHigh: 100);
 
-        Assert.Equal(20, scale.Min);
+        Assert.Equal(20 - (30 - 20) * TrendScale.FloorPadding, scale.Min, 10);
         Assert.Equal(30, scale.Max);
+    }
+
+    /// <summary>
+    /// The padding may not invent readings below zero — hours, beats, percent and steps all
+    /// bottom out at a real zero, and an axis reaching under it would imply one that does not.
+    /// </summary>
+    [Fact]
+    public void The_padded_floor_clamps_at_zero()
+    {
+        // 0.3–5 hours of sleep: a full step of padding would take the floor to −0.17.
+        var scale = For(0.3, 5);
+
+        Assert.Equal(0, scale.Min);
+        Assert.Equal(5, scale.Max);
+    }
+
+    /// <summary>A lowest reading of exactly zero sits on the floor, because it is the floor.</summary>
+    [Fact]
+    public void A_floor_already_at_zero_is_not_padded()
+    {
+        var scale = For(0, 8000);
+
+        Assert.Equal(0, scale.Min);
+        Assert.Equal(8000, scale.Max);
     }
 }
