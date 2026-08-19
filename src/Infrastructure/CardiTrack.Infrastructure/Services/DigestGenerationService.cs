@@ -180,8 +180,9 @@ public partial class DigestGenerationService : IDigestGenerationService
     ];
 
     /// <summary>
-    /// Storage cap for the headline. Well past the two-to-five words asked for — this is the
-    /// guard against a model that answers with a sentence, not the length being aimed at.
+    /// Storage cap for the headline. Well past the handful of words either prompt asks for —
+    /// this is the guard against a model that answers with a sentence, not the length being
+    /// aimed at.
     /// </summary>
     private const int MaxHeadlineLength = 120;
 
@@ -1604,8 +1605,10 @@ public partial class DigestGenerationService : IDigestGenerationService
         public required string Summary { get; init; }
 
         [Description(
-            "A three-to-six-word label for the day described above, in sentence case. No full "
-            + "stop, no quotation marks, no name and no {{NAME}}. A label, not a sentence.")]
+            "A five-to-seven-word qualification of the day described above, in sentence case — "
+            + "what kind of day it was, never a generic label like day summary or day's "
+            + "readings. No full stop, no quotation marks, no name and no {{NAME}}. A label, "
+            + "not a sentence.")]
         public required string Headline { get; init; }
 
         [Description(
