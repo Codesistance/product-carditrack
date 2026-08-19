@@ -6,37 +6,57 @@
              x:Class="CardiTrack.Mobile.WelcomePage"
              Shell.NavBarIsVisible="False"
              NavigationPage.HasNavigationBar="False"
-             BackgroundColor="{StaticResource PageGround}">
+             BackgroundColor="{StaticResource White}">
 
-    <ScrollView>
-    <Grid RowDefinitions="Auto,Auto,Auto,43,Auto">
+    <!-- The hero row is the page's only flexible region: everything below it is intrinsic,
+         so the pricing disclaimer and Terms row always land on-screen and the photo absorbs
+         whatever height the device has to give (previously the hero was a fixed 571px inside
+         a ScrollView, which pushed the footer below the fold even on tall phones).
+         SafeAreaEdges=None lets the photo run under the status bar per the full-bleed rule;
+         the header overlay and the footer claim their own insets back. -->
+    <Grid RowDefinitions="*,Auto,Auto,Auto" SafeAreaEdges="None">
 
         <!-- ── Carousel (plain photos; the wave backdrop below is code-drawn, not
              baked into the images — see OnHeroSizeChanged. This fixes two bugs in the old
              Figma-mask-composite PNGs: a mismatch between the photo's mask curve and the
              gradient's own curve left a strip of bare page background showing through near
              the edges, and the fixed 440×610 export cropped unevenly on non-440dp screens.
-             A single wave curve, recomputed to the real rendered size, can't produce either. ── -->
-        <Grid Grid.Row="0" HeightRequest="571" HorizontalOptions="Fill">
-            <BoxView HorizontalOptions="Fill" VerticalOptions="Fill">
-                <BoxView.Background>
-                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
-                        <GradientStop Color="#174E86" Offset="0.0"/>
-                        <GradientStop Color="#1884DC" Offset="0.458"/>
-                        <GradientStop Color="#36C09B" Offset="1.0"/>
-                    </LinearGradientBrush>
-                </BoxView.Background>
-            </BoxView>
+             The two wave curves (photo mask and gradient bottom — see the Figma-stack note
+             below), recomputed to the real rendered size, can't produce either. ── -->
+        <!-- SafeAreaEdges=None on this grid specifically: layouts pad by the safe area by
+             default, and it was this grid — not the page or the window — that held the photo
+             out from under the status bar. The header overlay below keeps the default, so it
+             still clears the status bar on its own. -->
+        <Grid Grid.Row="0" HorizontalOptions="Fill" MinimumHeightRequest="300" SafeAreaEdges="None">
+            <!-- Figma stacks two different waves here (M1-02, frame 101:7448): the gradient
+                 shape "Vector 2" (101:7449) has its own wavy bottom edge, and the photo mask
+                 "Vector 1" (101:7451) is a second, higher wave. The ribbon is what shows of
+                 the gradient between the two curves, tapering to nothing at the bottom-left
+                 corner, and the page's white shows beneath the gradient's curve — there is
+                 no straight edge and no stroke anywhere in the seam. -->
+            <Border x:Name="GradientClipBorder"
+                    StrokeThickness="0"
+                    HorizontalOptions="Fill"
+                    VerticalOptions="Fill">
+                <BoxView HorizontalOptions="Fill" VerticalOptions="Fill">
+                    <BoxView.Background>
+                        <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                            <GradientStop Color="#174E86" Offset="0.0"/>
+                            <GradientStop Color="#1884DC" Offset="0.458"/>
+                            <GradientStop Color="#36C09B" Offset="1.0"/>
+                        </LinearGradientBrush>
+                    </BoxView.Background>
+                </BoxView>
+            </Border>
 
             <Border x:Name="HeroClipBorder"
                     StrokeThickness="0"
-                    HeightRequest="571"
                     HorizontalOptions="Fill"
+                    VerticalOptions="Fill"
                     SizeChanged="OnHeroSizeChanged">
                 <CarouselView x:Name="SlideCarousel"
-                              HeightRequest="571"
                               ItemsSource="{Binding Source={x:Reference RootPage}, Path=Slides, x:DataType=local:WelcomePage}"
-                              Loop="False"
+                              Loop="True"
                               IsScrollAnimated="True"
                               HorizontalOptions="Fill"
                               VerticalOptions="Fill">
@@ -51,53 +71,56 @@
                 </CarouselView>
             </Border>
 
-            <Path x:Name="HeroWaveStroke"
-                  Stroke="{StaticResource White}"
-                  StrokeThickness="2"
-                  InputTransparent="True"/>
+            <!-- ── Header overlay (logo + sign-in). Default safe-area padding clears the
+                 status bar; this padding is the small margin below it. ── -->
+            <Grid Padding="{OnPlatform Android='20,16,20,0',
+                                       iOS='20,12,20,0',
+                                       WinUI='20,24,20,0',
+                                       Default='20,24,20,0'}"
+                  ColumnDefinitions="Auto,*"
+                  VerticalOptions="Start"
+                  InputTransparent="False">
+
+                <Border Grid.Column="0"
+                        BackgroundColor="{StaticResource White}"
+                        WidthRequest="46" HeightRequest="46"
+                        StrokeThickness="0"
+                        VerticalOptions="Start">
+                    <Border.StrokeShape>
+                        <RoundRectangle CornerRadius="9"/>
+                    </Border.StrokeShape>
+                    <Image Source="carditrack_logo.png"
+                           WidthRequest="37" HeightRequest="32"
+                           Aspect="AspectFit"
+                           HorizontalOptions="Center" VerticalOptions="Center"/>
+                </Border>
+
+                <!-- White chip, not bare white text: slide 2's white-brick kitchen made a
+                     naked white label unreadable, and the chip echoes the logo tile. -->
+                <Border Grid.Column="1"
+                        BackgroundColor="{StaticResource White}"
+                        StrokeThickness="0"
+                        Padding="16,9"
+                        HorizontalOptions="End"
+                        VerticalOptions="Start"
+                        SemanticProperties.Description="Sign in"
+                        SemanticProperties.Hint="Opens the sign-in page">
+                    <Border.StrokeShape>
+                        <RoundRectangle CornerRadius="17"/>
+                    </Border.StrokeShape>
+                    <Label Text="Sign in"
+                           FontFamily="QuicksandSemiBold"
+                           FontSize="15"
+                           TextColor="{StaticResource Primary}"
+                           VerticalOptions="Center"/>
+                    <Border.GestureRecognizers>
+                        <TapGestureRecognizer Tapped="OnSignInTapped" />
+                    </Border.GestureRecognizers>
+                </Border>
+            </Grid>
         </Grid>
 
-        <!-- ── Header overlay (logo + sign-in, Figma y55/y68). The safe-area inset already
-             clears the status bar, so this only needs a small margin below it — the previous
-             48/55dp values stacked on top of that inset and pushed the row too far down. ── -->
-        <Grid Grid.Row="0"
-              Padding="{OnPlatform Android='20,16,20,0',
-                                   iOS='20,12,20,0',
-                                   WinUI='20,24,20,0',
-                                   Default='20,24,20,0'}"
-              ColumnDefinitions="Auto,*"
-              VerticalOptions="Start"
-              InputTransparent="False">
-
-            <Border Grid.Column="0"
-                    BackgroundColor="{StaticResource White}"
-                    WidthRequest="46" HeightRequest="46"
-                    StrokeThickness="0"
-                    VerticalOptions="Start">
-                <Border.StrokeShape>
-                    <RoundRectangle CornerRadius="9"/>
-                </Border.StrokeShape>
-                <Image Source="carditrack_logo.png"
-                       WidthRequest="37" HeightRequest="32"
-                       Aspect="AspectFit"
-                       HorizontalOptions="Center" VerticalOptions="Center"/>
-            </Border>
-
-            <Label Grid.Column="1"
-                   Text="Sign in"
-                   FontFamily="QuicksandSemiBold"
-                   FontSize="16"
-                   TextColor="{StaticResource White}"
-                   TextDecorations="Underline"
-                   HorizontalOptions="End"
-                   VerticalOptions="Center">
-                <Label.GestureRecognizers>
-                    <TapGestureRecognizer Tapped="OnSignInTapped" />
-                </Label.GestureRecognizers>
-            </Label>
-        </Grid>
-
-        <!-- ── Title (Figma y591; single line on every slide, 330px text block) ── -->
+        <!-- ── Title (single line on every slide, 330px text block) ── -->
         <Label x:Name="SlideTitle"
                Grid.Row="1"
                Style="{StaticResource Heading1}"
@@ -114,12 +137,11 @@
                HorizontalOptions="Center"
                Margin="24,16,24,0" />
 
-        <!-- Row 3: fixed 43px spacer (Figma subtitle bottom y681 → indicators y724) -->
-
-        <!-- ── Bottom area (Figma y724+) ── -->
-        <VerticalStackLayout Grid.Row="4"
+        <!-- ── Bottom area — fixed-height footer; default safe-area padding keeps the
+             gesture bar off the Terms row. ── -->
+        <VerticalStackLayout Grid.Row="3"
                              Spacing="0"
-                             Padding="20,0,20,28">
+                             Padding="20,24,20,12">
 
             <!-- Pill indicators (active 32×8, inactive 8×8) -->
             <HorizontalStackLayout x:Name="IndicatorPanel"
@@ -134,15 +156,17 @@
                          CornerRadius="4" Color="{StaticResource InactiveIndicator}"/>
             </HorizontalStackLayout>
 
-            <!-- CTA (Button 1 — 332×52 centered at Figma y781; inner top-left glow
-                 approximates Figma's inset shadow 4,4,10 white 56%) -->
+            <!-- CTA (Button 1 — 332×52; inner top-left glow approximates Figma's
+                 inset shadow 4,4,10 white 56%) -->
             <Border x:Name="CtaBorder"
                     Background="{StaticResource GradientButtonBrush}"
                     StrokeThickness="0"
                     WidthRequest="332"
                     HeightRequest="52"
                     HorizontalOptions="Center"
-                    Margin="0,49,0,0">
+                    Margin="0,24,0,0"
+                    SemanticProperties.Description="Start free 30-day trial"
+                    SemanticProperties.Hint="Opens account creation">
                 <Border.StrokeShape>
                     <RoundRectangle CornerRadius="25"/>
                 </Border.StrokeShape>
@@ -172,15 +196,15 @@
                 </Border.GestureRecognizers>
             </Border>
 
-            <!-- Pricing disclaimer (Figma y849) -->
+            <!-- Pricing disclaimer -->
             <Label Text="Then from $7/month - Cancel anytime"
                    Style="{StaticResource Body2}"
                    HorizontalTextAlignment="Center"
-                   Margin="0,16,0,0" />
+                   Margin="0,14,0,0" />
 
-            <!-- Terms & Privacy (Figma y901) -->
+            <!-- Terms & Privacy -->
             <HorizontalStackLayout HorizontalOptions="Center" Spacing="0"
-                                   Margin="0,30,0,0">
+                                   Margin="0,18,0,0">
                 <Label Text="By continuing, you agree to "
                        Style="{StaticResource Body2}"
                        VerticalTextAlignment="Center" />
@@ -197,5 +221,4 @@
             </HorizontalStackLayout>
         </VerticalStackLayout>
     </Grid>
-    </ScrollView>
 </ContentPage>
