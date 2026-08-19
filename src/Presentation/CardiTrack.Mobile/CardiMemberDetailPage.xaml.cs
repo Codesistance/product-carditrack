@@ -51,6 +51,13 @@ public partial class CardiMemberDetailPage : ContentPage
     private CardiMemberDetailResponse? _member;
 
     /// <summary>
+    /// The load the offline banner speaks for, kept so the banner can ask where that call's
+    /// payload came from rather than reading the origin of whichever GET finished last —
+    /// see <see cref="CacheOrigin"/>.
+    /// </summary>
+    private Task<CardiMemberDetailResponse>? _memberCall;
+
+    /// <summary>
     /// Whether a generated summary is currently on screen. Guards the placeholder — see
     /// <see cref="Apply"/>.
     /// </summary>
@@ -192,7 +199,8 @@ public partial class CardiMemberDetailPage : ContentPage
 
         try
         {
-            _member = await _api.GetCardiMemberAsync(_memberId);
+            _memberCall = _api.GetCardiMemberAsync(_memberId);
+            _member = await _memberCall;
             _lastLoadedUtc = DateTime.UtcNow;
 
             // Taken when the caregiver left if they left, and only otherwise from where the page
@@ -356,7 +364,7 @@ public partial class CardiMemberDetailPage : ContentPage
 
     private void Apply(CardiMemberDetailResponse member)
     {
-        OfflineBanner.ApplyFrom(_api);
+        OfflineBanner.ApplyFrom(_api, _memberCall);
 
         Avatar.Apply(member.Name, member.PhotoUrl);
         NameLabel.Text = member.Name;

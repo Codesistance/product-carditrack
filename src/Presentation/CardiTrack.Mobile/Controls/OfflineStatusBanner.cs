@@ -30,7 +30,25 @@ public sealed class OfflineStatusBanner : Border
         Content = _label;
     }
 
-    public void ApplyFrom(ICardiTrackApiClient api) => Apply(api.LastGetWasCached, api.LastCachedAt);
+    /// <summary>
+    /// Reads the banner off the calls the screen actually loaded from — pass the tasks those
+    /// calls returned. A screen with more than one load speaks for all of them: the banner is up
+    /// if any came from the cache, and quotes the oldest of those, which is the weakest thing on
+    /// screen and so the honest one to date the page by.
+    /// </summary>
+    public void ApplyFrom(ICardiTrackApiClient api, params Task?[] calls)
+    {
+        DateTimeOffset? oldest = null;
+        foreach (var call in calls)
+        {
+            if (call is not null
+                && api.OriginOf(call)?.CachedAt is { } cachedAt
+                && (oldest is null || cachedAt < oldest))
+                oldest = cachedAt;
+        }
+
+        Apply(oldest is not null, oldest);
+    }
 
     public void Apply(bool offline, DateTimeOffset? cachedAt)
     {

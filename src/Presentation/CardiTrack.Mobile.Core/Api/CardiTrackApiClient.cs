@@ -1,5 +1,6 @@
 ﻿using System.Net;
 using System.Net.Http.Json;
+using System.Runtime.CompilerServices;
 using System.Text.Json;
 using CardiTrack.Application.DTOs.Requests;
 using CardiTrack.Application.DTOs.Responses;
@@ -22,8 +23,13 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
     private readonly IOfflineReadCache? _cache;
     private readonly ILogger<CardiTrackApiClient> _logger;
 
-    public bool LastGetWasCached { get; private set; }
-    public DateTimeOffset? LastCachedAt { get; private set; }
+    /// <summary>
+    /// Where each GET's payload came from, keyed by the task that GET returned. Weak on the key,
+    /// so an entry lives exactly as long as the caller still holds the call it describes —
+    /// nothing to expire, nothing to bound, and no fact about one screen's call left lying around
+    /// for another screen to read as its own.
+    /// </summary>
+    private readonly ConditionalWeakTable<Task, CacheOrigin> _origins = new();
 
     public CardiTrackApiClient(
         HttpClient http,
@@ -332,11 +338,27 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
         public string? TimeZoneId { get; set; }
     }
 
-    private async Task<T> GetAsync<T>(string path, CancellationToken ct)
+    public CacheOrigin? OriginOf(Task call)
     {
-        LastGetWasCached = false;
-        LastCachedAt = null;
+        ArgumentNullException.ThrowIfNull(call);
+        return _origins.TryGetValue(call, out var origin) ? origin : null;
+    }
 
+    /// <summary>
+    /// Starts the call and files its origin under the task it returns, before handing that same
+    /// task back. Not itself async: the task has to exist before it can be a key, which it cannot
+    /// inside the method that produces it.
+    /// </summary>
+    private Task<T> GetAsync<T>(string path, CancellationToken ct)
+    {
+        var origin = new CacheOrigin();
+        var call = GetCoreAsync<T>(path, origin, ct);
+        _origins.AddOrUpdate(call, origin);
+        return call;
+    }
+
+    private async Task<T> GetCoreAsync<T>(string path, CacheOrigin origin, CancellationToken ct)
+    {
         HttpResponseMessage response;
         try
         {
@@ -347,7 +369,7 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
             if (ex is OperationCanceledException && ct.IsCancellationRequested)
                 throw NetworkError("GET", path, ex, ct);
 
-            if (await TryReadCacheAsync<T>(path, ct) is { } cached)
+            if (await TryReadCacheAsync<T>(path, origin, ct) is { } cached)
                 return cached;
 
             throw NetworkError("GET", path, ex, ct);
@@ -450,7 +472,7 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
         return envelope.Data;
     }
 
-    private async Task<T?> TryReadCacheAsync<T>(string path, CancellationToken ct)
+    private async Task<T?> TryReadCacheAsync<T>(string path, CacheOrigin origin, CancellationToken ct)
     {
         if (_cache is null)
             return default;
@@ -476,8 +498,7 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
             return default;
         }
 
-        LastGetWasCached = true;
-        LastCachedAt = entry.CachedAt;
+        origin.CachedAt = entry.CachedAt;
         _logger.LogInformation("Serving GET {Path} from the on-device cache (saved {CachedAt:o})",
             path, entry.CachedAt);
         return envelope.Data;

@@ -6,13 +6,15 @@ namespace CardiTrack.Mobile.Core.Api;
 public interface ICardiTrackApiClient
 {
     /// <summary>
-    /// True when the most recent successful GET was served from the on-device cache because
-    /// the live call could not reach the API. Pages use this to show the offline banner.
+    /// Where a GET's payload came from — pass the very task the call returned. Null for a task
+    /// this client did not produce, or one whose GET is no longer held anywhere.
     /// </summary>
-    bool LastGetWasCached { get; }
-
-    /// <summary>When the cached snapshot was written, if <see cref="LastGetWasCached"/>.</summary>
-    DateTimeOffset? LastCachedAt { get; }
+    /// <remarks>
+    /// Per call rather than per client on purpose; <see cref="CacheOrigin"/> says why. A screen
+    /// showing the offline banner keeps the task of the load the banner speaks for and asks about
+    /// that, instead of reading the origin of whatever GET happened to finish last.
+    /// </remarks>
+    CacheOrigin? OriginOf(Task call);
 
     Task<OnboardingStatusResponse> GetOnboardingStatusAsync(CancellationToken ct = default);
 

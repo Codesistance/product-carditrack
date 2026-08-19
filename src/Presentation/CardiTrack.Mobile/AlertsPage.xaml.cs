@@ -108,14 +108,15 @@ public partial class AlertsPage : ContentPage
         var loadNudges = false;
         try
         {
-            var data = await _api.GetAlertsAsync(severity, status, from, ct: cts.Token);
+            var call = _api.GetAlertsAsync(severity, status, from, ct: cts.Token);
+            var data = await call;
             if (IsStale(generation, cts))
                 return;
 
             _lastData = data;
             _lastLoadedUtc = DateTime.UtcNow;
             Render(data);
-            OfflineBanner.ApplyFrom(_api);
+            OfflineBanner.ApplyFrom(_api, call);
             SetState(AlertsState.Loaded);
             loadNudges = true;
         }
