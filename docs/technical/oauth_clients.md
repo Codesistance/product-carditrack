@@ -199,9 +199,9 @@ Fully scripted in the [Auth0 setup runbook](./auth0_setup_runbook.md); summary:
    tenants' connections were wired 2026-08-07; Apple's Services ID and .p8 key
    were provisioned 2026-08-10. **Dev is complete for both** — credentials,
    Try Connection, and the Applications → CardiTrack Mobile toggle. **Prod is
-   not**: Google still needs its Applications toggle, and Apple still needs
-   credentials, Try Connection and the toggle. Per tenant, also create the
-   `CardiTrack Actions` M2M app and deploy the linking Action — runbook §8
+   not complete**: Google still needs its Applications toggle, and Apple still
+   needs credentials, Try Connection, and the toggle. Per tenant, also create
+   the `CardiTrack Actions` M2M app and deploy the linking Action — runbook §8
    (dev deployed 2026-08-10, prod pending).
 
 ## Provisioning steps — device-data client (Google Health API)
