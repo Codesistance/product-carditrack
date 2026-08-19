@@ -72,16 +72,22 @@ public class JournalSettingsServiceTests
 
     /// <summary>
     /// A book whose generator does not exist must not imply it is running, and one whose
-    /// generator does exist must not be shown as coming. The Weekbook's landed; the Monthbook's
-    /// has not.
+    /// generator does exist must not be shown as coming. All three now exist, so every timing on
+    /// the settings screen governs something that actually runs.
     /// </summary>
+    /// <remarks>
+    /// These flags were <c>false</c> while the generators were unbuilt, and this test failing on
+    /// the day one landed is the point of it: the app words a row differently depending on them,
+    /// so a stale <c>false</c> would tell a caregiver their Monthbook is still coming after it had
+    /// started arriving.
+    /// </remarks>
     [Fact]
     public async Task Each_book_reports_whether_anything_actually_writes_it()
     {
         var settings = await CreateService().GetAsync(_userId, _memberId);
 
         Assert.True(settings.WeekbookAvailable);
-        Assert.False(settings.MonthbookAvailable);
+        Assert.True(settings.MonthbookAvailable);
     }
 
     [Fact]

@@ -161,10 +161,14 @@ try
             // date comparison without touching the database at all.
             var weekbooks = await digests.GenerateDueWeekbooksAsync(DateTime.UtcNow);
 
+            // And the Monthbook, cheapest of the three: due on one local day in thirty, so its
+            // per-member check almost always stops at a date comparison.
+            var monthbooks = await digests.GenerateDueMonthbooksAsync(DateTime.UtcNow);
+
             Log.Information(
                 "PipelineJobs run finished. Digests generated: {Generated}, daybook entries written: "
-                + "{Reviews}, weekbooks written: {Weekbooks}.",
-                generated, reviews, weekbooks);
+                + "{Reviews}, weekbooks written: {Weekbooks}, monthbooks written: {Monthbooks}.",
+                generated, reviews, weekbooks, monthbooks);
             return 0;
 
         case "aggregate":

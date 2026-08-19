@@ -47,6 +47,14 @@ public partial class JournalEntryPage : ContentPage
     /// </summary>
     private JournalCadence _cadence = JournalCadence.Daybook;
 
+    /// <summary>
+    /// How many days this entry's charts draw. A month's account is read against the month; a day's
+    /// and a week's against the fortnight, which for a Weekbook lands as this week beside the last.
+    /// </summary>
+    private int ChartWindowDays => _cadence == JournalCadence.Monthbook
+        ? TrendAwareness.MonthWindowDays
+        : TrendAwareness.WindowDays;
+
     public JournalEntryPage(ICardiTrackApiClient api, IPopupService popups)
     {
         InitializeComponent();
@@ -178,7 +186,7 @@ public partial class JournalEntryPage : ContentPage
             if (!_hasLoadedOnce)
             {
                 ErrorDetailLabel.Text = ex.IsNotFound
-                    ? $"No {_cadence.EntryName()} was written for this {(_cadence == JournalCadence.Weekbook ? "week" : "day")}."
+                    ? $"No {_cadence.EntryName()} was written for this {JournalPage.PeriodNoun(_cadence)}."
                     : ex.Message;
                 SetState(error: true);
             }
@@ -201,7 +209,7 @@ public partial class JournalEntryPage : ContentPage
         // case — at its own cadence, or a Weekbook opened from the Weeks list would announce
         // itself as a day.
         HeadlineLabel.Text = string.IsNullOrWhiteSpace(review.Headline)
-            ? (_cadence == JournalCadence.Weekbook ? "The week in full" : "The day in full")
+            ? JournalPage.FallbackHeadline(_cadence)
             : review.Headline;
         TextLabel.Text = review.Text;
 
@@ -249,33 +257,37 @@ public partial class JournalEntryPage : ContentPage
         var dayLabel = JournalPresentation.DayLabel(_date);
         var endLabel = dayLabel is "Today" or "Yesterday" ? dayLabel.ToLowerInvariant() : dayLabel;
 
-        TrendsTitle.Text = _cadence == JournalCadence.Weekbook
-            ? $"This week and the one before, to {endLabel}"
-            : $"The 14 days up to {endLabel}";
+        TrendsTitle.Text = _cadence switch
+        {
+            JournalCadence.Weekbook => $"This week and the one before, to {endLabel}",
+            JournalCadence.Monthbook => $"The 30 days up to {endLabel}",
+            _ => $"The 14 days up to {endLabel}",
+        };
 
         // Every metric the dashboard series carries, each against whatever yardsticks it
         // honestly has: the member's own usual where one is learned, and the published band where
         // a standards body publishes one — never both invented. Steps has no published range (no
         // body publishes a daily step count) and skin temperature has no published band and no
         // single concerning direction, so each carries only the lines it has earned.
+        var window = ChartWindowDays;
         var blocks = new[]
         {
             Block(metrics.Sleep, _date, "Sleep", "MetricSleepInk", "{0:0.#}", "h",
                 TrendAwareness.Direction.BelowUsual, "night",
-                new BandCount(TrendAwareness.Direction.BelowUsual, AgainstLow: true)),
+                new BandCount(TrendAwareness.Direction.BelowUsual, AgainstLow: true), window),
             Block(metrics.RestingHeartRate, _date, "Resting heart rate", "MetricHeartInk", "{0:N0}", " bpm",
                 TrendAwareness.Direction.AboveUsual, "day",
-                new BandCount(TrendAwareness.Direction.AboveUsual, AgainstLow: false)),
+                new BandCount(TrendAwareness.Direction.AboveUsual, AgainstLow: false), window),
             Block(metrics.SpO2, _date, "Blood oxygen", "MetricSpO2Ink", "{0:0.#}", "%",
                 TrendAwareness.Direction.BelowUsual, "day",
-                new BandCount(TrendAwareness.Direction.BelowUsual, AgainstLow: true)),
+                new BandCount(TrendAwareness.Direction.BelowUsual, AgainstLow: true), window),
             Block(metrics.BreathingRate, _date, "Breathing rate", "MetricBreathingInk", "{0:0.#}", "/min",
                 TrendAwareness.Direction.AboveUsual, "day",
-                new BandCount(TrendAwareness.Direction.AboveUsual, AgainstLow: false)),
+                new BandCount(TrendAwareness.Direction.AboveUsual, AgainstLow: false), window),
             Block(metrics.Steps, _date, "Steps", "MetricStepsInk", "{0:N0}", " steps",
-                TrendAwareness.Direction.BelowUsual, "day", band: null),
+                TrendAwareness.Direction.BelowUsual, "day", band: null, windowDays: window),
             Block(metrics.Temperature, _date, "Skin temperature", "MetricTemperatureInk", "{0:0.#}", "°C",
-                usualDirection: null, "day", band: null),
+                usualDirection: null, "day", band: null, windowDays: window),
         };
 
         foreach (var block in blocks)
@@ -306,11 +318,16 @@ public partial class JournalEntryPage : ContentPage
         string unit,
         TrendAwareness.Direction? usualDirection,
         string dayWord,
-        BandCount? band)
+        BandCount? band,
+        int windowDays)
     {
-        // The entry's own fortnight, or nothing at all: a window the series no longer reaches
-        // back to is an absent chart, never one shifted toward the present.
-        if (TrendAwareness.FortnightEndingOn(metric.Series, reviewedDate) is not { } window)
+        // The entry's own window, or nothing at all: one the series no longer reaches back to is
+        // an absent chart, never one shifted toward the present.
+        //
+        // The chart's window and the counted lines' are the same number by construction — the
+        // sentence beneath a chart claims to describe it, and two windows would make that claim
+        // false while both still looked plausible.
+        if (TrendAwareness.WindowEndingOn(metric.Series, reviewedDate, windowDays) is not { } window)
             return null;
 
         var values = window.Where(p => p.Value is not null).Select(p => (double)p.Value!).ToList();
@@ -386,7 +403,7 @@ public partial class JournalEntryPage : ContentPage
                 System.Globalization.CultureInfo.CurrentCulture,
                 $"their usual {string.Format(axisFormat, usual)}{unit}");
 
-            if (TrendAwareness.Line(window, usual, direction, usualText, dayWord) is { } usualLine)
+            if (TrendAwareness.Line(window, usual, direction, usualText, dayWord, windowDays) is { } usualLine)
             {
                 stack.Add(new Label
                 {
@@ -403,7 +420,7 @@ public partial class JournalEntryPage : ContentPage
                 System.Globalization.CultureInfo.CurrentCulture,
                 $"the recommended {string.Format(axisFormat, bound)}{unit} ({published.Source})");
 
-            if (TrendAwareness.BandLine(window, bound, band.Direction, boundText, dayWord) is { } bandLine)
+            if (TrendAwareness.BandLine(window, bound, band.Direction, boundText, dayWord, windowDays) is { } bandLine)
             {
                 stack.Add(new Label
                 {

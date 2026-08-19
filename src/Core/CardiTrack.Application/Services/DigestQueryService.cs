@@ -104,6 +104,7 @@ public class DigestQueryService : IDigestQueryService
             "family" => DigestAudience.Family,
             "daybook" => DigestAudience.Daybook,
             "weekbook" => DigestAudience.Weekbook,
+            "monthbook" => DigestAudience.Monthbook,
             _ => null,
         };
     }

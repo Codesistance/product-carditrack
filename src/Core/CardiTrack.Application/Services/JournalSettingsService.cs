@@ -1,4 +1,4 @@
-using CardiTrack.Application.DTOs.Requests;
+﻿using CardiTrack.Application.DTOs.Requests;
 using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Interfaces.Services;
@@ -100,11 +100,10 @@ public class JournalSettingsService : IJournalSettingsService
             LatestSelectableTime = JournalSchedule.LatestLocalTime,
             StepMinutes = JournalSchedule.StepMinutes,
 
-            // The Weekbook generator exists; the Monthbook's does not yet. Its setting is still
-            // stored and returned so the app can offer it once, rather than shipping a second
-            // settings screen when it lands — but the row says it is coming, not that it runs.
+            // Every book's generator now exists, so every timing on this screen governs something
+            // that actually runs.
             WeekbookAvailable = true,
-            MonthbookAvailable = false,
+            MonthbookAvailable = true,
         };
     }
 }

@@ -88,7 +88,7 @@ These screens ship in the current app but have **no Figma M1 frame — needs des
 | VerifyEmailPage | Post-signup email verification gate (resend / open mail / checking / error) |
 | Onboarding/AccountSetupPage | "My Family" / "My Organization" account-type choice with conditional Org Name |
 | NotificationsPage | Data-completeness / nudge inbox — reached from the dashboard's "Complete the picture" section ("See all") |
-| JournalPage | The **Journal** tab (CardiJournal) — a **Days / Weeks** control switches between the Daybook and Weekbook series, newest first, searchable and filterable; a card opens the entry's page. Took the Family tab's slot |
+| JournalPage | The **Journal** tab (CardiJournal) — a **Days / Weeks / Months** control switches between the Daybook, Weekbook and Monthbook series, newest first, searchable and filterable; a card opens the entry's page. Took the Family tab's slot |
 | JournalEntryPage | One entry in full — Daybook or Weekbook, selected by `?cadence=` — with the fortnight's source-tagged trend charts and counted awareness lines beneath it |
 
 Full specs in [Shipped Screens Without Figma M1 Frames](#shipped-screens-without-figma-m1-frames-1) below.
@@ -1230,7 +1230,7 @@ The following screens exist in the shipped app but have **no Figma M1 frame — 
 **Exit:** → M1-09 Dashboard (back arrow, or the Dashboard tab)
 
 - Gradient header band with back arrow, titled **"CardiJournal"** over a subtitle that follows the cadence ("Daybooks of finished days" / "Weekbooks of finished weeks"), same treatment as Alerts and Settings
-- **Days / Weeks segmented control** above the filters, in its own row and visible whether or not the member has any entries yet — a caregiver waiting on their first entries is the one who most needs to see that weeks exist. Switching keeps the search and chips (the same question at a different altitude) but resets the "has any entries" flag that gates the filter row, so a member with a year of Daybooks and no Weekbooks does not get a filter panel over an empty list. The in-flight cadence is captured before the fetch, so a fast tap cannot paint one series over the other. **Two segments, not three:** the Monthbook's generator does not exist, and a segment selecting a series nothing writes is an empty list with no honest explanation
+- **Days / Weeks / Months segmented control** above the filters, in its own row and visible whether or not the member has any entries yet — a caregiver waiting on their first entries is the one who most needs to see that weeks exist. Switching keeps the search and chips (the same question at a different altitude) but resets the "has any entries" flag that gates the filter row, so a member with a year of Daybooks and no Weekbooks does not get a filter panel over an empty list. The in-flight cadence is captured before the fetch, so a fast tap cannot paint one series over the other. **Three segments:** every one selects a series something actually writes
 - Pull-to-refresh; **no periodic poll** — a Daybook entry is written once, at 02:00 in the member's own local time, and cannot change afterwards. Refreshes on app resume only
 - **Search and up to three chooser chips** above the list, outside the scroller so narrowing stays reachable while scrolled (the alert chips' reasoning). The member chip appears once the account has more than one CardiMember and filters the whole page to the chosen member; the tab also accepts `?memberId=` — the dashboard's member card and the member detail page's CardiJournal row both deep-link in already filtered, via the origin-remembering tab jump. The search is debounced 350ms and server-side over the whole history; the chips open the app's option popup — urgency (Any / Watch / Check in / Concerning / Act now) and window (All time / 7 / 30 / 90 days). The filter row appears once the member has ever had a review, then stays: hiding it on an empty *filtered* result would take away the one control that undoes the emptiness
 - One card per finished day, newest first, up to a month. Each card carries:
@@ -1241,7 +1241,7 @@ The following screens exist in the shipped app but have **no Figma M1 frame — 
 - **States:** loading (three placeholder cards, so the list does not jump when the real ones arrive) · empty · error with retry · loaded
 - **Two empty states, said apart, and worded per cadence:** an unfiltered "No Daybook entries yet" / "No Weekbook entries yet" over "The first entry is written after {Name}'s first full day of readings" — or, for weeks, "The first is written when {Name}'s week turns, and needs most of the week's days to have carried readings", which is honest about the 4-of-7 coverage guard rather than leaving a caregiver to read the absence as a fault, and a filtered "No reviews match" over "clear one and look again" — a bare "nothing here" reads as a fault either way. A member-less account gets "Add the person you care about, and their days will be summarised here"
 - **Error while a list is already on screen** shows a popup over it rather than replacing it with an error panel: the reviews describe finished days and do not go stale, so taking them away costs the caregiver something still worth reading
-- Backed by `GET /api/v1/insights/members/{id}/digests?audience=daybook|weekbook` with `limit`, `search`, `from` and `urgency`
+- Backed by `GET /api/v1/insights/members/{id}/digests?audience=daybook|weekbook|monthbook` with `limit`, `search`, `from` and `urgency`
 
 ### JournalEntryPage
 **Status:** Built — no Figma M1 frame, needs design sync
@@ -1257,7 +1257,7 @@ The following screens exist in the shipped app but have **no Figma M1 frame — 
 - The charts are deliberately the **current** fortnight whatever day the review describes, and the section title says so — the dashboard series always runs to today
 - Footer, always visible with the charts: "For awareness, not medical advice — CardiTrack never diagnoses. Talk to a clinician about anything that worries you."
 - **Edge — charts fetch fails:** the review stands and the trends section hides; a loaded review must not be replaced by an error panel over its garnish. **Edge — no review for the date:** "No review was written for this day"
-- Backed by `GET .../digest?date=YYYY-MM-DD&audience=daybook|weekbook` + `GET /api/v1/cardimembers/{id}` for the chart series. On a Weekbook the date is the week's **last day**, so the existing 14-day window renders as this week against the one before it — the comparison a week's account wants, at no extra cost
+- Backed by `GET .../digest?date=YYYY-MM-DD&audience=daybook|weekbook|monthbook` + `GET /api/v1/cardimembers/{id}` for the chart series. On a Weekbook the date is the week's **last day**, so the existing 14-day window renders as this week against the one before it — the comparison a week's account wants, at no extra cost. A **Monthbook draws 30 days**, and the counted lines move to the same window: the sentence under a chart claims to describe it, so the two are one number by construction
 
 ### SignInPage
 **Status:** Built — no Figma M1 frame, needs design sync

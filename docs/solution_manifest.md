@@ -69,7 +69,7 @@ To empower families with affordable, preventive health monitoring for their elde
 
 **The CardiJournal and its books.** The CardiJournal is the umbrella surface — the mobile tab and the thing a tier buys more of. Inside it sit cadence-named entries: the **Daybook** (one finished day), the **Weekbook** (one finished Mon–Sun week) and the **Monthbook** (one finished calendar month). Each book is written from its own period's measurements, not by summarising the books below it.
 
-**Cadences that do not exist yet.** Only the **Daybook** is built (`DigestAudience.Daybook`, prod-gated). The **Weekbook** and **Monthbook** above are sold on the pricing page and have no implementation — they are tracked in [release_matrix.md](./release_matrix.md).
+**All three cadences are built** (`DigestAudience.Daybook` / `Weekbook` / `Monthbook`), shipped in dev and prod-gated with the rest of the pipeline. What each tier is *sold* is not yet enforced — no plan gating exists anywhere in the product today, so the ladder is a pricing promise rather than a running restriction; see [release_matrix.md](./release_matrix.md).
 
 **Sync cadence is not a tier lever.** Both environments deploy `min_pull_interval_minutes = 10`, so every tier polls on the same 10-minute cadence. What the paid tiers buy is minute-grain intraday *storage* and retention length, not a faster poll. Earlier copy claiming "high-resolution sync (1-min)" on Complete Care was withdrawn on 2026-08-18.
 

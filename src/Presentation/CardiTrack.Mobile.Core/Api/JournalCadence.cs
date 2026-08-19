@@ -1,13 +1,12 @@
-namespace CardiTrack.Mobile.Core.Api;
+﻿namespace CardiTrack.Mobile.Core.Api;
 
 /// <summary>
 /// Which of the CardiJournal's books the app is reading.
 /// </summary>
 /// <remarks>
 /// The app's own name for a series, kept separate from the wire token so a screen switching
-/// cadence never has to hold a magic string. A <c>Monthbook</c> value is deliberately absent: its
-/// generator does not exist yet, and a cadence the app can select but nothing writes would be an
-/// empty tab with no explanation. It arrives with the Monthbook itself.
+/// cadence never has to hold a magic string. All three books' generators now exist, so every
+/// value here selects a series something actually writes.
 /// </remarks>
 public enum JournalCadence
 {
@@ -16,6 +15,9 @@ public enum JournalCadence
 
     /// <summary>One finished week, dated by the week's last day.</summary>
     Weekbook,
+
+    /// <summary>One finished calendar month, dated by the month's last day.</summary>
+    Monthbook,
 }
 
 /// <summary>Wire vocabulary for <see cref="JournalCadence"/>, and the words a caregiver reads.</summary>
@@ -25,6 +27,7 @@ public static class JournalCadenceExtensions
     public static string WireValue(this JournalCadence cadence) => cadence switch
     {
         JournalCadence.Weekbook => "weekbook",
+        JournalCadence.Monthbook => "monthbook",
         _ => "daybook",
     };
 
@@ -32,6 +35,7 @@ public static class JournalCadenceExtensions
     public static string EntryName(this JournalCadence cadence) => cadence switch
     {
         JournalCadence.Weekbook => "Weekbook",
+        JournalCadence.Monthbook => "Monthbook",
         _ => "Daybook",
     };
 
@@ -44,12 +48,15 @@ public static class JournalCadenceExtensions
     public static string SegmentLabel(this JournalCadence cadence) => cadence switch
     {
         JournalCadence.Weekbook => "Weeks",
+        JournalCadence.Monthbook => "Months",
         _ => "Days",
     };
 
     /// <summary>Parses a cadence back from its wire value, defaulting to the Daybook.</summary>
-    public static JournalCadence ParseCadence(string? wireValue) =>
-        string.Equals(wireValue?.Trim(), "weekbook", StringComparison.OrdinalIgnoreCase)
-            ? JournalCadence.Weekbook
-            : JournalCadence.Daybook;
+    public static JournalCadence ParseCadence(string? wireValue) => wireValue?.Trim().ToLowerInvariant() switch
+    {
+        "weekbook" => JournalCadence.Weekbook,
+        "monthbook" => JournalCadence.Monthbook,
+        _ => JournalCadence.Daybook,
+    };
 }

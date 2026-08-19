@@ -49,4 +49,24 @@ public interface IDigestGenerationService
     /// </para>
     /// </remarks>
     Task<int> GenerateDueWeekbooksAsync(DateTime utcNow, CancellationToken ct = default);
+
+    /// <summary>
+    /// Writes the account of the calendar month just gone for every member whose local month has
+    /// turned and who has not been given one for it yet; returns how many were written. Shares the
+    /// same half-hourly schedule as the other books.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Due on the first of the month, once the member's local clock passes their Monthbook time,
+    /// and dated by the previous month's last day. A month with fewer than fourteen days of
+    /// readings gets none — an unmeasured month cannot be accounted for without speaking for the
+    /// weeks that are missing.
+    /// </para>
+    /// <para>
+    /// Composed on the first day of the following month, which keeps the whole month inside every
+    /// retention window at the moment it is read. Generated from the month's own measurements,
+    /// <b>never</b> from its Weekbooks.
+    /// </para>
+    /// </remarks>
+    Task<int> GenerateDueMonthbooksAsync(DateTime utcNow, CancellationToken ct = default);
 }
