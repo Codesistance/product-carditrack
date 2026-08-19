@@ -45,6 +45,32 @@ public static class TrendAwareness
     }
 
     /// <summary>
+    /// The window a daybook chart draws: the last <see cref="WindowDays"/> points dated on or
+    /// before the reviewed day — or null when the series no longer reaches back that far, which
+    /// the caller turns into no chart at all. A daybook is a closure summary, and days after the
+    /// day it reviews — today's running total included — are of no consequence to it. Cut by the
+    /// entry's own date rather than by <see cref="MetricPoint.IsPartial"/>, which the
+    /// member-detail payload never sets: today's half-finished point arrives looking ordinary,
+    /// and drawn among whole days a quiet morning reads as a collapse.
+    /// </summary>
+    /// <remarks>
+    /// Null rather than fewer days when the series has moved on past an old entry's window: a
+    /// chart quietly truncated at the series' edge shifts the account toward the present, which
+    /// is the one direction a closed day must not drift — and an honestly absent section is the
+    /// same stance the entry page already takes on a metric with nothing in the window.
+    /// </remarks>
+    /// <param name="series">The metric's series, oldest first, as the dashboard reports it.</param>
+    /// <param name="reviewedDate">The day the daybook entry reviews — the window's last day.</param>
+    public static List<MetricPoint>? FortnightEndingOn(
+        IEnumerable<MetricPoint>? series, DateOnly reviewedDate)
+    {
+        var finished = series?.Where(p => p.Date <= reviewedDate).ToList() ?? new();
+        return finished.Count < WindowDays
+            ? null
+            : finished.TakeLast(WindowDays).ToList();
+    }
+
+    /// <summary>
     /// The awareness line for one metric, or null when there is nothing honest to say — no
     /// baseline to count against, or too few measured days for the count to mean anything.
     /// </summary>

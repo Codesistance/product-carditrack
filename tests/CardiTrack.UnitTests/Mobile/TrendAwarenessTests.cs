@@ -124,6 +124,63 @@ public class TrendAwarenessTests
 
         Assert.Equal("Under their usual on 14 of the last 14 days", line);
     }
+
+    /// <summary>
+    /// A daybook is a closure summary: its charts end on the day the entry reviews, and days
+    /// after it — today's running total included — are of no consequence and never drawn.
+    /// </summary>
+    [Fact]
+    public void FortnightEndingOn_EndsOnTheReviewedDay_AndDropsEveryDayAfterIt()
+    {
+        // A 30-point series running to Today, reviewing yesterday: the window is the fortnight
+        // ending yesterday, and today's point is not in it.
+        var series = Series(Enumerable.Range(1, 30).Select(v => (decimal?)v).ToArray());
+        var reviewedDate = Today.AddDays(-1);
+
+        var window = TrendAwareness.FortnightEndingOn(series, reviewedDate);
+
+        Assert.NotNull(window);
+        Assert.Equal(TrendAwareness.WindowDays, window.Count);
+        Assert.Equal(reviewedDate, window[^1].Date);
+        Assert.Equal(reviewedDate.AddDays(-(TrendAwareness.WindowDays - 1)), window[0].Date);
+    }
+
+    /// <summary>
+    /// An old entry keeps its own fortnight for as long as the series still reaches it — the
+    /// window ends on the reviewed day, not on whatever day the reader opened the entry.
+    /// </summary>
+    [Fact]
+    public void FortnightEndingOn_WindowsAnOldEntryToItsOwnDay()
+    {
+        var series = Series(Enumerable.Range(1, 30).Select(v => (decimal?)v).ToArray());
+        // The oldest entry a 30-day series still fully covers: 16 days back.
+        var reviewedDate = Today.AddDays(-16);
+
+        var window = TrendAwareness.FortnightEndingOn(series, reviewedDate);
+
+        Assert.NotNull(window);
+        Assert.Equal(reviewedDate, window[^1].Date);
+    }
+
+    /// <summary>
+    /// When the series has moved on past an entry's fortnight, the answer is no window at all —
+    /// a chart truncated at the series' edge would shift the account toward the present, the one
+    /// direction a closed day must not drift.
+    /// </summary>
+    [Fact]
+    public void FortnightEndingOn_SaysNothing_WhenTheSeriesNoLongerReachesTheEntry()
+    {
+        var series = Series(Enumerable.Range(1, 30).Select(v => (decimal?)v).ToArray());
+
+        Assert.Null(TrendAwareness.FortnightEndingOn(series, Today.AddDays(-17)));
+    }
+
+    /// <summary>A missing series is no window, not a crash on the charts' way out.</summary>
+    [Fact]
+    public void FortnightEndingOn_TreatsANullSeriesAsNoWindow()
+    {
+        Assert.Null(TrendAwareness.FortnightEndingOn(null, Today));
+    }
 }
 
 /// <summary>
