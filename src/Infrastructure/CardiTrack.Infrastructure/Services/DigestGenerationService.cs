@@ -423,6 +423,209 @@ public partial class DigestGenerationService : IDigestGenerationService
     }
 
     /// <summary>
+    /// The minimum days of the week that must carry readings before a Weekbook is written.
+    /// </summary>
+    /// <remarks>
+    /// A week measured on three days or fewer is not a quiet week, it is an unmeasured one, and an
+    /// account of it would have to fill the gap with the days that do exist — which reads to a
+    /// caregiver as a verdict on the whole week. Silence must never read as healthy. The list
+    /// screens say the gap plainly instead, which is the honest thing to show.
+    /// </remarks>
+    private const int WeekbookMinimumDaysWithData = 4;
+
+    public async Task<int> GenerateDueWeekbooksAsync(DateTime utcNow, CancellationToken ct = default)
+    {
+        // Wider than the Daybook's two-day window: a week is due on one local weekday, and a
+        // member whose watch went quiet mid-week still has a week worth accounting for. Nine days
+        // covers the whole week just gone plus the day it becomes due on, in any timezone.
+        var windowStart = DateOnly.FromDateTime(utcNow).AddDays(-9);
+        var memberIds = (await _unitOfWork.CardiMembers.GetActiveIdsWithActivitySinceAsync(windowStart)).ToList();
+
+        var generated = 0;
+        foreach (var memberId in memberIds)
+        {
+            ct.ThrowIfCancellationRequested();
+            try
+            {
+                if (await GenerateWeekbookForMemberAsync(memberId, utcNow, ct))
+                    generated++;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Weekbook generation failed for CardiMember {CardiMemberId}.", memberId);
+            }
+        }
+
+        if (generated > 0)
+        {
+            _logger.LogInformation(
+                "Weekbook generation complete. Candidates: {Candidates}, weekbooks written: {Generated}.",
+                memberIds.Count, generated);
+        }
+
+        return generated;
+    }
+
+    /// <summary>
+    /// One member's account of the week just gone, or false when it is not due, not possible, or
+    /// the reply did not survive its guards.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Due on the member's own <c>JournalWeekStartsOn</c>, once their local clock passes their
+    /// Weekbook time — so the week it covers is the seven days ending the evening before. Written
+    /// once and never recomputed, for the reason the Daybook is: the week it describes cannot
+    /// change any more.
+    /// </para>
+    /// <para>
+    /// Built from the week's own measurements, never from its Daybooks. An imprecise Daybook
+    /// therefore cannot propagate upward, and a week whose Daybooks were skipped or discarded
+    /// still gets its Weekbook — which is the whole reason a book reads its own period rather
+    /// than the books below it.
+    /// </para>
+    /// </remarks>
+    private async Task<bool> GenerateWeekbookForMemberAsync(
+        Guid memberId, DateTime utcNow, CancellationToken ct)
+    {
+        var member = await _unitOfWork.CardiMembers.GetByIdAsync(memberId);
+        if (member is null || !member.IsActive || member.IsMonitoringPaused(utcNow))
+            return false;
+
+        var timeZone = await MemberAnchorTimeZone.ResolveAsync(_unitOfWork, memberId);
+        var localNow = TimeZoneInfo.ConvertTimeFromUtc(utcNow, timeZone);
+        var localToday = DateOnly.FromDateTime(localNow);
+
+        // Due on the day the member's week starts, and only once their chosen hour has passed.
+        if (localToday.DayOfWeek != JournalSchedule.EffectiveWeekStart(member.JournalWeekStartsOn))
+            return false;
+
+        if (TimeOnly.FromDateTime(localNow) < JournalSchedule.EffectiveTime(member.WeekbookLocalTime))
+            return false;
+
+        // The week that ended last night: seven days back from yesterday inclusive. Dated by its
+        // last day, so one LocalDate identifies one week and the partial unique index can hold
+        // written-once on (member, date) alone.
+        var weekEnd = localToday.AddDays(-1);
+        var weekStart = weekEnd.AddDays(-6);
+
+        // The same fast-path-then-index contract the Daybook uses: this probe is cheap and runs on
+        // every pass of the due day, and IX_DigestEntries_OneWeekbookPerWeek is what actually holds
+        // the promise when two executions overlap.
+        var existing = await _unitOfWork.Digests.GetLatestByDateAsync(
+            memberId, weekEnd, DigestAudience.Weekbook, ct);
+        if (existing is not null)
+            return false;
+
+        var days = (await _unitOfWork.ActivityLogs
+                .GetByCardiMemberAndDateRangeAsync(memberId, weekStart, weekEnd))
+            .Where(l => l.Date >= weekStart && l.Date <= weekEnd)
+            .OrderBy(l => l.Date)
+            .ToList();
+
+        if (days.Count < WeekbookMinimumDaysWithData)
+        {
+            _logger.LogInformation(
+                "No Weekbook for CardiMember {CardiMemberId} for the week ending {WeekEnd}: only "
+                + "{DaysWithData} of 7 days carried readings, below the {Minimum}-day minimum.",
+                memberId, weekEnd, days.Count, WeekbookMinimumDaysWithData);
+            return false;
+        }
+
+        var baseline = await _unitOfWork.PatternBaselines
+            .GetLatestByCardiMemberAsync(memberId, periodDays: 30);
+
+        var weekStartLocal = weekStart.ToDateTime(TimeOnly.MinValue);
+        var weekEndLocal = weekEnd.AddDays(1).ToDateTime(TimeOnly.MinValue);
+        var weekStartUtc = new DateTimeOffset(weekStartLocal, timeZone.GetUtcOffset(weekStartLocal)).UtcDateTime;
+        var weekEndUtc = new DateTimeOffset(weekEndLocal, timeZone.GetUtcOffset(weekEndLocal)).UtcDateTime;
+
+        var assessments = await _unitOfWork.RealtimeAssessments.GetBetweenAsync(
+            memberId, weekStartUtc, weekEndUtc, ct);
+
+        // Alerts about any day of the week, by the same attribution the alerts list groups by.
+        var weekAlerts = (await _unitOfWork.Alerts.GetByCardiMemberAsync(memberId, activeOnly: false))
+            .Where(a =>
+            {
+                var about = AlertDetailComposer.AboutDate(
+                    AlertDetailComposer.ReadRule(a.MetricValues),
+                    a.MetricValues,
+                    DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(a.TriggeredDate, timeZone)));
+                return about >= weekStart && about <= weekEnd;
+            })
+            .ToList();
+
+        var memberContext = await _memberContext.ComposeAsync(
+            new MemberContextRequest(member, memberId, weekEnd, utcNow, PromptPurpose.Weekbook), ct);
+
+        var prompt = $"""
+            {WeekbookPrompt.Instructions}
+
+            {memberContext}
+            {WeekbookPrompt.CoverageLine(days, weekStart, weekEnd)}
+            {WeekbookPrompt.ReadingsSection(days, baseline, member.DateOfBirth.ToAgeInYears(weekEnd))}
+            {WeekbookPrompt.MonitoringSection(weekAlerts, assessments)}
+            """;
+
+        var aiResponse = await _medicalAi.GenerateStructuredAsync<WeekbookAiResponse>(prompt, ct);
+        var text = aiResponse.Summary.Trim();
+
+        // Nothing rather than something wrong, and with the same weight behind it as the Daybook:
+        // a Weekbook is written once, so a bad one is not replaced next pass — it is what that
+        // week says until the member's data is regenerated by hand.
+        if (text.Length == 0 || WeekbookPrompt.ReadsLikeTheInstructions(text))
+        {
+            _logger.LogWarning(
+                "Discarded the weekbook for CardiMember {CardiMemberId} for the week ending {WeekEnd}: "
+                + "the model returned empty text or restated its own instructions.",
+                memberId, weekEnd);
+            return false;
+        }
+
+        if (WeekbookPrompt.NamesACondition(text) is { } condition)
+        {
+            _logger.LogWarning(
+                "Discarded the weekbook for CardiMember {CardiMemberId} for the week ending {WeekEnd}: "
+                + "it names a condition or a treatment ({Marker}).",
+                memberId, weekEnd, condition);
+            return false;
+        }
+
+        if (WeekbookPrompt.UnglossedTerm(text) is { } term)
+        {
+            _logger.LogWarning(
+                "Discarded the weekbook for CardiMember {CardiMemberId} for the week ending {WeekEnd}: "
+                + "it uses '{Term}' without explaining it where it is first used.",
+                memberId, weekEnd, term);
+            return false;
+        }
+
+        var name = NamePlaceholder.FirstName(member.Name);
+        if (name is null && NamePlaceholder.IsPresentIn(text))
+        {
+            _logger.LogWarning(
+                "Discarded the weekbook for CardiMember {CardiMemberId} for the week ending {WeekEnd}: "
+                + "it names the member through the placeholder, but no name is on file to resolve it to.",
+                memberId, weekEnd);
+            return false;
+        }
+
+        await _unitOfWork.Digests.AddAsync(new DigestEntry
+        {
+            CardiMemberId = memberId,
+            LocalDate = weekEnd,
+            Audience = DigestAudience.Weekbook,
+            Headline = NamePlaceholder.Resolve(CleanHeadline(aiResponse.Headline, memberId, weekEnd), name),
+            Text = NamePlaceholder.Resolve(text, name)!,
+            Suggestion = NamePlaceholder.Resolve(
+                CleanSuggestion(aiResponse.Suggestion, memberId, weekEnd), name),
+            Urgency = ParseUrgency(aiResponse.Urgency, memberId, weekEnd),
+            GeneratedAtUtc = utcNow,
+        }, ct);
+
+        return true;
+    }
+
+    /// <summary>
     /// One member's review of yesterday, or false when it is not due, not possible, or the reply
     /// did not survive its guards.
     /// </summary>
@@ -1618,6 +1821,39 @@ public partial class DigestGenerationService : IDigestGenerationService
         [Description(
             "One of: watch, check-in, concerning, act-now — how soon the family should act on this "
             + "day's readings, judged only from the readings given.")]
+        public string? Urgency { get; init; }
+    }
+
+    /// <summary>
+    /// The Weekbook's reply shape. Same four fields as the Daybook's, described for a week — the
+    /// descriptions reach the model as the schema it fills, so a week asked for in a day's words
+    /// gets a day's answer about seven of them.
+    /// </summary>
+    internal sealed record WeekbookAiResponse
+    {
+        [Description(
+            "6-12 sentences giving the family an account of {{NAME}}'s whole week, in the past "
+            + "tense. Says what moved and what held steady across the seven days, which day stood "
+            + "apart and why, and how much of the week each reading covered. An account of the "
+            + "week as a whole, not a list of its days. Not a restatement of the instructions.")]
+        public required string Summary { get; init; }
+
+        [Description(
+            "A five-to-seven-word qualification of the week described above, in sentence case — "
+            + "what kind of week it was, never a generic label like weekly summary or week's "
+            + "readings. No full stop, no quotation marks, no name and no {{NAME}}. A label, "
+            + "not a sentence.")]
+        public required string Headline { get; init; }
+
+        [Description(
+            "One specific, supportive, actionable suggestion in plain language, at most 25 words, "
+            + "answering something in the week's readings. Never a diagnosis, never a medical "
+            + "condition, never a change to any treatment.")]
+        public string? Suggestion { get; init; }
+
+        [Description(
+            "One of: watch, check-in, concerning, act-now — how soon the family should act on this "
+            + "week's readings, judged only from the readings given.")]
         public string? Urgency { get; init; }
     }
 

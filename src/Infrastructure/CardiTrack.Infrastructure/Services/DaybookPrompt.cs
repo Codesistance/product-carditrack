@@ -1,6 +1,5 @@
 ﻿using System.Globalization;
 using System.Text;
-using System.Text.RegularExpressions;
 using CardiTrack.Application.Services;
 using CardiTrack.Domain.Entities;
 using CardiTrack.Domain.Enums;
@@ -30,7 +29,7 @@ namespace CardiTrack.Infrastructure.Services;
 /// detectable by reading it.
 /// </para>
 /// </remarks>
-internal static partial class DaybookPrompt
+internal static class DaybookPrompt
 {
     /// <summary>
     /// <c>CARDITRACK_DAYBOOK_PROMPT</c> — the finished-day account. Fixed prefix, member data
@@ -47,7 +46,7 @@ internal static partial class DaybookPrompt
         Write the family's account of one day of {{NAME}}'s readings. The day is over.
         Write {{NAME}} exactly as it appears wherever you would name the person; it stands in
         for their real name, which you are not given.
-        """ + MedicalPromptBlocks.DaybookRegister + """
+        """ + MedicalPromptBlocks.JournalRegister + """
         Past tense throughout: this day has finished and nothing in it is still accumulating.
         Do not quote a figure that is not in the readings below, and do not round one that is.
         Cover the day's sleep, heart, oxygen and breathing, and movement — in that order, and only where each was measured.
@@ -119,89 +118,6 @@ internal static partial class DaybookPrompt
         "caregiver-reported context",
         "an account of the whole day",
         "a relationship stand-in",
-    ];
-
-    /// <summary>
-    /// Terms that name something the body is doing rather than something the watch recorded. This
-    /// is the line the daybook entry's whole allowance turns on: naming a measurement describes what
-    /// was measured, naming a condition is an inference about the person, and CardiTrack does not
-    /// diagnose (docs/solution_manifest.md). A reply containing one of these is discarded whole.
-    /// </summary>
-    /// <remarks>
-    /// <para>
-    /// Supersets <c>DigestGenerationService.DiagnosticMarkers</c> rather than sharing it: that list
-    /// guards a 25-word suggestion and can afford bare stems, while this one reads a twelve-sentence
-    /// account of a day and needs the clinical vocabulary a longer, more precise register can
-    /// actually reach for.
-    /// </para>
-    /// <para>
-    /// The inference phrasings at the end matter as much as the condition names. "A sign of" needs
-    /// no condition after it to be diagnosis — it asserts that a reading means something about the
-    /// body, which is exactly the claim this product may not make, and it is the shape a model
-    /// reaches for when it has been allowed precise words and wants to sound useful.
-    /// </para>
-    /// </remarks>
-    private static readonly string[] ConditionMarkers =
-    [
-        // Named conditions and their stems.
-        "diagnos", "afib", "fibrillation", "arrhythmia", "atrial", "apnoea", "apnea",
-        "hypoxaem", "hypoxem", "bradycard", "tachycard", "hypertens", "hypotens",
-        "ischaem", "ischem", "angina", "infarct", "insufficiency", "dementia", "delirium",
-        "disease", "disorder", "syndrome", "medical condition", "heart condition",
-        "health condition", "cardiac condition", "underlying condition",
-        // Diagnostic inference, with or without a condition named after it.
-        "a sign of", "signs of", "a symptom of", "symptoms of", "indicative of",
-        "suggestive of", "points to a", "may indicate", "could indicate",
-    ];
-
-    // "Consistent with" is deliberately absent, though it is the clinical inference phrase par
-    // excellence. This prompt instructs the model to say where each reading sat against the
-    // member's own usual, and "consistent with her usual 58" is a natural way to answer that —
-    // so the marker collides with the instruction directly above it. A daybook entry is written
-    // once and never retried, which makes a false discard cost the caregiver that day entirely,
-    // and the phrasings left above catch the same claim when it is actually about the body.
-
-    /// <summary>
-    /// Phrasings that propose a treatment. Narrower than
-    /// <c>DigestGenerationService.MedicalAdviceMarkers</c>, which guards a question and can ban
-    /// "measure" and "blood pressure" outright — words a daybook entry says legitimately and often,
-    /// because saying what was measured is its whole job. These are the action shapes instead.
-    /// </summary>
-    private static readonly string[] TreatmentMarkers =
-    [
-        "start taking", "stop taking", "keep taking", "increase the dose", "reduce the dose",
-        "lower the dose", "adjust the dose", "change the dose", "dosage", "prescrib",
-        "prescription", "milligram", "should take",
-    ];
-
-    /// <summary>
-    /// Terms a family reader is not expected to know, which the register therefore requires to
-    /// explain themselves in the sentence that first uses them.
-    /// </summary>
-    /// <remarks>
-    /// Deliberately short, and deliberately excludes terms that are precise but already plain —
-    /// resting heart rate, deep sleep, active minutes, steps. Requiring a gloss on those would
-    /// discard good reviews for explaining what needs no explaining, and would train the register
-    /// toward the padding the gloss rule exists to prevent. What is left is the vocabulary a GP
-    /// uses and a caregiver does not.
-    /// </remarks>
-    private static readonly string[] TermsNeedingAGloss =
-    [
-        "sleep efficiency", "sleep latency", "rem sleep", "rem ", "spo2", "spo₂",
-        "oxygen saturation", "respiratory rate", "vo2", "vo₂", "heart rate variability",
-        "hrv", "sedentary", "nadir", "diurnal", "circadian", "arrhythmi", "perfusion",
-    ];
-
-    /// <summary>
-    /// What makes a sentence explain its own term. Generous on purpose: the rule being enforced is
-    /// "the reader can tell what this measures", not a particular sentence construction, and a
-    /// guard stricter than the rule would discard reviews that had in fact complied.
-    /// </summary>
-    private static readonly string[] GlossMarkers =
-    [
-        "—", "–", "(", "which is", "which measures", "which counts", "which tracks",
-        "meaning", "that is", "in other words", "the share of", "the proportion of",
-        "the amount of", "how much", "how long", "how often", "a measure of", ", or ",
     ];
 
     /// <summary>
@@ -639,69 +555,20 @@ internal static partial class DaybookPrompt
         return body.EndsWith("---", StringComparison.Ordinal) ? string.Empty : body;
     }
 
+    // The three reply guards below are the journal's register, which every book shares — a
+    // Weekbook may name a measurement and may not name a condition for the reasons a Daybook may
+    // not. They live in JournalRegisterGuards so the line is drawn once and cannot drift between
+    // books; these stay as the names this prompt's generator and tests already call.
+
     /// <summary>Whether the reply is the brief read back rather than a review of anything.</summary>
-    internal static bool ReadsLikeTheInstructions(string text)
-    {
-        var flattened = Flatten(text);
-        return InstructionEchoes.Any(echo => flattened.Contains(echo, StringComparison.Ordinal));
-    }
+    internal static bool ReadsLikeTheInstructions(string text) =>
+        JournalRegisterGuards.ReadsLikeInstructions(text, InstructionEchoes);
 
-    /// <summary>
-    /// The condition or treatment phrase that makes this reply a diagnosis, or null when it names
-    /// only what was measured. Returned rather than a bool so the discard can say which word cost
-    /// the generation — the list is the product's regulatory line and needs to be tunable from
-    /// what it actually catches.
-    /// </summary>
-    internal static string? NamesACondition(string text)
-    {
-        var flattened = Flatten(text);
-        return ConditionMarkers.Concat(TreatmentMarkers)
-            .FirstOrDefault(marker => flattened.Contains(marker, StringComparison.Ordinal));
-    }
+    /// <inheritdoc cref="JournalRegisterGuards.NamesACondition"/>
+    internal static string? NamesACondition(string text) =>
+        JournalRegisterGuards.NamesACondition(text);
 
-    /// <summary>
-    /// The first precise term used without explaining itself, or null when every one of them did.
-    /// </summary>
-    /// <remarks>
-    /// Judged on first use only, which is what the register asks for: a term explained in sentence
-    /// three may be used bare in sentence nine, and requiring the gloss every time would produce
-    /// exactly the repetitive padding this rule exists to avoid. Sentences are split on terminal
-    /// punctuation, so the gloss has to sit in the same sentence as the term — a definition two
-    /// sentences later is not one the reader meets in time to use.
-    /// </remarks>
-    internal static string? UnglossedTerm(string text)
-    {
-        var sentences = SentenceEnds().Split(Flatten(text))
-            .Where(s => !string.IsNullOrWhiteSpace(s))
-            .ToList();
-
-        foreach (var term in TermsNeedingAGloss)
-        {
-            var first = sentences.FirstOrDefault(s => s.Contains(term, StringComparison.Ordinal));
-            if (first is null)
-                continue;
-
-            if (!GlossMarkers.Any(marker => first.Contains(marker, StringComparison.Ordinal)))
-                return term.Trim();
-        }
-
-        return null;
-    }
-
-    /// <summary>
-    /// A sentence boundary: terminal punctuation, except a full stop with a digit on both sides —
-    /// this text quotes figures by design, and splitting "95.4%" in half moved a term and the
-    /// gloss that follows its figure into different fragments, discarding a compliant review. A
-    /// review is written once, so that false positive cost the caregiver the day for good.
-    /// </summary>
-    [GeneratedRegex(@"[!?;]|(?<!\d)\.|\.(?!\d)")]
-    private static partial Regex SentenceEnds();
-
-    /// <summary>
-    /// Lowercased with runs of whitespace collapsed, so a phrase the model wrapped across two
-    /// lines still matches the single-line phrase being looked for.
-    /// </summary>
-    private static string Flatten(string text) =>
-        string.Join(' ', text.ToLowerInvariant()
-            .Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+    /// <inheritdoc cref="JournalRegisterGuards.UnglossedTerm"/>
+    internal static string? UnglossedTerm(string text) =>
+        JournalRegisterGuards.UnglossedTerm(text);
 }

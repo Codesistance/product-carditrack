@@ -29,4 +29,24 @@ public interface IDigestGenerationService
     /// day it describes is over, so there is no later reading that could change it.
     /// </remarks>
     Task<int> GenerateDueDaybooksAsync(DateTime utcNow, CancellationToken ct = default);
+
+    /// <summary>
+    /// Writes the account of the week just gone for every member whose journal week has turned and
+    /// who has not been given one for it yet; returns how many were written. Shares the same
+    /// half-hourly schedule and the same cheap existence probe as the Daybook pass.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Due on the member's own week-start day, once their local clock passes their Weekbook time,
+    /// and written once for the seven days ending the evening before. A week with fewer than four
+    /// days of readings gets none: an account of an unmeasured week would have to speak for the
+    /// days that are missing, and silence must never read as healthy.
+    /// </para>
+    /// <para>
+    /// Generated from the week's own measurements, <b>never</b> from its Daybooks — so no
+    /// imprecision propagates upward, and a week whose Daybooks were skipped or discarded still
+    /// gets its Weekbook.
+    /// </para>
+    /// </remarks>
+    Task<int> GenerateDueWeekbooksAsync(DateTime utcNow, CancellationToken ct = default);
 }

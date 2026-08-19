@@ -482,7 +482,7 @@ When this member's CardiJournal books are written, in **the member's own local t
   "earliestSelectableTime": "01:00:00",
   "latestSelectableTime": "12:00:00",
   "stepMinutes": 30,
-  "weekbookAvailable": false,
+  "weekbookAvailable": true,
   "monthbookAvailable": false
 }
 ```
@@ -493,7 +493,7 @@ When this member's CardiJournal books are written, in **the member's own local t
 | `effective*` | What the generator will actually use, chosen or defaulted. Returned rather than inferred so the default lives in one place |
 | `timeZoneId` | The member's anchor timezone — the clock every time above is read against |
 | `earliestSelectableTime` / `latestSelectableTime` / `stepMinutes` | The bounds a client must keep its picker inside, so it can never offer a time the API would refuse |
-| `weekbookAvailable` / `monthbookAvailable` | **`false` today.** The settings store and return, but the Weekbook and Monthbook generators are R2. A client shows those rows as coming rather than as live |
+| `weekbookAvailable` / `monthbookAvailable` | Whether anything actually writes that book yet. **Weekbook `true`, Monthbook `false`** — the Monthbook's setting stores and returns, but its generator is R2, so a client shows that row as coming rather than as live |
 
 ## PUT `/api/v1/cardimembers/{cardiMemberId}/journal-settings`
 

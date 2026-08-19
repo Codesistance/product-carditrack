@@ -70,13 +70,17 @@ public class JournalSettingsServiceTests
         Assert.Equal(30, settings.StepMinutes);
     }
 
-    /// <summary>The generators are R2; the setting must not imply they are running.</summary>
+    /// <summary>
+    /// A book whose generator does not exist must not imply it is running, and one whose
+    /// generator does exist must not be shown as coming. The Weekbook's landed; the Monthbook's
+    /// has not.
+    /// </summary>
     [Fact]
-    public async Task The_unbuilt_books_report_themselves_unavailable()
+    public async Task Each_book_reports_whether_anything_actually_writes_it()
     {
         var settings = await CreateService().GetAsync(_userId, _memberId);
 
-        Assert.False(settings.WeekbookAvailable);
+        Assert.True(settings.WeekbookAvailable);
         Assert.False(settings.MonthbookAvailable);
     }
 

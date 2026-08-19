@@ -138,7 +138,7 @@ public class InsightsController : BaseApiController
         }
 
         if (DigestQueryService.ParseAudience(audience) is not { } parsedAudience)
-            return Error("That summary type isn't one we recognise — use family or daybook.");
+            return Error("That summary type isn't one we recognise — use family, daybook or weekbook.");
 
         try
         {
@@ -168,8 +168,9 @@ public class InsightsController : BaseApiController
     /// </param>
     /// <param name="audience">
     /// Which series to read: <c>family</c> (the default) for the running summary and its
-    /// recomputations, or <c>daybook</c> for one entry per finished day. Optional, and a value
-    /// outside those two is refused rather than ignored.
+    /// recomputations, <c>daybook</c> for one entry per finished day, or <c>weekbook</c> for one
+    /// per finished week, dated by that week's last day. Optional, and a value outside those
+    /// three is refused rather than ignored.
     /// </param>
     /// <param name="search">
     /// Optional case-insensitive text filter over the summary, its headline and its suggestion.
@@ -206,7 +207,7 @@ public class InsightsController : BaseApiController
         // silently returned the family list would show a caregiver one kind of summary under the
         // heading of another, which on this screen is worse than an error.
         if (DigestQueryService.ParseAudience(audience) is not { } parsedAudience)
-            return Error("That summary type isn't one we recognise — use family or daybook.");
+            return Error("That summary type isn't one we recognise — use family, daybook or weekbook.");
 
         // Same stance for the urgency filter: a typo must not silently return the unfiltered list.
         if (!DigestQueryService.TryParseUrgency(urgency, out var parsedUrgency))
