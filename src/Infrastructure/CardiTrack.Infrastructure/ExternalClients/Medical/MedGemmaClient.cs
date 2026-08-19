@@ -1,6 +1,8 @@
 using System.Collections.Concurrent;
 using System.ComponentModel;
 using System.Diagnostics;
+using System.Net;
+using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -38,6 +40,17 @@ public class MedGemmaClient : IExternalAiClient
     /// attempt still surfaces as an error, just a few seconds later than today.
     /// </summary>
     private const int MaxAttempts = 3;
+
+    /// <summary>Backoff step for a rejection that clears on its own within seconds.</summary>
+    private const int ColdStartBackoffSeconds = 2;
+
+    /// <summary>
+    /// Backoff step for a rejection that means the far side is full — see <see cref="BackoffFor"/>.
+    /// </summary>
+    private const int SaturationBackoffSeconds = 15;
+
+    /// <summary>Ceiling on a server-advised <c>Retry-After</c>.</summary>
+    private static readonly TimeSpan MaxBackoff = TimeSpan.FromSeconds(60);
 
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly PrivateAiSettings _settings;
@@ -304,13 +317,15 @@ public class MedGemmaClient : IExternalAiClient
 
     /// <summary>
     /// Sends the request, retrying a non-success response up to <see cref="MaxAttempts"/> times
-    /// with a short backoff. Only the HTTP outcome is retried — a 200 with an unparseable body
-    /// is the model having already answered, not a transport blip, so that path still fails on
-    /// the first attempt. Nothing is logged per attempt: a sustained outage already produces one
-    /// error per call, and logging every retry too would triple that volume for no diagnostic
-    /// gain. The final attempt's failure is logged and thrown exactly as the single attempt used
-    /// to be; a call that only succeeds after a retry logs one warning noting that, since "it
-    /// took N attempts" is worth knowing even though "it failed" is not, twice over.
+    /// with a backoff sized by what the rejection means — see <see cref="BackoffFor"/>. Only the
+    /// HTTP outcome is retried — a 200 with an unparseable body is the model having already
+    /// answered, not a transport blip, so that path still fails on the first attempt, and a
+    /// client-side timeout is terminal for the reasons <see cref="SendOnceAsync"/> gives.
+    /// Nothing is logged per attempt: a sustained outage already produces one error per call,
+    /// and logging every retry too would triple that volume for no diagnostic gain. The final
+    /// attempt's failure is logged and thrown exactly as the single attempt used to be; a call
+    /// that only succeeds after a retry logs one warning noting that, since "it took N attempts"
+    /// is worth knowing even though "it failed" is not, twice over.
     /// </summary>
     private async Task<string> SendWithRetryAsync(
         HttpClient client,
@@ -321,7 +336,7 @@ public class MedGemmaClient : IExternalAiClient
     {
         for (var attempt = 1; ; attempt++)
         {
-            using var response = await send(client, ct);
+            using var response = await SendOnceAsync(client, send, operationName, stopwatch, ct);
             if (response.IsSuccessStatusCode)
             {
                 if (attempt > 1)
@@ -345,8 +360,101 @@ public class MedGemmaClient : IExternalAiClient
                     inner: null, statusCode: statusCode);
             }
 
-            await Task.Delay(TimeSpan.FromSeconds(attempt * 2), _timeProvider, ct);
+            var backoff = BackoffFor(statusCode, response.Headers.RetryAfter, attempt);
+
+            // Released before the wait, not after it: a saturation backoff is measured in
+            // tens of seconds, and holding the failed response holds its pooled connection
+            // for all of them. Disposing twice (here and at scope exit) is a no-op.
+            response.Dispose();
+            await Task.Delay(backoff, _timeProvider, ct);
         }
+    }
+
+    /// <summary>
+    /// One attempt, with the client-side timeout separated from the caller giving up. Both
+    /// surface from <see cref="HttpClient"/> as <see cref="TaskCanceledException"/>, and left
+    /// undistinguished the timeout reaches telemetry tagged <c>error.type</c>
+    /// <c>System.Threading.Tasks.TaskCanceledException</c> — which reads as "something cancelled
+    /// this" when what happened is that MedGemma took longer than
+    /// <see cref="PrivateAiSettings.TimeoutSeconds"/> to answer. The distinction is the whole
+    /// diagnosis: one is a caller's choice, the other is the model being too slow.
+    /// </summary>
+    /// <remarks>
+    /// Terminal on purpose — a timeout is not retried. The request is most likely still queued
+    /// or executing on the far side (Ollama serves inference from a queue and does not abandon a
+    /// generation because the caller hung up), so re-sending adds load to the exact thing that
+    /// was already too slow, and three attempts at
+    /// <see cref="PrivateAiSettings.TimeoutSeconds"/> apiece would take the wall clock well past
+    /// the schedule of the job that started them. Rate limiting is the case where waiting and
+    /// re-asking helps; a timeout is the case where it does not.
+    /// </remarks>
+    private async Task<HttpResponseMessage> SendOnceAsync(
+        HttpClient client,
+        Func<HttpClient, CancellationToken, Task<HttpResponseMessage>> send,
+        string operationName,
+        Stopwatch stopwatch,
+        CancellationToken ct)
+    {
+        try
+        {
+            return await send(client, ct);
+        }
+        catch (TaskCanceledException ex) when (!ct.IsCancellationRequested)
+        {
+            _logger.LogError(
+                "MedGemma {Operation} timed out after {ElapsedMs} ms "
+                + "(HttpClient.Timeout is {TimeoutSeconds} s)",
+                operationName, stopwatch.ElapsedMilliseconds, _settings.TimeoutSeconds);
+            throw new TimeoutException(
+                $"MedGemma {operationName} timed out after {_settings.TimeoutSeconds} s.", ex);
+        }
+    }
+
+    /// <summary>
+    /// How long to wait before the next attempt. A server that said <c>Retry-After</c> is
+    /// answered on its own terms, capped by <see cref="MaxBackoff"/> so a header measured in
+    /// hours cannot park a job indefinitely.
+    /// </summary>
+    /// <remarks>
+    /// Absent that header the wait is sized by what the status means. 429 and 503 are
+    /// saturation: on Cloud Run they mean every instance is busy and the queue is full, and what
+    /// clears it is an in-flight inference finishing — tens of seconds on a CPU-served 4B model,
+    /// so a two-second wait re-asks a queue that has not moved and spends the attempt for
+    /// nothing. Everything else retried here is the cold-start/IAM-propagation case
+    /// <see cref="MaxAttempts"/> describes, which does resolve in a couple of seconds, and
+    /// stretching that wait would only delay the answer.
+    /// </remarks>
+    private TimeSpan BackoffFor(HttpStatusCode statusCode, RetryConditionHeaderValue? retryAfter, int attempt)
+    {
+        if (AdvisedDelay(retryAfter) is { } advised)
+            return advised > MaxBackoff ? MaxBackoff : advised;
+
+        var seconds = statusCode is HttpStatusCode.TooManyRequests or HttpStatusCode.ServiceUnavailable
+            ? attempt * SaturationBackoffSeconds
+            : attempt * ColdStartBackoffSeconds;
+        return TimeSpan.FromSeconds(seconds);
+    }
+
+    /// <summary>
+    /// The <c>Retry-After</c> value as a delay, in either of the forms RFC 9110 allows: a delta
+    /// in seconds, or an HTTP date. A date already in the past yields <see cref="TimeSpan.Zero"/>
+    /// rather than a negative wait.
+    /// </summary>
+    private TimeSpan? AdvisedDelay(RetryConditionHeaderValue? retryAfter)
+    {
+        if (retryAfter is null)
+            return null;
+
+        if (retryAfter.Delta is { } delta)
+            return delta < TimeSpan.Zero ? TimeSpan.Zero : delta;
+
+        if (retryAfter.Date is { } date)
+        {
+            var until = date - _timeProvider.GetUtcNow();
+            return until < TimeSpan.Zero ? TimeSpan.Zero : until;
+        }
+
+        return null;
     }
 
     private TagList TokenTags(string operationName, string tokenType)
