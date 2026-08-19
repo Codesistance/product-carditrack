@@ -182,6 +182,8 @@ public static class SubjectDataMap
         new(nameof(DeviceConnection), "device_connections", "cardi_member_id"),
         new(nameof(AuditLog),         "audit_logs",         "cardi_member_id", Erasable: false), // legal hold, §6
         new(nameof(EnvironmentalReading), "environmental_readings", "cardi_member_id"), // built 2026-08-12; no coordinate columns to erase, only derived values
+        // CardiMembers.PhotoObjectName (built 2026-08-18) names a blob OUTSIDE Postgres: the
+        // sweep must also delete gs://<member-photos-bucket>/members/{cardiMemberId}/ recursively.
         // planned: consent_records (Erasable: false), Cosmos collections by partition key
     };
 
@@ -233,7 +235,7 @@ All 18 §164.514(b)(2) categories, mapped to CardiTrack fields:
 | 14 | URLs | `AlertPhoto.BlobUrl` (planned), `Report.BlobUrl`, audit `RequestPath` | Strip |
 | 15 | IP addresses | `AuditLogs.IpAddress` | Strip (audit rows are never export input anyway) |
 | 16 | Biometric identifiers | No fingerprints/voiceprints stored. High-resolution HR/HRV streams are arguably biometric-adjacent → treated under #18/§4.3 | — |
-| 17 | Full-face photos & comparable images | `AlertPhotos` (planned) | Strip |
+| 17 | Full-face photos & comparable images | `CardiMember.PhotoObjectName` → blob in the private member-photos GCS bucket (**built 2026-08-18**; served only via ≤15-min V4 signed URLs, EXIF/GPS stripped at upload, blob hard-deleted on replace/remove/member removal); `AlertPhotos` (planned) | Strip |
 | 18 | Any other unique identifying number/characteristic/code | `CardiMemberId`, `Auth0UserId`, `OrganizationId` | **Replace** with `AnalyticsId` (below); strip the rest. Free text categorically excluded |
 
 **Re-identification code (§164.514(c)):** the export key is
@@ -319,6 +321,7 @@ Periods marked ⚖ are engineering **proposals** requiring legal ratification (D
 | Hourly rollups (`MetricRollupsHourly`) | Postgres clinical | **13 months** — enforced today by `PartitionMaintenanceWorker` | **Partition drop** (monthly partitions) | A year of hour-grain comparisons plus slack ([granular ADR](./granular_timeseries_storage.md)) |
 | Environmental readings (`EnvironmentalReadings`) | Postgres clinical | **90 days** — enforced today by `PartitionMaintenanceWorker` | **Partition drop** (daily partitions) | Derived temperature/AQI only, no coordinates stored; matches the `RealtimeAssessments` window it feeds prompts alongside. Populated only for members with `EnvironmentalContextConsentGranted = true` |
 | Derived baselines (`PatternBaselines`) | Postgres clinical | ⚖ 12 months (keep latest per period regardless) | Hard delete — fully regenerable | Derived data |
+| Profile photos (`CardiMember.PhotoObjectName` + GCS blob) | Postgres clinical (object name) / private GCS bucket (blob) | **Life of the active membership** — built 2026-08-18 | **Hard delete of the blob** on photo replace, photo removal, and member removal (soft delete included — the photo does not share health history's retention); at erasure, `gs://<bucket>/members/{id}/` is swept recursively | Full-face photo = Safe Harbor category 17, Tier 1; served only via ≤15-min signed URLs, never a durable link |
 | Alerts + notes/photos | Postgres clinical / GCS | ⚖ 24 months after resolution | **Anonymize-in-place**: null `AcknowledgedBy`/`ResolvedBy`, replace `Title`/`Message`/`MetricValues` with type+severity codes; delete photos (blobs + rows). Row skeleton retained for alert-quality stats | Free text + user refs are the risk; counts are the value |
 | Device connections + OAuth tokens | Postgres clinical | Life of connection; **tokens purged ≤ 24 h after disconnect/consent-withdrawal**, with provider-side revoke (`https://oauth2.googleapis.com/revoke`) | Hard delete of token columns; connection row hard-deleted at member erasure | Live credentials to third-party PHI |
 | Wearable battery reading (`BatteryLevel`/`BatteryStatus`/`BatteryUpdatedAt`) | Postgres clinical, on the connection row | **Last value only** — each sync overwrites; no history table and no time series | Removed with the connection row at member erasure | Hardware telemetry, not PHI — charge level of the device, nothing about the wearer |
@@ -451,6 +454,10 @@ CREATE TABLE compliance.erasure_ledger (
                 pattern_baselines, device_connections, notifications +
                 notification_deliveries scoped to the member, plus the member's
                 rows/partitions in the pipeline result tables (CardiMemberId).
+                Blob stores too: the profile photo under
+                gs://<member-photos-bucket>/members/{cardiMemberId}/ (the
+                CardiMembers.PhotoObjectName pointer dies with the row in
+                step 5; normal member removal already hard-deletes this blob).
  5. RELATIONSHIPS  Delete user_cardi_members rows (FK cascade exists), then the
                 clinical cardi_members row.
  6. CRYPTO-SHRED  pii.subject_identities: null dek_wrapped, null

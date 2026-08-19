@@ -27,7 +27,11 @@ public class CardiMemberDetailResponse
     public string? EmergencyContactPhone { get; set; }
     public string? MedicalNotes { get; set; }
 
-    /// <summary>Null — no photo storage exists yet; clients fall back to an initials avatar.</summary>
+    /// <summary>
+    /// Short-lived signed URL for the member's profile photo, or null when none is set or photo
+    /// storage is unavailable — clients fall back to an initials avatar. Expires within minutes:
+    /// fetch it, don't store it.
+    /// </summary>
     public string? PhotoUrl { get; set; }
 
     public AlertSensitivity AlertSensitivity { get; set; }

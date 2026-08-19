@@ -271,7 +271,8 @@ public static class AlertDetailComposer
         GranularWindow? granular,
         PatternBaseline? baseline,
         ElapsedSteps? elapsedSteps = null,
-        DateOnly? firedOn = null)
+        DateOnly? firedOn = null,
+        string? photoUrl = null)
     {
         var rule = ReadRule(alert.MetricValues);
         TryParse(alert.MetricValues, out var metrics);
@@ -287,7 +288,7 @@ public static class AlertDetailComposer
             AlertId = alert.Id,
             CardiMemberId = alert.CardiMemberId,
             CardiMemberName = member?.Name ?? string.Empty,
-            CardiMemberPhotoUrl = null,
+            CardiMemberPhotoUrl = photoUrl,
             Phone = member?.Phone,
             EmergencyContactPhone = member?.EmergencyContactPhone,
             EmergencyContactName = member?.EmergencyContactName,

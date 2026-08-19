@@ -31,6 +31,16 @@ public class CardiMember : BaseEntity, ISoftDeletable
     public AlertSensitivity AlertSensitivity { get; set; } = AlertSensitivity.Medium;
 
     /// <summary>
+    /// Object name of this member's profile photo in the private member-photos bucket
+    /// (<c>members/{id}/{guid}.jpg</c>), or null when no photo has been set. The object name,
+    /// never a URL: read surfaces mint short-lived signed URLs on demand, so nothing durable
+    /// carries a fetchable link to a full-face photo (Safe Harbor category 17 — see
+    /// docs/technical/data_protection_architecture.md). The blob is deleted when the photo is
+    /// replaced or removed and when the member is removed — it must not outlive the membership.
+    /// </summary>
+    public string? PhotoObjectName { get; set; }
+
+    /// <summary>
     /// Whether this member's exercise-session GPS location may be used to look up ambient
     /// temperature and air quality for that session. Default false, and the sole gate: no code
     /// path fetches exercise/location data or calls the environmental client for a member whose
