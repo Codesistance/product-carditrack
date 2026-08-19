@@ -688,6 +688,41 @@ resource "google_cloud_run_v2_service" "medgemma" {
       max_instance_count = var.medgemma_max_instances
     }
 
+    # One request at a time, deliberately. The platform default here was 640 — not a chosen
+    # number, just what Cloud Run applies when Terraform stays silent, and a nonsense one for
+    # a service that can serve exactly one instance and cannot scale out.
+    #
+    # 640 does not mean 640 get served; it means 640 get *admitted*. Ollama accepts them,
+    # splits the 4 vCPU across however many parallel slots it auto-selected, and every one of
+    # them slows down together. That is the shape the measurements show: p50 inference was
+    # 15-19s to 08-13, and reached 124s by 08-19 while the container image never changed
+    # (same digest since 08-10) and prompt sizes stayed flat. What changed in between is the
+    # arrival rate. Requests that then overrun the 300s ceiling die as 504s having consumed
+    # five minutes of the one instance — 16 of them on 08-18 alone.
+    #
+    # At 1, a second concurrent caller is refused in 0ms instead of being let in to make the
+    # first one slower. That refusal is not a regression: MedGemmaClient already treats 429 as
+    # saturation and backs off in 15s steps honouring Retry-After (PR #383), which is the
+    # correct response to "busy" and cannot be the response to a 300s timeout — by then the
+    # work is done and thrown away. Trading slow shared failure for fast honest rejection is
+    # the whole change.
+    #
+    # This is a hypothesis with a measurement attached, not a certainty: it predicts p50
+    # returns toward ~20s and 504s go to zero, while 429 counts rise and are absorbed by the
+    # client's backoff. If p50 does not move, the contention theory is wrong and this reverts
+    # to a single number with no other consequence. Raise it only alongside an explicit
+    # OLLAMA_NUM_PARALLEL on the container, so the two agree instead of one silently
+    # oversubscribing the other.
+    max_instance_request_concurrency = 1
+
+    # Longer than the caller's 300s (var.medgemma_timeout_seconds, applied as HttpClient.Timeout
+    # in AiServiceExtensions) so that the client is always the one that gives up first. They were
+    # both exactly 300s, which made the loser of every timeout arbitrary and cost a real
+    # diagnosis: the same failure surfaced as a client TaskCanceledException or a server 504
+    # depending on which side won the race. The client owns the retry decision, so the client
+    # must own the deadline.
+    timeout = "360s"
+
     vpc_access {
       network_interfaces {
         network    = google_compute_network.main.id
