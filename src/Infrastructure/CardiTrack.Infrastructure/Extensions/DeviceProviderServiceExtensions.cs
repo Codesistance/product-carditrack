@@ -8,6 +8,7 @@ using CardiTrack.Infrastructure.Services;
 using CardiTrack.Infrastructure.Settings;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 namespace CardiTrack.Infrastructure.Extensions;
@@ -121,7 +122,11 @@ public static class DeviceProviderServiceExtensions
                     ? "https://health.googleapis.com"
                     : config.ApiBaseUrl);
                 client.DefaultRequestHeaders.Add("Accept", "application/json");
-            });
+            })
+            // Google's transient 5xx (routinely an internal DEADLINE_EXCEEDED reported as
+            // INTERNAL) otherwise fails a whole member sync on one blip; see the handler.
+            .AddHttpMessageHandler(sp => new GoogleHealthRetryHandler(
+                sp.GetRequiredService<ILogger<GoogleHealthRetryHandler>>()));
 
         services.AddKeyedScoped<IDeviceApiClient, GoogleHealthApiClient>(HealthApi.GoogleHealth);
 

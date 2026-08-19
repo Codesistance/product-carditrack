@@ -2,6 +2,7 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.Diagnostics.Metrics;
 using System.Net;
+using System.Net.Http.Headers;
 using System.Text.Json;
 using CardiTrack.Application.DTOs.Common;
 using CardiTrack.Infrastructure.ExternalClients.Medical;
@@ -189,6 +190,124 @@ public class MedGemmaClientTests
         var warning = Assert.Single(logger.Entries, e => e.Level == LogLevel.Warning);
         Assert.Contains("3", warning.Message);
     }
+
+    /// <summary>
+    /// A cold start clears in a couple of seconds, so the wait after one stays short. Nothing
+    /// about the backoff for that case changes because the rate-limit case now waits longer.
+    /// </summary>
+    [Fact]
+    public async Task GenerateAsync_KeepsTheShortBackoff_ForColdStartRejections()
+    {
+        var handler = new FakeHttpMessageHandler()
+            .Enqueue(HttpStatusCode.NotFound, "")
+            .Enqueue(HttpStatusCode.OK, GeneratePayload);
+        var client = CreateClient(handler, out _, out var time);
+
+        await client.GenerateAsync(Prompt);
+
+        Assert.Equal(new[] { TimeSpan.FromSeconds(2) }, time.Delays);
+    }
+
+    /// <summary>
+    /// 429 is not a cold start: on Cloud Run it means every instance is busy and the queue is
+    /// full, and what frees one is an in-flight inference finishing — tens of seconds on a
+    /// CPU-served 4B model. Re-asking two seconds later queries a queue that has not moved and
+    /// spends the attempt for nothing, which is how a rate-limited digest burned all three
+    /// attempts inside six seconds and failed the member anyway.
+    /// </summary>
+    [Fact]
+    public async Task GenerateAsync_BacksOffLongerForRateLimiting_ThanForAColdStart()
+    {
+        var handler = new FakeHttpMessageHandler()
+            .Enqueue(HttpStatusCode.TooManyRequests, "")
+            .Enqueue(HttpStatusCode.TooManyRequests, "")
+            .Enqueue(HttpStatusCode.OK, GeneratePayload);
+        var client = CreateClient(handler, out _, out var time);
+
+        Assert.Equal(ResponseText, await client.GenerateAsync(Prompt));
+        Assert.Equal(new[] { TimeSpan.FromSeconds(15), TimeSpan.FromSeconds(30) }, time.Delays);
+    }
+
+    /// <summary>A server that says when to come back knows better than any step this client picks.</summary>
+    [Fact]
+    public async Task GenerateAsync_WaitsWhatTheServerAsksFor_WhenItSendsRetryAfter()
+    {
+        var handler = new FakeHttpMessageHandler()
+            .Enqueue(RetryAfter(HttpStatusCode.TooManyRequests, TimeSpan.FromSeconds(7)))
+            .Enqueue(HttpStatusCode.OK, GeneratePayload);
+        var client = CreateClient(handler, out _, out var time);
+
+        await client.GenerateAsync(Prompt);
+
+        Assert.Equal(new[] { TimeSpan.FromSeconds(7) }, time.Delays);
+    }
+
+    /// <summary>
+    /// Knowing better has a limit: a job that waits out an hour-long Retry-After has missed the
+    /// schedule that started it and every one after.
+    /// </summary>
+    [Fact]
+    public async Task GenerateAsync_CapsARetryAfterThatWouldParkTheJob()
+    {
+        var handler = new FakeHttpMessageHandler()
+            .Enqueue(RetryAfter(HttpStatusCode.ServiceUnavailable, TimeSpan.FromHours(1)))
+            .Enqueue(HttpStatusCode.OK, GeneratePayload);
+        var client = CreateClient(handler, out _, out var time);
+
+        await client.GenerateAsync(Prompt);
+
+        Assert.Equal(new[] { TimeSpan.FromSeconds(60) }, time.Delays);
+    }
+
+    /// <summary>
+    /// <see cref="HttpClient"/> reports its own timeout as a <see cref="TaskCanceledException"/>,
+    /// which is also what a caller giving up produces — so an inference that overran 300 s
+    /// reached the error dashboards tagged
+    /// <c>error.type: System.Threading.Tasks.TaskCanceledException</c>, reading as "something
+    /// cancelled this" rather than "the model was too slow".
+    /// </summary>
+    [Fact]
+    public async Task GenerateAsync_ReportsAClientTimeoutAsOne_AndDoesNotRetryIt()
+    {
+        using var capture = new SpanCapture();
+        var handler = new FakeHttpMessageHandler().Throws(new TaskCanceledException(
+            "The request was canceled due to the configured HttpClient.Timeout of 300 seconds elapsing.",
+            new TimeoutException()));
+        var client = CreateClient(handler, out var logger);
+
+        var ex = await Assert.ThrowsAsync<TimeoutException>(() => client.GenerateAsync(Prompt));
+
+        Assert.Contains("300", ex.Message);
+        // Terminal on purpose: the far side is most likely still generating the answer that was
+        // already too slow, so a second ask only adds to what it is behind on.
+        Assert.Single(handler.Requests);
+        var span = Assert.Single(capture.Stopped);
+        Assert.Equal("System.TimeoutException", span.GetTagItem("error.type"));
+        var error = Assert.Single(logger.Entries, e => e.Level == LogLevel.Error);
+        Assert.Contains("timed out", error.Message);
+    }
+
+    /// <summary>The other half of that distinction: a caller who cancels gets a cancellation.</summary>
+    [Fact]
+    public async Task GenerateAsync_LeavesTheCallersOwnCancellationAsCancellation()
+    {
+        using var cts = new CancellationTokenSource();
+        await cts.CancelAsync();
+        var handler = new FakeHttpMessageHandler().Throws(new TaskCanceledException());
+        var client = CreateClient(handler, out _);
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            () => client.GenerateAsync(Prompt, cts.Token));
+    }
+
+    private static Func<HttpRequestMessage, HttpResponseMessage> RetryAfter(
+        HttpStatusCode status, TimeSpan delta) =>
+        _ =>
+        {
+            var response = new HttpResponseMessage(status) { Content = new StringContent("") };
+            response.Headers.RetryAfter = new RetryConditionHeaderValue(delta);
+            return response;
+        };
 
     /// <summary>
     /// A malformed body is model output (health data): the strict JsonUtility.Deserialize
@@ -451,22 +570,33 @@ public class MedGemmaClientTests
         }
     }
 
-    private static MedGemmaClient CreateClient(FakeHttpMessageHandler handler, out ListLogger logger)
+    private static MedGemmaClient CreateClient(FakeHttpMessageHandler handler, out ListLogger logger) =>
+        CreateClient(handler, out logger, out _);
+
+    private static MedGemmaClient CreateClient(
+        FakeHttpMessageHandler handler, out ListLogger logger, out InstantRetryTimeProvider time)
     {
         var factory = Substitute.For<IHttpClientFactory>();
         factory.CreateClient("PrivateAiClient").Returns(
             new HttpClient(handler) { BaseAddress = new Uri("http://localhost:11434") });
         var settings = new PrivateAiSettings { Model = Model, BaseUrl = "http://localhost:11434", TimeoutSeconds = 300 };
         logger = new ListLogger();
-        return new MedGemmaClient(factory, settings, "PrivateAiClient", logger, new InstantRetryTimeProvider());
+        time = new InstantRetryTimeProvider();
+        return new MedGemmaClient(factory, settings, "PrivateAiClient", logger, time);
     }
 
     /// <summary>Real <see cref="TimeProvider"/> for everything except the retry backoff, which
-    /// resolves immediately so a test exercising all attempts stays fast.</summary>
+    /// is recorded and then resolves immediately so a test exercising all attempts stays fast.
+    /// Recording it is what lets a test assert the wait a status earns without serving it.</summary>
     private sealed class InstantRetryTimeProvider : TimeProvider
     {
-        public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period) =>
-            base.CreateTimer(callback, state, TimeSpan.Zero, period);
+        public List<TimeSpan> Delays { get; } = new();
+
+        public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
+        {
+            lock (Delays) Delays.Add(dueTime);
+            return base.CreateTimer(callback, state, TimeSpan.Zero, period);
+        }
     }
 
     /// <summary>Captures completed activities from the CardiTrack.Ai source only.</summary>
