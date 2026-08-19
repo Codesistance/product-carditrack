@@ -88,24 +88,45 @@
 
                 <VerticalStackLayout x:Name="FormPanel" Spacing="14" IsVisible="False">
 
-                    <!-- Avatar. "Change Photo" is deliberately absent: there is no photo
-                         upload path yet, so the button would do nothing. -->
-                    <Border WidthRequest="88" HeightRequest="88"
-                            StrokeThickness="0"
-                            HorizontalOptions="Center">
-                        <Border.StrokeShape>
-                            <RoundRectangle CornerRadius="44"/>
-                        </Border.StrokeShape>
-                        <Border.Background>
-                            <StaticResource Key="GradientButtonBrush"/>
-                        </Border.Background>
-                        <Label x:Name="InitialsLabel"
-                               FontFamily="QuicksandSemiBold"
-                               FontSize="32"
-                               TextColor="{StaticResource White}"
-                               HorizontalOptions="Center"
-                               VerticalOptions="Center"/>
-                    </Border>
+                    <!-- Avatar: their photo when there is one, initials when there isn't
+                         (same fallback as Controls/MemberAvatar). Tapping either the avatar
+                         or the link under it opens the photo action sheet. -->
+                    <VerticalStackLayout Spacing="8">
+                        <Border WidthRequest="88" HeightRequest="88"
+                                StrokeThickness="0"
+                                HorizontalOptions="Center"
+                                SemanticProperties.Description="CardiMember photo">
+                            <Border.StrokeShape>
+                                <RoundRectangle CornerRadius="44"/>
+                            </Border.StrokeShape>
+                            <Border.Background>
+                                <StaticResource Key="GradientButtonBrush"/>
+                            </Border.Background>
+                            <Border.GestureRecognizers>
+                                <TapGestureRecognizer Tapped="OnChangePhotoTapped"/>
+                            </Border.GestureRecognizers>
+                            <Grid>
+                                <Label x:Name="InitialsLabel"
+                                       FontFamily="QuicksandSemiBold"
+                                       FontSize="32"
+                                       TextColor="{StaticResource White}"
+                                       HorizontalOptions="Center"
+                                       VerticalOptions="Center"/>
+                                <Image x:Name="PhotoImage"
+                                       Aspect="AspectFill"
+                                       IsVisible="False"/>
+                            </Grid>
+                        </Border>
+                        <Label Text="Change Photo"
+                               Style="{StaticResource PrimaryLink}"
+                               TextDecorations="None"
+                               FontSize="14"
+                               HorizontalOptions="Center">
+                            <Label.GestureRecognizers>
+                                <TapGestureRecognizer Tapped="OnChangePhotoTapped"/>
+                            </Label.GestureRecognizers>
+                        </Label>
+                    </VerticalStackLayout>
 
                     <VerticalStackLayout Spacing="4">
                         <Label Text="Full Name*" Style="{StaticResource AuthFieldLabel}"/>
