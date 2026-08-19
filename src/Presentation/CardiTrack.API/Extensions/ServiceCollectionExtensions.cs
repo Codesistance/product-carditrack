@@ -37,6 +37,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<CardiTrack.Application.Interfaces.Services.ISubscriptionService, CardiTrack.Application.Services.SubscriptionService>();
         services.AddScoped<CardiTrack.Application.Interfaces.Services.IDashboardService, CardiTrack.Application.Services.DashboardService>();
         services.AddScoped<CardiTrack.Application.Interfaces.Services.IDigestQueryService, CardiTrack.Application.Services.DigestQueryService>();
+        services.AddScoped<CardiTrack.Application.Interfaces.Services.IJournalSettingsService, CardiTrack.Application.Services.JournalSettingsService>();
         services.AddScoped<CardiTrack.Application.Interfaces.Services.IQuestionnaireService, CardiTrack.Application.Services.QuestionnaireService>();
         services.AddScoped<CardiTrack.Application.Interfaces.Services.IAlertService, CardiTrack.Application.Services.AlertService>();
         services.AddScoped<CardiTrack.Application.Interfaces.Services.IAlertPreferenceService, CardiTrack.Application.Services.AlertPreferenceService>();

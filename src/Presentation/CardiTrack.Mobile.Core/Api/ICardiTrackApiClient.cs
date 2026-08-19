@@ -50,6 +50,20 @@ public interface ICardiTrackApiClient
     Task<AlertRuleSettingResponse> SetAlertRuleEnabledAsync(
         Guid cardiMemberId, string ruleId, bool enabled, CancellationToken ct = default);
 
+    /// <summary>
+    /// When this member's CardiJournal books are written, in their own local time, with the
+    /// window and step a picker must stay inside.
+    /// </summary>
+    Task<JournalSettingsResponse> GetJournalSettingsAsync(
+        Guid cardiMemberId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Moves when this member's books are written. A null field restores that book's default.
+    /// Primary caregiver only — the API answers 404 to anyone else.
+    /// </summary>
+    Task<JournalSettingsResponse> UpdateJournalSettingsAsync(
+        Guid cardiMemberId, UpdateJournalSettingsRequest request, CancellationToken ct = default);
+
     Task<DashboardResponse> GetDashboardAsync(Guid cardiMemberId, CancellationToken ct = default);
 
     /// <summary>

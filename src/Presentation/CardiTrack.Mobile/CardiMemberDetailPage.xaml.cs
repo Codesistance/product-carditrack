@@ -939,6 +939,15 @@ public partial class CardiMemberDetailPage : ContentPage
     private async void OnDaybookTapped(object? sender, EventArgs e) =>
         await Shell.Current.GoToTabAsync($"{AppShell.DaybookRoute}?memberId={_memberId}");
 
+    /// <summary>When this member's books are written. The name rides along so the page's
+    /// subtitle is right from the first frame, the way the journal entry page takes it.</summary>
+    private async void OnJournalTimingTapped(object? sender, EventArgs e)
+    {
+        var name = Uri.EscapeDataString(NameFormatting.FirstName(_member?.Name) ?? string.Empty);
+        await Shell.Current.GoToAsync(
+            $"{JournalTimingPage.Route}?memberId={_memberId}&name={name}");
+    }
+
     private async void OnQuestionsTapped(object? sender, EventArgs e)
     {
         var name = Uri.EscapeDataString(NameFormatting.FirstName(_member?.Name) ?? string.Empty);

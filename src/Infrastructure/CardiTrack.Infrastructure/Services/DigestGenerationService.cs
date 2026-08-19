@@ -5,6 +5,7 @@ using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Interfaces.Security;
 using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Application.Services;
+using CardiTrack.Domain.Common;
 using CardiTrack.Domain.Entities;
 using CardiTrack.Domain.Enums;
 using CardiTrack.Domain.Extensions;
@@ -386,14 +387,6 @@ public partial class DigestGenerationService : IDigestGenerationService
         return generated;
     }
 
-    /// <summary>
-    /// The earliest local time a member's previous day is reviewed. Not midnight: a watch syncs on
-    /// its own schedule and the last hours of a day routinely arrive after it, so a review written
-    /// at 00:01 would describe a day whose evening had not landed yet — and unlike the live summary
-    /// it is written once and never revisited, so what it misses it misses for good.
-    /// </summary>
-    private static readonly TimeOnly DaybookEarliestLocalTime = new(2, 0);
-
     public async Task<int> GenerateDueDaybooksAsync(DateTime utcNow, CancellationToken ct = default)
     {
         // The same candidate filter as the family summary. A member with nothing in two days has
@@ -457,7 +450,12 @@ public partial class DigestGenerationService : IDigestGenerationService
 
         var timeZone = await MemberAnchorTimeZone.ResolveAsync(_unitOfWork, memberId);
         var localNow = TimeZoneInfo.ConvertTimeFromUtc(utcNow, timeZone);
-        if (TimeOnly.FromDateTime(localNow) < DaybookEarliestLocalTime)
+
+        // The caregiver's chosen hour for this member, or 02:00. Read off the member already
+        // loaded above, so honouring the setting costs no extra query on a pass that runs every
+        // half hour. A time chosen after this pass has already written today's entry does not
+        // rewrite it — the existence check below is still the whole due-contract.
+        if (TimeOnly.FromDateTime(localNow) < JournalSchedule.EffectiveTime(member.DaybookLocalTime))
             return false;
 
         var reviewedDate = DateOnly.FromDateTime(localNow).AddDays(-1);

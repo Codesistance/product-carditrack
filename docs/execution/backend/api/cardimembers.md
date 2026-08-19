@@ -461,6 +461,67 @@ Add a context note about the CardiMember. (Originally "as the CardiMember" — d
 
 ---
 
-**Related:** [readme.md](readme.md) | [devices.md](devices.md) | [User Stories 1.2, 7.1–7.3](../../ui/mobile/user_stories.md)
+## GET `/api/v1/cardimembers/{cardiMemberId}/journal-settings`
 
-**Last Updated:** August 18, 2026
+When this member's CardiJournal books are written, in **the member's own local time** (the anchor timezone, not the caller's).
+
+**Auth Required:** Yes — view access.
+
+```json
+{
+  "cardiMemberId": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+  "daybookLocalTime": "07:30:00",
+  "weekbookLocalTime": null,
+  "monthbookLocalTime": null,
+  "weekStartsOn": null,
+  "effectiveDaybookLocalTime": "07:30:00",
+  "effectiveWeekbookLocalTime": "02:00:00",
+  "effectiveMonthbookLocalTime": "02:00:00",
+  "effectiveWeekStartsOn": 1,
+  "timeZoneId": "Europe/London",
+  "earliestSelectableTime": "01:00:00",
+  "latestSelectableTime": "12:00:00",
+  "stepMinutes": 30,
+  "weekbookAvailable": false,
+  "monthbookAvailable": false
+}
+```
+
+| Field | Notes |
+|-------|-------|
+| `daybookLocalTime` … `weekStartsOn` | The **chosen** values. `null` means no choice has been made — a client shows the row as defaulted, not as explicitly picked |
+| `effective*` | What the generator will actually use, chosen or defaulted. Returned rather than inferred so the default lives in one place |
+| `timeZoneId` | The member's anchor timezone — the clock every time above is read against |
+| `earliestSelectableTime` / `latestSelectableTime` / `stepMinutes` | The bounds a client must keep its picker inside, so it can never offer a time the API would refuse |
+| `weekbookAvailable` / `monthbookAvailable` | **`false` today.** The settings store and return, but the Weekbook and Monthbook generators are R2. A client shows those rows as coming rather than as live |
+
+## PUT `/api/v1/cardimembers/{cardiMemberId}/journal-settings`
+
+Moves when the books are written. **Primary caregiver only** — a book is written once for the member and read by everyone caring for them, so the time belongs to the member, not to each reader. Anyone else gets **404** (not 403 — the same non-disclosure rule as everywhere else on this controller).
+
+```json
+{
+  "daybookLocalTime": "07:30:00",
+  "weekbookLocalTime": null,
+  "monthbookLocalTime": null,
+  "weekStartsOn": 0
+}
+```
+
+A **full replacement of all four**: a `null` field restores that book's default. This is deliberately *not* folded into `PUT /cardimembers/{id}`, which is a full-replacement form where an omitted field means "clear it" — there, `null` would have to mean both "use the default" and "the client did not send it", the same collision that already cost a silent regression on `Gender`.
+
+**Validation** — a time must be between `01:00` and `12:00` and land on the hour or the half hour. Rejected rather than rounded: the digest job runs every 30 minutes, so a stored `02:17` would in fact be written at `02:30`, and saving a time the caregiver did not choose then showing it back to them is worse than refusing it.
+
+The window is not arbitrary. Earlier than `01:00` and the tail of the period is still syncing — and a book is written once and never rewritten, so what it misses it misses for good. Later than `12:00` and an account of yesterday has stopped being something anyone can act on.
+
+| Status | When |
+|--------|------|
+| 200 | Saved; returns the same shape as the GET |
+| 400 | A time is outside the window, off the half-hour step, or `weekStartsOn` is not a day |
+| 404 | Unknown member, or the caller is not its primary caregiver |
+
+---
+
+**Related:** [readme.md](readme.md) | [devices.md](devices.md) | [health-data.md](health-data.md) | [User Stories 1.2, 7.1–7.3](../../ui/mobile/user_stories.md)
+
+**Last Updated:** August 19, 2026

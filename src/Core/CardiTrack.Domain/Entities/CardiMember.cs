@@ -49,6 +49,34 @@ public class CardiMember : BaseEntity, ISoftDeletable
     /// </summary>
     public bool EnvironmentalContextConsentGranted { get; set; }
 
+    /// <summary>
+    /// Local time of day this member's Daybook is written, or null for
+    /// <see cref="Common.JournalSchedule.DefaultLocalTime"/>. Held on the member rather than on a
+    /// caregiver because a book is written once for the member and read by everyone who cares for
+    /// them — two caregivers cannot each have their own copy of the same finished day, so this is
+    /// a property of whose day it is, not of who is reading.
+    /// </summary>
+    public TimeOnly? DaybookLocalTime { get; set; }
+
+    /// <summary>
+    /// Local time of day this member's Weekbook is written on <see cref="JournalWeekStartsOn"/>,
+    /// or null for the default. Stored ahead of the generator that reads it (R2).
+    /// </summary>
+    public TimeOnly? WeekbookLocalTime { get; set; }
+
+    /// <summary>
+    /// Local time of day this member's Monthbook is written on the 1st, or null for the default.
+    /// Stored ahead of the generator that reads it (R2).
+    /// </summary>
+    public TimeOnly? MonthbookLocalTime { get; set; }
+
+    /// <summary>
+    /// The weekday this member's CardiJournal week begins, or null for
+    /// <see cref="Common.JournalSchedule.DefaultWeekStartsOn"/>. A Weekbook covers the seven days
+    /// ending the evening before this day, and is written on it.
+    /// </summary>
+    public DayOfWeek? JournalWeekStartsOn { get; set; }
+
     /// <summary>Paused state expires on its own — callers must never treat the pause as sticky.</summary>
     public bool IsMonitoringPaused(DateTime utcNow) => MonitoringPausedUntil > utcNow;
 

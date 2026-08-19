@@ -488,9 +488,19 @@ a **separate series** from the rolling family digest: the digest stays on member
   via a bare `ON CONFLICT DO NOTHING`.
 - **Scheduling.** No job and no Cloud Scheduler entry of its own. `GenerateDueDaybooksAsync` runs
   inside the existing half-hourly `--job digest` execution, which already resolves each member's
-  timezone: an entry is due when that member's local clock has passed **02:00** and none exists
-  for the day before. 02:00 rather than midnight because a watch syncs on its own schedule and the
-  last hours of a day routinely arrive after it — and what a Daybook misses it misses for good.
+  timezone: an entry is due when that member's local clock has passed their **write time** and
+  none exists for the day before. That time defaults to **02:00** rather than midnight because a
+  watch syncs on its own schedule and the last hours of a day routinely arrive after it — and what
+  a Daybook misses it misses for good.
+- **The write time is per member and caregiver-settable** (`CardiMember.DaybookLocalTime`, null =
+  the default; `JournalSchedule` holds the default, the 01:00–12:00 window and the half-hour step).
+  Read off the member the generator has already loaded, so honouring it costs no extra query on a
+  pass that runs 48 times a day. It is a property of *whose* day it is, not of who is reading:
+  a book is written once and read by every caregiver, so two of them cannot hold different times
+  for it — which is why it sits on the member and why moving it needs manage access. The window is
+  bounded and the step matches the job cadence for the reason above: a time the generator cannot
+  honour would be a setting that quietly lies about itself. Contract in
+  [cardimembers.md](./execution/backend/api/cardimembers.md).
 - **Cost.** One MedGemma call per member per day, on an instance already warm from the digest
   pass; the existence probe is one indexed read on the other 47 passes. The prompt is the largest
   the platform sends (~4–8KB with a full day of rollups) — an accepted, explicit trade for
