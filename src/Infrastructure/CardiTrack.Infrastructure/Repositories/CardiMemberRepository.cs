@@ -51,4 +51,19 @@ public class CardiMemberRepository : Repository<CardiMember>, ICardiMemberReposi
             .Select(cm => cm.Id)
             .ToListAsync();
     }
+
+    public async Task<IReadOnlyList<string>> GetActivePhotoObjectNamesAsync()
+    {
+        return await _dbSet
+            .Where(cm => cm.IsActive && cm.PhotoObjectName != null)
+            .Select(cm => cm.PhotoObjectName!)
+            .ToListAsync();
+    }
+
+    public async Task<IReadOnlyList<CardiMember>> GetInactiveWithPhotoAsync()
+    {
+        return await _dbSet
+            .Where(cm => !cm.IsActive && cm.PhotoObjectName != null)
+            .ToListAsync();
+    }
 }

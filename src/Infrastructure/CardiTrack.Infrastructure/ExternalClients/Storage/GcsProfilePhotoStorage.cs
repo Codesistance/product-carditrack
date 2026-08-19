@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using CardiTrack.Application.Interfaces.Clients;
 using CardiTrack.Infrastructure.Settings;
 using Google;
@@ -123,6 +124,30 @@ public class GcsProfilePhotoStorage : IProfilePhotoStorage
             // a read surface: no photo. The screen still renders; the avatar shows initials.
             LogReadUnavailableOnce(ex);
             return null;
+        }
+    }
+
+    public async IAsyncEnumerable<(string ObjectName, DateTimeOffset CreatedAt)> ListAsync(
+        [EnumeratorCancellation] CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(_options.Bucket))
+        {
+            // Same degrade-and-warn-once as reads: an unconfigured host lists an empty bucket
+            // rather than faulting the sweep that asked.
+            LogReadUnavailableOnce(null);
+            yield break;
+        }
+
+        var client = await _client.Value;
+
+        // Scoped to the prefix the upload scheme owns (see UploadAsync's object-name shape) —
+        // like PartitionMaintenanceWorker's "never drop what you did not name", anything a human
+        // parked in the bucket outside members/ is not this listing's to surface for deletion.
+        await foreach (var obj in client.ListObjectsAsync(_options.Bucket, "members/").WithCancellation(ct))
+        {
+            // A missing creation timestamp reads as "just created": the consumer's grace window
+            // then protects the object instead of a null defaulting it into reap-immediately.
+            yield return (obj.Name, obj.TimeCreatedDateTimeOffset ?? DateTimeOffset.UtcNow);
         }
     }
 
