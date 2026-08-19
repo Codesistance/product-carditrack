@@ -14,12 +14,14 @@ namespace CardiTrack.Mobile;
 /// detail is pushed above the Alerts list.
 /// </summary>
 /// <remarks>
-/// The charts draw the <em>current</em> fortnight whatever day the review describes, and the
-/// section title says so. The dashboard series always runs to today, so a chart scoped to an old
-/// review's own window would be drawn from data the series no longer carries — and the awareness
-/// lines count exactly the days the chart draws, so a caregiver can check every claim against the
-/// picture beside it. Counts, never scores: the release matrix's standing decision is that trend
-/// interpretation carries no risk scores, and the footer states the register plainly.
+/// The charts draw the <em>current</em> fortnight of finished days whatever day the review
+/// describes — up to yesterday, never today — and the section title says so. Current, because a
+/// chart scoped to an old review's own window would be drawn from data the series no longer
+/// carries; finished, because a daybook reviews whole days and today's point is a running total
+/// that draws a quiet morning as a collapse. The awareness lines count exactly the days the chart
+/// draws, so a caregiver can check every claim against the picture beside it. Counts, never
+/// scores: the release matrix's standing decision is that trend interpretation carries no risk
+/// scores, and the footer states the register plainly.
 /// </remarks>
 [QueryProperty(nameof(MemberId), "memberId")]
 [QueryProperty(nameof(Date), "date")]
@@ -258,7 +260,10 @@ public partial class DaybookEntryPage : ContentPage
         string dayWord,
         BandCount? band)
     {
-        var window = metric.Series.TakeLast(ChartDays).ToList();
+        var window = TrendAwareness
+            .ExcludingToday(metric.Series, DateOnly.FromDateTime(DateTime.Now))
+            .TakeLast(ChartDays)
+            .ToList();
         var values = window.Where(p => p.Value is not null).Select(p => (double)p.Value!).ToList();
         if (values.Count == 0)
             return null;

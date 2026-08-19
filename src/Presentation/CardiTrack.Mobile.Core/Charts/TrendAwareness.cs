@@ -45,6 +45,20 @@ public static class TrendAwareness
     }
 
     /// <summary>
+    /// The series with the current day — and anything later — removed: the window a daybook
+    /// chart draws. A daybook reviews finished days, and today's point is a running total; the
+    /// dashboard series marks it <see cref="MetricPoint.IsPartial"/> only on alert step charts,
+    /// so by the time it reaches this screen it looks like an ordinary point and a quiet morning
+    /// draws as a collapse. Cut by date rather than by that flag for exactly this reason — and
+    /// strictly-before also drops a point a member ahead of the reader has already filed under
+    /// the reader's tomorrow.
+    /// </summary>
+    /// <param name="series">The metric's series, oldest first, as the dashboard reports it.</param>
+    /// <param name="today">The reader's current day, passed in so the cut is testable.</param>
+    public static List<MetricPoint> ExcludingToday(IEnumerable<MetricPoint>? series, DateOnly today)
+        => series?.Where(p => p.Date < today).ToList() ?? new();
+
+    /// <summary>
     /// The awareness line for one metric, or null when there is nothing honest to say — no
     /// baseline to count against, or too few measured days for the count to mean anything.
     /// </summary>

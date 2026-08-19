@@ -124,6 +124,47 @@ public class TrendAwarenessTests
 
         Assert.Equal("Under their usual on 14 of the last 14 days", line);
     }
+
+    /// <summary>
+    /// The daybook window never carries the current day: today's point is a running total the
+    /// dashboard series does not flag as partial, so it is cut by date before the chart or the
+    /// counts ever see it.
+    /// </summary>
+    [Fact]
+    public void ExcludingToday_DropsTheCurrentDaysPoint()
+    {
+        // Fifteen points ending on Today; the cut keeps the fourteen finished days before it.
+        var series = Series(Enumerable.Range(1, 15).Select(v => (decimal?)v).ToArray());
+
+        var window = TrendAwareness.ExcludingToday(series, Today);
+
+        Assert.Equal(14, window.Count);
+        Assert.Equal(Today.AddDays(-1), window[^1].Date);
+    }
+
+    /// <summary>
+    /// Strictly before, not merely not-today: a member a timezone ahead of the reader can have
+    /// already filed a point under the reader's tomorrow, and that day is no more finished for
+    /// the reader than today is.
+    /// </summary>
+    [Fact]
+    public void ExcludingToday_AlsoDropsADayTheReaderHasNotReachedYet()
+    {
+        var series = Series(1, 2, 3);
+        series.Add(new MetricPoint { Date = Today.AddDays(1), Value = 4 });
+
+        var window = TrendAwareness.ExcludingToday(series, Today);
+
+        Assert.Equal(2, window.Count);
+        Assert.Equal(Today.AddDays(-1), window[^1].Date);
+    }
+
+    /// <summary>A missing series is an empty window, not a crash on the charts' way out.</summary>
+    [Fact]
+    public void ExcludingToday_TreatsANullSeriesAsEmpty()
+    {
+        Assert.Empty(TrendAwareness.ExcludingToday(null, Today));
+    }
 }
 
 /// <summary>
