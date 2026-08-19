@@ -26,7 +26,11 @@ public class SubscriptionService : ISubscriptionService
             BillingCycle = BillingCycle.Monthly,
             Price = 0,
             Currency = "USD",
-            MaxCardiMembers = orgType == OrganizationType.Family ? 5 : 50,
+            // Must match what the Complete tier actually allows, or the trial becomes a
+            // downgrade cliff the moment limits are enforced: a triallist who added the
+            // trial's allowance could not then convert without deleting members. Complete
+            // Care allowed 5 until the 2026-08-18 repricing and allows 3 now.
+            MaxCardiMembers = orgType == OrganizationType.Family ? 3 : 50,
             MaxUsers = orgType == OrganizationType.Family ? 1 : 20,
             Features = "{\"deviceTypes\":[\"All\"],\"alertTypes\":[\"All\"],\"realTimeSync\":true}"
         };

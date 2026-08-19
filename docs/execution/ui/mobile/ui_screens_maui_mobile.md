@@ -422,7 +422,7 @@ A single user can sign up, add a CardiMember, connect devices, manage CardiMembe
 
 **CTA Section (bottom 30%):**
 - Primary button (full width, bold): "Start Free 30-Day Trial"
-- Pricing text (small, muted): "Then $8/month - Cancel anytime"
+- Pricing text (small, muted): "Then from $7/month - Cancel anytime"
 - Legal link (small): "By continuing, you agree to Terms & Privacy"
 - **As built: no secondary bottom "Sign In" button** — Sign in is the header label.
 
@@ -1235,8 +1235,8 @@ The following screens exist in the shipped app but have **no Figma M1 frame — 
 - One card per finished day, newest first, up to a month. Each card carries:
   - the day, said the way someone says it — "Yesterday", then the weekday within the week, then the date
   - the review's own generated headline, falling back to "A day in review" for entries written before headlines existed
-  - an urgency pill — WATCH / CHECK IN / CONCERNING / ACT NOW on the green/yellow/orange/red status colours. **No pill at all** when the model returned no urgency or one this app does not know: a pill is a claim about a member's health, and a grey one would imply the service judged the day and found it unremarkable
-  - the review clipped to three lines and "Read the full day", which **opens the review's own page** (below) — a navigation, not an expansion: the full account carries the trend charts, which is more than a list row can hold and stay a list
+  - the urgency worn as a **left rail** in the status colour — the alert tiles' own construction (coloured rect under a white card inset 4px) — rather than a pill in the heading. **No rail at all** when the model returned no urgency or one this app does not know: a rail is a claim about a member's health, and a grey one would imply the service judged the day and found it unremarkable
+  - the review clipped to three lines and a small **Read** button, which **opens the entry's own page** (below) — a navigation, not an expansion: the full account carries the trend charts, which is more than a list row can hold and stay a list
 - **States:** loading (three placeholder cards, so the list does not jump when the real ones arrive) · empty · error with retry · loaded
 - **Two empty states, said apart:** an unfiltered "No daybook entries yet" over "The first review is written after {Name}'s first full day of readings", and a filtered "No reviews match" over "clear one and look again" — a bare "nothing here" reads as a fault either way. A member-less account gets "Add the person you care about, and their days will be summarised here"
 - **Error while a list is already on screen** shows a popup over it rather than replacing it with an error panel: the reviews describe finished days and do not go stale, so taking them away costs the caregiver something still worth reading
@@ -1247,7 +1247,8 @@ The following screens exist in the shipped app but have **no Figma M1 frame — 
 **Entry:** ← DaybookPage ("Read the full day")
 **Exit:** ← DaybookPage (back arrow, or the Daybook tab)
 
-- The review in full: day, headline, urgency pill, the whole account, "One thing you could do" (the suggestion, hidden when the generation produced none), and when it was written
+- The entry in full: day, headline, the whole account, "One thing you could do" (the suggestion, hidden when the generation produced none), and when it was written
+- The urgency is the card's **left rail**, the same construction as the list tiles and the alert tiles; no pill
 - **Header names the member** — "Dad's Daybook": the list passes the first name so the header is right from the first frame; a deep link without one falls back to "Daybook" until the member fetch fills it in
 - **"The last 14 days"** — trend charts for Sleep, Resting heart rate, Blood oxygen, Breathing rate, Steps and Skin temperature, drawn with the same `TrendChart` the alert detail uses: the member's own usual dashed, the published band shaded, per-day markers. Skin temperature carries only the wearer's own nightly baseline (no published band, no counted line); Steps carries only the usual (no body publishes a daily step count)
 - **Every chart's key names its sources**: "Dashed: their usual 4.1 · Shaded: recommended 7–8 (NSF)". The key names only marks the chart actually drew
@@ -1398,7 +1399,7 @@ Extends MVP 1 with account management, trend history, notification preferences, 
 - Button: "Manage Subscription"
 
 **Included Features (checklist):**
-- Up to 5 CardiMembers
+- Up to 3 CardiMembers
 - Advanced ML Alerts
 - Family Sharing
 - 90-day data retention

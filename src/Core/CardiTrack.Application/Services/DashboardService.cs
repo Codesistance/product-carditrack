@@ -1,4 +1,5 @@
 using CardiTrack.Application.DTOs.Responses;
+using CardiTrack.Application.Interfaces.Clients;
 using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Domain.Entities;
@@ -26,11 +27,14 @@ public class DashboardService : IDashboardService
 
     private readonly IUnitOfWork _unitOfWork;
     private readonly ICardiMemberAccessService _access;
+    private readonly IProfilePhotoStorage _photoStorage;
 
-    public DashboardService(IUnitOfWork unitOfWork, ICardiMemberAccessService access)
+    public DashboardService(
+        IUnitOfWork unitOfWork, ICardiMemberAccessService access, IProfilePhotoStorage photoStorage)
     {
         _unitOfWork = unitOfWork;
         _access = access;
+        _photoStorage = photoStorage;
     }
 
     public async Task<DashboardResponse> GetDashboardAsync(
@@ -97,7 +101,9 @@ public class DashboardService : IDashboardService
             EmergencyContactPhone = member.EmergencyContactPhone,
             EmergencyContactName = member.EmergencyContactName,
             Phone = member.Phone,
-            PhotoUrl = null,
+            PhotoUrl = member.PhotoObjectName is null
+                ? null
+                : await _photoStorage.GetReadUrlAsync(member.PhotoObjectName, ct),
             // A paused member is not being watched, so no reassuring colour may be shown for
             // them — stale metrics would otherwise keep reading "doing well" indefinitely.
             HealthStatus = isPaused

@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8" ?>
+﻿<?xml version="1.0" encoding="utf-8" ?>
 <ContentView xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              xmlns:controls="clr-namespace:CardiTrack.Mobile.Controls"
@@ -11,35 +11,34 @@
     <controls:HeaderBand>
         <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="11">
 
-            <Border Grid.Column="0"
-                    WidthRequest="40" HeightRequest="40"
+            <!-- The app's mark, not a control: pull-to-refresh already owns "check now",
+                 and a home glyph in the same circle every other header hangs its icon in makes
+                 this band read as one of the family. Same sizing rule as the rest: the circle
+                 spans the name's top to the context line's bottom, square, floored at 40. -->
+            <controls:SquareBorder x:Name="HeaderIcon"
+                    Grid.Column="0"
+                    MinimumHeightRequest="40"
                     BackgroundColor="{StaticResource HeaderButtonTint}"
                     StrokeThickness="0"
-                    VerticalOptions="Start">
-                <Border.StrokeShape>
-                    <RoundRectangle CornerRadius="20"/>
-                </Border.StrokeShape>
-                <ImageButton x:Name="RefreshButton"
-                             Source="icon_refresh_white.svg"
-                             WidthRequest="24" HeightRequest="24"
-                             BackgroundColor="Transparent"
-                             SemanticProperties.Description="Check in now"
-                             SemanticProperties.Hint="Asks the wearable for the latest readings"
-                             Clicked="OnRefreshClicked"/>
-            </Border>
+                    VerticalOptions="Fill">
+                <controls:SquareBorder.StrokeShape>
+                    <RoundRectangle CornerRadius="99"/>
+                </controls:SquareBorder.StrokeShape>
+                <Image Source="icon_home_white.svg"
+                       WidthRequest="22" HeightRequest="22"
+                       HorizontalOptions="Center" VerticalOptions="Center"/>
+            </controls:SquareBorder>
 
             <!-- Name leads, bigger than the old single-line "Good Evening, Moses"; the
                  time-of-day line underneath is a smaller, quieter aside (issue #188). -->
-            <VerticalStackLayout Grid.Column="1" Spacing="2" VerticalOptions="Start">
+            <VerticalStackLayout Grid.Column="1" Spacing="1" VerticalOptions="Start">
                 <Label x:Name="NameLabel"
-                       FontFamily="Quicksand"
-                       FontAttributes="Bold"
-                       FontSize="26"
+                       Style="{StaticResource Heading3}"
                        TextColor="{StaticResource White}"
                        LineBreakMode="TailTruncation"/>
                 <Label x:Name="ContextLabel"
                        FontFamily="Quicksand"
-                       FontSize="14"
+                       FontSize="12"
                        TextColor="{StaticResource White}"
                        Opacity="0.85"
                        LineBreakMode="TailTruncation"/>

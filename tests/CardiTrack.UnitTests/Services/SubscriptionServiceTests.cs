@@ -46,12 +46,18 @@ public class SubscriptionServiceTests
         Assert.Contains("\"realTimeSync\":true", subscription.Features);
     }
 
+    /// <summary>
+    /// The family trial must not grant more members than the tier it provisions. It provisions
+    /// <see cref="SubscriptionTier.Complete"/>, which allowed 5 until the 2026-08-18 repricing
+    /// and allows 3 now — a trial above the tier ceiling becomes a downgrade cliff once limits
+    /// are enforced, because the triallist cannot convert without deleting members.
+    /// </summary>
     [Fact]
-    public async Task FamilyTrial_LimitsToFiveMembersAndOneUser()
+    public async Task FamilyTrial_LimitsToThreeMembersAndOneUser()
     {
         var subscription = await CreateTrialAsync(OrganizationType.Family);
 
-        Assert.Equal(5, subscription.MaxCardiMembers);
+        Assert.Equal(3, subscription.MaxCardiMembers);
         Assert.Equal(1, subscription.MaxUsers);
     }
 

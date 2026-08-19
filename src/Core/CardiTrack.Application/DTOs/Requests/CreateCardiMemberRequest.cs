@@ -31,6 +31,14 @@ public class CreateCardiMemberRequest
     public string? MedicalNotes { get; set; }
 
     /// <summary>
+    /// Optional profile photo as base64-encoded JPEG or PNG bytes (a <c>data:image/…;base64,</c>
+    /// prefix is tolerated), at most 5 MB decoded. Validated, downscaled, and re-encoded with all
+    /// metadata stripped before storage; if the photo is unusable the member is not created —
+    /// half-saving the form would leave the caregiver unsure what was kept.
+    /// </summary>
+    public string? PhotoBase64 { get; set; }
+
+    /// <summary>
     /// Optional — see <see cref="UpdateCardiMemberRequest.RelationshipType"/>. Not knowing how you
     /// are related to someone is no reason to be unable to start watching over them.
     /// </summary>

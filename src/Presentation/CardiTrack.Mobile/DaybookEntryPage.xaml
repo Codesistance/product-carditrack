@@ -19,29 +19,43 @@
         <controls:HeaderBand Grid.Row="0" ContentPadding="20,14,20,26">
             <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
 
-                <Border Grid.Column="0"
-                        WidthRequest="40" HeightRequest="40"
+                <controls:SquareBorder x:Name="HeaderIcon"
+                        Grid.Column="0"
+                        MinimumHeightRequest="40"
                         StrokeThickness="0"
                         BackgroundColor="{StaticResource HeaderButtonTint}"
-                        VerticalOptions="Center">
-                    <Border.StrokeShape>
-                        <RoundRectangle CornerRadius="20"/>
-                    </Border.StrokeShape>
-                    <Border.GestureRecognizers>
+                        VerticalOptions="Fill">
+                    <!-- Fill + width-bound-to-height: the circle runs from the title's top to
+                         the description's bottom and stays square at whatever that is, so every
+                         header's icon matches its own text block exactly. The 40 floor keeps the
+                         back button a real tap target; 99 clamps to a circle at any size. -->
+                    <controls:SquareBorder.StrokeShape>
+                        <RoundRectangle CornerRadius="99"/>
+                    </controls:SquareBorder.StrokeShape>
+                    <controls:SquareBorder.GestureRecognizers>
                         <TapGestureRecognizer Tapped="OnBackTapped"/>
-                    </Border.GestureRecognizers>
+                    </controls:SquareBorder.GestureRecognizers>
                     <Image Source="icon_back_white.svg" WidthRequest="20" HeightRequest="20"/>
-                </Border>
+                </controls:SquareBorder>
 
                 <!-- Whose daybook this is. The list passes the name so the header is right
                      from the first frame; a deep link without one falls back to the bare word
                      until the member fetch fills it in. -->
-                <Label x:Name="HeaderTitle"
-                       Grid.Column="1"
+                <!-- Title with what the page is tight beneath it — one stack, top-aligned
+                     with the icon. The description is declared after the title, so screen
+                     readers announce them in reading order. -->
+                <VerticalStackLayout Grid.Column="1" Spacing="1" VerticalOptions="Start">
+                    <Label x:Name="HeaderTitle"
                        Text="Daybook"
                        Style="{StaticResource Heading3}"
-                       TextColor="{StaticResource White}"
-                       VerticalTextAlignment="Center"/>
+                       TextColor="{StaticResource White}"/>
+                    <Label Text="One day, read against what is usual for them"
+                           FontFamily="Quicksand"
+                           FontSize="12"
+                           TextColor="{StaticResource White}"
+                           Opacity="0.85"
+                           LineBreakMode="TailTruncation"/>
+                </VerticalStackLayout>
             </Grid>
         </controls:HeaderBand>
 
@@ -74,11 +88,29 @@
 
                     <VerticalStackLayout x:Name="ContentPanel" Spacing="14" IsVisible="False">
 
-                        <!-- The review itself: when, what it was about, how soon it asks for
-                             attention, the account, and the suggestion beneath it. -->
-                        <Border Style="{StaticResource ElevatedCard}">
+                        <!-- The entry itself: when, what it was about, the account, and the
+                             suggestion beneath it. How soon it asks for attention is the rail
+                             down the left, the same construction the list tiles and the alert
+                             tiles use — a coloured rect under a white card inset 4px — rather
+                             than a word in a pill. -->
+                        <Border x:Name="EntryRail"
+                                StrokeThickness="0"
+                                Padding="4,0,0,0">
+                            <Border.StrokeShape>
+                                <RoundRectangle CornerRadius="20"/>
+                            </Border.StrokeShape>
+                            <Border.Shadow>
+                                <Shadow Brush="{StaticResource CardShadowBrush}" Opacity="0.15" Radius="14" Offset="0,4"/>
+                            </Border.Shadow>
+
+                        <Border BackgroundColor="{StaticResource White}"
+                                StrokeThickness="0"
+                                Padding="20">
+                            <Border.StrokeShape>
+                                <RoundRectangle CornerRadius="20"/>
+                            </Border.StrokeShape>
                             <VerticalStackLayout Spacing="10">
-                                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
+                                <Grid ColumnDefinitions="*" ColumnSpacing="10">
                                     <VerticalStackLayout Spacing="2">
                                         <Label x:Name="DayLabel"
                                                Style="{StaticResource Heading2}"/>
@@ -86,9 +118,6 @@
                                                Style="{StaticResource Body2}"
                                                TextColor="{StaticResource BodyText}"/>
                                     </VerticalStackLayout>
-                                    <VerticalStackLayout x:Name="PillHost"
-                                                         Grid.Column="1"
-                                                         VerticalOptions="Start"/>
                                 </Grid>
 
                                 <Label x:Name="TextLabel"
@@ -109,6 +138,7 @@
                                        Style="{StaticResource MetricRowCaption}"
                                        TextColor="{StaticResource MutedText}"/>
                             </VerticalStackLayout>
+                        </Border>
                         </Border>
 
                         <!-- The trends the review can be read against. Deliberately the CURRENT

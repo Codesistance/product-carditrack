@@ -55,6 +55,11 @@ output "storage_bucket_url" {
   value       = module.deployments.storage_bucket_url
 }
 
+output "member_photos_bucket_name" {
+  description = "Name of the CardiMember profile photos bucket"
+  value       = module.deployments.member_photos_bucket_name
+}
+
 output "secret_manager_project" {
   description = "Secret Manager project path"
   value       = module.deployments.secret_manager_project

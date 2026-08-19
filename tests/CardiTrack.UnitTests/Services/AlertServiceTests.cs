@@ -19,6 +19,8 @@ public class AlertServiceTests
     private readonly IPatternBaselineRepository _baselines = Substitute.For<IPatternBaselineRepository>();
     private readonly IGranularMetricRepository _granular = Substitute.For<IGranularMetricRepository>();
     private readonly IUserRepository _users = Substitute.For<IUserRepository>();
+    private readonly CardiTrack.Application.Interfaces.Clients.IProfilePhotoStorage _photoStorage =
+        Substitute.For<CardiTrack.Application.Interfaces.Clients.IProfilePhotoStorage>();
 
     private readonly Guid _userId = Guid.NewGuid();
     private readonly Guid _memberId = Guid.NewGuid();
@@ -61,11 +63,11 @@ public class AlertServiceTests
     // Composed with the real access service, for the same reason DashboardServiceTests is: the
     // link rules being asserted live there, so substituting it away would leave the scoping untested.
     private AlertService CreateSut() =>
-        new(_unitOfWork, new CardiMemberAccessService(_unitOfWork), _timeProvider);
+        new(_unitOfWork, new CardiMemberAccessService(_unitOfWork), _photoStorage, _timeProvider);
 
     /// <summary>A SUT on a clock this test moved — used where the hour itself is the subject.</summary>
     private AlertService CreateSutAt(DateTimeOffset now) =>
-        new(_unitOfWork, new CardiMemberAccessService(_unitOfWork), new FixedTimeProvider(now));
+        new(_unitOfWork, new CardiMemberAccessService(_unitOfWork), _photoStorage, new FixedTimeProvider(now));
 
     private void SetupMember(params CardiMember[] members) =>
         _members.FindAsync(Arg.Any<Expression<Func<CardiMember, bool>>>())

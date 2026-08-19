@@ -1,65 +1,56 @@
-<?xml version="1.0" encoding="utf-8" ?>
+﻿<?xml version="1.0" encoding="utf-8" ?>
 <ContentView xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              x:Class="CardiTrack.Mobile.Controls.AccordionSection">
 
     <!-- Generic collapsible section, collapsed by default so the body doesn't compete with the
-         card's action row for attention. The body is animated open/closed by growing/shrinking a
-         clipping Border's height (Border clips its content to its bounds; a plain layout wouldn't)
-         rather than snapping IsVisible.
+         card's action row for attention. The header wears the Member Detail dropdowns' row —
+         52 high, Body1SemiBoldDark, chevron at 20 — so every collapsible in the app reads as
+         the same control; the chevron is the affordance, the way it is on Alert Rules. The body
+         is animated open/closed by growing/shrinking a clipping Border's height (Border clips
+         its content to its bounds; a plain layout wouldn't) rather than snapping IsVisible. -->
+    <!-- Bare: no card, no tint, no border. This control sits inside the member card among
+         surfaces that already carry their own chrome, and every version that gave it some of its
+         own — elevated card, outlined card, tinted tile — read as another thing stacked on the
+         card rather than as the card's own last row. The icon, the label and the chevron are the
+         control; the height is the dropdowns' 52 less its card padding. -->
+    <Grid x:Name="HeaderShell" Padding="0">
+        <VerticalStackLayout x:Name="RootLayout" Spacing="10">
 
-         The header has to read as tappable on a card that is otherwise static text. Three things
-         carry that, since a bare grey chevron on white did not: the hint is in Primary rather than
-         body grey, so it reads as an action rather than a caption; the chevron sits on a tinted
-         round chip, which is the shape the rest of the app uses for something you press; and the
-         header sits a step down the type scale (Heading3, not Heading2) so the chip is not
-         out-shouted by 22px bold beside it. The hint still disappears once expanded — by then the
-         open body is its own affordance — but the chip stays and rotates. -->
-    <VerticalStackLayout x:Name="RootLayout" Spacing="10">
+            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12" HeightRequest="44">
+                <Grid.GestureRecognizers>
+                    <TapGestureRecognizer Tapped="OnHeaderTapped"/>
+                </Grid.GestureRecognizers>
 
-        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
-            <Grid.GestureRecognizers>
-                <TapGestureRecognizer Tapped="OnHeaderTapped"/>
-            </Grid.GestureRecognizers>
+                <Image x:Name="HeaderIconImage"
+                       Grid.Column="0"
+                       WidthRequest="22" HeightRequest="22"
+                       VerticalOptions="Center"
+                       IsVisible="False"/>
 
-            <VerticalStackLayout Grid.Column="0" Spacing="1" VerticalOptions="Center">
-                <Label x:Name="HeaderLabel" Style="{StaticResource Heading3}"/>
-                <Label x:Name="HintLabel"
-                       Text="Tap to view"
-                       FontFamily="QuicksandSemiBold"
-                       FontSize="12"
-                       TextColor="{StaticResource Primary}"/>
-            </VerticalStackLayout>
+                <Label x:Name="HeaderLabel"
+                       Grid.Column="1"
+                       Style="{StaticResource Body1SemiBoldDark}"
+                       VerticalTextAlignment="Center"/>
 
-            <Border x:Name="ChevronChip"
-                    Grid.Column="1"
-                    BackgroundColor="{StaticResource SelectedOptionBackground}"
-                    Stroke="{StaticResource Divider}"
-                    StrokeThickness="1"
-                    WidthRequest="32" HeightRequest="32"
-                    Padding="0"
-                    VerticalOptions="Center">
-                <Border.StrokeShape>
-                    <RoundRectangle CornerRadius="16"/>
-                </Border.StrokeShape>
                 <Image x:Name="ChevronIcon"
+                       Grid.Column="2"
                        Source="icon_chevron_down.svg"
-                       WidthRequest="16" HeightRequest="16"
-                       HorizontalOptions="Center"
+                       WidthRequest="20" HeightRequest="20"
                        VerticalOptions="Center"
                        SemanticProperties.Description="Expand"/>
                 <!-- Description is kept in step with the state in code-behind: the same
                      control collapses once open, and announcing "Expand" then is wrong. -->
+            </Grid>
+
+            <Border x:Name="BodyClip"
+                    StrokeThickness="0"
+                    BackgroundColor="Transparent"
+                    Padding="0"
+                    HeightRequest="0">
+                <ContentView x:Name="BodyHost" VerticalOptions="Start"/>
             </Border>
-        </Grid>
 
-        <Border x:Name="BodyClip"
-                StrokeThickness="0"
-                BackgroundColor="Transparent"
-                Padding="0"
-                HeightRequest="0">
-            <ContentView x:Name="BodyHost" VerticalOptions="Start"/>
-        </Border>
-
-    </VerticalStackLayout>
+        </VerticalStackLayout>
+    </Grid>
 </ContentView>

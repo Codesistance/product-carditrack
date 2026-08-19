@@ -1,6 +1,6 @@
 # CardiMembers API
 
-> **Status: Partially implemented.** Get-by-id, update, delete and monitoring pause/resume now exist on `/api/v1/cardimembers`. Consent, self-authored notes, photos and plan-limit enforcement remain design intent. See "Implemented today" for current coverage.
+> **Status: Partially implemented.** Get-by-id, update, delete, monitoring pause/resume and profile photos now exist on `/api/v1/cardimembers`. Consent, self-authored notes and plan-limit enforcement remain design intent. See "Implemented today" for current coverage.
 
 Manages the elderly individuals being monitored (CardiMembers), their consent settings, monitoring pause state, and context notes entered on their behalf.
 
@@ -28,6 +28,7 @@ Creates a CardiMember in the caller's organization (organization comes from the 
 | `emergencyContactName` | string | No | ≤ 100 chars |
 | `emergencyContactPhone` | string | No | Validated as a phone number |
 | `medicalNotes` | string | No | ≤ 2000 chars; encrypted at rest |
+| `photoBase64` | string | No | Profile photo as base64 (JPEG/PNG, ≤ 5 MB decoded; a `data:image/…;base64,` prefix is tolerated). Content-sniffed, downscaled to a 1024 px longest edge and re-encoded as JPEG with all EXIF/GPS/XMP/ICC metadata stripped before landing in the private photo bucket. If the photo is refused the member is **not** created |
 | `relationshipType` | integer enum | No | Defaults to `Other` (99) — not knowing how you are related is no reason to be unable to start watching over someone |
 | `isPrimaryCaregiver` | boolean | No | Defaults to `true` |
 
@@ -48,6 +49,7 @@ Returns **200** with a plain list of the organization's CardiMembers — **no so
   "phone": "+15551234567",
   "relationship": 2,
   "isPrimaryCaregiver": false,
+  "photoUrl": null,
   "isActive": true,
   "createdDate": "2026-01-15T09:00:00Z"
 }
@@ -56,6 +58,7 @@ Returns **200** with a plain list of the organization's CardiMembers — **no so
 - `id` is a **raw GUID** — no `cm_` prefix.
 - `gender` and `relationship` are **integer enums** (`Gender`: Male=1, Female=2, PreferNotToSay=4; `RelationshipType`: Self=1, Parent=2, Spouse=3, Grandparent=4, Sibling=5, Child=6, Other=99). **3 is retired** — it was `Other`, and is now rejected by both validators; the members holding it were migrated to `PreferNotToSay` by the `RetireOtherGender` migration. The mobile form offers only Male and Female; `PreferNotToSay` remains readable because it is the stored value for every member created before M1-04 asked.
 - The **list** response deliberately carries no `medicalNotes` or emergency contact. Those are PHI and are served only by the single-member GET below, so a "which members do I have?" call never broadcasts them.
+- `photoUrl` is a **short-lived signed URL** (see the detail response notes below), or `null` when no photo is set.
 
 ### GET `/api/v1/cardimembers/{id}`
 
@@ -96,20 +99,22 @@ Full detail for one CardiMember — the payload behind mobile M1-13. Requires **
 - `healthStatus` is the same lowercase string, computed the same way, as the dashboard's — see [health-data.md](health-data.md).
 - `metrics` is the full `DashboardMetrics` block (each metric with its 30-day series) so the detail screen's trend cards need no second round-trip; it is **`null`** when the member has no activity history yet, the same condition the dashboard uses.
 - `medicalNotes` is stored AES-256-GCM encrypted and decrypted on read. Rows written before encryption was introduced are returned as-is rather than failing the request.
-- `photoUrl` is always `null` — no photo storage exists. Clients render an initials avatar.
+- `photoUrl` is a **short-lived V4 signed GCS URL** (15-minute TTL) minted per response — **not** a CDN URL and not stable: fetch it promptly, never cache or persist it. It is `null` when no photo is set or photo storage is unavailable (e.g. locally, where no bucket is configured); clients render an initials avatar. The underlying photo lives in a private bucket keyed by an opaque object name and is hard-deleted when replaced, removed, or when the member is removed.
 - `alertSensitivity` is an integer enum (Low=1, Medium=2, High=3). **Stored but not consumed** — statistical alerting uses the established 30-day baseline, not this field.
 
 ### PUT `/api/v1/cardimembers/{id}`
 
 Saves the M1-14 edit form. Requires **manage** access (as above, plus `IsPrimaryCaregiver`). A **full replacement**, not a patch: omitting a field clears it. Returns the updated detail object, **400** with field errors, or **404**.
 
-Body: `name`, `dateOfBirth`, `gender`, `relationshipType`, `email`, `phone`, `emergencyContactName`, `emergencyContactPhone`, `medicalNotes`, `alertSensitivity`. `relationshipType` updates the caller's own link only, so it cannot rewrite what other caregivers call this person.
+Body: `name`, `dateOfBirth`, `gender`, `relationshipType`, `email`, `phone`, `emergencyContactName`, `emergencyContactPhone`, `medicalNotes`, `alertSensitivity`, `photoBase64`, `removePhoto`. `relationshipType` updates the caller's own link only, so it cannot rewrite what other caregivers call this person.
 
-`gender` is the **one exception to full replacement**: it is nullable, and omitting it leaves the stored value alone rather than clearing it. This is what lets a caller that does not render the sex picker — an older build, or any edit to a phone number — save the form without silently discarding a stated sex and the reference range the prompt layer reads from it. Sending an explicit `0` is a client bug and is rejected; to say "not recorded", send `4`.
+`gender` is one of **two exceptions to full replacement**: it is nullable, and omitting it leaves the stored value alone rather than clearing it. This is what lets a caller that does not render the sex picker — an older build, or any edit to a phone number — save the form without silently discarding a stated sex and the reference range the prompt layer reads from it. Sending an explicit `0` is a client bug and is rejected; to say "not recorded", send `4`.
+
+The **photo** is the other exception, for the same reason: omitting `photoBase64` leaves the stored photo alone. `photoBase64` (same contract as on create: JPEG/PNG, ≤ 5 MB decoded, re-encoded with metadata stripped) replaces the photo — the new image is uploaded and saved first, then the old blob is deleted. `removePhoto: true` deletes the stored photo and its blob. Sending both together is rejected with a 400. A refused photo fails the whole edit with nothing applied.
 
 ### DELETE `/api/v1/cardimembers/{id}`
 
-Removes a CardiMember. Requires **manage** access. Returns **204**. Soft delete: the member, their caregiver links and their device connections are deactivated and stored OAuth tokens discarded. Health history is retained.
+Removes a CardiMember. Requires **manage** access. Returns **204**. Soft delete: the member, their caregiver links and their device connections are deactivated and stored OAuth tokens discarded. Health history is retained — but the profile photo is not: its blob is deleted and `PhotoObjectName` cleared, because a full-face image must not outlive the membership.
 
 ### POST `/api/v1/cardimembers/{id}/pause` · DELETE `/api/v1/cardimembers/{id}/pause`
 
@@ -122,7 +127,7 @@ The pause is **time-bounded on purpose** — an open-ended pause would let someo
 ### Not yet built
 
 - **Plan-limit enforcement**: subscription `MaxCardiMembers` exists on the entity but **nothing enforces it** — the `CARDIMEMBER_LIMIT_REACHED` error below does not occur.
-- **Consent, self-authored notes, photos**: no entities or endpoints exist for any of these.
+- **Consent, self-authored notes**: no entities or endpoints exist for either of these.
 - **`cm_`-prefixed ids, `sort`/`filter` query parameters, `total` counts, string enums**: the shapes below use them; the implementation does not.
 
 Everything below is the **planned** contract, kept as design intent.
@@ -458,4 +463,4 @@ Add a context note about the CardiMember. (Originally "as the CardiMember" — d
 
 **Related:** [readme.md](readme.md) | [devices.md](devices.md) | [User Stories 1.2, 7.1–7.3](../../ui/mobile/user_stories.md)
 
-**Last Updated:** August 14, 2026
+**Last Updated:** August 18, 2026

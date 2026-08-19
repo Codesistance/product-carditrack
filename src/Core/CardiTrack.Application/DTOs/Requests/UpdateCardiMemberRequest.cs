@@ -53,5 +53,21 @@ public class UpdateCardiMemberRequest
     [StringLength(2000)]
     public string? MedicalNotes { get; set; }
 
+    /// <summary>
+    /// New profile photo as base64-encoded JPEG or PNG bytes (a <c>data:image/…;base64,</c>
+    /// prefix is tolerated), at most 5 MB decoded. Follows the <see cref="Gender"/> precedent on
+    /// this otherwise full-replacement form: omitted or empty means "leave the stored photo
+    /// alone" — a client saving a phone-number edit must not silently discard the photo it never
+    /// re-sent. To remove the photo, send <see cref="RemovePhoto"/> instead.
+    /// </summary>
+    public string? PhotoBase64 { get; set; }
+
+    /// <summary>
+    /// True removes the stored photo (and deletes the underlying blob). Removal is an explicit
+    /// action rather than "PhotoBase64 omitted" for the reason PhotoBase64's remarks give.
+    /// Sending both is a client bug the validator rejects.
+    /// </summary>
+    public bool RemovePhoto { get; set; }
+
     public AlertSensitivity AlertSensitivity { get; set; } = AlertSensitivity.Medium;
 }

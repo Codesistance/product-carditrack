@@ -1,6 +1,7 @@
 using CardiTrack.Application.DTOs.Common;
 using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Application.Exceptions;
+using CardiTrack.Application.Interfaces.Clients;
 using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Domain.Entities;
@@ -14,6 +15,7 @@ public class AlertService : IAlertService
 {
     private readonly IUnitOfWork _unitOfWork;
     private readonly ICardiMemberAccessService _access;
+    private readonly IProfilePhotoStorage _photoStorage;
     private readonly TimeProvider _timeProvider;
 
     /// <param name="timeProvider">
@@ -25,10 +27,12 @@ public class AlertService : IAlertService
     public AlertService(
         IUnitOfWork unitOfWork,
         ICardiMemberAccessService access,
+        IProfilePhotoStorage photoStorage,
         TimeProvider? timeProvider = null)
     {
         _unitOfWork = unitOfWork;
         _access = access;
+        _photoStorage = photoStorage;
         _timeProvider = timeProvider ?? TimeProvider.System;
     }
 
@@ -70,10 +74,16 @@ public class AlertService : IAlertService
         var unread = await _unitOfWork.Alerts.CountUnreadAsync(scope, ct);
 
         var members = await LoadMembersAsync(alerts);
+        var photoUrls = await LoadPhotoUrlsAsync(members, ct);
 
         return new AlertListResponse
         {
-            Alerts = alerts.Select(a => ToSummary(a, members.GetValueOrDefault(a.CardiMemberId))).ToList(),
+            Alerts = alerts
+                .Select(a => ToSummary(
+                    a,
+                    members.GetValueOrDefault(a.CardiMemberId),
+                    photoUrls.GetValueOrDefault(a.CardiMemberId)))
+                .ToList(),
             Total = total,
             UnreadCount = unread,
         };
@@ -145,8 +155,13 @@ public class AlertService : IAlertService
             ? await ElapsedStepsAsync(alert.CardiMemberId, match, ct)
             : null;
 
+        var photoUrl = member?.PhotoObjectName is { } photoObjectName
+            ? await _photoStorage.GetReadUrlAsync(photoObjectName, ct)
+            : null;
+
         return AlertDetailComposer.Compose(
-            alert, member, acknowledger, logs, today, granular, baseline, elapsedSteps, firedOn);
+            alert, member, acknowledger, logs, today, granular, baseline, elapsedSteps, firedOn,
+            photoUrl);
     }
 
     /// <summary>
@@ -294,7 +309,25 @@ public class AlertService : IAlertService
         return members.ToDictionary(m => m.Id);
     }
 
-    private static AlertSummaryResponse ToSummary(Alert alert, CardiMember? member)
+    /// <summary>
+    /// One signed URL per distinct member with a photo, resolved before the per-alert mapping so
+    /// a page of alerts about the same member asks the storage adapter once, not once per row.
+    /// The adapter caches per object name on top of that, so list refreshes don't re-sign either.
+    /// </summary>
+    private async Task<Dictionary<Guid, string?>> LoadPhotoUrlsAsync(
+        Dictionary<Guid, CardiMember> members, CancellationToken ct)
+    {
+        var urls = new Dictionary<Guid, string?>();
+        foreach (var (id, member) in members)
+        {
+            if (member.PhotoObjectName is { } photoObjectName)
+                urls[id] = await _photoStorage.GetReadUrlAsync(photoObjectName, ct);
+        }
+
+        return urls;
+    }
+
+    private static AlertSummaryResponse ToSummary(Alert alert, CardiMember? member, string? photoUrl)
     {
         var rule = AlertDetailComposer.ReadRule(alert.MetricValues);
         var firedOn = DateOnly.FromDateTime(ToUtc(alert.TriggeredDate));
@@ -304,9 +337,7 @@ public class AlertService : IAlertService
             AlertId = alert.Id,
             CardiMemberId = alert.CardiMemberId,
             CardiMemberName = member?.Name ?? string.Empty,
-            // No photo storage exists yet (see CardiMemberService) — the field is here so the card
-            // can show one the moment it does, and falls back to initials until then.
-            CardiMemberPhotoUrl = null,
+            CardiMemberPhotoUrl = photoUrl,
             EmergencyContactPhone = member?.EmergencyContactPhone,
             EmergencyContactName = member?.EmergencyContactName,
             Type = alert.AlertType.GetDisplayName(),

@@ -59,9 +59,9 @@ CardiTrack monitors the wearable data elderly users generate every day and appli
 
 | Plan | Price | Limits | Target |
 |---|---|---|---|
-| Basic | $8/month | 2 CardiMembers, 5 family members, no export | Budget-conscious families |
-| Complete Care | $15/month | 5 CardiMembers, 20 family members, data export | Core offering |
-| Guardian Plus | $29.99/month | Business tier — **post-MVP** (after Q3 2027) | Facilities, power users |
+| Basic | $7/month | 1 CardiMember, 5 family members, 30-day history, no export | Budget-conscious families |
+| Complete Care | $10/month | 3 CardiMembers, 20 family members, 90-day history, data export | Core offering |
+| Guardian Plus | $15/month | 6 CardiMembers, 180-day history, monthly Daybook, priority support | Larger households |
 | Enterprise | $5–10/resident/month | Custom | Assisted living facilities |
 
 Annual billing carries a 15% discount. The 30-day free trial provisions the Complete Care tier.
@@ -114,7 +114,7 @@ CardiTrack is being built by a founder with full-stack .NET development experien
 
 ## Summary
 
-CardiTrack addresses a large, underserved market with a meaningfully differentiated product: 50–70% cheaper than incumbents, preventive rather than reactive, compatible with devices people already own, and powered by Google's own health AI stack — Google Health API in, MedGemma and Gemini inference in the middle, Google Cloud underneath. Cloud credits would directly accelerate our ability to get a working product into the hands of families who need it.
+CardiTrack addresses a large, underserved market with a meaningfully differentiated product: 65–85% cheaper than incumbents, preventive rather than reactive, compatible with devices people already own, and powered by Google's own health AI stack — Google Health API in, MedGemma and Gemini inference in the middle, Google Cloud underneath. Cloud credits would directly accelerate our ability to get a working product into the hands of families who need it.
 
 ---
 

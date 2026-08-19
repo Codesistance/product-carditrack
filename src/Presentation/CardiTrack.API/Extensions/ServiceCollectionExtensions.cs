@@ -99,6 +99,10 @@ public static class ServiceCollectionExtensions
         // AI services
         services.AddAiServices(configuration);
 
+        // Member profile photos (processor + GCS signed-URL adapter). Registered even with no
+        // bucket configured: reads degrade to initials avatars rather than failing resolution.
+        services.AddMemberPhotoStorage(configuration);
+
         // External clients
         services.AddScoped<IOAuthTokenRefreshService, OAuthTokenRefreshService>();
         services.AddScoped<IOAuthCodeExchangeService, OAuthCodeExchangeService>();

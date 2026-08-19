@@ -68,7 +68,7 @@ Created automatically inside the atomic setup transaction (`SubscriptionService.
 - `BillingCycle = Monthly`, `Price = 0`, `Currency = "USD"`, `Features` JSON (all devices/alerts)
 - There is **no Stripe or billing code** — payment collection is planned (Step 9)
 
-**Tier names** (`SubscriptionTier`): `Basic`, `Complete`, `Plus`. Public pricing: Basic $8/mo (2 CardiMembers), Complete Care $15/mo (5 CardiMembers), annual billing −15%; Guardian Plus ($29.99) is a post-MVP business tier.
+**Tier names** (`SubscriptionTier`): `Basic`, `Complete`, `Plus`. Public pricing: Basic $7/mo (1 CardiMember), Complete Care $10/mo (3 CardiMembers), Guardian Plus $15/mo (6 CardiMembers); annual billing −15%.
 
 **Database:**
 - Unique index on `OrganizationId` (1 subscription per org); `Status` and `(Status, EndDate)` indexed
@@ -248,7 +248,7 @@ DeviceConnection Entity:
 **Permission Scoping:**
 Google Health API scope bundles requested (full form `https://www.googleapis.com/auth/googlehealth.<bundle>`):
 - `activity_and_fitness.readonly`: Steps, distance, active minutes
-- `health_metrics_and_measurements.readonly`: Heart rate (incl. intraday), HRV, SpO2
+- `health_metrics_and_measurements.readonly`: Heart rate (incl. intraday), SpO2, VO2 max, breathing rate, nightly skin temperature. **Not HRV** — the scope covers it, but `GoogleHealthApiClient` does not fetch it, so it must not be listed as collected (corrected 2026-08-18)
 - `sleep.readonly`: Duration, efficiency, sleep stages
 - `settings.readonly`: Paired-device telemetry — battery level and status, hardware version. Device data, not health data: it is what lets a caregiver be warned before a flat watch stops collecting. Added after the three above, so connections predating it report no battery until the wearer reconnects
 - `ecg.readonly` / `irn.readonly` (later phase): ECG readings, irregular rhythm notifications
@@ -262,7 +262,7 @@ Unverified apps are capped at 100 connected users — enough for dev and beta, b
 *Gate 1 — OAuth restricted-scope review (Google Trust & Safety):*
 - [ ] Domain ownership verified in Google Search Console (`carditrack.com`, cloud-ops Google account)
 - [ ] Public homepage on the verified domain — reachable without login, same app name/branding as the OAuth consent screen, describes the health-data functionality, prominently links the privacy policy
-- [ ] Privacy policy on the same domain with a **dedicated Google Health API section** (not blended into generic disclosures): data collected (heart rate incl. intraday, HRV, SpO2, activity, sleep), purposes (anomaly alerts, daily digests, trend monitoring), sharing (authorized family members only — no ads, no resale), retention/deletion, and the Limited Use affirmation: *"CardiTrack's use and transfer of information received from Google APIs adheres to the [Google API Services User Data Policy](https://developers.google.com/terms/api-services-user-data-policy), including the Limited Use requirements."*
+- [ ] Privacy policy on the same domain with a **dedicated Google Health API section** (not blended into generic disclosures): data collected (heart rate incl. intraday, SpO2, VO2 max, breathing rate, skin temperature, activity, sleep, and device battery — **not HRV**, which is never fetched), **all four** restricted scopes named including `settings.readonly`, the one-time 90-day pre-connection backfill, purposes (anomaly alerts, daily digests, trend monitoring), sharing (authorized family members only — no ads, no resale), retention/deletion, and the Limited Use affirmation: *"CardiTrack's use and transfer of information received from Google APIs adheres to the [Google API Services User Data Policy](https://developers.google.com/terms/api-services-user-data-policy), including the Limited Use requirements."*
 - [ ] Terms of service page linked from the consent screen
 - [x] In-app disclosure on the **web dashboard** — shipped (PR #9): `HealthDataDisclosureBanner` shows Google's prescribed format verbatim (*"CardiTrack collects health and fitness data to enable anomaly alerts, daily health digests, and trend monitoring."*), show-once and dismissible (`HealthDataDisclosureDismissedDate`); renders only for authenticated users
 - [ ] In-app disclosure in the **mobile app** — still missing
@@ -355,9 +355,9 @@ Each metric is gated on **min(7, ceil(days × 0.8)) samples of its own** — 6 f
 **Planned conversion flow:**
 ```
 1. User selects subscription tier
-   ├── Basic: $8/month (2 CardiMembers)
-   ├── Complete Care: $15/month (5 CardiMembers)
-   └── (annual billing −15%; Guardian Plus $29.99 is a post-MVP business tier)
+   ├── Basic: $7/month (1 CardiMember)
+   ├── Complete Care: $10/month (3 CardiMembers)
+   └── Guardian Plus: $15/month (6 CardiMembers); annual billing −15%
 
 2. Payment collection (PCI-DSS-compliant tokenization)
 

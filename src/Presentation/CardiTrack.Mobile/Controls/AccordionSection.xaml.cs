@@ -1,7 +1,7 @@
-namespace CardiTrack.Mobile.Controls;
+﻿namespace CardiTrack.Mobile.Controls;
 
 /// <summary>
-/// Generic collapsible section — header (title + expand hint + chevron) toggling an arbitrary
+/// Generic collapsible section — header (title + chevron) toggling an arbitrary
 /// body. Used to tuck Key Metrics behind a tap so a CardiMember card stays compact once more than
 /// one can appear on the dashboard.
 /// </summary>
@@ -27,7 +27,7 @@ public partial class AccordionSection : ContentView
     }
 
     /// <summary>
-    /// The header's type style, for pages whose section titles are not <c>Heading3</c> — the
+    /// The header's type style, for pages whose section titles are not <c>Heading2</c> — the
     /// default this control carries for the dashboard card it was written for.
     /// </summary>
     public Style HeaderStyle
@@ -44,6 +44,26 @@ public partial class AccordionSection : ContentView
             _body = value;
             BodyHost.Content = value;
         }
+    }
+
+    public static readonly BindableProperty IconSourceProperty = BindableProperty.Create(
+        nameof(IconSource),
+        typeof(string),
+        typeof(AccordionSection),
+        null,
+        propertyChanged: (bindable, _, value) =>
+        {
+            var section = (AccordionSection)bindable;
+            section.HeaderIconImage.Source = value as string;
+            section.HeaderIconImage.IsVisible = !string.IsNullOrEmpty(value as string);
+        });
+
+    /// <summary>The header row's leading glyph — the dropdowns' 22-unit icon. Absent, the row
+    /// starts at the label, and the icon column collapses.</summary>
+    public string? IconSource
+    {
+        get => (string?)GetValue(IconSourceProperty);
+        set => SetValue(IconSourceProperty, value);
     }
 
     public AccordionSection()
@@ -84,7 +104,6 @@ public partial class AccordionSection : ContentView
     {
         _isAnimating = true;
         IsExpanded = true;
-        HintLabel.IsVisible = false;
         SemanticProperties.SetDescription(ChevronIcon, "Collapse");
 
         var width = RootLayout.Width > 0 ? RootLayout.Width : Width;
@@ -108,7 +127,6 @@ public partial class AccordionSection : ContentView
             .Commit(this, "accordion", 16, AnimationLengthMs, Easing.CubicIn, (_, _) =>
             {
                 _isAnimating = false;
-                HintLabel.IsVisible = true;
             });
 
         _ = ChevronIcon.RotateToAsync(0, AnimationLengthMs, Easing.CubicIn);

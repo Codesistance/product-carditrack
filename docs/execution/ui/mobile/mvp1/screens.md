@@ -275,7 +275,7 @@ These five screens span onboarding → daily use → emergency response. **Build
 
 **CTA Section (bottom 30%):**
 - Primary button (full width, bold): "Start Free 30-Day Trial"
-- Pricing text (small, muted): "Then $8/month - Cancel anytime"
+- Pricing text (small, muted): "Then from $7/month - Cancel anytime"
 - Secondary button (text style, subtle): "Sign In"
 - Legal link (small): "By continuing, you agree to Terms & Privacy"
 
