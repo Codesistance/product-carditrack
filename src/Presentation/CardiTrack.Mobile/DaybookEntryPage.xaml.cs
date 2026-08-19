@@ -207,6 +207,10 @@ public partial class DaybookEntryPage : ContentPage
             return;
         }
 
+        // One "today" for all six blocks: each cuts its window against the reader's current day,
+        // and a render straddling local midnight must not window half the charts a day apart.
+        var today = DateOnly.FromDateTime(DateTime.Now);
+
         // Every metric the dashboard series carries, each against whatever yardsticks it
         // honestly has: the member's own usual where one is learned, and the published band where
         // a standards body publishes one — never both invented. Steps has no published range (no
@@ -214,21 +218,21 @@ public partial class DaybookEntryPage : ContentPage
         // single concerning direction, so each carries only the lines it has earned.
         var blocks = new[]
         {
-            Block(metrics.Sleep, "Sleep", "MetricSleepInk", "{0:0.#}",
+            Block(metrics.Sleep, today, "Sleep", "MetricSleepInk", "{0:0.#}",
                 TrendAwareness.Direction.BelowUsual, "night",
                 new BandCount(TrendAwareness.Direction.BelowUsual, AgainstLow: true, "h")),
-            Block(metrics.RestingHeartRate, "Resting heart rate", "MetricHeartInk", "{0:N0}",
+            Block(metrics.RestingHeartRate, today, "Resting heart rate", "MetricHeartInk", "{0:N0}",
                 TrendAwareness.Direction.AboveUsual, "day",
                 new BandCount(TrendAwareness.Direction.AboveUsual, AgainstLow: false, " bpm")),
-            Block(metrics.SpO2, "Blood oxygen", "MetricSpO2Ink", "{0:0.#}",
+            Block(metrics.SpO2, today, "Blood oxygen", "MetricSpO2Ink", "{0:0.#}",
                 TrendAwareness.Direction.BelowUsual, "day",
                 new BandCount(TrendAwareness.Direction.BelowUsual, AgainstLow: true, "%")),
-            Block(metrics.BreathingRate, "Breathing rate", "MetricBreathingInk", "{0:0.#}",
+            Block(metrics.BreathingRate, today, "Breathing rate", "MetricBreathingInk", "{0:0.#}",
                 TrendAwareness.Direction.AboveUsual, "day",
                 new BandCount(TrendAwareness.Direction.AboveUsual, AgainstLow: false, "/min")),
-            Block(metrics.Steps, "Steps", "MetricStepsInk", "{0:N0}",
+            Block(metrics.Steps, today, "Steps", "MetricStepsInk", "{0:N0}",
                 TrendAwareness.Direction.BelowUsual, "day", band: null),
-            Block(metrics.Temperature, "Skin temperature", "MetricTemperatureInk", "{0:0.#}",
+            Block(metrics.Temperature, today, "Skin temperature", "MetricTemperatureInk", "{0:0.#}",
                 usualDirection: null, "day", band: null),
         };
 
@@ -253,6 +257,7 @@ public partial class DaybookEntryPage : ContentPage
 
     private static View? Block(
         DashboardMetric metric,
+        DateOnly today,
         string name,
         string inkKey,
         string axisFormat,
@@ -261,7 +266,7 @@ public partial class DaybookEntryPage : ContentPage
         BandCount? band)
     {
         var window = TrendAwareness
-            .ExcludingToday(metric.Series, DateOnly.FromDateTime(DateTime.Now))
+            .ExcludingToday(metric.Series, today)
             .TakeLast(ChartDays)
             .ToList();
         var values = window.Where(p => p.Value is not null).Select(p => (double)p.Value!).ToList();
