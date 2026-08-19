@@ -209,6 +209,8 @@ module "deployments" {
       "Apm__MetricsEnabled"            = tostring(var.apm_metrics_enabled)
       "Apm__TracesSampleRatio"         = tostring(var.traces_sample_ratio.worker)
       "Serilog__MinimumLevel__Default" = var.log_minimum_level.worker
+      # Same bucket as the API's entry above — OrphanedPhotoCleanupWorker's sweep target.
+      "Storage__MemberPhotos__Bucket" = local.member_photos_bucket_name
     },
     # The Worker hosts device pull and the audit pull today, so it is where the cadence
     # parameters land.

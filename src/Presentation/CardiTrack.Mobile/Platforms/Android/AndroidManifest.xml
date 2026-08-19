@@ -43,9 +43,21 @@
 			<action android:name="android.intent.action.DIAL" />
 			<data android:scheme="tel" />
 		</intent>
+		<!-- MediaPicker.CapturePhotoAsync (the CardiMember photo's "Take a photo") hands off
+		     to whichever camera app answers IMAGE_CAPTURE; without this declaration the
+		     resolve fails on API 30+ before the camera ever opens. -->
+		<intent>
+			<action android:name="android.media.action.IMAGE_CAPTURE" />
+		</intent>
 	</queries>
 	<uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 	<uses-permission android:name="android.permission.INTERNET" />
+	<!-- CardiMember profile photo capture (MediaPicker.CapturePhotoAsync). Runtime permission;
+	     MediaPicker requests it at the moment of use and the page handles a refusal politely. -->
+	<uses-permission android:name="android.permission.CAMERA" />
+	<!-- required=false: a device without a camera can still install the app — the photo
+	     sheet simply doesn't offer "Take a photo" there (IsCaptureSupported). -->
+	<uses-feature android:name="android.hardware.camera" android:required="false" />
 	<!-- Runtime permission on API 33+; PushRegistrationCoordinator requests it via
 	     IFirebaseCloudMessaging.CheckIfValidAsync() at the moment of value (§4), not on launch. -->
 	<uses-permission android:name="android.permission.POST_NOTIFICATIONS" />

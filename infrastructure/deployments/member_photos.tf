@@ -59,6 +59,16 @@ resource "google_service_account_iam_member" "api_self_token_creator" {
   member             = local.api_sa
 }
 
+# The Worker runs as the default compute service account (a recorded, deliberate state — see
+# the header comment in service_accounts.tf), so OrphanedPhotoCleanupWorker's grant goes to
+# that identity. Its own binding rather than a widening of the API's, per the house rule
+# above. objectAdmin because the sweep both lists and deletes.
+resource "google_storage_bucket_iam_member" "worker_member_photos" {
+  bucket = google_storage_bucket.member_photos.name
+  role   = "roles/storage.objectAdmin"
+  member = "serviceAccount:${data.google_project.current.number}-compute@developer.gserviceaccount.com"
+}
+
 output "member_photos_bucket_name" {
   description = "Name of the CardiMember profile photos bucket"
   value       = google_storage_bucket.member_photos.name

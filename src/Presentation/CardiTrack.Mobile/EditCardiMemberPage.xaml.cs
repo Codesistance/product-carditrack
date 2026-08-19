@@ -5,6 +5,7 @@ using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Domain.Enums;
 using CardiTrack.Mobile.Core.Api;
 using CardiTrack.Mobile.Core.Localization;
+using CardiTrack.Mobile.Core.Media;
 using CardiTrack.Mobile.Services;
 
 namespace CardiTrack.Mobile;
@@ -61,6 +62,7 @@ public partial class EditCardiMemberPage : ContentPage
 
     private readonly ICardiTrackApiClient _api;
     private readonly IPopupService _popups;
+    private readonly IProfilePhotoTranscoder _photoTranscoder;
 
     private Guid _memberId;
     private string? _focusField;
@@ -68,11 +70,18 @@ public partial class EditCardiMemberPage : ContentPage
     private bool _isSaving;
     private bool _loaded;
 
-    public EditCardiMemberPage(ICardiTrackApiClient api, IPopupService popups)
+    /// <summary>A photo picked to replace the current one, held until Save sends it.</summary>
+    private byte[]? _pendingPhotoBytes;
+
+    /// <summary>True when the user chose to remove the stored photo; Save carries it out.</summary>
+    private bool _removePhoto;
+
+    public EditCardiMemberPage(ICardiTrackApiClient api, IPopupService popups, IProfilePhotoTranscoder photoTranscoder)
     {
         InitializeComponent();
         _api = api;
         _popups = popups;
+        _photoTranscoder = photoTranscoder;
 
         RelationshipPicker.ItemsSource = Relationships.Select(r => r.Label).ToList();
         SexPicker.ItemsSource = Sexes.Select(s => s.Label).ToList();
@@ -135,6 +144,12 @@ public partial class EditCardiMemberPage : ContentPage
     private void Fill(CardiMemberDetailResponse member)
     {
         InitialsLabel.Text = NameFormatting.Initials(member.Name);
+
+        // Same guard as MemberAvatar.Apply: the URL is external data, so a malformed value
+        // falls back to the initials rather than throwing the form's load.
+        var hasPhoto = Uri.TryCreate(member.PhotoUrl, UriKind.Absolute, out var photoUri);
+        PhotoImage.Source = hasPhoto ? ImageSource.FromUri(photoUri!) : null;
+        PhotoImage.IsVisible = hasPhoto;
         NameEntry.Text = member.Name;
         DobPicker.Date = member.DateOfBirth.ToDateTime(TimeOnly.MinValue);
         MedicalNotesEditor.Text = member.MedicalNotes;
@@ -205,6 +220,46 @@ public partial class EditCardiMemberPage : ContentPage
     private void OnNameChanged(object? sender, TextChangedEventArgs e) =>
         InitialsLabel.Text = NameFormatting.Initials(NameEntry.Text);
 
+    private async void OnChangePhotoTapped(object? sender, EventArgs e)
+    {
+        if (_member is null)
+            return; // Still loading, or the load failed — there is nothing to edit yet.
+
+        var outcome = await MemberPhotoChooser.ShowAsync(_popups, offerRemove: PhotoImage.IsVisible);
+        if (outcome.Removed)
+        {
+            _pendingPhotoBytes = null;
+            // Discarding a not-yet-saved replacement is just "back to no change";
+            // RemovePhoto is reserved for a photo the server actually stores.
+            _removePhoto = !string.IsNullOrEmpty(_member.PhotoUrl);
+            PhotoImage.Source = null;
+            PhotoImage.IsVisible = false;
+            return;
+        }
+
+        if (outcome.Photo is not { } photo)
+            return; // Cancelled the sheet or the picker — nothing changes.
+
+        try
+        {
+            // Into memory rather than kept as a path: the picker hands back cache files
+            // whose lifetime is the OS's business, and Save may be minutes away.
+            await using var picked = await photo.OpenReadAsync();
+            using var buffer = new MemoryStream();
+            await picked.CopyToAsync(buffer);
+            _pendingPhotoBytes = buffer.ToArray();
+            _removePhoto = false;
+
+            var bytes = _pendingPhotoBytes;
+            PhotoImage.Source = ImageSource.FromStream(() => new MemoryStream(bytes));
+            PhotoImage.IsVisible = true;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            await _popups.ShowWarningAsync("We couldn't read that photo. Try another one.");
+        }
+    }
+
     private async void OnCancelClicked(object? sender, EventArgs e)
     {
         if (HasUnsavedChanges())
@@ -234,7 +289,9 @@ public partial class EditCardiMemberPage : ContentPage
         if (_member is null)
             return false;
 
-        return NameEntry.Text?.Trim() != _member.Name
+        return _pendingPhotoBytes is not null
+            || _removePhoto
+            || NameEntry.Text?.Trim() != _member.Name
             || DateOnly.FromDateTime(DobPicker.Date ?? DateTime.Today) != _member.DateOfBirth
             // Only a picked sex can be a change. An untouched picker on a member with no sex
             // recorded is the state it loaded in, not an edit worth warning about on cancel.
@@ -261,7 +318,11 @@ public partial class EditCardiMemberPage : ContentPage
 
         try
         {
-            await _api.UpdateCardiMemberAsync(_memberId, new UpdateCardiMemberRequest
+            var (photoEdit, abandoned) = await PreparePhotoEditAsync();
+            if (abandoned)
+                return; // They chose to go back and sort the photo out first.
+
+            var request = new UpdateCardiMemberRequest
             {
                 Name = NameEntry.Text!.Trim(),
                 DateOfBirth = DateOnly.FromDateTime(DobPicker.Date ?? DateTime.Today),
@@ -273,7 +334,10 @@ public partial class EditCardiMemberPage : ContentPage
                 EmergencyContactPhone = NullIfEmpty(EmergencyPhoneEntry.Text),
                 MedicalNotes = NullIfEmpty(MedicalNotesEditor.Text),
                 AlertSensitivity = SelectedSensitivity(),
-            });
+            };
+            photoEdit.ApplyTo(request);
+
+            await _api.UpdateCardiMemberAsync(_memberId, request);
 
             // Detail refetches on appearing, so it picks these up without extra plumbing.
             await NavigateBackToDetailAsync();
@@ -294,6 +358,30 @@ public partial class EditCardiMemberPage : ContentPage
             SaveButton.Text = "Save";
             SaveButton.IsEnabled = true;
         }
+    }
+
+    /// <summary>
+    /// The form's photo intent as the request's two wire fields, with the replacement
+    /// downscaled on device first. A photo that can't be prepared must not cost the rest of
+    /// the edit — the server refuses to half-apply a form with a bad photo — so the form
+    /// offers to save without the photo change; <c>abandoned</c> is true only when the
+    /// user declines that offer.
+    /// </summary>
+    private async Task<(ProfilePhotoEdit Edit, bool Abandoned)> PreparePhotoEditAsync()
+    {
+        if (_pendingPhotoBytes is null)
+            return (_removePhoto ? ProfilePhotoEdit.Remove : ProfilePhotoEdit.Keep, false);
+
+        var result = await ProfilePhotoUpload.PrepareAsync(_pendingPhotoBytes, _photoTranscoder);
+        if (result.Succeeded)
+            return (ProfilePhotoEdit.Replace(result.Base64), false);
+
+        var saveWithout = await _popups.ConfirmWarningAsync(
+            $"{result.Error} The rest of your changes can still be saved.",
+            "That photo can't be uploaded",
+            "Save without the photo",
+            "Go back");
+        return (ProfilePhotoEdit.Keep, !saveWithout);
     }
 
     private bool Validate()

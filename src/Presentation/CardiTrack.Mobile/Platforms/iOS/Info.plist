@@ -37,6 +37,13 @@
 	<array>
 		<string>remote-notification</string>
 	</array>
+	<!-- CardiMember profile photo (MediaPicker). The camera string backs the photo sheet's
+	     "Take a photo"; the library string covers "Choose from library" on the picker paths
+	     that still consult it. iOS shows these sentences in the permission prompt. -->
+	<key>NSCameraUsageDescription</key>
+	<string>CardiTrack uses the camera to take a profile photo of the person you look after.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>CardiTrack uses your photo library to choose a profile photo of the person you look after.</string>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>

@@ -207,6 +207,25 @@ public class CardiMemberDraftStoreTests
         Assert.True(_photos.Exists(previous));
     }
 
+    [Fact]
+    public void RemovePhoto_DropsTheFile()
+    {
+        // Removing the photo saves a draft without its path — nothing else would ever
+        // find the file again, so the removal itself must delete it.
+        var path = _photos.Add("/data/removed.img");
+
+        CreateSut().RemovePhoto(path);
+
+        Assert.False(_photos.Exists(path));
+    }
+
+    [Fact]
+    public void RemovePhoto_IsSilent_WithNoPathToRemove()
+    {
+        CreateSut().RemovePhoto(null);
+        CreateSut().RemovePhoto(string.Empty);
+    }
+
     [Theory]
     [InlineData(nameof(CardiMemberDraft.Name))]
     [InlineData(nameof(CardiMemberDraft.DateOfBirth))]

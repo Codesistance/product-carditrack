@@ -21,4 +21,19 @@ public interface ICardiMemberRepository : IRepository<CardiMember>
     /// is never looked at by that pass, full stop.
     /// </summary>
     Task<IReadOnlyList<Guid>> GetActiveIdsWithEnvironmentalConsentAsync();
+
+    /// <summary>
+    /// Every <see cref="Domain.Entities.CardiMember.PhotoObjectName"/> carried by an active
+    /// member — the reference set <c>OrphanedPhotoCleanupWorker</c> diffs the photo bucket
+    /// against. Names rather than entities: the sweep needs membership tests, nothing else.
+    /// </summary>
+    Task<IReadOnlyList<string>> GetActivePhotoObjectNamesAsync();
+
+    /// <summary>
+    /// Soft-deleted members that still carry a <c>PhotoObjectName</c>. Normally empty — the
+    /// removal path clears the column before it saves — so a hit is a crashed removal whose
+    /// photo outlived the membership; the cleanup worker deletes the blob and nulls the column.
+    /// Entities rather than ids because the caller updates the row it was handed.
+    /// </summary>
+    Task<IReadOnlyList<CardiMember>> GetInactiveWithPhotoAsync();
 }

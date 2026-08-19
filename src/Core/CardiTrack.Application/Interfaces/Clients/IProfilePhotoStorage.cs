@@ -32,4 +32,14 @@ public interface IProfilePhotoStorage
     /// The URL is a bearer capability: callers must not persist or log it.
     /// </summary>
     Task<string?> GetReadUrlAsync(string objectName, CancellationToken ct = default);
+
+    /// <summary>
+    /// Every stored photo object with its creation time — the enforcement backstop's view of the
+    /// bucket (<c>OrphanedPhotoCleanupWorker</c> diffs it against the live
+    /// <see cref="Domain.Entities.CardiMember.PhotoObjectName"/> set). Streamed rather than
+    /// materialized because the bucket has no natural upper bound. An unset bucket yields an
+    /// empty sequence with the adapter's usual warn-once, so an unconfigured host sweeps nothing
+    /// rather than throwing.
+    /// </summary>
+    IAsyncEnumerable<(string ObjectName, DateTimeOffset CreatedAt)> ListAsync(CancellationToken ct = default);
 }
