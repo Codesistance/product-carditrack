@@ -9,7 +9,7 @@ namespace CardiTrack.Infrastructure.Settings;
 /// in code, so no configuration change can route health data — including free-text MedicalNotes —
 /// to an off-estate model. Only where MedGemma lives and which weights it serves are configurable.
 /// </remarks>
-public class PrivateAiSettings
+public class PrivateAiSettings : IMedGemmaModelSettings
 {
     public string Model { get; set; } = string.Empty;
 

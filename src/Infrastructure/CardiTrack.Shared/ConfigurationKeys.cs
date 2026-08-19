@@ -209,6 +209,14 @@ public static class ConfigurationKeys
         /// Object section: use with IConfiguration.GetSection(), not ConfigurationLoader.Get().
         /// </summary>
         public const string PrivateSectionName = "AI:Private";
+
+        /// <summary>
+        /// Self-hosted, non-medical model used only to rewrite MedGemma's clinical output into
+        /// caregiver language. Same in-project guarantee as <see cref="PrivateSectionName"/> — no
+        /// provider kind, fixed in code.
+        /// Object section: use with IConfiguration.GetSection(), not ConfigurationLoader.Get().
+        /// </summary>
+        public const string RewriteSectionName = "AI:Rewrite";
     }
 
     /// <summary>

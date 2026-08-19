@@ -29,6 +29,14 @@ namespace CardiTrack.Infrastructure.Extensions;
 /// free-text MedicalNotes, and keeping inference in-project is the control the DPIA relies on. A
 /// misconfigured environment variable must not be able to send them somewhere else.
 /// </para>
+/// <para>
+/// <b>Rewrite</b> (AI:Rewrite) — a third, equally in-estate slot. Same <see cref="MedGemmaClient"/>
+/// pointed at a second, plain non-medical model tag pulled into the same MedGemma image
+/// (docs/llm_design.md), used to rewrite MedGemma's clinical output into caregiver language
+/// without any clinical content ever leaving the project. Registered inside
+/// <see cref="AddMedicalAiServices"/> for the same reason Private is not switchable: it must
+/// travel with the private slot on every host, never be reachable on its own.
+/// </para>
 /// </remarks>
 public static class AiServiceExtensions
 {
@@ -37,6 +45,10 @@ public static class AiServiceExtensions
 
     /// <summary>Named HTTP client for the in-VPC MedGemma service.</summary>
     public const string PrivateHttpClientName = "PrivateAiClient";
+
+    /// <summary>Named HTTP client for the in-VPC rewrite model — same host as Private, own client
+    /// instance so its timeout/base-address can be configured independently.</summary>
+    public const string RewriteHttpClientName = "RewriteAiClient";
 
     /// <summary>Endpoint used when AI:Public:BaseUrl is not set. Every kind has one.</summary>
     private static readonly Dictionary<PublicAiProviderKind, string> DefaultBaseUrls = new()
@@ -136,6 +148,34 @@ public static class AiServiceExtensions
         // is the same instance the client above was handed rather than a second read of config.
         services.AddSingleton(privateSettings);
 
+        // Rewrite slot — a second, plain non-medical model pulled into the same MedGemma image
+        // (docs/llm_design.md), used only to rewrite MedGemma's clinical output into caregiver
+        // language. Registered here, not AddAiServices, so it travels with the private slot on
+        // every host that gets it and is unreachable from any host that doesn't — no host can end
+        // up with the rewrite model wired but not MedGemma. Same in-estate guarantee as Private:
+        // MedGemmaClient again, just a different settings instance and a different client name.
+        var rewriteSettings = LoadRewriteSettings(configuration);
+
+        var rewriteClient = services.AddHttpClient(RewriteHttpClientName, client =>
+        {
+            client.BaseAddress = new Uri(rewriteSettings.BaseUrl);
+            client.Timeout = TimeSpan.FromSeconds(rewriteSettings.TimeoutSeconds);
+        });
+
+        if (rewriteSettings.UseIdentityToken)
+        {
+            rewriteClient.AddHttpMessageHandler(sp => new MedGemmaIdentityTokenHandler(
+                rewriteSettings.BaseUrl,
+                sp.GetRequiredService<ILogger<MedGemmaIdentityTokenHandler>>()));
+        }
+
+        services.AddKeyedScoped<IExternalAiClient>("RewriteProvider", (sp, _) =>
+            new MedGemmaClient(
+                sp.GetRequiredService<IHttpClientFactory>(), rewriteSettings, RewriteHttpClientName,
+                sp.GetRequiredService<ILogger<MedGemmaClient>>()));
+
+        services.AddScoped<IRewriteAiService, RewriteAiService>();
+
         // Member context — the composer and every source that feeds it. Registered here rather
         // than in each host's composition root deliberately: this method is the one door every
         // MedGemma-calling host goes through, so a host cannot end up with the composer and a
@@ -191,7 +231,28 @@ public static class AiServiceExtensions
         RequirePositive(settings.TimeoutSeconds, ConfigurationKeys.AI.PrivateSectionName, nameof(PrivateAiSettings.TimeoutSeconds));
         RequireAbsoluteUrl(settings.BaseUrl, ConfigurationKeys.AI.PrivateSectionName, nameof(PrivateAiSettings.BaseUrl));
 
-        RequireCoherentIdentityTokenMode(settings);
+        RequireCoherentIdentityTokenMode(ConfigurationKeys.AI.PrivateSectionName, settings.BaseUrl, settings.UseIdentityToken);
+
+        return settings;
+    }
+
+    /// <summary>
+    /// The plain, non-medical rewrite model — same Cloud Run host as Private in every deployed
+    /// environment (same Ollama instance, a different <c>model</c> value per call), validated as
+    /// its own section so a host that only wires the rewrite slot is not silently coupled to
+    /// Private's config.
+    /// </summary>
+    private static RewriteAiSettings LoadRewriteSettings(IConfiguration configuration)
+    {
+        var settings = configuration.GetSection(ConfigurationKeys.AI.RewriteSectionName).Get<RewriteAiSettings>()
+            ?? new RewriteAiSettings();
+
+        RequireValue(settings.Model, ConfigurationKeys.AI.RewriteSectionName, nameof(RewriteAiSettings.Model));
+        RequireValue(settings.BaseUrl, ConfigurationKeys.AI.RewriteSectionName, nameof(RewriteAiSettings.BaseUrl));
+        RequirePositive(settings.TimeoutSeconds, ConfigurationKeys.AI.RewriteSectionName, nameof(RewriteAiSettings.TimeoutSeconds));
+        RequireAbsoluteUrl(settings.BaseUrl, ConfigurationKeys.AI.RewriteSectionName, nameof(RewriteAiSettings.BaseUrl));
+
+        RequireCoherentIdentityTokenMode(ConfigurationKeys.AI.RewriteSectionName, settings.BaseUrl, settings.UseIdentityToken);
 
         return settings;
     }
@@ -214,28 +275,39 @@ public static class AiServiceExtensions
     /// clear text.
     /// </item>
     /// </list>
+    /// <para>
+    /// Takes the settings as primitives rather than <see cref="PrivateAiSettings"/> directly so
+    /// <see cref="LoadRewriteSettings"/> — a different settings type pointed at the same kind of
+    /// host — can share the check rather than duplicate it.
+    /// </para>
     /// </remarks>
-    private static void RequireCoherentIdentityTokenMode(PrivateAiSettings settings)
+    private static void RequireCoherentIdentityTokenMode(string sectionName, string baseUrl, bool useIdentityToken)
     {
-        var baseUri = new Uri(settings.BaseUrl);
+        var baseUri = new Uri(baseUrl);
         var isCloudRun = baseUri.Host.EndsWith(".run.app", StringComparison.OrdinalIgnoreCase);
+        var useIdentityTokenKey = sectionName == ConfigurationKeys.AI.RewriteSectionName
+            ? nameof(RewriteAiSettings.UseIdentityToken)
+            : nameof(PrivateAiSettings.UseIdentityToken);
+        var baseUrlKey = sectionName == ConfigurationKeys.AI.RewriteSectionName
+            ? nameof(RewriteAiSettings.BaseUrl)
+            : nameof(PrivateAiSettings.BaseUrl);
 
-        if (isCloudRun && !settings.UseIdentityToken)
+        if (isCloudRun && !useIdentityToken)
         {
             throw new InvalidOperationException(
-                Message(ConfigurationKeys.AI.PrivateSectionName, nameof(PrivateAiSettings.UseIdentityToken),
-                    $"is false, but {ConfigurationKeys.AI.PrivateSectionName}:{nameof(PrivateAiSettings.BaseUrl)} "
+                Message(sectionName, useIdentityTokenKey,
+                    $"is false, but {sectionName}:{baseUrlKey} "
                     + $"points at the Cloud Run host '{baseUri.Host}', which authorises callers by IAM. "
                     + "Every MedGemma call would return 403 before reaching the model, and because "
                     + "per-member inference failures are swallowed, digests and assessments would stop "
-                    + "silently rather than erroring. Set AI__Private__UseIdentityToken=true."));
+                    + $"silently rather than erroring. Set {ConfigurationLoader.ToEnvVarKey($"{sectionName}:{useIdentityTokenKey}")}=true."));
         }
 
-        if (settings.UseIdentityToken && !baseUri.Scheme.Equals(Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
+        if (useIdentityToken && !baseUri.Scheme.Equals(Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
         {
             throw new InvalidOperationException(
-                Message(ConfigurationKeys.AI.PrivateSectionName, nameof(PrivateAiSettings.UseIdentityToken),
-                    $"is true, but {ConfigurationKeys.AI.PrivateSectionName}:{nameof(PrivateAiSettings.BaseUrl)} "
+                Message(sectionName, useIdentityTokenKey,
+                    $"is true, but {sectionName}:{baseUrlKey} "
                     + $"uses scheme '{baseUri.Scheme}'. That would transmit a bearer identity token in "
                     + "clear text. Use https, or turn the flag off for a local endpoint."));
         }

@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Offline diagnostic, deliberately NOT in CardiTrack.sln and not built by CI:
+    it needs a real dev database and a real MedGemma/rewrite-model endpoint, so it
+    can only be run by hand. See tools/AiSplitEvaluator/README.md.
+  -->
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>CardiTrack.Tools.AiSplitEvaluator</RootNamespace>
+    <AssemblyName>CardiTrack.Tools.AiSplitEvaluator</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Referenced so this replays the real assessor's data-gathering and prompt-building code
+         (RealtimeAssessmentService.AssessmentInstructions/BuildPrompt, MemberContextComposer,
+         SsaDecomposition) rather than a hand-copied approximation of it. -->
+    <ProjectReference Include="..\..\src\Core\CardiTrack.Application\CardiTrack.Application.csproj" />
+    <ProjectReference Include="..\..\src\Infrastructure\CardiTrack.Infrastructure\CardiTrack.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\Infrastructure\CardiTrack.Shared\CardiTrack.Shared.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="appsettings.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
+</Project>

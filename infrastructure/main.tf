@@ -42,6 +42,11 @@ locals {
   # never pulled. trimspace matches the `tr -d '[:space:]'` the image build applies to the file.
   medgemma_model = trimspace(file("${path.module}/../src/Infrastructure/MedGemma/.model-version"))
 
+  # Same file-read pattern, for the plain non-medical model pulled into the same MedGemma image
+  # (docs/llm_design.md) and used only to rewrite MedGemma's clinical output into caregiver-facing
+  # language. Same drift risk as medgemma_model above, same fix.
+  medgemma_rewrite_model = trimspace(file("${path.module}/../src/Infrastructure/MedGemma/.rewrite-model-version"))
+
   # Defaults to the secret that already exists, so swapping the public provider is a tfvar change
   # rather than a destroy-and-recreate of a Secret Manager secret (and the seeding that follows it).
   public_ai_api_key_secret_id = coalesce(
@@ -123,7 +128,13 @@ module "deployments" {
       # that receives AI__Private__BaseUrl, including the aggregator, which carries the config
       # without calling the model — AiServiceExtensions refuses to start a host whose BaseUrl is a
       # Cloud Run URL while this is false, and that check runs wherever the settings are bound.
-      "AI__Private__UseIdentityToken"  = "true"
+      "AI__Private__UseIdentityToken" = "true"
+      # Rewrite slot — same Cloud Run host as Private (see AI__Rewrite__BaseUrl below), a different
+      # model tag on the same Ollama instance. Every host that gets AddMedicalAiServices now
+      # validates this section at startup too, so it is set everywhere AI__Private__* is.
+      "AI__Rewrite__Model"             = local.medgemma_rewrite_model
+      "AI__Rewrite__TimeoutSeconds"    = tostring(var.medgemma_timeout_seconds)
+      "AI__Rewrite__UseIdentityToken"  = "true"
       "Apm__Engine"                    = var.apm_engine
       "Apm__MetricsEnabled"            = tostring(var.apm_metrics_enabled)
       "Apm__TracesSampleRatio"         = tostring(var.traces_sample_ratio.api)
@@ -176,8 +187,11 @@ module "deployments" {
       "DeviceProviders__0__ClientId"     = "${var.project_name}-${local.environment}-devices-fitbit-client-id"
       "DeviceProviders__0__ClientSecret" = "${var.project_name}-${local.environment}-devices-fitbit-client-secret"
       "AI__Private__BaseUrl"             = "${var.project_name}-${local.environment}-medgemma-service-url"
-      "AI__Public__ApiKey"               = local.public_ai_api_key_secret_id
-      "Apm__Data"                        = "${var.project_name}-${local.environment}-apm-data"
+      # Same secret as AI__Private__BaseUrl — the rewrite model lives on the same Cloud Run host,
+      # just a different model= value per Ollama call.
+      "AI__Rewrite__BaseUrl" = "${var.project_name}-${local.environment}-medgemma-service-url"
+      "AI__Public__ApiKey"   = local.public_ai_api_key_secret_id
+      "Apm__Data"            = "${var.project_name}-${local.environment}-apm-data"
       # Transitional — delete alongside the legacy AI__Providers env vars above.
       "AI__Providers__0__BaseUrl" = "${var.project_name}-${local.environment}-medgemma-service-url"
       "AI__Providers__1__ApiKey"  = local.public_ai_api_key_secret_id
@@ -243,6 +257,9 @@ module "deployments" {
     "AI__Private__Model"             = local.medgemma_model
     "AI__Private__TimeoutSeconds"    = tostring(var.medgemma_timeout_seconds)
     "AI__Private__UseIdentityToken"  = "true"
+    "AI__Rewrite__Model"             = local.medgemma_rewrite_model
+    "AI__Rewrite__TimeoutSeconds"    = tostring(var.medgemma_timeout_seconds)
+    "AI__Rewrite__UseIdentityToken"  = "true"
     "Apm__Engine"                    = var.apm_engine
     "Apm__MetricsEnabled"            = tostring(var.apm_metrics_enabled)
     "Serilog__MinimumLevel__Default" = var.log_minimum_level.worker
@@ -251,6 +268,7 @@ module "deployments" {
     "ConnectionStrings__DefaultConnection" = "${var.project_name}-${local.environment}-db-connection-string"
     "Encryption__Key"                      = "${var.project_name}-${local.environment}-encryption-key"
     "AI__Private__BaseUrl"                 = "${var.project_name}-${local.environment}-medgemma-service-url"
+    "AI__Rewrite__BaseUrl"                 = "${var.project_name}-${local.environment}-medgemma-service-url"
     "Apm__Data"                            = "${var.project_name}-${local.environment}-apm-data"
   }
 
@@ -264,6 +282,9 @@ module "deployments" {
       "AI__Private__Model"             = local.medgemma_model
       "AI__Private__TimeoutSeconds"    = tostring(var.medgemma_timeout_seconds)
       "AI__Private__UseIdentityToken"  = "true"
+      "AI__Rewrite__Model"             = local.medgemma_rewrite_model
+      "AI__Rewrite__TimeoutSeconds"    = tostring(var.medgemma_timeout_seconds)
+      "AI__Rewrite__UseIdentityToken"  = "true"
       "Apm__Engine"                    = var.apm_engine
       "Apm__MetricsEnabled"            = tostring(var.apm_metrics_enabled)
       "Serilog__MinimumLevel__Default" = var.log_minimum_level.worker
@@ -276,6 +297,7 @@ module "deployments" {
     "ConnectionStrings__DefaultConnection" = "${var.project_name}-${local.environment}-db-connection-string"
     "Encryption__Key"                      = "${var.project_name}-${local.environment}-encryption-key"
     "AI__Private__BaseUrl"                 = "${var.project_name}-${local.environment}-medgemma-service-url"
+    "AI__Rewrite__BaseUrl"                 = "${var.project_name}-${local.environment}-medgemma-service-url"
     "Apm__Data"                            = "${var.project_name}-${local.environment}-apm-data"
     "DeviceProviders__0__ClientId"         = "${var.project_name}-${local.environment}-devices-fitbit-client-id"
     "DeviceProviders__0__ClientSecret"     = "${var.project_name}-${local.environment}-devices-fitbit-client-secret"
