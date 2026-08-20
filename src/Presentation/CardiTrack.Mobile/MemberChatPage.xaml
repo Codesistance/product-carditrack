@@ -158,20 +158,15 @@
             <!-- Pinned input bar. SendButton is a sibling of the Border, not a child of it —
                  Border clips its content to StrokeShape regardless of how much padding surrounds
                  a child, so a shadow on anything inside it gets cut against the rounded corner no
-                 matter the numbers. Placing the button outside the clipped region and overlapping
-                 it (End-aligned, negative-margin overlap) is what actually stops the clip; the
-                 Editor is the only thing that still needs the field's own bounded, hairline-edged
-                 surface, so it stays the sole content of the Border. -->
-            <!-- ColumnSpacing 0 and SendButton's negative left margin tuck it into the Border's
-                 rounded right edge so the two read as one continuous bar, not two separate
-                 shapes — the Border's own right padding (64) is widened to match, so the
-                 Editor's text never runs under the button. -->
-            <Grid Grid.Row="1" Margin="16,8,16,16" ColumnDefinitions="*,Auto" ColumnSpacing="0">
-                <Border Grid.Column="0"
-                        Style="{StaticResource AuthEntryBorder}"
+                 matter the numbers. Both share the one Grid cell: the Border fills the full
+                 width so the field runs behind the icon, and the button floats End-aligned on
+                 top of it — the Border's right padding (72) reserves the strip under the button
+                 so the Editor's text never disappears beneath it. -->
+            <Grid Grid.Row="1" Margin="16,8,16,16">
+                <Border Style="{StaticResource AuthEntryBorder}"
                         HeightRequest="-1"
                         MinimumHeightRequest="64"
-                        Padding="20,16,64,16">
+                        Padding="20,16,72,16">
                     <Editor x:Name="MessageEditor"
                             FontFamily="Quicksand"
                             FontSize="14"
@@ -189,12 +184,11 @@
                      small bounce so sending reads as sending to something, not just submitting a
                      form field. -->
                 <controls:SquareBorder x:Name="SendButton"
-                        Grid.Column="1"
                         WidthRequest="48" HeightRequest="48"
                         StrokeThickness="0"
                         BackgroundColor="{StaticResource White}"
-                        VerticalOptions="End"
-                        Margin="-24,0,8,8"
+                        HorizontalOptions="End" VerticalOptions="End"
+                        Margin="0,0,10,8"
                         SemanticProperties.Description="Send message">
                     <controls:SquareBorder.StrokeShape>
                         <RoundRectangle CornerRadius="99"/>
