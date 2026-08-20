@@ -362,14 +362,22 @@
                                                     <Label Text="{Binding Title}"
                                                            Style="{StaticResource DashboardSectionTitle}"/>
                                                     <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+                                                        <!-- Display only. The whole number column
+                                                             used to be a hidden tap target for the
+                                                             edit screen, which is an edit with no
+                                                             affordance saying so and no way to read
+                                                             the card without risking it — the pencil
+                                                             opposite says it instead. -->
                                                         <VerticalStackLayout Grid.Column="0"
                                                                              Spacing="2"
                                                                              VerticalOptions="Center">
-                                                            <VerticalStackLayout.GestureRecognizers>
-                                                                <TapGestureRecognizer Tapped="OnContactPrimaryTapped"/>
-                                                            </VerticalStackLayout.GestureRecognizers>
+                                                            <!-- One line, whatever the name: the
+                                                                 carousel is a fixed height, and a
+                                                                 long name wrapping is what would
+                                                                 push the number out of the card. -->
                                                             <Label Text="{Binding Primary}"
-                                                                   Style="{StaticResource Body1SemiBoldDark}"/>
+                                                                   Style="{StaticResource Body1SemiBoldDark}"
+                                                                   LineBreakMode="TailTruncation"/>
                                                             <Label Text="{Binding Secondary}"
                                                                    Style="{StaticResource Body2}"
                                                                    IsVisible="{Binding HasSecondary}"/>
@@ -413,18 +421,26 @@
                                                                        HorizontalOptions="Center"
                                                                        VerticalOptions="Center"/>
                                                             </Border>
+                                                            <!-- Both slides carry it, and it is
+                                                                 the record's only way in now:
+                                                                 shown whenever the caregiver is
+                                                                 the primary — the only one the
+                                                                 API lets change these — rather
+                                                                 than only on an empty phone card,
+                                                                 which offered to add a number and
+                                                                 nothing to fix a wrong one. -->
                                                             <Border WidthRequest="40" HeightRequest="40"
                                                                     StrokeThickness="0"
                                                                     BackgroundColor="{StaticResource SelectedOptionBackground}"
                                                                     VerticalOptions="Center"
                                                                     IsVisible="{Binding ShowEdit}"
-                                                                    SemanticProperties.Description="Edit phone number"
-                                                                    SemanticProperties.Hint="Opens the profile form on their phone number">
+                                                                    SemanticProperties.Description="{Binding EditDescription}"
+                                                                    SemanticProperties.Hint="Opens a form for just this record">
                                                                 <Border.StrokeShape>
                                                                     <RoundRectangle CornerRadius="12"/>
                                                                 </Border.StrokeShape>
                                                                 <Border.GestureRecognizers>
-                                                                    <TapGestureRecognizer Tapped="OnContactPrimaryTapped"/>
+                                                                    <TapGestureRecognizer Tapped="OnContactEditTapped"/>
                                                                 </Border.GestureRecognizers>
                                                                 <Image Source="icon_edit.svg"
                                                                        WidthRequest="20" HeightRequest="20"
@@ -463,7 +479,11 @@
                                 <Grid.GestureRecognizers>
                                     <TapGestureRecognizer Tapped="OnQuestionsTapped"/>
                                 </Grid.GestureRecognizers>
-                                <Image Grid.Column="0" Source="icon_clipboard.svg"
+                                <!-- Call-outs rather than the clipboard: the summary card two
+                                     sections up is already a clipboard, and a row repeating it
+                                     read as more of that card rather than as a way somewhere
+                                     else. Two bubbles — one asked, one answered. -->
+                                <Image Grid.Column="0" Source="icon_callout.svg"
                                        WidthRequest="22" HeightRequest="22" VerticalOptions="Center"/>
                                 <Label Grid.Column="1"
                                        Text="Questions &amp; Answers"
@@ -484,7 +504,10 @@
                                 <Grid.GestureRecognizers>
                                     <TapGestureRecognizer Tapped="OnDaybookTapped"/>
                                 </Grid.GestureRecognizers>
-                                <Image Grid.Column="0" Source="icon_tab_journal.svg"
+                                <!-- A book, not the tab bar's written page: that glyph is drawn
+                                     in the unselected-tab grey and read as a disabled row beside
+                                     the blue ones either side of it. -->
+                                <Image Grid.Column="0" Source="icon_book.svg"
                                        WidthRequest="22" HeightRequest="22" VerticalOptions="Center"/>
                                 <Label Grid.Column="1"
                                        Text="CardiJournal"
@@ -510,8 +533,11 @@
                                 <Grid.GestureRecognizers>
                                     <TapGestureRecognizer Tapped="OnMedicalTapped"/>
                                 </Grid.GestureRecognizers>
+                                <!-- The medical mark itself. The padlock this replaces described
+                                     how the notes are held rather than what they are, and read as
+                                     "locked" to the one caregiver who can open them. -->
                                 <Image Grid.Column="0"
-                                       Source="icon_lock.svg"
+                                       Source="icon_medical_cross.svg"
                                        WidthRequest="22" HeightRequest="22"
                                        VerticalOptions="Center"/>
                                 <Label Grid.Column="1"
@@ -555,11 +581,14 @@
                                     <Grid.GestureRecognizers>
                                         <TapGestureRecognizer Tapped="OnToggleAlertRulesTapped"/>
                                     </Grid.GestureRecognizers>
-                                    <!-- Sliders, not the bell the header already uses for the
-                                         alerts inbox: this opens what CardiTrack watches for, not
-                                         what it has found. -->
+                                    <!-- A bell wearing a cog. The sliders it replaces said only
+                                         "settings" and could have been any row in this group; the
+                                         bell says which subject, and the cog says these are the
+                                         rules behind the alerts rather than the alerts themselves
+                                         — which is what keeps it apart from the header's plain
+                                         bell, the inbox of what CardiTrack has already found. -->
                                     <Image Grid.Column="0"
-                                           Source="icon_sliders.svg"
+                                           Source="icon_bell_cog.svg"
                                            WidthRequest="22" HeightRequest="22"
                                            VerticalOptions="Center"/>
                                     <Label Grid.Column="1"
@@ -617,7 +646,10 @@
                                 <Grid.GestureRecognizers>
                                     <TapGestureRecognizer Tapped="OnJournalTimingTapped"/>
                                 </Grid.GestureRecognizers>
-                                <Image Grid.Column="0" Source="icon_tab_journal.svg"
+                                <!-- The CardiJournal row's book wearing the same cog Alert Rules
+                                     wears: the journal is the subject, the cog is what makes this
+                                     the setting for it rather than the journal itself. -->
+                                <Image Grid.Column="0" Source="icon_book_cog.svg"
                                        WidthRequest="22" HeightRequest="22" VerticalOptions="Center"/>
                                 <Label Grid.Column="1"
                                        Text="Journal Settings"

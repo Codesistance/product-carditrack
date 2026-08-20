@@ -18,10 +18,10 @@ public sealed class ContactCardItem : INotifyPropertyChanged
     private string _title = string.Empty;
     private string _primary = string.Empty;
     private string _secondary = string.Empty;
+    private string _editDescription = string.Empty;
     private bool _showCall;
     private bool _showMessage;
     private bool _showEdit;
-    private bool _canEditPrimary;
 
     public required string Kind { get; init; }
 
@@ -62,16 +62,25 @@ public sealed class ContactCardItem : INotifyPropertyChanged
         set => Set(ref _showMessage, value);
     }
 
+    /// <summary>
+    /// Whether this card offers its own edit affordance — true for the primary caregiver, who is
+    /// the only one the API lets change these records.
+    /// </summary>
     public bool ShowEdit
     {
         get => _showEdit;
         set => Set(ref _showEdit, value);
     }
 
-    public bool CanEditPrimary
+    /// <summary>
+    /// What the edit button announces. Per card rather than a fixed string on the template: the
+    /// two slides edit different records, and "Edit" alone in a carousel says nothing about which
+    /// one is under the caregiver's finger.
+    /// </summary>
+    public string EditDescription
     {
-        get => _canEditPrimary;
-        set => Set(ref _canEditPrimary, value);
+        get => _editDescription;
+        set => Set(ref _editDescription, value);
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;

@@ -1,5 +1,4 @@
 using System.Globalization;
-using System.Text.RegularExpressions;
 using CardiTrack.Application.DTOs.Requests;
 using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Domain.Enums;
@@ -56,9 +55,6 @@ public partial class EditCardiMemberPage : ContentPage
         ("Medium", AlertSensitivity.Medium),
         ("High", AlertSensitivity.High),
     ];
-
-    // Matches the server's phone rule so the form rejects what the API would reject.
-    private static readonly Regex PhonePattern = new(@"^\+?[1-9]\d{1,14}$", RegexOptions.Compiled);
 
     private readonly ICardiTrackApiClient _api;
     private readonly IPopupService _popups;
@@ -417,18 +413,18 @@ public partial class EditCardiMemberPage : ContentPage
             valid = false;
         }
 
-        var emergencyPhone = NullIfEmpty(EmergencyPhoneEntry.Text);
-        if (emergencyPhone is not null && !PhonePattern.IsMatch(emergencyPhone))
+        // Same rule, and the same message, as the contact carousel's own form on M1-13 — see
+        // PhoneNumberFormat, which is where both of them and the API agree on what a number is.
+        if (!PhoneNumberFormat.IsValid(EmergencyPhoneEntry.Text))
         {
-            EmergencyPhoneError.Text = "Enter a valid phone number, e.g. +15551234567";
+            EmergencyPhoneError.Text = PhoneNumberFormat.ValidationMessage;
             EmergencyPhoneError.IsVisible = true;
             valid = false;
         }
 
-        var phone = NullIfEmpty(PhoneEntry.Text);
-        if (phone is not null && !PhonePattern.IsMatch(phone))
+        if (!PhoneNumberFormat.IsValid(PhoneEntry.Text))
         {
-            PhoneError.Text = "Enter a valid phone number, e.g. +15551234567";
+            PhoneError.Text = PhoneNumberFormat.ValidationMessage;
             PhoneError.IsVisible = true;
             valid = false;
         }
