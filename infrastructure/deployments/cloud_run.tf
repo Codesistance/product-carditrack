@@ -926,6 +926,21 @@ resource "google_cloud_run_v2_service" "rewrite" {
         value = "0"
       }
 
+      # Cap the runner's context window. Left uncapped, Ollama sizes the KV cache for the
+      # model's full trained window — 131072 tokens for gemma3 — and that allocation, not the
+      # ~3GiB of q4 weights, is what pushed this instance to 8.2GiB and an OOM kill *during
+      # inference* even after the memory raise (measured 2026-08-20, issue #397: model loaded,
+      # generated 227 tokens, then died at "8209 MiB used" against the 8Gi limit). The rewrite
+      # slot's prompts are short and bounded by construction (the guard check, the query plan,
+      # and a rewrite of a capped clinical read — see MemberContextComposer's section caps), so
+      # 8192 tokens is generous headroom, and the KV saving is what actually makes this service
+      # fit its allocation. medgemma's own service deliberately stays uncapped: its clinical
+      # prompts carry the full member context and its 16Gi was sized with the full window in.
+      env {
+        name  = "OLLAMA_CONTEXT_LENGTH"
+        value = "8192"
+      }
+
       resources {
         limits = {
           cpu    = var.rewrite_cpu
