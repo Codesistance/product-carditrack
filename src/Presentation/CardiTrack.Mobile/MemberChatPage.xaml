@@ -75,16 +75,16 @@
             </Grid>
         </controls:HeaderBand>
 
-        <Grid Grid.Row="1" RowDefinitions="*,Auto">
+        <Grid Grid.Row="1" RowDefinitions="*,Auto,Auto">
 
-            <VerticalStackLayout x:Name="SkeletonPanel" Grid.Row="0" Grid.RowSpan="2"
+            <VerticalStackLayout x:Name="SkeletonPanel" Grid.Row="0" Grid.RowSpan="3"
                                   Spacing="14" Padding="20,20" IsVisible="False">
                 <controls:SkeletonView HeightRequest="60"/>
                 <controls:SkeletonView HeightRequest="60"/>
                 <controls:SkeletonView HeightRequest="60"/>
             </VerticalStackLayout>
 
-            <VerticalStackLayout x:Name="ErrorPanel" Grid.Row="0" Grid.RowSpan="2"
+            <VerticalStackLayout x:Name="ErrorPanel" Grid.Row="0" Grid.RowSpan="3"
                                   Spacing="12" Padding="20,60,20,20" IsVisible="False">
                 <Label Text="We couldn't load this"
                        Style="{StaticResource Heading3}"
@@ -141,6 +141,20 @@
                                         <Label Text="{Binding Content}"
                                                Style="{StaticResource Body2}"
                                                TextColor="{Binding TextColor}"/>
+                                        <!-- The supporting charts behind the reply — drawn, not
+                                             summarised. ChartSummary below survives only for
+                                             series too thin to plot (fewer than two readings). -->
+                                        <VerticalStackLayout Spacing="10"
+                                                             IsVisible="{Binding HasCharts}"
+                                                             BindableLayout.ItemsSource="{Binding Charts}">
+                                            <BindableLayout.ItemTemplate>
+                                                <DataTemplate x:DataType="controls:ChatChartItem">
+                                                    <controls:ChatSeriesChart Item="{Binding .}"
+                                                                              WidthRequest="248"
+                                                                              HorizontalOptions="Start"/>
+                                                </DataTemplate>
+                                            </BindableLayout.ItemTemplate>
+                                        </VerticalStackLayout>
                                         <Label Text="{Binding ChartSummary}"
                                                Style="{StaticResource Body2}"
                                                FontSize="12"
@@ -155,6 +169,31 @@
                 </CollectionView>
             </RefreshView>
 
+            <!-- The reply-in-progress bubble: the bot mark breathing while the model chain works,
+                 beside a line of waiting copy the code-behind cycles (LLM-written for this
+                 question, canned if that generation loses its race). A pinned row below the
+                 conversation rather than a CollectionView item, because its text changes every
+                 few seconds and its animation must run continuously — an immutable ChatTurnItem
+                 would have to be swapped out per tick, recreating the bubble and restarting the
+                 pulse mid-breath. -->
+            <Grid x:Name="PendingPanel" Grid.Row="1" Padding="16,4,16,8" IsVisible="False">
+                <Border Style="{StaticResource ElevatedCard}"
+                        BackgroundColor="{StaticResource White}"
+                        Padding="10,6,14,6"
+                        MaximumWidthRequest="300"
+                        HorizontalOptions="Start">
+                    <HorizontalStackLayout Spacing="6">
+                        <controls:PendingBotIndicator VerticalOptions="Center"/>
+                        <Label x:Name="PendingTextLabel"
+                               Style="{StaticResource Body2}"
+                               TextColor="{StaticResource BodyText}"
+                               VerticalOptions="Center"
+                               MaximumWidthRequest="210"
+                               LineBreakMode="WordWrap"/>
+                    </HorizontalStackLayout>
+                </Border>
+            </Grid>
+
             <!-- Pinned input bar. SendButton is a sibling of the Border, not a child of it —
                  Border clips its content to StrokeShape regardless of how much padding surrounds
                  a child, so a shadow on anything inside it gets cut against the rounded corner no
@@ -162,7 +201,7 @@
                  width so the field runs behind the icon, and the button floats End-aligned on
                  top of it — the Border's right padding (72) reserves the strip under the button
                  so the Editor's text never disappears beneath it. -->
-            <Grid Grid.Row="1" Margin="16,8,16,16">
+            <Grid Grid.Row="2" Margin="16,8,16,16">
                 <Border Style="{StaticResource AuthEntryBorder}"
                         HeightRequest="-1"
                         MinimumHeightRequest="64"

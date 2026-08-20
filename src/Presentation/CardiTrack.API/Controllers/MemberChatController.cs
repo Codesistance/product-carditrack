@@ -97,6 +97,41 @@ public class MemberChatController : BaseApiController
         }
     }
 
+    /// <summary>
+    /// Short lines for the app to cycle in the pending reply bubble while the send for the same
+    /// message is in flight — called alongside <see cref="SendMessage"/>, never instead of it.
+    /// Always 200 with sentences on a viewable member: generation failures come back as the
+    /// service's canned lines, because waiting copy must never make the send look broken.
+    /// </summary>
+    [HttpPost("members/{cardiMemberId:guid}/waiting-sentences")]
+    [ProducesResponseType(typeof(ApiResponse<MemberChatWaitingResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<ApiResponse<MemberChatWaitingResponse>>> GetWaitingSentences(
+        Guid cardiMemberId, [FromBody] MemberChatMessageRequest request, CancellationToken ct)
+    {
+        if (!UserContext.IsAuthenticated || UserContext.UserId == Guid.Empty)
+        {
+            return Error("We couldn't find your account — please sign in again.", StatusCodes.Status403Forbidden);
+        }
+
+        var validation = await _messageValidator.ValidateAsync(request, ct);
+        if (!validation.IsValid)
+            return ValidationFailed(validation);
+
+        try
+        {
+            var sentences = await _chat.GetWaitingSentencesAsync(
+                UserContext.UserId, cardiMemberId, request.Message, ct);
+            return Success(new MemberChatWaitingResponse { Sentences = sentences });
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return Error(ex.Message, StatusCodes.Status404NotFound);
+        }
+    }
+
     /// <summary>The caregiver's active session for this member and its turns, for app-relaunch
     /// resume. 200 with a null <c>data</c> when no active session exists — not a 404, since the
     /// member itself may well exist and be viewable.</summary>

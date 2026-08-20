@@ -132,6 +132,11 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
             // see MemberChatController.GetCurrentSession — not a malformed reply.
             allowNullData: true);
 
+    public Task<MemberChatWaitingResponse> GetMemberChatWaitingSentencesAsync(
+        Guid cardiMemberId, MemberChatMessageRequest request, CancellationToken ct = default) =>
+        SendAsync<MemberChatMessageRequest, MemberChatWaitingResponse>(
+            HttpMethod.Post, $"api/v1/member-chat/members/{cardiMemberId}/waiting-sentences", request, ct);
+
     public Task<IReadOnlyList<DigestResponse>> GetJournalEntriesAsync(
         Guid cardiMemberId,
         JournalCadence cadence,

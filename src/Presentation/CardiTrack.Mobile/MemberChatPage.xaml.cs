@@ -3,6 +3,7 @@ using System.Globalization;
 using CardiTrack.Application.DTOs.Common;
 using CardiTrack.Application.DTOs.Requests;
 using CardiTrack.Application.DTOs.Responses;
+using CardiTrack.Mobile.Controls;
 using CardiTrack.Mobile.Core.Api;
 using CardiTrack.Mobile.Services;
 
@@ -160,34 +161,91 @@ public partial class MemberChatPage : ContentView
         SetState(loaded: true);
 
         // The reply is a chain of model calls and legitimately takes a while — an empty slot
-        // for that long reads as a swallowed message, so the slot says it's being worked on.
-        var pending = ChatTurnItem.Pending(_memberFirstName);
-        _turns.Add(pending);
+        // for that long reads as a swallowed message. The pending panel says it's being worked
+        // on: the bot mark starts breathing immediately, and the waiting copy the cycler fetches
+        // fills in beside it when it lands.
+        PendingTextLabel.Text = string.Empty;
+        PendingPanel.IsVisible = true;
+        var waitingCts = new CancellationTokenSource();
+        _ = CycleWaitingLinesAsync(message, waitingCts.Token);
 
         try
         {
             var response = await _api.SendMemberChatMessageAsync(
                 _memberId, new MemberChatMessageRequest { Message = message });
-            _turns.Remove(pending);
             _turns.Add(ChatTurnItem.FromReply(response, _memberFirstName));
         }
         catch (ApiException ex)
         {
             // The question stays in the list — retyping it would be worse than seeing why it
             // didn't get an answer. The reply slot carries the error instead of a made-up answer.
-            _turns.Remove(pending);
             _turns.Add(ChatTurnItem.FromError(ex.Message));
         }
         catch (Exception ex)
         {
             ScreenRefresh.LogFailure(ex, nameof(MemberChatPage), "while sending a message");
-            _turns.Remove(pending);
             _turns.Add(ChatTurnItem.FromError("Something went wrong sending that — try again."));
         }
         finally
         {
+            // Cancel before Dispose so the cycler's in-flight await throws out of its loop
+            // rather than racing a disposed token source.
+            waitingCts.Cancel();
+            waitingCts.Dispose();
+            PendingPanel.IsVisible = false;
             _isSending = false;
             SendButton.IsEnabled = true;
+        }
+    }
+
+    /// <summary>Rotation just past two full breaths of <see cref="PendingBotIndicator"/>'s pulse,
+    /// so each line stays long enough to read but the wait never looks stuck on one.</summary>
+    private const int WaitingLineRotationMs = 3600;
+
+    /// <summary>Shown when the waiting-sentence fetch fails — the wait still narrates itself
+    /// rather than sitting silent next to the animation.</summary>
+    private static readonly string[] FallbackWaitingLines =
+    [
+        "Looking at the readings…",
+        "Checking what stands out…",
+        "Putting the answer together…",
+    ];
+
+    /// <summary>
+    /// Fetches the three LLM-written waiting lines for this question and rotates them through the
+    /// pending panel until the send resolves and cancels this. Fire-and-forget from
+    /// <see cref="SendAsync"/>: the lines are decoration, so every failure here downgrades to the
+    /// canned set — and a fetch that loses the race to the reply itself simply stops.
+    /// </summary>
+    private async Task CycleWaitingLinesAsync(string message, CancellationToken ct)
+    {
+        IReadOnlyList<string> lines;
+        try
+        {
+            var waiting = await _api.GetMemberChatWaitingSentencesAsync(
+                _memberId, new MemberChatMessageRequest { Message = message }, ct);
+            lines = waiting.Sentences.Count > 0 ? waiting.Sentences : FallbackWaitingLines;
+        }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
+        catch (Exception)
+        {
+            lines = FallbackWaitingLines;
+        }
+
+        for (var i = 0; !ct.IsCancellationRequested; i = (i + 1) % lines.Count)
+        {
+            PendingTextLabel.Text = lines[i];
+            try
+            {
+                await Task.Delay(WaitingLineRotationMs, ct);
+            }
+            catch (TaskCanceledException)
+            {
+                return;
+            }
         }
     }
 
@@ -215,6 +273,12 @@ public sealed class ChatTurnItem
     public string ChartSummary { get; init; } = string.Empty;
     public bool HasChartSummary => !string.IsNullOrEmpty(ChartSummary);
 
+    /// <summary>The reply's supporting series, pre-shaped for drawing — see
+    /// <see cref="ChatChartItem.From"/>. Empty for user turns, errors, and resumed history
+    /// (charts are not persisted server-side, so a resumed session has none to draw).</summary>
+    public IReadOnlyList<ChatChartItem> Charts { get; init; } = [];
+    public bool HasCharts => Charts.Count > 0;
+
     public static ChatTurnItem FromUserMessage(string content) => new()
     {
         Content = content,
@@ -226,30 +290,33 @@ public sealed class ChatTurnItem
         RowAlignment = LayoutOptions.End,
     };
 
-    public static ChatTurnItem FromReply(MemberChatMessageResponse response, string? memberFirstName) => new()
+    public static ChatTurnItem FromReply(MemberChatMessageResponse response, string? memberFirstName)
     {
-        Content = response.Reply,
-        IsUser = false,
-        RoleLabel = memberFirstName is { Length: > 0 } name ? $"About {name}" : "Reply",
-        ShowRoleLabel = true,
-        TextColor = Microsoft.Maui.Controls.Application.Current?.Resources["HeadingText"] as Color ?? Colors.Black,
-        BubbleBackground = Microsoft.Maui.Controls.Application.Current?.Resources["White"] as Color ?? Colors.White,
-        RowAlignment = LayoutOptions.Start,
-        ChartSummary = Summarize(response.Charts),
-    };
+        // Series with at least two readings draw as real charts; anything thinner keeps the old
+        // first-to-last text summary, so a one-day answer still shows its number somewhere.
+        var drawable = new List<ChatChartItem>();
+        var summarised = new List<ChartSeries>();
+        foreach (var series in response.Charts)
+        {
+            if (ChatChartItem.From(series) is { } item)
+                drawable.Add(item);
+            else
+                summarised.Add(series);
+        }
 
-    /// <summary>The reply slot while the answer is being generated — removed and replaced by
-    /// <see cref="FromReply"/> or <see cref="FromError"/> when the send resolves.</summary>
-    public static ChatTurnItem Pending(string? memberFirstName) => new()
-    {
-        Content = "Looking at the readings…",
-        IsUser = false,
-        RoleLabel = memberFirstName is { Length: > 0 } name ? $"About {name}" : "Reply",
-        ShowRoleLabel = true,
-        TextColor = Microsoft.Maui.Controls.Application.Current?.Resources["BodyText"] as Color ?? Colors.Gray,
-        BubbleBackground = Microsoft.Maui.Controls.Application.Current?.Resources["White"] as Color ?? Colors.White,
-        RowAlignment = LayoutOptions.Start,
-    };
+        return new ChatTurnItem
+        {
+            Content = response.Reply,
+            IsUser = false,
+            RoleLabel = memberFirstName is { Length: > 0 } name ? $"About {name}" : "Reply",
+            ShowRoleLabel = true,
+            TextColor = Microsoft.Maui.Controls.Application.Current?.Resources["HeadingText"] as Color ?? Colors.Black,
+            BubbleBackground = Microsoft.Maui.Controls.Application.Current?.Resources["White"] as Color ?? Colors.White,
+            RowAlignment = LayoutOptions.Start,
+            Charts = drawable,
+            ChartSummary = Summarize(summarised),
+        };
+    }
 
     public static ChatTurnItem FromError(string message) => new()
     {
