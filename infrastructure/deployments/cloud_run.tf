@@ -899,10 +899,22 @@ resource "google_cloud_run_v2_service" "rewrite" {
     containers {
       image = var.medgemma_image
 
-      # Deliberately no OLLAMA_KEEP_ALIVE override, unlike medgemma: that setting exists to keep
-      # a permanently-warm instance from paying a reload between calls, and this service is sized
-      # to scale to zero (rewrite_min_instances default 0) rather than stay warm. Ollama's own
-      # 5-minute idle unload is the right default here.
+      # OLLAMA_KEEP_ALIVE follows the scaling shape, for the reason medgemma's copy documents:
+      # the override exists to keep a permanently-warm instance from paying the model reload
+      # between calls. At the default rewrite_min_instances = 0 the instance dies between calls
+      # anyway, so the env var would buy nothing and Ollama's 5-minute idle unload is right. An
+      # environment that keeps an instance warm (dev does — issue #397: chat's scale-from-zero
+      # outlasted every caller's retry budget) needs the model pinned too, or the warm instance
+      # still pays the ~59s reload on the first call after five quiet minutes. Costs memory, not
+      # money: the instance's allocation is reserved regardless of what is in it.
+      dynamic "env" {
+        for_each = var.rewrite_min_instances > 0 ? [1] : []
+        content {
+          name  = "OLLAMA_KEEP_ALIVE"
+          value = "-1"
+        }
+      }
+
       env {
         name  = "LLAMA_ARG_CACHE_RAM"
         value = "0"

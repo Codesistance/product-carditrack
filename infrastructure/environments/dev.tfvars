@@ -61,6 +61,16 @@ medgemma_image = "us-docker.pkg.dev/cloudrun/container/hello"
 # cpu_idle = false that bills continuously and is the largest single line item on this estate.
 medgemma_min_instances = 1
 
+# The Rewrite host stays warm too (issue #397): at the default 0 a member-chat send pays the
+# full scale-from-zero — image pull, startup probe, ~59s model load — which outlasts the API's
+# whole retry budget (~2 min), so every interactive chat failed unless background traffic
+# happened to have warmed the instance (verified live 2026-08-20; traces in the issue). Unlike
+# medgemma this service keeps cpu_idle = true, so a quiet warm instance bills at the idle rate
+# on a 2 vCPU / 4Gi allocation — a far smaller line than medgemma's always-on 4/16.
+# OLLAMA_KEEP_ALIVE follows this setting in the module, pinning the model in memory so the warm
+# instance answers without a reload.
+rewrite_min_instances = 1
+
 # The AI pipeline's scheduled job (digest generation) — on in dev, where MedGemma runs.
 # Same seed-image mechanics as the medgemma service above.
 enable_pipeline_jobs = true
