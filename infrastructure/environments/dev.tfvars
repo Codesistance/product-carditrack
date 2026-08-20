@@ -65,11 +65,19 @@ medgemma_min_instances = 1
 # full scale-from-zero — image pull, startup probe, ~59s model load — which outlasts the API's
 # whole retry budget (~2 min), so every interactive chat failed unless background traffic
 # happened to have warmed the instance (verified live 2026-08-20; traces in the issue). Unlike
-# medgemma this service keeps cpu_idle = true, so a quiet warm instance bills at the idle rate
-# on a 2 vCPU / 4Gi allocation — a far smaller line than medgemma's always-on 4/16.
+# medgemma this service keeps cpu_idle = true, so a quiet warm instance bills at the idle rate —
+# a far smaller line than medgemma's always-on 4/16.
 # OLLAMA_KEEP_ALIVE follows this setting in the module, pinning the model in memory so the warm
 # instance answers without a reload.
 rewrite_min_instances = 1
+
+# The pinned model does not fit the variable's 4Gi default: the warm instance sat in an OOM
+# loop on 2026-08-20 (killed at ~4.1–4.3 GiB during every model load, roughly once a minute),
+# so keeping it warm bought nothing — the first call still paid a full reload into a dying
+# instance. The model's measured footprint on the medgemma service is 7.2 GiB p99, and 8Gi is
+# the ceiling at 2 vCPU (more memory requires medgemma's 4-vCPU shape and its price). If 8Gi
+# ever OOMs under a rewrite-length prompt, the next stop is 4 vCPU / 16Gi, not 2 vCPU / more.
+rewrite_memory = "8Gi"
 
 # The AI pipeline's scheduled job (digest generation) — on in dev, where MedGemma runs.
 # Same seed-image mechanics as the medgemma service above.

@@ -192,6 +192,18 @@ public partial class CardiMemberDetailPage : ContentPage
     {
         if (_isLoading)
             return;
+
+        // A navigation that couldn't carry a member id must not turn into traffic: with the
+        // refresh timer below, an empty id became a request for member 00000000-… every thirty
+        // seconds for as long as the page was on screen (seen live from dev, 2026-08-20). The
+        // 404 the API would return lands on the same error card — just without the round trips.
+        if (_memberId == Guid.Empty)
+        {
+            ErrorDetailLabel.Text = "We couldn't tell whose page this is — go back and try again.";
+            SetState(error: true);
+            return;
+        }
+
         _isLoading = true;
 
         if (_member is null)

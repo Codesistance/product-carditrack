@@ -131,6 +131,19 @@ resource "google_compute_security_policy" "waf" {
     description = "Block requests to sensitive file extensions"
   }
 
+  # Block version-control metadata paths. The extension rule above only fires on a literal
+  # dot before its extensions, so /.git/config sails past it — a gitscan bot reached the
+  # backend with exactly that path on 2026-08-20 (it got a 401, but the WAF should have
+  # been the thing that said no).
+  rule {
+    action   = "deny(403)"
+    priority = 65
+    match {
+      expr { expression = "request.path.matches('(?i)/[.](?:git|svn|hg)(?:/|$)')" }
+    }
+    description = "Block version-control metadata paths (.git, .svn, .hg)"
+  }
+
   # Block CMS/WordPress scanner paths (probes for software we do not run;
   # *.php probes such as xmlrpc.php are already denied by the extension rule above)
   rule {
