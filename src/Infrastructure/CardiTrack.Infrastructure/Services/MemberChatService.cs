@@ -230,12 +230,17 @@ public class MemberChatService : IMemberChatService
 
             return sentences.Count > 0 ? sentences : FallbackWaitingSentences;
         }
-        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
-            return FallbackWaitingSentences;
+            // The caller hung up — the only failure that is theirs to see.
+            throw;
         }
-        catch (Exception ex) when (ex is HttpRequestException or TimeoutException)
+        catch (Exception)
         {
+            // Deliberately everything else — blown budget, unreachable host, malformed or
+            // schema-violating model output alike. The "never fails for generation problems"
+            // contract above is only true if no such exception can escape; a 500 from waiting
+            // copy would read as the send itself breaking.
             return FallbackWaitingSentences;
         }
     }
