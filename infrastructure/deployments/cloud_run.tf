@@ -248,7 +248,13 @@ variable "rewrite_cpu" {
 variable "rewrite_memory" {
   description = "Memory allocation for the Rewrite Cloud Run service"
   type        = string
-  default     = "4Gi"
+  # 8Gi is the floor, not a preference: at 4Gi the instance was killed on every model load —
+  # "Memory limit of 4096 MiB exceeded with 4265 MiB used", measured in dev 2026-08-20 (issue
+  # #397 follow-up) — so the service crash-looped and never served a single generate. The
+  # gemma3:4b-it-qat weights alone are ~3GB before Ollama's runtime, vocab and KV cache.
+  # Cloud Run allows up to 8Gi on the 2 vCPU this service runs; more than 8Gi would force
+  # 4 vCPU (see medgemma_cpu's comment) and nothing measured asks for it.
+  default     = "8Gi"
 }
 
 variable "rewrite_min_instances" {
