@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="CardiTrack.Mobile.Controls.ContactEditPopupPage"
+             BackgroundColor="Transparent">
+
+    <!-- Same shell as AppPopupPage and AppChooserPage — scrim, card, entry animation — so a form,
+         a chooser and a confirmation read as one object. The body is the difference: the one or
+         two fields this record is made of, and nothing else. A caregiver fixing an emergency
+         number should not have to walk the whole M1-14 profile form to reach it, and every other
+         field on that form is a field they can get wrong on the way past. -->
+    <Grid x:Name="Scrim" BackgroundColor="#80343434" Opacity="0">
+        <Grid.GestureRecognizers>
+            <TapGestureRecognizer Tapped="OnScrimTapped"/>
+        </Grid.GestureRecognizers>
+
+        <!-- Centred like the other two, but nudged off the vertical middle is not worth doing:
+             the soft keyboard is what moves this card, and each platform's own inset handling
+             does that better than a margin guess would. -->
+        <Border x:Name="Card"
+                BackgroundColor="{StaticResource White}"
+                Stroke="{StaticResource Divider}"
+                StrokeThickness="1"
+                Padding="24"
+                Margin="32,0"
+                Scale="0.92"
+                HorizontalOptions="Center"
+                VerticalOptions="Center">
+            <Border.StrokeShape>
+                <RoundRectangle CornerRadius="20"/>
+            </Border.StrokeShape>
+            <Border.GestureRecognizers>
+                <!-- Swallows taps so they don't fall through to the scrim. -->
+                <TapGestureRecognizer/>
+            </Border.GestureRecognizers>
+
+            <VerticalStackLayout>
+                <Label x:Name="TitleLabel"
+                       Style="{StaticResource Heading3}"
+                       HorizontalTextAlignment="Center"/>
+
+                <!-- No ScrollView, for the reason AppPopupPage's message has none: a ScrollView
+                     measures its content with an unbounded cross-axis, so the text never learns a
+                     width to wrap against and runs off the card's edge where the Border clips it.
+                     Two fields fit the card at any font scale this layout survives generally. -->
+                <Label x:Name="DescriptionLabel"
+                       Margin="0,6,0,0"
+                       Style="{StaticResource Body2}"
+                       HorizontalTextAlignment="Center"
+                       LineBreakMode="WordWrap"/>
+
+                <!-- Hidden outright on the member's own phone, which is one field and has no name
+                     of its own — the card is the record, so a name box there would be asking for
+                     a second thing this record does not have. -->
+                <VerticalStackLayout x:Name="NameFieldSection" Spacing="4" Margin="0,20,0,0">
+                    <Label x:Name="NameFieldLabel" Style="{StaticResource AuthFieldLabel}"/>
+                    <Border Style="{StaticResource AuthEntryBorder}">
+                        <Entry x:Name="NameEntry"
+                               Style="{StaticResource AuthEntry}"
+                               ReturnType="Next"
+                               Completed="OnNameCompleted"/>
+                    </Border>
+                    <Label x:Name="NameError"
+                           Style="{StaticResource AuthErrorLabel}"
+                           IsVisible="False"/>
+                </VerticalStackLayout>
+
+                <VerticalStackLayout x:Name="PhoneFieldSection" Spacing="4" Margin="0,14,0,0">
+                    <Label x:Name="PhoneFieldLabel" Style="{StaticResource AuthFieldLabel}"/>
+                    <Border Style="{StaticResource AuthEntryBorder}">
+                        <Entry x:Name="PhoneEntry"
+                               Style="{StaticResource AuthEntry}"
+                               Keyboard="Telephone"
+                               ReturnType="Done"
+                               Completed="OnPhoneCompleted"/>
+                    </Border>
+                    <Label x:Name="PhoneError"
+                           Style="{StaticResource AuthErrorLabel}"
+                           IsVisible="False"/>
+                </VerticalStackLayout>
+
+                <!-- Two buttons always: unlike AppPopupPage's single-button case there is nothing
+                     here to acknowledge, so the way out without saving has to be on the card. -->
+                <Grid ColumnDefinitions="*,*" ColumnSpacing="12" Margin="0,24,0,0">
+                    <Button x:Name="CancelBtn"
+                            Grid.Column="0"
+                            Text="Cancel"
+                            Style="{StaticResource SecondaryOutlineButton}"
+                            FontSize="16"
+                            Padding="12,0"
+                            Clicked="OnCancelClicked"/>
+                    <Button x:Name="SaveBtn"
+                            Grid.Column="1"
+                            Text="Save"
+                            Style="{StaticResource PrimaryGradientButton}"
+                            FontSize="16"
+                            Padding="12,0"
+                            Clicked="OnSaveClicked"/>
+                </Grid>
+            </VerticalStackLayout>
+        </Border>
+    </Grid>
+</ContentPage>

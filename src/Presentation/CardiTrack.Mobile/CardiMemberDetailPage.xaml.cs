@@ -746,13 +746,17 @@ public partial class CardiMemberDetailPage : ContentPage
             ? member.EmergencyContactPhone ?? "No number"
             : "Add one so help is one tap away";
         emergency.ShowCall = !string.IsNullOrWhiteSpace(member.EmergencyContactPhone);
+        emergency.ShowEdit = member.IsPrimaryCaregiver;
+        emergency.EditDescription = "Edit emergency contact";
 
         var phone = _contacts[1];
         phone.Primary = hasPhone ? member.Phone! : "No phone number yet";
         phone.ShowCall = hasPhone;
         phone.ShowMessage = hasPhone;
-        phone.ShowEdit = !hasPhone && member.IsPrimaryCaregiver;
-        phone.CanEditPrimary = member.IsPrimaryCaregiver;
+        // Whether the record is empty or wrong, the way in is the same one — a pencil that appears
+        // only on an empty card can add a number and never correct one.
+        phone.ShowEdit = member.IsPrimaryCaregiver;
+        phone.EditDescription = "Edit phone number";
 
         // Bind once: a new ItemsSource re-realises the slides and snaps the carousel back to
         // the first card, which is the same jolt ApplyTrends already refuses to cause.
@@ -899,18 +903,91 @@ public partial class CardiMemberDetailPage : ContentPage
     }
 
     /// <summary>
-    /// Primary caregivers can tap the Phone slide's number column (or its edit affordance when
-    /// empty) to jump straight to the phone field on M1-14 — #280. The emergency slide is
-    /// display-only here; editing that contact is the header pencil.
+    /// Opens the slide's own record in a form of just that record's fields, and saves what comes
+    /// back. Both slides now, and both in place: this used to be a trip to M1-14 with the phone
+    /// field focused — the whole profile form, every field of it disturbable, to fix one number,
+    /// and the emergency contact had no way in from its card at all.
     /// </summary>
-    private async void OnContactPrimaryTapped(object? sender, TappedEventArgs e)
+    private async void OnContactEditTapped(object? sender, TappedEventArgs e)
     {
-        if (ItemOf(sender) is not { Kind: ContactCardItem.Phone, CanEditPrimary: true })
+        if (ItemOf(sender) is not { ShowEdit: true } item || _member is null || _isBusy)
             return;
 
-        await Shell.Current.GoToAsync(
-            $"{EditCardiMemberPage.Route}?memberId={_memberId}&focus={Uri.EscapeDataString(EditCardiMemberPage.FocusPhone)}");
+        var editingEmergency = item.Kind == ContactCardItem.Emergency;
+        var kind = editingEmergency ? ContactEditKind.EmergencyContact : ContactEditKind.MemberPhone;
+
+        // Normalised on the way in so that what comes back can be compared with it: the form
+        // trims and blanks-to-null what it returns, and a stored " " would otherwise read as a
+        // change every time the caregiver opened the form and closed it again.
+        var name = editingEmergency ? NullIfEmpty(_member.EmergencyContactName) : null;
+        var phone = NullIfEmpty(editingEmergency ? _member.EmergencyContactPhone : _member.Phone);
+
+        var edit = await _popups.EditContactAsync(kind, name, phone);
+
+        // Cancelled, or saved without having changed anything. Either way there is nothing to
+        // send, and a PUT that rewrites a record to what it already said is still a write.
+        if (edit is null || (edit.Name == name && edit.Phone == phone))
+            return;
+
+        await SaveContactAsync(editingEmergency, edit);
     }
+
+    /// <summary>
+    /// Sends one contact record's edit as the full-replacement update the API takes.
+    /// </summary>
+    /// <remarks>
+    /// Everything the form did not ask about is echoed back from the copy on screen, because
+    /// <see cref="UpdateCardiMemberRequest"/> is a replacement rather than a patch and an omitted
+    /// field is a cleared one. The two exceptions are the two fields that do mean "leave it
+    /// alone" when omitted — sex and the photo — and they are omitted for exactly that reason: a
+    /// form that never showed them must not be the thing that restates them.
+    /// </remarks>
+    private async Task SaveContactAsync(bool editingEmergency, ContactEdit edit)
+    {
+        if (_member is null)
+            return;
+
+        _isBusy = true;
+        try
+        {
+            var request = new UpdateCardiMemberRequest
+            {
+                Name = _member.Name,
+                DateOfBirth = _member.DateOfBirth,
+                RelationshipType = _member.Relationship,
+                Email = _member.Email,
+                Phone = editingEmergency ? _member.Phone : edit.Phone,
+                EmergencyContactName = editingEmergency ? edit.Name : _member.EmergencyContactName,
+                EmergencyContactPhone = editingEmergency ? edit.Phone : _member.EmergencyContactPhone,
+                MedicalNotes = _member.MedicalNotes,
+                AlertSensitivity = _member.AlertSensitivity,
+            };
+
+            // The response is the saved member, so the cards are repainted from what the server
+            // stored rather than from what was typed. ApplyContacts alone rather than the whole
+            // of Apply: nothing else on this screen reads these two fields, and re-running Apply
+            // would move sections the caregiver is not looking at.
+            _member = await _api.UpdateCardiMemberAsync(_memberId, request);
+            ApplyContacts(_member);
+        }
+        catch (ApiException ex) when (!ex.IsSessionExpired)
+        {
+            await _popups.ShowErrorAsync(
+                ex.Errors is { Count: > 0 } ? string.Join('\n', ex.Errors) : ex.Message,
+                editingEmergency ? "Couldn't save this contact" : "Couldn't save this number");
+        }
+        catch (ApiException)
+        {
+            // Session gone — the app is already on its way back to sign-in.
+        }
+        finally
+        {
+            _isBusy = false;
+        }
+    }
+
+    private static string? NullIfEmpty(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
     private static ContactCardItem? ItemOf(object? sender)
     {

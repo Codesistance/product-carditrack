@@ -1,0 +1,8 @@
+<!-- A bound book, for the CardiJournal row. Same 24-unit box, #1884DC stroke and 2-unit weight
+     as the other row glyphs on Member Detail — the tab bar's icon_tab_journal is drawn in the
+     unselected-tab grey (#939DAA) and reads as disabled beside them. The second path is the page
+     block resting on the spine's lower curve, which is what separates a book from a plain card. -->
+<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H18.5A.5.5 0 0 1 19 3.5v16a.5.5 0 0 1-.5.5H6.5A2.5 2.5 0 0 1 4 17.5V5.5Z" stroke="#1884DC" stroke-width="2" stroke-linejoin="round"/>
+  <path d="M4 17.5A2.5 2.5 0 0 1 6.5 15H19" stroke="#1884DC" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

@@ -1,0 +1,14 @@
+<!-- Alert Rules: what CardiTrack watches for, rather than what it has found. The bell says which
+     subject the row is about — the sliders it replaces said only "settings", and could have been
+     any of them — and the cog says this is the rules behind the alerts, not the alerts themselves,
+     which is what keeps it distinct from the header's plain icon_bell inbox button.
+     Bell drawn smaller than icon_bell's so the cog has cleared space; see icon_book_cog. -->
+<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <path d="M8.8 3a4.6 4.6 0 0 0-4.6 4.6v2.9l-1.2 2.4A.8.8 0 0 0 3.7 14.1h10.2a.8.8 0 0 0 .7-1.2L13.4 10.5V7.6A4.6 4.6 0 0 0 8.8 3Z" stroke="#1884DC" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M7.1 15.9a1.7 1.7 0 0 0 3.4 0" stroke="#1884DC" stroke-width="2" stroke-linecap="round"/>
+
+  <!-- Cog badge: a lighter weight than the glyph beside it, so it reads as a qualifier on the
+       subject rather than as a second subject. -->
+  <circle cx="18.7" cy="18.7" r="2.3" stroke="#1884DC" stroke-width="1.5"/>
+  <path d="M21.8 18.7h1.1M20.25 21.39l.55.95M17.15 21.39l-.55.95M15.6 18.7h-1.1M17.15 16.01l-.55-.95M20.25 16.01l.55-.95" stroke="#1884DC" stroke-width="1.5" stroke-linecap="round"/>
+</svg>
