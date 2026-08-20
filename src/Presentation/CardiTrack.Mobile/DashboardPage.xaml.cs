@@ -277,6 +277,15 @@ public partial class DashboardPage : ContentPage
     private double _chatBotBaseX;
     private double _chatBotBaseY;
 
+    /// <summary>Where the current drag is actually holding — the last position a Running event
+    /// applied. Committed as the new base when the gesture ends, because the platform handlers
+    /// raise Completed/Canceled through the (status, gestureId) constructor, whose TotalX/TotalY
+    /// are always 0: trusting the terminal event's totals reset the base to the dock on every
+    /// release, so the button visibly stayed put but snapped home the moment the next drag's
+    /// first Running event applied "base + total".</summary>
+    private double _chatBotHeldX;
+    private double _chatBotHeldY;
+
     /// <summary>
     /// Drags the launcher off whatever it's obstructing. A separate TapGestureRecognizer handles
     /// opening the chat — see <see cref="ChatBotContainer"/>'s remarks on why the two stay apart
@@ -288,20 +297,27 @@ public partial class DashboardPage : ContentPage
     {
         switch (e.StatusType)
         {
+            case GestureStatus.Started:
+                // A pan that ends before any Running event fires must commit the spot the button
+                // is already on, not whatever the previous gesture left in the held fields.
+                _chatBotHeldX = _chatBotBaseX;
+                _chatBotHeldY = _chatBotBaseY;
+                break;
+
             case GestureStatus.Running:
-                ChatBotContainer.TranslationX = ClampChatBotX(_chatBotBaseX + e.TotalX);
-                ChatBotContainer.TranslationY = ClampChatBotY(_chatBotBaseY + e.TotalY);
+                _chatBotHeldX = ClampChatBotX(_chatBotBaseX + e.TotalX);
+                _chatBotHeldY = ClampChatBotY(_chatBotBaseY + e.TotalY);
+                ChatBotContainer.TranslationX = _chatBotHeldX;
+                ChatBotContainer.TranslationY = _chatBotHeldY;
                 break;
 
             case GestureStatus.Completed:
-                _chatBotBaseX = ClampChatBotX(_chatBotBaseX + e.TotalX);
-                _chatBotBaseY = ClampChatBotY(_chatBotBaseY + e.TotalY);
-                break;
-
             case GestureStatus.Canceled:
-                // Snap back to wherever the drag was actually holding, not the pre-gesture spot —
-                // an interrupted drag (an incoming call, a system gesture) should still leave the
-                // button wherever the caregiver had visibly moved it to.
+                // Both terminal states keep the button wherever the drag was actually holding —
+                // an interrupted drag (an incoming call, a system gesture) should still leave it
+                // wherever the caregiver had visibly moved it to.
+                _chatBotBaseX = _chatBotHeldX;
+                _chatBotBaseY = _chatBotHeldY;
                 ChatBotContainer.TranslationX = _chatBotBaseX;
                 ChatBotContainer.TranslationY = _chatBotBaseY;
                 break;

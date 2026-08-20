@@ -23,4 +23,14 @@ public interface IMemberChatService
     /// exists — what a relaunched app resumes from.</summary>
     Task<MemberChatHistoryResponse?> GetCurrentSessionAsync(
         Guid userId, Guid cardiMemberId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Short lines for the app to cycle in the reply slot while <see cref="SendMessageAsync"/>
+    /// runs — generated from the question by the Rewrite slot so the wait narrates the actual
+    /// checking. Never throws for a generation failure: canned lines come back instead, because
+    /// waiting copy must not make the send it accompanies look broken. Still throws
+    /// <see cref="KeyNotFoundException"/> when the caller may not view this member.
+    /// </summary>
+    Task<IReadOnlyList<string>> GetWaitingSentencesAsync(
+        Guid userId, Guid cardiMemberId, string message, CancellationToken ct = default);
 }

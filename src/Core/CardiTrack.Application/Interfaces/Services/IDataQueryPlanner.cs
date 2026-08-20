@@ -9,5 +9,12 @@ namespace CardiTrack.Application.Interfaces.Services;
 /// </summary>
 public interface IDataQueryPlanner
 {
-    Task<AiGenerationResult<DataQueryPlan>> PlanAsync(string question, CancellationToken ct = default);
+    /// <param name="conversationHistory">
+    /// The framed earlier-turns block for this session, or null for a first question. A follow-up
+    /// like "and how was her sleep that week?" names its window only in the earlier turns, so a
+    /// planner shown the bare question alone picks the defaults instead of what the caregiver
+    /// meant.
+    /// </param>
+    Task<AiGenerationResult<DataQueryPlan>> PlanAsync(
+        string question, string? conversationHistory = null, CancellationToken ct = default);
 }

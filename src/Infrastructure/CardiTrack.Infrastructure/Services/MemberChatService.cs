@@ -45,9 +45,47 @@ public class MemberChatService : IMemberChatService
         (b) unrelated to the member's health, wellbeing, activity, sleep, alerts or care.
 
         An ordinary question about any of those topics, in any tone, is neither (a) nor (b) — do not
-        flag a question merely for being blunt, worried, or informally worded.
+        flag a question merely for being blunt, worried, or informally worded. The message may also
+        be a short follow-up to the earlier conversation shown with it — "why?", "what about last
+        week?" — and a follow-up to an on-topic exchange is on-topic, however little it says alone.
 
         Respond with isMaliciousOrOffTopic: true or false, and nothing else.
+        """;
+
+    /// <summary>
+    /// What the pending bubble cycles through while the four-model chain works. Bounded hard —
+    /// these render inside the reply slot, so a runaway generation would put a paragraph where a
+    /// status line belongs.
+    /// </summary>
+    private const int WaitingSentenceCount = 3;
+    private const int MaxWaitingSentenceLength = 80;
+
+    /// <summary>
+    /// The waiting text races the answer it narrates — past this it has lost that race and the
+    /// canned lines are strictly better than arriving after the reply. Well under the mobile
+    /// client's own 180 s send budget for the same reason.
+    /// </summary>
+    private static readonly TimeSpan WaitingSentencesBudget = TimeSpan.FromSeconds(20);
+
+    /// <summary>Shown whenever generation fails, times out, or comes back malformed — waiting copy
+    /// is decoration, never worth surfacing an error over.</summary>
+    private static readonly IReadOnlyList<string> FallbackWaitingSentences =
+    [
+        "Looking at the readings…",
+        "Checking what stands out…",
+        "Putting the answer together…",
+    ];
+
+    private const string WaitingSentencesInstructions = """
+        A caregiver just asked the question below inside a health-monitoring app, and preparing the
+        full answer takes a little while. Write exactly three short waiting messages to show them
+        meanwhile — each under ten words, present tense, calm, and specific to what the question
+        is about (for example "Reading through the last week of sleep…"). Each message describes
+        the checking that is happening; it must not answer the question, state any finding or
+        reading, give advice, or name any person.
+
+        Respond with:
+        - sentences: the three waiting messages, in display order.
         """;
 
     private static readonly string ClinicalInstructions =
@@ -109,8 +147,12 @@ public class MemberChatService : IMemberChatService
         var session = await GetOrCreateSessionAsync(userId, cardiMemberId, utcNow, ct);
         var history = await BuildHistoryBlockAsync(session.Id, ct);
 
+        // History travels with every step that reads the caregiver's message, not just the
+        // clinical one — a follow-up like "why?" is only judgeable, and only plannable, in the
+        // context of the turns it follows. Without this the guard flagged terse follow-ups as
+        // off-topic and the planner fetched the defaults instead of what the caregiver meant.
         var maliciousCheck = await _rewriteAi.GenerateStructuredWithUsageAsync<MaliciousCheckAiResponse>(
-            BuildMaliciousCheckPrompt(flattened), ct);
+            BuildMaliciousCheckPrompt(flattened, history), ct);
         if (maliciousCheck.Result.IsMaliciousOrOffTopic)
         {
             throw new ArgumentException(
@@ -118,7 +160,7 @@ public class MemberChatService : IMemberChatService
                 + "alerts, or recent activity instead.");
         }
 
-        var plan = await _planner.PlanAsync(flattened, ct);
+        var plan = await _planner.PlanAsync(flattened, history, ct);
         var fetched = await DataQueryWhitelist.ExecuteAsync(plan.Result, cardiMemberId, _unitOfWork, utcNow, ct);
 
         var member = await _unitOfWork.CardiMembers.GetByIdAsync(cardiMemberId);
@@ -147,6 +189,55 @@ public class MemberChatService : IMemberChatService
             Charts = BuildCharts(fetched),
             GeneratedAt = DateTimeOffset.UtcNow,
         };
+    }
+
+    /// <summary>
+    /// Three short, question-specific lines for the pending bubble, from the Rewrite slot. Fire
+    /// and forget by design: every failure path — model down, budget blown, malformed reply —
+    /// returns <see cref="FallbackWaitingSentences"/> rather than throwing, because waiting copy
+    /// is decoration and must never make the send it decorates look broken. Usage is not
+    /// persisted: <c>MemberChatTurnUsage</c> keys every row to the assistant turn the call
+    /// produced, and this call runs while that turn does not exist yet (and completes even if the
+    /// send it accompanies fails and never creates one).
+    /// </summary>
+    public async Task<IReadOnlyList<string>> GetWaitingSentencesAsync(
+        Guid userId, Guid cardiMemberId, string message, CancellationToken ct = default)
+    {
+        await _access.RequireViewAccessAsync(userId, cardiMemberId, ct);
+
+        var flattened = MedicalPromptBlocks.Flatten(message);
+        if (string.IsNullOrWhiteSpace(flattened))
+            return FallbackWaitingSentences;
+
+        using var budget = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        budget.CancelAfter(WaitingSentencesBudget);
+
+        try
+        {
+            var generated = await _rewriteAi.GenerateStructuredAsync<WaitingSentencesAiResponse>($"""
+                {WaitingSentencesInstructions}
+
+                --- Caregiver question ---
+                {flattened}
+                """, budget.Token);
+
+            var sentences = generated.Sentences
+                .Select(s => s?.Trim().ReplaceLineEndings(" "))
+                .Where(s => !string.IsNullOrWhiteSpace(s))
+                .Select(s => s!.Length > MaxWaitingSentenceLength ? $"{s[..MaxWaitingSentenceLength]}…" : s)
+                .Take(WaitingSentenceCount)
+                .ToList();
+
+            return sentences.Count > 0 ? sentences : FallbackWaitingSentences;
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            return FallbackWaitingSentences;
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TimeoutException)
+        {
+            return FallbackWaitingSentences;
+        }
     }
 
     public async Task<MemberChatHistoryResponse?> GetCurrentSessionAsync(
@@ -213,12 +304,22 @@ public class MemberChatService : IMemberChatService
         return $"--- {MedicalPromptBlocks.ChatHistoryLabel} ---\n{string.Join("\n", lines)}";
     }
 
-    private static string BuildMaliciousCheckPrompt(string question) => $"""
-        {MaliciousCheckInstructions}
+    private static string BuildMaliciousCheckPrompt(string question, string? historyBlock) =>
+        historyBlock is null
+            ? $"""
+              {MaliciousCheckInstructions}
 
-        --- Message ---
-        {question}
-        """;
+              --- Message ---
+              {question}
+              """
+            : $"""
+              {MaliciousCheckInstructions}
+
+              {historyBlock}
+
+              --- Message ---
+              {question}
+              """;
 
     private static string BuildClinicalPrompt(
         string question, string memberContext, FetchedMemberData data, string? historyBlock, DateOnly today)
@@ -410,5 +511,10 @@ public class MemberChatService : IMemberChatService
     internal sealed record MemberChatClinicalAiResponse
     {
         public required string Analysis { get; init; }
+    }
+
+    internal sealed record WaitingSentencesAiResponse
+    {
+        public required IReadOnlyList<string> Sentences { get; init; }
     }
 }

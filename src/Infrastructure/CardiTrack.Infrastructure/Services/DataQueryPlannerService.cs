@@ -24,17 +24,31 @@ public class DataQueryPlannerService : IDataQueryPlanner
 
     public DataQueryPlannerService(IRewriteAiService rewriteAi) => _rewriteAi = rewriteAi;
 
-    public async Task<AiGenerationResult<DataQueryPlan>> PlanAsync(string question, CancellationToken ct = default)
+    public async Task<AiGenerationResult<DataQueryPlan>> PlanAsync(
+        string question, string? conversationHistory = null, CancellationToken ct = default)
     {
-        var prompt = BuildPrompt(question);
+        var prompt = BuildPrompt(question, conversationHistory);
         var result = await _rewriteAi.GenerateStructuredWithUsageAsync<DataQueryPlanAiResponse>(prompt, ct);
 
         return new AiGenerationResult<DataQueryPlan>(Parse(result.Result), result.Usage);
     }
 
-    private static string BuildPrompt(string question)
+    private static string BuildPrompt(string question, string? conversationHistory)
     {
         var sourceList = string.Join("\n", SourceDescriptions.Select(kv => $"- {kv.Value}"));
+        // Framed history, not raw turns — the same block the clinical prompt gets (see
+        // MemberChatService.BuildHistoryBlockAsync). Without it a follow-up like "and that week's
+        // sleep?" carries its window only in turns this prompt never saw, so the planner answered
+        // the defaults instead of the question.
+        var historySection = conversationHistory is null
+            ? string.Empty
+            : $"""
+
+              The question may be a follow-up — read it in the context of what was already asked
+              and answered below.
+
+              {conversationHistory}
+              """;
         return $"""
             A family caregiver asked a question about a person whose wearable and health data this
             service already holds. Decide which of these existing data sources are needed to answer
@@ -45,6 +59,7 @@ public class DataQueryPlannerService : IDataQueryPlanner
 
             You are not told who the person is and must not ask — the system already knows and will
             fetch the sources you name for the right person. Name sources only, never a person.
+            {historySection}
 
             --- Caregiver question ---
             {question}

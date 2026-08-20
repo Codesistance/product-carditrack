@@ -186,6 +186,13 @@ public interface ICardiTrackApiClient
     Task<MemberChatHistoryResponse?> GetCurrentMemberChatSessionAsync(
         Guid cardiMemberId, CancellationToken ct = default);
 
+    /// <summary>Short lines to cycle in the pending reply bubble while the send for the same
+    /// message is in flight — fired alongside <see cref="SendMemberChatMessageAsync"/>, never
+    /// instead of it. The caller falls back to its own canned lines if this fails or loses the
+    /// race to the reply.</summary>
+    Task<MemberChatWaitingResponse> GetMemberChatWaitingSentencesAsync(
+        Guid cardiMemberId, MemberChatMessageRequest request, CancellationToken ct = default);
+
     /// <summary>
     /// Puts an acknowledged alert back to unhandled — the undo behind M1-11's Undo button.
     /// Rejected for an alert the system has already resolved.
