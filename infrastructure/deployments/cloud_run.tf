@@ -254,7 +254,7 @@ variable "rewrite_memory" {
   # gemma3:4b-it-qat weights alone are ~3GB before Ollama's runtime, vocab and KV cache.
   # Cloud Run allows up to 8Gi on the 2 vCPU this service runs; more than 8Gi would force
   # 4 vCPU (see medgemma_cpu's comment) and nothing measured asks for it.
-  default     = "8Gi"
+  default = "8Gi"
 }
 
 variable "rewrite_min_instances" {

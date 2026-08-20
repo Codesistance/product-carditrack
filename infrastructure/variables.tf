@@ -586,7 +586,7 @@ variable "rewrite_memory" {
   # 2026-08-20) and the ceiling Cloud Run allows on 2 vCPU. This root default is what actually
   # reaches the module — main.tf always passes it through — so changing one without the other
   # silently does nothing, which is exactly how the first attempt at this fix shipped inert.
-  default     = "8Gi"
+  default = "8Gi"
 }
 
 # Unlike medgemma_min_instances, 0 is not just the default here — it is the point of the split.
