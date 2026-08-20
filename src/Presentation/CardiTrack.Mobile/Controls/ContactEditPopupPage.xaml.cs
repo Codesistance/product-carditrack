@@ -91,7 +91,11 @@ public partial class ContactEditPopupPage : ContentPage
     {
         await Task.Delay(FocusDelayMs);
         if (!_closing)
-            (_hasName ? (VisualElement)NameEntry : PhoneEntry).Focus();
+        {
+            // Qualified: the iOSSpecific import above brings its own VisualElement into scope.
+            Microsoft.Maui.Controls.VisualElement field = _hasName ? NameEntry : PhoneEntry;
+            field.Focus();
+        }
     }
 
     protected override void OnDisappearing()
