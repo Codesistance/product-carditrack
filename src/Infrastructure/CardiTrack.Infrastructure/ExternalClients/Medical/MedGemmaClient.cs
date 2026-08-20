@@ -163,9 +163,21 @@ public class MedGemmaClient : IExternalAiClient
     /// <see cref="DefaultJsonTypeInfoResolver"/> is required by <see cref="JsonSchemaExporter"/> —
     /// without it, options built from <see cref="JsonSerializerDefaults"/> alone throw at export time.
     /// </summary>
+    /// <remarks>
+    /// <see cref="JsonNumberHandling.Strict"/> overrides the Web default (numbers-from-strings)
+    /// because these options are also the schema's source, and the two requirements collide:
+    /// under the Web default the exporter renders every numeric property as
+    /// <c>"type":["string","integer"]</c> plus a <c>pattern</c> regex containing <c>\d</c>, and
+    /// llama.cpp's grammar compiler rejects that escape — Ollama answers 400
+    /// "failed to parse grammar" for any type with a numeric field (member chat's query-plan
+    /// step, found 2026-08-20). Strict exports plain <c>"type":"integer"</c>, and the grammar
+    /// then guarantees the reply's numbers are real JSON numbers, so strict parsing of the reply
+    /// is consistent by construction.
+    /// </remarks>
     private static readonly JsonSerializerOptions StructuredOutputOptions = new(JsonSerializerDefaults.Web)
     {
         TypeInfoResolver = new DefaultJsonTypeInfoResolver(),
+        NumberHandling = JsonNumberHandling.Strict,
     };
 
     /// <summary>
@@ -196,7 +208,9 @@ public class MedGemmaClient : IExternalAiClient
         },
     };
 
-    private static string SchemaTextFor<T>() => StructuredSchemaCache.GetOrAdd(typeof(T), type =>
+    // Internal (not private) so StructuredSchemaGrammarTests asserts against the real
+    // generator rather than a re-implementation that could drift.
+    internal static string SchemaTextFor<T>() => StructuredSchemaCache.GetOrAdd(typeof(T), type =>
         JsonSchemaExporter.GetJsonSchemaAsNode(StructuredOutputOptions, type, DescribedSchemaOptions)
             .ToJsonString(StructuredOutputOptions));
 
