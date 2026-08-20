@@ -72,6 +72,12 @@ builder.Services.AddScoped<IEnvironmentalReadingRepository, EnvironmentalReading
 builder.Services.AddScoped<INotificationRepository, NotificationRepository>();
 builder.Services.AddScoped<INotificationMuteRepository, NotificationMuteRepository>();
 builder.Services.AddScoped<IAlertPreferenceRepository, AlertPreferenceRepository>();
+// UnitOfWork's constructor takes every repository, so each host must register all of them even
+// when it never touches the feature — chat lives in the API, but a missing registration here
+// fails *every* UnitOfWork resolve, which is how notification dispatch went down in dev.
+builder.Services.AddScoped<IMemberChatSessionRepository, MemberChatSessionRepository>();
+builder.Services.AddScoped<IMemberChatTurnRepository, MemberChatTurnRepository>();
+builder.Services.AddScoped<IMemberChatTurnUsageRepository, MemberChatTurnUsageRepository>();
 builder.Services.AddScoped<INotificationSnapshotQueries, NotificationSnapshotQueries>();
 builder.Services.AddPushServices(configuration);
 builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();

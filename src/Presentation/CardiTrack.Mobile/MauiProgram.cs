@@ -106,8 +106,16 @@ public static class MauiProgram
             client.BaseAddress = new Uri(AppConfig.ApiBaseUrl);
             client.DefaultRequestHeaders.Add("Accept", "application/json");
             AddClientIdentityHeaders(client.DefaultRequestHeaders);
-            client.Timeout = TimeSpan.FromSeconds(30);
-        }).AddHttpMessageHandler<AuthHttpMessageHandler>();
+            // Ceiling only — TimeoutHandler holds every request to 30 s unless the request
+            // asked for more (the member-chat send does; its answer is a chain of CPU-served
+            // model calls). HttpClient.Timeout can never be extended per request, so it must
+            // sit above the slowest call and the handler enforces the real budgets.
+            client.Timeout = TimeSpan.FromSeconds(190);
+        })
+        // Registered before the auth handler so a 401 refresh+retry spends the same request's
+        // budget rather than getting a fresh one.
+        .AddHttpMessageHandler(() => new TimeoutHandler(TimeSpan.FromSeconds(30)))
+        .AddHttpMessageHandler<AuthHttpMessageHandler>();
 
         builder.Services.AddSingleton<IBrowserAuthenticator, WebBrowserAuthenticator>();
         builder.Services.AddSingleton<IPushDeviceRegistrationService, PushDeviceRegistrationService>();

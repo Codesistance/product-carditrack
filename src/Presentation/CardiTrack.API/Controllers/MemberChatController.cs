@@ -1,3 +1,4 @@
+using System.Net;
 using CardiTrack.API.Infrastructure.Auditing;
 using CardiTrack.API.Infrastructure.UserContext;
 using CardiTrack.Application.DTOs.Requests;
@@ -42,6 +43,7 @@ public class MemberChatController : BaseApiController
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status403Forbidden)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status503ServiceUnavailable)]
     public async Task<ActionResult<ApiResponse<MemberChatMessageResponse>>> SendMessage(
         Guid cardiMemberId, [FromBody] MemberChatMessageRequest request, CancellationToken ct)
     {
@@ -68,6 +70,27 @@ public class MemberChatController : BaseApiController
         catch (KeyNotFoundException ex)
         {
             return Error(ex.Message, StatusCodes.Status404NotFound);
+        }
+        catch (HttpRequestException ex) when (ex.StatusCode is HttpStatusCode.TooManyRequests or HttpStatusCode.ServiceUnavailable)
+        {
+            // The in-estate model host said it is full (MedGemmaClient's retries included) —
+            // a capacity condition, not a fault in this request. 500 would page someone for a
+            // queue; 503 tells the app, honestly, to ask again shortly.
+            Logger.LogWarning(
+                "Member chat send hit AI capacity for CardiMember {CardiMemberId}: upstream HTTP {StatusCode}",
+                cardiMemberId, (int)ex.StatusCode!);
+            return Error(
+                "The assistant is busy catching up right now — give it a minute and ask again.",
+                StatusCodes.Status503ServiceUnavailable);
+        }
+        catch (TimeoutException)
+        {
+            Logger.LogWarning(
+                "Member chat send timed out against the AI host for CardiMember {CardiMemberId}",
+                cardiMemberId);
+            return Error(
+                "The assistant is busy catching up right now — give it a minute and ask again.",
+                StatusCodes.Status503ServiceUnavailable);
         }
     }
 
