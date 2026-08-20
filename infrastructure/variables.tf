@@ -575,18 +575,21 @@ variable "medgemma_timeout_seconds" {
 variable "rewrite_cpu" {
   description = "CPU allocation for the Rewrite Cloud Run service"
   type        = string
-  default     = "2"
+  # Must stay in step with the deployments module's default (which carries the rationale):
+  # 4 vCPU is forced by 16Gi, and this root default is what actually reaches the module.
+  default = "4"
 }
 
 variable "rewrite_memory" {
   description = "Memory allocation for the Rewrite Cloud Run service"
   type        = string
   # Must stay in step with the deployments module's own default, which carries the full
-  # rationale: 8Gi is the floor the model load survives (4Gi was killed at 4265 MiB, dev
-  # 2026-08-20) and the ceiling Cloud Run allows on 2 vCPU. This root default is what actually
-  # reaches the module — main.tf always passes it through — so changing one without the other
-  # silently does nothing, which is exactly how the first attempt at this fix shipped inert.
-  default = "8Gi"
+  # rationale: 4Gi died on every model load and 8Gi died mid-inference even with the context
+  # capped — 16Gi is medgemma's proven envelope for this image (measurements in the module
+  # comment). This root default is what actually reaches the module — main.tf always passes it
+  # through — so changing one without the other silently does nothing, which is exactly how the
+  # first attempt at this fix shipped inert.
+  default = "16Gi"
 }
 
 # Unlike medgemma_min_instances, 0 is not just the default here — it is the point of the split.
