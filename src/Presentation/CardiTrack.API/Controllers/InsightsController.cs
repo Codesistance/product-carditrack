@@ -29,7 +29,8 @@ public class InsightsController : BaseApiController
     /// <c>MemberChatController</c>'s send: everything HTTP inside the insight pipeline is a call
     /// to an in-estate model host, so an <see cref="HttpRequestException"/> means saturation
     /// (MedGemmaClient's retries exhausted on 429/503), an unreachable service, or an unparseable
-    /// reply — none a fault in this request. 500 would page someone for a queue; 503 tells the
+    /// reply — and a <see cref="TimeoutException"/> is the same weather told by the clock,
+    /// MedGemmaClient's per-attempt budget expiring. None of it a fault in this request. 500 would page someone for a queue; 503 tells the
     /// app, honestly, to ask again shortly. Before this mapping, every MedGemma 429 under the
     /// dashboard's status polling surfaced as a 500 (21 of them in one 72-hour window, dev).
     /// </summary>
@@ -52,10 +53,11 @@ public class InsightsController : BaseApiController
 
     // MedGemmaClient's exception messages are payload-free by design, so the exception itself
     // is safe to log. Warning, not Error: see InsightBusyMessage — this is upstream weather.
-    private void LogModelHostFailure(HttpRequestException ex, string endpoint, Guid subjectId) =>
+    // The status is null for a TimeoutException, whose failure the elapsed budget describes.
+    private void LogModelHostFailure(Exception ex, string endpoint, Guid subjectId) =>
         Logger.LogWarning(ex,
             "Insight {Endpoint} failed against the AI host for {SubjectId} (upstream status {StatusCode})",
-            endpoint, subjectId, ex.StatusCode);
+            endpoint, subjectId, (ex as HttpRequestException)?.StatusCode);
 
     /// <summary>Analyse a specific alert using MedGemma.</summary>
     [HttpGet("alerts/{alertId:guid}")]
@@ -79,7 +81,7 @@ public class InsightsController : BaseApiController
         {
             return Error(ex.Message, StatusCodes.Status404NotFound);
         }
-        catch (HttpRequestException ex)
+        catch (Exception ex) when (ex is HttpRequestException or TimeoutException)
         {
             LogModelHostFailure(ex, nameof(AnalyzeAlert), alertId);
             return Error(InsightBusyMessage, StatusCodes.Status503ServiceUnavailable);
@@ -108,7 +110,7 @@ public class InsightsController : BaseApiController
         {
             return Error(ex.Message, StatusCodes.Status404NotFound);
         }
-        catch (HttpRequestException ex)
+        catch (Exception ex) when (ex is HttpRequestException or TimeoutException)
         {
             LogModelHostFailure(ex, nameof(AnalyzeBaseline), cardiMemberId);
             return Error(InsightBusyMessage, StatusCodes.Status503ServiceUnavailable);
@@ -143,7 +145,7 @@ public class InsightsController : BaseApiController
         {
             return Error(ex.Message, StatusCodes.Status404NotFound);
         }
-        catch (HttpRequestException ex)
+        catch (Exception ex) when (ex is HttpRequestException or TimeoutException)
         {
             LogModelHostFailure(ex, nameof(GetCurrentStatus), cardiMemberId);
             return Error(InsightBusyMessage, StatusCodes.Status503ServiceUnavailable);
