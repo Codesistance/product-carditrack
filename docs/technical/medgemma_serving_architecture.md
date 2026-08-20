@@ -2,7 +2,7 @@
 
 **Status:** Proposed (2026-08-19) — MS-2 resolved 2026-08-19, option B selected; remaining decisions in §6
 **Scope:** Where MedGemma inference runs and what it costs. Covers the Cloud Run CPU service as deployed, the measured failure mode (HTTP 429), and the GPU options. Does **not** cover which model is served, prompt content, or the SSA contract.
-**Relationship to other docs:** [llm_design.md](../llm_design.md) owns the SSA → MedGemma contract and first sketched the GPU option. [apm_setup_runbook.md](./apm_setup_runbook.md) owns the client-side telemetry these numbers come from. [dpia.md](../compliance/dpia.md) owns residency and the transfer surface (OI-5). The `medgemma_min_instances` comment in [cloud_run.tf](../../infrastructure/deployments/cloud_run.tf) owns the warm-instance economics and stays correct — this document changes the compute underneath it, not that reasoning.
+**Relationship to other docs:** [llm_design.md](../llm_design.md) owns the SSA → MedGemma contract and first sketched the GPU option. [apm_setup_runbook.md](./apm_setup_runbook.md) owns the client-side telemetry these numbers come from. [dpia.md](../compliance/dpia.md) owns residency and the US transfer surface (OI-5). The `medgemma_min_instances` comment in [cloud_run.tf](../../infrastructure/deployments/cloud_run.tf) owns the warm-instance economics and stays correct — this document changes the compute underneath it, not that reasoning.
 
 ---
 
@@ -65,7 +65,7 @@ Six call sites, three triggers. Everything below the line is per **CardiMember**
                     └───────────────────────▲──────────────────────────────┘
                                             │
                      435 hits/day observed  │  278 × 200   141 × 429   16 × 504
-                                            │
+                                            │  (see 504 note below)
         ┌───────────────────────────────────┼───────────────────────────────────┐
         │                                   │                                   │
 ┌───────┴────────┐                ┌─────────┴─────────┐              ┌──────────┴─────────┐
@@ -87,6 +87,8 @@ Six call sites, three triggers. Everything below the line is per **CardiMember**
    (cache hit is       deviation ≥                 (≥2h early-day),
     the common case)   SampleJumpScore             night-gated
 ```
+
+Of the 435 hits/day above, 278 return 200 and 141 are the §2 429 admission-reject (rejected at 0s, never queued). The remaining 16/day are 504 — Cloud Run's gateway timeout, a distinct failure mode from the 429: a request that ran past the 300s request timeout (§1) rather than being turned away on arrival. p95 inference sits at 216.3s (§1), close enough to that 300s ceiling that the heaviest calls plausibly cross it, though this hasn't been confirmed against logs. Either way, §1's "Refused requests (4xx)" tracks the 429s only, and the 42%-busy inference-time math in §2 doesn't fold the 504s' inference time in either — both undercounts would need the 504s added to be exact.
 
 **Frequency per CardiMember per day** — the ceiling each gate permits:
 
@@ -125,7 +127,9 @@ Cost figures are **list-price arithmetic, not read off the bill** — the Cloud 
 | **D. Compute Engine Spot L4** | europe-west2 | ~$170–200 | ~10s | none | Keeps residency; preemptible, adds a VM to run |
 | **E. Cut demand only** | europe-west2 | ~$300–350 | 124s | reduced | No migration; treats the symptom |
 
-**Option B in detail.** Split by who is waiting. Per the measured 24h split, ~95% of calls are background digest regeneration and only ~13/day are the caregiver-facing Dashboard status line. Move the background work to a **Cloud Run Job with one L4**, triggered on a schedule, processing all due members within one instance lifetime; serve the Dashboard line from the last batch output rather than generating inside the request. Billed GPU time falls to roughly 3,400 s/day against 86,400 s/day today, running the same container and the same GGUF with one L4 attached (a Cloud Run deploy-time setting — `--gpu`/`--gpu-type` on `gcloud run deploy`, or the equivalent Terraform block; nothing about the Ollama invocation changes).
+**Option B in detail.** Split by who is waiting. Per the measured 24h split, ~97% of calls are background digest regeneration and only ~13/day are the caregiver-facing Dashboard status line. Move the background work to a **Cloud Run Job with one L4**, triggered on a schedule, processing all due members within one instance lifetime; serve the Dashboard line from the last batch output rather than generating inside the request. Billed GPU time falls to roughly 3,400 s/day against 86,400 s/day today, running the same container and the same GGUF with one L4 attached (a Cloud Run deploy-time setting — `--gpu`/`--gpu-type` on `gcloud run deploy`, or the equivalent Terraform block; nothing about the Ollama invocation changes).
+
+The Dashboard status line already covers the alert (`:258`) and baseline (`:343`) routes, both generated on a cache miss rather than on a cadence (§2a) — a newly-raised alert between batch passes has no fresh explanation to serve until the next one runs (MS-7).
 
 ### The region constraint
 
@@ -170,16 +174,17 @@ Two things to carry into whichever region is chosen: the Cloud SQL Auth Proxy st
 
 ## 6. Open items
 
-Numbered `MS-n` rather than `OI-n`: the DPIA maintains its own `OI-n` sequence, and MS-2 below feeds DPIA OI-5. Any `OI-n` reference in this document means the DPIA's.
+Numbered `MS-n` rather than `OI-n`: the DPIA maintains its own `OI-n` sequence. Any `OI-n` reference in this document means the DPIA's; none of MS-1..MS-7 resolves one — MS-2 needs the DPIA's hosting description (§4.3) updated directly, since DPIA OI-5 covers only US-linked transfer mechanisms and an EU-to-EU move doesn't touch it.
 
 | ID | Item | Owner |
 |---|---|---|
 | MS-1 | No option in §4 is priced against actual spend. Two separate gaps — list prices and real cost — with different fixes; see §8. | Owner |
-| MS-2 | ~~Residency decision~~ — **RESOLVED 2026-08-19 (owner): another region is acceptable.** Option B selected. Only the MedGemma service moves (§4). Still needs recording against DPIA OI-5. | ~~Owner~~ + DPIA |
+| MS-2 | ~~Residency decision~~ — **RESOLVED 2026-08-19 (owner): another region is acceptable.** Option B selected. Only the MedGemma service moves (§4). Still needs the DPIA's hosting description (§4.3) updated to the new region — not DPIA OI-5, which covers only US-linked transfer mechanisms and doesn't apply to an EU-to-EU move. | ~~Owner~~ + DPIA |
 | MS-3 | The ~10s GPU p50 in §4 is an estimate from model size and quantisation, not a benchmark, and the 513-in/18-out token shape in §5 rests on **8 sampled calls** — biased toward short ones, because most hosts log the completion line below their ship level. Raise `Serilog__MinimumLevel__Default` on `pipeline-jobs` in dev for a day to get a real per-operation prompt/latency breakdown, then benchmark one batch on an L4. Both the GPU cost model and the vLLM case depend on this. | Engineering |
 | MS-4 | Set `max_instance_request_concurrency` explicitly whatever else is decided. 640 on a single-instance inference service is a platform default nobody chose. | Engineering |
 | MS-5 | The Cloud Run request timeout (300s) equals the client's `HttpClient.Timeout`, so client and server give up simultaneously and the loser is arbitrary. Separate them. | Engineering |
 | MS-6 | Observed call volume (435/day) is ~6× the ceiling the per-member gates in §2a permit (~69/day). Retries and the new Weekbook/Monthbook backfills are the likely contributors but are unconfirmed. Reconcile before relying on any cadence interval to bound load. | Engineering |
+| MS-7 | Option B serves the Dashboard status line from the last batch output, but the alert (`:258`) and baseline (`:343`) routes generate on a cache miss, not on the batch cadence (§2a) — a newly-raised alert has no fresh explanation until the next batch pass. Decide whether Option B needs an on-demand fast path for freshly-raised alerts, or whether that lag is acceptable. | Owner |
 
 ## 7. Recommendation
 
