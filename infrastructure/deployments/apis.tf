@@ -82,3 +82,16 @@ resource "google_project_service" "servicenetworking" {
   service            = "servicenetworking.googleapis.com"
   disable_on_destroy = false
 }
+
+# Read-only, for pricing. The Cloud Billing API carries the SKU catalogue — the exact per-second
+# rates for Cloud Run vCPU, memory and GPU in a given region — which is what turns a serving-cost
+# comparison from list-price arithmetic into a real one (medgemma_serving_architecture.md, MS-1).
+#
+# Enabling it grants nothing by itself: reading an actual bill needs roles/billing.viewer on the
+# *billing account*, which is a different resource from this project. And the catalogue is not
+# spend — there is no REST API for what was actually charged, only the BigQuery export, which is a
+# billing-account operation and does not backfill.
+resource "google_project_service" "cloudbilling" {
+  service            = "cloudbilling.googleapis.com"
+  disable_on_destroy = false
+}

@@ -223,6 +223,16 @@ variable "medgemma_min_instances" {
   default     = 0
 }
 
+# The caller's deadline, mirrored into this module so the service's own request timeout can be
+# derived from it rather than restated. The root owns the value and hands it to the .NET hosts as
+# AI__Private__TimeoutSeconds (main.tf); the service timeout below has to stay strictly greater, and
+# two independently-edited numbers do not stay in a relationship.
+variable "medgemma_timeout_seconds" {
+  description = "HTTP client timeout the callers apply to MedGemma calls. The service's own request timeout is derived from this and must remain longer — see the timeout in the medgemma service"
+  type        = number
+  default     = 300
+}
+
 # Resources
 resource "google_cloud_run_v2_service" "api" {
   name     = var.api_service_name
@@ -687,6 +697,44 @@ resource "google_cloud_run_v2_service" "medgemma" {
       min_instance_count = var.medgemma_min_instances
       max_instance_count = var.medgemma_max_instances
     }
+
+    # One request at a time, deliberately. The platform default here was 640 — not a chosen
+    # number, just what Cloud Run applies when Terraform stays silent, and a nonsense one for
+    # a service that can serve exactly one instance and cannot scale out.
+    #
+    # 640 does not mean 640 get served; it means 640 get *admitted*. Ollama accepts them,
+    # splits the 4 vCPU across however many parallel slots it auto-selected, and every one of
+    # them slows down together. That is the shape the measurements show: p50 inference was
+    # 15-19s to 08-13, and reached 124s by 08-19 while the container image never changed
+    # (same digest since 08-10) and prompt sizes stayed flat. What changed in between is the
+    # arrival rate. Requests that then overrun the 300s ceiling die as 504s having consumed
+    # five minutes of the one instance — 16 of them on 08-18 alone.
+    #
+    # At 1, a second concurrent caller is refused in 0ms instead of being let in to make the
+    # first one slower. That refusal is not a regression: MedGemmaClient already treats 429 as
+    # saturation and backs off in 15s steps honouring Retry-After (PR #383), which is the
+    # correct response to "busy" and cannot be the response to a 300s timeout — by then the
+    # work is done and thrown away. Trading slow shared failure for fast honest rejection is
+    # the whole change.
+    #
+    # This is a hypothesis with a measurement attached, not a certainty: it predicts p50
+    # returns toward ~20s and 504s go to zero, while 429 counts rise and are absorbed by the
+    # client's backoff. If p50 does not move, the contention theory is wrong and this reverts
+    # to a single number with no other consequence. Raise it only alongside an explicit
+    # OLLAMA_NUM_PARALLEL on the container, so the two agree instead of one silently
+    # oversubscribing the other.
+    max_instance_request_concurrency = 1
+
+    # One minute longer than the caller's deadline, so the client is always the one that gives up
+    # first. They were previously both exactly 300s, which made the loser of every timeout
+    # arbitrary and cost a real diagnosis: the same failure surfaced as a client
+    # TaskCanceledException or a server 504 depending on which side won the race. The client owns
+    # the retry decision, so the client must own the deadline.
+    #
+    # Derived, not restated. The caller's value is medgemma_timeout_seconds, applied as
+    # HttpClient.Timeout in AiServiceExtensions; writing a literal here would hold the ordering
+    # only until someone changed one of the two numbers.
+    timeout = "${var.medgemma_timeout_seconds + 60}s"
 
     vpc_access {
       network_interfaces {
