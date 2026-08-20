@@ -49,6 +49,9 @@ public class TestDatabaseFixture : IAsyncLifetime
         services.AddScoped<IPushDeviceTokenRepository, PushDeviceTokenRepository>();
         services.AddScoped<INotificationPreferenceRepository, NotificationPreferenceRepository>();
         services.AddScoped<IAlertPreferenceRepository, AlertPreferenceRepository>();
+        services.AddScoped<IMemberChatSessionRepository, MemberChatSessionRepository>();
+        services.AddScoped<IMemberChatTurnRepository, MemberChatTurnRepository>();
+        services.AddScoped<IMemberChatTurnUsageRepository, MemberChatTurnUsageRepository>();
         services.AddScoped<IUnitOfWork, UnitOfWork>();
         services.AddScoped<ITimeSeriesPartitionService, TimeSeriesPartitionService>();
         services.AddLogging();

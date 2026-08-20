@@ -129,9 +129,10 @@ module "deployments" {
       # without calling the model — AiServiceExtensions refuses to start a host whose BaseUrl is a
       # Cloud Run URL while this is false, and that check runs wherever the settings are bound.
       "AI__Private__UseIdentityToken" = "true"
-      # Rewrite slot — same Cloud Run host as Private (see AI__Rewrite__BaseUrl below), a different
-      # model tag on the same Ollama instance. Every host that gets AddMedicalAiServices now
-      # validates this section at startup too, so it is set everywhere AI__Private__* is.
+      # Rewrite slot — its own Cloud Run host, split from Private (see AI__Rewrite__BaseUrl
+      # below), the same in-estate identity-token requirement. Every host that gets
+      # AddMedicalAiServices now validates this section at startup too, so it is set everywhere
+      # AI__Private__* is.
       "AI__Rewrite__Model"             = local.medgemma_rewrite_model
       "AI__Rewrite__TimeoutSeconds"    = tostring(var.medgemma_timeout_seconds)
       "AI__Rewrite__UseIdentityToken"  = "true"
@@ -187,9 +188,9 @@ module "deployments" {
       "DeviceProviders__0__ClientId"     = "${var.project_name}-${local.environment}-devices-fitbit-client-id"
       "DeviceProviders__0__ClientSecret" = "${var.project_name}-${local.environment}-devices-fitbit-client-secret"
       "AI__Private__BaseUrl"             = "${var.project_name}-${local.environment}-medgemma-service-url"
-      # Same secret as AI__Private__BaseUrl — the rewrite model lives on the same Cloud Run host,
-      # just a different model= value per Ollama call.
-      "AI__Rewrite__BaseUrl" = "${var.project_name}-${local.environment}-medgemma-service-url"
+      # Own secret, own Cloud Run host — split from AI__Private__BaseUrl (member-chat planning
+      # notes, 2026-08-20) so Rewrite has independent capacity from MedGemma.
+      "AI__Rewrite__BaseUrl" = "${var.project_name}-${local.environment}-rewrite-service-url"
       "AI__Public__ApiKey"   = local.public_ai_api_key_secret_id
       "Apm__Data"            = "${var.project_name}-${local.environment}-apm-data"
       # Transitional — delete alongside the legacy AI__Providers env vars above.
@@ -268,7 +269,7 @@ module "deployments" {
     "ConnectionStrings__DefaultConnection" = "${var.project_name}-${local.environment}-db-connection-string"
     "Encryption__Key"                      = "${var.project_name}-${local.environment}-encryption-key"
     "AI__Private__BaseUrl"                 = "${var.project_name}-${local.environment}-medgemma-service-url"
-    "AI__Rewrite__BaseUrl"                 = "${var.project_name}-${local.environment}-medgemma-service-url"
+    "AI__Rewrite__BaseUrl"                 = "${var.project_name}-${local.environment}-rewrite-service-url"
     "Apm__Data"                            = "${var.project_name}-${local.environment}-apm-data"
   }
 
@@ -297,7 +298,7 @@ module "deployments" {
     "ConnectionStrings__DefaultConnection" = "${var.project_name}-${local.environment}-db-connection-string"
     "Encryption__Key"                      = "${var.project_name}-${local.environment}-encryption-key"
     "AI__Private__BaseUrl"                 = "${var.project_name}-${local.environment}-medgemma-service-url"
-    "AI__Rewrite__BaseUrl"                 = "${var.project_name}-${local.environment}-medgemma-service-url"
+    "AI__Rewrite__BaseUrl"                 = "${var.project_name}-${local.environment}-rewrite-service-url"
     "Apm__Data"                            = "${var.project_name}-${local.environment}-apm-data"
     "DeviceProviders__0__ClientId"         = "${var.project_name}-${local.environment}-devices-fitbit-client-id"
     "DeviceProviders__0__ClientSecret"     = "${var.project_name}-${local.environment}-devices-fitbit-client-secret"
@@ -416,4 +417,11 @@ module "deployments" {
   # Same value the .NET hosts get as AI__Private__TimeoutSeconds above. The module derives the
   # service's own request timeout from it, keeping the client's deadline strictly the shorter one.
   medgemma_timeout_seconds = var.medgemma_timeout_seconds
+
+  # Rewrite (split from MedGemma) — see deployments/cloud_run.tf's "rewrite" resource.
+  rewrite_service_name  = "${var.project_name}-${local.environment}-rewrite"
+  rewrite_cpu           = var.rewrite_cpu
+  rewrite_memory        = var.rewrite_memory
+  rewrite_min_instances = var.rewrite_min_instances
+  rewrite_max_instances = var.rewrite_max_instances
 }

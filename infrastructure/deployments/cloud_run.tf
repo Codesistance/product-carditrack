@@ -233,6 +233,36 @@ variable "medgemma_timeout_seconds" {
   default     = 300
 }
 
+# ── Rewrite (split from MedGemma) ─────────────────────────────────────────────
+variable "rewrite_service_name" {
+  description = "Name of the Rewrite Cloud Run service"
+  type        = string
+}
+
+variable "rewrite_cpu" {
+  description = "CPU allocation for the Rewrite Cloud Run service"
+  type        = string
+  default     = "2"
+}
+
+variable "rewrite_memory" {
+  description = "Memory allocation for the Rewrite Cloud Run service"
+  type        = string
+  default     = "4Gi"
+}
+
+variable "rewrite_min_instances" {
+  description = "Minimum number of Rewrite instances (0 scales to zero between requests)"
+  type        = number
+  default     = 0
+}
+
+variable "rewrite_max_instances" {
+  description = "Maximum number of Rewrite instances"
+  type        = number
+  default     = 1
+}
+
 # Resources
 resource "google_cloud_run_v2_service" "api" {
   name     = var.api_service_name
@@ -825,6 +855,85 @@ resource "google_cloud_run_v2_service" "medgemma" {
   depends_on = [google_project_service.run]
 }
 
+# Split off the medgemma service (member-chat planning notes, 2026-08-20): same image, own
+# instance, so a member-chat malicious-check/query-plan/rewrite call never contends with
+# MedGemma's own callers for the one CPU allocation the medgemma service above has. Internal
+# ingress only — nothing public ever calls this directly, same as medgemma.
+resource "google_cloud_run_v2_service" "rewrite" {
+  count    = var.medgemma_image != "" ? 1 : 0
+  name     = var.rewrite_service_name
+  location = var.cloud_run_location
+  ingress  = "INGRESS_TRAFFIC_ALL"
+  client   = "terraform"
+
+  template {
+    scaling {
+      min_instance_count = var.rewrite_min_instances
+      max_instance_count = var.rewrite_max_instances
+    }
+
+    # Same reasoning as medgemma's concurrency = 1 above: Ollama cannot safely multi-instance,
+    # and one request at a time is a fast, honest 429 rather than several calls quietly slowing
+    # each other down. Revisit alongside the benchmark the rewrite_cpu variable's comment asks for.
+    max_instance_request_concurrency = 1
+
+    timeout = "${var.medgemma_timeout_seconds + 60}s"
+
+    vpc_access {
+      network_interfaces {
+        network    = google_compute_network.main.id
+        subnetwork = google_compute_subnetwork.main.id
+      }
+      egress = "PRIVATE_RANGES_ONLY"
+    }
+
+    containers {
+      image = var.medgemma_image
+
+      # Deliberately no OLLAMA_KEEP_ALIVE override, unlike medgemma: that setting exists to keep
+      # a permanently-warm instance from paying a reload between calls, and this service is sized
+      # to scale to zero (rewrite_min_instances default 0) rather than stay warm. Ollama's own
+      # 5-minute idle unload is the right default here.
+      env {
+        name  = "LLAMA_ARG_CACHE_RAM"
+        value = "0"
+      }
+
+      resources {
+        limits = {
+          cpu    = var.rewrite_cpu
+          memory = var.rewrite_memory
+        }
+        # true (the default, stated explicitly): unlike medgemma, this service is not forced
+        # always-on, so ordinary request-based CPU billing/throttling is the cheaper shape —
+        # cpu_idle = false only pays for itself on an instance that has to do work between
+        # requests, which this one does not.
+        cpu_idle          = true
+        startup_cpu_boost = true
+      }
+
+      ports {
+        container_port = 8080
+      }
+
+      startup_probe {
+        http_get {
+          path = "/"
+        }
+        initial_delay_seconds = 30
+        period_seconds        = 10
+        failure_threshold     = 12
+      }
+    }
+  }
+
+  labels = var.cloud_run_labels
+  lifecycle {
+    ignore_changes = [template[0].containers[0].image, client, client_version]
+  }
+  depends_on = [google_project_service.run]
+}
+
 # Allow unauthenticated access (traffic enters via GCLB + Cloud Armor)
 resource "google_cloud_run_v2_service_iam_member" "api_public" {
   name     = google_cloud_run_v2_service.api.name
@@ -858,6 +967,25 @@ resource "google_cloud_run_v2_service_iam_member" "medgemma_pipeline_invoker" {
   count    = var.medgemma_image != "" && var.enable_pipeline_jobs ? 1 : 0
   name     = google_cloud_run_v2_service.medgemma[0].name
   location = google_cloud_run_v2_service.medgemma[0].location
+  role     = "roles/run.invoker"
+  member   = "serviceAccount:${google_service_account.pipeline[0].email}"
+}
+
+# Rewrite invokers — same two callers as MedGemma (member chat's steps run from the API;
+# family-summary rewriting, once it exists, would run from the pipeline jobs the same way the
+# assessor's clinical call does today).
+resource "google_cloud_run_v2_service_iam_member" "rewrite_api_invoker" {
+  count    = var.medgemma_image != "" ? 1 : 0
+  name     = google_cloud_run_v2_service.rewrite[0].name
+  location = google_cloud_run_v2_service.rewrite[0].location
+  role     = "roles/run.invoker"
+  member   = local.api_sa
+}
+
+resource "google_cloud_run_v2_service_iam_member" "rewrite_pipeline_invoker" {
+  count    = var.medgemma_image != "" && var.enable_pipeline_jobs ? 1 : 0
+  name     = google_cloud_run_v2_service.rewrite[0].name
+  location = google_cloud_run_v2_service.rewrite[0].location
   role     = "roles/run.invoker"
   member   = "serviceAccount:${google_service_account.pipeline[0].email}"
 }

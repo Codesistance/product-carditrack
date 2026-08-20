@@ -142,6 +142,7 @@ public static class MauiProgram
         builder.Services.AddTransient<MetricTrendPage>();
         builder.Services.AddTransient<NotificationsPage>();
         builder.Services.AddTransient<AlertDetailPage>();
+        builder.Services.AddTransient<MemberChatPage>();
 
         var app = builder.Build();
         AppLogging.HookUnhandledExceptions(app.Services);

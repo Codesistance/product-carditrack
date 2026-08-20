@@ -1,3 +1,4 @@
+using CardiTrack.Application.DTOs.Common;
 using CardiTrack.Application.Interfaces.Clients;
 using CardiTrack.Application.Interfaces.Services;
 using Microsoft.Extensions.DependencyInjection;
@@ -18,4 +19,8 @@ public class MedicalAiService : IMedicalAiService
 
     public Task<T> GenerateStructuredAsync<T>(string prompt, CancellationToken ct = default) where T : class
         => _client.GenerateStructuredAsync<T>(prompt, ct);
+
+    public Task<AiGenerationResult<T>> GenerateStructuredWithUsageAsync<T>(
+        string prompt, CancellationToken ct = default) where T : class
+        => _client.GenerateStructuredWithUsageAsync<T>(prompt, ct);
 }

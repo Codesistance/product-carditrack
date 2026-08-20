@@ -560,6 +560,47 @@ variable "medgemma_timeout_seconds" {
   default     = 300
 }
 
+# ── Rewrite (Ollama, split from MedGemma) ─────────────────────────────────────
+# Own Cloud Run service (deployments/cloud_run.tf's "rewrite" resource), split off the MedGemma
+# instance so a member-chat call never contends with MedGemma's own callers for the same CPU — see
+# the member-chat planning notes (2026-08-20). Same container image as MedGemma
+# (src/Infrastructure/MedGemma/Dockerfile bakes in both model tags); this is a second, independent
+# instance of it, asked only for the rewrite tag.
+#
+# Sized smaller than MedGemma's defaults on the working assumption that a malicious-check/
+# query-plan/rewrite call is a much lighter duty cycle than a full clinical prompt — short,
+# non-medical, no member-context block. That assumption is not yet benchmarked (see the open item
+# in the member-chat plan); treat these as a starting point to revise once real prompt timings
+# exist, not a load-bearing number.
+variable "rewrite_cpu" {
+  description = "CPU allocation for the Rewrite Cloud Run service"
+  type        = string
+  default     = "2"
+}
+
+variable "rewrite_memory" {
+  description = "Memory allocation for the Rewrite Cloud Run service"
+  type        = string
+  default     = "4Gi"
+}
+
+# Unlike medgemma_min_instances, 0 is not just the default here — it is the point of the split.
+# Rewrite's calls are short enough that cpu_idle = true (request-based billing, see the resource)
+# is expected to make scale-to-zero the cheap option rather than the crossover trap
+# medgemma_min_instances documents for MedGemma's ~124s calls. Revisit together if the benchmark
+# above says otherwise.
+variable "rewrite_min_instances" {
+  description = "Minimum number of Rewrite instances (0 scales to zero between requests)"
+  type        = number
+  default     = 0
+}
+
+variable "rewrite_max_instances" {
+  description = "Maximum number of Rewrite instances"
+  type        = number
+  default     = 1
+}
+
 # ── Public AI provider (reports and chat) ─────────────────────────────────────
 # Off-estate by definition, and swappable: changing kind + model + the key secret moves
 # reports and chat to another provider without a code change. The medical path is not

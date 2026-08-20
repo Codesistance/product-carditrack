@@ -1,9 +1,15 @@
 FROM ollama/ollama:latest AS builder
 ARG MODEL_TAG
 # Plain, non-medical model used to rewrite MedGemma's clinical output into caregiver-facing
-# language (docs/llm_design.md). Pulled into the same image/instance as MedGemma rather than a
-# second Cloud Run service: Ollama already serves multiple resident models from one process,
-# selected per-request by the `model` field, and Ollama cannot safely multi-instance anyway.
+# language (docs/llm_design.md), and to run member chat's malicious-check and query-plan steps.
+# Still built into this one image alongside MODEL_TAG — Ollama already serves multiple resident
+# models from one process, selected per-request by the `model` field — but as of the Rewrite
+# Cloud Run split (member-chat planning notes, 2026-08-20) it is deployed onto its OWN service
+# instance (see infrastructure/deployments/cloud_run.tf's "rewrite" resource), not the MedGemma
+# one: co-locating both models' inference on one Cloud Run instance was what let a Rewrite call
+# contend with MedGemma for the same saturated CPU. The instance running MODEL_TAG never receives
+# a REWRITE_MODEL_TAG request in practice and vice versa; both tags stay in one image for now to
+# avoid a second build pipeline, not because they still share compute.
 ARG REWRITE_MODEL_TAG
 # `ollama pull` exiting 0 only means the transfer succeeded — it does not guarantee the
 # server will resolve a tag at generate time (hf.co references have silently 404'd in prod

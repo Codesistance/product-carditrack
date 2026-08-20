@@ -1047,6 +1047,123 @@ namespace CardiTrack.Infrastructure.Migrations
                     b.ToTable("GranularMetricHours", (string)null);
                 });
 
+            modelBuilder.Entity("CardiTrack.Domain.Entities.MemberChatSession", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("CardiMemberId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedDate")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasDefaultValueSql("NOW()");
+
+                    b.Property<DateTime>("LastTurnAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("StartedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("UpdatedDate")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CardiMemberId", "UserId", "LastTurnAtUtc");
+
+                    b.ToTable("MemberChatSessions", (string)null);
+                });
+
+            modelBuilder.Entity("CardiTrack.Domain.Entities.MemberChatTurn", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Content")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("CreatedDate")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasDefaultValueSql("NOW()");
+
+                    b.Property<string>("Role")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<Guid>("SessionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("UpdatedDate")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SessionId", "CreatedAtUtc");
+
+                    b.ToTable("MemberChatTurns", (string)null);
+                });
+
+            modelBuilder.Entity("CardiTrack.Domain.Entities.MemberChatTurnUsage", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedDate")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasDefaultValueSql("NOW()");
+
+                    b.Property<long?>("DurationMs")
+                        .HasColumnType("bigint");
+
+                    b.Property<int?>("InputTokens")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("ModelName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<int?>("OutputTokens")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("ProviderSlot")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<string>("Step")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<Guid>("TurnId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("UpdatedDate")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TurnId");
+
+                    b.ToTable("MemberChatTurnUsages", (string)null);
+                });
+
             modelBuilder.Entity("CardiTrack.Domain.Entities.MemberQuestionnaire", b =>
                 {
                     b.Property<Guid>("Id")
@@ -2055,6 +2172,15 @@ namespace CardiTrack.Infrastructure.Migrations
                     b.ToTable("UserCardiMembers", (string)null);
                 });
 
+            modelBuilder.Entity("CardiTrack.Domain.Entities.MemberChatTurn", b =>
+                {
+                    b.HasOne("CardiTrack.Domain.Entities.MemberChatSession", null)
+                        .WithMany("Turns")
+                        .HasForeignKey("SessionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("CardiTrack.Domain.Entities.Subscription", b =>
                 {
                     b.HasOne("CardiTrack.Domain.Entities.Organization", null)
@@ -2081,6 +2207,11 @@ namespace CardiTrack.Infrastructure.Migrations
                     b.Navigation("CardiMember");
 
                     b.Navigation("User");
+                });
+
+            modelBuilder.Entity("CardiTrack.Domain.Entities.MemberChatSession", b =>
+                {
+                    b.Navigation("Turns");
                 });
 #pragma warning restore 612, 618
         }

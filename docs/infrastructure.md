@@ -150,6 +150,7 @@ CardiTrack uses AES-256-GCM (Galois/Counter Mode) for field-level encryption of 
 - `CardiMember.MedicalNotes`
 - `MemberQuestionnaire.QuestionText`
 - `MemberQuestionnaire.AnswerText`
+- `MemberChatTurn.Content`
 
 ### Key Management
 

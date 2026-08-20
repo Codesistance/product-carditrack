@@ -40,6 +40,7 @@ public partial class AppShell : Shell
         Routing.RegisterRoute(AlertDetailPage.Route, typeof(AlertDetailPage));
         Routing.RegisterRoute(JournalEntryPage.Route, typeof(JournalEntryPage));
         Routing.RegisterRoute(JournalTimingPage.Route, typeof(JournalTimingPage));
+        Routing.RegisterRoute(MemberChatPage.Route, typeof(MemberChatPage));
 
 #if ANDROID || IOS
         WirePush();

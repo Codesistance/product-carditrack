@@ -38,6 +38,16 @@ public class AnthropicAiClient : IExternalAiClient
         throw new NotSupportedException(
             $"{nameof(AnthropicAiClient)} does not support structured output yet — no caller needs it.");
 
+    // Same "no caller needs it yet" call as GenerateStructuredAsync above: only member chat reads
+    // usage, and member chat never reaches the public provider (see MemberChatService).
+    public async Task<AiGenerationResult<string>> GenerateWithUsageAsync(string prompt, CancellationToken ct = default)
+        => new(await GenerateAsync(prompt, ct), new AiUsage { ModelName = _settings.Model });
+
+    public Task<AiGenerationResult<T>> GenerateStructuredWithUsageAsync<T>(
+        string prompt, CancellationToken ct = default) where T : class =>
+        throw new NotSupportedException(
+            $"{nameof(AnthropicAiClient)} does not support structured output yet — no caller needs it.");
+
     public async Task<string> ChatAsync(IReadOnlyList<ChatMessage> history, string userMessage, CancellationToken ct = default)
     {
         var messages = history

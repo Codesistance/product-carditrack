@@ -103,6 +103,8 @@ public static class AiServiceExtensions
         services.AddScoped<IGenerativeAiService, GenerativeAiService>();
         services.AddScoped<IHealthInsightService, HealthInsightService>();
         services.AddScoped<IReportGenerationService, ReportGenerationService>();
+        services.AddScoped<IDataQueryPlanner, DataQueryPlannerService>();
+        services.AddScoped<IMemberChatService, MemberChatService>();
 
         return services;
     }
