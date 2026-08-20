@@ -390,4 +390,8 @@ module "deployments" {
   medgemma_memory        = var.medgemma_memory
   medgemma_max_instances = 1
   medgemma_min_instances = var.medgemma_min_instances
+
+  # Same value the .NET hosts get as AI__Private__TimeoutSeconds above. The module derives the
+  # service's own request timeout from it, keeping the client's deadline strictly the shorter one.
+  medgemma_timeout_seconds = var.medgemma_timeout_seconds
 }
