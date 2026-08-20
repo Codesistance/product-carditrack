@@ -857,8 +857,11 @@ resource "google_cloud_run_v2_service" "medgemma" {
 
 # Split off the medgemma service (member-chat planning notes, 2026-08-20): same image, own
 # instance, so a member-chat malicious-check/query-plan/rewrite call never contends with
-# MedGemma's own callers for the one CPU allocation the medgemma service above has. Internal
-# ingress only — nothing public ever calls this directly, same as medgemma.
+# MedGemma's own callers for the one CPU allocation the medgemma service above has. Same
+# security posture as medgemma: INGRESS_TRAFFIC_ALL, with IAM (`roles/run.invoker` on the two
+# named runtime identities below, no allUsers) as the boundary — callers present a Google-signed
+# OIDC token and anything else is rejected at the Google front end. There is no network-level
+# backstop here; see the medgemma IAM-alerting note in the accepted-risks record.
 resource "google_cloud_run_v2_service" "rewrite" {
   count    = var.medgemma_image != "" ? 1 : 0
   name     = var.rewrite_service_name

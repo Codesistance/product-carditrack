@@ -515,9 +515,8 @@ resource "google_secret_manager_secret_iam_member" "deploy_sa_medgemma_url_acces
 
 # Rewrite internal service URL — same pattern as medgemma_service_url above, for the Cloud Run
 # service the Rewrite split (member-chat planning notes, 2026-08-20) gives its own instance and
-# its own URL. CI/CD's deploy workflow needs a matching step added to write this value after
-# deploying the rewrite service, the same way it already does for medgemma's — that workflow
-# change is not part of this Terraform pass.
+# its own URL. Written by CI/CD's deploy-rewrite-dev job after each rewrite deployment
+# (.github/workflows/deploy-apps-dev.yml), the same way deploy-medgemma-dev writes medgemma's.
 resource "google_secret_manager_secret" "rewrite_service_url" {
   secret_id = "${var.secret_id_prefix}-rewrite-service-url"
   replication {

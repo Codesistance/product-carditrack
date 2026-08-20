@@ -2181,6 +2181,15 @@ namespace CardiTrack.Infrastructure.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("CardiTrack.Domain.Entities.MemberChatTurnUsage", b =>
+                {
+                    b.HasOne("CardiTrack.Domain.Entities.MemberChatTurn", null)
+                        .WithMany()
+                        .HasForeignKey("TurnId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("CardiTrack.Domain.Entities.Subscription", b =>
                 {
                     b.HasOne("CardiTrack.Domain.Entities.Organization", null)

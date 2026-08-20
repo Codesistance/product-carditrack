@@ -35,12 +35,12 @@ public class MemberChatSessionRepositoryTests(TestDatabaseFixture fixture)
     };
 
     /// <summary>
-    /// Deleting the session must take its turns with it — a chat record cannot be "erased" while
-    /// its messages survive, which is exactly the GDPR Art. 17 guarantee
-    /// <see cref="MemberChatSession"/>'s remarks describe.
+    /// Deleting the session must take its turns with it, and the token ledger with them — a chat
+    /// record cannot be "erased" while its messages or their usage accounting survive, which is
+    /// exactly the GDPR Art. 17 guarantee <see cref="MemberChatSession"/>'s remarks describe.
     /// </summary>
     [Fact]
-    public async Task Remove_CascadesToTurns_LeavesNoRowBehind()
+    public async Task Remove_CascadesToTurnsAndUsage_LeavesNoRowBehind()
     {
         using var scope = fixture.CreateScope();
         var userId = Guid.NewGuid();
@@ -48,12 +48,25 @@ public class MemberChatSessionRepositoryTests(TestDatabaseFixture fixture)
         var now = DateTime.UtcNow;
         var session = Session(userId, memberId, now);
         var turn = Turn(session.Id, ChatTurnRole.User, "How has she been sleeping?", now);
+        var usage = new MemberChatTurnUsage
+        {
+            Id = Guid.NewGuid(),
+            TurnId = turn.Id,
+            Step = AiCallStep.ClinicalAnalysis,
+            ProviderSlot = AiProviderSlot.Private,
+            ModelName = "medgemma-test",
+            InputTokens = 512,
+            OutputTokens = 24,
+            DurationMs = 1800,
+        };
 
         var sessionRepo = scope.ServiceProvider.GetRequiredService<IMemberChatSessionRepository>();
         var turnRepo = scope.ServiceProvider.GetRequiredService<IMemberChatTurnRepository>();
+        var usageRepo = scope.ServiceProvider.GetRequiredService<IMemberChatTurnUsageRepository>();
         var uow = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
         await sessionRepo.AddAsync(session);
         await turnRepo.AddAsync(turn);
+        await usageRepo.AddAsync(usage);
         await uow.SaveChangesAsync();
 
         var tracked = await sessionRepo.GetByIdAsync(session.Id);
@@ -65,6 +78,7 @@ public class MemberChatSessionRepositoryTests(TestDatabaseFixture fixture)
             .GetRequiredService<CardiTrack.Infrastructure.Persistence.CardiTrackDbContext>();
         Assert.Equal(0, await db.MemberChatSessions.AsNoTracking().CountAsync(s => s.Id == session.Id));
         Assert.Equal(0, await db.MemberChatTurns.AsNoTracking().CountAsync(t => t.SessionId == session.Id));
+        Assert.Equal(0, await db.MemberChatTurnUsages.AsNoTracking().CountAsync(u => u.TurnId == turn.Id));
     }
 
     [Fact]

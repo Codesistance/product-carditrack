@@ -12,7 +12,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace CardiTrack.Infrastructure.Migrations
 {
     [DbContext(typeof(CardiTrackDbContext))]
-    [Migration("20260820125608_AddMemberChat")]
+    [Migration("20260820141717_AddMemberChat")]
     partial class AddMemberChat
     {
         /// <inheritdoc />
@@ -2180,6 +2180,15 @@ namespace CardiTrack.Infrastructure.Migrations
                     b.HasOne("CardiTrack.Domain.Entities.MemberChatSession", null)
                         .WithMany("Turns")
                         .HasForeignKey("SessionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("CardiTrack.Domain.Entities.MemberChatTurnUsage", b =>
+                {
+                    b.HasOne("CardiTrack.Domain.Entities.MemberChatTurn", null)
+                        .WithMany()
+                        .HasForeignKey("TurnId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });
