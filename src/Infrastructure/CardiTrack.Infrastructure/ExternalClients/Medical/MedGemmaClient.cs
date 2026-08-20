@@ -529,6 +529,15 @@ public class MedGemmaClient : IExternalAiClient
         [JsonPropertyName("prompt")] public required string Prompt { get; init; }
         [JsonPropertyName("stream")] public bool Stream { get; init; } = false;
 
+        /// <summary>
+        /// Always off: on a thinking-family model (e.g. Qwen), Ollama's default routes the whole
+        /// generation into a separate <c>thinking</c> field and leaves <c>response</c> — the only
+        /// field this client reads — empty, which surfaces as "returned structured content that
+        /// could not be parsed" (measured against qwen3.5:4b, 2026-08-20). Non-thinking models
+        /// (gemma3, gemma4) accept and ignore the flag.
+        /// </summary>
+        [JsonPropertyName("think")] public bool Think { get; init; } = false;
+
         /// <summary>A JSON Schema — Ollama's grammar-constrained decoding. Null for a free-text call.</summary>
         [JsonPropertyName("format")] public JsonNode? Format { get; init; }
     }
