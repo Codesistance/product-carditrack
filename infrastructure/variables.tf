@@ -581,7 +581,12 @@ variable "rewrite_cpu" {
 variable "rewrite_memory" {
   description = "Memory allocation for the Rewrite Cloud Run service"
   type        = string
-  default     = "4Gi"
+  # Must stay in step with the deployments module's own default, which carries the full
+  # rationale: 8Gi is the floor the model load survives (4Gi was killed at 4265 MiB, dev
+  # 2026-08-20) and the ceiling Cloud Run allows on 2 vCPU. This root default is what actually
+  # reaches the module — main.tf always passes it through — so changing one without the other
+  # silently does nothing, which is exactly how the first attempt at this fix shipped inert.
+  default     = "8Gi"
 }
 
 # Unlike medgemma_min_instances, 0 is not just the default here — it is the point of the split.
