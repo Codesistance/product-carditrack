@@ -187,8 +187,8 @@
                         WidthRequest="48" HeightRequest="48"
                         StrokeThickness="0"
                         BackgroundColor="{StaticResource White}"
-                        HorizontalOptions="End" VerticalOptions="End"
-                        Margin="0,0,10,8"
+                        HorizontalOptions="End" VerticalOptions="Center"
+                        Margin="0,0,10,0"
                         SemanticProperties.Description="Send message">
                     <controls:SquareBorder.StrokeShape>
                         <RoundRectangle CornerRadius="99"/>
