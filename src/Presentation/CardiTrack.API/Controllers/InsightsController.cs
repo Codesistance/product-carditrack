@@ -24,6 +24,18 @@ public class InsightsController : BaseApiController
     /// </summary>
     private const int DefaultHistoryLimit = 24;
 
+    /// <summary>
+    /// What a caller hears when the model host couldn't answer. Same stance as
+    /// <c>MemberChatController</c>'s send: everything HTTP inside the insight pipeline is a call
+    /// to an in-estate model host, so an <see cref="HttpRequestException"/> means saturation
+    /// (MedGemmaClient's retries exhausted on 429/503), an unreachable service, or an unparseable
+    /// reply — none a fault in this request. 500 would page someone for a queue; 503 tells the
+    /// app, honestly, to ask again shortly. Before this mapping, every MedGemma 429 under the
+    /// dashboard's status polling surfaced as a 500 (21 of them in one 72-hour window, dev).
+    /// </summary>
+    private const string InsightBusyMessage =
+        "Insights are busy catching up right now — give it a minute and try again.";
+
     private readonly IHealthInsightService _insightService;
     private readonly IDigestQueryService _digests;
 
@@ -37,6 +49,13 @@ public class InsightsController : BaseApiController
         _insightService = insightService;
         _digests = digests;
     }
+
+    // MedGemmaClient's exception messages are payload-free by design, so the exception itself
+    // is safe to log. Warning, not Error: see InsightBusyMessage — this is upstream weather.
+    private void LogModelHostFailure(HttpRequestException ex, string endpoint, Guid subjectId) =>
+        Logger.LogWarning(ex,
+            "Insight {Endpoint} failed against the AI host for {SubjectId} (upstream status {StatusCode})",
+            endpoint, subjectId, ex.StatusCode);
 
     /// <summary>Analyse a specific alert using MedGemma.</summary>
     [HttpGet("alerts/{alertId:guid}")]
@@ -59,6 +78,11 @@ public class InsightsController : BaseApiController
         catch (KeyNotFoundException ex)
         {
             return Error(ex.Message, StatusCodes.Status404NotFound);
+        }
+        catch (HttpRequestException ex)
+        {
+            LogModelHostFailure(ex, nameof(AnalyzeAlert), alertId);
+            return Error(InsightBusyMessage, StatusCodes.Status503ServiceUnavailable);
         }
     }
 
@@ -83,6 +107,11 @@ public class InsightsController : BaseApiController
         catch (KeyNotFoundException ex)
         {
             return Error(ex.Message, StatusCodes.Status404NotFound);
+        }
+        catch (HttpRequestException ex)
+        {
+            LogModelHostFailure(ex, nameof(AnalyzeBaseline), cardiMemberId);
+            return Error(InsightBusyMessage, StatusCodes.Status503ServiceUnavailable);
         }
     }
 
@@ -113,6 +142,11 @@ public class InsightsController : BaseApiController
         catch (KeyNotFoundException ex)
         {
             return Error(ex.Message, StatusCodes.Status404NotFound);
+        }
+        catch (HttpRequestException ex)
+        {
+            LogModelHostFailure(ex, nameof(GetCurrentStatus), cardiMemberId);
+            return Error(InsightBusyMessage, StatusCodes.Status503ServiceUnavailable);
         }
     }
 
