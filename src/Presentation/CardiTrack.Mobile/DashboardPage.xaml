@@ -13,7 +13,7 @@
          effect on Android (verified on API 37). Top keeps the status-bar inset the header
          band is drawn against; bottom releases it, so BottomNavBar can run to the screen
          edge and pad itself instead — see that control. -->
-    <Grid RowDefinitions="Auto,Auto,*,Auto" SafeAreaEdges="None, Container, None, None">
+    <Grid x:Name="RootGrid" RowDefinitions="Auto,Auto,*,Auto" SafeAreaEdges="None, Container, None, None">
 
         <!-- ════════════════════════════════════════
              FIXED HEADER (Figma 101:2872) — edge to edge, so it sits outside the
@@ -324,6 +324,53 @@
                 </Grid>
             </ScrollView>
         </RefreshView>
+
+        <!-- ChatBot launcher — floats over the content, not part of the Figma-specified header
+             (101:2872), which has no room for a fourth icon. Draggable (OnChatBotPanUpdated) so
+             it can be moved off whatever it happens to be sitting over; docks bottom-end by
+             default. Opens MemberChatPage modally over Dashboard rather than navigating away —
+             see MemberChatLauncher. No Figma frame yet; as-built, see the design-sync backlog. -->
+        <Grid x:Name="ChatBotContainer" Grid.Row="2"
+              HorizontalOptions="End" VerticalOptions="End"
+              Margin="0,0,20,16"
+              WidthRequest="56" HeightRequest="56">
+            <Grid.GestureRecognizers>
+                <!-- Separate recognizers, not one synthesizing a tap from a zero-movement pan —
+                     a true no-motion tap (as opposed to a mouse/trackpad click-drag) doesn't
+                     reliably raise PanUpdated at all on Android, since the native gesture
+                     detector never sees enough motion to recognize a pan in the first place.
+                     The platform's own arena disambiguates a real drag from a tap between the
+                     two, the same way it already does anywhere else both exist on one view. -->
+                <TapGestureRecognizer Tapped="OnChatBotTapped"/>
+                <PanGestureRecognizer PanUpdated="OnChatBotPanUpdated"/>
+            </Grid.GestureRecognizers>
+
+            <!-- Pulse ring — behind the button (declared first, so the button draws on top),
+                 invisible at rest. PulseChatBotLoopAsync fades it out to a wider circle every
+                 few seconds, a soft "notice me" cue rather than a constant animation. -->
+            <Ellipse x:Name="ChatBotPulse"
+                     WidthRequest="56" HeightRequest="56"
+                     Fill="{StaticResource Primary}"
+                     Opacity="0"
+                     InputTransparent="True"/>
+
+            <controls:SquareBorder x:Name="ChatBotButton"
+                    WidthRequest="56" HeightRequest="56"
+                    StrokeThickness="0"
+                    BackgroundColor="{StaticResource White}"
+                    InputTransparent="True"
+                    SemanticProperties.Description="Chat"
+                    SemanticProperties.Hint="Opens a conversation about this CardiMember's readings — drag to move">
+                <controls:SquareBorder.StrokeShape>
+                    <RoundRectangle CornerRadius="99"/>
+                </controls:SquareBorder.StrokeShape>
+                <controls:SquareBorder.Shadow>
+                    <Shadow Brush="{StaticResource CardShadowBrush}" Opacity="0.25" Radius="14" Offset="0,4"/>
+                </controls:SquareBorder.Shadow>
+                <Image Source="icon_chatbot.svg" WidthRequest="34" HeightRequest="34"
+                       HorizontalOptions="Center" VerticalOptions="Center"/>
+            </controls:SquareBorder>
+        </Grid>
 
         <!-- First back-swipe at this tab root: sit above the nav bar so it is visible
              without scrolling. A second swipe within two seconds leaves the app. -->

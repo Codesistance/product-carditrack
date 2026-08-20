@@ -1810,6 +1810,81 @@ jobs:
                   || echo "::warning::Could not destroy version $VERSION of $SECRET_ID."
               done
 
+  # Own Cloud Run service, split from MedGemma (member-chat planning notes, 2026-08-20) so a
+  # member-chat call never contends with MedGemma's callers for the same instance. Same image as
+  # build-and-push-medgemma — it bakes in both model tags (src/Infrastructure/MedGemma/Dockerfile)
+  # — so this job deploys that image a second time rather than building a second one.
+  deploy-rewrite-dev:
+    name: Deploy Rewrite → Dev
+    needs: [changes, build-and-push-medgemma]
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && needs.changes.outputs.medgemma == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ needs.changes.outputs.gcp_wif_provider }}
+          service_account: ${{ needs.changes.outputs.gcp_service_account }}
+      - uses: google-github-actions/setup-gcloud@v3
+      - name: Deploy Rewrite service
+        env:
+          SERVICE: carditrack-dev-rewrite
+          IMAGE: ${{ needs.build-and-push-medgemma.outputs.image }}
+          REGION: ${{ needs.changes.outputs.gcp_region }}
+          PROJECT: ${{ needs.changes.outputs.gcp_project_id }}
+        run: |
+          gcloud run deploy $SERVICE \
+            --image $IMAGE \
+            --region $REGION \
+            --project $PROJECT \
+            --quiet
+      - name: Update Rewrite URL secret
+        env:
+          SERVICE: carditrack-dev-rewrite
+          SECRET_ID: carditrack-dev-rewrite-service-url
+          REGION: ${{ needs.changes.outputs.gcp_region }}
+          PROJECT: ${{ needs.changes.outputs.gcp_project_id }}
+          # Same reasoning as deploy-medgemma-dev's KEEP_VERSIONS above.
+          KEEP_VERSIONS: "2"
+        run: |
+          URL=$(gcloud run services describe $SERVICE \
+            --region $REGION \
+            --project $PROJECT \
+            --format='value(status.url)')
+
+          CURRENT=$(gcloud secrets versions access latest \
+            --secret=$SECRET_ID \
+            --project $PROJECT 2>/dev/null || true)
+
+          if [ "$CURRENT" = "$URL" ]; then
+            echo "Rewrite URL unchanged ($URL) — no new secret version added."
+          else
+            echo -n "$URL" | gcloud secrets versions add $SECRET_ID \
+              --data-file=- \
+              --project $PROJECT
+            echo "Rewrite URL set to $URL."
+          fi
+
+          if ! SUPERSEDED=$(gcloud secrets versions list $SECRET_ID \
+                --project $PROJECT \
+                --filter='state=ENABLED' \
+                --sort-by=~createTime \
+                --format='value(name.basename())'); then
+            echo "::warning::Could not list versions of $SECRET_ID; skipping prune this run."
+            SUPERSEDED=""
+          fi
+
+          echo "$SUPERSEDED" \
+            | tail -n +"$((KEEP_VERSIONS + 1))" \
+            | while read -r VERSION; do
+                [ -n "$VERSION" ] || continue
+                echo "Destroying superseded version $VERSION of $SECRET_ID."
+                gcloud secrets versions destroy "$VERSION" \
+                  --secret=$SECRET_ID \
+                  --project $PROJECT \
+                  --quiet \
+                  || echo "::warning::Could not destroy version $VERSION of $SECRET_ID."
+              done
+
   # ── Main only: Create patch tag ──────────────────────────────────────────────
   patch-tag:
     name: Create Patch Tag
@@ -1820,6 +1895,7 @@ jobs:
       - deploy-web-dev
       - deploy-worker-dev
       - deploy-medgemma-dev
+      - deploy-rewrite-dev
       - upload-mobile-artifacts
       - deploy-testflight
       - deploy-play-internal

@@ -513,6 +513,45 @@ resource "google_secret_manager_secret_iam_member" "deploy_sa_medgemma_url_acces
   member    = "serviceAccount:${var.deploy_service_account}"
 }
 
+# Rewrite internal service URL — same pattern as medgemma_service_url above, for the Cloud Run
+# service the Rewrite split (member-chat planning notes, 2026-08-20) gives its own instance and
+# its own URL. Written by CI/CD's deploy-rewrite-dev job after each rewrite deployment
+# (.github/workflows/deploy-apps-dev.yml), the same way deploy-medgemma-dev writes medgemma's.
+resource "google_secret_manager_secret" "rewrite_service_url" {
+  secret_id = "${var.secret_id_prefix}-rewrite-service-url"
+  replication {
+    auto {}
+  }
+  labels     = var.secret_labels
+  depends_on = [google_project_service.secretmanager]
+}
+
+resource "google_secret_manager_secret_version" "rewrite_service_url" {
+  secret      = google_secret_manager_secret.rewrite_service_url.id
+  secret_data = "placeholder"
+  lifecycle {
+    ignore_changes = [secret_data]
+  }
+}
+
+resource "google_secret_manager_secret_iam_member" "rewrite_url_accessor" {
+  secret_id = google_secret_manager_secret.rewrite_service_url.id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${data.google_project.current.number}-compute@developer.gserviceaccount.com"
+}
+
+resource "google_secret_manager_secret_iam_member" "deploy_sa_rewrite_url_manager" {
+  secret_id = google_secret_manager_secret.rewrite_service_url.id
+  role      = "roles/secretmanager.secretVersionManager"
+  member    = "serviceAccount:${var.deploy_service_account}"
+}
+
+resource "google_secret_manager_secret_iam_member" "deploy_sa_rewrite_url_accessor" {
+  secret_id = google_secret_manager_secret.rewrite_service_url.id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${var.deploy_service_account}"
+}
+
 # ── Webhook subscriber secret (Terraform-owned value) ────────────────────────
 # The full Authorization header value Google sends with every webhook notification, registered
 # in the Subscriber's endpointAuthorization.secret at provisioning time. Machine-generated and

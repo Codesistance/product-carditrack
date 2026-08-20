@@ -24,6 +24,9 @@ public interface IUnitOfWork : IDisposable
     IPushDeviceTokenRepository PushDeviceTokens { get; }
     INotificationPreferenceRepository NotificationPreferences { get; }
     IAlertPreferenceRepository AlertPreferences { get; }
+    IMemberChatSessionRepository MemberChatSessions { get; }
+    IMemberChatTurnRepository MemberChatTurns { get; }
+    IMemberChatTurnUsageRepository MemberChatTurnUsages { get; }
 
     Task<int> SaveChangesAsync();
     Task BeginTransactionAsync();

@@ -33,6 +33,18 @@ public class GeminiClient : IExternalAiClient
         throw new NotSupportedException(
             $"{nameof(GeminiClient)} does not support structured output yet — no caller needs it.");
 
+    // Only member chat reads usage today, and member chat never reaches the public provider (see
+    // MemberChatService) — so this returns the model name with null token counts rather than
+    // parsing Gemini's usageMetadata, the same "no caller needs it yet" call as
+    // GenerateStructuredAsync above. Parse it for real the day a public-provider caller needs it.
+    public async Task<AiGenerationResult<string>> GenerateWithUsageAsync(string prompt, CancellationToken ct = default)
+        => new(await GenerateAsync(prompt, ct), new AiUsage { ModelName = _settings.Model });
+
+    public Task<AiGenerationResult<T>> GenerateStructuredWithUsageAsync<T>(
+        string prompt, CancellationToken ct = default) where T : class =>
+        throw new NotSupportedException(
+            $"{nameof(GeminiClient)} does not support structured output yet — no caller needs it.");
+
     public async Task<string> ChatAsync(IReadOnlyList<ChatMessage> history, string userMessage, CancellationToken ct = default)
     {
         var client = _httpClientFactory.CreateClient(_httpClientName);

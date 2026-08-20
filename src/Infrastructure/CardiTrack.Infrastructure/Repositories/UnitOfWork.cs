@@ -31,6 +31,9 @@ public class UnitOfWork : IUnitOfWork
     public IPushDeviceTokenRepository PushDeviceTokens { get; }
     public INotificationPreferenceRepository NotificationPreferences { get; }
     public IAlertPreferenceRepository AlertPreferences { get; }
+    public IMemberChatSessionRepository MemberChatSessions { get; }
+    public IMemberChatTurnRepository MemberChatTurns { get; }
+    public IMemberChatTurnUsageRepository MemberChatTurnUsages { get; }
 
     public UnitOfWork(
         CardiTrackDbContext context,
@@ -55,7 +58,10 @@ public class UnitOfWork : IUnitOfWork
         INotificationDeliveryRepository notificationDeliveries,
         IPushDeviceTokenRepository pushDeviceTokens,
         INotificationPreferenceRepository notificationPreferences,
-        IAlertPreferenceRepository alertPreferences)
+        IAlertPreferenceRepository alertPreferences,
+        IMemberChatSessionRepository memberChatSessions,
+        IMemberChatTurnRepository memberChatTurns,
+        IMemberChatTurnUsageRepository memberChatTurnUsages)
     {
         _context = context;
         Organizations = organizations;
@@ -80,6 +86,9 @@ public class UnitOfWork : IUnitOfWork
         PushDeviceTokens = pushDeviceTokens;
         NotificationPreferences = notificationPreferences;
         AlertPreferences = alertPreferences;
+        MemberChatSessions = memberChatSessions;
+        MemberChatTurns = memberChatTurns;
+        MemberChatTurnUsages = memberChatTurnUsages;
     }
 
     public async Task<int> SaveChangesAsync()

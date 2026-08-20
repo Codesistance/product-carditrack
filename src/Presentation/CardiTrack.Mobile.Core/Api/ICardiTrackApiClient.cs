@@ -175,6 +175,18 @@ public interface ICardiTrackApiClient
     Task<AlertAcknowledgementResponse> AcknowledgeAlertAsync(Guid alertId, CancellationToken ct = default);
 
     /// <summary>
+    /// Sends one member-chat message, auto-creating or continuing the caregiver's active session
+    /// for this member. No Figma frame — as-built, see the design-sync backlog.
+    /// </summary>
+    Task<MemberChatMessageResponse> SendMemberChatMessageAsync(
+        Guid cardiMemberId, MemberChatMessageRequest request, CancellationToken ct = default);
+
+    /// <summary>The caregiver's active chat session and its turns for this member, or null if
+    /// none exists — what a relaunched app resumes from.</summary>
+    Task<MemberChatHistoryResponse?> GetCurrentMemberChatSessionAsync(
+        Guid cardiMemberId, CancellationToken ct = default);
+
+    /// <summary>
     /// Puts an acknowledged alert back to unhandled — the undo behind M1-11's Undo button.
     /// Rejected for an alert the system has already resolved.
     /// </summary>

@@ -47,7 +47,18 @@ public enum PromptPurpose
     /// </summary>
     Monthbook = 128,
 
+    /// <summary>
+    /// One turn of the persisted, multi-turn caregiver chat about a member. Picks 256 rather than
+    /// the next sequential bit deliberately: an unmerged branch (PR #339, "Let caregivers ask
+    /// MedGemma about a CardiMember") independently defines a one-shot <c>MemberAsk</c> purpose at
+    /// 256 for a different, non-persisted feature. If that branch merges first, resolve the clash by
+    /// moving whichever purpose lands second to the next free bit — do not let the two share a
+    /// value, since the whole point of <c>[Flags]</c> here is that each purpose is independently
+    /// addressable.
+    /// </summary>
+    MemberChat = 256,
+
     /// <summary>Everything a member-context source could contribute to.</summary>
     All = Digest | RealtimeAssessment | AlertInsight | BaselineInsight | CurrentStatus | Daybook
-        | Weekbook | Monthbook,
+        | Weekbook | Monthbook | MemberChat,
 }

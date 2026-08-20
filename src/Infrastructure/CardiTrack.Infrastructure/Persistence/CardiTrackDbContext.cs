@@ -45,6 +45,11 @@ public class CardiTrackDbContext : DbContext
     public DbSet<NotificationPreference> NotificationPreferences => Set<NotificationPreference>();
     public DbSet<AlertPreference> AlertPreferences => Set<AlertPreference>();
 
+    // Member chat (Scenario 1)
+    public DbSet<MemberChatSession> MemberChatSessions => Set<MemberChatSession>();
+    public DbSet<MemberChatTurn> MemberChatTurns => Set<MemberChatTurn>();
+    public DbSet<MemberChatTurnUsage> MemberChatTurnUsages => Set<MemberChatTurnUsage>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);

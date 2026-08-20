@@ -19,4 +19,19 @@ public interface IExternalAiClient
     /// so every caller gets the same enforcement without repeating it.
     /// </summary>
     Task<T> GenerateStructuredAsync<T>(string prompt, CancellationToken ct = default) where T : class;
+
+    /// <summary>
+    /// <see cref="GenerateAsync"/>, paired with the calling model's token usage — added for member
+    /// chat's per-step cost ledger rather than folded into <see cref="GenerateAsync"/> itself, so
+    /// every existing caller (insights, digests, chat) keeps its current signature unchanged.
+    /// </summary>
+    Task<AiGenerationResult<string>> GenerateWithUsageAsync(
+        string prompt, CancellationToken ct = default);
+
+    /// <summary>
+    /// <see cref="GenerateStructuredAsync{T}"/>, paired with the calling model's token usage — see
+    /// <see cref="GenerateWithUsageAsync"/>.
+    /// </summary>
+    Task<AiGenerationResult<T>> GenerateStructuredWithUsageAsync<T>(
+        string prompt, CancellationToken ct = default) where T : class;
 }

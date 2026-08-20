@@ -31,13 +31,18 @@ internal static class ScreenRefresh
     /// What asked for the refresh, so a log line says which unattended path failed rather than
     /// leaving two of them indistinguishable.
     /// </param>
-    public static void LogFailure(Exception ex, Page page, string trigger)
+    public static void LogFailure(Exception ex, Page page, string trigger) =>
+        LogFailure(ex, page.GetType().Name, trigger);
+
+    /// <summary>By-name overload for screens that are not <see cref="Page"/>s — overlay
+    /// <see cref="ContentView"/>s like <c>MemberChatPage</c> fail the same way pages do.</summary>
+    public static void LogFailure(Exception ex, string screenName, string trigger)
     {
         try
         {
             ServiceHelper.GetRequiredService<ILoggerFactory>()
                 .CreateLogger(typeof(ScreenRefresh))
-                .LogWarning(ex, "Refreshing {Page} {Trigger} failed", page.GetType().Name, trigger);
+                .LogWarning(ex, "Refreshing {Page} {Trigger} failed", screenName, trigger);
         }
         catch
         {

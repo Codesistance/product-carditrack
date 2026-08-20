@@ -77,30 +77,37 @@ public class MedGemmaClient : IExternalAiClient
         _timeProvider = timeProvider ?? TimeProvider.System;
     }
 
-    public Task<string> GenerateAsync(string prompt, CancellationToken ct = default)
-    {
-        var request = new OllamaGenerateRequest { Model = _settings.Model, Prompt = prompt };
-        return SendInstrumentedAsync<OllamaGenerateResponse, string>(
-            operationName: "generate_content",
-            send: (client, token) => client.PostAsJsonAsync("/api/generate", request, token),
-            selectContent: response => response.Response,
-            parseContent: content => content,
-            ct);
-    }
+    public async Task<string> GenerateAsync(string prompt, CancellationToken ct = default)
+        => (await GenerateWithUsageAsync(prompt, ct)).Result;
 
-    public Task<string> ChatAsync(IReadOnlyList<ChatMessage> history, string userMessage, CancellationToken ct = default)
+    public async Task<string> ChatAsync(IReadOnlyList<ChatMessage> history, string userMessage, CancellationToken ct = default)
     {
         var messages = history
             .Select(m => new OllamaMessage { Role = m.Role == ChatRole.User ? "user" : "assistant", Content = m.Content })
             .Append(new OllamaMessage { Role = "user", Content = userMessage })
             .ToList();
         var request = new OllamaChatRequest { Model = _settings.Model, Messages = messages };
-        return SendInstrumentedAsync<OllamaChatResponse, string>(
+        var (result, _) = await SendInstrumentedCoreAsync<OllamaChatResponse, string>(
             operationName: "chat",
             send: (client, token) => client.PostAsJsonAsync("/api/chat", request, token),
             selectContent: response => response.Message?.Content,
             parseContent: content => content,
             ct);
+        return result;
+    }
+
+    /// <inheritdoc cref="CardiTrack.Application.Interfaces.Clients.IExternalAiClient.GenerateWithUsageAsync"/>
+    public async Task<CardiTrack.Application.DTOs.Common.AiGenerationResult<string>> GenerateWithUsageAsync(
+        string prompt, CancellationToken ct = default)
+    {
+        var request = new OllamaGenerateRequest { Model = _settings.Model, Prompt = prompt };
+        var (result, usage) = await SendInstrumentedCoreAsync<OllamaGenerateResponse, string>(
+            operationName: "generate_content",
+            send: (client, token) => client.PostAsJsonAsync("/api/generate", request, token),
+            selectContent: response => response.Response,
+            parseContent: content => content,
+            ct);
+        return new CardiTrack.Application.DTOs.Common.AiGenerationResult<string>(result, usage);
     }
 
     /// <summary>
@@ -110,7 +117,12 @@ public class MedGemmaClient : IExternalAiClient
     /// so the model is also told in plain terms what is expected of it. One drifting out of sync
     /// with the other is not possible because both come from the same generated text.
     /// </summary>
-    public Task<T> GenerateStructuredAsync<T>(string prompt, CancellationToken ct = default) where T : class
+    public async Task<T> GenerateStructuredAsync<T>(string prompt, CancellationToken ct = default) where T : class
+        => (await GenerateStructuredWithUsageAsync<T>(prompt, ct)).Result;
+
+    /// <inheritdoc cref="CardiTrack.Application.Interfaces.Clients.IExternalAiClient.GenerateStructuredWithUsageAsync{T}"/>
+    public async Task<CardiTrack.Application.DTOs.Common.AiGenerationResult<T>> GenerateStructuredWithUsageAsync<T>(
+        string prompt, CancellationToken ct = default) where T : class
     {
         var schemaText = SchemaTextFor<T>();
         var fullPrompt = $"""
@@ -125,12 +137,13 @@ public class MedGemmaClient : IExternalAiClient
             Prompt = fullPrompt,
             Format = JsonNode.Parse(schemaText),
         };
-        return SendInstrumentedAsync<OllamaGenerateResponse, T>(
+        var (result, usage) = await SendInstrumentedCoreAsync<OllamaGenerateResponse, T>(
             operationName: "generate_structured",
             send: (client, token) => client.PostAsJsonAsync("/api/generate", request, token),
             selectContent: response => response.Response,
             parseContent: content => DeserializeStructured<T>(content, "generate_structured"),
             ct);
+        return new CardiTrack.Application.DTOs.Common.AiGenerationResult<T>(result, usage);
     }
 
     /// <summary>
@@ -216,13 +229,17 @@ public class MedGemmaClient : IExternalAiClient
     }
 
     /// <summary>
-    /// The single instrumented path both operations go through: one client span (the auto
+    /// The single instrumented path every operation goes through: one client span (the auto
     /// HttpClient span nests beneath it), the GenAI duration/token metrics, and a per-call
     /// log line. Span naming and attributes follow the OpenTelemetry GenAI semantic
     /// conventions. All Activity access is null-tolerant — with no APM engine there is no
     /// listener and <see cref="ActivitySource.StartActivity(string, ActivityKind)"/> returns null.
+    /// Returns the parsed result alongside the usage <see cref="AiTelemetry"/> already derives from
+    /// <c>meta</c>, so a caller that needs it (<see cref="GenerateWithUsageAsync"/>,
+    /// <see cref="GenerateStructuredWithUsageAsync{T}"/>) reads the same numbers the telemetry does,
+    /// rather than a second, possibly-drifting parse of the same response.
     /// </summary>
-    private async Task<TResult> SendInstrumentedAsync<TResponse, TResult>(
+    private async Task<(TResult Result, CardiTrack.Application.DTOs.Common.AiUsage Usage)> SendInstrumentedCoreAsync<TResponse, TResult>(
         string operationName,
         Func<HttpClient, CancellationToken, Task<HttpResponseMessage>> send,
         Func<TResponse, string?> selectContent,
@@ -296,7 +313,14 @@ public class MedGemmaClient : IExternalAiClient
                 NsToMs(meta.PromptEvalDurationNs), NsToMs(meta.EvalDurationNs),
                 (activity ?? Activity.Current)?.TraceId.ToString());
 
-            return parseContent(content ?? string.Empty);
+            var usage = new CardiTrack.Application.DTOs.Common.AiUsage
+            {
+                ModelName = meta.Model ?? _settings.Model,
+                InputTokens = meta.PromptEvalCount,
+                OutputTokens = meta.EvalCount,
+                DurationMs = NsToMs(meta.TotalDurationNs) ?? stopwatch.ElapsedMilliseconds,
+            };
+            return (parseContent(content ?? string.Empty), usage);
         }
         catch (Exception ex)
         {

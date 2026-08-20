@@ -1,3 +1,5 @@
+using CardiTrack.Application.DTOs.Common;
+
 namespace CardiTrack.Application.Interfaces.Services;
 
 /// <summary>
@@ -12,4 +14,8 @@ public interface IMedicalAiService
     /// <summary>Forces the reply into the JSON shape of <typeparamref name="T"/> — see
     /// <see cref="Clients.IExternalAiClient.GenerateStructuredAsync{T}"/>.</summary>
     Task<T> GenerateStructuredAsync<T>(string prompt, CancellationToken ct = default) where T : class;
+
+    /// <inheritdoc cref="Clients.IExternalAiClient.GenerateStructuredWithUsageAsync{T}"/>
+    Task<AiGenerationResult<T>> GenerateStructuredWithUsageAsync<T>(
+        string prompt, CancellationToken ct = default) where T : class;
 }

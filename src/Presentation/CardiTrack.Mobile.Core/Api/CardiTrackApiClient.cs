@@ -110,6 +110,15 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
     public Task<DigestResponse> GetDigestAsync(Guid cardiMemberId, CancellationToken ct = default) =>
         GetAsync<DigestResponse>($"api/v1/insights/members/{cardiMemberId}/digest", ct);
 
+    public Task<MemberChatMessageResponse> SendMemberChatMessageAsync(
+        Guid cardiMemberId, MemberChatMessageRequest request, CancellationToken ct = default) =>
+        SendAsync<MemberChatMessageRequest, MemberChatMessageResponse>(
+            HttpMethod.Post, $"api/v1/member-chat/members/{cardiMemberId}/messages", request, ct);
+
+    public Task<MemberChatHistoryResponse?> GetCurrentMemberChatSessionAsync(
+        Guid cardiMemberId, CancellationToken ct = default) =>
+        GetAsync<MemberChatHistoryResponse?>($"api/v1/member-chat/members/{cardiMemberId}/sessions/current", ct);
+
     public Task<IReadOnlyList<DigestResponse>> GetJournalEntriesAsync(
         Guid cardiMemberId,
         JournalCadence cadence,

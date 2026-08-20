@@ -25,6 +25,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IValidator<ConnectDeviceRequest>, ConnectDeviceValidator>();
         services.AddScoped<IValidator<OAuthCallbackRequest>, OAuthCallbackValidator>();
         services.AddScoped<IValidator<AnswerQuestionnaireRequest>, AnswerQuestionnaireValidator>();
+        services.AddScoped<IValidator<MemberChatMessageRequest>, MemberChatMessageValidator>();
         return services;
     }
 
@@ -88,6 +89,9 @@ public static class ServiceCollectionExtensions
         services.AddScoped<INotificationMuteRepository, CardiTrack.Infrastructure.Repositories.NotificationMuteRepository>();
         services.AddScoped<IAlertPreferenceRepository, CardiTrack.Infrastructure.Repositories.AlertPreferenceRepository>();
         services.AddScoped<INotificationSnapshotQueries, CardiTrack.Infrastructure.Repositories.NotificationSnapshotQueries>();
+        services.AddScoped<IMemberChatSessionRepository, CardiTrack.Infrastructure.Repositories.MemberChatSessionRepository>();
+        services.AddScoped<IMemberChatTurnRepository, CardiTrack.Infrastructure.Repositories.MemberChatTurnRepository>();
+        services.AddScoped<IMemberChatTurnUsageRepository, CardiTrack.Infrastructure.Repositories.MemberChatTurnUsageRepository>();
 
         // Push delivery spine (notification_engine.md Phase 3) — the API both issues the
         // immediate-attempt send (nudge/alert writing paths, and the internal enqueue endpoint)

@@ -15,4 +15,12 @@ public interface IRewriteAiService
 
     /// <inheritdoc cref="IMedicalAiService.GenerateStructuredAsync{T}"/>
     Task<T> GenerateStructuredAsync<T>(string prompt, CancellationToken ct = default) where T : class;
+
+    /// <inheritdoc cref="CardiTrack.Application.Interfaces.Clients.IExternalAiClient.GenerateWithUsageAsync"/>
+    Task<CardiTrack.Application.DTOs.Common.AiGenerationResult<string>> GenerateWithUsageAsync(
+        string prompt, CancellationToken ct = default);
+
+    /// <inheritdoc cref="IMedicalAiService.GenerateStructuredWithUsageAsync{T}"/>
+    Task<CardiTrack.Application.DTOs.Common.AiGenerationResult<T>> GenerateStructuredWithUsageAsync<T>(
+        string prompt, CancellationToken ct = default) where T : class;
 }
