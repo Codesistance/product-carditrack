@@ -7,7 +7,7 @@
              Shell.TabBarIsVisible="False"
              BackgroundColor="{StaticResource PageGround}">
 
-    <Grid RowDefinitions="Auto,*,Auto">
+    <Grid x:Name="RootGrid" RowDefinitions="Auto,*,Auto">
 
         <!-- ════════════════════════════════════════
              GRADIENT HEADER — the app-wide band (Controls/HeaderBand).

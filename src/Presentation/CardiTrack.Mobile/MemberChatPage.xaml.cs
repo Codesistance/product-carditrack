@@ -10,56 +10,49 @@ namespace CardiTrack.Mobile;
 
 /// <summary>
 /// A caregiver's persisted, multi-turn conversation about one CardiMember's readings. No Figma
-/// frame — as-built, see the design-sync backlog. Reached from Member Detail's "Ask about their
-/// readings" row.
+/// frame — as-built, see the design-sync backlog. Always shown as an overlay layered directly
+/// into whatever page launched it (Member Detail's "Ask about their readings" row, or the
+/// Dashboard's ChatBot button) — see <see cref="MemberChatLauncher"/> — rather than pushed as a
+/// separate modal page: MAUI's cross-platform modal push does not render the previous page
+/// visible/dimmed behind a transparent one (Android in particular composites a pushed page as a
+/// fully opaque screen regardless of its own BackgroundColor), so the only way to get a real
+/// dimmed-background-still-visible effect is to stay in the host page's own visual tree.
 /// </summary>
-[QueryProperty(nameof(MemberId), "memberId")]
-[QueryProperty(nameof(MemberName), "name")]
-public partial class MemberChatPage : ContentPage
+public partial class MemberChatPage : ContentView
 {
-    /// <summary>Shell route; see <see cref="AppShell"/>.</summary>
-    public const string Route = "memberchat";
+    /// <summary>Raised when the caregiver dismisses the overlay (down button or scrim tap) — the
+    /// host page removes this view from whatever layer it added it to.</summary>
+    public event EventHandler? CloseRequested;
 
     private readonly ICardiTrackApiClient _api;
     private readonly ObservableCollection<ChatTurnItem> _turns = [];
 
-    private Guid _memberId;
-    private string? _memberFirstName;
+    private readonly Guid _memberId;
+    private readonly string? _memberFirstName;
     private bool _isLoading;
     private bool _isSending;
 
-    public MemberChatPage(ICardiTrackApiClient api)
+    public MemberChatPage(ICardiTrackApiClient api, Guid memberId, string? memberFirstName)
     {
         InitializeComponent();
         _api = api;
+        _memberId = memberId;
+        _memberFirstName = memberFirstName;
         TurnsList.ItemsSource = _turns;
-    }
 
-    public string MemberId
-    {
-        set => _memberId = Guid.TryParse(Uri.UnescapeDataString(value ?? string.Empty), out var id)
-            ? id
-            : Guid.Empty;
-    }
+        if (!string.IsNullOrWhiteSpace(memberFirstName))
+            SubtitleLabel.Text = $"What would you like to know about {memberFirstName}?";
 
-    public string MemberName
-    {
-        set
-        {
-            _memberFirstName = Uri.UnescapeDataString(value ?? string.Empty);
-            if (!string.IsNullOrWhiteSpace(_memberFirstName))
-                SubtitleLabel.Text = $"Ask about {_memberFirstName}'s readings";
-        }
-    }
-
-    protected override void OnAppearing()
-    {
-        base.OnAppearing();
+        // No OnAppearing on a ContentView — the host adds this to its tree only at the moment
+        // it's shown (see MemberChatLauncher), so construction time is the right time to load.
         _ = LoadAsync();
     }
 
-    private async void OnBackTapped(object? sender, EventArgs e) =>
-        await this.GoBackAsync($"{AppShell.DashboardRoute}/{CardiMemberDetailPage.Route}?memberId={_memberId}");
+    private void OnBackTapped(object? sender, EventArgs e) => CloseRequested?.Invoke(this, EventArgs.Empty);
+
+    /// <summary>Tapping the dimmed area outside the sheet dismisses it — same convention as
+    /// AppPopupPage's scrim.</summary>
+    private void OnScrimTapped(object? sender, EventArgs e) => CloseRequested?.Invoke(this, EventArgs.Empty);
 
     private void OnRetryClicked(object? sender, EventArgs e) => _ = LoadAsync();
 
@@ -69,7 +62,19 @@ public partial class MemberChatPage : ContentPage
         Refresher.IsRefreshing = false;
     }
 
-    private async void OnSendTapped(object? sender, EventArgs e) => await SendAsync();
+    private async void OnSendTapped(object? sender, EventArgs e)
+    {
+        _ = BounceSendIconAsync();
+        await SendAsync();
+    }
+
+    /// <summary>A small, self-contained press animation — deliberately not awaited by the send
+    /// itself, so a slow reply never holds the bounce open waiting for it.</summary>
+    private async Task BounceSendIconAsync()
+    {
+        await SendIcon.ScaleToAsync(0.75, 90, Easing.CubicOut);
+        await SendIcon.ScaleToAsync(1, 180, Easing.SpringOut);
+    }
 
     private async Task LoadAsync()
     {
@@ -104,7 +109,7 @@ public partial class MemberChatPage : ContentPage
         {
             // Same async-void-has-no-observer hole MedicalInformationPage documents on its own
             // OnAppearing/pull handlers — without this the page never leaves its skeleton.
-            ScreenRefresh.LogFailure(ex, this, "while loading");
+            ScreenRefresh.LogFailure(ex, nameof(MemberChatPage), "while loading");
             if (_turns.Count == 0)
             {
                 ErrorDetailLabel.Text = "Something went wrong while showing this.";
@@ -147,7 +152,7 @@ public partial class MemberChatPage : ContentPage
         }
         catch (Exception ex)
         {
-            ScreenRefresh.LogFailure(ex, this, "while sending a message");
+            ScreenRefresh.LogFailure(ex, nameof(MemberChatPage), "while sending a message");
             _turns.Add(ChatTurnItem.FromError("Something went wrong sending that — try again."));
         }
         finally

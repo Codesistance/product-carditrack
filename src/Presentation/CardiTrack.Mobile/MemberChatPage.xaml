@@ -1,20 +1,40 @@
 <?xml version="1.0" encoding="utf-8" ?>
-<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+<ContentView xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              xmlns:controls="clr-namespace:CardiTrack.Mobile.Controls"
              xmlns:mobile="clr-namespace:CardiTrack.Mobile"
              x:Class="CardiTrack.Mobile.MemberChatPage"
-             x:DataType="mobile:MemberChatPage"
-             Shell.NavBarIsVisible="False"
-             Shell.TabBarIsVisible="False"
-             BackgroundColor="{StaticResource PageGround}">
+             x:DataType="mobile:MemberChatPage">
 
     <!-- A caregiver's persisted, multi-turn conversation about one CardiMember's readings.
          No Figma frame — as-built, see the design-sync backlog in
          .claude/skills/product-manager/references/figma.md.
 
-         Same header/skeleton/error shape as MedicalInformationPage; the body swaps a static
-         notes card for a scrolling turn history plus an input bar pinned to the bottom. -->
+         Presented as a sheet over a dimmed scrim — same pattern as Controls/AppPopupPage
+         (transparent ContentPage + a semi-opaque Grid), so the screen underneath (Dashboard or
+         Member Detail) stays visible and out of focus rather than being fully replaced. The
+         Border below is the sheet: rounded top corners, a top margin that leaves the scrim
+         visible above it, and its own tap recognizer to swallow taps so they don't fall through
+         to the scrim's dismiss handler. -->
+
+    <Grid x:Name="Scrim" BackgroundColor="#80343434">
+        <Grid.GestureRecognizers>
+            <TapGestureRecognizer Tapped="OnScrimTapped"/>
+        </Grid.GestureRecognizers>
+
+    <Border BackgroundColor="{StaticResource PageGround}"
+            Margin="14,60,14,24"
+            StrokeThickness="0"
+            VerticalOptions="Fill" HorizontalOptions="Fill">
+        <Border.Shadow>
+            <Shadow Brush="{StaticResource CardShadowBrush}" Opacity="0.3" Radius="20" Offset="0,6"/>
+        </Border.Shadow>
+        <Border.StrokeShape>
+            <RoundRectangle CornerRadius="24"/>
+        </Border.StrokeShape>
+        <Border.GestureRecognizers>
+            <TapGestureRecognizer/>
+        </Border.GestureRecognizers>
 
     <Grid RowDefinitions="Auto,*">
 
@@ -31,8 +51,13 @@
                     <controls:SquareBorder.GestureRecognizers>
                         <TapGestureRecognizer Tapped="OnBackTapped"/>
                     </controls:SquareBorder.GestureRecognizers>
-                    <Image Source="icon_back_white.svg" WidthRequest="20" HeightRequest="20"
-                           SemanticProperties.Description="Back"/>
+                    <!-- Down, not back: this page is always presented modally (see
+                         MemberChatLauncher), so the affordance is dismiss, not navigate-back.
+                         Same 2px-stroke line-icon weight as icon_back_white.svg, not the filled
+                         caret (icon_caret_down_white.svg), which reads as a different, heavier
+                         icon language next to it. -->
+                    <Image Source="icon_chevron_down_white.svg" WidthRequest="20" HeightRequest="20"
+                           SemanticProperties.Description="Close"/>
                 </controls:SquareBorder>
 
                 <VerticalStackLayout Grid.Column="1" Spacing="1" VerticalOptions="Start">
@@ -40,7 +65,7 @@
                        Style="{StaticResource Heading3}"
                        TextColor="{StaticResource White}"/>
                     <Label x:Name="SubtitleLabel"
-                           Text="Ask about their readings"
+                           Text="What would you like to know?"
                            FontFamily="Quicksand"
                            FontSize="12"
                            TextColor="{StaticResource White}"
@@ -130,16 +155,24 @@
                 </CollectionView>
             </RefreshView>
 
-            <!-- Pinned input bar. Border rather than raw Grid background so it reads as a
-                 distinct surface above the scrolling history, the same visual language
-                 AuthEntryBorder gives an Editor elsewhere in the app. -->
-            <Border Grid.Row="1"
-                    Style="{StaticResource AuthEntryBorder}"
-                    Margin="16,8,16,16"
-                    Padding="14,4">
-                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+            <!-- Pinned input bar. SendButton is a sibling of the Border, not a child of it —
+                 Border clips its content to StrokeShape regardless of how much padding surrounds
+                 a child, so a shadow on anything inside it gets cut against the rounded corner no
+                 matter the numbers. Placing the button outside the clipped region and overlapping
+                 it (End-aligned, negative-margin overlap) is what actually stops the clip; the
+                 Editor is the only thing that still needs the field's own bounded, hairline-edged
+                 surface, so it stays the sole content of the Border. -->
+            <!-- ColumnSpacing 0 and SendButton's negative left margin tuck it into the Border's
+                 rounded right edge so the two read as one continuous bar, not two separate
+                 shapes — the Border's own right padding (64) is widened to match, so the
+                 Editor's text never runs under the button. -->
+            <Grid Grid.Row="1" Margin="16,8,16,16" ColumnDefinitions="*,Auto" ColumnSpacing="0">
+                <Border Grid.Column="0"
+                        Style="{StaticResource AuthEntryBorder}"
+                        HeightRequest="-1"
+                        MinimumHeightRequest="64"
+                        Padding="20,16,64,16">
                     <Editor x:Name="MessageEditor"
-                            Grid.Column="0"
                             FontFamily="Quicksand"
                             FontSize="14"
                             PlaceholderColor="{StaticResource BodyText}"
@@ -147,25 +180,37 @@
                             BackgroundColor="Transparent"
                             Placeholder="Ask a question…"
                             AutoSize="TextChanges"
-                            MaximumHeightRequest="100"/>
-                    <controls:SquareBorder x:Name="SendButton"
-                            Grid.Column="1"
-                            WidthRequest="40" HeightRequest="40"
-                            StrokeThickness="0"
-                            BackgroundColor="{StaticResource HeaderButtonTint}"
-                            VerticalOptions="End"
-                            SemanticProperties.Description="Send message">
-                        <controls:SquareBorder.StrokeShape>
-                            <RoundRectangle CornerRadius="99"/>
-                        </controls:SquareBorder.StrokeShape>
-                        <controls:SquareBorder.GestureRecognizers>
-                            <TapGestureRecognizer Tapped="OnSendTapped"/>
-                        </controls:SquareBorder.GestureRecognizers>
-                        <Image Source="icon_chevron.svg" WidthRequest="18" HeightRequest="18"
-                               Rotation="270" HorizontalOptions="Center" VerticalOptions="Center"/>
-                    </controls:SquareBorder>
-                </Grid>
-            </Border>
+                            MinimumHeightRequest="32"
+                            MaximumHeightRequest="140"/>
+                </Border>
+
+                <!-- The chatbot mark itself, not a generic send arrow — same icon as the
+                     Dashboard launcher, so the two read as one feature. OnSendTapped gives it a
+                     small bounce so sending reads as sending to something, not just submitting a
+                     form field. -->
+                <controls:SquareBorder x:Name="SendButton"
+                        Grid.Column="1"
+                        WidthRequest="48" HeightRequest="48"
+                        StrokeThickness="0"
+                        BackgroundColor="{StaticResource White}"
+                        VerticalOptions="End"
+                        Margin="-24,0,8,8"
+                        SemanticProperties.Description="Send message">
+                    <controls:SquareBorder.StrokeShape>
+                        <RoundRectangle CornerRadius="99"/>
+                    </controls:SquareBorder.StrokeShape>
+                    <controls:SquareBorder.Shadow>
+                        <Shadow Brush="{StaticResource CardShadowBrush}" Opacity="0.3" Radius="8" Offset="0,2"/>
+                    </controls:SquareBorder.Shadow>
+                    <controls:SquareBorder.GestureRecognizers>
+                        <TapGestureRecognizer Tapped="OnSendTapped"/>
+                    </controls:SquareBorder.GestureRecognizers>
+                    <Image x:Name="SendIcon" Source="icon_chatbot.svg" WidthRequest="30" HeightRequest="30"
+                           HorizontalOptions="Center" VerticalOptions="Center"/>
+                </controls:SquareBorder>
+            </Grid>
         </Grid>
     </Grid>
-</ContentPage>
+    </Border>
+    </Grid>
+</ContentView>

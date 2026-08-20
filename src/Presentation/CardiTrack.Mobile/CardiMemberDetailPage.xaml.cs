@@ -1040,12 +1040,8 @@ public partial class CardiMemberDetailPage : ContentPage
             $"{QuestionnairesPage.Route}?memberId={_memberId}&name={name}");
     }
 
-    private async void OnChatTapped(object? sender, EventArgs e)
-    {
-        var name = Uri.EscapeDataString(NameFormatting.FirstName(_member?.Name) ?? string.Empty);
-        await Shell.Current.GoToAsync(
-            $"{MemberChatPage.Route}?memberId={_memberId}&name={name}");
-    }
+    private void OnChatTapped(object? sender, EventArgs e) =>
+        MemberChatLauncher.ShowOverlay(RootGrid, _memberId, NameFormatting.FirstName(_member?.Name));
 
     private async void OnViewAlertsClicked(object? sender, EventArgs e) =>
         // Naming the member is what lets back come back to *this* page rather than to whichever
