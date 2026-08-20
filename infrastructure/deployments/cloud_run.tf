@@ -242,19 +242,26 @@ variable "rewrite_service_name" {
 variable "rewrite_cpu" {
   description = "CPU allocation for the Rewrite Cloud Run service"
   type        = string
-  default     = "2"
+  # 4 because rewrite_memory is 16Gi and Cloud Run requires 4 vCPU above 8Gi — the memory
+  # comment below has the measurements that forced both numbers up. Idle cost is still not
+  # medgemma's: this service keeps cpu_idle = true, so a quiet warm instance bills at the
+  # idle rate rather than full allocation.
+  default = "4"
 }
 
 variable "rewrite_memory" {
   description = "Memory allocation for the Rewrite Cloud Run service"
   type        = string
-  # 8Gi is the floor, not a preference: at 4Gi the instance was killed on every model load —
-  # "Memory limit of 4096 MiB exceeded with 4265 MiB used", measured in dev 2026-08-20 (issue
-  # #397 follow-up) — so the service crash-looped and never served a single generate. The
-  # gemma3:4b-it-qat weights alone are ~3GB before Ollama's runtime, vocab and KV cache.
-  # Cloud Run allows up to 8Gi on the 2 vCPU this service runs; more than 8Gi would force
-  # 4 vCPU (see medgemma_cpu's comment) and nothing measured asks for it.
-  default = "8Gi"
+  # 16Gi — medgemma's proven envelope for this exact image and model class — after both smaller
+  # sizes failed with measurements (dev, 2026-08-20, issue #397): 4Gi was OOM-killed on every
+  # model load at ~4.2GiB used; 8Gi loaded the model and then was OOM-killed at 8283 MiB used
+  # even with the runner's context capped to 8192 (the cap verifiably took — Ollama's "server
+  # config" line echoed it). The 4B q4 weights get counted against the limit roughly twice on
+  # Cloud Run: the mmap'd model blob's page cache (image reads count) plus llama.cpp's repacked
+  # CPU buffers ("CPU_REPACK model buffer size = 1721 MiB" + "CPU model buffer = 1281 MiB"),
+  # before the vision tower, vocab and KV cache. Don't retry 8Gi without changing one of those
+  # inputs.
+  default = "16Gi"
 }
 
 variable "rewrite_min_instances" {
