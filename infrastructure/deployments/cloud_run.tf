@@ -372,6 +372,7 @@ resource "google_cloud_run_v2_service" "api" {
     google_secret_manager_secret_version.db_connection_string,
     google_secret_manager_secret_version.gemini_api_key,
     google_secret_manager_secret_version.medgemma_service_url,
+    google_secret_manager_secret_version.rewrite_service_url,
     google_secret_manager_secret_iam_member.medgemma_url_accessor,
     google_secret_manager_secret_version.redis_connection_string,
     google_secret_manager_secret_version.redis_ca,
@@ -681,6 +682,11 @@ resource "google_cloud_run_v2_service" "worker" {
     google_project_service.run,
     google_secret_manager_secret_version.app_secrets,
     google_secret_manager_secret_version.db_connection_string,
+    google_secret_manager_secret_version.medgemma_service_url,
+    google_secret_manager_secret_version.rewrite_service_url,
+    # The worker runs as the default compute SA — see the barrier's comment in
+    # service_accounts.tf for the revision-rejection failure this ordering prevents.
+    time_sleep.compute_sa_secret_propagation,
   ]
 }
 
@@ -1400,6 +1406,11 @@ resource "google_cloud_run_v2_job" "pipeline_aggregator" {
   depends_on = [
     google_project_service.run,
     google_secret_manager_secret_version.db_connection_string,
+    google_secret_manager_secret_version.medgemma_service_url,
+    google_secret_manager_secret_version.rewrite_service_url,
+    # The aggregator runs as the default compute SA; on 2026-08-20 its update raced the fresh
+    # rewrite-URL grant by 18 seconds and was rejected — see the barrier in service_accounts.tf.
+    time_sleep.compute_sa_secret_propagation,
   ]
 }
 

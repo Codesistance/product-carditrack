@@ -461,8 +461,22 @@ resource "google_secret_manager_secret_iam_member" "gemini_api_key_accessor" {
   member    = "serviceAccount:${data.google_project.current.number}-compute@developer.gserviceaccount.com"
 }
 
-# MedGemma internal service URL — CI/CD writes the value after each deployment;
-# Terraform only creates the shell. API reads it at startup via Secret Manager binding.
+# MedGemma internal service URL. Terraform seeds the version from the service's own uri
+# attribute — the URL is knowable inside the same apply that creates the service, and the
+# dependency graph then orders service → secret version → every consumer that mounts it.
+# CI/CD's deploy job still writes after each deployment as a reconciler (its skip-if-unchanged
+# check makes that a no-op while the URL is stable). API reads it at startup via Secret
+# Manager binding.
+#
+# This replaced a literal "placeholder" seed on 2026-08-20, after the 1d212f72 dev deploy
+# failed twice on it: the hosts validate the URL at startup and refuse to boot on a non-URL
+# value (AiServiceExtensions.RequireAbsoluteUrl — deliberate, so a misconfiguration is a loud
+# failed revision), so any consumer revision created while "latest" held the placeholder died
+# on arrival. The placeholder also armed a slower landmine with the deploy workflow's version
+# prune: pruning the superseded Terraform-managed version made the next apply recreate it —
+# as a NEW latest version containing "placeholder" — clobbering the real URL for every
+# consumer. Seeding from the uri defuses both: there is no placeholder window, and a pruned
+# version is recreated with the correct value.
 resource "google_secret_manager_secret" "medgemma_service_url" {
   secret_id = "${var.secret_id_prefix}-medgemma-service-url"
   replication {
@@ -473,11 +487,13 @@ resource "google_secret_manager_secret" "medgemma_service_url" {
 }
 
 resource "google_secret_manager_secret_version" "medgemma_service_url" {
-  secret      = google_secret_manager_secret.medgemma_service_url.id
-  secret_data = "placeholder"
-  lifecycle {
-    ignore_changes = [secret_data]
-  }
+  secret = google_secret_manager_secret.medgemma_service_url.id
+  # try(): the service is count-gated on medgemma_image, so a fresh environment that has not
+  # opted into MedGemma still gets a syntactically valid, run.app-shaped URL — it passes both
+  # of the hosts' startup checks (absolute URL; identity-token mode requires a *.run.app host)
+  # and then resolves nowhere, so a consumer wired against it fails per call, visibly, rather
+  # than failing to boot.
+  secret_data = try(google_cloud_run_v2_service.medgemma[0].uri, "https://medgemma-not-deployed-000000000000.europe-west2.run.app")
 }
 
 resource "google_secret_manager_secret_iam_member" "medgemma_url_accessor" {
@@ -526,12 +542,11 @@ resource "google_secret_manager_secret" "rewrite_service_url" {
   depends_on = [google_project_service.secretmanager]
 }
 
+# Seeded from the service's uri, same as medgemma_service_url above — see the placeholder
+# post-mortem on that resource for why a literal seed is never used here.
 resource "google_secret_manager_secret_version" "rewrite_service_url" {
   secret      = google_secret_manager_secret.rewrite_service_url.id
-  secret_data = "placeholder"
-  lifecycle {
-    ignore_changes = [secret_data]
-  }
+  secret_data = try(google_cloud_run_v2_service.rewrite[0].uri, "https://rewrite-not-deployed-000000000000.europe-west2.run.app")
 }
 
 resource "google_secret_manager_secret_iam_member" "rewrite_url_accessor" {

@@ -350,3 +350,26 @@ resource "time_sleep" "pipeline_iam_propagation" {
     google_secret_manager_secret_iam_member.pipeline_apm_data,
   ]
 }
+
+# Same grant-set-hashed barrier as the two above, for the workloads that still run as the
+# default compute service account (worker, the aggregator — see the shared-SA note in the
+# accepted-risks record). The 2026-08-20 dev apply demonstrated the gap this closes: the
+# aggregator job's update started 18 seconds before its brand-new grant on the rewrite URL
+# secret finished creating, and Cloud Run rejected the revision with "Permission denied on
+# secret". Only the URL-secret grants are hashed here — the compute SA's other grants predate
+# this barrier and are steady; adding them would force a one-time 60s wait for nothing.
+resource "time_sleep" "compute_sa_secret_propagation" {
+  create_duration = "60s"
+
+  triggers = {
+    grants = sha256(jsonencode(sort([
+      google_secret_manager_secret_iam_member.medgemma_url_accessor.id,
+      google_secret_manager_secret_iam_member.rewrite_url_accessor.id,
+    ])))
+  }
+
+  depends_on = [
+    google_secret_manager_secret_iam_member.medgemma_url_accessor,
+    google_secret_manager_secret_iam_member.rewrite_url_accessor,
+  ]
+}
