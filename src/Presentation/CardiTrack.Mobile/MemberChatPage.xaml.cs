@@ -32,6 +32,11 @@ public partial class MemberChatPage : ContentView
     private bool _isLoading;
     private bool _isSending;
 
+    /// <summary>The in-flight history load, if any — a send awaits it before appending, so the
+    /// load's rebuild of the list cannot wipe turns added after it started. Never faults:
+    /// <see cref="LoadAsync"/> handles its own failures.</summary>
+    private Task? _loadTask;
+
     public MemberChatPage(ICardiTrackApiClient api, Guid memberId, string? memberFirstName)
     {
         InitializeComponent();
@@ -45,7 +50,7 @@ public partial class MemberChatPage : ContentView
 
         // No OnAppearing on a ContentView — the host adds this to its tree only at the moment
         // it's shown (see MemberChatLauncher), so construction time is the right time to load.
-        _ = LoadAsync();
+        _loadTask = LoadAsync();
     }
 
     private void OnBackTapped(object? sender, EventArgs e) => CloseRequested?.Invoke(this, EventArgs.Empty);
@@ -54,11 +59,13 @@ public partial class MemberChatPage : ContentView
     /// AppPopupPage's scrim.</summary>
     private void OnScrimTapped(object? sender, EventArgs e) => CloseRequested?.Invoke(this, EventArgs.Empty);
 
-    private void OnRetryClicked(object? sender, EventArgs e) => _ = LoadAsync();
+    private void OnRetryClicked(object? sender, EventArgs e) => _loadTask = LoadAsync();
 
     private async void OnPullToRefresh(object? sender, EventArgs e)
     {
-        await LoadAsync();
+        var load = LoadAsync();
+        _loadTask = load;
+        await load;
         Refresher.IsRefreshing = false;
     }
 
@@ -78,7 +85,9 @@ public partial class MemberChatPage : ContentView
 
     private async Task LoadAsync()
     {
-        if (_isLoading)
+        // A reload while a send is in flight would rebuild the list out from under the turns
+        // the send just appended — and the send's own completion is the fresher state anyway.
+        if (_isLoading || _isSending)
             return;
         _isLoading = true;
 
@@ -134,6 +143,12 @@ public partial class MemberChatPage : ContentView
         _isSending = true;
         SendButton.IsEnabled = false;
         MessageEditor.Text = string.Empty;
+
+        // Let an in-flight history load land first — its rebuild clears the list, and a turn
+        // appended before that Clear() would silently vanish. LoadAsync never faults (it
+        // handles its own failures), so awaiting it here cannot throw.
+        if (_loadTask is { IsCompleted: false } pendingLoad)
+            await pendingLoad;
 
         var userTurn = ChatTurnItem.FromUserMessage(message);
         _turns.Add(userTurn);

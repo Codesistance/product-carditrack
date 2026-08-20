@@ -787,6 +787,23 @@ public class CardiTrackApiClientTests
     }
 
     [Fact]
+    public async Task GetCurrentMemberChatSession_DoesNotCacheANullSession()
+    {
+        // The cache reader treats a stored envelope with a null `data` as unreadable and warns
+        // on every offline read — nothing worth serving offline, so nothing gets written.
+        var cache = new MemoryOfflineCache();
+        var (client, http) = CreateSut(cache);
+        http.Enqueue(HttpStatusCode.OK, """
+            {"success":true,"message":"ok","data":null,"timestamp":"2026-08-20T15:48:00Z"}
+            """);
+
+        var history = await client.GetCurrentMemberChatSessionAsync(Guid.NewGuid());
+
+        Assert.Null(history);
+        Assert.Empty(cache.Items);
+    }
+
+    [Fact]
     public async Task GetCurrentMemberChatSession_ReturnsTurns_WhenASessionExists()
     {
         var (client, http) = CreateSut();

@@ -1,4 +1,3 @@
-using System.Net;
 using CardiTrack.API.Infrastructure.Auditing;
 using CardiTrack.API.Infrastructure.UserContext;
 using CardiTrack.Application.DTOs.Requests;
@@ -71,21 +70,25 @@ public class MemberChatController : BaseApiController
         {
             return Error(ex.Message, StatusCodes.Status404NotFound);
         }
-        catch (HttpRequestException ex) when (ex.StatusCode is HttpStatusCode.TooManyRequests or HttpStatusCode.ServiceUnavailable)
+        catch (HttpRequestException ex)
         {
-            // The in-estate model host said it is full (MedGemmaClient's retries included) —
-            // a capacity condition, not a fault in this request. 500 would page someone for a
-            // queue; 503 tells the app, honestly, to ask again shortly.
-            Logger.LogWarning(
-                "Member chat send hit AI capacity for CardiMember {CardiMemberId}: upstream HTTP {StatusCode}",
-                cardiMemberId, (int)ex.StatusCode!);
+            // Everything HTTP inside this pipeline is a call to an in-estate model host, so any
+            // HttpRequestException here means the assistant couldn't answer: saturation
+            // (MedGemmaClient's retries exhausted on 429/503, StatusCode set), an unreachable
+            // service (DNS/connection, StatusCode null), or a reply that couldn't be parsed.
+            // None are a fault in this request — 500 would page someone for a queue; 503 tells
+            // the app, honestly, to ask again shortly. MedGemmaClient's exception messages are
+            // payload-free by design, so the exception itself is safe to log.
+            Logger.LogWarning(ex,
+                "Member chat send failed against the AI host for CardiMember {CardiMemberId} (upstream status {StatusCode})",
+                cardiMemberId, ex.StatusCode);
             return Error(
                 "The assistant is busy catching up right now — give it a minute and ask again.",
                 StatusCodes.Status503ServiceUnavailable);
         }
-        catch (TimeoutException)
+        catch (TimeoutException ex)
         {
-            Logger.LogWarning(
+            Logger.LogWarning(ex,
                 "Member chat send timed out against the AI host for CardiMember {CardiMemberId}",
                 cardiMemberId);
             return Error(

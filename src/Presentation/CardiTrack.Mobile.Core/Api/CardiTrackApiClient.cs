@@ -402,7 +402,10 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
 
         var body = await response.Content.ReadAsStringAsync(ct);
         var value = UnwrapEnvelope<T>("GET", path, body, response.StatusCode, allowNullData);
-        await TrySaveCacheAsync(path, body, ct);
+        // A null-data success is an answer, but not one worth caching: TryReadCacheAsync would
+        // only reject the entry as unreadable on the way back out, one warning per offline read.
+        if (value is not null)
+            await TrySaveCacheAsync(path, body, ct);
         return value;
     }
 
