@@ -171,12 +171,24 @@ public static class MauiProgram
     /// </summary>
     private static void AddClientIdentityHeaders(HttpRequestHeaders headers)
     {
-        if (ClientHeaders.FormatVersion(AppInfo.Current.VersionString, AppInfo.Current.BuildString) is { } version)
+        var version = ClientHeaders.FormatVersion(AppInfo.Current.VersionString, AppInfo.Current.BuildString);
+        if (version is not null)
             headers.Add(ClientHeaderNames.ClientVersion, version);
 
         // DevicePlatform is a struct whose ToString is the platform name ("Android", "iOS",
         // "WinUI"); ClientHeaders lowercases it so one platform can't appear under two spellings.
-        if (ClientHeaders.NormalizePlatform(DeviceInfo.Current.Platform.ToString()) is { } platform)
+        var platform = ClientHeaders.NormalizePlatform(DeviceInfo.Current.Platform.ToString());
+        if (platform is not null)
             headers.Add(ClientHeaderNames.ClientPlatform, platform);
+
+        // A User-Agent as well: HttpClient sends none by default, and at the edge an absent UA
+        // is indistinguishable from an anonymous scanner — Cloud Armor's logs classed the app's
+        // whole traffic as bot-like on exactly that (dev scan, 2026-08-20). The custom headers
+        // above never leave our API's spans; the User-Agent is what the WAF and LB logs see.
+        headers.UserAgent.Add(version is null
+            ? new ProductInfoHeaderValue(new ProductHeaderValue("CardiTrack-Mobile"))
+            : new ProductInfoHeaderValue("CardiTrack-Mobile", version));
+        if (platform is not null)
+            headers.UserAgent.Add(new ProductInfoHeaderValue($"({platform})"));
     }
 }
