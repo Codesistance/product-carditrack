@@ -116,7 +116,12 @@ The public side is deliberately swappable. Every provider implements the same `I
 | `Gemini` | `HttpClient` (`generateContent`) | `https://generativelanguage.googleapis.com` | Key sent as the `x-goog-api-key` header |
 | `Anthropic` | Official `Anthropic` .NET SDK (Messages API) | `https://api.anthropic.com` | `MaxOutputTokens` is mandatory on this API; the SDK owns its own transport |
 
-> **GPU scaling option (future):** if CPU latency becomes a bottleneck at scale, the same model can be served by vLLM on a single NVIDIA T4 (16 GB, float16 — the 4B model fits with KV-cache headroom), with `--enable-prefix-caching` exploiting the fixed system prompts, autoscaling on HTTP concurrency. This would require HuggingFace weights access (Health AI Developer Foundations terms) and a GPU-capable runtime (e.g. Cloud Run GPU or GKE Autopilot). Provisioning would be added to the existing Terraform — no imperative scripts.
+> **GPU scaling option — no longer future:** CPU latency became the bottleneck on 2026-08-17, when p50 inference reached ~124s and Cloud Run began refusing ~14% of calls with 429 because `max_instances = 1` leaves nowhere to put an overlapping request. The options, their measured cost basis, and the region constraint (Cloud Run's managed GPU is not offered in `europe-west2`, though L4 is available there on Compute Engine and GKE) are worked through in [medgemma_serving_architecture.md](./technical/medgemma_serving_architecture.md), which carries the open decisions.
+>
+> These are **two separate moves**, and the ADR argues for taking them in this order:
+>
+> 1. **Compute — CPU to GPU, keeping Ollama.** The container and the GGUF are unchanged; only the hardware underneath differs. No HuggingFace weights access is needed, so nothing gates it but the region and cost decisions in the ADR. This is where the order-of-magnitude latency win lives.
+> 2. **Serving engine — Ollama to vLLM, later.** `--enable-prefix-caching` is the only way to stop re-reading the fixed instruction block on every call, which llama.cpp cannot avoid under Gemma 3's sliding-window attention. Sampled traffic is ~513 input tokens to ~18 output, so that re-read is close to the whole cost — the case is stronger than this note originally assumed. It is second because it **does** require HuggingFace weights access (Health AI Developer Foundations terms), and because vLLM is a GPU-only proposition that would not improve anything on today's CPU. The target shape is unchanged from the original sketch: the same model served by vLLM on a single NVIDIA T4 (16 GB, float16 — the 4B model fits with KV-cache headroom), autoscaling on HTTP concurrency. Provisioning would be added to the existing Terraform — no imperative scripts.
 
 ---
 
