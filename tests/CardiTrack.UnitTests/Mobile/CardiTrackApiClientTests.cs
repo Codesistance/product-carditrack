@@ -1,4 +1,5 @@
 using System.Net;
+using System.Text;
 using CardiTrack.Application.DTOs.Requests;
 using CardiTrack.Domain.Enums;
 using CardiTrack.Mobile.Core.Api;
@@ -760,6 +761,109 @@ public class CardiTrackApiClientTests
         var (client, _) = CreateSut();
 
         Assert.Null(client.OriginOf(Task.FromResult(0)));
+    }
+
+    // ── Member chat ─────────────────────────────────────────────────────────────
+    //
+    // sessions/current is the one read whose "nothing there" is a 200 with a null `data` —
+    // MemberChatController documents it as "not a 404, since the member itself may well exist".
+    // The envelope reader used to reject that as "The server returned an empty response.",
+    // which put the chat sheet's error panel over every first-ever open.
+
+    [Fact]
+    public async Task GetCurrentMemberChatSession_ReturnsNull_WhenNoActiveSessionExists()
+    {
+        var (client, http) = CreateSut();
+        var memberId = Guid.NewGuid();
+        http.Enqueue(HttpStatusCode.OK, """
+            {"success":true,"message":"Here you go!","data":null,"timestamp":"2026-08-20T15:48:00Z"}
+            """);
+
+        var history = await client.GetCurrentMemberChatSessionAsync(memberId);
+
+        Assert.Null(history);
+        Assert.Equal($"/api/v1/member-chat/members/{memberId}/sessions/current",
+            http.Requests.Single().Uri!.AbsolutePath);
+    }
+
+    [Fact]
+    public async Task GetCurrentMemberChatSession_ReturnsTurns_WhenASessionExists()
+    {
+        var (client, http) = CreateSut();
+        var memberId = Guid.NewGuid();
+        http.Enqueue(HttpStatusCode.OK, """
+            {"success":true,"message":"ok","data":{"sessionId":"6f9619ff-8b86-d011-b42d-00c04fc964ff",
+             "turns":[{"role":"User","content":"How did Dad sleep?","createdAtUtc":"2026-08-20T15:00:00Z"},
+                      {"role":"Assistant","content":"About as usual.","createdAtUtc":"2026-08-20T15:01:00Z"}]},
+             "timestamp":"2026-08-20T15:48:00Z"}
+            """);
+
+        var history = await client.GetCurrentMemberChatSessionAsync(memberId);
+
+        Assert.NotNull(history);
+        Assert.Equal(2, history!.Turns.Count);
+        Assert.Equal("User", history.Turns[0].Role);
+        Assert.Equal("About as usual.", history.Turns[1].Content);
+    }
+
+    [Fact]
+    public async Task GetCurrentMemberChatSession_StillThrows_WhenTheBodyIsUnreadable()
+    {
+        // Tolerating a null `data` must not extend to tolerating garbage — an HTML error page
+        // from a proxy is a failure, not an empty conversation.
+        var (client, http) = CreateSut();
+        http.Enqueue(HttpStatusCode.OK, "<!doctype html>upstream had a bad day");
+
+        var ex = await Assert.ThrowsAsync<ApiException>(
+            () => client.GetCurrentMemberChatSessionAsync(Guid.NewGuid()));
+
+        Assert.Equal("The server returned an empty response.", ex.Message);
+    }
+
+    [Fact]
+    public async Task OrdinaryGet_StillRejectsANullData()
+    {
+        // The opt-in stays an opt-in: for every other endpoint a success envelope with no data
+        // is a server fault, exactly as before.
+        var (client, http) = CreateSut();
+        http.Enqueue(HttpStatusCode.OK, """
+            {"success":true,"message":"ok","data":null,"timestamp":"2026-08-20T15:48:00Z"}
+            """);
+
+        var ex = await Assert.ThrowsAsync<ApiException>(() => client.GetDashboardAsync(Guid.NewGuid()));
+
+        Assert.Equal("The server returned an empty response.", ex.Message);
+    }
+
+    [Fact]
+    public async Task SendMemberChatMessage_PostsToRoute_AndAsksForTheExtendedTimeout()
+    {
+        var (client, http) = CreateSut();
+        var memberId = Guid.NewGuid();
+        TimeSpan? requestedTimeout = null;
+        http.Enqueue(request =>
+        {
+            requestedTimeout = request.Options.TryGetValue(TimeoutHandler.TimeoutOption, out var t)
+                ? t : null;
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent("""
+                    {"success":true,"message":"ok","data":{"sessionId":"6f9619ff-8b86-d011-b42d-00c04fc964ff",
+                     "reply":"Steady night.","charts":[],"generatedAt":"2026-08-20T15:50:00Z"},
+                     "timestamp":"2026-08-20T15:50:00Z"}
+                    """, Encoding.UTF8, "application/json"),
+            };
+        });
+
+        var response = await client.SendMemberChatMessageAsync(
+            memberId, new MemberChatMessageRequest { Message = "How did Dad sleep?" });
+
+        Assert.Equal("Steady night.", response.Reply);
+        Assert.Equal($"/api/v1/member-chat/members/{memberId}/messages",
+            http.Requests.Single().Uri!.AbsolutePath);
+        // The reply is a chain of CPU-served model calls; the client-wide default would hang
+        // up on a legitimately slow answer. See CardiTrackApiClient.MemberChatSendTimeout.
+        Assert.Equal(TimeSpan.FromSeconds(180), requestedTimeout);
     }
 
     private static (CardiTrackApiClient Client, FakeHttpMessageHandler Http) CreateSut(

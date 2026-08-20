@@ -110,14 +110,27 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
     public Task<DigestResponse> GetDigestAsync(Guid cardiMemberId, CancellationToken ct = default) =>
         GetAsync<DigestResponse>($"api/v1/insights/members/{cardiMemberId}/digest", ct);
 
+    /// <summary>
+    /// How long a member-chat send may run before the app hangs up. The answer is produced by a
+    /// chain of in-estate model calls on CPU (guard check, query plan, clinical read, rewrite),
+    /// so a legitimate reply routinely outlives the client-wide default
+    /// <see cref="TimeoutHandler"/> applies — observed dev sends run one to two minutes.
+    /// </summary>
+    private static readonly TimeSpan MemberChatSendTimeout = TimeSpan.FromSeconds(180);
+
     public Task<MemberChatMessageResponse> SendMemberChatMessageAsync(
         Guid cardiMemberId, MemberChatMessageRequest request, CancellationToken ct = default) =>
         SendAsync<MemberChatMessageRequest, MemberChatMessageResponse>(
-            HttpMethod.Post, $"api/v1/member-chat/members/{cardiMemberId}/messages", request, ct);
+            HttpMethod.Post, $"api/v1/member-chat/members/{cardiMemberId}/messages", request, ct,
+            timeout: MemberChatSendTimeout);
 
     public Task<MemberChatHistoryResponse?> GetCurrentMemberChatSessionAsync(
         Guid cardiMemberId, CancellationToken ct = default) =>
-        GetAsync<MemberChatHistoryResponse?>($"api/v1/member-chat/members/{cardiMemberId}/sessions/current", ct);
+        GetAsync<MemberChatHistoryResponse?>(
+            $"api/v1/member-chat/members/{cardiMemberId}/sessions/current", ct,
+            // 200 with a null data is this endpoint's documented "no active session yet" —
+            // see MemberChatController.GetCurrentSession — not a malformed reply.
+            allowNullData: true);
 
     public Task<IReadOnlyList<DigestResponse>> GetJournalEntriesAsync(
         Guid cardiMemberId,
@@ -358,15 +371,15 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
     /// task back. Not itself async: the task has to exist before it can be a key, which it cannot
     /// inside the method that produces it.
     /// </summary>
-    private Task<T> GetAsync<T>(string path, CancellationToken ct)
+    private Task<T> GetAsync<T>(string path, CancellationToken ct, bool allowNullData = false)
     {
         var origin = new CacheOrigin();
-        var call = GetCoreAsync<T>(path, origin, ct);
+        var call = GetCoreAsync<T>(path, origin, allowNullData, ct);
         _origins.AddOrUpdate(call, origin);
         return call;
     }
 
-    private async Task<T> GetCoreAsync<T>(string path, CacheOrigin origin, CancellationToken ct)
+    private async Task<T> GetCoreAsync<T>(string path, CacheOrigin origin, bool allowNullData, CancellationToken ct)
     {
         HttpResponseMessage response;
         try
@@ -388,7 +401,7 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
             throw await MapErrorAsync("GET", path, response, ct);
 
         var body = await response.Content.ReadAsStringAsync(ct);
-        var value = UnwrapEnvelope<T>("GET", path, body, response.StatusCode);
+        var value = UnwrapEnvelope<T>("GET", path, body, response.StatusCode, allowNullData);
         await TrySaveCacheAsync(path, body, ct);
         return value;
     }
@@ -412,9 +425,9 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
         SendAsync<object?, TResponse>(method, path, body: null, ct);
 
     private async Task<TResponse> SendAsync<TRequest, TResponse>(
-        HttpMethod method, string path, TRequest? body, CancellationToken ct)
+        HttpMethod method, string path, TRequest? body, CancellationToken ct, TimeSpan? timeout = null)
     {
-        var response = await SendCoreAsync(method, path, body, ct);
+        var response = await SendCoreAsync(method, path, body, ct, timeout);
         return await ReadEnvelopeAsync<TResponse>(method.Method, path, response, ct);
     }
 
@@ -438,9 +451,11 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
         SendNoDataAsync<object?>(method, path, body: null, ct);
 
     private async Task<HttpResponseMessage> SendCoreAsync<TRequest>(
-        HttpMethod method, string path, TRequest? body, CancellationToken ct)
+        HttpMethod method, string path, TRequest? body, CancellationToken ct, TimeSpan? timeout = null)
     {
         using var request = new HttpRequestMessage(method, path);
+        if (timeout is { } perRequest)
+            request.Options.Set(TimeoutHandler.TimeoutOption, perRequest);
         if (body is not null)
         {
             // JsonContent re-serializes on each read, so the auth handler's 401 retry can
@@ -467,11 +482,18 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
         return UnwrapEnvelope<T>(method, path, body, response.StatusCode);
     }
 
-    private T UnwrapEnvelope<T>(string method, string path, string body, HttpStatusCode statusCode)
+    private T UnwrapEnvelope<T>(string method, string path, string body, HttpStatusCode statusCode, bool allowNullData = false)
     {
-        if (!JsonUtility.TryDeserialize<ApiResponse<T>>(body, out var envelope, out var jsonErrors)
-            || envelope!.Data is null)
+        var parsed = JsonUtility.TryDeserialize<ApiResponse<T>>(body, out var envelope, out var jsonErrors);
+        if (!parsed || envelope!.Data is null)
         {
+            // Some endpoints answer a question with "there isn't one" as a successful envelope
+            // whose data is null — e.g. member-chat's sessions/current when no conversation
+            // exists yet. For those callers a readable success envelope with no data is an
+            // answer, not a fault; an unreadable body still is one.
+            if (allowNullData && parsed && envelope!.Success)
+                return default!;
+
             _logger.LogError("API {Method} {Path} returned {StatusCode} with an empty or unreadable envelope: {JsonErrors}. Payload: {Payload}",
                 method, path, (int)statusCode,
                 jsonErrors.Count == 0 ? "no data in envelope" : string.Join("; ", jsonErrors),
@@ -557,7 +579,7 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
     }
 
     private static bool IsTransport(Exception ex) =>
-        ex is HttpRequestException or TaskCanceledException or OperationCanceledException;
+        ex is HttpRequestException or TaskCanceledException or OperationCanceledException or TimeoutException;
 
     private ApiException NetworkError(string method, string path, Exception ex, CancellationToken ct)
     {
@@ -566,6 +588,10 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
         else
             _logger.LogError(ex, "API {Method} {Path} failed with a transport error", method, path);
 
-        return new(HttpStatusCode.ServiceUnavailable, "No connection. Check your internet and try again.", inner: ex);
+        // TimeoutHandler's expiry means the server was reached but too slow — "check your
+        // internet" would send the caregiver chasing the wrong problem.
+        return ex is TimeoutException
+            ? new(HttpStatusCode.RequestTimeout, "The server is taking too long to answer. Try again in a moment.", inner: ex)
+            : new(HttpStatusCode.ServiceUnavailable, "No connection. Check your internet and try again.", inner: ex);
     }
 }

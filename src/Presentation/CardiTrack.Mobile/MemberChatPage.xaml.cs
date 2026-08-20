@@ -138,21 +138,35 @@ public partial class MemberChatPage : ContentView
         var userTurn = ChatTurnItem.FromUserMessage(message);
         _turns.Add(userTurn);
 
+        // The list holding these bubbles must actually be on screen. If the history load failed
+        // (or hasn't finished), the page is still showing its error or skeleton panel — and a
+        // message appended behind either of those simply vanishes, which is exactly what a
+        // caregiver reported. Sending is proof the conversation is where they are; show it.
+        SetState(loaded: true);
+
+        // The reply is a chain of model calls and legitimately takes a while — an empty slot
+        // for that long reads as a swallowed message, so the slot says it's being worked on.
+        var pending = ChatTurnItem.Pending(_memberFirstName);
+        _turns.Add(pending);
+
         try
         {
             var response = await _api.SendMemberChatMessageAsync(
                 _memberId, new MemberChatMessageRequest { Message = message });
+            _turns.Remove(pending);
             _turns.Add(ChatTurnItem.FromReply(response, _memberFirstName));
         }
         catch (ApiException ex)
         {
             // The question stays in the list — retyping it would be worse than seeing why it
             // didn't get an answer. The reply slot carries the error instead of a made-up answer.
+            _turns.Remove(pending);
             _turns.Add(ChatTurnItem.FromError(ex.Message));
         }
         catch (Exception ex)
         {
             ScreenRefresh.LogFailure(ex, nameof(MemberChatPage), "while sending a message");
+            _turns.Remove(pending);
             _turns.Add(ChatTurnItem.FromError("Something went wrong sending that — try again."));
         }
         finally
@@ -207,6 +221,19 @@ public sealed class ChatTurnItem
         BubbleBackground = Microsoft.Maui.Controls.Application.Current?.Resources["White"] as Color ?? Colors.White,
         RowAlignment = LayoutOptions.Start,
         ChartSummary = Summarize(response.Charts),
+    };
+
+    /// <summary>The reply slot while the answer is being generated — removed and replaced by
+    /// <see cref="FromReply"/> or <see cref="FromError"/> when the send resolves.</summary>
+    public static ChatTurnItem Pending(string? memberFirstName) => new()
+    {
+        Content = "Looking at the readings…",
+        IsUser = false,
+        RoleLabel = memberFirstName is { Length: > 0 } name ? $"About {name}" : "Reply",
+        ShowRoleLabel = true,
+        TextColor = Microsoft.Maui.Controls.Application.Current?.Resources["BodyText"] as Color ?? Colors.Gray,
+        BubbleBackground = Microsoft.Maui.Controls.Application.Current?.Resources["White"] as Color ?? Colors.White,
+        RowAlignment = LayoutOptions.Start,
     };
 
     public static ChatTurnItem FromError(string message) => new()
