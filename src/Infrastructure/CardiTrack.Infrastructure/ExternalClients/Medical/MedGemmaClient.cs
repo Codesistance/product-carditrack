@@ -531,10 +531,11 @@ public class MedGemmaClient : IExternalAiClient
 
         /// <summary>
         /// Always off: on a thinking-family model (e.g. Qwen), Ollama's default routes the whole
-        /// generation into a separate <c>thinking</c> field and leaves <c>response</c> — the only
-        /// field this client reads — empty, which surfaces as "returned structured content that
-        /// could not be parsed" (measured against qwen3.5:4b, 2026-08-20). Non-thinking models
-        /// (gemma3, gemma4) accept and ignore the flag.
+        /// generation into a separate <c>thinking</c> field and leaves the content field this
+        /// client reads (<c>response</c> here, <c>message.content</c> on the chat endpoint)
+        /// empty, which surfaces as "returned structured content that could not be parsed"
+        /// (measured against qwen3.5:4b, 2026-08-20). Non-thinking models (gemma3, gemma4)
+        /// accept and ignore the flag.
         /// </summary>
         [JsonPropertyName("think")] public bool Think { get; init; } = false;
 
@@ -547,6 +548,10 @@ public class MedGemmaClient : IExternalAiClient
         [JsonPropertyName("model")] public required string Model { get; init; }
         [JsonPropertyName("messages")] public required List<OllamaMessage> Messages { get; init; }
         [JsonPropertyName("stream")] public bool Stream { get; init; } = false;
+
+        /// <summary>Same reason as <see cref="OllamaGenerateRequest.Think"/> — both endpoints
+        /// route a thinking model's output away from the field this client reads.</summary>
+        [JsonPropertyName("think")] public bool Think { get; init; } = false;
     }
 
     private record OllamaMessage
