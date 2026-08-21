@@ -139,12 +139,18 @@ public partial class ChatBotLauncher : ContentView
             var chosen = members[0];
             if (members.Count > 1 && FindPage() is { } page)
             {
-                var picked = await page.DisplayActionSheetAsync(
-                    "Ask about who?", "Cancel", null,
-                    members.Select(m => m.Name).ToArray());
-                if (picked is null || picked == "Cancel")
+                // The action sheet hands back only the tapped label, so the label must identify
+                // the member by itself — and the API allows two members with the same name.
+                // Duplicated names get a per-member ordinal, which keeps every label unique and
+                // makes the index lookup below unambiguous.
+                var labels = members
+                    .Select((m, i) => members.Count(x => x.Name == m.Name) > 1 ? $"{m.Name} ({i + 1})" : m.Name)
+                    .ToArray();
+                var picked = await page.DisplayActionSheetAsync("Ask about who?", "Cancel", null, labels);
+                var index = picked is null ? -1 : Array.IndexOf(labels, picked);
+                if (index < 0)
                     return;
-                chosen = members.FirstOrDefault(m => m.Name == picked) ?? chosen;
+                chosen = members[index];
             }
 
             MemberChatLauncher.ShowOverlay(host, chosen.Id, NameFormatting.FirstName(chosen.Name));
