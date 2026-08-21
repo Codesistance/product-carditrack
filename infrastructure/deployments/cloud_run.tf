@@ -166,10 +166,11 @@ variable "webhook_custom_domain" {
 # for every second the instance is alive.
 #
 # Inference itself does get slower. The headroom for that is in the timeouts, not here:
-# medgemma_timeout_seconds is 900s per attempt against an assessor task budget of 1800s
-# (see the job below), and per-member inference failures are swallowed rather than failing the
-# run. If assessment throughput becomes the constraint, raise this back before raising cadence —
-# a bigger instance for a shorter time beats a smaller one woken more often.
+# medgemma_timeout_seconds is 900s per attempt against the pipeline_assessor job's own 3600s
+# execution timeout (see the job below — 1800s belongs to the aggregator job, which does not call
+# MedGemma), and per-member inference failures are swallowed rather than failing the run. If
+# assessment throughput becomes the constraint, raise this back before raising cadence — a bigger
+# instance for a shorter time beats a smaller one woken more often.
 #
 # 4 is the floor while medgemma_memory is 16Gi: Cloud Run requires at least 4 vCPU for more than
 # 8 GiB and caps 4 vCPU at 16 GiB, so this pair sits on both limits at once. Cutting CPU further
