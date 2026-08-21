@@ -704,11 +704,15 @@ variable "rewrite_ai_model" {
   default     = "gemini-2.5-flash-lite"
 }
 
-# Same EU-only compliance gate as public_ai_location above.
+# Same EU-only compliance gate as public_ai_location above. Defaults to europe-west1, not the
+# estate's europe-west2: London does not serve gemini-2.5-flash-lite (publisher-model 404,
+# measured 2026-08-21 — the availability matrix is in docs/technical/vertex_ai_setup.md §3),
+# while Belgium does, sits ~6-10ms away, and is where the MedGemma GPU move (Option B) is
+# headed. west2 stays in the allowlist for models it does serve.
 variable "rewrite_ai_location" {
   description = "Vertex AI location for the rewrite slot's VertexGemini kind (EU regional endpoint)"
   type        = string
-  default     = "europe-west2"
+  default     = "europe-west1"
 
   validation {
     condition     = contains(["europe-west2", "europe-west1", "europe-west4"], var.rewrite_ai_location)
