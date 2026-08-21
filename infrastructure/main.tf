@@ -129,13 +129,19 @@ module "deployments" {
       # without calling the model — AiServiceExtensions refuses to start a host whose BaseUrl is a
       # Cloud Run URL while this is false, and that check runs wherever the settings are bound.
       "AI__Private__UseIdentityToken" = "true"
-      # Rewrite slot — its own Cloud Run host, split from Private (see AI__Rewrite__BaseUrl
-      # below), the same in-estate identity-token requirement. Every host that gets
-      # AddMedicalAiServices now validates this section at startup too, so it is set everywhere
-      # AI__Private__* is.
-      "AI__Rewrite__Model"             = local.medgemma_rewrite_model
-      "AI__Rewrite__TimeoutSeconds"    = tostring(var.medgemma_timeout_seconds)
+      # Rewrite slot — kind-switchable (DPIA v0.11 row A20, decision D6): VertexGemini reaches
+      # an EU regional Vertex endpoint under IAM; Ollama is the self-hosted Cloud Run host,
+      # whose BaseUrl secret and identity-token flag below stay mounted through the transition
+      # so an image-only rollback still boots. The Vertex-only keys are set unconditionally —
+      # the Ollama kind ignores them. Every host that gets AddMedicalAiServices validates this
+      # section at startup, so it is set everywhere AI__Private__* is.
+      "AI__Rewrite__Kind"              = var.rewrite_ai_kind
+      "AI__Rewrite__Model"             = var.rewrite_ai_kind == "Ollama" ? local.medgemma_rewrite_model : var.rewrite_ai_model
+      "AI__Rewrite__TimeoutSeconds"    = tostring(var.rewrite_ai_kind == "Ollama" ? var.medgemma_timeout_seconds : var.rewrite_ai_timeout_seconds)
       "AI__Rewrite__UseIdentityToken"  = "true"
+      "AI__Rewrite__ProjectId"         = var.project_id
+      "AI__Rewrite__Location"          = var.rewrite_ai_location
+      "AI__Rewrite__MaxOutputTokens"   = tostring(var.rewrite_ai_max_output_tokens)
       "Apm__Engine"                    = var.apm_engine
       "Apm__MetricsEnabled"            = tostring(var.apm_metrics_enabled)
       "Apm__TracesSampleRatio"         = tostring(var.traces_sample_ratio.api)
@@ -161,6 +167,12 @@ module "deployments" {
     # Omitted unless overridden, so each provider keeps its own documented endpoint.
     var.public_ai_base_url != null ? {
       "AI__Public__BaseUrl" = var.public_ai_base_url
+    } : {},
+    # Vertex addresses a model by project/location rather than URL + API key; only that kind
+    # reads these, so they are emitted only for it.
+    var.public_ai_kind == "VertexGemini" ? {
+      "AI__Public__ProjectId" = var.project_id
+      "AI__Public__Location"  = var.public_ai_location
     } : {},
     # The API runs the OAuth connect flow, so it needs the provider blocks' identity, endpoints
     # and scopes — not just the pull hosts' cadence numbers.
@@ -253,14 +265,19 @@ module "deployments" {
   pipeline_jobs_name            = local.pipeline_jobs_name
   pipeline_jobs_container_image = var.pipeline_jobs_container_image
   pipeline_jobs_env_vars = {
-    "ASPNETCORE_ENVIRONMENT"         = title(var.environment)
-    "GCP_PROJECT_ID"                 = var.project_id
-    "AI__Private__Model"             = local.medgemma_model
-    "AI__Private__TimeoutSeconds"    = tostring(var.medgemma_timeout_seconds)
-    "AI__Private__UseIdentityToken"  = "true"
-    "AI__Rewrite__Model"             = local.medgemma_rewrite_model
-    "AI__Rewrite__TimeoutSeconds"    = tostring(var.medgemma_timeout_seconds)
+    "ASPNETCORE_ENVIRONMENT"        = title(var.environment)
+    "GCP_PROJECT_ID"                = var.project_id
+    "AI__Private__Model"            = local.medgemma_model
+    "AI__Private__TimeoutSeconds"   = tostring(var.medgemma_timeout_seconds)
+    "AI__Private__UseIdentityToken" = "true"
+    # Same kind-aware rewrite settings as the API block above (which carries the rationale).
+    "AI__Rewrite__Kind"              = var.rewrite_ai_kind
+    "AI__Rewrite__Model"             = var.rewrite_ai_kind == "Ollama" ? local.medgemma_rewrite_model : var.rewrite_ai_model
+    "AI__Rewrite__TimeoutSeconds"    = tostring(var.rewrite_ai_kind == "Ollama" ? var.medgemma_timeout_seconds : var.rewrite_ai_timeout_seconds)
     "AI__Rewrite__UseIdentityToken"  = "true"
+    "AI__Rewrite__ProjectId"         = var.project_id
+    "AI__Rewrite__Location"          = var.rewrite_ai_location
+    "AI__Rewrite__MaxOutputTokens"   = tostring(var.rewrite_ai_max_output_tokens)
     "Apm__Engine"                    = var.apm_engine
     "Apm__MetricsEnabled"            = tostring(var.apm_metrics_enabled)
     "Serilog__MinimumLevel__Default" = var.log_minimum_level.worker
@@ -278,14 +295,21 @@ module "deployments" {
   # pipeline base — plus the subscription it drains. Still no public AI key.
   pipeline_aggregator_env_vars = merge(
     {
-      "ASPNETCORE_ENVIRONMENT"         = title(var.environment)
-      "GCP_PROJECT_ID"                 = var.project_id
-      "AI__Private__Model"             = local.medgemma_model
-      "AI__Private__TimeoutSeconds"    = tostring(var.medgemma_timeout_seconds)
-      "AI__Private__UseIdentityToken"  = "true"
-      "AI__Rewrite__Model"             = local.medgemma_rewrite_model
-      "AI__Rewrite__TimeoutSeconds"    = tostring(var.medgemma_timeout_seconds)
+      "ASPNETCORE_ENVIRONMENT"        = title(var.environment)
+      "GCP_PROJECT_ID"                = var.project_id
+      "AI__Private__Model"            = local.medgemma_model
+      "AI__Private__TimeoutSeconds"   = tostring(var.medgemma_timeout_seconds)
+      "AI__Private__UseIdentityToken" = "true"
+      # Same kind-aware rewrite settings as the API block above. The aggregator binds the
+      # section without calling the model, so under VertexGemini its runtime identity carries
+      # no aiplatform.user grant — validation-only config, same as its identity-token stance.
+      "AI__Rewrite__Kind"              = var.rewrite_ai_kind
+      "AI__Rewrite__Model"             = var.rewrite_ai_kind == "Ollama" ? local.medgemma_rewrite_model : var.rewrite_ai_model
+      "AI__Rewrite__TimeoutSeconds"    = tostring(var.rewrite_ai_kind == "Ollama" ? var.medgemma_timeout_seconds : var.rewrite_ai_timeout_seconds)
       "AI__Rewrite__UseIdentityToken"  = "true"
+      "AI__Rewrite__ProjectId"         = var.project_id
+      "AI__Rewrite__Location"          = var.rewrite_ai_location
+      "AI__Rewrite__MaxOutputTokens"   = tostring(var.rewrite_ai_max_output_tokens)
       "Apm__Engine"                    = var.apm_engine
       "Apm__MetricsEnabled"            = tostring(var.apm_metrics_enabled)
       "Serilog__MinimumLevel__Default" = var.log_minimum_level.worker
