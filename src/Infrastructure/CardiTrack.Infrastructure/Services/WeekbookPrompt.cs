@@ -153,40 +153,40 @@ internal static class WeekbookPrompt
         var sleepBand = HealthReferenceRanges.Sleep(ageYears);
         var written = 0;
 
-        written += AppendMetric(sb, days, "Sleep", l => l.SleepMinutes,
-            v => Hours((int)Math.Round(v)),
+        written += Metric(sb, days, "Sleep", l => l.SleepMinutes,
+            v => JournalPeriodSections.Hours((int)Math.Round(v)),
             baseline?.AvgSleepMinutes,
-            Band(sleepBand.Low, sleepBand.High, "hours", sleepBand.Source));
+            JournalPeriodSections.Band(sleepBand.Low, sleepBand.High, "hours", sleepBand.Source));
 
-        written += AppendMetric(sb, days, "Sleep efficiency", l => l.SleepEfficiency,
+        written += Metric(sb, days, "Sleep efficiency", l => l.SleepEfficiency,
             v => $"{Math.Round(v)}%",
             baseline?.AvgSleepEfficiency,
             null);
 
         var restingBand = HealthReferenceRanges.RestingHeartRate;
-        written += AppendMetric(sb, days, "Resting heart rate", l => l.RestingHeartRate,
+        written += Metric(sb, days, "Resting heart rate", l => l.RestingHeartRate,
             v => $"{Math.Round(v)} bpm",
             baseline?.AvgRestingHeartRate,
-            Band(restingBand.Low, restingBand.High, "bpm", restingBand.Source));
+            JournalPeriodSections.Band(restingBand.Low, restingBand.High, "bpm", restingBand.Source));
 
         var spo2Band = HealthReferenceRanges.SpO2;
-        written += AppendMetric(sb, days, "Blood oxygen", l => l.SpO2Average,
+        written += Metric(sb, days, "Blood oxygen", l => l.SpO2Average,
             v => $"{Math.Round(v, 1).ToString(CultureInfo.InvariantCulture)}%",
             null,
-            Band(spo2Band.Low, spo2Band.High, "%", spo2Band.Source));
+            JournalPeriodSections.Band(spo2Band.Low, spo2Band.High, "%", spo2Band.Source));
 
         var breathingBand = HealthReferenceRanges.BreathingRate;
-        written += AppendMetric(sb, days, "Breathing rate", l => l.BreathingRate,
+        written += Metric(sb, days, "Breathing rate", l => l.BreathingRate,
             v => $"{Math.Round(v, 1).ToString(CultureInfo.InvariantCulture)} breaths a minute",
             null,
-            Band(breathingBand.Low, breathingBand.High, "breaths a minute", breathingBand.Source));
+            JournalPeriodSections.Band(breathingBand.Low, breathingBand.High, "breaths a minute", breathingBand.Source));
 
-        written += AppendMetric(sb, days, "Steps", l => l.Steps,
+        written += Metric(sb, days, "Steps", l => l.Steps,
             v => $"{Math.Round(v):N0} steps",
             baseline?.AvgSteps,
             null);
 
-        written += AppendMetric(sb, days, "Active minutes", l => l.ActiveMinutes,
+        written += Metric(sb, days, "Active minutes", l => l.ActiveMinutes,
             v => $"{Math.Round(v)} minutes",
             baseline?.AvgActiveMinutes,
             null);
@@ -211,19 +211,10 @@ internal static class WeekbookPrompt
     internal const string ReadingsLabel = "The week's readings";
 
     /// <summary>
-    /// One metric's week: the average over the days that carried it, how many those were, where
-    /// that sat against the member's own usual <em>and by how much</em>, the published band, and
-    /// the standout day. Returns 1 when a line was written, 0 when the metric was never measured.
+    /// One metric's week, rendered by <see cref="JournalPeriodSections.AppendMetric"/> with this
+    /// book's period noun and its own idea of a standout.
     /// </summary>
-    /// <remarks>
-    /// The distance from the usual is computed here, and used to be left to the model. The brief
-    /// asked it to "say which way it went and by how much" while the prompt gave it two numbers
-    /// and no difference — a subtraction, on the one prompt whose own header says every number is
-    /// computed here because "a model asked to average seven figures will sometimes average six".
-    /// The same objection applies to a subtraction, and a wrong one is undetectable by reading:
-    /// nothing on the page contradicts it.
-    /// </remarks>
-    private static int AppendMetric<T>(
+    private static int Metric<T>(
         StringBuilder sb,
         IReadOnlyList<ActivityLog> days,
         string label,
@@ -231,53 +222,20 @@ internal static class WeekbookPrompt
         Func<decimal, string> format,
         int? usual,
         string? band)
-        where T : struct, IConvertible
-    {
-        var measured = days
-            .Select(d => (Day: d.Date, Value: select(d)))
-            .Where(x => x.Value.HasValue)
-            .Select(x => (x.Day, Value: Convert.ToDecimal(x.Value!.Value, CultureInfo.InvariantCulture)))
-            .ToList();
+        where T : struct, IConvertible =>
+        JournalPeriodSections.AppendMetric(
+            sb, days, label, select, format, usual, band, "week", StandoutClause);
 
-        if (measured.Count == 0)
-            return 0;
-
-        var average = measured.Average(m => m.Value);
-
-        sb.Append(label)
-          .Append(": ")
-          .Append(format(average))
-          .Append(" on average, measured on ")
-          .Append(measured.Count)
-          .Append(measured.Count == 1 ? " day of the week" : " days of the week");
-
-        if (usual is { } usualValue)
-        {
-            sb.Append(". Their usual is ").Append(format(usualValue));
-
-            var difference = average - usualValue;
-            sb.Append(difference switch
-            {
-                > 0 => $", and the week sat {format(difference)} above it",
-                < 0 => $", and the week sat {format(-difference)} below it",
-                _ => ", and the week sat level with it",
-            });
-        }
-
-        if (band is not null)
-            sb.Append(". ").Append(band);
-
-        if (Standout(measured, average) is { } standout)
-        {
-            sb.Append(". Furthest from the week's own average: ")
-              .Append(standout.Day.ToString("dddd d MMMM", CultureInfo.InvariantCulture))
-              .Append(", ")
-              .Append(format(standout.Value));
-        }
-
-        sb.AppendLine(".");
-        return 1;
-    }
+    /// <summary>The standout day, worded, or null when the week has none.</summary>
+    private static string? StandoutClause(
+        IReadOnlyList<(DateOnly Day, decimal Value)> measured,
+        decimal average,
+        Func<decimal, string> format) =>
+        Standout(measured, average) is { } standout
+            ? "Furthest from the week's own average: "
+              + standout.Day.ToString("dddd d MMMM", CultureInfo.InvariantCulture)
+              + ", " + format(standout.Value)
+            : null;
 
     /// <summary>
     /// The day furthest from the week's average, or null when the week is too thin to have a
@@ -335,55 +293,8 @@ internal static class WeekbookPrompt
     /// routine must not read as concern.
     /// </remarks>
     internal static string MonitoringSection(
-        IReadOnlyList<Alert> alerts, IReadOnlyList<RealtimeAssessment> assessments)
-    {
-        var notable = assessments
-            .Where(a => a.Severity is { } severity && severity >= AlertSeverity.Yellow)
-            .ToList();
-
-        if (alerts.Count == 0 && notable.Count == 0)
-            return string.Empty;
-
-        var sb = new StringBuilder();
-        sb.Append("--- ").Append(MonitoringLabel).AppendLine(" ---");
-
-        if (alerts.Count > 0)
-        {
-            var unresolved = alerts.Count(a => !a.IsResolved);
-            sb.Append(alerts.Count)
-              .Append(alerts.Count == 1 ? " alert was raised" : " alerts were raised")
-              .Append(" during the week");
-
-            if (unresolved > 0)
-                sb.Append(", ").Append(unresolved).Append(" still unresolved at the end of it");
-
-            sb.AppendLine(".");
-
-            // Named by kind so the account can say what the week's monitoring was about, without
-            // handing the model seven alert bodies to paraphrase into a diagnosis.
-            foreach (var group in alerts
-                .GroupBy(a => a.Severity)
-                .OrderByDescending(g => g.Key))
-            {
-                sb.Append("- ")
-                  .Append(group.Count())
-                  .Append(' ')
-                  .Append(group.Key.ToString().ToLowerInvariant())
-                  .AppendLine(group.Count() == 1 ? " alert" : " alerts");
-            }
-        }
-
-        if (notable.Count > 0)
-        {
-            sb.Append(notable.Count)
-              .Append(notable.Count == 1
-                  ? " hour was observed as worth noting"
-                  : " hours were observed as worth noting")
-              .AppendLine(" by the real-time monitoring during the week.");
-        }
-
-        return sb.ToString().TrimEnd();
-    }
+        IReadOnlyList<Alert> alerts, IReadOnlyList<RealtimeAssessment> assessments) =>
+        JournalPeriodSections.MonitoringSection(MonitoringLabel, "week", alerts, assessments);
 
     /// <summary>How much of the week carried any reading at all, stated plainly.</summary>
     internal static string CoverageLine(IReadOnlyList<ActivityLog> days, DateOnly from, DateOnly to)
@@ -396,13 +307,4 @@ internal static class WeekbookPrompt
             : $"The week ran {span}. {days.Count} of its 7 days carried readings; the rest were not measured.";
     }
 
-    private static string Hours(int minutes) =>
-        $"{minutes / 60}h {minutes % 60:D2}m";
-
-    private static string Band(decimal low, decimal high, string unit, string source) =>
-        $"The published range is {Trim(low)}-{Trim(high)} {unit} ({source})";
-
-    private static string Trim(decimal value) =>
-        (value == Math.Truncate(value) ? Math.Truncate(value) : Math.Round(value, 1))
-            .ToString(CultureInfo.InvariantCulture);
 }
