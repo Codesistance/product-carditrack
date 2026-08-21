@@ -127,11 +127,19 @@
                     <CollectionView.ItemTemplate>
                         <DataTemplate x:DataType="mobile:ChatTurnItem">
                             <Grid Padding="16,0" HorizontalOptions="{Binding RowAlignment}">
-                                <Border Style="{StaticResource ElevatedCard}"
-                                        BackgroundColor="{Binding BubbleBackground}"
+                                <!-- Not ElevatedCard: only the caregiver's own bubbles carry its
+                                     shadow (BubbleShadow, per item). The bot's replies sit flat
+                                     so the conversation reads as one surface rather than a
+                                     stack of floating cards. -->
+                                <Border BackgroundColor="{Binding BubbleBackground}"
+                                        StrokeThickness="0"
+                                        Shadow="{Binding BubbleShadow}"
                                         Padding="14,10"
                                         MaximumWidthRequest="300"
                                         HorizontalOptions="{Binding RowAlignment}">
+                                    <Border.StrokeShape>
+                                        <RoundRectangle CornerRadius="20"/>
+                                    </Border.StrokeShape>
                                     <VerticalStackLayout Spacing="4">
                                         <Label Text="{Binding RoleLabel}"
                                                FontFamily="QuicksandSemiBold"
@@ -177,11 +185,15 @@
                  would have to be swapped out per tick, recreating the bubble and restarting the
                  pulse mid-breath. -->
             <Grid x:Name="PendingPanel" Grid.Row="1" Padding="16,4,16,8" IsVisible="False">
-                <Border Style="{StaticResource ElevatedCard}"
-                        BackgroundColor="{StaticResource White}"
+                <!-- Flat like the reply bubble it becomes — see the turn template's remark. -->
+                <Border BackgroundColor="{StaticResource White}"
+                        StrokeThickness="0"
                         Padding="10,6,14,6"
                         MaximumWidthRequest="300"
                         HorizontalOptions="Start">
+                    <Border.StrokeShape>
+                        <RoundRectangle CornerRadius="20"/>
+                    </Border.StrokeShape>
                     <HorizontalStackLayout Spacing="6">
                         <controls:PendingBotIndicator VerticalOptions="Center"/>
                         <Label x:Name="PendingTextLabel"
