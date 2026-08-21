@@ -208,9 +208,26 @@ public partial class WelcomePage : ContentPage
         WindowNavigation.SetRootPage(this, new NavigationPage(new SignInPage()));
     }
 
-    private async void OnTermsTapped(object? sender, EventArgs e)
+    private void OnTermsTapped(object? sender, EventArgs e)
+        => ShowDocument("Terms of Service", LegalDocumentPage.TermsUrl);
+
+    private void OnPrivacyTapped(object? sender, EventArgs e)
+        => ShowDocument("Privacy Policy", LegalDocumentPage.PrivacyUrl);
+
+    /// <summary>
+    /// Opens the document over the carousel. Both links used to raise a popup reading "Terms and
+    /// privacy will open here" — a placeholder on the screen that asks a caregiver to agree to
+    /// them before starting a trial.
+    /// </summary>
+    private async void ShowDocument(string title, string url)
     {
-        await ServiceHelper.GetRequiredService<IPopupService>()
-            .ShowInfoAsync("Terms and privacy will open here.", "Terms & Privacy");
+        try
+        {
+            await Navigation.PushModalAsync(new LegalDocumentPage(title, url));
+        }
+        catch (Exception ex)
+        {
+            ScreenRefresh.LogFailure(ex, nameof(WelcomePage), $"while opening {title}");
+        }
     }
 }
