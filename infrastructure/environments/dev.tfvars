@@ -35,7 +35,15 @@ worker_cloud_run_memory = "1Gi"
 # MedGemma build (the resource ignores image changes). Terraform has to create the service
 # first, because `gcloud run deploy` would otherwise create it at Cloud Run's 1 CPU /
 # 512 Mi default with no VPC attachment, and Terraform would then collide with it.
-medgemma_image = "us-docker.pkg.dev/cloudrun/container/hello"
+# Empty destroys this environment's own MedGemma service, its invoker bindings and its
+# public-exposure alert — the count gate every one of them shares. Dev calls the shared GPU
+# service in europe-west1 now (medgemma_service_url above); this CPU instance has served nothing
+# since that flip and was billing 4 vCPU / 16 GiB around the clock to do it, because cpu_idle is
+# false and it could not scale to zero.
+#
+# The alert moved rather than went: infrastructure/common/alerting.tf watches the shared service,
+# where the exposure it detects is now larger — one instance behind every environment.
+medgemma_image = ""
 
 # Kept warm, which the default (0) does not do. The original justification — the Dashboard's
 # status line generating inside the request a caregiver is waiting on — ended with the batch
