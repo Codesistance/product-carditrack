@@ -195,12 +195,6 @@ resource "google_secret_manager_secret_iam_member" "api_medgemma_url" {
   member    = local.api_sa
 }
 
-resource "google_secret_manager_secret_iam_member" "api_rewrite_url" {
-  secret_id = google_secret_manager_secret.rewrite_service_url.id
-  role      = "roles/secretmanager.secretAccessor"
-  member    = local.api_sa
-}
-
 resource "google_secret_manager_secret_iam_member" "api_redis_connection_string" {
   count     = var.enable_redis ? 1 : 0
   secret_id = google_secret_manager_secret.redis_connection_string[0].id
@@ -270,13 +264,6 @@ resource "google_secret_manager_secret_iam_member" "pipeline_medgemma_url" {
   member    = "serviceAccount:${google_service_account.pipeline[0].email}"
 }
 
-resource "google_secret_manager_secret_iam_member" "pipeline_rewrite_url" {
-  count     = var.enable_pipeline_jobs ? 1 : 0
-  secret_id = google_secret_manager_secret.rewrite_service_url.id
-  role      = "roles/secretmanager.secretAccessor"
-  member    = "serviceAccount:${google_service_account.pipeline[0].email}"
-}
-
 resource "google_secret_manager_secret_iam_member" "pipeline_apm_data" {
   count     = var.enable_pipeline_jobs ? 1 : 0
   secret_id = google_secret_manager_secret.app_secrets["apm-data"].id
@@ -318,7 +305,6 @@ resource "time_sleep" "api_iam_propagation" {
         google_secret_manager_secret_iam_member.api_health_token.id,
         google_secret_manager_secret_iam_member.api_gemini_api_key.id,
         google_secret_manager_secret_iam_member.api_medgemma_url.id,
-        google_secret_manager_secret_iam_member.api_rewrite_url.id,
         # Not secret_key_refs, but still worth the barrier: ordering the revision after
         # these means the first boot in a fresh environment can already sign photo URLs
         # and reach the bucket, instead of 403ing until IAM catches up.
@@ -344,7 +330,6 @@ resource "time_sleep" "api_iam_propagation" {
     google_secret_manager_secret_iam_member.api_health_token,
     google_secret_manager_secret_iam_member.api_gemini_api_key,
     google_secret_manager_secret_iam_member.api_medgemma_url,
-    google_secret_manager_secret_iam_member.api_rewrite_url,
     google_secret_manager_secret_iam_member.api_redis_connection_string,
     google_secret_manager_secret_iam_member.api_redis_ca,
     google_secret_manager_secret_iam_member.api_dev_push_token_key,
@@ -366,7 +351,6 @@ resource "time_sleep" "pipeline_iam_propagation" {
       google_secret_manager_secret_iam_member.pipeline_db_conn[0].id,
       google_secret_manager_secret_iam_member.pipeline_encryption_key[0].id,
       google_secret_manager_secret_iam_member.pipeline_medgemma_url[0].id,
-      google_secret_manager_secret_iam_member.pipeline_rewrite_url[0].id,
       google_secret_manager_secret_iam_member.pipeline_apm_data[0].id,
     ])))
   }
@@ -377,7 +361,6 @@ resource "time_sleep" "pipeline_iam_propagation" {
     google_secret_manager_secret_iam_member.pipeline_db_conn,
     google_secret_manager_secret_iam_member.pipeline_encryption_key,
     google_secret_manager_secret_iam_member.pipeline_medgemma_url,
-    google_secret_manager_secret_iam_member.pipeline_rewrite_url,
     google_secret_manager_secret_iam_member.pipeline_apm_data,
   ]
 }
@@ -385,22 +368,22 @@ resource "time_sleep" "pipeline_iam_propagation" {
 # Same grant-set-hashed barrier as the two above, for the workloads that still run as the
 # default compute service account (worker, the aggregator — see the shared-SA note in the
 # accepted-risks record). The 2026-08-20 dev apply demonstrated the gap this closes: the
-# aggregator job's update started 18 seconds before its brand-new grant on the rewrite URL
-# secret finished creating, and Cloud Run rejected the revision with "Permission denied on
-# secret". Only the URL-secret grants are hashed here — the compute SA's other grants predate
-# this barrier and are steady; adding them would force a one-time 60s wait for nothing.
+# aggregator job's update started 18 seconds before a brand-new grant on a model-URL secret
+# finished creating, and Cloud Run rejected the revision with "Permission denied on secret".
+# That particular secret belonged to the rewrite service and is gone; the race is not, and it
+# applies to the MedGemma URL identically. Only the URL-secret grants are hashed here — the
+# compute SA's other grants predate this barrier and are steady; adding them would force a
+# one-time 60s wait for nothing.
 resource "time_sleep" "compute_sa_secret_propagation" {
   create_duration = "60s"
 
   triggers = {
     grants = sha256(jsonencode(sort([
       google_secret_manager_secret_iam_member.medgemma_url_accessor.id,
-      google_secret_manager_secret_iam_member.rewrite_url_accessor.id,
     ])))
   }
 
   depends_on = [
     google_secret_manager_secret_iam_member.medgemma_url_accessor,
-    google_secret_manager_secret_iam_member.rewrite_url_accessor,
   ]
 }

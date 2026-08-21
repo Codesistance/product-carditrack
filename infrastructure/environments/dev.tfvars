@@ -64,29 +64,6 @@ medgemma_image = "us-docker.pkg.dev/cloudrun/container/hello"
 # cpu_idle = false that bills continuously and is the largest single line item on this estate.
 medgemma_min_instances = 1
 
-# The Rewrite host stays warm too (issue #397): at the default 0 a member-chat send pays the
-# full scale-from-zero — image pull, startup probe, ~59s model load — which outlasts the API's
-# whole retry budget (~2 min), so every interactive chat failed unless background traffic
-# happened to have warmed the instance (verified live 2026-08-20; traces in the issue). Unlike
-# medgemma this service keeps cpu_idle = true, so a quiet warm instance bills at the idle rate —
-# a far smaller line than medgemma's always-on 4/16.
-# OLLAMA_KEEP_ALIVE follows this setting in the module, pinning the model in memory so the warm
-# instance answers without a reload.
-rewrite_min_instances = 1
-
-# 16Gi, taking this comment's own earlier escalation rule ("if 8Gi ever OOMs, the next stop is
-# 4 vCPU / 16Gi"): 8Gi HAS OOM'd, repeatedly and measurably — killed at 8209–8283 MiB during
-# and just after model load on 2026-08-20 (17:47–18:05 and again on revision 00009 at 21:45,
-# the alert that reopened this), even with OLLAMA_CONTEXT_LENGTH=8192 verifiably in effect.
-# The 7.2 GiB p99 measured on the medgemma service does not transfer: on Cloud Run this
-# service's 4B q4 weights count against the limit roughly twice (mmap'd blob page cache plus
-# llama.cpp's repacked CPU buffers) before the vision tower, vocab and KV — the full series of
-# measurements lives on rewrite_memory's default in deployments/cloud_run.tf. 16Gi matches
-# that default; this line stays only to keep dev explicit and to carry this history. A smaller
-# rewrite model (bakeoff in progress, 2026-08-20) is the route back down — not a smaller limit
-# under the current model.
-rewrite_memory = "16Gi"
-
 # The AI pipeline's scheduled job (digest generation) — on in dev, where MedGemma runs.
 # Same seed-image mechanics as the medgemma service above.
 enable_pipeline_jobs = true

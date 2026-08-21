@@ -434,10 +434,4 @@ module "deployments" {
   # service's own request timeout from it, keeping the client's deadline strictly the shorter one.
   medgemma_timeout_seconds = var.medgemma_timeout_seconds
 
-  # Rewrite (split from MedGemma) — see deployments/cloud_run.tf's "rewrite" resource.
-  rewrite_service_name  = "${var.project_name}-${local.environment}-rewrite"
-  rewrite_cpu           = var.rewrite_cpu
-  rewrite_memory        = var.rewrite_memory
-  rewrite_min_instances = var.rewrite_min_instances
-  rewrite_max_instances = var.rewrite_max_instances
 }
