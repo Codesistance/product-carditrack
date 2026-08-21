@@ -97,7 +97,10 @@ public class DashboardService : IDashboardService
             ? await _unitOfWork.EnvironmentalReadings.GetLatestAsync(cardiMemberId, ct)
             : null;
 
-        var advise = await _unitOfWork.MemberAdvises.GetByCardiMemberAsync(cardiMemberId);
+        // Same guard HealthInsightService.GetAdviseAsync applies before serving a row: a paused
+        // member's stored suggestion is withheld there, and a pulsing badge promising one the
+        // details screen will never show would be worse than no badge at all.
+        var advise = isPaused ? null : await _unitOfWork.MemberAdvises.GetByCardiMemberAsync(cardiMemberId);
         var hasAdvise = advise is not null && DateTime.UtcNow - advise.GeneratedAtUtc <= AdviseMaxAge;
 
         return new DashboardResponse

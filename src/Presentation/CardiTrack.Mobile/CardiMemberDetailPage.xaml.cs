@@ -497,7 +497,10 @@ public partial class CardiMemberDetailPage : ContentPage
 
     /// <summary>
     /// Best-effort, same treatment as <see cref="LoadDigestAsync"/>: the Advise card starts hidden,
-    /// which is a complete fallback on its own, so a 404 or a failed call just leaves it that way.
+    /// which is a complete fallback on its own, so a failed call just leaves it that way. Unlike
+    /// the digest endpoint, a 404 here isn't "nothing generated yet" — that case is a 200 with a
+    /// blank <see cref="AdviseResponse.Suggestion"/> (<see cref="ApplyAdvise"/> hides the card for
+    /// it) — a 404 means access was refused or the member doesn't exist.
     /// </summary>
     private async Task LoadAdviseAsync(Guid memberId)
     {

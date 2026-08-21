@@ -17,6 +17,7 @@ public class DashboardServiceTests
     private readonly IAlertRepository _alerts = Substitute.For<IAlertRepository>();
     private readonly IRealtimeAssessmentRepository _realtimeAssessments = Substitute.For<IRealtimeAssessmentRepository>();
     private readonly IEnvironmentalReadingRepository _environmentalReadings = Substitute.For<IEnvironmentalReadingRepository>();
+    private readonly IMemberAdviseRepository _advises = Substitute.For<IMemberAdviseRepository>();
     private readonly CardiTrack.Application.Interfaces.Clients.IProfilePhotoStorage _photoStorage =
         Substitute.For<CardiTrack.Application.Interfaces.Clients.IProfilePhotoStorage>();
 
@@ -33,6 +34,7 @@ public class DashboardServiceTests
         _unitOfWork.Alerts.Returns(_alerts);
         _unitOfWork.RealtimeAssessments.Returns(_realtimeAssessments);
         _unitOfWork.EnvironmentalReadings.Returns(_environmentalReadings);
+        _unitOfWork.MemberAdvises.Returns(_advises);
 
         // Defaults: linked user, active member, no devices/data/baseline/alerts.
         SetupLink(canViewHealthData: true);
@@ -53,6 +55,7 @@ public class DashboardServiceTests
         _alerts.GetUnresolvedByCardiMemberAsync(_memberId).Returns([]);
         _realtimeAssessments.GetLatestAsync(_memberId, Arg.Any<CancellationToken>())
             .Returns((RealtimeAssessment?)null);
+        _advises.GetByCardiMemberAsync(_memberId).Returns((MemberAdvise?)null);
     }
 
     // Composed with the real access service rather than a stub: the link rules under test here
@@ -736,5 +739,70 @@ public class DashboardServiceTests
         Assert.Equal(55, result.Weather.HumidityPercent);
         Assert.Equal("Good", result.Weather.AirQualityCategory);
         Assert.Equal(sessionEnd, result.Weather.AsOfUtc);
+    }
+
+    // ── Advise (HasAdvise) ───────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task HasAdvise_IsTrue_ForAFreshRow()
+    {
+        _advises.GetByCardiMemberAsync(_memberId).Returns(new MemberAdvise
+        {
+            CardiMemberId = _memberId,
+            Summary = "Summary.",
+            Suggestion = "Suggestion.",
+            GeneratedAtUtc = DateTime.UtcNow.AddHours(-2),
+        });
+
+        var result = await CreateSut().GetDashboardAsync(_userId, _memberId);
+
+        Assert.True(result.HasAdvise);
+    }
+
+    [Fact]
+    public async Task HasAdvise_IsFalse_WhenNoRowExistsYet()
+    {
+        var result = await CreateSut().GetDashboardAsync(_userId, _memberId);
+
+        Assert.False(result.HasAdvise);
+    }
+
+    [Fact]
+    public async Task HasAdvise_IsFalse_ForAStaleRow()
+    {
+        _advises.GetByCardiMemberAsync(_memberId).Returns(new MemberAdvise
+        {
+            CardiMemberId = _memberId,
+            Summary = "Summary.",
+            Suggestion = "Suggestion.",
+            GeneratedAtUtc = DateTime.UtcNow.AddDays(-4),
+        });
+
+        var result = await CreateSut().GetDashboardAsync(_userId, _memberId);
+
+        Assert.False(result.HasAdvise);
+    }
+
+    /// <summary>
+    /// Pinned after a Copilot review caught the mismatch on PR #456: <c>HealthInsightService
+    /// .GetAdviseAsync</c> withholds Advise for a paused member, so a dashboard that kept pulsing
+    /// for one would promise a suggestion the details screen would never actually show.
+    /// </summary>
+    [Fact]
+    public async Task HasAdvise_IsFalse_ForAPausedMember_EvenWithAFreshRow()
+    {
+        SetupPausedMember(DateTime.UtcNow.AddHours(12), "Travelling");
+        _advises.GetByCardiMemberAsync(_memberId).Returns(new MemberAdvise
+        {
+            CardiMemberId = _memberId,
+            Summary = "Summary.",
+            Suggestion = "Suggestion.",
+            GeneratedAtUtc = DateTime.UtcNow.AddHours(-2),
+        });
+
+        var result = await CreateSut().GetDashboardAsync(_userId, _memberId);
+
+        Assert.False(result.HasAdvise);
+        await _advises.DidNotReceive().GetByCardiMemberAsync(Arg.Any<Guid>());
     }
 }
