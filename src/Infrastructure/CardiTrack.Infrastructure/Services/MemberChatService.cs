@@ -209,7 +209,7 @@ public class MemberChatService : IMemberChatService
         }
 
         if (triage.Result.IsCasualOrSocial || triage.Result.IsOffTopic)
-            return await SteerAsync(session, flattened, history, triage.Usage, triage.Result.IsCasualOrSocial, cardiMemberId, utcNow, ct);
+            return await SteerAsync(session, flattened, triage.Usage, triage.Result.IsCasualOrSocial, cardiMemberId, utcNow, ct);
 
         var plan = await _planner.PlanAsync(flattened, history, ct);
         var fetched = await DataQueryWhitelist.ExecuteAsync(plan.Result, cardiMemberId, _unitOfWork, utcNow, ct);
@@ -253,10 +253,17 @@ public class MemberChatService : IMemberChatService
     /// session, same encryption, same retention envelope), with usage rows only for the two calls
     /// actually made.
     /// </summary>
+    /// <remarks>
+    /// Deliberately takes no conversation history, unlike the triage and planning steps either
+    /// side of it. Those steps need context to judge a terse follow-up ("why?"); a greeting or an
+    /// off-topic request does not, and prior assistant turns are persisted after name resolution
+    /// — so they carry the member's real name alongside their readings. Sending them to answer
+    /// "hi" would widen what the Rewrite slot sees for no gain, which is the opposite of the
+    /// minimisation DPIA row A20 records for this slot.
+    /// </remarks>
     private async Task<MemberChatMessageResponse> SteerAsync(
         MemberChatSession session,
         string flattened,
-        string? history,
         AiUsage triageUsage,
         bool casual,
         Guid cardiMemberId,
@@ -272,7 +279,7 @@ public class MemberChatService : IMemberChatService
         try
         {
             var steer = await _rewriteAi.GenerateStructuredWithUsageAsync<SteerAiResponse>(
-                BuildSteerPrompt(instructions, flattened, history), ct);
+                BuildSteerPrompt(instructions, flattened), ct);
             steerUsage = steer.Usage;
             var resolved = NamePlaceholder.Resolve(steer.Result.Reply.Trim(), name) ?? string.Empty;
             reply = NamePlaceholder.IsPresentIn(resolved) || string.IsNullOrWhiteSpace(resolved)
@@ -311,22 +318,14 @@ public class MemberChatService : IMemberChatService
         };
     }
 
-    private static string BuildSteerPrompt(string instructions, string message, string? historyBlock) =>
-        historyBlock is null
-            ? $"""
-              {instructions}
+    /// <summary>The message and nothing else — see <see cref="SteerAsync"/> for why no history
+    /// travels with it.</summary>
+    private static string BuildSteerPrompt(string instructions, string message) => $"""
+        {instructions}
 
-              --- Message ---
-              {message}
-              """
-            : $"""
-              {instructions}
-
-              {historyBlock}
-
-              --- Message ---
-              {message}
-              """;
+        --- Message ---
+        {message}
+        """;
 
     /// <summary>
     /// Three short, question-specific lines for the pending bubble, from the Rewrite slot. Fire
@@ -393,19 +392,23 @@ public class MemberChatService : IMemberChatService
     {
         await _access.RequireViewAccessAsync(userId, cardiMemberId, ct);
 
-        // Same read as the status line's tier: activeOnly still includes resolved episodes, so
-        // the second filter is what distinguishes a live alert from a closed one.
-        var hasUnresolvedAlert = (await _unitOfWork.Alerts.GetByCardiMemberAsync(cardiMemberId, true))
-            .Any(a => !a.IsResolved);
+        // The unresolved-only read, not the tracked activeOnly one: this runs on every chat open,
+        // and there is nothing here to resolve or mutate — filtering in SQL keeps a member with
+        // years of alert history from paying for that history to open a conversation.
+        var hasUnresolvedAlert = (await _unitOfWork.Alerts.GetUnresolvedByCardiMemberAsync(cardiMemberId))
+            .Count > 0;
 
-        var suggestions = new List<string>();
-        if (hasUnresolvedAlert)
-            suggestions.Add("What's behind the current alert?");
-        suggestions.Add("How are they doing today?");
-        suggestions.Add("How did they sleep last night?");
-        suggestions.Add("How active have they been this week?");
-        if (!hasUnresolvedAlert)
-            suggestions.Add("Anything I should keep an eye on?");
+        // Always four chips: the alert question replaces the general watch-out one rather than
+        // adding to it. A row that changes length with the member's state reads as something
+        // having gone missing, and "anything I should keep an eye on?" is a weaker question to
+        // offer when there is already a specific alert to ask about.
+        var suggestions = new List<string>
+        {
+            hasUnresolvedAlert ? "What's behind the current alert?" : "Anything I should keep an eye on?",
+            "How are they doing today?",
+            "How did they sleep last night?",
+            "How active have they been this week?",
+        };
 
         return new MemberChatSuggestionsResponse { Suggestions = suggestions };
     }
@@ -557,12 +560,14 @@ public class MemberChatService : IMemberChatService
     /// metric list means the question was general and every fetched series charts.
     /// </summary>
     private static IReadOnlyList<ChartSeries> BuildCharts(
-        FetchedMemberData data, IReadOnlyList<ChartMetricKind> metrics)
+        FetchedMemberData data, IReadOnlyList<ChartMetricKind>? metrics)
     {
         if (data.RecentActivity.Count == 0)
             return [];
 
-        bool Wanted(ChartMetricKind metric) => metrics.Count == 0 || metrics.Contains(metric);
+        // Null (the planner did not answer) and empty (it answered "general") both chart
+        // everything — see DataQueryPlan.ChartMetrics for why widening is the right failure.
+        bool Wanted(ChartMetricKind metric) => metrics is not { Count: > 0 } || metrics.Contains(metric);
 
         var charts = new List<ChartSeries>();
         if (Wanted(ChartMetricKind.Steps))

@@ -92,14 +92,23 @@ public class DataQueryPlannerService : IDataQueryPlanner
             .Distinct()
             .ToList();
 
-        // Same defensive parse as the sources: an unrecognised metric name is dropped, and an
-        // absent list means "general question" — every fetched series may chart.
-        var metrics = (response.Metrics ?? [])
-            .Select(m => Enum.TryParse<ChartMetricKind>(m, ignoreCase: true, out var kind) ? kind : (ChartMetricKind?)null)
-            .Where(m => m is not null)
-            .Select(m => m!.Value)
-            .Distinct()
-            .ToList();
+        // Same defensive parse as the sources, but the empty cases are kept apart (see
+        // DataQueryPlan.ChartMetrics): an absent field is null — the model did not answer — and
+        // so is a list whose every name failed to parse, because names we could not read tell us
+        // nothing about what the question was. Only a list the model deliberately sent empty
+        // means "general question".
+        IReadOnlyList<ChartMetricKind>? metrics = null;
+        if (response.Metrics is { } named)
+        {
+            var recognised = named
+                .Select(m => Enum.TryParse<ChartMetricKind>(m, ignoreCase: true, out var kind) ? kind : (ChartMetricKind?)null)
+                .Where(m => m is not null)
+                .Select(m => m!.Value)
+                .Distinct()
+                .ToList();
+
+            metrics = named.Count > 0 && recognised.Count == 0 ? null : recognised;
+        }
 
         return new DataQueryPlan
         {

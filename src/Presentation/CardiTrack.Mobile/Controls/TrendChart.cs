@@ -18,12 +18,27 @@ public sealed class TrendChart : GraphicsView
     /// not a cursor, and a 7-day window spaces readings ~40px apart at bubble width.</summary>
     private const double TouchSlop = 28;
 
+    /// <summary>
+    /// How far the finger may travel between touch-down and lift and still count as a tap.
+    /// Above it the gesture was a scroll that happened to start on the chart, and selecting a
+    /// reading because a caregiver swiped past it would change state they never asked to change.
+    /// </summary>
+    private const double TapMovementSlop = 12;
+
     private readonly TrendChartDrawable _drawable = new();
+
+    /// <summary>Where the current touch went down, or null when no touch is in progress or the
+    /// gesture has already been claimed by a scrolling ancestor.</summary>
+    private PointF? _touchDownAt;
 
     public TrendChart()
     {
         Drawable = _drawable;
         StartInteraction += OnStartInteraction;
+        EndInteraction += OnEndInteraction;
+        // A parent CollectionView/ScrollView that takes the gesture over mid-swipe cancels this
+        // one; without clearing here, the next lift anywhere would be read as a tap.
+        CancelInteraction += OnCancelInteraction;
     }
 
     /// <summary>
@@ -38,16 +53,30 @@ public sealed class TrendChart : GraphicsView
     /// not. Defaults to the bare number.</summary>
     public Func<double, string>? ValueFormatter { get; set; }
 
-    private void OnStartInteraction(object? sender, TouchEventArgs e)
+    private void OnStartInteraction(object? sender, TouchEventArgs e) =>
+        // Recorded, not acted on: touch-down is not yet a tap. Acting here made a scroll that
+        // merely began over the chart select whatever reading it started nearest.
+        _touchDownAt = Interactive && e.Touches.Length > 0 ? e.Touches[0] : null;
+
+    private void OnCancelInteraction(object? sender, EventArgs e) => _touchDownAt = null;
+
+    private void OnEndInteraction(object? sender, TouchEventArgs e)
     {
-        if (!Interactive || e.Touches.Length == 0)
+        var start = _touchDownAt;
+        _touchDownAt = null;
+
+        if (!Interactive || start is not { } down || e.Touches.Length == 0)
             return;
 
-        var touch = e.Touches[0];
-        var nearest = _drawable.NearestDataPointAt(touch.X);
-        if (nearest is null || Math.Abs(nearest.Value.At.X - touch.X) > TouchSlop)
+        var up = e.Touches[0];
+        if (Math.Abs(up.X - down.X) > TapMovementSlop || Math.Abs(up.Y - down.Y) > TapMovementSlop)
+            return;
+
+        var nearest = _drawable.NearestDataPointAt(up.X);
+        if (nearest is null || Math.Abs(nearest.Value.At.X - up.X) > TouchSlop)
         {
             _drawable.SelectedPoint = null;
+            _drawable.SelectedLabel = null;
         }
         else
         {

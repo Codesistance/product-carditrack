@@ -131,7 +131,7 @@
 
                     <CollectionView.ItemTemplate>
                         <DataTemplate x:DataType="mobile:ChatTurnItem">
-                            <Grid Padding="16,0" HorizontalOptions="{Binding RowAlignment}">
+                            <Grid Padding="16,0" HorizontalOptions="{Binding BubbleAlignment}">
                                 <!-- Not ElevatedCard: only the caregiver's own bubbles carry its
                                      shadow (BubbleShadow, per item). The bot's replies sit flat
                                      so the conversation reads as one surface rather than a
@@ -146,7 +146,7 @@
                                         Shadow="{Binding BubbleShadow}"
                                         Padding="14,10"
                                         MaximumWidthRequest="{Binding BubbleMaxWidth}"
-                                        HorizontalOptions="{Binding RowAlignment}">
+                                        HorizontalOptions="{Binding BubbleAlignment}">
                                     <Border.StrokeShape>
                                         <RoundRectangle CornerRadius="20"/>
                                     </Border.StrokeShape>

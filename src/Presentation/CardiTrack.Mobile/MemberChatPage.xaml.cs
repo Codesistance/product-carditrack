@@ -399,6 +399,16 @@ public sealed class ChatTurnItem
     /// </summary>
     public double BubbleMaxWidth => HasCharts ? 460 : 300;
 
+    /// <summary>
+    /// How the bubble measures against the row. <see cref="LayoutOptions.Start"/> and
+    /// <see cref="LayoutOptions.End"/> size to content, which is right for prose and wrong for a
+    /// chart: a <c>MaximumWidthRequest</c> only caps a measured size, it never grows one, so a
+    /// charted bubble left on Start measured to its widest label and drew the plot narrower than
+    /// the text above it. Charted replies therefore measure Fill and are capped by
+    /// <see cref="BubbleMaxWidth"/>; they are the bot's, so they still read as left-aligned.
+    /// </summary>
+    public LayoutOptions BubbleAlignment => HasCharts ? LayoutOptions.Fill : RowAlignment;
+
     /// <param name="sentAt">When the turn happened. Defaults to now for a message being sent
     /// this moment; history passes the stored time.</param>
     public static ChatTurnItem FromUserMessage(string content, DateTimeOffset? sentAt = null) => new()

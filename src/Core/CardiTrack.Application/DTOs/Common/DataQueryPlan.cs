@@ -48,12 +48,22 @@ public sealed record DataQueryPlan
 
     /// <summary>
     /// The metrics the question is actually about, when it is about specific ones — a steps
-    /// question charts steps, not the member's whole week. Empty means the question was general
-    /// ("how are they doing?") and every fetched series may chart. Enum-typed like
-    /// <see cref="Sources"/>: this shape stays structurally unable to carry free text or an
-    /// identifier.
+    /// question charts steps, not the member's whole week. Enum-typed like <see cref="Sources"/>:
+    /// this shape stays structurally unable to carry free text or an identifier.
     /// </summary>
-    public IReadOnlyList<ChartMetricKind> ChartMetrics { get; init; } = [];
+    /// <remarks>
+    /// Three states, deliberately distinguishable: a non-empty list narrows the charts; an empty
+    /// list is the model answering "this question is general"; <c>null</c> is the model not
+    /// answering at all — an omitted field, or names none of which parsed.
+    /// <para>
+    /// The two latter states both widen to every fetched series, and that is a choice rather
+    /// than an oversight: when the planner has told us nothing, charting nothing would drop data
+    /// the caregiver asked to see, and showing an extra series is the cheaper error. Keeping the
+    /// states apart in the type is what lets that decision be revisited — and read in telemetry —
+    /// without first having to reconstruct which case produced an empty list.
+    /// </para>
+    /// </remarks>
+    public IReadOnlyList<ChartMetricKind>? ChartMetrics { get; init; }
 }
 
 /// <summary>The data <see cref="DataQueryPlan"/> resolved to, ready for the clinical prompt and for
