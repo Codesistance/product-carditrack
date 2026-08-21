@@ -47,10 +47,10 @@ internal static class WeekbookPrompt
         Do not quote a figure that is not in the readings below, and do not round one that is.
         Write about the week, not about each day in turn: a list of seven days is not an account of a week.
         Say what moved and what held steady across the seven days, and where a single day stood apart from the rest, name that day and what set it apart.
-        Where the week's average is given against their own usual, say which way it went and by how much.
+        Where the week is given as sitting above or below their own usual, say so, and say by the amount given.
         Where a published band is given, say where the week sat against it, and name who publishes it.
         Where a reading was measured on only some days, say how many; never let days without a reading read as days that were fine.
-        Read the week as a whole: sleep, heart, oxygen and movement in one person explain each other more often than one at a time.
+        Read the week as a whole: sleep, heart, oxygen, breathing and movement in one person explain each other more often than one at a time.
         If "The week's monitoring" is present, account for what the monitoring made of the week in your own words; when it is absent, never mention monitoring, alerts or observations at all.
         When family answers are present, use them to make sense of the readings; never retell them.
 
@@ -147,65 +147,89 @@ internal static class WeekbookPrompt
         IReadOnlyList<ActivityLog> days, PatternBaseline? baseline, int ageYears)
     {
         var sb = new StringBuilder();
-        sb.AppendLine("The week's readings");
-        sb.AppendLine("---");
+        sb.Append("--- ").Append(ReadingsLabel).AppendLine(" ---");
 
         // The published sleep band is already in hours, unlike the reading, which is minutes.
         var sleepBand = HealthReferenceRanges.Sleep(ageYears);
+        var written = 0;
 
-        AppendMetric(sb, days, "Sleep", l => l.SleepMinutes,
+        written += AppendMetric(sb, days, "Sleep", l => l.SleepMinutes,
             v => Hours((int)Math.Round(v)),
-            Usual(baseline?.AvgSleepMinutes, Hours),
+            baseline?.AvgSleepMinutes,
             Band(sleepBand.Low, sleepBand.High, "hours", sleepBand.Source));
 
-        AppendMetric(sb, days, "Sleep efficiency", l => l.SleepEfficiency,
+        written += AppendMetric(sb, days, "Sleep efficiency", l => l.SleepEfficiency,
             v => $"{Math.Round(v)}%",
-            Usual(baseline?.AvgSleepEfficiency, e => $"{e}%"),
+            baseline?.AvgSleepEfficiency,
             null);
 
         var restingBand = HealthReferenceRanges.RestingHeartRate;
-        AppendMetric(sb, days, "Resting heart rate", l => l.RestingHeartRate,
+        written += AppendMetric(sb, days, "Resting heart rate", l => l.RestingHeartRate,
             v => $"{Math.Round(v)} bpm",
-            Usual(baseline?.AvgRestingHeartRate, r => $"{r} bpm"),
+            baseline?.AvgRestingHeartRate,
             Band(restingBand.Low, restingBand.High, "bpm", restingBand.Source));
 
         var spo2Band = HealthReferenceRanges.SpO2;
-        AppendMetric(sb, days, "Blood oxygen", l => l.SpO2Average,
+        written += AppendMetric(sb, days, "Blood oxygen", l => l.SpO2Average,
             v => $"{Math.Round(v, 1).ToString(CultureInfo.InvariantCulture)}%",
             null,
             Band(spo2Band.Low, spo2Band.High, "%", spo2Band.Source));
 
         var breathingBand = HealthReferenceRanges.BreathingRate;
-        AppendMetric(sb, days, "Breathing rate", l => l.BreathingRate,
+        written += AppendMetric(sb, days, "Breathing rate", l => l.BreathingRate,
             v => $"{Math.Round(v, 1).ToString(CultureInfo.InvariantCulture)} breaths a minute",
             null,
             Band(breathingBand.Low, breathingBand.High, "breaths a minute", breathingBand.Source));
 
-        AppendMetric(sb, days, "Steps", l => l.Steps,
+        written += AppendMetric(sb, days, "Steps", l => l.Steps,
             v => $"{Math.Round(v):N0} steps",
-            Usual(baseline?.AvgSteps, s => $"{s:N0} steps"),
+            baseline?.AvgSteps,
             null);
 
-        AppendMetric(sb, days, "Active minutes", l => l.ActiveMinutes,
+        written += AppendMetric(sb, days, "Active minutes", l => l.ActiveMinutes,
             v => $"{Math.Round(v)} minutes",
-            Usual(baseline?.AvgActiveMinutes, a => $"{a} minutes"),
+            baseline?.AvgActiveMinutes,
             null);
 
-        var body = sb.ToString().TrimEnd();
-        return body.EndsWith("---", StringComparison.Ordinal) ? string.Empty : body;
+        // Counted, not inferred from whether the built text still ends in the heading's own
+        // dashes — which a rendered line ending in a dash would also have satisfied.
+        return written == 0 ? string.Empty : sb.ToString().TrimEnd();
     }
 
     /// <summary>
-    /// One metric's week: the average over the days that carried it, how many those were, the
-    /// direction against the member's usual, the published band, and the standout day.
+    /// The readings section's heading. Rendered in the same <c>--- label ---</c> shape as
+    /// <see cref="MonitoringLabel"/>, the member-context sections above them both, and the
+    /// Daybook's sections.
     /// </summary>
-    private static void AppendMetric<T>(
+    /// <remarks>
+    /// Both sections here used to be a heading on one line with the dashes underneath it, which
+    /// made one prompt carry two different ideas of what a section looks like: the composed member
+    /// context in <c>--- label ---</c> above, and these below. The guardrail line then named
+    /// "The week's monitoring" as a section to distrust, in a prompt where that heading was the
+    /// one shape the model had not been shown a section delimiter in.
+    /// </remarks>
+    internal const string ReadingsLabel = "The week's readings";
+
+    /// <summary>
+    /// One metric's week: the average over the days that carried it, how many those were, where
+    /// that sat against the member's own usual <em>and by how much</em>, the published band, and
+    /// the standout day. Returns 1 when a line was written, 0 when the metric was never measured.
+    /// </summary>
+    /// <remarks>
+    /// The distance from the usual is computed here, and used to be left to the model. The brief
+    /// asked it to "say which way it went and by how much" while the prompt gave it two numbers
+    /// and no difference — a subtraction, on the one prompt whose own header says every number is
+    /// computed here because "a model asked to average seven figures will sometimes average six".
+    /// The same objection applies to a subtraction, and a wrong one is undetectable by reading:
+    /// nothing on the page contradicts it.
+    /// </remarks>
+    private static int AppendMetric<T>(
         StringBuilder sb,
         IReadOnlyList<ActivityLog> days,
         string label,
         Func<ActivityLog, T?> select,
         Func<decimal, string> format,
-        string? usual,
+        int? usual,
         string? band)
         where T : struct, IConvertible
     {
@@ -216,7 +240,7 @@ internal static class WeekbookPrompt
             .ToList();
 
         if (measured.Count == 0)
-            return;
+            return 0;
 
         var average = measured.Average(m => m.Value);
 
@@ -227,8 +251,18 @@ internal static class WeekbookPrompt
           .Append(measured.Count)
           .Append(measured.Count == 1 ? " day of the week" : " days of the week");
 
-        if (usual is not null)
-            sb.Append(". Their usual ").Append(usual);
+        if (usual is { } usualValue)
+        {
+            sb.Append(". Their usual is ").Append(format(usualValue));
+
+            var difference = average - usualValue;
+            sb.Append(difference switch
+            {
+                > 0 => $", and the week sat {format(difference)} above it",
+                < 0 => $", and the week sat {format(-difference)} below it",
+                _ => ", and the week sat level with it",
+            });
+        }
 
         if (band is not null)
             sb.Append(". ").Append(band);
@@ -242,6 +276,7 @@ internal static class WeekbookPrompt
         }
 
         sb.AppendLine(".");
+        return 1;
     }
 
     /// <summary>
@@ -249,10 +284,26 @@ internal static class WeekbookPrompt
     /// standout or no day sits far enough out to be one.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// Four days minimum, because "the odd one out" of three is a coin toss. The threshold is a
-    /// fifth of the average: proportional so it travels across metrics whose units are nothing
-    /// alike, and blunt enough that an ordinary week produces no standout at all — which is the
-    /// answer most weeks should give.
+    /// fifth of the average — blunt enough that an ordinary week produces no standout at all,
+    /// which is the answer most weeks should give.
+    /// </para>
+    /// <para>
+    /// Being proportional does <em>not</em> make it travel across the metrics here, which the
+    /// wording used to claim. It works for the ones that vary around a low number — steps, active
+    /// minutes, sleep — and is inert for the ones bounded near the top of their scale. A fifth of
+    /// a 97% blood-oxygen average is 19 points, so a day would have to come back under 78% to be
+    /// named; a fifth of a 90% sleep-efficiency average is 18. Neither metric can produce a
+    /// standout at all, and the section quietly never says so.
+    /// </para>
+    /// <para>
+    /// Left as it is rather than swapped for a dispersion measure. Two mean absolute deviations
+    /// does travel, and on a tight week it fires on ordinary variation — which is the failure the
+    /// blunt threshold exists to avoid, and the worse of the two for a caregiver reading a week
+    /// they are told stood out. Picking the replacement is a decision about what a standout means,
+    /// not a tidy-up.
+    /// </para>
     /// </remarks>
     private static (DateOnly Day, decimal Value)? Standout(
         IReadOnlyList<(DateOnly Day, decimal Value)> measured, decimal average)
@@ -260,7 +311,12 @@ internal static class WeekbookPrompt
         if (measured.Count < 4 || average == 0)
             return null;
 
-        var furthest = measured.MaxBy(m => Math.Abs(m.Value - average));
+        // Date-ordered tie-break: two days equally far from the average must not swap between
+        // runs, because the account names the day and a caregiver reads it as a fact about it.
+        var furthest = measured
+            .OrderByDescending(m => Math.Abs(m.Value - average))
+            .ThenBy(m => m.Day)
+            .First();
         var distance = Math.Abs(furthest.Value - average);
 
         return distance >= Math.Abs(average) / 5m ? furthest : null;
@@ -289,8 +345,7 @@ internal static class WeekbookPrompt
             return string.Empty;
 
         var sb = new StringBuilder();
-        sb.AppendLine(MonitoringLabel);
-        sb.AppendLine("---");
+        sb.Append("--- ").Append(MonitoringLabel).AppendLine(" ---");
 
         if (alerts.Count > 0)
         {
@@ -343,9 +398,6 @@ internal static class WeekbookPrompt
 
     private static string Hours(int minutes) =>
         $"{minutes / 60}h {minutes % 60:D2}m";
-
-    private static string? Usual(int? average, Func<int, string> format) =>
-        average is { } value ? $"is {format(value)}" : null;
 
     private static string Band(decimal low, decimal high, string unit, string source) =>
         $"The published range is {Trim(low)}-{Trim(high)} {unit} ({source})";
