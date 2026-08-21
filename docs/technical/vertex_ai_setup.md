@@ -49,7 +49,13 @@ close.
    does not exist — the project-scoped path above is the real one, and it needs
    `aiplatform.cacheConfigs.*`, which only owner identities hold.)
 
-2. **Abuse-monitoring prompt logging opt-out — ⚠ EXCEPTION REQUEST REQUIRED, not yet filed.**
+2. **Abuse-monitoring prompt logging opt-out — ⚠ EXCEPTION FILED 2026-08-21, pending Google
+   approval.** The owner submitted the exception form on 2026-08-21 (project number
+   `206164751924`, project `carditrack-490120`, contact `cloudoperations@codesistance.com`,
+   GDPR/DPIA justification). Record the approval here when Google's email lands; until then the
+   posture below still holds.
+
+   Original determination and route, kept for the record:
    Google may log prompts for abuse monitoring for customers **without** invoiced billing.
    **Determined 2026-08-21 (owner, billing console):** the billing account
    (`01D957-C56D9C-17BCCB`, Codesistance Ltd) is **self-serve** (Postpay, card-paid), not
