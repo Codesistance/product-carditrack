@@ -174,6 +174,10 @@ public static class AiServiceExtensions
         // passes are its callers, and any host that can run them can regenerate the line.
         services.AddScoped<StatusLineGenerationService>();
 
+        // Advise's batch generator — same reasoning as the status line above: the digest pass is
+        // its only caller today, and any host that can run the digest can regenerate Advise.
+        services.AddScoped<AdviseGenerationService>();
+
         // Rewrite slot — the non-clinical member-chat steps (docs/llm_design.md), selected by
         // RewriteAiSettings.Kind: self-hosted Ollama locally, Gemini via Vertex AI in deployed
         // environments (DPIA row A20 records that posture). Registered here, not AddAiServices,

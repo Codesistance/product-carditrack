@@ -19,6 +19,10 @@ public class DashboardService : IDashboardService
     private static readonly int[] BaselinePeriodPreference = [BaselinePeriodDays, 14, 7];
     private const int RecentAlertCount = 5;
 
+    /// <summary>Same ceiling <c>HealthInsightService.AdviseMaxAge</c> reads by — a row past this is
+    /// treated as though generation has stopped, so the card must not pulse for it.</summary>
+    private static readonly TimeSpan AdviseMaxAge = TimeSpan.FromDays(3);
+
     /// <summary>
     /// Hero status for a member whose monitoring is paused. Outside the green/yellow/orange/red
     /// severity scale on purpose — it says "we are not watching", not "we looked and it's fine".
@@ -93,6 +97,9 @@ public class DashboardService : IDashboardService
             ? await _unitOfWork.EnvironmentalReadings.GetLatestAsync(cardiMemberId, ct)
             : null;
 
+        var advise = await _unitOfWork.MemberAdvises.GetByCardiMemberAsync(cardiMemberId);
+        var hasAdvise = advise is not null && DateTime.UtcNow - advise.GeneratedAtUtc <= AdviseMaxAge;
+
         return new DashboardResponse
         {
             CardiMemberId = member.Id,
@@ -116,6 +123,7 @@ public class DashboardService : IDashboardService
             DataFreshness = freshnessTier,
             DataFreshnessMessage = freshnessMessage,
             UnreadAlertCount = unresolvedAlerts.Count(a => a.AcknowledgedDate is null),
+            HasAdvise = hasAdvise,
             Device = new DashboardDeviceState
             {
                 HasActiveConnection = connections.Count > 0,

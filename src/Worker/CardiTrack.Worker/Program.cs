@@ -78,6 +78,7 @@ builder.Services.AddScoped<IMemberChatSessionRepository, MemberChatSessionReposi
 builder.Services.AddScoped<IMemberChatTurnRepository, MemberChatTurnRepository>();
 builder.Services.AddScoped<IMemberChatTurnUsageRepository, MemberChatTurnUsageRepository>();
 builder.Services.AddScoped<IMemberStatusLineRepository, MemberStatusLineRepository>();
+builder.Services.AddScoped<IMemberAdviseRepository, MemberAdviseRepository>();
 builder.Services.AddScoped<INotificationSnapshotQueries, NotificationSnapshotQueries>();
 builder.Services.AddPushServices(configuration);
 builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();

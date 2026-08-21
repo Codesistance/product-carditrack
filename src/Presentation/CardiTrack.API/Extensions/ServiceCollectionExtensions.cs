@@ -93,6 +93,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IMemberChatTurnRepository, CardiTrack.Infrastructure.Repositories.MemberChatTurnRepository>();
         services.AddScoped<IMemberChatTurnUsageRepository, CardiTrack.Infrastructure.Repositories.MemberChatTurnUsageRepository>();
         services.AddScoped<IMemberStatusLineRepository, CardiTrack.Infrastructure.Repositories.MemberStatusLineRepository>();
+        services.AddScoped<IMemberAdviseRepository, CardiTrack.Infrastructure.Repositories.MemberAdviseRepository>();
 
         // Push delivery spine (notification_engine.md Phase 3) — the API both issues the
         // immediate-attempt send (nudge/alert writing paths, and the internal enqueue endpoint)

@@ -35,6 +35,7 @@ public class UnitOfWork : IUnitOfWork
     public IMemberChatTurnRepository MemberChatTurns { get; }
     public IMemberChatTurnUsageRepository MemberChatTurnUsages { get; }
     public IMemberStatusLineRepository MemberStatusLines { get; }
+    public IMemberAdviseRepository MemberAdvises { get; }
 
     public UnitOfWork(
         CardiTrackDbContext context,
@@ -63,7 +64,8 @@ public class UnitOfWork : IUnitOfWork
         IMemberChatSessionRepository memberChatSessions,
         IMemberChatTurnRepository memberChatTurns,
         IMemberChatTurnUsageRepository memberChatTurnUsages,
-        IMemberStatusLineRepository memberStatusLines)
+        IMemberStatusLineRepository memberStatusLines,
+        IMemberAdviseRepository memberAdvises)
     {
         _context = context;
         Organizations = organizations;
@@ -92,6 +94,7 @@ public class UnitOfWork : IUnitOfWork
         MemberChatTurns = memberChatTurns;
         MemberChatTurnUsages = memberChatTurnUsages;
         MemberStatusLines = memberStatusLines;
+        MemberAdvises = memberAdvises;
     }
 
     public async Task<int> SaveChangesAsync()
