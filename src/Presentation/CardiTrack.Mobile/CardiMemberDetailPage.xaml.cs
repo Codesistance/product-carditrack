@@ -234,6 +234,7 @@ public partial class CardiMemberDetailPage : ContentPage
             // whole card — so the anchor is re-asserted as each one finishes rather than only
             // after Apply. Restoring is a no-op when nothing moved.
             _ = LoadThenRestoreAsync(LoadDigestAsync(_memberId), anchor);
+            _ = LoadThenRestoreAsync(LoadAdviseAsync(_memberId), anchor);
             _ = LoadThenRestoreAsync(LoadQuestionnairesAsync(_memberId), anchor);
             _ = LoadThenRestoreAsync(LoadAlertPreferencesAsync(_memberId), anchor);
         }
@@ -492,6 +493,50 @@ public partial class CardiMemberDetailPage : ContentPage
         {
             // Placeholder copy stays — see the field's own comment in Apply().
         }
+    }
+
+    /// <summary>
+    /// Best-effort, same treatment as <see cref="LoadDigestAsync"/>: the Advise card starts hidden,
+    /// which is a complete fallback on its own, so a failed call just leaves it that way. Unlike
+    /// the digest endpoint, a 404 here isn't "nothing generated yet" — that case is a 200 with a
+    /// blank <see cref="AdviseResponse.Suggestion"/> (<see cref="ApplyAdvise"/> hides the card for
+    /// it) — a 404 means access was refused or the member doesn't exist.
+    /// </summary>
+    private async Task LoadAdviseAsync(Guid memberId)
+    {
+        try
+        {
+            var advise = await _api.GetAdviseAsync(memberId);
+            if (memberId != _memberId)
+                return;
+
+            ApplyAdvise(advise);
+        }
+        catch (ApiException)
+        {
+            // No suggestion yet — the card stays hidden, same as Apply()'s placeholder stance.
+        }
+    }
+
+    /// <summary>
+    /// Shows the wellness-suggestion card, or hides it when there is nothing to suggest right now
+    /// — a blank <see cref="AdviseResponse.Suggestion"/> means exactly that, not a failed call.
+    /// </summary>
+    private void ApplyAdvise(AdviseResponse advise)
+    {
+        if (string.IsNullOrWhiteSpace(advise.Suggestion))
+        {
+            AdviseCard.IsVisible = false;
+            return;
+        }
+
+        AdviseSummaryLabel.Text = advise.Summary;
+        AdviseSuggestionLabel.Text = advise.Suggestion;
+        AdviseGuidelineLabel.Text = string.IsNullOrWhiteSpace(advise.GuidelineCited)
+            ? string.Empty
+            : $"Based on: {advise.GuidelineCited}";
+        AdviseGuidelineLabel.IsVisible = !string.IsNullOrWhiteSpace(advise.GuidelineCited);
+        AdviseCard.IsVisible = true;
     }
 
     /// <summary>

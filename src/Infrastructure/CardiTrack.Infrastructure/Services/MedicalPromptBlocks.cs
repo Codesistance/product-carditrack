@@ -135,6 +135,23 @@ internal static partial class MedicalPromptBlocks
     internal const string Tone = ToneOpening + ToneNoDiagnosis + NL;
 
     /// <summary>
+    /// The extra boundary Advise draws on top of <see cref="ToneNoDiagnosis"/>: even a suggestion
+    /// grounded in a real reading and a named reference must not read as a clinical instruction.
+    /// </summary>
+    /// <remarks>
+    /// CardiTrack is not a medical device (docs/solution_manifest.md) — the same line
+    /// <see cref="JournalNoCondition"/>'s remark draws for the journal books. Advise is the one
+    /// generation whose whole purpose is to suggest something, so the ordinary diagnosis ban is
+    /// not enough on its own: it has to also say what kind of suggestion this is allowed to be.
+    /// </remarks>
+    internal const string ToneWellnessNotClinical =
+        "Frame the suggestion as general wellness context worth mentioning to a clinician, never as a diagnosis, a prescription, or a change to medication or treatment.";
+
+    /// <summary><see cref="Tone"/> plus <see cref="ToneWellnessNotClinical"/> — the opening for the
+    /// one prompt that is allowed to suggest something.</summary>
+    internal const string ToneWellness = Tone + ToneWellnessNotClinical + NL;
+
+    /// <summary>
     /// The opening for the CardiJournal's books, which state their own line on conditions and must
     /// not also carry <see cref="ToneNoDiagnosis"/>.
     /// </summary>
@@ -616,6 +633,32 @@ internal static partial class MedicalPromptBlocks
     /// <summary>Any run of whitespace or control characters, including newlines.</summary>
     [GeneratedRegex(@"[\s\p{Cc}]+")]
     private static partial Regex WhitespaceRuns();
+
+    /// <summary>
+    /// The public-health wellness references Advise suggestions must ground themselves in.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Facts stated as rules, not example output — the same reason <see cref="CaregiverRegister"/>
+    /// gives at length for why this file never hands MedGemma a sentence to complete from. These
+    /// are population-level public-health guidance (WHO activity, AASM/CDC sleep, an AHA general
+    /// heart-rate reference), not a personalised clinical target, and deliberately so: CardiTrack
+    /// is not a medical device (docs/solution_manifest.md), and grounding a suggestion in named,
+    /// checkable sources — rather than the model's own unconstrained medical reasoning — is what
+    /// keeps Advise on the wellness side of that line.
+    /// </para>
+    /// <para>
+    /// The closing rule is the traceability check: <c>AdviseGenerationService.AdviseAiResponse</c>
+    /// asks the model which of these it drew from, so a reply that doesn't fit any of them is a
+    /// reply the code can tell was not actually grounded here.
+    /// </para>
+    /// </remarks>
+    internal const string WellnessGuidelineReference =
+        "- Adult physical activity (WHO, 2020): at least 150-300 minutes a week of moderate aerobic activity, or 75-150 minutes vigorous, plus muscle-strengthening on 2 or more days." + NL
+        + "- Adult sleep duration (AASM/CDC consensus): 7 or more hours a night; consistently under that is worth noting." + NL
+        + "- Resting heart rate (AHA general reference): commonly 60-100 bpm at rest, lower in well-conditioned adults — a population range, not a judgement on any one reading." + NL
+        + "- SpO2 and heart-rate-variability readings from a consumer wearable are not medical-grade; use them as directional context only, never as a measurement to act on." + NL
+        + "Ground the suggestion in one or more of the references above. If none of them fit what the readings show, say plainly that there is nothing to suggest right now.";
 
     /// <summary>
     /// The trailing daily readings, oldest first, each opening with which day it is.

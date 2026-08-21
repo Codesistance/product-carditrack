@@ -91,10 +91,21 @@
              block now that the name no longer shares this row — bottom-aligning it against a
              sentence that wraps to two or three lines floated the box away from the text it
              belongs to. -->
-        <controls:MemberAvatar x:Name="Avatar"
-                               Grid.Row="1" Grid.Column="0"
-                               BoxWidth="76"
-                               VerticalOptions="Start"/>
+        <Grid Grid.Row="1" Grid.Column="0" HorizontalOptions="Start" VerticalOptions="Start">
+            <controls:MemberAvatar x:Name="Avatar"
+                                   BoxWidth="76"
+                                   VerticalOptions="Start"/>
+
+            <!-- Advise's corner badge: pulses only while this member has a fresh wellness
+                 suggestion waiting on CardiMember Details (DashboardResponse.HasAdvise). No count,
+                 same "something's here" language as DashboardHeader's NudgeDot, but animated
+                 because this is worth noticing rather than merely present. -->
+            <controls:PulseDot x:Name="AdvisePulseDot"
+                                IsVisible="False"
+                                HorizontalOptions="End" VerticalOptions="Start"
+                                Margin="0,-6,-6,0"
+                                InputTransparent="True"/>
+        </Grid>
 
         <!-- Two lines, not one: the headline is the note a caregiver reads at a glance — short
              enough to land in one beat — and the sentence under it is the context they read

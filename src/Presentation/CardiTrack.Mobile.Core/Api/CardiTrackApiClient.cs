@@ -110,6 +110,9 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
     public Task<DigestResponse> GetDigestAsync(Guid cardiMemberId, CancellationToken ct = default) =>
         GetAsync<DigestResponse>($"api/v1/insights/members/{cardiMemberId}/digest", ct);
 
+    public Task<AdviseResponse> GetAdviseAsync(Guid cardiMemberId, CancellationToken ct = default) =>
+        GetAsync<AdviseResponse>($"api/v1/insights/members/{cardiMemberId}/advise", ct);
+
     /// <summary>
     /// How long a member-chat send may run before the app hangs up. The clinical read is the one
     /// call in this chain that can't move off the self-hosted MedGemma instance, so this has to

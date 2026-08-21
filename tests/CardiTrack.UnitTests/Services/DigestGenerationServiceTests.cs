@@ -170,7 +170,7 @@ public class DigestGenerationServiceTests
     private DigestGenerationService CreateSut() =>
         new(_unitOfWork, _medicalAi, PromptContextFactory.Composer(_unitOfWork),
             PromptContextFactory.Encryption, InertStatusLineGenerator.Create(),
-            NullLogger<DigestGenerationService>.Instance);
+            InertAdviseGenerator.Create(), NullLogger<DigestGenerationService>.Instance);
 
     /// <summary>
     /// The one integration pin on the batch hook: a stored digest regenerates the member's
@@ -196,6 +196,7 @@ public class DigestGenerationServiceTests
             new StatusLineGenerationService(
                 _unitOfWork, _medicalAi, PromptContextFactory.Composer(_unitOfWork),
                 NullLogger<StatusLineGenerationService>.Instance),
+            InertAdviseGenerator.Create(),
             NullLogger<DigestGenerationService>.Instance);
 
         var generated = await sut.GenerateDueDigestsAsync(UtcNow);

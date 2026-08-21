@@ -50,6 +50,15 @@ public class DashboardResponse
     public string DataFreshnessMessage { get; set; } = string.Empty;
 
     public int UnreadAlertCount { get; set; }
+
+    /// <summary>
+    /// Whether this member has a current wellness suggestion on the CardiMember Details Tip card
+    /// (<c>GET api/v1/insights/members/{id}/advise</c>). A plain existence-and-freshness check
+    /// against the persisted <c>MemberAdvise</c> row — same staleness ceiling as the read endpoint
+    /// (<c>AdviseStaleness.MaxAge</c>, shared so the two can't drift) — never a model call, so the
+    /// Dashboard card's pulse indicator costs nothing beyond what this response already pays for.
+    /// </summary>
+    public bool HasAdvise { get; set; }
     public DashboardDeviceState Device { get; set; } = new();
     public DashboardBaselineState Baseline { get; set; } = new();
     public DashboardMetrics? Metrics { get; set; }

@@ -58,7 +58,17 @@ public enum PromptPurpose
     /// </summary>
     MemberChat = 256,
 
+    /// <summary>
+    /// The on-demand wellness suggestion: one action grounded in the member's own readings and a
+    /// fixed set of public-health wellness references (activity, sleep, resting heart rate — see
+    /// <c>MedicalPromptBlocks.WellnessGuidelineReference</c>), phrased as something worth
+    /// mentioning to a clinician rather than a diagnosis or a treatment change. CardiTrack is not
+    /// a medical device (docs/solution_manifest.md), so this purpose is deliberately grounded in
+    /// general wellness guidance rather than clinical/diagnostic guidelines.
+    /// </summary>
+    Advise = 512,
+
     /// <summary>Everything a member-context source could contribute to.</summary>
     All = Digest | RealtimeAssessment | AlertInsight | BaselineInsight | CurrentStatus | Daybook
-        | Weekbook | Monthbook | MemberChat,
+        | Weekbook | Monthbook | MemberChat | Advise,
 }

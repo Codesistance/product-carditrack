@@ -345,6 +345,7 @@ public partial class DigestGenerationService : IDigestGenerationService
     private readonly MemberContextComposer _memberContext;
     private readonly IEncryptionService _encryption;
     private readonly StatusLineGenerationService _statusLine;
+    private readonly AdviseGenerationService _advise;
     private readonly ILogger<DigestGenerationService> _logger;
 
     public DigestGenerationService(
@@ -353,6 +354,7 @@ public partial class DigestGenerationService : IDigestGenerationService
         MemberContextComposer memberContext,
         IEncryptionService encryption,
         StatusLineGenerationService statusLine,
+        AdviseGenerationService advise,
         ILogger<DigestGenerationService> logger)
     {
         _unitOfWork = unitOfWork;
@@ -360,6 +362,7 @@ public partial class DigestGenerationService : IDigestGenerationService
         _memberContext = memberContext;
         _encryption = encryption;
         _statusLine = statusLine;
+        _advise = advise;
         _logger = logger;
     }
 
@@ -1262,6 +1265,20 @@ public partial class DigestGenerationService : IDigestGenerationService
         {
             _logger.LogError(ex,
                 "Status line regeneration failed for CardiMember {CardiMemberId}; the digest was stored.",
+                memberId);
+        }
+
+        // Same stance as the status line above, and the same reason: Advise's own due-check
+        // decides whether this actually spends a model call, so it is cheap to invoke on every
+        // digest pass, and a failure here must never read as the digest having been lost.
+        try
+        {
+            await _advise.RegenerateIfDueAsync(memberId, ct);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogError(ex,
+                "Advise regeneration failed for CardiMember {CardiMemberId}; the digest was stored.",
                 memberId);
         }
 

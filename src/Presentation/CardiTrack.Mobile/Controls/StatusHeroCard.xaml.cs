@@ -44,6 +44,7 @@ public partial class StatusHeroCard : ContentView
         var firstName = NameFormatting.FirstName(data.Name);
         NameLabel.Text = $"{data.Name}, {data.Age}";
         Avatar.Apply(data.Name, data.PhotoUrl);
+        AdvisePulseDot.IsVisible = data.HasAdvise;
 
         // Headline first, sentence second: the headline is the whole state in three or four
         // words, so a caregiver who reads nothing else has still read the answer.
