@@ -345,7 +345,13 @@ public partial class JournalEntryPage : ContentPage
             reference is not null ? (double)reference.Low : null,
             reference is not null ? (double)reference.High : null);
 
-        var chart = new TrendChart { HeightRequest = 130 };
+        // A journal entry is read after the fact, about a period that has closed, so "what was
+        // that day exactly?" is the question it most invites and the one the prose deliberately
+        // does not answer number by number. Same callout the member detail and chat charts give,
+        // spelled with this chart's own axis format.
+        var chart = new TrendChart { HeightRequest = 130, Interactive = true };
+        chart.ValueFormatter = value => string.Format(axisFormat, (decimal)value);
+        SemanticProperties.SetHint(chart, "Tap a reading to see its value");
         chart.Render(
             window,
             scale,

@@ -494,28 +494,6 @@
                             </Grid>
                         </Border>
 
-                        <!-- Ask about this member's readings, in a persisted conversation rather
-                             than the single-shot Ask card elsewhere. No Figma frame — as-built,
-                             see the design-sync backlog. Same row shape as Questions & Answers:
-                             always available, not gated on any data existing yet. -->
-                        <Border Style="{StaticResource ElevatedCard}" Padding="14,4">
-                            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12" HeightRequest="52"
-                                  SemanticProperties.Description="Chat"
-                                  SemanticProperties.Hint="Opens a conversation about this CardiMember's readings">
-                                <Grid.GestureRecognizers>
-                                    <TapGestureRecognizer Tapped="OnChatTapped"/>
-                                </Grid.GestureRecognizers>
-                                <Image Grid.Column="0" Source="icon_callout.svg"
-                                       WidthRequest="22" HeightRequest="22" VerticalOptions="Center"/>
-                                <Label Grid.Column="1"
-                                       Text="Ask about their readings"
-                                       Style="{StaticResource Body1SemiBoldDark}"
-                                       VerticalTextAlignment="Center"/>
-                                <Image Grid.Column="2" Source="icon_chevron.svg"
-                                       WidthRequest="20" HeightRequest="20" VerticalOptions="Center"/>
-                            </Grid>
-                        </Border>
-
                         <!-- Their daybook — the finished days this page's live view sits on
                              top of. Same row shape as Questions & Answers: a way in, not a
                              preview. -->
@@ -564,6 +542,40 @@
                                        VerticalOptions="Center"/>
                                 <Label Grid.Column="1"
                                        Text="Medical Information"
+                                       Style="{StaticResource Body1SemiBoldDark}"
+                                       VerticalTextAlignment="Center"/>
+                                <Image Grid.Column="2" Source="icon_chevron.svg"
+                                       WidthRequest="20" HeightRequest="20" VerticalOptions="Center"/>
+                            </Grid>
+                        </Border>
+
+                        <!-- The conversation about this member's readings, persisted rather than
+                             the single-shot Ask card elsewhere. No Figma frame — as-built, see the
+                             design-sync backlog. Always available, not gated on any data existing
+                             yet.
+
+                             Last of the four, after the medical notes: the rows above are the
+                             record — what is known, what was written down, what the family keeps —
+                             and this is the way to interrogate it. It also reads as "chat
+                             history" rather than "start a chat", which is what it opens: the
+                             thread resumes where it left off. The Dashboard's floating button
+                             remains the way in for someone who has a question and no interest in
+                             this page. -->
+                        <Border Style="{StaticResource ElevatedCard}" Padding="14,4">
+                            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12" HeightRequest="52"
+                                  SemanticProperties.Description="Chat history"
+                                  SemanticProperties.Hint="Opens the conversation about this CardiMember's readings">
+                                <Grid.GestureRecognizers>
+                                    <TapGestureRecognizer Tapped="OnChatTapped"/>
+                                </Grid.GestureRecognizers>
+                                <!-- The bot, monochrome: the same character as the floating
+                                     launcher rather than a generic speech bubble, drawn in the
+                                     row set's flat blue so it does not announce itself beside
+                                     the four glyphs above it. -->
+                                <Image Grid.Column="0" Source="icon_chatbot_mono.svg"
+                                       WidthRequest="22" HeightRequest="22" VerticalOptions="Center"/>
+                                <Label Grid.Column="1"
+                                       Text="Chat history"
                                        Style="{StaticResource Body1SemiBoldDark}"
                                        VerticalTextAlignment="Center"/>
                                 <Image Grid.Column="2" Source="icon_chevron.svg"

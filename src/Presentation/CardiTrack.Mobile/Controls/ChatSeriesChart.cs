@@ -37,8 +37,10 @@ public sealed class ChatSeriesChart : ContentView
         };
         // Interactive: chat charts are the ones a caregiver reads mid-conversation, and a tap
         // answering "what was that day exactly?" beats asking the model a follow-up for one
-        // number. Taller than the original 72 now that the bubble runs full width.
-        _chart = new TrendChart { HeightRequest = 96, Interactive = true };
+        // number. Taller than the original 72 now that the bubble runs full width, and taller
+        // again since the axis arrived — a week of readings squeezed into 96px put its high and
+        // low labels almost on top of each other, and flattened the shape they were labelling.
+        _chart = new TrendChart { HeightRequest = 120, Interactive = true };
 
         var muted = Microsoft.Maui.Controls.Application.Current?.Resources["MutedText"] as Color ?? Colors.Gray;
         foreach (var annotation in new[] { _max, _min, _startDate, _endDate })

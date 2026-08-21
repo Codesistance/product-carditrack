@@ -58,6 +58,9 @@ internal static class WeekbookPrompt
         - summary: 6-12 sentences to the family, an account of the week as a whole, naming the
           person as CardiTrackCardiMember — never a relationship stand-in. An unremarkable week is allowed to be
           a short account, but it still says what was measured and how much of the week it covered.
+          Open with one or two sentences saying what kind of week it was and what the
+          readings mean for the family — plainly, before any figures, so a reader who gets no
+          further still has the answer. Then the account, keeping every number it has now.
         - headline: a five-to-seven-word qualification of the week you just described — what kind
           of week it was, never a generic label like weekly summary or week's readings, which could
           title any week at all. Sentence case, no full stop, no name and no CardiTrackCardiMember, not a

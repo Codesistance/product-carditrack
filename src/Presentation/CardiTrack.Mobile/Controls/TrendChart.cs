@@ -44,10 +44,28 @@ public sealed class TrendChart : GraphicsView
     /// <summary>
     /// Opt-in tap-to-inspect: touching the chart marks the nearest reading and shows its value
     /// and day in a callout; touching the same reading again (or past the slop) clears it.
-    /// Opt-in rather than always-on because some hosts already own the chart's tap gesture
-    /// (Member Detail's no-data-span explainer) and the two must not race for the same touch.
     /// </summary>
+    /// <remarks>
+    /// Opt-in rather than always-on because a host may have nothing worth saying about a single
+    /// reading. It no longer means "no other gesture here": a tap that lands inside a no-data run
+    /// is left alone below, so Member Detail's explainer for those runs and this callout answer
+    /// disjoint parts of the same chart rather than racing for one touch. Which is the reading a
+    /// caregiver expects — a gap and a point are different questions, and the answer to each is
+    /// the one they pointed at.
+    /// </remarks>
     public bool Interactive { get; set; }
+
+    /// <summary>
+    /// Raised when a tap lands inside a shaded no-data run, so a host can say what is missing from
+    /// it. Member Detail used a <c>TapGestureRecognizer</c> on the chart for this, which swallowed
+    /// the touch before <see cref="GraphicsView"/>'s own interaction events fired — so enabling
+    /// <see cref="Interactive"/> there did nothing at all until the two stopped competing for the
+    /// same gesture. One toucher, two answers, decided here where the hit test already lives.
+    /// </summary>
+    /// <remarks>Internal to match <see cref="NoDataSpan"/> and <see cref="NoDataSpanAt"/> — a
+    /// span is a drawing detail, and only a host in this assembly has anything to say about
+    /// one.</remarks>
+    internal event EventHandler<NoDataSpan>? NoDataSpanTapped;
 
     /// <summary>Formats a reading for the callout — the metric knows its own unit; the chart does
     /// not. Defaults to the bare number.</summary>
@@ -71,6 +89,17 @@ public sealed class TrendChart : GraphicsView
         var up = e.Touches[0];
         if (Math.Abs(up.X - down.X) > TapMovementSlop || Math.Abs(up.Y - down.Y) > TapMovementSlop)
             return;
+
+        // A tap inside a shaded run is a question about the run, not about the readings either
+        // side of it. Selecting the nearest would put a callout on a day the finger was nowhere
+        // near, and stack it under whatever the host says about the gap.
+        if (NoDataSpanAt(up.X) is { } gap)
+        {
+            _drawable.SelectedDate = null;
+            Invalidate();
+            NoDataSpanTapped?.Invoke(this, gap);
+            return;
+        }
 
         var nearest = _drawable.NearestDataPointAt(up.X);
         if (nearest is null || Math.Abs(nearest.Value.At.X - up.X) > TouchSlop)
