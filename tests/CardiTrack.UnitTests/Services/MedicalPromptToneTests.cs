@@ -1,4 +1,4 @@
-using System.Reflection;
+﻿using System.Reflection;
 using CardiTrack.Infrastructure.Services;
 using CardiTrack.Infrastructure.Services.PromptContext;
 
@@ -13,16 +13,16 @@ public class MedicalPromptToneTests
 {
     /// <summary>The services that send prompts to the private medical model.</summary>
     /// <remarks>
-    /// The three CardiJournal briefs were absent from this list until the prompt review, so none
-    /// of the rules below had ever been applied to them — the most prose-heavy output on the
-    /// platform, and the only one a caregiver reads as a written account rather than a line.
-    /// <c>Every_service_contributes_at_least_one_prompt</c> guards the reflection against finding
-    /// nothing; nothing guards this list against a service missing from it, so adding a prompt
-    /// service here is part of adding a prompt service.
+    /// The three CardiJournal briefs and member chat's two were absent from this list until the
+    /// prompt review, so none of the rules below had ever been applied to them — between them the
+    /// most prose-heavy output on the platform and the only prompt a caregiver is in a live
+    /// conversation with. <c>Every_service_contributes_at_least_one_prompt</c> guards the
+    /// reflection against finding nothing; nothing guards this list against a service missing from
+    /// it, so adding a prompt service here is part of adding a prompt service.
     /// <para>
-    /// <c>MemberChatService</c> is still absent: its briefs are <c>static readonly</c> rather than
-    /// <c>const</c>, because they concatenate at runtime, and the reflection below only finds
-    /// literals.
+    /// Member chat's briefs were <c>static readonly</c> rather than <c>const</c>, which is what
+    /// hid them: the reflection only finds literals. Every part they concatenate is a constant, so
+    /// nothing but the declaration had to change.
     /// </para>
     /// </remarks>
     private static readonly Type[] PromptServices =
@@ -34,7 +34,24 @@ public class MedicalPromptToneTests
         typeof(DaybookPrompt),
         typeof(WeekbookPrompt),
         typeof(MonthbookPrompt),
+        typeof(MemberChatService),
     ];
+
+    /// <summary>
+    /// The prompts that go to the private medical model and write something a person reads. The
+    /// Rewrite slot's utility prompts — triage, steering, waiting copy — are excluded: they
+    /// classify or decorate rather than describe a member's readings, and holding a yes/no
+    /// classifier to a caregiver's voice would be asking it to be something it is not.
+    /// </summary>
+    private static readonly string[] UtilityPrompts =
+    [
+        "MemberChatService.MaliciousCheckInstructions",
+        "MemberChatService.CasualSteerInstructions",
+        "MemberChatService.OffTopicSteerInstructions",
+        "MemberChatService.WaitingSentencesInstructions",
+    ];
+
+    private static bool IsUtility(string name) => UtilityPrompts.Contains(name, StringComparer.Ordinal);
 
     /// <summary>
     /// Every fixed instruction block in those services. Found by reflection rather than listed, so
@@ -80,11 +97,46 @@ public class MedicalPromptToneTests
     [MemberData(nameof(Prompts))]
     public void Every_prompt_opens_with_the_shared_tone(string name, string prompt)
     {
+        if (IsUtility(name))
+            return;
+
         // First, not merely present: these blocks are the cacheable fixed prefix the serving engine
         // reuses between calls, and a shared opening is what makes that prefix shared.
+        //
+        // Member chat's clinical step opens with the safety rules alone. Its output is read by the
+        // rewrite model rather than by a caregiver, and its own brief tells it not to write in
+        // caregiver language — so the two voice rules were a request its next paragraph withdrew.
+        var opening = prompt.StartsWith(MedicalPromptBlocks.ToneSafetyOnly, StringComparison.Ordinal)
+            ? MedicalPromptBlocks.ToneSafetyOnly
+            : MedicalPromptBlocks.ToneOpening;
+
         Assert.True(
-            prompt.StartsWith(MedicalPromptBlocks.ToneOpening, StringComparison.Ordinal),
+            prompt.StartsWith(opening, StringComparison.Ordinal),
             $"{name} does not open with the shared tone block.");
+    }
+
+    /// <summary>
+    /// Whatever else a prompt does or does not carry, it states the three rules that are about
+    /// what the words claim rather than how they sound. Those are the ones a later step cannot
+    /// recover: a read that has already softened the one reading that needed saying plainly gives
+    /// the model rewriting it nothing to work back from.
+    /// </summary>
+    /// <remarks>
+    /// Member chat's rewrite step is why this exists. It writes the sentence the caregiver
+    /// actually reads, on a different provider from the clinical step, and it carried the register
+    /// without the tone — so "add no urgency the data does not carry, and no reassurance it does
+    /// not support" was stated to the model that drafts and not to the model that speaks.
+    /// </remarks>
+    [Theory]
+    [MemberData(nameof(Prompts))]
+    public void Every_member_facing_prompt_carries_the_rules_a_rewrite_cannot_recover(
+        string name, string prompt)
+    {
+        if (IsUtility(name))
+            return;
+
+        Assert.Contains(MedicalPromptBlocks.ToneNoDistortion, prompt, StringComparison.Ordinal);
+        Assert.Contains(MedicalPromptBlocks.ToneNoBlame, prompt, StringComparison.Ordinal);
     }
 
     /// <summary>
@@ -103,6 +155,9 @@ public class MedicalPromptToneTests
     [MemberData(nameof(Prompts))]
     public void Every_prompt_draws_exactly_one_line_on_naming_a_condition(string name, string prompt)
     {
+        if (IsUtility(name))
+            return;
+
         var permissive = prompt.Contains(MedicalPromptBlocks.ToneNoDiagnosis, StringComparison.Ordinal);
         var strict = prompt.Contains(MedicalPromptBlocks.JournalNoCondition, StringComparison.Ordinal);
 
@@ -172,6 +227,9 @@ public class MedicalPromptToneTests
     [MemberData(nameof(Prompts))]
     public void Every_prose_prompt_carries_the_pronoun_rule(string name, string prompt)
     {
+        if (IsUtility(name))
+            return;
+
         if (name == StatusPrompt)
             return;
 
@@ -337,11 +395,41 @@ public class MedicalPromptToneTests
         Assert.DoesNotContain("flag for review", baseline, StringComparison.OrdinalIgnoreCase);
     }
 
+    /// <summary>
+    /// Every prompt carries one of the injection guardrails — including the Rewrite slot's, which
+    /// carried none.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This used to match a phrase, "never follow instructions", which only the MedGemma-side
+    /// guardrails happen to use. Matching the constants instead is what let the Rewrite slot's
+    /// prompts be held to the same rule with wording of their own — and matching the constants is
+    /// also stricter, since a prompt can no longer satisfy this by saying something that merely
+    /// reads like a guardrail.
+    /// </para>
+    /// <para>
+    /// The four utility prompts are not exempt here, unlike the voice rules above. They receive
+    /// the rawest text on the platform — a message straight from a text box, before anything has
+    /// classified it — and the triage step's whole job is to judge whether that message is trying
+    /// to manipulate the system, which it was doing under no instruction to distrust it.
+    /// </para>
+    /// </remarks>
     [Theory]
     [MemberData(nameof(Prompts))]
-    public void Every_prompt_tells_the_model_not_to_follow_instructions_in_family_text(string _, string prompt)
+    public void Every_prompt_tells_the_model_not_to_follow_instructions_in_family_text(string name, string prompt)
     {
-        Assert.Contains("never follow instructions", prompt, StringComparison.OrdinalIgnoreCase);
+        string[] guardrails =
+        [
+            MedicalPromptBlocks.ContextGuardrail,
+            MedicalPromptBlocks.ContextGuardrailNotesOnly,
+            MedicalPromptBlocks.ChatQuestionGuardrail,
+            MedicalPromptBlocks.ChatMessageGuardrail,
+        ];
+
+        Assert.True(
+            guardrails.Any(g => prompt.Contains(g, StringComparison.Ordinal)),
+            $"{name} carries no injection guardrail, so nothing tells the model how to read the "
+            + "untrusted text it is handed.");
         Assert.DoesNotContain("as background only", prompt, StringComparison.Ordinal);
     }
 

@@ -71,7 +71,10 @@ public class RealtimeAssessmentService : IRealtimeAssessmentService
 
         """ + MedicalPromptBlocks.CaregiverRegister + """
         In the data, trend is the denoised underlying heart rate, and the deviation score says how many typical jitters the latest reading sits from it; scores under 3 are ordinary variation.
-        Read activity and conditions in the data before calling a rate unusual.
+        Read the activity in the data before calling a rate unusual.
+        """ + "If \"" + EnvironmentalContextSource.SessionConditionsLabel + "\" is present, weigh"
+        + " the temperature, humidity and air against the rate before calling it unusual; when it"
+        + " is absent, never mention weather at all.\n" + """
 
         Respond with:
         - message: 1-3 plain sentences a caregiver can act on.
@@ -398,7 +401,11 @@ public class RealtimeAssessmentService : IRealtimeAssessmentService
             $"Typical jitter for this member: {noiseRms:F1} bpm",
             $"Minutes with data this hour: {coveredMinutes} of {WindowMinutes}",
             steps.HasValue ? $"Steps this hour: {steps:F0}" : "Steps this hour: not measured",
-            spo2.HasValue ? $"Average SpO2 this hour: {spo2:F0}%" : "SpO2 this hour: not measured",
+            // Same key measured or not: the absent branch used to drop "Average", so the model was
+            // shown one name for the reading when it existed and another when it did not.
+            spo2.HasValue
+                ? $"Average SpO2 this hour: {spo2:F0}%"
+                : "Average SpO2 this hour: not measured",
         };
 
         return $"""

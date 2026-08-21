@@ -1,4 +1,4 @@
-using CardiTrack.Application.DTOs.Common;
+﻿using CardiTrack.Application.DTOs.Common;
 using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Interfaces.Security;
@@ -59,7 +59,7 @@ public class MemberChatService : IMemberChatService
         be a short follow-up to the earlier conversation shown with it — "why?", "what about last
         week?" — and a follow-up to an on-topic exchange is on-topic, however little it says alone.
         At most one judgement should be yes; all three no means a real health question.
-        """;
+        """ + MedicalPromptBlocks.ChatMessageGuardrail;
 
     /// <summary>
     /// The steer a casual message gets instead of the full pipeline — one Rewrite-slot call, no
@@ -76,7 +76,7 @@ public class MemberChatService : IMemberChatService
 
         Respond with:
         - reply: the message to show the caregiver.
-        """;
+        """ + MedicalPromptBlocks.ChatMessageGuardrail;
 
     /// <summary>
     /// The steer an off-topic request gets: acknowledge briefly, redirect kindly — a friendly
@@ -94,7 +94,7 @@ public class MemberChatService : IMemberChatService
 
         Respond with:
         - reply: the message to show the caregiver.
-        """;
+        """ + MedicalPromptBlocks.ChatMessageGuardrail;
 
     /// <summary>Shown when a steer generation fails or comes back unusable — the redirect must
     /// never be the thing that breaks.</summary>
@@ -136,10 +136,17 @@ public class MemberChatService : IMemberChatService
 
         Respond with:
         - sentences: the three waiting messages, in display order.
-        """;
+        """ + MedicalPromptBlocks.ChatMessageGuardrail;
 
-    private static readonly string ClinicalInstructions =
-        MedicalPromptBlocks.Tone + MedicalPromptBlocks.Pronouns + """
+    /// <summary>
+    /// The internal clinical read. Carries <see cref="MedicalPromptBlocks.ToneSafetyOnly"/> rather
+    /// than the whole tone block: its own brief tells the model not to write in caregiver
+    /// language, which the two voice rules had just asked for. The rules that survive a rewrite —
+    /// distortion, blame, diagnosis — stay, because a clinical read that has already softened the
+    /// one reading that needed saying plainly gives the rewrite step nothing to recover.
+    /// </summary>
+    private const string ClinicalInstructions =
+        MedicalPromptBlocks.ToneSafetyOnly + MedicalPromptBlocks.Pronouns + """
         A family caregiver asked a question about this member. Answer it from the data below only —
         this is an internal clinical read, not the final reply the caregiver sees, so write precisely
         rather than in caregiver language; a separate step turns this into caregiver-facing prose.
@@ -150,14 +157,26 @@ public class MemberChatService : IMemberChatService
         - analysis: your answer, grounded only in the data provided.
         """ + MedicalPromptBlocks.ContextGuardrail + MedicalPromptBlocks.ChatQuestionGuardrail;
 
-    private static readonly string RewriteInstructions =
-        MedicalPromptBlocks.CaregiverRegister + """
+    /// <summary>
+    /// The step that writes the sentence a caregiver actually reads, so it carries the whole tone
+    /// block.
+    /// </summary>
+    /// <remarks>
+    /// It used to carry the register and not the tone — meaning "add no urgency the data does not
+    /// carry, and no reassurance it does not support" was stated to the model that produces the
+    /// internal read and not to the model that writes the reply. A rewrite is free to add both,
+    /// and this one runs on a different provider from the clinical step, so nothing but this block
+    /// was telling it where the line is.
+    /// </remarks>
+    private const string RewriteInstructions =
+        MedicalPromptBlocks.Tone + MedicalPromptBlocks.Pronouns
+        + MedicalPromptBlocks.CaregiverRegister + """
 
         Rewrite the clinical read below into one short, direct reply to the caregiver's question —
         the answer only, not a restatement of the question and not a preamble. Write
         CardiTrackCardiMember exactly as written wherever you would name the member; it stands in
         for their real name.
-        """;
+        """ + MedicalPromptBlocks.ChatMessageGuardrail;
 
     private readonly IMedicalAiService _medicalAi;
     private readonly IRewriteAiService _rewriteAi;
@@ -331,7 +350,7 @@ public class MemberChatService : IMemberChatService
     private static string BuildSteerPrompt(string instructions, string message) => $"""
         {instructions}
 
-        --- Message ---
+        --- {MedicalPromptBlocks.ChatQuestionLabel} ---
         {message}
         """;
 
@@ -361,7 +380,7 @@ public class MemberChatService : IMemberChatService
             var generated = await _rewriteAi.GenerateStructuredAsync<WaitingSentencesAiResponse>($"""
                 {WaitingSentencesInstructions}
 
-                --- Caregiver question ---
+                --- {MedicalPromptBlocks.ChatQuestionLabel} ---
                 {flattened}
                 """, budget.Token);
 
@@ -501,7 +520,7 @@ public class MemberChatService : IMemberChatService
             ? $"""
               {MaliciousCheckInstructions}
 
-              --- Message ---
+              --- {MedicalPromptBlocks.ChatQuestionLabel} ---
               {question}
               """
             : $"""
@@ -509,7 +528,7 @@ public class MemberChatService : IMemberChatService
 
               {historyBlock}
 
-              --- Message ---
+              --- {MedicalPromptBlocks.ChatQuestionLabel} ---
               {question}
               """;
 
@@ -527,7 +546,7 @@ public class MemberChatService : IMemberChatService
     private static string BuildRewritePrompt(string question, string clinicalAnalysis) => $"""
         {RewriteInstructions}
 
-        --- Caregiver's question ---
+        --- {MedicalPromptBlocks.ChatQuestionLabel} ---
         {question}
 
         --- Clinical read to rewrite ---
@@ -540,8 +559,10 @@ public class MemberChatService : IMemberChatService
 
         if (data.RecentActivity.Count > 0)
         {
+            // "days that carried a reading", not "days": these are the rows the planner's window
+            // returned, and for a member with gaps that is not the same count of days.
             sections.Add(
-                $"--- Recent activity (last {data.RecentActivity.Count} days, oldest first) ---\n"
+                $"--- Recent readings ({data.RecentActivity.Count} days that carried any, oldest first) ---\n"
                 + MedicalPromptBlocks.DailyLines(data.RecentActivity, data.RecentActivity.Count, today));
         }
 
@@ -556,8 +577,14 @@ public class MemberChatService : IMemberChatService
 
         if (data.UnresolvedAlerts.Count > 0)
         {
+            // Flattened, as every other renderer that carries an alert does. Each alert is one
+            // line here, so a newline in a title or message would open a line inside a section
+            // that never labelled it — and this is the one prompt where the section sits beside
+            // the caregiver's own live question.
             var alertLines = data.UnresolvedAlerts
-                .Select(a => $"  {a.TriggeredDate:yyyy-MM-dd}: [{a.Severity}] {a.Title} — {a.Message}");
+                .Select(a =>
+                    $"  {a.TriggeredDate:yyyy-MM-dd}: [{a.Severity}] "
+                    + $"{MedicalPromptBlocks.Flatten(a.Title)} — {MedicalPromptBlocks.Flatten(a.Message)}");
             sections.Add($"--- Unresolved alerts ---\n{string.Join("\n", alertLines)}");
         }
 
