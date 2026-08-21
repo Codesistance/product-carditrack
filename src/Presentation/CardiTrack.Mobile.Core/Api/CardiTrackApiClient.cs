@@ -111,12 +111,19 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
         GetAsync<DigestResponse>($"api/v1/insights/members/{cardiMemberId}/digest", ct);
 
     /// <summary>
-    /// How long a member-chat send may run before the app hangs up. The answer is produced by a
-    /// chain of in-estate model calls on CPU (guard check, query plan, clinical read, rewrite),
-    /// so a legitimate reply routinely outlives the client-wide default
-    /// <see cref="TimeoutHandler"/> applies — observed dev sends run one to two minutes.
+    /// How long a member-chat send may run before the app hangs up. The clinical read is the one
+    /// call in this chain that can't move off the self-hosted MedGemma instance, so this has to
+    /// outlast that call's own server-side ceiling — AI:Private:TimeoutSeconds (900s as of the
+    /// concurrency fix in cloud_run.tf: a single-instance Ollama admits one request at a time, so
+    /// a queued-behind-another-caller generation can legitimately take close to the full 900s
+    /// before returning). The previous 180s was set from "observed dev sends run one to two
+    /// minutes" before that contention was diagnosed, and could — and did — cut a caller off
+    /// while the server was still working: giving up here doesn't stop the generation, it just
+    /// means nobody is listening for the answer it produces. Same "the outer layer must outlast
+    /// the inner one by a margin" rule Terraform applies to the Cloud Run request timeout
+    /// (medgemma_timeout_seconds + 60s), applied one layer further out.
     /// </summary>
-    private static readonly TimeSpan MemberChatSendTimeout = TimeSpan.FromSeconds(180);
+    private static readonly TimeSpan MemberChatSendTimeout = TimeSpan.FromSeconds(960);
 
     public Task<MemberChatMessageResponse> SendMemberChatMessageAsync(
         Guid cardiMemberId, MemberChatMessageRequest request, CancellationToken ct = default) =>
