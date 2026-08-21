@@ -333,9 +333,12 @@ public static class AiServiceExtensions
             RequirePositive(settings.MaxOutputTokens, ConfigurationKeys.AI.RewriteSectionName, nameof(RewriteAiSettings.MaxOutputTokens));
             if (!string.IsNullOrWhiteSpace(settings.VertexBaseUrl))
                 RequireVertexEndpointOverride(ConfigurationKeys.AI.RewriteSectionName, nameof(RewriteAiSettings.VertexBaseUrl), settings.VertexBaseUrl);
-            // BaseUrl and UseIdentityToken are deliberately tolerated here: during the provider
-            // transition, deployed environments still mount the old Ollama URL alongside the
-            // Vertex settings, and rejecting it would make the flip an ordering hazard.
+            // BaseUrl and UseIdentityToken belong to the Ollama kind and are never read on this
+            // branch — the address comes from ProjectId and Location. Tolerated rather than
+            // rejected so a config carrying both kinds' fields still boots: a developer's local
+            // appsettings does, and so does any environment mid-flip, which is what made the
+            // provider switch safe to order either way. A stale value nothing reads is not worth
+            // failing a boot over.
         }
         else
         {

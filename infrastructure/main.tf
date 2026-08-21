@@ -42,11 +42,6 @@ locals {
   # never pulled. trimspace matches the `tr -d '[:space:]'` the image build applies to the file.
   medgemma_model = trimspace(file("${path.module}/../src/Infrastructure/MedGemma/.model-version"))
 
-  # Same file-read pattern, for the plain non-medical model pulled into the same MedGemma image
-  # (docs/llm_design.md) and used only to rewrite MedGemma's clinical output into caregiver-facing
-  # language. Same drift risk as medgemma_model above, same fix.
-  medgemma_rewrite_model = trimspace(file("${path.module}/../src/Infrastructure/MedGemma/.rewrite-model-version"))
-
   # Defaults to the secret that already exists, so swapping the public provider is a tfvar change
   # rather than a destroy-and-recreate of a Secret Manager secret (and the seeding that follows it).
   public_ai_api_key_secret_id = coalesce(
@@ -129,16 +124,16 @@ module "deployments" {
       # without calling the model — AiServiceExtensions refuses to start a host whose BaseUrl is a
       # Cloud Run URL while this is false, and that check runs wherever the settings are bound.
       "AI__Private__UseIdentityToken" = "true"
-      # Rewrite slot — kind-switchable (DPIA v0.11 row A20, decision D6): VertexGemini reaches
-      # an EU regional Vertex endpoint under IAM; Ollama is the self-hosted Cloud Run host,
-      # whose BaseUrl secret and identity-token flag below stay mounted through the transition
-      # so an image-only rollback still boots. The Vertex-only keys are set unconditionally —
-      # the Ollama kind ignores them. Every host that gets AddMedicalAiServices validates this
-      # section at startup, so it is set everywhere AI__Private__* is.
-      "AI__Rewrite__Kind"              = var.rewrite_ai_kind
-      "AI__Rewrite__Model"             = var.rewrite_ai_kind == "Ollama" ? local.medgemma_rewrite_model : var.rewrite_ai_model
-      "AI__Rewrite__TimeoutSeconds"    = tostring(var.rewrite_ai_kind == "Ollama" ? var.medgemma_timeout_seconds : var.rewrite_ai_timeout_seconds)
-      "AI__Rewrite__UseIdentityToken"  = "true"
+      # Rewrite slot — Gemini on an EU regional Vertex endpoint under IAM (DPIA v0.11 row A20,
+      # decision D6). Hard-coded rather than a variable: the self-hosted Ollama alternative had a
+      # single Cloud Run host, which this teardown removes, so there is nothing left to switch
+      # between. Its BaseUrl secret and identity-token flag are no longer mounted here; the
+      # settings loader still tolerates them, for local appsettings. Every host that gets
+      # AddMedicalAiServices validates this section at startup, so it is set everywhere
+      # AI__Private__* is.
+      "AI__Rewrite__Kind"              = "VertexGemini"
+      "AI__Rewrite__Model"             = var.rewrite_ai_model
+      "AI__Rewrite__TimeoutSeconds"    = tostring(var.rewrite_ai_timeout_seconds)
       "AI__Rewrite__ProjectId"         = var.project_id
       "AI__Rewrite__Location"          = var.rewrite_ai_location
       "AI__Rewrite__MaxOutputTokens"   = tostring(var.rewrite_ai_max_output_tokens)
@@ -204,11 +199,8 @@ module "deployments" {
       "DeviceProviders__0__ClientId"     = "${var.project_name}-${local.environment}-devices-fitbit-client-id"
       "DeviceProviders__0__ClientSecret" = "${var.project_name}-${local.environment}-devices-fitbit-client-secret"
       "AI__Private__BaseUrl"             = "${var.project_name}-${local.environment}-medgemma-service-url"
-      # Own secret, own Cloud Run host — split from AI__Private__BaseUrl (member-chat planning
-      # notes, 2026-08-20) so Rewrite has independent capacity from MedGemma.
-      "AI__Rewrite__BaseUrl" = "${var.project_name}-${local.environment}-rewrite-service-url"
-      "AI__Public__ApiKey"   = local.public_ai_api_key_secret_id
-      "Apm__Data"            = "${var.project_name}-${local.environment}-apm-data"
+      "AI__Public__ApiKey"               = local.public_ai_api_key_secret_id
+      "Apm__Data"                        = "${var.project_name}-${local.environment}-apm-data"
       # Transitional — delete alongside the legacy AI__Providers env vars above.
       "AI__Providers__0__BaseUrl" = "${var.project_name}-${local.environment}-medgemma-service-url"
       "AI__Providers__1__ApiKey"  = local.public_ai_api_key_secret_id
@@ -275,10 +267,9 @@ module "deployments" {
     "AI__Private__TimeoutSeconds"   = tostring(var.medgemma_timeout_seconds)
     "AI__Private__UseIdentityToken" = "true"
     # Same kind-aware rewrite settings as the API block above (which carries the rationale).
-    "AI__Rewrite__Kind"              = var.rewrite_ai_kind
-    "AI__Rewrite__Model"             = var.rewrite_ai_kind == "Ollama" ? local.medgemma_rewrite_model : var.rewrite_ai_model
-    "AI__Rewrite__TimeoutSeconds"    = tostring(var.rewrite_ai_kind == "Ollama" ? var.medgemma_timeout_seconds : var.rewrite_ai_timeout_seconds)
-    "AI__Rewrite__UseIdentityToken"  = "true"
+    "AI__Rewrite__Kind"              = "VertexGemini"
+    "AI__Rewrite__Model"             = var.rewrite_ai_model
+    "AI__Rewrite__TimeoutSeconds"    = tostring(var.rewrite_ai_timeout_seconds)
     "AI__Rewrite__ProjectId"         = var.project_id
     "AI__Rewrite__Location"          = var.rewrite_ai_location
     "AI__Rewrite__MaxOutputTokens"   = tostring(var.rewrite_ai_max_output_tokens)
@@ -290,7 +281,6 @@ module "deployments" {
     "ConnectionStrings__DefaultConnection" = "${var.project_name}-${local.environment}-db-connection-string"
     "Encryption__Key"                      = "${var.project_name}-${local.environment}-encryption-key"
     "AI__Private__BaseUrl"                 = "${var.project_name}-${local.environment}-medgemma-service-url"
-    "AI__Rewrite__BaseUrl"                 = "${var.project_name}-${local.environment}-rewrite-service-url"
     "Apm__Data"                            = "${var.project_name}-${local.environment}-apm-data"
   }
 
@@ -307,10 +297,9 @@ module "deployments" {
       # Same kind-aware rewrite settings as the API block above. The aggregator binds the
       # section without calling the model, so under VertexGemini its runtime identity carries
       # no aiplatform.user grant — validation-only config, same as its identity-token stance.
-      "AI__Rewrite__Kind"              = var.rewrite_ai_kind
-      "AI__Rewrite__Model"             = var.rewrite_ai_kind == "Ollama" ? local.medgemma_rewrite_model : var.rewrite_ai_model
-      "AI__Rewrite__TimeoutSeconds"    = tostring(var.rewrite_ai_kind == "Ollama" ? var.medgemma_timeout_seconds : var.rewrite_ai_timeout_seconds)
-      "AI__Rewrite__UseIdentityToken"  = "true"
+      "AI__Rewrite__Kind"              = "VertexGemini"
+      "AI__Rewrite__Model"             = var.rewrite_ai_model
+      "AI__Rewrite__TimeoutSeconds"    = tostring(var.rewrite_ai_timeout_seconds)
       "AI__Rewrite__ProjectId"         = var.project_id
       "AI__Rewrite__Location"          = var.rewrite_ai_location
       "AI__Rewrite__MaxOutputTokens"   = tostring(var.rewrite_ai_max_output_tokens)
@@ -326,7 +315,6 @@ module "deployments" {
     "ConnectionStrings__DefaultConnection" = "${var.project_name}-${local.environment}-db-connection-string"
     "Encryption__Key"                      = "${var.project_name}-${local.environment}-encryption-key"
     "AI__Private__BaseUrl"                 = "${var.project_name}-${local.environment}-medgemma-service-url"
-    "AI__Rewrite__BaseUrl"                 = "${var.project_name}-${local.environment}-rewrite-service-url"
     "Apm__Data"                            = "${var.project_name}-${local.environment}-apm-data"
     "DeviceProviders__0__ClientId"         = "${var.project_name}-${local.environment}-devices-fitbit-client-id"
     "DeviceProviders__0__ClientSecret"     = "${var.project_name}-${local.environment}-devices-fitbit-client-secret"
