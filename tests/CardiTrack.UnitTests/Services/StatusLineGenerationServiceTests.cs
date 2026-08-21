@@ -1,4 +1,4 @@
-using CardiTrack.Application.Interfaces.Repositories;
+﻿using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Domain.Entities;
 using CardiTrack.Domain.Enums;
@@ -53,7 +53,7 @@ public class StatusLineGenerationServiceTests
             new UserCardiMember { UserId = _userId, CardiMemberId = _memberId, IsActive = true },
         ]);
         _users.GetByIdAsync(_userId).Returns(new User { Id = _userId, TimeZoneId = "Europe/London" });
-        _alerts.GetByCardiMemberAsync(_memberId, true).Returns([]);
+        GivenAlerts([]);
         _activityLogs.GetByCardiMemberAndDateRangeAsync(_memberId, Arg.Any<DateOnly>(), Arg.Any<DateOnly>())
             .Returns([]);
         _baselines.GetLatestByCardiMemberAsync(_memberId, 30).Returns((PatternBaseline?)null);
@@ -216,7 +216,7 @@ public class StatusLineGenerationServiceTests
     [Fact]
     public async Task UnresolvedAlerts_SendTheWorstSeverityAndListEachAlert()
     {
-        _alerts.GetByCardiMemberAsync(_memberId, true).Returns(
+        GivenAlerts(
         [
             new Alert
             {
@@ -249,7 +249,7 @@ public class StatusLineGenerationServiceTests
     [Fact]
     public async Task ResolvedAlerts_NoLongerDriveTheTier()
     {
-        _alerts.GetByCardiMemberAsync(_memberId, true).Returns(
+        GivenAlerts(
         [
             new Alert
             {
@@ -272,7 +272,7 @@ public class StatusLineGenerationServiceTests
     [Fact]
     public async Task TheTier_ComesFromTheWorstAlertStillUnresolved()
     {
-        _alerts.GetByCardiMemberAsync(_memberId, true).Returns(
+        GivenAlerts(
         [
             new Alert
             {
@@ -402,4 +402,17 @@ public class StatusLineGenerationServiceTests
             Arg.Any<string>(), Arg.Any<CancellationToken>());
         await _statusLines.DidNotReceive().AddAsync(Arg.Any<MemberStatusLine>());
     }
+
+    /// <summary>
+    /// Stubs the unresolved read the generator makes. That query filters IsActive and !IsResolved
+    /// in SQL and orders newest first, so the fake hands back only what the caller says is open,
+    /// in the order the repository would — which is what keeps a test that passes a resolved alert
+    /// still proving the generator ignores it.
+    /// </summary>
+    private void GivenAlerts(Alert[] alerts) =>
+        _alerts.GetUnresolvedByCardiMemberAsync(_memberId).Returns(
+            alerts.Where(a => a.IsActive && !a.IsResolved)
+                .OrderByDescending(a => a.TriggeredDate)
+                .ToList());
+
 }

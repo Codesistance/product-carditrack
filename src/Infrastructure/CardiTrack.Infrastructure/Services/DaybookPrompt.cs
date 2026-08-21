@@ -42,14 +42,14 @@ internal static class DaybookPrompt
     /// the one thing it must not be mistaken for.
     /// </remarks>
     internal const string Instructions =
-        MedicalPromptBlocks.Tone + MedicalPromptBlocks.Pronouns + """
+        MedicalPromptBlocks.JournalTone + MedicalPromptBlocks.Pronouns + """
         Write the family's account of one day of CardiTrackCardiMember's readings. The day is over.
         Write CardiTrackCardiMember exactly as it appears wherever you would name the person; it stands in
         for their real name, which you are not given.
         """ + MedicalPromptBlocks.JournalRegister + """
         Past tense throughout: this day has finished and nothing in it is still accumulating.
         Do not quote a figure that is not in the readings below, and do not round one that is.
-        Cover the day's sleep, heart, oxygen and breathing, and movement — in that order, and only where each was measured.
+        Cover the day's sleep, heart, oxygen and breathing, movement, and body — in that order, and only where each was measured.
         The hour-by-hour readings are the day's own record: use them to say when in the day things happened, and quote only figures that appear in them.
         Where a reading was not measured, say so plainly and move on; never let a missing reading read as a reassuring one.
         Where their own usual is given, say where the reading sat against it. Where a published band is given, say where the reading sat against that too, and name who publishes it.
@@ -103,7 +103,6 @@ internal static class DaybookPrompt
     [
         "you are writing for a concerned family member",
         "never suggest the family has missed something",
-        "never diagnose",
         "write as a caregiver would to another",
         "explain what it measures in plain words",
         "never name, suggest or guess at a medical condition",
@@ -426,7 +425,7 @@ internal static class DaybookPrompt
         var covered = rollups.Select(r => r.HourStartUtc).ToHashSet();
 
         DateTime? gapStart = null;
-        for (var hour = fromUtc; hour < toUtc; hour = hour.AddHours(1))
+        for (var hour = FloorToHour(fromUtc); hour < toUtc; hour = hour.AddHours(1))
         {
             if (!covered.Contains(hour))
             {
@@ -436,14 +435,41 @@ internal static class DaybookPrompt
 
             if (gapStart is { } start)
             {
-                yield return (start, hour);
+                if (Clamp(start, fromUtc, toUtc) is var s && Clamp(hour, fromUtc, toUtc) is var e && e > s)
+                    yield return (s, e);
                 gapStart = null;
             }
         }
 
-        if (gapStart is { } tail)
-            yield return (tail, toUtc);
+        if (gapStart is { } tail && Clamp(tail, fromUtc, toUtc) is var last && toUtc > last)
+            yield return (last, toUtc);
     }
+
+    /// <summary>
+    /// The start of the UTC hour <paramref name="value"/> falls in.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The gap walk has to step on the same boundaries the rollups are keyed to.
+    /// <c>GranularDayBucketer</c> floors every <c>HourStartUtc</c> to the UTC hour, while the day
+    /// this prompt covers starts at the member's local midnight — which is only a whole UTC hour
+    /// for members whose offset is a whole number of hours. On the half-hour and quarter-hour
+    /// zones (India, Nepal, Iran, South Australia, Newfoundland, Chatham) the walk stepped
+    /// 18:30, 19:30, 20:30 and matched no rollup at any hour, so a day with a full hourly table
+    /// printed above it also declared "No readings at all" across the whole of itself.
+    /// </para>
+    /// <para>
+    /// The one prompt that says silence must never read as health was manufacturing the silence,
+    /// beside the readings that disproved it — and only for members in those zones, which is why
+    /// nothing caught it. The boundaries the gaps are <em>reported</em> at stay clamped to the
+    /// day, so the caregiver still reads a gap in the day they asked about.
+    /// </para>
+    /// </remarks>
+    private static DateTime FloorToHour(DateTime value) =>
+        new(value.Ticks - (value.Ticks % TimeSpan.TicksPerHour), value.Kind);
+
+    private static DateTime Clamp(DateTime value, DateTime min, DateTime max) =>
+        value < min ? min : value > max ? max : value;
 
     private static string LocalHour(DateTime utc, TimeZoneInfo timeZone) =>
         TimeZoneInfo.ConvertTimeFromUtc(
@@ -491,7 +517,7 @@ internal static class DaybookPrompt
         {
             var text = MedicalPromptBlocks.Flatten(assessment.ModelOutput);
             if (text.Length > MaxAssessmentLength)
-                text = $"{text[..MaxAssessmentLength]}…";
+                text = $"{MedicalPromptBlocks.CutTo(text, MaxAssessmentLength)}…";
 
             sb.Append(LocalHour(assessment.WindowStartUtc, timeZone))
               .Append(" assessment (")
@@ -528,21 +554,23 @@ internal static class DaybookPrompt
         var sb = new StringBuilder();
         sb.Append("--- ").Append(ConditionsLabel).AppendLine(" ---");
 
+        var written = 0;
         foreach (var reading in readings)
         {
             var parts = new List<string>(4);
             if (reading.TemperatureCelsius is { } temp)
                 parts.Add(string.Create(CultureInfo.InvariantCulture, $"{temp:0.#}°C"));
             if (!string.IsNullOrWhiteSpace(reading.WeatherCondition))
-                parts.Add(reading.WeatherCondition);
+                parts.Add(ProviderText(reading.WeatherCondition));
             if (reading.RelativeHumidityPercent is { } humidity)
                 parts.Add(string.Create(CultureInfo.InvariantCulture, $"humidity {humidity}%"));
             if (!string.IsNullOrWhiteSpace(reading.AirQualityCategory))
-                parts.Add($"air quality {reading.AirQualityCategory}");
+                parts.Add($"air quality {ProviderText(reading.AirQualityCategory)}");
 
             if (parts.Count == 0)
                 continue;
 
+            written++;
             sb.Append(LocalHour(reading.SessionStartUtc, timeZone))
               .Append('-')
               .Append(LocalHour(reading.SessionEndUtc, timeZone))
@@ -550,10 +578,29 @@ internal static class DaybookPrompt
               .AppendLine(string.Join(", ", parts));
         }
 
-        var body = sb.ToString().TrimEnd();
         // Every reading may have carried nothing renderable; a bare heading is not a section.
-        return body.EndsWith("---", StringComparison.Ordinal) ? string.Empty : body;
+        // Counted rather than inferred from the text: the old test was whether the built string
+        // still ended in the heading's own dashes, which a rendered line ending in a dash would
+        // also have satisfied.
+        return written == 0 ? string.Empty : sb.ToString().TrimEnd();
     }
+
+    /// <summary>Ceiling on a description the weather provider supplies, as
+    /// <c>EnvironmentalContextSource</c> applies to the same two fields.</summary>
+    private const int MaxProviderDescriptionLength = 60;
+
+    /// <summary>
+    /// One provider-supplied description, flattened to a line and bounded.
+    /// </summary>
+    /// <remarks>
+    /// These reached the prompt raw here, while the same two fields went through
+    /// <c>MedicalPromptBlocks.Flatten</c> in the context source that renders them for every other
+    /// prompt. Raw means a newline in a provider string could end the section it was put in and
+    /// open a line of its own, in the one section this prompt's guardrail names by heading.
+    /// </remarks>
+    private static string ProviderText(string providerText) =>
+        MedicalPromptBlocks.CutTo(
+            MedicalPromptBlocks.Flatten(providerText), MaxProviderDescriptionLength);
 
     // The three reply guards below are the journal's register, which every book shares — a
     // Weekbook may name a measurement and may not name a condition for the reasons a Daybook may

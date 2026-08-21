@@ -6,6 +6,7 @@ using CardiTrack.Application.Services;
 using CardiTrack.Domain.Entities;
 using CardiTrack.Domain.Enums;
 using CardiTrack.Infrastructure.Services;
+using CardiTrack.Infrastructure.Services.PromptContext;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
@@ -1099,6 +1100,57 @@ public class DigestGenerationServiceTests
         Assert.DoesNotContain("not a day of walking", prompt);
     }
 
+    /// <summary>
+    /// The same two readings the Daybook renders as <c>bloodOxygen=97.5%</c> and
+    /// <c>breathingRate=14.2/min</c> reached this prompt as a bare 97.5 and a bare 14.2, leaving
+    /// the model to infer that one is a percentage and the other a rate per minute. Sleep stages
+    /// put an "=" inside an "=", the one place on the line where the key-and-value shape every
+    /// other figure follows broke.
+    /// </summary>
+    [Fact]
+    public async Task Prompt_GivesTheUnitsForOxygenAndBreathing_AndOneEqualsPerFigure()
+    {
+        _activityLogs.GetByCardiMemberAndDateRangeAsync(_memberId, Arg.Any<DateOnly>(), Arg.Any<DateOnly>())
+            .Returns(
+            [
+                new ActivityLog
+                {
+                    CardiMemberId = _memberId, Date = Today, Steps = 4350,
+                    SpO2Average = 96.4m, BreathingRate = 14.2m,
+                    DeepSleepMinutes = 60, LightSleepMinutes = 200, RemSleepMinutes = 80,
+                    CreatedDate = DataLandedAt,
+                },
+            ]);
+
+        var prompt = await CapturePromptAsync();
+
+        Assert.Contains("SpO2=96.4%", prompt);
+        Assert.Contains("breathing=14.2/min", prompt);
+        Assert.Contains("sleepStages(min)=deep 60/light 200/rem 80", prompt);
+        Assert.DoesNotContain("deep=60", prompt);
+    }
+
+    /// <summary>
+    /// The brief's conditional has to name the heading the context source renders, or it is a
+    /// conditional on a section that never appears under that name — the mistake the Daybook's own
+    /// conditions heading was made a const to prevent. And the absent case has to be stated: the
+    /// Daybook says never to mention weather when the section is missing, and this brief did not,
+    /// which left the one prompt that runs many times a day free to invent it.
+    /// </summary>
+    [Fact]
+    public async Task Prompt_NamesTheConditionsHeadingItRenders_AndForbidsWeatherWhenItIsAbsent()
+    {
+        var prompt = await CapturePromptAsync();
+
+        var rule = prompt.Split('\n')
+            .Select(l => l.TrimEnd('\r'))
+            .Single(l => l.StartsWith(
+                $"If \"{EnvironmentalContextSource.RecentConditionsLabel}\" is present,",
+                StringComparison.Ordinal));
+
+        Assert.EndsWith("when it is absent, never mention weather at all.", rule);
+    }
+
     [Fact]
     public async Task Prompt_CarriesActiveMinutesAndMaxHeartRate_WhenTheDeviceReportedThem()
     {
@@ -2094,8 +2146,20 @@ public class DigestGenerationServiceTests
                 GeneratedAtUtc = generatedAt,
             });
 
-    private void GivenAlerts(params Alert[] alerts) =>
+    /// <summary>
+    /// Both alert reads the digest pipeline makes: the broad one it uses itself for the journal's
+    /// day/week/month windows, and the unresolved one <c>MonitoringContextSource</c> uses for the
+    /// digest's monitoring section. The second is derived from the same alerts with the filter and
+    /// ordering the SQL query applies, so a test writes one list and both paths agree on it.
+    /// </summary>
+    private void GivenAlerts(params Alert[] alerts)
+    {
         _alerts.GetByCardiMemberAsync(_memberId, Arg.Any<bool>()).Returns(alerts);
+        _alerts.GetUnresolvedByCardiMemberAsync(_memberId).Returns(
+            alerts.Where(a => a.IsActive && !a.IsResolved)
+                .OrderByDescending(a => a.TriggeredDate)
+                .ToList());
+    }
 
     private void GivenLatestAssessment(AlertSeverity? severity, double score, DateTime generatedAt) =>
         _realtimeAssessments.GetLatestAsync(_memberId, Arg.Any<CancellationToken>())

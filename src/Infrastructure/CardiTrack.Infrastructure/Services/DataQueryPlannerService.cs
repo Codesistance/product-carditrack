@@ -77,7 +77,7 @@ public class DataQueryPlannerService : IDataQueryPlanner
             doing overall, naming no particular reading, gets an empty list. These become the
             charts drawn under the answer, so an empty list where the question named a reading puts
             charts in front of the caregiver that they did not ask for.
-            """;
+            """ + MedicalPromptBlocks.ChatMessageGuardrail;
     }
 
     /// <summary>

@@ -1,4 +1,4 @@
-using System.Collections.Concurrent;
+﻿using System.Collections.Concurrent;
 using System.Text;
 using System.Text.Json;
 using CardiTrack.Application.DTOs.Requests;
@@ -471,7 +471,7 @@ public class ReportGenerationServiceTests
 
         // Was "## Patient: Margaret Doe" — the name is now withheld from the provider.
         Assert.Contains("## Patient A", prompt);
-        Assert.Contains("writing a Csv health report", prompt);
+        Assert.Contains("Write a Csv health report", prompt);
         Assert.Contains($"covering {new DateOnly(2026, 2, 7)} to {new DateOnly(2026, 3, 9)}.", prompt);
     }
 
@@ -494,7 +494,7 @@ public class ReportGenerationServiceTests
         var prompt = await CapturePromptAsync(BuildRequest());
 
         Assert.Contains("### Activity Metrics", prompt);
-        Assert.Contains("steps=4321, HR=68, sleep=410min", prompt);
+        Assert.Contains("steps=4321, HR=68, sleep(night ending that morning)=410min", prompt);
     }
 
     [Fact]

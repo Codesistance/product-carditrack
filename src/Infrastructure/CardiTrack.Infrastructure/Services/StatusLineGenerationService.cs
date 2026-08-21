@@ -115,12 +115,11 @@ public class StatusLineGenerationService
         if (member is null || !member.IsActive || member.IsMonitoringPaused(DateTime.UtcNow))
             return;
 
-        // activeOnly filters on IsActive, which a resolved alert keeps — resolution ends the
-        // episode without deactivating the row. Without the second filter this line was reading
-        // closed episodes as live ones. Same read as DashboardService's.
-        var unresolvedAlerts = (await _unitOfWork.Alerts.GetByCardiMemberAsync(cardiMemberId, true))
-            .Where(a => !a.IsResolved)
-            .ToList();
+        // The unresolved read every other caller makes: IsActive && !IsResolved, done in SQL and
+        // untracked. Resolution ends the episode without deactivating the row, so the second
+        // filter is the one that matters — and doing it here in memory is how the claim of being
+        // "the same read as DashboardService's" quietly stopped being true.
+        var unresolvedAlerts = await _unitOfWork.Alerts.GetUnresolvedByCardiMemberAsync(cardiMemberId);
         var severity = unresolvedAlerts.Count == 0
             ? "green"
             : unresolvedAlerts.Max(a => a.Severity).ToString().ToLowerInvariant();
@@ -235,9 +234,12 @@ public class StatusLineGenerationService
     {
         // Titles only. The type and severity of each alert are what the tier above is computed
         // from, so repeating them per alert tells the model nothing it has not been told.
+        // Flattened, as every other renderer that carries an alert title does: this one puts each
+        // on its own "- " line inside a section, so a newline in a title would open a line the
+        // section never labelled.
         var alertContext = unresolvedAlerts.Count == 0
             ? "No unresolved alerts."
-            : string.Join("\n", unresolvedAlerts.Select(a => $"- {a.Title}"));
+            : string.Join("\n", unresolvedAlerts.Select(a => $"- {MedicalPromptBlocks.Flatten(a.Title)}"));
 
         return $"""
             {CurrentStatusInstructions}
@@ -250,7 +252,7 @@ public class StatusLineGenerationService
             --- Unresolved alerts driving this tier ---
             {alertContext}
 
-            --- Recent activity (last 3 days, oldest first) ---
+            --- Recent readings (the most recent days that carried any, oldest first) ---
             {StatusActivityLines(recentLogs, today, progress)}
             """;
     }
@@ -280,8 +282,21 @@ public class StatusLineGenerationService
                     1 => "Yesterday",
                     var days => $"{days} days ago",
                 };
-                return $"  {label}: steps={l.Steps}, HR={l.RestingHeartRate}, "
-                       + $"sleep(prev night)={l.SleepMinutes}min";
+
+                // Only what the device reported. Interpolating the nullable straight into the line
+                // rendered "steps=, HR=, sleep(night ending that morning)=min" for a member whose
+                // watch missed a metric — an empty value beside a real one, on the prompt asked for
+                // a single reassuring sentence. The digest's own renderer guards this and its tests
+                // assert on it (DoesNotContain "steps=,"); this line never did.
+                var figures = new List<string>(3);
+                if (l.Steps is { } steps)
+                    figures.Add($"steps={steps}");
+                if (l.RestingHeartRate is { } resting)
+                    figures.Add($"HR={resting}");
+                if (l.SleepMinutes is { } sleep)
+                    figures.Add($"sleep(night ending that morning)={sleep}min");
+
+                return $"  {label}: {(figures.Count > 0 ? string.Join(", ", figures) : "nothing measured")}";
             })
             .ToList();
 

@@ -121,12 +121,7 @@ public class MedGemmaClient : IExternalAiClient
         string prompt, CancellationToken ct = default) where T : class
     {
         var schemaText = SchemaTextFor<T>();
-        var fullPrompt = $"""
-            {prompt}
-
-            Respond with ONLY a single JSON object that satisfies this JSON Schema, with no fields beyond what it defines:
-            {schemaText}
-            """;
+        var fullPrompt = StructuredOutputSchema.PromptWithSchema(prompt, schemaText);
         var request = new OllamaGenerateRequest
         {
             Model = _settings.Model,

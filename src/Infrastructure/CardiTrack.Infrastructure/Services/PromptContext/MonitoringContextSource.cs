@@ -50,6 +50,19 @@ internal sealed class MonitoringContextSource : IMemberContextSource
     /// </summary>
     private const int MaxAssessments = 5;
 
+    /// <summary>
+    /// Most unresolved alerts carried per digest, for the reason <see cref="MaxAssessments"/>
+    /// gives — and for a second one.
+    /// </summary>
+    /// <remarks>
+    /// Alerts are rendered before assessments, and <c>MemberContextComposer</c> caps the whole
+    /// section. Uncapped, a member with a long tail of open alerts pushed every automated
+    /// observation past that cap and lost them entirely — the one thing this source was added to
+    /// deliver, silently dropped for exactly the members with the most going on. Newest first, so
+    /// what survives the cap is what is still current.
+    /// </remarks>
+    private const int MaxAlerts = 5;
+
     /// <summary>Per-assessment cap: enough for the finding, not the whole caregiver message.</summary>
     private const int MaxAssessmentTextLength = 200;
 
@@ -74,11 +87,13 @@ internal sealed class MonitoringContextSource : IMemberContextSource
             .Take(MaxAssessments)
             .ToList();
 
-        // activeOnly is IsActive, which a resolved alert stays — resolution is what ends the
-        // episode, so the !IsResolved filter is the one that matters here. Same shape as
-        // DashboardService's unresolved-alert read.
-        var unresolved = (await _unitOfWork.Alerts.GetByCardiMemberAsync(request.CardiMemberId, activeOnly: true))
-            .Where(a => !a.IsResolved)
+        // The same read DashboardService, CardiMemberService and member chat use: unresolved is
+        // IsActive && !IsResolved, done in SQL, untracked, with a stable tie-break for the
+        // several alerts one member can be given in the same instant. This used to fetch every
+        // active alert tracked and filter the resolved ones off in memory, which loaded rows it
+        // discarded and left entities being tracked by a DbContext that only ever reads them.
+        var unresolved = (await _unitOfWork.Alerts.GetUnresolvedByCardiMemberAsync(request.CardiMemberId))
+            .Take(MaxAlerts)
             .ToList();
 
         // Nothing to say means no section at all, rather than a section saying nothing. "Do not
@@ -102,7 +117,7 @@ internal sealed class MonitoringContextSource : IMemberContextSource
     {
         var text = MedicalPromptBlocks.Flatten(assessment.ModelOutput);
         if (text.Length > MaxAssessmentTextLength)
-            text = $"{text[..MaxAssessmentTextLength]}…";
+            text = $"{MedicalPromptBlocks.CutTo(text, MaxAssessmentTextLength)}…";
 
         return $"- Automated observation ({assessment.Severity}, {HoursAgo(assessment.WindowEndUtc, utcNow)}): {text}";
     }

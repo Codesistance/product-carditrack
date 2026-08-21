@@ -104,7 +104,7 @@ public sealed partial class MemberContextComposer
         if (flattened.Length == 0)
             return "Member context";
 
-        return flattened.Length > MaxLabelLength ? flattened[..MaxLabelLength] : flattened;
+        return MedicalPromptBlocks.CutTo(flattened, MaxLabelLength);
     }
 
     /// <summary>
@@ -136,7 +136,7 @@ public sealed partial class MemberContextComposer
 
         var sanitised = builder.ToString().TrimEnd('\n');
         return sanitised.Length > MaxSectionLength
-            ? $"{sanitised[..MaxSectionLength]}… (truncated)"
+            ? $"{MedicalPromptBlocks.CutTo(sanitised, MaxSectionLength)}… (truncated)"
             : sanitised;
     }
 

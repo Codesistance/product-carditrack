@@ -41,6 +41,25 @@ internal sealed class EnvironmentalContextSource : IMemberContextSource
         _ => TimeSpan.FromHours(24),
     };
 
+    /// <summary>
+    /// Ceiling on a description the weather provider supplies — "Partly cloudy", "Moderate".
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// These two fields are the only text in a member-context section that comes from outside this
+    /// platform and outside the family, and they are the only section the instruction blocks'
+    /// never-follow-instructions warning does not name. Naming them there would cost a clause on
+    /// nine prompts to defend against a weather API; bounding them to the length of the category
+    /// they are supposed to be costs nothing and is the stronger control, because a sentence that
+    /// cannot fit cannot be an instruction.
+    /// </para>
+    /// <para>
+    /// Generous for the values these APIs actually return, which are two or three words. It is a
+    /// guard against a provider changing shape, not a formatting rule.
+    /// </para>
+    /// </remarks>
+    private const int MaxProviderDescriptionLength = 60;
+
     private readonly IUnitOfWork _unitOfWork;
 
     public EnvironmentalContextSource(IUnitOfWork unitOfWork) => _unitOfWork = unitOfWork;
@@ -85,9 +104,19 @@ internal sealed class EnvironmentalContextSource : IMemberContextSource
     /// </remarks>
     private static string SectionLabel(PromptPurpose purpose) => purpose switch
     {
-        PromptPurpose.RealtimeAssessment => "Conditions during a recent exercise session",
-        _ => "Conditions they have recently been out in",
+        PromptPurpose.RealtimeAssessment => SessionConditionsLabel,
+        _ => RecentConditionsLabel,
     };
+
+    /// <summary>The assessor's heading for this section.</summary>
+    internal const string SessionConditionsLabel = "Conditions during a recent exercise session";
+
+    /// <summary>
+    /// Every other prompt's heading for this section. A const because the family digest names it
+    /// in its own brief — a conditional on a heading is only worth anything if the two are the
+    /// same string, and the Daybook already learned that with its own conditions heading.
+    /// </summary>
+    internal const string RecentConditionsLabel = "Conditions they have recently been out in";
 
     /// <summary>
     /// One line, or null when the enrichment pass found nothing at all. Every field is independently
@@ -101,11 +130,11 @@ internal sealed class EnvironmentalContextSource : IMemberContextSource
         if (reading.TemperatureCelsius is { } temperature)
             parts.Add($"{temperature:F0}°C");
         if (reading.WeatherCondition is { } condition && !string.IsNullOrWhiteSpace(condition))
-            parts.Add(MedicalPromptBlocks.Flatten(condition));
+            parts.Add(ProviderText(condition));
         if (reading.RelativeHumidityPercent is { } humidity)
             parts.Add($"humidity {humidity}%");
         if (reading.AirQualityCategory is { } category && !string.IsNullOrWhiteSpace(category))
-            parts.Add($"air quality {MedicalPromptBlocks.Flatten(category)}");
+            parts.Add($"air quality {ProviderText(category)}");
 
         if (parts.Count == 0)
             return null;
@@ -117,4 +146,12 @@ internal sealed class EnvironmentalContextSource : IMemberContextSource
 
         return $"{string.Join(", ", parts)} ({when})";
     }
+
+    /// <summary>
+    /// One provider-supplied description, flattened to a line and cut to
+    /// <see cref="MaxProviderDescriptionLength"/>.
+    /// </summary>
+    private static string ProviderText(string providerText) =>
+        MedicalPromptBlocks.CutTo(
+            MedicalPromptBlocks.Flatten(providerText), MaxProviderDescriptionLength);
 }
