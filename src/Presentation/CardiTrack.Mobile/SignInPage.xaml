@@ -16,8 +16,7 @@
             <controls:HeaderBand Grid.Row="0" ContentPadding="20,24,20,20" ShowWatermark="True">
                 <VerticalStackLayout Spacing="4">
                     <Label Text="Welcome Back"
-                           Style="{StaticResource Heading3}"
-                           TextColor="{StaticResource White}" />
+                           Style="{StaticResource AuthHeaderTitle}" />
                     <Label Text="Sign in to keep watching over your family"
                            Style="{StaticResource Body1SemiBold}" />
                 </VerticalStackLayout>
