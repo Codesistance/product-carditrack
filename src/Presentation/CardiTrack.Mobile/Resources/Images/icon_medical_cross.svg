@@ -1,8 +1,14 @@
-<!-- Medical Information. The padlock this replaces described how the notes are held rather than
-     what they are, and read as "locked" — the one thing this row is not, for the caregiver who can
-     open it. A cross in a rounded square is the medical mark itself, and the enclosure is what
-     keeps it from reading as an "add" plus. -->
+<!-- Medical Information. Was a bare cross in a rounded square, which read as generic "add/health"
+     rather than medical; the clipboard behind it makes it a medical chart — the record this row
+     actually opens — while the cross keeps the medical read. Same 2px line-icon language and
+     Primary stroke as the rest of the hand-authored set (no icon library — see the pending
+     icon-pack design decision). -->
 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <rect x="3" y="3" width="18" height="18" rx="5" stroke="#1884DC" stroke-width="2"/>
-  <path d="M12 8v8M8 12h8" stroke="#1884DC" stroke-width="2" stroke-linecap="round"/>
+  <!-- Clipboard body -->
+  <rect x="4.5" y="4" width="15" height="17.5" rx="2.5" stroke="#1884DC" stroke-width="2"/>
+  <!-- Clip at the top, drawn over the body edge -->
+  <path d="M9.5 4V3.5A1.5 1.5 0 0 1 11 2h2a1.5 1.5 0 0 1 1.5 1.5V4"
+        stroke="#1884DC" stroke-width="2" stroke-linecap="round"/>
+  <!-- The cross: the medical mark, centred on the sheet -->
+  <path d="M12 9.5v6M9 12.5h6" stroke="#1884DC" stroke-width="2" stroke-linecap="round"/>
 </svg>
