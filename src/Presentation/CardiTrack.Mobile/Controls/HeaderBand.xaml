@@ -45,6 +45,35 @@
                         </Border.StrokeShape>
                     </Border>
 
+                    <!-- The brand mark, bled off the band's outer corner. Sits between the wash
+                         and the content so the words stay fully opaque over it. Translated rather
+                         than negatively margined: the wash above learned that MAUI honours a
+                         negative left/top and ignores a negative right/bottom, and TranslationX/Y
+                         are not subject to that — the Border's StrokeShape clips whatever crosses
+                         the edge, which is what makes it read as a mark the band was cut out of
+                         rather than a sticker on it.
+
+                         Height is deliberately under the content's own: this Image is a Grid
+                         sibling of the content, so anything taller becomes the band's measured
+                         height and pushes the gradient down past the words. A first attempt at
+                         210 did exactly that, and the band came back reading as mostly empty
+                         gradient — the space was the watermark, not the padding. The size it
+                         reads at comes from the bleed, not from the request.
+
+                         Opacity is well above a conventional watermark's because the right-hand
+                         end of this gradient fades to near-white, and the mark is a pale blue: at
+                         0.17 over that it was invisible in the corner it sits in. -->
+                    <Image Source="carditrack_logo.png"
+                           IsVisible="{TemplateBinding ShowWatermark}"
+                           InputTransparent="True"
+                           Aspect="AspectFit"
+                           HeightRequest="118"
+                           Opacity="0.32"
+                           HorizontalOptions="End"
+                           VerticalOptions="End"
+                           TranslationX="30"
+                           TranslationY="26"/>
+
                     <ContentPresenter Margin="{TemplateBinding ContentPadding}"/>
                 </Grid>
             </Border>

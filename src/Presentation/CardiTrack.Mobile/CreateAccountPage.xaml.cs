@@ -100,6 +100,29 @@ public partial class CreateAccountPage : ContentPage
     private void OnTermsCheckedChanged(object? sender, CheckedChangedEventArgs e)
         => UpdateCreateButtonState();
 
+    private void OnTermsTapped(object? sender, TappedEventArgs e)
+        => ShowDocument("Terms of Service", LegalDocumentPage.TermsUrl);
+
+    private void OnPrivacyTapped(object? sender, TappedEventArgs e)
+        => ShowDocument("Privacy Policy", LegalDocumentPage.PrivacyUrl);
+
+    /// <summary>
+    /// Modal rather than a push, and deliberately not awaited into the tap handler: this form is
+    /// half filled in by the time anyone reads these, and it has to be exactly as they left it
+    /// when they close the document.
+    /// </summary>
+    private async void ShowDocument(string title, string url)
+    {
+        try
+        {
+            await Navigation.PushModalAsync(new LegalDocumentPage(title, url));
+        }
+        catch (Exception ex)
+        {
+            ScreenRefresh.LogFailure(ex, nameof(CreateAccountPage), $"while opening {title}");
+        }
+    }
+
     private bool IsFormComplete()
         => !string.IsNullOrWhiteSpace(NameEntry.Text)
            && !string.IsNullOrWhiteSpace(EmailEntry.Text) && EmailEntry.Text.Contains('@')

@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:controls="clr-namespace:CardiTrack.Mobile.Controls"
+             x:Class="CardiTrack.Mobile.LegalDocumentPage"
+             Shell.NavBarIsVisible="False"
+             NavigationPage.HasNavigationBar="False"
+             BackgroundColor="{StaticResource PageGround}">
+
+    <!-- The terms and the privacy policy, read inside the app rather than handed to the phone's
+         browser. Someone part-way through creating an account is being asked to agree to these,
+         and leaving for Chrome to read them puts a half-filled form behind an app switch. Modal,
+         with its own way back, so the form is exactly where they left it. -->
+    <Grid RowDefinitions="Auto,*">
+
+        <controls:HeaderBand Grid.Row="0" ContentPadding="20,26,20,24">
+            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
+                <Border Grid.Column="0"
+                        BackgroundColor="#33FFFFFF"
+                        StrokeThickness="0"
+                        WidthRequest="44" HeightRequest="44"
+                        VerticalOptions="Center">
+                    <Border.StrokeShape>
+                        <RoundRectangle CornerRadius="22"/>
+                    </Border.StrokeShape>
+                    <Border.GestureRecognizers>
+                        <TapGestureRecognizer Tapped="OnCloseTapped"/>
+                    </Border.GestureRecognizers>
+                    <Image Source="icon_back_white.svg"
+                           WidthRequest="20" HeightRequest="20"
+                           VerticalOptions="Center" HorizontalOptions="Center"/>
+                </Border>
+
+                <VerticalStackLayout Grid.Column="1" Spacing="2" VerticalOptions="Center">
+                    <Label x:Name="TitleLabel"
+                           Style="{StaticResource Heading3}"
+                           TextColor="{StaticResource White}"/>
+                    <Label Text="From carditrack.com"
+                           Style="{StaticResource Body2}"
+                           TextColor="{StaticResource White}"
+                           Opacity="0.85"/>
+                </VerticalStackLayout>
+            </Grid>
+        </controls:HeaderBand>
+
+        <!-- Spinner under the WebView rather than over it: the document paints over this as it
+             arrives, so there is no flash of a spinner sitting on finished text. -->
+        <Grid Grid.Row="1">
+            <VerticalStackLayout x:Name="LoadingPanel"
+                                 Spacing="10"
+                                 HorizontalOptions="Center"
+                                 VerticalOptions="Center">
+                <ActivityIndicator IsRunning="True" Color="{StaticResource Primary}"/>
+                <Label Text="Fetching the latest version…"
+                       Style="{StaticResource Body2}"
+                       HorizontalTextAlignment="Center"/>
+            </VerticalStackLayout>
+
+            <VerticalStackLayout x:Name="ErrorPanel"
+                                 IsVisible="False"
+                                 Spacing="10"
+                                 Padding="28"
+                                 HorizontalOptions="Center"
+                                 VerticalOptions="Center">
+                <Label Text="Couldn't load this"
+                       Style="{StaticResource Body1SemiBoldDark}"
+                       HorizontalTextAlignment="Center"/>
+                <Label x:Name="ErrorDetailLabel"
+                       Style="{StaticResource Body2}"
+                       HorizontalTextAlignment="Center"/>
+                <Button Text="Try again"
+                        Style="{StaticResource SecondaryOutlineButton}"
+                        Clicked="OnRetryClicked"/>
+            </VerticalStackLayout>
+
+            <WebView x:Name="DocumentView"
+                     Navigated="OnNavigated"
+                     IsVisible="False"/>
+        </Grid>
+    </Grid>
+</ContentPage>

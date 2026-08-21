@@ -137,6 +137,37 @@
         <Setter Property="TextColor" Value="{StaticResource HeadingText}"/>
     </Style>
 
+    <!-- The title on the three screens that sign a caregiver in. Half again the Heading3 those
+         bands used to carry: sign-in, create-account and forgot-password each hold one title and
+         a single line under it, so the title is the screen rather than a label on it.
+
+         Tried at double first, which is where the reasoning above leads and where the eye
+         disagrees — "Welcome Back" ran nearly the full width and stopped reading as a greeting.
+         27 is the size at which it still leads the band without becoming the band.
+
+         Its own key rather than three inline overrides: they change together, and the next person
+         to touch one should not have to notice the other two. -->
+    <Style x:Key="AuthHeaderTitle" TargetType="Label">
+        <Setter Property="FontFamily" Value="Quicksand"/>
+        <Setter Property="FontAttributes" Value="Bold"/>
+        <Setter Property="FontSize" Value="27"/>
+        <Setter Property="TextColor" Value="{StaticResource White}"/>
+    </Style>
+
+    <!-- The line under an auth title. Two points down from Body1SemiBold, which these carried
+         until the title grew: at 16 the longest of them — "Sign in to keep watching over your
+         family" — ran the full width of the band and into the brand mark in the corner, so the
+         sentence lost contrast exactly where it ended. Smaller also puts air between it and a
+         27pt title, which a two-point gap could not.
+
+         Its own key rather than editing Body1SemiBold, which is shared with screens that have no
+         title above them and no mark beside them. -->
+    <Style x:Key="AuthHeaderSubtitle" TargetType="Label">
+        <Setter Property="FontFamily" Value="QuicksandSemiBold"/>
+        <Setter Property="FontSize" Value="14"/>
+        <Setter Property="TextColor" Value="{StaticResource White}"/>
+    </Style>
+
     <Style x:Key="Body1SemiBold" TargetType="Label">
         <Setter Property="FontFamily" Value="QuicksandSemiBold"/>
         <Setter Property="FontSize" Value="16"/>

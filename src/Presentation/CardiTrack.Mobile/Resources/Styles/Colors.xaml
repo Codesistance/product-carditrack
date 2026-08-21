@@ -254,11 +254,26 @@
         <GradientStop Color="#00FFFFFF" Offset="0.30" />
         <GradientStop Color="#04FFFFFF" Offset="0.41" />
         <GradientStop Color="#16FFFFFF" Offset="0.52" />
-        <GradientStop Color="#39FFFFFF" Offset="0.64" />
-        <GradientStop Color="#6BFFFFFF" Offset="0.75" />
-        <GradientStop Color="#A7FFFFFF" Offset="0.86" />
-        <GradientStop Color="#C4FFFFFF" Offset="0.93" />
-        <GradientStop Color="#D1FFFFFF" Offset="1.0" />
+        <!-- The tail, shortened 2026-08-21. Everything to the left of here is the Figma profile
+             untouched; from 0.64 the same curve is compressed to bottom out near 47% white
+             instead of 82%.
+
+             82% put the band's right edge at ~#D9EDF4 against a PageGround of #E8F1F4 — so it did
+             melt into the page, and took a third of itself with it. Measured against white, that
+             end was 1.21:1: not low contrast, no contrast. The corner radius was invisible, and
+             the brand mark in that corner needed 0.45 opacity — roughly triple a watermark's
+             usual — purely to be seen at all.
+
+             47% lands around #90CCDF: still a clear fade into the page, still a coloured surface
+             the whole way across, corner visible again. Worth knowing what it does not fix —
+             that end measures 1.77:1 against white, so it is now good for a mark or a tinted
+             control and still not for white text. Text on the right of this band needs the base
+             ramp changed, not the wash. -->
+        <GradientStop Color="#28FFFFFF" Offset="0.64" />
+        <GradientStop Color="#43FFFFFF" Offset="0.75" />
+        <GradientStop Color="#62FFFFFF" Offset="0.86" />
+        <GradientStop Color="#71FFFFFF" Offset="0.93" />
+        <GradientStop Color="#78FFFFFF" Offset="1.0" />
     </LinearGradientBrush>
 
 </ResourceDictionary>

@@ -19,6 +19,19 @@ public partial class HeaderBand : ContentView
             typeof(HeaderBand),
             new Thickness(20, 14, 20, 26));
 
+    /// <summary>
+    /// Draws the brand mark oversized and nearly transparent, bled off the band's outer corner.
+    /// </summary>
+    /// <remarks>
+    /// Off by default and on for the three screens that sign a caregiver in — those bands carry a
+    /// title and one line under it and nothing else, so they read as empty gradient with words in
+    /// the corner. Every other band in the app has a member, a date, a filter row or a progress
+    /// pill sitting in it; putting the mark behind those would be decorating a working surface,
+    /// and the app would be telling someone already inside it whose app it is.
+    /// </remarks>
+    public static readonly BindableProperty ShowWatermarkProperty =
+        BindableProperty.Create(nameof(ShowWatermark), typeof(bool), typeof(HeaderBand), false);
+
     public HeaderBand()
     {
         InitializeComponent();
@@ -28,5 +41,11 @@ public partial class HeaderBand : ContentView
     {
         get => (Thickness)GetValue(ContentPaddingProperty);
         set => SetValue(ContentPaddingProperty, value);
+    }
+
+    public bool ShowWatermark
+    {
+        get => (bool)GetValue(ShowWatermarkProperty);
+        set => SetValue(ShowWatermarkProperty, value);
     }
 }

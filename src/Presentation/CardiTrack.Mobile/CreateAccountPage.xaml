@@ -13,14 +13,13 @@
             <!-- ════════════════════════════════════════
                  GRADIENT HEADER
                  ════════════════════════════════════════ -->
-            <controls:HeaderBand Grid.Row="0" ContentPadding="20,48,20,32">
+            <controls:HeaderBand Grid.Row="0" ContentPadding="20,24,20,20" ShowWatermark="True">
                 <VerticalStackLayout Spacing="4">
                     <Label Text="Create Account"
-                           Style="{StaticResource Heading3}"
-                           TextColor="{StaticResource White}" />
+                           Style="{StaticResource AuthHeaderTitle}" />
 
                     <Label Text="Step 1 of 4"
-                           Style="{StaticResource Body1SemiBold}" />
+                           Style="{StaticResource AuthHeaderSubtitle}" />
 
                     <!-- Progress bar -->
                     <Grid Margin="0,12,0,0" HeightRequest="8"
@@ -189,15 +188,30 @@
                                     <Span Text="I agree to the "
                                           FontFamily="Quicksand" FontSize="14"
                                           TextColor="{StaticResource BodyText}"/>
+                                    <!-- Coloured like links since this screen shipped, and until
+                                         now not tappable — so the two documents someone is being
+                                         asked to agree to were the two things on the form they
+                                         could not read. Each opens in-app; see
+                                         LegalDocumentPage for why not the browser. -->
                                     <Span Text="Terms of Service"
                                           FontFamily="Quicksand" FontSize="14"
-                                          TextColor="{StaticResource Primary}"/>
+                                          TextColor="{StaticResource Primary}"
+                                          TextDecorations="Underline">
+                                        <Span.GestureRecognizers>
+                                            <TapGestureRecognizer Tapped="OnTermsTapped"/>
+                                        </Span.GestureRecognizers>
+                                    </Span>
                                     <Span Text=" and "
                                           FontFamily="Quicksand" FontSize="14"
                                           TextColor="{StaticResource BodyText}"/>
                                     <Span Text="Privacy Policy"
                                           FontFamily="Quicksand" FontSize="14"
-                                          TextColor="{StaticResource Primary}"/>
+                                          TextColor="{StaticResource Primary}"
+                                          TextDecorations="Underline">
+                                        <Span.GestureRecognizers>
+                                            <TapGestureRecognizer Tapped="OnPrivacyTapped"/>
+                                        </Span.GestureRecognizers>
+                                    </Span>
                                     <Span Text="."
                                           FontFamily="Quicksand" FontSize="14"
                                           TextColor="{StaticResource BodyText}"/>
