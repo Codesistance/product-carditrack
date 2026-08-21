@@ -680,9 +680,10 @@ variable "public_ai_api_key_secret_id" {
 
 # ── Rewrite AI provider (member chat's non-clinical steps) ────────────────────
 # Gemini on a Vertex AI EU regional endpoint (DPIA v0.11 row A20, decision D6). There is no kind
-# variable any more: the Ollama shape the slot launched with had exactly one host, and that host
-# is gone. The app keeps its Ollama kind for local development, where docker-compose supplies the
-# server and none of this file applies. The model stays a tfvar so swapping it is an apply.
+# variable any more: the Ollama shape the slot launched with had exactly one host, nothing in this
+# stack references it any longer, and the teardown that deletes it follows. The app keeps its
+# Ollama kind for local development, where docker-compose supplies the server and none of this
+# file applies. The model stays a tfvar so swapping it is an apply.
 
 # Verify a new model against the probe in docs/technical/vertex_ai_setup.md §3 before changing
 # this: regional availability, responseJsonSchema support and thinkingBudget 0 are the three

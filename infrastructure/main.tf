@@ -124,12 +124,13 @@ module "deployments" {
       # without calling the model — AiServiceExtensions refuses to start a host whose BaseUrl is a
       # Cloud Run URL while this is false, and that check runs wherever the settings are bound.
       "AI__Private__UseIdentityToken" = "true"
-      # Rewrite slot — kind-switchable (DPIA v0.11 row A20, decision D6): VertexGemini reaches
-      # an EU regional Vertex endpoint under IAM; Ollama is the self-hosted Cloud Run host,
-      # whose BaseUrl secret and identity-token flag below stay mounted through the transition
-      # so an image-only rollback still boots. The Vertex-only keys are set unconditionally —
-      # the Ollama kind ignores them. Every host that gets AddMedicalAiServices validates this
-      # section at startup, so it is set everywhere AI__Private__* is.
+      # Rewrite slot — Gemini on an EU regional Vertex endpoint under IAM (DPIA v0.11 row A20,
+      # decision D6). Hard-coded rather than a variable: the self-hosted Ollama alternative had a
+      # single Cloud Run host, which this teardown removes, so there is nothing left to switch
+      # between. Its BaseUrl secret and identity-token flag are no longer mounted here; the
+      # settings loader still tolerates them, for local appsettings. Every host that gets
+      # AddMedicalAiServices validates this section at startup, so it is set everywhere
+      # AI__Private__* is.
       "AI__Rewrite__Kind"              = "VertexGemini"
       "AI__Rewrite__Model"             = var.rewrite_ai_model
       "AI__Rewrite__TimeoutSeconds"    = tostring(var.rewrite_ai_timeout_seconds)

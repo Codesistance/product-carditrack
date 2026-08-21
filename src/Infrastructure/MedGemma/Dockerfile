@@ -1,8 +1,9 @@
 FROM ollama/ollama:latest AS builder
 ARG MODEL_TAG
 # This image once carried a second, non-medical tag for the rewrite slot. That slot runs on
-# Gemini via Vertex AI now (DPIA row A20, decision D6) and its Cloud Run service is gone, so the
-# tag was multi-GB of model blobs baked into every MedGemma build for a host nothing called.
+# Gemini via Vertex AI now (DPIA row A20, decision D6), so the tag was multi-GB of model blobs
+# baked into every MedGemma build for a host nothing calls. The host itself is torn down
+# separately — nothing here depends on when that lands.
 # `ollama pull` exiting 0 only means the transfer succeeded — it does not guarantee the
 # server will resolve a tag at generate time (hf.co references have silently 404'd in prod
 # despite a clean pull, per the incident on 2026-08-10). Assert each tag is actually queryable
