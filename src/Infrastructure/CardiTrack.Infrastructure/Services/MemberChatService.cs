@@ -16,10 +16,13 @@ namespace CardiTrack.Infrastructure.Services;
 /// caregiver language, and persistence. The clinical step — the one whose prompt carries age,
 /// sex, notes and questionnaire answers — stays on the in-estate MedGemma; the non-clinical
 /// steps run on the Rewrite slot, whose prompts carry only the caregiver's question and the
-/// de-identified clinical read (the member's name is the literal <c>CardiTrackCardiMember</c> placeholder,
-/// resolved after the call). No step ever reaches <c>AI:Public</c>. See the member-chat planning
-/// notes (2026-08-20) and DPIA row A20: the query plan cannot carry a subject identifier (see
-/// <see cref="DataQueryPlan"/>), and the clinical context never reaches the rewrite provider.
+/// de-identified clinical read (the member's name travels as the literal
+/// <c>CardiTrackCardiMember</c> placeholder, substituted in only after the call returns, and
+/// swapped back out of recalled history before it re-enters a prompt — see
+/// <see cref="BuildHistoryBlockAsync"/>). No step ever reaches <c>AI:Public</c>. See the
+/// member-chat planning notes (2026-08-20) and DPIA row A20: the query plan cannot carry a
+/// subject identifier (see <see cref="DataQueryPlan"/>), and the clinical context never reaches
+/// the rewrite provider.
 /// </summary>
 public class MemberChatService : IMemberChatService
 {
@@ -68,8 +71,8 @@ public class MemberChatService : IMemberChatService
         questions about their family member's readings, alerts, sleep and activity. The message is
         conversational rather than a question. Reply warmly in one or two short sentences, matching
         their tone, and gently mention what you can help with — their family member's readings,
-        sleep, activity, or alerts. Write {{NAME}} exactly as written if you name the member; it
-        stands in for their real name. Never scold, never apologise for limits at length.
+        sleep, activity, or alerts. Write CardiTrackCardiMember exactly as written if you name
+        the member; it stands in for their real name. Never scold, never apologise at length.
 
         Respond with:
         - reply: the message to show the caregiver.
@@ -86,7 +89,8 @@ public class MemberChatService : IMemberChatService
         about something this assistant cannot help with. In one or two short sentences, say so
         kindly — without scolding or lecturing — and mention what you can help with instead: their
         family member's readings, sleep, activity, or alerts. Do not attempt the request itself.
-        Write {{NAME}} exactly as written if you name the member; it stands in for their real name.
+        Write CardiTrackCardiMember exactly as written if you name the member; it stands in for
+        their real name.
 
         Respond with:
         - reply: the message to show the caregiver.
@@ -150,8 +154,9 @@ public class MemberChatService : IMemberChatService
         MedicalPromptBlocks.CaregiverRegister + """
 
         Rewrite the clinical read below into one short, direct reply to the caregiver's question —
-        the answer only, not a restatement of the question and not a preamble. Write CardiTrackCardiMember exactly
-        as written wherever you would name the member; it stands in for their real name.
+        the answer only, not a restatement of the question and not a preamble. Write
+        CardiTrackCardiMember exactly as written wherever you would name the member; it stands in
+        for their real name.
         """;
 
     private readonly IMedicalAiService _medicalAi;
@@ -212,7 +217,7 @@ public class MemberChatService : IMemberChatService
         }
 
         if (triage.Result.IsCasualOrSocial || triage.Result.IsOffTopic)
-            return await SteerAsync(session, flattened, triage.Usage, triage.Result.IsCasualOrSocial, cardiMemberId, utcNow, ct);
+            return await SteerAsync(session, flattened, triage.Usage, triage.Result.IsCasualOrSocial, member?.Name, utcNow, ct);
 
         var plan = await _planner.PlanAsync(flattened, history, ct);
         var fetched = await DataQueryWhitelist.ExecuteAsync(plan.Result, cardiMemberId, _unitOfWork, utcNow, ct);
@@ -260,23 +265,22 @@ public class MemberChatService : IMemberChatService
     /// <remarks>
     /// Deliberately takes no conversation history, unlike the triage and planning steps either
     /// side of it. Those steps need context to judge a terse follow-up ("why?"); a greeting or an
-    /// off-topic request does not, and prior assistant turns are persisted after name resolution
-    /// — so they carry the member's real name alongside their readings. Sending them to answer
-    /// "hi" would widen what the Rewrite slot sees for no gain, which is the opposite of the
-    /// minimisation DPIA row A20 records for this slot.
+    /// off-topic request does not. History reaching the Rewrite slot is name-redacted either way
+    /// (<see cref="BuildHistoryBlockAsync"/>), so this is not about the name — it is that sending
+    /// a caregiver's prior clinical exchanges to answer "hi" widens what the slot sees for no
+    /// gain, which is the opposite of the minimisation DPIA row A20 records for it.
     /// </remarks>
     private async Task<MemberChatMessageResponse> SteerAsync(
         MemberChatSession session,
         string flattened,
         AiUsage triageUsage,
         bool casual,
-        Guid cardiMemberId,
+        string? memberName,
         DateTime utcNow,
         CancellationToken ct)
     {
         var instructions = casual ? CasualSteerInstructions : OffTopicSteerInstructions;
-        var member = await _unitOfWork.CardiMembers.GetByIdAsync(cardiMemberId);
-        var name = NamePlaceholder.FirstName(member?.Name);
+        var name = NamePlaceholder.FirstName(memberName);
 
         string reply;
         AiUsage? steerUsage = null;
