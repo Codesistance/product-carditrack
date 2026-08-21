@@ -45,12 +45,16 @@ public class MemberQuestionnaireRepository : Repository<MemberQuestionnaire>, IM
         Guid cardiMemberId, DateTime utcNow, CancellationToken ct = default)
     {
         // HasLapsed's condition, written out, matching HasPendingAsync's translation for the same
-        // reason. At most one row can match — see MemberQuestionnaireConfiguration's index.
+        // reason. Only one row is expected to match — the digest job's HasPendingAsync check keeps
+        // it that way — but nothing in the schema enforces it (MemberQuestionnaireConfiguration's
+        // index is for lookup speed, not uniqueness), so this orders explicitly rather than leave
+        // which row FirstOrDefaultAsync picks among any ties to chance.
         return await _dbSet
             .AsNoTracking()
             .Where(q => q.CardiMemberId == cardiMemberId
                         && q.Status == QuestionnaireStatus.Pending
                         && (q.AskableUntilUtc == null || q.AskableUntilUtc > utcNow))
+            .OrderByDescending(q => q.GeneratedAtUtc)
             .FirstOrDefaultAsync(ct);
     }
 
@@ -107,11 +111,13 @@ public class MemberQuestionnaireRepository : Repository<MemberQuestionnaire>, IM
     public async Task ReleaseAlertClaimAsync(
         Guid questionnaireId, int claimedReminderCount, DateTime? previousLastRemindedAtUtc, CancellationToken ct = default)
     {
-        // Guarded on the post-claim ReminderCount, like ReleasePushClaimAsync's row-scoped update —
-        // a release that arrives after the row moved on for some other reason (answered, dismissed)
-        // must not overwrite that with a stale claim's undo.
+        // Guarded on the post-claim ReminderCount and Pending status, like ReleasePushClaimAsync's
+        // row-scoped update — a release that arrives after the row moved on for some other reason
+        // (answered, dismissed) must not overwrite that with a stale claim's undo.
         await _dbSet
-            .Where(q => q.Id == questionnaireId && q.ReminderCount == claimedReminderCount + 1)
+            .Where(q => q.Id == questionnaireId
+                        && q.ReminderCount == claimedReminderCount + 1
+                        && q.Status == QuestionnaireStatus.Pending)
             .ExecuteUpdateAsync(s => s
                 .SetProperty(q => q.ReminderCount, claimedReminderCount)
                 .SetProperty(q => q.LastRemindedAtUtc, previousLastRemindedAtUtc), ct);

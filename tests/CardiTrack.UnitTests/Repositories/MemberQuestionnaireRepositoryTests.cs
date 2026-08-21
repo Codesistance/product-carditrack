@@ -229,6 +229,29 @@ public class MemberQuestionnaireRepositoryTests(TestDatabaseFixture fixture)
         Assert.Null(await repo.GetPendingAsync(Guid.NewGuid(), now));
     }
 
+    /// <summary>
+    /// The one-pending-question-at-a-time invariant is enforced by the digest job's HasPendingAsync
+    /// check, not by the schema — nothing here stops two Pending rows existing if that check is
+    /// ever bypassed. Deterministic ordering (newest first) is the defence against that, rather than
+    /// leaving which row wins to whatever order Postgres happens to return them in.
+    /// </summary>
+    [Fact]
+    public async Task GetPendingAsync_PicksTheNewestWhenMoreThanOneRowSomehowQualifies()
+    {
+        using var scope = fixture.CreateScope();
+        var memberId = Guid.NewGuid();
+        var now = DateTime.UtcNow;
+
+        var older = Questionnaire(memberId, now.AddHours(-2), question: "Older?");
+        var newer = Questionnaire(memberId, now, question: "Newer?");
+        var repo = await SaveAsync(scope, older, newer);
+
+        var found = await repo.GetPendingAsync(memberId, now);
+
+        Assert.NotNull(found);
+        Assert.Equal(newer.Id, found!.Id);
+    }
+
     // ── The alert worker's due-for-push sweep and its claim ────────────────────
 
     /// <summary>
@@ -354,6 +377,44 @@ public class MemberQuestionnaireRepositoryTests(TestDatabaseFixture fixture)
             await repo.GetDueForAlertAsync(now, now.AddHours(-24), maxPushes: 3, limit: 50),
             q => q.Id == questionnaire.Id);
         Assert.True(await repo.TryClaimAlertAsync(questionnaire.Id, expectedReminderCount: 0, now));
+    }
+
+    /// <summary>
+    /// The family answered in the window between the claim and the release — the release must not
+    /// revert ReminderCount/LastRemindedAtUtc on a row that has since moved on, even though its
+    /// ReminderCount still matches what the claim set it to.
+    /// </summary>
+    [Fact]
+    public async Task ReleaseAlertClaimAsync_DoesNotClobberARowAnsweredSinceTheClaim()
+    {
+        using var scope = fixture.CreateScope();
+        var now = DateTime.UtcNow;
+        var questionnaire = Questionnaire(Guid.NewGuid(), now.AddHours(-2));
+        var repo = await SaveAsync(scope, questionnaire);
+
+        Assert.True(await repo.TryClaimAlertAsync(questionnaire.Id, expectedReminderCount: 0, now));
+
+        using (var answering = fixture.CreateScope())
+        {
+            var context = answering.ServiceProvider
+                .GetRequiredService<CardiTrack.Infrastructure.Persistence.CardiTrackDbContext>();
+            await context.MemberQuestionnaires
+                .Where(q => q.Id == questionnaire.Id)
+                .ExecuteUpdateAsync(s => s
+                    .SetProperty(q => q.Status, QuestionnaireStatus.Answered)
+                    .SetProperty(q => q.AnsweredAtUtc, now));
+        }
+
+        await repo.ReleaseAlertClaimAsync(
+            questionnaire.Id, claimedReminderCount: 0, previousLastRemindedAtUtc: null);
+
+        using var reading = fixture.CreateScope();
+        var stored = await reading.ServiceProvider
+            .GetRequiredService<CardiTrack.Infrastructure.Persistence.CardiTrackDbContext>()
+            .MemberQuestionnaires.AsNoTracking().SingleAsync(q => q.Id == questionnaire.Id);
+
+        Assert.Equal(QuestionnaireStatus.Answered, stored.Status);
+        Assert.Equal(1, stored.ReminderCount);
     }
 
     /// <summary>

@@ -96,10 +96,18 @@ public class QuestionnaireAlertWorker : CronBackgroundService
                     continue;
 
                 var dispatch = scope.ServiceProvider.GetRequiredService<IDispatchService>();
-                await dispatch.EnqueueForQuestionnaireAsync(
+                var deliveries = await dispatch.EnqueueForQuestionnaireAsync(
                     questionnaire.Id, questionnaire.ReminderCount, stoppingToken);
 
-                pushed++;
+                // Nothing to a caregiver was actually delivered — no one to receive it (every
+                // caregiver has ReceiveAlerts off), or the question stopped being eligible in the
+                // gap between the claim and this call. Either way the claim was spent for no push,
+                // so it's given back rather than counted as one — otherwise this question would
+                // wait out a full reminder interval having reached nobody.
+                if (deliveries.Count == 0)
+                    await ReleaseAlertClaimSafelyAsync(unitOfWork, questionnaire, stoppingToken);
+                else
+                    pushed++;
             }
             catch (Exception ex)
             {

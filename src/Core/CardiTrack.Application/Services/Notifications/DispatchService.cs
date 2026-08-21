@@ -209,6 +209,15 @@ public class DispatchService : IDispatchService
         if (questionnaire is null)
             return [];
 
+        // Re-checked here rather than trusted from the caller's claim: this is a shared entry
+        // point, not one only QuestionnaireAlertWorker's guarded claim can reach, and even from
+        // that caller there is a — small — window after the claim where the family could have
+        // answered or dismissed the question before this runs. A push for a question that is no
+        // longer live would reach a caregiver about something already settled.
+        var utcNow = _timeProvider.GetUtcNow().UtcDateTime;
+        if (questionnaire.Status != QuestionnaireStatus.Pending || questionnaire.HasLapsed(utcNow))
+            return [];
+
         var links = await _unitOfWork.UserCardiMembers.GetByCardiMemberIdAsync(questionnaire.CardiMemberId);
         var recipients = links.Where(l => l.IsActive && l.ReceiveAlerts).Select(l => l.UserId).Distinct().ToList();
 
