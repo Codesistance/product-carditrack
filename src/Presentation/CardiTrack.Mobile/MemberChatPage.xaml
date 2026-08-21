@@ -172,11 +172,15 @@
                                                 </DataTemplate>
                                             </BindableLayout.ItemTemplate>
                                         </VerticalStackLayout>
+                                        <!-- Was 12pt at 0.75 opacity over a white bubble, which
+                                             put the only figures some replies carry below what a
+                                             caregiver reading at arm's length can make out. Full
+                                             opacity, and quieted by the muted colour token that
+                                             every other secondary line on this page uses. -->
                                         <Label Text="{Binding ChartSummary}"
                                                Style="{StaticResource Body2}"
-                                               FontSize="12"
-                                               TextColor="{Binding TextColor}"
-                                               Opacity="0.75"
+                                               FontSize="13"
+                                               TextColor="{StaticResource MutedText}"
                                                IsVisible="{Binding HasChartSummary}"/>
                                         <!-- When this was said. Quiet and trailing: a returning
                                              caregiver needs to know whether "steady today" was

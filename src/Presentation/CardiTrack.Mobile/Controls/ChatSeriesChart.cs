@@ -152,15 +152,7 @@ public sealed class ChatChartItem
     /// A tapped reading as the callout shows it. Sleep arrives in minutes and is read in hours;
     /// steps are whole and want their thousands separator; a rate is a rate.
     /// </summary>
-    public string FormatValue(double value) => Metric switch
-    {
-        "Steps" => $"{value:#,##0} steps",
-        "Resting heart rate" => $"{value:0} bpm",
-        "Sleep (minutes)" => value >= 60
-            ? $"{Math.Floor(value / 60):0}h {value % 60:0}m"
-            : $"{value:0}m",
-        _ => value.ToString("0.#"),
-    };
+    public string FormatValue(double value) => ChatMetricFormat.WithUnit(Metric, value);
 
     /// <summary>
     /// The same number as <see cref="FormatValue"/> without the unit noun, for the two figures
@@ -169,15 +161,7 @@ public sealed class ChatChartItem
     /// its h/m shaping, because the stored unit is minutes and "465" beside a chart is a number no
     /// caregiver thinks in.
     /// </summary>
-    public string AxisLabel(double value) => Metric switch
-    {
-        "Steps" => $"{value:#,##0}",
-        "Resting heart rate" => $"{value:0}",
-        "Sleep (minutes)" => value >= 60
-            ? $"{Math.Floor(value / 60):0}h {value % 60:0}m"
-            : $"{value:0}m",
-        _ => value.ToString("0.#"),
-    };
+    public string AxisLabel(double value) => ChatMetricFormat.Bare(Metric, value);
 
     /// <summary>
     /// What the chart says to a caregiver who cannot see it. The canvas is one opaque element to
@@ -265,4 +249,39 @@ public sealed class ChatChartItem
         };
         return MetricStatus.Resource(key, Colors.Blue);
     }
+}
+
+/// <summary>
+/// How a chat reply spells a reading, in the one place both the drawn charts and the text
+/// stand-in for an undrawable series can reach. Split out because the two had drifted: the charts
+/// read sleep as "6h 12m" while the summary line beneath them read the same night as "372", which
+/// is the stored unit and not a number any caregiver thinks in.
+/// </summary>
+internal static class ChatMetricFormat
+{
+    /// <summary>With the unit named — for prose and for the tap callout, which stand alone.</summary>
+    internal static string WithUnit(string metric, double value) => metric switch
+    {
+        "Steps" => $"{value:#,##0} steps",
+        "Resting heart rate" => $"{value:0} bpm",
+        "Sleep (minutes)" => Duration(value),
+        _ => value.ToString("0.#"),
+    };
+
+    /// <summary>
+    /// Without it — for the axis, where the series title a line above already says which reading
+    /// this is and repeating the unit on both ends costs width it cannot spare. Sleep keeps its
+    /// h/m shaping regardless: that is the number's readable form, not its unit.
+    /// </summary>
+    internal static string Bare(string metric, double value) => metric switch
+    {
+        "Steps" => $"{value:#,##0}",
+        "Resting heart rate" => $"{value:0}",
+        "Sleep (minutes)" => Duration(value),
+        _ => value.ToString("0.#"),
+    };
+
+    private static string Duration(double minutes) => minutes >= 60
+        ? $"{Math.Floor(minutes / 60):0}h {minutes % 60:0}m"
+        : $"{minutes:0}m";
 }

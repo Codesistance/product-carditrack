@@ -149,6 +149,10 @@ public class MemberChatService : IMemberChatService
         A question about a total, or about a span like "this week", covers
         every day in that heading rather than any one of them.
 
+        When the question is how the person is doing rather than what a particular reading was,
+        answer it: say how the readings compare with their baseline and whether that is settled or
+        worth attention. Listing the readings back is not an answer to that question.
+
         Respond with:
         - analysis: your answer, grounded only in the data provided.
         """ + MedicalPromptBlocks.ContextGuardrail + MedicalPromptBlocks.ChatQuestionGuardrail;
