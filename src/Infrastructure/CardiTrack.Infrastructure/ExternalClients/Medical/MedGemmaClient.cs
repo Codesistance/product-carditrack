@@ -244,7 +244,11 @@ public class MedGemmaClient : IExternalAiClient
                     operationName, meta.DoneReason);
             }
 
-            _logger.LogInformation(
+            // Debug, not Information: model/tokens/elapsed are already on the span tags and
+            // AiTelemetry's metrics set/recorded just above — this line's only unique value is
+            // done_reason/server-side timing breakdown for local troubleshooting, not something
+            // worth shipping on every single successful call.
+            _logger.LogDebug(
                 "MedGemma {Operation} completed: model {Model}, {ElapsedMs} ms, "
                 + "tokens in {InputTokens} out {OutputTokens}, done_reason {DoneReason}, "
                 + "server total {ServerTotalMs} ms (load {LoadMs}, prompt_eval {PromptEvalMs}, eval {EvalMs}), "

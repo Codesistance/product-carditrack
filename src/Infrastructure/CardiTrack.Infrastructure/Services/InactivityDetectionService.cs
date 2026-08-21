@@ -149,8 +149,10 @@ public class InactivityDetectionService : IInactivityDetectionService
             {
                 // Not this pass's problem to solve: the sync path records what a failure means for
                 // the connection (SyncError, TokenExpired), and a member whose device cannot be
-                // reached is exactly who the alert below is for.
-                _logger.LogInformation(
+                // reached is exactly who the alert below is for. Still Warning, not Information —
+                // an exception is always worth a level someone watching Warning+ would see, even
+                // when (as here) the outcome it leads to is expected and handled.
+                _logger.LogWarning(
                     ex, "Inactivity probe pull failed for DeviceConnection {DeviceConnectionId}.", connection.Id);
             }
         }

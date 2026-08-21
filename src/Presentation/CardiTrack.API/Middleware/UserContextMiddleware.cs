@@ -53,8 +53,6 @@ public class UserContextMiddleware
                     // from telemetry. Resolve an Auth0UserId against the database when a support
                     // question actually needs the person.
                     LogContext.PushProperty("Auth0UserId", auth0UserId);
-
-                    _logger.LogDebug("User context set for Auth0 user: {Auth0UserId}", auth0UserId);
                 }
             }
             catch (Exception ex)

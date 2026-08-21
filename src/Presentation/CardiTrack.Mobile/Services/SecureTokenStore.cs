@@ -49,7 +49,6 @@ public sealed class SecureTokenStore : ITokenStore
     public async Task<AuthTokens?> GetAsync()
     {
         using var activity = ActivitySource.StartActivity("SecureTokenStore.Get");
-        _logger.LogDebug("SecureTokenStore: reading tokens from platform secure storage");
 
         try
         {
@@ -57,7 +56,6 @@ public sealed class SecureTokenStore : ITokenStore
             if (string.IsNullOrEmpty(accessToken))
             {
                 activity?.SetTag("carditrack.secure_storage.result", "empty");
-                _logger.LogDebug("SecureTokenStore: no stored access token");
                 return null;
             }
 
@@ -94,7 +92,6 @@ public sealed class SecureTokenStore : ITokenStore
     public async Task SaveAsync(AuthTokens tokens)
     {
         using var activity = ActivitySource.StartActivity("SecureTokenStore.Save");
-        _logger.LogDebug("SecureTokenStore: saving tokens to platform secure storage");
 
         try
         {
@@ -105,7 +102,6 @@ public sealed class SecureTokenStore : ITokenStore
                 tokens.ExpiresAt.ToUnixTimeSeconds().ToString(CultureInfo.InvariantCulture));
 
             activity?.SetTag("carditrack.secure_storage.result", "ok");
-            _logger.LogDebug("SecureTokenStore: save succeeded");
         }
         catch (TimeoutException ex)
         {

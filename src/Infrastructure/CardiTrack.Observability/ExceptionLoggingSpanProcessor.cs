@@ -25,6 +25,15 @@ public sealed class ExceptionLoggingSpanProcessor : BaseProcessor<Activity>
         _logger = logger;
     }
 
+    // Standard OTel span tags that either duplicate the exception type/message already in the
+    // log message, or are plumbing (service.type/service.method from TracingProxy) rather than
+    // business context — excluded from Context so it surfaces only what a caller wouldn't
+    // otherwise get from the generic message, e.g. notification.phase, notification.delivery_id.
+    private static readonly HashSet<string> ExcludedTagKeys =
+    [
+        "error.type", "error.message", "service.type", "service.method",
+    ];
+
     public override void OnEnd(Activity activity)
     {
         if (activity.Status != ActivityStatusCode.Error)
@@ -37,10 +46,26 @@ public sealed class ExceptionLoggingSpanProcessor : BaseProcessor<Activity>
 
             var type = activityEvent.Tags.FirstOrDefault(t => t.Key == ExceptionTypeTag).Value;
             var message = activityEvent.Tags.FirstOrDefault(t => t.Key == ExceptionMessageTag).Value;
+            var context = FormatContext(activity);
 
             _logger.LogError(
-                "Span exception on {DisplayName}: {ExceptionType} - {ExceptionMessage}",
-                activity.DisplayName, type, message);
+                "Span exception on {DisplayName}: {ExceptionType} - {ExceptionMessage}{Context}",
+                activity.DisplayName, type, message, context);
         }
+    }
+
+    /// <summary>
+    /// Renders the activity's own tags (e.g. <c>notification.phase</c>, <c>notification.delivery_id</c>)
+    /// as trailing " (key=value, ...)" text, so a call site can drop its own catch-block LogError in
+    /// favour of this one without losing the business context that made the specific log worth having.
+    /// </summary>
+    private static string FormatContext(Activity activity)
+    {
+        var pairs = activity.TagObjects
+            .Where(t => !ExcludedTagKeys.Contains(t.Key) && t.Value is not null)
+            .Select(t => $"{t.Key}={t.Value}")
+            .ToList();
+
+        return pairs.Count == 0 ? string.Empty : $" ({string.Join(", ", pairs)})";
     }
 }

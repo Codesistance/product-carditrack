@@ -267,7 +267,11 @@ public class VertexAiClient : IExternalAiClient
                     operationName, candidate?.FinishReason);
             }
 
-            _logger.LogInformation(
+            // Debug, not Information: model/tokens/elapsed are already on the span tags and
+            // AiTelemetry's metrics set/recorded just above — this line's only unique value is
+            // finish_reason/thoughts tokens and a plain-text trail for local troubleshooting, not
+            // something worth shipping on every single successful call.
+            _logger.LogDebug(
                 "Vertex {Operation} completed: model {Model}, {ElapsedMs} ms, "
                 + "tokens in {InputTokens} out {OutputTokens} (thoughts {ThoughtsTokens}), "
                 + "finish_reason {FinishReason}, trace {TraceId}",

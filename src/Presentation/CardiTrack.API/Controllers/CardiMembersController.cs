@@ -110,8 +110,10 @@ public class CardiMembersController : BaseApiController
         try
         {
             await _cardiMembers.RemoveAsync(UserContext.UserId, cardiMemberId, ct);
-            Logger.LogInformation(
-                "CardiMember {CardiMemberId} removed by user {UserId}", cardiMemberId, UserContext.UserId);
+            // Not logged here — AuditLoggingMiddleware already writes a durable, queryable
+            // AuditLog row for this request (controller carries [AuditHealthDataAccess]),
+            // capturing user, member, timestamp, IP, and outcome; a plain-text log would only
+            // duplicate a strict subset of it.
             return NoContent();
         }
         catch (KeyNotFoundException ex)
@@ -164,9 +166,8 @@ public class CardiMembersController : BaseApiController
         try
         {
             var state = await _cardiMembers.ResumeMonitoringAsync(UserContext.UserId, cardiMemberId, ct);
-            Logger.LogInformation(
-                "Monitoring resumed for CardiMember {CardiMemberId} by user {UserId}",
-                cardiMemberId, UserContext.UserId);
+            // Not logged here — see Remove: AuditLoggingMiddleware's row already covers
+            // user/member/timestamp for this request, and there's no further detail to add.
             return Success(state, "Monitoring is back on.");
         }
         catch (KeyNotFoundException ex)

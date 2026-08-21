@@ -351,14 +351,17 @@ public class MedGemmaClientTests
     }
 
     [Fact]
-    public async Task GenerateAsync_LogsCompletionAtInformation_WithTokenCountsAndNoPromptText()
+    public async Task GenerateAsync_LogsCompletionAtDebug_WithTokenCountsAndNoPromptText()
     {
         var handler = new FakeHttpMessageHandler().Enqueue(HttpStatusCode.OK, GeneratePayload);
         var client = CreateClient(handler, out var logger);
 
         await client.GenerateAsync(Prompt);
 
-        var completion = Assert.Single(logger.Entries, e => e.Level == LogLevel.Information);
+        // Debug, not Information — model/tokens/elapsed are already on the span tags and
+        // AiTelemetry's metrics; this completion line is a local-troubleshooting aid, not
+        // something worth shipping on every successful call.
+        var completion = Assert.Single(logger.Entries, e => e.Level == LogLevel.Debug);
         Assert.Contains("412", completion.Message);
         Assert.Contains("128", completion.Message);
         Assert.All(logger.Entries, e =>
