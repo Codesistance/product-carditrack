@@ -73,6 +73,21 @@ Region preference: `europe-west2` first (matches the estate and the DPIA's pin),
 `europe-west1`, then `europe-west4` — all inside the Terraform validation allowlist. Never
 `global` and never a US region (DPIA exclusion).
 
+Measured availability, 2026-08-21 (publisher-model metadata `GET
+/v1/publishers/google/models/{m}` per regional endpoint — 200 = served, 404 = not; a cheaper
+signal than `generateContent`, which needs `aiplatform.user`):
+
+| Model | europe-west2 | europe-west1 | europe-west4 |
+|---|---|---|---|
+| gemini-2.5-flash-lite | ✗ 404 | ✓ | ✓ |
+| gemini-2.5-flash | ✓ | ✓ | ✓ |
+| gemini-3.1-flash-lite | ✗ | ✗ | ✗ |
+| gemini-3.5-flash | ✓ | ✗ | ✓ |
+
+This is why `rewrite_ai_location` defaults to `europe-west1` (flash-lite is not in London)
+while `public_ai_location` stays `europe-west2` (flash is). Re-measure before any model change
+— availability moves.
+
 ## 4. Changing models — the whole point of the design
 
 The model is a tfvar, not code:
