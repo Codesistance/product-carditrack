@@ -51,7 +51,7 @@ resource "google_artifact_registry_repository_iam_member" "common_cloud_run_read
   member     = "serviceAccount:${data.google_project.current.number}-compute@developer.gserviceaccount.com"
 }
 
-# ── europe-west1 mirror, for the GPU service ─────────────────────────────────────────────────
+# ── Mirror in the GPU service's own region ───────────────────────────────────────────────────
 # Cloud Run pulls an image from the region it runs in. The MedGemma image is multi-GB of model
 # blobs, and pulling that cross-region on every cold start — which this service now does by
 # design, since it scales to zero — is the difference between a cold start being seconds and
