@@ -346,14 +346,35 @@ public sealed class ChatTurnItem
     /// <summary>
     /// When this turn was sent or generated, in the reader's local time — a conversation a
     /// caregiver returns to hours later needs to say whether "steady today" was this morning or
-    /// last night. Time only: a session lives two hours, so a date would be noise on every line.
-    /// Empty on an error bubble, which describes a failure rather than a moment in the thread.
+    /// last night. Empty on an error bubble, which describes a failure rather than a moment in
+    /// the thread.
     /// </summary>
     public string Timestamp { get; init; } = string.Empty;
     public bool HasTimestamp => Timestamp.Length > 0;
 
-    private static string FormatTimestamp(DateTimeOffset at) =>
-        at.ToLocalTime().ToString("HH:mm", CultureInfo.CurrentCulture);
+    /// <summary>
+    /// The time in 12-hour form, with the day added whenever the turn is not from today. A bare
+    /// "11:58 pm" on a thread opened the next morning reads as last night at best and as this
+    /// morning at worst — and a session that runs past midnight, or one reopened later, puts
+    /// exactly that line on screen. Today's turns stay time-only: on the common path the date
+    /// would repeat on every bubble and say nothing.
+    /// </summary>
+    private static string FormatTimestamp(DateTimeOffset at)
+    {
+        var local = at.ToLocalTime();
+        // Invariant for the clock: the designator is asked for explicitly, and a 24-hour culture
+        // would silently drop it. The date part stays culture-aware, where month names belong.
+        var time = local.ToString("h:mm tt", CultureInfo.InvariantCulture).ToLowerInvariant();
+
+        var day = DateOnly.FromDateTime(local.DateTime);
+        var today = DateOnly.FromDateTime(DateTime.Now);
+        if (day == today)
+            return time;
+
+        return day == today.AddDays(-1)
+            ? $"Yesterday {time}"
+            : $"{local.ToString("MMM d", CultureInfo.CurrentCulture)} {time}";
+    }
     public required Color TextColor { get; init; }
     public required Color BubbleBackground { get; init; }
     public required LayoutOptions RowAlignment { get; init; }
