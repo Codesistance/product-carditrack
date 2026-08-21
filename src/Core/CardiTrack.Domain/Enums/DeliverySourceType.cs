@@ -17,5 +17,8 @@ public enum DeliverySourceType
     Alert = 1,
 
     [Display(Name = "Notification")]
-    Notification = 2
+    Notification = 2,
+
+    [Display(Name = "Questionnaire")]
+    Questionnaire = 3
 }

@@ -53,5 +53,9 @@ public class MemberQuestionnaireConfiguration : IEntityTypeConfiguration<MemberQ
 
         // Serves both the interval probe and the newest-first list the apps read.
         builder.HasIndex(q => new { q.CardiMemberId, q.GeneratedAtUtc });
+
+        // QuestionnaireAlertWorker's due-for-push sweep, mirroring the Status+AskableUntilUtc index
+        // above for the same reason: Status leads because pending is the small, shrinking slice.
+        builder.HasIndex(q => new { q.Status, q.LastRemindedAtUtc });
     }
 }

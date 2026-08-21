@@ -71,6 +71,13 @@ public class DashboardResponse
     /// </summary>
     public WeatherSnapshotResponse? Weather { get; set; }
 
+    /// <summary>
+    /// The question still waiting on this family, if any — at most one per member (see
+    /// <see cref="QuestionnairesPageResponse.Pending"/>). Drives the CardiMember card's Q&amp;A
+    /// icon: its pulse, its badge, and what opens when a caregiver taps it.
+    /// </summary>
+    public QuestionnaireResponse? PendingQuestionnaire { get; set; }
+
     public DateTime GeneratedAt { get; set; }
 }
 

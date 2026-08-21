@@ -3,6 +3,7 @@ using System;
 using CardiTrack.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace CardiTrack.Infrastructure.Migrations
 {
     [DbContext(typeof(CardiTrackDbContext))]
-    partial class CardiTrackDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260821221531_AddQuestionnaireReminderTracking")]
+    partial class AddQuestionnaireReminderTracking
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -1045,48 +1048,6 @@ namespace CardiTrack.Infrastructure.Migrations
                     b.HasIndex("CardiMemberId", "HourStartUtc");
 
                     b.ToTable("GranularMetricHours", (string)null);
-                });
-
-            modelBuilder.Entity("CardiTrack.Domain.Entities.MemberAdvise", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid>("CardiMemberId")
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTime>("CreatedDate")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("timestamp with time zone")
-                        .HasDefaultValueSql("NOW()");
-
-                    b.Property<DateTime>("GeneratedAtUtc")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("GuidelineCited")
-                        .HasMaxLength(200)
-                        .HasColumnType("character varying(200)");
-
-                    b.Property<string>("Suggestion")
-                        .IsRequired()
-                        .HasMaxLength(500)
-                        .HasColumnType("character varying(500)");
-
-                    b.Property<string>("Summary")
-                        .IsRequired()
-                        .HasMaxLength(500)
-                        .HasColumnType("character varying(500)");
-
-                    b.Property<DateTime?>("UpdatedDate")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("CardiMemberId")
-                        .IsUnique();
-
-                    b.ToTable("MemberAdvises", (string)null);
                 });
 
             modelBuilder.Entity("CardiTrack.Domain.Entities.MemberChatSession", b =>

@@ -27,6 +27,27 @@ public enum PopupSeverity
     Error,
 }
 
+/// <summary>What the caregiver did with the question <see cref="IPopupService.ShowPendingQuestionAsync"/>
+/// opened. <see cref="Cancelled"/> covers every way of leaving without acting — the scrim, the
+/// back button — same as a null return from the other popups.</summary>
+public enum QuestionPopupOutcome
+{
+    Cancelled,
+    Answered,
+    Dismissed,
+}
+
+/// <summary>
+/// The popup only reports intent; <see cref="Answer"/> is the trimmed text to save. It does not
+/// call the API itself — the caller does that, the same ownership <c>QuestionnairesPage</c> and
+/// <c>CardiMemberDetailPage</c> already have over their own inline <c>QuestionCard</c>s, so there
+/// is exactly one place per screen that decides what an answer or a skip does next.
+/// </summary>
+public sealed record QuestionPopupResult(QuestionPopupOutcome Outcome, string? Answer = null)
+{
+    public static readonly QuestionPopupResult Cancelled = new(QuestionPopupOutcome.Cancelled);
+}
+
 /// <summary>
 /// Central app-styled popups replacing the stock <c>DisplayAlertAsync</c> dialogs.
 /// Default titles are friendly phrases ("Heads up", "Something went wrong") rather
@@ -84,4 +105,13 @@ public interface IPopupService
 
     /// <summary>Shows the detail behind a dashboard/detail weather chip. Completes once dismissed.</summary>
     Task ShowWeatherAsync(WeatherSnapshotResponse weather);
+
+    /// <summary>
+    /// Opens the CardiMember card's pending question as a modal — the same <c>QuestionCard</c>
+    /// <c>QuestionnairesPage</c>/<c>CardiMemberDetailPage</c> show inline, in the popup shell
+    /// <see cref="ShowWeatherAsync"/> uses. Completes with what the caregiver did; see
+    /// <see cref="QuestionPopupResult"/> for why this doesn't call the API itself.
+    /// </summary>
+    Task<QuestionPopupResult> ShowPendingQuestionAsync(
+        QuestionnaireResponse questionnaire, string? memberFirstName);
 }

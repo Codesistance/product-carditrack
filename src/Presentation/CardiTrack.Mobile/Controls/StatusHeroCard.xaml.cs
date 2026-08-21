@@ -5,6 +5,8 @@ namespace CardiTrack.Mobile.Controls;
 
 public partial class StatusHeroCard : ContentView
 {
+    private const string QaPulseAnimation = "qa-pulse";
+
     /// <summary>Raised when the card body is tapped — the dashboard's route into M1-13.</summary>
     public event EventHandler? MemberTapped;
 
@@ -89,6 +91,59 @@ public partial class StatusHeroCard : ContentView
         _healthStatus = data.HealthStatus;
 
         ApplyWeather(data.Weather);
+        ApplyPendingQuestionnaire(data.PendingQuestionnaire);
+    }
+
+    /// <summary>
+    /// Shows or hides the Q&amp;A button beside the Daybook one, from
+    /// <see cref="DashboardResponse.PendingQuestionnaire"/>. Starts the pulse while a question is
+    /// waiting, stops it otherwise — <see cref="OnQaTapped"/> is what a caregiver taps into to
+    /// answer it.
+    /// </summary>
+    private void ApplyPendingQuestionnaire(QuestionnaireResponse? pending)
+    {
+        var hasPending = pending is not null;
+        QaBorder.IsVisible = hasPending;
+        QaBadge.IsVisible = hasPending;
+        QaPulseRing.IsVisible = hasPending;
+
+        if (!hasPending)
+        {
+            StopQaPulse();
+            return;
+        }
+
+        // Always "1" today — at most one pending question per member (see
+        // QuestionnairesPageResponse.Pending) — but a superscript number rather than a dot, so
+        // this still reads correctly if that ever stops being true.
+        QaBadgeLabel.Text = "1";
+        SemanticProperties.SetDescription(QaBorder, "Questions, 1 waiting");
+        StartQaPulse();
+    }
+
+    /// <summary>
+    /// Same construction as <see cref="PendingBotIndicator"/>'s breathing ring, scaled to stay
+    /// inside the button's own 36x36 bounds rather than growing past them — this button sits in a
+    /// row with Alerts right beside it, with no room for a ring to spill into.
+    /// </summary>
+    private void StartQaPulse()
+    {
+        this.AbortAnimation(QaPulseAnimation);
+
+        var pulse = new Animation
+        {
+            { 0.00, 0.50, new Animation(v => QaPulseRing.Opacity = v, 0.0, 0.6, Easing.SinInOut) },
+            { 0.50, 1.00, new Animation(v => QaPulseRing.Opacity = v, 0.6, 0.0, Easing.SinInOut) },
+            { 0.00, 0.50, new Animation(v => QaPulseRing.Scale = v, 0.9, 1.05, Easing.SinInOut) },
+            { 0.50, 1.00, new Animation(v => QaPulseRing.Scale = v, 1.05, 0.9, Easing.SinInOut) },
+        };
+        pulse.Commit(this, QaPulseAnimation, length: 1400, repeat: () => QaBorder.IsVisible);
+    }
+
+    private void StopQaPulse()
+    {
+        this.AbortAnimation(QaPulseAnimation);
+        QaPulseRing.Opacity = 0;
     }
 
     /// <summary>Icon-and-temperature chip beside the name. Hidden outright rather than shown
@@ -112,11 +167,18 @@ public partial class StatusHeroCard : ContentView
     /// <summary>Raised by the card's top-right Alerts button.</summary>
     public event EventHandler? AlertsTapped;
 
+    /// <summary>Raised by the Q&amp;A button, only visible while a question is waiting. The page
+    /// decides what "answer it" means — see <see cref="IPopupService.ShowPendingQuestionAsync"/>.</summary>
+    public event EventHandler? QaTapped;
+
     private void OnDaybookTapped(object? sender, TappedEventArgs e) =>
         DaybookTapped?.Invoke(this, EventArgs.Empty);
 
     private void OnAlertsTapped(object? sender, TappedEventArgs e) =>
         AlertsTapped?.Invoke(this, EventArgs.Empty);
+
+    private void OnQaTapped(object? sender, TappedEventArgs e) =>
+        QaTapped?.Invoke(this, EventArgs.Empty);
 
     private void OnWeatherTapped(object? sender, TappedEventArgs e)
     {

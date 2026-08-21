@@ -45,6 +45,10 @@ public static class DeliveryPlanner
             // Nudges never push except the two safety-class rules, which arrive as
             // DeliveryCategory.Safety already — a Nudge-category row is always in-app.
             DeliveryCategory.Nudge => false,
+            // A question is an invitation, not an anomaly, so it never overrides quiet hours (see
+            // overridesQuietHours below) — but it must reach the family, so unlike a Nudge it does
+            // push.
+            DeliveryCategory.Questionnaire => true,
             _ => false
         };
 

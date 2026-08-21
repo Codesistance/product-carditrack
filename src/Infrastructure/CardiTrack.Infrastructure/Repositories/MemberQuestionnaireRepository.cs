@@ -41,6 +41,19 @@ public class MemberQuestionnaireRepository : Repository<MemberQuestionnaire>, IM
                 ct);
     }
 
+    public async Task<MemberQuestionnaire?> GetPendingAsync(
+        Guid cardiMemberId, DateTime utcNow, CancellationToken ct = default)
+    {
+        // HasLapsed's condition, written out, matching HasPendingAsync's translation for the same
+        // reason. At most one row can match — see MemberQuestionnaireConfiguration's index.
+        return await _dbSet
+            .AsNoTracking()
+            .Where(q => q.CardiMemberId == cardiMemberId
+                        && q.Status == QuestionnaireStatus.Pending
+                        && (q.AskableUntilUtc == null || q.AskableUntilUtc > utcNow))
+            .FirstOrDefaultAsync(ct);
+    }
+
     public async Task<IReadOnlyList<MemberQuestionnaire>> GetLapsedPendingAsync(
         DateTime utcNow, int limit, CancellationToken ct = default)
     {
@@ -53,6 +66,39 @@ public class MemberQuestionnaireRepository : Repository<MemberQuestionnaire>, IM
             .OrderBy(q => q.AskableUntilUtc)
             .Take(limit)
             .ToListAsync(ct);
+    }
+
+    public async Task<IReadOnlyList<MemberQuestionnaire>> GetDueForAlertAsync(
+        DateTime utcNow, DateTime reminderCutoffUtc, int maxPushes, int limit, CancellationToken ct = default)
+    {
+        // No-tracking, like GetLapsedPendingAsync's sibling probe: the caller claims a row with
+        // TryClaimAlertAsync's own conditional update rather than mutating this copy.
+        return await _dbSet
+            .AsNoTracking()
+            .Where(q => q.Status == QuestionnaireStatus.Pending
+                        && (q.AskableUntilUtc == null || q.AskableUntilUtc > utcNow)
+                        && q.ReminderCount < maxPushes
+                        && (q.LastRemindedAtUtc == null || q.LastRemindedAtUtc <= reminderCutoffUtc))
+            .OrderBy(q => q.LastRemindedAtUtc ?? q.GeneratedAtUtc)
+            .Take(limit)
+            .ToListAsync(ct);
+    }
+
+    public async Task<bool> TryClaimAlertAsync(
+        Guid questionnaireId, int expectedReminderCount, DateTime utcNow, CancellationToken ct = default)
+    {
+        // ExecuteUpdate, so the read and the write are one statement the database arbitrates — see
+        // NotificationRepository.TryClaimForPushAsync for the same idiom and why an in-memory
+        // decision cannot be made safe here.
+        var claimed = await _dbSet
+            .Where(q => q.Id == questionnaireId
+                        && q.Status == QuestionnaireStatus.Pending
+                        && q.ReminderCount == expectedReminderCount)
+            .ExecuteUpdateAsync(s => s
+                .SetProperty(q => q.ReminderCount, expectedReminderCount + 1)
+                .SetProperty(q => q.LastRemindedAtUtc, utcNow), ct);
+
+        return claimed == 1;
     }
 
     public async Task<DateTime?> GetLatestGeneratedAtAsync(

@@ -25,6 +25,15 @@ public interface IQuestionnaireService
         CancellationToken ct = default);
 
     /// <summary>
+    /// The pending question alone, or null when there isn't one — what
+    /// <see cref="DashboardService"/> shows on the CardiMember card, where fetching (and decrypting)
+    /// the whole history via <see cref="GetForMemberAsync"/> just for this would be wasted work on
+    /// a screen that refreshes every 30 seconds.
+    /// </summary>
+    Task<QuestionnaireResponse?> GetPendingAsync(
+        Guid requestingUserId, Guid cardiMemberId, CancellationToken ct = default);
+
+    /// <summary>
     /// Records an answer. The same call answers a pending question and replaces an existing answer —
     /// editing is not a different act, and a second endpoint would only be a second thing to keep
     /// authorised.

@@ -34,6 +34,22 @@ public interface IDispatchService
     Task<IReadOnlyList<NotificationDelivery>> EnqueueForAlertAsync(Guid alertId, CancellationToken ct = default);
 
     /// <summary>
+    /// Resolves a <see cref="Domain.Entities.MemberQuestionnaire"/> to its recipients and enqueues
+    /// one delivery per caregiver with <c>ReceiveAlerts</c> — the same fan-out
+    /// <see cref="EnqueueForAlertAsync"/> does for an alert. Called by
+    /// <c>QuestionnaireAlertWorker</c>'s sweep, both for a question's first push and for every
+    /// reminder after it.
+    /// </summary>
+    /// <param name="occurrence">
+    /// Which push this is for this question — 0 for the original ask, 1 for the first reminder, and
+    /// so on. Namespaces <see cref="EnqueueRequest.DedupKey"/> per recipient per push, so a claimed
+    /// row that fails after the claim still doesn't re-deliver a push already sent, while a genuine
+    /// next reminder isn't deduped against the one before it.
+    /// </param>
+    Task<IReadOnlyList<NotificationDelivery>> EnqueueForQuestionnaireAsync(
+        Guid questionnaireId, int occurrence, CancellationToken ct = default);
+
+    /// <summary>
     /// Re-attempts a row <c>NotificationDispatchWorker</c> claimed off the outbox. If the row
     /// already targets a specific device (a prior attempt fanned out to it), only that device is
     /// retried. If it never got that far — the original enqueue found zero live tokens — this
@@ -177,6 +193,39 @@ public class DispatchService : IDispatchService
                 DedupKey: $"alert:{alert.Id}:{userId}",
                 CollapseKey: $"alert-{alert.Id}",
                 AlertType: alert.AlertType);
+
+            results.Add(await EnqueueAsync(request, ct));
+        }
+
+        return results;
+    }
+
+    public async Task<IReadOnlyList<NotificationDelivery>> EnqueueForQuestionnaireAsync(
+        Guid questionnaireId, int occurrence, CancellationToken ct = default)
+    {
+        // A missing questionnaire is the caller's concern to log — same stance EnqueueForAlertAsync
+        // takes, for the same zero-package-core reason.
+        var questionnaire = await _unitOfWork.MemberQuestionnaires.GetByIdAsync(questionnaireId);
+        if (questionnaire is null)
+            return [];
+
+        var links = await _unitOfWork.UserCardiMembers.GetByCardiMemberIdAsync(questionnaire.CardiMemberId);
+        var recipients = links.Where(l => l.IsActive && l.ReceiveAlerts).Select(l => l.UserId).Distinct().ToList();
+
+        var results = new List<NotificationDelivery>(recipients.Count);
+        foreach (var userId in recipients)
+        {
+            var request = new EnqueueRequest(
+                SourceType: DeliverySourceType.Questionnaire,
+                SourceId: questionnaire.Id,
+                UserId: userId,
+                CardiMemberId: questionnaire.CardiMemberId,
+                Category: DeliveryCategory.Questionnaire,
+                Severity: null,
+                DedupKey: $"questionnaire:{questionnaire.Id}:{userId}:{occurrence}",
+                // Constant across occurrences, unlike the dedup key: a reminder should replace the
+                // original push on the device rather than stack beneath it.
+                CollapseKey: $"questionnaire-{questionnaire.Id}");
 
             results.Add(await EnqueueAsync(request, ct));
         }

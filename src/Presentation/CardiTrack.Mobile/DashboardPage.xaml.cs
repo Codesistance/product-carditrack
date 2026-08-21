@@ -1,10 +1,12 @@
-﻿using CardiTrack.Application.DTOs.Responses;
+﻿using CardiTrack.Application.DTOs.Requests;
+using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Mobile.Controls;
 using CardiTrack.Mobile.Core.Api;
 using CardiTrack.Mobile.Core.Auth;
 using CardiTrack.Mobile.Core.Navigation;
 using CardiTrack.Mobile.Core.Offline;
 using CardiTrack.Mobile.Core.Onboarding;
+using CardiTrack.Mobile.Core.Questionnaires;
 using CardiTrack.Mobile.Onboarding;
 using CardiTrack.Mobile.Services;
 
@@ -43,6 +45,7 @@ public partial class DashboardPage : ContentPage
     private readonly IAuthService _authService;
     private readonly IPopupService _popups;
     private readonly IStatusLineStore _statusLines;
+    private readonly IQuestionValidityService _questionValidity;
 
     private enum DashboardState { Loading, Loaded, NoMember, Error }
 
@@ -64,16 +67,19 @@ public partial class DashboardPage : ContentPage
         ICardiTrackApiClient api,
         IAuthService authService,
         IPopupService popups,
-        IStatusLineStore statusLines)
+        IStatusLineStore statusLines,
+        IQuestionValidityService questionValidity)
     {
         InitializeComponent();
         _api = api;
         _authService = authService;
         _popups = popups;
         _statusLines = statusLines;
+        _questionValidity = questionValidity;
         HeroCard.MemberTapped += (_, _) => OpenMemberDetails();
         HeroCard.DaybookTapped += OnDaybookTapped;
         HeroCard.AlertsTapped += OnHeroAlertsTapped;
+        HeroCard.QaTapped += OnHeroQaTapped;
         HeroCard.WeatherTapped += async (_, weather) => await _popups.ShowWeatherAsync(weather);
         Header.BellTapped += OnBellClicked;
 
@@ -606,6 +612,60 @@ public partial class DashboardPage : ContentPage
             return;
 
         await Shell.Current.GoToTabAsync($"{AppShell.JournalRoute}?memberId={_memberId}");
+    }
+
+    /// <summary>
+    /// The hero card's Q&amp;A button — opens the pending question as a modal, and applies
+    /// whatever the caregiver did with it. Same validity re-check and lapsed-question copy
+    /// QuestionnairesPage's own pending card uses: the badge that made this button visible was
+    /// drawn from the last load, and the question can have lapsed in the time since.
+    /// </summary>
+    private async void OnHeroQaTapped(object? sender, EventArgs e)
+    {
+        if (_lastData?.PendingQuestionnaire is not { } pending)
+            return;
+
+        var verified = _questionValidity.Verify(pending);
+        if (verified is null)
+        {
+            await _popups.ShowInfoAsync(
+                "That one was about a day that's now over, so we've let it go. We'll ask again if "
+                + "it still matters.",
+                "This question has passed");
+            await LoadAsync(force: true);
+            return;
+        }
+
+        var result = await _popups.ShowPendingQuestionAsync(
+            verified, NameFormatting.FirstName(_lastData.Name));
+
+        switch (result.Outcome)
+        {
+            case QuestionPopupOutcome.Answered when result.Answer is { } answer:
+                try
+                {
+                    await _api.AnswerQuestionnaireAsync(
+                        verified.Id, new AnswerQuestionnaireRequest { AnswerText = answer });
+                    await LoadAsync(force: true);
+                }
+                catch (ApiException ex) when (!ex.IsSessionExpired)
+                {
+                    await _popups.ShowWarningAsync(ex.Message, "Couldn't save your answer");
+                }
+                break;
+
+            case QuestionPopupOutcome.Dismissed:
+                try
+                {
+                    await _api.DismissQuestionnaireAsync(verified.Id);
+                    await LoadAsync(force: true);
+                }
+                catch (ApiException ex) when (!ex.IsSessionExpired)
+                {
+                    await _popups.ShowWarningAsync(ex.Message, "Couldn't skip that question");
+                }
+                break;
+        }
     }
 
     /// <summary>A dashboard recent-alert tile opens the matching detail screen.</summary>
