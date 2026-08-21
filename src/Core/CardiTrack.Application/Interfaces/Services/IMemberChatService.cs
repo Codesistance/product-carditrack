@@ -33,4 +33,13 @@ public interface IMemberChatService
     /// </summary>
     Task<IReadOnlyList<string>> GetWaitingSentencesAsync(
         Guid userId, Guid cardiMemberId, string message, CancellationToken ct = default);
+
+    /// <summary>
+    /// Question chips for the chat's empty state, derived deterministically from the member's
+    /// data state — an unresolved alert earns an alert question, and the rest name what the
+    /// assistant can do. No model call. Throws <see cref="KeyNotFoundException"/> when the caller
+    /// may not view this member.
+    /// </summary>
+    Task<MemberChatSuggestionsResponse> GetSuggestionsAsync(
+        Guid userId, Guid cardiMemberId, CancellationToken ct = default);
 }

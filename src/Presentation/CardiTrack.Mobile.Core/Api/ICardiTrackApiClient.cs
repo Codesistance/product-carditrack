@@ -193,6 +193,11 @@ public interface ICardiTrackApiClient
     Task<MemberChatWaitingResponse> GetMemberChatWaitingSentencesAsync(
         Guid cardiMemberId, MemberChatMessageRequest request, CancellationToken ct = default);
 
+    /// <summary>Question chips for the chat's empty state — deterministic server copy, no model
+    /// call, instant. The caller treats a failure as "no chips" rather than an error.</summary>
+    Task<MemberChatSuggestionsResponse> GetMemberChatSuggestionsAsync(
+        Guid cardiMemberId, CancellationToken ct = default);
+
     /// <summary>
     /// Puts an acknowledged alert back to unhandled — the undo behind M1-11's Undo button.
     /// Rejected for an alert the system has already resolved.

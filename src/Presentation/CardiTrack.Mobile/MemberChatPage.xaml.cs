@@ -73,7 +73,69 @@ public partial class MemberChatPage : ContentView
     private async void OnSendTapped(object? sender, EventArgs e)
     {
         _ = BounceSendIconAsync();
-        await SendAsync();
+        var typed = MessageEditor.Text?.Trim();
+        if (string.IsNullOrWhiteSpace(typed))
+            return;
+
+        MessageEditor.Text = string.Empty;
+        await SendAsync(typed);
+    }
+
+    /// <summary>
+    /// Fetches the chips and renders them. Failure is silent by design: chips are an
+    /// affordance, and a caregiver who never sees them can still type — surfacing an error over
+    /// missing suggestions would be worse than their absence.
+    /// </summary>
+    private async Task LoadSuggestionsAsync()
+    {
+        try
+        {
+            var response = await _api.GetMemberChatSuggestionsAsync(_memberId);
+            if (response.Suggestions.Count == 0 || _turns.Count > 0)
+                return;
+
+            SuggestionsRow.Clear();
+            foreach (var suggestion in response.Suggestions)
+                SuggestionsRow.Add(BuildSuggestionChip(suggestion));
+
+            SuggestionsPanel.IsVisible = _turns.Count == 0;
+        }
+        catch (Exception ex)
+        {
+            ScreenRefresh.LogFailure(ex, nameof(MemberChatPage), "while loading suggestions");
+        }
+    }
+
+    /// <summary>
+    /// One tappable question pill. Built in code rather than XAML, following the same convention
+    /// as <see cref="Controls.FilterChipBar"/> — whose own pills these deliberately match in
+    /// padding, radius and type — because that control is enum-typed to AlertFilter and cannot
+    /// serve free-text labels without being generalised for one caller.
+    /// </summary>
+    private Border BuildSuggestionChip(string suggestion)
+    {
+        var chip = new Border
+        {
+            BackgroundColor = Microsoft.Maui.Controls.Application.Current?.Resources["White"] as Color ?? Colors.White,
+            Stroke = (Microsoft.Maui.Controls.Application.Current?.Resources["PrimaryDark"] as Color ?? Colors.Blue)
+                .WithAlpha(0.5f),
+            StrokeThickness = 1,
+            Padding = new Thickness(20, 9, 20, 9),
+            StrokeShape = new Microsoft.Maui.Controls.Shapes.RoundRectangle { CornerRadius = 20 },
+            Content = new Label
+            {
+                Text = suggestion,
+                FontFamily = "QuicksandSemiBold",
+                FontSize = 14,
+                TextColor = Microsoft.Maui.Controls.Application.Current?.Resources["HeadingText"] as Color ?? Colors.Black,
+                VerticalOptions = LayoutOptions.Center,
+            },
+        };
+
+        var tap = new TapGestureRecognizer();
+        tap.Tapped += async (_, _) => await SendAsync(suggestion);
+        chip.GestureRecognizers.Add(tap);
+        return chip;
     }
 
     /// <summary>A small, self-contained press animation — deliberately not awaited by the send
@@ -106,6 +168,14 @@ public partial class MemberChatPage : ContentView
             }
 
             SetState(loaded: true);
+
+            // Only on an empty conversation — a resumed session already has its own thread to
+            // follow. Deliberately not awaited: the chips are an affordance, and the sheet must
+            // not wait on them to become usable.
+            if (_turns.Count == 0)
+                _ = LoadSuggestionsAsync();
+            else
+                SuggestionsPanel.IsVisible = false;
         }
         catch (ApiException ex)
         {
@@ -132,18 +202,23 @@ public partial class MemberChatPage : ContentView
         }
     }
 
-    private async Task SendAsync()
+    /// <param name="message">
+    /// What to send. Passed in rather than read from the editor here so a suggestion chip can
+    /// send its own question without round-tripping through the input field.
+    /// </param>
+    private async Task SendAsync(string message)
     {
         if (_isSending)
             return;
 
-        var message = MessageEditor.Text?.Trim();
         if (string.IsNullOrWhiteSpace(message))
             return;
 
         _isSending = true;
         SendButton.IsEnabled = false;
-        MessageEditor.Text = string.Empty;
+        // The chips are a first-message affordance: once the conversation has started, what to
+        // ask next comes from the reply, not from a generic list.
+        SuggestionsPanel.IsVisible = false;
 
         // Let an in-flight history load land first — its rebuild clears the list, and a turn
         // appended before that Clear() would silently vanish. LoadAsync never faults (it
@@ -267,6 +342,18 @@ public sealed class ChatTurnItem
     public required bool IsUser { get; init; }
     public required string RoleLabel { get; init; }
     public required bool ShowRoleLabel { get; init; }
+
+    /// <summary>
+    /// When this turn was sent or generated, in the reader's local time — a conversation a
+    /// caregiver returns to hours later needs to say whether "steady today" was this morning or
+    /// last night. Time only: a session lives two hours, so a date would be noise on every line.
+    /// Empty on an error bubble, which describes a failure rather than a moment in the thread.
+    /// </summary>
+    public string Timestamp { get; init; } = string.Empty;
+    public bool HasTimestamp => Timestamp.Length > 0;
+
+    private static string FormatTimestamp(DateTimeOffset at) =>
+        at.ToLocalTime().ToString("HH:mm", CultureInfo.CurrentCulture);
     public required Color TextColor { get; init; }
     public required Color BubbleBackground { get; init; }
     public required LayoutOptions RowAlignment { get; init; }
@@ -284,12 +371,22 @@ public sealed class ChatTurnItem
     public IReadOnlyList<ChatChartItem> Charts { get; init; } = [];
     public bool HasCharts => Charts.Count > 0;
 
-    public static ChatTurnItem FromUserMessage(string content) => new()
+    /// <summary>
+    /// How wide this bubble may run. A charted reply takes the full sheet — the plot is the part
+    /// meant to be read closely, and it was the narrowest thing on screen at the conversational
+    /// measure. Everything else keeps that measure, which is what makes prose readable.
+    /// </summary>
+    public double BubbleMaxWidth => HasCharts ? 460 : 300;
+
+    /// <param name="sentAt">When the turn happened. Defaults to now for a message being sent
+    /// this moment; history passes the stored time.</param>
+    public static ChatTurnItem FromUserMessage(string content, DateTimeOffset? sentAt = null) => new()
     {
         Content = content,
         IsUser = true,
         RoleLabel = "You",
         ShowRoleLabel = false,
+        Timestamp = FormatTimestamp(sentAt ?? DateTimeOffset.UtcNow),
         TextColor = Colors.White,
         BubbleBackground = Microsoft.Maui.Controls.Application.Current?.Resources["Primary"] as Color ?? Colors.Blue,
         RowAlignment = LayoutOptions.End,
@@ -329,6 +426,7 @@ public sealed class ChatTurnItem
             RowAlignment = LayoutOptions.Start,
             Charts = drawable,
             ChartSummary = Summarize(summarised),
+            Timestamp = FormatTimestamp(response.GeneratedAt),
         };
     }
 
@@ -345,7 +443,7 @@ public sealed class ChatTurnItem
 
     public static ChatTurnItem FromHistory(MemberChatTurnResponse turn, string? memberFirstName) =>
         turn.Role == "User"
-            ? FromUserMessage(turn.Content)
+            ? FromUserMessage(turn.Content, turn.CreatedAtUtc)
             : new ChatTurnItem
             {
                 Content = turn.Content,
@@ -355,6 +453,7 @@ public sealed class ChatTurnItem
                 TextColor = Microsoft.Maui.Controls.Application.Current?.Resources["HeadingText"] as Color ?? Colors.Black,
                 BubbleBackground = Microsoft.Maui.Controls.Application.Current?.Resources["White"] as Color ?? Colors.White,
                 RowAlignment = LayoutOptions.Start,
+                Timestamp = FormatTimestamp(turn.CreatedAtUtc),
             };
 
     /// <summary>First-to-last per series, e.g. "Steps: 3,201 → 5,110 · Resting heart rate: 61 → 58"

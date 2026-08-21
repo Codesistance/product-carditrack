@@ -67,6 +67,11 @@ public class DataQueryPlannerService : IDataQueryPlanner
             Respond with the source names from the list above (as written), and if RecentActivity is
             needed, how many days back is relevant (default 7, at most 14); if RealtimeAssessments is
             needed, how many hours back is relevant (default 24, at most 72).
+
+            Also name which specific daily metrics the question is about, as metrics: any of Steps,
+            RestingHeartRate, Sleep. Name only the ones the question actually asks about — a
+            question about steps names Steps alone. Leave metrics empty for a general question
+            about how the person is doing overall.
             """;
     }
 
@@ -87,11 +92,21 @@ public class DataQueryPlannerService : IDataQueryPlanner
             .Distinct()
             .ToList();
 
+        // Same defensive parse as the sources: an unrecognised metric name is dropped, and an
+        // absent list means "general question" — every fetched series may chart.
+        var metrics = (response.Metrics ?? [])
+            .Select(m => Enum.TryParse<ChartMetricKind>(m, ignoreCase: true, out var kind) ? kind : (ChartMetricKind?)null)
+            .Where(m => m is not null)
+            .Select(m => m!.Value)
+            .Distinct()
+            .ToList();
+
         return new DataQueryPlan
         {
             Sources = sources,
             RecentActivityDays = response.RecentActivityDays is > 0 ? response.RecentActivityDays.Value : 7,
             RealtimeAssessmentHours = response.RealtimeAssessmentHours is > 0 ? response.RealtimeAssessmentHours.Value : 24,
+            ChartMetrics = metrics,
         };
     }
 
@@ -100,5 +115,6 @@ public class DataQueryPlannerService : IDataQueryPlanner
         public required IReadOnlyList<string> Sources { get; init; }
         public int? RecentActivityDays { get; init; }
         public int? RealtimeAssessmentHours { get; init; }
+        public IReadOnlyList<string>? Metrics { get; init; }
     }
 }

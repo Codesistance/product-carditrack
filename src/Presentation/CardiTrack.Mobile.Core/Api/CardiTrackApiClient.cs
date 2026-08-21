@@ -137,6 +137,11 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
         SendAsync<MemberChatMessageRequest, MemberChatWaitingResponse>(
             HttpMethod.Post, $"api/v1/member-chat/members/{cardiMemberId}/waiting-sentences", request, ct);
 
+    public Task<MemberChatSuggestionsResponse> GetMemberChatSuggestionsAsync(
+        Guid cardiMemberId, CancellationToken ct = default) =>
+        GetAsync<MemberChatSuggestionsResponse>(
+            $"api/v1/member-chat/members/{cardiMemberId}/suggestions", ct);
+
     public Task<IReadOnlyList<DigestResponse>> GetJournalEntriesAsync(
         Guid cardiMemberId,
         JournalCadence cadence,

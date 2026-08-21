@@ -75,16 +75,17 @@
             </Grid>
         </controls:HeaderBand>
 
-        <Grid Grid.Row="1" RowDefinitions="*,Auto,Auto">
+        <!-- Rows: conversation, pending reply, suggestion chips, input bar. -->
+        <Grid Grid.Row="1" RowDefinitions="*,Auto,Auto,Auto">
 
-            <VerticalStackLayout x:Name="SkeletonPanel" Grid.Row="0" Grid.RowSpan="3"
+            <VerticalStackLayout x:Name="SkeletonPanel" Grid.Row="0" Grid.RowSpan="4"
                                   Spacing="14" Padding="20,20" IsVisible="False">
                 <controls:SkeletonView HeightRequest="60"/>
                 <controls:SkeletonView HeightRequest="60"/>
                 <controls:SkeletonView HeightRequest="60"/>
             </VerticalStackLayout>
 
-            <VerticalStackLayout x:Name="ErrorPanel" Grid.Row="0" Grid.RowSpan="3"
+            <VerticalStackLayout x:Name="ErrorPanel" Grid.Row="0" Grid.RowSpan="4"
                                   Spacing="12" Padding="20,60,20,20" IsVisible="False">
                 <Label Text="We couldn't load this"
                        Style="{StaticResource Heading3}"
@@ -112,6 +113,10 @@
                         <BoxView HeightRequest="16" Color="Transparent"/>
                     </CollectionView.Header>
 
+                    <!-- EmptyView carries the copy only. The suggestion chips live in their own
+                         row below (SuggestionsPanel) rather than in here: they have to survive
+                         the first send long enough to be tappable while a reply is in flight,
+                         and an EmptyView is torn down the instant the first turn lands. -->
                     <CollectionView.EmptyView>
                         <VerticalStackLayout Padding="20,60,20,20" Spacing="8">
                             <Label Text="Ask anything about their readings"
@@ -131,11 +136,16 @@
                                      shadow (BubbleShadow, per item). The bot's replies sit flat
                                      so the conversation reads as one surface rather than a
                                      stack of floating cards. -->
+                                <!-- A reply carrying charts runs the full width of the sheet:
+                                     a 248px plot inside a 300px bubble was the narrowest thing
+                                     on the screen, and it is the one thing here meant to be
+                                     read closely. Text-only bubbles keep the 300px measure that
+                                     makes a conversation readable. -->
                                 <Border BackgroundColor="{Binding BubbleBackground}"
                                         StrokeThickness="0"
                                         Shadow="{Binding BubbleShadow}"
                                         Padding="14,10"
-                                        MaximumWidthRequest="300"
+                                        MaximumWidthRequest="{Binding BubbleMaxWidth}"
                                         HorizontalOptions="{Binding RowAlignment}">
                                     <Border.StrokeShape>
                                         <RoundRectangle CornerRadius="20"/>
@@ -158,8 +168,7 @@
                                             <BindableLayout.ItemTemplate>
                                                 <DataTemplate x:DataType="controls:ChatChartItem">
                                                     <controls:ChatSeriesChart Item="{Binding .}"
-                                                                              WidthRequest="248"
-                                                                              HorizontalOptions="Start"/>
+                                                                              HorizontalOptions="Fill"/>
                                                 </DataTemplate>
                                             </BindableLayout.ItemTemplate>
                                         </VerticalStackLayout>
@@ -169,6 +178,17 @@
                                                TextColor="{Binding TextColor}"
                                                Opacity="0.75"
                                                IsVisible="{Binding HasChartSummary}"/>
+                                        <!-- When this was said. Quiet and trailing: a returning
+                                             caregiver needs to know whether "steady today" was
+                                             this morning, without the time competing with the
+                                             answer. -->
+                                        <Label Text="{Binding Timestamp}"
+                                               FontFamily="Quicksand"
+                                               FontSize="10"
+                                               TextColor="{Binding TextColor}"
+                                               Opacity="0.6"
+                                               HorizontalOptions="End"
+                                               IsVisible="{Binding HasTimestamp}"/>
                                     </VerticalStackLayout>
                                 </Border>
                             </Grid>
@@ -206,6 +226,17 @@
                 </Border>
             </Grid>
 
+            <!-- Question chips, shown until the caregiver's first message of the session: what
+                 this assistant can be asked, in its own words, tappable. Deterministic server
+                 copy (no model call), so they appear instantly with the sheet. A horizontal
+                 scroller rather than a wrap panel — same pill language as FilterChipBar, which
+                 this deliberately mirrors rather than generalises, since that control is
+                 enum-typed to AlertFilter. -->
+            <ScrollView x:Name="SuggestionsPanel" Grid.Row="2" Orientation="Horizontal"
+                        HorizontalScrollBarVisibility="Never" Margin="0,0,0,4" IsVisible="False">
+                <HorizontalStackLayout x:Name="SuggestionsRow" Padding="16,4" Spacing="9"/>
+            </ScrollView>
+
             <!-- Pinned input bar. SendButton is a sibling of the Border, not a child of it —
                  Border clips its content to StrokeShape regardless of how much padding surrounds
                  a child, so a shadow on anything inside it gets cut against the rounded corner no
@@ -213,7 +244,7 @@
                  width so the field runs behind the icon, and the button floats End-aligned on
                  top of it — the Border's right padding (72) reserves the strip under the button
                  so the Editor's text never disappears beneath it. -->
-            <Grid Grid.Row="2" Margin="16,8,16,16">
+            <Grid Grid.Row="3" Margin="16,8,16,16">
                 <Border Style="{StaticResource AuthEntryBorder}"
                         HeightRequest="-1"
                         MinimumHeightRequest="64"
