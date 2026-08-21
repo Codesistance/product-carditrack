@@ -1,0 +1,210 @@
+name: Deploy MedGemma → Common (GPU)
+
+# Builds the MedGemma image into the GPU service's own region and deploys it there.
+#
+# Its own workflow rather than a job inside deploy-apps-dev.yml, because the thing it deploys is
+# no longer per-environment: one L4 service in europe-west1 serves dev and prod both
+# (infrastructure/common/cloud_run.tf). Keeping it in the dev app pipeline would have made a
+# shared resource's deploys look like a dev event, and would have run it on prod's schedule too.
+#
+# Deliberately dispatch-only. The image bakes multi-GB model blobs, so a build is minutes and
+# gigabytes of egress; nothing about a normal merge should trigger one. The environment stacks'
+# own MedGemma deploys stay where they are until the flip (M4) retires them.
+
+on:
+  workflow_dispatch:
+    inputs:
+      update_env_secrets:
+        description: >-
+          Point the environments at this service by writing its URL into their
+          carditrack-<env>-medgemma-service-url secrets. Off by default: a build and deploy is
+          safe to run at any time, whereas this redirects live callers.
+        type: boolean
+        default: false
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: medgemma-common
+  cancel-in-progress: false
+
+jobs:
+  actions-on-push:
+    uses: ./.github/workflows/_actions-on-push.yml
+
+  env:
+    name: Resolve config
+    needs: actions-on-push
+    uses: ./.github/workflows/_env.yml
+    with:
+      environment: dev
+    secrets: inherit
+
+  build-and-deploy:
+    name: Build & Deploy MedGemma (GPU)
+    needs: env
+    runs-on: ubuntu-latest
+    env:
+      SERVICE: carditrack-common-medgemma
+      # The GPU service's region, and its own Artifact Registry repo. Cloud Run pulls from the
+      # region it runs in, and this image is multi-GB of model blobs — pulling that cross-region
+      # on a service that scales to zero is the difference between a cold start of seconds and
+      # one of minutes.
+      GPU_REGION: europe-west1
+      GPU_REGISTRY: europe-west1-docker.pkg.dev/carditrack-490120/carditrack-common-europewest1
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ needs.env.outputs.gcp_wif_provider }}
+          service_account: ${{ needs.env.outputs.gcp_service_account }}
+      - uses: google-github-actions/setup-gcloud@v3
+      - run: gcloud auth configure-docker ${{ env.GPU_REGION }}-docker.pkg.dev --quiet
+
+      # Same file the image build has always read. One number, one place — a literal here would
+      # hold only until someone bumped the file.
+      - name: Read model version
+        id: model
+        run: echo "tag=$(cat src/Infrastructure/MedGemma/.model-version | tr -d '[:space:]')" >> $GITHUB_OUTPUT
+
+      - name: Build and push
+        id: push
+        env:
+          IMAGE: ${{ env.GPU_REGISTRY }}/medgemma
+          TAG: ${{ github.sha }}
+        run: |
+          docker build \
+            --build-arg MODEL_TAG=${{ steps.model.outputs.tag }} \
+            -t "$IMAGE:$TAG" \
+            -f src/Infrastructure/MedGemma/Dockerfile .
+          docker push "$IMAGE:$TAG"
+          docker tag "$IMAGE:$TAG" "$IMAGE:stable"
+          docker push "$IMAGE:stable"
+          echo "image=$IMAGE:$TAG" >> $GITHUB_OUTPUT
+
+      - name: Deploy to the GPU service
+        env:
+          IMAGE: ${{ steps.push.outputs.image }}
+          PROJECT: ${{ needs.env.outputs.gcp_project_id }}
+        run: |
+          gcloud run deploy "$SERVICE" \
+            --image "$IMAGE" \
+            --region "$GPU_REGION" \
+            --project "$PROJECT" \
+            --quiet
+
+      # Terraform owns the shape and ignores the image (lifecycle.ignore_changes), so a deploy
+      # here does not drift the stack — the next apply leaves the image alone.
+      - name: Report the serving URL
+        id: url
+        env:
+          PROJECT: ${{ needs.env.outputs.gcp_project_id }}
+        run: |
+          URL=$(gcloud run services describe "$SERVICE" \
+            --region "$GPU_REGION" \
+            --project "$PROJECT" \
+            --format='value(status.url)')
+          echo "url=$URL" >> $GITHUB_OUTPUT
+          echo "MedGemma (GPU) serving at $URL"
+
+  # ── The flip ────────────────────────────────────────────────────────────────────────────────
+  # Separate job behind an explicit input, because this is the step that redirects live callers.
+  # Everything above is safe to run at any time; this changes what dev talks to.
+  #
+  # Writes the URL rather than deriving it. The common stack's URL is not derivable from parts —
+  # this project issues the hash form (…-zhsd62wx5a-ew.a.run.app), not the project-number form —
+  # and an environment stack cannot read the common stack's state to ask. See the note on
+  # infrastructure/common/outputs.tf.
+  point-environments-at-it:
+    name: Point ${{ matrix.environment }} at the GPU service
+    needs: [env, build-and-deploy]
+    if: inputs.update_env_secrets
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        environment: [dev]
+    steps:
+      - uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ needs.env.outputs.gcp_wif_provider }}
+          service_account: ${{ needs.env.outputs.gcp_service_account }}
+      - uses: google-github-actions/setup-gcloud@v3
+
+      - name: Write the URL secret
+        env:
+          SERVICE: carditrack-common-medgemma
+          GPU_REGION: europe-west1
+          SECRET_ID: carditrack-${{ matrix.environment }}-medgemma-service-url
+          PROJECT: ${{ needs.env.outputs.gcp_project_id }}
+          # Active versions to retain, newest first. Every consumer binds "latest", so only the
+          # newest is read; the spare is what an operator reads back to roll a bad flip forward.
+          # Here that spare is the old per-environment CPU service's URL, which is the rollback.
+          KEEP_VERSIONS: "2"
+        run: |
+          URL=$(gcloud run services describe "$SERVICE" \
+            --region "$GPU_REGION" \
+            --project "$PROJECT" \
+            --format='value(status.url)')
+
+          CURRENT=$(gcloud secrets versions access latest \
+            --secret="$SECRET_ID" \
+            --project "$PROJECT" 2>/dev/null || true)
+
+          if [ "$CURRENT" = "$URL" ]; then
+            echo "$SECRET_ID already points at $URL — no new version added."
+          else
+            echo "Repointing $SECRET_ID: $CURRENT -> $URL"
+            echo -n "$URL" | gcloud secrets versions add "$SECRET_ID" \
+              --data-file=- \
+              --project "$PROJECT"
+          fi
+
+          # Prune superseded versions, keeping the rollback spare. Captured rather than piped:
+          # under bash -e without pipefail a failed list produces empty input and a happily
+          # successful loop, which would hide exactly what this exists to prevent.
+          if ! SUPERSEDED=$(gcloud secrets versions list "$SECRET_ID" \
+                --project "$PROJECT" \
+                --filter='state=ENABLED' \
+                --sort-by=~createTime \
+                --format='value(name.basename())'); then
+            echo "::warning::Could not list versions of $SECRET_ID; skipping prune this run."
+            SUPERSEDED=""
+          fi
+
+          echo "$SUPERSEDED" \
+            | tail -n +"$((KEEP_VERSIONS + 1))" \
+            | while read -r VERSION; do
+                [ -n "$VERSION" ] || continue
+                echo "Destroying superseded version $VERSION of $SECRET_ID."
+                gcloud secrets versions destroy "$VERSION" \
+                  --secret="$SECRET_ID" \
+                  --project "$PROJECT" \
+                  --quiet \
+                  || echo "::warning::Could not destroy version $VERSION of $SECRET_ID."
+              done
+
+      # Cloud Run reads a secret at instance start, so callers keep the old URL until they roll.
+      # Forcing that here makes the flip complete when this workflow finishes rather than at some
+      # unrelated later deploy — and makes a rollback equally immediate.
+      #
+      # Services only. The pipeline jobs are Cloud Run *Jobs*, which resolve their secrets at
+      # execution start, so they pick the new URL up on their next scheduled run without being
+      # touched — and touching them here would need a different command against a different
+      # resource for no gain.
+      - name: Roll the callers so they pick it up
+        env:
+          PROJECT: ${{ needs.env.outputs.gcp_project_id }}
+          REGION: ${{ needs.env.outputs.gcp_region }}
+        run: |
+          for SVC in carditrack-${{ matrix.environment }}-api carditrack-${{ matrix.environment }}-worker; do
+            echo "Rolling $SVC"
+            gcloud run services update "$SVC" \
+              --region "$REGION" \
+              --project "$PROJECT" \
+              --update-labels=medgemma-flip=$(date -u +%Y%m%d%H%M%S) \
+              --quiet
+          done
