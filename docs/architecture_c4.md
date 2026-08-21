@@ -40,10 +40,12 @@ C4Context
 ```
 
 **The one boundary that explains most of the design:** **insights, digests and real-time assessments** go only to
-**in-project MedGemma**. Chat and reports use Gemini's consumer endpoint with **de-identified daily readings**
-(no name or member id — chat used to send the GUID and no longer does). Gemini is outside the Google Cloud BAA;
-moving it to Vertex AI is decision D6. Pipeline jobs are wired through `AddMedicalAiServices` so they hold no
-public-provider key.
+**in-project MedGemma**. Reports and the legacy chat endpoint use the Public slot with **de-identified daily
+readings** (no name or member id); member chat's non-clinical steps use the Rewrite slot (caregiver question +
+de-identified clinical read only). Both off-estate slots run on **Gemini via Vertex AI, EU regional endpoint,
+under the Google Cloud DPA** — decision D6, resolved 2026-08-21; the consumer Gemini endpoint is superseded
+(see [vertex_ai_setup.md](./technical/vertex_ai_setup.md)). Pipeline jobs are wired through
+`AddMedicalAiServices` so they hold no public-provider key.
 
 ## Level 2 — Containers
 

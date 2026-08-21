@@ -21,6 +21,12 @@ namespace CardiTrack.UnitTests.ExternalClients;
 /// prompt text or model output (the DPIA invariant). The content-leak tests are the point
 /// of this file; the rest keeps the request/response shape honest.
 /// </summary>
+/// <remarks>
+/// In the "AiTelemetry" collection with <see cref="VertexAiClientTests"/>: both suites listen to
+/// the one shared ActivitySource/Meter, so running them in parallel makes each capture the
+/// other's spans.
+/// </remarks>
+[Collection("AiTelemetry")]
 public class MedGemmaClientTests
 {
     private const string Model = "medgemma";

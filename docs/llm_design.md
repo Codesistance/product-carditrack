@@ -98,10 +98,17 @@ The API talks to two providers, and the difference between them is a boundary, n
 | | **Private** (`AI:Private`) | **Public** (`AI:Public`) |
 |---|---|---|
 | Used by | Health insights (`HealthInsightService`) | Reports (`ReportGenerationService`), chat (`ChatController`) |
-| Provider | **MedGemma only — fixed in code** | Chosen by `AI__Public__Kind`: `Gemini` or `Anthropic` |
-| Where inference runs | In-project Cloud Run, IAM-authorised invokers | Off-estate, at the provider |
+| Provider | **MedGemma only — fixed in code** | Chosen by `AI__Public__Kind`: `Gemini`, `Anthropic` or `VertexGemini` |
+| Where inference runs | In-project Cloud Run, IAM-authorised invokers | Off-estate, at the provider (`VertexGemini`: an EU regional Vertex endpoint under the Google Cloud DPA — [vertex_ai_setup.md](./technical/vertex_ai_setup.md)) |
 | Prompt content | Metrics, baselines, derived age and sex, free-text `MedicalNotes` | Metrics and alerts only — members are pseudonymised before the call |
-| Configuration | `Model`, `BaseUrl`, `TimeoutSeconds` | `Kind`, `Model`, `ApiKey`, optional `BaseUrl`, `TimeoutSeconds`, `MaxOutputTokens` |
+| Configuration | `Model`, `BaseUrl`, `TimeoutSeconds` | `Kind`, `Model`, `ApiKey` (not for `VertexGemini` — IAM auth), `ProjectId`/`Location` (`VertexGemini`), optional `BaseUrl`, `TimeoutSeconds`, `MaxOutputTokens` |
+
+The third slot, **Rewrite** (`AI:Rewrite`), sits between them: member chat's non-clinical steps
+(malicious-check, query plan, rewrite, waiting sentences). It has its own kind switch —
+`Ollama` (self-hosted; the local-dev default) or `VertexGemini` (deployed environments) —
+because its prompts are the narrowest on the platform: the caregiver's question and MedGemma's
+de-identified clinical read, never the member's name, id, `MedicalNotes` or questionnaire
+answers (DPIA row A20, decision D6).
 
 The private side has no provider selector. `AiServiceExtensions` constructs `MedGemmaClient` unconditionally for the medical slot, so no environment variable can route health data to an off-estate model — which is the control [the DPIA](./compliance/dpia.md) records for A5. Only where MedGemma lives and which weights it serves are configurable.
 
@@ -113,8 +120,9 @@ The public side is deliberately swappable. Every provider implements the same `I
 
 | Provider | Transport | Endpoint default | Notes |
 |----------|-----------|------------------|-------|
-| `Gemini` | `HttpClient` (`generateContent`) | `https://generativelanguage.googleapis.com` | Key sent as the `x-goog-api-key` header |
+| `Gemini` | `HttpClient` (`generateContent`) | `https://generativelanguage.googleapis.com` | Key sent as the `x-goog-api-key` header. Consumer API — superseded by `VertexGemini` for deployed environments (D6) |
 | `Anthropic` | Official `Anthropic` .NET SDK (Messages API) | `https://api.anthropic.com` | `MaxOutputTokens` is mandatory on this API; the SDK owns its own transport |
+| `VertexGemini` | `HttpClient` (`generateContent`) | `https://{Location}-aiplatform.googleapis.com` — derived, EU allowlist | No API key: OAuth access token via ADC (`VertexAccessTokenHandler`), IAM `roles/aiplatform.user`. Structured output via `responseJsonSchema`; `usageMetadata` parsed; MedGemmaClient-grade retry/telemetry/no-logging (`VertexAiClient`) |
 
 > **GPU scaling option — no longer future:** CPU latency became the bottleneck on 2026-08-17, when p50 inference reached ~124s and Cloud Run began refusing ~14% of calls with 429 because `max_instances = 1` leaves nowhere to put an overlapping request. The options, their measured cost basis, and the region constraint (Cloud Run's managed GPU is not offered in `europe-west2`, though L4 is available there on Compute Engine and GKE) are worked through in [medgemma_serving_architecture.md](./technical/medgemma_serving_architecture.md), which carries the open decisions.
 >

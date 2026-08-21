@@ -2,6 +2,7 @@ using CardiTrack.Application.Interfaces.Clients;
 using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Infrastructure.ExternalClients.General;
 using CardiTrack.Infrastructure.ExternalClients.Medical;
+using CardiTrack.Infrastructure.ExternalClients.Vertex;
 using CardiTrack.Infrastructure.Services;
 using CardiTrack.Infrastructure.Services.PromptContext;
 using CardiTrack.Infrastructure.Settings;
@@ -30,12 +31,13 @@ namespace CardiTrack.Infrastructure.Extensions;
 /// misconfigured environment variable must not be able to send them somewhere else.
 /// </para>
 /// <para>
-/// <b>Rewrite</b> (AI:Rewrite) — a third, equally in-estate slot. Same <see cref="MedGemmaClient"/>
-/// pointed at a second, plain non-medical model tag pulled into the same MedGemma image
-/// (docs/llm_design.md), used to rewrite MedGemma's clinical output into caregiver language
-/// without any clinical content ever leaving the project. Registered inside
-/// <see cref="AddMedicalAiServices"/> for the same reason Private is not switchable: it must
-/// travel with the private slot on every host, never be reachable on its own.
+/// <b>Rewrite</b> (AI:Rewrite) — the non-clinical member-chat steps (rewrite, malicious-check,
+/// query plan, waiting sentences). Selected by <see cref="RewriteAiSettings.Kind"/>: self-hosted
+/// Ollama (the local-dev default), or Gemini via Vertex AI on an EU regional endpoint — the
+/// posture the DPIA's row A20 records. Its prompts are the narrowest on the platform (no name,
+/// no id, no notes, no questionnaire answers). Registered inside
+/// <see cref="AddMedicalAiServices"/> so it travels with the private slot on every host, never
+/// reachable on its own.
 /// </para>
 /// </remarks>
 public static class AiServiceExtensions
@@ -68,11 +70,20 @@ public static class AiServiceExtensions
         // behind whenever the public provider is swapped.
         if (RequiresHttpClient(publicSettings.Kind))
         {
-            services.AddHttpClient(PublicHttpClientName, client =>
+            var publicClient = services.AddHttpClient(PublicHttpClientName, client =>
             {
                 client.BaseAddress = new Uri(ResolveBaseUrl(publicSettings));
                 client.Timeout = TimeSpan.FromSeconds(publicSettings.TimeoutSeconds);
             });
+
+            // Vertex authorises by IAM, not API key — the handler is the whole credential path,
+            // and it is only in the pipeline for the kind that needs it, same reasoning as the
+            // identity-token handler on the private slot.
+            if (publicSettings.Kind == PublicAiProviderKind.VertexGemini)
+            {
+                publicClient.AddHttpMessageHandler(sp => new VertexAccessTokenHandler(
+                    sp.GetRequiredService<ILogger<VertexAccessTokenHandler>>()));
+            }
         }
 
         if (publicSettings.Kind == PublicAiProviderKind.Anthropic)
@@ -94,6 +105,9 @@ public static class AiServiceExtensions
                     sp.GetRequiredService<IHttpClientFactory>(), publicSettings, PublicHttpClientName),
                 PublicAiProviderKind.Anthropic => new AnthropicAiClient(
                     sp.GetRequiredService<Anthropic.AnthropicClient>(), publicSettings),
+                PublicAiProviderKind.VertexGemini => new VertexAiClient(
+                    sp.GetRequiredService<IHttpClientFactory>(), VertexOptionsFor(publicSettings),
+                    PublicHttpClientName, sp.GetRequiredService<ILogger<VertexAiClient>>()),
                 _ => throw new InvalidOperationException(
                     $"No client is implemented for public AI provider kind '{publicSettings.Kind}'.")
             });
@@ -150,31 +164,53 @@ public static class AiServiceExtensions
         // is the same instance the client above was handed rather than a second read of config.
         services.AddSingleton(privateSettings);
 
-        // Rewrite slot — a second, plain non-medical model pulled into the same MedGemma image
-        // (docs/llm_design.md), used only to rewrite MedGemma's clinical output into caregiver
-        // language. Registered here, not AddAiServices, so it travels with the private slot on
-        // every host that gets it and is unreachable from any host that doesn't — no host can end
-        // up with the rewrite model wired but not MedGemma. Same in-estate guarantee as Private:
-        // MedGemmaClient again, just a different settings instance and a different client name.
+        // Rewrite slot — the non-clinical member-chat steps (docs/llm_design.md), selected by
+        // RewriteAiSettings.Kind: self-hosted Ollama locally, Gemini via Vertex AI in deployed
+        // environments (DPIA row A20 records that posture). Registered here, not AddAiServices,
+        // so it travels with the private slot on every host that gets it and is unreachable from
+        // any host that doesn't — no host can end up with the rewrite slot wired but not MedGemma.
         var rewriteSettings = LoadRewriteSettings(configuration);
 
         var rewriteClient = services.AddHttpClient(RewriteHttpClientName, client =>
         {
-            client.BaseAddress = new Uri(rewriteSettings.BaseUrl);
+            client.BaseAddress = new Uri(rewriteSettings.Kind == RewriteAiProviderKind.VertexGemini
+                ? VertexOptionsFor(rewriteSettings).ResolveBaseUrl()
+                : rewriteSettings.BaseUrl);
             client.Timeout = TimeSpan.FromSeconds(rewriteSettings.TimeoutSeconds);
         });
 
-        if (rewriteSettings.UseIdentityToken)
+        switch (rewriteSettings.Kind)
         {
-            rewriteClient.AddHttpMessageHandler(sp => new MedGemmaIdentityTokenHandler(
-                rewriteSettings.BaseUrl,
-                sp.GetRequiredService<ILogger<MedGemmaIdentityTokenHandler>>()));
-        }
+            case RewriteAiProviderKind.Ollama:
+                if (rewriteSettings.UseIdentityToken)
+                {
+                    rewriteClient.AddHttpMessageHandler(sp => new MedGemmaIdentityTokenHandler(
+                        rewriteSettings.BaseUrl,
+                        sp.GetRequiredService<ILogger<MedGemmaIdentityTokenHandler>>()));
+                }
 
-        services.AddKeyedScoped<IExternalAiClient>("RewriteProvider", (sp, _) =>
-            new MedGemmaClient(
-                sp.GetRequiredService<IHttpClientFactory>(), rewriteSettings, RewriteHttpClientName,
-                sp.GetRequiredService<ILogger<MedGemmaClient>>()));
+                services.AddKeyedScoped<IExternalAiClient>("RewriteProvider", (sp, _) =>
+                    new MedGemmaClient(
+                        sp.GetRequiredService<IHttpClientFactory>(), rewriteSettings, RewriteHttpClientName,
+                        sp.GetRequiredService<ILogger<MedGemmaClient>>()));
+                break;
+
+            case RewriteAiProviderKind.VertexGemini:
+                // Unconditional, unlike the identity-token handler: there is no unauthenticated
+                // Vertex mode, so no flag whose absence could silently skip the credential.
+                rewriteClient.AddHttpMessageHandler(sp => new VertexAccessTokenHandler(
+                    sp.GetRequiredService<ILogger<VertexAccessTokenHandler>>()));
+
+                services.AddKeyedScoped<IExternalAiClient>("RewriteProvider", (sp, _) =>
+                    new VertexAiClient(
+                        sp.GetRequiredService<IHttpClientFactory>(), VertexOptionsFor(rewriteSettings),
+                        RewriteHttpClientName, sp.GetRequiredService<ILogger<VertexAiClient>>()));
+                break;
+
+            default:
+                throw new InvalidOperationException(
+                    $"No client is implemented for rewrite AI provider kind '{rewriteSettings.Kind}'.");
+        }
 
         services.AddScoped<IRewriteAiService, RewriteAiService>();
 
@@ -215,7 +251,16 @@ public static class AiServiceExtensions
         settings.Kind = kind;
 
         RequireValue(settings.Model, ConfigurationKeys.AI.PublicSectionName, nameof(PublicAiSettings.Model));
-        RequireValue(settings.ApiKey, ConfigurationKeys.AI.PublicSectionName, nameof(PublicAiSettings.ApiKey));
+        if (kind == PublicAiProviderKind.VertexGemini)
+        {
+            // Vertex authenticates by IAM, not API key; what it needs instead is an address.
+            RequireValue(settings.ProjectId, ConfigurationKeys.AI.PublicSectionName, nameof(PublicAiSettings.ProjectId));
+            RequireValue(settings.Location, ConfigurationKeys.AI.PublicSectionName, nameof(PublicAiSettings.Location));
+        }
+        else
+        {
+            RequireValue(settings.ApiKey, ConfigurationKeys.AI.PublicSectionName, nameof(PublicAiSettings.ApiKey));
+        }
         RequirePositive(settings.TimeoutSeconds, ConfigurationKeys.AI.PublicSectionName, nameof(PublicAiSettings.TimeoutSeconds));
         RequirePositive(settings.MaxOutputTokens, ConfigurationKeys.AI.PublicSectionName, nameof(PublicAiSettings.MaxOutputTokens));
         RequireAbsoluteUrl(ResolveBaseUrl(settings), ConfigurationKeys.AI.PublicSectionName, nameof(PublicAiSettings.BaseUrl));
@@ -239,25 +284,76 @@ public static class AiServiceExtensions
     }
 
     /// <summary>
-    /// The plain, non-medical rewrite model — same Cloud Run host as Private in every deployed
-    /// environment (same Ollama instance, a different <c>model</c> value per call), validated as
-    /// its own section so a host that only wires the rewrite slot is not silently coupled to
-    /// Private's config.
+    /// The non-clinical rewrite slot, validated as its own section so a host that only wires the
+    /// rewrite slot is not silently coupled to Private's config. Which keys are required depends
+    /// on the kind: Ollama needs a host to call, VertexGemini needs an address in a project. An
+    /// absent Kind is the Ollama default so local dev and docker-compose run with no extra config;
+    /// a <em>present but unrecognised</em> Kind still fails at startup like the Public slot's.
     /// </summary>
     private static RewriteAiSettings LoadRewriteSettings(IConfiguration configuration)
     {
-        var settings = configuration.GetSection(ConfigurationKeys.AI.RewriteSectionName).Get<RewriteAiSettings>()
-            ?? new RewriteAiSettings();
+        var section = configuration.GetSection(ConfigurationKeys.AI.RewriteSectionName);
+
+        // Parsed before binding, same as the Public slot: the binder throws on an unknown enum
+        // value with a message that names the CLR type rather than the setting to fix.
+        var rawKind = section[nameof(RewriteAiSettings.Kind)];
+        var kind = RewriteAiProviderKind.Ollama;
+        if (rawKind is not null
+            && (!Enum.TryParse(rawKind, ignoreCase: true, out kind) || !Enum.IsDefined(kind)))
+        {
+            throw new InvalidOperationException(
+                Message(ConfigurationKeys.AI.RewriteSectionName, nameof(RewriteAiSettings.Kind),
+                    $"is '{rawKind}'. Supported kinds: {string.Join(", ", Enum.GetNames<RewriteAiProviderKind>())}."));
+        }
+
+        var settings = section.Get<RewriteAiSettings>() ?? new RewriteAiSettings();
+        settings.Kind = kind;
 
         RequireValue(settings.Model, ConfigurationKeys.AI.RewriteSectionName, nameof(RewriteAiSettings.Model));
-        RequireValue(settings.BaseUrl, ConfigurationKeys.AI.RewriteSectionName, nameof(RewriteAiSettings.BaseUrl));
         RequirePositive(settings.TimeoutSeconds, ConfigurationKeys.AI.RewriteSectionName, nameof(RewriteAiSettings.TimeoutSeconds));
-        RequireAbsoluteUrl(settings.BaseUrl, ConfigurationKeys.AI.RewriteSectionName, nameof(RewriteAiSettings.BaseUrl));
 
-        RequireCoherentIdentityTokenMode(ConfigurationKeys.AI.RewriteSectionName, settings.BaseUrl, settings.UseIdentityToken);
+        if (kind == RewriteAiProviderKind.VertexGemini)
+        {
+            RequireValue(settings.ProjectId, ConfigurationKeys.AI.RewriteSectionName, nameof(RewriteAiSettings.ProjectId));
+            RequireValue(settings.Location, ConfigurationKeys.AI.RewriteSectionName, nameof(RewriteAiSettings.Location));
+            RequirePositive(settings.MaxOutputTokens, ConfigurationKeys.AI.RewriteSectionName, nameof(RewriteAiSettings.MaxOutputTokens));
+            if (!string.IsNullOrWhiteSpace(settings.VertexBaseUrl))
+                RequireAbsoluteUrl(settings.VertexBaseUrl, ConfigurationKeys.AI.RewriteSectionName, nameof(RewriteAiSettings.VertexBaseUrl));
+            // BaseUrl and UseIdentityToken are deliberately tolerated here: during the provider
+            // transition, deployed environments still mount the old Ollama URL alongside the
+            // Vertex settings, and rejecting it would make the flip an ordering hazard.
+        }
+        else
+        {
+            RequireValue(settings.BaseUrl, ConfigurationKeys.AI.RewriteSectionName, nameof(RewriteAiSettings.BaseUrl));
+            RequireAbsoluteUrl(settings.BaseUrl, ConfigurationKeys.AI.RewriteSectionName, nameof(RewriteAiSettings.BaseUrl));
+            RequireCoherentIdentityTokenMode(ConfigurationKeys.AI.RewriteSectionName, settings.BaseUrl, settings.UseIdentityToken);
+        }
 
         return settings;
     }
+
+    /// <summary>The Vertex address a settings section describes. Callers validate first — the
+    /// null-forgiving reads hold because RequireValue has already refused a missing value.</summary>
+    private static VertexAiClientOptions VertexOptionsFor(RewriteAiSettings settings) => new()
+    {
+        Model = settings.Model,
+        ProjectId = settings.ProjectId!,
+        Location = settings.Location!,
+        TimeoutSeconds = settings.TimeoutSeconds,
+        MaxOutputTokens = settings.MaxOutputTokens,
+        BaseUrl = settings.VertexBaseUrl,
+    };
+
+    private static VertexAiClientOptions VertexOptionsFor(PublicAiSettings settings) => new()
+    {
+        Model = settings.Model,
+        ProjectId = settings.ProjectId!,
+        Location = settings.Location!,
+        TimeoutSeconds = settings.TimeoutSeconds,
+        MaxOutputTokens = settings.MaxOutputTokens,
+        BaseUrl = settings.BaseUrl,
+    };
 
     /// <summary>
     /// Fails the host at startup when the identity-token mode does not match where MedGemma lives.
@@ -332,6 +428,11 @@ public static class AiServiceExtensions
     {
         if (!string.IsNullOrWhiteSpace(settings.BaseUrl))
             return settings.BaseUrl;
+
+        // Vertex has no single documented endpoint — the host carries the region, which is a
+        // per-deployment compliance choice, so it derives from Location rather than a static entry.
+        if (settings.Kind == PublicAiProviderKind.VertexGemini)
+            return $"https://{settings.Location}-aiplatform.googleapis.com";
 
         if (!DefaultBaseUrls.TryGetValue(settings.Kind, out var defaultBaseUrl))
         {

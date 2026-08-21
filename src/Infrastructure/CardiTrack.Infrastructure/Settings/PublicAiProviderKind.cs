@@ -13,6 +13,13 @@ namespace CardiTrack.Infrastructure.Settings;
 /// </remarks>
 public enum PublicAiProviderKind
 {
+    /// <summary>The consumer Generative Language API, authenticated by API key.</summary>
     Gemini,
-    Anthropic
+
+    Anthropic,
+
+    /// <summary>Gemini on Vertex AI — addressed by project/location, authorised by IAM (ADC), no
+    /// API key. The variant that keeps processing on an EU regional endpoint under the Google
+    /// Cloud DPA (decision D6, docs/technical/data_protection_architecture.md).</summary>
+    VertexGemini,
 }

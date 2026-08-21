@@ -16,16 +16,24 @@ public class PublicAiSettings
     public string Model { get; set; } = string.Empty;
 
     /// <summary>
-    /// Required — every supported kind authenticates with one, and the clients pass it straight to
-    /// the provider. Non-nullable rather than optional so the contract matches the validation.
+    /// Required for the Gemini and Anthropic kinds, which authenticate with one; the VertexGemini
+    /// kind authenticates by IAM (ADC access token) and ignores it. Non-nullable so the contract
+    /// matches the per-kind validation.
     /// </summary>
     public string ApiKey { get; set; } = string.Empty;
 
     /// <summary>
-    /// Optional — each kind has a documented default endpoint. Set it to route through a gateway,
-    /// a regional endpoint (e.g. Vertex AI), or a test double.
+    /// Optional — each kind has a documented default endpoint (for VertexGemini it derives from
+    /// <see cref="Location"/>). Set it to route through a gateway or a test double.
     /// </summary>
     public string? BaseUrl { get; set; }
+
+    /// <summary>VertexGemini kind: GCP project the calls run in. Required for that kind.</summary>
+    public string? ProjectId { get; set; }
+
+    /// <summary>VertexGemini kind: regional location (e.g. <c>europe-west2</c>). Required for that
+    /// kind, and must stay an EU region — the DPIA excludes US processing and the global endpoint.</summary>
+    public string? Location { get; set; }
 
     public int TimeoutSeconds { get; set; } = 60;
 
