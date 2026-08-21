@@ -652,7 +652,7 @@ internal static partial class MedicalPromptBlocks
             .TakeLast(take)
             .Select(l =>
                 $"  {DayLabel(l.Date, today)}: "
-                + $"steps={l.Steps}, HR={l.RestingHeartRate}, "
+                + $"steps={Figure(l.Steps)}, HR={Figure(l.RestingHeartRate)}, "
                 + $"sleep(night ending that morning)={SleepFigure(l.SleepMinutes)}")
             .ToList();
 
@@ -672,6 +672,22 @@ internal static partial class MedicalPromptBlocks
     /// figure appears on a chart's axis beside it. Under an hour keeps minutes alone — "0h 40m"
     /// is a worse way of writing forty minutes.
     /// </remarks>
+    /// <summary>
+    /// One reading, or "not measured" — the same thing <see cref="SleepFigure"/> says when a night
+    /// is missing.
+    /// </summary>
+    /// <remarks>
+    /// Steps and heart rate were interpolated straight into <see cref="DailyLines"/> while sleep
+    /// went through <see cref="SleepFigure"/>, so a row the watch reported nothing for rendered
+    /// "steps=, HR=, sleep(night ending that morning)=not measured": two empty values beside one
+    /// that says plainly what happened. This helper feeds the alert, baseline, provisional and
+    /// learning prompts and member chat's clinical read, which between them are every prompt whose
+    /// question is whether a reading has moved — and an empty value is the one answer that cannot
+    /// be read as "it did not".
+    /// </remarks>
+    internal static string Figure(int? value) =>
+        value is { } measured ? measured.ToString(CultureInfo.InvariantCulture) : "not measured";
+
     internal static string SleepFigure(int? minutes) => minutes switch
     {
         null => "not measured",

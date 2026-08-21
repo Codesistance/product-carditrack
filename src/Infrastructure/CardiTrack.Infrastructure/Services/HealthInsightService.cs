@@ -326,7 +326,7 @@ public class HealthInsightService : IHealthInsightService
         var baselineInfo = baseline is null
             ? "No baseline established yet — this member is still being learned."
             : $"{baseline.PeriodDays}-day — Steps: {baseline.AvgSteps}±{baseline.StdDevSteps}, " +
-              $"Resting Resting HR: {baseline.AvgRestingHeartRate}±{baseline.StdDevHeartRate}, " +
+              $"Resting HR: {baseline.AvgRestingHeartRate}±{baseline.StdDevHeartRate}, " +
               $"Sleep: {baseline.AvgSleepMinutes} min";
 
         var recentSummary = MedicalPromptBlocks.DailyLines(recentLogs, take: 3, today);

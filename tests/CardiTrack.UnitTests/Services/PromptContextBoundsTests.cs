@@ -63,6 +63,35 @@ public class PromptContextBoundsTests
         Assert.DoesNotContain(flattened, char.IsSurrogate);
     }
 
+    /// <summary>
+    /// Raised by the Copilot review on this branch. Sleep already said "not measured" through
+    /// <c>SleepFigure</c> while steps and heart rate were interpolated raw, so a row the watch
+    /// reported nothing for rendered two empty values beside one that said plainly what happened.
+    /// This helper feeds the alert, baseline, provisional and learning prompts and member chat's
+    /// clinical read — between them every prompt whose question is whether a reading has moved,
+    /// where an empty value is the one answer that cannot be read as "it did not".
+    /// </summary>
+    [Fact]
+    public void DailyLines_says_a_reading_was_not_measured_rather_than_leaving_it_empty()
+    {
+        var today = new DateOnly(2026, 8, 21);
+        var logs = new[]
+        {
+            new CardiTrack.Domain.Entities.ActivityLog { Date = today.AddDays(-1) },
+            new CardiTrack.Domain.Entities.ActivityLog
+            {
+                Date = today, Steps = 4200, RestingHeartRate = 63, SleepMinutes = 400,
+            },
+        };
+
+        var lines = MedicalPromptBlocks.DailyLines(logs, take: 2, today);
+
+        Assert.Contains("steps=not measured, HR=not measured", lines);
+        Assert.Contains("steps=4200, HR=63", lines);
+        Assert.DoesNotContain("steps=,", lines);
+        Assert.DoesNotContain("HR=,", lines);
+    }
+
     [Fact]
     public void Flatten_collapses_newlines_so_a_note_cannot_leave_its_line()
     {
