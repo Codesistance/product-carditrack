@@ -109,11 +109,16 @@ public class QuestionnaireAlertWorker : CronBackgroundService
 
                 // Nothing to a caregiver was actually delivered — no one to receive it (every
                 // caregiver has ReceiveAlerts off), or the question stopped being eligible in the
-                // gap between the claim and this call. Either way the claim was spent for no push,
-                // so it's given back rather than counted as one — otherwise this question would
-                // wait out a full reminder interval having reached nobody.
+                // gap between the claim and this call. The claim is given back rather than
+                // counted as a push, but not to its pre-claim LastRemindedAtUtc: for a
+                // never-pushed row that's null, which GetDueForAlertAsync always treats as due,
+                // and restoring it would claim, enqueue nothing, and release this same row again
+                // on literally the next tick — forever, if "no caregiver receives alerts" is a
+                // standing account state rather than a transient one. Backing off to utcNow gives
+                // it the same 24h cooldown a real reminder would, while ReminderCount still
+                // reverts so the push cap isn't spent on a delivery that reached nobody.
                 if (deliveries.Count == 0)
-                    await ReleaseAlertClaimSafelyAsync(unitOfWork, questionnaire, stoppingToken);
+                    await ReleaseAlertClaimSafelyAsync(unitOfWork, questionnaire, utcNow, stoppingToken);
                 else
                     enqueued++;
             }
@@ -126,8 +131,13 @@ public class QuestionnaireAlertWorker : CronBackgroundService
                     "Failed to enqueue a push for MemberQuestionnaire {QuestionnaireId} (occurrence {Occurrence}).",
                     questionnaire.Id, questionnaire.ReminderCount);
 
+                // Unlike the empty-deliveries case above, this reverts all the way to the
+                // pre-claim LastRemindedAtUtc — an enqueue failure is presumed transient (a
+                // push-stack blip, a database hiccup), so the row should be eligible again on the
+                // very next tick rather than backed off, the same immediate-retry stance
+                // NotificationDispatchWorker's own release takes on a failed send.
                 if (claimed)
-                    await ReleaseAlertClaimSafelyAsync(unitOfWork, questionnaire, stoppingToken);
+                    await ReleaseAlertClaimSafelyAsync(unitOfWork, questionnaire, questionnaire.LastRemindedAtUtc, stoppingToken);
             }
         }
 
@@ -136,19 +146,28 @@ public class QuestionnaireAlertWorker : CronBackgroundService
     }
 
     /// <summary>
-    /// Releases a claim whose push failed. Swallows its own failure deliberately, the same stance
-    /// as <c>NotificationDispatchWorker.ReleasePushClaimSafelyAsync</c>: this runs inside a catch
-    /// block, and letting it throw would replace the real error with a second one. A claim that
-    /// cannot be handed back simply waits out its own 24h reminder interval before trying again —
-    /// worse than an immediate retry, not a stuck question.
+    /// Releases a claim whose push failed or reached nobody. Swallows its own failure
+    /// deliberately, the same stance as <c>NotificationDispatchWorker.ReleasePushClaimSafelyAsync</c>:
+    /// this runs inside a catch block or an already-handled empty result, and letting it throw
+    /// would replace the real signal with an unrelated one. A claim that cannot be handed back
+    /// simply waits out its own 24h reminder interval before trying again — worse than an
+    /// immediate retry, not a stuck question.
     /// </summary>
+    /// <param name="restoreLastRemindedAtUtc">
+    /// What to set <see cref="Domain.Entities.MemberQuestionnaire.LastRemindedAtUtc"/> back to —
+    /// the true pre-claim value for an immediate retry, or the current tick's time to back off
+    /// instead. See the two call sites for which applies when.
+    /// </param>
     private async Task ReleaseAlertClaimSafelyAsync(
-        IUnitOfWork unitOfWork, Domain.Entities.MemberQuestionnaire questionnaire, CancellationToken ct)
+        IUnitOfWork unitOfWork,
+        Domain.Entities.MemberQuestionnaire questionnaire,
+        DateTime? restoreLastRemindedAtUtc,
+        CancellationToken ct)
     {
         try
         {
             await unitOfWork.MemberQuestionnaires.ReleaseAlertClaimAsync(
-                questionnaire.Id, questionnaire.ReminderCount, questionnaire.LastRemindedAtUtc, ct);
+                questionnaire.Id, questionnaire.ReminderCount, restoreLastRemindedAtUtc, ct);
         }
         catch (Exception ex)
         {

@@ -130,13 +130,19 @@ public class QuestionnaireAlertWorkerTests
             questionnaire.Id, 0, null, Arg.Any<CancellationToken>());
     }
 
+    /// <summary>
+    /// An empty result — no caregiver has ReceiveAlerts on, or the row stopped qualifying between
+    /// the claim and the enqueue call — is typically a standing condition, not a transient one.
+    /// Restoring LastRemindedAtUtc to its true pre-claim value here (null, for a never-pushed row)
+    /// would make GetDueForAlertAsync treat it as due again on literally the next tick, forever.
+    /// The release must instead back off to this tick's own clock, the same 24h cooldown a real
+    /// reminder would set — unlike the enqueue-throws case, which does restore the pre-claim value
+    /// for an immediate retry, on the presumption that a thrown exception is transient.
+    /// </summary>
     [Fact]
-    public async Task PushSweep_ReleasesTheClaim_WhenEnqueueReturnsNoDeliveries()
+    public async Task PushSweep_ReleasesWithABackoff_WhenEnqueueReturnsNoDeliveries()
     {
-        // No caregiver has ReceiveAlerts on, or the row stopped qualifying between the claim and
-        // the enqueue call — either way nothing reached anyone, so the claim comes back rather
-        // than costing this question its next reminder for nothing.
-        var questionnaire = DueQuestionnaire();
+        var questionnaire = DueQuestionnaire(reminderCount: 0, lastRemindedAtUtc: null);
         StageDue(questionnaire);
         _dispatch.EnqueueForQuestionnaireAsync(Arg.Any<Guid>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
             .Returns(Array.Empty<NotificationDelivery>());
@@ -144,7 +150,7 @@ public class QuestionnaireAlertWorkerTests
         await CreateWorker().RunOnceAsync(CancellationToken.None);
 
         await _questionnaires.Received(1).ReleaseAlertClaimAsync(
-            questionnaire.Id, Arg.Any<int>(), Arg.Any<DateTime?>(), Arg.Any<CancellationToken>());
+            questionnaire.Id, 0, FixedNow.UtcDateTime, Arg.Any<CancellationToken>());
     }
 
     [Fact]
