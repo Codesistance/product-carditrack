@@ -73,7 +73,79 @@ public partial class MemberChatPage : ContentView
     private async void OnSendTapped(object? sender, EventArgs e)
     {
         _ = BounceSendIconAsync();
-        await SendAsync();
+        var typed = MessageEditor.Text?.Trim();
+        if (string.IsNullOrWhiteSpace(typed))
+            return;
+
+        MessageEditor.Text = string.Empty;
+        await SendAsync(typed);
+    }
+
+    /// <summary>
+    /// Fetches the chips and renders them. Failure is silent by design: chips are an
+    /// affordance, and a caregiver who never sees them can still type — surfacing an error over
+    /// missing suggestions would be worse than their absence.
+    /// </summary>
+    private async Task LoadSuggestionsAsync()
+    {
+        try
+        {
+            var response = await _api.GetMemberChatSuggestionsAsync(_memberId);
+
+            // _isSending as well as the turn count: a send hides this panel before it appends the
+            // caregiver's own bubble, so a reply to this request landing in that gap would find
+            // an empty thread and put the chips back underneath a message already on its way.
+            if (response.Suggestions.Count == 0 || _turns.Count > 0 || _isSending)
+                return;
+
+            SuggestionsRow.Clear();
+            foreach (var suggestion in response.Suggestions)
+                SuggestionsRow.Add(BuildSuggestionChip(suggestion));
+
+            SuggestionsPanel.IsVisible = _turns.Count == 0;
+        }
+        catch (Exception ex)
+        {
+            ScreenRefresh.LogFailure(ex, nameof(MemberChatPage), "while loading suggestions");
+        }
+    }
+
+    /// <summary>
+    /// One tappable question pill. Built in code rather than XAML, following the same convention
+    /// as <see cref="Controls.FilterChipBar"/> — whose own pills these deliberately match in
+    /// padding, radius and type — because that control is enum-typed to AlertFilter and cannot
+    /// serve free-text labels without being generalised for one caller.
+    /// </summary>
+    private Border BuildSuggestionChip(string suggestion)
+    {
+        var chip = new Border
+        {
+            BackgroundColor = Microsoft.Maui.Controls.Application.Current?.Resources["White"] as Color ?? Colors.White,
+            Stroke = (Microsoft.Maui.Controls.Application.Current?.Resources["PrimaryDark"] as Color ?? Colors.Blue)
+                .WithAlpha(0.5f),
+            StrokeThickness = 1,
+            Padding = new Thickness(20, 9, 20, 9),
+            StrokeShape = new Microsoft.Maui.Controls.Shapes.RoundRectangle { CornerRadius = 20 },
+            Content = new Label
+            {
+                Text = suggestion,
+                FontFamily = "QuicksandSemiBold",
+                FontSize = 14,
+                TextColor = Microsoft.Maui.Controls.Application.Current?.Resources["HeadingText"] as Color ?? Colors.Black,
+                VerticalOptions = LayoutOptions.Center,
+            },
+        };
+
+        // A Border with a recognizer is static text to TalkBack — the question is read out but
+        // never offered as something to activate, which makes the whole affordance invisible to
+        // exactly the caregivers a one-tap question helps most.
+        SemanticProperties.SetDescription(chip, suggestion);
+        SemanticProperties.SetHint(chip, "Double tap to ask this question");
+
+        var tap = new TapGestureRecognizer();
+        tap.Tapped += async (_, _) => await SendAsync(suggestion);
+        chip.GestureRecognizers.Add(tap);
+        return chip;
     }
 
     /// <summary>A small, self-contained press animation — deliberately not awaited by the send
@@ -106,6 +178,14 @@ public partial class MemberChatPage : ContentView
             }
 
             SetState(loaded: true);
+
+            // Only on an empty conversation — a resumed session already has its own thread to
+            // follow. Deliberately not awaited: the chips are an affordance, and the sheet must
+            // not wait on them to become usable.
+            if (_turns.Count == 0)
+                _ = LoadSuggestionsAsync();
+            else
+                SuggestionsPanel.IsVisible = false;
         }
         catch (ApiException ex)
         {
@@ -132,18 +212,23 @@ public partial class MemberChatPage : ContentView
         }
     }
 
-    private async Task SendAsync()
+    /// <param name="message">
+    /// What to send. Passed in rather than read from the editor here so a suggestion chip can
+    /// send its own question without round-tripping through the input field.
+    /// </param>
+    private async Task SendAsync(string message)
     {
         if (_isSending)
             return;
 
-        var message = MessageEditor.Text?.Trim();
         if (string.IsNullOrWhiteSpace(message))
             return;
 
         _isSending = true;
         SendButton.IsEnabled = false;
-        MessageEditor.Text = string.Empty;
+        // The chips are a first-message affordance: once the conversation has started, what to
+        // ask next comes from the reply, not from a generic list.
+        SuggestionsPanel.IsVisible = false;
 
         // Let an in-flight history load land first — its rebuild clears the list, and a turn
         // appended before that Clear() would silently vanish. LoadAsync never faults (it
@@ -267,6 +352,39 @@ public sealed class ChatTurnItem
     public required bool IsUser { get; init; }
     public required string RoleLabel { get; init; }
     public required bool ShowRoleLabel { get; init; }
+
+    /// <summary>
+    /// When this turn was sent or generated, in the reader's local time — a conversation a
+    /// caregiver returns to hours later needs to say whether "steady today" was this morning or
+    /// last night. Empty on an error bubble, which describes a failure rather than a moment in
+    /// the thread.
+    /// </summary>
+    public string Timestamp { get; init; } = string.Empty;
+    public bool HasTimestamp => Timestamp.Length > 0;
+
+    /// <summary>
+    /// The time in 12-hour form, with the day added whenever the turn is not from today. A bare
+    /// "11:58 pm" on a thread opened the next morning reads as last night at best and as this
+    /// morning at worst — and a session that runs past midnight, or one reopened later, puts
+    /// exactly that line on screen. Today's turns stay time-only: on the common path the date
+    /// would repeat on every bubble and say nothing.
+    /// </summary>
+    private static string FormatTimestamp(DateTimeOffset at)
+    {
+        var local = at.ToLocalTime();
+        // Invariant for the clock: the designator is asked for explicitly, and a 24-hour culture
+        // would silently drop it. The date part stays culture-aware, where month names belong.
+        var time = local.ToString("h:mm tt", CultureInfo.InvariantCulture).ToLowerInvariant();
+
+        var day = DateOnly.FromDateTime(local.DateTime);
+        var today = DateOnly.FromDateTime(DateTime.Now);
+        if (day == today)
+            return time;
+
+        return day == today.AddDays(-1)
+            ? $"Yesterday {time}"
+            : $"{local.ToString("MMM d", CultureInfo.CurrentCulture)} {time}";
+    }
     public required Color TextColor { get; init; }
     public required Color BubbleBackground { get; init; }
     public required LayoutOptions RowAlignment { get; init; }
@@ -279,17 +397,37 @@ public sealed class ChatTurnItem
     public bool HasChartSummary => !string.IsNullOrEmpty(ChartSummary);
 
     /// <summary>The reply's supporting series, pre-shaped for drawing — see
-    /// <see cref="ChatChartItem.From"/>. Empty for user turns, errors, and resumed history
-    /// (charts are not persisted server-side, so a resumed session has none to draw).</summary>
+    /// <see cref="ChatChartItem.From"/>. Empty for user turns and errors; a resumed or refreshed
+    /// reply draws the series stored with its turn.</summary>
     public IReadOnlyList<ChatChartItem> Charts { get; init; } = [];
     public bool HasCharts => Charts.Count > 0;
 
-    public static ChatTurnItem FromUserMessage(string content) => new()
+    /// <summary>
+    /// How wide this bubble may run. A charted reply takes the full sheet — the plot is the part
+    /// meant to be read closely, and it was the narrowest thing on screen at the conversational
+    /// measure. Everything else keeps that measure, which is what makes prose readable.
+    /// </summary>
+    public double BubbleMaxWidth => HasCharts ? 460 : 300;
+
+    /// <summary>
+    /// How the bubble measures against the row. <see cref="LayoutOptions.Start"/> and
+    /// <see cref="LayoutOptions.End"/> size to content, which is right for prose and wrong for a
+    /// chart: a <c>MaximumWidthRequest</c> only caps a measured size, it never grows one, so a
+    /// charted bubble left on Start measured to its widest label and drew the plot narrower than
+    /// the text above it. Charted replies therefore measure Fill and are capped by
+    /// <see cref="BubbleMaxWidth"/>; they are the bot's, so they still read as left-aligned.
+    /// </summary>
+    public LayoutOptions BubbleAlignment => HasCharts ? LayoutOptions.Fill : RowAlignment;
+
+    /// <param name="sentAt">When the turn happened. Defaults to now for a message being sent
+    /// this moment; history passes the stored time.</param>
+    public static ChatTurnItem FromUserMessage(string content, DateTimeOffset? sentAt = null) => new()
     {
         Content = content,
         IsUser = true,
         RoleLabel = "You",
         ShowRoleLabel = false,
+        Timestamp = FormatTimestamp(sentAt ?? DateTimeOffset.UtcNow),
         TextColor = Colors.White,
         BubbleBackground = Microsoft.Maui.Controls.Application.Current?.Resources["Primary"] as Color ?? Colors.Blue,
         RowAlignment = LayoutOptions.End,
@@ -304,19 +442,32 @@ public sealed class ChatTurnItem
         },
     };
 
-    public static ChatTurnItem FromReply(MemberChatMessageResponse response, string? memberFirstName)
+    /// <summary>
+    /// Splits series into the ones worth drawing and the ones too thin to plot. Shared by the
+    /// live reply and the stored one so a refreshed conversation cannot render its charts by a
+    /// different rule than the answer did when it arrived.
+    /// </summary>
+    private static (List<ChatChartItem> Drawable, List<ChartSeries> Summarised) SplitCharts(
+        IReadOnlyList<ChartSeries> charts)
     {
         // Series with at least two readings draw as real charts; anything thinner keeps the old
         // first-to-last text summary, so a one-day answer still shows its number somewhere.
         var drawable = new List<ChatChartItem>();
         var summarised = new List<ChartSeries>();
-        foreach (var series in response.Charts)
+        foreach (var series in charts)
         {
             if (ChatChartItem.From(series) is { } item)
                 drawable.Add(item);
             else
                 summarised.Add(series);
         }
+
+        return (drawable, summarised);
+    }
+
+    public static ChatTurnItem FromReply(MemberChatMessageResponse response, string? memberFirstName)
+    {
+        var (drawable, summarised) = SplitCharts(response.Charts);
 
         return new ChatTurnItem
         {
@@ -329,6 +480,7 @@ public sealed class ChatTurnItem
             RowAlignment = LayoutOptions.Start,
             Charts = drawable,
             ChartSummary = Summarize(summarised),
+            Timestamp = FormatTimestamp(response.GeneratedAt),
         };
     }
 
@@ -343,19 +495,27 @@ public sealed class ChatTurnItem
         RowAlignment = LayoutOptions.Start,
     };
 
-    public static ChatTurnItem FromHistory(MemberChatTurnResponse turn, string? memberFirstName) =>
-        turn.Role == "User"
-            ? FromUserMessage(turn.Content)
-            : new ChatTurnItem
-            {
-                Content = turn.Content,
-                IsUser = false,
-                RoleLabel = memberFirstName is { Length: > 0 } name ? $"About {name}" : "Reply",
-                ShowRoleLabel = true,
-                TextColor = Microsoft.Maui.Controls.Application.Current?.Resources["HeadingText"] as Color ?? Colors.Black,
-                BubbleBackground = Microsoft.Maui.Controls.Application.Current?.Resources["White"] as Color ?? Colors.White,
-                RowAlignment = LayoutOptions.Start,
-            };
+    public static ChatTurnItem FromHistory(MemberChatTurnResponse turn, string? memberFirstName)
+    {
+        if (turn.Role == "User")
+            return FromUserMessage(turn.Content, turn.CreatedAtUtc);
+
+        var (drawable, summarised) = SplitCharts(turn.Charts);
+
+        return new ChatTurnItem
+        {
+            Content = turn.Content,
+            IsUser = false,
+            RoleLabel = memberFirstName is { Length: > 0 } name ? $"About {name}" : "Reply",
+            ShowRoleLabel = true,
+            TextColor = Microsoft.Maui.Controls.Application.Current?.Resources["HeadingText"] as Color ?? Colors.Black,
+            BubbleBackground = Microsoft.Maui.Controls.Application.Current?.Resources["White"] as Color ?? Colors.White,
+            RowAlignment = LayoutOptions.Start,
+            Charts = drawable,
+            ChartSummary = Summarize(summarised),
+            Timestamp = FormatTimestamp(turn.CreatedAtUtc),
+        };
+    }
 
     /// <summary>First-to-last per series, e.g. "Steps: 3,201 → 5,110 · Resting heart rate: 61 → 58"
     /// — a compact stand-in for a true chart. See the member-chat plan's mobile-milestone note:

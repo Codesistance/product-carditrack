@@ -823,6 +823,31 @@ public class CardiTrackApiClientTests
         Assert.Equal("About as usual.", history.Turns[1].Content);
     }
 
+    /// <summary>
+    /// The chips fail silently on the page — a caregiver who never sees them can still type — so
+    /// a wrong route or a renamed envelope field would show up as nothing at all rather than as
+    /// an error. This is the only place that difference is visible.
+    /// </summary>
+    [Fact]
+    public async Task GetMemberChatSuggestions_PostsToRoute_AndReadsTheEnvelope()
+    {
+        var (client, http) = CreateSut();
+        var memberId = Guid.NewGuid();
+        http.Enqueue(HttpStatusCode.OK, """
+            {"success":true,"message":"ok","data":{"suggestions":[
+              "What's behind the current alert?","How are they doing today?",
+              "How did they sleep last night?","How active have they been this week?"]},
+             "timestamp":"2026-08-21T09:00:00Z"}
+            """);
+
+        var response = await client.GetMemberChatSuggestionsAsync(memberId);
+
+        Assert.Equal(4, response.Suggestions.Count);
+        Assert.Equal("What's behind the current alert?", response.Suggestions[0]);
+        Assert.Equal($"/api/v1/member-chat/members/{memberId}/suggestions",
+            http.Requests.Single().Uri!.AbsolutePath);
+    }
+
     [Fact]
     public async Task GetCurrentMemberChatSession_StillThrows_WhenTheBodyIsUnreadable()
     {

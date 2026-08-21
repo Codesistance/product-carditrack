@@ -132,6 +132,31 @@ public class MemberChatController : BaseApiController
         }
     }
 
+    /// <summary>Question chips for the chat's empty state — deterministic from the member's data
+    /// state (an unresolved alert earns an alert chip), no model call, instant.</summary>
+    [HttpGet("members/{cardiMemberId:guid}/suggestions")]
+    [ProducesResponseType(typeof(ApiResponse<MemberChatSuggestionsResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<ApiResponse<MemberChatSuggestionsResponse>>> GetSuggestions(
+        Guid cardiMemberId, CancellationToken ct)
+    {
+        if (!UserContext.IsAuthenticated || UserContext.UserId == Guid.Empty)
+        {
+            return Error("We couldn't find your account — please sign in again.", StatusCodes.Status403Forbidden);
+        }
+
+        try
+        {
+            var result = await _chat.GetSuggestionsAsync(UserContext.UserId, cardiMemberId, ct);
+            return Success(result);
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return Error(ex.Message, StatusCodes.Status404NotFound);
+        }
+    }
+
     /// <summary>The caregiver's active session for this member and its turns, for app-relaunch
     /// resume. 200 with a null <c>data</c> when no active session exists — not a 404, since the
     /// member itself may well exist and be viewable.</summary>

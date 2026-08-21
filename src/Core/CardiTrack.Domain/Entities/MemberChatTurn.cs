@@ -22,5 +22,21 @@ public class MemberChatTurn : BaseEntity
     /// </summary>
     public string Content { get; set; } = string.Empty;
 
+    /// <summary>
+    /// The reply's supporting chart series as JSON, encrypted at rest exactly like
+    /// <see cref="Content"/> — daily steps, heart rate and sleep are health data wherever they
+    /// are written. Null on a caregiver turn, and on a reply that had nothing to chart.
+    /// </summary>
+    /// <remarks>
+    /// Persisted rather than recomputed because a reply's charts describe the data as it was
+    /// read when the answer was written; re-deriving them later would need the question's query
+    /// plan, which is not kept, and would silently redraw an old answer against newer readings.
+    /// Without this column any reload — pull-to-refresh, reopening the sheet, relaunching the
+    /// app — rebuilt the thread from history and dropped every chart, which is what a caregiver
+    /// saw as their graphs disappearing. The readings here are the same ones the reply text
+    /// already spells out, so this adds no category of data to the turn it belongs to.
+    /// </remarks>
+    public string? Charts { get; set; }
+
     public DateTime CreatedAtUtc { get; set; }
 }

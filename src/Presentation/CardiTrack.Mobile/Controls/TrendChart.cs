@@ -14,11 +14,78 @@ namespace CardiTrack.Mobile.Controls;
 /// </remarks>
 public sealed class TrendChart : GraphicsView
 {
+    /// <summary>How far (px) a tap may land from a reading and still select it — a fingertip is
+    /// not a cursor, and a 7-day window spaces readings ~40px apart at bubble width.</summary>
+    private const double TouchSlop = 28;
+
+    /// <summary>
+    /// How far the finger may travel between touch-down and lift and still count as a tap.
+    /// Above it the gesture was a scroll that happened to start on the chart, and selecting a
+    /// reading because a caregiver swiped past it would change state they never asked to change.
+    /// </summary>
+    private const double TapMovementSlop = 12;
+
     private readonly TrendChartDrawable _drawable = new();
+
+    /// <summary>Where the current touch went down, or null when no touch is in progress or the
+    /// gesture has already been claimed by a scrolling ancestor.</summary>
+    private PointF? _touchDownAt;
 
     public TrendChart()
     {
         Drawable = _drawable;
+        StartInteraction += OnStartInteraction;
+        EndInteraction += OnEndInteraction;
+        // A parent CollectionView/ScrollView that takes the gesture over mid-swipe cancels this
+        // one; without clearing here, the next lift anywhere would be read as a tap.
+        CancelInteraction += OnCancelInteraction;
+    }
+
+    /// <summary>
+    /// Opt-in tap-to-inspect: touching the chart marks the nearest reading and shows its value
+    /// and day in a callout; touching the same reading again (or past the slop) clears it.
+    /// Opt-in rather than always-on because some hosts already own the chart's tap gesture
+    /// (Member Detail's no-data-span explainer) and the two must not race for the same touch.
+    /// </summary>
+    public bool Interactive { get; set; }
+
+    /// <summary>Formats a reading for the callout — the metric knows its own unit; the chart does
+    /// not. Defaults to the bare number.</summary>
+    public Func<double, string>? ValueFormatter { get; set; }
+
+    private void OnStartInteraction(object? sender, TouchEventArgs e) =>
+        // Recorded, not acted on: touch-down is not yet a tap. Acting here made a scroll that
+        // merely began over the chart select whatever reading it started nearest.
+        _touchDownAt = Interactive && e.Touches.Length > 0 ? e.Touches[0] : null;
+
+    private void OnCancelInteraction(object? sender, EventArgs e) => _touchDownAt = null;
+
+    private void OnEndInteraction(object? sender, TouchEventArgs e)
+    {
+        var start = _touchDownAt;
+        _touchDownAt = null;
+
+        if (!Interactive || start is not { } down || e.Touches.Length == 0)
+            return;
+
+        var up = e.Touches[0];
+        if (Math.Abs(up.X - down.X) > TapMovementSlop || Math.Abs(up.Y - down.Y) > TapMovementSlop)
+            return;
+
+        var nearest = _drawable.NearestDataPointAt(up.X);
+        if (nearest is null || Math.Abs(nearest.Value.At.X - up.X) > TouchSlop)
+        {
+            _drawable.SelectedDate = null;
+        }
+        else
+        {
+            // Tapping the already-selected reading dismisses its callout — the second tap means
+            // "put it away", not "tell me again".
+            _drawable.SelectedDate =
+                _drawable.SelectedDate == nearest.Value.Date ? null : nearest.Value.Date;
+        }
+
+        Invalidate();
     }
 
     /// <param name="points">The window to draw, oldest first; days with no reading carry a null value.</param>
@@ -49,6 +116,7 @@ public sealed class TrendChart : GraphicsView
         MetricReference? reference = null)
     {
         _drawable.Points = points;
+        _drawable.ValueFormatter = ValueFormatter;
         _drawable.Scale = scale;
         _drawable.LineColor = lineColor;
         _drawable.ShowMarkers = showMarkers;
@@ -114,6 +182,10 @@ public sealed class TrendChart : GraphicsView
         return null;
     }
 }
+
+/// <summary>One reported reading as drawn: where it landed, which day, and its value — what
+/// tap-to-inspect selects and the callout names.</summary>
+public readonly record struct ChartDataPoint(PointF At, DateOnly Date, double Value);
 
 /// <summary>
 /// One shaded run of days with no reading: where it was drawn, and which days it covers.
@@ -263,6 +335,41 @@ internal sealed class TrendChartDrawable : IDrawable
     /// </summary>
     public IReadOnlyList<NoDataSpan> NoDataSpans => _noDataSpans;
 
+    /// <summary>Where each reported reading landed, same rebuild-per-draw rule as the spans —
+    /// what a tap-to-inspect hit-tests against.</summary>
+    private readonly List<ChartDataPoint> _dataPoints = [];
+
+    /// <summary>
+    /// The day a tap selected, or null. Held as a date rather than as the point itself because
+    /// <see cref="_dataPoints"/> is cleared and rebuilt on every draw: a resize moves every
+    /// coordinate, and a refresh can change the value under the same day. Keeping the point would
+    /// paint the marker where the reading used to be and caption it with a number the line no
+    /// longer shows, so the position and the value are both resolved fresh at draw time.
+    /// </summary>
+    public DateOnly? SelectedDate { get; set; }
+
+    /// <summary>How the view spells a value — it knows the metric's unit and the drawable does
+    /// not. Needed here, rather than a pre-formatted string, because the callout has to reformat
+    /// from whatever the rebuilt point holds.</summary>
+    public Func<double, string>? ValueFormatter { get; set; }
+
+    public ChartDataPoint? NearestDataPointAt(double x)
+    {
+        ChartDataPoint? nearest = null;
+        var best = double.MaxValue;
+        foreach (var point in _dataPoints)
+        {
+            var distance = Math.Abs(point.At.X - x);
+            if (distance < best)
+            {
+                best = distance;
+                nearest = point;
+            }
+        }
+
+        return nearest;
+    }
+
     /// <summary>
     /// Same, for the first and last day: they sit at the very ends of the axis, so without this the
     /// two markers a caregiver most wants — where the window starts, and today — draw half outside
@@ -294,6 +401,7 @@ internal sealed class TrendChartDrawable : IDrawable
         // Rebuilt every pass: the spans are canvas geometry, so a resize or a new window makes the
         // ones from last time wrong rather than stale.
         _noDataSpans.Clear();
+        _dataPoints.Clear();
 
         if (dirtyRect.Width <= 0 || dirtyRect.Height <= 0 || Points.Count < 2)
             return;
@@ -401,6 +509,9 @@ internal sealed class TrendChartDrawable : IDrawable
             {
                 latestMarker = point;
                 hasMarker = true;
+                // Every reported reading is inspectable, partial included — the callout is how a
+                // caregiver asks "what is this exactly?", and today-so-far is a fair question.
+                _dataPoints.Add(new ChartDataPoint(point, Points[i].Date, (double)value!));
                 // A running total is not one of the readings the window is made of, so it does not
                 // get a day marker — the dashed run is what says it is there.
                 if (!isPartial)
@@ -452,6 +563,54 @@ internal sealed class TrendChartDrawable : IDrawable
             DrawMarker(canvas, lastSettled, LatestMarkerRadius);
         else if (hasMarker)
             DrawMarker(canvas, latestMarker, LatestMarkerRadius);
+
+        DrawSelection(canvas, dirtyRect);
+    }
+
+    /// <summary>
+    /// The tap-to-inspect callout: the selected reading gets an emphasized marker and a small
+    /// pill naming its value and day, clamped inside the canvas so an end-of-window reading's
+    /// label does not run off the edge. Drawn last — it is the one thing that belongs above the
+    /// data.
+    /// </summary>
+    private void DrawSelection(ICanvas canvas, RectF dirtyRect)
+    {
+        if (SelectedDate is not { } date)
+            return;
+
+        // Resolved against the points this draw just built, never the ones the tap saw. A window
+        // change may also have dropped the selected day outright, and a stale callout over
+        // different data would attribute a value to the wrong line.
+        var index = _dataPoints.FindIndex(p => p.Date == date);
+        if (index < 0)
+        {
+            SelectedDate = null;
+            return;
+        }
+
+        var selected = _dataPoints[index];
+        var label = $"{ValueFormatter?.Invoke(selected.Value) ?? selected.Value.ToString("0.#")} · {selected.Date:MMM d}";
+
+        DrawMarker(canvas, selected.At, LatestMarkerRadius + 1.5f);
+
+        canvas.FontSize = 10f;
+        var size = canvas.GetStringSize(label, Microsoft.Maui.Graphics.Font.Default, 10f);
+        var paddingX = 8f;
+        var paddingY = 5f;
+        var width = size.Width + paddingX * 2;
+        var height = size.Height + paddingY * 2;
+
+        var x = Math.Clamp(selected.At.X - width / 2, dirtyRect.Left, dirtyRect.Right - width);
+        // Above the point when there is room, below it when the reading sits near the top.
+        var y = selected.At.Y - height - 8 >= dirtyRect.Top
+            ? selected.At.Y - height - 8
+            : selected.At.Y + 10;
+
+        var pill = new RectF((float)x, (float)y, width, height);
+        canvas.FillColor = LineColor;
+        canvas.FillRoundedRectangle(pill, height / 2);
+        canvas.FontColor = Colors.White;
+        canvas.DrawString(label, pill, HorizontalAlignment.Center, VerticalAlignment.Center);
     }
 
     /// <summary>

@@ -67,6 +67,11 @@ public class DataQueryPlannerService : IDataQueryPlanner
             Respond with the source names from the list above (as written), and if RecentActivity is
             needed, how many days back is relevant (default 7, at most 14); if RealtimeAssessments is
             needed, how many hours back is relevant (default 24, at most 72).
+
+            Also name which specific daily metrics the question is about, as metrics: any of Steps,
+            RestingHeartRate, Sleep. Name only the ones the question actually asks about — a
+            question about steps names Steps alone. Leave metrics empty for a general question
+            about how the person is doing overall.
             """;
     }
 
@@ -78,20 +83,47 @@ public class DataQueryPlannerService : IDataQueryPlanner
     /// <c>PromptContext.MemberContextComposer</c>), which is correct for a question that does not
     /// need any of the four data sources at all.
     /// </summary>
-    private static DataQueryPlan Parse(DataQueryPlanAiResponse response)
+    internal static DataQueryPlan Parse(DataQueryPlanAiResponse response)
     {
+        // IsDefined alongside TryParse, not instead of it: TryParse succeeds on any numeric
+        // string, so "999" would parse to (DataQueryKind)999 and travel on as a recognised source
+        // that the whitelist then matches nothing against — a silent empty fetch wearing the
+        // shape of a real plan. Only names of members that actually exist survive.
         var sources = response.Sources
-            .Select(s => Enum.TryParse<DataQueryKind>(s, ignoreCase: true, out var kind) ? kind : (DataQueryKind?)null)
+            .Select(s => Enum.TryParse<DataQueryKind>(s, ignoreCase: true, out var kind) && Enum.IsDefined(kind)
+                ? kind
+                : (DataQueryKind?)null)
             .Where(k => k is not null)
             .Select(k => k!.Value)
             .Distinct()
             .ToList();
+
+        // Same defensive parse as the sources, but the empty cases are kept apart (see
+        // DataQueryPlan.ChartMetrics): an absent field is null — the model did not answer — and
+        // so is a list whose every name failed to parse, because names we could not read tell us
+        // nothing about what the question was. Only a list the model deliberately sent empty
+        // means "general question".
+        IReadOnlyList<ChartMetricKind>? metrics = null;
+        if (response.Metrics is { } named)
+        {
+            var recognised = named
+                .Select(m => Enum.TryParse<ChartMetricKind>(m, ignoreCase: true, out var kind) && Enum.IsDefined(kind)
+                    ? kind
+                    : (ChartMetricKind?)null)
+                .Where(m => m is not null)
+                .Select(m => m!.Value)
+                .Distinct()
+                .ToList();
+
+            metrics = named.Count > 0 && recognised.Count == 0 ? null : recognised;
+        }
 
         return new DataQueryPlan
         {
             Sources = sources,
             RecentActivityDays = response.RecentActivityDays is > 0 ? response.RecentActivityDays.Value : 7,
             RealtimeAssessmentHours = response.RealtimeAssessmentHours is > 0 ? response.RealtimeAssessmentHours.Value : 24,
+            ChartMetrics = metrics,
         };
     }
 
@@ -100,5 +132,6 @@ public class DataQueryPlannerService : IDataQueryPlanner
         public required IReadOnlyList<string> Sources { get; init; }
         public int? RecentActivityDays { get; init; }
         public int? RealtimeAssessmentHours { get; init; }
+        public IReadOnlyList<string>? Metrics { get; init; }
     }
 }

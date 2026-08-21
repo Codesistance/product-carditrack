@@ -15,6 +15,18 @@ public enum DataQueryKind
 }
 
 /// <summary>
+/// The daily metrics a chat reply can chart. Closed enum for the same reason as
+/// <see cref="DataQueryKind"/>: the planner picks from a fixed vocabulary, and an unrecognised
+/// answer is dropped rather than trusted.
+/// </summary>
+public enum ChartMetricKind
+{
+    Steps = 1,
+    RestingHeartRate = 2,
+    Sleep = 3,
+}
+
+/// <summary>
 /// What one caregiver question needs fetched, as decided by <c>IDataQueryPlanner</c> and enforced
 /// by <c>DataQueryWhitelist</c>. The type is the security boundary: it is structurally incapable of
 /// naming <em>whose</em> data to fetch, only <em>which kinds</em>. The CardiMember the plan runs
@@ -33,6 +45,25 @@ public sealed record DataQueryPlan
 
     /// <summary>Clamped by <c>DataQueryWhitelist</c> regardless of what the model asked for.</summary>
     public int RealtimeAssessmentHours { get; init; } = 24;
+
+    /// <summary>
+    /// The metrics the question is actually about, when it is about specific ones — a steps
+    /// question charts steps, not the member's whole week. Enum-typed like <see cref="Sources"/>:
+    /// this shape stays structurally unable to carry free text or an identifier.
+    /// </summary>
+    /// <remarks>
+    /// Three states, deliberately distinguishable: a non-empty list narrows the charts; an empty
+    /// list is the model answering "this question is general"; <c>null</c> is the model not
+    /// answering at all — an omitted field, or names none of which parsed.
+    /// <para>
+    /// The two latter states both widen to every fetched series, and that is a choice rather
+    /// than an oversight: when the planner has told us nothing, charting nothing would drop data
+    /// the caregiver asked to see, and showing an extra series is the cheaper error. Keeping the
+    /// states apart in the type is what lets that decision be revisited — and read in telemetry —
+    /// without first having to reconstruct which case produced an empty list.
+    /// </para>
+    /// </remarks>
+    public IReadOnlyList<ChartMetricKind>? ChartMetrics { get; init; }
 }
 
 /// <summary>The data <see cref="DataQueryPlan"/> resolved to, ready for the clinical prompt and for

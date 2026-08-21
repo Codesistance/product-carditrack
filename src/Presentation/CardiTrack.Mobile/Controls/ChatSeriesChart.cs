@@ -27,7 +27,10 @@ public sealed class ChatSeriesChart : ContentView
             FontSize = 11,
             TextColor = Microsoft.Maui.Controls.Application.Current?.Resources["BodyText"] as Color ?? Colors.Gray,
         };
-        _chart = new TrendChart { HeightRequest = 72 };
+        // Interactive: chat charts are the ones a caregiver reads mid-conversation, and a tap
+        // answering "what was that day exactly?" beats asking the model a follow-up for one
+        // number. Taller than the original 72 now that the bubble runs full width.
+        _chart = new TrendChart { HeightRequest = 96, Interactive = true };
 
         Content = new VerticalStackLayout
         {
@@ -49,7 +52,13 @@ public sealed class ChatSeriesChart : ContentView
             return;
 
         view._title.Text = item.Title;
+        view._chart.ValueFormatter = item.FormatValue;
         view._chart.Render(item.Points, item.Scale, item.Ink, showMarkers: true);
+
+        // The title label would otherwise be read on its own, announcing that a chart exists
+        // without saying anything it shows. Same treatment MetricTrendCard gives its plot.
+        SemanticProperties.SetDescription(view._chart, item.AccessibleSummary);
+        SemanticProperties.SetHint(view._chart, "Tap a point to see that day's reading");
     }
 }
 
@@ -60,18 +69,61 @@ public sealed class ChatSeriesChart : ContentView
 /// </summary>
 public sealed class ChatChartItem
 {
-    private ChatChartItem(string title, IReadOnlyList<MetricPoint> points, TrendScale scale, Color ink)
+    private ChatChartItem(string title, IReadOnlyList<MetricPoint> points, TrendScale scale, Color ink, string metric)
     {
         Title = title;
         Points = points;
         Scale = scale;
         Ink = ink;
+        Metric = metric;
     }
 
     public string Title { get; }
     public IReadOnlyList<MetricPoint> Points { get; }
     public TrendScale Scale { get; }
     public Color Ink { get; }
+
+    /// <summary>The series name, kept for the unit the callout appends — the chart draws numbers,
+    /// the series knows what they are.</summary>
+    private string Metric { get; }
+
+    /// <summary>
+    /// A tapped reading as the callout shows it. Sleep arrives in minutes and is read in hours;
+    /// steps are whole and want their thousands separator; a rate is a rate.
+    /// </summary>
+    public string FormatValue(double value) => Metric switch
+    {
+        "Steps" => $"{value:#,##0} steps",
+        "Resting heart rate" => $"{value:0} bpm",
+        "Sleep (minutes)" => value >= 60
+            ? $"{Math.Floor(value / 60):0}h {value % 60:0}m"
+            : $"{value:0}m",
+        _ => value.ToString("0.#"),
+    };
+
+    /// <summary>
+    /// What the chart says to a caregiver who cannot see it. The canvas is one opaque element to
+    /// a screen reader — the tap-to-inspect callout is unreachable by definition — so the shape a
+    /// sighted reader gets at a glance (span, range, where it ended) is spelled out instead. Read
+    /// aloud in place of the plot, not alongside it.
+    /// </summary>
+    public string AccessibleSummary
+    {
+        get
+        {
+            var reported = Points.Where(p => p.Value is not null).ToList();
+            if (reported.Count == 0)
+                return $"{Title}: no readings.";
+
+            var low = reported.Min(p => p.Value!.Value);
+            var high = reported.Max(p => p.Value!.Value);
+            var latest = reported[^1];
+
+            return $"{Title}, {reported.Count} readings from {Points[0].Date:MMM d} to {Points[^1].Date:MMM d}. "
+                + $"Ranging {FormatValue((double)low)} to {FormatValue((double)high)}. "
+                + $"Latest {FormatValue((double)latest.Value!.Value)} on {latest.Date:MMM d}.";
+        }
+    }
 
     /// <summary>
     /// Null when the series can't be drawn as a line (fewer than two readings) — the caller keeps
@@ -115,7 +167,7 @@ public sealed class ChatChartItem
         var values = series.Points.Select(p => p.Value).ToList();
         var scale = TrendScale.For(values.Min(), values.Max(), baseline: null, referenceLow: null, referenceHigh: null);
 
-        return new ChatChartItem(series.Metric, points, scale, InkFor(series.Metric));
+        return new ChatChartItem(series.Metric, points, scale, InkFor(series.Metric), series.Metric);
     }
 
     /// <summary>
