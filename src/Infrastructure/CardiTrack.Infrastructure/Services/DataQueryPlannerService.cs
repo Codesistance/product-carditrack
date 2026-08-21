@@ -72,7 +72,7 @@ public class DataQueryPlannerService : IDataQueryPlanner
             RestingHeartRate, Sleep. Name only the ones the question actually asks about — a
             question about steps names Steps alone. Leave metrics empty for a general question
             about how the person is doing overall.
-            """;
+            """ + MedicalPromptBlocks.ChatMessageGuardrail;
     }
 
     /// <summary>

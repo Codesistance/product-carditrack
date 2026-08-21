@@ -70,9 +70,9 @@ public class MedicalPromptBlockCompositionTests
         Assert.Equal(
             MedicalPromptBlocks.Pronouns,
             Block(
-                "Use he or she as the sex given indicates, writing a given name at most once."
-                + " If sex is not stated, use a given name instead of they."
-                + " Never invent a name; they only if no name is given either."));
+                "Never invent a name; use one only if it is given."
+                + " Use he or she as the sex given indicates, writing a given name at most once."
+                + " If sex is not stated, use a given name instead of they, and they only if no name is given either."));
     }
 
     [Fact]

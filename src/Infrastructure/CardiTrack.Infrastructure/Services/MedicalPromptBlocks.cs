@@ -221,11 +221,20 @@ internal static partial class MedicalPromptBlocks
     /// without the third: taking "use a given name instead of they" alone leaves the nameless case
     /// with an instruction it can only satisfy by inventing one.
     /// </para>
+    /// <para>
+    /// "Never invent a name" leads. It used to close the line, after a semicolon, at the end of
+    /// forty-five words — while "if sex is not stated, use a given name instead of they" led. Most
+    /// of the prompts carrying this rule give no name at all: only the digest and the status line
+    /// send <c>CardiTrackCardiMember</c>, and the alert, baseline, provisional, learning, assessor
+    /// and chat-clinical briefs give the model nothing to name the person with. So the clause it
+    /// met first was one it could not satisfy, and the clause releasing it arrived last. The
+    /// wording of all three is unchanged; only which one the model reads first is.
+    /// </para>
     /// </remarks>
     internal const string Pronouns =
-        "Use he or she as the sex given indicates, writing a given name at most once."
-        + " If sex is not stated, use a given name instead of they."
-        + " Never invent a name; they only if no name is given either." + NL;
+        "Never invent a name; use one only if it is given."
+        + " Use he or she as the sex given indicates, writing a given name at most once."
+        + " If sex is not stated, use a given name instead of they, and they only if no name is given either." + NL;
 
     /// <summary>The caregiver register's voice line: who is writing, and in whose words.</summary>
     internal const string RegisterCaregiverVoice =

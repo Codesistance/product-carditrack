@@ -239,7 +239,7 @@ public class ReportGenerationService : IReportGenerationService
             {
                 sb.AppendLine("### Activity Metrics");
                 foreach (var log in logs.OrderBy(l => l.Date))
-                    sb.AppendLine($"  {log.Date}: steps={log.Steps}, HR={log.RestingHeartRate}, sleep={log.SleepMinutes}min");
+                    sb.AppendLine($"  {log.Date}: {DayFigures(log)}");
             }
 
             if (request.IncludeAlerts)
@@ -253,24 +253,51 @@ public class ReportGenerationService : IReportGenerationService
                 {
                     sb.AppendLine("### Alerts");
                     foreach (var alert in inRange)
-                        sb.AppendLine($"  {alert.TriggeredDate:yyyy-MM-dd} [{alert.Severity}] {alert.Title}");
+                        sb.AppendLine(
+                            $"  {alert.TriggeredDate:yyyy-MM-dd} [{alert.Severity}] "
+                            + MedicalPromptBlocks.Flatten(alert.Title));
                 }
             }
 
             sections.Add(sb.ToString());
         }
 
-        var text = $"""
-            You are a medical AI assistant writing a {request.Format} health report for a non-clinical caregiver,
-            covering {request.DateRangeFrom} to {request.DateRangeTo}.
+        var text = MedicalPromptBlocks.Tone + $"""
+            Write a {request.Format} health report for a non-clinical caregiver, covering {request.DateRangeFrom} to {request.DateRangeTo}.
+
+            """ + MedicalPromptBlocks.CaregiverRegister + $"""
 
             {string.Join("\n\n", sections)}
 
-            Summarise the data above in a clear, structured report: note trends and any patterns
-            worth flagging, and refer to each person by the exact label given above.
+            Summarise the data above in a clear, structured report: say what the readings show and
+            where they moved, and refer to each person by the exact label given above. Do not quote
+            a figure that is not above, and where a reading was not measured, say so rather than
+            leaving it to read as an ordinary one.
             """;
 
         return new ReportPrompt(text, pseudonyms);
+    }
+
+    /// <summary>
+    /// One day's figures, naming only what the device reported.
+    /// </summary>
+    /// <remarks>
+    /// The three readings were interpolated straight into the line, so a day the watch missed a
+    /// metric rendered "steps=, HR=71, sleep=min" — an empty value beside a real one, in a
+    /// document a caregiver keeps. The same shape the family digest guards against and asserts on;
+    /// this is the third renderer in the review that had it.
+    /// </remarks>
+    private static string DayFigures(Domain.Entities.ActivityLog log)
+    {
+        var parts = new List<string>(3);
+        if (log.Steps is { } steps)
+            parts.Add($"steps={steps}");
+        if (log.RestingHeartRate is { } resting)
+            parts.Add($"HR={resting}");
+        if (log.SleepMinutes is { } sleep)
+            parts.Add($"sleep(night ending that morning)={sleep}min");
+
+        return parts.Count > 0 ? string.Join(", ", parts) : "nothing measured";
     }
 
     /// <summary>

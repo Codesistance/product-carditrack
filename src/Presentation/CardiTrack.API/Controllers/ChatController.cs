@@ -1,10 +1,11 @@
-using CardiTrack.API.Infrastructure.Auditing;
+﻿using CardiTrack.API.Infrastructure.Auditing;
 using CardiTrack.API.Infrastructure.UserContext;
 using CardiTrack.Application.DTOs.Common;
 using CardiTrack.Application.DTOs.Requests;
 using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Interfaces.Services;
+using CardiTrack.Infrastructure.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -59,7 +60,7 @@ public class ChatController : BaseApiController
         var logs = await _unitOfWork.ActivityLogs
             .GetByCardiMemberAndDateRangeAsync(request.CardiMemberId, from, to);
 
-        var systemContext = BuildSystemContext(logs);
+        var systemContext = PublicChatPrompt.BuildContextMessage(logs);
         var history = request.History.Prepend(systemContext).ToList();
 
         var reply = await _generativeAi.ChatAsync(history, request.Message, ct);
@@ -69,27 +70,5 @@ public class ChatController : BaseApiController
             Reply = reply,
             ConversationId = Guid.NewGuid().ToString("N")
         });
-    }
-
-    /// <summary>
-    /// Carries readings only. Chat goes to the general provider — today Gemini's consumer
-    /// endpoint, outside the Google Cloud BAA — so nothing that identifies the member goes with
-    /// them. The CardiMember id used to be included here and bought the model nothing: it cannot
-    /// look the id up, and the caller already knows whose data they asked for.
-    /// </summary>
-    private static ChatMessage BuildSystemContext(
-        IEnumerable<Domain.Entities.ActivityLog> logs)
-    {
-        var summary = logs.Any()
-            ? string.Join(", ", logs.OrderBy(l => l.Date).Select(l =>
-                $"{l.Date}: steps={l.Steps}, HR={l.RestingHeartRate}, sleep={l.SleepMinutes}min"))
-            : "No recent activity data available.";
-
-        return new ChatMessage
-        {
-            Role = ChatRole.User,
-            Content = $"[System context] Patient's health data, last 3 days: {summary}. " +
-                      "You are a helpful health assistant; answer questions about this data accurately and concisely."
-        };
     }
 }
