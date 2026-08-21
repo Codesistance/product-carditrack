@@ -107,10 +107,13 @@ public class NotificationDispatchWorker : CronBackgroundService
         catch (Exception ex)
         {
             activity?.SetStatus(ActivityStatusCode.Error, ex.GetType().Name);
-            // ExceptionLoggingSpanProcessor re-logs this as an ERROR (with the notification.phase
-            // tag set above folded into the message) — a local LogError here would just be the same
-            // failure twice. "The next tick retries it" is implicit: every phase failure here does.
+            // Without this, ExceptionLoggingSpanProcessor finds no "exception" event on the span
+            // and silently re-logs nothing for this failure — SetStatus alone isn't enough.
             activity?.AddException(ex);
+            // Not redundant with that re-log despite the overlap: TracesSampleRatio (default 0.2)
+            // means most ticks get no sampled Activity at all (StartActivity returns null), so the
+            // processor never fires for them — this LogError is the only guaranteed record.
+            _logger.LogError(ex, "NotificationDispatch phase {Phase} failed; the next tick retries it.", phase);
         }
     }
 
