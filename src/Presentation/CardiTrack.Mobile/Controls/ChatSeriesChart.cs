@@ -145,7 +145,7 @@ public sealed class ChatChartItem
         var first = series.Points.Min(p => p.Date);
         var last = series.Points.Max(p => p.Date);
 
-        // Chat activity windows are clamped to 14 days server-side (see DataQueryWhitelist); a
+        // Chat activity windows are clamped to one week server-side (see DataQueryWhitelist); a
         // span wildly past that is malformed data, and the text summary reads better than a
         // chart that is mostly no-data shading.
         if (last.DayNumber - first.DayNumber > 62)

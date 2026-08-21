@@ -15,8 +15,17 @@ public static class DataQueryWhitelist
 {
     /// <summary>Floor/ceiling regardless of what the model asked for — the model's number is a
     /// preference, not a grant.</summary>
+    /// <remarks>
+    /// The activity ceiling came down from 14 days to one week on 2026-08-21, for latency rather
+    /// than privacy. Every fetched day is rows in the clinical prompt, and that prompt is
+    /// evaluated on a CPU-served model at roughly 25 tokens/sec — a measured chat send spent 47.6 s
+    /// on prompt evaluation alone before its first output token. A fortnight of readings is twice
+    /// that bill for a question a caregiver almost never asks: the planner's own default has always
+    /// been 7, so the ceiling was only ever reachable by the model asking for more, and the answer
+    /// it bought did not justify the wait it cost.
+    /// </remarks>
     private const int MinRecentActivityDays = 1;
-    private const int MaxRecentActivityDays = 14;
+    private const int MaxRecentActivityDays = 7;
     private const int MinRealtimeAssessmentHours = 1;
     private const int MaxRealtimeAssessmentHours = 72;
 

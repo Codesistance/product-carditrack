@@ -65,8 +65,9 @@ public class DataQueryPlannerService : IDataQueryPlanner
             {question}
 
             Respond with the source names from the list above (as written), and if RecentActivity is
-            needed, how many days back is relevant (default 7, at most 14); if RealtimeAssessments is
-            needed, how many hours back is relevant (default 24, at most 72).
+            needed, how many days back is relevant — 1 to 7, default 7, and a question about a
+            longer stretch still gets the last 7 days; if RealtimeAssessments is needed, how many
+            hours back is relevant (default 24, at most 72).
 
             Also name which specific daily metrics the question is about, as metrics: any of Steps,
             RestingHeartRate, Sleep. Name only the ones the question actually asks about — a

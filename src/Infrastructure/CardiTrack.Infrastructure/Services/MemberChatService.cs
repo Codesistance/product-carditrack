@@ -144,7 +144,9 @@ public class MemberChatService : IMemberChatService
         this is an internal clinical read, not the final reply the caregiver sees, so write precisely
         rather than in caregiver language; a separate step turns this into caregiver-facing prose.
         If the data below does not answer the question, say so rather than guessing or inventing a
-        reading the data does not contain.
+        reading the data does not contain. The activity data covers a fixed recent window, stated in
+        its heading; if the question asks about a longer stretch, answer for the window you were
+        given and say which days that is.
 
         Respond with:
         - analysis: your answer, grounded only in the data provided.
