@@ -31,9 +31,13 @@ public class PushDeviceTokenRepository : Repository<PushDeviceToken>, IPushDevic
     public async Task<IReadOnlyList<PushDeviceToken>> GetDueForLivenessProbeAsync(
         DateTime utcNow, CancellationToken ct = default)
     {
+        // Compare against the day boundary directly rather than truncating LastAckDate
+        // (.Value.Date translates to date_trunc per row, which defeats any index on the
+        // column). "truncated day < today" and "timestamp < start of today" select the
+        // same rows when today is a UTC day boundary.
         var today = utcNow.Date;
         return await _dbSet
-            .Where(t => t.DisabledDate == null && (t.LastAckDate == null || t.LastAckDate.Value.Date < today))
+            .Where(t => t.DisabledDate == null && (t.LastAckDate == null || t.LastAckDate < today))
             .ToListAsync(ct);
     }
 
