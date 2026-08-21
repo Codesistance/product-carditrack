@@ -71,6 +71,16 @@ public sealed record DataQueryPlan
 public sealed record FetchedMemberData
 {
     public IReadOnlyList<CardiTrack.Domain.Entities.ActivityLog> RecentActivity { get; init; } = [];
+
+    /// <summary>
+    /// The days <see cref="RecentActivity"/> was read over, inclusive — null when activity was not
+    /// among the plan's sources. Carried rather than inferred because the two differ whenever the
+    /// member has a gap: a window of seven days with readings on four returns four rows, and a
+    /// prompt that counted those rows would tell the model it was looking at four days. The
+    /// clinical read is asked to name the stretch it answered for, so it has to be told the
+    /// stretch, not a count of what happened to be in it.
+    /// </summary>
+    public (DateOnly From, DateOnly To)? RecentActivityWindow { get; init; }
     public CardiTrack.Domain.Entities.PatternBaseline? Baseline { get; init; }
     public IReadOnlyList<CardiTrack.Domain.Entities.Alert> UnresolvedAlerts { get; init; } = [];
     public IReadOnlyList<CardiTrack.Domain.Entities.RealtimeAssessment> RealtimeAssessments { get; init; } = [];

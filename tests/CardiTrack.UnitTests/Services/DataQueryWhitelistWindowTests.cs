@@ -29,7 +29,12 @@ public class DataQueryWhitelistWindowTests
         return (uow, logs);
     }
 
-    private static async Task<DateOnly> FromDateForAsync(int requestedDays)
+    /// <summary>
+    /// The number of calendar days the repository was actually asked for. Both bounds are
+    /// inclusive (<c>&gt;= from &amp;&amp; &lt;= to</c>), so this counts the endpoints — which is
+    /// the whole point: asking for "7 days" as <c>AddDays(-7)</c> fetched eight of them.
+    /// </summary>
+    private static async Task<int> DaysFetchedForAsync(int requestedDays)
     {
         var (uow, logs) = Fakes();
         var plan = new DataQueryPlan
@@ -38,10 +43,19 @@ public class DataQueryWhitelistWindowTests
             RecentActivityDays = requestedDays,
         };
 
-        await DataQueryWhitelist.ExecuteAsync(plan, Guid.NewGuid(), uow, UtcNow, CancellationToken.None);
+        var fetched = await DataQueryWhitelist.ExecuteAsync(
+            plan, Guid.NewGuid(), uow, UtcNow, CancellationToken.None);
 
         var call = logs.ReceivedCalls().Single();
-        return (DateOnly)call.GetArguments()[1]!;
+        var from = (DateOnly)call.GetArguments()[1]!;
+        var to = (DateOnly)call.GetArguments()[2]!;
+
+        Assert.Equal(Today, to);
+        // The window the prompt will name has to be the window that was read, or the clinical read
+        // is told it is looking at a stretch nobody fetched.
+        Assert.Equal((from, to), fetched.RecentActivityWindow);
+
+        return to.DayNumber - from.DayNumber + 1;
     }
 
     /// <summary>
@@ -55,25 +69,30 @@ public class DataQueryWhitelistWindowTests
     [InlineData(14)]
     [InlineData(30)]
     [InlineData(365)]
-    public async Task AWindowLongerThanAWeek_IsCutBackToAWeek(int requested) =>
-        Assert.Equal(Today.AddDays(-7), await FromDateForAsync(requested));
+    public async Task AWindowLongerThanAWeek_IsCutBackToSevenDays(int requested) =>
+        Assert.Equal(7, await DaysFetchedForAsync(requested));
 
-    /// <summary>A shorter window the model asked for deliberately is honoured — the ceiling caps
-    /// what it may take, it does not widen what it asked for.</summary>
+    /// <summary>
+    /// Seven days means seven, not eight. Both repository bounds are inclusive, so the original
+    /// <c>AddDays(-7)</c>..<c>today</c> range spanned a week plus a day — enough that "the last
+    /// week" in a caregiver's reply covered eight dates, and enough extra prompt to matter at
+    /// 40 ms per token.
+    /// </summary>
     [Theory]
     [InlineData(1)]
     [InlineData(3)]
     [InlineData(7)]
-    public async Task AShorterWindow_IsLeftAlone(int requested) =>
-        Assert.Equal(Today.AddDays(-requested), await FromDateForAsync(requested));
+    public async Task AWindowInsideTheCeiling_FetchesExactlyThatManyDays(int requested) =>
+        Assert.Equal(requested, await DaysFetchedForAsync(requested));
 
-    /// <summary>Zero or negative days would otherwise ask for a range ending before it starts.</summary>
+    /// <summary>One day means today alone — the floor cannot produce a range ending before it
+    /// starts.</summary>
     [Theory]
     [InlineData(0)]
     [InlineData(-1)]
     [InlineData(int.MinValue)]
-    public async Task ANonPositiveWindow_FallsToTheFloor(int requested) =>
-        Assert.Equal(Today.AddDays(-1), await FromDateForAsync(requested));
+    public async Task ANonPositiveWindow_FallsToASingleDay(int requested) =>
+        Assert.Equal(1, await DaysFetchedForAsync(requested));
 
     /// <summary>
     /// int.MaxValue is what a malformed plan looks like at the boundary: unclamped, the negation
@@ -81,7 +100,7 @@ public class DataQueryWhitelistWindowTests
     /// </summary>
     [Fact]
     public async Task TheLargestPossibleWindow_DoesNotOverflow() =>
-        Assert.Equal(Today.AddDays(-7), await FromDateForAsync(int.MaxValue));
+        Assert.Equal(7, await DaysFetchedForAsync(int.MaxValue));
 
     /// <summary>
     /// The whole point of the closed source list: a plan that does not name RecentActivity reads
@@ -97,6 +116,7 @@ public class DataQueryWhitelistWindowTests
             plan, Guid.NewGuid(), uow, UtcNow, CancellationToken.None);
 
         Assert.Empty(fetched.RecentActivity);
+        Assert.Null(fetched.RecentActivityWindow);
         Assert.Empty(logs.ReceivedCalls());
     }
 }

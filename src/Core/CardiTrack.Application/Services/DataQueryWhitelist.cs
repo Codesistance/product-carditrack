@@ -16,6 +16,7 @@ public static class DataQueryWhitelist
     /// <summary>Floor/ceiling regardless of what the model asked for — the model's number is a
     /// preference, not a grant.</summary>
     /// <remarks>
+    /// <para>
     /// The activity ceiling came down from 14 days to one week on 2026-08-21, for latency rather
     /// than privacy. Every fetched day is rows in the clinical prompt, and that prompt is
     /// evaluated on a CPU-served model at roughly 25 tokens/sec — a measured chat send spent 47.6 s
@@ -23,6 +24,14 @@ public static class DataQueryWhitelist
     /// that bill for a question a caregiver almost never asks: the planner's own default has always
     /// been 7, so the ceiling was only ever reachable by the model asking for more, and the answer
     /// it bought did not justify the wait it cost.
+    /// </para>
+    /// <para>
+    /// <b>This ceiling is the chat's alone.</b> <c>MemberChatService</c> is the only caller of this
+    /// class, and deliberately so: chat is the one AI surface a caregiver waits on in real time, so
+    /// it is the one that trades breadth for speed. Nothing else narrows — the dashboard's 30-day
+    /// baselines, the 14-day trend charts, the digests and the journal all keep their own windows,
+    /// because a batch job or a scrollable chart pays for a longer range in somebody's patience.
+    /// </para>
     /// </remarks>
     private const int MinRecentActivityDays = 1;
     private const int MaxRecentActivityDays = 7;
@@ -34,11 +43,19 @@ public static class DataQueryWhitelist
     {
         var sources = new HashSet<DataQueryKind>(plan.Sources);
 
-        var recentActivity = sources.Contains(DataQueryKind.RecentActivity)
+        var today = DateOnly.FromDateTime(utcNow);
+
+        // Inclusive on both ends, so N days back from today is N-1 subtracted, not N — the repository
+        // filters `>= from && <= to` and would otherwise return one day more than was asked for.
+        // Matches how the rest of the codebase counts a window (StatusLineGenerationService reads
+        // three days as today.AddDays(-2)..today), and means a one-week ceiling fetches a week.
+        var window = sources.Contains(DataQueryKind.RecentActivity)
+            ? (From: today.AddDays(-(Clamp(plan.RecentActivityDays, MinRecentActivityDays, MaxRecentActivityDays) - 1)), To: today)
+            : ((DateOnly From, DateOnly To)?)null;
+
+        var recentActivity = window is { } days
             ? (await unitOfWork.ActivityLogs.GetByCardiMemberAndDateRangeAsync(
-                cardiMemberId,
-                DateOnly.FromDateTime(utcNow).AddDays(-Clamp(plan.RecentActivityDays, MinRecentActivityDays, MaxRecentActivityDays)),
-                DateOnly.FromDateTime(utcNow))).ToList()
+                cardiMemberId, days.From, days.To)).ToList()
             : [];
 
         var baseline = sources.Contains(DataQueryKind.Baseline)
@@ -59,6 +76,7 @@ public static class DataQueryWhitelist
         return new FetchedMemberData
         {
             RecentActivity = recentActivity,
+            RecentActivityWindow = window,
             Baseline = baseline,
             UnresolvedAlerts = unresolvedAlerts,
             RealtimeAssessments = realtimeAssessments,

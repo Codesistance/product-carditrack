@@ -144,9 +144,8 @@ public class MemberChatService : IMemberChatService
         this is an internal clinical read, not the final reply the caregiver sees, so write precisely
         rather than in caregiver language; a separate step turns this into caregiver-facing prose.
         If the data below does not answer the question, say so rather than guessing or inventing a
-        reading the data does not contain. The activity data covers a fixed recent window, stated in
-        its heading; if the question asks about a longer stretch, answer for the window you were
-        given and say which days that is.
+        reading the data does not contain. The activity data covers only the dates named in its
+        heading; if the question asks about a longer stretch, answer for those dates and say so.
 
         Respond with:
         - analysis: your answer, grounded only in the data provided.
@@ -542,8 +541,15 @@ public class MemberChatService : IMemberChatService
 
         if (data.RecentActivity.Count > 0)
         {
+            // The window, not the row count. They part company the moment the member has a gap,
+            // and a heading built from the count told the model a four-reading week was four days.
+            var window = data.RecentActivityWindow;
+            var heading = window is { } w
+                ? $"{w.From:MMM d} to {w.To:MMM d}, oldest first; days with no reading are omitted"
+                : "oldest first";
+
             sections.Add(
-                $"--- Recent activity (last {data.RecentActivity.Count} days, oldest first) ---\n"
+                $"--- Recent activity ({heading}) ---\n"
                 + MedicalPromptBlocks.DailyLines(data.RecentActivity, data.RecentActivity.Count, today));
         }
 
