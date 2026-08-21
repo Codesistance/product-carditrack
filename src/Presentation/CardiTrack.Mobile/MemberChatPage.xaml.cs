@@ -91,7 +91,11 @@ public partial class MemberChatPage : ContentView
         try
         {
             var response = await _api.GetMemberChatSuggestionsAsync(_memberId);
-            if (response.Suggestions.Count == 0 || _turns.Count > 0)
+
+            // _isSending as well as the turn count: a send hides this panel before it appends the
+            // caregiver's own bubble, so a reply to this request landing in that gap would find
+            // an empty thread and put the chips back underneath a message already on its way.
+            if (response.Suggestions.Count == 0 || _turns.Count > 0 || _isSending)
                 return;
 
             SuggestionsRow.Clear();
@@ -131,6 +135,12 @@ public partial class MemberChatPage : ContentView
                 VerticalOptions = LayoutOptions.Center,
             },
         };
+
+        // A Border with a recognizer is static text to TalkBack — the question is read out but
+        // never offered as something to activate, which makes the whole affordance invisible to
+        // exactly the caregivers a one-tap question helps most.
+        SemanticProperties.SetDescription(chip, suggestion);
+        SemanticProperties.SetHint(chip, "Double tap to ask this question");
 
         var tap = new TapGestureRecognizer();
         tap.Tapped += async (_, _) => await SendAsync(suggestion);

@@ -75,17 +75,14 @@ public sealed class TrendChart : GraphicsView
         var nearest = _drawable.NearestDataPointAt(up.X);
         if (nearest is null || Math.Abs(nearest.Value.At.X - up.X) > TouchSlop)
         {
-            _drawable.SelectedPoint = null;
-            _drawable.SelectedLabel = null;
+            _drawable.SelectedDate = null;
         }
         else
         {
             // Tapping the already-selected reading dismisses its callout — the second tap means
             // "put it away", not "tell me again".
-            _drawable.SelectedPoint = _drawable.SelectedPoint?.Date == nearest.Value.Date ? null : nearest;
-            _drawable.SelectedLabel = _drawable.SelectedPoint is { } chosen
-                ? $"{ValueFormatter?.Invoke(chosen.Value) ?? chosen.Value.ToString("0.#")} · {chosen.Date:MMM d}"
-                : null;
+            _drawable.SelectedDate =
+                _drawable.SelectedDate == nearest.Value.Date ? null : nearest.Value.Date;
         }
 
         Invalidate();
@@ -119,6 +116,7 @@ public sealed class TrendChart : GraphicsView
         MetricReference? reference = null)
     {
         _drawable.Points = points;
+        _drawable.ValueFormatter = ValueFormatter;
         _drawable.Scale = scale;
         _drawable.LineColor = lineColor;
         _drawable.ShowMarkers = showMarkers;
@@ -341,13 +339,19 @@ internal sealed class TrendChartDrawable : IDrawable
     /// what a tap-to-inspect hit-tests against.</summary>
     private readonly List<ChartDataPoint> _dataPoints = [];
 
-    /// <summary>The reading a tap selected, or null. Cleared implicitly by a re-render only if the
-    /// window no longer contains its day.</summary>
-    public ChartDataPoint? SelectedPoint { get; set; }
+    /// <summary>
+    /// The day a tap selected, or null. Held as a date rather than as the point itself because
+    /// <see cref="_dataPoints"/> is cleared and rebuilt on every draw: a resize moves every
+    /// coordinate, and a refresh can change the value under the same day. Keeping the point would
+    /// paint the marker where the reading used to be and caption it with a number the line no
+    /// longer shows, so the position and the value are both resolved fresh at draw time.
+    /// </summary>
+    public DateOnly? SelectedDate { get; set; }
 
-    /// <summary>The callout text for <see cref="SelectedPoint"/> — formatted by the view, which
-    /// knows the metric's unit; the drawable only places it.</summary>
-    public string? SelectedLabel { get; set; }
+    /// <summary>How the view spells a value — it knows the metric's unit and the drawable does
+    /// not. Needed here, rather than a pre-formatted string, because the callout has to reformat
+    /// from whatever the rebuilt point holds.</summary>
+    public Func<double, string>? ValueFormatter { get; set; }
 
     public ChartDataPoint? NearestDataPointAt(double x)
     {
@@ -571,17 +575,21 @@ internal sealed class TrendChartDrawable : IDrawable
     /// </summary>
     private void DrawSelection(ICanvas canvas, RectF dirtyRect)
     {
-        if (SelectedPoint is not { } selected || SelectedLabel is not { } label)
+        if (SelectedDate is not { } date)
             return;
 
-        // A window change may have dropped the selected day; a stale callout over different data
-        // would attribute a value to the wrong line.
-        if (!_dataPoints.Any(p => p.Date == selected.Date))
+        // Resolved against the points this draw just built, never the ones the tap saw. A window
+        // change may also have dropped the selected day outright, and a stale callout over
+        // different data would attribute a value to the wrong line.
+        var index = _dataPoints.FindIndex(p => p.Date == date);
+        if (index < 0)
         {
-            SelectedPoint = null;
-            SelectedLabel = null;
+            SelectedDate = null;
             return;
         }
+
+        var selected = _dataPoints[index];
+        var label = $"{ValueFormatter?.Invoke(selected.Value) ?? selected.Value.ToString("0.#")} · {selected.Date:MMM d}";
 
         DrawMarker(canvas, selected.At, LatestMarkerRadius + 1.5f);
 

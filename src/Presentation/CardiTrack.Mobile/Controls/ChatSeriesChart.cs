@@ -54,6 +54,11 @@ public sealed class ChatSeriesChart : ContentView
         view._title.Text = item.Title;
         view._chart.ValueFormatter = item.FormatValue;
         view._chart.Render(item.Points, item.Scale, item.Ink, showMarkers: true);
+
+        // The title label would otherwise be read on its own, announcing that a chart exists
+        // without saying anything it shows. Same treatment MetricTrendCard gives its plot.
+        SemanticProperties.SetDescription(view._chart, item.AccessibleSummary);
+        SemanticProperties.SetHint(view._chart, "Tap a point to see that day's reading");
     }
 }
 
@@ -95,6 +100,30 @@ public sealed class ChatChartItem
             : $"{value:0}m",
         _ => value.ToString("0.#"),
     };
+
+    /// <summary>
+    /// What the chart says to a caregiver who cannot see it. The canvas is one opaque element to
+    /// a screen reader — the tap-to-inspect callout is unreachable by definition — so the shape a
+    /// sighted reader gets at a glance (span, range, where it ended) is spelled out instead. Read
+    /// aloud in place of the plot, not alongside it.
+    /// </summary>
+    public string AccessibleSummary
+    {
+        get
+        {
+            var reported = Points.Where(p => p.Value is not null).ToList();
+            if (reported.Count == 0)
+                return $"{Title}: no readings.";
+
+            var low = reported.Min(p => p.Value!.Value);
+            var high = reported.Max(p => p.Value!.Value);
+            var latest = reported[^1];
+
+            return $"{Title}, {reported.Count} readings from {Points[0].Date:MMM d} to {Points[^1].Date:MMM d}. "
+                + $"Ranging {FormatValue((double)low)} to {FormatValue((double)high)}. "
+                + $"Latest {FormatValue((double)latest.Value!.Value)} on {latest.Date:MMM d}.";
+        }
+    }
 
     /// <summary>
     /// Null when the series can't be drawn as a line (fewer than two readings) — the caller keeps

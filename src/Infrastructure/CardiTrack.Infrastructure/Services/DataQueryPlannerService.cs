@@ -83,10 +83,16 @@ public class DataQueryPlannerService : IDataQueryPlanner
     /// <c>PromptContext.MemberContextComposer</c>), which is correct for a question that does not
     /// need any of the four data sources at all.
     /// </summary>
-    private static DataQueryPlan Parse(DataQueryPlanAiResponse response)
+    internal static DataQueryPlan Parse(DataQueryPlanAiResponse response)
     {
+        // IsDefined alongside TryParse, not instead of it: TryParse succeeds on any numeric
+        // string, so "999" would parse to (DataQueryKind)999 and travel on as a recognised source
+        // that the whitelist then matches nothing against — a silent empty fetch wearing the
+        // shape of a real plan. Only names of members that actually exist survive.
         var sources = response.Sources
-            .Select(s => Enum.TryParse<DataQueryKind>(s, ignoreCase: true, out var kind) ? kind : (DataQueryKind?)null)
+            .Select(s => Enum.TryParse<DataQueryKind>(s, ignoreCase: true, out var kind) && Enum.IsDefined(kind)
+                ? kind
+                : (DataQueryKind?)null)
             .Where(k => k is not null)
             .Select(k => k!.Value)
             .Distinct()
@@ -101,7 +107,9 @@ public class DataQueryPlannerService : IDataQueryPlanner
         if (response.Metrics is { } named)
         {
             var recognised = named
-                .Select(m => Enum.TryParse<ChartMetricKind>(m, ignoreCase: true, out var kind) ? kind : (ChartMetricKind?)null)
+                .Select(m => Enum.TryParse<ChartMetricKind>(m, ignoreCase: true, out var kind) && Enum.IsDefined(kind)
+                    ? kind
+                    : (ChartMetricKind?)null)
                 .Where(m => m is not null)
                 .Select(m => m!.Value)
                 .Distinct()
