@@ -679,21 +679,10 @@ variable "public_ai_api_key_secret_id" {
 }
 
 # ── Rewrite AI provider (member chat's non-clinical steps) ────────────────────
-# Kind-switchable since 2026-08-21 (DPIA v0.11 row A20, decision D6): Ollama is the self-hosted
-# shape the slot launched with; VertexGemini moves it to Gemini on a Vertex AI EU regional
-# endpoint. The model is a tfvar precisely so swapping it is an apply, not a rebuild — the
-# .rewrite-model-version file drives only the Ollama image and the Ollama kind's model name.
-
-variable "rewrite_ai_kind" {
-  description = "Wire protocol of the rewrite AI provider — Ollama (self-hosted) or VertexGemini"
-  type        = string
-  default     = "VertexGemini"
-
-  validation {
-    condition     = contains(["Ollama", "VertexGemini"], var.rewrite_ai_kind)
-    error_message = "rewrite_ai_kind must be one of: Ollama, VertexGemini."
-  }
-}
+# Gemini on a Vertex AI EU regional endpoint (DPIA v0.11 row A20, decision D6). There is no kind
+# variable any more: the Ollama shape the slot launched with had exactly one host, and that host
+# is gone. The app keeps its Ollama kind for local development, where docker-compose supplies the
+# server and none of this file applies. The model stays a tfvar so swapping it is an apply.
 
 # Verify a new model against the probe in docs/technical/vertex_ai_setup.md §3 before changing
 # this: regional availability, responseJsonSchema support and thinkingBudget 0 are the three
