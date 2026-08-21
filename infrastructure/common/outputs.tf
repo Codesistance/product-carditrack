@@ -13,15 +13,26 @@ output "store_distribution_secret_ids" {
   value       = [for s in google_secret_manager_secret.store_distribution : s.secret_id]
 }
 
-# The address the environment stacks seed into their own MedGemma URL secret. Deterministic —
-# project number and region, not the resource's uri — precisely so a stack that cannot read this
-# state can still name it. See the secret seed in deployments/secret_manager.tf.
+# The service's own address, read from the resource rather than constructed.
+#
+# It was constructed, on the plan's assumption that a Cloud Run URL is
+# https://<service>-<project number>.<region>.run.app — the newer of the two formats Google
+# issues. This project uses the older one. The first apply produced:
+#
+#     https://carditrack-common-medgemma-zhsd62wx5a-ew.a.run.app
+#
+# — a per-project hash and an abbreviated region, matching every other service here
+# (carditrack-dev-medgemma-zhsd62wx5a-nw...). The constructed string resolved to nothing, and
+# would have been seeded into an environment's MedGemma URL secret looking entirely plausible.
+# That is the same failure the medgemma seed post-mortem records, arrived at from the other
+# direction.
+#
+# So the URL cannot be derived by a stack that cannot read this state. M4 takes it from here —
+# via CI, or a tfvar carrying the value observed after an apply — and never rebuilds it from
+# parts.
 output "medgemma_service_url" {
   description = "URL of the shared MedGemma GPU service, or empty when it is not deployed"
-  value = var.medgemma_image != "" ? format(
-    "https://%s-common-medgemma-%s.%s.run.app",
-    var.project_name, data.google_project.current.number, var.medgemma_location
-  ) : ""
+  value       = var.medgemma_image != "" ? google_cloud_run_v2_service.medgemma[0].uri : ""
 }
 
 output "medgemma_registry" {
