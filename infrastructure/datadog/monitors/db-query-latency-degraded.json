@@ -1,0 +1,25 @@
+{
+  "name": "[dev] Database query latency degraded — p95 of postgresql.query spans",
+  "type": "trace-analytics alert",
+  "query": "trace-analytics(\"operation_name:postgresql.query env:dev\").rollup(\"pc95\", \"@duration\").by(\"service\").last(\"15m\") > 50000000",
+  "message": "## What's happening\n\nThe p95 of PostgreSQL command spans (`operation_name:postgresql.query`) for {{service.name}} has been above threshold for 15 minutes. Baseline when this monitor was written (2026-08-21): api ~6.4ms, worker ~4.8ms. Thresholds are in **nanoseconds** — the raw unit of `@duration` on spans: warn 20ms, alert 50ms.\n\n## Why it matters\n\nThis is the tripwire for \"a table outgrew its access path\". The 2026-08-21 index review (PR #410) found every hot query covered by a matching index **at dev data volume**, and deliberately did not add speculative indexes for the known weak spots. This monitor replaces those speculative indexes: when it fires, one of them has likely started to hurt, and the fix is a ten-minute migration.\n\nThe known weak spots, most likely first:\n\n- `NotificationDeliveries` escalation sweep — `State = 'Sent' AND SentDate <= @boundary` has no index on `SentDate`; it walks all Sent rows via the `(State, …)` prefix. Fix: partial index `(\"SentDate\") WHERE \"State\" = 'Sent'`.\n- `NotificationDeliveries` expiry sweep — `ExpiresAt <= now AND State NOT IN (…)` cannot range-scan `IX_NotificationDeliveries_State_ExpiresAt` because the NOT-IN sits on the leading column. Fix: index `(\"ExpiresAt\")` (partial) or reorder to `(\"ExpiresAt\", \"State\")`.\n- `PushDeviceTokens` liveness probe — sargable since PR #410 but still scans the whole `DisabledDate IS NULL` set each tick. Fix: partial index `(\"LastAckDate\") WHERE \"DisabledDate\" IS NULL`.\n\n## First steps\n\n1. APM > Traces, filter `operation_name:postgresql.query env:dev service:<the one that fired>`, sort by duration — the slow spans carry the full SQL in `@db.statement.text`, which names the table and predicate directly.\n2. Check whether it is one statement or everything: one statement degrading means an index gap (see list above); everything at once means the instance (Cloud SQL CPU/IO, connection pool exhaustion — check the `db.client.*` and Npgsql meters).\n3. If it is an index gap, add the migration in `src/Infrastructure/CardiTrack.Infrastructure/` and verify the span's duration drops after deploy.\n\nNOTE: worker's span volume is dominated by the 30s notification-dispatch tick, so worker's p95 effectively *is* the sweep-query p95 — that is what makes this grouping a usable per-query tripwire despite every DB span sharing the resource name `postgresql`.\n\nNOTE: no notification handle is attached yet. Add one (e.g. `@slack-...`) to make this page someone.",
+  "tags": [
+    "service:api",
+    "service:worker",
+    "env:dev",
+    "app:carditrack",
+    "severity:warning",
+    "managed-by:repo-spec",
+    "spec:infrastructure/datadog/monitors/db-query-latency-degraded.json"
+  ],
+  "options": {
+    "thresholds": {
+      "critical": 50000000,
+      "warning": 20000000
+    },
+    "notify_no_data": false,
+    "notify_audit": false,
+    "include_tags": true,
+    "renotify_interval": 120
+  }
+}
