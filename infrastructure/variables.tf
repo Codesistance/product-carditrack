@@ -615,13 +615,13 @@ variable "rewrite_max_instances" {
 # configurable here — it is pinned to the in-VPC MedGemma service in application code.
 
 variable "public_ai_kind" {
-  description = "Wire protocol of the public AI provider — Gemini or Anthropic"
+  description = "Wire protocol of the public AI provider — Gemini, Anthropic or VertexGemini"
   type        = string
   default     = "Gemini"
 
   validation {
-    condition     = contains(["Gemini", "Anthropic"], var.public_ai_kind)
-    error_message = "public_ai_kind must be one of: Gemini, Anthropic."
+    condition     = contains(["Gemini", "Anthropic", "VertexGemini"], var.public_ai_kind)
+    error_message = "public_ai_kind must be one of: Gemini, Anthropic, VertexGemini."
   }
 }
 
@@ -632,11 +632,28 @@ variable "public_ai_model" {
 }
 
 # Null keeps the provider's documented default endpoint, which is what dev and prod use.
-# Set it to reach a gateway or a regional endpoint (e.g. Vertex AI) instead.
+# Set it to reach a gateway or a test double — for the Gemini and Anthropic kinds only. For
+# VertexGemini the endpoint derives from public_ai_location; main.tf never emits this override
+# for that kind, and the app refuses a non-Vertex, non-loopback override at startup, because a
+# redirected Vertex call would carry a live ADC bearer token to whatever host it names.
 variable "public_ai_base_url" {
-  description = "Override for the public AI provider endpoint; null uses the per-kind default"
+  description = "Override for the public AI provider endpoint (Gemini/Anthropic kinds); null uses the per-kind default"
   type        = string
   default     = null
+}
+
+# EU-only by validation: the DPIA (v0.11, R-A4/M4) excludes US processing and the global
+# endpoint for health-adjacent prompts, so the allowlist is a compliance control expressed as a
+# plan gate, not a preference. Widening it is a DPIA change first, a Terraform change second.
+variable "public_ai_location" {
+  description = "Vertex AI location for the public slot's VertexGemini kind (EU regional endpoint)"
+  type        = string
+  default     = "europe-west2"
+
+  validation {
+    condition     = contains(["europe-west2", "europe-west1", "europe-west4"], var.public_ai_location)
+    error_message = "public_ai_location must be an EU region the DPIA allows: europe-west2, europe-west1, europe-west4."
+  }
 }
 
 variable "public_ai_timeout_seconds" {
@@ -659,4 +676,59 @@ variable "public_ai_api_key_secret_id" {
   description = "Secret Manager secret holding the public AI API key; null uses the gemini-api-key secret"
   type        = string
   default     = null
+}
+
+# ── Rewrite AI provider (member chat's non-clinical steps) ────────────────────
+# Kind-switchable since 2026-08-21 (DPIA v0.11 row A20, decision D6): Ollama is the self-hosted
+# shape the slot launched with; VertexGemini moves it to Gemini on a Vertex AI EU regional
+# endpoint. The model is a tfvar precisely so swapping it is an apply, not a rebuild — the
+# .rewrite-model-version file drives only the Ollama image and the Ollama kind's model name.
+
+variable "rewrite_ai_kind" {
+  description = "Wire protocol of the rewrite AI provider — Ollama (self-hosted) or VertexGemini"
+  type        = string
+  default     = "VertexGemini"
+
+  validation {
+    condition     = contains(["Ollama", "VertexGemini"], var.rewrite_ai_kind)
+    error_message = "rewrite_ai_kind must be one of: Ollama, VertexGemini."
+  }
+}
+
+# Verify a new model against the probe in docs/technical/vertex_ai_setup.md §3 before changing
+# this: regional availability, responseJsonSchema support and thinkingBudget 0 are the three
+# assumptions the client makes of it.
+variable "rewrite_ai_model" {
+  description = "Model identifier for the rewrite slot's VertexGemini kind"
+  type        = string
+  default     = "gemini-2.5-flash-lite"
+}
+
+# Same EU-only compliance gate as public_ai_location above.
+variable "rewrite_ai_location" {
+  description = "Vertex AI location for the rewrite slot's VertexGemini kind (EU regional endpoint)"
+  type        = string
+  default     = "europe-west2"
+
+  validation {
+    condition     = contains(["europe-west2", "europe-west1", "europe-west4"], var.rewrite_ai_location)
+    error_message = "rewrite_ai_location must be an EU region the DPIA allows: europe-west2, europe-west1, europe-west4."
+  }
+}
+
+# Vertex answers rewrite-register prompts in seconds — deliberately not medgemma_timeout_seconds,
+# whose 300s ceiling exists for CPU-served Ollama cold starts. Member chat's interactive budget
+# is what this protects.
+variable "rewrite_ai_timeout_seconds" {
+  description = "HTTP client timeout for the rewrite slot's VertexGemini kind"
+  type        = number
+  default     = 60
+}
+
+# Rewrite-slot outputs are short (a chat reply, a query plan, three waiting sentences) — far
+# below the public slot's report-sized ceiling.
+variable "rewrite_ai_max_output_tokens" {
+  description = "Upper bound on a single rewrite-slot completion (VertexGemini kind)"
+  type        = number
+  default     = 8192
 }

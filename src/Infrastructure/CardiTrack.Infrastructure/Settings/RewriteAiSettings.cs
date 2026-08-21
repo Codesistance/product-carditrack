@@ -54,7 +54,9 @@ public class RewriteAiSettings : IMedGemmaModelSettings
     /// VertexGemini kind: endpoint override for test doubles. Deliberately a separate key from
     /// <see cref="BaseUrl"/> — during a provider transition the deployed environment still mounts
     /// the old Ollama URL under BaseUrl, and it must never be mistaken for a Vertex endpoint.
-    /// When unset the endpoint derives from <see cref="Location"/>.
+    /// When unset the endpoint derives from <see cref="Location"/>. Restricted at startup to
+    /// allowed-region Vertex hosts or loopback: every Vertex request carries a live ADC bearer
+    /// token, so an arbitrary override would be a credential-exfiltration vector.
     /// </summary>
     public string? VertexBaseUrl { get; set; }
 }

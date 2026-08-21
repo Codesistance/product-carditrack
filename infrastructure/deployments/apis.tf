@@ -95,3 +95,12 @@ resource "google_project_service" "cloudbilling" {
   service            = "cloudbilling.googleapis.com"
   disable_on_destroy = false
 }
+
+# Vertex AI — the Public and Rewrite AI slots' VertexGemini kinds call Gemini through the
+# project's regional aiplatform endpoint (docs/technical/vertex_ai_setup.md). Enabling the API
+# grants nothing by itself: calls are authorised per service account via roles/aiplatform.user
+# in service_accounts.tf.
+resource "google_project_service" "aiplatform" {
+  service            = "aiplatform.googleapis.com"
+  disable_on_destroy = false
+}

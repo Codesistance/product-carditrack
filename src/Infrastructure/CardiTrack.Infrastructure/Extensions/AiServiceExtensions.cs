@@ -266,6 +266,8 @@ public static class AiServiceExtensions
             RequireValue(settings.ProjectId, ConfigurationKeys.AI.PublicSectionName, nameof(PublicAiSettings.ProjectId));
             RequireValue(settings.Location, ConfigurationKeys.AI.PublicSectionName, nameof(PublicAiSettings.Location));
             RequireAllowedVertexLocation(ConfigurationKeys.AI.PublicSectionName, nameof(PublicAiSettings.Location), settings.Location!);
+            if (!string.IsNullOrWhiteSpace(settings.BaseUrl))
+                RequireVertexEndpointOverride(ConfigurationKeys.AI.PublicSectionName, nameof(PublicAiSettings.BaseUrl), settings.BaseUrl);
         }
         else
         {
@@ -329,7 +331,7 @@ public static class AiServiceExtensions
             RequireAllowedVertexLocation(ConfigurationKeys.AI.RewriteSectionName, nameof(RewriteAiSettings.Location), settings.Location!);
             RequirePositive(settings.MaxOutputTokens, ConfigurationKeys.AI.RewriteSectionName, nameof(RewriteAiSettings.MaxOutputTokens));
             if (!string.IsNullOrWhiteSpace(settings.VertexBaseUrl))
-                RequireAbsoluteUrl(settings.VertexBaseUrl, ConfigurationKeys.AI.RewriteSectionName, nameof(RewriteAiSettings.VertexBaseUrl));
+                RequireVertexEndpointOverride(ConfigurationKeys.AI.RewriteSectionName, nameof(RewriteAiSettings.VertexBaseUrl), settings.VertexBaseUrl);
             // BaseUrl and UseIdentityToken are deliberately tolerated here: during the provider
             // transition, deployed environments still mount the old Ollama URL alongside the
             // Vertex settings, and rejecting it would make the flip an ordering hazard.
@@ -460,6 +462,32 @@ public static class AiServiceExtensions
     {
         if (string.IsNullOrWhiteSpace(value))
             throw new InvalidOperationException(Message(section, key, "is not set."));
+    }
+
+    /// <summary>
+    /// Fails the host at startup when a Vertex endpoint override points anywhere but an
+    /// allowed-region Vertex host or a loopback test double. Every Vertex request carries a live
+    /// ADC bearer token, so an arbitrary override is a credential-exfiltration and EU-bypass
+    /// vector in one variable — the same class of mistake
+    /// <see cref="RequireCoherentIdentityTokenMode"/> refuses for the Ollama kind.
+    /// </summary>
+    private static void RequireVertexEndpointOverride(string section, string key, string url)
+    {
+        RequireAbsoluteUrl(url, section, key);
+        var uri = new Uri(url);
+        if (uri.IsLoopback)
+            return;
+
+        var isAllowedVertexHost = uri.Scheme == Uri.UriSchemeHttps && AllowedVertexLocations.Any(
+            location => uri.Host.Equals($"{location}-aiplatform.googleapis.com", StringComparison.Ordinal));
+        if (!isAllowedVertexHost)
+        {
+            throw new InvalidOperationException(
+                Message(section, key,
+                    $"is '{url}', which is neither an allowed-region Vertex endpoint nor a loopback test "
+                    + "double. A Vertex request carries a live ADC bearer token, so it may only be sent to "
+                    + $"https://{{{string.Join("|", AllowedVertexLocations)}}}-aiplatform.googleapis.com or localhost."));
+        }
     }
 
     /// <summary>

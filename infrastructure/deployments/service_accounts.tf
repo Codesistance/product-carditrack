@@ -119,6 +119,18 @@ resource "google_project_iam_member" "api_cloudsql_client" {
   member  = local.api_sa
 }
 
+# Vertex AI caller — the API hosts every consumer of the Public and Rewrite slots' VertexGemini
+# kinds (member chat, reports). Without this a Vertex call 403s at request time, and member
+# chat's waiting-sentences step swallows failures — so the grant is as load-bearing as the
+# identity-token startup check is for the Ollama kind.
+resource "google_project_iam_member" "api_aiplatform_user" {
+  project = var.project_id
+  role    = "roles/aiplatform.user"
+  member  = local.api_sa
+
+  depends_on = [google_project_service.aiplatform]
+}
+
 # The API's immediate-attempt push send path (notification_engine.md Phase 3) issues FCM sends
 # directly, so this mirrors the compute SA's existing fcm_sender grant rather than narrowing it.
 # See the note on that grant in firebase.tf: narrowing to just the eventual sender is Phase 3 work.
@@ -222,6 +234,21 @@ resource "google_project_iam_member" "pipeline_cloudsql_client" {
   member  = "serviceAccount:${google_service_account.pipeline[0].email}"
 }
 
+# The digest/assessor jobs wire the rewrite slot (AddMedicalAiServices) even though nothing on
+# their paths calls it today — granted anyway because a future rewrite-slot call from a pipeline
+# job would otherwise 403 and be swallowed by the same per-member failure handling the
+# identity-token check exists for. The aggregator (default compute SA) deliberately does NOT get
+# this: it binds the config without calling any model, and aiplatform.user on the shared compute
+# identity would hand Vertex access to every workload still running as it.
+resource "google_project_iam_member" "pipeline_aiplatform_user" {
+  count   = var.enable_pipeline_jobs ? 1 : 0
+  project = var.project_id
+  role    = "roles/aiplatform.user"
+  member  = "serviceAccount:${google_service_account.pipeline[0].email}"
+
+  depends_on = [google_project_service.aiplatform]
+}
+
 resource "google_secret_manager_secret_iam_member" "pipeline_db_conn" {
   count     = var.enable_pipeline_jobs ? 1 : 0
   secret_id = google_secret_manager_secret.db_connection_string.id
@@ -284,6 +311,7 @@ resource "time_sleep" "api_iam_propagation" {
     grants = sha256(jsonencode(sort(concat(
       [
         google_project_iam_member.api_cloudsql_client.id,
+        google_project_iam_member.api_aiplatform_user.id,
         google_secret_manager_secret_iam_member.api_db_conn.id,
         google_secret_manager_secret_iam_member.api_encryption_key.id,
         google_secret_manager_secret_iam_member.api_ack_token_key.id,
@@ -307,6 +335,7 @@ resource "time_sleep" "api_iam_propagation" {
 
   depends_on = [
     google_project_iam_member.api_cloudsql_client,
+    google_project_iam_member.api_aiplatform_user,
     google_project_iam_member.api_fcm_sender,
     google_secret_manager_secret_iam_member.api_db_conn,
     google_secret_manager_secret_iam_member.api_app_secrets,
@@ -333,6 +362,7 @@ resource "time_sleep" "pipeline_iam_propagation" {
     service_account = google_service_account.pipeline[0].email
     grants = sha256(jsonencode(sort([
       google_project_iam_member.pipeline_cloudsql_client[0].id,
+      google_project_iam_member.pipeline_aiplatform_user[0].id,
       google_secret_manager_secret_iam_member.pipeline_db_conn[0].id,
       google_secret_manager_secret_iam_member.pipeline_encryption_key[0].id,
       google_secret_manager_secret_iam_member.pipeline_medgemma_url[0].id,
@@ -343,6 +373,7 @@ resource "time_sleep" "pipeline_iam_propagation" {
 
   depends_on = [
     google_project_iam_member.pipeline_cloudsql_client,
+    google_project_iam_member.pipeline_aiplatform_user,
     google_secret_manager_secret_iam_member.pipeline_db_conn,
     google_secret_manager_secret_iam_member.pipeline_encryption_key,
     google_secret_manager_secret_iam_member.pipeline_medgemma_url,
