@@ -166,7 +166,7 @@ variable "webhook_custom_domain" {
 # for every second the instance is alive.
 #
 # Inference itself does get slower. The headroom for that is in the timeouts, not here:
-# medgemma_timeout_seconds is 300s per attempt against an assessor task budget of 1800s
+# medgemma_timeout_seconds is 900s per attempt against an assessor task budget of 1800s
 # (see the job below), and per-member inference failures are swallowed rather than failing the
 # run. If assessment throughput becomes the constraint, raise this back before raising cadence —
 # a bigger instance for a shorter time beats a smaller one woken more often.
@@ -230,7 +230,7 @@ variable "medgemma_min_instances" {
 variable "medgemma_timeout_seconds" {
   description = "HTTP client timeout the callers apply to MedGemma calls. The service's own request timeout is derived from this and must remain longer — see the timeout in the medgemma service"
   type        = number
-  default     = 300
+  default     = 900
 }
 
 # ── Rewrite (split from MedGemma) ─────────────────────────────────────────────
