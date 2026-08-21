@@ -52,6 +52,15 @@ public static class AiServiceExtensions
     /// instance so its timeout/base-address can be configured independently.</summary>
     public const string RewriteHttpClientName = "RewriteAiClient";
 
+    /// <summary>
+    /// The locations a Vertex kind may run in — the DPIA's EU-processing rule (v0.11, R-A4/M4)
+    /// enforced at the second layer: Terraform validates the tfvar, and this refuses a raw env
+    /// var that bypasses it. Without it, one misconfigured variable routes health-adjacent
+    /// prompts through a US region or the global endpoint with no other symptom. Widening this
+    /// list is a DPIA change first, a code change second.
+    /// </summary>
+    private static readonly string[] AllowedVertexLocations = ["europe-west2", "europe-west1", "europe-west4"];
+
     /// <summary>Endpoint used when AI:Public:BaseUrl is not set. Every kind has one.</summary>
     private static readonly Dictionary<PublicAiProviderKind, string> DefaultBaseUrls = new()
     {
@@ -256,6 +265,7 @@ public static class AiServiceExtensions
             // Vertex authenticates by IAM, not API key; what it needs instead is an address.
             RequireValue(settings.ProjectId, ConfigurationKeys.AI.PublicSectionName, nameof(PublicAiSettings.ProjectId));
             RequireValue(settings.Location, ConfigurationKeys.AI.PublicSectionName, nameof(PublicAiSettings.Location));
+            RequireAllowedVertexLocation(ConfigurationKeys.AI.PublicSectionName, nameof(PublicAiSettings.Location), settings.Location!);
         }
         else
         {
@@ -316,6 +326,7 @@ public static class AiServiceExtensions
         {
             RequireValue(settings.ProjectId, ConfigurationKeys.AI.RewriteSectionName, nameof(RewriteAiSettings.ProjectId));
             RequireValue(settings.Location, ConfigurationKeys.AI.RewriteSectionName, nameof(RewriteAiSettings.Location));
+            RequireAllowedVertexLocation(ConfigurationKeys.AI.RewriteSectionName, nameof(RewriteAiSettings.Location), settings.Location!);
             RequirePositive(settings.MaxOutputTokens, ConfigurationKeys.AI.RewriteSectionName, nameof(RewriteAiSettings.MaxOutputTokens));
             if (!string.IsNullOrWhiteSpace(settings.VertexBaseUrl))
                 RequireAbsoluteUrl(settings.VertexBaseUrl, ConfigurationKeys.AI.RewriteSectionName, nameof(RewriteAiSettings.VertexBaseUrl));
@@ -449,6 +460,23 @@ public static class AiServiceExtensions
     {
         if (string.IsNullOrWhiteSpace(value))
             throw new InvalidOperationException(Message(section, key, "is not set."));
+    }
+
+    /// <summary>
+    /// Fails the host at startup when a Vertex location is outside the DPIA's EU allowlist —
+    /// see <see cref="AllowedVertexLocations"/>. Ordinal comparison on purpose: locations are
+    /// GCP resource identifiers, and a case variant would produce a wrong request path rather
+    /// than a different region, so it is refused here where the message can say why.
+    /// </summary>
+    private static void RequireAllowedVertexLocation(string section, string key, string location)
+    {
+        if (!AllowedVertexLocations.Contains(location, StringComparer.Ordinal))
+        {
+            throw new InvalidOperationException(
+                Message(section, key,
+                    $"is '{location}', which is not an EU region the DPIA allows for Vertex AI processing "
+                    + $"(docs/compliance/dpia.md v0.11, R-A4). Allowed: {string.Join(", ", AllowedVertexLocations)}."));
+        }
     }
 
     private static void RequirePositive(int value, string section, string key)

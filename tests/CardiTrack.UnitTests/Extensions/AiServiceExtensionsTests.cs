@@ -111,6 +111,53 @@ public class AiServiceExtensionsTests
         Assert.IsType<VertexAiClient>(client);
     }
 
+    // The DPIA's EU-processing rule, enforced at the second layer: Terraform validates the
+    // tfvar, and this refuses the raw env var that bypasses it — "global" and a US region are
+    // exactly the values that would route prompts outside the boundary with no other symptom.
+    [Theory]
+    [InlineData("us-central1")]
+    [InlineData("global")]
+    [InlineData("Europe-West2")] // a case variant is a wrong request path, not a different region
+    public void AddAiServices_Throws_WhenARewriteVertexLocationIsOutsideTheEuAllowlist(string location)
+    {
+        var config = VertexRewriteConfig();
+        config["AI:Rewrite:Location"] = location;
+
+        var ex = Assert.Throws<InvalidOperationException>(() => Resolve(config));
+
+        Assert.Contains("AI__Rewrite__Location", ex.Message);
+        Assert.Contains("europe-west2", ex.Message);
+    }
+
+    [Fact]
+    public void AddAiServices_Throws_WhenAPublicVertexLocationIsOutsideTheEuAllowlist()
+    {
+        var config = Config();
+        config["AI:Public:Kind"] = "VertexGemini";
+        config["AI:Public:ProjectId"] = "test-project";
+        config["AI:Public:Location"] = "us-central1";
+        config["AI:Public:BaseUrl"] = string.Empty;
+
+        var ex = Assert.Throws<InvalidOperationException>(() => Resolve(config));
+
+        Assert.Contains("AI__Public__Location", ex.Message);
+    }
+
+    // An env-var override that is set-but-empty must read as "not set" — Uri("") at registration
+    // time would otherwise turn a blank variable into a failed revision with an opaque error.
+    [Fact]
+    public void AddAiServices_DerivesTheRewriteBaseAddress_WhenTheVertexBaseUrlOverrideIsBlank()
+    {
+        var config = VertexRewriteConfig();
+        config["AI:Rewrite:VertexBaseUrl"] = string.Empty;
+
+        var factory = Resolve(config).GetRequiredService<IHttpClientFactory>();
+
+        Assert.Equal(
+            new Uri("https://europe-west2-aiplatform.googleapis.com"),
+            factory.CreateClient(AiServiceExtensions.RewriteHttpClientName).BaseAddress);
+    }
+
     [Fact]
     public void AddAiServices_Throws_WhenTheRewriteKindIsUnknown()
     {

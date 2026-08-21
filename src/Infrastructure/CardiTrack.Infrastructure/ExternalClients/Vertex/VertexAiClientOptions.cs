@@ -26,9 +26,13 @@ public sealed record VertexAiClientOptions
 
     public required int MaxOutputTokens { get; init; }
 
-    /// <summary>Endpoint override for test doubles; derived from <see cref="Location"/> when null.</summary>
+    /// <summary>Endpoint override for test doubles; derived from <see cref="Location"/> when
+    /// null or blank — an empty string is how an env-var override reads when unset, and it must
+    /// mean "not set", not "the empty endpoint".</summary>
     public string? BaseUrl { get; init; }
 
     /// <summary>The regional endpoint this configuration reaches.</summary>
-    public string ResolveBaseUrl() => BaseUrl ?? $"https://{Location}-aiplatform.googleapis.com";
+    public string ResolveBaseUrl() => string.IsNullOrWhiteSpace(BaseUrl)
+        ? $"https://{Location}-aiplatform.googleapis.com"
+        : BaseUrl;
 }
