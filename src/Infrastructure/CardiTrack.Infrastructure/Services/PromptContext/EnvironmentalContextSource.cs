@@ -104,9 +104,19 @@ internal sealed class EnvironmentalContextSource : IMemberContextSource
     /// </remarks>
     private static string SectionLabel(PromptPurpose purpose) => purpose switch
     {
-        PromptPurpose.RealtimeAssessment => "Conditions during a recent exercise session",
-        _ => "Conditions they have recently been out in",
+        PromptPurpose.RealtimeAssessment => SessionConditionsLabel,
+        _ => RecentConditionsLabel,
     };
+
+    /// <summary>The assessor's heading for this section.</summary>
+    internal const string SessionConditionsLabel = "Conditions during a recent exercise session";
+
+    /// <summary>
+    /// Every other prompt's heading for this section. A const because the family digest names it
+    /// in its own brief — a conditional on a heading is only worth anything if the two are the
+    /// same string, and the Daybook already learned that with its own conditions heading.
+    /// </summary>
+    internal const string RecentConditionsLabel = "Conditions they have recently been out in";
 
     /// <summary>
     /// One line, or null when the enrichment pass found nothing at all. Every field is independently

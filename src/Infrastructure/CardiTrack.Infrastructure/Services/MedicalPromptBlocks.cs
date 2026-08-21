@@ -617,20 +617,26 @@ internal static partial class MedicalPromptBlocks
         if (log.SleepMinutes is { } sleep)
             parts.Add($"sleep(night ending that morning)={sleep}min");
 
+        // "deep 60/light 200/rem 80", not "deep=60/light=200/rem=80": every other figure on the
+        // line is one key and one value, and an "=" inside an "=" is the only place that shape
+        // breaks. The unit is stated once on the key rather than three times inside it.
         var stages = new List<string>();
         if (log.DeepSleepMinutes is { } deep)
-            stages.Add($"deep={deep}");
+            stages.Add($"deep {deep}");
         if (log.LightSleepMinutes is { } light)
-            stages.Add($"light={light}");
+            stages.Add($"light {light}");
         if (log.RemSleepMinutes is { } rem)
-            stages.Add($"rem={rem}");
+            stages.Add($"rem {rem}");
         if (stages.Count > 0)
-            parts.Add($"sleepStages={string.Join("/", stages)}");
+            parts.Add($"sleepStages(min)={string.Join("/", stages)}");
 
+        // Units, as the Daybook's own renderer gives them for the same two readings. Without them
+        // the model is handed a bare 97.5 and a bare 14.2 and left to infer what each measures —
+        // and a percentage and a rate per minute are not obvious from the numbers alone.
         if (log.SpO2Average is { } spo2)
-            parts.Add(string.Create(CultureInfo.InvariantCulture, $"SpO2={spo2:0.#}"));
+            parts.Add(string.Create(CultureInfo.InvariantCulture, $"SpO2={spo2:0.#}%"));
         if (log.BreathingRate is { } breathing)
-            parts.Add(string.Create(CultureInfo.InvariantCulture, $"breathing={breathing:0.#}"));
+            parts.Add(string.Create(CultureInfo.InvariantCulture, $"breathing={breathing:0.#}/min"));
 
         return string.Join(", ", parts);
     }

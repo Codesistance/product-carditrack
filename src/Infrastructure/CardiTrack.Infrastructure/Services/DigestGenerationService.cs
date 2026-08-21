@@ -51,8 +51,12 @@ public partial class DigestGenerationService : IDigestGenerationService
         Where a usual pattern is given, read each reading against it, and read the vitals against the steps walked that day, before concluding.
         Steps and active minutes accumulate as a day passes, so today's are a running total, not a day's worth: read them against how much of the waking day has gone, which today's label states, and never against a whole-day usual.
         Never call today's movement low, down or short of anything unless a computed observation below says it is; early in their day a small total is the hour, not the person.
-        When the conditions they were out in are given, weigh the temperature, humidity and air against the readings before concluding: heat, cold, close air or poor air quality account for a harder-working heart or a quieter day, and are worth saying plainly when they do.
-        when a reading is off the usual, say so plainly and let at least one suggestion respond to it.
+        """ + "\nIf \"" + EnvironmentalContextSource.RecentConditionsLabel + "\" is present, weigh"
+        + " the temperature, humidity and air against the readings before concluding: heat, cold,"
+        + " close air or poor air quality account for a harder-working heart or a quieter day, and"
+        + " are worth saying plainly when they do; when it is absent, never mention weather at all."
+        + "\n" + """
+        When a reading is off the usual, say so plainly and let at least one suggestion respond to it.
         If a computed observation is present, lead with it; do not recap every listed figure. An ordinary day can be short.
         If "Recent monitoring context" shows an unresolved alert or an observation that is suspicious, say so plainly in your own words and let the suggestion answer it; when that section is absent, never mention monitoring, alerts or observations at all.
         When family answers are present, use them to make sense of the readings; never retell them.
@@ -115,8 +119,9 @@ public partial class DigestGenerationService : IDigestGenerationService
         "steps and active minutes accumulate",
         "against how much of the waking day has gone",
         "a small total is the hour, not the person",
-        "the conditions they were out in are given",
+        "weigh the temperature, humidity and air against the readings",
         "account for a harder-working heart",
+        "never mention weather at all",
         "do not recap every listed figure",
         "never retell them",
         "never carry it forward as though it were about today",
@@ -1668,9 +1673,12 @@ public partial class DigestGenerationService : IDigestGenerationService
     /// </summary>
     private async Task<bool> HasActiveMonitoringContextAsync(Guid memberId, DateTime utcNow, CancellationToken ct)
     {
-        var unresolved = (await _unitOfWork.Alerts.GetByCardiMemberAsync(memberId, activeOnly: true))
-            .Any(a => !a.IsResolved);
-        if (unresolved)
+        // The same read MonitoringContextSource makes, which is what keeps "the same definition"
+        // above true: IsActive && !IsResolved, done in SQL and untracked. This used to fetch every
+        // active alert and drop the resolved ones in memory, so the claim of a shared definition
+        // held only for as long as nobody changed either copy.
+        var unresolved = await _unitOfWork.Alerts.GetUnresolvedByCardiMemberAsync(memberId);
+        if (unresolved.Count > 0)
             return true;
 
         var recent = await _unitOfWork.RealtimeAssessments.GetSinceAsync(memberId, utcNow - MonitoringGapWindow, ct);
