@@ -58,8 +58,10 @@ success having done nothing (2026-08-15, run 31904971393). Do not re-add a
 gated workflows also carries a dispatch-only `dispatch-sanity` job that fails
 the run if the chain collapses that way again.
 
-Copilot review runs on non-draft, same-repo PRs (short ubuntu job). Auto-merge
-runs only when the `automerge` label and its review/check gates are met.
+Copilot review runs on non-draft, same-repo PRs (short ubuntu job). Merging is
+manual: there is no auto-merge workflow (removed 2026-08-21 — with a single
+maintainer who reads every review anyway, its label-plus-gates machinery and
+its quarter-hourly sweep bought nothing that `gh pr merge` does not).
 
 | Workflow | When it runs |
 |---|---|
@@ -67,7 +69,6 @@ runs only when the `automerge` label and its review/check gates are met.
 | Deploy Infrastructure → Dev / Common | `ACTIONS_ON_PUSH` plus **workflow_dispatch** |
 | Deploy Apps / Infra → Prod | **workflow_dispatch only** (unchanged) |
 | Request Copilot review | `pull_request` opened / synchronize / reopened / ready_for_review |
-| Auto-merge | label, review, schedule, `workflow_run`, `workflow_dispatch` |
 
 With the flag at `0`, Dev Cloud Run / TestFlight / Play do not start on merge.
 Dispatch **CI / Deploy Apps → Dev** on `main`, or set the flag to `1`.
@@ -82,9 +83,9 @@ Dispatch **CI / Deploy Apps → Dev** on `main`, or set the flag to `1`.
    skips forks).
 4. **Do not** enable **Require review from Code Owners** as a required check.
    `.github/CODEOWNERS` is `* @marigbede`; the author's approval does not
-   count, so that setting would block every PR this owner opens. Auto-merge
-   already waits on Copilot. Use a ruleset to require a pull request before
-   merging if you want `main` protected, with an admin bypass for this owner.
+   count, so that setting would block every PR this owner opens. Use a ruleset
+   to require a pull request before merging if you want `main` protected, with
+   an admin bypass for this owner.
 
 ## What this repository enforces in code
 
@@ -98,7 +99,9 @@ Dispatch **CI / Deploy Apps → Dev** on `main`, or set the flag to `1`.
 
 These are not people. Revoking them breaks deploy, review, or cloud agents:
 
-- GitHub Actions (`GITHUB_TOKEN` and `AUTOMERGE_TOKEN` for Copilot review / auto-merge)
+- GitHub Actions (`GITHUB_TOKEN`, and `AUTOMERGE_TOKEN` — still required: it is
+  the PAT the Copilot-review workflow needs, since `GITHUB_TOKEN` cannot add
+  that reviewer. The name outlived the auto-merge workflow it was created for.)
 - GitHub Copilot pull-request reviewer
 - Cursor GitHub App (cloud agents, PR automation)
 

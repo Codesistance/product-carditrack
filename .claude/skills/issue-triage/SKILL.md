@@ -203,9 +203,10 @@ Comment shape — keep it short enough that a maintainer reads all of it:
 **Watch out for:** <the trap the architect lens found, if any>
 ```
 
-**Labels — use only what exists.** The repo has the GitHub defaults plus `automerge`:
-`bug`, `documentation`, `duplicate`, `enhancement`, `good first issue`, `help wanted`,
-`invalid`, `question`, `wontfix`. There is **no priority, wave, or surface label, no
+**Labels — use only what exists.** The repo has the GitHub defaults: `bug`,
+`documentation`, `duplicate`, `enhancement`, `good first issue`, `help wanted`,
+`invalid`, `question`, `wontfix`. (An `automerge` label may still exist on the repo; it
+does nothing since the auto-merge workflow was removed on 2026-08-21 — do not apply it.) There is **no priority, wave, or surface label, no
 milestone, and no project board** — so priority and wave live in the comment text. Do not
 invent a label mid-triage; if the gap keeps hurting, propose the whole label set once as
 its own change.

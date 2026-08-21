@@ -42,7 +42,7 @@ public class HealthInsightService : IHealthInsightService
         Explain this alert to a family caregiver.
 
         """ + MedicalPromptBlocks.CaregiverRegister + """
-        Write {{NAME}} exactly as written wherever you would name the person; it stands in
+        Write CardiTrackCardiMember exactly as written wherever you would name the person; it stands in
         for their real name, which you are not given.
 
         Respond with:
@@ -186,7 +186,7 @@ public class HealthInsightService : IHealthInsightService
     /// <summary>
     /// Substitutes <see cref="NamePlaceholder.Token"/> when a name is on file. Leftover braces
     /// are dropped rather than returned: the status line and the digest already refuse to show
-    /// them, and an insight that still says <c>{{NAME}}</c> is worse than an empty field.
+    /// them, and an insight that still says <c>CardiTrackCardiMember</c> is worse than an empty field.
     /// </summary>
     private static string ResolvedOrEmpty(string? text, string? name)
     {
