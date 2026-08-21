@@ -26,7 +26,7 @@ on:
         type: boolean
         default: true
       medgemma:
-        description: 'MedGemma'
+        description: 'MedGemma + Rewrite (model image build — off by default because the image bakes multi-GB model blobs; tick to rebuild and redeploy the model services)'
         type: boolean
         default: false
       pipeline:
@@ -173,12 +173,19 @@ jobs:
   compute-version:
     name: Compute next version
     needs: changes
+    # Every lane that stamps the version into an image or artifact belongs in this condition —
+    # a lane missing here makes its whole chain skip silently on a dispatch that enables only
+    # that lane, while the run still reports success (issue #409: a medgemma-only dispatch
+    # built and deployed nothing, twice, before anyone noticed).
     if: |
       github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
-      (needs.changes.outputs.api    == 'true' ||
-       needs.changes.outputs.web    == 'true' ||
-       needs.changes.outputs.worker == 'true' ||
-       needs.changes.outputs.mobile == 'true')
+      (needs.changes.outputs.api      == 'true' ||
+       needs.changes.outputs.web      == 'true' ||
+       needs.changes.outputs.worker   == 'true' ||
+       needs.changes.outputs.mobile   == 'true' ||
+       needs.changes.outputs.medgemma == 'true' ||
+       needs.changes.outputs.pipeline == 'true' ||
+       needs.changes.outputs.webhook  == 'true')
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.version.outputs.version }}
@@ -1944,13 +1951,15 @@ jobs:
   # outcome whenever the flag is off, so asserting there would fail on the normal case.
   dispatch-sanity:
     name: Dispatch ran something
-    needs: changes
+    needs: [changes, build-and-push-medgemma]
     if: always() && github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       - name: Assert the dispatch resolved its components
         env:
           CHANGES_RESULT: ${{ needs.changes.result }}
+          MEDGEMMA_SELECTED: ${{ needs.changes.outputs.medgemma }}
+          MEDGEMMA_BUILD: ${{ needs.build-and-push-medgemma.result }}
           SELECTED: >-
             ${{ needs.changes.outputs.api }} ${{ needs.changes.outputs.web }}
             ${{ needs.changes.outputs.worker }} ${{ needs.changes.outputs.mobile }}
@@ -1960,6 +1969,13 @@ jobs:
           set -euo pipefail
           if [ "${CHANGES_RESULT}" != "success" ]; then
             echo "::error::Manual dispatch resolved no components — 'Detect changes' was ${CHANGES_RESULT}, so every build and deploy job skipped. Nothing was built or deployed."
+            exit 1
+          fi
+          # The issue #409 trap, kept as a tripwire even though compute-version now counts the
+          # medgemma lane: a ticked lane whose build silently skipped must fail the run, not
+          # report success while deploying nothing.
+          if [ "${MEDGEMMA_SELECTED}" = "true" ] && [ "${MEDGEMMA_BUILD}" = "skipped" ]; then
+            echo "::error::MedGemma was ticked but its image build skipped — a dependency job (compute-version?) didn't run, so the model services were NOT redeployed."
             exit 1
           fi
           # Unticking every box is a legitimate no-op, but it is almost never intended; say so
