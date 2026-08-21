@@ -146,8 +146,8 @@ public class MemberChatService : IMemberChatService
         If the data below does not answer the question, say so rather than guessing or inventing a
         reading the data does not contain. The activity data covers only the dates named in its
         heading; if the question asks about a longer stretch, answer for those dates and say so.
-        A question about a total, or about a span like "this week", is about every day in that
-        heading rather than any one of them.
+        A question about a total, or about a span like "this week", covers
+        every day in that heading rather than any one of them.
 
         Respond with:
         - analysis: your answer, grounded only in the data provided.
