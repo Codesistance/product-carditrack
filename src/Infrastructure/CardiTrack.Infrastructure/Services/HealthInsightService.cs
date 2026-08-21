@@ -122,16 +122,6 @@ public class HealthInsightService : IHealthInsightService
     /// </summary>
     private static readonly TimeSpan StatusLineMaxAge = TimeSpan.FromHours(24);
 
-    /// <summary>
-    /// An Advise row older than this is withheld rather than served. Wider than
-    /// <see cref="StatusLineMaxAge"/> because Advise regenerates roughly daily
-    /// (<c>AdviseGenerationService.RegenerateIfDueAsync</c>'s own due window), not every batch
-    /// pass — this ceiling is a buffer against one missed pass, not the cadence itself. Past it,
-    /// generation has stopped for this member, and yesterday's suggestion presented as current
-    /// would say something false.
-    /// </summary>
-    private static readonly TimeSpan AdviseMaxAge = TimeSpan.FromDays(3);
-
     private readonly IMedicalAiService _medicalAi;
     private readonly IUnitOfWork _unitOfWork;
     private readonly ICardiMemberAccessService _access;
@@ -357,7 +347,7 @@ public class HealthInsightService : IHealthInsightService
             return NoAdvise(cardiMemberId);
 
         var advise = await _unitOfWork.MemberAdvises.GetByCardiMemberAsync(cardiMemberId);
-        if (advise is null || DateTime.UtcNow - advise.GeneratedAtUtc > AdviseMaxAge)
+        if (advise is null || DateTime.UtcNow - advise.GeneratedAtUtc > AdviseStaleness.MaxAge)
             return NoAdvise(cardiMemberId);
 
         return new AdviseResponse

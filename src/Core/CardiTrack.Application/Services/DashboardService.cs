@@ -19,10 +19,6 @@ public class DashboardService : IDashboardService
     private static readonly int[] BaselinePeriodPreference = [BaselinePeriodDays, 14, 7];
     private const int RecentAlertCount = 5;
 
-    /// <summary>Same ceiling <c>HealthInsightService.AdviseMaxAge</c> reads by — a row past this is
-    /// treated as though generation has stopped, so the card must not pulse for it.</summary>
-    private static readonly TimeSpan AdviseMaxAge = TimeSpan.FromDays(3);
-
     /// <summary>
     /// Hero status for a member whose monitoring is paused. Outside the green/yellow/orange/red
     /// severity scale on purpose — it says "we are not watching", not "we looked and it's fine".
@@ -101,7 +97,7 @@ public class DashboardService : IDashboardService
         // member's stored suggestion is withheld there, and a pulsing badge promising one the
         // details screen will never show would be worse than no badge at all.
         var advise = isPaused ? null : await _unitOfWork.MemberAdvises.GetByCardiMemberAsync(cardiMemberId);
-        var hasAdvise = advise is not null && DateTime.UtcNow - advise.GeneratedAtUtc <= AdviseMaxAge;
+        var hasAdvise = advise is not null && DateTime.UtcNow - advise.GeneratedAtUtc <= AdviseStaleness.MaxAge;
 
         return new DashboardResponse
         {
