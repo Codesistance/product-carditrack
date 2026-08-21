@@ -165,6 +165,8 @@ public partial class JournalEntryPage : ContentPage
             try
             {
                 var member = await _api.GetCardiMemberAsync(_memberId);
+                ChatBot.MemberId = _memberId;
+                ChatBot.MemberFirstName = NameFormatting.FirstName(member.Name);
                 if (!_headerPersonalised)
                     ApplyHeaderName(NameFormatting.FirstName(member.Name));
                 ApplyTrends(member.Metrics);

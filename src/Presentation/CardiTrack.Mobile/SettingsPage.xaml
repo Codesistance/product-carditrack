@@ -112,5 +112,9 @@
         </ScrollView>
 
         <controls:BottomNavBar Grid.Row="2" Tab="Settings"/>
+
+        <!-- Chat from anywhere: Settings has no member context, so the launcher resolves the
+             account's members itself on tap — see ChatBotLauncher. -->
+        <controls:ChatBotLauncher Grid.Row="1"/>
     </Grid>
 </ContentPage>

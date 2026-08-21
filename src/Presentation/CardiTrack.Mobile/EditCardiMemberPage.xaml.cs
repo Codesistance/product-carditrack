@@ -126,6 +126,8 @@ public partial class EditCardiMemberPage : ContentPage
         try
         {
             _member = await _api.GetCardiMemberAsync(_memberId);
+            ChatBot.MemberId = _memberId;
+            ChatBot.MemberFirstName = NameFormatting.FirstName(_member.Name);
             Fill(_member);
             SetState(form: true);
             await ApplyFocusAsync();

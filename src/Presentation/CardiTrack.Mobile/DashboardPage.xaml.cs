@@ -106,10 +106,6 @@ public partial class DashboardPage : ContentPage
         // repeated: Android raises OnAppearing again on its way back to the foreground, where iOS
         // does not, so without it a resume would fetch twice on one platform and once on the other.
         _ = RefreshUnattendedAsync();
-
-        _chatBotPulseCts?.Cancel();
-        _chatBotPulseCts = new CancellationTokenSource();
-        _ = PulseChatBotLoopAsync(_chatBotPulseCts.Token);
     }
 
     protected override void OnDisappearing()
@@ -117,43 +113,6 @@ public partial class DashboardPage : ContentPage
         base.OnDisappearing();
         HideExitHint();
         TabNavigation.DisarmDashboardExit();
-        _chatBotPulseCts?.Cancel();
-    }
-
-    private CancellationTokenSource? _chatBotPulseCts;
-
-    /// <summary>
-    /// A soft "notice me" cue for the ChatBot launcher, not a constant animation: an expanding
-    /// blue ring behind the button fading out as it grows, paired with a small white flash on the
-    /// button itself, every few seconds while Dashboard is on screen. Stops the moment the page
-    /// isn't visible (<see cref="OnDisappearing"/> cancels the token) — an animation looping on a
-    /// backgrounded page is wasted battery for nothing on screen to show for it.
-    /// </summary>
-    private async Task PulseChatBotLoopAsync(CancellationToken ct)
-    {
-        try
-        {
-            while (!ct.IsCancellationRequested)
-            {
-                await Task.Delay(TimeSpan.FromSeconds(6), ct);
-
-                ChatBotPulse.Scale = 1;
-                ChatBotPulse.Opacity = 0.55;
-                var ring = ChatBotPulse.FadeToAsync(0, 1100, Easing.CubicOut);
-                var expand = ChatBotPulse.ScaleToAsync(1.7, 1100, Easing.CubicOut);
-                await Task.WhenAll(ring, expand, FlashButtonAsync());
-            }
-        }
-        catch (OperationCanceledException)
-        {
-            // Page navigated away mid-pulse — nothing to clean up, the view is gone.
-        }
-
-        async Task FlashButtonAsync()
-        {
-            await ChatBotButton.FadeToAsync(0.55, 250, Easing.CubicOut);
-            await ChatBotButton.FadeToAsync(1, 350, Easing.CubicIn);
-        }
     }
 
     private CancellationTokenSource? _exitHintCts;
@@ -268,67 +227,6 @@ public partial class DashboardPage : ContentPage
             return;
         await SyncAndReloadAsync();
     }
-
-    private void OnChatBotTapped(object? sender, TappedEventArgs e) =>
-        MemberChatLauncher.ShowOverlay(RootGrid, _memberId, NameFormatting.FirstName(_lastData?.Name));
-
-    /// <summary>Where the drag started, relative to the container's docked position — needed
-    /// because PanUpdated reports totals from gesture start, not deltas since the last event.</summary>
-    private double _chatBotBaseX;
-    private double _chatBotBaseY;
-
-    /// <summary>Where the current drag is actually holding — the last position a Running event
-    /// applied. Committed as the new base when the gesture ends, because the platform handlers
-    /// raise Completed/Canceled through the (status, gestureId) constructor, whose TotalX/TotalY
-    /// are always 0: trusting the terminal event's totals reset the base to the dock on every
-    /// release, so the button visibly stayed put but snapped home the moment the next drag's
-    /// first Running event applied "base + total".</summary>
-    private double _chatBotHeldX;
-    private double _chatBotHeldY;
-
-    /// <summary>
-    /// Drags the launcher off whatever it's obstructing. A separate TapGestureRecognizer handles
-    /// opening the chat — see <see cref="ChatBotContainer"/>'s remarks on why the two stay apart
-    /// rather than one recognizer inferring a tap from a zero-movement pan. Position is
-    /// session-only: it resets to docked bottom-end next time Dashboard loads, rather than
-    /// persisting a spot that might not make sense once the content underneath has changed.
-    /// </summary>
-    private void OnChatBotPanUpdated(object? sender, PanUpdatedEventArgs e)
-    {
-        switch (e.StatusType)
-        {
-            case GestureStatus.Started:
-                // A pan that ends before any Running event fires must commit the spot the button
-                // is already on, not whatever the previous gesture left in the held fields.
-                _chatBotHeldX = _chatBotBaseX;
-                _chatBotHeldY = _chatBotBaseY;
-                break;
-
-            case GestureStatus.Running:
-                _chatBotHeldX = ClampChatBotX(_chatBotBaseX + e.TotalX);
-                _chatBotHeldY = ClampChatBotY(_chatBotBaseY + e.TotalY);
-                ChatBotContainer.TranslationX = _chatBotHeldX;
-                ChatBotContainer.TranslationY = _chatBotHeldY;
-                break;
-
-            case GestureStatus.Completed:
-            case GestureStatus.Canceled:
-                // Both terminal states keep the button wherever the drag was actually holding —
-                // an interrupted drag (an incoming call, a system gesture) should still leave it
-                // wherever the caregiver had visibly moved it to.
-                _chatBotBaseX = _chatBotHeldX;
-                _chatBotBaseY = _chatBotHeldY;
-                ChatBotContainer.TranslationX = _chatBotBaseX;
-                ChatBotContainer.TranslationY = _chatBotBaseY;
-                break;
-        }
-    }
-
-    /// <summary>Keeps the launcher's whole footprint on screen. Approximate on purpose — this is
-    /// "don't lose the button off the edge", not pixel-precise bounds.</summary>
-    private double ClampChatBotX(double x) => Math.Max(-(Width - 76), Math.Min(20, x));
-
-    private double ClampChatBotY(double y) => Math.Max(-(Height - 220), Math.Min(0, y));
 
     private void OnRefreshClicked(object? sender, EventArgs e) => _ = SyncAndReloadAsync();
 
@@ -493,6 +391,8 @@ public partial class DashboardPage : ContentPage
     private void Apply(DashboardResponse data)
     {
         _memberId = data.CardiMemberId;
+        ChatBot.MemberId = data.CardiMemberId;
+        ChatBot.MemberFirstName = NameFormatting.FirstName(data.Name);
         HeroCard.Apply(data);
 
         Header.SetUnreadCount(data.UnreadAlertCount);

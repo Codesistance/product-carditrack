@@ -127,6 +127,8 @@ public partial class AlertDetailPage : ContentPage
 
         var resources = Microsoft.Maui.Controls.Application.Current!.Resources;
         var firstName = NameFormatting.FirstName(alert.CardiMemberName);
+        ChatBot.MemberId = alert.CardiMemberId;
+        ChatBot.MemberFirstName = firstName;
 
         // NOTICE, not INFO, for yellow. The badge word and the banner fill are both read off
         // severity, so a yellow alert used to put the mildest word in the vocabulary on an amber

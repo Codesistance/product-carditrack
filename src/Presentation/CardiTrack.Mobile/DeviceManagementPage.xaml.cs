@@ -94,6 +94,8 @@ public partial class DeviceManagementPage : ContentPage
             _member = await memberTask;
             var devices = await devicesTask;
 
+            ChatBot.MemberId = _memberId;
+            ChatBot.MemberFirstName = NameFormatting.FirstName(_member.Name);
             MemberSubtitleLabel.Text = $"{_member.Name} • CardiMember";
             EmptyDetailLabel.Text =
                 $"Connect a wearable so CardiTrack can start watching over {NameFormatting.FirstName(_member.Name)}.";

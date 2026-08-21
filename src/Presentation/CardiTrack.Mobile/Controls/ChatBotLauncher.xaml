@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentView xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:controls="clr-namespace:CardiTrack.Mobile.Controls"
+             x:Class="CardiTrack.Mobile.Controls.ChatBotLauncher"
+             HorizontalOptions="End" VerticalOptions="End"
+             Margin="0,0,20,16"
+             WidthRequest="56" HeightRequest="56">
+
+    <!-- The floating member-chat launcher, extracted from DashboardPage so every signed-in page
+         can carry it (chat-everywhere). Draggable (OnPanUpdated) so it can be moved off whatever
+         it happens to be sitting over; docks bottom-end by default. Opens MemberChatPage as an
+         overlay into the host page's root grid rather than navigating away — see
+         MemberChatLauncher. Hosts that know which member their content belongs to set
+         MemberId/MemberFirstName; hosts without a single member (Alerts list, Settings) leave
+         them unset and the launcher resolves the account's members itself on tap — opening
+         directly for the ordinary one-member family, or asking via an action sheet.
+         No Figma frame; as-built, see the design-sync backlog. -->
+
+    <ContentView.GestureRecognizers>
+        <!-- Separate recognizers, not one synthesizing a tap from a zero-movement pan — a true
+             no-motion tap doesn't reliably raise PanUpdated at all on Android, since the native
+             gesture detector never sees enough motion to recognize a pan in the first place.
+             The platform's own arena disambiguates a real drag from a tap between the two. -->
+        <TapGestureRecognizer Tapped="OnTapped"/>
+        <PanGestureRecognizer PanUpdated="OnPanUpdated"/>
+    </ContentView.GestureRecognizers>
+
+    <Grid>
+        <!-- Pulse ring — behind the button (declared first, so the button draws on top),
+             invisible at rest. PulseLoopAsync fades it out to a wider circle every few
+             seconds, a soft "notice me" cue rather than a constant animation. -->
+        <Ellipse x:Name="Pulse"
+                 WidthRequest="56" HeightRequest="56"
+                 Fill="{StaticResource Primary}"
+                 Opacity="0"
+                 InputTransparent="True"/>
+
+        <controls:SquareBorder x:Name="Button"
+                WidthRequest="56" HeightRequest="56"
+                StrokeThickness="0"
+                BackgroundColor="{StaticResource White}"
+                InputTransparent="True"
+                SemanticProperties.Description="Chat"
+                SemanticProperties.Hint="Opens a conversation about a CardiMember's readings — drag to move">
+            <controls:SquareBorder.StrokeShape>
+                <RoundRectangle CornerRadius="99"/>
+            </controls:SquareBorder.StrokeShape>
+            <controls:SquareBorder.Shadow>
+                <Shadow Brush="{StaticResource CardShadowBrush}" Opacity="0.25" Radius="14" Offset="0,4"/>
+            </controls:SquareBorder.Shadow>
+            <Image Source="icon_chatbot.svg" WidthRequest="34" HeightRequest="34"
+                   HorizontalOptions="Center" VerticalOptions="Center"/>
+        </controls:SquareBorder>
+    </Grid>
+</ContentView>
