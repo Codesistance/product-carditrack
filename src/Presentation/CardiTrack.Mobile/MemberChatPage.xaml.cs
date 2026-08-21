@@ -270,6 +270,11 @@ public sealed class ChatTurnItem
     public required Color TextColor { get; init; }
     public required Color BubbleBackground { get; init; }
     public required LayoutOptions RowAlignment { get; init; }
+
+    /// <summary>Elevation for the bubble. Only the caregiver's own bubbles carry one — the
+    /// bot's replies (and errors, and resumed history) sit flat, so the conversation reads as
+    /// one surface rather than a stack of floating cards.</summary>
+    public Shadow? BubbleShadow { get; init; }
     public string ChartSummary { get; init; } = string.Empty;
     public bool HasChartSummary => !string.IsNullOrEmpty(ChartSummary);
 
@@ -288,6 +293,15 @@ public sealed class ChatTurnItem
         TextColor = Colors.White,
         BubbleBackground = Microsoft.Maui.Controls.Application.Current?.Resources["Primary"] as Color ?? Colors.Blue,
         RowAlignment = LayoutOptions.End,
+        // ElevatedCard's numbers, created per item — a Shadow is a bindable object with a
+        // parent, so one shared instance cannot serve many bubbles.
+        BubbleShadow = new Shadow
+        {
+            Brush = Microsoft.Maui.Controls.Application.Current?.Resources["CardShadowBrush"] as Brush ?? Brush.Black,
+            Opacity = 0.15f,
+            Radius = 14,
+            Offset = new Point(0, 4),
+        },
     };
 
     public static ChatTurnItem FromReply(MemberChatMessageResponse response, string? memberFirstName)
