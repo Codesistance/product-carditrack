@@ -35,13 +35,31 @@ resource "google_cloud_run_v2_service" "medgemma" {
   count    = var.medgemma_image != "" ? 1 : 0
   name     = "${var.project_name}-common-medgemma"
   location = var.medgemma_location
-  ingress  = "INGRESS_TRAFFIC_ALL"
-  client   = "terraform"
+
+  # ALL, where the per-environment service was INTERNAL_ONLY — a deliberate loss, not an
+  # oversight. That service satisfied internal ingress because the API's vpc_access carried its
+  # calls onto the internal path; the callers are in europe-west2 with PRIVATE_RANGES_ONLY egress
+  # and this service is in europe-west1 with no VPC attachment, so their calls arrive over the
+  # public endpoint and internal ingress would refuse them.
+  #
+  # So this endpoint is reachable from the internet and authorisation is IAM alone: the two named
+  # invokers below, no allUsers, and the public-exposure alert in alerting.tf. Unauthenticated
+  # requests arrive and are refused — ten inside twenty seconds on the day it went live. Nothing
+  # about who may invoke it changed; the second, network-position layer in front of the same IAM
+  # check did. Recorded in dpia.md §4.3.
+  ingress = "INGRESS_TRAFFIC_ALL"
+  client  = "terraform"
 
   template {
-    # Zero is the point of the whole migration. The CPU instance could never do this — a
-    # 58.6s model reload landed past every caller's deadline, so it had to stay warm and be paid
-    # for around the clock.
+    # Zero is where the saving comes from, and it is not free. Measured on this service: a cold
+    # start loads the model in ~54s — against the CPU service's 58.6s, because loading ~3GB of
+    # weights off disk is IO, not arithmetic, and the accelerator barely helps. The migration plan
+    # assumed otherwise; it was wrong.
+    #
+    # Batch passes do not care. The first chat question after an idle spell does, and avoiding
+    # exactly that is why the CPU service kept min = 1. This trades interactive latency after
+    # idle for cost, knowingly — see medgemma_serving_architecture.md §9.1a, and revisit alongside
+    # the first month's billing.
     scaling {
       min_instance_count = var.medgemma_min_instances
       max_instance_count = var.medgemma_max_instances

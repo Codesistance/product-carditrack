@@ -175,8 +175,8 @@ carditrack-<env>
 │   ├── carditrack-<env>-api        (public*, Cloud SQL socket, VPC egress)
 │   ├── carditrack-<env>-web        (public*, gen2, GCS dp-keys volume)
 │   ├── carditrack-<env>-worker     (internal-only — non-AI background jobs)
-│   ├── carditrack-<env>-medgemma   (IAM-authorised invokers only, optional — Ollama-served MedGemma;
-│   │                                created only when medgemma_image is non-empty)
+│   │   (MedGemma is no longer here — one shared L4 service, carditrack-common-medgemma
+│   │    in europe-west1, serves every environment: infrastructure/common/cloud_run.tf)
 │   └── carditrack-<env>-webhook-receiver  (public*, AI-pipeline ingress — authenticates the
 │                                    Subscriber secret, publishes raw to Pub/Sub; gated on
 │                                    enable_pipeline_jobs — dev only today)
@@ -223,7 +223,23 @@ Cloud Armor rules (dev, where the WAF exists): block requests not using a config
 
 ### MedGemma service
 
-MedGemma is served by **Ollama on Cloud Run (CPU)** — image built from `src/Infrastructure/MedGemma/Dockerfile`, which bakes the model tag from `.model-version` (`hf.co/unsloth/medgemma-1.5-4b-it-GGUF:Q4_K_M`) into the image. That tag is the single source of truth: `docker-compose.yml` pulls it locally, and `main.tf` reads the same file into `AI__Private__Model` rather than repeating the string, so the two cannot drift. Wherever the service actually runs — locally and in dev today, prod once `medgemma_image` is non-empty — it runs the same weights at the same quantisation. Sizing: 4 vCPU / 16 Gi, max **1 instance** (Ollama cannot safely multi-instance), min **1 instance in dev, 0 in prod** (`medgemma_min_instances`, deliberately not the shared `cloud_run_min_instances` that prod sets to 1 — dev opted in through its own tfvars while the Dashboard status line still generated inside a caregiver's request; since the batch move (`StatusLineGenerationService`, 2026-08-21) that line is a persisted row the pipeline regenerates, so the warm minimum's remaining justification is the on-demand alert/baseline insight endpoints and it is a candidate to drop with the Option B GPU move), `cpu_idle = false`, startup CPU boost, internal-only ingress on port 8080. Where it does scale to zero, the first call after an idle period pays a cold start — image pull plus model load — which is why the API allows it `medgemma_timeout_seconds` (300s) rather than the 120s the other providers get. The service is created only when `medgemma_image` is non-empty; that variable seeds the create and CI owns the image afterwards, so Terraform must create the service before the first `gcloud run deploy` does. After each deploy, CI writes the service URL to the `carditrack-<env>-medgemma-service-url` secret, which the API consumes as `AI__Private__BaseUrl`. See [llm_design.md](./llm_design.md) for the AI architecture.
+MedGemma is served by **Ollama on Cloud Run with one NVIDIA L4 GPU** — `carditrack-common-medgemma` in `europe-west1`, in the [common stack](#common-stack-shared-across-environments), serving every environment. It replaced the per-environment CPU services on 2026-08-21; dev's is destroyed and prod never had one.
+
+The image is built from `src/Infrastructure/MedGemma/Dockerfile`, which bakes the model tag from `.model-version` (`hf.co/unsloth/medgemma-1.5-4b-it-GGUF:Q4_K_M`) into it. That tag is the single source of truth: `docker-compose.yml` pulls it locally, and `main.tf` reads the same file into `AI__Private__Model` rather than repeating the string, so the two cannot drift.
+
+**Why it moved.** The CPU service billed 4 vCPU / 16 GiB around the clock for a ~42% duty cycle, because `cpu_idle = false` and it could not scale to zero — a model reload took 58.6 s, longer than any caller's budget. Prompt evaluation ran at ~25 tok/s, so a 1,184-token clinical prompt spent 47.6 s before its first output token. Measured on the L4: **~4,000 tok/s** prompt evaluation, and a full 2,301-token call in 4.3 s against 128–139 s. Full numbers in [medgemma_serving_architecture.md](./technical/medgemma_serving_architecture.md) §9.
+
+**Sizing.** 4 vCPU / 16 GiB (the vCPU floor above 8 GiB — the GPU does the inference), `min = 0`, `max = 1`, request concurrency **1**. `min = 0` is the saving: an L4 costs more per second than the CPU instance and runs for a small fraction of the day.
+
+**The cost of `min = 0`.** A cold start loads the model in **~54 s** — measured, and barely better than the CPU service's 58.6 s, because loading ~3 GB of weights off disk is IO rather than arithmetic. Batch passes do not care. The first chat question after an idle spell does, and that is precisely why the CPU service kept `min = 1`. The saving and the interactive latency are in tension here; see [medgemma_serving_architecture.md](./technical/medgemma_serving_architecture.md) §9.1a.
+
+**Ingress.** `INGRESS_TRAFFIC_ALL`, where the per-environment service was internal-only. The old service leaned on the API's `vpc_access` egress to satisfy internal ingress; that does not survive a cross-region move, so authorisation now rests entirely on IAM — two named invoker service accounts, no `allUsers`, and the public-exposure alert in `common/alerting.tf`. `gpu_zonal_redundancy_disabled = true`, because reserving and billing standby capacity in a second zone would double the cost of the thing being optimised.
+
+**Region.** `europe-west1` rather than `europe-west2`, because Cloud Run offers no L4 there. Both are EU/EEA under the same Google Cloud DPA, so this is a region change and not a transfer — see the residency note in [dpia.md](./compliance/dpia.md) §4.3.
+
+**Image and URL.** The image lives in a second Artifact Registry repo in `europe-west1`: Cloud Run pulls from its own region, and cross-region pulls of a multi-GB image would dominate a cold start this service now takes by design. The service URL is written into each environment's `carditrack-<env>-medgemma-service-url` secret by `deploy-medgemma-common.yml`, which the API consumes as `AI__Private__BaseUrl`. It is set explicitly and never constructed — this project issues Cloud Run's hash URL form, so it cannot be derived from parts.
+
+See [llm_design.md](./llm_design.md) for the AI architecture.
 
 ### Common stack (shared across environments)
 
@@ -232,6 +248,8 @@ MedGemma is served by **Ollama on Cloud Run (CPU)** — image built from `src/In
 - **Artifact Registry** `carditrack-common` — central Docker repository (cleanup policy keeps the last 50 versions)
 - **Builds bucket** `carditrack-common-builds` — mobile build artifacts (10-day lifecycle delete)
 - **9 store distribution secrets** (`carditrack-common-*`) — Apple distribution cert/password, App Store provisioning profile and Connect API credentials, Android keystore/password, Play service account key
+- **MedGemma GPU service** `carditrack-common-medgemma` — one L4 in `europe-west1` serving every environment, with the `europe-west1` Artifact Registry repo its image is pulled from and the public-exposure IAM alert that moved with it
+- **Cross-stack invoker IAM** — `medgemma_invoker_members` in `common.tfvars`, constructed service-account emails rather than a lookup, because this root cannot read the environment stacks' state. An entry for an account that does not exist applies cleanly and grants nothing, so prod's go in only once its accounts do
 
 The Artifact Registry and builds bucket were **migrated out of the dev/prod stacks into common**; `infrastructure/artifact_registry.tf` and `infrastructure/builds_bucket.tf` now contain only `removed {}` blocks that drop the old resources from dev/prod state without destroying them. See the [infrastructure README](../infrastructure/README.md) for the operational implications.
 
