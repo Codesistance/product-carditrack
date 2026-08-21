@@ -2094,8 +2094,20 @@ public class DigestGenerationServiceTests
                 GeneratedAtUtc = generatedAt,
             });
 
-    private void GivenAlerts(params Alert[] alerts) =>
+    /// <summary>
+    /// Both alert reads the digest pipeline makes: the broad one it uses itself for the journal's
+    /// day/week/month windows, and the unresolved one <c>MonitoringContextSource</c> uses for the
+    /// digest's monitoring section. The second is derived from the same alerts with the filter and
+    /// ordering the SQL query applies, so a test writes one list and both paths agree on it.
+    /// </summary>
+    private void GivenAlerts(params Alert[] alerts)
+    {
         _alerts.GetByCardiMemberAsync(_memberId, Arg.Any<bool>()).Returns(alerts);
+        _alerts.GetUnresolvedByCardiMemberAsync(_memberId).Returns(
+            alerts.Where(a => a.IsActive && !a.IsResolved)
+                .OrderByDescending(a => a.TriggeredDate)
+                .ToList());
+    }
 
     private void GivenLatestAssessment(AlertSeverity? severity, double score, DateTime generatedAt) =>
         _realtimeAssessments.GetLatestAsync(_memberId, Arg.Any<CancellationToken>())

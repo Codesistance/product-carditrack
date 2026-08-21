@@ -122,7 +122,7 @@ internal sealed class QuestionnaireAnswersContextSource : IMemberContextSource
                 var answer = MedicalPromptBlocks.Flatten(
                     EncryptedFieldReader.Reveal(encryption, q.AnswerText) ?? string.Empty);
                 if (answer.Length > MaxAnswerLength)
-                    answer = $"{answer[..MaxAnswerLength]}…";
+                    answer = $"{MedicalPromptBlocks.CutTo(answer, MaxAnswerLength)}…";
                 return new FamilyFact(question, answer, q.Scope, q.AnsweredAtUtc ?? q.GeneratedAtUtc);
             })
             .Where(fact => fact.Answer.Length > 0)
@@ -186,6 +186,18 @@ internal sealed class QuestionnaireAnswersContextSource : IMemberContextSource
             var days => $"about {days / 7} week{(days / 7 == 1 ? string.Empty : "s")} ago",
         };
 
+    /// <summary>
+    /// Whether an answer carries its own subject, or only makes sense beside the question it
+    /// answered.
+    /// </summary>
+    /// <remarks>
+    /// The yes/no test is on the first <em>word</em>, not the first two or three letters. As a
+    /// prefix match, "no" caught "Nothing unusual, she was fine all day", "Not since Tuesday" and
+    /// "Normally he walks after lunch" — self-contained sentences that were then handed back to
+    /// the model with the question glued in front of them, which is the quiz-transcript shape this
+    /// source exists to avoid. Trailing punctuation is stripped first so "No," and "Yes —" are
+    /// still caught.
+    /// </remarks>
     private static bool AnswerStandsAlone(string answer)
     {
         if (answer.Length < StandaloneAnswerLength)
@@ -193,8 +205,8 @@ internal sealed class QuestionnaireAnswersContextSource : IMemberContextSource
 
         // "Yes, fitted in 2020." is long enough to look like a sentence and still names nothing
         // without the question it answered.
-        var trimmed = answer.TrimStart();
-        return !trimmed.StartsWith("yes", StringComparison.OrdinalIgnoreCase)
-            && !trimmed.StartsWith("no", StringComparison.OrdinalIgnoreCase);
+        var firstWord = answer.TrimStart().Split(' ', 2)[0].Trim(',', '.', ';', ':', '—', '-', '!');
+        return !firstWord.Equals("yes", StringComparison.OrdinalIgnoreCase)
+            && !firstWord.Equals("no", StringComparison.OrdinalIgnoreCase);
     }
 }

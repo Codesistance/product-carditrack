@@ -469,8 +469,37 @@ internal static partial class MedicalPromptBlocks
     {
         var flattened = WhitespaceRuns().Replace(note, " ").Trim();
         return flattened.Length > MaxNoteLength
-            ? $"{flattened[..MaxNoteLength]}… (truncated)"
+            ? $"{CutTo(flattened, MaxNoteLength)}… (truncated)"
             : flattened;
+    }
+
+    /// <summary>
+    /// Cuts <paramref name="text"/> to at most <paramref name="max"/> characters without splitting
+    /// a surrogate pair.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A plain <c>text[..max]</c> whose boundary lands between the two halves of an astral
+    /// character — an emoji in a caregiver note or a questionnaire answer, most often — leaves a
+    /// lone surrogate at the end of the string. It is not valid UTF-16 on its own, so it survives
+    /// as far as the request body and serialises to a replacement character there.
+    /// </para>
+    /// <para>
+    /// Shared rather than repeated because every cap in the prompt-context pipeline had its own
+    /// copy of the same cut: the caregiver note here, an assessment's text and an answer's text in
+    /// the context sources, and a section body and its heading in the composer. One of them
+    /// getting this right and four not is the shape this pipeline was built to stop.
+    /// </para>
+    /// </remarks>
+    internal static string CutTo(string text, int max)
+    {
+        if (text.Length <= max)
+            return text;
+
+        // The character before the cut being a high surrogate means its partner is the character
+        // at the cut, which is about to be dropped. Take one less rather than leave half a pair.
+        var end = char.IsHighSurrogate(text[max - 1]) ? max - 1 : max;
+        return text[..end];
     }
 
     /// <summary>Any run of whitespace or control characters, including newlines.</summary>

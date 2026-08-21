@@ -204,8 +204,14 @@ public class MemberContextSourceTests
     /// Resolution keeps IsActive set — the episode ended, the row did not. Reading a closed episode
     /// as live is what had the digest and the hero line disagreeing with the status colour.
     /// </summary>
+    /// <remarks>
+    /// The source used to fetch every active alert and drop the resolved ones in memory. It now
+    /// asks for the unresolved read all the other callers use, which does both filters in SQL —
+    /// so what this asserts is that it asks the right question, the broad read being the one that
+    /// would let a resolved alert through.
+    /// </remarks>
     [Fact]
-    public async Task Monitoring_IgnoresResolvedAlerts()
+    public async Task Monitoring_AsksForUnresolvedAlertsRatherThanFilteringThemAfterwards()
     {
         GivenAlerts(new Alert
         {
@@ -218,6 +224,9 @@ public class MemberContextSourceTests
         });
 
         Assert.Null(await new MonitoringContextSource(_unitOfWork).BuildAsync(Request(), default));
+
+        await _alerts.Received(1).GetUnresolvedByCardiMemberAsync(_memberId);
+        await _alerts.DidNotReceive().GetByCardiMemberAsync(_memberId, Arg.Any<bool>());
     }
 
     [Fact]
@@ -230,6 +239,37 @@ public class MemberContextSourceTests
         var section = await new MonitoringContextSource(_unitOfWork).BuildAsync(Request(), default);
 
         Assert.Equal(5, section!.Body.Split('\n').Length);
+    }
+
+    /// <summary>
+    /// Alerts are rendered before assessments and the composer caps the section as a whole, so an
+    /// uncapped alert list pushed every automated observation out of the prompt — the one thing
+    /// this source was added to carry, lost for exactly the members with the most going on.
+    /// </summary>
+    [Fact]
+    public async Task Monitoring_CarriesAtMostFiveAlerts_SoAssessmentsStillFit()
+    {
+        GivenAlerts(Enumerable.Range(0, 9)
+            .Select(i => new Alert
+            {
+                CardiMemberId = _memberId,
+                AlertType = AlertType.HeartRate,
+                Severity = AlertSeverity.Orange,
+                Title = $"Alert {i}",
+                TriggeredDate = UtcNow.AddHours(-i - 1),
+            })
+            .ToArray());
+        GivenAssessments(Assessment(AlertSeverity.Yellow, "Observation kept"));
+
+        var section = await new MonitoringContextSource(_unitOfWork).BuildAsync(Request(), default);
+
+        var lines = section!.Body.Split('\n');
+        Assert.Equal(6, lines.Length);
+        Assert.Equal(5, lines.Count(l => l.Contains("Unresolved alert")));
+        Assert.Contains("Observation kept", section.Body);
+        // Newest first: the five that survive are the most recent, not the oldest.
+        Assert.Contains("Alert 0", section.Body);
+        Assert.DoesNotContain("Alert 8", section.Body);
     }
 
     // ---- Questionnaire answers ----
@@ -320,6 +360,50 @@ public class MemberContextSourceTests
         Assert.Contains("pacemaker", section.Body);
         // Still three of the time-scoped ones — the permanent answer doesn't eat into that cap.
         Assert.Equal(4, section.Body.Split('\n').Length);
+    }
+
+    /// <summary>
+    /// A bare "Yes" or "No" needs the question beside it as a topic, and anything longer carries
+    /// its own subject. The test used to be a prefix match on the first letters, so every answer
+    /// beginning "No…" — "Nothing unusual", "Not since Tuesday", "Normally he walks after lunch" —
+    /// was read as a bare no and handed back with the question glued in front of it. That is the
+    /// quiz-transcript shape this source exists to avoid, firing on an ordinary English word.
+    /// </summary>
+    [Theory]
+    [InlineData("Nothing unusual, she was fine all day.")]
+    [InlineData("Not since Tuesday, and she seemed brighter after.")]
+    [InlineData("Normally he walks to the shops after lunch.")]
+    [InlineData("None of the family noticed anything different.")]
+    public async Task Answers_DoNotPrefixTheQuestionOntoASentenceThatMerelyStartsWithNo(string answer)
+    {
+        GivenQuestionnaires(
+            Questionnaire(QuestionnaireStatus.Answered, "Did he seem tired today?", answer));
+
+        var section = await new QuestionnaireAnswersContextSource(_unitOfWork, PromptContextFactory.Encryption)
+            .BuildAsync(Request(), default);
+
+        Assert.NotNull(section);
+        Assert.DoesNotContain("Did he seem tired today", section.Body);
+        Assert.Contains(answer, section.Body);
+    }
+
+    /// <summary>
+    /// The other half: an actual bare yes/no still gets its question as a topic, because on its
+    /// own it names nothing.
+    /// </summary>
+    [Theory]
+    [InlineData("No, he was up and about as usual.")]
+    [InlineData("Yes, quite a bit more than normal.")]
+    public async Task Answers_StillPrefixTheQuestionOntoARealYesOrNo(string answer)
+    {
+        GivenQuestionnaires(
+            Questionnaire(QuestionnaireStatus.Answered, "Did he seem tired today?", answer));
+
+        var section = await new QuestionnaireAnswersContextSource(_unitOfWork, PromptContextFactory.Encryption)
+            .BuildAsync(Request(), default);
+
+        Assert.NotNull(section);
+        Assert.Contains("Did he seem tired today", section.Body);
     }
 
     [Fact]
@@ -466,8 +550,16 @@ public class MemberContextSourceTests
         _assessments.GetSinceAsync(_memberId, Arg.Any<DateTime>(), Arg.Any<CancellationToken>())
             .Returns(assessments);
 
+    /// <summary>
+    /// Stubs the unresolved read the source uses. That query filters IsActive and !IsResolved in
+    /// SQL and orders newest first, so the fake hands back only what the caller says is open, in
+    /// the order the repository would.
+    /// </summary>
     private void GivenAlerts(params Alert[] alerts) =>
-        _alerts.GetByCardiMemberAsync(_memberId, Arg.Any<bool>()).Returns(alerts);
+        _alerts.GetUnresolvedByCardiMemberAsync(_memberId).Returns(
+            alerts.Where(a => a.IsActive && !a.IsResolved)
+                .OrderByDescending(a => a.TriggeredDate)
+                .ToList());
 
     private void GivenQuestionnaires(params MemberQuestionnaire[] questionnaires) =>
         _questionnaires.GetByCardiMemberAsync(_memberId, Arg.Any<CancellationToken>())
