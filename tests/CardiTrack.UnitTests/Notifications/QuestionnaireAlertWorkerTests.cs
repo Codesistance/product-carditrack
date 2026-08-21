@@ -193,6 +193,18 @@ public class QuestionnaireAlertWorkerTests
                 Arg.Any<DateTime>(), Arg.Any<DateTime>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
             .Returns(due);
 
+    private static readonly DateTimeOffset FixedNow = new(2026, 8, 21, 12, 0, 0, TimeSpan.Zero);
+
+    [Fact]
+    public async Task PushSweep_ComputesTheReminderCutoff_FromTheInjectedClock_NotTheWallClock()
+    {
+        await CreateWorker().RunOnceAsync(CancellationToken.None);
+
+        await _questionnaires.Received(1).GetDueForAlertAsync(
+            FixedNow.UtcDateTime, FixedNow.UtcDateTime.AddHours(-24), Arg.Any<int>(), Arg.Any<int>(),
+            Arg.Any<CancellationToken>());
+    }
+
     private TestableAlertWorker CreateWorker()
     {
         var scope = Substitute.For<IServiceScope>();
@@ -205,15 +217,22 @@ public class QuestionnaireAlertWorkerTests
         options.Get(nameof(QuestionnaireAlertWorker))
             .Returns(new WorkerOptions { CronExpression = "0 */5 * * * *" });
 
-        return new TestableAlertWorker(options, scopeFactory, NullLogger<QuestionnaireAlertWorker>.Instance);
+        return new TestableAlertWorker(
+            options, scopeFactory, NullLogger<QuestionnaireAlertWorker>.Instance, new FixedTimeProvider(FixedNow));
+    }
+
+    private sealed class FixedTimeProvider(DateTimeOffset now) : TimeProvider
+    {
+        public override DateTimeOffset GetUtcNow() => now;
     }
 
     /// <summary>Exposes the protected tick, so the test drives one sweep rather than the cron loop.</summary>
     private sealed class TestableAlertWorker(
         IOptionsMonitor<WorkerOptions> options,
         IServiceScopeFactory scopeFactory,
-        Microsoft.Extensions.Logging.ILogger<QuestionnaireAlertWorker> logger)
-        : QuestionnaireAlertWorker(options, scopeFactory, logger)
+        Microsoft.Extensions.Logging.ILogger<QuestionnaireAlertWorker> logger,
+        TimeProvider timeProvider)
+        : QuestionnaireAlertWorker(options, scopeFactory, logger, timeProvider)
     {
         public Task RunOnceAsync(CancellationToken ct) => ExecuteJobAsync(ct);
     }

@@ -48,20 +48,23 @@ public class QuestionnaireAlertWorker : CronBackgroundService
 
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<QuestionnaireAlertWorker> _logger;
+    private readonly TimeProvider _timeProvider;
 
     public QuestionnaireAlertWorker(
         IOptionsMonitor<WorkerOptions> options,
         IServiceScopeFactory scopeFactory,
-        ILogger<QuestionnaireAlertWorker> logger)
+        ILogger<QuestionnaireAlertWorker> logger,
+        TimeProvider? timeProvider = null)
         : base(options.Get(nameof(QuestionnaireAlertWorker)).CronExpression, logger)
     {
         _scopeFactory = scopeFactory;
         _logger = logger;
+        _timeProvider = timeProvider ?? TimeProvider.System;
     }
 
     protected override async Task ExecuteJobAsync(CancellationToken stoppingToken)
     {
-        var utcNow = DateTime.UtcNow;
+        var utcNow = _timeProvider.GetUtcNow().UtcDateTime;
         var reminderCutoffUtc = utcNow - ReminderInterval;
 
         IReadOnlyList<Domain.Entities.MemberQuestionnaire> due;
