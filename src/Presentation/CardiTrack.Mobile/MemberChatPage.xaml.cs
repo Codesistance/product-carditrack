@@ -166,13 +166,22 @@ public partial class MemberChatPage : ContentView
 
         Dispatcher.Dispatch(() =>
         {
+            // Re-read the count here, not from the closure: a reload can clear the collection
+            // between the post and the frame that runs it, and the index this was going to name
+            // would then be one past a list that no longer has it.
+            var last = _turns.Count - 1;
+            if (last < 0)
+                return;
+
             try
             {
-                TurnsList.ScrollTo(_turns.Count - 1, position: ScrollToPosition.End, animate: animate);
+                TurnsList.ScrollTo(last, position: ScrollToPosition.End, animate: animate);
             }
-            catch (Exception)
+            catch (Exception ex) when (ex is ArgumentException or IndexOutOfRangeException)
             {
-                // A list mid-rebuild can refuse an index; the next append scrolls again anyway.
+                // The narrow case only: a list still mid-rebuild refuses the index. Anything else
+                // is a bug and is left to surface — a scroll is not worth hiding a null reference
+                // behind. The next append scrolls again regardless.
             }
         });
     }
