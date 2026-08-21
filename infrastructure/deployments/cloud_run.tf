@@ -691,7 +691,14 @@ resource "google_cloud_run_v2_service" "worker" {
 # run.services.setIamPolicy. Do not reinstate the org-policy claim above without checking that an
 # organization now exists.
 resource "google_cloud_run_v2_service" "medgemma" {
-  count    = var.medgemma_image != "" ? 1 : 0
+  count = var.medgemma_image != "" ? 1 : 0
+
+  # Cleared ahead of this service's removal. The provider defaults it to true and refuses to
+  # destroy while it is, and it cannot be cleared in the same apply that deletes the resource —
+  # deleting the resource deletes the place the flag is set. The rewrite teardown learned that by
+  # failing an apply; this one pays the ordering up front instead.
+  deletion_protection = false
+
   name     = var.medgemma_service_name
   location = var.cloud_run_location
   ingress  = "INGRESS_TRAFFIC_ALL"

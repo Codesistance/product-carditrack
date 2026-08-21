@@ -486,14 +486,27 @@ resource "google_secret_manager_secret" "medgemma_service_url" {
   depends_on = [google_project_service.secretmanager]
 }
 
+# Passed in rather than derived — see the root variable of the same name, and the seed below.
+variable "medgemma_service_url" {
+  description = "URL of the shared MedGemma GPU service"
+  type        = string
+}
+
 resource "google_secret_manager_secret_version" "medgemma_service_url" {
   secret = google_secret_manager_secret.medgemma_service_url.id
-  # try(): the service is count-gated on medgemma_image, so a fresh environment that has not
-  # opted into MedGemma still gets a syntactically valid, run.app-shaped URL — it passes both
-  # of the hosts' startup checks (absolute URL; identity-token mode requires a *.run.app host)
-  # and then resolves nowhere, so a consumer wired against it fails per call, visibly, rather
-  # than failing to boot.
-  secret_data = try(google_cloud_run_v2_service.medgemma[0].uri, "https://medgemma-not-deployed-000000000000.europe-west2.run.app")
+
+  # Seeded from a variable rather than from this stack's own Cloud Run service, because MedGemma
+  # no longer runs in this stack: one shared GPU service in europe-west1 serves every environment
+  # (infrastructure/common/cloud_run.tf), and its address cannot be derived here — this project
+  # issues the hash URL form, and this root cannot read the common stack's state to ask.
+  #
+  # The try() this replaces read the local service's uri and fell back to a shaped-but-dead
+  # placeholder. Left in place through the teardown it would have been actively dangerous:
+  # secret_data is ForceNew, so the moment the local service was destroyed the fallback would
+  # have been written as a NEW latest version — silently replacing the working GPU URL with a
+  # host that resolves nowhere, for every consumer. The comment above this resource is a
+  # post-mortem of that exact class of failure; this is the same landmine one step further on.
+  secret_data = var.medgemma_service_url
 }
 
 resource "google_secret_manager_secret_iam_member" "medgemma_url_accessor" {

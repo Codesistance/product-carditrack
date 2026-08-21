@@ -698,3 +698,17 @@ variable "rewrite_ai_max_output_tokens" {
   type        = number
   default     = 8192
 }
+
+# The shared MedGemma GPU service's address (infrastructure/common/cloud_run.tf). Set explicitly
+# rather than derived: this project issues Cloud Run's hash URL form, not the project-number form,
+# so the value cannot be built from parts — and this root cannot read the common stack's state to
+# ask it. Read it off an apply of that stack, or from the deploy workflow that writes it.
+variable "medgemma_service_url" {
+  description = "URL of the shared MedGemma GPU service, seeded into this environment's URL secret"
+  type        = string
+
+  validation {
+    condition     = can(regex("^https://[a-z0-9-]+[.][a-z0-9-]+[.]run[.]app$", var.medgemma_service_url))
+    error_message = "medgemma_service_url must be an https *.run.app URL — the hosts refuse to boot on anything else, and identity-token mode requires a run.app host."
+  }
+}

@@ -218,3 +218,7 @@ additional_labels = {
   cost_center = "development"
   owner       = "dev_team"
 }
+
+# The shared GPU service, in europe-west1. Not derivable — see the variable's own note. This is
+# the seed only: the deploy workflow writes the live value and every consumer binds "latest".
+medgemma_service_url = "https://carditrack-common-medgemma-zhsd62wx5a-ew.a.run.app"

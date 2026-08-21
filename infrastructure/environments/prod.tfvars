@@ -143,3 +143,9 @@ enable_pipeline_jobs = false
 # Webhook receiver: off - enable together with the AI pipeline rollout (the topic exists, but
 # nothing consumes it in prod and the endpoint is untested against live Google delivery).
 enable_webhook_receiver = false
+
+# The same shared GPU service dev uses — one instance serves every environment. Prod has no
+# MedGemma consumers wired yet (enable_pipeline_jobs is off and medgemma_image is empty), so this
+# seeds a secret nothing currently reads; it is set because the variable is required and a
+# placeholder here would be the very thing the seed's own note warns about.
+medgemma_service_url = "https://carditrack-common-medgemma-zhsd62wx5a-ew.a.run.app"

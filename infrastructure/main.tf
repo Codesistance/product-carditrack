@@ -433,6 +433,7 @@ module "deployments" {
   # Same value the .NET hosts get as AI__Private__TimeoutSeconds above. The module derives the
   # service's own request timeout from it, keeping the client's deadline strictly the shorter one.
   medgemma_timeout_seconds = var.medgemma_timeout_seconds
+  medgemma_service_url     = var.medgemma_service_url
 
 
 }

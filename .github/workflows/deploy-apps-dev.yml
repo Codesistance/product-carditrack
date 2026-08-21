@@ -25,10 +25,6 @@ on:
         description: 'Mobile'
         type: boolean
         default: true
-      medgemma:
-        description: 'MedGemma (model image build — off by default because the image bakes multi-GB model blobs; tick to rebuild and redeploy the model service)'
-        type: boolean
-        default: false
       pipeline:
         description: 'Pipeline jobs'
         type: boolean
@@ -91,7 +87,6 @@ jobs:
       web:            ${{ steps.manual.outputs.web      || steps.filter.outputs.web }}
       worker:         ${{ steps.manual.outputs.worker   || steps.filter.outputs.worker }}
       mobile:         ${{ steps.manual.outputs.mobile   || steps.filter.outputs.mobile }}
-      medgemma:       ${{ steps.manual.outputs.medgemma || steps.filter.outputs.medgemma }}
       pipeline:       ${{ steps.manual.outputs.pipeline || steps.filter.outputs.pipeline }}
       webhook:        ${{ steps.manual.outputs.webhook  || steps.filter.outputs.webhook }}
       dotnet_version:      ${{ needs.env.outputs.dotnet_version }}
@@ -113,7 +108,6 @@ jobs:
           echo "web=${{ inputs.web }}"           >> $GITHUB_OUTPUT
           echo "worker=${{ inputs.worker }}"     >> $GITHUB_OUTPUT
           echo "mobile=${{ inputs.mobile }}"     >> $GITHUB_OUTPUT
-          echo "medgemma=${{ inputs.medgemma }}" >> $GITHUB_OUTPUT
           echo "pipeline=${{ inputs.pipeline }}" >> $GITHUB_OUTPUT
           echo "webhook=${{ inputs.webhook }}"   >> $GITHUB_OUTPUT
       - uses: dorny/paths-filter@v4
@@ -152,8 +146,6 @@ jobs:
               - 'src/Core/CardiTrack.Domain/**'
               - 'src/Core/CardiTrack.Application/**'
               - 'CardiTrack.sln'
-            medgemma:
-              - 'src/Infrastructure/MedGemma/**'
             pipeline:
               - '.github/workflows/deploy-apps-dev.yml'
               - '.github/workflows/deploy-apps-prod.yml'
@@ -175,7 +167,7 @@ jobs:
     needs: changes
     # Every lane that stamps the version into an image or artifact belongs in this condition —
     # a lane missing here makes its whole chain skip silently on a dispatch that enables only
-    # that lane, while the run still reports success (issue #409: a medgemma-only dispatch
+    # that lane, while the run still reports success (issue #409: a model-only dispatch
     # built and deployed nothing, twice, before anyone noticed).
     if: |
       github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
@@ -183,7 +175,6 @@ jobs:
        needs.changes.outputs.web      == 'true' ||
        needs.changes.outputs.worker   == 'true' ||
        needs.changes.outputs.mobile   == 'true' ||
-       needs.changes.outputs.medgemma == 'true' ||
        needs.changes.outputs.pipeline == 'true' ||
        needs.changes.outputs.webhook  == 'true')
     runs-on: ubuntu-latest
@@ -1684,135 +1675,6 @@ jobs:
             --project ${{ needs.changes.outputs.gcp_project_id }} \
             --quiet
 
-  # ── MedGemma ─────────────────────────────────────────────────────────────────
-  build-and-push-medgemma:
-    name: Build & Push MedGemma Image
-    needs: [changes, compute-version]
-    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && needs.changes.outputs.medgemma == 'true'
-    runs-on: ubuntu-latest
-    outputs:
-      image: ${{ steps.resolve.outputs.image }}
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          fetch-depth: 2
-      - uses: google-github-actions/auth@v3
-        with:
-          workload_identity_provider: ${{ needs.changes.outputs.gcp_wif_provider }}
-          service_account: ${{ needs.changes.outputs.gcp_service_account }}
-      - uses: google-github-actions/setup-gcloud@v3
-      - run: gcloud auth configure-docker ${{ needs.changes.outputs.gcp_region }}-docker.pkg.dev --quiet
-      - name: Read model version
-        id: model
-        run: echo "tag=$(cat src/Infrastructure/MedGemma/.model-version | tr -d '[:space:]')" >> $GITHUB_OUTPUT
-      - name: Build and push
-        env:
-          IMAGE: ${{ needs.changes.outputs.registry }}/medgemma
-          TAG: ${{ needs.compute-version.outputs.version }}
-        run: |
-          docker build \
-            --build-arg MODEL_TAG=${{ steps.model.outputs.tag }} \
-            -t $IMAGE:$TAG \
-            -f src/Infrastructure/MedGemma/Dockerfile .
-          docker push $IMAGE:$TAG
-          docker tag $IMAGE:$TAG $IMAGE:stable
-          docker push $IMAGE:stable
-          echo "image=$IMAGE:$TAG" >> $GITHUB_OUTPUT
-        id: push
-      - name: Resolve image
-        id: resolve
-        env:
-          IMAGE: ${{ needs.changes.outputs.registry }}/medgemma
-        run: echo "image=$IMAGE:${{ needs.compute-version.outputs.version }}" >> $GITHUB_OUTPUT
-
-  deploy-medgemma-dev:
-    name: Deploy MedGemma → Dev
-    needs: [changes, build-and-push-medgemma]
-    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && needs.changes.outputs.medgemma == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: google-github-actions/auth@v3
-        with:
-          workload_identity_provider: ${{ needs.changes.outputs.gcp_wif_provider }}
-          service_account: ${{ needs.changes.outputs.gcp_service_account }}
-      - uses: google-github-actions/setup-gcloud@v3
-      - name: Deploy MedGemma service
-        env:
-          SERVICE: carditrack-dev-medgemma
-          IMAGE: ${{ needs.build-and-push-medgemma.outputs.image }}
-          REGION: ${{ needs.changes.outputs.gcp_region }}
-          PROJECT: ${{ needs.changes.outputs.gcp_project_id }}
-        run: |
-          gcloud run deploy $SERVICE \
-            --image $IMAGE \
-            --region $REGION \
-            --project $PROJECT \
-            --quiet
-      - name: Update MedGemma URL secret
-        env:
-          SERVICE: carditrack-dev-medgemma
-          SECRET_ID: carditrack-dev-medgemma-service-url
-          REGION: ${{ needs.changes.outputs.gcp_region }}
-          PROJECT: ${{ needs.changes.outputs.gcp_project_id }}
-          # Active versions to retain, newest first. Every consumer binds version = "latest"
-          # (deployments/cloud_run.tf), so only the newest is ever read; the spare exists so an
-          # operator can read back the previous URL after a bad deploy.
-          KEEP_VERSIONS: "2"
-        run: |
-          URL=$(gcloud run services describe $SERVICE \
-            --region $REGION \
-            --project $PROJECT \
-            --format='value(status.url)')
-
-          # A Cloud Run service URL is stable across deploys, so writing unconditionally added a
-          # byte-identical version on every MedGemma deploy. Secret Manager bills per active
-          # version, so that was pure cost — and it also overwrote the rollback spare with a
-          # duplicate. Compare first, write only on a real change.
-          CURRENT=$(gcloud secrets versions access latest \
-            --secret=$SECRET_ID \
-            --project $PROJECT 2>/dev/null || true)
-
-          if [ "$CURRENT" = "$URL" ]; then
-            echo "MedGemma URL unchanged ($URL) — no new secret version added."
-          else
-            echo -n "$URL" | gcloud secrets versions add $SECRET_ID \
-              --data-file=- \
-              --project $PROJECT
-            echo "MedGemma URL set to $URL."
-          fi
-
-          # Destroy superseded versions. Terraform cannot do this: the version it manages carries
-          # ignore_changes = [secret_data], and versions written by this step were never in its
-          # state. Destroy is irreversible, but safe for anything past the newest — nothing pins a
-          # version number, every binding resolves "latest". Cleanup failure must not fail the
-          # deploy, so each destroy degrades to a warning.
-          #
-          # The listing is captured rather than piped straight into the loop. Piped, a failure here
-          # is invisible: the step runs under bash -e without pipefail, so the pipeline takes the
-          # exit status of the while loop, which succeeds happily over the empty input a failed
-          # list produces. The deploy would carry on — correctly — but silently, and this step's
-          # whole job is to stop versions accumulating unnoticed.
-          if ! SUPERSEDED=$(gcloud secrets versions list $SECRET_ID \
-                --project $PROJECT \
-                --filter='state=ENABLED' \
-                --sort-by=~createTime \
-                --format='value(name.basename())'); then
-            echo "::warning::Could not list versions of $SECRET_ID; skipping prune this run."
-            SUPERSEDED=""
-          fi
-
-          echo "$SUPERSEDED" \
-            | tail -n +"$((KEEP_VERSIONS + 1))" \
-            | while read -r VERSION; do
-                [ -n "$VERSION" ] || continue
-                echo "Destroying superseded version $VERSION of $SECRET_ID."
-                gcloud secrets versions destroy "$VERSION" \
-                  --secret=$SECRET_ID \
-                  --project $PROJECT \
-                  --quiet \
-                  || echo "::warning::Could not destroy version $VERSION of $SECRET_ID."
-              done
-
   patch-tag:
     name: Create Patch Tag
     needs:
@@ -1821,7 +1683,6 @@ jobs:
       - deploy-api-dev
       - deploy-web-dev
       - deploy-worker-dev
-      - deploy-medgemma-dev
       - upload-mobile-artifacts
       - deploy-testflight
       - deploy-play-internal
@@ -1870,31 +1731,22 @@ jobs:
   # outcome whenever the flag is off, so asserting there would fail on the normal case.
   dispatch-sanity:
     name: Dispatch ran something
-    needs: [changes, build-and-push-medgemma]
+    needs: [changes]
     if: always() && github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       - name: Assert the dispatch resolved its components
         env:
           CHANGES_RESULT: ${{ needs.changes.result }}
-          MEDGEMMA_SELECTED: ${{ needs.changes.outputs.medgemma }}
-          MEDGEMMA_BUILD: ${{ needs.build-and-push-medgemma.result }}
           SELECTED: >-
             ${{ needs.changes.outputs.api }} ${{ needs.changes.outputs.web }}
             ${{ needs.changes.outputs.worker }} ${{ needs.changes.outputs.mobile }}
-            ${{ needs.changes.outputs.medgemma }} ${{ needs.changes.outputs.pipeline }}
+            ${{ needs.changes.outputs.pipeline }}
             ${{ needs.changes.outputs.webhook }}
         run: |
           set -euo pipefail
           if [ "${CHANGES_RESULT}" != "success" ]; then
             echo "::error::Manual dispatch resolved no components — 'Detect changes' was ${CHANGES_RESULT}, so every build and deploy job skipped. Nothing was built or deployed."
-            exit 1
-          fi
-          # The issue #409 trap, kept as a tripwire even though compute-version now counts the
-          # medgemma lane: a ticked lane whose build silently skipped must fail the run, not
-          # report success while deploying nothing.
-          if [ "${MEDGEMMA_SELECTED}" = "true" ] && [ "${MEDGEMMA_BUILD}" = "skipped" ]; then
-            echo "::error::MedGemma was ticked but its image build skipped — a dependency job (compute-version?) didn't run, so the model services were NOT redeployed."
             exit 1
           fi
           # Unticking every box is a legitimate no-op, but it is almost never intended; say so
