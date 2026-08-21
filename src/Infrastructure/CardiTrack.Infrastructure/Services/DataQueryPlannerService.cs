@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using CardiTrack.Application.DTOs.Common;
 using CardiTrack.Application.Interfaces.Services;
 
@@ -65,13 +66,17 @@ public class DataQueryPlannerService : IDataQueryPlanner
             {question}
 
             Respond with the source names from the list above (as written), and if RecentActivity is
-            needed, how many days back is relevant (default 7, at most 14); if RealtimeAssessments is
-            needed, how many hours back is relevant (default 24, at most 72).
+            needed, how many days back is relevant — 1 to 7, default 7, and a question about a
+            longer stretch still gets the last 7 days; if RealtimeAssessments is needed, how many
+            hours back is relevant (default 24, at most 72).
 
-            Also name which specific daily metrics the question is about, as metrics: any of Steps,
-            RestingHeartRate, Sleep. Name only the ones the question actually asks about — a
-            question about steps names Steps alone. Leave metrics empty for a general question
-            about how the person is doing overall.
+            Always answer metrics, naming which specific daily readings the question is about: any
+            of Steps, RestingHeartRate, Sleep. Name every one the question asks about and no
+            others — "how many steps has he done?" is ["Steps"], "how did he sleep and what was his
+            heart rate?" is ["Sleep","RestingHeartRate"]. Only a question about how the person is
+            doing overall, naming no particular reading, gets an empty list. These become the
+            charts drawn under the answer, so an empty list where the question named a reading puts
+            charts in front of the caregiver that they did not ask for.
             """ + MedicalPromptBlocks.ChatMessageGuardrail;
     }
 
@@ -99,24 +104,22 @@ public class DataQueryPlannerService : IDataQueryPlanner
             .ToList();
 
         // Same defensive parse as the sources, but the empty cases are kept apart (see
-        // DataQueryPlan.ChartMetrics): an absent field is null — the model did not answer — and
-        // so is a list whose every name failed to parse, because names we could not read tell us
-        // nothing about what the question was. Only a list the model deliberately sent empty
-        // means "general question".
-        IReadOnlyList<ChartMetricKind>? metrics = null;
-        if (response.Metrics is { } named)
-        {
-            var recognised = named
-                .Select(m => Enum.TryParse<ChartMetricKind>(m, ignoreCase: true, out var kind) && Enum.IsDefined(kind)
-                    ? kind
-                    : (ChartMetricKind?)null)
-                .Where(m => m is not null)
-                .Select(m => m!.Value)
-                .Distinct()
-                .ToList();
+        // DataQueryPlan.ChartMetrics). The field is required now, so "not answered" no longer
+        // means absent — it means a list whose every name failed to parse, since names we could
+        // not read tell us nothing about what the question was. An empty list is the model
+        // deliberately saying "general question".
+        var recognisedMetrics = response.Metrics
+            .Select(m => Enum.TryParse<ChartMetricKind>(m, ignoreCase: true, out var kind) && Enum.IsDefined(kind)
+                ? kind
+                : (ChartMetricKind?)null)
+            .Where(m => m is not null)
+            .Select(m => m!.Value)
+            .Distinct()
+            .ToList();
 
-            metrics = named.Count > 0 && recognised.Count == 0 ? null : recognised;
-        }
+        var metrics = response.Metrics.Count > 0 && recognisedMetrics.Count == 0
+            ? null
+            : (IReadOnlyList<ChartMetricKind>)recognisedMetrics;
 
         return new DataQueryPlan
         {
@@ -127,11 +130,34 @@ public class DataQueryPlannerService : IDataQueryPlanner
         };
     }
 
+    /// <remarks>
+    /// The descriptions are not decoration: <c>StructuredOutputSchema</c> copies them into the
+    /// schema the model is constrained by, and without them a field's own name is the only account
+    /// of what belongs in it. <c>metrics</c> is the field that proved this — left undescribed and
+    /// optional, a question as plain as "show me his steps this week" came back with it omitted,
+    /// and every chart was drawn because an unanswered field widens.
+    /// </remarks>
     internal sealed record DataQueryPlanAiResponse
     {
+        [Description("Which data sources the question needs, by name, from the list given. May be empty.")]
         public required IReadOnlyList<string> Sources { get; init; }
+
+        [Description("How many days of daily readings the question is about, 1 to 7.")]
         public int? RecentActivityDays { get; init; }
+
+        [Description("How many hours of real-time assessments the question is about, 1 to 72.")]
         public int? RealtimeAssessmentHours { get; init; }
-        public IReadOnlyList<string>? Metrics { get; init; }
+
+        /// <summary>
+        /// Required so that "the question is general" has to be said rather than skipped. An
+        /// omitted field and a deliberately empty one both widen to every chart, and while that is
+        /// the right failure when nothing is known, it is the wrong answer to a question that
+        /// named its metric perfectly clearly.
+        /// </summary>
+        [Description(
+            "Which daily metrics the question asks about: any of Steps, RestingHeartRate, Sleep. "
+            + "Name every metric the question is about and no others — a question about steps is "
+            + "[\"Steps\"]. Empty only when the question is about how the person is doing overall.")]
+        public required IReadOnlyList<string> Metrics { get; init; }
     }
 }

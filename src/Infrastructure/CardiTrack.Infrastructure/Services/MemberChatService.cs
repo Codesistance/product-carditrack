@@ -151,31 +151,60 @@ public class MemberChatService : IMemberChatService
         this is an internal clinical read, not the final reply the caregiver sees, so write precisely
         rather than in caregiver language; a separate step turns this into caregiver-facing prose.
         If the data below does not answer the question, say so rather than guessing or inventing a
-        reading the data does not contain.
+        reading the data does not contain. The activity data covers only the dates named in its
+        heading; if the question asks about a longer stretch, answer for those dates and say so.
+        A question about a total, or about a span like "this week", covers
+        every day in that heading rather than any one of them.
+
+        When the question is how the person is doing rather than what a particular reading was,
+        answer it: say how the readings compare with their baseline and whether that is settled or
+        worth attention. Listing the readings back is not an answer to that question.
 
         Respond with:
         - analysis: your answer, grounded only in the data provided.
         """ + MedicalPromptBlocks.ContextGuardrail + MedicalPromptBlocks.ChatQuestionGuardrail;
 
     /// <summary>
-    /// The step that writes the sentence a caregiver actually reads, so it carries the whole tone
-    /// block.
+    /// Turns the clinical read into the sentence the caregiver actually receives.
     /// </summary>
     /// <remarks>
-    /// It used to carry the register and not the tone — meaning "add no urgency the data does not
-    /// carry, and no reassurance it does not support" was stated to the model that produces the
-    /// internal read and not to the model that writes the reply. A rewrite is free to add both,
-    /// and this one runs on a different provider from the clinical step, so nothing but this block
-    /// was telling it where the line is.
+    /// This asked for "one short, direct reply — the answer only", and got what it asked for:
+    /// "Dad's heart rate is 72 and he took 774 steps today. He slept 372 minutes last night."
+    /// Every fact correct and nothing in it for the person reading, who is usually a son or
+    /// daughter checking on a parent between other things and is asking, underneath the question
+    /// they typed, whether they need to worry.
+    /// <para>
+    /// So the brief now asks for the reassurance or the concern to be said, not left to be
+    /// inferred from figures. Still short — warmth here is a clause, not a paragraph, and a reply
+    /// that opens by sympathising before answering wastes the one thing the caregiver came for.
+    /// The line it must not cross is the tone block's: this can say a reading looks settled or
+    /// worth watching, and it cannot say what is wrong with anyone or what to do about it.
+    /// </para>
+    /// <para>
+    /// That line is now actually stated to this model. The remark above already described it as
+    /// the tone block's while the prompt carried only the register — so "add no urgency the data
+    /// does not carry, and no reassurance it does not support" was given to the model that drafts
+    /// the clinical read and not to the one that writes the reply, on a step whose whole brief is
+    /// to add warmth and which runs on a different provider. The pronoun rule comes with it: this
+    /// is the step holding the CardiTrackCardiMember placeholder, and a model handed that
+    /// placeholder repeats it in every sentence, which is the failure that rule exists for.
+    /// </para>
     /// </remarks>
     private const string RewriteInstructions =
         MedicalPromptBlocks.Tone + MedicalPromptBlocks.Pronouns
         + MedicalPromptBlocks.CaregiverRegister + """
 
-        Rewrite the clinical read below into one short, direct reply to the caregiver's question —
-        the answer only, not a restatement of the question and not a preamble. Write
-        CardiTrackCardiMember exactly as written wherever you would name the member; it stands in
-        for their real name.
+        Rewrite the clinical read below as a reply to the caregiver's question, in one or two
+        short sentences. Answer first — no preamble, and no restating the question.
+
+        You are writing to someone checking on a family member they love. Say what the readings
+        mean for them, not just what they were: if things look settled, say so warmly, because
+        that is the answer they were hoping for. If something is worth keeping an eye on, say that
+        plainly and without alarm. Never invent comfort the readings do not support.
+
+        Give a figure when it is the answer or when it carries the point, and say a night's sleep
+        in hours rather than minutes. Write CardiTrackCardiMember exactly as written wherever you
+        would name the member; it stands in for their real name.
         """ + MedicalPromptBlocks.ChatMessageGuardrail;
 
     private readonly IMedicalAiService _medicalAi;
@@ -225,7 +254,7 @@ public class MemberChatService : IMemberChatService
         // context of the turns it follows. Without this the guard flagged terse follow-ups as
         // off-topic and the planner fetched the defaults instead of what the caregiver meant.
         var triage = await _rewriteAi.GenerateStructuredWithUsageAsync<MaliciousCheckAiResponse>(
-            BuildMaliciousCheckPrompt(flattened, history), ct);
+            BuildMaliciousCheckPrompt(flattened, history.Full), ct);
         if (triage.Result.IsMalicious)
         {
             // The one outcome that stays a hard stop: manipulation attempts get no reply, no
@@ -238,14 +267,14 @@ public class MemberChatService : IMemberChatService
         if (triage.Result.IsCasualOrSocial || triage.Result.IsOffTopic)
             return await SteerAsync(session, flattened, triage.Usage, triage.Result.IsCasualOrSocial, member?.Name, utcNow, ct);
 
-        var plan = await _planner.PlanAsync(flattened, history, ct);
+        var plan = await _planner.PlanAsync(flattened, history.Full, ct);
         var fetched = await DataQueryWhitelist.ExecuteAsync(plan.Result, cardiMemberId, _unitOfWork, utcNow, ct);
 
         var today = DateOnly.FromDateTime(utcNow);
         var memberContext = await _memberContext.ComposeAsync(
             new MemberContextRequest(member, cardiMemberId, today, utcNow, PromptPurpose.MemberChat), ct);
 
-        var clinicalPrompt = BuildClinicalPrompt(flattened, memberContext, fetched, history, today);
+        var clinicalPrompt = BuildClinicalPrompt(flattened, memberContext, fetched, history.QuestionsOnly, today);
         var clinical = await _medicalAi.GenerateStructuredWithUsageAsync<MemberChatClinicalAiResponse>(clinicalPrompt, ct);
 
         var rewritePrompt = BuildRewritePrompt(flattened, clinical.Result.Analysis);
@@ -502,18 +531,59 @@ public class MemberChatService : IMemberChatService
     /// the caregiver reads passes through this: the stored text and the app's own display keep
     /// the real name, and only the copy handed to a model is rewritten.
     /// </param>
-    private async Task<string?> BuildHistoryBlockAsync(Guid sessionId, string? memberName, CancellationToken ct)
+    /// <returns>
+    /// Both cuts of the conversation — see <see cref="ChatHistory"/> for which step gets which,
+    /// and why the one that states figures is not given the turns that contain them.
+    /// </returns>
+    private async Task<ChatHistory> BuildHistoryBlockAsync(Guid sessionId, string? memberName, CancellationToken ct)
     {
         var withTurns = await _unitOfWork.MemberChatSessions.GetByIdWithTurnsAsync(sessionId, ct);
         var turns = withTurns?.Turns.TakeLast(MaxHistoryTurns).ToList();
         if (turns is not { Count: > 0 })
-            return null;
+            return new ChatHistory(null, null);
 
-        var lines = turns.Select(t =>
-            $"{(t.Role == ChatTurnRole.User ? "Caregiver" : "You")}: "
-            + NamePlaceholder.Redact(Reveal(t.Content), memberName));
-        return $"--- {MedicalPromptBlocks.ChatHistoryLabel} ---\n{string.Join("\n", lines)}";
+        string? Block(bool questionsOnly)
+        {
+            var kept = questionsOnly ? turns.Where(t => t.Role == ChatTurnRole.User).ToList() : turns;
+            if (kept.Count == 0)
+                return null;
+
+            var lines = kept.Select(t =>
+                $"{(t.Role == ChatTurnRole.User ? "Caregiver" : "You")}: "
+                + NamePlaceholder.Redact(Reveal(t.Content), memberName));
+            return $"--- {MedicalPromptBlocks.ChatHistoryLabel} ---\n{string.Join("\n", lines)}";
+        }
+
+        return new ChatHistory(Block(questionsOnly: false), Block(questionsOnly: true));
     }
+
+    /// <summary>
+    /// The conversation as each step is allowed to see it.
+    /// </summary>
+    /// <param name="Full">
+    /// Both sides of the conversation, for the triage and planning steps. Those two decide what a
+    /// terse follow-up <em>means</em> — whether "why?" is on-topic, and which data it needs — and
+    /// they cannot do that without the answer it follows. Neither states a reading, so neither can
+    /// repeat a stale one.
+    /// </param>
+    /// <param name="QuestionsOnly">
+    /// The caregiver's questions alone, for the clinical read.
+    /// </param>
+    /// <remarks>
+    /// The clinical step is the one that states figures, and giving it the assistant's prior prose
+    /// made those figures unreliable: asked "how many steps has he done this week?" it answered
+    /// 4,007 — a day outside the window, present only in an earlier turn — and asked "how is he
+    /// doing this afternoon?" it said 774 steps in the same bubble whose chart data said 836. Both
+    /// numbers were its own, from turns generated against older data.
+    /// <para>
+    /// Two prompt revisions failed to stop it, which is the argument for structure over wording:
+    /// a 4B model asked to read text but not believe it will believe it. The caregiver's questions
+    /// still carry everything a follow-up needs to be understood — "why?" after "how many steps
+    /// this week?" is legible from the questions alone — while the readings can now only come from
+    /// the data block, because nothing else in the prompt contains any.
+    /// </para>
+    /// </remarks>
+    private sealed record ChatHistory(string? Full, string? QuestionsOnly);
 
     private static string BuildMaliciousCheckPrompt(string question, string? historyBlock) =>
         historyBlock is null
@@ -559,10 +629,15 @@ public class MemberChatService : IMemberChatService
 
         if (data.RecentActivity.Count > 0)
         {
-            // "days that carried a reading", not "days": these are the rows the planner's window
-            // returned, and for a member with gaps that is not the same count of days.
+            // The window, not the row count. They part company the moment the member has a gap,
+            // and a heading built from the count told the model a four-reading week was four days.
+            var window = data.RecentActivityWindow;
+            var heading = window is { } w
+                ? $"{w.From:MMM d} to {w.To:MMM d}, oldest first; days with no reading are omitted"
+                : "oldest first";
+
             sections.Add(
-                $"--- Recent readings ({data.RecentActivity.Count} days that carried any, oldest first) ---\n"
+                $"--- Recent readings ({heading}) ---\n"
                 + MedicalPromptBlocks.DailyLines(data.RecentActivity, data.RecentActivity.Count, today));
         }
 
@@ -572,7 +647,7 @@ public class MemberChatService : IMemberChatService
                 $"--- {baseline.PeriodDays}-day baseline ---\n"
                 + $"  Avg steps: {baseline.AvgSteps?.ToString() ?? "n/a"}, "
                 + $"Avg resting HR: {baseline.AvgRestingHeartRate?.ToString() ?? "n/a"} bpm, "
-                + $"Avg sleep: {baseline.AvgSleepMinutes?.ToString() ?? "n/a"} min");
+                + $"Avg sleep: {MedicalPromptBlocks.SleepFigure((int?)baseline.AvgSleepMinutes)}");
         }
 
         if (data.UnresolvedAlerts.Count > 0)
@@ -632,7 +707,10 @@ public class MemberChatService : IMemberChatService
         }
         if (Wanted(ChartMetricKind.Sleep))
         {
-            charts.Add(new ChartSeries("Sleep (minutes)", data.RecentActivity
+            // "Sleep", not "Sleep (minutes)": minutes are how the value is stored, and naming the
+            // storage unit in the title obliged every label under it to agree. The client spells
+            // the figures in hours; the series says which reading it is.
+            charts.Add(new ChartSeries("Sleep", data.RecentActivity
                 .Where(l => l.SleepMinutes.HasValue)
                 .Select(l => new ChartPoint(l.Date, l.SleepMinutes!.Value))
                 .ToList()));

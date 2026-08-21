@@ -16,8 +16,16 @@ public sealed class ChatSeriesChart : ContentView
     public static readonly BindableProperty ItemProperty = BindableProperty.Create(
         nameof(Item), typeof(ChatChartItem), typeof(ChatSeriesChart), propertyChanged: OnItemChanged);
 
+    /// <summary>Annotation type: the axis figures and dates, a step down from the series title so
+    /// they read as the chart's furniture rather than as more of its content.</summary>
+    private const double AnnotationFontSize = 10;
+
     private readonly Label _title;
     private readonly TrendChart _chart;
+    private readonly Label _max = new();
+    private readonly Label _min = new();
+    private readonly Label _startDate = new();
+    private readonly Label _endDate = new();
 
     public ChatSeriesChart()
     {
@@ -32,10 +40,53 @@ public sealed class ChatSeriesChart : ContentView
         // number. Taller than the original 72 now that the bubble runs full width.
         _chart = new TrendChart { HeightRequest = 96, Interactive = true };
 
+        var muted = Microsoft.Maui.Controls.Application.Current?.Resources["MutedText"] as Color ?? Colors.Gray;
+        foreach (var annotation in new[] { _max, _min, _startDate, _endDate })
+        {
+            annotation.FontSize = AnnotationFontSize;
+            annotation.TextColor = muted;
+        }
+
+        // Beside the plot rather than on it: the line needs the full height, and a figure floating
+        // over the chart would collide with the very peak it names. Same arrangement as
+        // MetricTrendCard, which solved this once already.
+        _max.HorizontalTextAlignment = TextAlignment.End;
+        _min.HorizontalTextAlignment = TextAlignment.End;
+        _max.VerticalOptions = LayoutOptions.Start;
+        _min.VerticalOptions = LayoutOptions.End;
+
+        var axis = new Grid
+        {
+            RowDefinitions = [new RowDefinition(GridLength.Star), new RowDefinition(GridLength.Star)],
+        };
+        axis.Add(_max);
+        axis.Add(_min, 0, 1);
+
+        // The dates line up with the ends of the line, not with the axis figures to its left, so
+        // they share the plot's column rather than sitting in a grid of their own — one grid, so
+        // the Auto column is measured once and both rows agree on where the plot starts.
+        _endDate.HorizontalTextAlignment = TextAlignment.End;
+        var dates = new Grid
+        {
+            ColumnDefinitions = [new ColumnDefinition(GridLength.Star), new ColumnDefinition(GridLength.Star)],
+        };
+        dates.Add(_startDate);
+        dates.Add(_endDate, 1);
+
+        var plot = new Grid
+        {
+            ColumnDefinitions = [new ColumnDefinition(GridLength.Auto), new ColumnDefinition(GridLength.Star)],
+            RowDefinitions = [new RowDefinition(GridLength.Star), new RowDefinition(GridLength.Auto)],
+            ColumnSpacing = 6,
+        };
+        plot.Add(axis);
+        plot.Add(_chart, 1);
+        plot.Add(dates, 1, 1);
+
         Content = new VerticalStackLayout
         {
             Spacing = 2,
-            Children = { _title, _chart },
+            Children = { _title, plot },
         };
     }
 
@@ -54,6 +105,16 @@ public sealed class ChatSeriesChart : ContentView
         view._title.Text = item.Title;
         view._chart.ValueFormatter = item.FormatValue;
         view._chart.Render(item.Points, item.Scale, item.Ink, showMarkers: true);
+
+        // The extent the chart actually plots over, not the readings' own min and max — those are
+        // what TrendScale padded away from, and writing them here would put a number on the axis
+        // that no gridline corresponds to. A flat week has no extent to label, so it gets neither
+        // figure rather than the same number twice.
+        view._max.Text = item.Scale.HasExtent ? item.AxisLabel(item.Scale.Max) : string.Empty;
+        view._min.Text = item.Scale.HasExtent ? item.AxisLabel(item.Scale.Min) : string.Empty;
+
+        view._startDate.Text = item.Points[0].Date.ToString("MMM d");
+        view._endDate.Text = item.Points[^1].Date.ToString("MMM d");
 
         // The title label would otherwise be read on its own, announcing that a chart exists
         // without saying anything it shows. Same treatment MetricTrendCard gives its plot.
@@ -91,15 +152,16 @@ public sealed class ChatChartItem
     /// A tapped reading as the callout shows it. Sleep arrives in minutes and is read in hours;
     /// steps are whole and want their thousands separator; a rate is a rate.
     /// </summary>
-    public string FormatValue(double value) => Metric switch
-    {
-        "Steps" => $"{value:#,##0} steps",
-        "Resting heart rate" => $"{value:0} bpm",
-        "Sleep (minutes)" => value >= 60
-            ? $"{Math.Floor(value / 60):0}h {value % 60:0}m"
-            : $"{value:0}m",
-        _ => value.ToString("0.#"),
-    };
+    public string FormatValue(double value) => ChatMetricFormat.WithUnit(Metric, value);
+
+    /// <summary>
+    /// The same number as <see cref="FormatValue"/> without the unit noun, for the two figures
+    /// written beside the plot. The title a finger's width above already says "Steps", and
+    /// repeating it on both ends of a 96-pixel axis costs more width than it explains. Sleep keeps
+    /// its h/m shaping, because the stored unit is minutes and "465" beside a chart is a number no
+    /// caregiver thinks in.
+    /// </summary>
+    public string AxisLabel(double value) => ChatMetricFormat.Bare(Metric, value);
 
     /// <summary>
     /// What the chart says to a caregiver who cannot see it. The canvas is one opaque element to
@@ -145,7 +207,7 @@ public sealed class ChatChartItem
         var first = series.Points.Min(p => p.Date);
         var last = series.Points.Max(p => p.Date);
 
-        // Chat activity windows are clamped to 14 days server-side (see DataQueryWhitelist); a
+        // Chat activity windows are clamped to one week server-side (see DataQueryWhitelist); a
         // span wildly past that is malformed data, and the text summary reads better than a
         // chart that is mostly no-data shading.
         if (last.DayNumber - first.DayNumber > 62)
@@ -182,9 +244,57 @@ public sealed class ChatChartItem
         {
             "Steps" => "MetricStepsInk",
             "Resting heart rate" => "MetricHeartInk",
-            "Sleep (minutes)" => "MetricSleepInk",
+            "Sleep" or "Sleep (minutes)" => "MetricSleepInk",
             _ => "Primary",
         };
         return MetricStatus.Resource(key, Colors.Blue);
+    }
+}
+
+/// <summary>
+/// How a chat reply spells a reading, in the one place both the drawn charts and the text
+/// stand-in for an undrawable series can reach. Split out because the two had drifted: the charts
+/// read sleep as "6h 12m" while the summary line beneath them read the same night as "372", which
+/// is the stored unit and not a number any caregiver thinks in.
+/// </summary>
+internal static class ChatMetricFormat
+{
+    /// <summary>With the unit named — for prose and for the tap callout, which stand alone.</summary>
+    internal static string WithUnit(string metric, double value) => metric switch
+    {
+        "Steps" => $"{value:#,##0} steps",
+        "Resting heart rate" => $"{value:0} bpm",
+        "Sleep" or "Sleep (minutes)" => Duration(value),
+        _ => value.ToString("0.#"),
+    };
+
+    /// <summary>
+    /// Without it — for the axis, where the series title a line above already says which reading
+    /// this is and repeating the unit on both ends costs width it cannot spare. Sleep keeps its
+    /// h/m shaping regardless: that is the number's readable form, not its unit.
+    /// </summary>
+    internal static string Bare(string metric, double value) => metric switch
+    {
+        "Steps" => $"{value:#,##0}",
+        "Resting heart rate" => $"{value:0}",
+        "Sleep" or "Sleep (minutes)" => Duration(value),
+        _ => value.ToString("0.#"),
+    };
+
+    /// <summary>
+    /// Mirrors <c>MedicalPromptBlocks.SleepFigure</c>, which the API uses for the same figure in
+    /// prose. Duplicated rather than shared because this assembly cannot reference Infrastructure,
+    /// and the two must not drift: a callout reading "8h 0m" beside a reply reading "8h" is the
+    /// same night described two ways in one bubble.
+    /// </summary>
+    private static string Duration(double minutes)
+    {
+        var whole = (int)Math.Round(minutes);
+        return whole switch
+        {
+            < 60 => $"{whole}m",
+            _ when whole % 60 == 0 => $"{whole / 60}h",
+            _ => $"{whole / 60}h {whole % 60}m",
+        };
     }
 }
