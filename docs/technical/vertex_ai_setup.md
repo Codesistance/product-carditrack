@@ -17,22 +17,31 @@ What code **cannot** guarantee is Google's server-side handling. Three project-l
 configured and evidenced manually — they are the zero-data-retention (ZDR) posture the DPIA and
 the §9 register cite:
 
-## 2. ZDR configuration (do before the dev flip; evidence the output here or in the PR)
+## 2. ZDR configuration — **PENDING OWNER ACTION (2026-08-21)**
 
-1. **Disable data caching** (default: cached up to 24 h in the serving data centre). Per region in
-   use:
+The dev flip happened on 2026-08-21 with these steps still open: they require
+`aiplatform.cacheConfigs.get/update` and billing-account visibility, which no automation
+identity in this project holds. Until both are done and evidenced here, the §9 register row's
+ZDR claim is *configured-in-code only* — close them before prod, and before real caregiver
+traffic reaches dev chat.
+
+1. **Disable data caching** (default: cached up to 24 h in the serving data centre). The cache
+   config is **project-scoped on the global admin host** (this is the management API, not
+   inference routing — inference stays on the regional endpoints):
 
    ```bash
    TOKEN=$(gcloud auth print-access-token)
-   for LOC in europe-west2 europe-west1 europe-west4; do
-     curl -s -X PATCH \
-       -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
-       "https://$LOC-aiplatform.googleapis.com/v1/projects/carditrack-490120/locations/$LOC/cacheConfig" \
-       -d '{"name": "projects/carditrack-490120/locations/'$LOC'/cacheConfig", "disableCache": true}'
-   done
+   curl -s -X PATCH \
+     -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+     "https://aiplatform.googleapis.com/v1beta1/projects/carditrack-490120/cacheConfig" \
+     -d '{"name": "projects/carditrack-490120/cacheConfig", "disableCache": true}'
    ```
 
-   Verify with a `GET` on the same resource: `disableCache: true`.
+   Verify with a `GET` on the same URL: `disableCache: true`. (Measured 2026-08-21: the
+   location-scoped `/v1/.../locations/{loc}/cacheConfig` path from an earlier draft of this doc
+   does not exist — HTML 404 from the front end; the project-scoped path above is the real one
+   and answered 403 `aiplatform.cacheConfigs.get` for the investigator identity, confirming
+   both the shape and the missing permission.)
 
 2. **Abuse-monitoring prompt logging opt-out.** Google may log prompts for abuse monitoring for
    customers **without** invoiced billing. Either confirm the billing account is invoiced (then no
