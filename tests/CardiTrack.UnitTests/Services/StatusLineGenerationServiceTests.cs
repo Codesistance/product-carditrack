@@ -3,6 +3,7 @@ using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Domain.Entities;
 using CardiTrack.Domain.Enums;
 using CardiTrack.Infrastructure.Services;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 
@@ -126,6 +127,33 @@ public class StatusLineGenerationServiceTests
         Assert.Equal("Old line.", existing.Message);
         await _statusLines.DidNotReceive().AddAsync(Arg.Any<MemberStatusLine>());
         await _unitOfWork.DidNotReceive().SaveChangesAsync();
+    }
+
+    /// <summary>
+    /// The digest pass and the assessor can regenerate the same member concurrently; both read
+    /// no-row, both insert, and the unique index fails the loser. The loser detaches its staged
+    /// insert and writes over the winner's row — last writer wins, same as the update path.
+    /// </summary>
+    [Fact]
+    public async Task LosingTheInsertRace_WritesOverTheWinnersRow()
+    {
+        var winner = new MemberStatusLine
+        {
+            CardiMemberId = _memberId,
+            Message = "Winner line.",
+            GeneratedAtUtc = DateTime.UtcNow,
+        };
+        _statusLines.GetByCardiMemberAsync(_memberId).Returns((MemberStatusLine?)null, winner);
+        _unitOfWork.SaveChangesAsync().Returns(
+            _ => throw new DbUpdateException("duplicate key value violates unique constraint"),
+            _ => 1);
+
+        await CreateSut().RegenerateAsync(_memberId);
+
+        _statusLines.Received(1).Remove(Arg.Is<MemberStatusLine>(s => s.CardiMemberId == _memberId));
+        Assert.Equal("Margaret seems steady today.", winner.Message);
+        Assert.Equal("All steady", winner.Headline);
+        await _unitOfWork.Received(2).SaveChangesAsync();
     }
 
     /// <summary>

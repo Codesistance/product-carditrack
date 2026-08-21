@@ -3,6 +3,7 @@ using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Application.Services;
 using CardiTrack.Domain.Entities;
 using CardiTrack.Infrastructure.Services.PromptContext;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
 namespace CardiTrack.Infrastructure.Services;
@@ -161,27 +162,50 @@ public class StatusLineGenerationService
         }
 
         var existing = await _unitOfWork.MemberStatusLines.GetByCardiMemberAsync(cardiMemberId);
-        if (existing is null)
+        if (existing is not null)
         {
-            await _unitOfWork.MemberStatusLines.AddAsync(new MemberStatusLine
-            {
-                CardiMemberId = cardiMemberId,
-                Headline = headline,
-                Message = message,
-                GeneratedAtUtc = DateTime.UtcNow,
-            });
-        }
-        else
-        {
-            existing.Headline = headline;
-            existing.Message = message;
-            existing.GeneratedAtUtc = DateTime.UtcNow;
-            existing.UpdatedDate = DateTime.UtcNow;
+            Overwrite(existing, headline, message);
+            // The generic repository stages rather than executes — without this the row would be
+            // dropped when the scope ends (same note as the questionnaire write in the digest).
+            await _unitOfWork.SaveChangesAsync();
+            return;
         }
 
-        // The generic repository stages rather than executes — without this the row would be
-        // dropped when the scope ends (same note as the questionnaire write in the digest).
-        await _unitOfWork.SaveChangesAsync();
+        var fresh = new MemberStatusLine
+        {
+            CardiMemberId = cardiMemberId,
+            Headline = headline,
+            Message = message,
+            GeneratedAtUtc = DateTime.UtcNow,
+        };
+        await _unitOfWork.MemberStatusLines.AddAsync(fresh);
+        try
+        {
+            await _unitOfWork.SaveChangesAsync();
+        }
+        catch (DbUpdateException)
+        {
+            // Lost the insert race on the unique CardiMemberId index: the digest pass and the
+            // assessor can regenerate the same member concurrently, and both read null above.
+            // Detach our staged insert (Remove on an Added entity detaches, it deletes nothing)
+            // and write over the winner's row instead — last writer wins, exactly as the update
+            // path behaves when the read had found the row.
+            _unitOfWork.MemberStatusLines.Remove(fresh);
+            var winner = await _unitOfWork.MemberStatusLines.GetByCardiMemberAsync(cardiMemberId)
+                ?? throw new InvalidOperationException(
+                    $"Insert of the status line for CardiMember {cardiMemberId} failed, but no "
+                    + "existing row was found — not the unique-index race this handles.");
+            Overwrite(winner, headline, message);
+            await _unitOfWork.SaveChangesAsync();
+        }
+    }
+
+    private static void Overwrite(MemberStatusLine line, string? headline, string message)
+    {
+        line.Headline = headline;
+        line.Message = message;
+        line.GeneratedAtUtc = DateTime.UtcNow;
+        line.UpdatedDate = DateTime.UtcNow;
     }
 
     /// <summary>
