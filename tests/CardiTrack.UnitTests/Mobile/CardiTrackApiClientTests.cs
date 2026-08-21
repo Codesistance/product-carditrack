@@ -905,7 +905,7 @@ public class CardiTrackApiClientTests
             http.Requests.Single().Uri!.AbsolutePath);
         // The reply is a chain of CPU-served model calls; the client-wide default would hang
         // up on a legitimately slow answer. See CardiTrackApiClient.MemberChatSendTimeout.
-        Assert.Equal(TimeSpan.FromSeconds(180), requestedTimeout);
+        Assert.Equal(TimeSpan.FromSeconds(960), requestedTimeout);
     }
 
     private static (CardiTrackApiClient Client, FakeHttpMessageHandler Http) CreateSut(
