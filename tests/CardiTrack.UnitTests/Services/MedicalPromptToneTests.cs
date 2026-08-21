@@ -12,12 +12,28 @@ namespace CardiTrack.UnitTests.Services;
 public class MedicalPromptToneTests
 {
     /// <summary>The services that send prompts to the private medical model.</summary>
+    /// <remarks>
+    /// The three CardiJournal briefs were absent from this list until the prompt review, so none
+    /// of the rules below had ever been applied to them — the most prose-heavy output on the
+    /// platform, and the only one a caregiver reads as a written account rather than a line.
+    /// <c>Every_service_contributes_at_least_one_prompt</c> guards the reflection against finding
+    /// nothing; nothing guards this list against a service missing from it, so adding a prompt
+    /// service here is part of adding a prompt service.
+    /// <para>
+    /// <c>MemberChatService</c> is still absent: its briefs are <c>static readonly</c> rather than
+    /// <c>const</c>, because they concatenate at runtime, and the reflection below only finds
+    /// literals.
+    /// </para>
+    /// </remarks>
     private static readonly Type[] PromptServices =
     [
         typeof(DigestGenerationService),
         typeof(HealthInsightService),
         typeof(RealtimeAssessmentService),
         typeof(StatusLineGenerationService),
+        typeof(DaybookPrompt),
+        typeof(WeekbookPrompt),
+        typeof(MonthbookPrompt),
     ];
 
     /// <summary>
@@ -67,8 +83,33 @@ public class MedicalPromptToneTests
         // First, not merely present: these blocks are the cacheable fixed prefix the serving engine
         // reuses between calls, and a shared opening is what makes that prefix shared.
         Assert.True(
-            prompt.StartsWith(MedicalPromptBlocks.Tone, StringComparison.Ordinal),
+            prompt.StartsWith(MedicalPromptBlocks.ToneOpening, StringComparison.Ordinal),
             $"{name} does not open with the shared tone block.");
+    }
+
+    /// <summary>
+    /// Exactly one line on conditions per prompt.
+    /// </summary>
+    /// <remarks>
+    /// The journal's books carried both, and they disagree. <c>ToneNoDiagnosis</c> forbids
+    /// inventing a condition and leaves the model free to use one the caregiver reported;
+    /// <c>JournalNoCondition</c> forbids naming a condition at all. A book carrying both handed
+    /// the model a permission and a prohibition over the same fact — and taking the permission,
+    /// which was the more natural reading of a note supplied so it could be used, got the whole
+    /// entry discarded by <c>JournalRegisterGuards</c>. Written once, never retried: the members
+    /// with the most on file were the likeliest to get nothing.
+    /// </remarks>
+    [Theory]
+    [MemberData(nameof(Prompts))]
+    public void Every_prompt_draws_exactly_one_line_on_naming_a_condition(string name, string prompt)
+    {
+        var permissive = prompt.Contains(MedicalPromptBlocks.ToneNoDiagnosis, StringComparison.Ordinal);
+        var strict = prompt.Contains(MedicalPromptBlocks.JournalNoCondition, StringComparison.Ordinal);
+
+        Assert.True(
+            permissive ^ strict,
+            $"{name} states {(permissive && strict ? "both" : "neither")} of the two condition rules. "
+            + "A prompt must say once, and only once, what the model may do with a condition.");
     }
 
     /// <summary>

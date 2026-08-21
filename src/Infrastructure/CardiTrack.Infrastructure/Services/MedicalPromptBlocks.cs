@@ -121,12 +121,41 @@ internal static partial class MedicalPromptBlocks
     /// the model's reply, and a phrase split across two lines here could never be matched whole.
     /// Each rule therefore sits on one line. See <c>DigestGenerationService.InstructionEchoes</c>.
     /// </remarks>
-    internal const string Tone =
+    /// <summary>
+    /// The four rules every member-facing prompt opens with, whichever line on conditions it goes
+    /// on to draw. <see cref="Tone"/> and <see cref="JournalTone"/> are this plus that line.
+    /// </summary>
+    internal const string ToneOpening =
         ToneAudience + NL
         + ToneVoice + NL
         + ToneNoDistortion + NL
-        + ToneNoBlame + NL
-        + ToneNoDiagnosis + NL;
+        + ToneNoBlame + NL;
+
+    /// <inheritdoc cref="ToneOpening"/>
+    internal const string Tone = ToneOpening + ToneNoDiagnosis + NL;
+
+    /// <summary>
+    /// The opening for the CardiJournal's books, which state their own line on conditions and must
+    /// not also carry <see cref="ToneNoDiagnosis"/>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A book carrying both said two things about one fact. <see cref="ToneNoDiagnosis"/> forbids
+    /// inventing a condition and deliberately leaves the model free to use one the caregiver
+    /// reported; <see cref="JournalNoCondition"/>, three lines later, forbids naming a condition at
+    /// all. A member whose notes say "has sleep apnoea, on a CPAP" handed the model a permission
+    /// and a prohibition over the same word.
+    /// </para>
+    /// <para>
+    /// Taking the permission was the more natural reading — the note was supplied so it could be
+    /// used — and it was the reading that cost the caregiver the entry:
+    /// <c>JournalRegisterGuards.ConditionMarkers</c> discards the whole reply on "apnoea", and a
+    /// book is written once and never retried. So the members with the most context on file were
+    /// the likeliest to get nothing. The strict line is the one the guards enforce, so it is now
+    /// the only one stated.
+    /// </para>
+    /// </remarks>
+    internal const string JournalTone = ToneOpening;
 
     /// <summary>
     /// How to refer to the member across more than one sentence. Follows <see cref="Tone"/> in the

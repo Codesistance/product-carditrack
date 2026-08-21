@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 using System.Text;
 using CardiTrack.Application.Services;
 using CardiTrack.Domain.Entities;
@@ -37,7 +37,7 @@ internal static class MonthbookPrompt
     /// always after it, same as every other generation on this platform.
     /// </summary>
     internal const string Instructions =
-        MedicalPromptBlocks.Tone + MedicalPromptBlocks.Pronouns + """
+        MedicalPromptBlocks.JournalTone + MedicalPromptBlocks.Pronouns + """
         Write the family's account of one month of CardiTrackCardiMember's readings. The month is over.
         Write CardiTrackCardiMember exactly as it appears wherever you would name the person; it stands in
         for their real name, which you are not given.
@@ -91,7 +91,6 @@ internal static class MonthbookPrompt
     [
         "you are writing for a concerned family member",
         "never suggest the family has missed something",
-        "never diagnose",
         "write as a caregiver would to another",
         "explain what it measures in plain words",
         "never name, suggest or guess at a medical condition",
