@@ -75,7 +75,7 @@ public class QuestionnaireAlertWorker : CronBackgroundService
         if (due.Count == 0)
             return;
 
-        var pushed = 0;
+        var enqueued = 0;
 
         foreach (var questionnaire in due)
         {
@@ -112,12 +112,15 @@ public class QuestionnaireAlertWorker : CronBackgroundService
                 if (deliveries.Count == 0)
                     await ReleaseAlertClaimSafelyAsync(unitOfWork, questionnaire, stoppingToken);
                 else
-                    pushed++;
+                    enqueued++;
             }
             catch (Exception ex)
             {
+                // "Enqueue", not "push": IDispatchService.EnqueueAsync may attempt an immediate
+                // send, but the outbox and its retries are what actually govern delivery — the
+                // same distinction NotificationDispatchWorker's own wording keeps.
                 _logger.LogError(ex,
-                    "Failed to push MemberQuestionnaire {QuestionnaireId} (occurrence {Occurrence}).",
+                    "Failed to enqueue a push for MemberQuestionnaire {QuestionnaireId} (occurrence {Occurrence}).",
                     questionnaire.Id, questionnaire.ReminderCount);
 
                 if (claimed)
@@ -125,8 +128,8 @@ public class QuestionnaireAlertWorker : CronBackgroundService
             }
         }
 
-        if (pushed > 0)
-            _logger.LogInformation("QuestionnaireAlert pushed {Count} question(s).", pushed);
+        if (enqueued > 0)
+            _logger.LogInformation("QuestionnaireAlert enqueued {Count} question push(es).", enqueued);
     }
 
     /// <summary>
