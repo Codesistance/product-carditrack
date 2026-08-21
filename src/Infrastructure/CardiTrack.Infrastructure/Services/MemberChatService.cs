@@ -478,10 +478,13 @@ public class MemberChatService : IMemberChatService
         if (latest is null)
             return opening + " I don't have any recent readings for them either.";
 
+        // Cased for the middle of a sentence as each piece needs: the two relative words are
+        // lowercase there, a month name is not. Lowercasing the lot turned "Aug 19" into
+        // "aug 19", which reads as a typo and disagrees with every date the UI draws.
         var when = latest.Date == today
-            ? "Today so far"
+            ? "today so far"
             : latest.Date == today.AddDays(-1)
-                ? "Yesterday"
+                ? "yesterday"
                 : latest.Date.ToString("MMM d", CultureInfo.InvariantCulture);
 
         var parts = new List<string>();
@@ -492,7 +495,7 @@ public class MemberChatService : IMemberChatService
         if (latest.SleepMinutes is { } sleep)
             parts.Add($"{MedicalPromptBlocks.SleepFigure(sleep)} of sleep the night before");
 
-        return $"{opening} The most recent I have is {when.ToLowerInvariant()}: {Join(parts)}.";
+        return $"{opening} The most recent I have is {when}: {Join(parts)}.";
     }
 
     /// <summary>Oxford-less list joining — "a, b and c".</summary>

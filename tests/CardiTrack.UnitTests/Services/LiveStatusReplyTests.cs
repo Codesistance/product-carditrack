@@ -71,6 +71,31 @@ public class LiveStatusReplyTests
         Assert.Contains("yesterday", reply, StringComparison.OrdinalIgnoreCase);
     }
 
+    /// <summary>
+    /// A month name keeps its capital mid-sentence; the two relative words do not. Lowercasing the
+    /// whole phrase produced "aug 19", which reads as a typo and disagrees with every date the UI
+    /// draws.
+    /// </summary>
+    [Fact]
+    public void AnOlderDateKeepsItsCapital()
+    {
+        var reply = MemberChatService.LiveStatusReply("Dad", [Log(new DateOnly(2026, 8, 17), steps: 2200)], Today);
+
+        Assert.Contains("is Aug 17:", reply, StringComparison.Ordinal);
+        Assert.DoesNotContain("aug 17", reply, StringComparison.Ordinal);
+    }
+
+    /// <summary>The relative words are lowercase, because they sit mid-sentence.</summary>
+    [Fact]
+    public void TheRelativeWordsAreLowercaseMidSentence()
+    {
+        var today = MemberChatService.LiveStatusReply("Dad", [Log(Today, steps: 100)], Today);
+        var yesterday = MemberChatService.LiveStatusReply("Dad", [Log(Today.AddDays(-1), steps: 100)], Today);
+
+        Assert.Contains("is today so far:", today, StringComparison.Ordinal);
+        Assert.Contains("is yesterday:", yesterday, StringComparison.Ordinal);
+    }
+
     /// <summary>The most recent row wins, whatever order the repository returned them in.</summary>
     [Fact]
     public void TheLatestRowIsTheOneQuoted()
