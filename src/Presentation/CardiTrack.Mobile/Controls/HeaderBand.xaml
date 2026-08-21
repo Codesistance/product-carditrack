@@ -68,7 +68,7 @@
                            InputTransparent="True"
                            Aspect="AspectFit"
                            HeightRequest="118"
-                           Opacity="0.45"
+                           Opacity="0.32"
                            HorizontalOptions="End"
                            VerticalOptions="End"
                            TranslationX="30"

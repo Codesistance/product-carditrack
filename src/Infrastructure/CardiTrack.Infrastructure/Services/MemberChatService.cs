@@ -160,6 +160,12 @@ public class MemberChatService : IMemberChatService
         answer it: say how the readings compare with their baseline and whether that is settled or
         worth attention. Listing the readings back is not an answer to that question.
 
+        Every figure below describes a period that has already finished — a night that ended that
+        morning, a day's totals so far. None of it says what the person is doing at this moment.
+        So never state that they are asleep, awake, resting, active, in or out right now, however
+        the question is put. Asked about this moment, say what was last recorded and when, and say
+        plainly that their live status is not something this can see.
+
         Respond with:
         - analysis: your answer, grounded only in the data provided.
         """ + MedicalPromptBlocks.ContextGuardrail + MedicalPromptBlocks.ChatQuestionGuardrail;

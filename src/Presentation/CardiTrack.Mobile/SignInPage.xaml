@@ -18,7 +18,7 @@
                     <Label Text="Welcome Back"
                            Style="{StaticResource AuthHeaderTitle}" />
                     <Label Text="Sign in to keep watching over your family"
-                           Style="{StaticResource Body1SemiBold}" />
+                           Style="{StaticResource AuthHeaderSubtitle}" />
                 </VerticalStackLayout>
             </controls:HeaderBand>
 
