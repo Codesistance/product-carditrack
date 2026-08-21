@@ -1,4 +1,4 @@
-using CardiTrack.Application.DTOs.Responses;
+﻿using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Application.Services;
@@ -258,11 +258,21 @@ public class HealthInsightService : IHealthInsightService
 
         var aiResponse = await _medicalAi.GenerateStructuredAsync<BaselineAiResponse>(prompt, ct);
 
+        // The same placeholder guard the alert path applies. These three briefs never mention
+        // CardiTrackCardiMember — only the alert one does — but they all carry the pronoun rule,
+        // which talks about naming the person, and a token that reaches a caregiver unresolved is
+        // worse than an empty field wherever it happens. Guarding only the prompt that was known
+        // to produce it is guarding the case already understood.
+        var name = NamePlaceholder.FirstName(member?.Name);
+
         return new BaselineInsightResponse
         {
             CardiMemberId = cardiMemberId,
-            Summary = aiResponse.Summary,
-            KeyFindings = aiResponse.KeyFindings,
+            Summary = ResolvedOrEmpty(aiResponse.Summary, name),
+            KeyFindings = aiResponse.KeyFindings
+                .Select(finding => ResolvedOrEmpty(finding, name))
+                .Where(finding => finding.Length > 0)
+                .ToList(),
             IsLearning = isLearning,
             IsProvisional = provisionalBaseline is not null,
             BaselinePeriodDays = (primaryBaseline ?? provisionalBaseline)?.PeriodDays,
@@ -316,7 +326,7 @@ public class HealthInsightService : IHealthInsightService
         var baselineInfo = baseline is null
             ? "No baseline established yet — this member is still being learned."
             : $"{baseline.PeriodDays}-day — Steps: {baseline.AvgSteps}±{baseline.StdDevSteps}, " +
-              $"Resting HR: {baseline.AvgRestingHeartRate}±{baseline.StdDevHeartRate}, " +
+              $"Resting Resting HR: {baseline.AvgRestingHeartRate}±{baseline.StdDevHeartRate}, " +
               $"Sleep: {baseline.AvgSleepMinutes} min";
 
         var recentSummary = MedicalPromptBlocks.DailyLines(recentLogs, take: 3, today);
@@ -329,18 +339,48 @@ public class HealthInsightService : IHealthInsightService
             --- Alert ---
             Type: {alert.AlertType}
             Severity: {alert.Severity}
-            Title: {alert.Title}
-            Message: {alert.Message}
+            Title: {AlertField(alert.Title)}
+            Message: {AlertField(alert.Message)}
             Triggered: {alert.TriggeredDate:yyyy-MM-dd HH:mm} UTC
-            Metric values: {alert.MetricValues ?? "none"}
+            Metric values: {AlertFieldOrNone(alert.MetricValues)}
 
             --- Baseline ---
             {baselineInfo}
 
-            --- Recent activity (last 3 days, oldest first) ---
+            --- Recent readings (the most recent days that carried any, oldest first) ---
             {recentSummary}
             """;
     }
+
+    /// <summary>
+    /// One of the alert's own fields, reduced to the single line its <c>Key: value</c> row assumes
+    /// and bounded.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// These reached the prompt raw, while the same three fields go through
+    /// <c>MedicalPromptBlocks.Flatten</c> in every other renderer that carries an alert — the
+    /// digest's monitoring context and the Daybook's. A newline in one of them puts the rest of
+    /// the field on an unlabelled top-level line inside a section, which is the shape the
+    /// flattening exists to make impossible.
+    /// </para>
+    /// <para>
+    /// <c>MetricValues</c> is the one that matters most: it is a serialised blob rather than a
+    /// sentence, so it is both the longest of the three and the least useful to the model per
+    /// character it costs.
+    /// </para>
+    /// </remarks>
+    private static string AlertField(string? value) =>
+        string.IsNullOrWhiteSpace(value)
+            ? string.Empty
+            : MedicalPromptBlocks.CutTo(MedicalPromptBlocks.Flatten(value), MaxAlertFieldLength);
+
+    /// <summary>Ceiling on one alert field — enough for the sentence, not for a payload.</summary>
+    private const int MaxAlertFieldLength = 300;
+
+    /// <summary><see cref="AlertField"/>, saying so plainly when the field is empty.</summary>
+    private static string AlertFieldOrNone(string? value) =>
+        AlertField(value) is { Length: > 0 } text ? text : "none";
 
     private static string BuildBaselinePrompt(
         string memberContext,
@@ -350,7 +390,7 @@ public class HealthInsightService : IHealthInsightService
     {
         var baselineLines = baselines.Select(b =>
             $"{b.PeriodDays}-day — Steps: {b.AvgSteps}±{b.StdDevSteps}, " +
-            $"HR: {b.AvgRestingHeartRate}±{b.StdDevHeartRate}, Sleep: {b.AvgSleepMinutes} min" +
+            $"Resting HR: {b.AvgRestingHeartRate}±{b.StdDevHeartRate}, Sleep: {b.AvgSleepMinutes} min" +
             SleepWindow(b));
 
         return $"""
@@ -361,7 +401,7 @@ public class HealthInsightService : IHealthInsightService
             --- Baselines ---
             {string.Join("\n", baselineLines)}
 
-            --- Recent activity (last 7 days, oldest first) ---
+            --- Recent readings (the most recent days that carried any, oldest first) ---
             {MedicalPromptBlocks.DailyLines(recentLogs, take: 7, today)}
             """;
     }
@@ -378,9 +418,9 @@ public class HealthInsightService : IHealthInsightService
             {memberContext}
 
             --- Provisional baseline ---
-            {baseline.PeriodDays}-day (provisional) — Steps: {baseline.AvgSteps}±{baseline.StdDevSteps}, HR: {baseline.AvgRestingHeartRate}±{baseline.StdDevHeartRate}, Sleep: {baseline.AvgSleepMinutes} min{SleepWindow(baseline)}
+            {baseline.PeriodDays}-day (provisional) — Steps: {baseline.AvgSteps}±{baseline.StdDevSteps}, Resting HR: {baseline.AvgRestingHeartRate}±{baseline.StdDevHeartRate}, Sleep: {baseline.AvgSleepMinutes} min{SleepWindow(baseline)}
 
-            --- Recent activity (last 7 days, oldest first) ---
+            --- Recent readings (the most recent days that carried any, oldest first) ---
             {MedicalPromptBlocks.DailyLines(recentLogs, take: 7, today)}
             """;
     }
@@ -399,7 +439,7 @@ public class HealthInsightService : IHealthInsightService
             Days with data in the last 14: {daysObserved}
             No baseline has been established yet.
 
-            --- Daily readings ---
+            --- Recent readings (the most recent days that carried any, oldest first) ---
             {MedicalPromptBlocks.DailyLines(recentLogs, take: 14, today)}
             """;
     }
