@@ -228,7 +228,9 @@ public class MemberChatService : IMemberChatService
         var name = NamePlaceholder.FirstName(member?.Name);
         var reply = CapReply(ResolvedOrFallback(rewrite.Result, name));
 
-        var (userTurn, assistantTurn) = await PersistTurnsAsync(session, flattened, reply, utcNow, ct);
+        var charts = BuildCharts(fetched, plan.Result.ChartMetrics);
+
+        var (userTurn, assistantTurn) = await PersistTurnsAsync(session, flattened, reply, charts, utcNow, ct);
         await PersistUsageAsync(assistantTurn.Id, ct,
             (AiCallStep.MaliciousCheck, AiProviderSlot.Rewrite, triage.Usage),
             (AiCallStep.QueryPlan, AiProviderSlot.Rewrite, plan.Usage),
@@ -241,7 +243,7 @@ public class MemberChatService : IMemberChatService
         {
             SessionId = session.Id,
             Reply = reply,
-            Charts = BuildCharts(fetched, plan.Result.ChartMetrics),
+            Charts = charts,
             GeneratedAt = DateTimeOffset.UtcNow,
         };
     }
@@ -298,7 +300,7 @@ public class MemberChatService : IMemberChatService
             reply = FallbackSteerReply;
         }
 
-        var (_, assistantTurn) = await PersistTurnsAsync(session, flattened, reply, utcNow, ct);
+        var (_, assistantTurn) = await PersistTurnsAsync(session, flattened, reply, [], utcNow, ct);
         await PersistUsageAsync(assistantTurn.Id, ct, steerUsage is null
             ? [(AiCallStep.MaliciousCheck, AiProviderSlot.Rewrite, triageUsage)]
             : new[]
@@ -435,6 +437,7 @@ public class MemberChatService : IMemberChatService
                 {
                     Role = t.Role.ToString(),
                     Content = Reveal(t.Content),
+                    Charts = RevealCharts(t.Charts),
                     CreatedAtUtc = t.CreatedAtUtc,
                 })
                 .ToList(),
@@ -595,8 +598,18 @@ public class MemberChatService : IMemberChatService
         return charts;
     }
 
+    /// <param name="charts">
+    /// The reply's series, kept with the turn so a reload draws what the answer drew. Empty for
+    /// the steer path and for replies with nothing to chart, which store null rather than an
+    /// encrypted empty array.
+    /// </param>
     private async Task<(MemberChatTurn User, MemberChatTurn Assistant)> PersistTurnsAsync(
-        MemberChatSession session, string question, string reply, DateTime utcNow, CancellationToken ct)
+        MemberChatSession session,
+        string question,
+        string reply,
+        IReadOnlyList<ChartSeries> charts,
+        DateTime utcNow,
+        CancellationToken ct)
     {
         var userTurn = new MemberChatTurn
         {
@@ -610,6 +623,9 @@ public class MemberChatService : IMemberChatService
             SessionId = session.Id,
             Role = ChatTurnRole.Assistant,
             Content = _encryption.Encrypt(reply),
+            Charts = charts.Count > 0
+                ? _encryption.Encrypt(System.Text.Json.JsonSerializer.Serialize(charts))
+                : null,
             CreatedAtUtc = DateTime.UtcNow,
         };
 
@@ -667,6 +683,28 @@ public class MemberChatService : IMemberChatService
             // encryption existed, or under a rotated key, is shown empty rather than throwing and
             // failing the whole conversation over one unreadable turn.
             return string.Empty;
+        }
+    }
+
+    /// <summary>
+    /// The stored series for one turn, or empty when it has none. Every failure — an unreadable
+    /// ciphertext, JSON written by an older shape — degrades to "no charts" rather than throwing:
+    /// the reply text is the answer, and losing a decoration must never cost a caregiver the
+    /// conversation it decorates. Same defensive posture as <see cref="Reveal"/>.
+    /// </summary>
+    private IReadOnlyList<ChartSeries> RevealCharts(string? stored)
+    {
+        if (string.IsNullOrEmpty(stored))
+            return [];
+
+        try
+        {
+            return System.Text.Json.JsonSerializer.Deserialize<List<ChartSeries>>(_encryption.Decrypt(stored)) ?? [];
+        }
+        catch (Exception e) when (e is System.Security.Cryptography.CryptographicException
+                                      or System.Text.Json.JsonException)
+        {
+            return [];
         }
     }
 

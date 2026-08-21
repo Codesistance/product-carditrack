@@ -387,8 +387,8 @@ public sealed class ChatTurnItem
     public bool HasChartSummary => !string.IsNullOrEmpty(ChartSummary);
 
     /// <summary>The reply's supporting series, pre-shaped for drawing — see
-    /// <see cref="ChatChartItem.From"/>. Empty for user turns, errors, and resumed history
-    /// (charts are not persisted server-side, so a resumed session has none to draw).</summary>
+    /// <see cref="ChatChartItem.From"/>. Empty for user turns and errors; a resumed or refreshed
+    /// reply draws the series stored with its turn.</summary>
     public IReadOnlyList<ChatChartItem> Charts { get; init; } = [];
     public bool HasCharts => Charts.Count > 0;
 
@@ -432,19 +432,32 @@ public sealed class ChatTurnItem
         },
     };
 
-    public static ChatTurnItem FromReply(MemberChatMessageResponse response, string? memberFirstName)
+    /// <summary>
+    /// Splits series into the ones worth drawing and the ones too thin to plot. Shared by the
+    /// live reply and the stored one so a refreshed conversation cannot render its charts by a
+    /// different rule than the answer did when it arrived.
+    /// </summary>
+    private static (List<ChatChartItem> Drawable, List<ChartSeries> Summarised) SplitCharts(
+        IReadOnlyList<ChartSeries> charts)
     {
         // Series with at least two readings draw as real charts; anything thinner keeps the old
         // first-to-last text summary, so a one-day answer still shows its number somewhere.
         var drawable = new List<ChatChartItem>();
         var summarised = new List<ChartSeries>();
-        foreach (var series in response.Charts)
+        foreach (var series in charts)
         {
             if (ChatChartItem.From(series) is { } item)
                 drawable.Add(item);
             else
                 summarised.Add(series);
         }
+
+        return (drawable, summarised);
+    }
+
+    public static ChatTurnItem FromReply(MemberChatMessageResponse response, string? memberFirstName)
+    {
+        var (drawable, summarised) = SplitCharts(response.Charts);
 
         return new ChatTurnItem
         {
@@ -472,20 +485,27 @@ public sealed class ChatTurnItem
         RowAlignment = LayoutOptions.Start,
     };
 
-    public static ChatTurnItem FromHistory(MemberChatTurnResponse turn, string? memberFirstName) =>
-        turn.Role == "User"
-            ? FromUserMessage(turn.Content, turn.CreatedAtUtc)
-            : new ChatTurnItem
-            {
-                Content = turn.Content,
-                IsUser = false,
-                RoleLabel = memberFirstName is { Length: > 0 } name ? $"About {name}" : "Reply",
-                ShowRoleLabel = true,
-                TextColor = Microsoft.Maui.Controls.Application.Current?.Resources["HeadingText"] as Color ?? Colors.Black,
-                BubbleBackground = Microsoft.Maui.Controls.Application.Current?.Resources["White"] as Color ?? Colors.White,
-                RowAlignment = LayoutOptions.Start,
-                Timestamp = FormatTimestamp(turn.CreatedAtUtc),
-            };
+    public static ChatTurnItem FromHistory(MemberChatTurnResponse turn, string? memberFirstName)
+    {
+        if (turn.Role == "User")
+            return FromUserMessage(turn.Content, turn.CreatedAtUtc);
+
+        var (drawable, summarised) = SplitCharts(turn.Charts);
+
+        return new ChatTurnItem
+        {
+            Content = turn.Content,
+            IsUser = false,
+            RoleLabel = memberFirstName is { Length: > 0 } name ? $"About {name}" : "Reply",
+            ShowRoleLabel = true,
+            TextColor = Microsoft.Maui.Controls.Application.Current?.Resources["HeadingText"] as Color ?? Colors.Black,
+            BubbleBackground = Microsoft.Maui.Controls.Application.Current?.Resources["White"] as Color ?? Colors.White,
+            RowAlignment = LayoutOptions.Start,
+            Charts = drawable,
+            ChartSummary = Summarize(summarised),
+            Timestamp = FormatTimestamp(turn.CreatedAtUtc),
+        };
+    }
 
     /// <summary>First-to-last per series, e.g. "Steps: 3,201 → 5,110 · Resting heart rate: 61 → 58"
     /// — a compact stand-in for a true chart. See the member-chat plan's mobile-milestone note:

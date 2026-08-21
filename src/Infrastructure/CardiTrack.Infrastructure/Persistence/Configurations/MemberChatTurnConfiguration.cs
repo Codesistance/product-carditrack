@@ -18,6 +18,10 @@ public class MemberChatTurnConfiguration : IEntityTypeConfiguration<MemberChatTu
         builder.Property(t => t.Content)
             .IsRequired();
 
+        // Unbounded and optional, same ciphertext reasoning as Content above; null whenever the
+        // turn had no charts to keep.
+        builder.Property(t => t.Charts);
+
         // A name survives an incident and an enum renumbering — same reasoning as
         // MemberQuestionnaireConfiguration.Status.
         builder.Property(t => t.Role)
