@@ -132,12 +132,7 @@ public class VertexAiClient : IExternalAiClient
         string prompt, CancellationToken ct = default) where T : class
     {
         var schemaText = StructuredOutputSchema.TextFor<T>();
-        var fullPrompt = $"""
-            {prompt}
-
-            Respond with ONLY a single JSON object that satisfies this JSON Schema, with no fields beyond what it defines:
-            {schemaText}
-            """;
+        var fullPrompt = StructuredOutputSchema.PromptWithSchema(prompt, schemaText);
         var (result, usage) = await SendInstrumentedCoreAsync(
             operationName: "generate_structured",
             request: BuildRequest(SingleUserTurn(fullPrompt), schemaText),
