@@ -2,6 +2,7 @@ using CardiTrack.Application.Interfaces.Clients;
 using CardiTrack.Infrastructure.Extensions;
 using CardiTrack.Infrastructure.ExternalClients.General;
 using CardiTrack.Infrastructure.ExternalClients.Medical;
+using CardiTrack.Infrastructure.ExternalClients.Vertex;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -54,14 +55,119 @@ public class AiServiceExtensionsTests
         Assert.IsType<MedGemmaClient>(client);
     }
 
-    // The rewrite slot is the same client type as the medical one — a different model tag on the
-    // same in-project host, never a switchable provider (see the class remarks).
+    // With no Kind configured the rewrite slot defaults to Ollama — the local-dev shape must
+    // keep working with zero configuration and no GCP credentials.
     [Fact]
-    public void AddAiServices_ResolvesTheRewriteProviderToMedGemmaToo()
+    public void AddAiServices_ResolvesTheRewriteProviderToMedGemma_WhenNoKindIsSet()
     {
         var client = Resolve(Config()).GetRequiredKeyedService<IExternalAiClient>("RewriteProvider");
 
         Assert.IsType<MedGemmaClient>(client);
+    }
+
+    [Fact]
+    public void AddAiServices_ResolvesTheRewriteProviderToVertex_ForTheVertexGeminiKind()
+    {
+        var client = Resolve(VertexRewriteConfig()).GetRequiredKeyedService<IExternalAiClient>("RewriteProvider");
+
+        Assert.IsType<VertexAiClient>(client);
+    }
+
+    [Fact]
+    public void AddAiServices_DerivesTheRewriteBaseAddressFromTheLocation_ForTheVertexGeminiKind()
+    {
+        var factory = Resolve(VertexRewriteConfig()).GetRequiredService<IHttpClientFactory>();
+
+        Assert.Equal(
+            new Uri("https://europe-west2-aiplatform.googleapis.com"),
+            factory.CreateClient(AiServiceExtensions.RewriteHttpClientName).BaseAddress);
+    }
+
+    [Theory]
+    [InlineData("AI:Rewrite:ProjectId", "AI__Rewrite__ProjectId")]
+    [InlineData("AI:Rewrite:Location", "AI__Rewrite__Location")]
+    public void AddAiServices_Throws_WhenAVertexRewriteAddressPartIsMissing(string key, string expectedEnvVar)
+    {
+        var config = VertexRewriteConfig();
+        config.Remove(key);
+
+        var ex = Assert.Throws<InvalidOperationException>(() => Resolve(config));
+
+        Assert.Contains(expectedEnvVar, ex.Message);
+    }
+
+    // During the provider transition the deployed environment still mounts the old Ollama URL and
+    // identity-token flag alongside the Vertex settings; rejecting them would make the flip an
+    // ordering hazard, so they are tolerated and ignored.
+    [Fact]
+    public void AddAiServices_ToleratesStaleOllamaSettings_ForTheVertexGeminiKind()
+    {
+        var config = VertexRewriteConfig();
+        config["AI:Rewrite:BaseUrl"] = "https://carditrack-dev-rewrite-abcdef.a.run.app";
+        config["AI:Rewrite:UseIdentityToken"] = "true";
+
+        var client = Resolve(config).GetRequiredKeyedService<IExternalAiClient>("RewriteProvider");
+
+        Assert.IsType<VertexAiClient>(client);
+    }
+
+    // The DPIA's EU-processing rule, enforced at the second layer: Terraform validates the
+    // tfvar, and this refuses the raw env var that bypasses it — "global" and a US region are
+    // exactly the values that would route prompts outside the boundary with no other symptom.
+    [Theory]
+    [InlineData("us-central1")]
+    [InlineData("global")]
+    [InlineData("Europe-West2")] // a case variant is a wrong request path, not a different region
+    public void AddAiServices_Throws_WhenARewriteVertexLocationIsOutsideTheEuAllowlist(string location)
+    {
+        var config = VertexRewriteConfig();
+        config["AI:Rewrite:Location"] = location;
+
+        var ex = Assert.Throws<InvalidOperationException>(() => Resolve(config));
+
+        Assert.Contains("AI__Rewrite__Location", ex.Message);
+        Assert.Contains("europe-west2", ex.Message);
+    }
+
+    [Fact]
+    public void AddAiServices_Throws_WhenAPublicVertexLocationIsOutsideTheEuAllowlist()
+    {
+        var config = Config();
+        config["AI:Public:Kind"] = "VertexGemini";
+        config["AI:Public:ProjectId"] = "test-project";
+        config["AI:Public:Location"] = "us-central1";
+        config["AI:Public:BaseUrl"] = string.Empty;
+
+        var ex = Assert.Throws<InvalidOperationException>(() => Resolve(config));
+
+        Assert.Contains("AI__Public__Location", ex.Message);
+    }
+
+    // An env-var override that is set-but-empty must read as "not set" — Uri("") at registration
+    // time would otherwise turn a blank variable into a failed revision with an opaque error.
+    [Fact]
+    public void AddAiServices_DerivesTheRewriteBaseAddress_WhenTheVertexBaseUrlOverrideIsBlank()
+    {
+        var config = VertexRewriteConfig();
+        config["AI:Rewrite:VertexBaseUrl"] = string.Empty;
+
+        var factory = Resolve(config).GetRequiredService<IHttpClientFactory>();
+
+        Assert.Equal(
+            new Uri("https://europe-west2-aiplatform.googleapis.com"),
+            factory.CreateClient(AiServiceExtensions.RewriteHttpClientName).BaseAddress);
+    }
+
+    [Fact]
+    public void AddAiServices_Throws_WhenTheRewriteKindIsUnknown()
+    {
+        var config = Config();
+        config["AI:Rewrite:Kind"] = "Llama";
+
+        var ex = Assert.Throws<InvalidOperationException>(() => Resolve(config));
+
+        Assert.Contains("AI__Rewrite__Kind", ex.Message);
+        Assert.Contains("VertexGemini", ex.Message);
     }
 
     [Fact]
@@ -226,6 +332,63 @@ public class AiServiceExtensionsTests
         var ex = Assert.Throws<InvalidOperationException>(() => Resolve(config));
 
         Assert.Contains("AI__Rewrite__UseIdentityToken", ex.Message);
+    }
+
+    // The public slot's Vertex kind: no API key required — auth is IAM via ADC, so requiring a
+    // key would force a fake secret into every Vertex deployment.
+    [Fact]
+    public void AddAiServices_ResolvesThePublicProviderToVertex_WithoutAnApiKey()
+    {
+        var config = Config();
+        config["AI:Public:Kind"] = "VertexGemini";
+        config["AI:Public:Model"] = "gemini-2.5-flash";
+        config["AI:Public:ProjectId"] = "test-project";
+        config["AI:Public:Location"] = "europe-west2";
+        config.Remove("AI:Public:ApiKey");
+        config["AI:Public:BaseUrl"] = string.Empty;
+
+        var provider = Resolve(config);
+
+        Assert.IsType<VertexAiClient>(provider.GetRequiredKeyedService<IExternalAiClient>("GeneralProvider"));
+        Assert.Equal(
+            new Uri("https://europe-west2-aiplatform.googleapis.com"),
+            provider.GetRequiredService<IHttpClientFactory>()
+                .CreateClient(AiServiceExtensions.PublicHttpClientName).BaseAddress);
+    }
+
+    [Fact]
+    public void AddAiServices_Throws_WhenTheVertexPublicKindHasNoProject()
+    {
+        var config = Config();
+        config["AI:Public:Kind"] = "VertexGemini";
+        config["AI:Public:Location"] = "europe-west2";
+
+        var ex = Assert.Throws<InvalidOperationException>(() => Resolve(config));
+
+        Assert.Contains("AI__Public__ProjectId", ex.Message);
+    }
+
+    // ApiKey stays required for the kinds that authenticate with one.
+    [Fact]
+    public void AddAiServices_StillRequiresTheApiKey_ForTheGeminiKind()
+    {
+        var config = Config();
+        config.Remove("AI:Public:ApiKey");
+
+        var ex = Assert.Throws<InvalidOperationException>(() => Resolve(config));
+
+        Assert.Contains("AI__Public__ApiKey", ex.Message);
+    }
+
+    private static Dictionary<string, string?> VertexRewriteConfig()
+    {
+        var config = Config();
+        config["AI:Rewrite:Kind"] = "VertexGemini";
+        config["AI:Rewrite:Model"] = "gemini-2.5-flash-lite";
+        config["AI:Rewrite:ProjectId"] = "test-project";
+        config["AI:Rewrite:Location"] = "europe-west2";
+        config.Remove("AI:Rewrite:BaseUrl");
+        return config;
     }
 
     private static Dictionary<string, string?> Config() => new()

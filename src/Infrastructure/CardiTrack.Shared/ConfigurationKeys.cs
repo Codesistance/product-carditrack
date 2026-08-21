@@ -211,9 +211,9 @@ public static class ConfigurationKeys
         public const string PrivateSectionName = "AI:Private";
 
         /// <summary>
-        /// Self-hosted, non-medical model used only to rewrite MedGemma's clinical output into
-        /// caregiver language. Same in-project guarantee as <see cref="PrivateSectionName"/> — no
-        /// provider kind, fixed in code.
+        /// Non-medical model for member chat's non-clinical steps — kind-switchable (Ollama
+        /// locally, Gemini via Vertex AI when deployed), unlike <see cref="PrivateSectionName"/>,
+        /// because its prompts carry no member identifiers or clinical context (DPIA row A20).
         /// Object section: use with IConfiguration.GetSection(), not ConfigurationLoader.Get().
         /// </summary>
         public const string RewriteSectionName = "AI:Rewrite";

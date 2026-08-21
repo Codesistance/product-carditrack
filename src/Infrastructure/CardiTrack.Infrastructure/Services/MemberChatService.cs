@@ -13,11 +13,13 @@ namespace CardiTrack.Infrastructure.Services;
 /// <summary>
 /// Orchestrates one caregiver chat turn end to end: access check, malicious/off-topic check,
 /// data-query planning, the whitelisted fetch, MedGemma's clinical read, the Rewrite pass into
-/// caregiver language, and persistence. Every model call stays in-estate — no step ever reaches
-/// <c>AI:Public</c>. See the member-chat planning notes (2026-08-20) for the security review this
-/// design closes two findings against: the query plan cannot carry a subject identifier (see
-/// <see cref="DataQueryPlan"/>), and nothing here reaches an external provider even once history is
-/// in play.
+/// caregiver language, and persistence. The clinical step — the one whose prompt carries age,
+/// sex, notes and questionnaire answers — stays on the in-estate MedGemma; the non-clinical
+/// steps run on the Rewrite slot, whose prompts carry only the caregiver's question and the
+/// de-identified clinical read (the member's name is the literal <c>{{NAME}}</c> placeholder,
+/// resolved after the call). No step ever reaches <c>AI:Public</c>. See the member-chat planning
+/// notes (2026-08-20) and DPIA row A20: the query plan cannot carry a subject identifier (see
+/// <see cref="DataQueryPlan"/>), and the clinical context never reaches the rewrite provider.
 /// </summary>
 public class MemberChatService : IMemberChatService
 {

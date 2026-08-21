@@ -1,8 +1,9 @@
 namespace CardiTrack.Application.Interfaces.Services;
 
 /// <summary>
-/// Rewrites already-produced clinical text into caregiver-facing language. Always backed by the
-/// self-hosted, non-medical rewrite model (AI:Rewrite) — see <see cref="IMedicalAiService"/> for
+/// Rewrites already-produced clinical text into caregiver-facing language. Backed by the
+/// non-medical rewrite slot (AI:Rewrite — self-hosted Ollama locally, Gemini via Vertex AI on an
+/// EU regional endpoint in deployed environments) — see <see cref="IMedicalAiService"/> for
 /// the sibling slot that produces the clinical text this service rewrites.
 /// </summary>
 /// <remarks>
