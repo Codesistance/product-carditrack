@@ -63,8 +63,8 @@ public class HealthInsightServicePromptTests
                 Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(new HealthInsightService.AlertAiResponse
             {
-                Explanation = "{{NAME}}'s steps dropped well below usual.",
-                RecommendedAction = "Call {{NAME}} today and see how they are.",
+                Explanation = "CardiTrackCardiMember's steps dropped well below usual.",
+                RecommendedAction = "Call CardiTrackCardiMember today and see how they are.",
             });
     }
 
@@ -432,7 +432,7 @@ public class HealthInsightServicePromptTests
         Assert.Contains("what this alert means in the recent readings", prompt);
         Assert.Contains("lay mention", prompt);
         Assert.Contains("one specific thing the caregiver can do now that answers this", prompt);
-        Assert.Contains("{{NAME}}", prompt);
+        Assert.Contains("CardiTrackCardiMember", prompt);
         Assert.DoesNotContain("heart rate, sleep, quieter today, worth a look", prompt);
         Assert.DoesNotContain("check-in", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("means clinically", prompt);
@@ -468,7 +468,7 @@ public class HealthInsightServicePromptTests
 
         Assert.Equal(string.Empty, result.Explanation);
         Assert.Equal(string.Empty, result.RecommendedAction);
-        Assert.DoesNotContain("{{NAME}}", result.Explanation, StringComparison.Ordinal);
-        Assert.DoesNotContain("{{NAME}}", result.RecommendedAction, StringComparison.Ordinal);
+        Assert.DoesNotContain("CardiTrackCardiMember", result.Explanation, StringComparison.Ordinal);
+        Assert.DoesNotContain("CardiTrackCardiMember", result.RecommendedAction, StringComparison.Ordinal);
     }
 }

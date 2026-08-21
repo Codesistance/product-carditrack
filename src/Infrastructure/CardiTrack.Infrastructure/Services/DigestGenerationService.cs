@@ -43,8 +43,8 @@ public partial class DigestGenerationService : IDigestGenerationService
     /// </summary>
     private const string FamilyDigestInstructions =
         MedicalPromptBlocks.Tone + MedicalPromptBlocks.Pronouns + """
-        Summarise {{NAME}}'s recent readings for their family.
-        Write {{NAME}} exactly as it appears wherever you would name the person; it stands in
+        Summarise CardiTrackCardiMember's recent readings for their family.
+        Write CardiTrackCardiMember exactly as it appears wherever you would name the person; it stands in
         for their real name, which you are not given.
         """ + MedicalPromptBlocks.CaregiverRegister + """
         Do not quote a figure that is not in the readings or computed observations below.
@@ -59,11 +59,11 @@ public partial class DigestGenerationService : IDigestGenerationService
         A family answer marked with when it was told explains that day only — never carry it forward as though it were about today.
 
         Respond with:
-        - summary: 2-5 sentences written to the family member about what the readings mean for {{NAME}} today, naming
-          the person as {{NAME}} — never a relationship stand-in. Interpret against the usual pattern and against how much they moved. Say plainly
+        - summary: 2-5 sentences written to the family member about what the readings mean for CardiTrackCardiMember today, naming
+          the person as CardiTrackCardiMember — never a relationship stand-in. Interpret against the usual pattern and against how much they moved. Say plainly
           when a reading is missing instead of padding with reassurance.
         - headline: a three-to-six-word label for the summary you just wrote — sentence case, no
-          full stop, no name and no {{NAME}}, not a sentence.
+          full stop, no name and no CardiTrackCardiMember, not a sentence.
         - suggestion: one supportive, specific action the family could take today, at most 25
           words. It must answer something in the readings or computed observations above closely enough that a reader could tell what it came
           from — a suggestion equally true for any person on any day is not this one. It may
@@ -79,12 +79,12 @@ public partial class DigestGenerationService : IDigestGenerationService
           urgency the data does not show, and never let this contradict the summary's own tone.
 
         Only if something in the readings would be clearer if the family explained it, also respond with:
-        - question: one short question to the family about {{NAME}}'s life, at most twenty
+        - question: one short question to the family about CardiTrackCardiMember's life, at most twenty
           words, ending in a question mark, about ordinary things that would explain the
           readings. Never ask them to measure, check or observe anything, nor about medication, symptoms or a diagnosis.
           Never ask about something the family answers already cover.
         - questionRationale: one everyday sentence in a caregiver's words, so the family can see why this is worth asking. Never name a reading as a reading, never quote a figure, never restate the question.
-        - questionScope: permanent if the answer would be a standing fact about {{NAME}} that
+        - questionScope: permanent if the answer would be a standing fact about CardiTrackCardiMember that
           stays true regardless of the day and should inform every future summary; time-scoped if it only explains the
           present moment and should stop mattering once that passes. Most questions are time-scoped.
         Most days there is nothing worth asking. Leave all three out unless the answer would genuinely change how the readings are read.
@@ -1212,7 +1212,7 @@ public partial class DigestGenerationService : IDigestGenerationService
         var name = NamePlaceholder.FirstName(member?.Name);
 
         // Same stance as the checks above: nothing is written rather than something wrong. A
-        // summary reading "{{NAME}} slept well" is a worse thing to show a caregiver than the
+        // summary reading "CardiTrackCardiMember slept well" is a worse thing to show a caregiver than the
         // "not enough to say yet" copy, and there is no neutral word to fall back to — every
         // stand-in for a name here ("your relative", "your loved one") is exactly the phrasing
         // the placeholder exists to avoid.
@@ -1936,7 +1936,7 @@ public partial class DigestGenerationService : IDigestGenerationService
         /// model reads last, right beside the field it is about to fill.
         /// </remarks>
         [Description(
-            "2-5 sentences interpreting what today's readings mean for {{NAME}}, against the "
+            "2-5 sentences interpreting what today's readings mean for CardiTrackCardiMember, against the "
             + "usual pattern and against how much they moved. Use family answers to read those "
             + "readings; never retell them. Not a recap of every figure. "
             + "Not a restatement of the instructions.")]
@@ -1965,7 +1965,7 @@ public partial class DigestGenerationService : IDigestGenerationService
         /// </remarks>
         [Description(
             "A three-to-six-word label for the summary above, in sentence case. Names what today's "
-            + "readings show. No full stop, no quotation marks, no name and no {{NAME}}. A label, "
+            + "readings show. No full stop, no quotation marks, no name and no CardiTrackCardiMember. A label, "
             + "not a sentence.")]
         public required string Headline { get; init; }
 
@@ -1999,7 +1999,7 @@ public partial class DigestGenerationService : IDigestGenerationService
         /// one that arrives as a clinical instruction.
         /// </summary>
         [Description(
-            "Optional, and usually absent. One short question to the family about {{NAME}}'s "
+            "Optional, and usually absent. One short question to the family about CardiTrackCardiMember's "
             + "life, at most twenty words, ending in a question mark. Never a question the "
             + "family has already been asked.")]
         public string? Question { get; init; }
@@ -2028,7 +2028,7 @@ public partial class DigestGenerationService : IDigestGenerationService
         /// </remarks>
         [Description(
             "Only when a question is present: \"permanent\" if the answer is a standing fact "
-            + "about {{NAME}}; \"time-scoped\" if it only explains the present moment. Most "
+            + "about CardiTrackCardiMember; \"time-scoped\" if it only explains the present moment. Most "
             + "questions are time-scoped.")]
         public string? QuestionScope { get; init; }
     }
@@ -2047,7 +2047,7 @@ public partial class DigestGenerationService : IDigestGenerationService
     internal sealed record DaybookAiResponse
     {
         [Description(
-            "6-12 sentences giving the family an account of {{NAME}}'s whole day, in the past "
+            "6-12 sentences giving the family an account of CardiTrackCardiMember's whole day, in the past "
             + "tense, grouped as the readings are grouped. Says what was measured, what their "
             + "usual is, and where each reading sat against it and against any published band. "
             + "Not a restatement of the instructions.")]
@@ -2056,7 +2056,7 @@ public partial class DigestGenerationService : IDigestGenerationService
         [Description(
             "A five-to-seven-word qualification of the day described above, in sentence case — "
             + "what kind of day it was, never a generic label like day summary or day's "
-            + "readings. No full stop, no quotation marks, no name and no {{NAME}}. A label, "
+            + "readings. No full stop, no quotation marks, no name and no CardiTrackCardiMember. A label, "
             + "not a sentence.")]
         public required string Headline { get; init; }
 
@@ -2080,7 +2080,7 @@ public partial class DigestGenerationService : IDigestGenerationService
     internal sealed record WeekbookAiResponse
     {
         [Description(
-            "6-12 sentences giving the family an account of {{NAME}}'s whole week, in the past "
+            "6-12 sentences giving the family an account of CardiTrackCardiMember's whole week, in the past "
             + "tense. Says what moved and what held steady across the seven days, which day stood "
             + "apart and why, and how much of the week each reading covered. An account of the "
             + "week as a whole, not a list of its days. Not a restatement of the instructions.")]
@@ -2089,7 +2089,7 @@ public partial class DigestGenerationService : IDigestGenerationService
         [Description(
             "A five-to-seven-word qualification of the week described above, in sentence case — "
             + "what kind of week it was, never a generic label like weekly summary or week's "
-            + "readings. No full stop, no quotation marks, no name and no {{NAME}}. A label, "
+            + "readings. No full stop, no quotation marks, no name and no CardiTrackCardiMember. A label, "
             + "not a sentence.")]
         public required string Headline { get; init; }
 
@@ -2109,7 +2109,7 @@ public partial class DigestGenerationService : IDigestGenerationService
     internal sealed record MonthbookAiResponse
     {
         [Description(
-            "8-14 sentences giving the family an account of {{NAME}}'s whole month, in the past "
+            "8-14 sentences giving the family an account of CardiTrackCardiMember's whole month, in the past "
             + "tense. Says what held across the month and what changed within it, which week "
             + "differed from the others and how, and how much of the month each reading covered. "
             + "An account of the month as a whole, not a list of its days or its weeks. Not a "
@@ -2119,7 +2119,7 @@ public partial class DigestGenerationService : IDigestGenerationService
         [Description(
             "A five-to-seven-word qualification of the month described above, in sentence case — "
             + "what kind of month it was, never a generic label like monthly summary or month's "
-            + "readings. No full stop, no quotation marks, no name and no {{NAME}}. A label, "
+            + "readings. No full stop, no quotation marks, no name and no CardiTrackCardiMember. A label, "
             + "not a sentence.")]
         public required string Headline { get; init; }
 
