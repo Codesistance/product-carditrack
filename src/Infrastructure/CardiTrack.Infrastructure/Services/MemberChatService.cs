@@ -157,13 +157,38 @@ public class MemberChatService : IMemberChatService
         - analysis: your answer, grounded only in the data provided.
         """ + MedicalPromptBlocks.ContextGuardrail + MedicalPromptBlocks.ChatQuestionGuardrail;
 
+    /// <summary>
+    /// Turns the clinical read into the sentence the caregiver actually receives.
+    /// </summary>
+    /// <remarks>
+    /// This asked for "one short, direct reply — the answer only", and got what it asked for:
+    /// "Dad's heart rate is 72 and he took 774 steps today. He slept 372 minutes last night."
+    /// Every fact correct and nothing in it for the person reading, who is usually a son or
+    /// daughter checking on a parent between other things and is asking, underneath the question
+    /// they typed, whether they need to worry.
+    /// <para>
+    /// So the brief now asks for the reassurance or the concern to be said, not left to be
+    /// inferred from figures. Still short — warmth here is a clause, not a paragraph, and a reply
+    /// that opens by sympathising before answering wastes the one thing the caregiver came for.
+    /// The line it must not cross is unchanged and is the tone block's: this can say a reading
+    /// looks settled or worth watching, and it cannot say what is wrong with anyone or what to do
+    /// about it.
+    /// </para>
+    /// </remarks>
     private static readonly string RewriteInstructions =
         MedicalPromptBlocks.CaregiverRegister + """
 
-        Rewrite the clinical read below into one short, direct reply to the caregiver's question —
-        the answer only, not a restatement of the question and not a preamble. Write
-        CardiTrackCardiMember exactly as written wherever you would name the member; it stands in
-        for their real name.
+        Rewrite the clinical read below as a reply to the caregiver's question, in one or two
+        short sentences. Answer first — no preamble, and no restating the question.
+
+        You are writing to someone checking on a family member they love. Say what the readings
+        mean for them, not just what they were: if things look settled, say so warmly, because
+        that is the answer they were hoping for. If something is worth keeping an eye on, say that
+        plainly and without alarm. Never invent comfort the readings do not support.
+
+        Give a figure when it is the answer or when it carries the point, and say a night's sleep
+        in hours rather than minutes. Write CardiTrackCardiMember exactly as written wherever you
+        would name the member; it stands in for their real name.
         """;
 
     private readonly IMedicalAiService _medicalAi;
@@ -606,7 +631,7 @@ public class MemberChatService : IMemberChatService
                 $"--- {baseline.PeriodDays}-day baseline ---\n"
                 + $"  Avg steps: {baseline.AvgSteps?.ToString() ?? "n/a"}, "
                 + $"Avg resting HR: {baseline.AvgRestingHeartRate?.ToString() ?? "n/a"} bpm, "
-                + $"Avg sleep: {baseline.AvgSleepMinutes?.ToString() ?? "n/a"} min");
+                + $"Avg sleep: {MedicalPromptBlocks.SleepFigure((int?)baseline.AvgSleepMinutes)}");
         }
 
         if (data.UnresolvedAlerts.Count > 0)
@@ -660,7 +685,10 @@ public class MemberChatService : IMemberChatService
         }
         if (Wanted(ChartMetricKind.Sleep))
         {
-            charts.Add(new ChartSeries("Sleep (minutes)", data.RecentActivity
+            // "Sleep", not "Sleep (minutes)": minutes are how the value is stored, and naming the
+            // storage unit in the title obliged every label under it to agree. The client spells
+            // the figures in hours; the series says which reading it is.
+            charts.Add(new ChartSeries("Sleep", data.RecentActivity
                 .Where(l => l.SleepMinutes.HasValue)
                 .Select(l => new ChartPoint(l.Date, l.SleepMinutes!.Value))
                 .ToList()));

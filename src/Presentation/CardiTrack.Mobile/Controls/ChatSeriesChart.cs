@@ -244,7 +244,7 @@ public sealed class ChatChartItem
         {
             "Steps" => "MetricStepsInk",
             "Resting heart rate" => "MetricHeartInk",
-            "Sleep (minutes)" => "MetricSleepInk",
+            "Sleep" or "Sleep (minutes)" => "MetricSleepInk",
             _ => "Primary",
         };
         return MetricStatus.Resource(key, Colors.Blue);
@@ -264,7 +264,7 @@ internal static class ChatMetricFormat
     {
         "Steps" => $"{value:#,##0} steps",
         "Resting heart rate" => $"{value:0} bpm",
-        "Sleep (minutes)" => Duration(value),
+        "Sleep" or "Sleep (minutes)" => Duration(value),
         _ => value.ToString("0.#"),
     };
 
@@ -277,7 +277,7 @@ internal static class ChatMetricFormat
     {
         "Steps" => $"{value:#,##0}",
         "Resting heart rate" => $"{value:0}",
-        "Sleep (minutes)" => Duration(value),
+        "Sleep" or "Sleep (minutes)" => Duration(value),
         _ => value.ToString("0.#"),
     };
 
