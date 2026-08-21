@@ -101,6 +101,29 @@ public sealed class PopupService : IPopupService
             }
         });
 
+    public Task<QuestionPopupResult> ShowPendingQuestionAsync(
+        QuestionnaireResponse questionnaire, string? memberFirstName) =>
+        MainThread.InvokeOnMainThreadAsync(async () =>
+        {
+            var page = Microsoft.Maui.Controls.Application.Current?.Windows.FirstOrDefault()?.Page;
+            if (page is null)
+                return QuestionPopupResult.Cancelled;
+
+            // Passes itself for the popup's own "Skip this question?" confirm — nesting one more
+            // modal on top of this one, the same as any other confirm shown while a popup is open.
+            var popup = new QuestionPopupPage(questionnaire, memberFirstName, this);
+            Interlocked.Increment(ref _open);
+            try
+            {
+                await page.Navigation.PushModalAsync(popup, animated: false);
+                return await popup.Closed;
+            }
+            finally
+            {
+                Interlocked.Decrement(ref _open);
+            }
+        });
+
     // Not static: the open count it keeps is this service's own state.
     private Task<bool> ShowAsync(PopupSeverity severity, string title, string message, string confirmText, string? cancelText) =>
         MainThread.InvokeOnMainThreadAsync(async () =>

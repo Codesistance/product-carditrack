@@ -28,13 +28,18 @@ public class DashboardService : IDashboardService
     private readonly IUnitOfWork _unitOfWork;
     private readonly ICardiMemberAccessService _access;
     private readonly IProfilePhotoStorage _photoStorage;
+    private readonly IQuestionnaireService _questionnaires;
 
     public DashboardService(
-        IUnitOfWork unitOfWork, ICardiMemberAccessService access, IProfilePhotoStorage photoStorage)
+        IUnitOfWork unitOfWork,
+        ICardiMemberAccessService access,
+        IProfilePhotoStorage photoStorage,
+        IQuestionnaireService questionnaires)
     {
         _unitOfWork = unitOfWork;
         _access = access;
         _photoStorage = photoStorage;
+        _questionnaires = questionnaires;
     }
 
     public async Task<DashboardResponse> GetDashboardAsync(
@@ -99,6 +104,11 @@ public class DashboardService : IDashboardService
         var advise = isPaused ? null : await _unitOfWork.MemberAdvises.GetByCardiMemberAsync(cardiMemberId);
         var hasAdvise = advise is not null && DateTime.UtcNow - advise.GeneratedAtUtc <= AdviseStaleness.MaxAge;
 
+        // GetPendingAsync re-checks access on its own — a second round trip, since access was
+        // already required above — but a cheap one against the caller's small set of linked
+        // members, not GetForMemberAsync's whole-history load, which is the cost this avoids.
+        var pendingQuestionnaire = await _questionnaires.GetPendingAsync(requestingUserId, cardiMemberId, ct);
+
         return new DashboardResponse
         {
             CardiMemberId = member.Id,
@@ -135,6 +145,7 @@ public class DashboardService : IDashboardService
             Metrics = metrics,
             Weather = WeatherSnapshotMapper.From(
                 member.EnvironmentalContextConsentGranted, environmentalReading),
+            PendingQuestionnaire = pendingQuestionnaire,
             // Unresolved only, newest first. This strip used to be built from every alert whose
             // row was still IsActive — which is the soft-delete flag, and nothing about an
             // episode ending touches it. Acknowledging records who looked and resolution closes

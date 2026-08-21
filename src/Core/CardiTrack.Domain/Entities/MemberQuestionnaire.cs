@@ -88,6 +88,27 @@ public class MemberQuestionnaire : BaseEntity
     public DateTime? AskableUntilUtc { get; set; }
 
     /// <summary>
+    /// How many pushes have gone out for this question — the original ask plus any reminders.
+    /// Zero until <c>QuestionnaireAlertWorker</c>'s first sweep. Capped at
+    /// <c>QuestionnaireAlertWorker.MaxPushes</c> so a <see cref="QuestionnaireScope.Permanent"/>
+    /// question, which never lapses on its own, cannot nag a family forever.
+    /// </summary>
+    public int ReminderCount { get; set; }
+
+    /// <summary>
+    /// When this question was last attempted — not strictly "last successful push": if that
+    /// attempt reached no caregiver (everyone has <c>ReceiveAlerts</c> off), the claim's release
+    /// still stamps this to back the row off for a full reminder interval rather than retrying
+    /// every sweep tick, the same as a real push would. Null only until the very first attempt.
+    /// <c>QuestionnaireAlertWorker</c> reads this both to find questions due for another attempt
+    /// and, via a conditional update keyed on <see cref="ReminderCount"/>, to claim one before
+    /// acting on it — the same claim-then-send discipline <c>NotificationDispatchWorker</c> uses,
+    /// since the Worker runs several instances and a plain read-then-write here would risk a
+    /// duplicate push.
+    /// </summary>
+    public DateTime? LastRemindedAtUtc { get; set; }
+
+    /// <summary>
     /// Whether this is a question that has stopped being worth asking: still waiting on the family,
     /// and past the moment it was about.
     /// </summary>

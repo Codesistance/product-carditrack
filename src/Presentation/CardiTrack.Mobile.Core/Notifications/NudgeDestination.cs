@@ -10,6 +10,10 @@ public enum NudgeDestinationKind
     MemberEdit,
     MemberDevices,
     MemberBaseline,
+
+    /// <summary>A push-originated question — <c>carditrack://cardimembers/{memberId}/questions</c>,
+    /// from FcmNotificationChannel's Questionnaire deep link.</summary>
+    MemberQuestions,
     Settings,
 
     /// <summary>A push-originated alert (Safety/Health) — <c>carditrack://alerts/{alertId}</c>, from FcmNotificationChannel's content-free payload.</summary>
@@ -82,6 +86,9 @@ public static class NudgeLinkParser
 
             ["cardimembers", var id, "devices", ..] when Guid.TryParse(id, out var forDevices)
                 => new(NudgeDestinationKind.MemberDevices, forDevices),
+
+            ["cardimembers", var id, "questions", ..] when Guid.TryParse(id, out var forQuestions)
+                => new(NudgeDestinationKind.MemberQuestions, forQuestions),
 
             ["cardimembers", var id, "edit"] when Guid.TryParse(id, out var forEdit)
                 => new(NudgeDestinationKind.MemberEdit, forEdit),

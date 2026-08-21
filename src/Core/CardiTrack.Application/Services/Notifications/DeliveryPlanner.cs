@@ -45,6 +45,10 @@ public static class DeliveryPlanner
             // Nudges never push except the two safety-class rules, which arrive as
             // DeliveryCategory.Safety already — a Nudge-category row is always in-app.
             DeliveryCategory.Nudge => false,
+            // A question is an invitation, not an anomaly, so it never overrides quiet hours (see
+            // overridesQuietHours below) — but it must reach the family, so unlike a Nudge it does
+            // push.
+            DeliveryCategory.Questionnaire => true,
             _ => false
         };
 
@@ -56,8 +60,9 @@ public static class DeliveryPlanner
         DateTime? scheduledFor = null;
         if (pushes && !overridesQuietHours && context.IsWithinQuietHours)
         {
-            // Orange Health defers to the end of quiet hours; nothing else reaches this branch,
-            // since Safety and red Health already overrode above.
+            // Orange Health and Questionnaire defer to the end of quiet hours; nothing else
+            // reaches this branch, since Safety and red Health already overrode above, and Nudge
+            // never pushes at all.
             scheduledFor = context.QuietHoursEndUtc;
         }
 

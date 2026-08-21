@@ -21,6 +21,8 @@ public class DispatchServiceTests
     private readonly INotificationGapResolver _gapResolver = Substitute.For<INotificationGapResolver>();
     private readonly IPushDeviceTokenRepository _tokens = Substitute.For<IPushDeviceTokenRepository>();
     private readonly INotificationDeliveryRepository _deliveries = Substitute.For<INotificationDeliveryRepository>();
+    private readonly IMemberQuestionnaireRepository _questionnaires = Substitute.For<IMemberQuestionnaireRepository>();
+    private readonly IUserCardiMemberRepository _links = Substitute.For<IUserCardiMemberRepository>();
 
     private readonly FixedTimeProvider _timeProvider = new(new DateTimeOffset(2026, 8, 11, 12, 0, 0, TimeSpan.Zero));
     private readonly Guid _tokenId = Guid.NewGuid();
@@ -29,6 +31,8 @@ public class DispatchServiceTests
     {
         _unitOfWork.PushDeviceTokens.Returns(_tokens);
         _unitOfWork.NotificationDeliveries.Returns(_deliveries);
+        _unitOfWork.MemberQuestionnaires.Returns(_questionnaires);
+        _unitOfWork.UserCardiMembers.Returns(_links);
         _tokens.GetByIdAsync(_tokenId).Returns(new PushDeviceToken
         {
             Id = _tokenId,
@@ -128,6 +132,91 @@ public class DispatchServiceTests
         await CreateSut().RetryClaimedAsync(delivery);
 
         await _channel.DidNotReceiveWithAnyArgs().SendAsync(default!, default!, default);
+    }
+
+    // ── EnqueueForQuestionnaireAsync ────────────────────────────────────────
+
+    private static MemberQuestionnaire Questionnaire(
+        QuestionnaireStatus status = QuestionnaireStatus.Pending, DateTime? askableUntilUtc = null) => new()
+        {
+            Id = Guid.NewGuid(),
+            CardiMemberId = Guid.NewGuid(),
+            QuestionText = "Has anything changed at home recently?",
+            Status = status,
+            GeneratedAtUtc = DateTime.UtcNow,
+            AskableUntilUtc = askableUntilUtc,
+        };
+
+    private static UserCardiMember Caregiver(Guid cardiMemberId, bool receiveAlerts = true, bool isActive = true) => new()
+    {
+        UserId = Guid.NewGuid(),
+        CardiMemberId = cardiMemberId,
+        IsActive = isActive,
+        ReceiveAlerts = receiveAlerts,
+    };
+
+    [Fact]
+    public async Task EnqueueForQuestionnaireAsync_DispatchesToEveryCaregiverWithReceiveAlerts()
+    {
+        var questionnaire = Questionnaire();
+        var wanted = Caregiver(questionnaire.CardiMemberId);
+        var optedOut = Caregiver(questionnaire.CardiMemberId, receiveAlerts: false);
+        var inactive = Caregiver(questionnaire.CardiMemberId, isActive: false);
+
+        _questionnaires.GetByIdAsync(questionnaire.Id).Returns(questionnaire);
+        _links.GetByCardiMemberIdAsync(questionnaire.CardiMemberId)
+            .Returns([wanted, optedOut, inactive]);
+
+        var results = await CreateSut().EnqueueForQuestionnaireAsync(questionnaire.Id, occurrence: 0);
+
+        var delivery = Assert.Single(results);
+        Assert.Equal(wanted.UserId, delivery.UserId);
+        Assert.Equal(DeliverySourceType.Questionnaire, delivery.SourceType);
+        Assert.Equal(DeliveryCategory.Questionnaire, delivery.Category);
+    }
+
+    [Fact]
+    public async Task EnqueueForQuestionnaireAsync_ReturnsEmpty_WhenNoCaregiverReceivesAlerts()
+    {
+        var questionnaire = Questionnaire();
+        _questionnaires.GetByIdAsync(questionnaire.Id).Returns(questionnaire);
+        _links.GetByCardiMemberIdAsync(questionnaire.CardiMemberId)
+            .Returns([Caregiver(questionnaire.CardiMemberId, receiveAlerts: false)]);
+
+        var results = await CreateSut().EnqueueForQuestionnaireAsync(questionnaire.Id, occurrence: 0);
+
+        Assert.Empty(results);
+    }
+
+    /// <summary>
+    /// This is a shared entry point, not one only QuestionnaireAlertWorker's guarded claim can
+    /// reach — a caller that skips the claim (or one that races it) must not still get a push for
+    /// a question that has already been answered.
+    /// </summary>
+    [Fact]
+    public async Task EnqueueForQuestionnaireAsync_ReturnsEmpty_WhenNoLongerPending()
+    {
+        var questionnaire = Questionnaire(QuestionnaireStatus.Answered);
+        _questionnaires.GetByIdAsync(questionnaire.Id).Returns(questionnaire);
+        _links.GetByCardiMemberIdAsync(questionnaire.CardiMemberId)
+            .Returns([Caregiver(questionnaire.CardiMemberId)]);
+
+        var results = await CreateSut().EnqueueForQuestionnaireAsync(questionnaire.Id, occurrence: 0);
+
+        Assert.Empty(results);
+        await _links.DidNotReceiveWithAnyArgs().GetByCardiMemberIdAsync(default);
+    }
+
+    [Fact]
+    public async Task EnqueueForQuestionnaireAsync_ReturnsEmpty_WhenLapsed()
+    {
+        var questionnaire = Questionnaire(
+            askableUntilUtc: _timeProvider.GetUtcNow().UtcDateTime.AddMinutes(-1));
+        _questionnaires.GetByIdAsync(questionnaire.Id).Returns(questionnaire);
+
+        var results = await CreateSut().EnqueueForQuestionnaireAsync(questionnaire.Id, occurrence: 0);
+
+        Assert.Empty(results);
     }
 
     private sealed class FixedTimeProvider(DateTimeOffset now) : TimeProvider

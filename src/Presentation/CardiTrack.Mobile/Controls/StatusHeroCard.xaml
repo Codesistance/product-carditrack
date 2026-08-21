@@ -21,7 +21,7 @@
         </Grid.GestureRecognizers>
 
         <Grid Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="2"
-              ColumnDefinitions="*,Auto,Auto,Auto" ColumnSpacing="8">
+              ColumnDefinitions="*,Auto,Auto,Auto,Auto" ColumnSpacing="8">
             <Label x:Name="NameLabel"
                    Grid.Column="0"
                    Style="{StaticResource Heading2}"
@@ -67,7 +67,63 @@
                        HorizontalOptions="Center" VerticalOptions="Center"/>
             </Border>
 
-            <Border Grid.Column="3"
+            <!-- Beside the Daybook button, only while a question is waiting on this family (see
+                 Apply/ApplyPendingQuestionnaire). The ring pulses behind the icon rather than
+                 growing past it, the way PendingBotIndicator's does — this button sits in a tight
+                 row with Alerts beside it, with no room to spill into. -->
+            <Ellipse x:Name="QaPulseRing"
+                     Grid.Column="3"
+                     WidthRequest="34" HeightRequest="34"
+                     HorizontalOptions="Center" VerticalOptions="Center"
+                     Stroke="{StaticResource Primary}"
+                     StrokeThickness="2"
+                     Opacity="0"
+                     IsVisible="False"
+                     InputTransparent="True"/>
+
+            <Border x:Name="QaBorder"
+                    Grid.Column="3"
+                    WidthRequest="36" HeightRequest="36"
+                    StrokeThickness="0"
+                    BackgroundColor="{StaticResource SelectedOptionBackground}"
+                    VerticalOptions="Center"
+                    IsVisible="False"
+                    SemanticProperties.Description="Questions"
+                    SemanticProperties.Hint="Opens the question waiting on this CardiMember">
+                <Border.StrokeShape>
+                    <RoundRectangle CornerRadius="18"/>
+                </Border.StrokeShape>
+                <Border.GestureRecognizers>
+                    <TapGestureRecognizer Tapped="OnQaTapped"/>
+                </Border.GestureRecognizers>
+                <Image Source="icon_tab_qa.svg"
+                       WidthRequest="20" HeightRequest="20"
+                       HorizontalOptions="Center" VerticalOptions="Center"/>
+            </Border>
+
+            <!-- Superscript count, same construction as DashboardHeader's BellBadge. Always "1"
+                 today — at most one pending question per member — but a number rather than a dot
+                 so it reads the same way if that ever stops being true. -->
+            <Border x:Name="QaBadge"
+                    Grid.Column="3"
+                    IsVisible="False"
+                    BackgroundColor="{StaticResource StatusRed}"
+                    StrokeThickness="0"
+                    WidthRequest="18" HeightRequest="18"
+                    HorizontalOptions="End" VerticalOptions="Start"
+                    TranslationX="6" TranslationY="-6"
+                    InputTransparent="True">
+                <Border.StrokeShape>
+                    <RoundRectangle CornerRadius="9"/>
+                </Border.StrokeShape>
+                <Label x:Name="QaBadgeLabel"
+                       FontSize="10"
+                       FontFamily="QuicksandSemiBold"
+                       TextColor="{StaticResource White}"
+                       HorizontalOptions="Center" VerticalOptions="Center"/>
+            </Border>
+
+            <Border Grid.Column="4"
                     WidthRequest="36" HeightRequest="36"
                     StrokeThickness="0"
                     BackgroundColor="{StaticResource SelectedOptionBackground}"

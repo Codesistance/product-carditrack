@@ -30,6 +30,9 @@ public static class DeepLinkRouter
             NudgeDestinationKind.MemberDevices when destination.CardiMemberId is { } d
                 => $"{DeviceManagementPage.Route}?memberId={d}",
 
+            NudgeDestinationKind.MemberQuestions when destination.CardiMemberId is { } q
+                => $"{QuestionnairesPage.Route}?memberId={q}",
+
             NudgeDestinationKind.MemberEdit when destination.CardiMemberId is { } e
                 => $"{EditCardiMemberPage.Route}?memberId={e}",
 

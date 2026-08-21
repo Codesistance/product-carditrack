@@ -86,6 +86,17 @@ public class QuestionnaireService : IQuestionnaireService
         };
     }
 
+    public async Task<QuestionnaireResponse?> GetPendingAsync(
+        Guid requestingUserId, Guid cardiMemberId, CancellationToken ct = default)
+    {
+        await _access.RequireViewAccessAsync(requestingUserId, cardiMemberId, ct);
+
+        var pending = await _unitOfWork.MemberQuestionnaires.GetPendingAsync(
+            cardiMemberId, DateTime.UtcNow, ct);
+
+        return pending is null ? null : ToResponse(pending);
+    }
+
     public async Task<QuestionnaireResponse> AnswerAsync(
         Guid requestingUserId, Guid questionnaireId, string answerText, CancellationToken ct = default)
     {

@@ -1,0 +1,9 @@
+<!-- Same 24-unit box, #939DAA stroke and 2-unit weight as icon_tab_journal.svg, so the two
+     buttons beside each other read as one set. A plain question mark in a ring — nothing about
+     chat or a person, since this opens one specific asked question, not a conversation. -->
+<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <circle cx="12" cy="12" r="9" stroke="#939DAA" stroke-width="2"/>
+  <path d="M9.5 9.5c0-1.5 1.2-2.5 2.6-2.5s2.6 1 2.6 2.3c0 1.1-0.7 1.7-1.5 2.2-0.8 0.5-1.2 0.9-1.2 1.8"
+        stroke="#939DAA" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="12" cy="16.5" r="1" fill="#939DAA"/>
+</svg>

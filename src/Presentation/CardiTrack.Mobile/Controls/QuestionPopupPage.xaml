@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:controls="clr-namespace:CardiTrack.Mobile.Controls"
+             x:Class="CardiTrack.Mobile.Controls.QuestionPopupPage"
+             BackgroundColor="Transparent">
+
+    <!-- Same shell as WeatherPopupPage/AppPopupPage (scrim, card, entry animation). The "Card"
+         Border here is transparent and carries no chrome of its own — QuestionCard already draws
+         its own white, shadowed, rounded surface, and doubling that chrome around it would be the
+         same mistake QuestionCard's own comment warns against for the page behind it. -->
+    <Grid x:Name="Scrim" BackgroundColor="#80343434" Opacity="0">
+        <Grid.GestureRecognizers>
+            <TapGestureRecognizer Tapped="OnScrimTapped"/>
+        </Grid.GestureRecognizers>
+
+        <Border x:Name="Card"
+                BackgroundColor="Transparent"
+                StrokeThickness="0"
+                Padding="0"
+                Margin="24,0"
+                Scale="0.92"
+                HorizontalOptions="Center"
+                VerticalOptions="Center">
+            <Border.GestureRecognizers>
+                <!-- Swallows taps so they don't fall through to the scrim. -->
+                <TapGestureRecognizer/>
+            </Border.GestureRecognizers>
+
+            <controls:QuestionCard x:Name="Question"/>
+        </Border>
+    </Grid>
+</ContentPage>

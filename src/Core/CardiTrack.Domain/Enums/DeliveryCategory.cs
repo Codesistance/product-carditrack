@@ -3,19 +3,20 @@ using System.ComponentModel.DataAnnotations;
 namespace CardiTrack.Domain.Enums;
 
 /// <summary>
-/// The three-way split that drives delivery behaviour: whether it pushes, whether quiet hours
-/// apply, whether it escalates, whether it may be silenced (notification_engine.md §3).
+/// The split that drives delivery behaviour: whether it pushes, whether quiet hours apply,
+/// whether it escalates, whether it may be silenced (notification_engine.md §3).
 /// </summary>
 /// <remarks>
 /// Deliberately distinct from <see cref="NotificationCategory"/>, which sub-categorises
 /// <see cref="Entities.Notification"/> rows only (Safety/Blocking/Unlock/Account, for nudge
 /// silencing rules) and has no meaning for an <see cref="Entities.Alert"/>. A
-/// <see cref="Entities.NotificationDelivery"/> row is polymorphic over both sources, so its
-/// category has to mean something for either one: a Safety-class <see cref="NotificationCategory"/>
+/// <see cref="Entities.NotificationDelivery"/> row is polymorphic over three sources, so its
+/// category has to mean something for each: a Safety-class <see cref="NotificationCategory"/>
 /// notification maps to <see cref="Safety"/>; every <see cref="Entities.Alert"/> maps to
 /// <see cref="Health"/> regardless of <see cref="AlertSeverity"/> (severity drives push-vs-in-app
-/// and quiet-hours override within Health, not the category itself); everything else nudge-shaped
-/// maps to <see cref="Nudge"/>.
+/// and quiet-hours override within Health, not the category itself); nudge-shaped notifications map
+/// to <see cref="Nudge"/>; every <see cref="Entities.MemberQuestionnaire"/> maps to
+/// <see cref="Questionnaire"/>.
 /// </remarks>
 public enum DeliveryCategory
 {
@@ -29,5 +30,11 @@ public enum DeliveryCategory
 
     /// <summary>A data gap the user can close. In-app only except the two safety-class nudge rules; never escalates.</summary>
     [Display(Name = "Nudge")]
-    Nudge = 3
+    Nudge = 3,
+
+    /// <summary>A question the service is asking the family. Pushes, deferred (not overridden) by
+    /// quiet hours like orange Health; never escalates — QuestionnaireAlertWorker's own reminder
+    /// cadence is what re-alerts an unanswered one, not the escalation ladder.</summary>
+    [Display(Name = "Questionnaire")]
+    Questionnaire = 4
 }

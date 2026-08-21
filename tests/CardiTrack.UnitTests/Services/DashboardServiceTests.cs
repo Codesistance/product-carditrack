@@ -1,4 +1,5 @@
 using CardiTrack.Application.Interfaces.Repositories;
+using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Application.Services;
 using CardiTrack.Domain.Entities;
 using CardiTrack.Domain.Enums;
@@ -20,6 +21,7 @@ public class DashboardServiceTests
     private readonly IMemberAdviseRepository _advises = Substitute.For<IMemberAdviseRepository>();
     private readonly CardiTrack.Application.Interfaces.Clients.IProfilePhotoStorage _photoStorage =
         Substitute.For<CardiTrack.Application.Interfaces.Clients.IProfilePhotoStorage>();
+    private readonly IQuestionnaireService _questionnaires = Substitute.For<IQuestionnaireService>();
 
     private readonly Guid _userId = Guid.NewGuid();
     private readonly Guid _memberId = Guid.NewGuid();
@@ -62,7 +64,7 @@ public class DashboardServiceTests
     // (active + CanViewHealthData) now live in CardiMemberAccessService, so substituting it away
     // would leave nothing asserting that the dashboard is actually gated.
     private DashboardService CreateSut() =>
-        new(_unitOfWork, new CardiMemberAccessService(_unitOfWork), _photoStorage);
+        new(_unitOfWork, new CardiMemberAccessService(_unitOfWork), _photoStorage, _questionnaires);
 
     private void SetupLink(bool canViewHealthData, bool isActive = true)
     {

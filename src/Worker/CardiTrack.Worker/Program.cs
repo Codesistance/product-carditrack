@@ -116,6 +116,11 @@ builder.Services.AddWorker<StatisticalAlertWorker>(configuration, nameof(Statist
 // whose family never opened the app.
 builder.Services.AddWorker<QuestionnaireExpiryWorker>(configuration, nameof(QuestionnaireExpiryWorker));
 
+// Pushes a newly generated question, and re-alerts a bounded number of times while it stays
+// unanswered — DigestGenerationService (Pipeline) only ever writes the row; this Worker is the
+// only host with push services registered, so it is what turns the row into an alert.
+builder.Services.AddWorker<QuestionnaireAlertWorker>(configuration, nameof(QuestionnaireAlertWorker));
+
 // Self-heal: a connection the provider refused is out of the sync rotation for good, so it needs
 // a pass of its own to find out whether it can come back (DeviceAuthRecoveryService).
 builder.Services.AddWorker<DeviceAuthRecoveryWorker>(configuration, nameof(DeviceAuthRecoveryWorker));
