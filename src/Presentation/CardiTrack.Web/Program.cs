@@ -69,6 +69,7 @@ try
     builder.Services.AddScoped<IMemberChatSessionRepository, MemberChatSessionRepository>();
     builder.Services.AddScoped<IMemberChatTurnRepository, MemberChatTurnRepository>();
     builder.Services.AddScoped<IMemberChatTurnUsageRepository, MemberChatTurnUsageRepository>();
+    builder.Services.AddScoped<IMemberStatusLineRepository, MemberStatusLineRepository>();
     builder.Services.AddPushRepositories();
     builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
     builder.Services.AddScoped<IUserService, UserService>();

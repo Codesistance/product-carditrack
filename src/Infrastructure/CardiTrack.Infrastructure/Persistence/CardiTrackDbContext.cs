@@ -50,6 +50,9 @@ public class CardiTrackDbContext : DbContext
     public DbSet<MemberChatTurn> MemberChatTurns => Set<MemberChatTurn>();
     public DbSet<MemberChatTurnUsage> MemberChatTurnUsages => Set<MemberChatTurnUsage>();
 
+    // Dashboard status line (batch-generated, API-served)
+    public DbSet<MemberStatusLine> MemberStatusLines => Set<MemberStatusLine>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);

@@ -168,7 +168,41 @@ public class DigestGenerationServiceTests
 
     private DigestGenerationService CreateSut() =>
         new(_unitOfWork, _medicalAi, PromptContextFactory.Composer(_unitOfWork),
-            PromptContextFactory.Encryption, NullLogger<DigestGenerationService>.Instance);
+            PromptContextFactory.Encryption, InertStatusLineGenerator.Create(),
+            NullLogger<DigestGenerationService>.Instance);
+
+    /// <summary>
+    /// The one integration pin on the batch hook: a stored digest regenerates the member's
+    /// persisted status line, on the same pass. Uses a real generator over the shared substitutes
+    /// (every other test in this suite uses the inert one so its call counts stay the digest's own).
+    /// </summary>
+    [Fact]
+    public async Task SuccessfulDigest_RegeneratesTheStatusLine()
+    {
+        var statusLines = Substitute.For<IMemberStatusLineRepository>();
+        statusLines.GetByCardiMemberAsync(_memberId).Returns((MemberStatusLine?)null);
+        _unitOfWork.MemberStatusLines.Returns(statusLines);
+        _medicalAi.GenerateStructuredAsync<StatusLineGenerationService.CurrentStatusAiResponse>(
+                Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new StatusLineGenerationService.CurrentStatusAiResponse
+            {
+                Headline = "All steady",
+                Message = "Steady today.",
+            });
+        var sut = new DigestGenerationService(
+            _unitOfWork, _medicalAi, PromptContextFactory.Composer(_unitOfWork),
+            PromptContextFactory.Encryption,
+            new StatusLineGenerationService(
+                _unitOfWork, _medicalAi, PromptContextFactory.Composer(_unitOfWork),
+                NullLogger<StatusLineGenerationService>.Instance),
+            NullLogger<DigestGenerationService>.Instance);
+
+        var generated = await sut.GenerateDueDigestsAsync(UtcNow);
+
+        Assert.Equal(1, generated);
+        await statusLines.Received(1).AddAsync(Arg.Is<MemberStatusLine>(s =>
+            s.CardiMemberId == _memberId && s.Message == "Steady today."));
+    }
 
     [Fact]
     public async Task Generates_ForAMemberWithNoSummaryYet()

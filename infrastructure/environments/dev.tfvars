@@ -37,9 +37,12 @@ worker_cloud_run_memory = "1Gi"
 # 512 Mi default with no VPC attachment, and Terraform would then collide with it.
 medgemma_image = "us-docker.pkg.dev/cloudrun/container/hello"
 
-# Kept warm, which the default (0) does not do. MedGemma is on a latency-sensitive path —
-# the Dashboard's status line is generated inside the request a caregiver is waiting on — and
-# scaling to zero makes that path pay a cold start: the image pull plus the ~59s model load.
+# Kept warm, which the default (0) does not do. The original justification — the Dashboard's
+# status line generating inside the request a caregiver is waiting on — ended with the batch
+# move (StatusLineGenerationService, 2026-08-21): that line is now a persisted row the pipeline
+# regenerates. What remains latency-sensitive is the on-demand alert/baseline insight
+# endpoints (~13 calls/day), and scaling to zero makes them pay a cold start: the image pull
+# plus the ~59s model load. Candidate to drop with the Option B GPU move.
 #
 # It buys nothing beyond that, and the second half of this comment used to claim otherwise: that
 # a dead instance "takes its prefix cache with it". There is no prefix cache to lose. Gemma 3

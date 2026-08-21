@@ -6,7 +6,6 @@ using CardiTrack.Application.Services;
 using CardiTrack.Domain.Entities;
 using CardiTrack.Domain.Enums;
 using CardiTrack.Infrastructure.Services.PromptContext;
-using Microsoft.Extensions.Caching.Distributed;
 using Microsoft.Extensions.Logging;
 
 namespace CardiTrack.Infrastructure.Services;
@@ -85,7 +84,7 @@ public class RealtimeAssessmentService : IRealtimeAssessmentService
     private readonly ISsaDecomposition _ssa;
     private readonly IMedicalAiService _medicalAi;
     private readonly MemberContextComposer _memberContext;
-    private readonly IDistributedCache _cache;
+    private readonly StatusLineGenerationService _statusLine;
     private readonly ILogger<RealtimeAssessmentService> _logger;
     private readonly IAlertNotificationEnqueue? _alertEnqueue;
 
@@ -94,7 +93,7 @@ public class RealtimeAssessmentService : IRealtimeAssessmentService
         ISsaDecomposition ssa,
         IMedicalAiService medicalAi,
         MemberContextComposer memberContext,
-        IDistributedCache cache,
+        StatusLineGenerationService statusLine,
         ILogger<RealtimeAssessmentService> logger,
         IAlertNotificationEnqueue? alertEnqueue = null)
     {
@@ -102,9 +101,30 @@ public class RealtimeAssessmentService : IRealtimeAssessmentService
         _ssa = ssa;
         _medicalAi = medicalAi;
         _memberContext = memberContext;
-        _cache = cache;
+        _statusLine = statusLine;
         _logger = logger;
         _alertEnqueue = alertEnqueue;
+    }
+
+    /// <summary>
+    /// Regenerates the member's persisted status line after this pass changed the tier it
+    /// describes — the batch-side replacement for the cache invalidation that served the same
+    /// purpose when the line was request-generated. Best-effort with a log: the alert or
+    /// resolution that triggered this is already stored, and a status-line failure must not
+    /// unwind it or fail the member's assessment.
+    /// </summary>
+    private async Task RegenerateStatusLineAsync(Guid memberId, CancellationToken ct)
+    {
+        try
+        {
+            await _statusLine.RegenerateAsync(memberId, ct);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogError(ex,
+                "Status line regeneration failed for CardiMember {CardiMemberId}; the assessment outcome was stored.",
+                memberId);
+        }
     }
 
     public async Task<int> AssessDueMembersAsync(DateTime utcNow, CancellationToken ct = default)
@@ -278,9 +298,10 @@ public class RealtimeAssessmentService : IRealtimeAssessmentService
         {
             await _unitOfWork.SaveChangesAsync();
 
-            // The dashboard's live status line may have been generated while this alert was
-            // still open, so it can go on describing a tier the member has since left.
-            await _cache.RemoveAsync(DashboardStatusCacheKey.For(memberId), ct);
+            // The persisted status line may have been generated while this alert was still open,
+            // so it can go on describing a tier the member has since left — regenerate it now
+            // that the tier moved, model already warm from this pass.
+            await RegenerateStatusLineAsync(memberId, ct);
         }
     }
 
@@ -320,7 +341,10 @@ public class RealtimeAssessmentService : IRealtimeAssessmentService
         };
         await _unitOfWork.Alerts.AddAsync(alert);
         await _unitOfWork.SaveChangesAsync();
-        await _cache.RemoveAsync(DashboardStatusCacheKey.For(assessment.CardiMemberId), ct);
+        // A freshly-raised alert is the freshest thing the status line can describe — MS-7's
+        // resolution: the alert and its line land in the same pass, so no on-demand fast path
+        // is needed for the hero card.
+        await RegenerateStatusLineAsync(assessment.CardiMemberId, ct);
 
         // Transport, not a copy of the send stack: the API's internal enqueue endpoint runs
         // the same DispatchService the Worker uses. A failed POST must not roll back the

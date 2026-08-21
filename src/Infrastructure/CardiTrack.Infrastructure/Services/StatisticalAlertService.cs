@@ -4,7 +4,6 @@ using CardiTrack.Application.Services;
 using CardiTrack.Application.Services.Notifications;
 using CardiTrack.Domain.Entities;
 using CardiTrack.Domain.Extensions;
-using Microsoft.Extensions.Caching.Distributed;
 using Microsoft.Extensions.Logging;
 
 namespace CardiTrack.Infrastructure.Services;
@@ -27,18 +26,15 @@ public class StatisticalAlertService : IStatisticalAlertService
 {
     private readonly IUnitOfWork _unitOfWork;
     private readonly IDispatchService _dispatch;
-    private readonly IDistributedCache _cache;
     private readonly ILogger<StatisticalAlertService> _logger;
 
     public StatisticalAlertService(
         IUnitOfWork unitOfWork,
         IDispatchService dispatch,
-        IDistributedCache cache,
         ILogger<StatisticalAlertService> logger)
     {
         _unitOfWork = unitOfWork;
         _dispatch = dispatch;
-        _cache = cache;
         _logger = logger;
     }
 
@@ -199,11 +195,11 @@ public class StatisticalAlertService : IStatisticalAlertService
         {
             await _unitOfWork.SaveChangesAsync();
 
-            // A newly-raised alert can move the member's severity tier, and the dashboard's live
-            // status line was generated (and cached for up to 15 minutes) against whatever tier
-            // was current when it last ran — without this a caregiver can see a fresh warning
-            // badge sitting over a stale "everything looks steady" sentence.
-            await _cache.RemoveAsync(DashboardStatusCacheKey.For(memberId), ct);
+            // A newly-raised alert can move the member's severity tier, and the persisted status
+            // line was generated against whatever tier was current when the pipeline last ran.
+            // The Worker cannot regenerate it (no medical model here by design), so the line
+            // catches up on the next digest/assess pass — minutes, against copy whose old cache
+            // TTL already tolerated fifteen.
 
             // Push dispatch (notification_engine.md Phase 3) — the same direct-service-call
             // pattern INotificationGapResolver already establishes, not a domain event (this

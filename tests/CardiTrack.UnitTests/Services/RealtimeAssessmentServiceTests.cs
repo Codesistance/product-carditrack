@@ -28,7 +28,6 @@ public class RealtimeAssessmentServiceTests
     private readonly IAlertRepository _alerts = Substitute.For<IAlertRepository>();
     private readonly IAlertPreferenceRepository _alertPreferences = Substitute.For<IAlertPreferenceRepository>();
     private readonly IMedicalAiService _medicalAi = Substitute.For<IMedicalAiService>();
-    private readonly IDistributedCache _cache = Substitute.For<IDistributedCache>();
     private readonly IAlertNotificationEnqueue _enqueue = Substitute.For<IAlertNotificationEnqueue>();
 
     private readonly Guid _memberId = Guid.NewGuid();
@@ -117,8 +116,8 @@ public class RealtimeAssessmentServiceTests
     }
 
     private RealtimeAssessmentService CreateSut() =>
-        new(_unitOfWork, new SsaDecomposition(), _medicalAi, PromptContextFactory.Composer(_unitOfWork), _cache,
-            NullLogger<RealtimeAssessmentService>.Instance, _enqueue);
+        new(_unitOfWork, new SsaDecomposition(), _medicalAi, PromptContextFactory.Composer(_unitOfWork),
+            InertStatusLineGenerator.Create(), NullLogger<RealtimeAssessmentService>.Instance, _enqueue);
 
     [Fact]
     public async Task AFullFreshHour_IsAssessed_AndStoredUnderItsWindowStart()
