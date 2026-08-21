@@ -49,11 +49,18 @@ close.
    does not exist — the project-scoped path above is the real one, and it needs
    `aiplatform.cacheConfigs.*`, which only owner identities hold.)
 
-2. **Abuse-monitoring prompt logging opt-out — ⚠ STILL OPEN.** Google may log prompts for abuse
-   monitoring for customers **without** invoiced billing. Either confirm the billing account is
-   invoiced (then no action), or file the
-   [abuse-monitoring exception request](https://cloud.google.com/vertex-ai/generative-ai/docs/data-governance)
-   for the project. Record which applies and when, here.
+2. **Abuse-monitoring prompt logging opt-out — ⚠ EXCEPTION REQUEST REQUIRED, not yet filed.**
+   Google may log prompts for abuse monitoring for customers **without** invoiced billing.
+   **Determined 2026-08-21 (owner, billing console):** the billing account
+   (`01D957-C56D9C-17BCCB`, Codesistance Ltd) is **self-serve** (Postpay, card-paid), not
+   invoiced — so the project IS in scope for prompt logging until the exception is approved.
+   Action: file the exception request via the form linked from
+   [Abuse monitoring](https://cloud.google.com/vertex-ai/generative-ai/docs/learn/abuse-monitoring)
+   ("customers may request an exception by filling out this form"), for project
+   `carditrack-490120` / the billing account above. On approval, Google clears prompts,
+   responses and identifiable metadata prior to logging. Record the filing date and the
+   approval here when they happen. Until approval, the honest posture is: cache disabled (item
+   1), prompt logging for abuse monitoring possible.
 
 3. **No-training terms.** Google's Vertex AI data-governance commitment (customer data not used to
    train foundation models) applies by default under the Cloud Data Processing Addendum — confirm
