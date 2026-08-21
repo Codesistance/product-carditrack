@@ -284,6 +284,8 @@ public partial class JournalPage : ContentPage
 
         _memberId = _members[index].Id;
         _memberFirstName = NameFormatting.FirstName(_members[index].Name);
+        ChatBot.MemberId = _memberId;
+        ChatBot.MemberFirstName = _memberFirstName;
         MemberChipLabel.Text = choice;
         await LoadAsync();
     }
@@ -314,6 +316,8 @@ public partial class JournalPage : ContentPage
                 {
                     _memberId = chosen.Id;
                     _memberFirstName = NameFormatting.FirstName(chosen.Name);
+                    ChatBot.MemberId = _memberId;
+                    ChatBot.MemberFirstName = _memberFirstName;
                     MemberChipLabel.Text = _memberFirstName ?? "Member";
                     MemberChip.IsVisible = _members.Count > 1;
                 }

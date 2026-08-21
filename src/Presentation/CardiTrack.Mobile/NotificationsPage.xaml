@@ -126,5 +126,9 @@
                 </Grid>
             </ScrollView>
         </RefreshView>
+
+        <!-- Chat from anywhere: notifications span members, so the launcher resolves the
+             account's members itself on tap — see ChatBotLauncher. -->
+        <controls:ChatBotLauncher Grid.Row="1"/>
     </Grid>
 </ContentPage>

@@ -144,6 +144,8 @@ public partial class QuestionnairesPage : ContentPage
     /// shorter one.</param>
     private async Task LoadAsync(bool showSkeleton, bool resetScroll = false)
     {
+        ChatBot.MemberId = _memberId;
+        ChatBot.MemberFirstName = NameFormatting.FirstName(_memberName);
         var generation = ++_loadGeneration;
         if (showSkeleton)
             SetState(loading: true);

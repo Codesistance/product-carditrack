@@ -268,5 +268,8 @@
         <!-- M1-13/M1-14/M1-15 all show the bottom nav in Figma, and these pages sit on
              top of the Dashboard tab. Tapping Home here pops back down to it. -->
         <controls:BottomNavBar Grid.Row="2" Tab="Dashboard"/>
+
+        <!-- Chat from anywhere; the code-behind feeds it the member being edited. -->
+        <controls:ChatBotLauncher x:Name="ChatBot" Grid.Row="1"/>
     </Grid>
 </ContentPage>

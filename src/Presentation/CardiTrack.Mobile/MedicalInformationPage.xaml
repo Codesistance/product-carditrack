@@ -127,5 +127,8 @@
                 </ScrollView>
             </RefreshView>
         </Grid>
+
+        <!-- Chat from anywhere; the code-behind feeds it this page's member. -->
+        <controls:ChatBotLauncher x:Name="ChatBot" Grid.Row="1"/>
     </Grid>
 </ContentPage>

@@ -157,6 +157,8 @@ public partial class MetricTrendPage : ContentPage
         }
 
         var firstName = NameFormatting.FirstName(member.Name);
+        ChatBot.MemberId = _memberId;
+        ChatBot.MemberFirstName = firstName;
         var reading = entry.Select(metrics);
 
         if (_trend is null)

@@ -174,5 +174,8 @@
         </RefreshView>
 
         <controls:BottomNavBar Grid.Row="2" Tab="Journal"/>
+
+        <!-- Chat from anywhere; the code-behind feeds it this entry's member. -->
+        <controls:ChatBotLauncher x:Name="ChatBot" Grid.Row="1"/>
     </Grid>
 </ContentPage>

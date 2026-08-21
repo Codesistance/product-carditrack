@@ -121,6 +121,8 @@ public partial class MedicalInformationPage : ContentPage
     {
         var hasNotes = !string.IsNullOrWhiteSpace(member.MedicalNotes);
         var firstName = NameFormatting.FirstName(member.Name);
+        ChatBot.MemberId = _memberId;
+        ChatBot.MemberFirstName = firstName;
 
         NotesLabel.Text = hasNotes
             ? member.MedicalNotes

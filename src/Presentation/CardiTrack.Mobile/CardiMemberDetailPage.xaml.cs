@@ -214,6 +214,8 @@ public partial class CardiMemberDetailPage : ContentPage
             _memberCall = _api.GetCardiMemberAsync(_memberId);
             _member = await _memberCall;
             _lastLoadedUtc = DateTime.UtcNow;
+            ChatBot.MemberId = _memberId;
+            ChatBot.MemberFirstName = NameFormatting.FirstName(_member.Name);
 
             // Taken when the caregiver left if they left, and only otherwise from where the page
             // sits now. By the time this runs the pop has already re-measured the page, so a
