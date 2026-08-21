@@ -110,6 +110,11 @@ public class NotificationDispatchWorker : CronBackgroundService
             // Without this, ExceptionLoggingSpanProcessor finds no "exception" event on the span
             // and silently re-logs nothing for this failure — SetStatus alone isn't enough.
             activity?.AddException(ex);
+            // Not redundant with that re-log despite the overlap: whenever tracing isn't fully
+            // sampled — Apm unconfigured entirely (dev/test default, per ApmExtensions: "dev
+            // machines ship nothing") or TracesSampleRatio dialed below 1.0 (the configured
+            // ingest-cost lever; see infrastructure/variables.tf) — StartActivity returns null and
+            // the processor never fires. This LogError is the only guaranteed record either way.
             _logger.LogError(ex, "NotificationDispatch phase {Phase} failed; the next tick retries it.", phase);
         }
     }

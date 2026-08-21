@@ -382,10 +382,13 @@ public class VertexAiClientTests
 
         await client.GenerateAsync(Prompt);
 
-        var info = Assert.Single(logger.Entries, e => e.Level == LogLevel.Information);
-        Assert.Contains("412", info.Message);
-        Assert.DoesNotContain("chest pain", info.Message);
-        Assert.DoesNotContain(ResponseText, info.Message);
+        // Debug, not Information — model/tokens/elapsed are already on the span tags and
+        // AiTelemetry's metrics; this completion line is a local-troubleshooting aid, not
+        // something worth shipping on every successful call.
+        var debug = Assert.Single(logger.Entries, e => e.Level == LogLevel.Debug);
+        Assert.Contains("412", debug.Message);
+        Assert.DoesNotContain("chest pain", debug.Message);
+        Assert.DoesNotContain(ResponseText, debug.Message);
     }
 
     /// <summary>Shape mirroring DataQueryPlanAiResponse's nullable-int properties — the case

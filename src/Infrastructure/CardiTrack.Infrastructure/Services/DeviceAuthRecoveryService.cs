@@ -129,7 +129,7 @@ public class DeviceAuthRecoveryService : IDeviceAuthRecoveryService
         }
         catch (Exception ex)
         {
-            _logger.LogInformation(
+            _logger.LogWarning(
                 ex, "Auth recovery attempt {Attempt} failed for DeviceConnection {DeviceConnectionId}.",
                 connection.AuthRecoveryAttempts + 1, connection.Id);
             await ScheduleNextAttemptAsync(connection, utcNow);
