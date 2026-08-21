@@ -17,17 +17,16 @@ What code **cannot** guarantee is Google's server-side handling. Three project-l
 configured and evidenced manually — they are the zero-data-retention (ZDR) posture the DPIA and
 the §9 register cite:
 
-## 2. ZDR configuration — **PENDING OWNER ACTION (2026-08-21)**
+## 2. ZDR configuration — cache disable DONE (2026-08-21); abuse-monitoring opt-out still open
 
-The dev flip happened on 2026-08-21 with these steps still open: they require
-`aiplatform.cacheConfigs.get/update` and billing-account visibility, which no automation
-identity in this project holds. Until both are done and evidenced here, the §9 register row's
-ZDR claim is *configured-in-code only* — close them before prod, and before real caregiver
-traffic reaches dev chat.
+These steps require `aiplatform.cacheConfigs.get/update` and billing-account visibility, which
+no automation identity in this project holds — they are owner actions, evidenced here as they
+close.
 
-1. **Disable data caching** (default: cached up to 24 h in the serving data centre). The cache
-   config is **project-scoped on the global admin host** (this is the management API, not
-   inference routing — inference stays on the regional endpoints):
+1. **Disable data caching — ✅ DONE, owner-executed 2026-08-21.** (Default: cached up to 24 h in
+   the serving data centre.) The cache config is **project-scoped on the global admin host**
+   (this is the management API, not inference routing — inference stays on the regional
+   endpoints):
 
    ```bash
    TOKEN=$(gcloud auth print-access-token)
@@ -37,16 +36,24 @@ traffic reaches dev chat.
      -d '{"name": "projects/carditrack-490120/cacheConfig", "disableCache": true}'
    ```
 
-   Verify with a `GET` on the same URL: `disableCache: true`. (Measured 2026-08-21: the
-   location-scoped `/v1/.../locations/{loc}/cacheConfig` path from an earlier draft of this doc
-   does not exist — HTML 404 from the front end; the project-scoped path above is the real one
-   and answered 403 `aiplatform.cacheConfigs.get` for the investigator identity, confirming
-   both the shape and the missing permission.)
+   **Evidence (2026-08-21):** the PATCH returned a completed operation
+   (`projects/206164751924/.../cacheConfig/operations/1214710209797160960`, `"done": true`), and
+   the verify `GET` on the same URL returned:
 
-2. **Abuse-monitoring prompt logging opt-out.** Google may log prompts for abuse monitoring for
-   customers **without** invoiced billing. Either confirm the billing account is invoiced (then no
-   action), or file the [abuse-monitoring exception request](https://cloud.google.com/vertex-ai/generative-ai/docs/data-governance)
-   for the project. Record which applies and when.
+   ```json
+   { "name": "projects/206164751924/cacheConfig", "disableCache": true }
+   ```
+
+   Re-run the `GET` to re-verify at any time. (Path note, measured 2026-08-21: the
+   location-scoped `/v1/.../locations/{loc}/cacheConfig` path from an earlier draft of this doc
+   does not exist — the project-scoped path above is the real one, and it needs
+   `aiplatform.cacheConfigs.*`, which only owner identities hold.)
+
+2. **Abuse-monitoring prompt logging opt-out — ⚠ STILL OPEN.** Google may log prompts for abuse
+   monitoring for customers **without** invoiced billing. Either confirm the billing account is
+   invoiced (then no action), or file the
+   [abuse-monitoring exception request](https://cloud.google.com/vertex-ai/generative-ai/docs/data-governance)
+   for the project. Record which applies and when, here.
 
 3. **No-training terms.** Google's Vertex AI data-governance commitment (customer data not used to
    train foundation models) applies by default under the Cloud Data Processing Addendum — confirm
