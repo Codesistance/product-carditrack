@@ -88,6 +88,17 @@ rewrite_memory = "16Gi"
 # Same seed-image mechanics as the medgemma service above.
 enable_pipeline_jobs = true
 
+# Public slot on Vertex (D6, 2026-08-21) — IAM auth via the api SA's aiplatform.user grant, EU
+# regional endpoint, no API key read for this kind (the gemini-api-key secret stays mounted only
+# so pre-Vertex images can still boot; delete it once every environment runs the Vertex kinds).
+# gemini-2.0-flash is NOT served on any EU regional Vertex endpoint (publisher-model 404 in
+# west2/west1, measured 2026-08-21 — matrix in docs/technical/vertex_ai_setup.md §3), so the
+# flip carries a model bump to gemini-2.5-flash, which IS served from europe-west2 (the
+# public_ai_location default). Rollback past this flip is image + tfvars together: a pre-#416
+# image cannot parse Kind=VertexGemini and refuses to boot, by design.
+public_ai_kind  = "VertexGemini"
+public_ai_model = "gemini-2.5-flash"
+
 # Cloud SQL
 cloud_sql_tier                = "db-f1-micro" # Shared-core for dev
 cloud_sql_disk_size_gb        = 10
