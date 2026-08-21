@@ -24,3 +24,9 @@ medgemma_invoker_members = [
   "serviceAccount:carditrack-dev-api@carditrack-490120.iam.gserviceaccount.com",
   "serviceAccount:carditrack-dev-pipeline@carditrack-490120.iam.gserviceaccount.com",
 ]
+
+# Same address the environment stacks alert to. The public-exposure alert on this service is the
+# residual control for a grant nothing at the platform level can prevent — see alerting.tf — so it
+# is gated on having somewhere to fire: no address, no policy, rather than a policy that fires
+# into nothing and reads as covered.
+alert_notification_emails = ["cloudoperations@codesistance.com"]
