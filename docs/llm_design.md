@@ -75,11 +75,11 @@ Each component is a Cloud Run service (event/HTTP-triggered) or Cloud Run job (C
 
 ### MedGemma serving: what ships
 
-MedGemma runs as the Cloud Run service `carditrack-<env>-medgemma`, provisioned by Terraform (`infrastructure/deployments/cloud_run.tf`) and deployed by CI:
+MedGemma runs as **one shared Cloud Run service**, `carditrack-common-medgemma`, provisioned by Terraform (`infrastructure/common/cloud_run.tf`) and deployed by `deploy-medgemma-common.yml`. It replaced the per-environment `carditrack-<env>-medgemma` CPU services on 2026-08-21; dev's is destroyed and prod never had one.
 
 | Property | Value |
 |----------|-------|
-| Platform | Cloud Run (**CPU** — no GPU) |
+| Platform | Cloud Run, **one NVIDIA L4 GPU**, `europe-west1` (Cloud Run offers no L4 in `europe-west2`) — measured ~4,000 tok/s prompt evaluation against ~25 on the CPU service it replaced; see [medgemma_serving_architecture.md](./technical/medgemma_serving_architecture.md) §9 |
 | Serving engine | **Ollama** (`ollama/ollama` base image; model baked in at build time) |
 | Model tag | `hf.co/unsloth/medgemma-1.5-4b-it-GGUF:Q4_K_M` — pinned in `src/Infrastructure/MedGemma/.model-version`, and the value `docker-compose.yml` and `AI__Private__Model` must both match |
 | Resources | 4 vCPU / 16 Gi, `cpu_idle = false`, startup CPU boost |
@@ -153,7 +153,7 @@ Row expiry is a **partition drop performed hourly by `PartitionMaintenanceWorker
 
 Everything is provisioned by the existing Terraform (`infrastructure/` — see the [operator guide](../infrastructure/README.md)):
 
-- **MedGemma service** — `deployments/cloud_run.tf` (gated on `medgemma_image`); image built from `src/Infrastructure/MedGemma/Dockerfile`
+- **MedGemma service** — `common/cloud_run.tf` (gated on the common stack's own `medgemma_image`); image built from `src/Infrastructure/MedGemma/Dockerfile` into the `europe-west1` Artifact Registry repo beside the accelerator
 - **Pub/Sub topic + subscription** — `deployments/pubsub.tf` (gated on `enable_pubsub`; **enabled in both dev and prod**)
 - **Secrets** — `deployments/secret_manager.tf` (`gemini-api-key`, `medgemma-service-url`, `webhook-secret`)
 - **Pipeline components** — already in the same Terraform: the webhook receiver service, the digest/aggregator/assessor Cloud Run jobs with their Cloud Scheduler triggers, and a dedicated `pipeline_scheduler` service account that invokes them (`deployments/cloud_run.tf`, gated on `enable_pipeline_jobs`/`enable_webhook_receiver`). The **enricher is the only unprovisioned component** — its `--job enrich` mode ships in the image with no job or scheduler behind it

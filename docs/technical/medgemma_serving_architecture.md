@@ -1,6 +1,6 @@
 # MedGemma serving architecture — CPU Cloud Run, and what replaces it
 
-**Status:** Proposed (2026-08-19) — MS-2 resolved 2026-08-19, option B selected; remaining decisions in §6
+**Status:** **Implemented (2026-08-21)** — option B built and serving; see §9 for what was built, what deviated from this document, and the benchmark that closes MS-3. MS-1 (real spend) needs a week of billing and stays open.
 **Scope:** Where MedGemma inference runs and what it costs. Covers the Cloud Run CPU service as deployed, the measured failure mode (HTTP 429), and the GPU options. Does **not** cover which model is served, prompt content, or the SSA contract.
 **Relationship to other docs:** [llm_design.md](../llm_design.md) owns the SSA → MedGemma contract and first sketched the GPU option. [apm_setup_runbook.md](./apm_setup_runbook.md) owns the client-side telemetry these numbers come from. [dpia.md](../compliance/dpia.md) owns residency and the US transfer surface (OI-5). The `medgemma_min_instances` comment in [cloud_run.tf](../../infrastructure/deployments/cloud_run.tf) owns the warm-instance economics and stays correct — this document changes the compute underneath it, not that reasoning.
 
@@ -180,7 +180,7 @@ Numbered `MS-n` rather than `OI-n`: the DPIA maintains its own `OI-n` sequence. 
 |---|---|---|
 | MS-1 | No option in §4 is priced against actual spend. Two separate gaps — list prices and real cost — with different fixes; see §8. | Owner |
 | MS-2 | ~~Residency decision~~ — **RESOLVED 2026-08-19 (owner): another region is acceptable.** Option B selected. Only the MedGemma service moves (§4). Still needs the DPIA's hosting description (§4.3) updated to the new region — not DPIA OI-5, which covers only US-linked transfer mechanisms and doesn't apply to an EU-to-EU move. | ~~Owner~~ + DPIA |
-| MS-3 | The ~10s GPU p50 in §4 is an estimate from model size and quantisation, not a benchmark, and the 513-in/18-out token shape in §5 rests on **8 sampled calls** — biased toward short ones, because most hosts log the completion line below their ship level. Raise `Serilog__MinimumLevel__Default` on `pipeline-jobs` in dev for a day to get a real per-operation prompt/latency breakdown, then benchmark one batch on an L4. Both the GPU cost model and the vLLM case depend on this. | Engineering |
+| MS-3 | **Resolved 2026-08-21 (measured): see §9.2.** The estimate was pessimistic by an order of magnitude on prompt evaluation — ~4,000 tok/s measured against ~25 tok/s on CPU. Original text: The ~10s GPU p50 in §4 is an estimate from model size and quantisation, not a benchmark, and the 513-in/18-out token shape in §5 rests on **8 sampled calls** — biased toward short ones, because most hosts log the completion line below their ship level. Raise `Serilog__MinimumLevel__Default` on `pipeline-jobs` in dev for a day to get a real per-operation prompt/latency breakdown, then benchmark one batch on an L4. Both the GPU cost model and the vLLM case depend on this. | Engineering |
 | MS-4 | ~~Set `max_instance_request_concurrency` explicitly whatever else is decided.~~ **Resolved (implemented): `max_instance_request_concurrency = 1` in `deployments/cloud_run.tf`**, with the reasoning recorded inline — a fast, honest 429 beats several calls quietly slowing each other down. | ~~Engineering~~ Resolved |
 | MS-5 | ~~The Cloud Run request timeout (300s) equals the client's `HttpClient.Timeout`...~~ **Resolved (implemented): the service timeout is derived as `medgemma_timeout_seconds + 60` in `deployments/cloud_run.tf`**, so the client always gives up first and the loser of a timeout race is no longer arbitrary. | ~~Engineering~~ Resolved |
 | MS-6 | Observed call volume (435/day) is ~6× the ceiling the per-member gates in §2a permit (~69/day). Retries and the new Weekbook/Monthbook backfills are the likely contributors but are unconfirmed. Reconcile before relying on any cadence interval to bound load. | Engineering |
@@ -212,3 +212,66 @@ Two different gaps, often conflated. They have different fixes and different lea
 For that history, the **Cost Table export (CSV) from the billing console** does cover past periods and needs no infrastructure — a human with billing access, a few minutes, filtered to the `carditrack-dev-medgemma` service. That is the fastest route to closing MS-1 for the window in §1, and the right first step.
 
 Cost attribution afterwards depends on labels: the Cloud Run services take `var.cloud_run_labels`, and whatever is set there is what a BigQuery or Cost Table slice can group by. Confirm it distinguishes MedGemma from the other services before trusting a per-service figure.
+
+---
+
+## 9. What was actually built (2026-08-21)
+
+### 9.1 Shape, and where it deviates from §4
+
+| | This document proposed | Built |
+|---|---|---|
+| Compute | Cloud Run **Job**, batched | Cloud Run **service**, `carditrack-common-medgemma` |
+| Region | `europe-west1` or `europe-west4` | `europe-west1` |
+| Accelerator | one L4 | one L4, `gpu_zonal_redundancy_disabled = true` |
+| Scaling | — | `min = 0`, `max = 1`, concurrency 1 |
+| Ownership | per-environment | **one service, every environment** — `infrastructure/common/` |
+
+### 9.1a Two things verification found, and one of them is a caveat on the whole design
+
+**Cold start is ~54 s, not "seconds".** §9.1's premise — repeated from the migration plan — was that an L4 loads the model fast enough for `min = 0` to be free. Measured on the live service: `loading model` at 21:25:50, `model loaded` at 21:26:44. **54 seconds**, against the CPU service's 58.6 s. The GPU barely helps, and on reflection should not have been expected to: loading is reading ~3 GB of quantised weights off disk into memory, which is IO, not arithmetic.
+
+That is a real caveat rather than a footnote. `min = 0` means *every* idle period costs the next caller ~54 s, and the CPU service kept `min = 1` precisely to avoid that. It is fine for the batch passes, which are not waited on. It is **not** fine for the first chat question after a quiet spell, which is the exact failure the warm instance existed to prevent — and it is not visible in §9.2's numbers, because those were all measured against an already-warm instance.
+
+Observed both ways on 2026-08-21: a chat send at 21:25 took ~90 s end to end, dominated by this load; the next at 21:51 answered inside the same minute.
+
+The saving and the latency are therefore in direct tension, and `min = 0` is a choice for cheapness over the interactive path, not a free win. Options, none taken yet: accept it (batch is unaffected; chat pays after idle), set `min = 1` and give up most of the saving, or keep the model resident another way. MS-1's billing week should be read with this open.
+
+**Ingress is `INGRESS_TRAFFIC_ALL`, where the per-environment service was internal-only.** Not an oversight to leave unstated: the old service relied on the API's `vpc_access` egress to satisfy internal ingress, and that mechanism does not survive the move — the callers are in `europe-west2` with `PRIVATE_RANGES_ONLY` egress and the service is in `europe-west1` with no VPC attachment, so their calls reach it over the public endpoint.
+
+So the medical model's endpoint is now reachable from the internet, and authorisation rests entirely on IAM. Unauthenticated traffic arrives and is refused — a burst of ten `Empty Authorization header value` rejections at 21:57 on the day it went live, which is what internet-facing endpoints receive. The controls that make that acceptable are the ones already in place: no `allUsers` binding, two named invoker service accounts, and the public-exposure alert that moved with the service. What is *gone* is the second, network-position layer. Recorded in the DPIA's §4.3 residency note rather than left implicit.
+
+**A service, not a Job.** The consumers are per-environment .NET jobs with their own databases and their own schedules; a service leaves `MedGemmaClient`, the OIDC identity-token handler and the URL-secret plumbing exactly as they were, where a Job would have meant a new invocation path for each environment. The cost of that choice is Cloud Run's idle scale-in tail — an instance lingers after the last request — so real spend may land nearer **$70–120/mo than §4's $40**. Still several times under the ~$300 it replaced. MS-1's week of billing settles it.
+
+**One shared instance.** §4 assumed a service per environment. Prod runs no MedGemma today, and a single `min = 0` instance costs nothing when idle, so one serves both. Cross-stack IAM is a list of constructed service-account emails in `common.tfvars` — the common root cannot read the environment stacks' state, so an entry is a promise rather than a lookup, and prod's go in only once its accounts exist.
+
+### 9.2 The benchmark MS-3 asked for
+
+Measured on the live L4 service, 2026-08-21, from real pipeline and chat traffic — not synthetic:
+
+| | CPU (`europe-west2`, 4 vCPU) | **L4 (`europe-west1`)** | |
+|---|---|---|---|
+| Prompt evaluation | ~25 tok/s | **~4,000 tok/s** | ~160× |
+| 2,292-token prompt, eval only | ~92 s | **0.57 s** | |
+| Token generation | ~5 tok/s | **~72 tok/s** | ~14× |
+| Full call, 2,301 in / 250 out | 128–139 s | **4.3 s** | |
+| Full call, 491 in / 30 out | ~23 s | **0.66 s** | |
+
+§4 estimated a ~10s GPU p50 from model size and quantisation. That was pessimistic by an order of magnitude on the half that mattered: **prompt evaluation, not generation, was the cost on CPU** — a 1,184-token clinical prompt spent 47.6 s before its first output token, which is why p50 tracked prompt length rather than reply length.
+
+One number to read carefully: the first call after a cold start measured `prompt_eval` at 59 tok/s, not 4,000. That is the GPU warming, not steady state. Everything after it is the figure above.
+
+### 9.3 Three things this document did not predict
+
+**The service URL is not derivable.** §4 and the migration plan both assumed `https://<service>-<project number>.<region>.run.app`. This project issues the older form — `https://carditrack-common-medgemma-zhsd62wx5a-ew.a.run.app`, a per-project hash and an abbreviated region. A constructed URL resolved to nothing and would have been seeded into an environment's MedGemma URL secret looking entirely plausible. The environment stacks now take it as an explicit, validated variable, because they cannot read the common stack's state to ask.
+
+**The old URL secret's fallback was armed.** Its seed was `try(local service uri, "https://medgemma-not-deployed-…")`, and `secret_data` is ForceNew — so destroying the local service would have written that placeholder as a *new latest version*, silently replacing the working GPU URL for every consumer. The comment above that resource is a post-mortem of the same failure from 2026-08-20; the teardown would have re-armed it one step on.
+
+**`deletion_protection` cannot be cleared in the destroying apply.** The provider defaults it true and refuses a destroy while it is, and removing the resource removes the place the flag would be set. Learned the expensive way on the rewrite-service teardown (one failed apply, two extra PRs); paid up front here.
+
+### 9.4 Still open
+
+- **MS-1** — a week of billing against the $70–120 envelope. Cannot be hurried.
+- **MS-6** — the 435/day vs ~69/day call-volume discrepancy is untouched. It mattered most when each call cost two minutes of a saturated instance; at 4 s a call it is now a cost question rather than a latency one, but it is still unreconciled.
+- **Prod** — no `carditrack-prod-*` service accounts exist, so there is nothing to grant `run.invoker` to. Prod is not wired to this service and does not run MedGemma at all.
+- **The public-exposure alert** moved to `infrastructure/common/alerting.tf` with the service. Worth knowing the exposure it watches is now *larger*: a public grant on one instance is a public grant on the model behind every environment.

@@ -72,7 +72,7 @@ Do **not** re-apply an old copy of this configuration (or revert these files) wi
 - **Secrets that need no human value are generated inside Terraform** (`random_password` for the DB password and health token, `random_bytes` for `encryption-key`) — never placed in tfvars, never committed.
 - `encryption-key` carries `ignore_changes = [secret_data]` for a reason beyond the usual one: the AES-GCM envelope has no key id, so rotating it makes existing device OAuth tokens undecryptable. An environment provisioned before this became Terraform-owned keeps whatever value it holds — check it is a real base64 32-byte key, not `REPLACE_ME`.
 - Terraform-owned values (DB connection string, `apm-mobile-engine`) track Terraform; do not edit them by hand.
-- `medgemma-service-url` is written by CI after each MedGemma deploy.
+- `medgemma-service-url` points at the shared GPU service. Seeded from the `medgemma_service_url` variable and written by `deploy-medgemma-common.yml`. It is set explicitly rather than derived: this project issues Cloud Run's hash URL form, so the address cannot be built from parts, and this stack cannot read the common stack's state to ask.
 
 Helper scripts (prompt for values, keep current version on empty input):
 
@@ -91,7 +91,7 @@ Remaining operator-seeded secrets (`devices-fitbit-client-id`, `devices-fitbit-c
 |---------|-----|------|
 | Cloud Run CPU / memory | 1 vCPU / 512 Mi | 2 vCPU / 1 Gi |
 | Cloud Run instances | 0–1 | 1–3 |
-| MedGemma | 4 vCPU / 16 Gi, max 1 instance (service exists only when `medgemma_image` set) | same |
+| MedGemma | **Not in this stack.** One shared L4 service, `carditrack-common-medgemma` in `europe-west1`, lives in `infrastructure/common/` and serves every environment. `min = 0` — it costs nothing idle, which is what the GPU bought | same |
 | Cloud SQL tier | `db-f1-micro`, 10 GB | `db-custom-2-7680`, 100 GB |
 | Cloud SQL HA | ZONAL | **REGIONAL** |
 | Cloud SQL deletion protection | off | **on** |
