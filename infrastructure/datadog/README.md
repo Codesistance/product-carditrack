@@ -22,6 +22,7 @@ mechanical — the JSON maps field-for-field.
 | `monitors/worker-host-faulted.json` | 33845 | uk1 | Worker process died — an exception escaped a `BackgroundService`, and `StopHost` took the whole host with it |
 | `monitors/worker-job-failing.json` | 33846 | uk1 | A single job is throwing on its scheduled tick; the host survives but that job is doing nothing |
 | `monitors/webhook-notifications-unparseable.json` | 34150 | uk1 | Webhook notifications are arriving but the aggregator cannot read a user id out of them, so the real-time path silently does nothing |
+| `monitors/db-query-latency-degraded.json` | 37542 | uk1 | p95 of PostgreSQL command spans, per service — the tripwire that replaces the speculative indexes the 2026-08-21 index review chose not to add |
 
 The two Worker monitors (`worker-host-faulted`, `worker-job-failing`) were created on 2026-08-12
 after an incident in which the Worker crash-looped for roughly six hours across two separate root
@@ -227,23 +228,24 @@ Two things the POST does not verify:
 
 ## Outstanding
 
-- **No notification handle is attached to any of the three monitors.** They evaluate and show state
+- **No notification handle is attached to any of the monitors.** They evaluate and show state
   in Datadog, but they will not page, email or post to Slack until a recipient is added to the
   `message` field. The org's existing monitors are unhelpful as a reference here — they are stock
   templates and one still contains the literal placeholder `@your-team-handle`. This is the single
   biggest gap in the alerting setup: `webhook-notifications-unparseable` went to **Alert within
   minutes of creation** — correctly, the bug was live — and told nobody.
-- **Only `webhook-notifications-unparseable` actually restricts itself to dev.** A monitor's tags
-  organise it in the UI; they do **not** scope what its query evaluates. All three carry
-  `env:dev` as a tag, but only that one carries `env:dev` in the query, so it is the only one that
-  will keep ignoring prod traffic once prod ships logs — the other two will silently start
-  evaluating prod under a `dev` label. Harmless today, since dev is the only environment shipping
+- **Only `webhook-notifications-unparseable` and `db-query-latency-degraded` actually restrict
+  themselves to dev.** A monitor's tags organise it in the UI; they do **not** scope what its
+  query evaluates. All the monitors carry `env:dev` as a tag, but only those two carry `env:dev`
+  in the query, so they are the only ones that
+  will keep ignoring prod traffic once prod ships telemetry — the two Worker monitors will
+  silently start evaluating prod under a `dev` label. Harmless today, since dev is the only environment shipping
   telemetry to this org, and worth fixing before that stops being true. Adding the filter is safe
   but must be verified rather than assumed: confirm the tag actually matches
   (`service:<name> env:dev` should return the same count as `service:<name>`) before relying on
   it, because a filter matching nothing turns a monitor off in a way that looks identical to
   everything being healthy.
-- Prod needs its own copies of all three once it ships logs.
+- Prod needs its own copies of all of these once it ships telemetry.
 - **No monitor covers "parses fine, syncs nothing."** If every notification resolved to a
   `healthUserId` that matches no `DeviceConnection`, `unparseable` would be 0 and the real-time
   path would still be doing nothing. That state is legitimate in small doses (a wearer disconnected
