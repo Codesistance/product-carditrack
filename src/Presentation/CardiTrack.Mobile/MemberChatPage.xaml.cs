@@ -517,16 +517,25 @@ public sealed class ChatTurnItem
         };
     }
 
-    /// <summary>First-to-last per series, e.g. "Steps: 3,201 → 5,110 · Resting heart rate: 61 → 58"
-    /// — a compact stand-in for a true chart. See the member-chat plan's mobile-milestone note:
-    /// full chart rendering was deliberately deferred rather than force-fit into the Dashboard's
-    /// DashboardMetric-coupled trend control, which this data doesn't shape-match.</summary>
+    /// <summary>
+    /// The stand-in for a series too thin to plot: first-to-last where there is a stretch to
+    /// describe, and the reading alone where there is not.
+    /// </summary>
+    /// <remarks>
+    /// A single reading used to render as "Steps: 774 → 774" — an arrow between a number and
+    /// itself, which reads as a trend that went nowhere rather than as one day's count. That is
+    /// also the common case here, since a series lands in this summary precisely when it has fewer
+    /// than two points. Values are spelled the way the charts spell them, so a night's sleep does
+    /// not read as "372" beneath a bubble that just called it six hours.
+    /// </remarks>
     private static string Summarize(IReadOnlyList<ChartSeries> charts)
     {
         var parts = charts
             .Where(c => c.Points.Count > 0)
-            .Select(c => $"{c.Metric}: {c.Points[0].Value.ToString("0.#", CultureInfo.InvariantCulture)} → "
-                + $"{c.Points[^1].Value.ToString("0.#", CultureInfo.InvariantCulture)}");
+            .Select(c => c.Points.Count == 1
+                ? $"{c.Metric}: {ChatMetricFormat.Bare(c.Metric, c.Points[0].Value)}"
+                : $"{c.Metric}: {ChatMetricFormat.Bare(c.Metric, c.Points[0].Value)} → "
+                    + $"{ChatMetricFormat.Bare(c.Metric, c.Points[^1].Value)}");
         return string.Join(" · ", parts);
     }
 }

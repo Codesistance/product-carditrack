@@ -119,4 +119,28 @@ public class DataQueryWhitelistWindowTests
         Assert.Null(fetched.RecentActivityWindow);
         Assert.Empty(logs.ReceivedCalls());
     }
+
+    /// <summary>
+    /// The baseline is read whether or not the plan asked for it. "How is he doing this afternoon?"
+    /// resolved to today's readings alone and came back as "his heart rate is 72 and he took 774
+    /// steps" — a recitation, because with nothing to compare against there was no answer to give.
+    /// One row, about forty tokens, and the difference between a number and a judgement.
+    /// </summary>
+    [Fact]
+    public async Task TheBaseline_IsReadEvenWhenThePlanNeverAskedForIt()
+    {
+        var (uow, _) = Fakes();
+        var baselines = Substitute.For<IPatternBaselineRepository>();
+        var row = new PatternBaseline { CardiMemberId = Guid.NewGuid(), PeriodDays = 30 };
+        baselines.GetLatestByCardiMemberAsync(Arg.Any<Guid>(), Arg.Any<int>()).Returns(row);
+        uow.PatternBaselines.Returns(baselines);
+
+        var plan = new DataQueryPlan { Sources = [DataQueryKind.RecentActivity], RecentActivityDays = 7 };
+
+        var fetched = await DataQueryWhitelist.ExecuteAsync(
+            plan, Guid.NewGuid(), uow, UtcNow, CancellationToken.None);
+
+        Assert.Same(row, fetched.Baseline);
+        await baselines.Received(1).GetLatestByCardiMemberAsync(Arg.Any<Guid>(), 30);
+    }
 }

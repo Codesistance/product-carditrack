@@ -58,9 +58,15 @@ public static class DataQueryWhitelist
                 cardiMemberId, days.From, days.To)).ToList()
             : [];
 
-        var baseline = sources.Contains(DataQueryKind.Baseline)
-            ? await unitOfWork.PatternBaselines.GetLatestByCardiMemberAsync(cardiMemberId, periodDays: 30)
-            : null;
+        // Always, whether or not the plan named it. "How is he doing this afternoon?" resolved to
+        // today's readings alone and came back as "his heart rate is 72 and he took 774 steps" — a
+        // recitation, because with nothing to compare against there was no answer to give. The
+        // baseline is what makes a number mean something, it is one row and about forty tokens,
+        // and no question about a person's health is worse for knowing what is usual for them.
+        // The plan keeps Baseline in its vocabulary so the planner can still say it needs it; the
+        // fetch simply no longer depends on the planner having thought of it.
+        var baseline = await unitOfWork.PatternBaselines
+            .GetLatestByCardiMemberAsync(cardiMemberId, periodDays: 30);
 
         var unresolvedAlerts = sources.Contains(DataQueryKind.UnresolvedAlerts)
             ? await unitOfWork.Alerts.GetUnresolvedByCardiMemberAsync(cardiMemberId)
