@@ -552,12 +552,34 @@ variable "medgemma_min_instances" {
   default     = 0
 }
 
-# Ceiling for a MedGemma call from the API. Sized for a cold start: the startup probe alone
-# allows up to 150s (30s initial delay + 12 x 10s), and generation follows it.
+# Ceiling for a MedGemma call from the API, worker and pipeline jobs alike
+# (AI__Private__TimeoutSeconds / AI__Providers__0__TimeoutSeconds in main.tf) — and, derived from
+# this same number, the medgemma and rewrite Cloud Run services' own request timeouts
+# (deployments/cloud_run.tf). Not the rewrite slot's *client* timeout: since PR #439 detached the
+# rewrite Cloud Run service from every consumer, AI__Rewrite__TimeoutSeconds is wired from the
+# separate rewrite_ai_timeout_seconds (its VertexGemini kind's own, much shorter, budget) — only
+# the now-unused rewrite service's server-side request timeout still shares this variable.
+#
+# Raised from 300s to 900s on 2026-08-21. Datadog logs from pipeline-jobs (dev, 2026-08-21
+# 16:02-16:27 UTC) showed the 300s ceiling routinely hit under real load — not because a single
+# generation is that slow (measured p95 was 216.3s, docs/technical/medgemma_serving_architecture.md
+# §1), but because an abandoned call does not stop Ollama from finishing it: Cloud Run's
+# max_instance_request_concurrency = 1 keeps the one instance "busy" until the orphaned generation
+# actually returns a response, so the next caller's fresh request queues or 429s behind work nobody
+# is waiting for any more. In that window two calls timed out at 300s and then took 642-643s each to
+# fail on retry, and a later call took 166s to return successfully for a prompt that had earlier
+# taken 25s server-side — all the same pileup, not slower inference. 900s gives a real generation
+# (including one queued behind a still-finishing prior call) room to return an honest answer instead
+# of being abandoned and adding to the backlog, while staying well inside the pipeline jobs' own
+# 3600s execution timeout.
+#
+# Does not touch the Dashboard hero card's own budget (PrivateAiSettings.CurrentStatusBudgetSeconds,
+# 25s, unaffected by this variable) — that path is deliberately fail-fast because the mobile client
+# gives up at 30s regardless of what the server does.
 variable "medgemma_timeout_seconds" {
-  description = "HTTP client timeout the API applies to MedGemma calls"
+  description = "HTTP client timeout the API, worker and pipeline jobs apply to MedGemma calls"
   type        = number
-  default     = 300
+  default     = 900
 }
 
 # ── Public AI provider (reports and chat) ─────────────────────────────────────
