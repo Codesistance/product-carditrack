@@ -1,0 +1,25 @@
+<!-- The chat row's glyph on Member Detail: the same bot as the floating launcher, redrawn in the
+     row set's language — 24-unit box, #1884DC, 2-unit stroke, no fill. The full-colour
+     icon_chatbot.svg is a three-stop gradient with circuit accents and a dark screen panel; at the
+     22px these rows draw it, that reads as a coloured smudge beside four flat blue line glyphs,
+     and it is the only row that would have announced itself in brand colour.
+
+     Simplified rather than traced: the pods, the antenna and one ECG spike are what make it the
+     bot at this size. The screen panel is dropped and the trace drawn straight onto the head,
+     because an outlined rectangle inside an outlined rectangle closes up to a filled block once
+     the lines are 2 units thick. -->
+<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Antenna -->
+  <circle cx="12" cy="2.6" r="1.2" fill="#1884DC"/>
+  <path d="M12 3.8V5.6" stroke="#1884DC" stroke-width="2" stroke-linecap="round"/>
+
+  <!-- Head -->
+  <rect x="3.6" y="5.6" width="16.8" height="12.8" rx="4" stroke="#1884DC" stroke-width="2"/>
+
+  <!-- Side pods -->
+  <path d="M1.6 11.2V13.2M22.4 11.2V13.2" stroke="#1884DC" stroke-width="2" stroke-linecap="round"/>
+
+  <!-- ECG trace, the mark this product signs everything with -->
+  <path d="M7.4 12.4H9.9L11.4 9.6L13.4 15.1L14.8 12.4H16.6"
+        stroke="#1884DC" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

@@ -63,6 +63,9 @@ internal static class DaybookPrompt
           CardiTrackCardiMember — never a relationship stand-in. Group the readings the way they are grouped
           below rather than listing them one by one. An unremarkable day is allowed to be a short
           account, but it still says what was measured.
+          Open with one or two sentences saying what kind of day it was and what the
+          readings mean for the family — plainly, before any figures, so a reader who gets no
+          further still has the answer. Then the account, keeping every number it has now.
         - headline: a five-to-seven-word qualification of the day you just described — what kind
           of day it was, never a generic label like day summary or day's readings, which could
           title any day at all. Sentence case, no full stop, no name and no CardiTrackCardiMember, not a

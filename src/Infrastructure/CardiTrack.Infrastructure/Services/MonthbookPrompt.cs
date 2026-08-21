@@ -58,6 +58,9 @@ internal static class MonthbookPrompt
           person as CardiTrackCardiMember — never a relationship stand-in. An unremarkable month is allowed to
           be a short account, but it still says what was measured and how much of the month it
           covered.
+          Open with one or two sentences saying what kind of month it was and what the
+          readings mean for the family — plainly, before any figures, so a reader who gets no
+          further still has the answer. Then the account, keeping every number it has now.
         - headline: a five-to-seven-word qualification of the month you just described — what kind
           of month it was, never a generic label like monthly summary or month's readings, which
           could title any month at all. Sentence case, no full stop, no name and no CardiTrackCardiMember, not a

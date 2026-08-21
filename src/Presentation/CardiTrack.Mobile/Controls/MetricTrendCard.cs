@@ -197,13 +197,16 @@ public sealed class MetricTrendCard : ContentView
         _plot.Add(axis);
         _plot.Add(_chart, 1);
 
-        // A tap on a shaded run says what is missing from it. Only the runs answer — a tap on the
-        // data does nothing, so this cannot become a gesture the caregiver has to avoid to read
-        // the chart, and the carousel keeps its swipe.
-        var gapTap = new TapGestureRecognizer();
-        gapTap.Tapped += OnChartTapped;
-        _chart.GestureRecognizers.Add(gapTap);
-        SemanticProperties.SetHint(_chart, "Tap a shaded stretch to see which days have no readings");
+        // Two answers, one chart: a tap on a shaded run says what is missing from it, a tap on a
+        // reading says what that reading was. Both arrive from the chart's own hit test rather
+        // than from a TapGestureRecognizer — a recognizer on a GraphicsView consumes the touch
+        // before its interaction events fire, so the two could not have coexisted here whatever
+        // the handlers did. Neither reacts to a swipe that merely began on the chart, so the
+        // carousel keeps its gesture.
+        _chart.Interactive = true;
+        _chart.NoDataSpanTapped += OnNoDataSpanTapped;
+        SemanticProperties.SetHint(
+            _chart, "Tap a reading to see its value, or a shaded stretch to see which days have none");
 
         ApplyStyle(_empty, "Body2");
         _empty.Text = "Not enough readings in this window yet.";
@@ -381,6 +384,11 @@ public sealed class MetricTrendCard : ContentView
 
         _max.Text = string.Format(_trend.AxisFormat, (decimal)scale.Max);
         _min.Text = string.Format(_trend.AxisFormat, (decimal)scale.Min);
+
+        // The callout spells a tapped reading the way the axis spells its bounds. Same format, so
+        // a value read off the line and a bound read off the axis are the same kind of number —
+        // sleep in hours here reads as hours there too.
+        _chart.ValueFormatter = value => string.Format(_trend.AxisFormat, (decimal)value);
         _startDate.Text = points[0].Date.ToString("MMM d");
         _endDate.Text = points[^1].Date.ToString("MMM d");
 
@@ -667,11 +675,8 @@ public sealed class MetricTrendCard : ContentView
     /// from three days mid-week — and it is not something a legend key can carry, because it is
     /// different for every run on every chart.
     /// </remarks>
-    private async void OnChartTapped(object? sender, TappedEventArgs e)
+    private async void OnNoDataSpanTapped(object? sender, NoDataSpan span)
     {
-        if (e.GetPosition(_chart) is not { } at || _chart.NoDataSpanAt(at.X) is not { } span)
-            return;
-
         try
         {
             await Services.ServiceHelper.GetRequiredService<Services.IPopupService>()

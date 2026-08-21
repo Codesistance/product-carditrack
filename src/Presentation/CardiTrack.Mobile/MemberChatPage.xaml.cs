@@ -148,6 +148,35 @@ public partial class MemberChatPage : ContentView
         return chip;
     }
 
+    /// <summary>
+    /// Puts the newest bubble at the bottom of the view — where a conversation is read from.
+    /// </summary>
+    /// <remarks>
+    /// Dispatched rather than called straight through: <c>CollectionView.ScrollTo</c>
+    /// resolves an index against the layout as it stands, and the item being scrolled to has just
+    /// been added, so on the frame it is called the row it names does not have a position yet.
+    /// Posting it runs the scroll after that pass. Failures are swallowed for the same reason they
+    /// are dispatched — a chat that scrolled a little late is a chat; one that threw out of a
+    /// gesture handler is not.
+    /// </remarks>
+    private void ScrollToLatest(bool animate = true)
+    {
+        if (_turns.Count == 0)
+            return;
+
+        Dispatcher.Dispatch(() =>
+        {
+            try
+            {
+                TurnsList.ScrollTo(_turns.Count - 1, position: ScrollToPosition.End, animate: animate);
+            }
+            catch (Exception)
+            {
+                // A list mid-rebuild can refuse an index; the next append scrolls again anyway.
+            }
+        });
+    }
+
     /// <summary>A small, self-contained press animation — deliberately not awaited by the send
     /// itself, so a slow reply never holds the bounce open waiting for it.</summary>
     private async Task BounceSendIconAsync()
@@ -183,9 +212,18 @@ public partial class MemberChatPage : ContentView
             // follow. Deliberately not awaited: the chips are an affordance, and the sheet must
             // not wait on them to become usable.
             if (_turns.Count == 0)
+            {
                 _ = LoadSuggestionsAsync();
+            }
             else
+            {
                 SuggestionsPanel.IsVisible = false;
+                // Opened at the top, a resumed conversation shows its oldest turn — which on a
+                // thread of any length is a screen of things the caregiver has already read, and
+                // several swipes away from the answer they came back for. Not animated: this is
+                // where the sheet opens, not somewhere it travels to.
+                ScrollToLatest(animate: false);
+            }
         }
         catch (ApiException ex)
         {
@@ -251,6 +289,7 @@ public partial class MemberChatPage : ContentView
         // fills in beside it when it lands.
         PendingTextLabel.Text = string.Empty;
         PendingPanel.IsVisible = true;
+        ScrollToLatest();
         var waitingCts = new CancellationTokenSource();
         _ = CycleWaitingLinesAsync(message, waitingCts.Token);
 
@@ -273,6 +312,8 @@ public partial class MemberChatPage : ContentView
         }
         finally
         {
+            ScrollToLatest();
+
             // Cancel before Dispose so the cycler's in-flight await throws out of its loop
             // rather than racing a disposed token source.
             waitingCts.Cancel();
