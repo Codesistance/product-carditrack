@@ -90,6 +90,41 @@ public class DeliveryPlannerTests
         Assert.False(plan.Escalates);
     }
 
+    [Fact]
+    public void Questionnaire_PushesImmediatelyOutsideQuietHours()
+    {
+        var plan = DeliveryPlanner.Plan(Context(DeliveryCategory.Questionnaire, withinQuietHours: false));
+
+        Assert.Equal(DeliveryChannel.Push, plan.Channel);
+        Assert.Null(plan.ScheduledFor);
+    }
+
+    [Fact]
+    public void Questionnaire_DefersDuringQuietHours_LikeHealthOrange_NotOverridingLikeSafety()
+    {
+        var quietEnd = UtcNow.AddHours(3);
+        var plan = DeliveryPlanner.Plan(
+            Context(DeliveryCategory.Questionnaire, withinQuietHours: true, quietHoursEnd: quietEnd));
+
+        Assert.Equal(DeliveryChannel.Push, plan.Channel);
+        Assert.Equal(quietEnd, plan.ScheduledFor);
+    }
+
+    [Fact]
+    public void Questionnaire_NeverEscalates()
+    {
+        // A question is an invitation, not an anomaly — the alert worker's own bounded reminder
+        // cadence is what re-alerts an unanswered one, not the escalation ladder.
+        var plan = DeliveryPlanner.Plan(Context(DeliveryCategory.Questionnaire, withinQuietHours: true));
+        Assert.False(plan.Escalates);
+    }
+
+    [Fact]
+    public void AllowsCritical_NeverForQuestionnaire()
+    {
+        Assert.False(DeliveryPlanner.AllowsCritical(DeliveryCategory.Questionnaire, severity: null));
+    }
+
     // ---------------------------------------------------------------- Critical Alerts allowlist (§7.2)
 
     [Fact]
