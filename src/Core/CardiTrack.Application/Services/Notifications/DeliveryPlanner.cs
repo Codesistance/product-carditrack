@@ -60,8 +60,9 @@ public static class DeliveryPlanner
         DateTime? scheduledFor = null;
         if (pushes && !overridesQuietHours && context.IsWithinQuietHours)
         {
-            // Orange Health defers to the end of quiet hours; nothing else reaches this branch,
-            // since Safety and red Health already overrode above.
+            // Orange Health and Questionnaire defer to the end of quiet hours; nothing else
+            // reaches this branch, since Safety and red Health already overrode above, and Nudge
+            // never pushes at all.
             scheduledFor = context.QuietHoursEndUtc;
         }
 

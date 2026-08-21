@@ -90,12 +90,17 @@ public class QuestionnaireAlertWorker : CronBackgroundService
 
             try
             {
+                // Resolved before the claim, matching NotificationDispatchWorker's own sweep — a
+                // misconfigured push stack (see notification_engine.md's FirebaseApp incident)
+                // then fails here, before any row is touched, instead of claiming and immediately
+                // releasing every due row on every tick.
+                var dispatch = scope.ServiceProvider.GetRequiredService<IDispatchService>();
+
                 claimed = await unitOfWork.MemberQuestionnaires.TryClaimAlertAsync(
                     questionnaire.Id, questionnaire.ReminderCount, utcNow, stoppingToken);
                 if (!claimed)
                     continue;
 
-                var dispatch = scope.ServiceProvider.GetRequiredService<IDispatchService>();
                 var deliveries = await dispatch.EnqueueForQuestionnaireAsync(
                     questionnaire.Id, questionnaire.ReminderCount, stoppingToken);
 
