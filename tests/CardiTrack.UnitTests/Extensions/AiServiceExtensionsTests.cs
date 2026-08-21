@@ -143,6 +143,50 @@ public class AiServiceExtensionsTests
         Assert.Contains("AI__Public__Location", ex.Message);
     }
 
+    // A Vertex request carries a live ADC bearer token, so an endpoint override may only name an
+    // allowed-region Vertex host or a loopback test double — anything else is a one-variable
+    // credential-exfiltration and EU-bypass vector.
+    [Theory]
+    [InlineData("https://evil.example.com")]
+    [InlineData("https://us-central1-aiplatform.googleapis.com")]
+    [InlineData("http://europe-west2-aiplatform.googleapis.com")] // bearer token over plaintext
+    public void AddAiServices_Throws_WhenARewriteVertexEndpointOverrideIsNotVertexOrLoopback(string url)
+    {
+        var config = VertexRewriteConfig();
+        config["AI:Rewrite:VertexBaseUrl"] = url;
+
+        var ex = Assert.Throws<InvalidOperationException>(() => Resolve(config));
+
+        Assert.Contains("AI__Rewrite__VertexBaseUrl", ex.Message);
+    }
+
+    [Fact]
+    public void AddAiServices_AcceptsALoopbackVertexEndpointOverride_ForTestDoubles()
+    {
+        var config = VertexRewriteConfig();
+        config["AI:Rewrite:VertexBaseUrl"] = "http://localhost:8080";
+
+        var factory = Resolve(config).GetRequiredService<IHttpClientFactory>();
+
+        Assert.Equal(
+            new Uri("http://localhost:8080"),
+            factory.CreateClient(AiServiceExtensions.RewriteHttpClientName).BaseAddress);
+    }
+
+    [Fact]
+    public void AddAiServices_Throws_WhenAPublicVertexEndpointOverrideIsNotVertexOrLoopback()
+    {
+        var config = Config();
+        config["AI:Public:Kind"] = "VertexGemini";
+        config["AI:Public:ProjectId"] = "test-project";
+        config["AI:Public:Location"] = "europe-west2";
+        config["AI:Public:BaseUrl"] = "https://evil.example.com";
+
+        var ex = Assert.Throws<InvalidOperationException>(() => Resolve(config));
+
+        Assert.Contains("AI__Public__BaseUrl", ex.Message);
+    }
+
     // An env-var override that is set-but-empty must read as "not set" — Uri("") at registration
     // time would otherwise turn a blank variable into a failed revision with an opaque error.
     [Fact]

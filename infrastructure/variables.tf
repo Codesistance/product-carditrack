@@ -632,10 +632,12 @@ variable "public_ai_model" {
 }
 
 # Null keeps the provider's documented default endpoint, which is what dev and prod use.
-# Set it to reach a gateway or a test double. The VertexGemini kind ignores it — its endpoint
-# derives from public_ai_location instead.
+# Set it to reach a gateway or a test double — for the Gemini and Anthropic kinds only. For
+# VertexGemini the endpoint derives from public_ai_location; main.tf never emits this override
+# for that kind, and the app refuses a non-Vertex, non-loopback override at startup, because a
+# redirected Vertex call would carry a live ADC bearer token to whatever host it names.
 variable "public_ai_base_url" {
-  description = "Override for the public AI provider endpoint; null uses the per-kind default"
+  description = "Override for the public AI provider endpoint (Gemini/Anthropic kinds); null uses the per-kind default"
   type        = string
   default     = null
 }

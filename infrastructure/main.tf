@@ -164,8 +164,12 @@ module "deployments" {
       "AI__Providers__1__BaseUrl"        = "https://generativelanguage.googleapis.com"
       "AI__Providers__1__Model"          = "gemini-2.0-flash"
     },
-    # Omitted unless overridden, so each provider keeps its own documented endpoint.
-    var.public_ai_base_url != null ? {
+    # Omitted unless overridden, so each provider keeps its own documented endpoint. Never
+    # emitted for VertexGemini: that kind's endpoint derives from the validated Location, and a
+    # URL override would carry the ADC bearer token wherever it points — the startup check in
+    # AiServiceExtensions refuses non-Vertex overrides too, but this keeps Terraform from being
+    # the layer that introduces one.
+    var.public_ai_kind != "VertexGemini" && var.public_ai_base_url != null ? {
       "AI__Public__BaseUrl" = var.public_ai_base_url
     } : {},
     # Vertex addresses a model by project/location rather than URL + API key; only that kind
