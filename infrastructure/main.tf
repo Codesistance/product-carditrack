@@ -266,7 +266,7 @@ module "deployments" {
     "AI__Private__Model"            = local.medgemma_model
     "AI__Private__TimeoutSeconds"   = tostring(var.medgemma_timeout_seconds)
     "AI__Private__UseIdentityToken" = "true"
-    # Same kind-aware rewrite settings as the API block above (which carries the rationale).
+    # Same rewrite-slot settings as the API block above (which carries the rationale).
     "AI__Rewrite__Kind"              = "VertexGemini"
     "AI__Rewrite__Model"             = var.rewrite_ai_model
     "AI__Rewrite__TimeoutSeconds"    = tostring(var.rewrite_ai_timeout_seconds)
@@ -294,7 +294,7 @@ module "deployments" {
       "AI__Private__Model"            = local.medgemma_model
       "AI__Private__TimeoutSeconds"   = tostring(var.medgemma_timeout_seconds)
       "AI__Private__UseIdentityToken" = "true"
-      # Same kind-aware rewrite settings as the API block above. The aggregator binds the
+      # Same rewrite-slot settings as the API block above. The aggregator binds the
       # section without calling the model, so under VertexGemini its runtime identity carries
       # no aiplatform.user grant — validation-only config, same as its identity-token stance.
       "AI__Rewrite__Kind"              = "VertexGemini"

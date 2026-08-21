@@ -554,11 +554,10 @@ variable "medgemma_min_instances" {
 
 # Ceiling for a MedGemma call from the API, worker and pipeline jobs alike
 # (AI__Private__TimeoutSeconds / AI__Providers__0__TimeoutSeconds in main.tf) — and, derived from
-# this same number, the medgemma and rewrite Cloud Run services' own request timeouts
-# (deployments/cloud_run.tf). Not the rewrite slot's *client* timeout: since PR #439 detached the
-# rewrite Cloud Run service from every consumer, AI__Rewrite__TimeoutSeconds is wired from the
-# separate rewrite_ai_timeout_seconds (its VertexGemini kind's own, much shorter, budget) — only
-# the now-unused rewrite service's server-side request timeout still shares this variable.
+# this same number, the MedGemma Cloud Run service's own request timeout
+# (deployments/cloud_run.tf). Nothing else derives from it now: this was shared with the rewrite
+# Cloud Run service until that service was deleted, and the rewrite slot's client budget comes
+# from rewrite_ai_timeout_seconds, which is its Vertex kind's own much shorter number.
 #
 # Raised from 300s to 900s on 2026-08-21. Datadog logs from pipeline-jobs (dev, 2026-08-21
 # 16:02-16:27 UTC) showed the 300s ceiling routinely hit under real load — not because a single
