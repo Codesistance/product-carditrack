@@ -16,7 +16,7 @@ namespace CardiTrack.Infrastructure.Services;
 /// caregiver language, and persistence. The clinical step — the one whose prompt carries age,
 /// sex, notes and questionnaire answers — stays on the in-estate MedGemma; the non-clinical
 /// steps run on the Rewrite slot, whose prompts carry only the caregiver's question and the
-/// de-identified clinical read (the member's name is the literal <c>{{NAME}}</c> placeholder,
+/// de-identified clinical read (the member's name is the literal <c>CardiTrackCardiMember</c> placeholder,
 /// resolved after the call). No step ever reaches <c>AI:Public</c>. See the member-chat planning
 /// notes (2026-08-20) and DPIA row A20: the query plan cannot carry a subject identifier (see
 /// <see cref="DataQueryPlan"/>), and the clinical context never reaches the rewrite provider.
@@ -106,7 +106,7 @@ public class MemberChatService : IMemberChatService
         MedicalPromptBlocks.CaregiverRegister + """
 
         Rewrite the clinical read below into one short, direct reply to the caregiver's question —
-        the answer only, not a restatement of the question and not a preamble. Write {{NAME}} exactly
+        the answer only, not a restatement of the question and not a preamble. Write CardiTrackCardiMember exactly
         as written wherever you would name the member; it stands in for their real name.
         """;
 
@@ -147,7 +147,10 @@ public class MemberChatService : IMemberChatService
 
         var utcNow = DateTime.UtcNow;
         var session = await GetOrCreateSessionAsync(userId, cardiMemberId, utcNow, ct);
-        var history = await BuildHistoryBlockAsync(session.Id, ct);
+        // Read before the history block, not with the rest of the context below: the name is what
+        // gets swapped back out of the recalled turns before any of them reach a model.
+        var member = await _unitOfWork.CardiMembers.GetByIdAsync(cardiMemberId);
+        var history = await BuildHistoryBlockAsync(session.Id, member?.Name, ct);
 
         // History travels with every step that reads the caregiver's message, not just the
         // clinical one — a follow-up like "why?" is only judgeable, and only plannable, in the
@@ -165,7 +168,6 @@ public class MemberChatService : IMemberChatService
         var plan = await _planner.PlanAsync(flattened, history, ct);
         var fetched = await DataQueryWhitelist.ExecuteAsync(plan.Result, cardiMemberId, _unitOfWork, utcNow, ct);
 
-        var member = await _unitOfWork.CardiMembers.GetByIdAsync(cardiMemberId);
         var today = DateOnly.FromDateTime(utcNow);
         var memberContext = await _memberContext.ComposeAsync(
             new MemberContextRequest(member, cardiMemberId, today, utcNow, PromptPurpose.MemberChat), ct);
@@ -300,14 +302,24 @@ public class MemberChatService : IMemberChatService
     /// travel with the data" finding: a stored assistant reply re-entering a later prompt is exactly
     /// as untrusted as a fresh caregiver note, and gets the same guardrail.
     /// </summary>
-    private async Task<string?> BuildHistoryBlockAsync(Guid sessionId, CancellationToken ct)
+    /// <param name="memberName">
+    /// The member's stored name, swapped for <see cref="NamePlaceholder.Token"/> everywhere it
+    /// appears in the recalled turns. Stored replies are persisted <em>after</em> resolution, so
+    /// without this the name these prompts are so careful never to send arrives anyway one turn
+    /// later — and since the Rewrite slot is an external provider, it arrives there too. Nothing
+    /// the caregiver reads passes through this: the stored text and the app's own display keep
+    /// the real name, and only the copy handed to a model is rewritten.
+    /// </param>
+    private async Task<string?> BuildHistoryBlockAsync(Guid sessionId, string? memberName, CancellationToken ct)
     {
         var withTurns = await _unitOfWork.MemberChatSessions.GetByIdWithTurnsAsync(sessionId, ct);
         var turns = withTurns?.Turns.TakeLast(MaxHistoryTurns).ToList();
         if (turns is not { Count: > 0 })
             return null;
 
-        var lines = turns.Select(t => $"{(t.Role == ChatTurnRole.User ? "Caregiver" : "You")}: {Reveal(t.Content)}");
+        var lines = turns.Select(t =>
+            $"{(t.Role == ChatTurnRole.User ? "Caregiver" : "You")}: "
+            + NamePlaceholder.Redact(Reveal(t.Content), memberName));
         return $"--- {MedicalPromptBlocks.ChatHistoryLabel} ---\n{string.Join("\n", lines)}";
     }
 
@@ -495,7 +507,7 @@ public class MemberChatService : IMemberChatService
     private static string CapReply(string reply) =>
         reply.Length > MaxReplyLength ? $"{reply[..MaxReplyLength]}…" : reply;
 
-    /// <summary>Resolves {{NAME}}, or falls back to a fixed line rather than showing a leftover
+    /// <summary>Resolves CardiTrackCardiMember, or falls back to a fixed line rather than showing a leftover
     /// placeholder or an empty reply — see <c>NamePlaceholder.IsPresentIn</c>.</summary>
     private static string ResolvedOrFallback(string text, string? name)
     {

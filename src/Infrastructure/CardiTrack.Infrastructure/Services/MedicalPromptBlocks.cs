@@ -71,7 +71,7 @@ internal static partial class MedicalPromptBlocks
     /// </summary>
     /// <remarks>
     /// <para>
-    /// Handed a <c>{{NAME}}</c> placeholder and told to write with it, a 4B model repeats the
+    /// Handed a <c>CardiTrackCardiMember</c> placeholder and told to write with it, a 4B model repeats the
     /// placeholder in every sentence of a six-sentence summary. When sex is known, that is the
     /// wrong shape — a case file about a subject rather than one person telling another how
     /// someone is doing, which is the voice <see cref="Tone"/> asks for — so the rule is he or
@@ -84,7 +84,7 @@ internal static partial class MedicalPromptBlocks
     /// The line used to open "Name them once". <see cref="Tone"/> has just said the reader is a
     /// family member, so "them" attaches to the reader, not the person the readings are about.
     /// And most of the prompts that carry this rule never give a name at all — only the digest
-    /// and the status line send <c>{{NAME}}</c>, and of those only the digest carries this
+    /// and the status line send <c>CardiTrackCardiMember</c>, and of those only the digest carries this
     /// block — so "name them" was an instruction to invent. The token itself stays out of this
     /// line: alert and assessor copy is stored without resolving it, and a leftover brace pair
     /// would reach a caregiver. "They" remains only for that nameless, sex-not-stated case.

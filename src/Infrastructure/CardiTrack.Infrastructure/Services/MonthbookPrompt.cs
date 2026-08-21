@@ -38,8 +38,8 @@ internal static class MonthbookPrompt
     /// </summary>
     internal const string Instructions =
         MedicalPromptBlocks.Tone + MedicalPromptBlocks.Pronouns + """
-        Write the family's account of one month of {{NAME}}'s readings. The month is over.
-        Write {{NAME}} exactly as it appears wherever you would name the person; it stands in
+        Write the family's account of one month of CardiTrackCardiMember's readings. The month is over.
+        Write CardiTrackCardiMember exactly as it appears wherever you would name the person; it stands in
         for their real name, which you are not given.
         """ + MedicalPromptBlocks.JournalRegister + """
         Past tense throughout: this month has finished and nothing in it is still accumulating.
@@ -55,12 +55,12 @@ internal static class MonthbookPrompt
 
         Respond with:
         - summary: 8-14 sentences to the family, an account of the month as a whole, naming the
-          person as {{NAME}} — never a relationship stand-in. An unremarkable month is allowed to
+          person as CardiTrackCardiMember — never a relationship stand-in. An unremarkable month is allowed to
           be a short account, but it still says what was measured and how much of the month it
           covered.
         - headline: a five-to-seven-word qualification of the month you just described — what kind
           of month it was, never a generic label like monthly summary or month's readings, which
-          could title any month at all. Sentence case, no full stop, no name and no {{NAME}}, not a
+          could title any month at all. Sentence case, no full stop, no name and no CardiTrackCardiMember, not a
           sentence.
         - suggestion: one supportive, specific thing the family could do, at most 25 words,
           answering something in the month's readings closely enough that a reader could tell what

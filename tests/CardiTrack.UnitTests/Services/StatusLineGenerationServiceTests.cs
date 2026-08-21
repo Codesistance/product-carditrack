@@ -192,8 +192,8 @@ public class StatusLineGenerationServiceTests
                 Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(new StatusLineGenerationService.CurrentStatusAiResponse
             {
-                Headline = "{{NAME}} is quiet",
-                Message = "{{NAME}} seems steady today.",
+                Headline = "CardiTrackCardiMember is quiet",
+                Message = "CardiTrackCardiMember seems steady today.",
             });
 
         await CreateSut().RegenerateAsync(_memberId);
@@ -317,7 +317,7 @@ public class StatusLineGenerationServiceTests
         Assert.Contains("never diagnose", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("under 15 words", prompt);
         Assert.Contains("green settled, yellow a mention", prompt);
-        Assert.Contains("write {{NAME}} exactly as written", prompt);
+        Assert.Contains("write CardiTrackCardiMember exactly as written", prompt);
         Assert.DoesNotContain("Never use clinical terms", prompt, StringComparison.Ordinal);
     }
 

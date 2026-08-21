@@ -43,8 +43,8 @@ public class StatusLineGenerationService
     private const string CurrentStatusInstructions = MedicalPromptBlocks.Tone + """
         Describe how this person is doing to their caregiver.
 
-        Third person, write {{NAME}} exactly as written; it stands in for their real
-        name.
+        Third person, write CardiTrackCardiMember exactly as written; it stands
+        in for their real name.
         """ + MedicalPromptBlocks.CaregiverRegister + """
         Match the given tier: green settled, yellow a mention,
         orange or red more attentive.
@@ -65,7 +65,12 @@ public class StatusLineGenerationService
     /// four-character overshoot it settled at — is in the git history of HealthInsightService,
     /// where it lived until the batch move.)
     /// </summary>
-    internal const int StatusPromptBudget = 1_104;
+    /// <remarks>
+    /// Raised from 1,104 by exactly the 13 characters the placeholder grew when it stopped being
+    /// <c>{{NAME}}</c>: one occurrence, and no room bought for anything else. What that spend
+    /// buys is in <see cref="NamePlaceholder.Token"/>.
+    /// </remarks>
+    internal const int StatusPromptBudget = 1_117;
 
     /// <summary>Exposed for the budget test — the instructions themselves stay private.</summary>
     internal static int CurrentStatusInstructionsLength => CurrentStatusInstructions.Length;

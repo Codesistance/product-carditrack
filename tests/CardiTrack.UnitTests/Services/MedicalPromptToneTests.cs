@@ -124,7 +124,7 @@ public class MedicalPromptToneTests
 
     /// <summary>
     /// Anything that writes more than a sentence gets the pronoun rule. Without it the model
-    /// repeats the <c>{{NAME}}</c> placeholder in every sentence it writes, which reads as a case
+    /// repeats the <c>CardiTrackCardiMember</c> placeholder in every sentence it writes, which reads as a case
     /// file rather than as the voice the tone block asks for.
     /// </summary>
     [Theory]
@@ -348,7 +348,7 @@ public class MedicalPromptToneTests
         var digest = AllPrompts().Single(p => p.Field == "FamilyDigestInstructions").Prompt;
 
         Assert.Contains(MedicalPromptBlocks.CaregiverRegister.Trim(), digest, StringComparison.Ordinal);
-        Assert.Contains("Summarise {{NAME}}'s recent readings for their family", digest);
+        Assert.Contains("Summarise CardiTrackCardiMember's recent readings for their family", digest);
         Assert.Contains("read the vitals against the steps walked", digest);
         Assert.Contains("do not recap every listed figure", digest);
         Assert.DoesNotContain("Cover each kind of reading", digest);
