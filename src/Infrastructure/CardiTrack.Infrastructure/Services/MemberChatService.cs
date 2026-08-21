@@ -490,10 +490,10 @@ public class MemberChatService : IMemberChatService
     /// the caregiver reads passes through this: the stored text and the app's own display keep
     /// the real name, and only the copy handed to a model is rewritten.
     /// </param>
-    /// <param name="questionsOnly">
-    /// Drops the assistant's own prior replies, keeping the caregiver's questions. See
-    /// <see cref="ChatHistory"/> for why the clinical step gets this and the others do not.
-    /// </param>
+    /// <returns>
+    /// Both cuts of the conversation — see <see cref="ChatHistory"/> for which step gets which,
+    /// and why the one that states figures is not given the turns that contain them.
+    /// </returns>
     private async Task<ChatHistory> BuildHistoryBlockAsync(Guid sessionId, string? memberName, CancellationToken ct)
     {
         var withTurns = await _unitOfWork.MemberChatSessions.GetByIdWithTurnsAsync(sessionId, ct);
