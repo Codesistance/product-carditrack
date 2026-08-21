@@ -1478,3 +1478,157 @@ resource "google_cloud_scheduler_job" "pipeline_assessor_5min" {
     google_cloud_run_v2_job.pipeline_assessor,
   ]
 }
+
+# ── Rewrite (split from MedGemma) ─────────────────────────────────────────────
+variable "rewrite_service_name" {
+  description = "Name of the Rewrite Cloud Run service"
+  type        = string
+}
+variable "rewrite_cpu" {
+  description = "CPU allocation for the Rewrite Cloud Run service"
+  type        = string
+  # 4 because rewrite_memory is 16Gi and Cloud Run requires 4 vCPU above 8Gi — the memory
+  # comment below has the measurements that forced both numbers up. Idle cost is still not
+  # medgemma's: this service keeps cpu_idle = true, so a quiet warm instance bills at the
+  # idle rate rather than full allocation.
+  default = "4"
+}
+variable "rewrite_memory" {
+  description = "Memory allocation for the Rewrite Cloud Run service"
+  type        = string
+  # 16Gi — medgemma's proven envelope for this exact image and model class — after both smaller
+  # sizes failed with measurements (dev, 2026-08-20, issue #397): 4Gi was OOM-killed on every
+  # model load at ~4.2GiB used; 8Gi loaded the model and then was OOM-killed at 8283 MiB used
+  # even with the runner's context capped to 8192 (the cap verifiably took — Ollama's "server
+  # config" line echoed it). The 4B q4 weights get counted against the limit roughly twice on
+  # Cloud Run: the mmap'd model blob's page cache (image reads count) plus llama.cpp's repacked
+  # CPU buffers ("CPU_REPACK model buffer size = 1721 MiB" + "CPU model buffer = 1281 MiB"),
+  # before the vision tower, vocab and KV cache. Don't retry 8Gi without changing one of those
+  # inputs.
+  default = "16Gi"
+}
+variable "rewrite_min_instances" {
+  description = "Minimum number of Rewrite instances (0 scales to zero between requests)"
+  type        = number
+  default     = 0
+}
+variable "rewrite_max_instances" {
+  description = "Maximum number of Rewrite instances"
+  type        = number
+  default     = 1
+}
+
+# Split off the medgemma service (member-chat planning notes, 2026-08-20): same image, own
+# instance, so a member-chat malicious-check/query-plan/rewrite call never contends with
+# MedGemma's own callers for the one CPU allocation the medgemma service above has. Same
+# security posture as medgemma: INGRESS_TRAFFIC_ALL, with IAM (`roles/run.invoker` on the two
+# named runtime identities below, no allUsers) as the boundary — callers present a Google-signed
+# OIDC token and anything else is rejected at the Google front end. There is no network-level
+# backstop here; see the medgemma IAM-alerting note in the accepted-risks record.
+resource "google_cloud_run_v2_service" "rewrite" {
+  # Flipped so the next apply can destroy this. The provider defaults it to true and refuses a
+  # destroy while it is, and it cannot be cleared in the same apply that removes the resource —
+  # so the flag lands here first and the resource goes in the apply after. Nothing else about
+  # this service is intended to survive; see the removal PR.
+  deletion_protection = false
+
+  count    = var.medgemma_image != "" ? 1 : 0
+  name     = var.rewrite_service_name
+  location = var.cloud_run_location
+  ingress  = "INGRESS_TRAFFIC_ALL"
+  client   = "terraform"
+
+  template {
+    scaling {
+      min_instance_count = var.rewrite_min_instances
+      max_instance_count = var.rewrite_max_instances
+    }
+
+    # Same reasoning as medgemma's concurrency = 1 above: Ollama cannot safely multi-instance,
+    # and one request at a time is a fast, honest 429 rather than several calls quietly slowing
+    # each other down. Revisit alongside the benchmark the rewrite_cpu variable's comment asks for.
+    max_instance_request_concurrency = 1
+
+    timeout = "${var.medgemma_timeout_seconds + 60}s"
+
+    vpc_access {
+      network_interfaces {
+        network    = google_compute_network.main.id
+        subnetwork = google_compute_subnetwork.main.id
+      }
+      egress = "PRIVATE_RANGES_ONLY"
+    }
+
+    containers {
+      image = var.medgemma_image
+
+      # OLLAMA_KEEP_ALIVE follows the scaling shape, for the reason medgemma's copy documents:
+      # the override exists to keep a permanently-warm instance from paying the model reload
+      # between calls. At the default rewrite_min_instances = 0 the instance dies between calls
+      # anyway, so the env var would buy nothing and Ollama's 5-minute idle unload is right. An
+      # environment that keeps an instance warm (dev does — issue #397: chat's scale-from-zero
+      # outlasted every caller's retry budget) needs the model pinned too, or the warm instance
+      # still pays the ~59s reload on the first call after five quiet minutes. Costs memory, not
+      # money: the instance's allocation is reserved regardless of what is in it.
+      dynamic "env" {
+        for_each = var.rewrite_min_instances > 0 ? [1] : []
+        content {
+          name  = "OLLAMA_KEEP_ALIVE"
+          value = "-1"
+        }
+      }
+
+      env {
+        name  = "LLAMA_ARG_CACHE_RAM"
+        value = "0"
+      }
+
+      # Cap the runner's context window. Left uncapped, Ollama sizes the KV cache for the
+      # model's full trained window — 131072 tokens for gemma3 — and that allocation, not the
+      # ~3GiB of q4 weights, is what pushed this instance to 8.2GiB and an OOM kill *during
+      # inference* even after the memory raise (measured 2026-08-20, issue #397: model loaded,
+      # generated 227 tokens, then died at "8209 MiB used" against the 8Gi limit). The rewrite
+      # slot's prompts are short and bounded by construction (the guard check, the query plan,
+      # and a rewrite of a capped clinical read — see MemberContextComposer's section caps), so
+      # 8192 tokens is generous headroom, and the KV saving is what actually makes this service
+      # fit its allocation. medgemma's own service deliberately stays uncapped: its clinical
+      # prompts carry the full member context and its 16Gi was sized with the full window in.
+      env {
+        name  = "OLLAMA_CONTEXT_LENGTH"
+        value = "8192"
+      }
+
+      resources {
+        limits = {
+          cpu    = var.rewrite_cpu
+          memory = var.rewrite_memory
+        }
+        # true (the default, stated explicitly): unlike medgemma, this service is not forced
+        # always-on, so ordinary request-based CPU billing/throttling is the cheaper shape —
+        # cpu_idle = false only pays for itself on an instance that has to do work between
+        # requests, which this one does not.
+        cpu_idle          = true
+        startup_cpu_boost = true
+      }
+
+      ports {
+        container_port = 8080
+      }
+
+      startup_probe {
+        http_get {
+          path = "/"
+        }
+        initial_delay_seconds = 30
+        period_seconds        = 10
+        failure_threshold     = 12
+      }
+    }
+  }
+
+  labels = var.cloud_run_labels
+  lifecycle {
+    ignore_changes = [template[0].containers[0].image, client, client_version]
+  }
+  depends_on = [google_project_service.run]
+}
