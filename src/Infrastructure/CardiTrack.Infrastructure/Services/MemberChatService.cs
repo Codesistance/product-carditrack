@@ -213,7 +213,7 @@ public class MemberChatService : IMemberChatService
         // context of the turns it follows. Without this the guard flagged terse follow-ups as
         // off-topic and the planner fetched the defaults instead of what the caregiver meant.
         var triage = await _rewriteAi.GenerateStructuredWithUsageAsync<MaliciousCheckAiResponse>(
-            BuildMaliciousCheckPrompt(flattened, history), ct);
+            BuildMaliciousCheckPrompt(flattened, history.Full), ct);
         if (triage.Result.IsMalicious)
         {
             // The one outcome that stays a hard stop: manipulation attempts get no reply, no
@@ -226,14 +226,14 @@ public class MemberChatService : IMemberChatService
         if (triage.Result.IsCasualOrSocial || triage.Result.IsOffTopic)
             return await SteerAsync(session, flattened, triage.Usage, triage.Result.IsCasualOrSocial, member?.Name, utcNow, ct);
 
-        var plan = await _planner.PlanAsync(flattened, history, ct);
+        var plan = await _planner.PlanAsync(flattened, history.Full, ct);
         var fetched = await DataQueryWhitelist.ExecuteAsync(plan.Result, cardiMemberId, _unitOfWork, utcNow, ct);
 
         var today = DateOnly.FromDateTime(utcNow);
         var memberContext = await _memberContext.ComposeAsync(
             new MemberContextRequest(member, cardiMemberId, today, utcNow, PromptPurpose.MemberChat), ct);
 
-        var clinicalPrompt = BuildClinicalPrompt(flattened, memberContext, fetched, history, today);
+        var clinicalPrompt = BuildClinicalPrompt(flattened, memberContext, fetched, history.QuestionsOnly, today);
         var clinical = await _medicalAi.GenerateStructuredWithUsageAsync<MemberChatClinicalAiResponse>(clinicalPrompt, ct);
 
         var rewritePrompt = BuildRewritePrompt(flattened, clinical.Result.Analysis);
@@ -490,18 +490,59 @@ public class MemberChatService : IMemberChatService
     /// the caregiver reads passes through this: the stored text and the app's own display keep
     /// the real name, and only the copy handed to a model is rewritten.
     /// </param>
-    private async Task<string?> BuildHistoryBlockAsync(Guid sessionId, string? memberName, CancellationToken ct)
+    /// <returns>
+    /// Both cuts of the conversation — see <see cref="ChatHistory"/> for which step gets which,
+    /// and why the one that states figures is not given the turns that contain them.
+    /// </returns>
+    private async Task<ChatHistory> BuildHistoryBlockAsync(Guid sessionId, string? memberName, CancellationToken ct)
     {
         var withTurns = await _unitOfWork.MemberChatSessions.GetByIdWithTurnsAsync(sessionId, ct);
         var turns = withTurns?.Turns.TakeLast(MaxHistoryTurns).ToList();
         if (turns is not { Count: > 0 })
-            return null;
+            return new ChatHistory(null, null);
 
-        var lines = turns.Select(t =>
-            $"{(t.Role == ChatTurnRole.User ? "Caregiver" : "You")}: "
-            + NamePlaceholder.Redact(Reveal(t.Content), memberName));
-        return $"--- {MedicalPromptBlocks.ChatHistoryLabel} ---\n{string.Join("\n", lines)}";
+        string? Block(bool questionsOnly)
+        {
+            var kept = questionsOnly ? turns.Where(t => t.Role == ChatTurnRole.User).ToList() : turns;
+            if (kept.Count == 0)
+                return null;
+
+            var lines = kept.Select(t =>
+                $"{(t.Role == ChatTurnRole.User ? "Caregiver" : "You")}: "
+                + NamePlaceholder.Redact(Reveal(t.Content), memberName));
+            return $"--- {MedicalPromptBlocks.ChatHistoryLabel} ---\n{string.Join("\n", lines)}";
+        }
+
+        return new ChatHistory(Block(questionsOnly: false), Block(questionsOnly: true));
     }
+
+    /// <summary>
+    /// The conversation as each step is allowed to see it.
+    /// </summary>
+    /// <param name="Full">
+    /// Both sides of the conversation, for the triage and planning steps. Those two decide what a
+    /// terse follow-up <em>means</em> — whether "why?" is on-topic, and which data it needs — and
+    /// they cannot do that without the answer it follows. Neither states a reading, so neither can
+    /// repeat a stale one.
+    /// </param>
+    /// <param name="QuestionsOnly">
+    /// The caregiver's questions alone, for the clinical read.
+    /// </param>
+    /// <remarks>
+    /// The clinical step is the one that states figures, and giving it the assistant's prior prose
+    /// made those figures unreliable: asked "how many steps has he done this week?" it answered
+    /// 4,007 — a day outside the window, present only in an earlier turn — and asked "how is he
+    /// doing this afternoon?" it said 774 steps in the same bubble whose chart data said 836. Both
+    /// numbers were its own, from turns generated against older data.
+    /// <para>
+    /// Two prompt revisions failed to stop it, which is the argument for structure over wording:
+    /// a 4B model asked to read text but not believe it will believe it. The caregiver's questions
+    /// still carry everything a follow-up needs to be understood — "why?" after "how many steps
+    /// this week?" is legible from the questions alone — while the readings can now only come from
+    /// the data block, because nothing else in the prompt contains any.
+    /// </para>
+    /// </remarks>
+    private sealed record ChatHistory(string? Full, string? QuestionsOnly);
 
     private static string BuildMaliciousCheckPrompt(string question, string? historyBlock) =>
         historyBlock is null
