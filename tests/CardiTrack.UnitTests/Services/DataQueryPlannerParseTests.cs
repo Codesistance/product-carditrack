@@ -16,7 +16,7 @@ public class DataQueryPlannerParseTests
         DataQueryPlannerService.Parse(new DataQueryPlannerService.DataQueryPlanAiResponse
         {
             Sources = sources,
-            Metrics = metrics,
+            Metrics = metrics ?? [],
         });
 
     /// <summary>
@@ -52,12 +52,27 @@ public class DataQueryPlannerParseTests
         Assert.Null(Parse(["RecentActivity"], [metric]).ChartMetrics);
     }
 
+    /// <summary>
+    /// Empty means the model answered "this question is general" and every chart is wanted; null
+    /// means it answered with names none of which parsed, and we know nothing. Both widen, but
+    /// only one of them is the model agreeing to something.
+    /// </summary>
     [Fact]
-    public void Parse_KeepsAnExplicitlyEmptyMetricListApartFromAnAbsentOne()
+    public void Parse_KeepsADeliberatelyEmptyListApartFromAnUnreadableOne()
     {
         Assert.Empty(Parse(["RecentActivity"], []).ChartMetrics!);
-        Assert.Null(Parse(["RecentActivity"]).ChartMetrics);
+        Assert.Null(Parse(["RecentActivity"], ["999"]).ChartMetrics);
     }
+
+    /// <summary>
+    /// The regression this whole change exists for: "show me his steps this week" came back with
+    /// metrics omitted, so the caregiver got steps, heart rate and sleep. The field is required in
+    /// the schema now, which makes omission impossible — this pins the half that parsing owns,
+    /// that a single named metric narrows to exactly that metric.
+    /// </summary>
+    [Fact]
+    public void Parse_NarrowsToTheOneMetricAQuestionNamed() =>
+        Assert.Equal([ChartMetricKind.Steps], Parse(["RecentActivity"], ["Steps"]).ChartMetrics);
 
     [Fact]
     public void Parse_KeepsTheRecognisedMetricsWhenOnlySomeParse()
