@@ -281,7 +281,20 @@ internal static class ChatMetricFormat
         _ => value.ToString("0.#"),
     };
 
-    private static string Duration(double minutes) => minutes >= 60
-        ? $"{Math.Floor(minutes / 60):0}h {minutes % 60:0}m"
-        : $"{minutes:0}m";
+    /// <summary>
+    /// Mirrors <c>MedicalPromptBlocks.SleepFigure</c>, which the API uses for the same figure in
+    /// prose. Duplicated rather than shared because this assembly cannot reference Infrastructure,
+    /// and the two must not drift: a callout reading "8h 0m" beside a reply reading "8h" is the
+    /// same night described two ways in one bubble.
+    /// </summary>
+    private static string Duration(double minutes)
+    {
+        var whole = (int)Math.Round(minutes);
+        return whole switch
+        {
+            < 60 => $"{whole}m",
+            _ when whole % 60 == 0 => $"{whole / 60}h",
+            _ => $"{whole / 60}h {whole % 60}m",
+        };
+    }
 }
