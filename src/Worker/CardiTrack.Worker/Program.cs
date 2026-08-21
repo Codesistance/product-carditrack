@@ -47,9 +47,8 @@ builder.Services.AddSingleton<IEncryptionService>(
     new AesEncryptionService(configLoader.GetRequired(ConfigurationKeys.Encryption.Key)));
 
 // Distributed cache — Redis in production, in-process locally (AddCachingServices' own
-// fallback). InactivityDetectionService and StatisticalAlertService use it to invalidate the
-// Dashboard's cached status line when they raise or resolve an alert, and that invalidation
-// only reaches the API process's cache when both sides are pointed at the same Redis instance.
+// fallback). The Dashboard status line no longer lives here (it is a persisted row the
+// pipeline regenerates), but other cached surfaces still read through this registration.
 builder.Services.AddCachingServices(configuration);
 
 // Repositories
@@ -78,6 +77,7 @@ builder.Services.AddScoped<IAlertPreferenceRepository, AlertPreferenceRepository
 builder.Services.AddScoped<IMemberChatSessionRepository, MemberChatSessionRepository>();
 builder.Services.AddScoped<IMemberChatTurnRepository, MemberChatTurnRepository>();
 builder.Services.AddScoped<IMemberChatTurnUsageRepository, MemberChatTurnUsageRepository>();
+builder.Services.AddScoped<IMemberStatusLineRepository, MemberStatusLineRepository>();
 builder.Services.AddScoped<INotificationSnapshotQueries, NotificationSnapshotQueries>();
 builder.Services.AddPushServices(configuration);
 builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();

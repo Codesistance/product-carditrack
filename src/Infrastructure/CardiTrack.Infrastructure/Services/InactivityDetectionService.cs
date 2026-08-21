@@ -6,7 +6,6 @@ using CardiTrack.Application.Services.Notifications;
 using CardiTrack.Domain.Entities;
 using CardiTrack.Domain.Enums;
 using CardiTrack.Infrastructure.Extensions;
-using Microsoft.Extensions.Caching.Distributed;
 using Microsoft.Extensions.Logging;
 
 namespace CardiTrack.Infrastructure.Services;
@@ -28,7 +27,6 @@ public class InactivityDetectionService : IInactivityDetectionService
     private readonly IUnitOfWork _unitOfWork;
     private readonly IDispatchService _dispatch;
     private readonly IServiceProvider _services;
-    private readonly IDistributedCache _cache;
     private readonly ILogger<InactivityDetectionService> _logger;
 
     /// <param name="services">
@@ -42,13 +40,11 @@ public class InactivityDetectionService : IInactivityDetectionService
         IUnitOfWork unitOfWork,
         IDispatchService dispatch,
         IServiceProvider services,
-        IDistributedCache cache,
         ILogger<InactivityDetectionService> logger)
     {
         _unitOfWork = unitOfWork;
         _dispatch = dispatch;
         _services = services;
-        _cache = cache;
         _logger = logger;
     }
 
@@ -218,7 +214,8 @@ public class InactivityDetectionService : IInactivityDetectionService
                     utcNow) > 0)
             {
                 await _unitOfWork.SaveChangesAsync();
-                await _cache.RemoveAsync(DashboardStatusCacheKey.For(memberId), ct);
+                // The persisted status line catches up on the next pipeline pass — the Worker
+                // has no medical model to regenerate it here, by design.
             }
 
             return false;
@@ -265,7 +262,7 @@ public class InactivityDetectionService : IInactivityDetectionService
         };
         await _unitOfWork.Alerts.AddAsync(alert);
         await _unitOfWork.SaveChangesAsync();
-        await _cache.RemoveAsync(DashboardStatusCacheKey.For(memberId), ct);
+        // Same as the resolve path above: the status line catches up on the next pipeline pass.
 
         // Yellow severity routes to in-app + digest only (§3) — DeliveryPlanner enforces that,
         // not this call site. Still enqueued so every alert flows through the same outbox (§3:

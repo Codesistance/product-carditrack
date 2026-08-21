@@ -22,24 +22,9 @@ public class PrivateAiSettings : IMedGemmaModelSettings
     /// <summary>Generous by default — CPU inference on a 4B model is measured in tens of seconds.</summary>
     public int TimeoutSeconds { get; set; } = 300;
 
-    /// <summary>
-    /// How long the Dashboard hero card's status line may spend generating before the request
-    /// gives up and answers without one.
-    /// </summary>
-    /// <remarks>
-    /// <see cref="TimeoutSeconds"/> is the right ceiling for a background job, which has all day;
-    /// it is the wrong one for a request a caregiver is waiting on. The mobile client abandons the
-    /// call at 30 s (<c>MauiProgram</c>), so anything above that is time nobody is left to receive
-    /// — the phone has already given up and shown a socket error instead of the static per-tier
-    /// copy the response contract provides for exactly this case.
-    /// <para>
-    /// 25 s is headroom, not an expectation. A generation measured 21–26 s before the status
-    /// prompt was cut and dev's MedGemma kept warm; both moved the typical call well under this,
-    /// and what is left here is a ceiling for the tail rather than a number the common path
-    /// approaches. Lowering it trades the live line for a snappier dashboard.
-    /// </para>
-    /// </remarks>
-    public int CurrentStatusBudgetSeconds { get; set; } = 25;
+    // CurrentStatusBudgetSeconds was removed with the batch move: the status line is generated
+    // by the pipeline (StatusLineGenerationService) and served from its persisted row, so no
+    // request waits on a generation and the budget has nothing left to protect.
 
     /// <summary>
     /// Whether to attach a Google-minted OIDC identity token to every MedGemma request, with the

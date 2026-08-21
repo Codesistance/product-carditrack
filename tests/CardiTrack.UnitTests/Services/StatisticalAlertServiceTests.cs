@@ -81,7 +81,7 @@ public class StatisticalAlertServiceTests
             .Returns(logs);
 
     private StatisticalAlertService CreateSut() =>
-        new(_unitOfWork, Substitute.For<IDispatchService>(), Substitute.For<IDistributedCache>(),
+        new(_unitOfWork, Substitute.For<IDispatchService>(),
             NullLogger<StatisticalAlertService>.Instance);
 
     [Fact]

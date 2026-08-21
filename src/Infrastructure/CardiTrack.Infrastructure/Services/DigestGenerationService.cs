@@ -339,6 +339,7 @@ public partial class DigestGenerationService : IDigestGenerationService
     private readonly IMedicalAiService _medicalAi;
     private readonly MemberContextComposer _memberContext;
     private readonly IEncryptionService _encryption;
+    private readonly StatusLineGenerationService _statusLine;
     private readonly ILogger<DigestGenerationService> _logger;
 
     public DigestGenerationService(
@@ -346,12 +347,14 @@ public partial class DigestGenerationService : IDigestGenerationService
         IMedicalAiService medicalAi,
         MemberContextComposer memberContext,
         IEncryptionService encryption,
+        StatusLineGenerationService statusLine,
         ILogger<DigestGenerationService> logger)
     {
         _unitOfWork = unitOfWork;
         _medicalAi = medicalAi;
         _memberContext = memberContext;
         _encryption = encryption;
+        _statusLine = statusLine;
         _logger = logger;
     }
 
@@ -1240,6 +1243,22 @@ public partial class DigestGenerationService : IDigestGenerationService
         // so a member whose summary was rejected is never asked anything on the strength of it.
         await StoreQuestionIfWorthAskingAsync(
             memberId, aiResponse, name, utcNow, localNow, timeZone, describedDate, ct);
+
+        // The Dashboard status line is served from its persisted row, and a stored digest is
+        // exactly the moment the line's inputs changed — the model is warm from the call above,
+        // so the marginal cost is one short generation. Its own try/catch, not the loop's: a
+        // status-line failure logged as "summary generation failed" would say the digest was
+        // lost when it was already stored.
+        try
+        {
+            await _statusLine.RegenerateAsync(memberId, ct);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogError(ex,
+                "Status line regeneration failed for CardiMember {CardiMemberId}; the digest was stored.",
+                memberId);
+        }
 
         return true;
     }

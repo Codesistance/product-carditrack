@@ -114,7 +114,8 @@ public class MonthbookGenerationTests
 
     private DigestGenerationService CreateSut() =>
         new(_unitOfWork, _medicalAi, PromptContextFactory.Composer(_unitOfWork),
-            PromptContextFactory.Encryption, NullLogger<DigestGenerationService>.Instance);
+            PromptContextFactory.Encryption, InertStatusLineGenerator.Create(),
+            NullLogger<DigestGenerationService>.Instance);
 
     private async Task AssertNothingWritten()
     {

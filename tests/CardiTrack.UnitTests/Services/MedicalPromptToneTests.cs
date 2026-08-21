@@ -17,6 +17,7 @@ public class MedicalPromptToneTests
         typeof(DigestGenerationService),
         typeof(HealthInsightService),
         typeof(RealtimeAssessmentService),
+        typeof(StatusLineGenerationService),
     ];
 
     /// <summary>
@@ -119,7 +120,7 @@ public class MedicalPromptToneTests
     }
 
     /// <summary>The one prompt the pronoun rule is deliberately kept out of.</summary>
-    private const string StatusPrompt = "HealthInsightService.CurrentStatusInstructions";
+    private const string StatusPrompt = "StatusLineGenerationService.CurrentStatusInstructions";
 
     /// <summary>
     /// Anything that writes more than a sentence gets the pronoun rule. Without it the model

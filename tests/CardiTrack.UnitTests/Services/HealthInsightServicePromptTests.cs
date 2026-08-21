@@ -26,7 +26,6 @@ public class HealthInsightServicePromptTests
     private readonly IActivityLogRepository _activityLogs = Substitute.For<IActivityLogRepository>();
     private readonly IPatternBaselineRepository _baselines = Substitute.For<IPatternBaselineRepository>();
     private readonly IAlertRepository _alerts = Substitute.For<IAlertRepository>();
-    private readonly IDistributedCache _cache = Substitute.For<IDistributedCache>();
 
     private readonly Guid _userId = Guid.NewGuid();
     private readonly Guid _memberId = Guid.NewGuid();
@@ -71,7 +70,7 @@ public class HealthInsightServicePromptTests
 
     private HealthInsightService CreateSut() =>
         new(_medicalAi, _unitOfWork, new CardiMemberAccessService(_unitOfWork),
-            PromptContextFactory.Composer(_unitOfWork), _cache, new PrivateAiSettings());
+            PromptContextFactory.Composer(_unitOfWork));
 
     private void SetupMember(
         Gender gender = Gender.Female, string? medicalNotes = null, Guid? id = null)

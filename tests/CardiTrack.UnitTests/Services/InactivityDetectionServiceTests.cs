@@ -136,7 +136,7 @@ public class InactivityDetectionServiceTests
 
     private InactivityDetectionService CreateSut() =>
         new(_unitOfWork, Substitute.For<IDispatchService>(), BuildServices(),
-            Substitute.For<IDistributedCache>(), NullLogger<InactivityDetectionService>.Instance);
+            NullLogger<InactivityDetectionService>.Instance);
 
     /// <summary>
     /// Gives the member a connected device, so the pre-alert probe has something to pull. Without

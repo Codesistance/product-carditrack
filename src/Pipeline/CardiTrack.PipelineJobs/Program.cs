@@ -83,6 +83,7 @@ builder.Services.AddScoped<IAlertPreferenceRepository, AlertPreferenceRepository
 builder.Services.AddScoped<IMemberChatSessionRepository, MemberChatSessionRepository>();
 builder.Services.AddScoped<IMemberChatTurnRepository, MemberChatTurnRepository>();
 builder.Services.AddScoped<IMemberChatTurnUsageRepository, MemberChatTurnUsageRepository>();
+builder.Services.AddScoped<IMemberStatusLineRepository, MemberStatusLineRepository>();
 // Repositories only, not AddPushServices — the pipeline gets a transport (the internal enqueue
 // endpoint, wired below for the assessor), not a copy of the send stack. See
 // PushServiceExtensions.AddPushServices' remarks.

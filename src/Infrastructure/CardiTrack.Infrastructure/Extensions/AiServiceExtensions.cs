@@ -169,9 +169,10 @@ public static class AiServiceExtensions
 
         services.AddScoped<IMedicalAiService, MedicalAiService>();
 
-        // Also resolvable on its own: HealthInsightService needs the request-path budget, and this
-        // is the same instance the client above was handed rather than a second read of config.
-        services.AddSingleton(privateSettings);
+        // The Dashboard status line's batch generator — registered here so it travels with the
+        // medical slot the same way the member-context composer does: the digest and assess
+        // passes are its callers, and any host that can run them can regenerate the line.
+        services.AddScoped<StatusLineGenerationService>();
 
         // Rewrite slot — the non-clinical member-chat steps (docs/llm_design.md), selected by
         // RewriteAiSettings.Kind: self-hosted Ollama locally, Gemini via Vertex AI in deployed
