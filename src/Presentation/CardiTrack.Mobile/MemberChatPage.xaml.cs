@@ -443,22 +443,33 @@ public sealed class ChatTurnItem
     };
 
     /// <summary>
-    /// Splits series into the ones worth drawing and the ones too thin to plot. Shared by the
-    /// live reply and the stored one so a refreshed conversation cannot render its charts by a
-    /// different rule than the answer did when it arrived.
+    /// Splits series into the ones worth drawing and the ones that still need saying in text.
+    /// Shared by the live reply and the stored one so a refreshed conversation cannot render its
+    /// charts by a different rule than the answer did when it arrived.
     /// </summary>
+    /// <remarks>
+    /// A single reading is dropped from both. It has no trend to plot, and the text stand-in it
+    /// used to fall into was written before the charts existed — so an answer about this
+    /// afternoon appended "Steps: 774 · Resting heart rate: 72 · Sleep: 6h 12m" underneath a
+    /// sentence that had just said all three. Evidence is worth showing when it shows something:
+    /// a clinician puts a chart in front of you to make a trend visible, and states a single
+    /// reading in the sentence where it belongs. The reply already states it.
+    /// <para>
+    /// The summary survives for the case it was actually needed for — two or more readings that
+    /// still would not chart, which today means a span so wide the plot would be mostly gap. That
+    /// is data the prose has no room for and a chart cannot carry.
+    /// </para>
+    /// </remarks>
     private static (List<ChatChartItem> Drawable, List<ChartSeries> Summarised) SplitCharts(
         IReadOnlyList<ChartSeries> charts)
     {
-        // Series with at least two readings draw as real charts; anything thinner keeps the old
-        // first-to-last text summary, so a one-day answer still shows its number somewhere.
         var drawable = new List<ChatChartItem>();
         var summarised = new List<ChartSeries>();
         foreach (var series in charts)
         {
             if (ChatChartItem.From(series) is { } item)
                 drawable.Add(item);
-            else
+            else if (series.Points.Count > 1)
                 summarised.Add(series);
         }
 
@@ -518,24 +529,22 @@ public sealed class ChatTurnItem
     }
 
     /// <summary>
-    /// The stand-in for a series too thin to plot: first-to-last where there is a stretch to
-    /// describe, and the reading alone where there is not.
+    /// First-to-last for the series <see cref="SplitCharts"/> could neither draw nor drop: two or
+    /// more readings spanning too wide a window to plot.
     /// </summary>
     /// <remarks>
-    /// A single reading used to render as "Steps: 774 → 774" — an arrow between a number and
-    /// itself, which reads as a trend that went nowhere rather than as one day's count. That is
-    /// also the common case here, since a series lands in this summary precisely when it has fewer
-    /// than two points. Values are spelled the way the charts spell them, so a night's sleep does
-    /// not read as "372" beneath a bubble that just called it six hours.
+    /// Single-reading series no longer reach here — they are dropped, because one reading has no
+    /// stretch to describe and the reply states it in prose. So there is no one-point branch: an
+    /// arrow always sits between two different readings, which is the only shape that ever meant
+    /// anything. Values are spelled the way the charts spell them, so a night's sleep does not
+    /// read as "372" beneath a bubble that just called it six hours.
     /// </remarks>
     private static string Summarize(IReadOnlyList<ChartSeries> charts)
     {
         var parts = charts
-            .Where(c => c.Points.Count > 0)
-            .Select(c => c.Points.Count == 1
-                ? $"{c.Metric}: {ChatMetricFormat.Bare(c.Metric, c.Points[0].Value)}"
-                : $"{c.Metric}: {ChatMetricFormat.Bare(c.Metric, c.Points[0].Value)} → "
-                    + $"{ChatMetricFormat.Bare(c.Metric, c.Points[^1].Value)}");
+            .Where(c => c.Points.Count > 1)
+            .Select(c => $"{c.Metric}: {ChatMetricFormat.Bare(c.Metric, c.Points[0].Value)} → "
+                + $"{ChatMetricFormat.Bare(c.Metric, c.Points[^1].Value)}");
         return string.Join(" · ", parts);
     }
 }

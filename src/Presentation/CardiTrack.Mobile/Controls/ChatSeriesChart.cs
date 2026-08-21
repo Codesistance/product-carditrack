@@ -244,7 +244,7 @@ public sealed class ChatChartItem
         {
             "Steps" => "MetricStepsInk",
             "Resting heart rate" => "MetricHeartInk",
-            "Sleep (minutes)" => "MetricSleepInk",
+            "Sleep" or "Sleep (minutes)" => "MetricSleepInk",
             _ => "Primary",
         };
         return MetricStatus.Resource(key, Colors.Blue);
@@ -264,7 +264,7 @@ internal static class ChatMetricFormat
     {
         "Steps" => $"{value:#,##0} steps",
         "Resting heart rate" => $"{value:0} bpm",
-        "Sleep (minutes)" => Duration(value),
+        "Sleep" or "Sleep (minutes)" => Duration(value),
         _ => value.ToString("0.#"),
     };
 
@@ -277,11 +277,24 @@ internal static class ChatMetricFormat
     {
         "Steps" => $"{value:#,##0}",
         "Resting heart rate" => $"{value:0}",
-        "Sleep (minutes)" => Duration(value),
+        "Sleep" or "Sleep (minutes)" => Duration(value),
         _ => value.ToString("0.#"),
     };
 
-    private static string Duration(double minutes) => minutes >= 60
-        ? $"{Math.Floor(minutes / 60):0}h {minutes % 60:0}m"
-        : $"{minutes:0}m";
+    /// <summary>
+    /// Mirrors <c>MedicalPromptBlocks.SleepFigure</c>, which the API uses for the same figure in
+    /// prose. Duplicated rather than shared because this assembly cannot reference Infrastructure,
+    /// and the two must not drift: a callout reading "8h 0m" beside a reply reading "8h" is the
+    /// same night described two ways in one bubble.
+    /// </summary>
+    private static string Duration(double minutes)
+    {
+        var whole = (int)Math.Round(minutes);
+        return whole switch
+        {
+            < 60 => $"{whole}m",
+            _ when whole % 60 == 0 => $"{whole / 60}h",
+            _ => $"{whole / 60}h {whole % 60}m",
+        };
+    }
 }

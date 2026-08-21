@@ -363,11 +363,32 @@ internal static partial class MedicalPromptBlocks
             .TakeLast(take)
             .Select(l =>
                 $"  {DayLabel(l.Date, today)}: "
-                + $"steps={l.Steps}, HR={l.RestingHeartRate}, sleep(night ending that morning)={l.SleepMinutes}min")
+                + $"steps={l.Steps}, HR={l.RestingHeartRate}, "
+                + $"sleep(night ending that morning)={SleepFigure(l.SleepMinutes)}")
             .ToList();
 
         return lines.Count > 0 ? string.Join("\n", lines) : "No recent activity data.";
     }
+
+    /// <summary>
+    /// A night's sleep as a person says it. The minutes are how the wearable stores it and how
+    /// every table here holds it, and sending that number to a model got it repeated back
+    /// verbatim: a caregiver asking how their father slept was told "372 minutes", which is
+    /// arithmetic homework in the middle of a sentence meant to reassure. Nobody has ever asked
+    /// how many minutes someone slept.
+    /// </summary>
+    /// <remarks>
+    /// Rounded to the minute rather than to the nearest quarter-hour. "6h 12m" is no harder to
+    /// read than "about 6¼ hours" and stays true to the reading, which matters when the same
+    /// figure appears on a chart's axis beside it. Under an hour keeps minutes alone — "0h 40m"
+    /// is a worse way of writing forty minutes.
+    /// </remarks>
+    internal static string SleepFigure(int? minutes) => minutes switch
+    {
+        null => "not measured",
+        < 60 => $"{minutes}m",
+        _ => minutes % 60 == 0 ? $"{minutes / 60}h" : $"{minutes / 60}h {minutes % 60}m",
+    };
 
     /// <summary>
     /// The family-digest daily rows: steps first (the movement yardstick the vitals are read
