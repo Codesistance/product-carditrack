@@ -18,6 +18,7 @@ public static class PushTeaser
         {
             DeliveryCategory.Safety => (AppName, "Urgent — open CardiTrack now"),
             DeliveryCategory.Health => Health(severity, alertType),
+            DeliveryCategory.Questionnaire => (AppName, "A question is waiting — open CardiTrack"),
             _ => (AppName, "Something needs your attention — open CardiTrack"),
         };
 

@@ -39,6 +39,9 @@ public partial class StatusHeroCard : ContentView
     public StatusHeroCard()
     {
         InitializeComponent();
+        // Same lifecycle discipline as PendingBotIndicator: a card taken off-screen while a
+        // question is still pending must not leave its animation looping in the background.
+        Unloaded += (_, _) => StopQaPulse();
     }
 
     public void Apply(DashboardResponse data)
@@ -137,7 +140,7 @@ public partial class StatusHeroCard : ContentView
             { 0.00, 0.50, new Animation(v => QaPulseRing.Scale = v, 0.9, 1.05, Easing.SinInOut) },
             { 0.50, 1.00, new Animation(v => QaPulseRing.Scale = v, 1.05, 0.9, Easing.SinInOut) },
         };
-        pulse.Commit(this, QaPulseAnimation, length: 1400, repeat: () => QaBorder.IsVisible);
+        pulse.Commit(this, QaPulseAnimation, length: 1400, repeat: () => IsLoaded && QaBorder.IsVisible);
     }
 
     private void StopQaPulse()

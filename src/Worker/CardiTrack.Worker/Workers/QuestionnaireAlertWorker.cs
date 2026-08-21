@@ -86,10 +86,11 @@ public class QuestionnaireAlertWorker : CronBackgroundService
             // on one question must not cost the rest of the batch.
             using var scope = _scopeFactory.CreateScope();
             var unitOfWork = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
+            var claimed = false;
 
             try
             {
-                var claimed = await unitOfWork.MemberQuestionnaires.TryClaimAlertAsync(
+                claimed = await unitOfWork.MemberQuestionnaires.TryClaimAlertAsync(
                     questionnaire.Id, questionnaire.ReminderCount, utcNow, stoppingToken);
                 if (!claimed)
                     continue;
@@ -105,10 +106,37 @@ public class QuestionnaireAlertWorker : CronBackgroundService
                 _logger.LogError(ex,
                     "Failed to push MemberQuestionnaire {QuestionnaireId} (occurrence {Occurrence}).",
                     questionnaire.Id, questionnaire.ReminderCount);
+
+                if (claimed)
+                    await ReleaseAlertClaimSafelyAsync(unitOfWork, questionnaire, stoppingToken);
             }
         }
 
         if (pushed > 0)
             _logger.LogInformation("QuestionnaireAlert pushed {Count} question(s).", pushed);
+    }
+
+    /// <summary>
+    /// Releases a claim whose push failed. Swallows its own failure deliberately, the same stance
+    /// as <c>NotificationDispatchWorker.ReleasePushClaimSafelyAsync</c>: this runs inside a catch
+    /// block, and letting it throw would replace the real error with a second one. A claim that
+    /// cannot be handed back simply waits out its own 24h reminder interval before trying again —
+    /// worse than an immediate retry, not a stuck question.
+    /// </summary>
+    private async Task ReleaseAlertClaimSafelyAsync(
+        IUnitOfWork unitOfWork, Domain.Entities.MemberQuestionnaire questionnaire, CancellationToken ct)
+    {
+        try
+        {
+            await unitOfWork.MemberQuestionnaires.ReleaseAlertClaimAsync(
+                questionnaire.Id, questionnaire.ReminderCount, questionnaire.LastRemindedAtUtc, ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex,
+                "Could not release the alert claim on MemberQuestionnaire {QuestionnaireId}; it will "
+                + "not retry until its reminder interval next elapses.",
+                questionnaire.Id);
+        }
     }
 }

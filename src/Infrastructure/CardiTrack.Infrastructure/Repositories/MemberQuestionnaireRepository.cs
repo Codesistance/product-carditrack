@@ -89,16 +89,32 @@ public class MemberQuestionnaireRepository : Repository<MemberQuestionnaire>, IM
     {
         // ExecuteUpdate, so the read and the write are one statement the database arbitrates — see
         // NotificationRepository.TryClaimForPushAsync for the same idiom and why an in-memory
-        // decision cannot be made safe here.
+        // decision cannot be made safe here. The AskableUntilUtc guard repeats GetDueForAlertAsync's
+        // — a row can lapse in the gap between that read and this claim, and without it here the
+        // claim would still win and push a question the read paths would no longer serve.
         var claimed = await _dbSet
             .Where(q => q.Id == questionnaireId
                         && q.Status == QuestionnaireStatus.Pending
-                        && q.ReminderCount == expectedReminderCount)
+                        && q.ReminderCount == expectedReminderCount
+                        && (q.AskableUntilUtc == null || q.AskableUntilUtc > utcNow))
             .ExecuteUpdateAsync(s => s
                 .SetProperty(q => q.ReminderCount, expectedReminderCount + 1)
                 .SetProperty(q => q.LastRemindedAtUtc, utcNow), ct);
 
         return claimed == 1;
+    }
+
+    public async Task ReleaseAlertClaimAsync(
+        Guid questionnaireId, int claimedReminderCount, DateTime? previousLastRemindedAtUtc, CancellationToken ct = default)
+    {
+        // Guarded on the post-claim ReminderCount, like ReleasePushClaimAsync's row-scoped update —
+        // a release that arrives after the row moved on for some other reason (answered, dismissed)
+        // must not overwrite that with a stale claim's undo.
+        await _dbSet
+            .Where(q => q.Id == questionnaireId && q.ReminderCount == claimedReminderCount + 1)
+            .ExecuteUpdateAsync(s => s
+                .SetProperty(q => q.ReminderCount, claimedReminderCount)
+                .SetProperty(q => q.LastRemindedAtUtc, previousLastRemindedAtUtc), ct);
     }
 
     public async Task<DateTime?> GetLatestGeneratedAtAsync(

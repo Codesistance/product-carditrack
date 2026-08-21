@@ -205,6 +205,157 @@ public class MemberQuestionnaireRepositoryTests(TestDatabaseFixture fixture)
         Assert.Null(await repo.GetLatestGeneratedAtAsync(Guid.NewGuid()));
     }
 
+    [Fact]
+    public async Task GetPendingAsync_ReturnsTheLiveRow_AndNullOnceItLapsesOrHasNone()
+    {
+        using var scope = fixture.CreateScope();
+        var waiting = Guid.NewGuid();
+        var lapsed = Guid.NewGuid();
+        var settled = Guid.NewGuid();
+        var now = DateTime.UtcNow;
+
+        var pending = Questionnaire(waiting, now, question: "Still asking?");
+        var repo = await SaveAsync(scope,
+            pending,
+            Questionnaire(lapsed, now.AddDays(-1), askableUntilUtc: now.AddHours(-5)),
+            Questionnaire(settled, now, QuestionnaireStatus.Answered, answer: "Yes."));
+
+        var found = await repo.GetPendingAsync(waiting, now);
+
+        Assert.NotNull(found);
+        Assert.Equal(pending.Id, found!.Id);
+        Assert.Null(await repo.GetPendingAsync(lapsed, now));
+        Assert.Null(await repo.GetPendingAsync(settled, now));
+        Assert.Null(await repo.GetPendingAsync(Guid.NewGuid(), now));
+    }
+
+    // ── The alert worker's due-for-push sweep and its claim ────────────────────
+
+    /// <summary>
+    /// A never-pushed row is due immediately regardless of how recently it was generated — the
+    /// cutoff only governs the gap between reminders, not the first push.
+    /// </summary>
+    [Fact]
+    public async Task GetDueForAlertAsync_FindsRowsNeverPushed_EvenWhenJustGenerated()
+    {
+        using var scope = fixture.CreateScope();
+        var now = DateTime.UtcNow;
+        var freshlyAsked = Questionnaire(Guid.NewGuid(), now);
+
+        var repo = await SaveAsync(scope, freshlyAsked);
+
+        var due = await repo.GetDueForAlertAsync(
+            now, reminderCutoffUtc: now.AddHours(-24), maxPushes: 3, limit: 50);
+
+        Assert.Contains(due, q => q.Id == freshlyAsked.Id);
+    }
+
+    [Fact]
+    public async Task GetDueForAlertAsync_ExcludesRecentlyRemindedRows_ButIncludesOverdueOnes()
+    {
+        using var scope = fixture.CreateScope();
+        var now = DateTime.UtcNow;
+        var cutoff = now.AddHours(-24);
+
+        var recentlyReminded = Questionnaire(Guid.NewGuid(), now.AddDays(-1));
+        recentlyReminded.ReminderCount = 1;
+        recentlyReminded.LastRemindedAtUtc = now.AddHours(-1);
+
+        var overdue = Questionnaire(Guid.NewGuid(), now.AddDays(-2));
+        overdue.ReminderCount = 1;
+        overdue.LastRemindedAtUtc = now.AddHours(-25);
+
+        var repo = await SaveAsync(scope, recentlyReminded, overdue);
+
+        var due = (await repo.GetDueForAlertAsync(now, cutoff, maxPushes: 3, limit: 50))
+            .Select(q => q.Id).ToHashSet();
+
+        Assert.DoesNotContain(recentlyReminded.Id, due);
+        Assert.Contains(overdue.Id, due);
+    }
+
+    [Fact]
+    public async Task GetDueForAlertAsync_ExcludesRowsAtTheReminderCap_AndLapsedOnes()
+    {
+        using var scope = fixture.CreateScope();
+        var now = DateTime.UtcNow;
+        var cutoff = now.AddHours(-24);
+
+        var atCap = Questionnaire(Guid.NewGuid(), now.AddDays(-4));
+        atCap.ReminderCount = 3;
+        atCap.LastRemindedAtUtc = now.AddDays(-2);
+
+        var lapsed = Questionnaire(Guid.NewGuid(), now.AddDays(-1), askableUntilUtc: now.AddHours(-1));
+
+        var repo = await SaveAsync(scope, atCap, lapsed);
+
+        var due = (await repo.GetDueForAlertAsync(now, cutoff, maxPushes: 3, limit: 50))
+            .Select(q => q.Id).ToHashSet();
+
+        Assert.DoesNotContain(atCap.Id, due);
+        Assert.DoesNotContain(lapsed.Id, due);
+    }
+
+    /// <summary>
+    /// The claim is what keeps several Worker instances from pushing the same question twice, and it
+    /// only works because the database arbitrates it — real Postgres, not a substitute agreeing with
+    /// itself. Mirrors NotificationRepositoryTests.TryClaimForPushAsync_IsWonByExactlyOneCaller.
+    /// </summary>
+    [Fact]
+    public async Task TryClaimAlertAsync_IsWonByExactlyOneCaller()
+    {
+        using var scope = fixture.CreateScope();
+        var now = DateTime.UtcNow;
+        var questionnaire = Questionnaire(Guid.NewGuid(), now);
+        var repo = await SaveAsync(scope, questionnaire);
+
+        var first = await repo.TryClaimAlertAsync(questionnaire.Id, expectedReminderCount: 0, now);
+        var second = await repo.TryClaimAlertAsync(questionnaire.Id, expectedReminderCount: 0, now);
+
+        Assert.True(first);
+        Assert.False(second);
+    }
+
+    /// <summary>
+    /// The window between the sweep's read and its claim: a question that lapses in that gap must
+    /// not still win the claim and go out as a push the read paths would no longer serve.
+    /// </summary>
+    [Fact]
+    public async Task TryClaimAlertAsync_RefusesARowThatLapsedSinceItWasRead()
+    {
+        using var scope = fixture.CreateScope();
+        var now = DateTime.UtcNow;
+        var questionnaire = Questionnaire(
+            Guid.NewGuid(), now.AddHours(-1), askableUntilUtc: now.AddMinutes(-1));
+        var repo = await SaveAsync(scope, questionnaire);
+
+        Assert.False(await repo.TryClaimAlertAsync(questionnaire.Id, expectedReminderCount: 0, now));
+    }
+
+    [Fact]
+    public async Task ReleaseAlertClaimAsync_PutsTheRowBackInThePendingSet()
+    {
+        // The failed-enqueue path: a claim held by a push that never actually sent would cost the
+        // question its next reminder for a full 24h, having sent nothing.
+        using var scope = fixture.CreateScope();
+        var now = DateTime.UtcNow;
+        var questionnaire = Questionnaire(Guid.NewGuid(), now.AddHours(-2));
+        var repo = await SaveAsync(scope, questionnaire);
+
+        Assert.True(await repo.TryClaimAlertAsync(questionnaire.Id, expectedReminderCount: 0, now));
+        Assert.DoesNotContain(
+            await repo.GetDueForAlertAsync(now, now.AddHours(-24), maxPushes: 3, limit: 50),
+            q => q.Id == questionnaire.Id);
+
+        await repo.ReleaseAlertClaimAsync(
+            questionnaire.Id, claimedReminderCount: 0, previousLastRemindedAtUtc: null);
+
+        Assert.Contains(
+            await repo.GetDueForAlertAsync(now, now.AddHours(-24), maxPushes: 3, limit: 50),
+            q => q.Id == questionnaire.Id);
+        Assert.True(await repo.TryClaimAlertAsync(questionnaire.Id, expectedReminderCount: 0, now));
+    }
+
     /// <summary>
     /// A real row delete, not a flag. This entity is deliberately not soft-deletable: the answer is
     /// something a family member wrote about a person who never signed up to the service, so

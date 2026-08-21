@@ -204,9 +204,16 @@ public class FcmNotificationChannel : INotificationChannel
                 // Derived from the source identity rather than fetched — content-free payloads
                 // mean the app resolves full detail after opening anyway, so a DB round trip here
                 // just to populate a deep link would cost every send a query for no benefit.
-                ["deepLink"] = delivery.SourceType == DeliverySourceType.Alert
-                    ? $"carditrack://alerts/{delivery.SourceId}"
-                    : $"carditrack://notifications/{delivery.SourceId}",
+                ["deepLink"] = delivery.SourceType switch
+                {
+                    DeliverySourceType.Alert => $"carditrack://alerts/{delivery.SourceId}",
+                    // A questionnaire tap opens the member's Q&A screen, not a detail page keyed
+                    // by the questionnaire id — that screen takes a member id and shows whatever
+                    // is pending, same as every other cardimembers/{id}/... link.
+                    DeliverySourceType.Questionnaire when delivery.CardiMemberId is { } forQuestions
+                        => $"carditrack://cardimembers/{forQuestions}/questions",
+                    _ => $"carditrack://notifications/{delivery.SourceId}",
+                },
                 ["ackToken"] = ackToken,
                 ["fetchToken"] = fetchToken
             },

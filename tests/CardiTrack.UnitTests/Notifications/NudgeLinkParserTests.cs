@@ -18,6 +18,8 @@ public class NudgeLinkParserTests
         NudgeDestinationKind.MemberDevices)]
     [InlineData("carditrack://cardimembers/22222222-2222-2222-2222-222222222222/devices/33333333-3333-3333-3333-333333333333",
         NudgeDestinationKind.MemberDevices)]
+    [InlineData("carditrack://cardimembers/22222222-2222-2222-2222-222222222222/questions",
+        NudgeDestinationKind.MemberQuestions)]
     [InlineData("carditrack://cardimembers/22222222-2222-2222-2222-222222222222/edit#medicalNotes",
         NudgeDestinationKind.MemberEdit)]
     [InlineData("carditrack://cardimembers/22222222-2222-2222-2222-222222222222/baseline",

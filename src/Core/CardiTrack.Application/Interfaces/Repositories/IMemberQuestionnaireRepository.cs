@@ -72,4 +72,14 @@ public interface IMemberQuestionnaireRepository : IRepository<MemberQuestionnair
     /// </summary>
     Task<bool> TryClaimAlertAsync(
         Guid questionnaireId, int expectedReminderCount, DateTime utcNow, CancellationToken ct = default);
+
+    /// <summary>
+    /// Undoes a claim whose push failed after <see cref="TryClaimAlertAsync"/> succeeded — the same
+    /// role <c>NotificationRepository.ReleasePushClaimAsync</c> plays. Without this, a transient
+    /// send failure would still cost the question its next 24h-away reminder, since the claim's
+    /// bump to <see cref="MemberQuestionnaire.ReminderCount"/>/<see cref="MemberQuestionnaire.LastRemindedAtUtc"/>
+    /// already happened even though nothing was actually sent.
+    /// </summary>
+    Task ReleaseAlertClaimAsync(
+        Guid questionnaireId, int claimedReminderCount, DateTime? previousLastRemindedAtUtc, CancellationToken ct = default);
 }
