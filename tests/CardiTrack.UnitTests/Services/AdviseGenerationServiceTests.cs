@@ -1,4 +1,4 @@
-using CardiTrack.Application.Interfaces.Repositories;
+﻿using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Domain.Entities;
 using CardiTrack.Infrastructure.Services;
@@ -260,16 +260,32 @@ public class AdviseGenerationServiceTests
     }
 
     [Fact]
-    public async Task Prompt_GroundsInTheWellnessReference_NotClinicalLanguage()
+    public async Task Prompt_GroundsInTheHealthReference_NotClinicalLanguage()
     {
         await CreateSut().RegenerateIfDueAsync(_memberId);
 
         var prompt = (string)_medicalAi.ReceivedCalls().Single().GetArguments()[0]!;
         Assert.Contains("Write as a caregiver would", prompt);
-        Assert.Contains("--- Wellness reference ---", prompt);
+        Assert.Contains("--- General health reference ---", prompt);
         Assert.Contains("WHO, 2020", prompt);
-        Assert.Contains("never as a diagnosis, a prescription, or a change to medication or treatment", prompt);
-        Assert.Contains("worth mentioning to a clinician", prompt);
+        Assert.Contains("never a diagnosis, a prescription, or a change to medication or treatment", prompt);
+        Assert.Contains("worth mentioning to their doctor", prompt);
         Assert.DoesNotContain("medical AI assistant", prompt, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// The prompt never says "wellness", because MedGemma completes from the nearest text — the
+    /// failure <c>CaregiverRegister</c>'s remark documents at length, and the one that put "it's a
+    /// general wellness thing that can help with overall feeling" in front of a caregiver. The
+    /// words were in the tone block, twice in the instructions, and again as the reference
+    /// heading; the boundary they carried is stated in a family's words instead.
+    /// </summary>
+    [Fact]
+    public async Task Prompt_NeverSaysWellness()
+    {
+        await CreateSut().RegenerateIfDueAsync(_memberId);
+
+        var prompt = (string)_medicalAi.ReceivedCalls().Single().GetArguments()[0]!;
+        Assert.DoesNotContain("wellness", prompt, StringComparison.OrdinalIgnoreCase);
     }
 }

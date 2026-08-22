@@ -143,9 +143,20 @@ internal static partial class MedicalPromptBlocks
     /// <see cref="JournalNoCondition"/>'s remark draws for the journal books. Advise is the one
     /// generation whose whole purpose is to suggest something, so the ordinary diagnosis ban is
     /// not enough on its own: it has to also say what kind of suggestion this is allowed to be.
+    /// <para>
+    /// Says that without the words "general wellness", which it used to lead with. Those two words
+    /// were in the tone block, twice more in <c>AdviseGenerationService.AdviseInstructions</c>, and
+    /// again as the reference section's heading — and MedGemma completes from the nearest text, as
+    /// <see cref="CaregiverRegister"/>'s remark documents at length. So a suggestion came back
+    /// reading "try getting outside for a short walk. It's a general wellness thing that can help
+    /// with overall feeling", and beside member chat's own closing line the caregiver was told the
+    /// word twice in four sentences. The boundary here is what the sentence has to carry, not any
+    /// particular vocabulary: this states the same three prohibitions and the same route to a
+    /// clinician in words a family would use.
+    /// </para>
     /// </remarks>
     internal const string ToneWellnessNotClinical =
-        "Frame the suggestion as general wellness context worth mentioning to a clinician, never as a diagnosis, a prescription, or a change to medication or treatment.";
+        "Offer it as a suggestion the family could try, worth mentioning to their doctor — never a diagnosis, a prescription, or a change to medication or treatment.";
 
     /// <summary><see cref="Tone"/> plus <see cref="ToneWellnessNotClinical"/> — the opening for the
     /// one prompt that is allowed to suggest something.</summary>

@@ -1,11 +1,11 @@
-using CardiTrack.Application.Services;
+﻿using CardiTrack.Application.Services;
 using CardiTrack.Domain.Entities;
 using CardiTrack.Infrastructure.Services;
 
 namespace CardiTrack.UnitTests.Services;
 
 /// <summary>
-/// The answer to "does he need help with his sleep?" — the stored wellness suggestion, served, and
+/// The answer to "does he need help with his sleep?" — the stored suggestion, served, and
 /// never assembled here. Asked that question the chat used to reach the planner, which knows only
 /// the four <c>DataQueryKind</c> sources, and came back with a readback of the week and a sleep
 /// chart: every figure correct, and no answer to what was asked.
@@ -38,29 +38,48 @@ public class AdviseReplyTests
     }
 
     /// <summary>
-    /// The grounding travels with the suggestion. The Details card can put it in muted small type
-    /// under the suggestion; a chat bubble has no small type to put it in.
+    /// It closes by marking what it just said as a suggestion. A chat bubble has no heading and no
+    /// layout to do that, where the Details card has both.
     /// </summary>
     [Fact]
-    public void ItNamesWhatTheSuggestionRestsOnAndWhatItIsNot()
+    public void ItMarksWhatItSaidAsASuggestion()
     {
         var reply = MemberChatService.AdviseReply("Dad", Advise(), Now);
 
-        Assert.Contains("general wellness guidance based on Adult sleep duration (AASM/CDC)", reply,
-            StringComparison.Ordinal);
-        Assert.Contains("worth mentioning to their doctor rather than acting on by itself", reply,
-            StringComparison.Ordinal);
+        Assert.Contains("That's just an idea to consider", reply, StringComparison.Ordinal);
+        Assert.Contains("their doctor is the one to ask", reply, StringComparison.Ordinal);
     }
 
-    /// <summary>A citation that came back with a full stop must not stop the closing clause dead.</summary>
+    /// <summary>
+    /// Never the word "wellness", on any path. It was in the tone block, twice more in the Advise
+    /// prompt and again as a section heading, and MedGemma completes from the nearest text — so a
+    /// suggestion came back saying "it's a general wellness thing" and this reply closed by saying
+    /// it again four sentences later. The reply is also asserted on here, and not only the prompts,
+    /// because this is the surface where a caregiver actually read it twice.
+    /// </summary>
     [Fact]
-    public void ACitationsOwnFullStopIsNotLeftMidSentence()
+    public void ItNeverSaysWellness()
     {
-        var reply = MemberChatService.AdviseReply(
-            "Dad", Advise(guideline: "Adult physical activity (WHO, 2020)."), Now);
+        foreach (var reply in new[]
+                 {
+                     MemberChatService.AdviseReply("Dad", Advise(), Now),
+                     MemberChatService.AdviseReply("Dad", null, Now),
+                 })
+            Assert.DoesNotContain("wellness", reply, StringComparison.OrdinalIgnoreCase);
+    }
 
-        Assert.Contains("(WHO, 2020) — worth mentioning", reply, StringComparison.Ordinal);
-        Assert.DoesNotContain("2020). —", reply, StringComparison.Ordinal);
+    /// <summary>
+    /// The reference is a generation-time gate, not something the caregiver is shown. Read aloud,
+    /// "based on Adult sleep duration (AASM/CDC)" is a citation, and a citation is what made this
+    /// reply sound like a leaflet rather than an answer.
+    /// </summary>
+    [Fact]
+    public void ItDoesNotReciteTheReferenceItWasGroundedIn()
+    {
+        var reply = MemberChatService.AdviseReply("Dad", Advise(), Now);
+
+        Assert.DoesNotContain("AASM", reply, StringComparison.Ordinal);
+        Assert.DoesNotContain("based on", reply, StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>
@@ -75,7 +94,7 @@ public class AdviseReplyTests
     {
         var reply = MemberChatService.AdviseReply("Dad", Advise(guideline: guideline), Now);
 
-        Assert.Contains("don't have a wellness suggestion for Dad", reply, StringComparison.Ordinal);
+        Assert.Contains("don't have a suggestion for Dad", reply, StringComparison.Ordinal);
         Assert.DoesNotContain("steadier bedtime", reply, StringComparison.Ordinal);
     }
 
@@ -130,7 +149,7 @@ public class AdviseReplyTests
     {
         var reply = MemberChatService.AdviseReply(name, null, Now);
 
-        Assert.Contains("wellness suggestion for them right now", reply, StringComparison.Ordinal);
+        Assert.Contains("suggestion for them right now", reply, StringComparison.Ordinal);
     }
 
     /// <summary>

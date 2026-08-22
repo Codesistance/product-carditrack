@@ -1,4 +1,4 @@
-using CardiTrack.Application.Interfaces.Repositories;
+﻿using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Application.Services;
 using CardiTrack.Domain.Entities;
@@ -48,14 +48,14 @@ public class AdviseGenerationService
     /// </summary>
     private const string AdviseInstructions =
         MedicalPromptBlocks.ToneWellness + MedicalPromptBlocks.Pronouns + """
-        Suggest one general wellness action for this person, grounded in the wellness reference
-        below and their own recent readings and baseline.
+        Suggest one everyday thing the family could try for this person, grounded in the
+        reference below and their own recent readings and baseline.
 
         """ + MedicalPromptBlocks.CaregiverRegister + """
         Respond with:
         - summary: what in the readings prompted this suggestion.
-        - suggestion: one general wellness action grounded in the reference below — never a
-          diagnosis, a prescription, or a change to medication or treatment.
+        - suggestion: one everyday thing the family could try, grounded in the reference below —
+          never a diagnosis, a prescription, or a change to medication or treatment.
         - guidelineCited: which reference below the suggestion draws on, in a few words. If nothing
           in the reference fits the readings, say there is nothing to suggest right now and leave
           this blank.
@@ -215,7 +215,7 @@ public class AdviseGenerationService
 
             {memberContext}
 
-            --- Wellness reference ---
+            --- General health reference ---
             {MedicalPromptBlocks.WellnessGuidelineReference}
 
             --- Baseline ---
