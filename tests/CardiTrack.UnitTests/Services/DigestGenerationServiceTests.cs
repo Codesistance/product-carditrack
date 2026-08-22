@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 using System.Reflection;
 using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Interfaces.Services;
@@ -581,7 +581,7 @@ public class DigestGenerationServiceTests
         Assert.Contains($"Today so far ({Today}, 10:30 local", prompt);
         Assert.Contains(
             "still in progress — activity totals are partial; "
-            + "the sleep figure is last night's and complete): steps=5000",
+            + "last night's sleep belongs on this row and has not arrived): steps=5000",
             prompt);
         Assert.DoesNotContain("Margaret", prompt);  // minimisation, same as insights
     }
@@ -846,7 +846,7 @@ public class DigestGenerationServiceTests
         Assert.Contains($"Today so far ({Today}, 10:30 local", prompt);
         Assert.Contains(
             "still in progress — activity totals are partial; "
-            + "the sleep figure is last night's and complete): steps=3442",
+            + "last night's sleep belongs on this row and has not arrived): steps=3442",
             prompt);
 
         // The label leads the line. A note trailing the numbers arrives after the model has read

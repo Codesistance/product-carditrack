@@ -1,4 +1,4 @@
-using System.Text.RegularExpressions;
+﻿using System.Text.RegularExpressions;
 using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Application.Services;
@@ -396,10 +396,12 @@ public class HealthInsightServicePromptTests
         var prompt = CapturedPrompt();
 
         // Which day a line is opens the line, ahead of the numbers it governs — a note trailing
-        // them arrives after the model has already read them.
+        // them arrives after the model has already read them. Neither row here carries a sleep
+        // figure, so today's label says last night has not arrived rather than announcing a
+        // complete one — see DailyLinesTodayAnchorTests for both halves of that.
         Assert.Contains(
             $"Today so far ({today}, still in progress — activity totals are partial; "
-            + "the sleep figure is last night's and complete): steps=900",
+            + "last night's sleep belongs on this row and has not arrived): steps=900",
             prompt);
         Assert.Contains($"Yesterday ({today.AddDays(-1)}, complete day): steps=5100", prompt);
         Assert.DoesNotContain($"Today so far ({today.AddDays(-1)}", prompt);

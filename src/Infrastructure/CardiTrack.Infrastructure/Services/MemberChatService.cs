@@ -896,7 +896,10 @@ public class MemberChatService : IMemberChatService
             // and a heading built from the count told the model a four-reading week was four days.
             var window = data.RecentActivityWindow;
             var heading = window is { } w
-                ? $"{w.From:MMM d} to {w.To:MMM d}, oldest first; days with no reading are omitted"
+                // "unless it is today": DailyLines now writes today's row whether or not a reading
+                // has arrived for it, so the old blanket "days with no reading are omitted" said
+                // the opposite of the line directly beneath it.
+                ? $"{w.From:MMM d} to {w.To:MMM d}, oldest first; a day with no reading is omitted unless it is today"
                 : "oldest first";
 
             sections.Add(

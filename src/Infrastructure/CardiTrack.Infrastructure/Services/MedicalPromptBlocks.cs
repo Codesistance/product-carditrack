@@ -699,16 +699,45 @@ internal static partial class MedicalPromptBlocks
     /// totals were partial, distrusted today's complete sleep figure and read yesterday's row —
     /// the night before last — as "last night".
     /// </para>
+    /// <para>
+    /// Which is why today's row is written even when the wearable has sent nothing for it. That
+    /// label is the only place the block says where last night lives, so a member whose watch has
+    /// not synced yet lost the one sentence that mattered and left the model to infer an absence
+    /// from a row that simply was not there — an inference it does not make. Asked "how did he
+    /// sleep last night" with today's row missing, member chat answered correctly that it had no
+    /// reading for it; asked a broader question a minute later, over a window whose newest row was
+    /// yesterday's, it called the night before last "last night" and gave it in hours. Both
+    /// answers, one conversation, four minutes apart. The synthesised row carries
+    /// <see cref="Figure"/>'s "not measured" in every column for the reason that helper exists:
+    /// an absent reading is the one answer that must not read as a zero. Nothing is synthesised
+    /// for a member with no readings at all — "No recent activity data." already says it, and
+    /// better.
+    /// </para>
+    /// <para>
+    /// Appended after <c>take</c> rather than counted against it. The anchor is a statement about
+    /// today, not one of the N most recent readings, and callers size <c>take</c> to the readings
+    /// they fetched — member chat passes the row count itself, so counting the anchor would have
+    /// silently dropped the oldest day from the answer while leaving it on the chart beneath.
+    /// </para>
+    /// <para>
+    /// Assumes the caller's window reaches <paramref name="today"/>, which every caller's does. A
+    /// window ending earlier would make the anchor assert an absence that is really just a shorter
+    /// fetch — but it would already be labelling its newest row "3 days ago" with no hint that the
+    /// two days after it were never asked for, so that caller is misreading this helper either way.
+    /// </para>
     /// </remarks>
     internal static string DailyLines(IEnumerable<ActivityLog> logs, int take, DateOnly today)
     {
-        var lines = logs
-            .TakeLast(take)
-            .Select(l =>
-                $"  {DayLabel(l.Date, today)}: "
-                + $"steps={Figure(l.Steps)}, HR={Figure(l.RestingHeartRate)}, "
-                + $"sleep(night ending that morning)={SleepFigure(l.SleepMinutes)}")
-            .ToList();
+        string Render(ActivityLog l) =>
+            $"  {DayLabel(l.Date, today, sleepRecorded: l.SleepMinutes is not null)}: "
+            + $"steps={Figure(l.Steps)}, HR={Figure(l.RestingHeartRate)}, "
+            + $"sleep(night ending that morning)={SleepFigure(l.SleepMinutes)}";
+
+        var rows = logs.ToList();
+        var lines = rows.TakeLast(take).Select(Render).ToList();
+
+        if (lines.Count > 0 && rows.TrueForAll(l => l.Date != today))
+            lines.Add(Render(new ActivityLog { Date = today }));
 
         return lines.Count > 0 ? string.Join("\n", lines) : "No recent activity data.";
     }
@@ -764,7 +793,9 @@ internal static partial class MedicalPromptBlocks
     {
         var lines = logs
             .TakeLast(2)
-            .Select(l => $"  {DayLabel(l.Date, today, progress)}: {DigestDayFigures(l)}")
+            .Select(l =>
+                $"  {DayLabel(l.Date, today, sleepRecorded: l.SleepMinutes is not null, progress: progress)}: "
+                + DigestDayFigures(l))
             .ToList();
 
         return lines.Count > 0 ? string.Join("\n", lines) : "No recent activity data.";
@@ -820,6 +851,14 @@ internal static partial class MedicalPromptBlocks
     /// what today's date is except by being told. Today's label scopes "partial" to the activity
     /// totals only, because its sleep figure — last night's — is already a whole reading.
     /// </summary>
+    /// <param name="sleepRecorded">
+    /// Whether this row actually carries a sleep figure, which only today's label reads. It used to
+    /// assert one unconditionally — "the sleep figure is last night's and complete" — so a today
+    /// row the watch had not filled in yet announced a complete figure on the same line that then
+    /// gave it as "not measured". The label is the more emphatic of the two and it is what the
+    /// model was reaching past when it quoted an earlier night instead. A label may not describe a
+    /// reading the row does not have.
+    /// </param>
     /// <param name="progress">
     /// How far into their day the member is, folded into today's label when the caller knows it.
     /// "Partial" alone is equally true at 07:00 and 23:00, and a model handed a running step total,
@@ -827,14 +866,21 @@ internal static partial class MedicalPromptBlocks
     /// collapsed. See <see cref="DigestDayProgress"/>. Absent on the prompts that anchor to a UTC
     /// day rather than the member's own, which have no local clock to state.
     /// </param>
-    private static string DayLabel(DateOnly date, DateOnly today, DigestDayProgress? progress = null)
+    private static string DayLabel(
+        DateOnly date, DateOnly today, bool sleepRecorded, DigestDayProgress? progress = null)
     {
         var clock = progress is null ? string.Empty : $"{progress.Describe()}; ";
+
+        // Stated either way, because the caregiver question this block is read for is most often
+        // about last night, and "no figure here" is an answer where a silent gap is not.
+        var lastNight = sleepRecorded
+            ? "the sleep figure is last night's and complete"
+            : "last night's sleep belongs on this row and has not arrived";
 
         return (today.DayNumber - date.DayNumber) switch
         {
             <= 0 => $"Today so far ({date}, {clock}still in progress — activity totals are partial; "
-                    + "the sleep figure is last night's and complete)",
+                    + $"{lastNight})",
             1 => $"Yesterday ({date}, complete day)",
             var days => $"{days} days ago ({date}, complete day)",
         };
