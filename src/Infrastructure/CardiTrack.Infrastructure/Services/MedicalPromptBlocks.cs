@@ -728,12 +728,35 @@ internal static partial class MedicalPromptBlocks
     /// </remarks>
     internal static string DailyLines(IEnumerable<ActivityLog> logs, int take, DateOnly today)
     {
-        string Render(ActivityLog l) =>
-            $"  {DayLabel(l.Date, today, sleepRecorded: l.SleepMinutes is not null)}: "
-            + $"steps={Figure(l.Steps)}, HR={Figure(l.RestingHeartRate)}, "
-            + $"sleep(night ending that morning)={SleepFigure(l.SleepMinutes)}";
-
         var rows = logs.ToList();
+
+        // Written only for a member whose device reports them at all, and then on every row of the
+        // window including the ones that lack them. Both halves matter: inside a window where the
+        // reading exists, a gap is a fact about that night and gets Figure's "not measured" like
+        // any other; outside one, a column of "not measured" on every row of every prompt is noise
+        // about a feature the member's device does not have. Member chat can chart either series,
+        // so leaving them out of the block entirely let a caregiver be shown an HRV chart under an
+        // answer written by a model that had never been given an HRV figure.
+        var anyHrv = rows.Exists(l => l.HeartRateVariabilityMs is not null);
+        var anyOvernightBreathing = rows.Exists(l => l.OvernightBreathingRate is not null);
+
+        string Render(ActivityLog l)
+        {
+            var line = $"  {DayLabel(l.Date, today, sleepRecorded: l.SleepMinutes is not null)}: "
+                + $"steps={Figure(l.Steps)}, HR={Figure(l.RestingHeartRate)}, "
+                + $"sleep(night ending that morning)={SleepFigure(l.SleepMinutes)}";
+
+            if (anyHrv)
+                line += $", HRVovernight={OvernightFigure(l.HeartRateVariabilityMs, "ms")}";
+            if (anyOvernightBreathing)
+            {
+                line += ", breathingAsleep="
+                    + OvernightFigure(l.OvernightBreathingRate, "/min");
+            }
+
+            return line;
+        }
+
         var lines = rows.TakeLast(take).Select(Render).ToList();
 
         if (lines.Count > 0 && rows.TrueForAll(l => l.Date != today))
@@ -770,6 +793,16 @@ internal static partial class MedicalPromptBlocks
     /// </remarks>
     internal static string Figure(int? value) =>
         value is { } measured ? measured.ToString(CultureInfo.InvariantCulture) : "not measured";
+
+    /// <summary>
+    /// An overnight reading with its unit attached, or <see cref="Figure"/>'s "not measured".
+    /// Carries the unit because a bare 41 and a bare 14 say nothing about what was measured, and
+    /// these two sit on a line whose other figures are counts, beats and hours.
+    /// </summary>
+    internal static string OvernightFigure(decimal? value, string unit) =>
+        value is { } measured
+            ? string.Create(CultureInfo.InvariantCulture, $"{measured:0.#}{unit}")
+            : "not measured";
 
     internal static string SleepFigure(int? minutes) => minutes switch
     {

@@ -49,6 +49,7 @@ public static class DigestInterpretationSignals
 
         var lines = new List<string>();
         AddLastNight(lines, baseline, today);
+        AddOvernightHeartRateVariability(lines, baseline, today, yesterday);
         AddDay(lines, baseline, yesterday, complete: true, localNow, "Yesterday");
         AddDay(lines, baseline, today, complete: false, localNow, "Today so far");
 
@@ -99,6 +100,41 @@ public static class DigestInterpretationSignals
         var direction = lastNight < usual ? "well short of" : "well past";
         lines.Add(
             $"- Last night: {Hours(lastNight)} hours of sleep (usual {Hours(usual)}) — {direction} their usual.");
+    }
+
+    /// <summary>
+    /// Overnight heart rate variability, when it has been low for the two consecutive nights
+    /// <see cref="StatisticalAlertRules.HeartRateVariabilityDrop"/> requires. Phrased as "lower
+    /// than usual" rather than as a raised vital, because it is the one reading in this block
+    /// where the worrying direction is down — a summary that listed it among things "running
+    /// high" would read as the opposite of what it is.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Two nights, not one, for the reason the alert rule gives: a single low night is ordinary
+    /// night-to-night variation, and this block is the one the prompt tells the model to lead
+    /// with, so a finding that tomorrow's reading would withdraw does not belong in it.
+    /// </para>
+    /// <para>
+    /// Stated once rather than per-day, like <see cref="AddLastNight"/>: the reading is measured
+    /// across a night and filed under the day that night ended on, so per-day lines would report
+    /// the same pair of nights twice under two labels.
+    /// </para>
+    /// </remarks>
+    private static void AddOvernightHeartRateVariability(
+        List<string> lines, PatternBaseline baseline, ActivityLog? today, ActivityLog? yesterday)
+    {
+        if (StatisticalAlertRules.HeartRateVariabilityDrop(baseline, today, yesterday) is null
+            || today?.HeartRateVariabilityMs is not { } lastNight
+            || baseline.AvgHeartRateVariabilityMs is not { } usual)
+        {
+            return;
+        }
+
+        lines.Add(string.Create(
+            CultureInfo.InvariantCulture,
+            $"- Last night: heart rate variability {lastNight:0.#} ms overnight, lower than their "
+            + $"usual {usual:0.#} ms — and low the night before as well."));
     }
 
     /// <summary>
@@ -164,8 +200,9 @@ public static class DigestInterpretationSignals
 
     /// <summary>
     /// Readings that sit outside this member's usual or the published adult band, named for the
-    /// prompt — above for heart rate and breathing, below for oxygen and heart rate variability.
-    /// Empty when nothing is off.
+    /// prompt — above for heart rate and breathing, below for oxygen. Empty when nothing is off.
+    /// Overnight heart rate variability is not here: it needs two nights to mean anything, which
+    /// a per-day call cannot see — see <see cref="AddOvernightHeartRateVariability"/>.
     /// </summary>
     /// <param name="complete">
     /// Whether the day is over. Only the findings that read a *running total* care: the
@@ -205,19 +242,6 @@ public static class DigestInterpretationSignals
                 CultureInfo.InvariantCulture, $"breathing {breathing:0.#} breaths/min"));
         }
 
-        // Overnight HRV below the member's own usual by the margin the alert rule uses. Phrased as
-        // "lower than usual" rather than as a raised vital, because it is the one reading here
-        // where the worrying direction is down — a summary that listed it among things "running
-        // high" would read as the opposite of what it is.
-        if (baseline.AvgHeartRateVariabilityMs is > 0 and { } usualHrv
-            && log.HeartRateVariabilityMs is { } hrv
-            && hrv < usualHrv - HeartRateVariabilityMarginMs(baseline))
-        {
-            parts.Add(string.Create(
-                CultureInfo.InvariantCulture,
-                $"heart rate variability {hrv:0.#} ms overnight, lower than their usual {usualHrv:0.#} ms"));
-        }
-
         // The overnight figure, not the daily one — see StatisticalAlertRules.OvernightBreathingUp
         // for why a whole-day average moves for reasons that are not about health.
         if (StatisticalAlertRules.OvernightBreathingUp(baseline, log) is not null
@@ -242,15 +266,6 @@ public static class DigestInterpretationSignals
 
         return parts;
     }
-
-    /// <summary>
-    /// The HRV margin the drop rule uses, so the digest and the alert engine agree on what counts
-    /// as low — the same reason every other threshold in this file is borrowed rather than chosen.
-    /// </summary>
-    private static decimal HeartRateVariabilityMarginMs(PatternBaseline baseline) =>
-        Math.Max(
-            StatisticalAlertRules.HrvSigmaMultiplier * (baseline.StdDevHeartRateVariability ?? 0m),
-            (baseline.AvgHeartRateVariabilityMs ?? 0m) * StatisticalAlertRules.HrvMarginFloorFraction);
 
     private static double HeartRateMarginBpm(PatternBaseline baseline) =>
         Math.Max(

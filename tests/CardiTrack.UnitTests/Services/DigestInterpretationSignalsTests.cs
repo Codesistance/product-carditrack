@@ -33,7 +33,8 @@ public class DigestInterpretationSignalsTests
         decimal? spo2 = null,
         decimal? breathing = null,
         int? sleepMinutes = null,
-        int? moderateZoneMinutes = null) => new()
+        int? moderateZoneMinutes = null,
+        decimal? hrv = null) => new()
     {
         Date = date,
         Steps = steps,
@@ -43,7 +44,61 @@ public class DigestInterpretationSignalsTests
         BreathingRate = breathing,
         SleepMinutes = sleepMinutes,
         ModerateZoneMinutes = moderateZoneMinutes,
+        HeartRateVariabilityMs = hrv,
     };
+
+    private static PatternBaseline BaselineWithHrv()
+    {
+        var baseline = Baseline();
+        baseline.AvgHeartRateVariabilityMs = 40m;
+        baseline.StdDevHeartRateVariability = 2m;
+        return baseline;
+    }
+
+    /// <summary>
+    /// The digest borrows the alert rule's evidence as well as its threshold: two consecutive low
+    /// nights, not one. A single low night is ordinary night-to-night variation, and this is the
+    /// block the prompt tells the model to lead with — a finding tomorrow's reading would withdraw
+    /// must not be the sentence a caregiver reads first.
+    /// </summary>
+    [Fact]
+    public void LowOvernightHrv_IsObserved_OnlyAfterTwoNights()
+    {
+        var oneNight = DigestInterpretationSignals.Section(
+            BaselineWithHrv(),
+            today: Log(Today, hrv: 25m),
+            yesterday: Log(Yesterday, hrv: 41m),
+            Afternoon);
+
+        Assert.DoesNotContain("variability", oneNight, StringComparison.OrdinalIgnoreCase);
+
+        var twoNights = DigestInterpretationSignals.Section(
+            BaselineWithHrv(),
+            today: Log(Today, hrv: 25m),
+            yesterday: Log(Yesterday, hrv: 26m),
+            Afternoon);
+
+        Assert.Contains("heart rate variability 25 ms overnight", twoNights);
+        Assert.Contains("usual 40 ms", twoNights);
+        Assert.Contains("low the night before", twoNights);
+    }
+
+    /// <summary>
+    /// Stated once, on its own line. It is measured across a night and filed under the day that
+    /// night ended on, so per-day lines would name the same pair of nights twice.
+    /// </summary>
+    [Fact]
+    public void LowOvernightHrv_IsStatedOnce_NotUnderEachDay()
+    {
+        var section = DigestInterpretationSignals.Section(
+            BaselineWithHrv(),
+            today: Log(Today, hrv: 25m),
+            yesterday: Log(Yesterday, hrv: 26m),
+            Afternoon);
+
+        var mentions = section.Split("variability").Length - 1;
+        Assert.Equal(1, mentions);
+    }
 
     /// <summary>
     /// A night well short of this member's own usual is a computed observation, so it lands in the

@@ -185,7 +185,7 @@ public class ActivityLogMergeTests
     /// <summary>
     /// The stretch and the instant it began are one reading. Taking the length from one device and
     /// the start from another would describe a stretch that never happened, so both come from the
-    /// same row by coming through the same coalesce.
+    /// row the duration came from.
     /// </summary>
     [Fact]
     public void Merge_KeepsTheSedentaryStretchAndItsStart_Together()
@@ -221,5 +221,49 @@ public class ActivityLogMergeTests
         Assert.Equal(started, merged.LongestSedentaryStretchStartUtc);
         Assert.Equal(22, merged.ModerateZoneMinutes);
         Assert.Equal(14.6m, merged.OvernightBreathingRate);
+    }
+
+    /// <summary>
+    /// The case the field-by-field coalesce got wrong: a device that reports one half of the pair
+    /// and not the other. Whichever row supplies the duration supplies the start, and a start time
+    /// with no duration beside it is not a stretch at all.
+    /// </summary>
+    [Fact]
+    public void Merge_TakesTheSedentaryStretchFromOneDevice_WhenAnotherReportsHalfOfIt()
+    {
+        var started = new DateTime(2026, 8, 6, 13, 0, 0, DateTimeKind.Utc);
+
+        DeviceActivityLog Row(DeviceType source, int? minutes, DateTime? start) => new()
+        {
+            Id = Guid.NewGuid(),
+            CardiMemberId = MemberId,
+            DeviceConnectionId = Guid.NewGuid(),
+            DataSource = source,
+            Date = Date,
+            LongestSedentaryStretchMinutes = minutes,
+            LongestSedentaryStretchStartUtc = start,
+        };
+
+        // Priority device has a start time but no duration: the whole reading comes from the ring,
+        // and the orphan start goes with it rather than being spliced onto the ring's duration.
+        var orphanStart = ActivityLogMerge.Merge(
+            MemberId,
+            Date,
+            [Row(DeviceType.GooglePixelWatch, null, started), Row(DeviceType.Oura, 90, started.AddHours(4))]);
+
+        Assert.NotNull(orphanStart);
+        Assert.Equal(90, orphanStart.LongestSedentaryStretchMinutes);
+        Assert.Equal(started.AddHours(4), orphanStart.LongestSedentaryStretchStartUtc);
+
+        // The mirror: priority device timed the stretch but did not say when it began. The answer
+        // is a duration with no start, not this duration wearing the other device's start.
+        var orphanDuration = ActivityLogMerge.Merge(
+            MemberId,
+            Date,
+            [Row(DeviceType.GooglePixelWatch, 240, null), Row(DeviceType.Oura, 90, started.AddHours(4))]);
+
+        Assert.NotNull(orphanDuration);
+        Assert.Equal(240, orphanDuration.LongestSedentaryStretchMinutes);
+        Assert.Null(orphanDuration.LongestSedentaryStretchStartUtc);
     }
 }

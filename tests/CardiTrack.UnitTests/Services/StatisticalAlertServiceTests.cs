@@ -464,6 +464,36 @@ public class StatisticalAlertServiceTests
             a.AlertType == AlertType.PatternBreak && a.Severity == AlertSeverity.Red));
     }
 
+    // Overnight vitals share sleep's attribution but not its payload: a device can post the
+    // night's HRV while the sleep session is still syncing. Gating them on SleepMinutes sent both
+    // overnight rules a day back, to a night they had already judged.
+    [Fact]
+    public async Task OvernightVitalsAreJudgedOnTodaysRow_EvenWithNoSleepSessionOnIt()
+    {
+        var baseline = EstablishedBaseline();
+        baseline.AvgHeartRateVariabilityMs = 40m;
+        baseline.StdDevHeartRateVariability = 2m;
+        _baselines.GetLatestByCardiMemberAsync(_memberId, 30).Returns(baseline);
+
+        // Steps at their usual, so the HRV rule is the only one in play.
+        SetupLogs(
+            new ActivityLog
+            {
+                CardiMemberId = _memberId, Date = Yesterday, Steps = 6000, HeartRateVariabilityMs = 26m,
+            },
+            new ActivityLog
+            {
+                CardiMemberId = _memberId, Date = Yesterday.AddDays(1), HeartRateVariabilityMs = 25m,
+            });
+
+        var raised = await CreateSut().EvaluateAsync(UtcNow);
+
+        Assert.Equal(1, raised);
+        await _alerts.Received(1).AddAsync(Arg.Is<Alert>(a =>
+            a.MetricValues!.Contains("\"rule\":\"hrv_drop\"")
+            && a.MetricValues!.Contains("\"night\":\"2026-08-10\"")));
+    }
+
     [Fact]
     public async Task APausedMember_IsNotEvaluated()
     {

@@ -1785,12 +1785,54 @@ public class GoogleHealthApiClientTests
                 """);
 
         var (sut, _) = CreateSut(handler);
-        var result = await sut.GetExertionAsync("token", new DateOnly(2026, 8, 5));
+        var result = await sut.GetExertionAsync("token", new DateOnly(2026, 8, 5), NightOfTheFifth);
 
         // 13:00-15:30 is one stretch of 150 minutes; the 30-minute stretch after the walk is not it.
         Assert.Equal(150, result.LongestSedentaryStretchMinutes);
         Assert.Equal(
             new DateTime(2026, 8, 5, 13, 0, 0, DateTimeKind.Utc), result.LongestSedentaryStretchStartUtc);
+    }
+
+    /// <summary>
+    /// The night that ended on the fifth, for the tests whose subject is the joining rather than
+    /// the clipping — it sits clear of every interval they use.
+    /// </summary>
+    private static readonly (DateTime Start, DateTime End) NightOfTheFifth = (
+        new DateTime(2026, 8, 4, 23, 0, 0, DateTimeKind.Utc),
+        new DateTime(2026, 8, 5, 6, 30, 0, DateTimeKind.Utc));
+
+    /// <summary>
+    /// No sleep window, no stretch. Measuring the whole civil day would make the small hours the
+    /// longest unbroken sedentary run on almost every day, and `daytime_inactivity_block` — whose
+    /// floor is three hours — a rule that pages a family about an ordinary night's sleep. The
+    /// zone readings are unaffected: only the stretch cannot be told from a night.
+    /// </summary>
+    [Fact]
+    public async Task GetExertionAsync_ReportsNoStretch_WhenTheNightIsUnknown()
+    {
+        var handler = new RoutedFakeHttpHandler()
+            .Map("/dataTypes/activity-level/", $$"""
+                {
+                  "dataPoints": [
+                    {{ActivityLevelPoint("SEDENTARY", "2026-08-05T00:00:00Z", "2026-08-05T07:00:00Z")}}
+                  ]
+                }
+                """)
+            .Map("/dataTypes/daily-heart-rate-zones/", """
+                {
+                  "dataPoints": [
+                    { "dailyHeartRateZones": { "heartRateZones": [
+                        { "heartRateZoneType": "MODERATE", "minBeatsPerMinute": 97 } ] } }
+                  ]
+                }
+                """);
+
+        var (sut, _) = CreateSut(handler);
+        var result = await sut.GetExertionAsync("token", new DateOnly(2026, 8, 5), sleepWindow: null);
+
+        Assert.Null(result.LongestSedentaryStretchMinutes);
+        Assert.Null(result.LongestSedentaryStretchStartUtc);
+        Assert.Equal(97, result.ModerateZoneFloorBpm);
     }
 
     /// <summary>
@@ -1874,7 +1916,7 @@ public class GoogleHealthApiClientTests
                 """);
 
         var (sut, _) = CreateSut(handler);
-        var result = await sut.GetExertionAsync("token", new DateOnly(2026, 8, 5));
+        var result = await sut.GetExertionAsync("token", new DateOnly(2026, 8, 5), NightOfTheFifth);
 
         Assert.Equal(60, result.LongestSedentaryStretchMinutes);
     }

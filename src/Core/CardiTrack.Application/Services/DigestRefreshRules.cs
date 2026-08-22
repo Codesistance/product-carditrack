@@ -79,7 +79,12 @@ public static class DigestRefreshRules
             // and the night before on yesterday's — the pair the drop rule reads.
             || StatisticalAlertRules.HeartRateVariabilityDrop(baseline, today, yesterday) is not null
             // Overnight readings live on the row for the day the night ended, like sleep.
-            || StatisticalAlertRules.OvernightBreathingUp(baseline, today) is not null;
+            || StatisticalAlertRules.OvernightBreathingUp(baseline, today) is not null
+            // Yesterday only, for the reason steps-decline is: both read a figure that accumulates
+            // over the day — minutes with the heart raised, and the longest unbroken still stretch
+            // — so today's is a morning's worth, not a day's.
+            || StatisticalAlertRules.ElevatedZoneWithoutMovement(baseline, yesterday) is not null
+            || StatisticalAlertRules.DaytimeInactivityBlock(baseline, yesterday) is not null;
     }
 
     /// <summary>

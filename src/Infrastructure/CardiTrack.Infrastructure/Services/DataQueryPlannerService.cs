@@ -157,9 +157,10 @@ public class DataQueryPlannerService : IDataQueryPlanner
         /// named its metric perfectly clearly.
         /// </summary>
         [Description(
-            "Which daily metrics the question asks about: any of Steps, RestingHeartRate, Sleep. "
-            + "Name every metric the question is about and no others — a question about steps is "
-            + "[\"Steps\"]. Empty only when the question is about how the person is doing overall.")]
+            "Which daily metrics the question asks about: any of Steps, RestingHeartRate, Sleep, "
+            + "HeartRateVariability, OvernightBreathingRate. Name every metric the question is "
+            + "about and no others — a question about steps is [\"Steps\"]. Empty only when the "
+            + "question is about how the person is doing overall.")]
         public required IReadOnlyList<string> Metrics { get; init; }
     }
 }

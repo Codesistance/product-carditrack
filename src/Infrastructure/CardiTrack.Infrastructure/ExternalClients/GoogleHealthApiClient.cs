@@ -471,10 +471,28 @@ public class GoogleHealthApiClient : IGoogleHealthApiClient, IDeviceApiClient
     /// because a device that records level per minute emits a run of touching intervals rather than
     /// one long one, and a strict equality test would report the longest stretch as one minute.
     /// </para>
+    /// <para>
+    /// <b>No sleep window, no reading.</b> A sleeping wearer is a sedentary wearer and the civil
+    /// day opens at midnight, so measuring the whole day would make the small hours the longest
+    /// unbroken run on almost every day — and <c>daytime_inactivity_block</c>, whose floor is three
+    /// hours, a rule that pages a family about an ordinary night's sleep. Rather than report a
+    /// figure we cannot tell from a night, we report none: the alert rule already treats a missing
+    /// reading as "could not judge", which is exactly what this is.
+    /// </para>
+    /// <para>
+    /// One bound remains, and it is deliberate. The night that <em>begins</em> on this day belongs
+    /// to tomorrow's row and is not fetched here, so an early bedtime leaves a tail of stillness
+    /// between it and midnight inside the day's own intervals. It is capped by definition — at most
+    /// bedtime to midnight — and unlike the small hours it is time the wearer spent settled while
+    /// the day was still theirs, which is nearer what the reading is for than it is to sleep.
+    /// </para>
     /// </remarks>
     private async Task<(int? Minutes, DateTime? StartUtc)> OptionalLongestSedentaryStretchAsync(
         string accessToken, DateOnly date, (DateTime Start, DateTime End)? sleepWindow)
     {
+        if (sleepWindow is null)
+            return (null, null);
+
         const string dataType = "activity-level";
         try
         {
@@ -490,7 +508,7 @@ public class GoogleHealthApiClient : IGoogleHealthApiClient, IDeviceApiClient
                     End: ParseInstantUtc(level?["interval"]?.Value<string>("endTime"))))
                 .Where(i => i.Start.HasValue && i.End.HasValue && i.End > i.Start)
                 .Select(i => (Start: i.Start!.Value, End: i.End!.Value))
-                .SelectMany(i => OutsideSleep(i, sleepWindow))
+                .SelectMany(i => OutsideSleep(i, sleepWindow.Value))
                 .OrderBy(i => i.Start)
                 .ToList();
 
@@ -541,9 +559,9 @@ public class GoogleHealthApiClient : IGoogleHealthApiClient, IDeviceApiClient
     /// them here would silently discard whichever the wearer had less of.
     /// </remarks>
     private static IEnumerable<(DateTime Start, DateTime End)> OutsideSleep(
-        (DateTime Start, DateTime End) interval, (DateTime Start, DateTime End)? sleepWindow)
+        (DateTime Start, DateTime End) interval, (DateTime Start, DateTime End) sleep)
     {
-        if (sleepWindow is not { } sleep || interval.End <= sleep.Start || interval.Start >= sleep.End)
+        if (interval.End <= sleep.Start || interval.Start >= sleep.End)
         {
             yield return interval;
             yield break;

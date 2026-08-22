@@ -23,7 +23,7 @@ The Google Health API already serves the granular series (`list` methods at 1-mi
 | | Points/wearer/day | At 100 wearers (today's cap) | At 10,000 wearers (design ceiling) |
 |---|---|---|---|
 | Granular points | ~4,900 (HR 1440 + steps 1440 + AZM 1440 + SpO2 ~288 + HRV ~288) | ~490 K/day | ~49 M/day (~570 writes/s average, arriving pre-batched) |
-| Hour-vector rows (this design) | ~96 (4 metrics × 24 h) | ~9.6 K/day | ~1 M/day |
+| Hour-vector rows (this design) | ~120 (5 metrics × 24 h) | ~12 K/day | ~1.2 M/day |
 | Granular storage @ 90-day retention | — | ~4 GB | ~30–60 GB |
 
 For calibration: Bigtable's justification zone starts around **10 K+ sustained writes/second**; this workload's ceiling is ~0.5% of that, and its reads are OLTP-shaped (single-member window scans, rollup lookups).

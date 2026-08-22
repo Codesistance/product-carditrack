@@ -58,6 +58,12 @@ public record DeviceHealthSnapshot(
     /// this before storing: an all-null row would still count as a "data day" to the baseline
     /// coverage gate and the dashboard's days-captured figure, letting an empty history fake its
     /// way past both.
+    /// <para>
+    /// <see cref="ModerateZoneFloorBpm"/> is deliberately not in the list. It is a threshold the
+    /// device holds about the wearer, not a measurement of their day — it reads the same on a day
+    /// spent in hospital as on a day spent walking, and a day whose only "reading" is that figure
+    /// is precisely the empty day this property exists to catch.
+    /// </para>
     /// </summary>
     public bool HasAnyData =>
         Steps is not null || DistanceKm is not null || ActiveMinutes is not null ||
