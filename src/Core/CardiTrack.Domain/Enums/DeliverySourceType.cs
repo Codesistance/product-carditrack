@@ -20,5 +20,14 @@ public enum DeliverySourceType
     Notification = 2,
 
     [Display(Name = "Questionnaire")]
-    Questionnaire = 3
+    Questionnaire = 3,
+
+    /// <summary>
+    /// A stretch with nothing to report about one CardiMember. The odd one out: there is no row
+    /// behind it, because "nothing happened" is not an event anything wrote down — so
+    /// <see cref="Entities.NotificationDelivery.SourceId"/> carries the CardiMember's own id, and
+    /// the delivery row itself is the only record that the family was told.
+    /// </summary>
+    [Display(Name = "Reassurance")]
+    Reassurance = 4
 }

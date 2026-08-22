@@ -36,6 +36,18 @@ public class AlertRepository : Repository<Alert>, IAlertRepository
             .ToListAsync();
     }
 
+    public async Task<DateTime?> GetLastTriggeredDateAsync(
+        Guid cardiMemberId, CancellationToken ct = default)
+    {
+        // No IsActive / IsResolved filter — see the interface for why this one read counts rows
+        // the lists have finished with. MaxAsync over a nullable projection rather than
+        // OrderByDescending().FirstOrDefault(): it is one aggregate, and it returns null for a
+        // member with no alerts instead of throwing on an empty sequence.
+        return await _dbSet.AsNoTracking()
+            .Where(a => a.CardiMemberId == cardiMemberId)
+            .MaxAsync(a => (DateTime?)a.TriggeredDate, ct);
+    }
+
     public async Task<Alert?> GetByIdWithCardiMemberAsync(Guid alertId)
     {
         return await _dbSet.FirstOrDefaultAsync(a => a.Id == alertId);

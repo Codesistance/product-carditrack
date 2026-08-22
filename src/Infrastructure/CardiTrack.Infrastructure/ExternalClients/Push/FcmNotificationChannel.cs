@@ -212,6 +212,12 @@ public class FcmNotificationChannel : INotificationChannel
                     // is pending, same as every other cardimembers/{id}/... link.
                     DeliverySourceType.Questionnaire when delivery.CardiMemberId is { } forQuestions
                         => $"carditrack://cardimembers/{forQuestions}/questions",
+                    // Reassurance's SourceId *is* the member (there is no row behind it), so this
+                    // opens their detail screen — where the metrics that back up "nothing has come
+                    // up" actually are. There is nothing to acknowledge and no detail page for a
+                    // non-event, so anywhere else would be a dead end.
+                    DeliverySourceType.Reassurance
+                        => $"carditrack://cardimembers/{delivery.SourceId}",
                     _ => $"carditrack://notifications/{delivery.SourceId}",
                 },
                 ["ackToken"] = ackToken,

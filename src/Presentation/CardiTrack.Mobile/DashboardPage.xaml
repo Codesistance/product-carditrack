@@ -303,6 +303,41 @@
                             </VerticalStackLayout>
                         </Border>
 
+                        <!-- The other half of "Recent alerts": with nothing unresolved the section
+                             above simply disappears, which leaves the screen saying nothing at all
+                             about whether anyone is watching. This card takes that space once the
+                             silence has lasted long enough to mean something — never merely because
+                             the list is empty, which is also true of a paused member and of one
+                             whose watch has stopped syncing. The server decides; see
+                             DashboardResponse.Reassurance. -->
+                        <Border x:Name="ReassuranceCard"
+                                Style="{StaticResource ElevatedCard}"
+                                Padding="16,18,16,18"
+                                IsVisible="False">
+                            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="14">
+                                <Border Grid.Column="0"
+                                        WidthRequest="44" HeightRequest="44"
+                                        StrokeThickness="0"
+                                        BackgroundColor="{StaticResource SelectedOptionBackground}"
+                                        VerticalOptions="Start">
+                                    <Border.StrokeShape>
+                                        <RoundRectangle CornerRadius="14"/>
+                                    </Border.StrokeShape>
+                                    <Image Source="icon_status_check.svg"
+                                           WidthRequest="24" HeightRequest="24"/>
+                                </Border>
+
+                                <VerticalStackLayout Grid.Column="1" Spacing="3" VerticalOptions="Center">
+                                    <Label x:Name="ReassuranceTitleLabel"
+                                           Style="{StaticResource Heading3}"
+                                           TextColor="{StaticResource StatusGreen}"/>
+                                    <Label x:Name="ReassuranceDetailLabel"
+                                           Style="{StaticResource Body2}"
+                                           TextColor="{StaticResource BodyText}"/>
+                                </VerticalStackLayout>
+                            </Grid>
+                        </Border>
+
                         <!-- Recent alerts -->
                         <VerticalStackLayout x:Name="AlertsSection" Spacing="20" IsVisible="False">
                             <Grid ColumnDefinitions="*,Auto">

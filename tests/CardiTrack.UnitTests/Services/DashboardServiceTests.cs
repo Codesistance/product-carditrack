@@ -830,4 +830,140 @@ public class DashboardServiceTests
         Assert.False(result.HasAdvise);
         await _advises.DidNotReceive().GetByCardiMemberAsync(Arg.Any<Guid>());
     }
+
+    // ── Reassurance ─────────────────────────────────────────────────────────────
+    //
+    // The dashboard's half of the all-clear. QuietStretchTests owns the rule itself; these prove
+    // this service feeds it the right inputs and does not invent a reassurance the rule withheld.
+
+    /// <summary>
+    /// A member the pipeline is genuinely watching: established baseline, data arriving, nothing
+    /// open. Everything <see cref="CardiTrack.Application.Services.QuietStretch"/> needs to be
+    /// allowed to say the silence means something.
+    /// </summary>
+    private void SetupWatchedMember(DateTime? lastAlertAt, DateTime? memberSince = null)
+    {
+        _members.GetByIdAsync(_memberId).Returns(new CardiMember
+        {
+            Id = _memberId,
+            Name = "Margaret Doe",
+            DateOfBirth = DateOnly.FromDateTime(DateTime.UtcNow.AddYears(-78)),
+            IsActive = true,
+            CreatedDate = memberSince ?? DateTime.UtcNow.AddDays(-120),
+            // Fresh enough for the "blue" tier — data is arriving, so silence is a reading
+            // rather than an absence.
+            LastSyncDate = DateTime.UtcNow.AddMinutes(-20),
+        });
+        _baselines.GetLatestByCardiMemberAsync(_memberId, 30).Returns(new PatternBaseline
+        {
+            CardiMemberId = _memberId,
+            PeriodDays = 30,
+            AvgSteps = 5000,
+            AvgRestingHeartRate = 70,
+        });
+        SetupActivityLogs(days: 30);
+        _alerts.GetLastTriggeredDateAsync(_memberId, Arg.Any<CancellationToken>()).Returns(lastAlertAt);
+    }
+
+    [Fact]
+    public async Task Reassurance_ReportsTheStretch_WhenNothingHasBeenRaisedForOverAWeek()
+    {
+        var lastAlertAt = DateTime.UtcNow.AddDays(-11);
+        SetupWatchedMember(lastAlertAt);
+
+        var result = await CreateSut().GetDashboardAsync(_userId, _memberId);
+
+        Assert.NotNull(result.Reassurance);
+        Assert.Equal(11, result.Reassurance!.QuietDays);
+        Assert.Equal(lastAlertAt, result.Reassurance.QuietSince);
+        Assert.True(result.Reassurance.FollowsAnAlert);
+    }
+
+    [Fact]
+    public async Task Reassurance_MarksAMemberWhoNeverAlerted_SoTheCopyDoesNotImplyAnEpisodeEnded()
+    {
+        var since = DateTime.UtcNow.AddDays(-45);
+        SetupWatchedMember(lastAlertAt: null, memberSince: since);
+
+        var result = await CreateSut().GetDashboardAsync(_userId, _memberId);
+
+        Assert.NotNull(result.Reassurance);
+        Assert.False(result.Reassurance!.FollowsAnAlert);
+        Assert.Equal(45, result.Reassurance.QuietDays);
+    }
+
+    [Fact]
+    public async Task Reassurance_IsWithheld_WhileMonitoringIsPaused()
+    {
+        SetupWatchedMember(lastAlertAt: DateTime.UtcNow.AddDays(-30));
+        _members.GetByIdAsync(_memberId).Returns(new CardiMember
+        {
+            Id = _memberId,
+            Name = "Margaret Doe",
+            DateOfBirth = DateOnly.FromDateTime(DateTime.UtcNow.AddYears(-78)),
+            IsActive = true,
+            CreatedDate = DateTime.UtcNow.AddDays(-120),
+            LastSyncDate = DateTime.UtcNow.AddMinutes(-20),
+            MonitoringPausedUntil = DateTime.UtcNow.AddDays(3),
+        });
+
+        var result = await CreateSut().GetDashboardAsync(_userId, _memberId);
+
+        // A paused member's empty alert list is the pause, not good news.
+        Assert.Equal("paused", result.HealthStatus);
+        Assert.Null(result.Reassurance);
+    }
+
+    [Fact]
+    public async Task Reassurance_IsWithheld_WhileTheBaselineIsStillBeingLearned()
+    {
+        SetupWatchedMember(lastAlertAt: DateTime.UtcNow.AddDays(-30));
+        _baselines.GetLatestByCardiMemberAsync(_memberId, 30).Returns((PatternBaseline?)null);
+
+        var result = await CreateSut().GetDashboardAsync(_userId, _memberId);
+
+        Assert.Null(result.Reassurance);
+    }
+
+    [Fact]
+    public async Task Reassurance_IsWithheld_WhenTheWearableHasStoppedSyncing()
+    {
+        SetupWatchedMember(lastAlertAt: DateTime.UtcNow.AddDays(-30));
+        _members.GetByIdAsync(_memberId).Returns(new CardiMember
+        {
+            Id = _memberId,
+            Name = "Margaret Doe",
+            DateOfBirth = DateOnly.FromDateTime(DateTime.UtcNow.AddYears(-78)),
+            IsActive = true,
+            CreatedDate = DateTime.UtcNow.AddDays(-120),
+            LastSyncDate = DateTime.UtcNow.AddDays(-2),
+        });
+
+        var result = await CreateSut().GetDashboardAsync(_userId, _memberId);
+
+        // Nothing has come in for two days, so nothing could have been raised — the silence is
+        // the device's, not the member's.
+        Assert.Equal("red", result.DataFreshness);
+        Assert.Null(result.Reassurance);
+    }
+
+    [Fact]
+    public async Task Reassurance_IsWithheld_WhileAnAlertIsStillOpen()
+    {
+        SetupWatchedMember(lastAlertAt: DateTime.UtcNow.AddDays(-30));
+        _alerts.GetUnresolvedByCardiMemberAsync(_memberId).Returns(
+        [
+            new Alert
+            {
+                CardiMemberId = _memberId,
+                AlertType = AlertType.Sleep,
+                Severity = AlertSeverity.Yellow,
+                TriggeredDate = DateTime.UtcNow.AddDays(-30),
+            },
+        ]);
+
+        var result = await CreateSut().GetDashboardAsync(_userId, _memberId);
+
+        Assert.Null(result.Reassurance);
+    }
 }

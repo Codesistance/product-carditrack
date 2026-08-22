@@ -147,4 +147,67 @@ public class DeliveryPlannerTests
     {
         Assert.False(DeliveryPlanner.AllowsCritical(DeliveryCategory.Nudge, AlertSeverity.Red));
     }
+
+    // ── Reassurance ─────────────────────────────────────────────────────────────
+    //
+    // The only category whose message is that nothing is wrong. Everything below is a way it
+    // could borrow authority it has not earned — Health's escalation, Safety's override, the
+    // critical flag — and must not.
+
+    [Fact]
+    public void Reassurance_Pushes_SoItReachesCaregiversWhoWerentAlreadyLooking()
+    {
+        var plan = DeliveryPlanner.Plan(Context(DeliveryCategory.Reassurance));
+
+        Assert.Equal(DeliveryChannel.Push, plan.Channel);
+        Assert.Null(plan.ScheduledFor);
+    }
+
+    [Fact]
+    public void Reassurance_DefersUntilQuietHoursEnd_NeverOverridesThem()
+    {
+        var quietHoursEnd = UtcNow.AddHours(7);
+
+        var plan = DeliveryPlanner.Plan(Context(
+            DeliveryCategory.Reassurance, withinQuietHours: true, quietHoursEnd: quietHoursEnd));
+
+        // Waking someone at 3am to tell them nothing is wrong is how a family learns to mute
+        // this app, and the next thing muted is the alert that mattered.
+        Assert.Equal(quietHoursEnd, plan.ScheduledFor);
+    }
+
+    [Fact]
+    public void Reassurance_NeverEscalatesAndIsNeverCritical()
+    {
+        var plan = DeliveryPlanner.Plan(Context(DeliveryCategory.Reassurance));
+
+        Assert.False(plan.Escalates);
+        Assert.False(plan.AllowCritical);
+        Assert.False(DeliveryPlanner.AllowsCritical(DeliveryCategory.Reassurance, severity: null));
+    }
+
+    [Fact]
+    public void Reassurance_OutlivesTheOtherCategories_SoAnOvernightPhoneStillGetsIt()
+    {
+        var reassurance = DeliveryPlanner.Plan(Context(DeliveryCategory.Reassurance));
+        var orangeHealth = DeliveryPlanner.Plan(Context(DeliveryCategory.Health, AlertSeverity.Orange));
+
+        // "Nothing has come up" is still true hours later, unlike an anomaly teaser — and the
+        // phone worth reaching with it is precisely the one that was off overnight.
+        Assert.Equal(UtcNow.AddHours(6), reassurance.ExpiresAt);
+        Assert.True(reassurance.ExpiresAt > orangeHealth.ExpiresAt);
+    }
+
+    [Fact]
+    public void Reassurance_DeferredByQuietHours_StillGetsItsFullLifetimeFromWhenItIsSent()
+    {
+        var quietHoursEnd = UtcNow.AddHours(7);
+
+        var plan = DeliveryPlanner.Plan(Context(
+            DeliveryCategory.Reassurance, withinQuietHours: true, quietHoursEnd: quietHoursEnd));
+
+        // Counted from the scheduled send, not from now — a deferred row whose TTL was measured
+        // from enqueue time would expire before it was ever due.
+        Assert.Equal(quietHoursEnd.AddHours(6), plan.ExpiresAt);
+    }
 }
