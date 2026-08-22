@@ -6,6 +6,7 @@ namespace CardiTrack.Mobile.Controls;
 public partial class StatusHeroCard : ContentView
 {
     private const string QaPulseAnimation = "qa-pulse";
+    private const string AdvisePulseAnimation = "advise-pulse";
 
     /// <summary>Raised when the card body is tapped — the dashboard's route into M1-13.</summary>
     public event EventHandler? MemberTapped;
@@ -40,8 +41,13 @@ public partial class StatusHeroCard : ContentView
     {
         InitializeComponent();
         // Same lifecycle discipline as PendingBotIndicator: a card taken off-screen while a
-        // question is still pending must not leave its animation looping in the background.
-        Unloaded += (_, _) => StopQaPulse();
+        // question or a suggestion is still pending must not leave its animation looping in the
+        // background.
+        Unloaded += (_, _) =>
+        {
+            StopQaPulse();
+            StopAdvisePulse();
+        };
     }
 
     public void Apply(DashboardResponse data)
@@ -49,7 +55,7 @@ public partial class StatusHeroCard : ContentView
         var firstName = NameFormatting.FirstName(data.Name);
         NameLabel.Text = $"{data.Name}, {data.Age}";
         Avatar.Apply(data.Name, data.PhotoUrl);
-        AdvisePulseDot.IsVisible = data.HasAdvise;
+        ApplyAdvise(data.HasAdvise);
 
         // Headline first, sentence second: the headline is the whole state in three or four
         // words, so a caregiver who reads nothing else has still read the answer.
@@ -147,6 +153,59 @@ public partial class StatusHeroCard : ContentView
         QaPulseRing.Opacity = 0;
     }
 
+    /// <summary>
+    /// Shows or hides the Advise button at the end of the row, from
+    /// <see cref="DashboardResponse.HasAdvise"/>, and pulses it while a suggestion is waiting.
+    /// Hidden outright when there is none: the button's whole job is to open the Wellness
+    /// suggestion card, and that card is itself hidden on Details when nothing was suggested —
+    /// a button always on screen would be a dead end most days.
+    /// </summary>
+    private void ApplyAdvise(bool hasAdvise)
+    {
+        AdviseCluster.IsVisible = hasAdvise;
+
+        if (!hasAdvise)
+        {
+            StopAdvisePulse();
+            return;
+        }
+
+        // Started only when one isn't already running, rather than restarted on every Apply the
+        // way QaCluster's is: the dashboard reloads itself every thirty seconds, and each restart
+        // snaps the ring back to its first frame — a stutter, on the one thing here whose whole
+        // job is to move. Asking the animation rather than tracking the previous visibility is
+        // what also makes this self-heal: the Unloaded handler stops the loop, and the reload
+        // that follows a caregiver coming back to this tab starts it again.
+        if (!this.AnimationIsRunning(AdvisePulseAnimation))
+            StartAdvisePulse();
+    }
+
+    /// <summary>
+    /// The ring blooms out from behind the glyph and fades, the way
+    /// <see cref="PendingBotIndicator"/>'s does — but bounded to the button's own 36, since
+    /// Alerts sits directly beside it and the card's edge directly after it. 32 at 1.06 is 33.9
+    /// across, plus a 2 stroke, which is the widest it can grow without touching either.
+    /// </summary>
+    private void StartAdvisePulse()
+    {
+        this.AbortAnimation(AdvisePulseAnimation);
+
+        var pulse = new Animation
+        {
+            { 0.00, 0.75, new Animation(v => AdvisePulseRing.Scale = v, 0.6, 1.06) },
+            { 0.00, 0.15, new Animation(v => AdvisePulseRing.Opacity = v, 0.0, 0.55) },
+            { 0.15, 0.75, new Animation(v => AdvisePulseRing.Opacity = v, 0.55, 0.0) },
+        };
+        pulse.Commit(this, AdvisePulseAnimation, length: 1600,
+            repeat: () => IsLoaded && AdviseCluster.IsVisible);
+    }
+
+    private void StopAdvisePulse()
+    {
+        this.AbortAnimation(AdvisePulseAnimation);
+        AdvisePulseRing.Opacity = 0;
+    }
+
     /// <summary>Icon-and-temperature chip beside the name. Hidden outright rather than shown
     /// empty — the server sends null unless the member has consented and something was derived.</summary>
     private void ApplyWeather(WeatherSnapshotResponse? weather)
@@ -180,6 +239,13 @@ public partial class StatusHeroCard : ContentView
 
     private void OnQaTapped(object? sender, TappedEventArgs e) =>
         QaTapped?.Invoke(this, EventArgs.Empty);
+
+    /// <summary>Raised by the Advise button, only visible while a wellness suggestion is waiting.
+    /// The page decides the journey — see <see cref="CardiMemberDetailPage.AdviseFocus"/>.</summary>
+    public event EventHandler? AdviseTapped;
+
+    private void OnAdviseTapped(object? sender, TappedEventArgs e) =>
+        AdviseTapped?.Invoke(this, EventArgs.Empty);
 
     private void OnWeatherTapped(object? sender, TappedEventArgs e)
     {
