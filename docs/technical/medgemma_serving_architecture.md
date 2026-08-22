@@ -235,7 +235,7 @@ That is a real caveat rather than a footnote. `min = 0` means *every* idle perio
 
 Observed both ways on 2026-08-21: a chat send at 21:25 took ~90 s end to end, dominated by this load; the next at 21:51 answered inside the same minute.
 
-The saving and the latency are therefore in direct tension, and `min = 0` is a choice for cheapness over the interactive path, not a free win. Options, none taken yet: accept it (batch is unaffected; chat pays after idle), set `min = 1` and give up most of the saving, or keep the model resident another way. MS-1's billing week should be read with this open.
+The saving and the latency are therefore in direct tension, and `min = 0` is a choice for cheapness over the interactive path, not a free win. Three options were open: accept it (batch is unaffected; chat pays after idle), set `min = 1` and give up most of the saving, or keep the model resident another way. **The third was taken on 2026-08-22 — see §9.5.** MS-1's billing week should be read with it in place.
 
 **Ingress is `INGRESS_TRAFFIC_ALL`, where the per-environment service was internal-only.** Not an oversight to leave unstated: the old service relied on the API's `vpc_access` egress to satisfy internal ingress, and that mechanism does not survive the move — the callers are in `europe-west2` with `PRIVATE_RANGES_ONLY` egress and the service is in `europe-west1` with no VPC attachment, so their calls reach it over the public endpoint.
 
@@ -271,7 +271,31 @@ One number to read carefully: the first call after a cold start measured `prompt
 
 ### 9.4 Still open
 
-- **MS-1** — a week of billing against the $70–120 envelope. Cannot be hurried.
+- **MS-1** — a week of billing against the $70–120 envelope. Cannot be hurried, and now has to be read with §9.5's warm-ups in it: they raise instance hours in exchange for the interactive latency §9.1a gave up, and whether that trade lands inside the envelope is the same week's question.
 - **MS-6** — the 435/day vs ~69/day call-volume discrepancy is untouched. It mattered most when each call cost two minutes of a saturated instance; at 4 s a call it is now a cost question rather than a latency one, but it is still unreconciled.
 - **Prod** — no `carditrack-prod-*` service accounts exist, so there is nothing to grant `run.invoker` to. Prod is not wired to this service and does not run MedGemma at all.
 - **The public-exposure alert** moved to `infrastructure/common/alerting.tf` with the service. Worth knowing the exposure it watches is now *larger*: a public grant on one instance is a public grant on the model behind every environment.
+
+### 9.5 Warming the model when the app opens (2026-08-22)
+
+§9.1a's caveat has one property worth exploiting: the ~54 s load does not have to happen *while someone waits for it*, only *before they need it*. A caregiver who opens the app does not ask the assistant a question in the same second — they land on the dashboard, read the status line and the digest, and only then open chat. That gap is longer than the load.
+
+So the app's arrival at the dashboard now tells the API a caregiver is here, and the API starts the load in the background:
+
+| | |
+|---|---|
+| Trigger | `PostLoginRouter`, on every route that lands on `AppShell` — cold launch, sign-in, account setup, verify-email. Not the onboarding wizard routes: no member yet, nothing to ask about |
+| Call | `POST api/v1/assistant/prepare`, authenticated, fire-and-forget on the app side, `202` on the server's side within microseconds |
+| Work | `MedGemmaWarmUpService` runs `MedGemmaClient.WarmUpAsync` on a detached task — Ollama's documented preload, a `/api/generate` with an **empty prompt**, which loads the weights and generates nothing |
+| Guards | One warm-up at a time per host; no second one for `AI:Private:WarmUpMinimumIntervalSeconds` (default 300) after an attempt **ends**, success or failure alike; and **one attempt, no retries** — MS-4's `max_instance_request_concurrency = 1` means a warm-up that re-sent a 429 would be queueing ahead of the real calls it exists to speed up, and a 429 has already answered its only question |
+| Off switch | `AI__Private__WarmUpEnabled=false` |
+
+Three things this deliberately is not.
+
+**It is not `min = 1` by the back door.** The instance comes up when a caregiver actually arrives and scales back to zero on Cloud Run's usual idle tail, so the estate pays for the hours people use the app rather than for all of them. The debounce is what keeps a morning's worth of app-opens from being a morning's worth of loads: at most one per host per five minutes, however many arrivals ask.
+
+**It carries no health data and costs no tokens.** The empty prompt is the entire request. Nothing is generated, `prompt_eval_count` and `eval_count` come back absent, and the DPIA invariant `MedGemmaClient` opens with is not engaged because there is no content in either direction. The call is instrumented like any other — `gen_ai.operation.name = warm_up` on the shared span and duration metric — which is also how the real cost of this decision becomes visible in MS-1's billing week rather than inferred.
+
+**It does not make anything wait, and is allowed to fail.** The endpoint answers before the load starts; the app never reads the answer; a failed warm-up logs a warning and starts the same five-minute clock a successful one does, so a model host that is down is dialled every few minutes rather than on every launch. If none of it happens, the first chat question pays the load exactly as it did before.
+
+What is **not** covered: resuming the app from the background. `App.Resumed` is the other moment a caregiver arrives after a quiet spell, and it is the same one line to add — left out here because it multiplies how much of the day the instance is up, and that is a call to make against MS-1's numbers rather than ahead of them.

@@ -65,6 +65,14 @@ public sealed class PostLoginRouter
             _ => new AppShell(),
         };
 
+        // Before the root swap, not after: the model load this may start takes about a minute
+        // (docs/technical/medgemma_serving_architecture.md §9.1a), and the caregiver is about to
+        // spend some of that minute reading the dashboard. Every millisecond earlier is one
+        // fewer they wait on their first question. Only for the dashboard — a caregiver still in
+        // the wizard has no member to ask about yet.
+        if (root is AppShell)
+            _ = WarmAssistantAsync(ct);
+
         await MainThread.InvokeOnMainThreadAsync(() =>
         {
             WindowNavigation.SetRootPage(current, root);
@@ -80,6 +88,26 @@ public sealed class PostLoginRouter
             }
             shell.Loaded += OnLoaded;
         });
+    }
+
+    /// <summary>
+    /// Asks the API to get the assistant ready, and forgets about it. Nothing here is worth
+    /// failing a launch over: the endpoint answers 202 without doing the work inline, and if the
+    /// call never lands the first chat question simply pays the model load as it always did.
+    /// </summary>
+    private async Task WarmAssistantAsync(CancellationToken ct)
+    {
+        try
+        {
+            await _api.PrepareAssistantAsync(ct);
+        }
+        catch (Exception ex)
+        {
+            // Debug, not Warning: offline launches are ordinary, and this failing is invisible to
+            // the caregiver by design. Started fire-and-forget, so the catch is also what keeps
+            // it from surfacing as an unobserved task exception.
+            _logger?.LogDebug(ex, "Preparing the assistant after login failed.");
+        }
     }
 
     private async Task ResumeDeviceSetupAsync(AppShell shell)

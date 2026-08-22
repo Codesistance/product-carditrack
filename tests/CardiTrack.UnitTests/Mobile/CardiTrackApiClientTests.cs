@@ -908,6 +908,23 @@ public class CardiTrackApiClientTests
         Assert.Equal(TimeSpan.FromSeconds(960), requestedTimeout);
     }
 
+    [Fact]
+    public async Task PrepareAssistant_PostsToTheAssistantRoute_AndReadsNothingBack()
+    {
+        var (client, http) = CreateSut();
+        // 202 with a message-only envelope: the API has noted the arrival, and whether it went
+        // on to load the model is not something the app can act on either way.
+        http.Enqueue(HttpStatusCode.Accepted, """
+            {"success":true,"message":"Getting the assistant ready.","timestamp":"2026-08-22T09:00:00Z"}
+            """);
+
+        await client.PrepareAssistantAsync();
+
+        var request = http.Requests.Single();
+        Assert.Equal(HttpMethod.Post, request.Method);
+        Assert.Equal("/api/v1/assistant/prepare", request.Uri!.AbsolutePath);
+    }
+
     private static (CardiTrackApiClient Client, FakeHttpMessageHandler Http) CreateSut(
         IOfflineReadCache? cache = null)
     {
